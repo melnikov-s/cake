@@ -207,6 +207,11 @@ export const CopyIcon = () => (
     <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
   </Icon>
 );
+export const LinkIcon = () => (
+  <Icon size={15}>
+    <path d="M10 13a5 5 0 0 0 7 .5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" />
+  </Icon>
+);
 export const ForkIcon = () => (
   <Icon size={15}>
     <circle cx="6" cy="5" r="2" />

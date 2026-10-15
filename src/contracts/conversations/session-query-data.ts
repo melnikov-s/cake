@@ -98,7 +98,10 @@ export const SessionInspectionQuery = Schema.Struct({
     "usage",
     "commands",
     "pending",
+    "messages-list",
+    "messages-read",
   ]),
+  entryId: Schema.optionalKey(entryId),
   ...SessionHistoryQuery.fields,
 });
 export interface SessionInspectionQuery extends Schema.Schema.Type<typeof SessionInspectionQuery> {}

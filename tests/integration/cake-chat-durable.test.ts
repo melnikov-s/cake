@@ -10,6 +10,12 @@ import { CakeSessionRuntimes } from "../../src/services/pi/CakeSessionRuntimes";
 import { piSettingsHandlers } from "../../src/ipc/server/PiSettingsHandlers";
 import { makeTaskInputStorageLive } from "../../src/services/storage/TaskInputStorageLive";
 import { TaskInputStorage } from "../../src/services/storage/TaskInputStorage";
+import { Schema } from "effect";
+import {
+  MessageListResult,
+  MessageReadResult,
+} from "../../src/contracts/conversations/message-reference";
+import { makeAttachmentReferenceControl } from "../../src/domain/conversations/attachmentReferences";
 import { prepareTaskInputs } from "../../src/domain/conversations/taskInputs";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import {
@@ -125,7 +131,10 @@ async function fixture() {
       watchers.delete(listener);
     }
   };
-  const open = async (globalControl?: CakeSessionRuntimeSetup["globalControl"]) => {
+  const open = async (
+    globalControl?: CakeSessionRuntimeSetup["globalControl"],
+    attachmentReferenceControl?: CakeSessionRuntimeSetup["attachmentReferenceControl"],
+  ) => {
     const runtime = await serviceRuntime.runPromise(
       service.createRuntime({
         cwd: directory,
@@ -135,6 +144,7 @@ async function fixture() {
         sessionId: CAKE_CHAT_SESSION_ID,
         requestUi: async () => undefined,
         globalControl: globalControl ?? { tools: [], invoke: async () => ({}) },
+        attachmentReferenceControl,
         modelPresets: () => ({
           presets: [
             {
@@ -326,6 +336,90 @@ it("keeps attachment bytes out of provider input, originals, zoom and future mem
   if (image?.kind !== "image" || !image.originalPath)
     throw new Error("Expected original image file");
   expect((await readFile(image.originalPath)).toString("base64")).toBe(data);
+});
+
+it("explicitly inspects a historical screenshot as provider image pixels after compaction and reopen", async () => {
+  const f = await fixture();
+  const vault = ManagedRuntime.make(makeTaskInputStorageLive(f.directory));
+  cleanup.push(() => vault.dispose());
+  const data =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWZkAAAAASUVORK5CYII=";
+  const refs = await vault.runPromise(
+    prepareTaskInputs(CAKE_CHAT_SESSION_ID, true, [
+      { kind: "image", name: "historical.png", mimeType: "image/png", data },
+    ]),
+  );
+  const ref = refs[0];
+  if (ref?.kind !== "input") throw new Error("Missing reference");
+  const control = makeAttachmentReferenceControl(CAKE_CHAT_SESSION_ID, (effect, options) =>
+    vault.runPromise(effect, options),
+  );
+  const first = await f.open(undefined, control);
+  await first.runtime.prompt(`Keep the reference. ${"context ".repeat(700)}`, "prompt", [...refs]);
+  await first.runtime.compact("Keep attachment IDs");
+  expect(JSON.stringify(f.requests)).not.toContain(data);
+  const messages = Schema.decodeUnknownSync(MessageListResult)(
+    await first.runtime.inspectSession({ kind: "messages-list", roles: ["user"], limit: 10 }),
+  );
+  const original = messages.messages.find((message) =>
+    message.inputRefs.some((input) => input.id === ref.id),
+  );
+  if (!original) throw new Error("Missing exact original message reference");
+  expect(JSON.stringify(messages)).not.toContain("Keep the reference");
+  expect(JSON.stringify(messages)).not.toContain(data);
+  await first.close();
+  const before = f.requests.length;
+  f.answer((index) =>
+    index === before + 1
+      ? durableAnswer("", [
+          {
+            type: "toolCall",
+            id: "read-exact-image",
+            name: "cake",
+            arguments: { command: "attachments.read", input: { reference: ref.id } },
+          },
+        ])
+      : durableAnswer("Inspected the screenshot"),
+  );
+  const reopened = await f.open(undefined, control);
+  const exact = Schema.decodeUnknownSync(MessageReadResult)(
+    await reopened.runtime.inspectSession({
+      kind: "messages-read",
+      entryId: original.entryId,
+      maxChars: 25,
+    }),
+  );
+  expect(exact.message.ref).toBe(original.ref);
+  expect(exact.text).toBe("Keep the reference. context ".slice(0, 25));
+  const described = Schema.decodeUnknownSync(MessageListResult)(
+    await reopened.runtime.inspectSession({
+      kind: "messages-list",
+      entryId: original.entryId,
+      limit: 1,
+    }),
+  );
+  expect(described.messages).toEqual([original]);
+  await expect(
+    reopened.runtime.inspectSession({ kind: "messages-read", entryId: "999999999" }),
+  ).rejects.toThrow("does not exist");
+  await reopened.runtime.prompt("Inspect that earlier screenshot", "prompt", []);
+  const toolResults = f.requests
+    .slice(before)
+    .flatMap((request) => request.messages.filter((message) => message.role === "toolResult"));
+  expect(toolResults).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        content: expect.arrayContaining([{ type: "image", mimeType: "image/png", data }]),
+      }),
+    ]),
+  );
+  const snapshot = await reopened.runtime.snapshot();
+  const inspected = snapshot.parts.find(
+    (part) => part.kind === "tool" && part.command === "attachments.read",
+  );
+  if (inspected?.kind !== "tool") throw new Error("Missing inspection tool result");
+  expect(inspected.output).not.toContain(data);
+  expect(inspected.outputContent).toContainEqual({ type: "image", mimeType: "image/png", data });
 });
 
 it("uses production SQLite, existing credentials and exact originals across reopen", async () => {

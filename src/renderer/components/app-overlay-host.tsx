@@ -6,6 +6,8 @@ import { AgentAvailabilityNotice } from "./agent-availability-notice";
 import { AppNotifications } from "./app-notifications";
 import { ExtensionRequestDialog } from "./extension-request-dialog";
 import { FullscreenMessage } from "./fullscreen-message";
+import { MessageReferencePreview } from "./message-reference-preview";
+import { AttachmentReferencePreview } from "./attachment-reference-preview";
 import { QuakeTerminal } from "./quake-terminal";
 import { SessionContinuationDialog } from "./session-continuation-dialog";
 import { TreeNavigationDialog } from "./tree-navigation-dialog";
@@ -33,6 +35,8 @@ export const AppOverlayHost = observer(function AppOverlayHost({
     return (
       <>
         {floatingTerminal}
+        <MessageReferencePreview store={root.navigationStore.messageReferencePreview} />
+        <AttachmentReferencePreview store={root.navigationStore.attachmentReferencePreview} />
         <SessionContinuationDialog store={workbench.sessionContinuationStore} />
         <TreeNavigationDialog store={workbench.commandPaneStore} />
         <UiHintMode store={root.uiHintModeStore} />
@@ -41,6 +45,8 @@ export const AppOverlayHost = observer(function AppOverlayHost({
 
   return (
     <>
+      <MessageReferencePreview store={root.navigationStore.messageReferencePreview} />
+      <AttachmentReferencePreview store={root.navigationStore.attachmentReferencePreview} />
       <WorkspaceTrustDialog />
       <SessionContinuationDialog store={workbench.sessionContinuationStore} />
       <TreeNavigationDialog store={workbench.commandPaneStore} />

@@ -1,5 +1,6 @@
 import { Effect, Schema } from "effect";
 import { resolveSessionReference } from "../../contracts/project-sessions/session-reference";
+import { messageRefsSchema } from "../../contracts/conversations/message-reference";
 import { inputRefsSchema } from "../../contracts/conversations/task-input";
 import {
   SESSION_TITLE_MAX_LENGTH,
@@ -13,6 +14,7 @@ import { bounded, trimmed, sessionIdTargetSchema } from "./control-arguments";
 import { defineControl, defineSessionControl } from "./control-definition";
 import { toStrictJson } from "./control-json";
 const createSessionArgs = Schema.Struct({
+  messageRefs: Schema.optionalKey(messageRefsSchema),
   inputRefs: Schema.optionalKey(inputRefsSchema),
   workspacePath: bounded(1, 4096),
   name: trimmed(1, 500),
@@ -58,7 +60,7 @@ export const sessionLifecycleControls = [
         "Create, configure, name, and start a project session in the background, optionally from a model preset or in a new managed worktree.",
       guidance: [
         "Omit model unless the user explicitly asks for a specific model. When omitted, the new session uses the configured default model preset's complete settings (provider, model, thinking level, and Fast mode; see models.list), not the calling Cake Chat's current model. Only when no default preset is configured does it use the calling Cake Chat's current settings.",
-        "Pass selected attachment IDs in inputRefs. Cake forwards their contents only to the Project Session; do not open or summarize attachments in Cake Chat.",
+        "Pass exact attachment IDs from input metadata or attachments.list in inputRefs to forward without reading. Use attachments.read only when you want to inspect the content yourself.",
       ],
       examples: [
         {

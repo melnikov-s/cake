@@ -78,6 +78,16 @@ and [`ChatStore`](../../src/renderer/stores/ChatStore.ts).
 
 ## Conversation and media
 
+[`CopyReferenceButton`](../../src/renderer/components/ui/copy-reference-button.tsx) copies an
+exact message or attachment link with shared feedback. Its semantic wrapper
+[`MessageReferenceButton`](../../src/renderer/components/ui/message-reference-button.tsx)
+copies a settled Project Session message's canonical Pi-entry link. It never copies
+renderer part IDs or reads message bodies; the parent supplies the addressable session
+identity. Original-message previews reuse `FullscreenSurface` with bounded source pages.
+[`AttachmentReference`](../../src/renderer/components/ui/attachment-reference.tsx) presents
+a metadata-only file/input link with the same copy affordance; previews fetch the
+original through the session-authorized attachment boundary, never a backend path.
+
 [`SessionMessage`](../../src/renderer/components/ui/session-message.tsx) presents
 incoming session communication as an expanded card with an explicit attribution
 header and a source-session link. Use recorded provenance; do not infer the sender

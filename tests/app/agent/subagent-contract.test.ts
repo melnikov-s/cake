@@ -18,6 +18,129 @@ describe("subagent contract", () => {
     ).toEqual({ task: "Inspect the adapter", projectPath: "/registered/project" });
   });
 
+  it("forwards exact inputRefs on every task and follow-up operation without reading content", async () => {
+    const first = "00000000-0000-4000-8000-000000000001";
+    const second = "00000000-0000-4000-8000-000000000002";
+    const messageRef = "cake://session/source?message=entry-1";
+    const control = {
+      run: vi.fn(async () => ({ status: "complete" })),
+      start: vi.fn(async () => ({ status: "queued" })),
+      parallel: vi.fn(async () => ({ status: "complete" })),
+      prompt: vi.fn(async () => ({ status: "complete" })),
+      wait: vi.fn(async () => ({ status: "complete" })),
+      abort: vi.fn(async () => ({ status: "aborted" })),
+      close: vi.fn(async () => ({ status: "closed" })),
+    };
+    const registry = new CakeOperationRegistry(
+      createAgentControlOperations(
+        control,
+        () => "cake-chat",
+        () => ({ provider: "test", modelId: "model", thinkingLevel: "off", fastMode: false }),
+        true,
+      ),
+    );
+    const context = {
+      signal: new AbortController().signal,
+      toolCallId: "attachments",
+      runtime: {},
+    };
+    for (const command of ["subagents.run", "subagents.start"])
+      await registry.invoke(
+        {
+          command,
+          input: { task: "Inspect selected input", inputRefs: [first], messageRefs: [messageRef] },
+        },
+        context,
+      );
+    expect(control.run).toHaveBeenCalledWith(
+      expect.objectContaining({ inputRefs: [first], messageRefs: [messageRef] }),
+      "cake-chat",
+      context.signal,
+      undefined,
+      "tool-attachments",
+    );
+    expect(control.start).toHaveBeenCalledWith(
+      expect.objectContaining({ inputRefs: [first], messageRefs: [messageRef] }),
+      "cake-chat",
+      context.signal,
+      "tool-attachments",
+    );
+    await registry.invoke(
+      {
+        command: "subagents.parallel",
+        input: {
+          tasks: [
+            { task: "First", inputRefs: [first] },
+            { task: "Second", inputRefs: [second] },
+          ],
+        },
+      },
+      context,
+    );
+    expect(control.parallel).toHaveBeenCalledWith(
+      {
+        tasks: [
+          expect.objectContaining({ inputRefs: [first] }),
+          expect.objectContaining({ inputRefs: [second] }),
+        ],
+      },
+      "cake-chat",
+      context.signal,
+      undefined,
+      "tool-attachments",
+    );
+    for (const [command, delivery] of [
+      ["subagents.prompt", "prompt"],
+      ["subagents.follow-up", "follow-up"],
+    ]) {
+      await registry.invoke(
+        {
+          command,
+          input: {
+            handleId: first,
+            text: "Inspect this too",
+            inputRefs: [second],
+            messageRefs: [messageRef],
+          },
+        },
+        context,
+      );
+      expect(control.prompt).toHaveBeenLastCalledWith(
+        {
+          handleId: first,
+          text: "Inspect this too",
+          inputRefs: [second],
+          messageRefs: [messageRef],
+          delivery,
+        },
+        "cake-chat",
+        context.signal,
+      );
+    }
+    await expect(
+      registry.invoke(
+        {
+          command: "subagents.start",
+          input: { task: "Too many", inputRefs: Array.from({ length: 21 }, () => first) },
+        },
+        context,
+      ),
+    ).rejects.toThrow();
+    const help = await registry.invoke({ command: "subagents.start.help" }, context);
+    expect(help.text).toContain("inputRefs");
+    expect(help.text).toContain("messageRefs");
+    await expect(
+      registry.invoke(
+        {
+          command: "subagents.start",
+          input: { task: "Bad ref", messageRefs: ["not-a-message-link"] },
+        },
+        context,
+      ),
+    ).rejects.toThrow();
+    expect(help.text).toContain("attachments.read");
+  });
+
   it("uses the shared preset-or-explicit model selection schema", () => {
     expect(
       Schema.decodeUnknownSync(subagentTaskSchema)({

@@ -1,3 +1,5 @@
+import type { AttachmentReadInput } from "../../contracts/conversations/attachment-reference-control";
+import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 import { Effect } from "effect";
 import {
   inheritTaskInputProtection,
@@ -227,6 +229,13 @@ export const queueCommand = Effect.fn("SessionChats.queueCommand")(function* (
 ) {
   const handle = yield* acquire(input.sessionId);
   return yield* handle.queueCommand(input.command).pipe(asError("queueCommand"));
+});
+
+export const readAttachment = Effect.fn("SessionChats.readAttachment")(function* (
+  input: SessionChatTarget & AttachmentReadInput,
+) {
+  const inputs = yield* TaskInputStorage;
+  return yield* inputs.inspect(input.sessionId, input).pipe(asError("readAttachment"));
 });
 
 export const inspect = Effect.fn("SessionChats.inspect")(function* (

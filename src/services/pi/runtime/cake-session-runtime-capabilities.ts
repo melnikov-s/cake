@@ -200,6 +200,24 @@ export async function createCakeSessionRuntimeCapabilities(input: {
   const detectedWorktreePrompt = detectedWorktree
     ? worktreeSystemPrompt(detectedWorktree)
     : undefined;
+  const gateway = createCakeGatewayExtension(
+    (pi) =>
+      options.operations?.({
+        host: pi,
+        publishSnapshot: input.publishSnapshot,
+        api: () => {
+          if (!operationApi.current) throw new Error("The Cake session is not ready");
+          return operationApi.current;
+        },
+        sessionId: () => runtimeIdentity.sessionId,
+        getAvailableOfType: async (type, filter, options) =>
+          (await input.modelRuntime.getAvailableOfType(type, filter, options)).map(
+            ({ provider, id }) => ({ provider, id }),
+          ),
+      }) ?? [],
+    captureOperationRegistry,
+    options.sessionReferences?.project,
+  );
   const resourceLoader = await loadCakeSessionRuntimeResourceLoader({
     trusted: options.trusted,
     makeResourceLoader: () =>
@@ -242,31 +260,16 @@ export async function createCakeSessionRuntimeCapabilities(input: {
         noContextFiles: options.isolatedSystemPrompt !== undefined,
         extensionFactories:
           options.auxiliaryProjectResources || options.projectInvestigation
-            ? [...requestExtensions]
+            ? options.projectInvestigation
+              ? [...requestExtensions, gateway]
+              : [...requestExtensions]
             : [
                 ...requestExtensions,
                 createCakeSystemPromptExtension(),
                 ...(options.sessionReferences
                   ? [createSessionReferenceExtension(options.sessionReferences)]
                   : []),
-                createCakeGatewayExtension(
-                  (pi) =>
-                    options.operations?.({
-                      host: pi,
-                      publishSnapshot: input.publishSnapshot,
-                      api: () => {
-                        if (!operationApi.current) throw new Error("The Cake session is not ready");
-                        return operationApi.current;
-                      },
-                      sessionId: () => runtimeIdentity.sessionId,
-                      getAvailableOfType: async (type, filter, options) =>
-                        (await input.modelRuntime.getAvailableOfType(type, filter, options)).map(
-                          ({ provider, id }) => ({ provider, id }),
-                        ),
-                    }) ?? [],
-                  captureOperationRegistry,
-                  options.sessionReferences?.project,
-                ),
+                gateway,
                 createCakeArtifactExtension({ persistArtifact, compileArtifactBrowser }),
                 ...(options.messageBoardControl
                   ? [

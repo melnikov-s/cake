@@ -1,3 +1,5 @@
+import { appendMessageReferences } from "../../contracts/conversations/message-reference-forwarding";
+import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 import { ensureBoard } from "../artifacts/messageBoards";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
 import { inheritTaskInputProtection, prepareCoordinatorNotice } from "../conversations/taskInputs";
@@ -606,6 +608,8 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
       threadId?: string;
       replyToMessageId?: string;
       expectsResponse?: boolean;
+      inputRefs?: readonly string[];
+      messageRefs?: readonly string[];
       outcome?: SessionCompletionReport["outcome"];
     },
     location: ProjectSessionLocation,
@@ -654,9 +658,16 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
         );
       yield* storage.recordReport(pending.turnId, {
         outcome: input.outcome ?? "result",
-        text: input.text,
+        text: appendMessageReferences(input.text, input.messageRefs ?? []),
       });
-      return toJsonValue({ ok: true, command, status: "report-recorded", expectsResponse: false });
+      // Explicit input forwarding is delivered below rather than silently discarded.
+      if (!input.inputRefs?.length)
+        return toJsonValue({
+          ok: true,
+          command,
+          status: "report-recorded",
+          expectsResponse: false,
+        });
     }
     const destination = yield* sessions.acquireSession(targetId);
     const snapshot = yield* destination.snapshot();
@@ -680,7 +691,10 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
     };
     const encoded = yield* prepareCoordinatorNotice(
       targetId,
-      encodeCrossSessionMessage(input.text, metadata),
+      encodeCrossSessionMessage(
+        appendMessageReferences(input.text, input.messageRefs ?? []),
+        metadata,
+      ),
     ).pipe(Effect.mapError((error) => failure(error.message)));
     if (replyToMessageId && pending)
       yield* storage.prepareResponse(
@@ -690,13 +704,20 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
         messageId,
         executingIds,
       );
+    const attachments = input.inputRefs?.length
+      ? yield* Effect.gen(function* () {
+          const inputs = yield* TaskInputStorage;
+          const grants = yield* inputs.authorizeForward(sessionId, input.inputRefs ?? [], targetId);
+          return yield* inputs.grant(targetId, grants);
+        })
+      : [];
     const delivery = input.delivery ?? (snapshot.streaming ? "queue" : "prompt");
     const turnId =
       delivery === "steer"
-        ? yield* destination.steer(encoded, [], false)
+        ? yield* destination.steer(encoded, attachments, false)
         : delivery === "queue"
-          ? yield* destination.followUp(encoded, [], false)
-          : yield* destination.prompt(encoded, [], false);
+          ? yield* destination.followUp(encoded, attachments, false)
+          : yield* destination.prompt(encoded, attachments, false);
     if (replyToMessageId && pending)
       for (const request of (yield* storage.state()).turns)
         if (request.replyMessageIds?.includes(messageId))

@@ -1,10 +1,13 @@
 import { Effect, Option, Schema } from "effect";
+import { messageRefsSchema } from "../../contracts/conversations/message-reference";
+import { appendMessageReferences } from "../../contracts/conversations/message-reference-forwarding";
 import { inputRefsSchema } from "../../contracts/conversations/task-input";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 import { jsonObjectSchema, type JsonValue } from "../../contracts/serialization/json-contract";
 import type { AttachmentUploadError } from "../../contracts/filesystem/attachment-uploads-errors";
 
 const ForwardArguments = Schema.Struct({
+  messageRefs: messageRefsSchema.pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
   inputRefs: inputRefsSchema.pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
   sessionId: Schema.optionalKey(Schema.String),
 });
@@ -35,7 +38,20 @@ export const forwardTaskInputControl = Effect.fn("CakeChats.forwardTaskInputCont
     selection.inputRefs,
     invocation.name === "sessions.send" ? selection.sessionId : undefined,
   );
-  return { ...invocation, arguments: { ...args, inputRefs: [...inputRefs] } };
+  const field = invocation.name === "sessions.create" ? "initialPrompt" : "text";
+  const text = args[field];
+  const argumentsValue = { ...args, inputRefs: [...inputRefs] };
+  if (selection.messageRefs.length) {
+    const original = yield* Schema.decodeUnknownEffect(Schema.String)(text);
+    return {
+      ...invocation,
+      arguments: {
+        ...argumentsValue,
+        [field]: appendMessageReferences(original, selection.messageRefs),
+      },
+    };
+  }
+  return { ...invocation, arguments: argumentsValue };
 });
 
 /** Drop content-bearing projections and generated names before tool results enter Pi. */

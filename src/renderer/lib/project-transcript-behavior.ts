@@ -14,6 +14,7 @@ export function projectTranscriptBehaviorFor(
   const resolved = root.sessionCatalogStore.find(paneSession.sessionId)?.resolved === true;
   return {
     workspacePath: paneSession.workspacePath,
+    messageReferenceSessionId: paneSession.sessionId,
     onFork: resolved
       ? undefined
       : (entryId: string) => {

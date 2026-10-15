@@ -13,7 +13,7 @@ export const sessionNavigationHelp = {
   summary:
     "Open an existing Project Session in the invoking Cake window's active conversation pane, optionally at a transcript message.",
   guidance: [
-    "Use a sessionId from sessions.list or an existing Project Session. Cake Chat IDs are not valid targets.",
+    "Use a sessionId from sessions.list or an existing Project Session. An exact messageId may also target the permanent Cake Chat conversation.",
     "Uses ordinary window-local navigation: replaces the focused pane's conversation, or focuses the target's pane if it is already open. Never creates a session or a window.",
     "Enabled by default. The user can disable agent session navigation in Settings → Agent for this window; the preference persists across restarts.",
     "The permission is user-owned and cannot be changed by an agent. When disabled, offer a cake://session/<session-id> link for the user to open instead.",

@@ -92,7 +92,9 @@ export function renderAppShellNavigation(
   });
   const view = render(
     <StoreProvider store={fixture.root}>
-      <App />
+      <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
+        <App />
+      </StoreProvider>
     </StoreProvider>,
   );
   return {

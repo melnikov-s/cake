@@ -23,7 +23,10 @@ The command builds Cake before launching it. **Electron captures default to slim
 
 `screen-capture-overlay` captures the real hidden native overlay against a synthetic still (never the user's desktop). Its `default`, `destination`, `new-session`, and `annotate` states cover the compact movable strip, sidebar-style destination popup, per-Project new-chat choice, and target-first arrows. Use the default region capture; whole-window capture targets the owner Cake window.
 
-Named scenarios define their own fixture, readiness checks, allowed states, interactions, and capture region. Add scenarios under `scripts/visual-capture/`; do not add an arbitrary selector/action command language. The `inline-links` scenario covers artifact, workspace, website, and session links in prose, with `default` and `hover` states.
+Named scenarios define their own fixture, readiness checks, allowed states, interactions, and capture region. Add scenarios under `scripts/visual-capture/`; do not add an arbitrary selector/action command language. The `inline-links` scenario covers artifact, workspace, website, session, and exact
+message/attachment links in prose. Its `default`/`hover` states show link presentation;
+`message` reveals and marks an exact visible message, `original` opens a previous-branch
+Pi original, and `attachment` opens authorized vault text without adding it to agent context.
 
 Useful deterministic controls include:
 

@@ -418,6 +418,7 @@ export const ChatTranscript = observer(function ChatTranscript({
       item={item}
       index={index}
       errorFollowsUser={errorNoticeFollowsUser(items, index)}
+      selected={index === messageNavigationItemIndex}
       parts={parts}
       behavior={transcriptBehavior}
       changedFilesOpen={changedFilesOpen}

@@ -39,6 +39,8 @@ import {
   installSpeechHttpFixture,
 } from "../../tests/electron/main-harness.ts";
 import { windowState } from "../../tests/fixtures/window-state";
+import { TaskInputStorage } from "../../src/services/storage/TaskInputStorage.ts";
+import { makeTaskInputStorageLive } from "../../src/services/storage/TaskInputStorageLive.ts";
 
 interface ScenarioFixturePaths {
   readonly cakeHome: string;
@@ -926,8 +928,8 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
 
 const inlineLinks: VisualCaptureScenario = {
   name: "inline-links",
-  description: "Consistent artifact, workspace, website, and session links in prose",
-  states: ["default", "hover"],
+  description: "Consistent artifact, workspace, website, session, and exact message links in prose",
+  states: ["default", "hover", "message", "original", "attachment"],
   async seed(paths, theme) {
     await assistantMarkdownCode.seed(paths, theme);
     const sessionId = "visual-assistant-markdown-code";
@@ -939,7 +941,30 @@ const inlineLinks: VisualCaptureScenario = {
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line));
+    const attachmentRefs = await Effect.runPromise(
+      Effect.flatMap(TaskInputStorage, (inputs) =>
+        inputs.isolate(CAKE_CHAT_SESSION_ID, [
+          {
+            kind: "text",
+            name: "Capture notes.txt",
+            text: "Original attachment evidence.\n\nOpen, copy, or forward this exact input reference without adding the file contents to the agent’s context.\n\nThe preview is read only on your request.",
+          },
+        ]),
+      ).pipe(Effect.provide(makeTaskInputStorageLive(join(paths.cakeHome, "state")))),
+    );
+    const attachmentRef = attachmentRefs[0]!;
     const message = entries.find((entry) => entry.id === "assistant-1");
+    entries.splice(entries.indexOf(message), 0, {
+      type: "message",
+      id: "original-source",
+      parentId: null,
+      timestamp: new Date(0).toISOString(),
+      message: {
+        role: "user",
+        content: "Original message evidence from a previous branch.",
+        timestamp: 0,
+      },
+    });
     message.message.content = [
       {
         type: "text",
@@ -949,6 +974,10 @@ const inlineLinks: VisualCaptureScenario = {
           "Created [Collaboration requirements](cake://artifact/visual-link-report), with confirmed requirements and open decisions.",
           "",
           "Review [the implementation](src/main.ts#L12-L24), read [the website](https://example.com/docs), or return to [this session](cake://session/visual-assistant-markdown-code).",
+          "",
+          "Open [this request](cake://session/visual-assistant-markdown-code?message=user-1) or inspect [an original request](cake://session/visual-assistant-markdown-code?message=original-source) from a previous branch.",
+          "",
+          `Read [capture notes](cake://session/${CAKE_CHAT_SESSION_ID}?attachment=${attachmentRef.id}) without sending their contents to an agent.`,
           "",
           "Every destination uses the same clear link style. Hover a link to see where it goes.",
         ].join("\n"),
@@ -978,7 +1007,38 @@ const inlineLinks: VisualCaptureScenario = {
     await expect(page.getByRole("link", { name: "the implementation" })).toBeVisible();
     await expect(page.getByRole("link", { name: "the website" })).toBeVisible();
     await expect(page.getByRole("link", { name: "this session" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "this request", exact: true })).toHaveAttribute(
+      "href",
+      "cake://session/visual-assistant-markdown-code?message=user-1",
+    );
     await page.waitForFunction(() => document.fonts.status === "loaded");
+    if (state === "message") {
+      await page.getByRole("link", { name: "this request", exact: true }).click();
+      const selected = page.locator('[data-slot="transcript-item"][aria-current="true"]');
+      await expect(selected).toContainText("How should agents capture Cake UI changes?");
+      await selected.hover();
+      await expect(
+        selected.getByRole("button", { name: "Copy message link", exact: true }),
+      ).toBeVisible();
+      return;
+    }
+    if (state === "attachment") {
+      await page.getByRole("link", { name: "capture notes", exact: true }).click();
+      await expect(page.getByRole("dialog", { name: "Capture notes.txt" })).toContainText(
+        "Original attachment evidence.",
+      );
+      await expect(
+        page.getByRole("button", { name: "Copy attachment link", exact: true }),
+      ).toBeVisible();
+      return;
+    }
+    if (state === "original") {
+      await page.getByRole("link", { name: "an original request", exact: true }).click();
+      await expect(page.getByRole("dialog", { name: "user · original-source" })).toContainText(
+        "Original message evidence from a previous branch.",
+      );
+      return;
+    }
     if (state === "hover") {
       await artifact.hover();
       await expect(page.getByRole("tooltip")).toHaveText("cake://artifact/visual-link-report");
@@ -987,7 +1047,11 @@ const inlineLinks: VisualCaptureScenario = {
       await page.mouse.move(1, 1);
     }
   },
-  region(page) {
+  region(page, state) {
+    if (state === "attachment") return page.getByRole("dialog", { name: "Capture notes.txt" });
+    if (state === "original") return page.getByRole("dialog", { name: "user · original-source" });
+    if (state === "message")
+      return page.locator('[data-slot="transcript-item"][aria-current="true"]');
     return page
       .locator('[data-slot="message-content"]')
       .filter({ has: page.getByRole("link", { name: "the implementation" }) });

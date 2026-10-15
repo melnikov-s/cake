@@ -239,8 +239,10 @@ async function mountDesktop(runtime: Runtime, client: Client, connection: Deskto
       openExternalUrl: (url) => {
         void rootStore.openExternalUrl(url).catch(reportLinkError);
       },
-      openSession: (sessionId) => {
-        void rootStore.navigationStore.openSessionLink(sessionId).catch(reportLinkError);
+      openSession: (sessionId, messageId, attachmentId) => {
+        void rootStore.navigationStore
+          .openSessionLink(sessionId, messageId, attachmentId)
+          .catch(reportLinkError);
       },
     }),
   );

@@ -24,6 +24,7 @@ export const CakeChatSurface = observer(function CakeChatSurface() {
         root.cakeChatCollectionStore.pendingSessions.isPending(paneSession.sessionId),
     },
     transcriptBehavior: {
+      messageReferenceSessionId: paneSession.sessionId,
       subagents: paneSession.subagentActivityStore,
       inlineWidgets: root.inlineWidgetStore,
       inlineArtifactPreviews: root.inlineArtifactPreviewStore,

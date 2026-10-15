@@ -26,6 +26,7 @@ import {
 } from "@/lib/syntax-highlighter";
 import { cn } from "@/lib/utils";
 import type { SourceLocation } from "../../../contracts/editor/source-location";
+import { parseSessionLink, sessionLink } from "../../../contracts/conversations/message-reference";
 import { parseSourceLocation } from "../../../utils/source-location";
 import { Link } from "../ui/link";
 import { MarkdownTable } from "../ui/markdown-table";
@@ -50,7 +51,7 @@ type ImageProps = ComponentProps<"img"> & { node?: unknown };
 
 type MarkdownLinkActions = {
   openExternalUrl(url: string): void;
-  openSession(sessionId: string): void;
+  openSession(sessionId: string, messageId?: string, attachmentId?: string): void;
   sessionTitle?(sessionId: string): string | undefined;
   loadWorkspaceImage?(
     path: string,
@@ -77,20 +78,12 @@ export function MarkdownLinkProvider({
   return <MarkdownLinkContext value={actions}>{children}</MarkdownLinkContext>;
 }
 
-function sessionIdFromHref(href: string) {
-  try {
-    const encodedId = href.startsWith(sessionPathPrefix)
-      ? href.slice(sessionPathPrefix.length)
-      : (() => {
-          const url = new URL(href);
-          return url.protocol === "cake:" && url.hostname === "session"
-            ? url.pathname.slice(1)
-            : undefined;
-        })();
-    return encodedId && !encodedId.includes("/") ? decodeURIComponent(encodedId) : undefined;
-  } catch {
-    return undefined;
-  }
+function sessionTargetFromHref(href: string) {
+  return parseSessionLink(
+    href.startsWith(sessionPathPrefix)
+      ? `cake://session/${href.slice(sessionPathPrefix.length)}`
+      : href,
+  );
 }
 
 function sourceHref(reference: string) {
@@ -138,8 +131,9 @@ function prepareMarkdownLinks(markdown: string, sourceLinks: boolean) {
         return segment.replace(
           /\]\(([^)\s]+)(?:\s+(?:"[^"]*"|'[^']*'))?\)$/,
           (match, target: string) => {
-            const sessionId = sessionIdFromHref(target);
-            if (sessionId) return `](${sessionPathPrefix}${encodeURIComponent(sessionId)})`;
+            const session = sessionTargetFromHref(target);
+            if (session)
+              return `](${sessionPathPrefix}${sessionLink(session.sessionId, session.messageId, session.attachmentId).slice("cake://session/".length)})`;
             const artifactReference = artifactReferenceFromHref(target);
             if (artifactReference)
               return `](${artifactPathPrefix}${encodeURIComponent(artifactReference)})`;
@@ -241,17 +235,20 @@ function linkAnchor(allProps: AnchorProps, actions?: MarkdownLinkActions) {
       artifactReference,
       props.children === artifactReference ? undefined : props.children,
     );
-  const sessionId = href ? sessionIdFromHref(href) : undefined;
-  if (sessionId) {
+  const session = href ? sessionTargetFromHref(href) : undefined;
+  if (session) {
     return (
       <Link
         {...props}
-        href={`cake://session/${encodeURIComponent(sessionId)}`}
-        title={`cake://session/${encodeURIComponent(sessionId)}`}
+        href={sessionLink(session.sessionId, session.messageId, session.attachmentId)}
+        title={sessionLink(session.sessionId, session.messageId, session.attachmentId)}
         className={cn("inline-block max-w-[80ch] truncate align-bottom", props.className)}
         onClick={(event) => {
           event.preventDefault();
-          actions?.openSession(sessionId);
+          if (session.attachmentId)
+            actions?.openSession(session.sessionId, undefined, session.attachmentId);
+          else if (session.messageId) actions?.openSession(session.sessionId, session.messageId);
+          else actions?.openSession(session.sessionId);
         }}
       />
     );

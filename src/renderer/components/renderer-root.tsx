@@ -17,7 +17,7 @@ interface RendererRootProps {
   rootStore: RootStore;
   browserConnection?: BrowserConnectionStore;
   openExternalUrl(url: string): void;
-  openSession(sessionId: string): void;
+  openSession(sessionId: string, messageId?: string, attachmentId?: string): void;
 }
 
 export const RendererRoot = observer(function RendererRoot({

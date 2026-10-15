@@ -192,6 +192,7 @@ export const attachmentSchema = Schema.Union([
   TaskInputReference,
   Schema.Struct({
     kind: Schema.Literal("text"),
+    inputReference: Schema.optionalKey(TaskInputReference),
     name: stringMax(512),
     text: stringMax(8 * 1024 * 1024),
   }),
@@ -201,9 +202,15 @@ export const attachmentSchema = Schema.Union([
     name: stringMax(512),
     reference: stringRange(1, 100),
   }),
-  Schema.Struct({ kind: Schema.Literal("file"), name: stringMax(512), path: stringMax(4_096) }),
+  Schema.Struct({
+    kind: Schema.Literal("file"),
+    name: stringMax(512),
+    path: stringMax(4_096),
+    inputReference: Schema.optionalKey(TaskInputReference),
+  }),
   Schema.Struct({
     kind: Schema.Literal("image"),
+    inputReference: Schema.optionalKey(TaskInputReference),
     name: stringMax(512),
     mimeType: stringMax(128),
     data: stringMax(20_000_000),
@@ -211,6 +218,7 @@ export const attachmentSchema = Schema.Union([
   }),
   Schema.Struct({
     kind: Schema.Literal("source"),
+    inputReference: Schema.optionalKey(TaskInputReference),
     name: stringMax(512),
     location: sourceAttachmentLocationSchema,
     /** Present only for explicit user annotations; implicit editor context stays path-only. */
@@ -219,6 +227,7 @@ export const attachmentSchema = Schema.Union([
   }),
   Schema.Struct({
     kind: Schema.Literal("browser"),
+    inputReference: Schema.optionalKey(TaskInputReference),
     name: stringMax(512),
     url: stringMax(16_384),
     tagName: stringRange(1, 256),
@@ -228,6 +237,7 @@ export const attachmentSchema = Schema.Union([
   }),
   Schema.Struct({
     kind: Schema.Literal("annotation"),
+    inputReference: Schema.optionalKey(TaskInputReference),
     annotations: Schema.Array(annotationSchema).check(
       Schema.isMinLength(1),
       Schema.isMaxLength(100),
@@ -376,6 +386,7 @@ export const uiPartSchema = Schema.Union([
   Schema.Struct({
     ...partBase,
     kind: Schema.Literal("attachment"),
+    inputReference: Schema.optionalKey(TaskInputReference),
     name: ipcProjectionString(512),
     mediaType: stringMax(128),
     attachmentKind: Schema.Literals(["file", "image", "source", "browser"]),

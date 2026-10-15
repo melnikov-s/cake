@@ -6,6 +6,8 @@ import { Source } from "@/components/ai-elements/source";
 import { Tool, ToolRunTimer } from "@/components/ai-elements/tool";
 import { AnnotationSummary } from "@/components/annotation-summary";
 import { Badge } from "@/components/ui/badge";
+import { MessageReferenceButton } from "./ui/message-reference-button";
+import { AttachmentReference } from "./ui/attachment-reference";
 import { IconButton } from "@/components/ui/icon-button";
 import { BrowserIcon, EditIcon, MarkdownIcon, TreeIcon } from "@/components/ui/icons";
 import { Interview } from "@/components/interview";
@@ -71,6 +73,13 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         onOpenSourceLocation={behavior.openSourceLocation}
       >
         <div className="ml-auto flex min-h-[30px] items-center gap-2" aria-label="User actions">
+          {part.entryId && behavior.messageReferenceSessionId && !part.draft && (
+            <MessageReferenceButton
+              className="opacity-0 transition-opacity group-hover/msg:opacity-100 group-focus-within/msg:opacity-100"
+              sessionId={behavior.messageReferenceSessionId}
+              entryId={part.entryId}
+            />
+          )}
           {part.entryId &&
             behavior.store.transcriptInteraction.canToggleUserMessageMarkdown &&
             !hasArtifactReference &&
@@ -286,6 +295,11 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         <BrowserIcon />
         {part.selector || part.name}
       </Badge>
+    ) : part.inputReference && behavior.messageReferenceSessionId ? (
+      <AttachmentReference
+        sessionId={behavior.messageReferenceSessionId}
+        reference={part.inputReference}
+      />
     ) : (
       <Badge variant="mono" className="w-fit">
         {part.name}

@@ -57,6 +57,11 @@ import { durableModels } from "./durable-models";
 import type { RequestInspection } from "./request-inspection";
 import { openDurableChatEngine } from "./durable-chat-engine";
 import { readDurableOriginalPage } from "./durable-chat-history";
+import {
+  listDurableMessageReferences,
+  readDurableMessageReference,
+} from "./durable-message-references";
+import { toJsonValue } from "../../utils/to-json-value";
 
 import { durableChatDatabase } from "./durable-chat-location";
 import { coordinatorSystemPrompt } from "./coordinator-system-prompt";
@@ -426,7 +431,11 @@ export async function createDurableCakeChatRuntime(
     async queueCommand() {
       throw new Error("Queued Pi slash commands are available only in Project Sessions");
     },
-    async inspectSession() {
+    async inspectSession(query) {
+      if (query.kind === "messages-list")
+        return toJsonValue(await listDurableMessageReferences(engine.root, sessionId, query));
+      if (query.kind === "messages-read")
+        return toJsonValue(await readDurableMessageReference(engine.root, sessionId, query));
       throw new Error(
         "Pi transcript-tree queries are available only in Project Sessions; use coordinator history or zoom for Cake Chat originals",
       );

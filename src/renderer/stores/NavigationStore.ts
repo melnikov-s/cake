@@ -1,4 +1,7 @@
-import { Store } from "r-state-tree";
+import { Store, child, createStore } from "r-state-tree";
+import { MessageReferencePreviewStore } from "./MessageReferencePreviewStore";
+import { AttachmentReferencePreviewStore } from "./AttachmentReferencePreviewStore";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
 import {
   decodeArtifactLineageId,
   decodeArtifactRevisionNumber,
@@ -48,7 +51,32 @@ export class NavigationStore extends Store<{
     return CommandPaneContext.consume(this)!;
   }
 
+  @child
+  get messageReferencePreview(): MessageReferencePreviewStore {
+    return createStore(MessageReferencePreviewStore);
+  }
+
+  @child
+  get attachmentReferencePreview(): AttachmentReferencePreviewStore {
+    return createStore(AttachmentReferencePreviewStore);
+  }
+
   async openSession(sessionId: string, messageId?: string) {
+    this.messageReferencePreview.close();
+    this.attachmentReferencePreview.close();
+    if (sessionId === CAKE_CHAT_SESSION_ID && messageId) {
+      await this.openCakeChat(sessionId);
+      const chat = this.props.cakeChat().registry.find(sessionId)
+        ?.conversationSessionStore.chatStore;
+      const part = chat?.parts.find(
+        (part) => part.id === messageId || ("entryId" in part && part.entryId === messageId),
+      );
+      if (part && chat) {
+        chat.transcriptInteraction.navigateToMessage(part.id);
+        return true;
+      }
+      return this.messageReferencePreview.open(sessionId, messageId);
+    }
     const workbench = this.workbench;
     workbench.dismissSecondarySurfaces();
     this.props.layout.focusSession(sessionId);
@@ -60,9 +88,12 @@ export class NavigationStore extends Store<{
     const message = session.conversationSessionStore.chatStore.parts.find(
       (part) =>
         part.id === messageId ||
-        (part.kind === "text" && part.entryId !== undefined && part.entryId === messageId),
+        ("entryId" in part && part.entryId === messageId) ||
+        part.id.startsWith(`entry-${messageId}-`),
     );
-    if (!message) return false;
+    // Original entries hidden by a branch change or Tool Compact remain in Pi.
+    // Inspect them without changing the branch or injecting old text into the conversation.
+    if (!message) return this.messageReferencePreview.open(sessionId, messageId);
     session.conversationSessionStore.chatStore.transcriptInteraction.navigateToMessage(message.id);
     return true;
   }
@@ -97,12 +128,32 @@ export class NavigationStore extends Store<{
   }
 
   /** Opens either kind of Cake Session addressed by a Markdown session link. */
-  async openSessionLink(sessionId: string) {
-    if (this.props.cakeChat().summaries.some((session) => session.sessionId === sessionId)) {
-      await this.openCakeChat(sessionId);
+  async openSessionLink(sessionId: string, messageId?: string, attachmentId?: string) {
+    if (attachmentId) {
+      if (sessionId === CAKE_CHAT_SESSION_ID) await this.openCakeChat(sessionId);
+      else if (!(await this.openSession(sessionId)))
+        throw new Error("Cake could not open the linked session");
+      this.messageReferencePreview.close();
+      this.attachmentReferencePreview.close();
+      if (!(await this.attachmentReferencePreview.open(sessionId, attachmentId)))
+        throw new Error(
+          this.attachmentReferencePreview.error ?? "Cake could not open the linked attachment",
+        );
       return;
     }
-    await this.openSession(sessionId);
+    if (this.props.cakeChat().summaries.some((session) => session.sessionId === sessionId)) {
+      if (messageId) {
+        if (!(await this.openSession(sessionId, messageId)))
+          throw new Error("Cake could not find the linked message");
+      } else await this.openCakeChat(sessionId);
+      return;
+    }
+    if (!(await this.openSession(sessionId, messageId)))
+      throw new Error(
+        messageId
+          ? "Cake could not find the linked message"
+          : "Cake could not open the linked session",
+      );
   }
 
   async createSession(workspacePath: string) {
@@ -265,6 +316,14 @@ export class NavigationStore extends Store<{
   }
 
   dismissTopSecondarySurface() {
+    if (this.attachmentReferencePreview.content) {
+      this.attachmentReferencePreview.close();
+      return;
+    }
+    if (this.messageReferencePreview.page) {
+      this.messageReferencePreview.close();
+      return;
+    }
     if (this.props.newSession().open) {
       this.props.newSession().close();
       return;

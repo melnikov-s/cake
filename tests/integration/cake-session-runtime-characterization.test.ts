@@ -1,3 +1,5 @@
+import type { AttachmentReferenceControl } from "../../src/contracts/conversations/attachment-reference-control";
+import { cakeOperationImageResult } from "../../src/contracts/agent/cake-operation";
 import { createProjectSessionRuntime as createCakeSessionRuntime } from "../../src/layers/CakeOperations";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server, type ServerResponse } from "node:http";
@@ -96,7 +98,7 @@ async function registerFixtureProvider(
           id: "fixture-model",
           name: "Fixture model",
           reasoning: false,
-          input: ["text"],
+          input: ["text", "image"],
           cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
           contextWindow: 4_096,
           maxTokens: 1_024,
@@ -114,6 +116,7 @@ async function createFixtureRuntime(
     sessionFile?: string;
     projectInvestigation?: boolean;
     onInitialTranscriptPersisted?(): void;
+    attachmentReferenceControl?: AttachmentReferenceControl;
   } = {},
 ) {
   vi.stubEnv("PI_CODING_AGENT_DIR", join(directory, "agent"));
@@ -127,6 +130,10 @@ async function createFixtureRuntime(
     ...(options.projectInvestigation
       ? { auxiliary: true, ephemeral: true, projectInvestigation: true }
       : {}),
+    attachmentReferenceControl: options.attachmentReferenceControl,
+    allowedCakeOperations: options.attachmentReferenceControl
+      ? ["attachments.list", "attachments.read"]
+      : undefined,
     requestUi: async () => undefined,
     onInitialTranscriptPersisted: options.onInitialTranscriptPersisted,
     onEvent: (event) => events.push(event),
@@ -322,6 +329,66 @@ describe("CakeSessionRuntime characterization", () => {
     expect(await SessionManager.list(directory, join(directory, "sessions"))).toEqual([]);
     await runtime.dispose();
     expect(await SessionManager.list(directory, join(directory, "sessions"))).toEqual([]);
+  });
+  it("exposes only scoped reference tools to a real investigator and sends explicitly read pixels to its provider", async () => {
+    const directory = await createTemporaryDirectory();
+    const bodies: Array<Record<string, unknown>> = [];
+    const reference = "00000000-0000-4000-8000-000000000001";
+    const data =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWZkAAAAASUVORK5CYII=";
+    await registerFixtureProvider(
+      directory,
+      (index, response) => {
+        if (index !== 1) {
+          finishTextResponse(response, "Inspected exact pixels");
+          return;
+        }
+        response.writeHead(200, { "content-type": "text/event-stream" });
+        response.write(
+          sseChunk({
+            role: "assistant",
+            tool_calls: [
+              {
+                index: 0,
+                id: "inspect-image",
+                type: "function",
+                function: {
+                  name: "cake",
+                  arguments: JSON.stringify({ command: "attachments.read", input: { reference } }),
+                },
+              },
+            ],
+          }),
+        );
+        response.write(sseChunk({}, "tool_calls"));
+        response.end("data: [DONE]\n\n");
+      },
+      (body) => bodies.push(body),
+    );
+    const runtime = await createFixtureRuntime(directory, [], {
+      projectInvestigation: true,
+      attachmentReferenceControl: {
+        list: async () => ({
+          references: [{ id: reference, name: "screen.png" }],
+          nextAfter: null,
+        }),
+        read: async (input) => {
+          if (input.reference !== reference) throw new Error("Unauthorized reference");
+          return cakeOperationImageResult({ reference, name: "screen.png" }, [
+            { type: "image", data, mimeType: "image/png" },
+          ]);
+        },
+      },
+    });
+    await runtime.prompt(`Inspect explicitly forwarded attachment ${reference}`, "prompt", []);
+    expect(bodies).toHaveLength(2);
+    expect(JSON.stringify(bodies[0])).not.toContain(data);
+    expect(JSON.stringify(bodies[1])).toContain(`data:image/png;base64,${data}`);
+    if (!runtime.callCakeOperation) throw new Error("Missing Cake gateway");
+    const help = await runtime.callCakeOperation("help", {}, new AbortController().signal);
+    expect(JSON.stringify(help)).toContain("attachments");
+    expect(JSON.stringify(help)).not.toContain("sessions");
+    expect(runtime.sessionFile).toBe("");
   });
   it("retains required system instructions across Tool Compact without re-emitting an unchanged system message", async () => {
     const directory = await createTemporaryDirectory();

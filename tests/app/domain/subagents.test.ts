@@ -11,7 +11,15 @@ import {
   Stream,
   SubscriptionRef,
 } from "effect";
-import { describe } from "vitest";
+import { describe, vi } from "vitest";
+import { cakeOperationImageResult } from "../../../src/contracts/agent/cake-operation";
+import type { TaskInputReference } from "../../../src/contracts/conversations/task-input";
+import type { MessageOperationControl } from "../../../src/contracts/conversations/message-reference";
+import type { SubagentAttachmentFactory } from "../../../src/contracts/subagents/subagent-attachments";
+import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
+import { configureCakeSessionRuntime } from "../../../src/layers/CakeOperations";
+import { makeSubagentControl } from "../../../src/domain/subagents/subagentControl";
+import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import { TestClock } from "effect/testing";
 import * as subagents from "../../../src/domain/subagents/subagents";
 import {
@@ -114,6 +122,7 @@ interface Fixture {
   readonly completions: Ref.Ref<ReadonlyArray<unknown>>;
   readonly reports: Queue.Queue<unknown>;
   readonly parentMessages: Ref.Ref<ReadonlyArray<string>>;
+  readonly childPrompts: Ref.Ref<ReadonlyArray<{ sessionId: string; text: string }>>;
 }
 
 const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
@@ -128,6 +137,7 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
   const completions = yield* Ref.make<ReadonlyArray<unknown>>([]);
   const reports = yield* Queue.unbounded<unknown>();
   const parentMessages = yield* Ref.make<ReadonlyArray<string>>([]);
+  const childPrompts = yield* Ref.make<ReadonlyArray<{ sessionId: string; text: string }>>([]);
 
   const runtime = (options: CakeSessionRuntimeSetup): CakeSessionRuntime => {
     const sessionId = options.sessionId ?? "parent";
@@ -201,6 +211,9 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
           await Effect.runPromise(Ref.update(parentMessages, (values) => [...values, text]));
           return;
         }
+        await Effect.runPromise(
+          Ref.update(childPrompts, (values) => [...values, { sessionId, text }]),
+        );
         if (turnId) activeTurnIds = [...activeTurnIds, turnId];
         const gate = Deferred.makeUnsafe<void>();
         await Effect.runPromise(
@@ -319,6 +332,7 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
     completions,
     reports,
     parentMessages,
+    childPrompts,
   };
 });
 
@@ -362,6 +376,426 @@ const cakeChatParent = (fixture: Fixture): subagents.SubagentParentRuntime => ({
       globalControl: { tools: [], invoke: async () => ({}) },
     },
   },
+});
+
+const imageReference: TaskInputReference = {
+  kind: "input",
+  id: "00000000-0000-4000-8000-000000000001",
+  name: "diagram.png",
+  mimeType: "image/png",
+  byteLength: 68,
+};
+const textReference: TaskInputReference = {
+  kind: "input",
+  id: "00000000-0000-4000-8000-000000000002",
+  name: "notes.txt",
+  mimeType: "text/plain",
+  byteLength: 15,
+};
+const tinyPng =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=";
+
+function makeAttachmentFixture() {
+  const grants = new Map<string, TaskInputReference[]>();
+  const forwards = vi.fn(async (owner: string, recipient: string, ids: readonly string[]) => {
+    assert.equal(owner, "parent-cake-chat");
+    const references = ids.map((id) => {
+      const reference = [imageReference, textReference].find((item) => item.id === id);
+      if (!reference) throw new Error("Attachment is not authorized");
+      return reference;
+    });
+    grants.set(recipient, [
+      ...new Map(
+        [...(grants.get(recipient) ?? []), ...references].map((ref) => [ref.id, ref]),
+      ).values(),
+    ]);
+    return references;
+  });
+  const reads = vi.fn(async (recipient: string, id: string) => {
+    if (!grants.get(recipient)?.some((reference) => reference.id === id))
+      throw new Error("Attachment is not authorized");
+    return cakeOperationImageResult({ reference: { ...imageReference } }, [
+      { type: "image", data: tinyPng, mimeType: "image/png" },
+    ]);
+  });
+  const factory: SubagentAttachmentFactory = (owner, recipient) => ({
+    forward: (ids) => forwards(owner, recipient, ids),
+    control: {
+      list: async () => ({
+        references: (grants.get(recipient) ?? []).map((ref) => ({ ...ref })),
+        nextAfter: null,
+      }),
+      read: async (input) => reads(recipient, input.reference),
+    },
+  });
+  return { factory: vi.fn(factory), forwards, reads, grants };
+}
+
+const workerRegistry = (options: CakeSessionRuntimeSetup) => {
+  const runtime = configureCakeSessionRuntime(options);
+  assert.ok(runtime.operations);
+  return new CakeOperationRegistry(
+    runtime.operations({
+      host: { appendEntry: () => undefined },
+      api: () => {
+        throw new Error("No session authority granted");
+      },
+      sessionId: () => options.sessionId,
+      getAvailableOfType: async () => [],
+      publishSnapshot: async () => undefined,
+    }),
+  );
+};
+const invokeWorker = (registry: CakeOperationRegistry, command: string, input: object = {}) =>
+  registry.invoke(
+    { command, input },
+    { signal: new AbortController().signal, toolCallId: "input-test", runtime: {} },
+  );
+
+describe("subagent exact message references", () => {
+  it.effect(
+    "forwards identities without reading and gates initial/follow-up reads to explicitly selected messages",
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture();
+        const first = "cake://session/source?message=entry-1";
+        const second = "cake://session/source?message=entry-2";
+        const read = vi.fn<MessageOperationControl["read"]>(async (input) => ({
+          message: {
+            ref: input.ref,
+            link: input.ref,
+            sessionId: "source",
+            entryId: input.ref === first ? "entry-1" : "entry-2",
+            parentId: null,
+            timestamp: "now",
+            role: "user",
+            active: true,
+            inputRefs: [{ ...imageReference }],
+            hasImages: true,
+          },
+          text: "PRIVATE_SOURCE_TEXT",
+          totalChars: 19,
+          offset: 0,
+          nextOffset: null,
+          truncated: false,
+        }));
+        const source: MessageOperationControl = {
+          read,
+          list: async () => {
+            throw new Error("Unexpected broad message listing");
+          },
+          open: async () => {
+            throw new Error("Unexpected session navigation");
+          },
+        };
+        const authorizeForward = vi.fn<TaskInputStorage["Service"]["authorizeForward"]>(() =>
+          Effect.succeed([]),
+        );
+        yield* Effect.gen(function* () {
+          const context = yield* Effect.context<
+            | ApplicationState
+            | CakeSessionRuntimes
+            | SubagentCoordinator
+            | SubagentEnvironment
+            | TaskInputStorage
+          >();
+          const caller = cakeChatParent(fixture);
+          const options = {
+            ...caller.options,
+            runtime: { ...caller.options.runtime, messageReferenceControl: source },
+          };
+          const control = makeSubagentControl({
+            runEffect: (effect, signal) =>
+              Effect.runPromise(Effect.provide(effect, context), { signal }),
+          })(() => options, caller.workingDirectory);
+          const receipt = Schema.decodeUnknownSync(subagents.SubagentStartReceipt)(
+            yield* Effect.promise(() =>
+              control.start(
+                { task: "Assess this exact source", messageRefs: [first] },
+                caller.parentSessionId,
+                new AbortController().signal,
+              ),
+            ),
+          );
+          const id = yield* Queue.take(fixture.childStarted);
+          assert.equal(read.mock.calls.length, 0);
+          assert.equal(authorizeForward.mock.calls.length, 0);
+          const prompt = (yield* Ref.get(fixture.childPrompts)).at(-1)?.text ?? "";
+          assert.ok(prompt.includes(first));
+          assert.ok(!prompt.includes("PRIVATE_SOURCE_TEXT"));
+          const worker = (yield* Ref.get(fixture.constructedOptions)).find(
+            (value) => value.sessionId === id,
+          );
+          assert.ok(worker);
+          assert.deepEqual(worker.allowedCakeOperations, [
+            "attachments.list",
+            "attachments.read",
+            "messages.read",
+          ]);
+          const registry = workerRegistry(worker);
+          assert.ok(!registry.help().includes("messages.list"));
+          assert.ok(!registry.help().includes("messages.open"));
+          yield* Effect.promise(() =>
+            assert.rejects(
+              invokeWorker(registry, "messages.read", { ref: second }),
+              /not forwarded/,
+            ),
+          );
+          assert.equal(read.mock.calls.length, 0);
+          const result = yield* Effect.promise(() =>
+            invokeWorker(registry, "messages.read", { ref: first, maxChars: 100 }),
+          );
+          assert.ok(result.text.includes("PRIVATE_SOURCE_TEXT"));
+          assert.equal(read.mock.calls[0]?.[0].ref, first);
+          yield* completeChild(fixture, id);
+          yield* Queue.take(fixture.reports);
+          yield* Effect.promise(() =>
+            control.prompt(
+              {
+                handleId: receipt.handleId,
+                text: "Now assess this one",
+                delivery: "follow-up",
+                messageRefs: [second],
+              },
+              caller.parentSessionId,
+              new AbortController().signal,
+            ),
+          );
+          assert.equal(yield* Queue.take(fixture.childStarted), id);
+          assert.equal(read.mock.calls.length, 1);
+          const followUp = (yield* Ref.get(fixture.childPrompts)).at(-1)?.text ?? "";
+          assert.ok(followUp.includes(second));
+          assert.ok(!followUp.includes("PRIVATE_SOURCE_TEXT"));
+          yield* Effect.promise(() => invokeWorker(registry, "messages.read", { ref: second }));
+          assert.equal(read.mock.calls[1]?.[0].ref, second);
+          assert.equal(authorizeForward.mock.calls.length, 2);
+          assert.deepEqual(authorizeForward.mock.calls[0], ["source", [imageReference.id], id]);
+          yield* completeChild(fixture, id);
+          yield* Queue.take(fixture.reports);
+        }).pipe(
+          Effect.provide(
+            Layer.merge(
+              fixture.layer,
+              Layer.mock(TaskInputStorage, { authorizeForward, grant: () => Effect.succeed([]) }),
+            ),
+          ),
+        );
+      }),
+  );
+});
+
+describe("subagent attachment references", () => {
+  it.effect(
+    "wires owner authorization and metadata grants through the production subagent control",
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture();
+        const authorizeForward = vi.fn<TaskInputStorage["Service"]["authorizeForward"]>(() =>
+          Effect.succeed(["bound-grant-token"]),
+        );
+        const grant = vi.fn<TaskInputStorage["Service"]["grant"]>(() =>
+          Effect.succeed([imageReference]),
+        );
+        const storage = Layer.mock(TaskInputStorage, { authorizeForward, grant });
+        yield* Effect.gen(function* () {
+          const context = yield* Effect.context<
+            | ApplicationState
+            | CakeSessionRuntimes
+            | SubagentCoordinator
+            | SubagentEnvironment
+            | TaskInputStorage
+          >();
+          const caller = cakeChatParent(fixture);
+          const control = makeSubagentControl({
+            runEffect: (effect, signal) =>
+              Effect.runPromise(Effect.provide(effect, context), { signal }),
+          })(() => caller.options, caller.workingDirectory);
+          yield* Effect.promise(() =>
+            control.start(
+              { task: "Inspect selected diagram", inputRefs: [imageReference.id] },
+              caller.parentSessionId,
+              new AbortController().signal,
+            ),
+          );
+          const sessionId = yield* Queue.take(fixture.childStarted);
+          assert.deepEqual(authorizeForward.mock.calls, [
+            [caller.parentSessionId, [imageReference.id], sessionId],
+          ]);
+          assert.deepEqual(grant.mock.calls, [[sessionId, ["bound-grant-token"]]]);
+          const options = (yield* Ref.get(fixture.constructedOptions)).find(
+            (value) => value.sessionId === sessionId,
+          );
+          assert.ok(options?.attachmentReferenceControl);
+          assert.deepEqual(options.allowedCakeOperations, ["attachments.list", "attachments.read"]);
+          assert.ok(
+            (yield* Ref.get(fixture.childPrompts)).at(-1)?.text.includes(imageReference.id),
+          );
+          yield* completeChild(fixture, sessionId);
+          yield* Queue.take(fixture.reports);
+        }).pipe(Effect.provide(Layer.merge(fixture.layer, storage)));
+      }),
+  );
+  it.effect(
+    "forwards exact selected metadata without reading and lets investigators explicitly inspect native pixels",
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture();
+        const attachments = makeAttachmentFixture();
+        yield* Effect.gen(function* () {
+          yield* subagents.start(
+            {
+              task: "Inspect this diagram",
+              projectPath: "/project",
+              inputRefs: [imageReference.id],
+            },
+            { ...cakeChatParent(fixture), attachments: attachments.factory },
+          );
+          const sessionId = yield* Queue.take(fixture.childStarted);
+          assert.deepEqual(
+            attachments.forwards.mock.calls.map(([owner, recipient, ids]) => [
+              owner,
+              recipient,
+              ids,
+            ]),
+            [["parent-cake-chat", sessionId, [imageReference.id]]],
+          );
+          assert.equal(attachments.reads.mock.calls.length, 0);
+          const prompt =
+            (yield* Ref.get(fixture.childPrompts)).find((value) => value.sessionId === sessionId)
+              ?.text ?? "";
+          assert.match(prompt, /metadata only; content has not been inspected/);
+          assert.ok(prompt.includes(imageReference.id));
+          assert.ok(!prompt.includes(textReference.id));
+          assert.ok(!prompt.includes(tinyPng));
+          const options = (yield* Ref.get(fixture.constructedOptions)).find(
+            (value) => value.sessionId === sessionId,
+          );
+          assert.ok(options);
+          assert.equal(options.projectInvestigation, true);
+          const registry = workerRegistry(options);
+          const listed = yield* Effect.promise(() => invokeWorker(registry, "attachments.list"));
+          assert.ok(listed.text.includes(imageReference.id));
+          assert.ok(!listed.text.includes(textReference.id));
+          yield* Effect.promise(() =>
+            assert.rejects(
+              invokeWorker(registry, "attachments.read", { reference: textReference.id }),
+              /not authorized/,
+            ),
+          );
+          const image = yield* Effect.promise(() =>
+            invokeWorker(registry, "attachments.read", { reference: imageReference.id }),
+          );
+          assert.deepEqual(image.content[1], {
+            type: "image",
+            data: tinyPng,
+            mimeType: "image/png",
+          });
+          assert.ok(!JSON.stringify(image.details).includes(tinyPng));
+          assert.ok(!image.text.includes(tinyPng));
+          assert.equal(registry.help().includes("sessions.create"), false);
+          yield* completeChild(fixture, sessionId);
+          yield* Queue.take(fixture.reports);
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+  );
+
+  it.effect(
+    "shares nothing implicitly, adds exact refs on follow-up and keeps independent workers isolated",
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture();
+        const attachments = makeAttachmentFixture();
+        yield* Effect.gen(function* () {
+          const caller = { ...cakeChatParent(fixture), attachments: attachments.factory };
+          const first = yield* subagents.start({ task: "General question" }, caller);
+          const firstId = yield* Queue.take(fixture.childStarted);
+          const second = yield* subagents.start(
+            { task: "Read notes", inputRefs: [textReference.id] },
+            caller,
+          );
+          const secondId = yield* Queue.take(fixture.childStarted);
+          assert.equal(attachments.grants.has(firstId), false);
+          assert.deepEqual(attachments.grants.get(secondId), [textReference]);
+          const firstOptions = (yield* Ref.get(fixture.constructedOptions)).find(
+            (value) => value.sessionId === firstId,
+          );
+          assert.ok(firstOptions);
+          assert.deepEqual(firstOptions.tools, ["read", "bash", "message_parent", "cake"]);
+          const registry = workerRegistry(firstOptions);
+          const empty = yield* Effect.promise(() => invokeWorker(registry, "attachments.list"));
+          assert.ok(!empty.text.includes(imageReference.id));
+          assert.ok(!empty.text.includes(textReference.id));
+          yield* completeChild(fixture, firstId);
+          yield* Queue.take(fixture.reports);
+          yield* subagents.prompt(
+            "parent-cake-chat",
+            first.handleId,
+            "Now inspect the diagram",
+            "follow-up",
+            true,
+            [imageReference.id],
+          );
+          assert.equal(yield* Queue.take(fixture.childStarted), firstId);
+          assert.deepEqual(attachments.grants.get(firstId), [imageReference]);
+          assert.deepEqual(attachments.grants.get(secondId), [textReference]);
+          const added = yield* Effect.promise(() => invokeWorker(registry, "attachments.list"));
+          assert.ok(added.text.includes(imageReference.id));
+          assert.ok(!added.text.includes(textReference.id));
+          assert.equal(attachments.factory.mock.calls.length, 2);
+          assert.equal(attachments.reads.mock.calls.length, 0);
+          const prompt = (yield* Ref.get(fixture.childPrompts)).at(-1)?.text ?? "";
+          assert.ok(prompt.includes(imageReference.id));
+          assert.ok(!prompt.includes(textReference.id));
+          yield* completeChild(fixture, firstId);
+          yield* Queue.take(fixture.reports);
+          yield* completeChild(fixture, secondId);
+          yield* Queue.take(fixture.reports);
+          yield* subagents.close("parent-cake-chat", second.handleId);
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+  );
+
+  it.effect(
+    "rejects unauthorized forwarding without starting a worker or consuming a follow-up turn",
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture();
+        const attachments = makeAttachmentFixture();
+        yield* Effect.gen(function* () {
+          const caller = { ...cakeChatParent(fixture), attachments: attachments.factory };
+          const denied = yield* subagents
+            .start({ task: "Inspect", inputRefs: ["missing"] }, caller)
+            .pipe(Effect.flip);
+          assert.match(denied.message, /not authorized/);
+          assert.equal(yield* Ref.get(fixture.constructions), 0);
+          const unavailable = yield* subagents
+            .start({ task: "Inspect", inputRefs: [imageReference.id] }, cakeChatParent(fixture))
+            .pipe(Effect.flip);
+          assert.match(unavailable.message, /unavailable/);
+          const receipt = yield* subagents.start({ task: "Inspect" }, caller);
+          const id = yield* Queue.take(fixture.childStarted);
+          yield* completeChild(fixture, id);
+          yield* Queue.take(fixture.reports);
+          const rejected = yield* subagents
+            .prompt("parent-cake-chat", receipt.handleId, "Inspect missing", "follow-up", true, [
+              "missing",
+            ])
+            .pipe(Effect.flip);
+          assert.match(rejected.message, /not authorized/);
+          assert.equal(yield* Queue.size(fixture.childStarted), 0);
+          yield* subagents.prompt(
+            "parent-cake-chat",
+            receipt.handleId,
+            "Still available",
+            "follow-up",
+            true,
+          );
+          assert.equal(yield* Queue.take(fixture.childStarted), id);
+          yield* completeChild(fixture, id);
+          yield* Queue.take(fixture.reports);
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+  );
 });
 
 describe("Cake Chat project investigators", () => {

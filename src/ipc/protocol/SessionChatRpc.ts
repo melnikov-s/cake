@@ -1,3 +1,7 @@
+import {
+  AttachmentReadInput,
+  AttachmentContent,
+} from "../../contracts/conversations/attachment-reference-control";
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import {
@@ -84,6 +88,11 @@ export const SessionChatRpc = RpcGroup.make(
   Rpc.make("sessionChats.queueCommand", {
     payload: { ...SessionChatTarget.fields, ...QueuedSessionCommand.fields },
     success: QueuedSessionCommandReceipt,
+    error: SessionChatError,
+  }),
+  Rpc.make("sessionChats.readAttachment", {
+    payload: { ...SessionChatTarget.fields, ...AttachmentReadInput.fields },
+    success: AttachmentContent,
     error: SessionChatError,
   }),
   Rpc.make("sessionChats.inspect", {

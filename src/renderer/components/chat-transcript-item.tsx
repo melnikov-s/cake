@@ -14,6 +14,7 @@ interface ChatTranscriptItemProps {
   item: TranscriptItem;
   index: number;
   errorFollowsUser: boolean;
+  selected: boolean;
   parts: UiPart[];
   behavior: CanonicalTranscriptBehavior;
   changedFilesOpen: boolean;
@@ -42,6 +43,7 @@ export const ChatTranscriptItem = memo(
     item,
     index,
     errorFollowsUser,
+    selected,
     parts,
     behavior,
     changedFilesOpen,
@@ -59,7 +61,12 @@ export const ChatTranscriptItem = memo(
             ? item.parts[0]?.id
             : item.id
         }
-        className={cn("min-w-0 pb-5 in-[.chat-layout-compact]:pb-3.5", errorFollowsUser && "pt-3")}
+        aria-current={selected ? "true" : undefined}
+        className={cn(
+          "min-w-0 pb-5 in-[.chat-layout-compact]:pb-3.5",
+          errorFollowsUser && "pt-3",
+          selected && "rounded-md bg-accent/5 ring-1 ring-accent/60",
+        )}
       >
         {item.kind === "activity-group" ? (
           <ActivityGroup groupId={item.id} parts={item.parts} behavior={behavior} />
@@ -99,6 +106,7 @@ export const ChatTranscriptItem = memo(
   },
   (previous, next) =>
     previous.index === next.index &&
+    previous.selected === next.selected &&
     previous.errorFollowsUser === next.errorFollowsUser &&
     previous.behavior === next.behavior &&
     sameItem(previous.item, next.item) &&

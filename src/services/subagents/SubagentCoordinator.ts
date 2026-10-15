@@ -10,6 +10,9 @@ import {
   SubscriptionRef,
 } from "effect";
 import type { Deferred, Schema } from "effect";
+import type { TaskInputReference } from "../../contracts/conversations/task-input";
+import type { SubagentAttachmentAccess } from "../../contracts/subagents/subagent-attachments";
+import type { SubagentMessageAccess } from "../../contracts/subagents/subagent-messages";
 import type {
   CakeSessionRuntimeAcquireOptions,
   CakeSessionHandle,
@@ -41,6 +44,10 @@ export interface SubagentHandleState {
   readonly parentPiHandle: CakeSessionHandle;
   readonly piHandle?: CakeSessionHandle;
   readonly privateSessionId?: string;
+  readonly attachmentAccess?: SubagentAttachmentAccess;
+  readonly inputReferences: readonly TaskInputReference[];
+  readonly messageAccess?: SubagentMessageAccess;
+  readonly messageReferences: readonly string[];
   readonly status: SubagentStatus;
   readonly activityRevision: number;
   readonly streaming: boolean;

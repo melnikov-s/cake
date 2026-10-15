@@ -1,3 +1,5 @@
+import { messageRefsSchema } from "../../contracts/conversations/message-reference";
+import { inputRefsSchema } from "../../contracts/conversations/task-input";
 import { Effect, Schema } from "effect";
 import { CakeModelSelection } from "../../contracts/model-presets/cake-model-selection";
 import { type JsonObject } from "../../contracts/serialization/json-contract";
@@ -104,6 +106,8 @@ export function createSessionFamilyOperations(
       ],
       inputSchema: Schema.Struct({
         sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+        inputRefs: Schema.optionalKey(inputRefsSchema),
+        messageRefs: Schema.optionalKey(messageRefsSchema),
         text: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100_000))),
         delivery: Schema.optionalKey(Schema.Literals(["prompt", "queue", "steer"])),
         threadId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),

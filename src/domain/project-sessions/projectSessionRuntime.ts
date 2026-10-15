@@ -28,6 +28,15 @@ import {
   upsertSessionPlugin,
 } from "../application/application";
 import type { ProjectSessionLocation } from "../../contracts/project-sessions/project-session-data";
+import {
+  describeMessageReferences,
+  validateMessageReferenceControl,
+} from "../conversations/messageReferenceForwarding";
+import { grantMessageAttachments } from "../conversations/messageReferenceAccess";
+import * as messageReferences from "../conversations/messageReferences";
+import { messageNavigationTarget } from "../../contracts/conversations/message-reference";
+import { forwardTaskInputControl } from "../cake-chats/taskInputControls";
+import { makeAttachmentReferenceControl } from "../conversations/attachmentReferences";
 import { makeSubagentControl } from "../subagents/subagentControl";
 import * as workflowControl from "../workflows/workflow-control";
 import { WorkflowSupervisor } from "../../services/workflows/WorkflowSupervisor";
@@ -64,7 +73,7 @@ import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 import type { Terminal } from "../../services/terminal/Terminal";
 import { toJsonValue } from "../../utils/to-json-value";
 import { agentEditorLocation } from "../../utils/agent-editor-location";
-import type { JsonObject } from "../../contracts/serialization/json-contract";
+import { jsonObjectSchema, type JsonObject } from "../../contracts/serialization/json-contract";
 import { sessionReference } from "../../contracts/project-sessions/session-reference";
 import {
   EditorSelectionOpenResult,
@@ -363,6 +372,32 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
           ),
       },
       agentControl: agentControl(getRuntimeOptions, location.workingDirectory),
+      attachmentReferenceControl: makeAttachmentReferenceControl(sessionId, run),
+      messageReferenceControl: {
+        list: (input, signal) =>
+          run(Effect.scoped(messageReferences.list(input).pipe(Effect.map(toJsonValue))), {
+            signal,
+          }),
+        read: (input, signal) =>
+          run(
+            Effect.scoped(
+              messageReferences.read(input).pipe(
+                Effect.tap((result) => grantMessageAttachments(sessionId, result.message)),
+                Effect.map(toJsonValue),
+              ),
+            ),
+            { signal },
+          ),
+        open: (input, signal) =>
+          runtimeIntegrations.requestApplicationControl(
+            {
+              _tag: "InvokeAppControl",
+              command: "sessions.open",
+              input: messageNavigationTarget(input.ref),
+            },
+            signal,
+          ),
+      },
       workflowControl: {
         isEnabled: () => application.snapshot().experimentalFeatures?.dynamicWorkflows === true,
         invoke: (command, input, signal) =>
@@ -751,6 +786,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                 untrustedInput,
               ).pipe(
                 Effect.mapError((cause) => compositionError("familyMessage", cause)),
+                Effect.tap((input) => describeMessageReferences(input.messageRefs ?? [])),
                 Effect.flatMap((input) =>
                   sessionFamilyMessaging.route(
                     { sessionId, location },
@@ -763,11 +799,24 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
             ),
             { signal },
           ),
-        invokeAppControl: (command, input, signal) =>
-          runtimeIntegrations.requestApplicationControl(
-            { _tag: "InvokeAppControl", command, input },
+        invokeAppControl: async (command, input, signal) => {
+          await run(
+            Effect.scoped(validateMessageReferenceControl({ name: command, arguments: input })),
+            { signal },
+          );
+          const invocation = await run(
+            forwardTaskInputControl(sessionId, { name: command, arguments: input }),
+            { signal },
+          );
+          return runtimeIntegrations.requestApplicationControl(
+            {
+              _tag: "InvokeAppControl",
+              command,
+              input: Schema.decodeUnknownSync(jsonObjectSchema)(invocation.arguments),
+            },
             signal,
-          ),
+          );
+        },
       },
       sessionTitleChanged: (targetSessionId, title) =>
         run(

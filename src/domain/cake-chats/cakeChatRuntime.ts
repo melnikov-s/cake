@@ -1,4 +1,9 @@
 import { Context, Effect, Option, Schema } from "effect";
+import { validateMessageReferenceControl } from "../conversations/messageReferenceForwarding";
+import { grantMessageAttachments } from "../conversations/messageReferenceAccess";
+import * as messageReferences from "../conversations/messageReferences";
+import { messageNavigationTarget } from "../../contracts/conversations/message-reference";
+import { makeAttachmentReferenceControl } from "../conversations/attachmentReferences";
 import * as projectSessionCreation from "../project-sessions/projectSessionCreation";
 import * as sessionReferences from "../project-sessions/sessionReferences";
 import { AgentProjectSessionCreate } from "../../contracts/project-sessions/session-reporting";
@@ -33,6 +38,11 @@ import type { CakeSessionRuntimeAcquireOptions } from "../../services/pi/CakeSes
 import { makePiCallbackExecutor } from "../../services/pi/PiCallbackAdapter";
 
 const CAKE_CHAT_OPERATIONS = [
+  "attachments.list",
+  "attachments.read",
+  "messages.list",
+  "messages.read",
+  "messages.open",
   "app.state",
   "app.user-selection",
   "settings.cake-chat.get",
@@ -230,6 +240,32 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
             { signal },
           ),
       },
+      attachmentReferenceControl: makeAttachmentReferenceControl(target.sessionId, run),
+      messageReferenceControl: {
+        list: (input, signal) =>
+          run(Effect.scoped(messageReferences.list(input).pipe(Effect.map(toJsonValue))), {
+            signal,
+          }),
+        read: (input, signal) =>
+          run(
+            Effect.scoped(
+              messageReferences.read(input).pipe(
+                Effect.tap((result) => grantMessageAttachments(target.sessionId, result.message)),
+                Effect.map(toJsonValue),
+              ),
+            ),
+            { signal },
+          ),
+        open: (input, signal) =>
+          run(
+            rendererRequests.requestCakeChatControl(
+              target.sessionId,
+              { name: "sessions.open", arguments: messageNavigationTarget(input.ref) },
+              signal,
+            ),
+            { signal },
+          ),
+      },
       globalControl: {
         tools: target.tools.map((tool) => ({
           ...tool,
@@ -262,14 +298,10 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
               const args = yield* Schema.decodeUnknownEffect(
                 Schema.Struct({ sessionId: Schema.optionalKey(Schema.String) }),
               )(invocation.arguments);
+              yield* Effect.scoped(validateMessageReferenceControl(invocation));
               const forwarded = yield* forwardTaskInputControl(target.sessionId, invocation);
-              // No backdoor via target inspection or selected preview text.
-              if (invocation.name === "app.user-selection")
-                return {
-                  ok: false,
-                  error:
-                    "Cake Chat cannot read attachment previews or selected session content. Share text explicitly in your message.",
-                };
+              // Explicit selection reads are allowed. Attachment pixels use the scoped
+              // attachments.read capability rather than renderer previews or filesystem paths.
               if (
                 invocation.name.startsWith("sessions.") &&
                 ![

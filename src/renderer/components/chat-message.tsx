@@ -19,6 +19,7 @@ import { FullscreenMessage } from "@/components/fullscreen-message";
 import { FullscreenButton } from "@/components/ui/fullscreen-button";
 import { SessionMessage } from "@/components/ui/session-message";
 import { IconButton } from "@/components/ui/icon-button";
+import { MessageReferenceButton } from "./ui/message-reference-button";
 import {
   ChatIcon,
   CheckIcon,
@@ -257,6 +258,8 @@ export function captureTranscriptSelection(
 }
 
 export interface ChatTranscriptBehavior {
+  /** Only addressable Project Sessions expose exact Pi message links. */
+  messageReferenceSessionId?: string;
   /** Project root used to present workspace files without machine-specific prefixes. */
   workspacePath?: string;
   onFork?(entryId: string): void;
@@ -483,6 +486,12 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
           >
             {copied ? <CheckIcon /> : <CopyIcon />}
           </IconButton>
+          {part.entryId && behavior.messageReferenceSessionId && (
+            <MessageReferenceButton
+              sessionId={behavior.messageReferenceSessionId}
+              entryId={part.entryId}
+            />
+          )}
           {part.entryId && behavior.onFork && (
             <IconButton
               tooltip="Fork with full context"

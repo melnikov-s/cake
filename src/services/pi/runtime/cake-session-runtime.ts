@@ -51,6 +51,7 @@ import type {
   QueuedSessionCommandReceipt,
 } from "../../../contracts/conversations/session-query-data";
 import { inspectSessionHistory } from "./session-inspection";
+import { listMessageReferences, readMessageReference } from "./message-references";
 import { piBuiltinSlashCommands } from "../../../contracts/conversations/session-contract";
 import { SubagentResult as subagentResultSchema } from "../../../contracts/subagents/subagent-data";
 import {
@@ -845,6 +846,23 @@ export async function createCakeSessionRuntime(
     },
     async inspectSession(query) {
       if (disposed) throw new Error("The Cake runtime has been disposed");
+      if (query.kind === "messages-list")
+        return Schema.decodeUnknownSync(jsonValueSchema)(
+          listMessageReferences(session.sessionManager, {
+            ...query,
+            roles: query.roles?.filter(
+              (role): role is "user" | "assistant" | "toolResult" | "bashExecution" =>
+                role === "user" ||
+                role === "assistant" ||
+                role === "toolResult" ||
+                role === "bashExecution",
+            ),
+          }),
+        );
+      if (query.kind === "messages-read")
+        return Schema.decodeUnknownSync(jsonValueSchema)(
+          readMessageReference(session.sessionManager, query),
+        );
       const api = capabilities.operationApi.current;
       if (!api) throw new Error("The Cake session is not ready");
       if (query.kind === "context") return api.contextStatus();

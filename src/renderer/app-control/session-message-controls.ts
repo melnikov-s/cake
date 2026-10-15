@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect";
+import { messageRefsSchema } from "../../contracts/conversations/message-reference";
 import { inputRefsSchema } from "../../contracts/conversations/task-input";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import type {
@@ -166,6 +167,7 @@ export const sessionMessageControls = [
     command: "sessions.send",
     args: Schema.Struct({
       inputRefs: Schema.optionalKey(inputRefsSchema),
+      messageRefs: Schema.optionalKey(messageRefsSchema),
       ...sessionIdTargetSchema.fields,
       text: trimmed(1, 100000),
       delivery: Schema.optionalKey(Schema.Literals(["prompt", "queue", "steer"])),

@@ -1,3 +1,5 @@
+import { createMessageOperations } from "../domain/conversations/cake-message-operations";
+import { createAttachmentReferenceOperations } from "../domain/conversations/cake-attachment-operations";
 import type { CakeModelSelection } from "../contracts/model-presets/cake-model-selection";
 import { createCakeSettingsOperations } from "../domain/application/cake-settings-operations";
 import { createCakeWidgetPackageOperations } from "../domain/application/cake-widget-package-operations";
@@ -64,6 +66,12 @@ export function projectCakeOperations(options: CakeOperationOptions): ProjectCak
       setResolved: control?.canResolve?.() === false ? undefined : control?.setResolved,
     };
     const definitions = [
+      ...(options.messageReferenceControl
+        ? createMessageOperations(options.messageReferenceControl)
+        : []),
+      ...(options.attachmentReferenceControl
+        ? createAttachmentReferenceOperations(options.attachmentReferenceControl)
+        : []),
       ...(options.workflowControl ? createCakeWorkflowOperations(options.workflowControl) : []),
       ...(!options.auxiliary && options.tools === undefined
         ? createCakeSettingsOperations((command, input, signal) =>
@@ -121,7 +129,15 @@ export function projectCakeOperations(options: CakeOperationOptions): ProjectCak
         (!options.allowedCakeOperations ||
           options.allowedCakeOperations.includes(definition.command)) &&
         (!readOnlyAuxiliary ||
-          ["session.info", "session.usage", "context.status"].includes(definition.command)),
+          [
+            "session.info",
+            "session.usage",
+            "context.status",
+            "attachments.list",
+            "attachments.read",
+            "messages.list",
+            "messages.read",
+          ].includes(definition.command)),
     );
     // An explicitly granted parent control gateway retains its separate authority.
     return [
@@ -141,6 +157,12 @@ export function coordinatorCakeOperations(
   return (bridge) => {
     return [
       ...createGlobalControlOperations(control, bridge.resolveModel),
+      ...(options.messageReferenceControl
+        ? createMessageOperations(options.messageReferenceControl)
+        : []),
+      ...(options.attachmentReferenceControl
+        ? createAttachmentReferenceOperations(options.attachmentReferenceControl)
+        : []),
       ...createCakeModelOperations(options.modelPresets ?? (() => ({ presets: [] }))),
       ...(options.agentControl
         ? createAgentControlOperations(
@@ -174,6 +196,8 @@ export function configureCakeSessionRuntime(
   options: CakeSessionRuntimeSetup,
 ): CakeSessionRuntimeOptions {
   const {
+    messageReferenceControl,
+    attachmentReferenceControl,
     allowedCakeOperations,
     workflowControl,
     requestInterview,
@@ -203,6 +227,8 @@ export function configureCakeSessionRuntime(
     ...runtime
   } = options;
   const featureOptions: CakeOperationOptions = {
+    messageReferenceControl,
+    attachmentReferenceControl,
     cwd: runtime.cwd,
     tools: runtime.tools,
     auxiliary: runtime.auxiliary,

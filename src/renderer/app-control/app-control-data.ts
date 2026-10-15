@@ -361,7 +361,11 @@ type AppControlSuccess =
       selected: boolean;
       status: SessionActivity | "idle";
     }
-  | { ok: true; command: "sessions.open"; opened: SessionTarget & { messageId?: string } }
+  | {
+      ok: true;
+      command: "sessions.open";
+      opened: { workspacePath?: string; sessionId: string; messageId?: string };
+    }
   | {
       ok: true;
       command: "sessions.create";

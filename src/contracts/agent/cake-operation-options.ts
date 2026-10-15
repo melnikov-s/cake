@@ -1,6 +1,8 @@
 import type { CakeArtifactOperationOptions } from "../artifacts/artifact-agent-control";
 import type { MessageBoardControl } from "../artifacts/message-board-control";
 import type { BrowserControl } from "../browser/browser-agent-control";
+import type { MessageOperationControl } from "../conversations/message-reference";
+import type { AttachmentReferenceControl } from "../conversations/attachment-reference-control";
 import type { ChatConfiguration } from "../conversations/session-contract";
 import type { CrossSessionContextSnapshot } from "../conversations/cross-session-message";
 import type {
@@ -122,7 +124,13 @@ export interface AgentOperationControl {
     anchorPartId?: string,
   ): Promise<JsonValue>;
   prompt(
-    input: { handleId: string; text: string; delivery: "prompt" | "follow-up" },
+    input: {
+      handleId: string;
+      text: string;
+      delivery: "prompt" | "follow-up";
+      inputRefs?: readonly string[];
+      messageRefs?: readonly string[];
+    },
     parentSessionId: string,
     signal: AbortSignal,
   ): Promise<JsonValue>;
@@ -157,4 +165,6 @@ export interface CakeOperationOptions extends Partial<CakeArtifactOperationOptio
   /** Parent Project Session gateway granted to an auxiliary runtime, not coordinator authority. */
   sessionControl?: GlobalOperationControl;
   agentControl?: AgentOperationControl;
+  attachmentReferenceControl?: AttachmentReferenceControl;
+  messageReferenceControl?: MessageOperationControl;
 }

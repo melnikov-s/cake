@@ -2,6 +2,7 @@
 import { act, cleanup, screen } from "@testing-library/react";
 import { toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { messageReference } from "../../../src/contracts/conversations/message-reference";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-data";
 import type { JsonObject } from "../../../src/contracts/serialization/json-contract";
 import type { Client } from "../../../src/renderer/client/Client";
@@ -85,6 +86,109 @@ describe("Agent session navigation workflow", () => {
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
   });
+
+  it.each(["beta", CAKE_CHAT_SESSION_ID])(
+    "opens an exact original outside the visible projection for %s without switching its Pi branch",
+    async (sessionId) => {
+      const ref = messageReference(sessionId, "original-entry");
+      const inspect = vi.fn<Client["sessionChats"]["inspect"]>(async () => ({
+        message: {
+          ref,
+          link: ref,
+          sessionId,
+          entryId: "original-entry",
+          parentId: null,
+          timestamp: new Date(0).toISOString(),
+          role: "user",
+          active: false,
+          inputRefs: [],
+          hasImages: false,
+        },
+        text: "Exact original evidence",
+        totalChars: 23,
+        offset: 0,
+        nextOffset: null,
+        truncated: false,
+      }));
+      const respondControl = vi.fn<Client["projectSessions"]["respondControl"]>(
+        async () => undefined,
+      );
+      using fixture = renderAppShellNavigation({
+        sessionChats: { inspect },
+        projectSessions: { respondControl },
+        electron: { setFullscreenSurfaceOpen: async () => undefined },
+      });
+      await requestOpen(fixture, { sessionId, messageId: "original-entry" });
+      const dialog = await screen.findByRole("dialog", { name: "user · original-entry" });
+      expect(dialog.textContent).toContain("Exact original evidence");
+      expect(inspect).toHaveBeenCalledWith(
+        {
+          sessionId,
+          kind: "messages-read",
+          entryId: "original-entry",
+          offset: 0,
+          maxChars: 20_000,
+        },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+      expect(respondControl.mock.calls.at(-1)?.[2]).toMatchObject({
+        ok: true,
+        command: "sessions.open",
+        opened: { sessionId, messageId: "original-entry" },
+      });
+      await fixture.user.click(
+        screen.getByRole("button", { name: "Exit fullscreen user · original-entry" }),
+      );
+      expect(screen.queryByRole("dialog", { name: "user · original-entry" })).toBeNull();
+    },
+  );
+
+  it.each(["text", "image"] as const)(
+    "opens an exact %s attachment from its authorized session without an agent read",
+    async (kind) => {
+      const reference = {
+        kind: "input" as const,
+        id: "00000000-0000-4000-8000-000000000001",
+        name: "Original input",
+        mimeType: kind === "image" ? "image/png" : "text/plain",
+        byteLength: 23,
+      };
+      const readAttachment = vi.fn<Client["sessionChats"]["readAttachment"]>(async () =>
+        kind === "image"
+          ? { kind, reference, data: "aW1hZ2U=", mimeType: "image/png" }
+          : {
+              kind,
+              reference,
+              text: "Exact attachment evidence",
+              offset: 0,
+              totalCharacters: 25,
+              nextOffset: null,
+            },
+      );
+      using fixture = renderAppShellNavigation({
+        sessionChats: { readAttachment },
+        electron: { setFullscreenSurfaceOpen: async () => undefined },
+      });
+      await act(async () =>
+        fixture.root.navigationStore.openSessionLink(CAKE_CHAT_SESSION_ID, undefined, reference.id),
+      );
+      const dialog = await screen.findByRole("dialog", { name: "Original input" });
+      if (kind === "text") expect(dialog.textContent).toContain("Exact attachment evidence");
+      else
+        expect(screen.getByRole("img", { name: "Original input" }).getAttribute("src")).toBe(
+          "data:image/png;base64,aW1hZ2U=",
+        );
+      expect(readAttachment).toHaveBeenCalledWith(
+        { sessionId: CAKE_CHAT_SESSION_ID, reference: reference.id, offset: 0, limit: 20_000 },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+      expect(screen.getByRole("button", { name: "Copy attachment link" })).toBeDefined();
+      await fixture.user.click(
+        screen.getByRole("button", { name: "Exit fullscreen Original input" }),
+      );
+      expect(screen.queryByRole("dialog", { name: "Original input" })).toBeNull();
+    },
+  );
 
   it.each(["missing", CAKE_CHAT_SESSION_ID, "", 42])(
     "rejects invalid Project Session target %s without navigating",

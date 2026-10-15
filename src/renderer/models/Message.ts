@@ -60,6 +60,7 @@ export class Message extends Model {
   url: string | undefined;
   mediaType: string | undefined;
   attachmentKind: AttachmentKind | undefined;
+  inputReference: Extract<UiPart, { kind: "attachment" }>["inputReference"];
   data: string | undefined;
   location: SourceLocation | undefined;
   selectedText: string | undefined;
@@ -146,6 +147,7 @@ export class Message extends Model {
         this.url = part.url;
         return true;
       case "attachment":
+        this.inputReference = part.inputReference;
         this.name = part.name;
         this.mediaType = part.mediaType;
         this.attachmentKind = part.attachmentKind;
@@ -271,6 +273,7 @@ export class Message extends Model {
           name: this.name!,
           mediaType: this.mediaType!,
           attachmentKind: this.attachmentKind!,
+          inputReference: this.inputReference,
           data: this.data,
           location: this.location,
           selectedText: this.selectedText,

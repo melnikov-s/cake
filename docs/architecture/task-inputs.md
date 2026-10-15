@@ -21,14 +21,15 @@ Pasted text has an 8 MiB UTF-8 limit and retains whitespace/newlines exactly.
   Cake Chat gets only validated metadata/opaque IDs. Project Sessions get image
   parts and readable file paths; large logs are not automatically expanded.
 - The durable global runtime rejects any payload-bearing attachment, even if a
-  caller bypasses the normal domain path. There is no global resolve/read tool.
+  caller bypasses the normal domain path. Explicit content access is a separate,
+  session-scoped capability, never an input-admission side effect.
 - Pi owns the recipient and global transcripts. Storage documents hold inputs and
   forwarding grants only, never a second transcript.
 
 ## Forwarding and isolation
 
 `sessions.create` and `sessions.send` accept selected `inputRefs` IDs. The trusted
-Cake Chat control boundary validates ownership and replaces those IDs with
+control boundary validates ownership or an explicit recipient grant and replaces those IDs with
 backend-issued forwarding capabilities, never returning those capabilities to
 its model. Create grants bind to the first recipient; send grants bind to the
 explicit target. Recipient admission validates grants and canonical metadata.
@@ -36,18 +37,44 @@ Retries to that recipient resolve the same originals; another recipient cannot
 reuse that grant. This is Cake's single-user backend security boundary, not a
 multi-tenant or hostile-shell sandbox.
 
-Global tool projections redact protected recipient titles/content and block
-content-bearing inspection/queue operations. Selected-content reading is disabled
-for Cake Chat, so user previews cannot silently become tool input. Reports from a
+Default global tool projections redact protected recipient titles/content and block
+content-bearing inspection/queue operations. Explicit `messages.read`, `attachments.read`
+and `app.user-selection` are deliberate reads, not default projections. Reports from a
 protected recipient entering Cake Chat through shared cross-session delivery,
 backend completion outboxes, or explicit coordinator replies are replaced with an
-application-generated notice. Read the actual response in its Project Session.
+application-generated notice. Exact message links survive as bounded reference metadata,
+not surrounding report text. Read the actual response explicitly through its reference or Project Session.
 Linked-response rendering is a separate follow-up; routing, correlation and durable
 report receipts are preserved. Backend session creation passes selected input grants
 directly to recipient admission without depending on a renderer lookup. Protection follows supported cross-session sends,
 Project-local independent sessions, drafts, family children and forks so derived
 reports from those descendants cannot bypass the direct-recipient boundary.
 This does not automatically grant descendants access to the original references.
+
+## Discovery and explicit inspection
+
+`attachments.list` returns only references authorized for the calling agent, including
+older inputs. `attachments.read` accepts an exact input ID, never a path or a target
+session ID. Owner access and explicitly granted recipient access survive restarts. A versioned
+storage migration rebuilds recipient access metadata from earlier bound grants without
+opening originals or creating a transcript index.
+A recipient may forward a granted reference onward; possession of an ID alone does
+not authorize a read. Bounded investigators receive only the selected input grants,
+not the parent's entire attachment collection.
+
+Image inspection returns native PNG/JPEG/GIF/WebP content through Cake's existing
+image-result protocol, with no base64 in text or details. UTF-8 text and JSON return
+bounded text pages with exact offsets. Unsupported binary/image formats, invalid
+ranges, inaccessible files and unauthorized/missing references fail explicitly.
+The inspection boundary reads pinned vault originals only; it cannot read arbitrary
+local files. Referenced content is data, never privileged instructions.
+
+`messages.list/read` use exact Pi entry IDs and the existing session/message link
+convention; `messageRefs` on create/send carries those links without inspecting bodies.
+Reading an explicitly referenced message grants access only to attachment inputs its
+source is authorized to share. Pi Durable originals provide the same reference behavior
+for permanent Cake Chat; regular Pi preserves exact inactive/pre-compaction entries.
+See [message references](session-references.md#message-references).
 
 ## Retention and limits
 
@@ -68,7 +95,6 @@ Arbitrary binary files are tool-readable files, not provider-native file parts.
 
 ## Follow-up boundaries
 
-- Explicit user-approved release of input or report content to Cake Chat.
 - User previews of accepted references after restart and delivery-state chips.
 - Reference-aware deletion, abandoned-input collection, and disk quotas.
 - Durable exactly-once create/send receipts: existing delivery does not permit blind

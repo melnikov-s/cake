@@ -1,4 +1,6 @@
 import { Schema } from "effect";
+import { inputRefsSchema } from "../../contracts/conversations/task-input";
+import { messageRefsSchema } from "../../contracts/conversations/message-reference";
 import type {
   CakeModelSelection,
   ExplicitCakeModelSelection,
@@ -22,6 +24,8 @@ export function createAgentControlOperations(
   const promptSchema = Schema.Struct({
     handleId: Schema.String.check(Schema.isUUID()),
     text: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(262_144)),
+    inputRefs: Schema.optionalKey(inputRefsSchema),
+    messageRefs: Schema.optionalKey(messageRefsSchema),
   });
   const handleSchema = Schema.Struct({ handleId: Schema.String.check(Schema.isUUID()) });
   const guidance = [
@@ -39,6 +43,8 @@ export function createAgentControlOperations(
     projectAware
       ? "Handles are parent-owned and available for related follow-ups until explicitly closed, 30 minutes after creation, or the backend exits. Workers are in-memory and never restored after restart. Follow-ups are asynchronous; detailed live activity is not retained in Cake Chat history."
       : "Handles are parent-owned and remain available for follow-up until explicitly closed; parallel batches contain at most eight tasks.",
+    "Attachments are not inherited. Select exact attachment IDs in inputRefs on a task or follow-up to grant that worker access. Forwarding shares only metadata; the worker must explicitly call attachments.read to inspect text or native image pixels. Never substitute a storage path or describe unseen image content.",
+    "Pass exact Cake message links in messageRefs to share source identities without reading or paraphrasing them. Workers may explicitly read only the selected references; forwarding does not read message bodies or grant attached input contents.",
     "Omit model unless the user explicitly asks for a specific model. When omitted, a subagent uses the configured default model preset's complete settings (provider, model, thinking level, and Fast mode; see models.list), not the calling session's current model. Only when no default preset is configured does it use the calling session's current settings.",
   ];
   const resolveTask = (input: SubagentTaskInput): DomainSubagentTaskInput => {

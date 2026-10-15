@@ -392,6 +392,7 @@ function partsFromMessage(
           id: `${baseId}-input-${index}`,
           kind: "attachment",
           name: attachment.name,
+          inputReference: attachment.kind === "input" ? attachment : attachment.inputReference,
           mediaType: attachment.kind === "input" ? attachment.mimeType : "application/octet-stream",
           attachmentKind: "file",
         });
@@ -1100,6 +1101,7 @@ export function promptText(text: string, attachments: Attachment[]) {
         kind: "file",
         name: item.name,
         path: item.originalPath,
+        inputReference: item.inputReference,
       }).replaceAll("<", "\\u003c");
       return [`<cake-file-attachment>${original}</cake-file-attachment>`];
     }

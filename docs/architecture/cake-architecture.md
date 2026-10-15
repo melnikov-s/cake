@@ -138,8 +138,9 @@ projections needed by a surface. References do not transfer ownership.
   instructions, skills, extensions and MCP, excluding edit/write tools and adding
   an investigation-only system policy. Shell/MCP mutation restrictions are prompt
   policy, not an enforced sandbox. General research omits projectPath and uses
-  isolated instructions and only read/bash/message_parent, without repository
-  resources or guaranteed web/search access. Cake Chat handles support follow-ups
+  isolated instructions and read/bash/message_parent, without repository
+  resources or guaranteed web/search access. Explicitly forwarded attachment/message
+  references additionally grant a scoped Cake read gateway, never broad application control. Cake Chat handles support follow-ups
   until closed, 30 minutes after creation, or backend shutdown; they are not
   restored after restart. Completion status is distinct from resource disposal.
   Reports retain Cake-authored structured provenance for Markdown response

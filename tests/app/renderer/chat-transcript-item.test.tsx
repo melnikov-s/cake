@@ -72,6 +72,7 @@ describe("ChatTranscriptItem", () => {
           item={settled}
           index={0}
           errorFollowsUser={false}
+          selected={false}
           parts={parts}
           behavior={behavior}
           changedFilesOpen={false}

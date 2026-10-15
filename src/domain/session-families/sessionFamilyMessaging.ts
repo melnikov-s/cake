@@ -1,3 +1,8 @@
+import { messageRefsSchema } from "../../contracts/conversations/message-reference";
+import { appendMessageReferences } from "../../contracts/conversations/message-reference-forwarding";
+import { inputRefsSchema } from "../../contracts/conversations/task-input";
+import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
+import { prepareTaskInputs } from "../conversations/taskInputs";
 import { Effect, Schema, type Scope } from "effect";
 import {
   crossSessionContextSnapshot,
@@ -24,6 +29,8 @@ import * as sessionFamilies from "./sessionFamilies";
 
 /** Decode once in the runtime callback adapter. */
 export const FamilyMessageInput = Schema.Struct({
+  messageRefs: Schema.optionalKey(messageRefsSchema),
+  inputRefs: Schema.optionalKey(inputRefsSchema),
   sessionId: Schema.optionalKey(
     Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
   ),
@@ -191,7 +198,7 @@ export const route: (
     },
   };
   const encoded = encodeCrossSessionMessage(
-    input.text,
+    appendMessageReferences(input.text, input.messageRefs ?? []),
     input.maxMessages === undefined
       ? messageMetadata
       : { ...messageMetadata, maxMessages: input.maxMessages },
@@ -222,12 +229,19 @@ export const route: (
   // Ordinary delivery starts an idle recipient or queues behind active work.
   // An explicit steer deliberately interrupts and redirects the target.
   const delivery = input.delivery ?? (destinationSnapshot.streaming ? "queue" : "prompt");
+  const inputs = yield* TaskInputStorage;
+  const refs = yield* inputs.authorizeForward(sessionId, input.inputRefs ?? [], targetSessionId);
+  const attachments = yield* prepareTaskInputs(
+    targetSessionId,
+    false,
+    refs.map((reference) => ({ kind: "forwarded-input" as const, name: "Attachment", reference })),
+  );
   const turnId =
     delivery === "steer"
-      ? yield* destination.steer(encoded, [], false)
+      ? yield* destination.steer(encoded, attachments, false)
       : delivery === "queue"
-        ? yield* destination.followUp(encoded, [], false)
-        : yield* destination.prompt(encoded, [], false);
+        ? yield* destination.followUp(encoded, attachments, false)
+        : yield* destination.prompt(encoded, attachments, false);
   // Acceptance/queueing is not a durable response receipt. The worker confirms
   // it against the parent's transcript, retaining reports lost from the queue.
   for (const request of preparedRequests) yield* families.markNoticeAttempt(request.turnId, turnId);

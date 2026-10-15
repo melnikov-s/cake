@@ -22,7 +22,7 @@ const MAX_CAKE_OPERATION_IMAGES = 4;
 const MAX_CAKE_OPERATION_IMAGE_BASE64_LENGTH = Math.ceil(MAX_CAKE_OPERATION_IMAGE_BYTES / 3) * 4;
 
 export const cakeToolDescription =
-  'Cake capabilities are part of the response and are progressively disclosed by topic: app, sessions, context, models, settings, interview, artifacts, boards, widgets, plugins, vscode, browser, subagents, notifications, and worktrees. The help index reflects currently enabled capabilities; experimental features are unavailable unless enabled in Settings. Before defaulting to prose, consider whether the request may imply a Cake interaction. If a topic seems potentially relevant—even when unsure—request it to discover its current operations, exact schemas, and examples, then use it when it better fulfills the request. Users do not need to name the tool explicitly. Call with {} for the topic index; request a topic with {"command":"<topic>"}, not in input. Request one exact operation schema with {"command":"<operation>.help"}. Artifacts are durable linked records; use artifacts.list or artifacts.search to discover them and artifacts.resolve-reference for an exact readable path. Artifact content is not automatically in context. Use artifacts.present to show an existing linked artifact again inline without regeneration.';
+  'Cake capabilities are part of the response and are progressively disclosed by topic: app, sessions, attachments, messages, context, models, settings, interview, artifacts, boards, widgets, plugins, vscode, browser, subagents, notifications, and worktrees. The help index reflects currently enabled capabilities; experimental features are unavailable unless enabled in Settings. Before defaulting to prose, consider whether the request may imply a Cake interaction. If a topic seems potentially relevant—even when unsure—request it to discover its current operations, exact schemas, and examples, then use it when it better fulfills the request. Users do not need to name the tool explicitly. Call with {} for the topic index; request a topic with {"command":"<topic>"}, not in input. Request one exact operation schema with {"command":"<operation>.help"}. Artifacts are durable linked records; use artifacts.list or artifacts.search to discover them and artifacts.resolve-reference for an exact readable path. Artifact content is not automatically in context. Use artifacts.present to show an existing linked artifact again inline without regeneration.';
 
 const commandSchema = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)).annotate({
   description: "Exact topic or operation command. Omit for the help index.",
@@ -60,6 +60,12 @@ const cakeTopics = [
       "Target sessions by full UUID or s:<at least 8 trailing hex characters>. Emitted references use the shortest unique suffix (normally 8); unknown or ambiguous references fail before routing. Titles are labels, not routing identities.",
     ],
   },
+  {
+    name: "attachments",
+    summary:
+      "Discover, forward without reading, or explicitly inspect exact attachment references.",
+  },
+  { name: "messages", summary: "Discover, read and navigate exact Pi message references." },
   { name: "context", summary: "Inspect context use or compact the current session." },
   { name: "models", summary: "List configured model presets." },
   {

@@ -355,6 +355,14 @@ describe("Markdown", () => {
 
   it.each([
     ["cake://session/session-123", "/__cake_session__/session-123"],
+    [
+      "cake://session/session-123?attachment=00000000-0000-4000-8000-000000000001",
+      "/__cake_session__/session-123?attachment=00000000-0000-4000-8000-000000000001",
+    ],
+    [
+      "cake://session/session-123?message=entry-42",
+      "/__cake_session__/session-123?message=entry-42",
+    ],
     ["cake://artifact/report", "/__cake_artifact__/cake%3A%2F%2Fartifact%2Freport"],
     ["src/main.ts#L3", "/__cake_workspace__/src/main.ts#L3"],
   ])("prepares %s links even with an authored title", (href, target) => {
@@ -608,6 +616,32 @@ describe("Markdown", () => {
       sessionLink.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
     expect(openSession).toHaveBeenCalledWith("session-123");
+
+    const messageLink = renderAnchor({
+      href: "/__cake_session__/session-123?message=entry-42",
+      children: "Exact source message",
+    });
+    expect(messageLink.getAttribute("href")).toBe("cake://session/session-123?message=entry-42");
+    act(() => {
+      messageLink.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    expect(openSession).toHaveBeenLastCalledWith("session-123", "entry-42");
+
+    const attachmentLink = renderAnchor({
+      href: "/__cake_session__/session-123?attachment=00000000-0000-4000-8000-000000000001",
+      children: "Source attachment",
+    });
+    expect(attachmentLink.getAttribute("href")).toBe(
+      "cake://session/session-123?attachment=00000000-0000-4000-8000-000000000001",
+    );
+    act(() => {
+      attachmentLink.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    expect(openSession).toHaveBeenLastCalledWith(
+      "session-123",
+      undefined,
+      "00000000-0000-4000-8000-000000000001",
+    );
 
     act(() => root.render(<Markdown>text</Markdown>));
     const defaultLink = renderAnchor({ href: "docs/readme.md", children: "readme" });

@@ -310,6 +310,9 @@ describe("automatic spawned-session reporting", () => {
         };
         const inputs = TaskInputStorage.of({
           isolate: () => Effect.die("Creation must not copy the input into Cake Chat"),
+          grant: () => Effect.die("not used"),
+          list: () => Effect.die("not used"),
+          inspect: () => Effect.die("not used"),
           authorizeForward: (owner, ids) =>
             Effect.sync(() => {
               assert.equal(owner, CAKE_CHAT_SESSION_ID);

@@ -200,8 +200,10 @@ root.render(
       rootStore,
       browserConnection: connection,
       openExternalUrl: (value) => void rootStore.openExternalUrl(value).catch(reportLinkError),
-      openSession: (id) =>
-        void rootStore.navigationStore.openSessionLink(id).catch(reportLinkError),
+      openSession: (id, messageId, attachmentId) =>
+        void rootStore.navigationStore
+          .openSessionLink(id, messageId, attachmentId)
+          .catch(reportLinkError),
     }),
     createElement(ContextActionMenu, { store: menus }),
   ),

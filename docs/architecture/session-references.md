@@ -45,6 +45,55 @@ provider context, both for regular Pi and Pi Durable. Persisted envelopes and
 renderer provenance retain canonical routing metadata. This does not create a
 second transcript or modify Pi originals.
 
+## Exact message references
+
+An exact message reference is also its user-openable link:
+`cake://session/<canonical-session-id>?message=<Pi-entry-id>`. It preserves Pi's
+entry ID, not a renderer part ID, a cross-session delivery ID, or a summarized
+replacement. Forward this opaque string unchanged through `messageRefs`; resolving
+or forwarding it does not require reading its body. No reference registry or
+second transcript is persisted.
+
+- `messages.list` returns bounded metadata only: exact `ref`/`link`, session and
+  entry identity, role, timestamp, active-branch status, and attachment `inputRefs`
+  (identity, name, MIME type, byte length). It defaults to 25 chronological active
+  branch messages; `branch: all` includes original inactive branches. `nextOffset`
+  continues discovery, including pages shortened to keep metadata bounded.
+- `messages.read` explicitly reads one exact original across Pi's full tree. It
+  defaults to 4,000 characters, permits at most 20,000, and returns `nextOffset`
+  for continuation. It never returns inline image bytes. Missing/non-message
+  entries fail; no text search, current-context, or summary fallback is used.
+- `messages.open` delegates to `sessions.open` and its user-only, invoking-window
+  navigation permission. The identical link remains manually usable when agents
+  cannot navigate. Markdown preserves the `message` query through sanitization.
+- Settled Project Session and permanent Cake Chat messages expose **Copy message link**. Navigation marks
+  the exact visible message. If the source is on an inactive or Tool Compact
+  branch, a bounded read-only original preview opens without changing the Pi
+  branch or model context. Preview pages are transient, never Conversation entries
+  or window snapshot data.
+
+Pi remains the authority through restart, ordinary compaction and Tool Compact.
+Deleting the source transcript removes its evidence; references do not promise
+an independent retained copy. These operations address Project Sessions and permanent
+Cake Chat originals, not process-local investigators or private side-chat transcripts.
+Bounded investigators receive only explicitly selected exact references and expose
+`messages.read` behind that allowlist, never broad discovery or navigation.
+
+Attachments use `cake://session/<authorized-session-id>?attachment=<input-id>`.
+This is the existing vault input identity, not a new attachment record. Markdown
+preserves the attachment query; clicking opens a transient image or bounded text
+preview through `sessionChats.readAttachment`, authorized for the named session.
+No storage paths or contents are exposed by copying/opening a link into agent context.
+File/input chips and previews expose **Copy attachment link**; message metadata retains
+pinned `inputReference` identities from Project attachment envelopes. Message reads
+strip those envelopes so reading a message does not implicitly read its attachments.
+
+The contract and link codec live in
+`src/contracts/conversations/message-reference.ts`; Pi entry projection lives in
+`src/services/pi/runtime/message-references.ts`; domain controls and operation
+help live in `src/domain/conversations/messageReferences.ts` and
+`cake-message-operations.ts`.
+
 ## Reusable helpers
 
 `src/contracts/project-sessions/session-reference.ts` is the pure shared boundary:

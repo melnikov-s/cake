@@ -1,5 +1,7 @@
 import { Schema } from "effect";
 import { ThinkingLevel } from "../pi/model-data";
+import { inputRefsSchema } from "../conversations/task-input";
+import { messageRefsSchema } from "../conversations/message-reference";
 
 const nonEmptyBoundedString = (maximum: number) =>
   Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(maximum));
@@ -51,6 +53,8 @@ export interface ResolvedAgentModel extends Schema.Schema.Type<typeof ResolvedAg
 export const SubagentTaskInput = Schema.Struct({
   task: nonEmptyBoundedString(262_144),
   projectPath: Schema.optionalKey(nonEmptyBoundedString(4_096)),
+  inputRefs: Schema.optionalKey(inputRefsSchema),
+  messageRefs: Schema.optionalKey(messageRefsSchema),
   model: Schema.optionalKey(AgentModelPreference),
   instructions: Schema.optionalKey(boundedString(32_768)),
   fastMode: Schema.optionalKey(Schema.Boolean),
@@ -60,6 +64,8 @@ export interface SubagentTaskInput extends Schema.Schema.Type<typeof SubagentTas
 export const SubagentTask = Schema.Struct({
   task: SubagentTaskInput.fields.task,
   projectPath: SubagentTaskInput.fields.projectPath,
+  inputRefs: SubagentTaskInput.fields.inputRefs,
+  messageRefs: SubagentTaskInput.fields.messageRefs,
   model: AgentModelPreference,
   instructions: Schema.optionalKey(boundedString(32_768)),
   fastMode: Schema.Boolean,
