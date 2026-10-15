@@ -151,9 +151,11 @@ it.effect(
   () => {
     const f = fixture();
     return Effect.gen(function* () {
-      expect(yield* resolve(active)).toBe(active);
+      expect(yield* resolve("s:112345678")).toBe(active);
       f.setActiveIds([]);
-      expect(yield* Effect.flip(resolve(active))).toMatchObject({
+      // Full UUIDs pass through for authoritative lookup; only short references need the roster.
+      expect(yield* resolve(active)).toBe(active);
+      expect(yield* Effect.flip(resolve("s:112345678"))).toMatchObject({
         message: expect.stringContaining("Unknown"),
       });
       f.setActiveIds([active, active]);

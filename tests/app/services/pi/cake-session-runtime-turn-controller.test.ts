@@ -128,7 +128,7 @@ describe("CakeSessionRuntime turn controller", () => {
     controller.dispose();
   });
 
-  it("discloses only mode transitions and Tool Compact removes them from replay, resetting the default", async () => {
+  it("discloses only mode transitions and Tool Compact removes them from replay and display, resetting the default", async () => {
     const { controller, session } = createFixture();
     await controller.prompt("Initial text", "prompt", []);
     await controller.prompt("Start voice", "prompt", [], false, undefined, undefined, "voice");
@@ -178,11 +178,10 @@ describe("CakeSessionRuntime turn controller", () => {
       "Voice again",
       [{ type: "text", text: "Answer" }],
     ]);
+    // The continuation does not show removed historical context pills.
     expect(
       projectConversationDisplay(session.sessionManager).filter((part) => part.kind === "context"),
-    ).toEqual(
-      reminders.map((part) => expect.objectContaining({ text: part.text, origin: "compacted" })),
-    );
+    ).toEqual([]);
     await controller.prompt("Default text after compact", "prompt", []);
     await controller.prompt(
       "Voice after compact",

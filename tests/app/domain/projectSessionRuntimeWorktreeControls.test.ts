@@ -108,7 +108,7 @@ describe("Project Session runtime worktree controls", () => {
       }),
       familyStorageHarness().layer,
       SessionCatalogChanges.layer,
-      Layer.mock(CakeSessionRuntimes, { catalog: () => Stream.empty }),
+      Layer.mock(CakeSessionRuntimes, { sessionIds: () => Stream.empty }),
       Layer.mock(SessionArchiveStorage, {
         locate: () => Effect.succeed("active" as const),
         resolved: () => Stream.empty,

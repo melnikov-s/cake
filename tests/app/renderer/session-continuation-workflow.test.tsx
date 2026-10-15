@@ -56,6 +56,25 @@ function worktree(worktreePath: string): WorktreeRecord {
     state: "active",
   };
 }
+function forkedSummary(workingDirectory: string) {
+  return sessionSummary({
+    sessionId: "forked",
+    title: "Forked conversation",
+    projectPath: "/project",
+    projectName: "Project",
+    workingDirectory,
+  });
+}
+/** The backend writes the fork before returning, so the exact-ID lookup finds it once released. */
+function deferredForkLookup(workingDirectory: string) {
+  const pending = deferred<void>();
+  const lookup = vi.fn<Client["projectSessions"]["lookup"]>(async ({ sessionId }) => {
+    if (sessionId !== "forked") throw new Error(`Cake could not find Project Session ${sessionId}`);
+    await pending.promise;
+    return forkedSummary(workingDirectory);
+  });
+  return { lookup, resolve: () => act(async () => pending.resolve()) };
+}
 function deferred<Value>() {
   let resolve!: (value: Value) => void;
   const promise = new Promise<Value>((complete) => {
@@ -103,16 +122,7 @@ function renderContinuation(client: TestClientOverrides, managed = true) {
     async hydrateFork(path: string) {
       await act(async () => {
         applySnapshot(fixture.models.sessionCatalog, {
-          sessions: [
-            source,
-            sessionSummary({
-              sessionId: "forked",
-              title: "Forked conversation",
-              projectPath: "/project",
-              projectName: "Project",
-              workingDirectory: path,
-            }),
-          ],
+          sessions: [source, forkedSummary(path)],
           resolvedHasMoreByProject: {},
         });
         applyConversationUpdate(fixture.models.projectConversation("forked", path), {
@@ -162,8 +172,9 @@ describe("Session continuation workflow", () => {
     const open = vi.fn<Client["projectSessions"]["open"]>(() => pendingOpen.promise);
     const fork = vi.fn<Client["projectSessions"]["fork"]>(async () => ({ sessionId: "forked" }));
     const create = vi.fn<Client["managedWorktrees"]["create"]>();
+    const forkLookup = deferredForkLookup("/project");
     using fixture = renderContinuation({
-      projectSessions: { fork, open },
+      projectSessions: { fork, open, lookup: forkLookup.lookup },
       managedWorktrees: { create },
     });
     const dialog = await openFork(fixture.user);
@@ -184,6 +195,13 @@ describe("Session continuation workflow", () => {
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     expect(create).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+    await forkLookup.resolve();
+    // The child has no catalog row yet, so the renderer reconciles it by identity alone.
+    expect(forkLookup.lookup).toHaveBeenCalledWith(
+      { sessionId: "forked" },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
     expect(open).toHaveBeenCalledWith(
       { sessionId: "forked", workingDirectory: "/project" },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
@@ -198,9 +216,10 @@ describe("Session continuation workflow", () => {
     const create = vi.fn<Client["managedWorktrees"]["create"]>(() => pendingCreate.promise);
     const fork = vi.fn<Client["projectSessions"]["fork"]>(async () => ({ sessionId: "forked" }));
     const open = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);
+    const forkLookup = deferredForkLookup("/created-worktree");
     using fixture = renderContinuation({
       managedWorktrees: { create },
-      projectSessions: { fork, open },
+      projectSessions: { fork, open, lookup: forkLookup.lookup },
     });
     const dialog = await openFork(fixture.user);
     await fixture.user.click(within(dialog).getByRole("button", { name: "Create a new worktree" }));
@@ -230,6 +249,11 @@ describe("Session continuation workflow", () => {
         destinationWorkingDirectory: "/created-worktree",
         resolveSource: true,
       }),
+      expect.anything(),
+    );
+    await forkLookup.resolve();
+    expect(open).toHaveBeenCalledWith(
+      { sessionId: "forked", workingDirectory: "/created-worktree" },
       expect.anything(),
     );
     await fixture.hydrateFork("/created-worktree");

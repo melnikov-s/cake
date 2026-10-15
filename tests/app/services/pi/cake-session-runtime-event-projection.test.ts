@@ -10,6 +10,7 @@ describe("Cake runtime streaming projection", () => {
   it("keeps interview requests out of artifact projection throughout live tool execution", () => {
     const events: RuntimeProjectionEvent[] = [];
     const session = {
+      sessionManager: { getHeader: () => undefined },
       agent: { state: { tools: [] } },
       systemPrompt: "",
       getSteeringMessages: () => [],
