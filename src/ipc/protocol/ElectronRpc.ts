@@ -9,6 +9,9 @@ import {
 type ElectronOperation = keyof Pick<
   typeof cakeRpcPayloadSchemas,
   | "configure-screen-capture"
+  | "configure-cake-chat-overlay"
+  | "hide-cake-chat-overlay"
+  | "show-main-window"
   | "start-screen-capture"
   | "screen-capture-state"
   | "finish-screen-capture"
@@ -31,6 +34,9 @@ const electronRpc = <Type extends ElectronOperation>(type: Type) =>
 
 export const ElectronRpc = RpcGroup.make(
   electronRpc("configure-screen-capture"),
+  electronRpc("configure-cake-chat-overlay"),
+  electronRpc("hide-cake-chat-overlay"),
+  electronRpc("show-main-window"),
   electronRpc("start-screen-capture"),
   electronRpc("screen-capture-state"),
   electronRpc("finish-screen-capture"),

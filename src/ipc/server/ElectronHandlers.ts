@@ -12,6 +12,18 @@ export const electronHandlers = ElectronRpc.of({
     withConnection((id) =>
       Effect.flatMap(Electron, (service) => service.configureScreenCapture(id, request)),
     ),
+  "electron.configure-cake-chat-overlay": (request) =>
+    withConnection((id) =>
+      Effect.flatMap(Electron, (service) => service.configureCakeChatOverlay(id, request)),
+    ),
+  "electron.hide-cake-chat-overlay": (request) =>
+    withConnection((id) =>
+      Effect.flatMap(Electron, (service) => service.hideCakeChatOverlay(id, request)),
+    ),
+  "electron.show-main-window": (request) =>
+    withConnection((id) =>
+      Effect.flatMap(Electron, (service) => service.showMainWindow(id, request)),
+    ),
   "electron.start-screen-capture": (request) =>
     withConnection((id) =>
       Effect.flatMap(Electron, (service) => service.startScreenCapture(id, request)),

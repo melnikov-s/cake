@@ -10,6 +10,8 @@ import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { StartupError } from "./components/startup-error";
 import { RendererRoot } from "./components/renderer-root";
+import { startCakeChatOverlay } from "./bootstrap/start-cake-chat-overlay";
+import { CAKE_CHAT_OVERLAY_QUERY } from "../contracts/desktop/cake-chat-overlay-data";
 import { ScreenCaptureOverlay } from "./components/screen-capture-overlay";
 import { ScreenCaptureOverlayStore } from "./stores/ScreenCaptureOverlayStore";
 import { renderCaptureImage } from "./screen-capture/render-capture";
@@ -64,12 +66,15 @@ else if (new URLSearchParams(window.location.search).get("screenCapture") === "1
     { once: true },
   );
 } else
-  void bootstrap(window.cake).catch((error: unknown) => {
+  void bootstrap(
+    window.cake,
+    new URLSearchParams(window.location.search).get(CAKE_CHAT_OVERLAY_QUERY) === "1",
+  ).catch((error: unknown) => {
     console.error("[cake] Startup failed", error);
     root.render(createElement(StartupError, { error }));
   });
 
-async function bootstrap(bridge: NonNullable<typeof window.cake>) {
+async function bootstrap(bridge: NonNullable<typeof window.cake>, overlay: boolean) {
   const initialRuntime = makeRuntime(bridge.rpc);
   const host = await makeClient(initialRuntime).desktopHost.current();
   let runtime: Runtime = initialRuntime;
@@ -87,7 +92,7 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
         connection.connectionChanged(true);
         if (!started) {
           started = true;
-          await mountDesktop(runtime, client, connection);
+          await mountDesktop(runtime, client, connection, overlay);
         }
       },
     }),
@@ -114,7 +119,7 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
     void connection.retry();
   } else {
     client = makeClient(runtime);
-    await mountDesktop(runtime, client, connection);
+    await mountDesktop(runtime, client, connection, overlay);
   }
   window.addEventListener(
     "pagehide",
@@ -126,7 +131,17 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
   );
 }
 
-async function mountDesktop(runtime: Runtime, client: Client, connection: DesktopConnectionStore) {
+/**
+ * Mounts a desktop window. The drop-down Cake Chat overlay mounts the same Root Store against the
+ * same backend, so it shows the live shared conversation; it reads the main window's snapshot for
+ * preferences such as theme but never writes window state, migrates drafts, or registers shortcuts.
+ */
+async function mountDesktop(
+  runtime: Runtime,
+  client: Client,
+  connection: DesktopConnectionStore,
+  overlay: boolean,
+) {
   const projection = RootProjection.create();
   let hydrationError: unknown;
   let savedDraftsReady = false;
@@ -135,13 +150,14 @@ async function mountDesktop(runtime: Runtime, client: Client, connection: Deskto
     return { state: {}, children: {} };
   });
   let windowSnapshot = loadedWindow;
-  try {
-    windowSnapshot = await migrateSavedDrafts(client, loadedWindow);
-    savedDraftsReady = true;
-  } catch (error) {
-    // Remote disconnect/uncertain delivery cannot erase the still-local legacy record.
-    hydrationError = error;
-  }
+  if (!overlay)
+    try {
+      windowSnapshot = await migrateSavedDrafts(client, loadedWindow);
+      savedDraftsReady = true;
+    } catch (error) {
+      // Remote disconnect/uncertain delivery cannot erase the still-local legacy record.
+      hydrationError = error;
+    }
   const snapshot = (() => {
     try {
       return Schema.decodeUnknownSync(storeSnapshotSchema)(windowSnapshot);
@@ -177,19 +193,24 @@ async function mountDesktop(runtime: Runtime, client: Client, connection: Deskto
     void rootStore.conversationModeStore.exit();
   };
   window.addEventListener("blur", stopVoiceOnBlur);
-  const persistence = new WindowStatePersistence(
-    client,
-    (error) =>
-      rootStore.toastStore.show({
-        tone: "error",
-        title: "Window state could not be saved",
-        message: error instanceof Error ? error.message : String(error),
-      }),
-    savedDraftsReady,
-  );
+  const persistence = overlay
+    ? undefined
+    : new WindowStatePersistence(
+        client,
+        (error) =>
+          rootStore.toastStore.show({
+            tone: "error",
+            title: "Window state could not be saved",
+            message: error instanceof Error ? error.message : String(error),
+          }),
+        savedDraftsReady,
+      );
   persistenceRef.current = persistence;
-  persistence.observe(rootStore);
-  void rootStore.screenCaptureStore.configure();
+  persistence?.observe(rootStore);
+  if (!overlay) {
+    void rootStore.screenCaptureStore.configure();
+    void rootStore.settingsStore.cakeChatOverlay.configure();
+  }
   const stopObservingModels = observeModels(runtime, projection, rootStore);
   const stopObservingEvents = observeEvents(runtime, projection, rootStore);
   const stopObservingSavedDrafts = observeSavedDrafts(
@@ -213,7 +234,7 @@ async function mountDesktop(runtime: Runtime, client: Client, connection: Deskto
         message: error instanceof Error ? error.message : String(error),
       }),
     )
-    .then(() => rootStore.initialize())
+    .then(() => (overlay ? startCakeChatOverlay(rootStore) : rootStore.initialize()))
     .catch((error: unknown) =>
       rootStore.toastStore.show({
         tone: "error",
@@ -236,6 +257,7 @@ async function mountDesktop(runtime: Runtime, client: Client, connection: Deskto
   root.render(
     createElement(RendererRoot, {
       rootStore,
+      variant: overlay ? "cake-chat-overlay" : "app",
       openExternalUrl: (url) => {
         void rootStore.openExternalUrl(url).catch(reportLinkError);
       },

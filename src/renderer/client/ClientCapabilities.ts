@@ -44,6 +44,24 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
           (client) => client.electron["configure-screen-capture"](input),
           options,
         ).then(() => undefined),
+      configureCakeChatOverlay: (input, options) =>
+        execute(
+          "electron.configure-cake-chat-overlay",
+          (client) => client.electron["configure-cake-chat-overlay"](input),
+          options,
+        ).then(() => undefined),
+      hideCakeChatOverlay: (options) =>
+        execute(
+          "electron.hide-cake-chat-overlay",
+          (client) => client.electron["hide-cake-chat-overlay"]({}),
+          options,
+        ).then(() => undefined),
+      showMainWindow: (sessionId, options) =>
+        execute(
+          "electron.show-main-window",
+          (client) => client.electron["show-main-window"](sessionId ? { sessionId } : {}),
+          options,
+        ).then(() => undefined),
       startScreenCapture: (routing, options) =>
         execute(
           "electron.start-screen-capture",

@@ -1,6 +1,6 @@
 import { observer, useStore } from "r-state-tree/react";
 import { IconButton } from "@/components/ui/icon-button";
-import { SidebarIcon, TerminalIcon } from "@/components/ui/icons";
+import { CloseIcon, SidebarIcon, TerminalIcon } from "@/components/ui/icons";
 import { RequestInspector } from "@/components/request-inspector";
 import { WorkLogControls } from "@/components/work-log-controls";
 import { cn } from "@/lib/utils";
@@ -10,12 +10,19 @@ import type { CakeChatSessionStore } from "../stores/CakeChatSessionStore";
 import { SessionArtifactMenu } from "./session-artifact-menu";
 import { SideChatsMenu } from "./side-chats-menu";
 
+export interface CakeChatOverlayChrome {
+  /** Puts the drop-down overlay away. */
+  onClose(): void;
+}
+
 export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
   pane,
   session: paneSession,
+  overlay,
 }: {
   pane: SessionPaneNode;
   session: CakeChatSessionStore;
+  overlay?: CakeChatOverlayChrome;
 }) {
   const root = useStore(RootStore);
   const cakeChatCollection = root.cakeChatCollectionStore;
@@ -25,7 +32,7 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
   const firstPane = cakeChatCollection.sessionLayoutStore.panes[0]?.paneId === pane.paneId;
   return (
     <>
-      {firstPane && (
+      {firstPane && !overlay && (
         <IconButton
           className={cn(
             "absolute left-[84px] top-[9px] z-20 size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -50,19 +57,25 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
       />
       <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />
       <RequestInspector store={paneSession.requestInspectorStore} />
-      <IconButton
-        data-cake-hint-key="t"
-        tooltip="Terminal"
-        hotkey="toggle-terminal"
-        disabled={!terminal.available}
-        aria-pressed={paneSession.sessionId === cakeChatCollection.sessionId && terminal.open}
-        onClick={() => {
-          root.navigationStore.focusCakeChatPane(pane.paneId);
-          void terminal.toggle();
-        }}
-      >
-        <TerminalIcon />
-      </IconButton>
+      {overlay ? (
+        <IconButton tooltip="Close drop-down Cake Chat" onClick={overlay.onClose}>
+          <CloseIcon />
+        </IconButton>
+      ) : (
+        <IconButton
+          data-cake-hint-key="t"
+          tooltip="Terminal"
+          hotkey="toggle-terminal"
+          disabled={!terminal.available}
+          aria-pressed={paneSession.sessionId === cakeChatCollection.sessionId && terminal.open}
+          onClick={() => {
+            root.navigationStore.focusCakeChatPane(pane.paneId);
+            void terminal.toggle();
+          }}
+        >
+          <TerminalIcon />
+        </IconButton>
+      )}
     </>
   );
 });

@@ -4,10 +4,15 @@ import { ConversationSplitLayout } from "@/components/conversation-split-layout"
 import { cn } from "@/lib/utils";
 import { RootStore } from "../stores/RootStore";
 import type { CakeChatSessionStore } from "../stores/CakeChatSessionStore";
-import { CakeChatPaneHeader } from "./cake-chat-pane-header";
+import { CakeChatPaneHeader, type CakeChatOverlayChrome } from "./cake-chat-pane-header";
 import { SessionArtifactPane } from "./session-artifact-pane";
 
-export const CakeChatSurface = observer(function CakeChatSurface() {
+export const CakeChatSurface = observer(function CakeChatSurface({
+  overlay,
+}: {
+  /** Present when the surface is hosted by the frameless drop-down overlay. */
+  overlay?: CakeChatOverlayChrome;
+} = {}) {
   const root = useStore(RootStore);
   const cakeChatCollection = root.cakeChatCollectionStore;
   const shell = root.appShellStore;
@@ -62,11 +67,14 @@ export const CakeChatSurface = observer(function CakeChatSurface() {
       }
       loadingLabel="Opening Cake Chat"
       headerClassName={(pane) =>
-        cakeChatCollection.sessionLayoutStore.panes[0]?.paneId === pane.paneId
+        // The frameless overlay has no traffic lights or sidebar toggle to make room for.
+        !overlay && cakeChatCollection.sessionLayoutStore.panes[0]?.paneId === pane.paneId
           ? cn("max-[620px]:pl-[84px]", sidebarCollapsed && "pl-[124px]")
           : undefined
       }
-      renderHeader={(pane, session) => <CakeChatPaneHeader pane={pane} session={session} />}
+      renderHeader={(pane, session) => (
+        <CakeChatPaneHeader pane={pane} session={session} overlay={overlay} />
+      )}
       wrapPane={(session, children) => (
         <SessionArtifactPane sessionId={session.sessionId}>{children}</SessionArtifactPane>
       )}
@@ -74,7 +82,12 @@ export const CakeChatSurface = observer(function CakeChatSurface() {
       onClose={(paneId) => root.navigationStore.closeCakeChatPane(paneId)}
     />
   ) : (
-    <div className="flex h-screen flex-col items-center justify-center gap-3.5 bg-background text-muted-foreground">
+    <div
+      className={cn(
+        "flex flex-col items-center justify-center gap-3.5 bg-background text-muted-foreground",
+        overlay ? "h-full" : "h-screen",
+      )}
+    >
       <span className="grid size-[27px] select-none place-items-center rounded-bl-[6px] rounded-br-[9px] rounded-tl-[9px] rounded-tr-[6px] bg-foreground text-sm font-black tracking-tighter text-background -rotate-2">
         C
       </span>

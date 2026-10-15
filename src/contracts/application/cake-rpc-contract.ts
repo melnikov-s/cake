@@ -8,6 +8,7 @@ import {
   ScreenCaptureSettings,
   ScreenCaptureSnapshot,
 } from "../desktop/screen-capture-data";
+import { CakeChatOverlaySettings } from "../desktop/cake-chat-overlay-data";
 import { artifactRecordSchema } from "../artifacts/artifact-contract";
 import { ArtifactLineageId } from "../artifacts/artifact-lineage";
 import { InterviewRecord } from "../interviews/interview";
@@ -75,6 +76,11 @@ const embeddedEditorExplicitSelectionFields = {
 const cakeEventSchemas = {
   "screen-capture-requested": Schema.Struct({ type: Schema.Literal("screen-capture-requested") }),
   "window-blurred": Schema.Struct({ type: Schema.Literal("window-blurred") }),
+  "cake-chat-overlay-shown": Schema.Struct({ type: Schema.Literal("cake-chat-overlay-shown") }),
+  "session-open-requested": Schema.Struct({
+    type: Schema.Literal("session-open-requested"),
+    sessionId: bounded(1, 256),
+  }),
   "renderer-events-ready": Schema.Struct({
     type: Schema.Literal("renderer-events-ready"),
     channel: Schema.Literals(["application", "artifacts", "terminals", "vscode", "surfaces"]),
@@ -298,6 +304,8 @@ export const applicationEventSchema = Schema.Union([
   cakeEventSchemas["interview-requested"],
   cakeEventSchemas["screen-capture-requested"],
   cakeEventSchemas["window-blurred"],
+  cakeEventSchemas["session-open-requested"],
+  cakeEventSchemas["cake-chat-overlay-shown"],
   cakeEventSchemas["renderer-events-ready"],
   cakeEventSchemas["changelog-snapshot"],
   cakeEventSchemas.complete,
@@ -353,6 +361,8 @@ export const cakeEventSchema = Schema.Union([
   cakeEventSchemas["artifact-state-invalidated"],
   cakeEventSchemas["screen-capture-requested"],
   cakeEventSchemas["window-blurred"],
+  cakeEventSchemas["session-open-requested"],
+  cakeEventSchemas["cake-chat-overlay-shown"],
   cakeEventSchemas["renderer-events-ready"],
   cakeEventSchemas["fullscreen-surface-close-requested"],
   cakeEventSchemas["changelog-snapshot"],
@@ -394,6 +404,9 @@ const terminalTarget = Schema.Struct({
 
 export const cakeRpcPayloadSchemas = {
   "configure-screen-capture": ScreenCaptureSettings,
+  "configure-cake-chat-overlay": CakeChatOverlaySettings,
+  "hide-cake-chat-overlay": Schema.Struct({}),
+  "show-main-window": Schema.Struct({ sessionId: Schema.optionalKey(bounded(1, 256)) }),
   "start-screen-capture": CaptureRouting,
   "screen-capture-state": Schema.Struct({}),
   "finish-screen-capture": Schema.Struct({
@@ -844,6 +857,9 @@ const cakeRpcResultSchemas = {
 
 export const cakeRpcSuccessSchemas = {
   "configure-screen-capture": Schema.Struct({}),
+  "configure-cake-chat-overlay": Schema.Struct({}),
+  "hide-cake-chat-overlay": Schema.Struct({}),
+  "show-main-window": Schema.Struct({}),
   "start-screen-capture": Schema.Struct({ capture: Schema.optionalKey(CaptureResult) }),
   "screen-capture-state": ScreenCaptureSnapshot,
   "finish-screen-capture": Schema.Struct({}),

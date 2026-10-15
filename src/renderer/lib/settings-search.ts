@@ -204,6 +204,11 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
             targetId: "setting-cake-chat-instructions",
             keywords: "agent worktree delegation",
           },
+          {
+            label: "Drop-down Cake Chat",
+            targetId: "cake-chat-overlay-settings-title",
+            keywords: "global shortcut hotkey quake overlay command backquote",
+          },
         ],
       },
       {

@@ -1,4 +1,5 @@
 import { SettingsCakeChatSection } from "./settings-cake-chat-section";
+import { SettingsCakeChatOverlaySection } from "./settings-cake-chat-overlay-section";
 import { SettingsMcpSection } from "./settings-mcp-section";
 import { SettingsWidgetPackagesSection } from "./settings-widget-packages-section";
 import { SettingsDictationSection } from "./settings-dictation-section";
@@ -812,7 +813,12 @@ export const SettingsPage = observer(function SettingsPage({
             </>
           )}
 
-          {activePage === "cake-chat" && <SettingsCakeChatSection settings={settings} />}
+          {activePage === "cake-chat" && (
+            <>
+              <SettingsCakeChatSection settings={settings} />
+              {!browserMode && <SettingsCakeChatOverlaySection store={settings.cakeChatOverlay} />}
+            </>
+          )}
 
           {activePage === "prompts" && (
             <section

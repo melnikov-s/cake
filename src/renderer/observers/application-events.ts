@@ -3,6 +3,7 @@ import { Effect } from "effect";
 import { CakeIpcClient } from "../../ipc/client/CakeIpcClient";
 import { RenderedWidgetCaptureError } from "../../contracts/widgets/rendered-widget-capture-errors";
 import { cakeNativeHotkeyInputEventName } from "../lib/hotkeys";
+import { cakeChatOverlayShownEventName } from "../lib/cake-chat-overlay";
 import type { Runtime } from "../runtime";
 import type { RootStore } from "../stores/RootStore";
 
@@ -17,6 +18,20 @@ export const observeApplicationEvents = (
     (event) => {
       if (event.type === "screen-capture-requested") {
         if (host === "desktop") void root.screenCaptureStore.capture();
+        return;
+      }
+      if (event.type === "cake-chat-overlay-shown") {
+        window.dispatchEvent(new Event(cakeChatOverlayShownEventName));
+        return;
+      }
+      if (event.type === "session-open-requested") {
+        void root.navigationStore.openSessionLink(event.sessionId).catch((error: unknown) =>
+          root.toastStore.show({
+            tone: "error",
+            title: "Could not open session",
+            message: error instanceof Error ? error.message : String(error),
+          }),
+        );
         return;
       }
       if (event.type === "window-blurred") {

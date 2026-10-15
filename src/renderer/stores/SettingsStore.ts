@@ -26,6 +26,7 @@ import { EmbeddedEditorSettingsStore } from "./EmbeddedEditorSettingsStore";
 import { HotkeySettingsStore } from "./HotkeySettingsStore";
 import { GlobalLabelSettingsStore } from "./GlobalLabelSettingsStore";
 import { CakeChatSettingsStore } from "./CakeChatSettingsStore";
+import { CakeChatOverlaySettingsStore } from "./CakeChatOverlaySettingsStore";
 import { CakePromptSettingsStore } from "./CakePromptSettingsStore";
 import { GlobalInstructionsStore } from "./GlobalInstructionsStore";
 import { NonChatModelSettingsStore } from "./NonChatModelSettingsStore";
@@ -111,6 +112,9 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   }
   @child get cakeChat(): CakeChatSettingsStore {
     return createStore(CakeChatSettingsStore);
+  }
+  @child get cakeChatOverlay(): CakeChatOverlaySettingsStore {
+    return createStore(CakeChatOverlaySettingsStore);
   }
   @child get cakePrompts(): CakePromptSettingsStore {
     return createStore(CakePromptSettingsStore);

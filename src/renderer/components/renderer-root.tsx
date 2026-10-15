@@ -5,6 +5,7 @@ import { StrictMode } from "react";
 import { observer, StoreProvider } from "r-state-tree/react";
 import type { RootStore } from "../stores/RootStore";
 import { App } from "./app";
+import { CakeChatOverlayApp } from "./cake-chat-overlay-app";
 import { NewSessionDialog } from "./new-session-dialog";
 import { IconButtonHotkeyProvider } from "./ui/icon-button";
 import { MarkdownLinkProvider } from "./ai-elements/markdown";
@@ -15,6 +16,8 @@ import { formatArtifactRef, parseArtifactRef } from "../../contracts/artifacts/a
 
 interface RendererRootProps {
   rootStore: RootStore;
+  /** The drop-down overlay renders only the shared Cake Chat surface. */
+  variant?: "app" | "cake-chat-overlay";
   browserConnection?: BrowserConnectionStore;
   openExternalUrl(url: string): void;
   openSession(sessionId: string, messageId?: string, attachmentId?: string): void;
@@ -22,6 +25,7 @@ interface RendererRootProps {
 
 export const RendererRoot = observer(function RendererRoot({
   rootStore,
+  variant = "app",
   browserConnection,
   openExternalUrl,
   openSession,
@@ -88,8 +92,14 @@ export const RendererRoot = observer(function RendererRoot({
                       <BrowserConnectionStatus connection={browserConnection} />
                     )}
                     <div className="min-h-0 flex-1">
-                      <App browserMode={Boolean(browserConnection)} />
-                      <NewSessionDialog store={rootStore.newSessionStore} />
+                      {variant === "cake-chat-overlay" ? (
+                        <CakeChatOverlayApp />
+                      ) : (
+                        <>
+                          <App browserMode={Boolean(browserConnection)} />
+                          <NewSessionDialog store={rootStore.newSessionStore} />
+                        </>
+                      )}
                     </div>
                   </div>
                 </IconButtonHotkeyProvider>

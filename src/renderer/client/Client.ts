@@ -13,6 +13,7 @@ import type {
   ScreenCaptureSettings,
   ScreenCaptureSnapshot,
 } from "../../contracts/desktop/screen-capture-data";
+import type { CakeChatOverlaySettings } from "../../contracts/desktop/cake-chat-overlay-data";
 import type {
   ArtifactLineageDetail,
   ArtifactLineageId,
@@ -107,6 +108,12 @@ type SessionContextMenuAction = {
 };
 
 interface ElectronCommands {
+  configureCakeChatOverlay(
+    settings: CakeChatOverlaySettings,
+    options?: ClientCommandOptions,
+  ): Promise<void>;
+  hideCakeChatOverlay(options?: ClientCommandOptions): Promise<void>;
+  showMainWindow(sessionId?: string, options?: ClientCommandOptions): Promise<void>;
   configureScreenCapture(
     settings: ScreenCaptureSettings,
     options?: ClientCommandOptions,

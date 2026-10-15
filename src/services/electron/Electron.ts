@@ -35,6 +35,19 @@ export interface ElectronService {
     connectionId: number,
     request: Payload<"configure-screen-capture">,
   ) => Effect.Effect<Success<"configure-screen-capture">, ElectronError>;
+  readonly configureCakeChatOverlay: (
+    connectionId: number,
+    request: Payload<"configure-cake-chat-overlay">,
+  ) => Effect.Effect<Success<"configure-cake-chat-overlay">, ElectronError>;
+  readonly hideCakeChatOverlay: (
+    connectionId: number,
+    request: Payload<"hide-cake-chat-overlay">,
+  ) => Effect.Effect<Success<"hide-cake-chat-overlay">, ElectronError>;
+  /** Hides the drop-down overlay and brings a main window forward, optionally opening a session. */
+  readonly showMainWindow: (
+    connectionId: number,
+    request: Payload<"show-main-window">,
+  ) => Effect.Effect<Success<"show-main-window">, ElectronError>;
   readonly startScreenCapture: (
     connectionId: number,
     request: Payload<"start-screen-capture">,

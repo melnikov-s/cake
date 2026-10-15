@@ -90,6 +90,8 @@ export const ClientEventsLive = Layer.effect(
           "screen-capture-requested",
           "application-hotkey-input",
           "window-blurred",
+          "session-open-requested",
+          "cake-chat-overlay-shown",
           "browser-entered",
           "browser-state-changed",
           "browser-element-selected",

@@ -13,6 +13,8 @@ import {
   type WebContents,
 } from "electron";
 import { ScreenCaptureWindow } from "./ScreenCaptureWindow";
+import { CakeChatOverlayWindow } from "./CakeChatOverlayWindow";
+import type { CakeWindowFocus } from "./cake-chat-overlay-policy";
 import { shouldAllowNavigation } from "./navigation-policy";
 import { installRendererDiagnostics } from "./renderer-diagnostics";
 import { CAKE_TITLE_BAR_HEIGHT, Electron, type ElectronWindowLifecycle } from "./Electron";
@@ -76,6 +78,57 @@ const makeElectronService = (
     requestCapture: (window) =>
       clientEvents.sendTo(connectionForWindow(window), { type: "screen-capture-requested" }),
   });
+  const overlay: CakeChatOverlayWindow = new CakeChatOverlayWindow({
+    preloadPath: options.preloadPath,
+    rendererPath: options.rendererPath,
+    rendererUrl: process.env.ELECTRON_RENDERER_URL,
+    hidden: process.env.CAKE_ELECTRON_SMOKE === "1",
+    registerShortcuts: process.env.CAKE_ELECTRON_SMOKE !== "1",
+    focus: (): CakeWindowFocus => {
+      const focused = BrowserWindow.getFocusedWindow();
+      if (!focused) return "none";
+      if (windows.has(focused.id)) return "main";
+      return overlay.owns(focused) ? "overlay" : "other";
+    },
+    prepareWindow: (window) => {
+      const nativeId = window.webContents.id;
+      const ownerId = connections.desktop(nativeId);
+      installContentGuards(window);
+      window.on("closed", () => {
+        clientWorkspaces.releaseConnection(ownerId);
+        connections.release(ownerId);
+        if (!applicationQuitting) lifecycle().onWindowClosed(ownerId, undefined, nativeId);
+      });
+    },
+    onShown: (window) => {
+      const connectionId = connections.forNative(window.webContents.id);
+      if (connectionId !== undefined)
+        clientEvents.sendTo(connectionId, { type: "cake-chat-overlay-shown" });
+    },
+    reportShortcutError: (message) => {
+      const target =
+        lastFocusedWindow && !lastFocusedWindow.isDestroyed()
+          ? lastFocusedWindow
+          : [...windows.values()].at(-1);
+      if (target)
+        clientEvents.sendTo(connectionForWindow(target), {
+          type: "notification",
+          title: "Drop-down Cake Chat shortcut unavailable",
+          message,
+          tone: "error",
+        });
+    },
+  });
+  // Focus moves between windows as a blur followed by a focus; settle before deciding whether
+  // the drop-down shortcut belongs to the system or to the focused main window.
+  let overlayFocusSync: ReturnType<typeof setImmediate> | undefined;
+  const syncOverlayShortcut = () => {
+    if (overlayFocusSync) return;
+    overlayFocusSync = setImmediate(() => {
+      overlayFocusSync = undefined;
+      overlay.sync();
+    });
+  };
   const fullscreenSurfaces = new Map<number, Set<string>>();
   const failedRenderers = new Set<number>();
   const fullscreenSurfaceListeners = new Set<
@@ -136,6 +189,49 @@ const makeElectronService = (
       ),
     );
 
+  /** Shared by main windows and the drop-down overlay: no popups, no foreign navigation,
+   * and the native edit/spelling context menu. */
+  const installContentGuards = (window: BrowserWindow) => {
+    window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    window.webContents.on("context-menu", (_event, params) => {
+      if (!params.isEditable && !params.selectionText && !params.misspelledWord && !params.linkURL)
+        return;
+      const template: MenuItemConstructorOptions[] = [];
+      if (params.misspelledWord) {
+        for (const suggestion of params.dictionarySuggestions.slice(0, 5))
+          template.push({
+            label: suggestion,
+            click: () => window.webContents.replaceMisspelling(suggestion),
+          });
+        if (!params.dictionarySuggestions.length)
+          template.push({ label: "No Suggestions", enabled: false });
+        template.push({ type: "separator" });
+      }
+      if (params.linkURL)
+        template.push(
+          { label: "Copy Link", click: () => clipboard.writeText(params.linkURL) },
+          { type: "separator" },
+        );
+      if (params.isEditable || params.selectionText)
+        template.push(
+          { role: "cut", enabled: params.isEditable && params.editFlags.canCut },
+          {
+            role: "copy",
+            enabled: params.isEditable ? params.editFlags.canCopy : Boolean(params.selectionText),
+          },
+          { role: "paste", enabled: params.isEditable && params.editFlags.canPaste },
+          { role: "selectAll" },
+        );
+      Menu.buildFromTemplate(template).popup({ window });
+    });
+    window.webContents.on("will-navigate", (event, url) => {
+      if (
+        !shouldAllowNavigation(window.webContents.getURL(), url, process.env.ELECTRON_RENDERER_URL)
+      )
+        event.preventDefault();
+    });
+  };
+
   const createWindow = () => {
     const browserWindowOptions = {
       width: 1180,
@@ -192,7 +288,7 @@ const makeElectronService = (
     window.on("blur", () => {
       clientEvents.sendTo(connectionForWindow(window), { type: "window-blurred" });
     });
-    window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    installContentGuards(window);
     window.webContents.on("before-input-event", (event, input) => {
       // Native Command+Backquote is claimed by the application-menu accelerator below. Keep this
       // fallback for Backquote input delivered directly to Chromium and for modifier variants.
@@ -210,43 +306,6 @@ const makeElectronService = (
         repeat: input.isAutoRepeat,
         isComposing: false,
       });
-    });
-    window.webContents.on("context-menu", (_event, params) => {
-      if (!params.isEditable && !params.selectionText && !params.misspelledWord && !params.linkURL)
-        return;
-      const template: MenuItemConstructorOptions[] = [];
-      if (params.misspelledWord) {
-        for (const suggestion of params.dictionarySuggestions.slice(0, 5))
-          template.push({
-            label: suggestion,
-            click: () => window.webContents.replaceMisspelling(suggestion),
-          });
-        if (!params.dictionarySuggestions.length)
-          template.push({ label: "No Suggestions", enabled: false });
-        template.push({ type: "separator" });
-      }
-      if (params.linkURL)
-        template.push(
-          { label: "Copy Link", click: () => clipboard.writeText(params.linkURL) },
-          { type: "separator" },
-        );
-      if (params.isEditable || params.selectionText)
-        template.push(
-          { role: "cut", enabled: params.isEditable && params.editFlags.canCut },
-          {
-            role: "copy",
-            enabled: params.isEditable ? params.editFlags.canCopy : Boolean(params.selectionText),
-          },
-          { role: "paste", enabled: params.isEditable && params.editFlags.canPaste },
-          { role: "selectAll" },
-        );
-      Menu.buildFromTemplate(template).popup({ window });
-    });
-    window.webContents.on("will-navigate", (event, url) => {
-      if (
-        !shouldAllowNavigation(window.webContents.getURL(), url, process.env.ELECTRON_RENDERER_URL)
-      )
-        event.preventDefault();
     });
     window.webContents.on("render-process-gone", () => {
       fullscreenSurfaces.delete(ownerId);
@@ -273,6 +332,10 @@ const makeElectronService = (
       failedRenderers.delete(ownerId);
       if (applicationQuitting) return;
       lifecycle().onWindowClosed(ownerId, workingDirectory, nativeId);
+      // macOS keeps a window-less Cake running, so the drop-down stays available from the
+      // shortcut. Elsewhere a hidden overlay must not keep the process alive after the last
+      // main window closes; it is recreated on demand if sharing keeps Cake running.
+      if (windows.size === 0 && process.platform !== "darwin") overlay.destroyWindow();
     });
     void loadRenderer(window);
     return window;
@@ -353,12 +416,21 @@ const makeElectronService = (
               },
             },
             {
+              label: "Drop-down Cake Chat",
+              click: () => overlay.toggle(),
+            },
+            {
               label: "Toggle Terminal",
               // macOS handles Command+Backquote in the application menu before Chromium's
               // `before-input-event`. Keep a native accelerator here so Cake receives it.
               ...(process.platform === "darwin" ? { accelerator: "CommandOrControl+`" } : null),
               click: (_menuItem, _window, event) => {
                 const focused = BrowserWindow.getFocusedWindow();
+                // Inside the drop-down overlay, Command+Backquote puts the overlay away.
+                if (focused && overlay.owns(focused)) {
+                  overlay.hide();
+                  return;
+                }
                 const target =
                   focused && windows.has(focused.id) ? focused : [...windows.values()].at(-1);
                 if (!target) return;
@@ -400,6 +472,60 @@ const makeElectronService = (
           if (!owner || !windows.has(owner.id))
             throw new Error("Screen capture settings require a Cake window");
           capture.configure(owner, settings);
+          return {};
+        },
+        catch: electronError,
+      }),
+    ),
+    configureCakeChatOverlay: Effect.fn("Electron.configureCakeChatOverlay")(
+      (connectionId, settings) =>
+        Effect.try({
+          try: () => {
+            requireRendererConnection(connectionId);
+            overlay.configure(settings.shortcut);
+            return {};
+          },
+          catch: electronError,
+        }),
+    ),
+    hideCakeChatOverlay: Effect.fn("Electron.hideCakeChatOverlay")((connectionId) =>
+      Effect.try({
+        try: () => {
+          requireRendererConnection(connectionId);
+          overlay.hide();
+          return {};
+        },
+        catch: electronError,
+      }),
+    ),
+    showMainWindow: Effect.fn("Electron.showMainWindow")((connectionId, request) =>
+      Effect.try({
+        try: () => {
+          requireRendererConnection(connectionId);
+          if (stopped) throw new Error("Cake is shutting down");
+          overlay.hide();
+          const window = windows.values().next().value ?? createWindow();
+          if (process.env.CAKE_ELECTRON_SMOKE !== "1") {
+            // The overlay is a non-activating panel, so Cake may not be the active app yet.
+            if (process.platform === "darwin") options.application.focus({ steal: true });
+            if (window.isMinimized()) window.restore();
+            window.show();
+            window.focus();
+          }
+          const sessionId = request.sessionId;
+          if (sessionId) {
+            // A newly created window subscribes once its renderer starts; retry briefly.
+            let attempts = 0;
+            const deliver = () => {
+              if (window.isDestroyed()) return;
+              const delivered = clientEvents.sendTo(connectionForWindow(window), {
+                type: "session-open-requested",
+                sessionId,
+              });
+              if (!delivered && ++attempts < 60) setTimeout(deliver, 250);
+            };
+            deliver();
+          }
           return {};
         },
         catch: electronError,
@@ -726,6 +852,8 @@ const makeElectronService = (
           options.application.dock.hide();
         configureApplicationBranding();
         options.application.on("activate", onActivate);
+        options.application.on("browser-window-focus", syncOverlayShortcut);
+        options.application.on("browser-window-blur", syncOverlayShortcut);
         createWindow();
       }),
     ),
@@ -751,7 +879,12 @@ const makeElectronService = (
         stopped = true;
         applicationQuitting = true;
         capture.stop();
+        overlay.stop();
+        if (overlayFocusSync) clearImmediate(overlayFocusSync);
+        overlayFocusSync = undefined;
         options.application.removeListener("activate", onActivate);
+        options.application.removeListener("browser-window-focus", syncOverlayShortcut);
+        options.application.removeListener("browser-window-blur", syncOverlayShortcut);
         for (const menu of openSessionContextMenus) menu.closePopup();
         openSessionContextMenus.clear();
         // The initial Electron quit is prevented so Effect can finalize first. Destroy the
