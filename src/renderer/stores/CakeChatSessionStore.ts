@@ -149,17 +149,6 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     });
   }
 
-  /** Opens a side chat draft that branches from one whole Cake Chat message. */
-  branchSideChat(message: { readonly messageId: string; readonly entryId?: string }) {
-    this.messageCommentsStore.prepareMessageDraft(message);
-    this.conversationSessionStore.sideChatStore.open({
-      key: `message-draft:${this.sessionId}`,
-      title: "Side chat",
-      eyebrow: () => "Message",
-      chatStore: this.messageCommentsStore.draftChatStore,
-    });
-  }
-
   openSideChat(threadId: string) {
     const thread = this.sideChatThreads.find((candidate) => candidate.id === threadId);
     const chatStore = this.sideChats.chatStore(threadId);

@@ -4,6 +4,7 @@ import type {
   Attachment,
   UiPart,
 } from "../../contracts/conversations/session-contract";
+import { ANNOTATIONS_INPUT_NAME } from "../../contracts/conversations/task-input";
 
 interface PendingUserMessage {
   id: string;
@@ -286,8 +287,9 @@ export class OptimisticUserMessagesStore extends Store<OptimisticUserMessagesSto
       const ids = annotation.annotations.map((item: Annotation) => item.id).join("\u0000");
       return canonical.filter(
         (part) =>
-          part.kind === "annotation" &&
-          part.annotations.map((item) => item.id).join("\u0000") === ids,
+          (part.kind === "annotation" &&
+            part.annotations.map((item) => item.id).join("\u0000") === ids) ||
+          isInputReference(part, ANNOTATIONS_INPUT_NAME),
       ).length;
     }
     const attachment = parts.find(
@@ -296,9 +298,10 @@ export class OptimisticUserMessagesStore extends Store<OptimisticUserMessagesSto
     return attachment?.data
       ? canonical.filter(
           (part) =>
-            part.kind === "attachment" &&
-            part.attachmentKind === attachment.attachmentKind &&
-            part.data === attachment.data,
+            (part.kind === "attachment" &&
+              part.attachmentKind === attachment.attachmentKind &&
+              part.data === attachment.data) ||
+            isInputReference(part, attachment.name),
         ).length
       : 0;
   }
@@ -328,3 +331,8 @@ export class OptimisticUserMessagesStore extends Store<OptimisticUserMessagesSto
     );
   }
 }
+
+/** Cake Chat admits annotations and images as opaque input references, so a
+ * text-less message reappears canonically as a named reference, not its content. */
+const isInputReference = (part: UiPart, name: string) =>
+  part.kind === "attachment" && part.inputReference?.name === name;

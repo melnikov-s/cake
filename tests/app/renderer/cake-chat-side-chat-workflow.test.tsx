@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { observer } from "r-state-tree/react";
 import { VirtuosoMockContext } from "react-virtuoso";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-data";
 import type {
   CakeChatSideChatStartInput,
@@ -30,10 +30,7 @@ const Surface = observer(function Surface({ chat }: { chat: CakeChatSessionStore
       >
         <Chat
           store={chat.conversationSessionStore.chatStore}
-          transcriptBehavior={{
-            messageComments: chat.messageCommentsStore,
-            onBranchSideChat: (message) => chat.branchSideChat(message),
-          }}
+          transcriptBehavior={{ messageComments: chat.messageCommentsStore }}
           embedded
           composerFocusEnabled={false}
         />
@@ -58,9 +55,21 @@ const snapshot = (sessionId: string, parts: unknown[]) => ({
   tree: [],
 });
 
+beforeEach(() => {
+  // The opened thread highlights its passage, which measures the text range.
+  const rect = { top: 80, right: 220, bottom: 100, left: 120, width: 100, height: 20 } as DOMRect;
+  Object.defineProperty(Range.prototype, "getBoundingClientRect", {
+    configurable: true,
+    value: () => rect,
+  });
+  Object.defineProperty(Range.prototype, "getClientRects", {
+    configurable: true,
+    value: () => [rect],
+  });
+});
 afterEach(cleanup);
 
-it("branches a side chat from a Cake Chat response and returns to the main conversation", async () => {
+it("branches a side chat from a Cake Chat selection and returns to the main conversation", async () => {
   const thread: DiscussionThread = {
     id: "thread-1",
     workingDirectory: "/home",
@@ -71,10 +80,12 @@ it("branches a side chat from a Cake Chat response and returns to the main conve
       view: "message",
       start: { diffLine: 0 },
       end: { diffLine: 0 },
-      selectedText: "",
-      contextBefore: "",
-      contextAfter: "",
+      selectedText: "first task",
+      contextBefore: "The ",
+      contextAfter: " is larger.",
       diff: "",
+      startOffset: 4,
+      endOffset: 14,
       messageId: "assistant-1",
       entryId: "entry-1",
     },
@@ -121,8 +132,26 @@ it("branches a side chat from a Cake Chat response and returns to the main conve
   );
   const user = userEvent.setup();
 
-  await user.click(await screen.findByRole("button", { name: "Discuss response in side chat" }));
-  const draft = await screen.findByRole("combobox", { name: "Message about this message" });
+  // Establish the selection draft the transcript context menu opens; native
+  // text-selection initiation is covered by the transcript tests.
+  act(() => {
+    chat.messageCommentsStore.prepareDraft({
+      messageId: "assistant-1",
+      entryId: "entry-1",
+      selectedText: "first task",
+      startOffset: 4,
+      endOffset: 14,
+      contextBefore: "The ",
+      contextAfter: " is larger.",
+    });
+    chat.conversationSessionStore.sideChatStore.open({
+      key: "selection-draft",
+      title: "Side chat",
+      eyebrow: () => "Selection",
+      chatStore: chat.messageCommentsStore.draftChatStore,
+    });
+  });
+  const draft = await screen.findByRole("combobox", { name: "Message about selected text" });
   await user.type(draft, "Why is it larger?{Enter}");
 
   await waitFor(() => expect(startSideChat).toHaveBeenCalledTimes(1));
@@ -130,7 +159,6 @@ it("branches a side chat from a Cake Chat response and returns to the main conve
   expect(input.text).toBe("Why is it larger?");
   expect(input.model).toEqual({ provider: "anthropic", id: "claude" });
   expect(input.thinkingLevel).toBe("high");
-  // A whole-message branch has no passage offsets to highlight.
   expect(input.anchor).toEqual(thread.anchor);
 
   const sidecarParts = [
@@ -157,7 +185,11 @@ it("branches a side chat from a Cake Chat response and returns to the main conve
   await waitFor(() =>
     expect(chat.conversationSessionStore.sideChatStore.target?.key).toBe("discussion:thread-1"),
   );
-  expect(chat.sideChats.chatStore("thread-1")?.parts.map((part) => part.id)).toEqual(["q", "a"]);
+  expect(chat.sideChats.chatStore("thread-1")?.parts.map((part) => part.id)).toEqual([
+    "anchor:thread-1",
+    "q",
+    "a",
+  ]);
   expect(screen.getByRole("combobox", { name: "Reply to selection side chat" })).toBeDefined();
 
   // Closing returns to the main conversation; the header menu reopens the side chat.
@@ -165,7 +197,7 @@ it("branches a side chat from a Cake Chat response and returns to the main conve
   expect(chat.conversationSessionStore.sideChatStore.target).toBeUndefined();
   expect(screen.getByRole("combobox", { name: "Message Cake Chat" })).toBeDefined();
   await user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
-  await user.click(await screen.findByRole("button", { name: /Why is it larger\?/ }));
+  await user.click(await screen.findByRole("button", { name: /first task/ }));
   expect(chat.conversationSessionStore.sideChatStore.target?.key).toBe("discussion:thread-1");
   view.unmount();
 });

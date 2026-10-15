@@ -19,7 +19,6 @@ import { FullscreenMessage } from "@/components/fullscreen-message";
 import { FullscreenButton } from "@/components/ui/fullscreen-button";
 import { SessionMessage } from "@/components/ui/session-message";
 import { IconButton } from "@/components/ui/icon-button";
-import { MessageReferenceButton } from "./ui/message-reference-button";
 import {
   ChatIcon,
   CheckIcon,
@@ -254,14 +253,12 @@ export function captureTranscriptSelection(
 }
 
 export interface ChatTranscriptBehavior {
-  /** Only addressable Project Sessions expose exact Pi message links. */
+  /** Addressable session identity used for exact attachment-reference links. */
   messageReferenceSessionId?: string;
   /** Project root used to present workspace files without machine-specific prefixes. */
   workspacePath?: string;
   onFork?(entryId: string): void;
   onTree?(entryId: string): void;
-  /** Branches a side chat from one whole assistant message. */
-  onBranchSideChat?(message: { readonly messageId: string; readonly entryId?: string }): void;
   onOpenReviewRun?(threadId?: string): void;
   /** Opens a structured workspace source location in Cake's embedded VS Code IDE. */
   openSourceLocation?(location: SourceLocation): void;
@@ -484,12 +481,6 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
           >
             {copied ? <CheckIcon /> : <CopyIcon />}
           </IconButton>
-          {part.entryId && behavior.messageReferenceSessionId && (
-            <MessageReferenceButton
-              sessionId={behavior.messageReferenceSessionId}
-              entryId={part.entryId}
-            />
-          )}
           {part.entryId && behavior.onFork && (
             <IconButton
               tooltip="Fork with full context"
@@ -497,19 +488,6 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
               onClick={() => behavior.onFork!(part.entryId!)}
             >
               <ForkIcon />
-            </IconButton>
-          )}
-          {behavior.onBranchSideChat && (
-            <IconButton
-              tooltip="Discuss in side chat"
-              ariaLabel="Discuss response in side chat"
-              onClick={() => {
-                const message = { messageId: part.id };
-                if (part.entryId) Object.assign(message, { entryId: part.entryId });
-                behavior.onBranchSideChat!(message);
-              }}
-            >
-              <ChatIcon size={16} />
             </IconButton>
           )}
           {part.entryId && behavior.onTree && (

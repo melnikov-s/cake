@@ -1016,10 +1016,6 @@ const inlineLinks: VisualCaptureScenario = {
       await page.getByRole("link", { name: "this request", exact: true }).click();
       const selected = page.locator('[data-slot="transcript-item"][aria-current="true"]');
       await expect(selected).toContainText("How should agents capture Cake UI changes?");
-      await selected.hover();
-      await expect(
-        selected.getByRole("button", { name: "Copy message link", exact: true }),
-      ).toBeVisible();
       return;
     }
     if (state === "attachment") {
