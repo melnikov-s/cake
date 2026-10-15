@@ -888,6 +888,101 @@ describe("AppControlBridge", () => {
     );
   });
 
+  describe("cross-session receipts", () => {
+    const otherSession = {
+      workingDirectory: "/projects/cake",
+      projectName: "Cake",
+      sessionId: "session-2",
+      title: "Sibling session",
+      modifiedAt: "2026-09-04T12:00:00.000Z",
+      messageCount: 2,
+      resolved: false,
+      draft: false,
+    };
+    const coordinationHost = (showAgentAction: () => void) =>
+      createHost({
+        showAgentAction,
+        sessions: () => [otherSession],
+        projects: () => [
+          {
+            path: "/projects/cake",
+            name: "Cake",
+            addedAt: "2026-03-01T12:00:00.000Z",
+            lastOpenedAt: "2026-03-01T12:00:00.000Z",
+          },
+        ],
+        create: async () => ({ workspacePath: "/projects/cake", sessionId: "session-new" }),
+        sessionActivity: () => "running",
+        sendMessage: async () => "turn-1",
+        abort: async () => undefined,
+      });
+    const createSession = {
+      name: "sessions.create",
+      arguments: { workspacePath: "/projects/cake", name: "New work", initialPrompt: "Go" },
+    };
+    const sendToSibling = {
+      name: "sessions.send",
+      arguments: { sessionId: "session-2", text: "Status?", delivery: "queue" },
+    };
+
+    it("does not announce Cake Chat coordinating other sessions", async () => {
+      const showAgentAction = vi.fn();
+      const bridge = new AppControlBridge(coordinationHost(showAgentAction));
+      const source = { kind: "cake-chat" as const, sessionId: "chat-1", title: "Cake Chat" };
+
+      await expect(bridge.invoke(createSession, source)).resolves.toMatchObject({ ok: true });
+      await expect(bridge.invoke(sendToSibling, source)).resolves.toMatchObject({ ok: true });
+      await expect(
+        bridge.invoke({ name: "sessions.abort", arguments: { sessionId: "session-2" } }, source),
+      ).resolves.toMatchObject({ ok: true });
+
+      expect(showAgentAction).not.toHaveBeenCalled();
+    });
+
+    it("still announces Cake Chat actions on itself and on app settings", async () => {
+      const showAgentAction = vi.fn();
+      const bridge = new AppControlBridge(coordinationHost(showAgentAction));
+      const source = { kind: "cake-chat" as const, sessionId: "chat-1", title: "Cake Chat" };
+
+      await bridge.invoke(
+        { name: "agent.action", arguments: { action: "set-model", detail: "openai/gpt-5" } },
+        source,
+      );
+
+      expect(showAgentAction).toHaveBeenCalledWith(
+        expect.objectContaining({ source, targetSessionId: "chat-1", targetKind: "cake-chat" }),
+      );
+    });
+
+    it("announces a Project Session creating or messaging a sibling session", async () => {
+      const showAgentAction = vi.fn();
+      const bridge = new AppControlBridge(coordinationHost(showAgentAction));
+      const source = {
+        kind: "project-session" as const,
+        sessionId: "session-1",
+        title: "Planner",
+      };
+
+      await bridge.invoke(createSession, source);
+      await bridge.invoke(sendToSibling, source);
+
+      expect(showAgentAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source,
+          message: "Created and started “New work”",
+          targetSessionId: "session-new",
+        }),
+      );
+      expect(showAgentAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source,
+          message: expect.stringContaining("“Sibling session”"),
+          targetSessionId: "session-2",
+        }),
+      );
+    });
+  });
+
   it("creates and starts a session with an exact model configuration in a managed worktree", async () => {
     const managedWorktree = {
       projectPath: "/projects/cake",

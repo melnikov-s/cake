@@ -5,11 +5,42 @@ import type {
   AgentActionReceipt,
 } from "./app-control-data";
 
+type SuccessfulResult = Extract<AppControlResult, { ok: true }>;
+
+/** Commands whose receipt announces an effect on a session other than the caller. */
+const crossSessionCommands = new Set<SuccessfulResult["command"]>([
+  "sessions.open",
+  "sessions.create",
+  "sessions.create-draft",
+  "sessions.send",
+  "sessions.reply",
+  "sessions.close-thread",
+  "sessions.compact",
+  "sessions.schedule",
+  "sessions.cancel-scheduled",
+  "sessions.abort",
+  "sessions.rename",
+  "sessions.set-labels",
+]);
+
+/**
+ * Cake Chat exists to coordinate other sessions, so its effects on them are
+ * expected rather than noteworthy. Receipts for its own session and for app
+ * settings still apply.
+ */
+function isCakeChatCoordination(result: SuccessfulResult, source: AgentControlSource) {
+  if (source.kind !== "cake-chat") return false;
+  if (result.command === "sessions.resolve")
+    return !result.targets.some((target) => target.sessionId === source.sessionId);
+  return crossSessionCommands.has(result.command);
+}
+
 export function agentActionReceipt(
   host: AppControlHost,
-  result: Extract<AppControlResult, { ok: true }>,
+  result: SuccessfulResult,
   source: AgentControlSource,
 ): AgentActionReceipt | undefined {
+  if (isCakeChatCoordination(result, source)) return undefined;
   const projectTitle = (sessionId: string) =>
     host.state.sessions().find((session) => session.sessionId === sessionId)?.title ?? "Session";
   const projectTarget = (sessionId: string) => ({
