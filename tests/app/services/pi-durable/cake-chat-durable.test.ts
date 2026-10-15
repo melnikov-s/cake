@@ -17,7 +17,12 @@ import {
   durableInputPresentation,
   markDurableInputSteering,
 } from "../../../../src/services/pi-durable/durable-input-presentation";
-import { researchOrigin, researchMarkdown } from "../../../fixtures/subagent-report";
+import {
+  investigatorOrigin,
+  researchOrigin,
+  researchMarkdown,
+} from "../../../fixtures/subagent-report";
+import { subagentCompletionMessage } from "../../../../src/services/pi/runtime/cake-session-runtime";
 import { durableAnswer, durableModels } from "../../../fixtures/durable-chat";
 
 const cleanup: Array<() => Promise<void>> = [];
@@ -103,6 +108,43 @@ it("projects Cake-authored report provenance from originals without classifying 
   expect((await readDurableOriginalPage(f.engine.root)).parts).toEqual(page.parts);
   expect(JSON.stringify(f.requests)).toContain('"cost":0.25'.replaceAll('"', '\\"'));
 });
+
+it.each(["complete", "error", "aborted"] as const)(
+  "retains the full assignment, provenance and %s findings through durable delivery and replay",
+  async (status) => {
+    const f = await fixture();
+    const origin = { ...investigatorOrigin, status };
+    const findings =
+      status === "complete"
+        ? "Verified the session's reported checks."
+        : status === "error"
+          ? "Permission denied reading the transcript."
+          : "Investigation cancelled with no verified findings.";
+    const text = subagentCompletionMessage({
+      handleId: origin.handleId,
+      task: origin.task,
+      status,
+      resolvedModel: { ...origin.resolvedModel, fallbacks: [] },
+      fastMode: false,
+      streaming: false,
+      parts:
+        status === "complete"
+          ? [{ id: "answer", kind: "text", role: "assistant", text: findings, status: "complete" }]
+          : [],
+      error: findings,
+    });
+    await f.send(durableInputText(text, [], true, false, origin), "completion");
+    const page = await readDurableOriginalPage(f.engine.root);
+    const report = page.parts.find((part) => part.kind === "text" && part.subagentReport);
+    expect(report).toMatchObject({ text, subagentReport: origin });
+    expect((await readDurableOriginalPage(f.engine.root)).parts).toEqual(page.parts);
+    const context = JSON.stringify(f.requests);
+    expect(context).toContain(origin.task.slice(-150));
+    expect(context).toContain(findings);
+    expect(context).toContain(origin.handleId);
+    expect(context).toContain("Worker provenance:");
+  },
+);
 
 it("refreshes independent runs, retains zoom originals through tool rounds, and keeps instructions outside memory", async () => {
   const original = `ORIGINAL_DETAIL ${"verbatim words ".repeat(100)}`;

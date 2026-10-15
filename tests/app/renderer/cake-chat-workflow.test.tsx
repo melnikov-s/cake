@@ -64,7 +64,7 @@ it("renders authoritative live and replayed reports as Markdown subagent respons
     id: "report",
     kind: "text",
     role: "user",
-    text: researchMarkdown,
+    text: `Background subagent complete: ${researchOrigin.task}\n\n${researchMarkdown}`,
     status: "complete",
     subagentReport: researchOrigin,
     deliveryState: "queued",
@@ -116,9 +116,24 @@ it("renders authoritative live and replayed reports as Markdown subagent respons
     expect(chat.conversationSessionStore.chatStore.parts).toHaveLength(2);
     const response = view.container.querySelector('[data-slot="subagent-report"]')!;
     expect(response).not.toBeNull();
-    expect(response.getAttribute("aria-label")).toBe(`Subagent report: ${researchOrigin.task}`);
-    expect(response.querySelector('[data-slot="message-label"]')?.textContent).toBe(
-      researchOrigin.task,
+    expect(response.getAttribute("aria-label")).toBe("Subagent complete");
+    expect(
+      within(response as HTMLElement).getByRole("heading", { name: "Subagent complete" }),
+    ).toBeDefined();
+    const details = within(response as HTMLElement).getByRole("button", {
+      name: "Assignment details",
+    });
+    expect(details.getAttribute("aria-expanded")).toBe("false");
+    const assignment = document.getElementById(details.getAttribute("aria-controls")!)!;
+    expect(assignment.hasAttribute("hidden")).toBe(true);
+    await userEvent.setup().click(details);
+    expect(details.getAttribute("aria-expanded")).toBe("true");
+    expect(assignment.textContent).toContain(researchOrigin.task);
+    expect(assignment.textContent).toContain(researchOrigin.handleId);
+    await userEvent.setup().click(details);
+    expect(details.getAttribute("aria-expanded")).toBe("false");
+    expect(response.querySelector('[data-slot="message-content"]')?.textContent).toMatch(
+      /^Game-development workflow comparison/,
     );
     expect(
       within(response as HTMLElement).getByRole("heading", {
@@ -152,6 +167,7 @@ it("renders authoritative live and replayed reports as Markdown subagent respons
   await assertReport();
   expect(view.container.querySelectorAll('[data-slot="subagent-report"]')).toHaveLength(1);
   expect(chat.model.parts.find((part) => part.partKey === "report")?.value).toMatchObject({
+    text: report.text,
     subagentReport: researchOrigin,
   });
   view.unmount();

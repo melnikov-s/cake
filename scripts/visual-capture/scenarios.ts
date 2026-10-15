@@ -25,7 +25,7 @@ import {
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { createModels } from "@earendil-works/pi-durable-ai";
 import { durableInputText } from "../../src/services/pi-durable/durable-input-presentation.ts";
-import { researchOrigin, researchMarkdown } from "../../tests/fixtures/subagent-report.ts";
+import { investigatorOrigin, investigatorMarkdown } from "../../tests/fixtures/subagent-report.ts";
 import { expect, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import type { VisualCaptureTheme } from "./arguments.ts";
 import type { CakeArtifactV1 } from "../../src/contracts/artifacts/artifact-contract.ts";
@@ -1656,7 +1656,13 @@ const subagentReportsScenario: VisualCaptureScenario = {
   name: "subagent-reports",
   description:
     "Cake Chat failed start and attributed safe Markdown research report from durable originals",
-  states: ["failed-start", "completed-report"],
+  states: [
+    "failed-start",
+    "completed-report",
+    "assignment-details",
+    "failed-report",
+    "aborted-report",
+  ],
   async seed(paths, theme) {
     await cakeChatScenario.seed(paths, theme);
     const storage = await openNodeSqliteStorage(
@@ -1719,20 +1725,48 @@ const subagentReportsScenario: VisualCaptureScenario = {
           ],
           data: { diagnostics: [] },
         });
-        await tx.appendEntry(UserEntry, root.id, {
-          model: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "text",
-                  text: durableInputText(researchMarkdown, [], true, false, researchOrigin),
-                },
-              ],
-              timestamp: 6,
-            },
+        for (const [status, findings] of [
+          ["complete", investigatorMarkdown],
+          [
+            "error",
+            "Permission denied reading the requested transcript. No findings could be verified.",
           ],
-        });
+          [
+            "aborted",
+            "Investigation cancelled. Partial findings: the session reported passing checks; publication status was not verified.",
+          ],
+        ] as const) {
+          const origin = {
+            ...investigatorOrigin,
+            handleId:
+              status === "complete"
+                ? investigatorOrigin.handleId
+                : status === "error"
+                  ? "10000000-0000-4000-8000-000000000003"
+                  : "10000000-0000-4000-8000-000000000004",
+            status,
+          };
+          await tx.appendEntry(UserEntry, root.id, {
+            model: [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: durableInputText(
+                      `Background subagent ${status}: ${origin.task.slice(0, 500)}\n\n${findings}`,
+                      [],
+                      true,
+                      false,
+                      origin,
+                    ),
+                  },
+                ],
+                timestamp: 6,
+              },
+            ],
+          });
+        }
       }, BACKGROUND_CONTEXT);
     } finally {
       await harness.close(BACKGROUND_CONTEXT);
@@ -1740,12 +1774,29 @@ const subagentReportsScenario: VisualCaptureScenario = {
     }
   },
   async prepare(page, state) {
-    await cakeChatScenario.prepare(page, "default");
-    const report = page.locator('[data-slot="subagent-report"]');
-    await expect(
-      report.getByRole("heading", { name: "Game-development workflow comparison" }),
-    ).toBeVisible();
-    await expect(report.locator("code")).toContainText("new THREE.Scene");
+    await assistantMarkdownCode.prepare(page, "default");
+    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+    await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText("Cake Chat");
+    const heading =
+      state === "failed-report"
+        ? "Subagent failed"
+        : state === "aborted-report"
+          ? "Subagent aborted"
+          : "Subagent complete";
+    const report = page.getByRole("article", { name: heading, exact: true });
+    await expect(report.getByRole("heading", { name: heading, exact: true })).toBeVisible();
+    const assignment = report.getByRole("button", { name: "Assignment details" });
+    await expect(assignment).toHaveAttribute("aria-expanded", "false");
+    await assignment.focus();
+    await assignment.press("Enter");
+    await expect(assignment).toHaveAttribute("aria-expanded", "true");
+    await expect(report.getByText(investigatorOrigin.task, { exact: true })).toBeVisible();
+    if (state !== "assignment-details") {
+      await assignment.press("Space");
+      await expect(assignment).toHaveAttribute("aria-expanded", "false");
+      await expect(report.getByText(investigatorOrigin.task, { exact: true })).toBeHidden();
+      await assignment.blur();
+    }
     if (state === "failed-start") {
       const log = page.locator('[data-slot="activity-group"]').last();
       await log.locator(":scope > summary").click();
@@ -1757,7 +1808,18 @@ const subagentReportsScenario: VisualCaptureScenario = {
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.mouse.move(1, 1);
   },
-  region: (page) => page.locator("body"),
+  region: (page, state) =>
+    state === "failed-start"
+      ? page.locator("body")
+      : page.getByRole("article", {
+          name:
+            state === "failed-report"
+              ? "Subagent failed"
+              : state === "aborted-report"
+                ? "Subagent aborted"
+                : "Subagent complete",
+          exact: true,
+        }),
 };
 
 const cakeChatArtifactScenario: VisualCaptureScenario = {

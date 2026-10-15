@@ -203,9 +203,23 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
     const report = page
       .locator('[data-slot="subagent-report"]')
       .filter({ has: page.getByRole("heading", { name: "Game-development workflow comparison" }) });
-    await expect(report.locator('[data-slot="message-label"]')).toHaveText(
-      "Compare Godot and Three.js game-development workflows",
-      { timeout: 20_000 },
+    await expect(
+      report.getByRole("heading", { name: "Subagent complete", exact: true }),
+    ).toBeVisible({ timeout: 20_000 });
+    const assignment = report.getByRole("button", { name: "Assignment details" });
+    await expect(assignment).toHaveAttribute("aria-expanded", "false");
+    const details = report.locator("[hidden]");
+    await expect(details).toHaveText(/Compare Godot and Three.js game-development workflows/);
+    await assignment.focus();
+    await assignment.press("Enter");
+    await expect(assignment).toHaveAttribute("aria-expanded", "true");
+    await expect(
+      report.getByText("Compare Godot and Three.js game-development workflows", { exact: true }),
+    ).toBeVisible();
+    await assignment.press("Space");
+    await expect(assignment).toHaveAttribute("aria-expanded", "false");
+    await expect(report.locator('[data-slot="message-content"]')).toHaveText(
+      /^Game-development workflow comparison/,
     );
     await expect(report.getByRole("listitem")).toHaveCount(2);
     await expect(report.locator("code")).toContainText("new THREE.Scene");
@@ -222,6 +236,14 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
       report.getByRole("heading", { name: "Game-development workflow comparison" }),
     ).toBeVisible({ timeout: 20_000 });
     await expect(report).toHaveCount(1);
+    await expect(assignment).toHaveAttribute("aria-expanded", "false");
+    await expect(report.locator('[data-slot="message-content"]')).toHaveText(
+      /^Game-development workflow comparison/,
+    );
+    const coordinatorContext = JSON.stringify(coordinatorRequests);
+    expect(coordinatorContext).toContain("Compare Godot and Three.js game-development workflows");
+    expect(coordinatorContext).toContain("Worker provenance:");
+    expect(coordinatorContext).toContain("Game-development workflow comparison");
     const workerContext = JSON.stringify(workerRequests);
     expect(workerContext).toContain("PROJECT_CONTEXT_SENTINEL");
     expect(workerContext).toContain("PRIVATE_TOOL_OUTPUT");
