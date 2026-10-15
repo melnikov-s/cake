@@ -176,7 +176,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
       sessionId: target.sessionId,
       // Pin the complete Cake Chat toolset instead of relying on Pi's default-tool
       // selection, which does not necessarily activate extension tools.
-      tools: ["cake", "zoom", "date"],
+      tools: ["cake", "zoom", "date", "read", "bash", "mcp"],
       allowedCakeOperations: CAKE_CHAT_OPERATIONS,
       cakeChatInstructions: {
         get: (signal) => run(getCakeChatInstructions(), { signal }),

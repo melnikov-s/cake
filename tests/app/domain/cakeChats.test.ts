@@ -142,7 +142,7 @@ describe("permanent Cake Chat", () => {
           target: { sessionId: CAKE_CHAT_SESSION_ID, tools: [] },
           newSession: true,
         });
-        expect(options.runtime.tools).toEqual(["cake", "zoom", "date"]);
+        expect(options.runtime.tools).toEqual(["cake", "zoom", "date", "read", "bash", "mcp"]);
         expect(options.runtime.allowedCakeOperations).toContain("sessions.create");
         expect(options.runtime.allowedCakeOperations).toContain("settings.cake-chat.get");
         expect(options.runtime.allowedCakeOperations).toContain("settings.cake-chat.update");

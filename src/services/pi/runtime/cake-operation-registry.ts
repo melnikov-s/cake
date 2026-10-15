@@ -15,6 +15,11 @@ import {
   type JsonObject,
   type JsonValue,
 } from "../../../contracts/serialization/json-contract";
+import {
+  cakeOperationAliasHelp,
+  cakeOperationExpectedFields,
+  normalizeCakeOperationInput,
+} from "./cake-operation-input";
 
 const CAKE_OPERATION_PROTOCOL = "cake.operation/v1" as const;
 const MAX_CAKE_OPERATION_RESULT_BYTES = 1_048_576;
@@ -153,6 +158,15 @@ function levenshtein(left: string, right: string) {
   return row[right.length]!;
 }
 
+function inputJson(operation: CakeOperationDefinition) {
+  return operation.inputJsonSchema ?? schemaJson(operation.inputSchema);
+}
+
+function aliasHelp(operation: CakeOperationDefinition) {
+  const help = cakeOperationAliasHelp(inputJson(operation));
+  return help ? [`Aliases: ${help}`] : [];
+}
+
 export class CakeOperationRegistry {
   private readonly operations = new Map<string, CakeOperationDefinition>();
 
@@ -216,7 +230,8 @@ export class CakeOperationRegistry {
     return [
       `${operation.command} — ${operation.summary}`,
       ...(operation.guidance ?? []).map((line) => `Guidance: ${line}`),
-      `Input schema:\n${JSON.stringify(operation.inputJsonSchema ?? schemaJson(operation.inputSchema))}`,
+      `Input schema:\n${JSON.stringify(inputJson(operation))}`,
+      ...aliasHelp(operation),
       `Result: ${operation.result}`,
       ...structuredOutputHelp(operation),
       ...(operation.limitations ?? []).map((line) => `Limitation: ${line}`),
@@ -245,7 +260,8 @@ export class CakeOperationRegistry {
       ...guidance.map((line) => `- ${line}`),
       ...operations.flatMap((operation) => [
         `\n${operation.command} — ${operation.summary}`,
-        `Input schema:\n${JSON.stringify(operation.inputJsonSchema ?? schemaJson(operation.inputSchema), null, 2)}`,
+        `Input schema:\n${JSON.stringify(inputJson(operation), null, 2)}`,
+        ...aliasHelp(operation),
         `Result: ${operation.result}`,
         ...structuredOutputHelp(operation),
         ...(operation.limitations ?? []).map((line) => `Limitation: ${line}`),
@@ -295,9 +311,7 @@ export class CakeOperationRegistry {
     const operation = this.operations.get(command);
     if (!operation || operation.available?.() === false)
       return helpResult(command, this.unknown(command));
-    const input = Schema.decodeUnknownSync(operation.inputSchema, { onExcessProperty: "error" })(
-      envelope.input ?? {},
-    );
+    const input = decodeOperationInput(operation, envelope.input ?? {});
     const executionResult = await operation.execute(input, context);
     const richResult = isCakeOperationImageResult(executionResult);
     if (operation.outputSchema && richResult)
@@ -342,6 +356,27 @@ export class CakeOperationRegistry {
       details: { protocol: CAKE_OPERATION_PROTOCOL, command, result: boundedResult },
       structuredContent: operation.outputSchema ? { command, result: structured } : text,
     };
+  }
+}
+
+/** Aliases and unknown fields are handled first so a wrong guess names the expected field. */
+function decodeOperationInput(operation: CakeOperationDefinition, raw: JsonObject) {
+  const schema = inputJson(operation);
+  const normalized = normalizeCakeOperationInput(operation.command, raw, schema);
+  try {
+    return Schema.decodeUnknownSync(operation.inputSchema, { onExcessProperty: "error" })(
+      normalized,
+    );
+  } catch (error) {
+    const fields = cakeOperationExpectedFields(schema);
+    throw new Error(
+      [
+        `Invalid ${operation.command} input: ${error instanceof Error ? error.message : String(error)}`,
+        ...(fields ? [`Expected fields: ${fields}.`] : []),
+        `Request {"command":"${operation.command}.help"} for the exact schema.`,
+      ].join("\n"),
+      { cause: error },
+    );
   }
 }
 

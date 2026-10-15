@@ -33,7 +33,8 @@ filtering for shared custom directories. Tests must explicitly isolate both home
 │   ├── widget-sessions/
 │   ├── subagent-sessions/
 │   └── global-chat/
-│       └── coordinator.sqlite     # Pi Durable; permanent Cake Chat
+│       ├── coordinator.sqlite     # Pi Durable; permanent Cake Chat
+│       └── scratch/               # Neutral working directory for Cake Chat read/bash
 └── cache/
     └── artifact-projections/
 ```
@@ -284,6 +285,8 @@ The coordinator's sole transcript authority is Pi Durable's supplied SQLite
 adapter at `<CAKE_HOME>/pi/global-chat/coordinator.sqlite`. It owns originals,
 inbox, execution checkpoints, and recovery. Cake does not implement a second SQL
 store, mirror JSONL, or archive the coordinator through Project Session storage.
+Its direct `read`/`bash` tools start in the disposable sibling `scratch/`
+directory, never a project root.
 Its summary nodes and memory checkpoints live through the same SDK storage API.
 Application storage separately owns memory preferences, dedicated instructions,
 and two model choices that share one shape and Settings control (Inherit, Default

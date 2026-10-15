@@ -19,6 +19,7 @@ import {
   type Registry,
   type Storage,
   type AgentChange,
+  type HarnessOptions,
   type HarnessSettings,
 } from "@earendil-works/pi-durable";
 import { Schema } from "effect";
@@ -51,6 +52,7 @@ export async function openDurableChatEngine(options: {
   agent?: AgentChange;
   memory: DurableMemoryOptions;
   settings?: HarnessSettings;
+  env?: HarnessOptions["env"];
   onChanged(): void;
   onReport(error: unknown): void;
 }) {
@@ -199,6 +201,7 @@ export async function openDurableChatEngine(options: {
       models,
       registry: options.registry,
       settings: options.settings ?? { contextRetentionMs: 0 },
+      ...(options.env ? { env: options.env } : null),
       onReport: options.onReport,
     },
     BACKGROUND_CONTEXT,

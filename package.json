@@ -47,6 +47,7 @@
     "@earendil-works/pi-coding-agent": "1.0.0",
     "@earendil-works/pi-durable": "1.1.0",
     "@earendil-works/pi-durable-ai": "npm:@earendil-works/pi-ai@1.1.0",
+    "@earendil-works/pi-mcp": "1.0.0",
     "@earendil-works/pi-tui": "1.0.0",
     "@effect/platform-node-shared": "4.0.0-rc.111",
     "@preact/signals-react": "3.10.3",

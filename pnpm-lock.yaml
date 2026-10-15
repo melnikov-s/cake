@@ -37,6 +37,9 @@ importers:
       '@earendil-works/pi-durable-ai':
         specifier: npm:@earendil-works/pi-ai@1.1.0
         version: '@earendil-works/pi-ai@1.1.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.10.2)(ws@8.21.3)(zod@4.4.3)'
+      '@earendil-works/pi-mcp':
+        specifier: 1.0.0
+        version: 1.0.0
       '@earendil-works/pi-tui':
         specifier: 1.0.0
         version: 1.0.0

@@ -133,8 +133,11 @@ projections needed by a surface. References do not transfer ownership.
   must not retire a checkout still used by another active Session.
 - Private Subagent Sessions are not selectable Project Sessions or Session Family
   children. Project agents use private delegation only on explicit user request.
-  Cake Chat instead must delegate project-dependent investigations to an explicitly
-  selected registered, trusted project root. These workers retain normal project
+  Cake Chat has direct read, bash and mcp tools (no edit/write) for quick checks,
+  bounded by a scratch working directory, a short bash timeout and capped output;
+  its prompt policy keeps project changes in Project Sessions and never mutates a
+  project root checkout. It delegates deeper project-dependent investigations to
+  an explicitly selected registered, trusted project root. These workers retain normal project
   instructions, skills, extensions and MCP, excluding edit/write tools and adding
   an investigation-only system policy. `allowMutations: true` on a worker's start
   replaces that policy with scoped mutation mode for bounded operational work

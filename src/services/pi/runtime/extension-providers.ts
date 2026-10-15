@@ -2,6 +2,7 @@ import {
   DefaultResourceLoader,
   SettingsManager,
   type ModelRuntime,
+  type RegisteredMcpServer,
   type ResourceLoader,
 } from "@earendil-works/pi-coding-agent";
 
@@ -71,6 +72,17 @@ export async function registerAgentDirectoryExtensionProviders(
   agentDirectory: string,
   modelRuntime: ModelRuntime,
 ): Promise<string[]> {
+  return (await loadAgentDirectoryExtensions(agentDirectory, modelRuntime)).errors;
+}
+
+/**
+ * As {@link registerAgentDirectoryExtensionProviders}, also returning the MCP servers those
+ * extensions registered (for example the Tool Gateway), for Cake Chat's own MCP client.
+ */
+export async function loadAgentDirectoryExtensions(
+  agentDirectory: string,
+  modelRuntime: ModelRuntime,
+): Promise<{ errors: string[]; mcpServers: RegisteredMcpServer[] }> {
   try {
     const settingsManager = SettingsManager.create(agentDirectory, agentDirectory, {
       projectTrusted: true,
@@ -85,10 +97,14 @@ export async function registerAgentDirectoryExtensionProviders(
       noContextFiles: true,
     });
     await resourceLoader.reload({ resolveProjectTrust: async () => true });
-    return await registerPendingExtensionProviders(resourceLoader, modelRuntime);
+    const errors = await registerPendingExtensionProviders(resourceLoader, modelRuntime);
+    return { errors, mcpServers: resourceLoader.getExtensions().runtime.mcpServers.list() };
   } catch (error) {
-    return [
-      `Agent-directory extension providers unavailable: ${error instanceof Error ? error.message : String(error)}`,
-    ];
+    return {
+      errors: [
+        `Agent-directory extension providers unavailable: ${error instanceof Error ? error.message : String(error)}`,
+      ],
+      mcpServers: [],
+    };
   }
 }

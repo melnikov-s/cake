@@ -422,6 +422,41 @@ it("explicitly inspects a historical screenshot as provider image pixels after c
   expect(inspected.outputContent).toContainEqual({ type: "image", mimeType: "image/png", data });
 });
 
+it("runs quick bash checks in its scratch directory with bounded, annotated output", async () => {
+  const f = await fixture();
+  f.answer((index) =>
+    index === 1
+      ? durableAnswer("", [
+          {
+            type: "toolCall",
+            id: "quick-check",
+            name: "bash",
+            arguments: { command: "pwd; for i in $(seq 1 2000); do echo line-$i; done" },
+          },
+        ])
+      : durableAnswer("Done"),
+  );
+  const { runtime } = await f.open();
+  await runtime.prompt("Check something quickly", "prompt", [], false, ids.first);
+  const result = f.requests[1]?.messages.find((message) => message.role === "toolResult");
+  if (result?.role !== "toolResult") throw new Error("Missing bash result");
+  const text = result.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
+  // The tail is kept, so the first line (pwd) is dropped while the newest output survives.
+  expect(text).toContain("line-2000");
+  expect(text).not.toContain("line-1\n");
+  expect(text).toContain("Output truncated to its end");
+  f.answer((index) =>
+    index === 3
+      ? durableAnswer("", [
+          { type: "toolCall", id: "where", name: "bash", arguments: { command: "pwd" } },
+        ])
+      : durableAnswer("Done"),
+  );
+  await runtime.prompt("Where are you?", "prompt", [], false, ids.second);
+  const where = f.requests[3]?.messages.findLast((message) => message.role === "toolResult");
+  expect(JSON.stringify(where)).toContain(join(f.sessionDir, "scratch"));
+});
+
 it("uses production SQLite, existing credentials and exact originals across reopen", async () => {
   const f = await fixture();
   const original = `ANCIENT_DETAIL ${"original words ".repeat(200)}`;
@@ -433,7 +468,7 @@ it("uses production SQLite, existing credentials and exact originals across reop
   const offered = f.requests[0]?.messages.flatMap((message) =>
     message.role === "system" ? (message.toolsAdded?.map((tool) => tool.name) ?? []) : [],
   );
-  expect(offered).toEqual(["cake", "zoom", "date"]);
+  expect(offered).toEqual(["cake", "zoom", "date", "read", "bash", "mcp"]);
   expect(
     (await first.runtime.snapshot()).parts.some(
       (part) => part.kind === "text" && part.role === "user" && part.renderAs === "markdown",

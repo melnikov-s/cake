@@ -67,7 +67,12 @@ Ordinary primary Project Sessions without an explicit tool allowlist load Pi's
 named, builtin, replaceable `mcp`, `codemode`, and `tool-search` extensions.
 Cake Chat, auxiliary Discussion/Subagent runtimes, and explicit tool allowlists
 (including empty lists) do not receive these factories. Pi's builtin disable and
-replacement-extension rules remain effective.
+replacement-extension rules remain effective. Cake Chat runs on Pi Durable, where
+those extensions cannot bind, so it has its own small `mcp` tool
+(`src/services/pi-durable/cake-chat-mcp.ts`) over the same servers: the agent
+directory's `mcp.json` plus servers its extensions register (such as the Tool
+Gateway). It supports header, environment and `!command` credentials but not
+OAuth sign-in.
 
 Backend bootstrap delegates the agent home to Pi's `getAgentDir()` and never
 sets `PI_CODING_AGENT_DIR`. Cake and terminal Pi share configuration, resources

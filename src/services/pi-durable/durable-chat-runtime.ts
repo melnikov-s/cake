@@ -67,7 +67,14 @@ import { toJsonValue } from "../../utils/to-json-value";
 import { durableChatDatabase } from "./durable-chat-location";
 import { coordinatorSystemPrompt } from "./coordinator-system-prompt";
 import { abortDurableActiveTurn, startDurableQueuedInput } from "./durable-chat-queue";
-import { registerAgentDirectoryExtensionProviders } from "../pi/runtime/extension-providers";
+import { loadAgentDirectoryExtensions } from "../pi/runtime/extension-providers";
+import {
+  cakeChatExecutionEnv,
+  cakeChatScratchDirectory,
+  createCakeChatBashTool,
+  createCakeChatReadTool,
+} from "./cake-chat-local-tools";
+import { CakeChatMcp, createCakeChatMcpTool, loadCakeChatMcpServers } from "./cake-chat-mcp";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
 import { SubagentResult, SubagentReportOrigin } from "../../contracts/subagents/subagent-data";
 import { Option } from "effect";
@@ -133,10 +140,14 @@ export async function createDurableCakeChatRuntime(
     modelsStorePath: join(options.agentDir, "models-cache.json"),
   });
   let fastMode = options.fastMode?.get() ?? false;
-  const providerDiagnostics = await registerAgentDirectoryExtensionProviders(
-    options.agentDir,
-    catalogRuntime,
-  );
+  const agentExtensions = await loadAgentDirectoryExtensions(options.agentDir, catalogRuntime);
+  const scratchDirectory = cakeChatScratchDirectory(options.sessionDir);
+  await mkdir(scratchDirectory, { recursive: true });
+  const mcpServers = await loadCakeChatMcpServers({
+    agentDirectory: options.agentDir,
+    registered: agentExtensions.mcpServers,
+  });
+  const mcp = new CakeChatMcp(mcpServers.servers, { cwd: scratchDirectory });
   const models = durableModels(
     catalogRuntime,
     () => fastMode,
@@ -169,7 +180,7 @@ export async function createDurableCakeChatRuntime(
   let disposed = false;
   let streaming = false;
   let activeTurnIds: string[] = [];
-  const diagnostics: string[] = [...providerDiagnostics];
+  const diagnostics: string[] = [...agentExtensions.errors, ...mcpServers.errors];
   const currentConfiguration = (): ExplicitCakeModelSelection => ({
     provider: selected.provider,
     modelId: selected.id,
@@ -277,7 +288,16 @@ export async function createDurableCakeChatRuntime(
       return { content: [{ type: "text", text: new Date(timestamp).toISOString() }] };
     },
   });
-  registry.install(defineExtension({ name: "cake-coordinator", tools: [cake, zoom, date] }));
+  // Direct quick-check tools. No edit/write: project changes belong to Project Sessions.
+  const tools = [
+    cake,
+    zoom,
+    date,
+    createCakeChatReadTool(),
+    createCakeChatBashTool(),
+    createCakeChatMcpTool(mcp),
+  ];
+  registry.install(defineExtension({ name: "cake-coordinator", tools }));
   await mkdir(dirname(sessionFile), { recursive: true });
   const storage = await openNodeSqliteStorage(sessionFile);
   let publishing: Promise<void> | undefined;
@@ -327,10 +347,11 @@ export async function createDurableCakeChatRuntime(
     models,
     registry,
     settings: sdkSettings,
+    env: cakeChatExecutionEnv(scratchDirectory),
     agent: {
       model: { provider: selected.provider, modelId: selected.id },
       thinkingLevel,
-      tools: [cake, zoom, date],
+      tools,
       instructions: instructions(),
     },
     memory: {
@@ -385,6 +406,8 @@ export async function createDurableCakeChatRuntime(
       {
         model: unavailableModel ?? { provider: selected.provider, modelId: selected.id },
         thinkingLevel,
+        // Saved coordinators predate some tools; the offered set is code-owned, not persisted policy.
+        tools,
         instructions: instructions(),
       },
       BACKGROUND_CONTEXT,
@@ -401,7 +424,7 @@ export async function createDurableCakeChatRuntime(
     // Defense in depth: no caller may submit payload-bearing attachments to the coordinator.
     if (attachments.some((attachment) => attachment.kind !== "input"))
       throw new Error("Cake Chat accepts attachment references only");
-    // No `!` shell escape is parsed: all text is a literal model input, and no shell exists in the registry.
+    // No `!` shell escape is parsed: all text is a literal model input, never a user shell command.
     await configureAgent();
     const busy =
       delivery === "steer" &&
@@ -743,7 +766,11 @@ export async function createDurableCakeChatRuntime(
     async dispose() {
       disposed = true;
       await publishing;
-      await engine.close();
+      try {
+        await engine.close();
+      } finally {
+        await mcp.close();
+      }
     },
   };
   // Durable reuses the persisted agent on reopen. Apply only the external instruction authority;
