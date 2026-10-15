@@ -41,6 +41,8 @@ export class ScreenCaptureAttachmentStore extends Store<{
   @snapshot maxDimension = DEFAULT_CAPTURE_MAX_DIMENSION;
   @snapshot private lastTarget: WindowConversationSelection | undefined;
   busy = false;
+  /** The drop-down Cake Chat attaches captures only to the Cake Chat it shows. */
+  cakeChatOnly = false;
   private recordingShortcut = false;
   error: string | undefined;
   private configurationQueue: Promise<void> = Promise.resolve();
@@ -218,7 +220,7 @@ export class ScreenCaptureAttachmentStore extends Store<{
 
   async capture() {
     if (this.busy || this.recordingShortcut) return;
-    const choices = this.destinations;
+    const choices = this.cakeChatOnly ? { ...this.destinations, projects: [] } : this.destinations;
     const remembered = this.props.shell.activeConversation ?? this.lastTarget;
     const available =
       remembered &&

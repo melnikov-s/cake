@@ -7,6 +7,7 @@ import {
   nativeImage,
   Notification,
   shell,
+  systemPreferences,
   webContents,
   type App,
   type MenuItemConstructorOptions,
@@ -15,6 +16,7 @@ import {
 import { ScreenCaptureWindow } from "./ScreenCaptureWindow";
 import { CakeChatOverlayWindow } from "./CakeChatOverlayWindow";
 import type { CakeWindowFocus } from "./cake-chat-overlay-policy";
+import { ACCESSIBILITY_PERMISSION_MESSAGE, readSelectedText, runOsaScript } from "./selected-text";
 import { shouldAllowNavigation } from "./navigation-policy";
 import { installRendererDiagnostics } from "./renderer-diagnostics";
 import { CAKE_TITLE_BAR_HEIGHT, Electron, type ElectronWindowLifecycle } from "./Electron";
@@ -24,6 +26,8 @@ import { ClientEvents } from "../clients/ClientEvents";
 import { ClientWorkspaces } from "../clients/ClientWorkspaces";
 
 const TRAFFIC_LIGHT_X = 18;
+/** Time for the window server to remove a hidden window before a screen still is taken. */
+const OVERLAY_HIDE_SETTLE_MS = 150;
 const TRAFFIC_LIGHT_DIAMETER = 14;
 
 export interface ElectronLiveOptions {
@@ -69,6 +73,9 @@ const makeElectronService = (
     hidden: process.env.CAKE_ELECTRON_SMOKE === "1",
     targetWindow: () => {
       const focused = BrowserWindow.getFocusedWindow();
+      // While the drop-down is open, a capture belongs to the conversation it shows.
+      const dropDown = overlay.visibleWindow;
+      if (dropDown) return dropDown;
       return focused && windows.has(focused.id)
         ? focused
         : lastFocusedWindow && !lastFocusedWindow.isDestroyed()
@@ -100,10 +107,33 @@ const makeElectronService = (
         if (!applicationQuitting) lifecycle().onWindowClosed(ownerId, undefined, nativeId);
       });
     },
-    onShown: (window) => {
-      const connectionId = connections.forNative(window.webContents.id);
-      if (connectionId !== undefined)
-        clientEvents.sendTo(connectionId, { type: "cake-chat-overlay-shown" });
+    onShown: (window, context) => {
+      // The first drop-down creates the renderer; retry until it subscribes to events.
+      let attempts = 0;
+      const deliver = () => {
+        if (window.isDestroyed()) return;
+        const connectionId = connections.forNative(window.webContents.id);
+        const delivered =
+          connectionId !== undefined &&
+          clientEvents.sendTo(connectionId, { type: "cake-chat-overlay-shown", ...context });
+        if (!delivered && ++attempts < 100) setTimeout(deliver, 100);
+      };
+      deliver();
+    },
+    readContext: async () => {
+      const result = await readSelectedText({
+        platform: process.platform,
+        accessibilityTrusted: () => systemPreferences.isTrustedAccessibilityClient(false),
+        runScript: runOsaScript,
+        clipboardFallback: true,
+      });
+      if (result.kind === "text") return { selectedText: result.selection };
+      if (result.kind === "failed")
+        console.warn("[cake] Could not read selected text", result.message);
+      // Explain a missing permission once per run instead of on every drop-down.
+      if (result.kind !== "permission-denied" || accessibilityNoticeShown) return {};
+      accessibilityNoticeShown = true;
+      return { notice: ACCESSIBILITY_PERMISSION_MESSAGE };
     },
     reportShortcutError: (message) => {
       const target =
@@ -119,6 +149,7 @@ const makeElectronService = (
         });
     },
   });
+  let accessibilityNoticeShown = false;
   // Focus moves between windows as a blur followed by a focus; settle before deciding whether
   // the drop-down shortcut belongs to the system or to the focused main window.
   let overlayFocusSync: ReturnType<typeof setImmediate> | undefined;
@@ -482,7 +513,7 @@ const makeElectronService = (
         Effect.try({
           try: () => {
             requireRendererConnection(connectionId);
-            overlay.configure(settings.shortcut);
+            overlay.configure(settings);
             return {};
           },
           catch: electronError,
@@ -533,8 +564,18 @@ const makeElectronService = (
     ),
     startScreenCapture: Effect.fn("Electron.startScreenCapture")((connectionId, routing) =>
       Effect.tryPromise({
-        try: (signal) => {
+        try: async (signal) => {
           const owner = BrowserWindow.fromWebContents(requireRendererConnection(connectionId));
+          if (owner && overlay.owns(owner)) {
+            // Take the drop-down out of the still, then bring it back with the attachment.
+            overlay.hide();
+            await new Promise((resolve) => setTimeout(resolve, OVERLAY_HIDE_SETTLE_MS));
+            try {
+              return await capture.start(owner, routing, signal);
+            } finally {
+              if (!stopped && !owner.isDestroyed()) overlay.show();
+            }
+          }
           if (!owner || !windows.has(owner.id))
             throw new Error("Screen capture requires a Cake window");
           return capture.start(owner, routing, signal);

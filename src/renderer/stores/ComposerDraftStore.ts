@@ -88,6 +88,24 @@ export class ComposerDraftStore extends Store<ComposerDraftStoreProps> {
   }
 
   addPastedText(text: string) {
+    this.addTextAttachment(text, `Pasted text · ${text.split("\n").length} lines`);
+  }
+
+  /** Text selected in another app, carried in by the drop-down Cake Chat. Repeating the same
+   * selection does not stack duplicate chips. */
+  addSelectedText(text: string, application?: string) {
+    if (
+      this.attachments.some((attachment) => attachment.kind === "text" && attachment.text === text)
+    )
+      return;
+    const lines = text.split("\n").length;
+    this.addTextAttachment(
+      text,
+      `Selected text${application ? ` from ${application}` : ""} · ${lines} ${lines === 1 ? "line" : "lines"}`,
+    );
+  }
+
+  private addTextAttachment(text: string, name: string) {
     this.clearError();
     if (
       this.attachments.length >= 20 ||
@@ -96,11 +114,7 @@ export class ComposerDraftStore extends Store<ComposerDraftStoreProps> {
       this.reportError(new Error("Pasted text exceeds the 8 MiB or 20 attachment limit"));
       return;
     }
-    this.attachments.push({
-      kind: "text",
-      name: `Pasted text · ${text.split("\n").length} lines`,
-      text,
-    });
+    this.attachments.push({ kind: "text", name: name.slice(0, 512), text });
     this.requestFocus();
   }
 

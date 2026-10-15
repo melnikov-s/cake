@@ -4,6 +4,7 @@ import { CakeIpcClient } from "../../ipc/client/CakeIpcClient";
 import { RenderedWidgetCaptureError } from "../../contracts/widgets/rendered-widget-capture-errors";
 import { cakeNativeHotkeyInputEventName } from "../lib/hotkeys";
 import { cakeChatOverlayShownEventName } from "../lib/cake-chat-overlay";
+import { receiveCakeChatOverlayContext } from "../bootstrap/start-cake-chat-overlay";
 import type { Runtime } from "../runtime";
 import type { RootStore } from "../stores/RootStore";
 
@@ -22,6 +23,13 @@ export const observeApplicationEvents = (
       }
       if (event.type === "cake-chat-overlay-shown") {
         window.dispatchEvent(new Event(cakeChatOverlayShownEventName));
+        void receiveCakeChatOverlayContext(root, event).catch((error: unknown) =>
+          root.toastStore.show({
+            tone: "error",
+            title: "Could not attach the selected text",
+            message: error instanceof Error ? error.message : String(error),
+          }),
+        );
         return;
       }
       if (event.type === "session-open-requested") {

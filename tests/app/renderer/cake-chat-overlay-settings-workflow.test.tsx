@@ -47,7 +47,7 @@ describe("Drop-down Cake Chat settings workflow", () => {
       await view.user.click(view.controls().getByRole("button", { name: "Clear" }));
       await waitFor(() =>
         expect(configure).toHaveBeenLastCalledWith(
-          { shortcut: "" },
+          { shortcut: "", captureSelectedText: true },
           expect.objectContaining({ signal: expect.any(AbortSignal) }),
         ),
       );
@@ -60,11 +60,28 @@ describe("Drop-down Cake Chat settings workflow", () => {
     using restored = renderSettings(configure, persisted);
     expect(restored.recorder().textContent).toBe("Not assigned");
     await restored.fixture.root.settingsStore.cakeChatOverlay.configure();
-    expect(configure).toHaveBeenLastCalledWith({ shortcut: "" }, expect.anything());
+    expect(configure).toHaveBeenLastCalledWith(
+      { shortcut: "", captureSelectedText: true },
+      expect.anything(),
+    );
     await restored.user.click(restored.controls().getByRole("button", { name: "Reset" }));
     await waitFor(() =>
-      expect(configure).toHaveBeenLastCalledWith({ shortcut: "Mod+`" }, expect.anything()),
+      expect(configure).toHaveBeenLastCalledWith(
+        { shortcut: "Mod+`", captureSelectedText: true },
+        expect.anything(),
+      ),
     );
+    const selection = screen.getByRole("switch", { name: "Bring selected text along" });
+    await restored.user.click(selection);
+    await waitFor(() =>
+      expect(configure).toHaveBeenLastCalledWith(
+        { shortcut: "Mod+`", captureSelectedText: false },
+        expect.anything(),
+      ),
+    );
+    expect(toSnapshot(restored.fixture.root.settingsStore.cakeChatOverlay).state).toMatchObject({
+      captureSelectedText: false,
+    });
   });
 
   it("shows a registration conflict from main and clears it after a working change", async () => {

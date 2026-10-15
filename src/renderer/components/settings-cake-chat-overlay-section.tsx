@@ -3,6 +3,7 @@ import type { CakeChatOverlaySettingsStore } from "../stores/CakeChatOverlaySett
 import { DEFAULT_CAKE_CHAT_OVERLAY_SHORTCUT } from "../../contracts/desktop/cake-chat-overlay-data";
 import { HotkeyRecorder } from "./ui/hotkey-recorder";
 import { Callout } from "./ui/callout";
+import { SettingsToggle } from "./settings/settings-toggle";
 
 export const SettingsCakeChatOverlaySection = observer(function SettingsCakeChatOverlaySection({
   store,
@@ -41,6 +42,17 @@ export const SettingsCakeChatOverlaySection = observer(function SettingsCakeChat
           onReset={() => void store.setShortcut(DEFAULT_CAKE_CHAT_OVERLAY_SHORTCUT)}
         />
       </div>
+      <SettingsToggle
+        id="setting-cake-chat-overlay-selected-text"
+        label="Bring selected text along"
+        description="When the shortcut opens Cake Chat from another app, attach that app's selected text to the draft as a removable chip. Uses Accessibility; if the app doesn't report a selection, Cake copies it with Command–C and then restores your clipboard. macOS only."
+        checked={store.captureSelectedText}
+        onChange={(enabled) => void store.setCaptureSelectedText(enabled)}
+      />
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        The crop button in the drop-down, or the screen capture shortcut while it is open, attaches
+        a screenshot to this conversation. The drop-down steps aside during the capture.
+      </p>
       <p className="text-xs leading-relaxed text-muted-foreground">
         On macOS, Command–` also moves focus between an app's windows. If the system keeps that
         shortcut, turn off Keyboard → Keyboard Shortcuts → Keyboard → “Move focus to next window” in

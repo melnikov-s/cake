@@ -209,6 +209,11 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
             targetId: "cake-chat-overlay-settings-title",
             keywords: "global shortcut hotkey quake overlay command backquote",
           },
+          {
+            label: "Bring selected text along",
+            targetId: "setting-cake-chat-overlay-selected-text",
+            keywords: "accessibility selection highlighted clipboard copy drop-down",
+          },
         ],
       },
       {

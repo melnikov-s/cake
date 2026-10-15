@@ -117,7 +117,10 @@ export class ScreenCaptureWindow {
         routing,
         width: pixels.width,
         height: pixels.height,
-        maxDimension: this.settings.get(owner.id)?.maxDimension ?? DEFAULT_CAPTURE_MAX_DIMENSION,
+        // The drop-down Cake Chat has no capture settings of its own; use a main window's.
+        maxDimension:
+          (this.settings.get(owner.id) ?? [...this.settings.values()].at(-1))?.maxDimension ??
+          DEFAULT_CAPTURE_MAX_DIMENSION,
       };
       const overlay = new BrowserWindow({
         ...display.bounds,

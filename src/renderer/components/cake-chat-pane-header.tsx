@@ -1,6 +1,6 @@
 import { observer, useStore } from "r-state-tree/react";
 import { IconButton } from "@/components/ui/icon-button";
-import { CloseIcon, SidebarIcon, TerminalIcon } from "@/components/ui/icons";
+import { CloseIcon, CropIcon, SidebarIcon, TerminalIcon } from "@/components/ui/icons";
 import { RequestInspector } from "@/components/request-inspector";
 import { WorkLogControls } from "@/components/work-log-controls";
 import { cn } from "@/lib/utils";
@@ -13,6 +13,9 @@ import { SideChatsMenu } from "./side-chats-menu";
 export interface CakeChatOverlayChrome {
   /** Puts the drop-down overlay away. */
   onClose(): void;
+  /** Captures a screen region or display into the Cake Chat draft. */
+  onCaptureScreenshot(): void;
+  capturing: boolean;
 }
 
 export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
@@ -58,9 +61,18 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
       <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />
       <RequestInspector store={paneSession.requestInspectorStore} />
       {overlay ? (
-        <IconButton tooltip="Close drop-down Cake Chat" onClick={overlay.onClose}>
-          <CloseIcon />
-        </IconButton>
+        <>
+          <IconButton
+            tooltip="Capture screenshot"
+            disabled={overlay.capturing}
+            onClick={overlay.onCaptureScreenshot}
+          >
+            <CropIcon />
+          </IconButton>
+          <IconButton tooltip="Close drop-down Cake Chat" onClick={overlay.onClose}>
+            <CloseIcon />
+          </IconButton>
+        </>
       ) : (
         <IconButton
           data-cake-hint-key="t"

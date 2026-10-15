@@ -129,6 +129,35 @@ test("drop-down Cake Chat shows the live shared conversation and puts itself awa
     await expect(main.getByText("Hello from the drop-down")).toBeVisible();
     await expect(main.getByText("Reply from the shared Cake Chat.")).toBeVisible();
 
+    // The crop button reuses the native screen capture and attaches to the overlay's draft.
+    // Fake only the pixels; never capture the developer's real desktop.
+    await app.evaluate(({ desktopCapturer, nativeImage, screen, systemPreferences }) => {
+      const image = nativeImage.createFromBitmap(Buffer.alloc(64 * 32 * 4, 200), {
+        width: 64,
+        height: 32,
+      });
+      desktopCapturer.getSources = async () => [
+        {
+          id: "screen:fixture",
+          name: "Fixture display",
+          display_id: String(screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).id),
+          thumbnail: image,
+          appIcon: null,
+        },
+      ];
+      systemPreferences.getMediaAccessStatus = () => "granted";
+    });
+    const capturing = app.waitForEvent("window");
+    await overlay.getByRole("button", { name: "Capture screenshot" }).click();
+    const capture = await capturing;
+    await expect(capture.getByRole("toolbar", { name: "Screen capture tools" })).toBeVisible();
+    await expect(capture.getByRole("button", { name: "Screenshot destination" })).toContainText(
+      "Cake Chat",
+    );
+    await Promise.all([capture.waitForEvent("close"), capture.keyboard.press("Enter")]);
+    await expect(overlay.getByRole("button", { name: /^View Screenshot-/ })).toBeVisible();
+    await expect(main.getByRole("button", { name: /^View Screenshot-/ })).toHaveCount(0);
+
     await overlay.getByRole("button", { name: "Close drop-down Cake Chat" }).click();
     // Toggling again reuses the hidden overlay renderer instead of creating another window.
     await clickMenuItem(app, "Drop-down Cake Chat");

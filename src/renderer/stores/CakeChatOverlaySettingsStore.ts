@@ -9,11 +9,13 @@ import { ClientContext } from "./context/ClientContext";
  */
 export class CakeChatOverlaySettingsStore extends Store {
   @snapshot shortcut = DEFAULT_CAKE_CHAT_OVERLAY_SHORTCUT;
+  /** Bring the frontmost app's selected text along when the shortcut drops Cake Chat down. */
+  @snapshot captureSelectedText = true;
   error: string | undefined;
   private configurationQueue: Promise<void> = Promise.resolve();
 
   configure() {
-    const settings = { shortcut: this.shortcut };
+    const settings = { shortcut: this.shortcut, captureSelectedText: this.captureSelectedText };
     this.configurationQueue = this.configurationQueue.then(async () => {
       if (this.signal.aborted) return;
       try {
@@ -31,6 +33,11 @@ export class CakeChatOverlaySettingsStore extends Store {
 
   setShortcut(value: string) {
     this.shortcut = value;
+    return this.configure();
+  }
+
+  setCaptureSelectedText(enabled: boolean) {
+    this.captureSelectedText = enabled;
     return this.configure();
   }
 }

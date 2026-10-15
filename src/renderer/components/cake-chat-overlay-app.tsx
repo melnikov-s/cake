@@ -70,7 +70,13 @@ export const CakeChatOverlayApp = observer(function CakeChatOverlayApp() {
       className="flex h-screen min-h-0 flex-col overflow-hidden border-b border-border bg-background text-foreground"
     >
       <div className="min-h-0 flex-1">
-        <CakeChatSurface overlay={{ onClose: hide }} />
+        <CakeChatSurface
+          overlay={{
+            onClose: hide,
+            onCaptureScreenshot: () => void root.screenCaptureStore.capture(),
+            capturing: root.screenCaptureStore.busy,
+          }}
+        />
       </div>
       <AppNotifications />
       <MessageReferencePreview store={root.navigationStore.messageReferencePreview} />

@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import type { BrowserWindowConstructorOptions } from "electron";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { CakeChatOverlayShownContext } from "../../../../src/contracts/desktop/cake-chat-overlay-data";
 import { CakeChatOverlayWindow } from "../../../../src/services/electron/CakeChatOverlayWindow";
 import {
   overlayBounds,
@@ -68,6 +69,7 @@ function fixture(focus: CakeWindowFocus = "none", { hidden = false } = {}) {
   const state = { focus };
   const prepareWindow = vi.fn();
   const onShown = vi.fn();
+  const readContext = vi.fn(async (): Promise<CakeChatOverlayShownContext> => ({}));
   const reportShortcutError = vi.fn();
   const overlay = new CakeChatOverlayWindow({
     preloadPath: "/preload",
@@ -77,6 +79,7 @@ function fixture(focus: CakeWindowFocus = "none", { hidden = false } = {}) {
     focus: () => state.focus,
     prepareWindow,
     onShown,
+    readContext,
     reportShortcutError,
   });
   const press = (key = "CommandOrControl+`") => {
@@ -88,7 +91,7 @@ function fixture(focus: CakeWindowFocus = "none", { hidden = false } = {}) {
     state.focus = next;
     overlay.sync();
   };
-  return { overlay, press, focusOn, prepareWindow, onShown, reportShortcutError };
+  return { overlay, press, focusOn, prepareWindow, onShown, readContext, reportShortcutError };
 }
 
 type FakeWindow = {
@@ -114,7 +117,7 @@ describe("Drop-down Cake Chat shortcut routing", () => {
 
   it("releases the keys to the in-app terminal toggle while a main window is focused", () => {
     const { overlay, focusOn } = fixture("main");
-    overlay.configure("Mod+`");
+    overlay.configure({ shortcut: "Mod+`", captureSelectedText: true });
     // Validated against the system, then released because the main window owns the keys.
     expect(native.registered.size).toBe(0);
     focusOn("none");
@@ -128,22 +131,22 @@ describe("Drop-down Cake Chat shortcut routing", () => {
 
   it("reports a conflict without disabling the working shortcut, and can be turned off", () => {
     const { overlay } = fixture();
-    overlay.configure("Mod+`");
+    overlay.configure({ shortcut: "Mod+`", captureSelectedText: true });
     native.blocked.add("CommandOrControl+Shift+K");
-    expect(() => overlay.configure("Mod+Shift+K")).toThrow(
+    expect(() => overlay.configure({ shortcut: "Mod+Shift+K", captureSelectedText: true })).toThrow(
       "CommandOrControl+Shift+K is already used",
     );
     expect([...native.registered.keys()]).toEqual(["CommandOrControl+`"]);
-    overlay.configure("Mod+Shift+J");
+    overlay.configure({ shortcut: "Mod+Shift+J", captureSelectedText: true });
     expect([...native.registered.keys()]).toEqual(["CommandOrControl+Shift+J"]);
-    overlay.configure("");
+    overlay.configure({ shortcut: "", captureSelectedText: true });
     expect(native.registered.size).toBe(0);
     overlay.stop();
   });
 
   it("reports when another app claimed the keys while Cake had focus", () => {
     const { overlay, focusOn, reportShortcutError } = fixture("main");
-    overlay.configure("Mod+`");
+    overlay.configure({ shortcut: "Mod+`", captureSelectedText: true });
     native.blocked.add("CommandOrControl+`");
     focusOn("none");
     expect(reportShortcutError).toHaveBeenCalledWith(
@@ -157,11 +160,11 @@ describe("Drop-down Cake Chat shortcut routing", () => {
 });
 
 describe("Drop-down Cake Chat window", () => {
-  it("drops one reused window down on the pointer's display and toggles it away", () => {
+  it("drops one reused window down on the pointer's display and toggles it away", async () => {
     const { overlay, press, prepareWindow, onShown } = fixture();
-    overlay.configure("Mod+`");
+    overlay.configure({ shortcut: "Mod+`", captureSelectedText: true });
     press();
-    expect(native.windows).toHaveLength(1);
+    await vi.waitFor(() => expect(native.windows).toHaveLength(1));
     const window = overlayWindow();
     expect(native.windowOptions[0]).toMatchObject({
       show: false,
@@ -183,7 +186,7 @@ describe("Drop-down Cake Chat window", () => {
     expect(window.setBounds).toHaveBeenCalledWith({ x: 1640, y: 25, width: 1600, height: 495 });
     expect(window.show).toHaveBeenCalledTimes(1);
     expect(window.focus).toHaveBeenCalledTimes(1);
-    expect(onShown).toHaveBeenCalledWith(window);
+    expect(onShown).toHaveBeenCalledWith(window, {});
     expect(overlay.isVisible).toBe(true);
 
     press();
@@ -191,10 +194,46 @@ describe("Drop-down Cake Chat window", () => {
     expect(overlay.isVisible).toBe(false);
 
     press();
+    await vi.waitFor(() => expect(window.show).toHaveBeenCalledTimes(2));
     expect(native.windows).toHaveLength(1);
-    expect(window.show).toHaveBeenCalledTimes(2);
     overlay.stop();
     expect(native.registered.size).toBe(0);
+  });
+
+  it("reads the other app's selection before taking focus, and only from the shortcut", async () => {
+    const { overlay, press, readContext, onShown } = fixture("other");
+    const selection = Promise.withResolvers<CakeChatOverlayShownContext>();
+    readContext.mockReturnValueOnce(selection.promise);
+    overlay.configure({ shortcut: "Mod+`", captureSelectedText: true });
+    press();
+    // A second press while the selection is still being read must not start another read.
+    press();
+    expect(readContext).toHaveBeenCalledTimes(1);
+    expect(native.windows).toHaveLength(0);
+    selection.resolve({ selectedText: { text: "quoted", application: "Safari" } });
+    await vi.waitFor(() => expect(overlayWindow()?.focus).toHaveBeenCalledTimes(1));
+    expect(onShown).toHaveBeenLastCalledWith(overlayWindow(), {
+      selectedText: { text: "quoted", application: "Safari" },
+    });
+
+    overlay.hide();
+    overlay.toggle("menu");
+    expect(readContext).toHaveBeenCalledTimes(1);
+    expect(onShown).toHaveBeenLastCalledWith(overlayWindow(), {});
+    overlay.hide();
+
+    // A failed read still drops the overlay down, without context.
+    readContext.mockRejectedValueOnce(new Error("osascript timed out"));
+    press();
+    await vi.waitFor(() => expect(overlay.isVisible).toBe(true));
+    expect(onShown).toHaveBeenLastCalledWith(overlayWindow(), {});
+    overlay.hide();
+
+    overlay.configure({ shortcut: "Mod+`", captureSelectedText: false });
+    press();
+    expect(readContext).toHaveBeenCalledTimes(2);
+    expect(overlay.isVisible).toBe(true);
+    overlay.stop();
   });
 
   it("recreates the renderer after the window is closed and never presents it in tests", () => {

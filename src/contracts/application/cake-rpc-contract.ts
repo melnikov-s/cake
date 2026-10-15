@@ -8,7 +8,10 @@ import {
   ScreenCaptureSettings,
   ScreenCaptureSnapshot,
 } from "../desktop/screen-capture-data";
-import { CakeChatOverlaySettings } from "../desktop/cake-chat-overlay-data";
+import {
+  CakeChatOverlaySettings,
+  CakeChatOverlayShownContext,
+} from "../desktop/cake-chat-overlay-data";
 import { artifactRecordSchema } from "../artifacts/artifact-contract";
 import { ArtifactLineageId } from "../artifacts/artifact-lineage";
 import { InterviewRecord } from "../interviews/interview";
@@ -76,7 +79,10 @@ const embeddedEditorExplicitSelectionFields = {
 const cakeEventSchemas = {
   "screen-capture-requested": Schema.Struct({ type: Schema.Literal("screen-capture-requested") }),
   "window-blurred": Schema.Struct({ type: Schema.Literal("window-blurred") }),
-  "cake-chat-overlay-shown": Schema.Struct({ type: Schema.Literal("cake-chat-overlay-shown") }),
+  "cake-chat-overlay-shown": Schema.Struct({
+    type: Schema.Literal("cake-chat-overlay-shown"),
+    ...CakeChatOverlayShownContext.fields,
+  }),
   "session-open-requested": Schema.Struct({
     type: Schema.Literal("session-open-requested"),
     sessionId: bounded(1, 256),
