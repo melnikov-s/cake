@@ -1652,47 +1652,37 @@ describe("Sidebar projects", () => {
     expect(container.querySelector('[data-slot="resolved-lane"]')).toBeNull();
   });
 
-  it("keeps every draft above newer non-draft activity", () => {
-    const newestDraft = {
-      sessionId: "newest-draft",
-      title: "Newest draft",
+  it("interleaves drafts with regular sessions by latest activity instead of pinning them", () => {
+    const session = (sessionId: string, modifiedAt: Date, draft?: boolean) => ({
+      sessionId,
+      title: sessionId,
       projectPath: "/work/cake",
       workingDirectory: "/work/cake",
-      modifiedAt: new Date(2026, 2, 10, 9).toISOString(),
-      draft: true,
-    };
-    const olderDraft = {
-      sessionId: "older-draft",
-      title: "Older draft",
-      projectPath: "/work/cake",
-      workingDirectory: "/work/cake",
-      modifiedAt: new Date(2026, 2, 9, 9).toISOString(),
-      draft: true,
-    };
-    const regular = {
-      sessionId: "regular",
-      title: "Regular session",
-      projectPath: "/work/cake",
-      workingDirectory: "/work/cake",
-      modifiedAt: new Date(2026, 2, 10, 11).toISOString(),
-    };
+      modifiedAt: modifiedAt.toISOString(),
+      ...(draft ? { draft } : {}),
+    });
+    const newestRegular = session("newest-regular", new Date(2026, 2, 10, 11));
+    const todayDraft = session("today-draft", new Date(2026, 2, 10, 9), true);
+    const todayRegular = session("today-regular", new Date(2026, 2, 10, 8));
+    const yesterdayRegular = session("yesterday-regular", new Date(2026, 2, 9, 15));
+    const yesterdayDraft = session("yesterday-draft", new Date(2026, 2, 9, 9), true);
     const store = {
       recentProjectPaths: ["/work/cake"],
       projects: [{ path: "/work/cake", name: "Cake" }],
       projectSessions: vi.fn(() => []),
-      activeProjectSessionFamilies: [newestDraft, olderDraft, regular].map((session) => ({
-        rootSessionId: session.sessionId,
-        latestModifiedAt: session.modifiedAt,
-        sessions: [session],
+      // Deliberately out of order so the feed's own ordering is under test.
+      activeProjectSessionFamilies: [
+        yesterdayDraft,
+        todayRegular,
+        todayDraft,
+        yesterdayRegular,
+        newestRegular,
+      ].map((item) => ({
+        rootSessionId: item.sessionId,
+        latestModifiedAt: item.modifiedAt,
+        sessions: [item],
       })),
-      cakeChatSummaries: [
-        {
-          sessionId: "cake-chat",
-          title: "New Cake Chat",
-          modifiedAt: new Date(2026, 2, 10, 12).toISOString(),
-          resolved: false,
-        },
-      ],
+      cakeChatSummaries: [],
       navigationMode: "activity",
       now: new Date(2026, 2, 10, 12).getTime(),
       sessionLimit: () => 10,
@@ -1706,11 +1696,22 @@ describe("Sidebar projects", () => {
       root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
     );
 
+    const feed = container.querySelector('[data-slot="activity-feed"]')!;
     expect(
-      [...container.querySelectorAll<HTMLElement>("[data-session-id]")].map(
-        (session) => session.dataset.sessionId,
+      [...feed.querySelectorAll<HTMLElement>("[data-session-id]")].map(
+        (item) => item.dataset.sessionId,
       ),
-    ).toEqual(["newest-draft", "older-draft", "regular"]);
+    ).toEqual([
+      "newest-regular",
+      "today-draft",
+      "today-regular",
+      "yesterday-regular",
+      "yesterday-draft",
+    ]);
+    // Drafts share day groups with regular sessions: one "Today" and one "Yesterday" heading.
+    expect(
+      [...feed.querySelectorAll("section > h2")].map((heading) => heading.textContent),
+    ).toEqual(["Today", "Yesterday"]);
   });
 
   it("keeps activity families together and positions them by their latest descendant", () => {

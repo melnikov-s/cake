@@ -1,5 +1,5 @@
 import { observer } from "r-state-tree/react";
-import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
+import { compareSessionSummariesByActivity } from "../../utils/session-summary-order";
 import type { AppearanceSettingsStore } from "../stores/AppearanceSettingsStore";
 import type { AppShellStore } from "../stores/AppShellStore";
 import type { CakeChatCollectionStore } from "../stores/CakeChatCollectionStore";
@@ -52,15 +52,14 @@ export const SidebarActivityFeed = observer(function SidebarActivityFeed({
   const entries = sessionList.activeProjectSessionFamilies
     .map((family) => ({
       modifiedAt: family.latestModifiedAt,
-      draft: family.sessions.some((session) => session.draft),
       family,
     }))
-    .sort(compareSessionSummariesForSidebar);
+    .sort(compareSessionSummariesByActivity);
   const groups = new Map<string, typeof entries>();
   for (const entry of entries) {
-    // Keep draft and non-draft date groups separate so an older draft can never
-    // be pulled below a newer regular session that happens to share its date.
-    const key = `${entry.draft ? "draft" : "session"}:${dayKey(entry.modifiedAt)}`;
+    // Activity mode is purely chronological: drafts share day groups with
+    // regular sessions instead of being pinned above them.
+    const key = dayKey(entry.modifiedAt);
     const group = groups.get(key) ?? [];
     group.push(entry);
     groups.set(key, group);
