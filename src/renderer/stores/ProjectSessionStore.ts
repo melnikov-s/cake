@@ -522,7 +522,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   get messageCommentsStore(): MessageCommentsStore {
     return createStore(MessageCommentsStore, {
       catalog: () => this.props.discussionCatalog,
-      reviews: this.props.reviews,
+      host: this.props.reviews,
       context: () => ({ sessionId: this.sessionId }),
       onThreadCreated: (threadId) => {
         // The selection draft in the side chat becomes the thread's own chat,

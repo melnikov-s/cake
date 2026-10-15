@@ -18,6 +18,9 @@ import { workflowOwnerReferences } from "../../utils/workflow-references";
 import { RequestInspectorStore } from "./RequestInspectorStore";
 import { SessionArtifactsStore } from "./SessionArtifactsStore";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
+import type { DiscussionCatalog } from "../models/DiscussionCatalog";
+import { CakeChatSideChatsStore } from "./CakeChatSideChatsStore";
+import { MessageCommentsStore } from "./MessageCommentsStore";
 
 export interface CakeChatSessionStoreProps {
   sessionId: string;
@@ -26,6 +29,13 @@ export interface CakeChatSessionStoreProps {
   controls: CakeChatControls;
   subagentCatalog: SubagentCatalog;
   workflowCatalog(sessionId: string): WorkflowCatalog;
+  /** Side chats branched from this Cake Chat's messages. */
+  discussionCatalog: DiscussionCatalog;
+  discussionSessionModel(
+    sessionId: string,
+    workingDirectory: string,
+    parentSessionId: string,
+  ): Conversation;
   target(): CakeChatTarget;
   pendingSessions: CakeChatPendingSessionsStore;
   operations: SessionOperationCoordinatorStore;
@@ -36,6 +46,25 @@ export interface CakeChatSessionStoreProps {
 
 /** Owns the configuration and shared conversation input workflow for one Cake Chat session. */
 export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
+  private pendingSideChatThreadId: string | undefined;
+
+  constructor(props: CakeChatSessionStore["props"]) {
+    super(props);
+    // A new side chat is listed before its sidecar conversation is live; it
+    // opens once the thread's own conversation Store exists.
+    this.reaction(
+      () =>
+        Boolean(
+          this.pendingSideChatThreadId &&
+          this.sideChatThreads.some((thread) => thread.id === this.pendingSideChatThreadId) &&
+          this.sideChats.chatStore(this.pendingSideChatThreadId),
+        ),
+      (ready) => {
+        if (ready && this.pendingSideChatThreadId) this.openSideChat(this.pendingSideChatThreadId);
+      },
+    );
+  }
+
   get model() {
     return this.props.model;
   }
@@ -78,6 +107,71 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
   @child
   get requestInspectorStore(): RequestInspectorStore {
     return createStore(RequestInspectorStore, { sessionId: this.sessionId });
+  }
+
+  @child
+  get sideChats(): CakeChatSideChatsStore {
+    return createStore(CakeChatSideChatsStore, {
+      catalog: this.props.discussionCatalog,
+      discussionSessionModel: this.props.discussionSessionModel,
+      parent: () => this.model,
+      configuration: () => this.conversationSessionStore.configurationStore,
+      operations: this.props.operations,
+      modelPresets: this.props.modelPresets,
+      openModelPresetSettings: this.props.openModelPresetSettings,
+      settings: this.props.settings,
+    });
+  }
+
+  /** Open side chats for the header menu. */
+  get sideChatThreads() {
+    return this.sideChats.openThreads;
+  }
+
+  sideChatStreaming(threadId: string) {
+    return this.sideChats.threadStreaming(threadId);
+  }
+
+  @child
+  get messageCommentsStore(): MessageCommentsStore {
+    return createStore(MessageCommentsStore, {
+      catalog: () => this.props.discussionCatalog,
+      host: () => this.sideChats,
+      context: () => ({ sessionId: this.sessionId }),
+      onThreadCreated: (threadId) => {
+        // The draft in the side chat panel becomes the thread's own chat, which
+        // carries the shared queue, stop, and reply behavior.
+        const sideChat = this.conversationSessionStore.sideChatStore;
+        if (sideChat.target?.chatStore !== this.messageCommentsStore.draftChatStore) return;
+        this.pendingSideChatThreadId = threadId;
+        this.openSideChat(threadId);
+      },
+    });
+  }
+
+  /** Opens a side chat draft that branches from one whole Cake Chat message. */
+  branchSideChat(message: { readonly messageId: string; readonly entryId?: string }) {
+    this.messageCommentsStore.prepareMessageDraft(message);
+    this.conversationSessionStore.sideChatStore.open({
+      key: `message-draft:${this.sessionId}`,
+      title: "Side chat",
+      eyebrow: () => "Message",
+      chatStore: this.messageCommentsStore.draftChatStore,
+    });
+  }
+
+  openSideChat(threadId: string) {
+    const thread = this.sideChatThreads.find((candidate) => candidate.id === threadId);
+    const chatStore = this.sideChats.chatStore(threadId);
+    if (!thread || !chatStore) return false;
+    this.pendingSideChatThreadId = undefined;
+    this.conversationSessionStore.sideChatStore.open({
+      key: `discussion:${thread.id}`,
+      title: "Side chat",
+      eyebrow: () => (thread.anchor.selectedText ? "Selection" : "Message"),
+      chatStore,
+    });
+    return true;
   }
 
   @child

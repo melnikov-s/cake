@@ -13,6 +13,7 @@ import type { Conversation } from "../models/Conversation";
 import type { CakeChatControls } from "../models/CakeChatControls";
 import type { WorkflowCatalog } from "../models/WorkflowCatalog";
 import type { SubagentCatalog } from "../models/SubagentCatalog";
+import type { DiscussionCatalog } from "../models/DiscussionCatalog";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import {
   CakeChatPendingSessionsStore,
@@ -31,6 +32,12 @@ export interface CakeChatCollectionStoreProps {
   controlsModel(sessionId: string): CakeChatControls;
   subagentCatalog(sessionId: string): SubagentCatalog;
   workflowCatalog(sessionId: string): WorkflowCatalog;
+  discussionCatalog(sessionId: string): DiscussionCatalog;
+  discussionSessionModel(
+    sessionId: string,
+    workingDirectory: string,
+    parentSessionId: string,
+  ): Conversation;
   tools(): ReadonlyArray<CakeControlTool>;
   modelPresets?(): readonly ModelPreset[];
   defaultConfiguration?(): ChatConfiguration | undefined;
@@ -78,6 +85,8 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
       controlsModel: this.props.controlsModel,
       subagentCatalog: this.props.subagentCatalog,
       workflowCatalog: this.props.workflowCatalog,
+      discussionCatalog: this.props.discussionCatalog,
+      discussionSessionModel: this.props.discussionSessionModel,
       tools: this.props.tools,
       pendingSessions: () => this.pendingSessions,
       operations: this.operations,

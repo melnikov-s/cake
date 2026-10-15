@@ -2,13 +2,29 @@ import { Store, child, createStore } from "r-state-tree";
 import type { ReviewAnchor } from "../../contracts/reviews/review-contract";
 import type { Annotation } from "../../contracts/conversations/session-contract";
 import type { DiscussionCatalog } from "../models/DiscussionCatalog";
-import type { ReviewsStore } from "./ReviewsStore";
+import type { ChatConfigurationStore } from "./ChatConfigurationStore";
 import { ChatStore } from "./ChatStore";
 import { AnnotationDraftStore } from "./AnnotationDraftStore";
 
+/**
+ * The Discussion Session workflow that owns a parent's message side chats:
+ * Project Sessions use the window's Reviews Store, Cake Chat its own side chats.
+ */
+export interface MessageSideChatHost {
+  readonly configuration: ChatConfigurationStore | undefined;
+  readonly error: string | undefined;
+  readonly errorDetails: string | undefined;
+  chatStore(threadId: string): ChatStore | undefined;
+  createThread(
+    anchor: ReviewAnchor,
+    body: string,
+    annotations: Annotation[],
+  ): Promise<string | undefined>;
+}
+
 export interface MessageCommentsStoreProps {
   catalog(sessionId: string): DiscussionCatalog | undefined;
-  reviews(): ReviewsStore;
+  host(): MessageSideChatHost;
   context(): { sessionId: string } | undefined;
   /** The selection draft became a Discussion Session; its chat can take over. */
   onThreadCreated?(threadId: string): void;
@@ -28,6 +44,8 @@ export interface MessageSelectionAnchor {
 /** Owns assistant-message annotation creation, replies, and thread visibility. */
 export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
   draftSelection: MessageSelectionAnchor | undefined;
+  /** The draft branches from the whole message rather than a selected passage. */
+  draftWholeMessage = false;
   createdThreadId: string | undefined;
   draftFocusRequestRevision = 0;
 
@@ -46,15 +64,31 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
   }
 
   chatStore(threadId: string) {
-    return this.props.reviews().chatStore(threadId);
+    return this.props.host().chatStore(threadId);
   }
 
   prepareDraft(selection: MessageSelectionAnchor) {
     this.draftChatStore.setDraft("");
     this.annotationDraft.clear();
     this.draftSelection = selection;
+    this.draftWholeMessage = false;
     this.createdThreadId = undefined;
     this.draftFocusRequestRevision += 1;
+  }
+
+  /** Prepares a side chat that branches from one whole message, with no selection. */
+  prepareMessageDraft(message: { readonly messageId: string; readonly entryId?: string }) {
+    const selection: MessageSelectionAnchor = {
+      messageId: message.messageId,
+      selectedText: "",
+      startOffset: 0,
+      endOffset: 0,
+      contextBefore: "",
+      contextAfter: "",
+    };
+    if (message.entryId !== undefined) Object.assign(selection, { entryId: message.entryId });
+    this.prepareDraft(selection);
+    this.draftWholeMessage = true;
   }
 
   @child
@@ -69,7 +103,7 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
       id: () => "message-comment-draft",
       parts: () => {
         const selection = this.draftSelection;
-        if (!selection) return [];
+        if (!selection || this.draftWholeMessage) return [];
         return [
           {
             id: `selection:${selection.messageId}:${selection.startOffset}:${selection.endOffset}`,
@@ -84,10 +118,12 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
       // Once the thread exists its own conversation Store takes over the side
       // chat; the draft only bridges the moment until the catalog lists it.
       submitting: () => Boolean(this.createdThreadId),
-      configuration: () => this.props.reviews().configuration,
+      configuration: () => this.props.host().configuration,
       commands: () => [],
-      placeholder: () => "Ask Cake about this passage…",
-      inputLabel: () => "Message about selected text",
+      placeholder: () =>
+        this.draftWholeMessage ? "Ask Cake about this message…" : "Ask Cake about this passage…",
+      inputLabel: () =>
+        this.draftWholeMessage ? "Message about this message" : "Message about selected text",
       focusRequestRevision: () => this.draftFocusRequestRevision,
       canSubmit: (draft) =>
         Boolean(
@@ -101,6 +137,7 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
           this.draftSelection,
           draft,
           this.annotationDraft.annotations,
+          this.draftWholeMessage,
         );
         this.createdThreadId = threadId;
         if (threadId) {
@@ -114,8 +151,8 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
       updateAnnotation: (id, update) => this.annotationDraft.update(id, update),
       removeAnnotation: (id) => this.annotationDraft.remove(id),
       error: () => ({
-        message: this.props.reviews().error,
-        details: this.props.reviews().errorDetails,
+        message: this.props.host().error,
+        details: this.props.host().errorDetails,
       }),
     });
   }
@@ -124,6 +161,7 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
     selection: MessageSelectionAnchor,
     body: string,
     annotations: readonly Annotation[] = this.annotationDraft.annotations,
+    wholeMessage = false,
   ) {
     const context = this.props.context();
     if (!context || (!body.trim() && annotations.length === 0)) return undefined;
@@ -138,11 +176,12 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
       contextBefore: selection.contextBefore,
       contextAfter: selection.contextAfter,
       diff: "",
-      startOffset: selection.startOffset,
-      endOffset: selection.endOffset,
     };
+    // A whole-message branch has no passage to highlight in the transcript.
+    if (!wholeMessage)
+      Object.assign(anchor, { startOffset: selection.startOffset, endOffset: selection.endOffset });
     if (!selection.artifactId) Object.assign(anchor, { messageId: selection.messageId });
     if (selection.entryId !== undefined) Object.assign(anchor, { entryId: selection.entryId });
-    return this.props.reviews().createThread(anchor, body, annotations.slice());
+    return this.props.host().createThread(anchor, body, annotations.slice());
   }
 }

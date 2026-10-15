@@ -25,6 +25,11 @@ export const CakeChatSurface = observer(function CakeChatSurface() {
     },
     transcriptBehavior: {
       messageReferenceSessionId: paneSession.sessionId,
+      messageComments: paneSession.messageCommentsStore,
+      showSelectionContextMenu: (input: { canChat: boolean; canAnnotate: boolean }) =>
+        root.showTranscriptSelectionContextMenu(input),
+      onBranchSideChat: (message: { readonly messageId: string; readonly entryId?: string }) =>
+        paneSession.branchSideChat(message),
       subagents: paneSession.subagentActivityStore,
       // Selected text becomes a composer annotation sent with the next message.
       showSelectionContextMenu: (input: { canChat: boolean; canAnnotate: boolean }) =>

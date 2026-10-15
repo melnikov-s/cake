@@ -264,7 +264,11 @@ message and turn.
 
 Discussion and other regular-Pi sidecar sessions use their narrower Pi roots.
 Cake stores review/message anchors and sidecar references, while sidecar replies
-remain only in their Pi Session files.
+remain only in their Pi Session files. Cake Chat side chats are Discussion
+Sessions whose parent is the permanent Cake Chat; they use the same storage,
+keyed by Cake Chat's fixed identity and location. Their derived branch context
+(Cake Chat text through the anchored message) is written once when the side chat
+starts and is never regenerated, so later Cake Chat messages stay out of it.
 
 Window state stores stable Cake/Pi identifiers and Working Directories, never
 absolute transcript filenames. Restart resolution asks Pi beneath the current

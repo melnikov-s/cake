@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { it } from "@effect/vitest";
-import { Effect, Layer, Stream } from "effect";
+import { Effect, Layer, Scope, Stream } from "effect";
 import { describe } from "vitest";
 import * as discussionSessions from "../../../src/domain/discussion-sessions/discussionSessions";
 import * as sessionChats from "../../../src/domain/conversations/sessionChats";
@@ -21,6 +21,8 @@ import { ApplicationState } from "../../../src/services/storage/ApplicationState
 import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { sessionAssistantThreadPath } from "../../../src/contracts/discussion-sessions/discussion-session-data";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-data";
+import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 
 const makeSnapshot = (sessionId: string, sessionFile: string): ConversationSnapshot => ({
   workspacePath: "/project",
@@ -49,13 +51,59 @@ const anchor = {
   diff: "+value",
 };
 
+const cakeChatAnchor = {
+  path: `session:${CAKE_CHAT_SESSION_ID}/message/assistant-2`,
+  view: "message" as const,
+  start: { diffLine: 0 },
+  end: { diffLine: 0 },
+  selectedText: "",
+  contextBefore: "",
+  contextAfter: "",
+  diff: "",
+  messageId: "assistant-2",
+  entryId: "entry-assistant-2",
+};
+
+const cakeChatParts: ConversationSnapshot["parts"] = [
+  { id: "user-1", kind: "text", role: "user", text: "Which tasks are open?", status: "complete" },
+  {
+    id: "assistant-1",
+    kind: "text",
+    role: "assistant",
+    text: "Two tasks are open.",
+    status: "complete",
+  },
+  {
+    id: "tool-1",
+    kind: "tool",
+    toolCallId: "call-1",
+    name: "cake",
+    input: {},
+    state: "complete",
+  } as unknown as ConversationSnapshot["parts"][number],
+  { id: "user-2", kind: "text", role: "user", text: "Compare them.", status: "complete" },
+  {
+    id: "assistant-2",
+    kind: "text",
+    role: "assistant",
+    entryId: "entry-assistant-2",
+    text: "The first is larger.",
+    status: "complete",
+  },
+  { id: "user-3", kind: "text", role: "user", text: "Later question", status: "complete" },
+];
+
 const makeLayer = (
-  options: { readonly assistant?: boolean; readonly persistedSidecar?: boolean } = {},
+  options: {
+    readonly assistant?: boolean;
+    readonly persistedSidecar?: boolean;
+    readonly cakeChat?: boolean;
+  } = {},
 ) => {
   let record: DiscussionSessionRecord = {
     id: "thread-1",
-    workingDirectory: "/project",
-    parentSessionId: "parent-1",
+    workingDirectory: options.cakeChat ? "/home" : "/project",
+    parentSessionId: options.cakeChat ? CAKE_CHAT_SESSION_ID : "parent-1",
     ...(options.persistedSidecar
       ? {
           sidecarSessionId: "persisted-sidecar",
@@ -72,18 +120,20 @@ const makeLayer = (
         deliveryState: "sending",
       },
     ],
-    anchor: options.assistant
-      ? {
-          path: sessionAssistantThreadPath("parent-1"),
-          view: "session",
-          start: { diffLine: 0 },
-          end: { diffLine: 0 },
-          selectedText: "",
-          contextBefore: "",
-          contextAfter: "",
-          diff: "",
-        }
-      : anchor,
+    anchor: options.cakeChat
+      ? cakeChatAnchor
+      : options.assistant
+        ? {
+            path: sessionAssistantThreadPath("parent-1"),
+            view: "session",
+            start: { diffLine: 0 },
+            end: { diffLine: 0 },
+            selectedText: "",
+            contextBefore: "",
+            contextAfter: "",
+            diff: "",
+          }
+        : anchor,
     status: "open",
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
@@ -96,6 +146,8 @@ const makeLayer = (
   const queueOperations: string[] = [];
   let preparedContexts = 0;
   let parentIndexRefreshes = 0;
+  const createdRecords: Array<{ workingDirectory: string; parentSessionId: string }> = [];
+  const branchContexts: unknown[] = [];
   const runtime = (options: CakeSessionRuntimeSetup): CakeSessionRuntime => {
     const sessionId = options.sessionId ?? "generated";
     const sessionFile = options.auxiliary
@@ -112,7 +164,10 @@ const makeLayer = (
             sessionFile,
             leafId: "leaf-1",
           }),
-      snapshot: async () => makeSnapshot(sessionId, sessionFile),
+      snapshot: async () =>
+        sessionId === CAKE_CHAT_SESSION_ID
+          ? { ...makeSnapshot(sessionId, sessionFile), parts: cakeChatParts }
+          : makeSnapshot(sessionId, sessionFile),
       listQueuedMessages: async () => ({ steering: [], followUp: [] }),
       pendingMessages: async () => ({ items: [] }),
       reorderPendingMessage: async () => ({ items: [] }),
@@ -175,7 +230,11 @@ const makeLayer = (
   const discussions = makeDiscussionSessionEnvironmentLayer({
     list: () => Effect.succeed([record]),
     get: () => Effect.succeed(record),
-    create: () => Effect.succeed(record),
+    create: (workingDirectory, parentSessionId) =>
+      Effect.sync(() => {
+        createdRecords.push({ workingDirectory, parentSessionId });
+        return record;
+      }),
     ensure: () => Effect.succeed(record),
     linkSidecar: (current, sidecar) =>
       Effect.sync(() => {
@@ -207,6 +266,10 @@ const makeLayer = (
     prepareStagedParentContext: () =>
       Effect.sync(() => {
         stagedProjections += 1;
+      }),
+    prepareCakeChatBranchContext: (_record, messages) =>
+      Effect.sync(() => {
+        branchContexts.push(messages);
       }),
     refreshParentIndex: () =>
       Effect.sync(() => {
@@ -253,11 +316,98 @@ const makeLayer = (
     preparedContexts: () => preparedContexts,
     parentIndexRefreshes: () => parentIndexRefreshes,
     stagedProjections: () => stagedProjections,
+    createdRecords,
+    branchContexts,
     modelSelections,
     controlInvocations,
     record: () => record,
   };
 };
+
+/** Assembles the permanent Cake Chat runtime, as an open Cake Chat window does. */
+const assembleCakeChat = Effect.gen(function* () {
+  const sessions = yield* CakeSessionRuntimes;
+  const scope = yield* Scope.make();
+  yield* sessions
+    .acquire({
+      profile: { _tag: "CakeChatSession" },
+      runtime: {
+        cwd: "/home",
+        trusted: true,
+        agentDir: "/cake",
+        sessionDir: "/cake/cake-chat",
+        newSession: false,
+        sessionId: CAKE_CHAT_SESSION_ID,
+        requestUi: async () => undefined,
+        globalControl: { tools: [], invoke: async () => ({ ok: true }) },
+      },
+    })
+    .pipe(Scope.provide(scope));
+  return scope;
+});
+
+describe("Cake Chat side chats", () => {
+  it.effect("branches a tool-free side chat with the conversation through its message", () => {
+    const fixture = makeLayer({ cakeChat: true });
+    return Effect.gen(function* () {
+      yield* assembleCakeChat;
+      const accepted = yield* discussionSessions.startCakeChatSideChat(
+        { anchor: cakeChatAnchor, text: "Why is it larger?" },
+        "/home",
+      );
+      yield* Effect.yieldNow;
+
+      assert.deepEqual(fixture.createdRecords, [
+        { workingDirectory: "/home", parentSessionId: CAKE_CHAT_SESSION_ID },
+      ]);
+      // Tool activity and messages after the branch point stay out of the context.
+      assert.deepEqual(fixture.branchContexts, [
+        [
+          { role: "user", text: "Which tasks are open?" },
+          { role: "assistant", text: "Two tasks are open." },
+          { role: "user", text: "Compare them." },
+          { role: "assistant", text: "The first is larger." },
+        ],
+      ]);
+      const sidecar = fixture.options.find((options) => options.auxiliary);
+      assert.deepEqual(sidecar?.tools, []);
+      assert.equal(sidecar?.globalControl, undefined);
+      assert.equal(fixture.prompts.at(-1)?.[0], "Why is it larger?");
+      assert.equal(accepted.thread.parentSessionId, CAKE_CHAT_SESSION_ID);
+      // The branch context is frozen: no Project Session parent projection is read.
+      assert.equal(fixture.preparedContexts(), 0);
+    }).pipe(Effect.provide(fixture.layer));
+  });
+
+  it.effect(
+    "rejects a branch message that is no longer in Cake Chat without storing a thread",
+    () => {
+      const fixture = makeLayer({ cakeChat: true });
+      return Effect.gen(function* () {
+        yield* assembleCakeChat;
+        const error = yield* discussionSessions
+          .startCakeChatSideChat(
+            { anchor: { ...cakeChatAnchor, messageId: "gone", entryId: "gone" }, text: "Hi" },
+            "/home",
+          )
+          .pipe(Effect.flip);
+        assert.equal(error.message, "That Cake Chat message is no longer available");
+        assert.deepEqual(fixture.createdRecords, []);
+      }).pipe(Effect.provide(fixture.layer));
+    },
+  );
+
+  it.effect("rejects a Cake Chat side chat that is not anchored to a message", () => {
+    const fixture = makeLayer({ cakeChat: true });
+    return Effect.gen(function* () {
+      const error = yield* discussionSessions
+        .startCakeChatSideChat({ anchor: { ...anchor, view: "session" }, text: "Hi" }, "/home")
+        .pipe(Effect.flip);
+      assert.equal(error.message, "A Cake Chat side chat must branch from a message");
+      assert.deepEqual(fixture.createdRecords, []);
+    }).pipe(Effect.provide(fixture.layer));
+  });
+});
 
 describe("Discussion Sessions domain", () => {
   it.effect("projects Cake-owned pending comments before a sidecar transcript exists", () => {

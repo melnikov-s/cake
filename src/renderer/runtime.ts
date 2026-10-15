@@ -215,6 +215,7 @@ export const makeRemoteRuntime = (
           ...remote.cakeChats,
           observeCatalog: (input) => ready(remote.cakeChats.observeCatalog(input)),
           observeControls: (input) => ready(remote.cakeChats.observeControls(input)),
+          observeSideChats: (input) => ready(remote.cakeChats.observeSideChats(input)),
         },
         conversations: { observe: (input) => ready(remote.conversations.observe(input)) },
         discussionSessions: {

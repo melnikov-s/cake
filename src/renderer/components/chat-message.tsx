@@ -260,6 +260,8 @@ export interface ChatTranscriptBehavior {
   workspacePath?: string;
   onFork?(entryId: string): void;
   onTree?(entryId: string): void;
+  /** Branches a side chat from one whole assistant message. */
+  onBranchSideChat?(message: { readonly messageId: string; readonly entryId?: string }): void;
   onOpenReviewRun?(threadId?: string): void;
   /** Opens a structured workspace source location in Cake's embedded VS Code IDE. */
   openSourceLocation?(location: SourceLocation): void;
@@ -495,6 +497,19 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
               onClick={() => behavior.onFork!(part.entryId!)}
             >
               <ForkIcon />
+            </IconButton>
+          )}
+          {behavior.onBranchSideChat && (
+            <IconButton
+              tooltip="Discuss in side chat"
+              ariaLabel="Discuss response in side chat"
+              onClick={() => {
+                const message = { messageId: part.id };
+                if (part.entryId) Object.assign(message, { entryId: part.entryId });
+                behavior.onBranchSideChat!(message);
+              }}
+            >
+              <ChatIcon size={16} />
             </IconButton>
           )}
           {part.entryId && behavior.onTree && (

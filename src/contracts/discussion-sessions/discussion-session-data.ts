@@ -132,6 +132,22 @@ export interface DiscussionSessionStartInput extends Schema.Schema.Type<
 > {}
 
 /**
+ * Branches a side chat from one Cake Chat message. The backend owns the
+ * permanent Cake Chat identity and location, so the renderer supplies only the
+ * message anchor and first prompt.
+ */
+export const CakeChatSideChatStartInput = Schema.Struct({
+  anchor: DiscussionAnchor,
+  text: DiscussionSessionStartInput.fields.text,
+  annotations: DiscussionSessionStartInput.fields.annotations,
+  model: DiscussionSessionStartInput.fields.model,
+  thinkingLevel: DiscussionSessionStartInput.fields.thinkingLevel,
+});
+export interface CakeChatSideChatStartInput extends Schema.Schema.Type<
+  typeof CakeChatSideChatStartInput
+> {}
+
+/**
  * Ensures a Project Session's single assistant Discussion Session exists. Like
  * any side chat, its sidecar is created by delivering a first message, so the
  * pending message is supplied while the thread has no sidecar yet. A staged

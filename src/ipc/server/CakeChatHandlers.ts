@@ -1,6 +1,7 @@
 import { Effect, Stream } from "effect";
 import * as cakeChatMetadata from "../../domain/cake-chats/cakeChatMetadata";
 import * as cakeChatOperations from "../../domain/cake-chats/cakeChatOperations";
+import * as cakeChatSideChats from "../../domain/cake-chats/cakeChatSideChats";
 import * as requestInspection from "../../domain/cake-chats/requestInspection";
 import { CakeChatError } from "../../contracts/cake-chats/cake-chat-data";
 import type { CakeChatRuntimeConfiguration } from "../../domain/cake-chats/cakeChatRuntime";
@@ -52,6 +53,9 @@ export const makeCakeChatHandlers = (configuration: CakeChatRuntimeConfiguration
           ),
         ),
       ),
+    "cakeChats.observeSideChats": () =>
+      Stream.unwrap(cakeChatSideChats.observeCatalog(configuration.location)),
+    "cakeChats.startSideChat": (input) => cakeChatSideChats.start(input, configuration.location),
     "cakeChats.setUnread": ({ unread }) => cakeChatMetadata.setUnread(unread),
     "cakeChats.respondControl": ({ controlRequestId, result }) =>
       withConnection((connectionId) =>

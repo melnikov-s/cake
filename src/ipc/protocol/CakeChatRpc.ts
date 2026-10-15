@@ -9,7 +9,14 @@ import {
   CakeChatControlUpdate,
 } from "../../contracts/cake-chats/cake-chat-data";
 import { RequestInspectionResult } from "../../contracts/conversations/request-inspection";
-import { CakeChatCatalogUpdate } from "../../contracts/application/catalog-data";
+import {
+  CakeChatCatalogUpdate,
+  DiscussionCatalogUpdate,
+} from "../../contracts/application/catalog-data";
+import {
+  CakeChatSideChatStartInput,
+  DiscussionSessionAcceptedTurn,
+} from "../../contracts/discussion-sessions/discussion-session-data";
 import { TurnId } from "../../contracts/conversations/conversation-data";
 import { RendererConnectionMiddleware } from "./RendererConnectionMiddleware";
 
@@ -47,6 +54,22 @@ export const CakeChatRpc = RpcGroup.make(
   Rpc.make("cakeChats.start", {
     payload: CakeChatStartInput,
     success: TurnId,
+    error: CakeChatError,
+  }),
+  /**
+   * Side chats are Discussion Sessions branched from Cake Chat messages. Their
+   * sidecar conversations and resolution use the shared `discussionSessions`
+   * and `sessionChats` operations once they exist.
+   */
+  Rpc.make("cakeChats.observeSideChats", {
+    payload: {},
+    success: DiscussionCatalogUpdate,
+    error: CakeChatError,
+    stream: true,
+  }),
+  Rpc.make("cakeChats.startSideChat", {
+    payload: CakeChatSideChatStartInput,
+    success: DiscussionSessionAcceptedTurn,
     error: CakeChatError,
   }),
   Rpc.make("cakeChats.setUnread", {

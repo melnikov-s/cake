@@ -43,19 +43,10 @@ export class RootProjection extends Model {
     sessionId: string,
     options: { readonly retainDiscussionCatalog?: boolean } = {},
   ) {
-    const sidecarSessionIds = options.retainDiscussionCatalog
-      ? []
-      : [...this.discussionConversationParents].flatMap(([sidecarSessionId, parentSessionId]) =>
-          parentSessionId === sessionId ? [sidecarSessionId] : [],
-        );
     removeBySessionId(this.projectConversations, sessionId);
     removeBySessionId(this.subagentCatalogs, sessionId);
     removeBySessionId(this.scheduledMessageCatalogs, sessionId);
-    if (!options.retainDiscussionCatalog) removeBySessionId(this.discussionCatalogs, sessionId);
-    for (const sidecarSessionId of sidecarSessionIds) {
-      removeBySessionId(this.discussionConversations, sidecarSessionId);
-      this.discussionConversationParents.delete(sidecarSessionId);
-    }
+    if (!options.retainDiscussionCatalog) this.removeDiscussionProjections(sessionId);
   }
 
   // Each focused catalog type has one owning collection in this tree. Reuse
@@ -151,6 +142,17 @@ export class RootProjection extends Model {
   removeCakeChatProjections(sessionId: string) {
     removeBySessionId(this.cakeChatConversations, sessionId);
     removeBySessionId(this.cakeChatControls, sessionId);
+    this.removeDiscussionProjections(sessionId);
+  }
+
+  /** Removes a parent's Discussion catalog and the side chat conversations it owns. */
+  private removeDiscussionProjections(parentSessionId: string) {
+    removeBySessionId(this.discussionCatalogs, parentSessionId);
+    for (const [sidecarSessionId, parent] of this.discussionConversationParents) {
+      if (parent !== parentSessionId) continue;
+      removeBySessionId(this.discussionConversations, sidecarSessionId);
+      this.discussionConversationParents.delete(sidecarSessionId);
+    }
   }
 
   discussionConversation(sessionId: string, _workingDirectory: string, parentSessionId?: string) {

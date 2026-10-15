@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { observer } from "r-state-tree/react";
 import type { ReviewThread } from "../models/ReviewThread";
-import type { ProjectSessionStore } from "../stores/ProjectSessionStore";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { ChatIcon } from "./ui/icons";
@@ -24,7 +23,12 @@ export const SideChatsMenu = observer(function SideChatsMenu({
   store,
   onOpen,
 }: {
-  store: ProjectSessionStore;
+  /** A Project Session or Cake Chat, either of which owns open side chats. */
+  store: {
+    readonly sideChatThreads: readonly ReviewThread[];
+    openSideChat(threadId: string): boolean;
+    sideChatStreaming(threadId: string): boolean;
+  };
   /** Focuses the surface that owns this menu before a chat opens, when several surfaces share a window. */
   onOpen?(): void;
 }) {

@@ -2,7 +2,9 @@ import { Effect, FileSystem, Layer, Path } from "effect";
 import { projectReviewThread, type ReviewThreadRecord } from "../contracts/reviews/review-contract";
 import { ReviewStorage } from "../services/storage/ReviewStorage";
 import { ApplicationState } from "../services/storage/ApplicationState";
+import { CAKE_CHAT_SESSION_ID } from "../contracts/cake-chats/cake-chat-data";
 import {
+  cakeChatSideChatSystemPrompt,
   reviewSidecarSystemPrompt,
   writeDiscussionParentContext,
 } from "../services/pi/runtime/sidecar-runtime";
@@ -133,14 +135,21 @@ export const makeDiscussionSessionEnvironmentLive = (
                 operation: "sidecarSystemPrompt",
                 message: "That Discussion Session no longer exists",
               });
-            return reviewSidecarSystemPrompt(
-              stored,
-              storage.discussionParentContextPath(
-                record.workingDirectory,
-                record.parentSessionId,
-                record.id,
-              ),
+            const contextPath = storage.discussionParentContextPath(
+              record.workingDirectory,
+              record.parentSessionId,
+              record.id,
             );
+            if (record.parentSessionId !== CAKE_CHAT_SESSION_ID)
+              return reviewSidecarSystemPrompt(stored, contextPath);
+            const branchContext = (yield* fileSystem
+              .exists(contextPath)
+              .pipe(Effect.orElseSucceed(() => false)))
+              ? yield* fileSystem
+                  .readFileString(contextPath)
+                  .pipe(Effect.mapError((cause) => environmentError("sidecarSystemPrompt", cause)))
+              : "(The Cake Chat conversation is unavailable.)\n";
+            return cakeChatSideChatSystemPrompt(stored.anchor, branchContext);
           },
         ),
         prepareParentContext: Effect.fn("DiscussionSessionEnvironment.prepareParentContext")(
@@ -171,6 +180,22 @@ export const makeDiscussionSessionEnvironmentLive = (
             ),
           }).pipe(
             Effect.mapError((cause) => environmentError("prepareStagedParentContext", cause)),
+          );
+        }),
+        prepareCakeChatBranchContext: Effect.fn(
+          "DiscussionSessionEnvironment.prepareCakeChatBranchContext",
+        )(function* (record, messages) {
+          yield* writeDiscussionParentContext(fileSystem, path, {
+            cwd: record.workingDirectory,
+            parentSessionRoot: options.parentSessionDirectory,
+            cakeChat: messages,
+            target: storage.discussionParentContextPath(
+              record.workingDirectory,
+              record.parentSessionId,
+              record.id,
+            ),
+          }).pipe(
+            Effect.mapError((cause) => environmentError("prepareCakeChatBranchContext", cause)),
           );
         }),
         refreshParentIndex: Effect.fn("DiscussionSessionEnvironment.refreshParentIndex")(

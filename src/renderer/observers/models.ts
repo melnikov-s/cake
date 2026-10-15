@@ -134,6 +134,8 @@ type ModelInput = {
     conversation: Conversation;
     controls: CakeChatControls;
     subagents: SubagentCatalog;
+    /** Side chats branched from this Cake Chat's messages. */
+    sideChats: DiscussionCatalog;
   }>;
   readonly discussionSessions?: ReadonlyArray<{
     thread: ReviewThread;
@@ -393,8 +395,15 @@ export const createModelObserver = (
       );
     }
 
-    for (const { target, conversation, controls, subagents } of input.cakeChats) {
+    for (const { target, conversation, controls, subagents, sideChats } of input.cakeChats) {
       assertSessionIdentity(conversation, target.sessionId);
+      observe(
+        `cake-chat-side-chats:${target.sessionId}`,
+        sideChats,
+        (client) => client.cakeChats.observeSideChats({}),
+        (update: DiscussionCatalogUpdate) =>
+          applyDiscussionCatalogUpdate(sideChats, target.sessionId, update),
+      );
       observe(
         `conversation:${target.sessionId}`,
         conversation,
@@ -466,8 +475,10 @@ export const createModelObserver = (
           ...source.projection.subagentCatalogs.map(({ sessionId }) => sessionId),
           ...source.projection.scheduledMessageCatalogs.map(({ sessionId }) => sessionId),
         ]);
+        // Cake Chat also owns subagent and side chat catalogs keyed by its ID.
+        const cakeChatIds = new Set(loadedCakeChatIds ?? []);
         for (const sessionId of projectionIds)
-          if (!loadedIds.has(sessionId))
+          if (!loadedIds.has(sessionId) && !cakeChatIds.has(sessionId))
             source.projection.removeProjectSessionProjections(sessionId, {
               retainDiscussionCatalog: stagedIds.has(sessionId),
             });
@@ -508,9 +519,17 @@ export const createModelObserver = (
       // Every observed parent's threads with a sidecar demand its Conversation
       // payload. Conversation Model identity remains window-scoped; leaving
       // retention stops observation and clears payload without reallocating it.
+      const cakeChats = source.cakeChatTargets().map((target) => ({
+        target,
+        conversation: source.projection.cakeChatConversation(target.sessionId),
+        controls: source.projection.controlsForCakeChat(target.sessionId),
+        subagents: source.projection.subagentCatalog(target.sessionId),
+        sideChats: source.projection.discussionCatalog(target.sessionId),
+      }));
       const liveThreads = [
         ...projectSessions.map(({ discussions }) => discussions),
         ...discussionCatalogs.map(({ model }) => model),
+        ...cakeChats.map(({ sideChats }) => sideChats),
       ].flatMap(({ threads }) => threads.filter(hasSidecarConversation));
       sync({
         workflowStores: source.workflowStores?.(),
@@ -524,12 +543,7 @@ export const createModelObserver = (
         cakeChatCatalogQueries: source.cakeChatCatalogQueries?.(),
         projectSessions,
         discussionCatalogs,
-        cakeChats: source.cakeChatTargets().map((target) => ({
-          target,
-          conversation: source.projection.cakeChatConversation(target.sessionId),
-          controls: source.projection.controlsForCakeChat(target.sessionId),
-          subagents: source.projection.subagentCatalog(target.sessionId),
-        })),
+        cakeChats,
         discussionSessions: liveThreads.map((thread) => {
           const entry = {
             thread,

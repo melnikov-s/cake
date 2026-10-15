@@ -8,6 +8,7 @@ import { RootStore } from "../stores/RootStore";
 import type { SessionPaneNode } from "../stores/SessionLayoutStore";
 import type { CakeChatSessionStore } from "../stores/CakeChatSessionStore";
 import { SessionArtifactMenu } from "./session-artifact-menu";
+import { SideChatsMenu } from "./side-chats-menu";
 
 export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
   pane,
@@ -41,6 +42,10 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
       )}
       <SessionArtifactMenu
         session={paneSession}
+        onOpen={() => root.navigationStore.focusCakeChatPane(pane.paneId)}
+      />
+      <SideChatsMenu
+        store={paneSession}
         onOpen={() => root.navigationStore.focusCakeChatPane(pane.paneId)}
       />
       <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />

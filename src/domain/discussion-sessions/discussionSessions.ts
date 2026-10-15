@@ -1,8 +1,11 @@
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
 import { acquireOptions as acquireProjectSessionOptions } from "../project-sessions/projectSessionRuntime";
-import { Effect, Schema, Stream } from "effect";
+import { Effect, Option, Schema, Stream } from "effect";
 import type { DiscussionCatalogUpdate } from "../../contracts/application/catalog-data";
-import type { CakeControlTool } from "../../contracts/cake-chats/cake-chat-data";
+import {
+  CAKE_CHAT_SESSION_ID,
+  type CakeControlTool,
+} from "../../contracts/cake-chats/cake-chat-data";
 import { jsonObjectSchema } from "../../contracts/serialization/json-contract";
 import { makePiCallbackExecutor } from "../../services/pi/PiCallbackAdapter";
 import {
@@ -25,6 +28,7 @@ import {
   TurnId,
 } from "../conversations/conversations";
 import {
+  type CakeChatSideChatStartInput,
   DiscussionSessionError,
   type DiscussionSessionProjection,
   type DiscussionSessionStartInput,
@@ -87,6 +91,10 @@ const projectThread = (
   if (record.resolvedAt !== undefined) Object.assign(thread, { resolvedAt: record.resolvedAt });
   return thread;
 };
+
+/** A Cake Chat side chat branches from the permanent coordinator, not a Project Session. */
+const isCakeChatSideChat = (record: { readonly parentSessionId: string }) =>
+  record.parentSessionId === CAKE_CHAT_SESSION_ID;
 
 const parentHandle = Effect.fn("DiscussionSessions.parentHandle")(function* (
   target: DiscussionSessionTarget,
@@ -189,9 +197,13 @@ const acquireRecord = Effect.fn("DiscussionSessions.acquireRecord")(function* (
         ),
         // The projection points at a stable path, so refreshing it never
         // requires rebuilding the runtime. A parent that cannot be read right
-        // now leaves the previous projection in place.
+        // now leaves the previous projection in place. A Cake Chat side chat's
+        // branch context is captured once when it starts.
         Effect.andThen(
-          Effect.scoped(refreshParentContext(record)).pipe(
+          (isCakeChatSideChat(record)
+            ? Effect.void
+            : Effect.scoped(refreshParentContext(record))
+          ).pipe(
             Effect.provide(services),
             Effect.catchTag("DiscussionSessionError", (error) =>
               error.operation === "parentContext" ? Effect.void : Effect.fail(error),
@@ -220,7 +232,12 @@ const sideChatConfiguration = Effect.fn("DiscussionSessions.sideChatConfiguratio
 ): Effect.fn.Return<SidecarConfiguration, DiscussionSessionError, DiscussionSessionEnvironment> {
   const environment = yield* DiscussionSessionEnvironment;
   const systemPrompt = yield* environment.sidecarSystemPrompt(record).pipe(asError("acquire"));
-  return { systemPrompt, tools: ["read", "grep", "find", "ls"] };
+  // Cake Chat itself has no file tools; its side chat discusses the inlined
+  // branch context and cannot act on the workspace or Cake.
+  return {
+    systemPrompt,
+    tools: isCakeChatSideChat(record) ? [] : ["read", "grep", "find", "ls"],
+  };
 });
 
 /**
@@ -451,20 +468,28 @@ export const observe = Effect.fn("DiscussionSessions.observe")(function* (
   );
 });
 
-/** Creates a Discussion Session and delivers its first prompt to a new sidecar. */
-export const start = Effect.fn("DiscussionSessions.start")(function* (
-  input: DiscussionSessionStartInput,
+type FirstPrompt = Pick<
+  DiscussionSessionStartInput,
+  "text" | "annotations" | "model" | "thinkingLevel"
+>;
+
+const requirePrompt = (input: FirstPrompt) =>
+  !input.text.trim() && (input.annotations ?? []).length === 0
+    ? Effect.fail(
+        new DiscussionSessionError({
+          operation: "start",
+          message: "A Discussion Session prompt cannot be empty",
+        }),
+      )
+    : Effect.void;
+
+/** Acquires a new thread's sidecar and delivers its first prompt. */
+const deliverFirstPrompt = Effect.fn("DiscussionSessions.deliverFirstPrompt")(function* (
+  record: DiscussionSessionRecord,
+  input: FirstPrompt,
 ) {
-  const annotations = input.annotations ?? [];
-  if (!input.text.trim() && annotations.length === 0)
-    return yield* new DiscussionSessionError({
-      operation: "start",
-      message: "A Discussion Session prompt cannot be empty",
-    });
   const environment = yield* DiscussionSessionEnvironment;
-  const record = yield* environment
-    .create(input.workingDirectory, input.parentSessionId, input.anchor)
-    .pipe(asError("start"));
+  const annotations = input.annotations ?? [];
   const prepared = yield* prepare(record);
   if (input.model)
     yield* prepared.handle.setModel(input.model.provider, input.model.id).pipe(asError("start"));
@@ -477,6 +502,78 @@ export const start = Effect.fn("DiscussionSessions.start")(function* (
   yield* environment.refreshParentIndex(prepared.record).pipe(asError("start"));
   return { turnId, thread: projectThread(prepared.record) };
 });
+
+/** Creates a Discussion Session and delivers its first prompt to a new sidecar. */
+export const start = Effect.fn("DiscussionSessions.start")(function* (
+  input: DiscussionSessionStartInput,
+) {
+  yield* requirePrompt(input);
+  const environment = yield* DiscussionSessionEnvironment;
+  const record = yield* environment
+    .create(input.workingDirectory, input.parentSessionId, input.anchor)
+    .pipe(asError("start"));
+  return yield* deliverFirstPrompt(record, input);
+});
+
+/**
+ * Branches a side chat from one Cake Chat message. The conversation through
+ * that message is captured from the assembled Cake Chat before the thread is
+ * stored, so a missing message never leaves an empty thread behind.
+ */
+export const startCakeChatSideChat = Effect.fn("DiscussionSessions.startCakeChatSideChat")(
+  function* (input: CakeChatSideChatStartInput, workingDirectory: string) {
+    yield* requirePrompt(input);
+    const messageId = input.anchor.messageId;
+    if (input.anchor.view !== "message" || !messageId)
+      return yield* new DiscussionSessionError({
+        operation: "start",
+        message: "A Cake Chat side chat must branch from a message",
+      });
+    const sessions = yield* CakeSessionRuntimes;
+    const snapshot = yield* Effect.scoped(
+      sessions
+        .acquireSession(CAKE_CHAT_SESSION_ID)
+        .pipe(Effect.flatMap((handle) => handle.snapshot())),
+    ).pipe(asError("start"));
+    const messages = cakeChatBranchMessages(snapshot.parts, input.anchor);
+    if (!messages)
+      return yield* new DiscussionSessionError({
+        operation: "start",
+        message: "That Cake Chat message is no longer available",
+      });
+    const environment = yield* DiscussionSessionEnvironment;
+    const record = yield* environment
+      .create(workingDirectory, CAKE_CHAT_SESSION_ID, input.anchor)
+      .pipe(asError("start"));
+    yield* environment.prepareCakeChatBranchContext(record, messages).pipe(asError("start"));
+    return yield* deliverFirstPrompt(record, input);
+  },
+);
+
+const BranchTextPart = Schema.Struct({
+  id: Schema.String,
+  kind: Schema.Literal("text"),
+  role: Schema.Literals(["user", "assistant"]),
+  text: Schema.String,
+  entryId: Schema.optional(Schema.String),
+});
+const decodeBranchTextPart = Schema.decodeUnknownOption(BranchTextPart);
+
+/** User and assistant text through the anchored message, or undefined when it is gone. */
+const cakeChatBranchMessages = (
+  parts: ReadonlyArray<unknown>,
+  anchor: { readonly messageId?: string; readonly entryId?: string },
+) => {
+  const messages: Array<{ role: "user" | "assistant"; text: string }> = [];
+  for (const candidate of parts) {
+    const part = Option.getOrUndefined(decodeBranchTextPart(candidate));
+    if (!part) continue;
+    messages.push({ role: part.role, text: part.text });
+    if (part.id === anchor.messageId || (anchor.entryId && part.entryId === anchor.entryId))
+      return messages;
+  }
+  return undefined;
+};
 
 export const setResolved = Effect.fn("DiscussionSessions.setResolved")(function* (
   target: DiscussionSessionTarget,

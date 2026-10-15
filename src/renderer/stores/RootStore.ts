@@ -763,6 +763,9 @@ export class RootStore extends Store<{
       controlsModel: (sessionId) => this.props.projection.controlsForCakeChat(sessionId),
       subagentCatalog: (sessionId) => this.props.projection.subagentCatalog(sessionId),
       workflowCatalog: (sessionId) => this.props.projection.workflowCatalog(sessionId),
+      discussionCatalog: (sessionId) => this.props.projection.discussionCatalog(sessionId),
+      discussionSessionModel: (sessionId, workingDirectory, parentSessionId) =>
+        this.props.projection.discussionConversation(sessionId, workingDirectory, parentSessionId),
       tools: () => this.applicationControlStore.tools(),
       modelPresets: () => this.settingsStore.modelPresets.presets,
       defaultConfiguration: () => this.settingsStore.modelPresets.defaultConfiguration,

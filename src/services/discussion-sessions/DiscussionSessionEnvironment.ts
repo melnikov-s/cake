@@ -74,6 +74,14 @@ export interface DiscussionSessionEnvironmentService {
     record: DiscussionSessionRecord,
     messages: ReadonlyArray<StagedParentMessage>,
   ) => Effect.Effect<void, DiscussionSessionEnvironmentError>;
+  /**
+   * Writes the Cake Chat conversation through a side chat's branch point once,
+   * when the side chat starts; the sidecar's system prompt inlines it.
+   */
+  readonly prepareCakeChatBranchContext: (
+    record: DiscussionSessionRecord,
+    messages: ReadonlyArray<StagedParentMessage>,
+  ) => Effect.Effect<void, DiscussionSessionEnvironmentError>;
   readonly refreshParentIndex: (
     record: DiscussionSessionRecord,
   ) => Effect.Effect<void, DiscussionSessionEnvironmentError>;

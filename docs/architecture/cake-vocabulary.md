@@ -149,7 +149,8 @@ Project Session-shaped snapshot and carries no Project, Working
 Directory, review, artifact, Session Family, or schedule state. Project-aware
 investigators use the existing focused Subagent activity authority and shared
 Chat interface, not a new visible Project Session or parallel worker UI. Cake
-Chat remains separate from Project Session catalogs.
+Chat remains separate from Project Session catalogs. Side chats branched from its
+messages are Discussion Sessions, not additional Cake Chat Sessions.
 
 ### Discussion Session
 
@@ -158,6 +159,12 @@ Session's primary Conversation at session, assistant-message, review, or source
 scope. Cake owns the anchor and regenerates read-only parent context; Pi owns
 the Discussion Session's transcript. **Side chat** is UI copy only; domain code
 uses **Discussion Session**.
+
+The permanent Cake Chat can also parent Discussion Sessions, anchored to a whole
+message or a selected passage. A Cake Chat side chat is a tool-free branch: Cake
+captures the Cake Chat conversation through the anchored message once, when the
+side chat starts, and inlines it as read-only context. It cannot control Cake;
+the user returns to Cake Chat for actions.
 
 ### Subagent Session
 

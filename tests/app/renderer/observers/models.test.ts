@@ -806,6 +806,7 @@ describe("Cake Chat composition observer", () => {
     const client = baseClient({
       cakeChats: {
         observeCatalog: () => Stream.never,
+        observeSideChats: () => Stream.never,
         observeControls: () =>
           Stream.make({ _tag: "Snapshot" as const, requests: currentRequests }).pipe(
             Stream.concat(Stream.fromQueue(controls)),
@@ -826,6 +827,7 @@ describe("Cake Chat composition observer", () => {
           conversation: projection.cakeChatConversation("cake-chat-1"),
           controls: controlModel,
           subagents: projection.subagentCatalog("cake-chat-1"),
+          sideChats: projection.discussionCatalog("cake-chat-1"),
         },
       ],
     });
@@ -862,6 +864,7 @@ describe("Cake Chat composition observer", () => {
           conversation: projection.cakeChatConversation("cake-chat-1"),
           controls: controlModel,
           subagents: projection.subagentCatalog("cake-chat-1"),
+          sideChats: projection.discussionCatalog("cake-chat-1"),
         },
       ],
     });
@@ -890,6 +893,7 @@ describe("Cake Chat composition observer", () => {
           conversation: projection.cakeChatConversation("cake-chat-1"),
           controls: controlModel,
           subagents: projection.subagentCatalog("cake-chat-1"),
+          sideChats: projection.discussionCatalog("cake-chat-1"),
         },
       ],
     });
