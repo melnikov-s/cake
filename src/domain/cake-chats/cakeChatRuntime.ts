@@ -8,7 +8,11 @@ import { forwardTaskInputControl, safeCoordinatorProjection } from "./taskInputC
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 import { SavedDraftStorage } from "../../services/storage/SavedDraftStorage";
 import { resolveCakeModelSelection } from "../model-presets/cake-model-selection";
-import { setSessionFastMode } from "../application/application";
+import {
+  getCakeChatInstructions,
+  updateCakeChatInstructions,
+  setSessionFastMode,
+} from "../application/application";
 import { PiModels } from "../../services/pi/PiModels";
 import { defaultCakeChatPreferences } from "../../contracts/cake-chats/cake-chat-preferences";
 import { utilityModelSelection } from "../utility-work/utilityWork";
@@ -31,6 +35,8 @@ import { makePiCallbackExecutor } from "../../services/pi/PiCallbackAdapter";
 const CAKE_CHAT_OPERATIONS = [
   "app.state",
   "app.user-selection",
+  "settings.cake-chat.get",
+  "settings.cake-chat.update",
   "models.list",
   "session.info",
   "session.usage",
@@ -162,6 +168,10 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
       // selection, which does not necessarily activate extension tools.
       tools: ["cake", "zoom", "date"],
       allowedCakeOperations: CAKE_CHAT_OPERATIONS,
+      cakeChatInstructions: {
+        get: (signal) => run(getCakeChatInstructions(), { signal }),
+        update: (input, signal) => run(updateCakeChatInstructions(input), { signal }),
+      },
       cakeChatMemory: {
         preferences: () =>
           application.snapshot().cakeChatPreferences ?? defaultCakeChatPreferences(),

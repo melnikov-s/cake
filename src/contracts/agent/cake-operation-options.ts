@@ -18,6 +18,7 @@ import type { JsonObject, JsonValue } from "../serialization/json-contract";
 import type { WorkflowControl } from "../workflows/workflow-agent-control";
 import type { WorktreeLandingControl } from "../worktrees/worktree-agent-control";
 import type { GlobalControlTool } from "./cake-operation-control";
+import type { CakeChatInstructionsControl } from "../cake-chats/cake-chat-instructions";
 
 /** Live policy queries do not authorize a later mutation. */
 export interface ProjectSessionLivePolicyControl {
@@ -152,6 +153,7 @@ export interface CakeOperationOptions extends Partial<CakeArtifactOperationOptio
   browserControl?: BrowserControl;
   worktreeLandingControl?: WorktreeLandingControl;
   globalControl?: GlobalOperationControl;
+  cakeChatInstructions?: CakeChatInstructionsControl;
   /** Parent Project Session gateway granted to an auxiliary runtime, not coordinator authority. */
   sessionControl?: GlobalOperationControl;
   agentControl?: AgentOperationControl;

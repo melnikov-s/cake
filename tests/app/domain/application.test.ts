@@ -11,6 +11,9 @@ import {
   renameProject,
   setProjectSettings,
   setGlobalCustomInstructions,
+  getCakeChatInstructions,
+  setCakeChatPreferences,
+  updateCakeChatInstructions,
   setExperimentalFeatures,
   setProjectSessionLabels,
   setProjectSessionLabelsIfUnlabelled,
@@ -109,6 +112,93 @@ describe("Application domain", () => {
       }),
     ),
   );
+
+  it.effect(
+    "persists Cake Chat guidance without changing other preferences and restores it",
+    () => {
+      const f = makeLayer();
+      const instructions = "Original guidance.\n\n## Tool Gateway\nUse read-only searches.\n";
+      const preferences = {
+        memoryViewBytes: 8_000,
+        instructions: "Original guidance.",
+        summarizationModel: { provider: "p", modelId: "summary", thinkingLevel: "low" as const },
+      };
+      return Effect.gen(function* () {
+        yield* Effect.gen(function* () {
+          assert.deepEqual(yield* getCakeChatInstructions(), { instructions: "" });
+          yield* setCakeChatPreferences(preferences);
+          yield* setGlobalCustomInstructions("Separate Project Session guidance.");
+          const before = f.persisted();
+          const result = yield* updateCakeChatInstructions({
+            expectedInstructions: preferences.instructions,
+            instructions,
+          });
+          assert.deepEqual(result, { instructions });
+          assert.deepEqual(yield* getCakeChatInstructions(), result);
+          assert.deepEqual(f.persisted(), {
+            ...before,
+            cakeChatPreferences: { ...preferences, instructions },
+          });
+        }).pipe(Effect.provide(f.layer, { local: true }));
+        yield* Effect.gen(function* () {
+          yield* (yield* ApplicationState).initialize();
+          assert.deepEqual(yield* getCakeChatInstructions(), { instructions });
+          yield* updateCakeChatInstructions({
+            expectedInstructions: instructions,
+            instructions: "",
+          });
+          assert.deepEqual(f.persisted().cakeChatPreferences, { ...preferences, instructions: "" });
+        }).pipe(Effect.provide(f.layer, { local: true }));
+      });
+    },
+  );
+
+  it.effect("creates default Cake Chat preferences when saving guidance for the first time", () => {
+    const f = makeLayer();
+    return Effect.gen(function* () {
+      yield* updateCakeChatInstructions({
+        expectedInstructions: "",
+        instructions: "Remember this.",
+      });
+      assert.deepEqual(f.persisted().cakeChatPreferences, {
+        memoryViewBytes: 40_000,
+        instructions: "Remember this.",
+      });
+    }).pipe(Effect.provide(f.layer));
+  });
+
+  it.effect("rejects stale or oversized Cake Chat guidance without changing saved state", () => {
+    const f = makeLayer();
+    return Effect.gen(function* () {
+      yield* updateCakeChatInstructions({ expectedInstructions: "", instructions: "Latest." });
+      const before = f.persisted();
+      const conflict = yield* updateCakeChatInstructions({
+        expectedInstructions: "",
+        instructions: "Stale replacement.",
+      }).pipe(Effect.flip);
+      assert.equal(conflict._tag, "ApplicationPolicyError");
+      assert.match(conflict.message, /instructions changed/);
+      yield* updateCakeChatInstructions({
+        expectedInstructions: "Latest.",
+        instructions: "x".repeat(16_385),
+      }).pipe(Effect.flip);
+      assert.deepEqual(yield* getCakeChatInstructions(), { instructions: "Latest." });
+      assert.deepEqual(f.persisted(), before);
+    }).pipe(Effect.provide(f.layer));
+  });
+
+  it.effect("does not publish Cake Chat guidance when persistence fails", () => {
+    const f = makeLayer({ failSave: true });
+    return Effect.gen(function* () {
+      const error = yield* updateCakeChatInstructions({
+        expectedInstructions: "",
+        instructions: "Unsaved.",
+      }).pipe(Effect.flip);
+      assert.equal(error._tag, "ApplicationWriteError");
+      assert.deepEqual(yield* getCakeChatInstructions(), { instructions: "" });
+      assert.equal(f.persisted().cakeChatPreferences, undefined);
+    }).pipe(Effect.provide(f.layer));
+  });
 
   it("offers 32 curated workflow colors", () => {
     assert.equal(SESSION_LABEL_COLORS.length, 32);

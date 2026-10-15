@@ -17,6 +17,8 @@ import {
   type ExperimentalFeatures,
 } from "../../contracts/application/application-data";
 import { validateSessionLabelName } from "../../utils/session-label-name";
+import { defaultCakeChatPreferences } from "../../contracts/cake-chats/cake-chat-preferences";
+import type { CakeChatInstructionsUpdate } from "../../contracts/cake-chats/cake-chat-instructions";
 import { ApplicationState as ApplicationStateOwner } from "../../services/storage/ApplicationState";
 
 class ApplicationPolicyError extends Schema.TaggedError<ApplicationPolicyError>()(
@@ -109,6 +111,34 @@ export const setCakeChatPreferences = Effect.fn("Application.setCakeChatPreferen
 ) {
   return yield* update((current) => ({ ...current, cakeChatPreferences: preferences }));
 });
+
+export const getCakeChatInstructions = Effect.fn("Application.getCakeChatInstructions")(
+  function* () {
+    const owner = yield* ApplicationStateOwner;
+    return { instructions: (yield* owner.current()).cakeChatPreferences?.instructions ?? "" };
+  },
+);
+
+export const updateCakeChatInstructions = Effect.fn("Application.updateCakeChatInstructions")(
+  function* (input: CakeChatInstructionsUpdate) {
+    const owner = yield* ApplicationStateOwner;
+    const state = yield* owner.transact((current) => {
+      const preferences = current.cakeChatPreferences ?? defaultCakeChatPreferences();
+      if (preferences.instructions !== input.expectedInstructions)
+        return Effect.fail(
+          new ApplicationPolicyError({
+            message:
+              "Cake Chat instructions changed. Read them again, merge your changes, and retry.",
+          }),
+        );
+      return validate({
+        ...current,
+        cakeChatPreferences: { ...preferences, instructions: input.instructions },
+      });
+    });
+    return { instructions: state.cakeChatPreferences?.instructions ?? "" };
+  },
+);
 
 export const setExperimentalFeatures = Effect.fn("Application.setExperimentalFeatures")(function* (
   features: ExperimentalFeatures,

@@ -129,6 +129,80 @@ describe("Backend-owned Cake operation composition", () => {
     expect(result.details).toMatchObject({ result: model });
   });
 
+  it("exposes validated permanent guidance tools only through coordinator composition", async () => {
+    const get = vi.fn(async () => ({ instructions: "Existing guidance." }));
+    const update = vi.fn(async (input: { instructions: string }) => ({
+      instructions: input.instructions,
+    }));
+    const configured = configureCakeSessionRuntime({
+      ...options("/workspace"),
+      globalControl: { tools: [], invoke: vi.fn() },
+      cakeChatInstructions: { get, update },
+      allowedCakeOperations: ["settings.cake-chat.get", "settings.cake-chat.update"],
+    });
+    if (!configured.coordinator) throw new Error("Expected coordinator composition");
+    const registry = new CakeOperationRegistry(
+      configured.coordinator.operations({
+        sessionId: "coordinator",
+        resolveModel: () => ({
+          provider: "p",
+          modelId: "m",
+          thinkingLevel: "off",
+          fastMode: false,
+        }),
+        setModel: async () => undefined,
+        info: async () => ({}),
+        usage: async () => ({}),
+        contextStatus: async () => ({}),
+        compact: async () => ({}),
+      }),
+    );
+    expect(registry.definitions().map((operation) => operation.command)).toEqual([
+      "settings.cake-chat.get",
+      "settings.cake-chat.update",
+    ]);
+    expect(registry.help()).toContain("settings");
+    expect(registry.operationHelp("settings.cake-chat.update")).toContain("expectedInstructions");
+    expect(registry.operationHelp("settings.cake-chat.update")).toContain("next Cake Chat message");
+    const read = await registry.invoke({ command: "settings.cake-chat.get" }, context);
+    expect(read.details).toMatchObject({ result: { instructions: "Existing guidance." } });
+    expect(get).toHaveBeenCalledWith(context.signal);
+    const input = {
+      expectedInstructions: "Existing guidance.",
+      instructions: "Existing guidance.\nNew guidance.",
+    };
+    const saved = await registry.invoke({ command: "settings.cake-chat.update", input }, context);
+    expect(update).toHaveBeenCalledWith(input, context.signal);
+    expect(saved.details).toMatchObject({ result: { instructions: input.instructions } });
+    for (const invalid of [
+      { instructions: "Missing read." },
+      { expectedInstructions: "", instructions: "x".repeat(16_385) },
+      { expectedInstructions: 1, instructions: "Wrong type." },
+    ])
+      await expect(
+        registry.invoke({ command: "settings.cake-chat.update", input: invalid }, context),
+      ).rejects.toThrow();
+    expect(update).toHaveBeenCalledTimes(1);
+    update.mockRejectedValueOnce(new Error("Persistence failed"));
+    await expect(
+      registry.invoke({ command: "settings.cake-chat.update", input }, context),
+    ).rejects.toThrow("Persistence failed");
+    const cancelled = { ...context, signal: AbortSignal.abort() };
+    await expect(
+      registry.invoke({ command: "settings.cake-chat.update", input }, cancelled),
+    ).rejects.toThrow();
+    expect(update).toHaveBeenCalledTimes(2);
+    // Passing a capability does not give ordinary Project Sessions coordinator authority.
+    const project = new CakeOperationRegistry(
+      projectCakeOperations({ cwd: "/workspace", cakeChatInstructions: { get, update } })(bridge()),
+    );
+    expect(
+      project
+        .definitions()
+        .every((operation) => !operation.command.startsWith("settings.cake-chat.")),
+    ).toBe(true);
+  });
+
   it("rejects coordinator composition without its authority", () => {
     expect(() => coordinatorCakeOperations({ cwd: "/workspace" })).toThrow(
       "coordinator control is unavailable",

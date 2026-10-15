@@ -52,6 +52,7 @@ function fixture() {
     Layer.mock(SessionFamilyStorage, {}),
     Layer.mock(ApplicationState, {
       snapshot: () => state,
+      current: () => Effect.succeed(state),
       transact: (transition) =>
         transition(state).pipe(
           Effect.tap((next) =>
@@ -143,6 +144,8 @@ describe("permanent Cake Chat", () => {
         });
         expect(options.runtime.tools).toEqual(["cake", "zoom", "date"]);
         expect(options.runtime.allowedCakeOperations).toContain("sessions.create");
+        expect(options.runtime.allowedCakeOperations).toContain("settings.cake-chat.get");
+        expect(options.runtime.allowedCakeOperations).toContain("settings.cake-chat.update");
         expect(options.runtime.allowedCakeOperations).toContain("workflows.propose");
         expect(options.runtime.allowedCakeOperations).toContain("workflows.start");
         expect(options.runtime.allowedCakeOperations).not.toContain("sessions.create-child");
@@ -180,6 +183,36 @@ describe("permanent Cake Chat", () => {
         expect(options.runtime.cakeChatMemory?.preferences().instructions).toBe(
           "Always create worktrees",
         );
+      }).pipe(Effect.provide(f.layer));
+    },
+  );
+
+  it.effect(
+    "wires dedicated instructions to the live application authority without desktop controls",
+    () => {
+      const f = fixture();
+      return Effect.gen(function* () {
+        const options = yield* acquireOptions({
+          configuration,
+          target: { sessionId: CAKE_CHAT_SESSION_ID, tools: [] },
+          newSession: true,
+        });
+        const control = options.runtime.cakeChatInstructions;
+        expect(control).toBeDefined();
+        if (!control) throw new Error("Expected instruction control");
+        const signal = new AbortController().signal;
+        expect(yield* Effect.promise(() => control.get(signal))).toEqual({ instructions: "" });
+        const saved = yield* Effect.promise(() =>
+          control.update(
+            { expectedInstructions: "", instructions: "User-approved guidance." },
+            signal,
+          ),
+        );
+        expect(saved).toEqual({ instructions: "User-approved guidance." });
+        expect(yield* Effect.promise(() => control.get(signal))).toEqual(saved);
+        // The next run's prompt reads this same live preference; no runtime reload is needed.
+        expect(options.runtime.cakeChatMemory?.preferences().instructions).toBe(saved.instructions);
+        expect(f.state().globalCustomInstructions).toBe("");
       }).pipe(Effect.provide(f.layer));
     },
   );

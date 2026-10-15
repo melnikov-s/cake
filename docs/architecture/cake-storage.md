@@ -282,6 +282,12 @@ inbox, execution checkpoints, and recovery. Cake does not implement a second SQL
 store, mirror JSONL, or archive the coordinator through Project Session storage.
 Its summary nodes and memory checkpoints live through the same SDK storage API.
 Application storage separately owns memory preferences and dedicated instructions.
+The permanent coordinator can read and update only its dedicated instructions with
+`settings.cake-chat.get` and `settings.cake-chat.update`. Updates use the existing
+application-state transaction, preserve other preferences, and require the exact
+previous instructions to reject stale replacements. The user-facing setting remains
+Settings → Application → Cake Chat → Cake Chat instructions. Saved changes apply to
+the next Chat message without a reload; they are never summarized into memory.
 
 The Pi Durable SDK supplies process-crash recovery, not a newest-commit power-loss
 guarantee. Replay-unsafe Cake mutations require inspecting live state rather than
