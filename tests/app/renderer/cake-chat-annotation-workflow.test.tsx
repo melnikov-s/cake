@@ -105,8 +105,9 @@ it("adds a selected Cake Chat passage as a composer annotation sent with the nex
   await act(async () => {
     content.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
   });
+  // Cake Chat offers both selection workflows: side chat and annotation.
   expect(showTranscriptSelectionContextMenu).toHaveBeenCalledWith(
-    { canChat: false, canAnnotate: true },
+    { canChat: true, canAnnotate: true },
     expect.anything(),
   );
 

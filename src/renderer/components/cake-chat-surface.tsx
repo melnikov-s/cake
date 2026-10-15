@@ -26,14 +26,14 @@ export const CakeChatSurface = observer(function CakeChatSurface() {
     transcriptBehavior: {
       messageReferenceSessionId: paneSession.sessionId,
       messageComments: paneSession.messageCommentsStore,
+      // One shared selection menu serves both workflows: canChat opens a side
+      // chat draft about the selection; canAnnotate turns it into a composer
+      // annotation sent with the next message.
       showSelectionContextMenu: (input: { canChat: boolean; canAnnotate: boolean }) =>
         root.showTranscriptSelectionContextMenu(input),
       onBranchSideChat: (message: { readonly messageId: string; readonly entryId?: string }) =>
         paneSession.branchSideChat(message),
       subagents: paneSession.subagentActivityStore,
-      // Selected text becomes a composer annotation sent with the next message.
-      showSelectionContextMenu: (input: { canChat: boolean; canAnnotate: boolean }) =>
-        root.showTranscriptSelectionContextMenu(input),
       inlineWidgets: root.inlineWidgetStore,
       inlineArtifactPreviews: root.inlineArtifactPreviewStore,
     },
