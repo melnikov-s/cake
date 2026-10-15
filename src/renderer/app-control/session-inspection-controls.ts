@@ -82,7 +82,7 @@ export const sessionInspectionControls = [
       summary: "Inspect one explicitly targeted project session.",
       guidance: ["sessionFile is the full path to Pi's authoritative JSONL transcript."],
       result:
-        "The target's metadata, full sessionFile path, firstUserMessage, selection, and activity state.",
+        "The target's metadata, ready-made full-UUID deepLink (cake://session/<uuid>; use it verbatim for user links), full sessionFile path, firstUserMessage, selection, and activity state.",
     },
     run: async (input, { host }, command, known): Promise<AppControlResult> => {
       const { sessionId } = input;

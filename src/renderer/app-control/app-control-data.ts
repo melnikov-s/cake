@@ -264,6 +264,8 @@ export interface AppControlSession {
   workspacePath: string;
   workspaceName: string;
   sessionId: string;
+  /** Ready-made full-UUID `cake://session/<id>` link; never projected to a short reference. */
+  deepLink: string;
   title: string;
   modified: string;
   messageCount: number;

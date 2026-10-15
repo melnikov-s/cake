@@ -265,6 +265,42 @@ describe("Project navigation workflow", () => {
       expect(open).toHaveBeenCalledTimes(1);
     },
   );
+  it("opens short-reference session links through the catalog and rejects unknown or ambiguous references", async () => {
+    const left = sessionSummary({
+      sessionId: "01957936-0000-7000-8000-000112345678",
+      title: "Left",
+      projectPath: "/beta",
+    });
+    const right = sessionSummary({
+      sessionId: "01957936-0000-7000-8000-000212345678",
+      title: "Right",
+      projectPath: "/gamma",
+    });
+    const open = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);
+    using fixture = renderNavigation(open, [...sessions, left, right]);
+    await fixture.hydrate(left.sessionId);
+    await fixture.hydrate(right.sessionId);
+    for (const reference of ["s:12345678", "12345678"])
+      await expect(fixture.root.navigationStore.openSessionLink(reference)).rejects.toThrow(
+        `Ambiguous session reference: ${reference}`,
+      );
+    await expect(fixture.root.navigationStore.openSessionLink("s:ffffffff")).rejects.toThrow(
+      "Unknown session reference: s:ffffffff",
+    );
+    expect(open).not.toHaveBeenCalled();
+    await act(async () => {
+      await fixture.root.navigationStore.openSessionLink("s:112345678");
+    });
+    expect(fixture.root.projectWorkbenchStore.activeSessionId).toBe(left.sessionId);
+    await act(async () => {
+      await fixture.root.navigationStore.openSessionLink("212345678");
+    });
+    expect(fixture.root.projectWorkbenchStore.activeSessionId).toBe(right.sessionId);
+    await act(async () => {
+      await fixture.root.navigationStore.openSessionLink(left.sessionId);
+    });
+    expect(fixture.root.projectWorkbenchStore.activeSessionId).toBe(left.sessionId);
+  });
   it("cycles working sessions across projects in both directions, wraps, and skips sessions as they finish", async () => {
     const navigationSessions = [
       sessions[0]!,

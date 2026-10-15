@@ -71,7 +71,7 @@ export function createConversationOperations(
       inputSchema: empty,
       examples: [{}],
       result:
-        "Project Session identities, projects, paths, titles, activity, and resolution state.",
+        "Project Session identities, ready-made full-UUID deepLink values for user-facing links, projects, paths, titles, activity, and resolution state.",
       execute: (_input, context) => api().invokeAppControl("sessions.list", {}, context.signal),
     },
     {
@@ -163,7 +163,7 @@ export function createConversationOperations(
       }),
       examples: [{ input: { sessionId: "target-session-id" } }],
       result:
-        "The target's metadata, full sessionFile path, firstUserMessage, selection, and activity state.",
+        "The target's metadata, ready-made full-UUID deepLink (cake://session/<uuid>; use it verbatim for user links), full sessionFile path, firstUserMessage, selection, and activity state.",
       execute: invokeAppControl("sessions.info"),
     },
     {

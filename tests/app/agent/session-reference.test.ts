@@ -2,9 +2,11 @@ import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import {
   projectSessionReferences,
+  resolveSessionLinkReference,
   resolveSessionReference,
   sessionReference,
 } from "../../../src/contracts/project-sessions/session-reference";
+import { sessionLink } from "../../../src/contracts/conversations/message-reference";
 import {
   encodeCrossSessionMessage,
   parseCrossSessionMessage,
@@ -45,6 +47,33 @@ describe("session references", () => {
     const ref = sessionReference(left, [left, right]);
     expect(ref).toBe(`s:${left.replaceAll("-", "")}`);
     expect(resolveSessionReference(ref, [left, right])).toEqual({ ok: true, sessionId: left });
+  });
+
+  it("resolves deep-link short references and bare suffixes, passing other targets through", () => {
+    expect(resolveSessionLinkReference("s:112345678", ids)).toEqual({ ok: true, sessionId: a });
+    expect(resolveSessionLinkReference("212345678", ids)).toEqual({ ok: true, sessionId: b });
+    expect(resolveSessionLinkReference("87654321", ids)).toEqual({ ok: true, sessionId: c });
+    expect(resolveSessionLinkReference(a, ids)).toEqual({ ok: true, sessionId: a });
+    expect(resolveSessionLinkReference("alpha", ids)).toEqual({ ok: true, sessionId: "alpha" });
+    expect(resolveSessionLinkReference("12345678", ids)).toEqual({
+      ok: false,
+      error: "Ambiguous session reference: 12345678; use a longer suffix or the full UUID",
+    });
+    expect(resolveSessionLinkReference("s:12345678", ids)).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("Ambiguous"),
+    });
+    expect(resolveSessionLinkReference("ffffffff", ids)).toEqual({
+      ok: false,
+      error: "Unknown session reference: ffffffff",
+    });
+  });
+
+  it("never projects the full-UUID deepLink field to a short reference", () => {
+    expect(projectSessionReferences({ sessionId: a, deepLink: sessionLink(a) }, ids)).toEqual({
+      sessionId: "s:112345678",
+      deepLink: `cake://session/${a}`,
+    });
   });
 
   it("fails unknown and ambiguous references rather than selecting a recipient", () => {

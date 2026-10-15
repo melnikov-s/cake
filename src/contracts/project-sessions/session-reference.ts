@@ -43,6 +43,25 @@ export function resolveSessionReference(
   };
 }
 
+const bareSuffix = /^[0-9a-f]{8,32}$/i;
+
+/** Deep links accept emitted short references (`s:<suffix>`) and bare 8+ hex suffixes.
+ * Any other target is passed through unchanged for the caller's authoritative lookup. */
+export function resolveSessionLinkReference(
+  reference: string,
+  knownSessionIds: readonly string[],
+): SessionReferenceResolution {
+  if (knownSessionIds.includes(reference)) return { ok: true, sessionId: reference };
+  if (shortReference.test(reference)) return resolveSessionReference(reference, knownSessionIds);
+  if (bareSuffix.test(reference)) {
+    const result = resolveSessionReference(`s:${reference}`, knownSessionIds);
+    return result.ok
+      ? result
+      : { ok: false, error: result.error.replace(`s:${reference}`, reference) };
+  }
+  return { ok: true, sessionId: reference };
+}
+
 const identityKey = (key: string) =>
   /SessionIds?$/.test(key) || key === "sessionId" || key === "sessionIds";
 const audienceKey = (key: string) => key === "audience";

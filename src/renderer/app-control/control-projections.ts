@@ -1,3 +1,4 @@
+import { sessionLink } from "../../contracts/conversations/message-reference";
 import type {
   AppControlHost,
   AgentControlSource,
@@ -95,6 +96,7 @@ export function toControlSession(
     workspacePath: session.workingDirectory,
     workspaceName: session.projectName,
     sessionId: session.sessionId,
+    deepLink: sessionLink(session.sessionId),
     title: session.title,
     modified: session.modifiedAt,
     messageCount: session.messageCount,

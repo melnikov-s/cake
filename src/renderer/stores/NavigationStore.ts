@@ -2,6 +2,7 @@ import { Store, child, createStore } from "r-state-tree";
 import { MessageReferencePreviewStore } from "./MessageReferencePreviewStore";
 import { AttachmentReferencePreviewStore } from "./AttachmentReferencePreviewStore";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
+import { resolveSessionLinkReference } from "../../contracts/project-sessions/session-reference";
 import {
   decodeArtifactLineageId,
   decodeArtifactRevisionNumber,
@@ -127,8 +128,15 @@ export class NavigationStore extends Store<{
     else this.props.shell.selectProjectSession(sessionId);
   }
 
-  /** Opens either kind of Cake Session addressed by a Markdown session link. */
-  async openSessionLink(sessionId: string, messageId?: string, attachmentId?: string) {
+  /** Opens either kind of Cake Session addressed by a Markdown session link.
+   * Short references resolve against the same roster as agent session targeting. */
+  async openSessionLink(reference: string, messageId?: string, attachmentId?: string) {
+    const resolved = resolveSessionLinkReference(reference, [
+      ...this.props.catalog.sessions.map((session) => session.sessionId),
+      ...this.props.cakeChat().summaries.map((session) => session.sessionId),
+    ]);
+    if (!resolved.ok) throw new Error(resolved.error);
+    const { sessionId } = resolved;
     if (attachmentId) {
       if (sessionId === CAKE_CHAT_SESSION_ID) await this.openCakeChat(sessionId);
       else if (!(await this.openSession(sessionId)))

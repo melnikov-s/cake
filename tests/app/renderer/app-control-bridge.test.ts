@@ -1534,6 +1534,7 @@ describe("AppControlBridge", () => {
       command: "sessions.info",
       session: {
         sessionId: "session-a",
+        deepLink: "cake://session/session-a",
         sessionFile: "/sessions/alpha/session-a.jsonl",
         firstUserMessage: "Review the authentication flow.",
       },
@@ -1591,7 +1592,13 @@ describe("AppControlBridge", () => {
     }
     await expect(bridge.invoke({ name: "sessions.list", arguments: {} })).resolves.toMatchObject({
       ok: true,
-      sessions: [{ sessionId }],
+      sessions: [{ sessionId, deepLink: `cake://session/${sessionId}` }],
+    });
+    await expect(
+      bridge.invoke({ name: "sessions.info", arguments: { sessionId: "s:00000001" } }),
+    ).resolves.toMatchObject({
+      ok: true,
+      session: { sessionId, deepLink: `cake://session/${sessionId}` },
     });
     expect(open).toHaveBeenCalledWith(sessionId);
     expect(rename).toHaveBeenCalledWith(sessionId, "Updated assignment");
