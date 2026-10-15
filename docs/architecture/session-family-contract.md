@@ -27,7 +27,9 @@ coordination.
   model and thinking-level changes.
 
 Child creation validates the effective model selection before durable creation.
-Omitted model and thinking level inherit the caller's current values. Cake
+An omitted model resolves the configured default preset's complete settings
+(model, thinking level, and Fast mode), not the caller's current values; the
+caller's current values apply only when no default preset is configured. Cake
 persists request correlation and child identity before accepting the initial
 prompt. Accepting that background turn completes the creation operation; the
 parent never waits for the child's turn to settle. Retrying the same request

@@ -5,7 +5,7 @@ export const meta = { name: "audit-routes", description: "Audit route authentica
 
 The body is plain JavaScript with top-level await and return. Available APIs:
 - args: JSON input supplied at launch.
-- await agent(prompt, { label?, instructions?, model?, schema?, stallMs? }): isolated-context Pi worker. model is a Cake preset name or explicit configuration. A schema returns validated JSON; otherwise the answer is a string. Default stall window 600000ms, excluding tool execution. No silent model substitution.
+- await agent(prompt, { label?, instructions?, model?, schema?, stallMs? }): isolated-context Pi worker. model is a Cake preset name or explicit configuration; omit it unless the user asked for a specific model, and the run's start-time default preset is used. A schema returns validated JSON; otherwise the answer is a string. Default stall window 600000ms, excluding tool execution. No silent model substitution.
 - await pipeline(items, async (item, index) => ...): fan out items; results preserve ordering and null slots for failed workers.
 - await parallel([async () => ..., async () => ...]): parallel tasks with the same null-slot behavior.
 - await phase(title): label following work in progress details.

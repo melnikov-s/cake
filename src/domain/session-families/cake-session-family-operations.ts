@@ -30,7 +30,7 @@ export function createSessionFamilyOperations(
         "Omit worktreeName to share the caller's exact Working Directory. Supply worktreeName to create a Cake-managed worktree branched from the caller's current checkout.",
         "This operation returns after the initial child turn is accepted; do not wait or poll for the child, and finish the parent turn normally.",
         "Pane placement defaults to none. Set placement to right or down only when the child should be opened beside the parent.",
-        "When model is omitted, the child inherits the calling session's current model, thinking level, and Fast mode setting.",
+        "Omit model unless the user explicitly asks for a specific model. When omitted, the child uses the configured default model preset's complete settings (provider, model, thinking level, and Fast mode; see models.list), not the calling session's current model. Only when no default preset is configured does it use the calling session's current settings.",
       ],
       inputSchema: Schema.Struct({
         title: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(500))),
@@ -50,10 +50,9 @@ export function createSessionFamilyOperations(
           input: {
             title: "Storage implementation",
             initialPrompt: "Implement the storage slice and message me when it is ready.",
-            model: "Sol",
             placement: "right",
           },
-          description: "Select a configured preset by name.",
+          description: "Open beside the parent with the configured default model.",
         },
       ],
       result: "The stable child session identity and initial-turn launch outcome.",

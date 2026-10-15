@@ -68,6 +68,52 @@ describe("Dynamic workflow lifecycle", () => {
       }).pipe(Effect.provide(f.layer));
     }),
   );
+  it.effect("runs omitted-model agents with the start-time default preset, not the caller's", () =>
+    Effect.gen(function* () {
+      const f = yield* makeWorkflowDomainFixture({
+        run: (host) =>
+          host
+            .agent({ prompt: "first", options: {} }, "throw")
+            .pipe(Effect.andThen(host.agent({ prompt: "second", options: {} }, "throw"))),
+      });
+      const preset = (id: string, modelId: string, fastMode: boolean) => ({
+        id,
+        name: modelId,
+        provider: "configured",
+        modelId,
+        thinkingLevel: "medium" as const,
+        fastMode,
+      });
+      const first = preset("00000000-0000-4000-8000-000000000301", "default-a", true);
+      const second = preset("00000000-0000-4000-8000-000000000302", "default-b", false);
+      yield* Effect.gen(function* () {
+        yield* f.registerOwner;
+        yield* f.application.transact((state) =>
+          Effect.succeed({
+            ...state,
+            modelPresets: [first, second],
+            defaultModelPresetId: first.id,
+          }),
+        );
+        yield* workflows.start(launchInput);
+        const firstRequest = yield* Queue.take(f.assignments);
+        // A later default change does not switch an accepted run.
+        yield* f.application.transact((state) =>
+          Effect.succeed({ ...state, defaultModelPresetId: second.id }),
+        );
+        const secondRequest = yield* Queue.take(f.assignments);
+        const expected = {
+          provider: "configured",
+          modelId: "default-a",
+          thinkingLevel: "medium",
+          fastMode: true,
+        };
+        expect(firstRequest.model).toEqual(expected);
+        expect(secondRequest.model).toEqual(expected);
+        yield* drain;
+      }).pipe(Effect.provide(f.layer));
+    }),
+  );
   it.effect("rejects Cake Chat and Discussion Session identities as execution owners", () =>
     Effect.gen(function* () {
       for (const profile of ["CakeChatSession", "DiscussionSession"] as const) {

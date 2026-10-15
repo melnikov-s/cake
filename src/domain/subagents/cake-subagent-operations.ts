@@ -39,7 +39,7 @@ export function createAgentControlOperations(
     projectAware
       ? "Handles are parent-owned and available for related follow-ups until explicitly closed, 30 minutes after creation, or the backend exits. Workers are in-memory and never restored after restart. Follow-ups are asynchronous; detailed live activity is not retained in Cake Chat history."
       : "Handles are parent-owned and remain available for follow-up until explicitly closed; parallel batches contain at most eight tasks.",
-    "When model is omitted, a subagent inherits the calling session's current model, thinking level, and Fast mode setting.",
+    "Omit model unless the user explicitly asks for a specific model. When omitted, a subagent uses the configured default model preset's complete settings (provider, model, thinking level, and Fast mode; see models.list), not the calling session's current model. Only when no default preset is configured does it use the calling session's current settings.",
   ];
   const resolveTask = (input: SubagentTaskInput): DomainSubagentTaskInput => {
     const model = resolveModel(input.model);
@@ -99,7 +99,6 @@ export function createAgentControlOperations(
       schema: subagentTaskSchema,
       example: {
         task: "Inspect the authentication flow",
-        model: "Sol",
       },
       run: (input, parent, signal, onUpdate, anchor) =>
         control.run(resolveTask(input), parent, signal, onUpdate, anchor),
@@ -113,9 +112,8 @@ export function createAgentControlOperations(
         ? {
             task: "Explain the authentication flow with file/line evidence",
             projectPath: "/registered/project",
-            model: "Sol",
           }
-        : { task: "Monitor the test run", model: "Sol" },
+        : { task: "Monitor the test run" },
       run: (input, parent, signal, _onUpdate, anchor) =>
         control.start(resolveTask(input), parent, signal, anchor),
     }),
@@ -128,7 +126,6 @@ export function createAgentControlOperations(
         tasks: [
           {
             task: "Inspect tests",
-            model: "Sol",
           },
         ],
       },

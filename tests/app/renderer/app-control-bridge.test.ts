@@ -339,9 +339,10 @@ describe("AppControlBridge", () => {
     expect(target.tools.some((tool) => tool.command === "session-labels.remove")).toBe(true);
     const create = target.tools.find((tool) => tool.command === "sessions.create");
     expect(create && "guidance" in create ? create.guidance : undefined).toContainEqual(
-      expect.stringContaining("inherits"),
+      expect.stringContaining("Omit model unless the user explicitly asks"),
     );
-    expect(create?.examples?.[0]?.input).toMatchObject({ model: "Sol" });
+    expect(create?.examples?.[0]?.input).not.toHaveProperty("model");
+    expect(create?.examples?.[1]?.input).toMatchObject({ model: "Sol" });
     const parameters = JSON.stringify(create?.parameters);
     expect(parameters).toContain('"type":"string"');
     expect(parameters).toContain('"provider"');

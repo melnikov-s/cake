@@ -117,11 +117,11 @@ export function createCakeSessionRuntimeConfiguration(input: {
   const resolveModelSelection = (
     selection: CakeModelSelection | undefined,
   ): ExplicitCakeModelSelection => {
-    const inherited = currentModelSelection();
-    if (options.resolveModelSelection) return options.resolveModelSelection(selection, inherited);
+    const fallback = currentModelSelection();
+    if (options.resolveModelSelection) return options.resolveModelSelection(selection, fallback);
     if (typeof selection === "string")
       throw new Error("Model preset resolution is unavailable in this runtime");
-    const configuration = selection ?? inherited;
+    const configuration = selection ?? fallback;
     if (!configuration)
       throw new Error("A model selection is required because there is no model to inherit");
     return { ...configuration };

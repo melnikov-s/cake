@@ -165,16 +165,16 @@ export async function createDurableCakeChatRuntime(
   let activeTurnIds: string[] = [];
   const diagnostics: string[] = [...providerDiagnostics];
   const resolveModel = (selection: CakeModelSelection | undefined): ExplicitCakeModelSelection => {
-    const inherited = {
+    const fallback = {
       provider: selected.provider,
       modelId: selected.id,
       thinkingLevel,
       fastMode,
     };
-    if (options.resolveModelSelection) return options.resolveModelSelection(selection, inherited);
+    if (options.resolveModelSelection) return options.resolveModelSelection(selection, fallback);
     if (typeof selection === "string")
       throw new Error("Model preset resolution is unavailable in this runtime");
-    return { ...(selection ?? inherited) };
+    return { ...(selection ?? fallback) };
   };
   const operations = new CakeOperationRegistry(
     options.coordinator.operations({

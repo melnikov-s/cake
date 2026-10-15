@@ -98,6 +98,36 @@ describe("subagent contract", () => {
 
     const resolve = (selection: Parameters<typeof resolveCakeModelSelection>[0]) =>
       resolveCakeModelSelection(selection, { presets: [preset] }, inherited);
+    await new CakeOperationRegistry(
+      createAgentControlOperations(
+        control,
+        () => "parent",
+        (selection) =>
+          resolveCakeModelSelection(
+            selection,
+            { presets: [preset], defaultPresetId: preset.id },
+            inherited,
+          ),
+      ),
+    ).invoke(
+      { command: "subagents.start", input: { task: "Use the default model" } },
+      { signal: new AbortController().signal, toolCallId: "call-default", runtime: {} },
+    );
+    expect(control.start).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        task: "Use the default model",
+        model: {
+          prefer: "exact",
+          provider: "openai-codex",
+          modelId: "gpt-5.6-sol",
+          thinkingLevel: "high",
+        },
+        fastMode: true,
+      }),
+      "parent",
+      expect.any(AbortSignal),
+      "tool-call-default",
+    );
     const ordinary = createAgentControlOperations(control, () => "parent", resolve);
     const projectAware = createAgentControlOperations(control, () => "cake-chat", resolve, true);
     expect(ordinary[0]?.guidance).toContain(

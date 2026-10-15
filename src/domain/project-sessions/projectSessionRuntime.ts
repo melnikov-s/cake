@@ -421,8 +421,8 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
           );
       },
       modelPresets,
-      resolveModelSelection: (selection, inherited) =>
-        resolveCakeModelSelection(selection, modelPresets(), inherited),
+      resolveModelSelection: (selection, fallback) =>
+        resolveCakeModelSelection(selection, modelPresets(), fallback),
       nonChatModelPreferences: () => application.snapshot().nonChatModelPreferences ?? {},
       sessionPluginControl: {
         sessionId,

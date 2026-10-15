@@ -23,7 +23,7 @@ describe("Session model policy composition", () => {
     it.effect(
       `${kind} supplies execution-time preset resolution independently of Pi mechanics`,
       () => {
-        let state = {
+        let state: ReturnType<typeof defaultApplicationState> = {
           ...defaultApplicationState(),
           modelPresets: [
             {
@@ -74,10 +74,41 @@ describe("Session model policy composition", () => {
           assert.equal(resolve("Sol", inherited).fastMode, true);
           assert.equal(first.fastMode, false);
           assert.equal(options.runtime.modelPresets?.().presets[0]?.fastMode, true);
+          // No default preset configured: omission falls back to the caller's settings.
           assert.deepEqual(resolve(undefined, inherited), inherited);
+          assert.throws(() => resolve(undefined, undefined), /no default model preset/);
+          // A configured default wins over the caller's model, and later changes are respected.
+          state = { ...state, defaultModelPresetId: "00000000-0000-4000-8000-000000000001" };
+          assert.deepEqual(resolve(undefined, inherited), {
+            provider: "openai-codex",
+            modelId: "gpt-5.6",
+            thinkingLevel: "high",
+            fastMode: true,
+          });
+          state = {
+            ...state,
+            modelPresets: [
+              ...state.modelPresets,
+              {
+                id: "00000000-0000-4000-8000-000000000002",
+                name: "Luna",
+                provider: "anthropic",
+                modelId: "claude-luna",
+                thinkingLevel: "low" as const,
+                fastMode: false,
+              },
+            ],
+            defaultModelPresetId: "00000000-0000-4000-8000-000000000002",
+          };
+          assert.deepEqual(resolve(undefined, inherited), {
+            provider: "anthropic",
+            modelId: "claude-luna",
+            thinkingLevel: "low",
+            fastMode: false,
+          });
           assert.deepEqual(resolve(inherited, first), inherited);
+          assert.equal(resolve("Sol", inherited).modelId, "gpt-5.6");
           assert.throws(() => resolve("gpt-5.6", inherited), /Unknown model preset/);
-          assert.throws(() => resolve(undefined, undefined), /no model to inherit/);
         }).pipe(Effect.provide(environment));
       },
     );

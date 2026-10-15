@@ -1,3 +1,4 @@
+import { resolveCakeModelSelection } from "../../../src/domain/model-presets/cake-model-selection";
 import { createProjectSessionRuntime as createCakeSessionRuntime } from "../../../src/layers/CakeOperations";
 import { Effect, Schema, Stream } from "effect";
 import {
@@ -333,7 +334,11 @@ describe("Pi 1.0.0 foundation contract", () => {
     ).toThrow();
   });
 
-  it("forwards a Project Session-local managed-worktree creation request unchanged", async () => {
+  /** Drives one real Pi turn whose model calls session.create with `toolInput`. */
+  async function createSessionThroughModelTurn(
+    toolInput: Record<string, unknown>,
+    resolveModelSelection?: Parameters<typeof createCakeSessionRuntime>[0]["resolveModelSelection"],
+  ) {
     const directory = await createTemporaryDirectory();
     const agentDir = join(directory, "agent");
     let requestCount = 0;
@@ -361,17 +366,7 @@ describe("Pi 1.0.0 foundation contract", () => {
                   name: "cake",
                   arguments: JSON.stringify({
                     command: "session.create",
-                    input: {
-                      name: "Investigate rendering",
-                      initialPrompt: "Investigate the renderer and implement the focused fix.",
-                      worktreeName: "investigate-rendering",
-                      model: {
-                        provider: "openai-codex",
-                        modelId: "gpt-5.6-sol",
-                        thinkingLevel: "high",
-                        fastMode: true,
-                      },
-                    },
+                    input: toolInput,
                   }),
                 },
               },
@@ -425,6 +420,7 @@ describe("Pi 1.0.0 foundation contract", () => {
         trusted: true,
         newSession: true,
         requestUi: async () => undefined,
+        ...(resolveModelSelection ? { resolveModelSelection } : null),
         currentSessionControl: {
           resolved: () => false,
           setResolved: async () => undefined,
@@ -438,25 +434,72 @@ describe("Pi 1.0.0 foundation contract", () => {
       await runtime.setModel("fixture-provider", "fixture-model");
       await runtime.prompt("Create the investigation session", "prompt", []);
 
-      expect(createSession).toHaveBeenCalledWith(
-        {
-          name: "Investigate rendering",
-          initialPrompt: "Investigate the renderer and implement the focused fix.",
-          worktreeName: "investigate-rendering",
-          model: {
-            provider: "openai-codex",
-            modelId: "gpt-5.6-sol",
-            thinkingLevel: "high",
-            fastMode: true,
-          },
-        },
-        expect.any(AbortSignal),
-      );
+      const caller = (await runtime.snapshot()).model;
+      return { createSession, caller };
     } finally {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));
       });
     }
+  }
+
+  it("forwards a Project Session-local managed-worktree creation request unchanged", async () => {
+    const model = {
+      provider: "openai-codex",
+      modelId: "gpt-5.6-sol",
+      thinkingLevel: "high",
+      fastMode: true,
+    } as const;
+    const { createSession } = await createSessionThroughModelTurn({
+      name: "Investigate rendering",
+      initialPrompt: "Investigate the renderer and implement the focused fix.",
+      worktreeName: "investigate-rendering",
+      model,
+    });
+    expect(createSession).toHaveBeenCalledWith(
+      {
+        name: "Investigate rendering",
+        initialPrompt: "Investigate the renderer and implement the focused fix.",
+        worktreeName: "investigate-rendering",
+        model,
+      },
+      expect.any(AbortSignal),
+    );
+  });
+
+  it("launches an omitted-model session with the configured default, not the caller's model", async () => {
+    const defaultPreset = {
+      id: "00000000-0000-4000-8000-000000000001",
+      name: "Configured default",
+      provider: "openai-codex",
+      modelId: "gpt-5.6-sol",
+      thinkingLevel: "xhigh",
+      fastMode: true,
+    } as const;
+    const { createSession, caller } = await createSessionThroughModelTurn(
+      { name: "Default model", initialPrompt: "Work with the default model." },
+      (selection, fallback) =>
+        resolveCakeModelSelection(
+          selection,
+          { presets: [defaultPreset], defaultPresetId: defaultPreset.id },
+          fallback,
+        ),
+    );
+    expect(createSession).toHaveBeenCalledWith(
+      {
+        name: "Default model",
+        initialPrompt: "Work with the default model.",
+        model: {
+          provider: "openai-codex",
+          modelId: "gpt-5.6-sol",
+          thinkingLevel: "xhigh",
+          fastMode: true,
+        },
+      },
+      expect.any(AbortSignal),
+    );
+    // Launching another session never reconfigures the calling session.
+    expect(caller).toMatchObject({ provider: "fixture-provider", id: "fixture-model" });
   });
 
   it("executes ! and !! commands without starting a model turn", async () => {

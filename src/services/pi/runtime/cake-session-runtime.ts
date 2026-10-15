@@ -183,10 +183,14 @@ export interface CakeSessionRuntimeOptions {
   emitExtensionUiIntent?(intent: ExtensionUiIntent): void;
   reviewContextPath?(sessionId: string): string;
   utilityModel?(): UtilityModel | undefined;
-  /** Cake policy is supplied by composition; Pi only applies concrete configurations. */
+  /**
+   * Cake policy is supplied by composition; Pi only applies concrete configurations. An
+   * omitted selection resolves the configured default preset; `fallback` is the caller's
+   * current configuration, used only when no default preset is configured.
+   */
   resolveModelSelection?(
     selection: CakeModelSelection | undefined,
-    inherited: ExplicitCakeModelSelection | undefined,
+    fallback: ExplicitCakeModelSelection | undefined,
   ): ExplicitCakeModelSelection;
   fastMode?: {
     get(): boolean;
@@ -700,7 +704,6 @@ export async function createCakeSessionRuntime(
     async createChildSession(input, requestId, signal) {
       if (!options.currentSessionControl?.createChildSession)
         throw new Error("This Project Session cannot create child sessions");
-      if (!session.model) throw new Error("The calling session does not have a model to inherit");
       return options.currentSessionControl.createChildSession(
         {
           requestId,

@@ -57,7 +57,7 @@ export const sessionLifecycleControls = [
       summary:
         "Create, configure, name, and start a project session in the background, optionally from a model preset or in a new managed worktree.",
       guidance: [
-        "When model is omitted, the new session inherits the calling Cake Chat's current model, thinking level, and Fast mode setting.",
+        "Omit model unless the user explicitly asks for a specific model. When omitted, the new session uses the configured default model preset's complete settings (provider, model, thinking level, and Fast mode; see models.list), not the calling Cake Chat's current model. Only when no default preset is configured does it use the calling Cake Chat's current settings.",
         "Pass selected attachment IDs in inputRefs. Cake forwards their contents only to the Project Session; do not open or summarize attachments in Cake Chat.",
       ],
       examples: [
@@ -66,9 +66,18 @@ export const sessionLifecycleControls = [
             workspacePath: "/path/to/project",
             name: "Authentication follow-up",
             initialPrompt: "Review the authentication flow and implement the next changes.",
+          },
+          description: "Use the configured default model.",
+        },
+        {
+          input: {
+            workspacePath: "/path/to/project",
+            name: "Authentication review",
+            initialPrompt: "Review the authentication flow.",
             model: "Sol",
           },
-          description: "Select a configured preset by name.",
+          description:
+            "Only when the user asks for a specific model: select a configured preset by name.",
         },
       ],
     },
@@ -107,7 +116,7 @@ export const sessionLifecycleControls = [
       summary:
         "Create, configure, name, and save an initial prompt as a background Cake-owned draft without starting a Pi session.",
       guidance: [
-        "When model is omitted, the draft snapshots the calling Cake Chat's current model, thinking level, and Fast mode setting.",
+        "Omit model unless the user explicitly asks for a specific model. When omitted, the draft uses the configured default model preset's complete settings (provider, model, thinking level, and Fast mode; see models.list), not the calling Cake Chat's current model. Only when no default preset is configured does it use the calling Cake Chat's current settings.",
       ],
       examples: [
         {
@@ -115,9 +124,18 @@ export const sessionLifecycleControls = [
             workspacePath: "/path/to/project",
             name: "Authentication follow-up",
             initialPrompt: "Review the authentication flow and propose the next changes.",
+          },
+          description: "Use the configured default model.",
+        },
+        {
+          input: {
+            workspacePath: "/path/to/project",
+            name: "Authentication review",
+            initialPrompt: "Review the authentication flow.",
             model: "Sol",
           },
-          description: "Select a configured preset by name.",
+          description:
+            "Only when the user asks for a specific model: select a configured preset by name.",
         },
       ],
     },

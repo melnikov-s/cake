@@ -1,3 +1,4 @@
+import { resolveCakeModelSelection } from "../model-presets/cake-model-selection";
 import {
   Cause,
   Config,
@@ -309,12 +310,18 @@ const startPrepared = Effect.fn("Workflows.startPrepared")(function* (
       logs: [],
       steps: [],
     },
-    inheritedModel: {
-      provider: snapshot.model.provider,
-      modelId: snapshot.model.id,
-      thinkingLevel: snapshot.thinkingLevel,
-      fastMode: snapshot.fastMode ?? false,
-    },
+    // Snapshot the configured default once so omitted agent models stay stable across
+    // resumes; the caller's current model applies only when no default preset exists.
+    inheritedModel: resolveCakeModelSelection(
+      undefined,
+      { presets: appState.modelPresets, defaultPresetId: appState.defaultModelPresetId },
+      {
+        provider: snapshot.model.provider,
+        modelId: snapshot.model.id,
+        thinkingLevel: snapshot.thinkingLevel,
+        fastMode: snapshot.fastMode ?? false,
+      },
+    ),
     commonInstructions: [
       appState.globalCustomInstructions,
       projectSettings?.customInstructions,

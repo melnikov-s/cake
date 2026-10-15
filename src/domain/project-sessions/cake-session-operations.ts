@@ -23,7 +23,7 @@ export function createProjectSessionOperations(
         "This singular Project Session-local operation derives the project from the caller and never accepts a workspacePath or sessionId. Cake Chat uses the separate plural sessions.create application control.",
         "Set worktreeName to create and register a new Cake-managed worktree before the Pi-backed session starts. Do not run git worktree add or try to rebind an already-started session.",
         "When worktreeName is omitted, the independent session starts in the Project root, preserving the existing behavior.",
-        "When model is omitted, the new session inherits the calling session's current model, thinking level, and Fast mode setting.",
+        "Omit model unless the user explicitly asks for a specific model. When omitted, the new session uses the configured default model preset's complete settings (provider, model, thinking level, and Fast mode; see models.list), not the calling session's current model. Only when no default preset is configured does it use the calling session's current settings.",
         "Use sessions.create-child for recursive Session Family delegation, whether the child shares the caller's checkout or branches into a child Managed Worktree.",
       ],
       inputSchema: projectSessionCreateInputSchema,
@@ -32,9 +32,17 @@ export function createProjectSessionOperations(
           input: {
             name: "Authentication follow-up",
             initialPrompt: "Review the authentication flow and implement the next changes.",
+          },
+          description: "Start in the Project root with the configured default model.",
+        },
+        {
+          input: {
+            name: "Authentication review",
+            initialPrompt: "Review the authentication flow.",
             model: "Sol",
           },
-          description: "Select a configured preset and start in the Project root.",
+          description:
+            "Only when the user asks for a specific model: select a configured preset by name.",
         },
         {
           input: {
@@ -120,7 +128,7 @@ export function createProjectSessionOperations(
         "Create a saved draft in the calling Project Session's project without starting a Pi session.",
       guidance: [
         "This operation derives the project from the calling session and never accepts a workspacePath or sessionId.",
-        "When model is omitted, the draft snapshots the calling session's current model, thinking level, and Fast mode setting.",
+        "Omit model unless the user explicitly asks for a specific model. When omitted, the draft uses the configured default model preset's complete settings (provider, model, thinking level, and Fast mode; see models.list), not the calling session's current model. Only when no default preset is configured does it use the calling session's current settings.",
       ],
       inputSchema: Schema.Struct({
         name: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(500))),
@@ -134,9 +142,17 @@ export function createProjectSessionOperations(
           input: {
             name: "Authentication follow-up",
             initialPrompt: "Review the authentication flow and propose the next changes.",
+          },
+          description: "Use the configured default model.",
+        },
+        {
+          input: {
+            name: "Authentication review",
+            initialPrompt: "Review the authentication flow.",
             model: "Sol",
           },
-          description: "Select a configured preset by name.",
+          description:
+            "Only when the user asks for a specific model: select a configured preset by name.",
         },
       ],
       result: "The saved draft session ID and confirmation that renderer persistence completed.",

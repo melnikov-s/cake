@@ -87,19 +87,43 @@ describe("Cake model selection", () => {
     );
   });
 
-  it("snapshots the inherited configuration when selection is omitted", () => {
-    const inherited = {
+  it("resolves an omitted selection to the default preset's complete settings, not the caller's", () => {
+    const caller = {
+      provider: "anthropic",
+      modelId: "claude-opus",
+      thinkingLevel: "max" as const,
+      fastMode: false,
+    };
+    const fastDefault = { ...catalog, defaultPresetId: catalog.presets[1]!.id };
+    assert.deepEqual(resolveCakeModelSelection(undefined, fastDefault, caller), {
+      provider: "openai-codex",
+      modelId: "gpt-5.6-sol",
+      thinkingLevel: "high",
+      fastMode: true,
+    });
+    // Changing the configured default is respected at the next resolution.
+    assert.deepEqual(resolveCakeModelSelection(undefined, catalog, caller), {
+      provider: "openai-codex",
+      modelId: "gpt-5.6-sol",
+      thinkingLevel: "high",
+      fastMode: false,
+    });
+  });
+
+  it("uses the caller's settings only when no default preset is configured", () => {
+    const caller = {
       provider: "anthropic",
       modelId: "claude-opus",
       thinkingLevel: "max" as const,
       fastMode: true,
     };
-    const resolved = resolveCakeModelSelection(undefined, catalog, inherited);
-    assert.deepEqual(resolved, inherited);
-    assert.notEqual(resolved, inherited);
+    const withoutDefault = { presets: catalog.presets };
+    const resolved = resolveCakeModelSelection(undefined, withoutDefault, caller);
+    assert.deepEqual(resolved, caller);
+    assert.notEqual(resolved, caller);
     assert.throws(
-      () => resolveCakeModelSelection(undefined, catalog),
-      /there is no model to inherit/,
+      () => resolveCakeModelSelection(undefined, withoutDefault),
+      /no default model preset is configured/,
     );
   });
 });

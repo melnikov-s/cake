@@ -27,6 +27,7 @@ export const WorkflowCheckpoint = Schema.Struct({
   run: WorkflowRun,
   /** Prior frozen versions remain readable when a deliberate relaunch changes source. */
   previousPrograms: Schema.Array(WorkflowProgram),
+  /** Start-time model for agents that omit one: the configured default, else the caller's. */
   inheritedModel: ExplicitCakeModelSelection,
   commonInstructions: Schema.String.check(Schema.isMaxLength(262_144)),
   workers: Schema.Array(WorkerAttemptReference),

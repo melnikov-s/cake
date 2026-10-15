@@ -202,8 +202,8 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
       slashCommands: ["compact", "model"],
       requestUi: async () => undefined,
       modelPresets,
-      resolveModelSelection: (selection, inherited) =>
-        resolveCakeModelSelection(selection, modelPresets(), inherited),
+      resolveModelSelection: (selection, fallback) =>
+        resolveCakeModelSelection(selection, modelPresets(), fallback),
       fastMode: {
         get: () => application.snapshot().fastModeSessionIds.includes(target.sessionId),
         set: (enabled) => run(setSessionFastMode(target.sessionId, enabled)).then(() => undefined),

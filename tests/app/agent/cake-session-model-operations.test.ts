@@ -37,7 +37,7 @@ const catalog = {
     },
   ],
 };
-const inherited = {
+const caller = {
   provider: "anthropic",
   modelId: "claude-opus",
   thinkingLevel: "max" as const,
@@ -49,7 +49,7 @@ describe("Cake session model operations", () => {
     const invoke = vi.fn(async () => ({ ok: true }));
     const registry = new CakeOperationRegistry(
       createGlobalControlOperations({ tools: [tool("sessions.create")], invoke }, (selection) =>
-        resolveCakeModelSelection(selection, catalog, inherited),
+        resolveCakeModelSelection(selection, catalog, caller),
       ),
     );
 
@@ -87,7 +87,7 @@ describe("Cake session model operations", () => {
     const registry = new CakeOperationRegistry(
       createGlobalControlOperations(
         { tools: [tool("sessions.create-draft")], invoke },
-        (selection) => resolveCakeModelSelection(selection, catalog, inherited),
+        (selection) => resolveCakeModelSelection(selection, catalog, caller),
       ),
     );
 
@@ -123,23 +123,76 @@ describe("Cake session model operations", () => {
     );
   });
 
-  it("snapshots inheritance when omitted and rejects unknown preset names", async () => {
+  it("uses the configured default preset, not Cake Chat's model, when model is omitted", async () => {
+    const invoke = vi.fn(async () => ({ ok: true }));
+    let defaultPresetId = catalog.presets[1]!.id;
+    const registry = new CakeOperationRegistry(
+      createGlobalControlOperations(
+        { tools: [tool("sessions.create"), tool("sessions.create-draft")], invoke },
+        (selection) =>
+          resolveCakeModelSelection(selection, { ...catalog, defaultPresetId }, caller),
+      ),
+    );
+
+    for (const command of ["sessions.create", "sessions.create-draft"] as const)
+      await registry.invoke(
+        {
+          command,
+          input: { workspacePath: "/project", name: "Default", initialPrompt: "Work" },
+        },
+        context,
+      );
+    const solFast = {
+      provider: "openai-codex",
+      modelId: "gpt-5.6-sol",
+      thinkingLevel: "high",
+      fastMode: true,
+    };
+    expect(invoke).toHaveBeenNthCalledWith(
+      1,
+      { name: "sessions.create", arguments: expect.objectContaining({ model: solFast }) },
+      context.signal,
+    );
+    expect(invoke).toHaveBeenNthCalledWith(
+      2,
+      { name: "sessions.create-draft", arguments: expect.objectContaining({ model: solFast }) },
+      context.signal,
+    );
+
+    // A changed default applies to the next launch.
+    defaultPresetId = catalog.presets[0]!.id;
+    await registry.invoke(
+      {
+        command: "sessions.create",
+        input: { workspacePath: "/project", name: "Default", initialPrompt: "Work" },
+      },
+      context,
+    );
+    expect(invoke).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        arguments: expect.objectContaining({ model: { ...solFast, fastMode: false } }),
+      }),
+      context.signal,
+    );
+  });
+
+  it("falls back to Cake Chat's settings without a default and rejects unknown presets", async () => {
     const invoke = vi.fn(async () => ({ ok: true }));
     const registry = new CakeOperationRegistry(
       createGlobalControlOperations({ tools: [tool("sessions.create")], invoke }, (selection) =>
-        resolveCakeModelSelection(selection, catalog, inherited),
+        resolveCakeModelSelection(selection, catalog, caller),
       ),
     );
 
     await registry.invoke(
       {
         command: "sessions.create",
-        input: { workspacePath: "/project", name: "Inherited", initialPrompt: "Work" },
+        input: { workspacePath: "/project", name: "Fallback", initialPrompt: "Work" },
       },
       context,
     );
     expect(invoke).toHaveBeenLastCalledWith(
-      expect.objectContaining({ arguments: expect.objectContaining({ model: inherited }) }),
+      expect.objectContaining({ arguments: expect.objectContaining({ model: caller }) }),
       context.signal,
     );
 

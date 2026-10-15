@@ -307,9 +307,13 @@ explicit provider, model ID, thinking level, and optional Fast mode setting. A
 string always names a preset; it is never interpreted as a raw model ID. Cake
 resolves a preset from authoritative application configuration when the
 operation executes and passes the resulting concrete selection to Pi. The
-result is a snapshot, not a live binding to later preset edits. When a creation
-operation documents model inheritance, omitting the model snapshots the calling
-session's current model, thinking level, and Fast mode setting instead.
+result is a snapshot, not a live binding to later preset edits. Agents omit the
+model unless the user requests one. When a launch operation (session, draft,
+child, subagent, or workflow agent) omits the model, Cake snapshots the
+configured default preset's complete settings; only when no default preset is
+configured does it snapshot the calling session's current model, thinking
+level, and Fast mode setting instead. Workflow runs take that snapshot once at
+run start. Existing sessions, resumes, and forks keep their own configuration.
 
 ### Utility Model Preference
 

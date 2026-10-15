@@ -135,10 +135,8 @@ export const executeRun = Effect.fn("Workflows.executeRun")(function* (
           try: () =>
             resolveCakeModelSelection(
               input.options.model,
-              {
-                presets: application.snapshot().modelPresets,
-                defaultPresetId: application.snapshot().defaultModelPresetId,
-              },
+              // Omission uses the run's start-time default snapshot, not the live default.
+              { presets: application.snapshot().modelPresets },
               initial.checkpoint.inheritedModel,
             ),
           catch: (error) => workflowError("model", "invalid-input", String(error)),
