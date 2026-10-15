@@ -422,7 +422,12 @@ export async function createDurableCakeChatRuntime(
     subagentReport?: SubagentReportOrigin,
   ) => {
     // Defense in depth: no caller may submit payload-bearing attachments to the coordinator.
-    if (attachments.some((attachment) => attachment.kind !== "input"))
+    // Annotations quote Cake Chat's own transcript and stay inline.
+    if (
+      attachments.some(
+        (attachment) => attachment.kind !== "input" && attachment.kind !== "annotation",
+      )
+    )
       throw new Error("Cake Chat accepts attachment references only");
     // No `!` shell escape is parsed: all text is a literal model input, never a user shell command.
     await configureAgent();

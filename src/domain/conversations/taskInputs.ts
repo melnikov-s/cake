@@ -65,7 +65,15 @@ export const prepareTaskInputs = Effect.fn("Conversations.prepareTaskInputs")(fu
 ) {
   if (!attachments.length) return attachments;
   const inputs = yield* TaskInputStorage;
-  return yield* coordinator
-    ? inputs.isolate(sessionId, attachments)
-    : inputs.resolve(sessionId, attachments);
+  if (!coordinator) return yield* inputs.resolve(sessionId, attachments);
+  // Annotations quote the coordinator's own transcript, so they stay inline and
+  // render exactly as in Project Sessions; every other original is isolated.
+  const result: Attachment[] = [];
+  for (const attachment of attachments)
+    result.push(
+      ...(attachment.kind === "annotation"
+        ? [attachment]
+        : yield* inputs.isolate(sessionId, [attachment])),
+    );
+  return result;
 });

@@ -45,6 +45,35 @@ const fixture = <A, E>(work: (root: string) => Effect.Effect<A, E, TaskInputStor
   );
 
 describe("task-input isolation", () => {
+  it.effect("keeps Cake Chat annotations inline, exactly as Project Sessions admit them", () =>
+    fixture(() =>
+      Effect.gen(function* () {
+        const annotation: Attachment = {
+          kind: "annotation",
+          annotations: [
+            {
+              id: "30000000-0000-4000-8000-000000000003",
+              messageId: "entry-7-text-0",
+              selectedText: "database migration",
+              startOffset: 25,
+              endOffset: 43,
+              contextBefore: "",
+              contextAfter: "",
+            },
+          ],
+        };
+        const text: Attachment = { kind: "text", name: "Notes", text: "large paste" };
+        const coordinator = yield* prepareTaskInputs(owner, true, [text, annotation]);
+        // Other originals are still isolated behind references; order is preserved.
+        expect(coordinator[0]).toMatchObject({ kind: "input", name: "Notes" });
+        expect(coordinator[1]).toEqual(annotation);
+        expect(yield* prepareTaskInputs(target, false, [annotation])).toEqual([
+          expect.objectContaining(annotation),
+        ]);
+      }),
+    ),
+  );
+
   it.effect("authorizes forwarding from metadata without opening or previewing payloads", () =>
     fixture((root) =>
       Effect.gen(function* () {

@@ -22,6 +22,10 @@ import {
   researchOrigin,
   researchMarkdown,
 } from "../../../fixtures/subagent-report";
+import {
+  projectSessionEntries,
+  promptText,
+} from "../../../../src/services/pi/runtime/session-projection";
 import { subagentCompletionMessage } from "../../../../src/services/pi/runtime/cake-session-runtime";
 import { durableAnswer, durableModels } from "../../../fixtures/durable-chat";
 
@@ -107,6 +111,44 @@ it("projects Cake-authored report provenance from originals without classifying 
   ).toBeUndefined();
   expect((await readDurableOriginalPage(f.engine.root)).parts).toEqual(page.parts);
   expect(JSON.stringify(f.requests)).toContain('"cost":0.25'.replaceAll('"', '\\"'));
+});
+
+it("projects Cake Chat annotations to the same transcript part as Project Sessions", async () => {
+  const f = await fixture();
+  const annotation = {
+    id: "30000000-0000-4000-8000-000000000003",
+    messageId: "entry-7-text-0",
+    entryId: "7",
+    selectedText: "database migration",
+    startOffset: 25,
+    endOffset: 43,
+    contextBefore: "after the ",
+    contextAfter: " finishes.",
+    comment: "Confirm the window with ops",
+  };
+  const attachments = [{ kind: "annotation" as const, annotations: [annotation] }];
+  await f.send(durableInputText("", attachments, false), "annotation");
+  const cakeChat = (await readDurableOriginalPage(f.engine.root)).parts.filter(
+    (part) => part.kind === "annotation" || part.kind === "attachment",
+  );
+  const projectSession = projectSessionEntries([
+    {
+      type: "message",
+      id: "project-entry",
+      parentId: null,
+      timestamp: new Date(0).toISOString(),
+      message: { role: "user", content: promptText("", attachments), timestamp: 0 },
+    },
+  ]).filter((part) => part.kind === "annotation" || part.kind === "attachment");
+  // Both surfaces render the shared AnnotationSummary, never an opaque input reference.
+  const withoutIds = (values: typeof cakeChat) =>
+    values.map((part) => Object.fromEntries(Object.entries(part).filter(([key]) => key !== "id")));
+  expect(withoutIds(cakeChat)).toEqual(withoutIds(projectSession));
+  expect(cakeChat).toEqual([
+    expect.objectContaining({ kind: "annotation", annotations: [annotation] }),
+  ]);
+  // The model also sees the annotated passage and comment inline.
+  expect(JSON.stringify(f.requests)).toContain("Confirm the window with ops");
 });
 
 it.each(["complete", "error", "aborted"] as const)(

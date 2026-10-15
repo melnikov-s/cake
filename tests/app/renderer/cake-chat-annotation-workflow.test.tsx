@@ -144,33 +144,26 @@ it("adds a selected Cake Chat passage as a composer annotation sent with the nex
   // The composer is cleared once the annotation is consumed by the sent message.
   expect(chat.conversationSessionStore.chatStore.annotations).toEqual([]);
 
-  // Cake Chat admits annotations as an opaque input reference, so the canonical
-  // user entry shows that reference rather than the annotation. The optimistic
-  // annotation must still reconcile instead of staying pinned above the composer.
-  expect(screen.getByRole("button", { name: "View 1 annotation" })).toBeTruthy();
+  // Cake Chat's canonical entry carries the same annotation part as a Project
+  // Session, so it renders the shared AnnotationSummary and the optimistic copy
+  // reconciles instead of staying pinned above the composer.
+  const sent = prompt.mock.calls[0]![0].attachments![0] as Extract<
+    NonNullable<Parameters<Client["sessionChats"]["prompt"]>[0]["attachments"]>[number],
+    { kind: "annotation" }
+  >;
+  expect(screen.getAllByRole("button", { name: "View 1 annotation" })).toHaveLength(1);
   act(() =>
     applyConversationSnapshot(chat.model, {
       ...snapshot,
       parts: [
         ...parts,
-        {
-          id: "entry-8-input-0",
-          kind: "attachment",
-          name: "Annotations",
-          mediaType: "application/json",
-          attachmentKind: "file",
-          inputReference: {
-            kind: "input",
-            id: "20000000-0000-4000-8000-000000000002",
-            name: "Annotations",
-            mimeType: "application/json",
-            byteLength: 613,
-          },
-        },
+        { id: "entry-8-annotation-0", kind: "annotation", annotations: sent.annotations },
       ],
     }),
   );
   await waitFor(() =>
-    expect(screen.queryByRole("button", { name: "View 1 annotation" })).toBeNull(),
+    expect(view.container.querySelector('[data-part-id^="optimistic-user-"]')).toBeNull(),
   );
+  expect(screen.getAllByRole("button", { name: "View 1 annotation" })).toHaveLength(1);
+  expect(screen.queryByRole("link", { name: "Annotations" })).toBeNull();
 });

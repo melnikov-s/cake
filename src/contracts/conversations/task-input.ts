@@ -10,9 +10,6 @@ export const TaskInputReference = Schema.Struct({
 });
 export interface TaskInputReference extends Schema.Schema.Type<typeof TaskInputReference> {}
 
-/** Name of the reference that replaces composer annotations in coordinator (Cake Chat) admission. */
-export const ANNOTATIONS_INPUT_NAME = "Annotations";
-
 export const inputRefsSchema = Schema.Array(
   Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100)),
 ).check(Schema.isMaxLength(20));

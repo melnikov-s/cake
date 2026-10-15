@@ -8,7 +8,6 @@ import type {
 import { Clock, Effect, Layer, Option, Schema, Semaphore } from "effect";
 import { attachmentSchema, type Attachment } from "../../contracts/conversations/session-contract";
 import {
-  ANNOTATIONS_INPUT_NAME,
   TaskInputReference,
   MAX_PASTED_TEXT_BYTES,
 } from "../../contracts/conversations/task-input";
@@ -235,7 +234,7 @@ export const makeTaskInputStorageLive = (state: string) =>
           const reference: TaskInputReference = {
             kind: "input",
             id: key,
-            name: "name" in attachment ? attachment.name : ANNOTATIONS_INPUT_NAME,
+            name: "name" in attachment ? attachment.name : "Annotations",
             mimeType,
             byteLength,
           };
