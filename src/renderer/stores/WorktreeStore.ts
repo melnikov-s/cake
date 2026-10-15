@@ -15,13 +15,24 @@ export interface WorktreeStoreProps {
   enabled(): boolean;
   isStreaming(): boolean;
   operation(): typeof WorktreeLandingOperation.Encoded | undefined;
-  onLanded(record: WorktreeRecord, result: { resolved: boolean }): Promise<void> | void;
+  /**
+   * Presents one landing outcome. Every session view sharing a Working Directory observes the
+   * same operation, so presentation must be keyed by `operationId`, not by the calling Store.
+   */
+  onLanded(record: WorktreeRecord, result: WorktreeLandedResult): Promise<void> | void;
   onDiscarded(record: WorktreeRecord): Promise<void> | void;
   retirement: WorkingDirectoryRetirementWorkflow;
   onResolveWorkspace(
     workspacePath: string,
     options: { initiatingSessionId: string; workingDirectoryRetired?: boolean },
   ): Promise<void> | void;
+}
+
+export interface WorktreeLandedResult {
+  readonly operationId: string;
+  readonly resolved: boolean;
+  /** Sessions main committed as resolved by this landing, when it reported them. */
+  readonly resolvedSessionIds?: readonly string[];
 }
 
 /** Owns window-local Managed Worktree action and progress presentation. */
@@ -328,11 +339,10 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
         this.status.aheadCount === 0 &&
         this.startedLandingOperationId
       ) {
-        await this.finishLanded(
-          workspacePath,
-          this.startedLandingOperationId,
-          this.startedResolveAfterLanding,
-        );
+        await this.finishLanded(workspacePath, {
+          operationId: this.startedLandingOperationId,
+          resolved: this.startedResolveAfterLanding,
+        });
         return;
       }
       // A snapshot requested concurrently with start may predate main's accepted operation.
@@ -347,13 +357,16 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     this.applyOperationPresentation(operation);
     if (operation.phase === "landed" && this.completedOperationId !== operation.operationId) {
       this.completedOperationId = operation.operationId;
-      await this.finishLanded(
-        workspacePath,
-        operation.operationId,
-        operation.resolveAfterLanding === true ||
+      await this.finishLanded(workspacePath, {
+        operationId: operation.operationId,
+        resolved:
+          operation.resolveAfterLanding === true ||
           (this.startedLandingOperationId === operation.operationId &&
             this.startedResolveAfterLanding),
-      );
+        ...(operation.resolvedSessionIds
+          ? { resolvedSessionIds: operation.resolvedSessionIds }
+          : null),
+      });
     } else if (
       operation.phase === "complete" &&
       this.completedOperationId !== operation.operationId
@@ -417,7 +430,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     this.phase = operation.phase;
   }
 
-  private async finishLanded(workspacePath: string, operationId: string, resolved: boolean) {
+  private async finishLanded(workspacePath: string, result: WorktreeLandedResult) {
     const currentStatus = this.status;
     this.phase = "idle";
     this.stalled = false;
@@ -427,11 +440,11 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
       const record = { ...currentStatus.record, state: "landed" as const };
       Reflect.deleteProperty(record, "pendingStrategy");
       this.status = { ...currentStatus, merged: true, record };
-      await this.props.onLanded(record, { resolved });
+      await this.props.onLanded(record, result);
     }
     this.operationId = undefined;
     await this.managedWorktrees.cancelLanding({
-      operationId,
+      operationId: result.operationId,
       workspacePath,
       intent: "acknowledge",
     });

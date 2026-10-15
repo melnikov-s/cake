@@ -3,7 +3,7 @@ import {
   ResolutionCleanupFailed,
   type WorkingDirectoryResolutionResult,
 } from "../../../src/contracts/project-sessions/project-session-resolution";
-import { Deferred, Effect, Layer, Schema, Stream, SubscriptionRef } from "effect";
+import { Deferred, Effect, Fiber, Layer, Schema, Stream, SubscriptionRef } from "effect";
 import { describe, expect } from "vitest";
 import {
   type WorktreeLandingError,
@@ -797,6 +797,8 @@ describe("WorktreeLandings", () => {
       Effect.gen(function* () {
         const events: string[] = [];
         const resolved = yield* Deferred.make<string>();
+        // One landing resolves the whole family sharing the Working Directory, including nesting.
+        const familyIds = ["session-1", "child-1", "child-2", "grandchild"];
         const layer = services({
           status: baseStatus,
           events,
@@ -805,13 +807,22 @@ describe("WorktreeLandings", () => {
               Effect.as({
                 projectPath: "/project",
                 workingDirectory,
-                resolvedSessionIds: ["session-1"],
+                resolvedSessionIds: familyIds,
                 failures: [],
                 cleanupFailures: [],
               }),
             ),
         });
         yield* Effect.gen(function* () {
+          const coordinator = yield* WorktreeLandingCoordinator;
+          const projected = yield* Effect.forkChild(
+            SubscriptionRef.changes(coordinator.state).pipe(
+              Stream.map((state) => state.operations.get(workspacePath)),
+              Stream.takeUntil((current) => current?.phase === "landed"),
+              Stream.runCollect,
+            ),
+          );
+          yield* Effect.yieldNow;
           yield* worktreeLandings.start({
             operationId: "landing-resolve",
             workspacePath,
@@ -828,6 +839,15 @@ describe("WorktreeLandings", () => {
             sessionId: "session-1",
           });
           expect(snapshot.operation).not.toHaveProperty("pauseReason");
+          // The renderer presents this one operation's outcome from the authoritative set, and
+          // only together with the terminal phase: an earlier change would make observers
+          // refresh the retired checkout and lose the status that completion presents.
+          expect(snapshot.operation?.resolvedSessionIds).toEqual(familyIds);
+          expect(
+            Array.from(yield* Fiber.join(projected))
+              .filter((current) => current?.resolvedSessionIds !== undefined)
+              .map((current) => current?.phase),
+          ).toEqual(["landed"]);
           expect(() => Schema.decodeUnknownSync(WorktreeLandingSnapshot)(snapshot)).not.toThrow();
           const operationUpdates = yield* (yield* worktreeLandings.observeOperations()).pipe(
             Stream.take(1),
@@ -879,6 +899,7 @@ describe("WorktreeLandings", () => {
           expect(snapshot.operation).toMatchObject({
             phase: "landed",
             resolveAfterLanding: true,
+            resolvedSessionIds: ["session-1"],
             cleanupFailures: [cleanupFailure],
           });
         else expect(snapshot.operation).toBeUndefined();

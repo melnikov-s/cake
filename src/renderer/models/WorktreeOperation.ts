@@ -16,5 +16,6 @@ export class WorktreeOperation extends Model {
   resolveAfterLanding: WorktreeLandingOperation["resolveAfterLanding"];
   pauseReason: WorktreeLandingOperation["pauseReason"];
   error: string | undefined;
+  resolvedSessionIds: WorktreeLandingOperation["resolvedSessionIds"];
   cleanupFailures: (typeof WorktreeLandingOperation.Encoded)["cleanupFailures"];
 }

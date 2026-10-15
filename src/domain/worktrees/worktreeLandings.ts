@@ -25,6 +25,7 @@ const normalizeOperation = (operation: WorktreeLandingOperation): WorktreeLandin
   if (normalized.pauseReason === undefined) delete normalized.pauseReason;
   if (normalized.error === undefined) delete normalized.error;
   if (normalized.cleanupFailures === undefined) delete normalized.cleanupFailures;
+  if (normalized.resolvedSessionIds === undefined) delete normalized.resolvedSessionIds;
   return normalized;
 };
 
@@ -114,10 +115,12 @@ const performLanding: (
     .land(operation.workspacePath, operation.operationId, request)
     .pipe(asError("land"));
   if (outcome.outcome === "landed") {
+    let resolvedSessionIds: ReadonlyArray<string> | undefined;
     if (operation.resolveAfterLanding) {
       const result = yield* (yield* WorktreeLandingCompletion).resolveWorkingDirectory(
         operation.workspacePath,
       );
+      resolvedSessionIds = result.resolvedSessionIds;
       yield* update(operation.workspacePath, operation.operationId, (current) => ({
         ...current,
         cleanupFailures: result.cleanupFailures.length > 0 ? result.cleanupFailures : undefined,
@@ -133,10 +136,13 @@ const performLanding: (
         .setResolveAfterLanding(operation.workspacePath, false)
         .pipe(asError("resolveWorkingDirectory"));
     }
+    // Publish the resolved set with the terminal phase: an intermediate projection change
+    // would make observers refresh a retired checkout before they can present completion.
     yield* update(operation.workspacePath, operation.operationId, (current) => ({
       ...current,
       phase: "landed",
       pauseReason: undefined,
+      resolvedSessionIds,
     }));
     return;
   }
@@ -593,6 +599,7 @@ export const inspect = Effect.fn("WorktreeLandings.inspect")(function* (input: {
       phase: "landed",
       allowDirtyTarget: current?.allowDirtyTarget ?? false,
       resolveAfterLanding: true,
+      resolvedSessionIds: result.resolvedSessionIds,
       cleanupFailures: result.cleanupFailures.length > 0 ? result.cleanupFailures : undefined,
     });
     if (current) yield* update(input.workspacePath, current.operationId, () => completed);

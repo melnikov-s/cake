@@ -34,6 +34,10 @@ export const WorktreeLandingOperation = Schema.Struct({
     Schema.Literals(["commit", "conflict", "rebase-conflict", "squash-message"]),
   ),
   error: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(16_384))),
+  /** Every Project Session committed as resolved by this landing's resolve-after-landing step. */
+  resolvedSessionIds: Schema.optionalKey(
+    Schema.Array(bounded(1, 256)).check(Schema.isMaxLength(10_000)),
+  ),
   /** Resolution committed; these warnings must not turn a landed merge into a failed merge. */
   cleanupFailures: Schema.optionalKey(
     Schema.Array(ResolutionCleanupFailed).check(Schema.isMaxLength(10_000)),

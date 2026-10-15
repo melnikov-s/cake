@@ -268,18 +268,31 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       isStreaming: () => this.isStreaming,
       operation: this.props.worktreeOperation,
       onLanded: (_record, result) => {
+        // Sibling sessions sharing this Working Directory observe the same operation; keying
+        // the toast by operation keeps one landing (and its family resolution) to one toast.
+        const coalesceKey = `worktree-landed:${result.operationId}`;
+        const resolvedCount = result.resolvedSessionIds?.length ?? 0;
         ToastContext.consume(this)!.show(
-          result.resolved
+          !result.resolved
             ? {
-                tone: "info",
-                title: "Session merged and resolved",
-                message: "This session was merged into the project and resolved.",
-              }
-            : {
                 tone: "info",
                 title: "Worktree merged",
                 message: "Your work was merged back into the project.",
-              },
+                coalesceKey,
+              }
+            : resolvedCount > 1
+              ? {
+                  tone: "info",
+                  title: "Sessions merged and resolved",
+                  message: `The worktree was merged into the project and ${resolvedCount} sessions were resolved.`,
+                  coalesceKey,
+                }
+              : {
+                  tone: "info",
+                  title: "Session merged and resolved",
+                  message: "This session was merged into the project and resolved.",
+                  coalesceKey,
+                },
         );
       },
       onDiscarded: () => undefined,
