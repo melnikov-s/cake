@@ -42,6 +42,10 @@ import { ApplicationState } from "../../services/storage/ApplicationState";
 import type { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
 import type { CakeSessionRuntimeAcquireOptions } from "../../services/pi/CakeSessionRuntimes";
 import { makePiCallbackExecutor } from "../../services/pi/PiCallbackAdapter";
+import * as worktreeMerges from "../worktrees/worktreeMerges";
+import { WorktreeLandingCoordinator } from "../../services/worktrees/WorktreeLandingCoordinator";
+import { WorktreeLandingAgent } from "../../services/worktrees/WorktreeLandingAgent";
+import { WorktreeLandingCompletion } from "../../services/worktrees/WorktreeLandingCompletion";
 
 const CAKE_CHAT_OPERATIONS = [
   "attachments.list",
@@ -82,6 +86,7 @@ const CAKE_CHAT_OPERATIONS = [
   "sessions.cancel-scheduled",
   "session-labels.list",
   "sessions.set-labels",
+  "worktrees.merge",
   "subagents.start",
   "subagents.follow-up",
   "subagents.abort",
@@ -135,7 +140,15 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
     | TaskInputStorage
     | Effect.Services<ReturnType<typeof workflowControl.invoke>>
     | Effect.Services<ReturnType<typeof sessionReferences.catalog>>
+    | Effect.Services<ReturnType<typeof worktreeMerges.resolveSessionWorktree>>
+    | Exclude<
+        Effect.Services<ReturnType<typeof worktreeMerges.merge>>,
+        WorktreeLandingCoordinator | WorktreeLandingAgent | WorktreeLandingCompletion
+      >
   >();
+  const landingCoordinator = yield* Effect.serviceOption(WorktreeLandingCoordinator);
+  const landingAgent = yield* Effect.serviceOption(WorktreeLandingAgent);
+  const landingCompletion = yield* Effect.serviceOption(WorktreeLandingCompletion);
   const drafts = yield* Effect.serviceOption(SavedDraftStorage);
   const run = makePiCallbackExecutor(
     Option.isSome(drafts) ? Context.add(context, SavedDraftStorage, drafts.value) : context,
@@ -178,6 +191,32 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
       // selection, which does not necessarily activate extension tools.
       tools: ["cake", "zoom", "date", "read", "bash", "mcp"],
       allowedCakeOperations: CAKE_CHAT_OPERATIONS,
+      cakeChatWorktrees: {
+        merge: (reference, signal) =>
+          run(
+            Effect.gen(function* () {
+              if (
+                Option.isNone(landingCoordinator) ||
+                Option.isNone(landingAgent) ||
+                Option.isNone(landingCompletion)
+              )
+                return yield* Effect.fail(new Error("Managed Worktree landing is unavailable"));
+              const worktree = yield* worktreeMerges.resolveSessionWorktree(
+                yield* sessionReferences.resolve(reference),
+              );
+              return toJsonValue(
+                yield* worktreeMerges
+                  .merge({ ...worktree, callerSessionId: target.sessionId })
+                  .pipe(
+                    Effect.provideService(WorktreeLandingCoordinator, landingCoordinator.value),
+                    Effect.provideService(WorktreeLandingAgent, landingAgent.value),
+                    Effect.provideService(WorktreeLandingCompletion, landingCompletion.value),
+                  ),
+              );
+            }),
+            { signal },
+          ),
+      },
       cakeChatInstructions: {
         get: (signal) => run(getCakeChatInstructions(), { signal }),
         update: (input, signal) => run(updateCakeChatInstructions(input), { signal }),

@@ -72,12 +72,12 @@ describe("Project Session operation capabilities", () => {
     {
       capability: "mergeSession",
       overrides: { mergeSession: async () => null },
-      enabled: ["session.merge", "sessions.merge"],
+      enabled: ["worktrees.merge"],
     },
     {
       capability: "discardSession",
       overrides: { discardSession: async () => null },
-      enabled: ["session.discard", "sessions.discard"],
+      enabled: ["worktrees.discard"],
     },
     {
       capability: "pendingMessages",

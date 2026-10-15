@@ -147,6 +147,11 @@ export interface AgentOperationControl {
 }
 
 /** Product operation inputs and capabilities, independent of engine acquisition and SDK tools. */
+/** Cake Chat's native Managed Worktree landing authority over any Project Session. */
+export interface CakeChatWorktreeControl {
+  merge(sessionId: string, signal: AbortSignal): Promise<JsonValue>;
+}
+
 export interface CakeOperationOptions extends Partial<CakeArtifactOperationOptions> {
   cwd: string;
   allowedCakeOperations?: readonly string[];
@@ -164,6 +169,7 @@ export interface CakeOperationOptions extends Partial<CakeArtifactOperationOptio
   worktreeLandingControl?: WorktreeLandingControl;
   globalControl?: GlobalOperationControl;
   cakeChatInstructions?: CakeChatInstructionsControl;
+  cakeChatWorktrees?: CakeChatWorktreeControl;
   /** Parent Project Session gateway granted to an auxiliary runtime, not coordinator authority. */
   sessionControl?: GlobalOperationControl;
   agentControl?: AgentOperationControl;

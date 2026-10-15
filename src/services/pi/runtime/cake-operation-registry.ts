@@ -108,7 +108,11 @@ const cakeTopics = [
       "Offer an interactive execution choice, or run explicitly requested Project-owned script orchestration.",
   },
   { name: "notifications", summary: "Notify the user." },
-  { name: "worktrees", summary: "Complete an active worktree landing workflow." },
+  {
+    name: "worktrees",
+    summary:
+      "Land (merge) Cake-managed worktrees through Cake's native landing flow, or complete an active landing.",
+  },
 ] as const satisfies readonly CakeTopicDefinition[];
 
 function schemaJson(

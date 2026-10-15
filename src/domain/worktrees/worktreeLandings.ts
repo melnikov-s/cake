@@ -24,6 +24,8 @@ const normalizeOperation = (operation: WorktreeLandingOperation): WorktreeLandin
   if (normalized.resolveAfterLanding === undefined) delete normalized.resolveAfterLanding;
   if (normalized.pauseReason === undefined) delete normalized.pauseReason;
   if (normalized.error === undefined) delete normalized.error;
+  if (normalized.conflictFiles === undefined) delete normalized.conflictFiles;
+  if (normalized.landedCommit === undefined) delete normalized.landedCommit;
   if (normalized.cleanupFailures === undefined) delete normalized.cleanupFailures;
   if (normalized.resolvedSessionIds === undefined) delete normalized.resolvedSessionIds;
   return normalized;
@@ -106,6 +108,7 @@ const performLanding: (
     ...current,
     phase: "landing",
     pauseReason: undefined,
+    conflictFiles: undefined,
   }));
   const request: WorktreeLandRequest = {
     strategy: operation.strategy ?? "preserve",
@@ -142,6 +145,7 @@ const performLanding: (
       ...current,
       phase: "landed",
       pauseReason: undefined,
+      landedCommit: outcome.commit,
       resolvedSessionIds,
     }));
     return;
@@ -152,6 +156,7 @@ const performLanding: (
     ...current,
     phase: outcome.outcome === "proposal" ? "proposing" : "resolving",
     pauseReason: reason,
+    conflictFiles: outcome.outcome === "resolving" ? outcome.files : undefined,
   }));
   yield* prompt(
     operation,
@@ -251,6 +256,7 @@ const performRebase = Effect.fn("WorktreeLandings.performRebase")(function* (
     ...current,
     phase: "rebasing",
     pauseReason: undefined,
+    conflictFiles: undefined,
   }));
   const application = yield* ApplicationState;
   const outcome = yield* (yield* ManagedWorktrees)
@@ -268,6 +274,7 @@ const performRebase = Effect.fn("WorktreeLandings.performRebase")(function* (
     ...current,
     phase: "resolving-rebase",
     pauseReason: "rebase-conflict",
+    conflictFiles: outcome.files,
   }));
   yield* prompt(
     operation,

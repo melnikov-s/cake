@@ -149,6 +149,9 @@ describe("permanent Cake Chat", () => {
         expect(options.runtime.allowedCakeOperations).toContain("workflows.propose");
         expect(options.runtime.allowedCakeOperations).toContain("workflows.start");
         expect(options.runtime.allowedCakeOperations).not.toContain("sessions.create-child");
+        expect(options.runtime.allowedCakeOperations).toContain("worktrees.merge");
+        expect(options.runtime.allowedCakeOperations).not.toContain("worktrees.discard");
+        expect(options.runtime.cakeChatWorktrees?.merge).toBeTypeOf("function");
         expect(options.runtime.cakeChatMemory?.preferences()).toEqual(defaultCakeChatPreferences());
         f.setState({
           ...defaultApplicationState(),

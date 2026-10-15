@@ -257,6 +257,50 @@ describe("Backend-owned Cake operation composition", () => {
     ).toBe(true);
   });
 
+  it("exposes Cake Chat's native worktree merge by session reference", async () => {
+    const merge = vi.fn(async () => ({ command: "worktrees.merge", outcome: "landed" }));
+    const configured = configureCakeSessionRuntime({
+      ...options("/workspace"),
+      globalControl: { tools: [], invoke: vi.fn() },
+      cakeChatWorktrees: { merge },
+      allowedCakeOperations: ["worktrees.merge"],
+    });
+    if (!configured.coordinator) throw new Error("Expected coordinator composition");
+    const registry = new CakeOperationRegistry(
+      configured.coordinator.operations({
+        sessionId: "coordinator",
+        resolveModel: () => ({
+          provider: "p",
+          modelId: "m",
+          thinkingLevel: "off",
+          fastMode: false,
+        }),
+        setModel: async () => undefined,
+        info: async () => ({}),
+        usage: async () => ({}),
+        contextStatus: async () => ({}),
+        compact: async () => ({}),
+      }),
+    );
+    expect(registry.definitions().map((operation) => operation.command)).toEqual([
+      "worktrees.merge",
+    ]);
+    expect(registry.help()).toContain("worktrees — Land (merge) Cake-managed worktrees");
+    const help = registry.operationHelp("worktrees.merge");
+    expect(help).toContain("identical to the Merge action in the Cake UI");
+    expect(help).toContain("prompts the owning session to resolve them inside its own worktree");
+    expect(help).toContain("Never land Cake-managed worktree work by hand");
+    const result = await registry.invoke(
+      { command: "worktrees.merge", input: { sessionId: "s:1a2b3c4d" } },
+      context,
+    );
+    expect(merge).toHaveBeenCalledWith("s:1a2b3c4d", context.signal);
+    expect(result.details).toMatchObject({ result: { outcome: "landed" } });
+    await expect(
+      registry.invoke({ command: "worktrees.merge", input: {} }, context),
+    ).rejects.toThrow();
+  });
+
   it("rejects coordinator composition without its authority", () => {
     expect(() => coordinatorCakeOperations({ cwd: "/workspace" })).toThrow(
       "coordinator control is unavailable",

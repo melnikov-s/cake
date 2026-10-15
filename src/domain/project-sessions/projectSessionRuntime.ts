@@ -6,7 +6,7 @@ import { cakeModelCatalog, resolveCakeModelSelection } from "../model-presets/ca
 import * as projectSessionLocations from "./projectSessionLocations";
 import * as sessionReferences from "./sessionReferences";
 import * as managedWorktrees from "../worktrees/managedWorktrees";
-import * as worktreeLandings from "../worktrees/worktreeLandings";
+import * as worktreeMerges from "../worktrees/worktreeMerges";
 import { WorktreeLandingCoordinator } from "../../services/worktrees/WorktreeLandingCoordinator";
 import { WorktreeLandingAgent } from "../../services/worktrees/WorktreeLandingAgent";
 import { WorktreeLandingCompletion } from "../../services/worktrees/WorktreeLandingCompletion";
@@ -753,34 +753,24 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
             Option.isNone(landingCompletion)
           )
             throw new Error("Managed Worktree landing is unavailable");
-          const operationId = crypto.randomUUID();
-          await run(
-            Effect.scoped(
-              worktreeLandings
-                .start({
-                  operationId,
-                  workspacePath: target.location.workingDirectory,
-                  sessionId: target.sessionId,
-                  strategy: "preserve",
-                  allowDirtyTarget: false,
-                  commitBeforeLanding: true,
-                  resolveAfterLanding: false,
-                })
-                .pipe(
-                  Effect.provideService(WorktreeLandingCoordinator, landingCoordinator.value),
-                  Effect.provideService(WorktreeLandingAgent, landingAgent.value),
-                  Effect.provideService(WorktreeLandingCompletion, landingCompletion.value),
-                ),
+          return toJsonValue(
+            await run(
+              Effect.scoped(
+                worktreeMerges
+                  .merge({
+                    sessionId: target.sessionId,
+                    workspacePath: target.location.workingDirectory,
+                    callerSessionId: sessionId,
+                  })
+                  .pipe(
+                    Effect.provideService(WorktreeLandingCoordinator, landingCoordinator.value),
+                    Effect.provideService(WorktreeLandingAgent, landingAgent.value),
+                    Effect.provideService(WorktreeLandingCompletion, landingCompletion.value),
+                  ),
+              ),
+              { signal },
             ),
-            { signal },
           );
-          return toJsonValue({
-            ok: true,
-            command: "worktrees.merge",
-            operationId,
-            sessionId: target.sessionId,
-            workingDirectory: target.location.workingDirectory,
-          });
         },
         discardSession: async (targetSessionId, keepBranch, signal) => {
           const target = await run(worktreeOperationTarget(targetSessionId), { signal });

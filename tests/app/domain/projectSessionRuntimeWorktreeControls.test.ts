@@ -195,7 +195,14 @@ describe("Project Session runtime worktree controls", () => {
       assert.ok(rootMerge);
       assert.ok(rootDiscard);
       const signal = new AbortController().signal;
-      yield* Effect.promise(() => rootMerge(isolatedChildId, signal));
+      const report = yield* Effect.promise(() => rootMerge(isolatedChildId, signal));
+      assert.partialDeepStrictEqual(report, {
+        command: "worktrees.merge",
+        outcome: "landed",
+        sessionId: isolatedChildId,
+        workingDirectory: isolatedChildPath,
+        targetBranch: "main",
+      });
       // A valid discard runs through the backend worktree domain (not renderer control).
       yield* Effect.promise(() => rootDiscard(isolatedChildId, true, signal));
 

@@ -12,7 +12,10 @@ import { createAgentProjectSettingsOperations } from "../domain/projects/cake-pr
 import { createConversationOperations } from "../domain/conversations/cake-conversation-operations";
 import { createSessionFamilyOperations } from "../domain/session-families/cake-session-family-operations";
 import { createScheduledMessageOperations } from "../domain/scheduled-messages/cake-scheduled-message-operations";
-import { createSessionWorktreeOperations } from "../domain/worktrees/cake-session-worktree-operations";
+import {
+  createCakeChatWorktreeOperations,
+  createSessionWorktreeOperations,
+} from "../domain/worktrees/cake-session-worktree-operations";
 import { Schema } from "effect";
 import type {
   ProjectCakeOperations,
@@ -179,6 +182,9 @@ export function coordinatorCakeOperations(
       ...(options.cakeChatInstructions
         ? createCakeChatInstructionOperations(options.cakeChatInstructions)
         : []),
+      ...(options.cakeChatWorktrees
+        ? createCakeChatWorktreeOperations(options.cakeChatWorktrees)
+        : []),
     ].filter(
       (operation) =>
         !options.allowedCakeOperations || options.allowedCakeOperations.includes(operation.command),
@@ -212,6 +218,7 @@ export function configureCakeSessionRuntime(
     worktreeLandingControl,
     globalControl,
     cakeChatInstructions,
+    cakeChatWorktrees,
     sessionControl,
     agentControl,
     generateInlineWidget,
@@ -249,6 +256,7 @@ export function configureCakeSessionRuntime(
     worktreeLandingControl,
     globalControl,
     cakeChatInstructions,
+    cakeChatWorktrees,
     sessionControl,
     agentControl,
     generateInlineWidget,
