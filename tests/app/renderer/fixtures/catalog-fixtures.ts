@@ -4,6 +4,7 @@ import {
   type ProjectRecord,
   type ProjectWorkflow,
 } from "../../../../src/contracts/application/application-data";
+import type { ProjectSessionSummary } from "../../../../src/contracts/project-sessions/project-session-data";
 
 export const fixtureTimestamp = "2026-01-01T00:00:00.000Z";
 
@@ -24,6 +25,7 @@ export interface SessionSummaryFixture {
   readonly familyChildSessionIds?: readonly string[];
   readonly familyChildOrder?: number;
   readonly familyDepth?: number;
+  readonly cakeChatLaunch?: ProjectSessionSummary["cakeChatLaunch"];
   readonly pending: boolean;
   readonly draft: boolean;
 }
@@ -76,6 +78,7 @@ export function sessionSummary(
       : { familyChildSessionIds: input.familyChildSessionIds }),
     ...(input.familyChildOrder === undefined ? null : { familyChildOrder: input.familyChildOrder }),
     ...(input.familyDepth === undefined ? null : { familyDepth: input.familyDepth }),
+    ...(input.cakeChatLaunch === undefined ? null : { cakeChatLaunch: input.cakeChatLaunch }),
     pending: input.pending ?? false,
     draft: input.draft ?? false,
   };

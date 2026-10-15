@@ -76,6 +76,9 @@ describe("batch tool through real session send controls", () => {
     expect(result.structuredContent).toMatchObject({
       result: {
         status: "complete",
+        // Cake Chat's default: every recipient owes one quiet digest result.
+        expectsResponse: true,
+        report: "digest",
         outcomes: [
           { sessionId: "a", status: "accepted" },
           { sessionId: "b", status: "accepted" },
@@ -88,7 +91,12 @@ describe("batch tool through real session send controls", () => {
     for (const input of inputs)
       expect(input).toMatchObject({
         text: "Shared instructions",
-        crossSession: { expectsResponse: false, maxMessages: 5, sender: { sessionId: "sender" } },
+        crossSession: {
+          expectsResponse: true,
+          report: "digest",
+          maxMessages: 5,
+          sender: { sessionId: "sender" },
+        },
       });
     expect(inputs[0]?.crossSession?.threadId).not.toBe(inputs[1]?.crossSession?.threadId);
     expect(inputs[0]?.crossSession?.messageId).not.toBe(inputs[1]?.crossSession?.messageId);
@@ -102,6 +110,31 @@ describe("batch tool through real session send controls", () => {
       context,
     );
     expect(prompt).toHaveBeenCalledTimes(3);
+    // expectsResponse: false from Cake Chat means silent: no obligation and no report policy.
+    expect(prompt.mock.calls[2]?.[0].crossSession).toMatchObject({ expectsResponse: false });
+    expect(prompt.mock.calls[2]?.[0].crossSession).not.toHaveProperty("report");
+    const silent = await registry.invoke(
+      {
+        command: "sessions.send-batch",
+        input: { sessionIds: ["a"], text: "FYI only", report: "silent" },
+      },
+      context,
+    );
+    expect(silent.structuredContent).toMatchObject({
+      result: { expectsResponse: false, report: "silent" },
+    });
+    const interrupt = await registry.invoke(
+      { command: "sessions.send", input: { sessionId: "b", text: "Ping me", report: "interrupt" } },
+      context,
+    );
+    expect(JSON.parse(interrupt.text)).toMatchObject({
+      expectsResponse: true,
+      report: "interrupt",
+    });
+    expect(prompt.mock.calls[4]?.[0].crossSession).toMatchObject({
+      expectsResponse: true,
+      report: "interrupt",
+    });
   });
 
   it("selects prompt for idle recipients and follow-up for active recipients when delivery is omitted", async () => {

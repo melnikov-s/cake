@@ -36,6 +36,7 @@ import type {
   CakeModelLaunch,
 } from "../../contracts/model-presets/cake-model-selection";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
+import { splitSessionDigestReminder } from "../../contracts/cake-chats/session-digest-reminder";
 import {
   CakeOperationRegistry,
   cakeToolDescription,
@@ -107,7 +108,8 @@ const queuedInput = (item: Extract<InboxItem, { content: unknown }>, id: string)
   return {
     itemId: id,
     turnId: id,
-    text: input.text,
+    // The session digest prefix is Cake-owned model context, not editable user text.
+    text: splitSessionDigestReminder(input.text).text,
     renderUserMessageAsMarkdown: input.markdown,
     attachments: [
       ...input.files,
@@ -533,7 +535,7 @@ export async function createDurableCakeChatRuntime(
               id: `queued-${id}`,
               kind: "text",
               role: "user",
-              text,
+              text: splitSessionDigestReminder(text).text,
               status: "complete",
               deliveryState: item.mode === "steer" ? "steering" : "queued",
               subagentReport: presentationOf(item.content).subagentReport,

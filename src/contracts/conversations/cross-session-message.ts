@@ -44,6 +44,8 @@ export const CrossSessionMessageMetadata = Schema.Struct({
   sequence: Schema.Int.check(Schema.isGreaterThan(0)),
   expectsResponse: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
   replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
+  /** Cake Chat requests only: how the owed result is delivered back (see CakeChatReportPolicy). */
+  report: Schema.optionalKey(Schema.Literals(["digest", "interrupt"])),
   generatedNotice: Schema.optionalKey(Schema.Boolean),
   context: Schema.optionalKey(CrossSessionContextSnapshot),
   sender: Schema.Struct({

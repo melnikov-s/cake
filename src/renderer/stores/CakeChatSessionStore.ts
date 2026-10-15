@@ -63,6 +63,15 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         if (ready && this.pendingSideChatThreadId) this.openSideChat(this.pendingSideChatThreadId);
       },
     );
+    // Unsent text holds interrupt-policy session results back until it is sent or cleared.
+    this.reaction(
+      () => this.conversationSessionStore.chatStore.draft.trim().length > 0,
+      (composing) => {
+        void Promise.resolve()
+          .then(() => this.client.cakeChats.setComposing({ composing }, { signal: this.signal }))
+          .catch(() => undefined);
+      },
+    );
   }
 
   get model() {

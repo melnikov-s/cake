@@ -2,6 +2,7 @@ import { Schema } from "effect";
 import { SESSION_TITLE_MAX_LENGTH } from "../conversations/session-contract";
 import { ThinkingLevel } from "../pi/model-data";
 import { ManagedWorktreeContext } from "../worktrees/managed-worktree-data";
+import { CakeChatLaunchReport } from "./session-reporting";
 import {
   SessionChatConfiguration,
   SessionChatPromptInput,
@@ -41,6 +42,13 @@ export const ProjectSessionSummary = Schema.Struct({
   familyChildSessionIds: Schema.optionalKey(Schema.Array(boundedId)),
   familyChildOrder: Schema.optionalKey(Schema.Int),
   familyDepth: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+  /** Present when Cake Chat launched this session; drives its status strip. */
+  cakeChatLaunch: Schema.optionalKey(
+    Schema.Struct({
+      launchedAt: Schema.optionalKey(Schema.String),
+      lastReport: Schema.optionalKey(CakeChatLaunchReport),
+    }),
+  ),
 });
 export interface ProjectSessionSummary extends Schema.Schema.Type<typeof ProjectSessionSummary> {}
 

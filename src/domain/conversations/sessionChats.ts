@@ -1,6 +1,7 @@
 import type { AttachmentReadInput } from "../../contracts/conversations/attachment-reference-control";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 import { Effect } from "effect";
+import * as cakeChatDigest from "../cake-chats/cakeChatDigest";
 import {
   inheritTaskInputProtection,
   prepareCoordinatorMessage,
@@ -95,13 +96,19 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
     handle.profile === "CakeChatSession"
       ? yield* prepareCoordinatorMessage(input).pipe(asError("deliver"))
       : input;
+  // A user message to Cake Chat yields any report-triggered run and carries the quiet inbox.
+  const userMessage =
+    handle.profile === "CakeChatSession" && !message.crossSession
+      ? yield* cakeChatDigest.prepareUserMessage(handle, message.text).pipe(asError("deliver"))
+      : undefined;
   const text = message.crossSession
     ? encodeCrossSessionMessage(message.text, message.crossSession)
-    : message.text;
+    : (userMessage?.text ?? message.text);
   const turnId = TurnId.make(
     yield* deliverConversation(
       Effect.succeed(handle),
-      delivery,
+      // Steering into the run that just yielded would have nothing left to steer.
+      userMessage?.interruptedReport && delivery === "steer" ? "follow-up" : delivery,
       text,
       projectAttachments(
         yield* prepareTaskInputs(
@@ -115,6 +122,10 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
       input.responseMode,
     ).pipe(asError("deliver")),
   );
+  if (userMessage?.digestIds.length)
+    yield* (yield* SessionFamilyStorage)
+      .removeDigest(userMessage.digestIds)
+      .pipe(asError("deliver"));
   yield* handle.publishSessionChanged().pipe(asError("deliver"));
   return turnId;
 });

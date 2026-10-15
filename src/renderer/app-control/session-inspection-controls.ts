@@ -20,15 +20,33 @@ import { toStrictJson } from "./control-json";
 export const sessionInspectionControls = [
   defineControl({
     command: "sessions.list",
-    args: emptyArgumentsSchema,
+    args: Schema.Struct({ launchedByCakeChat: Schema.optionalKey(Schema.Boolean) }),
     scope: "global",
     discovery: {
       topic: "sessions",
       summary:
         "List all project sessions, ordered by recency, and attention-worthy project sessions.",
+      guidance: [
+        "launchedByCakeChat: true lists only unresolved sessions Cake Chat launched, each with launch.status (running, needs-you, failed, stopped, done or idle) and the latest report summary. Use it to answer “what's going on?” instead of polling sessions one by one.",
+      ],
+      examples: [{ input: {} }, { input: { launchedByCakeChat: true } }],
     },
-    run: async (_input, { host, source }, command): Promise<AppControlResult> => {
+    run: async (input, { host, source }, command): Promise<AppControlResult> => {
       const state = getAppState(host, source);
+      if (input.launchedByCakeChat) {
+        const launched = state.recentSessions.filter(
+          (session) => session.launch && !session.resolved,
+        );
+        return toStrictJson({
+          ok: true,
+          command,
+          sessions: launched,
+          attentionSessions: launched.filter(
+            (session) =>
+              session.launch?.status === "needs-you" || session.launch?.status === "failed",
+          ),
+        });
+      }
       return toStrictJson({
         ok: true,
         command,

@@ -84,6 +84,7 @@ export const makeCakeRpcServerLive = (
     "cakeChats.observeSideChats",
     "cakeChats.startSideChat",
     "cakeChats.setUnread",
+    "cakeChats.setComposing",
     "cakeChats.respondControl",
     "workflows.start",
     "workflows.list",

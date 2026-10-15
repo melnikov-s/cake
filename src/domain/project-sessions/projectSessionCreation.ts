@@ -1,6 +1,10 @@
-import { Cause, Effect, Exit } from "effect";
+import { Cause, DateTime, Effect, Exit } from "effect";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
-import type { SessionRequester } from "../../contracts/project-sessions/session-reporting";
+import {
+  cakeChatReportPolicy,
+  type CakeChatReportPolicy,
+  type SessionRequester,
+} from "../../contracts/project-sessions/session-reporting";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { encodeCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import { inheritTaskInputProtection } from "../conversations/taskInputs";
@@ -25,10 +29,10 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
   readonly worktreeName?: string;
   readonly requester?: SessionRequester;
   /**
-   * Whether the requester's initial assignment owes it one result report.
-   * Defaults to true; only meaningful with a Cake Chat requester.
+   * How the initial assignment's one result reaches a Cake Chat requester; defaults to digest.
+   * silent means the assignment owes no result. Only meaningful with a Cake Chat requester.
    */
-  readonly expectsResponse?: boolean;
+  readonly report?: CakeChatReportPolicy;
   readonly markdown?: boolean;
 }) {
   const locations = yield* projectSessionLocations.locations();
@@ -61,7 +65,7 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
     input.requester?.kind === "cake-chat" && input.requester.sessionId === CAKE_CHAT_SESSION_ID
       ? input.requester
       : undefined;
-  const expectsResponse = input.expectsResponse ?? true;
+  const { report, expectsResponse } = cakeChatReportPolicy({ report: input.report });
   const storage = yield* SessionFamilyStorage;
   if (requester)
     yield* storage.registerSpawn({
@@ -70,6 +74,8 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
       workingDirectory,
       requester,
       reportDelivered: false,
+      launchedAt: DateTime.formatIso(yield* DateTime.now),
+      ...(report === "silent" ? null : { reportPolicy: report }),
       // Without an initial obligation there is no handoff to wait for or recover.
       handoffSettled: !expectsResponse,
     });
@@ -80,6 +86,7 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
         threadId: sessionId,
         sequence: 1,
         expectsResponse,
+        ...(report === "silent" ? null : { report }),
         sender: { sessionId: requester.sessionId, title: requester.title, kind: requester.kind },
       })
     : input.initialPrompt;
@@ -108,6 +115,7 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
                 requestMessageId: sessionId,
                 threadId: sessionId,
                 reported: false,
+                ...(report === "silent" ? null : { reportPolicy: report }),
                 outcome: Cause.hasInterrupts(exit.cause) ? "aborted" : "failed",
                 ...(!Cause.hasInterrupts(exit.cause)
                   ? {

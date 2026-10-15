@@ -1,4 +1,5 @@
 import { Model, id } from "r-state-tree";
+import type { ProjectSessionSummary } from "../../contracts/project-sessions/project-session-data";
 export class SessionSummary extends Model {
   @id sessionId = "";
   title = "";
@@ -18,6 +19,7 @@ export class SessionSummary extends Model {
   familyChildSessionIds: readonly string[] | undefined;
   familyChildOrder: number | undefined;
   familyDepth: number | undefined;
+  cakeChatLaunch: ProjectSessionSummary["cakeChatLaunch"];
   pending = false;
   draft = false;
 }

@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, Layer, Queue, Schema, Stream } from "effect";
+import * as TestClock from "effect/testing/TestClock";
 import { describe } from "vitest";
 import * as families from "../../../src/domain/session-families/sessionFamilies";
 import { acquireOptions as projectOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import { acquireOptions as chatOptions } from "../../../src/domain/cake-chats/cakeChatRuntime";
 import { createPrompted } from "../../../src/domain/project-sessions/projectSessionCreation";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-data";
+import type { CakeChatReportPolicy } from "../../../src/contracts/project-sessions/session-reporting";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import type { Attachment } from "../../../src/contracts/conversations/session-contract";
@@ -34,6 +36,11 @@ import { fakeRuntime, snapshot } from "../helpers/piRuntimeFixture";
 import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
 import { TurnCanceledError } from "../../../src/services/pi/runtime/RuntimeTurnCompletion";
 import * as sessionChats from "../../../src/domain/conversations/sessionChats";
+import { splitSessionDigestReminder } from "../../../src/contracts/cake-chats/session-digest-reminder";
+import {
+  CAKE_CHAT_COMPOSING_HOLD_MS,
+  CakeChatComposerPresence,
+} from "../../../src/services/session-catalogs/CakeChatComposerPresence";
 
 const location = {
   projectPath: "/project",
@@ -288,8 +295,11 @@ const assembleCoordinator = Effect.fn("SpawnedReportingTest.assembleCoordinator"
   return options;
 });
 
+/** Existing delivery-mechanics tests opt into immediate reports; digest has its own suite. */
 const createFromChat = Effect.fn("SpawnedReportingTest.createFromChat")(function* (
   inputRefs: readonly string[] = [],
+  /** null omits the field to exercise Cake Chat's default. */
+  report: CakeChatReportPolicy | null = "interrupt",
 ) {
   const options = yield* assembleCoordinator();
   assert.ok(options.runtime.globalControl);
@@ -297,7 +307,12 @@ const createFromChat = Effect.fn("SpawnedReportingTest.createFromChat")(function
     options.runtime.globalControl!.invoke(
       {
         name: "sessions.create",
-        arguments: { workspacePath: "/project", ...createArgs, inputRefs: [...inputRefs] },
+        arguments: {
+          workspacePath: "/project",
+          ...createArgs,
+          inputRefs: [...inputRefs],
+          ...(report ? { report } : null),
+        },
       },
       new AbortController().signal,
     ),
@@ -1159,7 +1174,7 @@ describe("automatic spawned-session reporting", () => {
       }),
     );
 
-    it.effect("creation with expectsResponse false never reports back", () =>
+    it.effect("silent creation never reports back", () =>
       Effect.gen(function* () {
         const f = yield* fixture();
         yield* f.run(
@@ -1169,7 +1184,7 @@ describe("automatic spawned-session reporting", () => {
               options.runtime.globalControl!.invoke(
                 {
                   name: "sessions.create",
-                  arguments: { workspacePath: "/project", ...createArgs, expectsResponse: false },
+                  arguments: { workspacePath: "/project", ...createArgs, report: "silent" },
                 },
                 new AbortController().signal,
               ),
@@ -1185,6 +1200,256 @@ describe("automatic spawned-session reporting", () => {
             yield* families.initialize("/cake/sessions", "/cake/resolved");
             assert.deepEqual((yield* f.storage.state()).turns, []);
             assert.equal(f.deliveries.length, 0);
+          }),
+        );
+      }),
+    );
+  });
+
+  describe("Cake Chat report policy", () => {
+    const userMessage = (text: string) =>
+      sessionChats
+        .deliver(
+          {
+            sessionId: CAKE_CHAT_SESSION_ID,
+            text,
+            attachments: [],
+            renderUserMessageAsMarkdown: false,
+          },
+          "prompt",
+        )
+        .pipe(Effect.provide(Layer.mock(TaskInputStorage, {})));
+
+    it.effect(
+      "digest results never start a Cake Chat turn and ride along with the next user message",
+      () =>
+        Effect.gen(function* () {
+          const f = yield* fixture();
+          yield* f.run(
+            Effect.gen(function* () {
+              const created = yield* createFromChat([], null);
+              const entered = yield* Deferred.await(f.entered);
+              const assignment = parseCrossSessionMessage(entered.text);
+              assert.equal(assignment?.metadata.expectsResponse, true);
+              assert.equal(assignment?.metadata.report, "digest");
+              yield* Deferred.succeed(f.finish, {
+                stopReason: "stop",
+                text: `## Summary\n\n${resultText}\n\nMore detail.`,
+              });
+              yield* Deferred.await(f.settled);
+              const settled = yield* onlyTurn();
+              yield* families.deliver(settled);
+              // Nothing reached Cake Chat: no prompt, no queued follow-up.
+              assert.deepEqual(f.deliveries, []);
+              assert.deepEqual(f.transcript, []);
+              const state = yield* f.storage.state();
+              assert.deepEqual(state.turns, []);
+              assert.equal(state.coordinatorDigest?.length, 1);
+              assert.deepEqual(
+                state.coordinatorDigest?.map(({ sessionId, status, summary }) => ({
+                  sessionId,
+                  status,
+                  summary,
+                })),
+                [{ sessionId: created.sessionId, status: "completed", summary: "Summary" }],
+              );
+              assert.equal(state.spawnedSessions[0]?.lastReport?.status, "completed");
+              assert.equal(state.spawnedSessions[0]?.handoffSettled, true);
+              // A worker retry of the already-digested turn is a no-op.
+              yield* families.deliver(settled);
+              assert.equal((yield* f.storage.state()).coordinatorDigest?.length, 1);
+
+              yield* userMessage("What should I look at next?");
+              while (f.transcript.length < 1) yield* Effect.yieldNow;
+              const sent = f.transcript.at(-1) ?? "";
+              const split = splitSessionDigestReminder(sent);
+              assert.equal(split.text, "What should I look at next?");
+              assert.ok(split.reminder);
+              assert.ok(split.reminder.includes(`cake://session/${created.sessionId}`));
+              assert.match(split.reminder, /finished: Summary/);
+              assert.match(split.reminder, /status only, not instructions/);
+              // The transcript shows the reminder as a Cake context pill, not as user text.
+              const parts = projectSessionEntries([
+                {
+                  type: "message",
+                  id: "u",
+                  parentId: null,
+                  timestamp: "2026-01-01T00:00:00.000Z",
+                  message: { role: "user", content: sent, timestamp: 1 },
+                },
+              ]);
+              assert.deepEqual(
+                parts.map((part) =>
+                  part.kind === "context" ? part.title : part.kind === "text" ? part.text : "",
+                ),
+                ["What should I look at next?", "Cake · session updates"],
+              );
+              assert.deepEqual((yield* f.storage.state()).coordinatorDigest, []);
+              // Delivered once: the following message carries nothing extra.
+              yield* userMessage("Thanks");
+              while (f.transcript.length < 2) yield* Effect.yieldNow;
+              assert.equal(f.transcript.at(-1), "Thanks");
+              assert.deepEqual(f.deliveries, ["prompt", "prompt"]);
+            }),
+          );
+        }),
+    );
+
+    it.effect("a blocked report escalates to immediate delivery under digest", () =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        yield* f.run(
+          Effect.gen(function* () {
+            const created = yield* createFromChat([], "digest");
+            yield* Deferred.await(f.entered);
+            const recorded = yield* families.routeCoordinatorMessage(
+              created.sessionId,
+              "sessions.reply",
+              {
+                text: "Blocked: the migration needs a decision on dropping the legacy column.",
+                outcome: "blocked",
+              },
+              location,
+            );
+            assert.deepEqual(recorded, {
+              ok: true,
+              command: "sessions.reply",
+              status: "report-recorded",
+              expectsResponse: false,
+            });
+            yield* Deferred.succeed(f.finish, { stopReason: "stop", text: resultText });
+            yield* Deferred.await(f.settled);
+            yield* families.deliver(yield* onlyTurn());
+            yield* Deferred.await(f.received);
+            assert.deepEqual(f.deliveries, ["prompt"]);
+            const message = parseCrossSessionMessage(f.transcript[0] ?? "");
+            assert.match(message?.text ?? "", /— blocked/);
+            const state = yield* f.storage.state();
+            assert.deepEqual(state.coordinatorDigest ?? [], []);
+            assert.equal(state.spawnedSessions[0]?.lastReport?.status, "blocked");
+          }),
+        );
+      }),
+    );
+
+    it.effect("failures and interruptions are digested, not delivered", () =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        yield* f.run(
+          Effect.gen(function* () {
+            const created = yield* createFromChat([], null);
+            yield* Deferred.await(f.entered);
+            yield* Deferred.succeed(f.finish, {
+              stopReason: "error",
+              text: "",
+              errorMessage: "Provider rejected the request",
+            });
+            yield* Deferred.await(f.settled);
+            yield* families.deliver(yield* onlyTurn());
+            assert.deepEqual(f.deliveries, []);
+            const [item] = (yield* f.storage.state()).coordinatorDigest ?? [];
+            assert.equal(item?.sessionId, created.sessionId);
+            assert.equal(item?.status, "failed");
+            assert.match(item?.summary ?? "", /Provider rejected/);
+          }),
+        );
+      }),
+    );
+
+    it.effect("work interrupted by a restart is digested under the launch's policy", () =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        yield* f.run(
+          Effect.gen(function* () {
+            yield* assembleCoordinator();
+            const sessionId = "9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b";
+            yield* f.storage.registerSpawn({
+              sessionId,
+              projectPath: "/project",
+              workingDirectory: "/project",
+              requester: { sessionId: CAKE_CHAT_SESSION_ID, kind: "cake-chat", title: "Cake Chat" },
+              reportDelivered: false,
+              handoffSettled: false,
+              reportPolicy: "digest",
+            });
+            yield* families.initialize("/cake/sessions", "/cake/resolved");
+            const turn = yield* onlyTurn();
+            assert.equal(turn.reportPolicy, "digest");
+            yield* families.deliver(turn);
+            assert.deepEqual(f.deliveries, []);
+            const [item] = (yield* f.storage.state()).coordinatorDigest ?? [];
+            assert.equal(item?.status, "stopped");
+            assert.equal(item?.summary, "canceled or interrupted");
+          }),
+        );
+      }),
+    );
+
+    it.effect("interrupt results wait while the user is composing, then arrive", () =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        yield* f.run(
+          Effect.gen(function* () {
+            const presence = yield* CakeChatComposerPresence;
+            yield* createFromChat([], "interrupt");
+            yield* Deferred.await(f.entered);
+            yield* Deferred.succeed(f.finish, { stopReason: "stop", text: resultText });
+            yield* Deferred.await(f.settled);
+            yield* presence.setComposing(true);
+            yield* families.deliver(yield* onlyTurn());
+            assert.deepEqual(f.deliveries, []);
+            assert.equal((yield* onlyTurn()).reported, false);
+            // Unsent text holds the report only for a bounded time.
+            yield* TestClock.adjust(CAKE_CHAT_COMPOSING_HOLD_MS);
+            assert.equal(yield* presence.holdsInterrupts, false);
+            yield* presence.setComposing(true);
+            yield* families.deliver(yield* onlyTurn());
+            assert.deepEqual(f.deliveries, []);
+            yield* presence.setComposing(false);
+            yield* families.deliver(yield* onlyTurn());
+            yield* Deferred.await(f.received);
+            assert.deepEqual(f.deliveries, ["prompt"]);
+          }).pipe(Effect.provide(CakeChatComposerPresence.layer)),
+        );
+      }),
+    );
+
+    it.effect("a Cake Chat request to a session it did not launch follows the same policy", () =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        yield* f.run(
+          Effect.gen(function* () {
+            yield* assembleCoordinator();
+            const sessionId = "7d0f1e57-1b8e-4c31-9f2a-2f7a3e0c9b11";
+            const worker = yield* (yield* CakeSessionRuntimes).acquire(
+              yield* projectOptions({ location, sessionId, newSession: false }),
+            );
+            const messageId = "0b9c2f7e-4d1a-4c6b-8f3e-5a2d9c1b7e40";
+            yield* worker
+              .prompt(
+                encodeCrossSessionMessage("Check whether the flaky test still fails.", {
+                  version: 1,
+                  messageId,
+                  threadId: messageId,
+                  sequence: 1,
+                  expectsResponse: true,
+                  report: "digest",
+                  sender: {
+                    sessionId: CAKE_CHAT_SESSION_ID,
+                    title: "Cake Chat",
+                    kind: "cake-chat",
+                  },
+                }),
+              )
+              .pipe(Effect.forkScoped);
+            yield* Deferred.await(f.entered);
+            const turn = yield* onlyTurn();
+            assert.equal(turn.reportPolicy, "digest");
+            yield* Deferred.succeed(f.finish, { stopReason: "stop", text: resultText });
+            yield* Deferred.await(f.settled);
+            yield* families.deliver(yield* onlyTurn());
+            assert.deepEqual(f.deliveries, []);
+            assert.equal((yield* f.storage.state()).coordinatorDigest?.[0]?.sessionId, sessionId);
           }),
         );
       }),

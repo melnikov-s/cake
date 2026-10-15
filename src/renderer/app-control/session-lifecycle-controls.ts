@@ -8,6 +8,7 @@ import {
 } from "../../contracts/conversations/session-contract";
 import { isActiveSessionActivity } from "../lib/session-activity";
 import { CakeModelSelection } from "../../contracts/model-presets/cake-model-selection";
+import { CakeChatReportPolicy } from "../../contracts/project-sessions/session-reporting";
 import type { AppControlResult } from "./app-control-data";
 import { sessionLabels } from "./control-projections";
 import { bounded, trimmed, sessionIdTargetSchema } from "./control-arguments";
@@ -33,12 +34,12 @@ const createSessionArgs = Schema.Struct({
     Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9-]{0,62}$/)),
   ),
   markdown: Schema.optionalKey(Schema.Boolean),
+  report: Schema.optionalKey(CakeChatReportPolicy),
 });
 const createDraftSessionArgs = Schema.Struct({
   workspacePath: bounded(1, 4096),
   name: trimmed(1, 500),
   initialPrompt: trimmed(1, 100000),
-  expectsResponse: Schema.optionalKey(Schema.Boolean),
   model: Schema.optionalKey(
     Schema.Struct({
       provider: trimmed(1, 256),
@@ -62,7 +63,7 @@ export const sessionLifecycleControls = [
       guidance: [
         "Omit model unless the user explicitly asks for a specific model. When omitted, the new session uses the configured default model preset's complete settings (provider, model, thinking level, and Fast mode; see models.list), not the calling Cake Chat's current model. Only when no default preset is configured does it use the calling Cake Chat's current settings.",
         "Pass exact attachment IDs from input metadata or attachments.list in inputRefs to forward without reading. Use attachments.read only when you want to inspect the content yourself.",
-        "expectsResponse defaults to true for the initial assignment: the session reports back exactly once when the turn handling that assignment finishes (a result, or one failure/stopped notice). Later turns the user starts directly in that session never report back. Set false when no report is wanted.",
+        'report decides how the initial assignment\'s one result comes back. "digest" (default) never starts a Cake Chat turn: a one-line status is attached to the user\'s next message, and a blocked report is delivered right away. "interrupt" delivers the result immediately and starts a turn; use it only when the user asked to hear back as soon as it finishes. "silent" owes no result; check on demand with sessions.list { launchedByCakeChat: true }. Later turns the user starts directly in that session never report back.',
       ],
       examples: [
         {

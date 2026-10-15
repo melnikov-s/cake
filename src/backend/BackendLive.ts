@@ -45,6 +45,7 @@ import { makeScheduledMessageStorageLive } from "../services/storage/ScheduledMe
 import { makeSavedDraftStorageLive } from "../services/storage/SavedDraftStorage";
 import { makeSessionArchiveStorageLive } from "../services/storage/SessionArchiveStorageLive";
 import { makeSessionFamilyStorageLive } from "../services/storage/SessionFamilyStorage";
+import { CakeChatComposerPresence } from "../services/session-catalogs/CakeChatComposerPresence";
 import { makeWorktreeStorageLive } from "../services/storage/WorktreeStorageLive";
 import { SubagentCoordinatorLive } from "../services/subagents/SubagentCoordinator";
 import { makeTerminalLive } from "../services/terminal/TerminalLive";
@@ -109,6 +110,7 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
     WorkflowSandboxLive,
     WorkflowSupervisorLive,
     SessionCatalogChanges.layer,
+    CakeChatComposerPresence.layer,
   ).pipe(Layer.provide(BootstrapLive));
 
   const PiLive = Layer.mergeAll(

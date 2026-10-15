@@ -21,7 +21,7 @@ export function createSessionSendBatchOperation(
     guidance: [
       "Supply 1–100 unique sessionIds and one text. Invalid arguments or duplicate IDs reject the whole batch before sending.",
       "Recipients are attempted sequentially in input order. Unknown targets and individual delivery failures do not stop later recipients; inspect every outcome.",
-      "Omit delivery to start idle targets or queue behind active targets; steer redirects active work. expectsResponse defaults to false; set true only when every recipient owes you one answer.",
+      "Omit delivery to start idle targets or queue behind active targets; steer redirects active work. From a Project Session, expectsResponse defaults to false; set true only when every recipient owes you one answer. From Cake Chat, report (digest by default, interrupt, or silent) applies to every recipient exactly as in sessions.send.",
       "Each recipient starts a separate exchange; maxMessages applies independently to each. Use sessions.send for an existing thread or a correlated reply.",
       "ok means the batch was processed, not that every delivery succeeded. status is complete, partial, or failed. Receipts are informational; no acknowledgment is needed.",
     ],
@@ -47,6 +47,7 @@ export function createSessionSendBatchOperation(
     async execute(input, { signal }) {
       const { sessionIds, ...shared } = input;
       const outcomes: SessionSendBatchOutcome[] = [];
+      let firstReceipt: SessionSendBatchReceipt | undefined;
       const failureMessage = (message: string) =>
         message.replaceAll(input.text, "[shared message]").slice(0, 1_024);
       for (const sessionId of sessionIds) {
@@ -64,6 +65,7 @@ export function createSessionSendBatchOperation(
           const receipt = Schema.decodeUnknownOption(SessionSendBatchReceipt)(result);
           if (Option.isSome(receipt)) {
             const { messageId, threadId, turnId, delivery, status } = receipt.value;
+            firstReceipt ??= receipt.value;
             outcomes.push({
               sessionId,
               ok: true,
@@ -98,7 +100,9 @@ export function createSessionSendBatchOperation(
         ok: true,
         command: "sessions.send-batch",
         status: accepted === outcomes.length ? "complete" : accepted === 0 ? "failed" : "partial",
-        expectsResponse: input.expectsResponse,
+        // The single-send authority applies the sender's defaults; echo what it accepted.
+        expectsResponse: firstReceipt?.expectsResponse ?? input.expectsResponse ?? false,
+        ...(firstReceipt?.report ? { report: firstReceipt.report } : null),
         outcomes,
       };
     },

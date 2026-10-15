@@ -5,6 +5,7 @@ import * as cakeChatSideChats from "../../domain/cake-chats/cakeChatSideChats";
 import * as requestInspection from "../../domain/cake-chats/requestInspection";
 import { CakeChatError } from "../../contracts/cake-chats/cake-chat-data";
 import type { CakeChatRuntimeConfiguration } from "../../domain/cake-chats/cakeChatRuntime";
+import { CakeChatComposerPresence } from "../../services/session-catalogs/CakeChatComposerPresence";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { CakeChatRpc } from "../protocol/CakeChatRpc";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
@@ -57,6 +58,13 @@ export const makeCakeChatHandlers = (configuration: CakeChatRuntimeConfiguration
       Stream.unwrap(cakeChatSideChats.observeCatalog(configuration.location)),
     "cakeChats.startSideChat": (input) => cakeChatSideChats.start(input, configuration.location),
     "cakeChats.setUnread": ({ unread }) => cakeChatMetadata.setUnread(unread),
+    // Advisory presence: hosts without the service simply never hold deliveries.
+    "cakeChats.setComposing": ({ composing }) =>
+      Effect.serviceOption(CakeChatComposerPresence).pipe(
+        Effect.flatMap((presence) =>
+          presence._tag === "Some" ? presence.value.setComposing(composing) : Effect.void,
+        ),
+      ),
     "cakeChats.respondControl": ({ controlRequestId, result }) =>
       withConnection((connectionId) =>
         cakeChatOperations.respondControl(connectionId, controlRequestId, result),

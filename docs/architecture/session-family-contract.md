@@ -92,10 +92,10 @@ and must not depend on renderer visibility.
 
 Each accepted family message carries an explicit `expectsResponse` value and
 stable request/message correlation. A reply obligation belongs to one message,
-never to a session relationship. Initial assignments (`sessions.create-child`,
-and Cake Chat's `sessions.create`) default to `expectsResponse: true` and accept
-an explicit `false`; `sessions.send`, `sessions.send-batch` and replies default
-to `false`. A reply clears only the request identified by its reply correlation;
+never to a session relationship. `sessions.create-child` initial assignments
+default to `expectsResponse: true` and accept an explicit `false`; Project Session
+`sessions.send`, `sessions.send-batch` and replies default to `false`. Cake Chat
+requests use `report` instead (below), which defaults to a quiet `digest` result. A reply clears only the request identified by its reply correlation;
 an unrelated message in the same family or thread does not satisfy the
 obligation.
 
@@ -119,11 +119,39 @@ queue insertion alone never triggers a stopped-child notice. Explicit abort uses
 the same outcome callback once, even if the original prompt subsequently
 returns. Only consumed input IDs count when correlating a child's reply.
 
+### Cake Chat report policy
+
+Results that Cake Chat requested (from `sessions.create`, `sessions.send` or
+`sessions.send-batch`) carry a `report` policy in the message envelope and on the
+journaled obligation. Only the user starts Cake Chat turns by default:
+
+- `digest` (default): when the obligation settles, the worker moves it into
+  Cake Chat's durable digest inbox (`coordinatorDigest` in the family document)
+  instead of prompting Cake Chat. The next user message to Cake Chat carries one
+  Cake-owned `<system-reminder>` prefix listing each result as a status line
+  (title, deep link, finished/failed/blocked/stopped, first line of the report),
+  plus how many launched sessions are still running. Items are removed only after
+  that message is accepted. The transcript renders the block as a context pill.
+- `interrupt`: the existing immediate delivery that starts or queues a turn.
+- `silent`: no obligation is recorded (`expectsResponse: false`).
+
+A report whose outcome is `blocked` escalates to immediate delivery under
+`digest`; direct questions (`expectsResponse: true`) from a session to Cake Chat
+always deliver immediately. Completion notes such as "done, needs restart" stay
+in the digest. Immediate result deliveries wait while the Cake Chat composer has
+unsent text (advisory `CakeChatComposerPresence`, released after two minutes);
+direct session-initiated messages are not held. When the user sends a message
+while Cake Chat's active run was started by a report or worker result, that run
+is aborted first and the reminder tells Cake Chat to answer the user and fold in
+the report. Cake Chat may request results from sessions it did not launch; those
+obligations follow the same policy. Each launch record keeps `launchedAt` and the
+latest report so catalog summaries can project `cakeChatLaunch` for Cake Chat's
+status strip and `sessions.list { launchedByCakeChat: true }`.
+
 Family storage version 5 established recursive parentage, per-child Working
 Directory bindings, sender/recipient request and reply correlation, response
 expectations, and notice attempts. Version 6 extends the same journal to
-coordinator-spawned independent sessions; the current substantive-result outbox
-and receipt rules are defined in [spawned-session reporting](../development/spawned-session-reporting.md).
+coordinator-spawned independent sessions; the Cake Chat report policy above defines how its results are delivered.
 Queue acceptance alone does not confirm result delivery. The journal has no
 per-child resolution state or lifecycle synchronization journals. Version 4 journals are discarded on decode;
 the root's Cake-owned resolution metadata determines the entire family's state. Version 1 and 2 documents

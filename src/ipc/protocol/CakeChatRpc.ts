@@ -76,6 +76,10 @@ export const CakeChatRpc = RpcGroup.make(
     payload: { unread: Schema.Boolean },
     error: CakeChatError,
   }),
+  /** Advisory: while the composer holds unsent text, interrupt-policy session results wait. */
+  Rpc.make("cakeChats.setComposing", {
+    payload: { composing: Schema.Boolean },
+  }),
   Rpc.make("cakeChats.respondControl", {
     payload: {
       controlRequestId: Schema.String.check(Schema.isUUID(4)),

@@ -8,6 +8,10 @@ import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-d
 import { openRequestInspectorFixture } from "./request-inspector-fixture.ts";
 import { addResponseModeReminder } from "../../src/contracts/conversations/response-mode-reminders.ts";
 import { encodeCrossSessionMessage } from "../../src/contracts/conversations/cross-session-message.ts";
+import {
+  addSessionDigestReminder,
+  formatSessionDigestReminder,
+} from "../../src/contracts/cake-chats/session-digest-reminder.ts";
 import { addPresentationModeReminder } from "../../src/contracts/conversations/presentation-mode-reminders.ts";
 import { nestedAssistant, nestedEntries } from "../../tests/fixtures/nested-tool-activity.ts";
 import { seedWorkflowCheckpoint } from "../../tests/fixtures/workflow-checkpoint.ts";
@@ -1984,6 +1988,134 @@ const sessionMessagesScenario: VisualCaptureScenario = {
   region: (page) => page.locator(".transcript"),
 };
 
+const cakeChatSessionUpdatesScenario: VisualCaptureScenario = {
+  name: "cake-chat-session-updates",
+  description:
+    "Quiet status strip for sessions Cake Chat launched and a digest reminder on the next user message",
+  states: ["default", "open"],
+  async seed(paths, theme) {
+    await cakeChatScenario.seed(paths, theme);
+    const timestamp = new Date(0).toISOString();
+    const sessionDirectory = workspaceSessionDirectory(
+      paths.project,
+      join(paths.cakeHome, "pi", "sessions"),
+    );
+    const launched = [
+      {
+        sessionId: "4f1c2b3a-5d6e-4f70-8a9b-0c1d2e3f4a51",
+        title: "quake-global-cake-chat-hotkey",
+        lastReport: { status: "completed", summary: "Landed abc123; needs restart" },
+      },
+      {
+        sessionId: "6a7b8c9d-0e1f-4a2b-9c3d-4e5f6a7b8c92",
+        title: "fix-x",
+        lastReport: { status: "failed", summary: "Typecheck failed in src/app.ts" },
+      },
+      { sessionId: "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e13", title: "docs-pass" },
+    ] as const;
+    for (const session of launched)
+      await writeFile(
+        join(sessionDirectory, `1970-01-01T00-00-00-000Z_${session.sessionId}.jsonl`),
+        [
+          { type: "session", version: 3, id: session.sessionId, timestamp, cwd: paths.project },
+          { type: "session_info", id: "title", parentId: null, timestamp, name: session.title },
+          {
+            type: "message",
+            id: "input",
+            parentId: "title",
+            timestamp,
+            message: { role: "user", content: "Assignment from Cake Chat.", timestamp: 0 },
+          },
+        ]
+          .map((entry) => JSON.stringify(entry))
+          .join("\n") + "\n",
+      );
+    await mkdir(join(paths.cakeHome, "state"), { recursive: true });
+    await writeFile(
+      join(paths.cakeHome, "state", "session-families.json"),
+      JSON.stringify({
+        version: 7,
+        data: {
+          families: [],
+          turns: [],
+          spawnedSessions: launched.map((session, index) => ({
+            sessionId: session.sessionId,
+            projectPath: paths.project,
+            workingDirectory: paths.project,
+            requester: { sessionId: CAKE_CHAT_SESSION_ID, kind: "cake-chat", title: "Cake Chat" },
+            reportDelivered: "lastReport" in session,
+            handoffSettled: true,
+            reportPolicy: "digest",
+            launchedAt: new Date(index * 60_000).toISOString(),
+            ...("lastReport" in session
+              ? { lastReport: { ...session.lastReport, reportedAt: timestamp } }
+              : null),
+          })),
+        },
+      }),
+    );
+    const reminder = formatSessionDigestReminder({
+      lines: launched.flatMap((session) =>
+        "lastReport" in session
+          ? [
+              {
+                reference: `s:${session.sessionId.replaceAll("-", "").slice(-8)}`,
+                sessionId: session.sessionId,
+                title: session.title,
+                status: session.lastReport.status,
+                summary: session.lastReport.summary,
+              },
+            ]
+          : [],
+      ),
+      running: 1,
+      interruptedReport: false,
+    });
+    const storage = await openNodeSqliteStorage(
+      join(paths.cakeHome, "pi", "global-chat", "coordinator.sqlite"),
+    );
+    const harness = await Harness.open(
+      storage,
+      { models: createModels(), registry: createRegistry() },
+      BACKGROUND_CONTEXT,
+    );
+    try {
+      const root = await harness.root(BACKGROUND_CONTEXT);
+      await root.commit(async (tx) => {
+        await tx.appendEntry(UserEntry, root.id, {
+          model: [
+            {
+              role: "user",
+              content: addSessionDigestReminder("Can you draft the release notes?", reminder),
+              timestamp: 10,
+            },
+          ],
+        });
+      }, BACKGROUND_CONTEXT);
+    } finally {
+      await harness.close(BACKGROUND_CONTEXT);
+      await storage.close(BACKGROUND_CONTEXT);
+    }
+  },
+  async prepare(page, state) {
+    await cakeChatScenario.prepare(page, "default");
+    await expect(
+      page.getByRole("button", { name: "Cake · session updates", exact: true }),
+    ).toBeVisible();
+    const strip = page.getByRole("button", { name: /^Launched sessions: 3 sessions/ });
+    await expect(strip).toBeVisible();
+    if (state === "open") {
+      await strip.click();
+      await expect(
+        page.getByRole("dialog", { name: "Sessions launched from Cake Chat", exact: true }),
+      ).toBeVisible();
+    }
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator("body"),
+};
+
 const cakeChatInspectorScenario: VisualCaptureScenario = {
   name: "cake-chat-inspector",
   description:
@@ -2824,6 +2956,7 @@ export const visualCaptureScenarios = [
   assistantMarkdownCode,
   contextPillsScenario,
   sessionMessagesScenario,
+  cakeChatSessionUpdatesScenario,
   conversationEntryScenario,
   conversationCountdownScenario,
   speechOutputSettingsScenario,

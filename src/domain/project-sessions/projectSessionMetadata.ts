@@ -31,6 +31,7 @@ import {
   familyMember,
   familyMemberIds,
   type SessionFamily,
+  type SpawnedSession,
 } from "../../services/storage/SessionFamilyStorage";
 import {
   SessionCatalogChanges,
@@ -66,6 +67,7 @@ const summary = (
   unreadIds: ReadonlySet<string>,
   running: boolean,
   family?: SessionFamily,
+  spawn?: SpawnedSession,
 ): ProjectSessionSummary => {
   const projected: ProjectSessionSummary = {
     sessionId: item.id,
@@ -87,8 +89,22 @@ const summary = (
       worktreeName: location.managedWorktree.branch.replace(/^agent\//, ""),
     });
   applyFamilySummary(projected, family);
+  if (spawn?.requester.kind === "cake-chat")
+    Object.assign(projected, {
+      cakeChatLaunch: {
+        ...(spawn.launchedAt ? { launchedAt: spawn.launchedAt } : null),
+        ...(spawn.lastReport ? { lastReport: spawn.lastReport } : null),
+      },
+    });
   return projected;
 };
+
+/** Cake Chat launch records keyed by session, for active catalog summaries. */
+const spawnedSessions = Effect.fn("ProjectSessions.spawnedSessions")(function* () {
+  const storage = yield* SessionFamilyStorage;
+  const state = yield* storage.state().pipe(asError("catalog"));
+  return new Map(state.spawnedSessions.map((spawn) => [spawn.sessionId, spawn] as const));
+});
 
 function applyFamilySummary(projected: ProjectSessionSummary, family?: SessionFamily) {
   if (!family) return;
@@ -245,6 +261,7 @@ const familyCatalog = Effect.fn("ProjectSessions.familyCatalog")(function* (
   const locations = yield* projectSessionLocations
     .locations({ includeInactive: true })
     .pipe(asError("catalog"));
+  const spawns = yield* spawnedSessions();
   const summaries = yield* Effect.forEach(familyMemberIds(family), (sessionId) =>
     Effect.gen(function* () {
       const member = familyMember(family, sessionId);
@@ -281,7 +298,15 @@ const familyCatalog = Effect.fn("ProjectSessions.familyCatalog")(function* (
         .pipe(asError("catalog"));
       const status = yield* sessions.currentStatus({ ...location, sessionId });
       return item
-        ? summary(item, location, resolved, unread, status?.streaming ?? false, family)
+        ? summary(
+            item,
+            location,
+            resolved,
+            unread,
+            status?.streaming ?? false,
+            family,
+            spawns.get(sessionId),
+          )
         : undefined;
     }),
   );
@@ -365,6 +390,7 @@ const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
     );
   }
   const sessions = yield* CakeSessionRuntimes;
+  const spawns = yield* spawnedSessions();
   const locations = yield* projectSessionLocations.locations().pipe(asError("list"));
   const locationCatalogs = Stream.fromIterable(
     locations.filter((location) => location.projectPath === query.projectPath),
@@ -389,7 +415,15 @@ const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
               .currentStatus({ ...location, sessionId: item.id })
               .pipe(
                 Effect.map((status) =>
-                  summary(item, location, false, unread, status?.streaming ?? false),
+                  summary(
+                    item,
+                    location,
+                    false,
+                    unread,
+                    status?.streaming ?? false,
+                    undefined,
+                    spawns.get(item.id),
+                  ),
                 ),
               ),
           ),
@@ -457,6 +491,7 @@ const discoverSessionAt = Effect.fn("ProjectSessions.discoverSessionAt")(functio
     new Set(state.unreadSessionIds),
     status?.streaming ?? false,
     family,
+    (yield* spawnedSessions()).get(sessionId),
   );
 });
 

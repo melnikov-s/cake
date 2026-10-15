@@ -3,14 +3,18 @@ import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 import { ensureBoard } from "../artifacts/messageBoards";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
 import { inheritTaskInputProtection, prepareCoordinatorNotice } from "../conversations/taskInputs";
-import type { SessionCompletionReport } from "../../contracts/project-sessions/session-reporting";
+import type {
+  CakeChatLaunchStatus,
+  SessionCompletionReport,
+} from "../../contracts/project-sessions/session-reporting";
 import { toJsonValue } from "../../utils/to-json-value";
 import { crossSessionContextSnapshot } from "../../contracts/conversations/cross-session-message";
 import { substantiveTurnResult } from "../../contracts/pi/turn-result-data";
 import { acquireOptions as acquireProjectSessionOptions } from "../project-sessions/projectSessionRuntime";
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
 import * as workflowLifecycle from "../workflows/workflow-lifecycle";
-import { DateTime, Effect, Exit, Schedule } from "effect";
+import { DateTime, Effect, Exit, Option, Schedule } from "effect";
+import { CakeChatComposerPresence } from "../../services/session-catalogs/CakeChatComposerPresence";
 import type { ChatConfiguration } from "../../contracts/conversations/session-contract";
 import { PiModels } from "../../services/pi/PiModels";
 import {
@@ -71,23 +75,18 @@ export const admitTurn = Effect.fn("SessionFamilies.admitTurn")(function* (
       const family = yield* storage.familyForMember(sessionId);
       const request = parseCrossSessionMessage(input.text);
       const senderSessionId = request?.metadata.sender.sessionId;
-      const spawn = (yield* storage.state()).spawnedSessions.find(
-        (item) => item.sessionId === sessionId,
-      );
       const familyRequest =
         family &&
         senderSessionId !== undefined &&
         familyMember(family, senderSessionId) !== undefined;
-      const spawnedRequest =
-        spawn &&
-        spawn.requester.kind === "cake-chat" &&
-        spawn.requester.sessionId === CAKE_CHAT_SESSION_ID &&
-        senderSessionId === spawn.requester.sessionId;
+      // Cake Chat may ask any Project Session for a result, whether or not it launched it.
+      const coordinatorRequest =
+        senderSessionId === CAKE_CHAT_SESSION_ID && request?.metadata.sender.kind === "cake-chat";
       // A reply obligation belongs to this one message, never to the session
       // relationship: user-started turns and messages that asked for no
       // response are not journaled and therefore never produce notices.
       if (
-        (familyRequest || spawnedRequest) &&
+        (familyRequest || coordinatorRequest) &&
         request &&
         request.metadata.expectsResponse &&
         !request.metadata.generatedNotice &&
@@ -100,6 +99,7 @@ export const admitTurn = Effect.fn("SessionFamilies.admitTurn")(function* (
           requestMessageId: request.metadata.messageId,
           threadId: request.metadata.threadId,
           reported: false,
+          ...(coordinatorRequest ? { reportPolicy: request.metadata.report ?? "interrupt" } : null),
         });
       yield* accept.pipe(
         Effect.onExit((exit) =>
@@ -377,6 +377,7 @@ export const initialize = Effect.fn("SessionFamilies.initialize")(function* (
       threadId: spawn.sessionId,
       reported: false,
       outcome: "aborted",
+      ...(spawn.reportPolicy ? { reportPolicy: spawn.reportPolicy } : null),
     });
   }
   for (const turn of (yield* storage.state()).turns) {
@@ -397,16 +398,11 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
     (yield* workflowLifecycle.holdsCompletion(turn.sessionId, turn.turnId))
   )
     return;
-  const spawn = (yield* storage.state()).spawnedSessions.find(
-    (item) => item.sessionId === turn.sessionId,
-  );
-  if (
-    spawn &&
-    spawn.requester.kind === "cake-chat" &&
-    spawn.requester.sessionId === CAKE_CHAT_SESSION_ID &&
-    spawn.requester.sessionId === turn.senderSessionId
-  )
-    return yield* deliverSpawnedNotice(turn, spawn);
+  if (turn.senderSessionId === CAKE_CHAT_SESSION_ID)
+    return yield* deliverCoordinatorNotice(
+      turn,
+      (yield* storage.state()).spawnedSessions.find((item) => item.sessionId === turn.sessionId),
+    );
   if (!family) return;
   const senderMember = familyMember(family, turn.senderSessionId);
   const childMember = familyMember(family, turn.sessionId);
@@ -604,10 +600,21 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
     senderContext?: CrossSessionContextSnapshot,
   ) {
     const storage = yield* SessionFamilyStorage;
-    const spawn = (yield* storage.state()).spawnedSessions.find(
-      (item) => item.sessionId === sessionId,
-    );
-    const targetId = command === "sessions.reply" ? spawn?.requester.sessionId : input.sessionId;
+    const state = yield* storage.state();
+    const spawn = state.spawnedSessions.find((item) => item.sessionId === sessionId);
+    // A session Cake Chat did not launch still answers Cake Chat's own requests to it.
+    const owesCoordinator =
+      !spawn &&
+      state.turns.some(
+        (turn) =>
+          turn.sessionId === sessionId &&
+          turn.senderSessionId === CAKE_CHAT_SESSION_ID &&
+          !turn.reported,
+      ) &&
+      !(yield* storage.familyForMember(sessionId));
+    const requesterId =
+      spawn?.requester.sessionId ?? (owesCoordinator ? CAKE_CHAT_SESSION_ID : undefined);
+    const targetId = command === "sessions.reply" ? requesterId : input.sessionId;
     if (targetId !== CAKE_CHAT_SESSION_ID) return undefined;
     const sessions = yield* CakeSessionRuntimes;
     const executingIds = yield* sessions.executingTurnIds({
@@ -616,7 +623,9 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
       sessionDirectory: location.sessionDirectory,
     });
     const pending =
-      command === "sessions.reply" || input.replyToMessageId || (spawn && !input.expectsResponse)
+      command === "sessions.reply" ||
+      input.replyToMessageId ||
+      (requesterId !== undefined && !input.expectsResponse)
         ? yield* storage.pendingResponseRequest(
             sessionId,
             executingIds,
@@ -719,18 +728,106 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
   },
 );
 
-const deliverSpawnedNotice = Effect.fn("SessionFamilies.deliverSpawnedNotice")(function* (
+const launchStatus = (
   turn: FamilyTurn,
-  spawn: SpawnedSession,
+  report: SessionCompletionReport | undefined,
+): CakeChatLaunchStatus =>
+  report
+    ? report.outcome === "failed"
+      ? "failed"
+      : report.outcome === "blocked"
+        ? "blocked"
+        : "completed"
+    : turn.outcome === "failed"
+      ? "failed"
+      : "stopped";
+
+/** One compact status line; Cake Chat reads the full report on demand. */
+const digestSummary = (turn: FamilyTurn, report: SessionCompletionReport | undefined) => {
+  if (!report) return turn.outcome === "aborted" ? "canceled or interrupted" : "";
+  const line = report.text
+    .split("\n")
+    .map((candidate) =>
+      candidate
+        .replace(/^[#>*\-\s]+/, "")
+        .replaceAll("**", "")
+        .trim(),
+    )
+    .find((candidate) => candidate.length > 0);
+  if (!line) return "";
+  return line.length > 200 ? `${line.slice(0, 199)}…` : line;
+};
+
+const sessionTitle = Effect.fn("SessionFamilies.sessionTitle")(function* (
+  sessionId: string,
+  workingDirectory: string | undefined,
 ) {
   const sessions = yield* CakeSessionRuntimes;
-  // Cake Chat is a primary runtime destination, never a Project catalog lookup.
-  // Until its owning surface assembles the runtime after startup, leave the outbox durable.
-  const sender = yield* sessions.acquireSession(spawn.requester.sessionId);
+  const locations = yield* projectSessionLocations.locations({ includeInactive: true });
+  for (const location of locations) {
+    if (workingDirectory !== undefined && location.workingDirectory !== workingDirectory) continue;
+    const entry = yield* sessions.catalogEntry(
+      { workingDirectory: location.workingDirectory, sessionDirectory: location.sessionDirectory },
+      sessionId,
+    );
+    if (entry) return entry.title;
+  }
+  return undefined;
+});
+
+/**
+ * Cake Chat results follow the request's report policy. Digest settles the obligation into the
+ * quiet inbox without starting a turn; a blocked report escalates to immediate delivery.
+ * Immediate deliveries wait while the user has unsent Cake Chat text (bounded by the presence
+ * timeout); the worker retries every pass.
+ */
+const deliverCoordinatorNotice = Effect.fn("SessionFamilies.deliverCoordinatorNotice")(function* (
+  turn: FamilyTurn,
+  spawn: SpawnedSession | undefined,
+) {
+  const storage = yield* SessionFamilyStorage;
+  const sessions = yield* CakeSessionRuntimes;
+  const catalogs = yield* SessionCatalogChanges;
   const report =
     turn.outcome === "complete" || (turn.outcome === "failed" && turn.report?.outcome === "failed")
       ? turn.report
       : undefined;
+  const status = launchStatus(turn, report);
+  const launchReport = {
+    status,
+    summary: digestSummary(turn, report),
+    reportedAt: DateTime.formatIso(yield* DateTime.now),
+  };
+  const publishLaunch = spawn
+    ? catalogs.publish({
+        _tag: "ProjectSessionChanged",
+        sessionId: spawn.sessionId,
+        projectPath: spawn.projectPath,
+        workingDirectory: spawn.workingDirectory,
+        resolved: false,
+      })
+    : Effect.void;
+  if ((turn.reportPolicy ?? "interrupt") === "digest" && status !== "blocked") {
+    const title = yield* sessionTitle(turn.sessionId, spawn?.workingDirectory).pipe(
+      Effect.catch(() => Effect.succeed(undefined)),
+    );
+    yield* storage.withNoticeDelivery(
+      storage.digestNotice(turn.turnId, {
+        id: turn.turnId,
+        sessionId: turn.sessionId,
+        title: (title ?? `Session ${turn.sessionId}`).slice(0, 500),
+        ...launchReport,
+      }),
+    );
+    yield* publishLaunch;
+    return;
+  }
+  const presence = yield* Effect.serviceOption(CakeChatComposerPresence);
+  if (!turn.deliveryTurnId && Option.isSome(presence) && (yield* presence.value.holdsInterrupts))
+    return;
+  // Cake Chat is a primary runtime destination, never a Project catalog lookup.
+  // Until its owning surface assembles the runtime after startup, leave the outbox durable.
+  const sender = yield* sessions.acquireSession(CAKE_CHAT_SESSION_ID);
   const text = encodeCrossSessionMessage(
     report
       ? `Session ${turn.sessionId} — ${report.outcome}\n\n${report.text}`
@@ -751,11 +848,14 @@ const deliverSpawnedNotice = Effect.fn("SessionFamilies.deliverSpawnedNotice")(f
         sessionId: turn.sessionId,
         title: `Session ${turn.sessionId}`,
         kind: "project-session",
-        workingDirectory: spawn.workingDirectory,
+        ...(spawn ? { workingDirectory: spawn.workingDirectory } : null),
       },
     },
   );
+  if (spawn && !turn.deliveryTurnId)
+    yield* storage.recordLaunchReport(spawn.sessionId, launchReport);
   yield* deliverOutcome(turn, sender, text);
+  yield* publishLaunch;
 });
 
 const runPass = Effect.fn("SessionFamilies.deliverPendingNotices")(function* () {

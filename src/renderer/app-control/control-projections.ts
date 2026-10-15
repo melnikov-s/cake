@@ -1,4 +1,5 @@
 import { sessionLink } from "../../contracts/conversations/message-reference";
+import { launchedSessionStatus } from "../lib/cake-chat-launches";
 import type {
   AppControlHost,
   AgentControlSource,
@@ -128,5 +129,24 @@ export function toControlSession(
     return label ? [label] : [];
   });
   const resultWithLabels = labels.length > 0 ? { ...resultWithFamily, labels } : resultWithFamily;
-  return activity ? { ...resultWithLabels, activity } : resultWithLabels;
+  const launch = session.cakeChatLaunch;
+  const resultWithLaunch = launch
+    ? {
+        ...resultWithLabels,
+        launch: {
+          status: launchedSessionStatus(
+            {
+              ...session,
+              running: session.running ?? false,
+            },
+            activity,
+          ),
+          ...(launch.launchedAt ? { launchedAt: launch.launchedAt } : null),
+          ...(launch.lastReport
+            ? { summary: launch.lastReport.summary, reportedAt: launch.lastReport.reportedAt }
+            : null),
+        },
+      }
+    : resultWithLabels;
+  return activity ? { ...resultWithLaunch, activity } : resultWithLaunch;
 }

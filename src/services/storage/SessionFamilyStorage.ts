@@ -14,6 +14,9 @@ import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
 import { SessionFamilyStorageError } from "../../contracts/storage/session-family-storage-errors";
 
 import {
+  CakeChatLaunchReport,
+  CakeChatLaunchStatus,
+  CakeChatReportDelivery,
   SessionCompletionReport,
   SessionRequester,
 } from "../../contracts/project-sessions/session-reporting";
@@ -124,6 +127,11 @@ const SpawnedSession = Schema.Struct({
   reportDelivered: Schema.Boolean,
   /** A factual stop notice is a settled handoff, but not a successful result report. */
   handoffSettled: Schema.Boolean,
+  launchedAt: Schema.optionalKey(Schema.String),
+  /** The initial assignment's report policy, reused by crash-recovery notices. */
+  reportPolicy: Schema.optionalKey(CakeChatReportDelivery),
+  /** Latest result Cake Chat received (immediately or by digest), for status surfaces. */
+  lastReport: Schema.optionalKey(CakeChatLaunchReport),
 });
 export interface SpawnedSession extends Schema.Schema.Type<typeof SpawnedSession> {}
 
@@ -146,6 +154,8 @@ const FamilyTurn = Schema.Struct({
   deliveryTurnId: Schema.optionalKey(BoundedId),
   replyMessageIds: Schema.optionalKey(Schema.Array(BoundedId)),
   outcome: Schema.optionalKey(Schema.Literals(["complete", "failed", "aborted"])),
+  /** Cake Chat requests only. Absent means immediate delivery, as for family parents. */
+  reportPolicy: Schema.optionalKey(CakeChatReportDelivery),
 });
 export interface FamilyTurn extends Schema.Schema.Type<typeof FamilyTurn> {}
 /** Version 6 recorded every correlated message, including ones that requested no response. */
@@ -154,10 +164,23 @@ const Version6FamilyTurn = Schema.Struct({
   completionContract: Schema.optionalKey(Schema.Boolean),
   expectsResponse: Schema.Boolean,
 });
+/** One quiet status line waiting for the user's next Cake Chat message. */
+const CoordinatorDigestItem = Schema.Struct({
+  /** The settled obligation's turn ID; digesting is idempotent per turn. */
+  id: BoundedId,
+  sessionId: BoundedId,
+  title: Schema.String.check(Schema.isMaxLength(500)),
+  status: CakeChatLaunchStatus,
+  summary: Schema.String.check(Schema.isMaxLength(500)),
+  reportedAt: Schema.String,
+});
+export interface CoordinatorDigestItem extends Schema.Schema.Type<typeof CoordinatorDigestItem> {}
 export const SessionFamilyDocument = Schema.Struct({
   families: Schema.Array(SessionFamily),
   turns: Schema.Array(FamilyTurn),
   spawnedSessions: Schema.Array(SpawnedSession),
+  /** Cake Chat's inbox of digest-policy results, drained into its next user message. */
+  coordinatorDigest: Schema.optionalKey(Schema.Array(CoordinatorDigestItem)),
 });
 export interface SessionFamilyDocument extends Schema.Schema.Type<typeof SessionFamilyDocument> {}
 
@@ -203,6 +226,19 @@ export class SessionFamilyStorage extends Context.Service<
       deliveryTurnId: string,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly completeNotice: (turnId: string) => Effect.Effect<void, SessionFamilyStorageError>;
+    /** Settles a Cake Chat obligation into the digest inbox instead of starting a turn. */
+    readonly digestNotice: (
+      turnId: string,
+      item: CoordinatorDigestItem,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
+    readonly recordLaunchReport: (
+      sessionId: string,
+      report: CakeChatLaunchReport,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
+    /** Removes digest items once they were attached to an accepted Cake Chat message. */
+    readonly removeDigest: (
+      ids: ReadonlyArray<string>,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
     /** Serializes retry admission with explicit queue withdrawal, not model execution. */
     readonly withNoticeDelivery: <A, E, R>(
       effect: Effect.Effect<A, E, R>,
@@ -688,21 +724,73 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             ),
           })),
       );
+      const withoutNotice = (
+        document: SessionFamilyDocument,
+        turnId: string,
+      ): SessionFamilyDocument => ({
+        ...document,
+        turns: document.turns.filter((turn) => turn.turnId !== turnId),
+        spawnedSessions: settleHandoffs(
+          document.spawnedSessions,
+          document.turns.filter((turn) => turn.turnId === turnId && turn.outcome !== undefined),
+          (turn) =>
+            Boolean(
+              turn.report &&
+              (turn.outcome === "complete" ||
+                (turn.outcome === "failed" && turn.report.outcome === "failed")),
+            ),
+        ),
+      });
+      const withLaunchReport = (
+        spawnedSessions: SessionFamilyDocument["spawnedSessions"],
+        sessionId: string,
+        report: CakeChatLaunchReport,
+      ) =>
+        spawnedSessions.map((spawn) =>
+          spawn.sessionId === sessionId ? { ...spawn, lastReport: report } : spawn,
+        );
       const completeNotice = Effect.fn("SessionFamilyStorage.completeNotice")((turnId: string) =>
-        update((document) => ({
-          ...document,
-          turns: document.turns.filter((turn) => turn.turnId !== turnId),
-          spawnedSessions: settleHandoffs(
-            document.spawnedSessions,
-            document.turns.filter((turn) => turn.turnId === turnId && turn.outcome !== undefined),
-            (turn) =>
-              Boolean(
-                turn.report &&
-                (turn.outcome === "complete" ||
-                  (turn.outcome === "failed" && turn.report.outcome === "failed")),
-              ),
+        update((document) => withoutNotice(document, turnId)),
+      );
+      const digestNotice = Effect.fn("SessionFamilyStorage.digestNotice")(
+        (turnId: string, item: CoordinatorDigestItem) =>
+          update((document) => {
+            if (!document.turns.some((turn) => turn.turnId === turnId && !turn.reported))
+              return document;
+            const settled = withoutNotice(document, turnId);
+            const digest = document.coordinatorDigest ?? [];
+            return {
+              ...settled,
+              spawnedSessions: withLaunchReport(settled.spawnedSessions, item.sessionId, {
+                status: item.status,
+                summary: item.summary,
+                reportedAt: item.reportedAt,
+              }),
+              coordinatorDigest: digest.some((existing) => existing.id === item.id)
+                ? digest
+                : [...digest, item],
+            };
+          }),
+      );
+      const recordLaunchReport = Effect.fn("SessionFamilyStorage.recordLaunchReport")(
+        (sessionId: string, report: CakeChatLaunchReport) =>
+          update((document) => ({
+            ...document,
+            spawnedSessions: withLaunchReport(document.spawnedSessions, sessionId, report),
+          })),
+      );
+      const removeDigest = Effect.fn("SessionFamilyStorage.removeDigest")(
+        (ids: ReadonlyArray<string>) =>
+          update((document) =>
+            document.coordinatorDigest === undefined
+              ? document
+              : {
+                  ...document,
+                  coordinatorDigest: document.coordinatorDigest.filter(
+                    (item) => !ids.includes(item.id),
+                  ),
+                },
           ),
-        })),
       );
       const withdrawNotices = Effect.fn("SessionFamilyStorage.withdrawNotices")(
         (recipientSessionId: string, messageIds: ReadonlyArray<string>) =>
@@ -745,6 +833,13 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
           for (const spawn of document.spawnedSessions)
             if (spawn.projectPath === projectPath) removedMembers.add(spawn.sessionId);
           return {
+            ...(document.coordinatorDigest
+              ? {
+                  coordinatorDigest: document.coordinatorDigest.filter(
+                    (item) => !removedMembers.has(item.sessionId),
+                  ),
+                }
+              : null),
             spawnedSessions: document.spawnedSessions.filter(
               (spawn) => spawn.projectPath !== projectPath,
             ),
@@ -771,6 +866,9 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         confirmResponse,
         markNoticeAttempt,
         completeNotice,
+        digestNotice,
+        recordLaunchReport,
+        removeDigest,
         withNoticeDelivery: (effect) => noticeDeliveryLock.withPermit(effect),
         withdrawNotices,
         removeUnmaterializedChild,

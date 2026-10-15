@@ -33,9 +33,11 @@ describe("sessions.send-batch operation", () => {
       text: "  Shared message  ",
       maxMessages: 5,
     });
+    // Omitted response fields pass through so the single-send authority applies the
+    // sender's own default (false for Project Sessions, a digest report for Cake Chat).
     expect(send.mock.calls.map(([input]) => input)).toEqual([
-      { sessionId: "a", text: "Shared message", expectsResponse: false, maxMessages: 5 },
-      { sessionId: "b", text: "Shared message", expectsResponse: false, maxMessages: 5 },
+      { sessionId: "a", text: "Shared message", maxMessages: 5 },
+      { sessionId: "b", text: "Shared message", maxMessages: 5 },
     ]);
     expect(result.structuredContent).toEqual({
       command: "sessions.send-batch",

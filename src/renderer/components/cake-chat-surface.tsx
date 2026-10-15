@@ -6,6 +6,7 @@ import { RootStore } from "../stores/RootStore";
 import type { CakeChatSessionStore } from "../stores/CakeChatSessionStore";
 import { CakeChatPaneHeader, type CakeChatOverlayChrome } from "./cake-chat-pane-header";
 import { SessionArtifactPane } from "./session-artifact-pane";
+import { CakeChatLaunchedSessions } from "./cake-chat-launched-sessions";
 
 export const CakeChatSurface = observer(function CakeChatSurface({
   overlay,
@@ -23,6 +24,7 @@ export const CakeChatSurface = observer(function CakeChatSurface({
   const sidebarCollapsed = !root.sidebarStore.visible;
   const cakeChatProps = (paneSession: CakeChatSessionStore) => ({
     showContextUsage: false,
+    composerHeader: <CakeChatLaunchedSessions />,
     transcriptTransition: {
       ready:
         Boolean(paneSession.model.sessionFile) ||

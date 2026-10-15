@@ -12,6 +12,10 @@ import type {
   CrossSessionQueueSnapshot,
 } from "../../contracts/conversations/cross-session-message";
 import { isActiveSessionActivity } from "../lib/session-activity";
+import {
+  CakeChatReportPolicy,
+  cakeChatReportPolicy,
+} from "../../contracts/project-sessions/session-reporting";
 import type {
   AppControlHost,
   AgentControlSource,
@@ -59,7 +63,7 @@ async function sendCrossSessionMessage(
   targetSessionId: string,
   text: string,
   requestedDelivery: "prompt" | "queue" | "steer" | undefined,
-  expectsResponse: boolean,
+  requested: { readonly expectsResponse?: boolean; readonly report?: CakeChatReportPolicy },
   replyToMessageId: string | undefined,
   source: AgentControlSource,
   thread: CoordinationThread,
@@ -77,6 +81,13 @@ async function sendCrossSessionMessage(
   const delivery =
     requestedDelivery ??
     (isActiveSessionActivity(host.state.sessionActivity(targetSessionId)) ? "queue" : "prompt");
+  // Cake Chat requests default to a quiet digest result; other senders keep plain obligations.
+  const policy =
+    source.kind === "cake-chat" && command === "sessions.send"
+      ? cakeChatReportPolicy(requested)
+      : undefined;
+  const expectsResponse = policy?.expectsResponse ?? requested.expectsResponse ?? false;
+  const report = policy && policy.report !== "silent" ? policy.report : undefined;
   const messageId = crypto.randomUUID();
   const sequence = thread.messages.length + 1;
   const metadata: CrossSessionMessageMetadata = {
@@ -85,6 +96,7 @@ async function sendCrossSessionMessage(
     threadId: thread.threadId,
     sequence,
     expectsResponse,
+    ...(report ? { report } : null),
     ...(replyToMessageId ? { replyToMessageId } : null),
     context: contextSnapshot(host, source.sessionId),
     sender: {
@@ -136,6 +148,7 @@ async function sendCrossSessionMessage(
     maxMessages: thread.maxMessages,
     delivery,
     expectsResponse,
+    ...(policy ? { report: policy.report } : null),
     ...(replyToMessageId ? { replyToMessageId } : null),
     recipientContext: contextSnapshot(host, targetSessionId),
     ...(queue ? { queue } : null),
@@ -175,7 +188,8 @@ export const sessionMessageControls = [
       maxMessages: Schema.optionalKey(
         Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(1000)),
       ),
-      expectsResponse: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
+      expectsResponse: Schema.optionalKey(Schema.Boolean),
+      report: Schema.optionalKey(CakeChatReportPolicy),
       replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
     }),
     scope: "global",
@@ -184,7 +198,8 @@ export const sessionMessageControls = [
       summary:
         "Send, queue, or steer a correlated message to one explicitly targeted session. The result is a visible delivery receipt; optional maxMessages bounds the exchange.",
       guidance: [
-        "expectsResponse defaults to false. Set true only when you need an answer (an assignment, question, or blocker); the recipient then owes exactly one result, or one failure/stopped notice if the turn handling this message ends without one. With false, the recipient never reports back automatically.",
+        "From a Project Session: expectsResponse defaults to false. Set true only when you need an answer (an assignment, question, or blocker); the recipient then owes exactly one result, or one failure/stopped notice if the turn handling this message ends without one. With false, the recipient never reports back automatically.",
+        'From Cake Chat: report replaces expectsResponse. "digest" (default) owes one result that arrives quietly as a status line on the user\'s next message (a blocked report arrives right away); "interrupt" delivers it immediately and starts a turn, only when the user asked to hear back right away; "silent" owes nothing. expectsResponse: false means silent.',
       ],
     },
     run: async (input, { host, source }, command, known): Promise<AppControlResult> => {
@@ -210,7 +225,7 @@ export const sessionMessageControls = [
           targetTitle: known.title,
           messageId: turnId,
           delivery,
-          expectsResponse: input.expectsResponse,
+          expectsResponse: input.expectsResponse ?? false,
           recipientContext: contextSnapshot(host, sessionId),
           status: delivery === "queue" ? "queued" : "accepted",
         };
@@ -239,7 +254,7 @@ export const sessionMessageControls = [
         sessionId,
         input.text,
         input.delivery,
-        input.expectsResponse,
+        { expectsResponse: input.expectsResponse, report: input.report },
         input.replyToMessageId,
         source,
         thread,
@@ -291,7 +306,7 @@ export const sessionMessageControls = [
         targetSessionId,
         input.text,
         input.delivery,
-        input.expectsResponse,
+        { expectsResponse: input.expectsResponse },
         replyToMessageId,
         source,
         thread,

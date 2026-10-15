@@ -36,6 +36,8 @@ import type {
 } from "../../contracts/conversations/cross-session-message";
 import type { QueuedConversationMessages } from "../../contracts/conversations/conversation-data";
 import { type SessionActivity } from "../lib/session-activity";
+import type { LaunchedSessionStatus } from "../lib/cake-chat-launches";
+import type { CakeChatReportPolicy } from "../../contracts/project-sessions/session-reporting";
 import {
   type CakeSettingsSectionId,
   type CakeSettingsSectionView,
@@ -68,6 +70,8 @@ export type SessionSummaryView = Pick<
       | "familyChildSessionIds"
       | "familyChildOrder"
       | "familyDepth"
+      | "running"
+      | "cakeChatLaunch"
     >
   >;
 
@@ -281,6 +285,13 @@ export interface AppControlSession {
   familyDepth?: number;
   activity?: SessionActivity;
   labels?: readonly AppControlSessionLabel[];
+  /** Present for sessions Cake Chat launched: their latest status and quiet report summary. */
+  launch?: {
+    status: LaunchedSessionStatus;
+    launchedAt?: string;
+    summary?: string;
+    reportedAt?: string;
+  };
 }
 
 export interface AppControlSessionLabel extends SessionLabel {
@@ -396,6 +407,8 @@ type AppControlSuccess =
       maxMessages?: number;
       delivery: "prompt" | "queue" | "steer";
       expectsResponse: boolean;
+      /** Cake Chat senders only: how the requested result comes back. */
+      report?: CakeChatReportPolicy;
       replyToMessageId?: string;
       recipientContext?: CrossSessionContextSnapshot;
       queue?: CrossSessionQueueSnapshot;
