@@ -297,7 +297,13 @@ export const projectAttachments = (values: ReadonlyArray<Attachment>): ReadonlyA
       case "forwarded-input":
         return { ...value };
       case "file":
-        return { kind: "file", name: value.name, path: value.path };
+        // Keep the stored-input reference so the transcript can reopen the original.
+        return {
+          kind: "file",
+          name: value.name,
+          path: value.path,
+          ...(value.inputReference ? { inputReference: { ...value.inputReference } } : null),
+        };
       case "image":
         return { ...value };
       case "source":

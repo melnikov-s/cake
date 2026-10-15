@@ -5,6 +5,7 @@ import { describe, expect } from "vitest";
 import {
   deliver,
   deliverWhenAvailable,
+  projectAttachments,
   projectQueuedMessages,
 } from "../../../src/domain/conversations/conversations";
 import * as sessionChats from "../../../src/domain/conversations/sessionChats";
@@ -72,6 +73,25 @@ const makeHandle = (deliveries: string[], isStreaming: () => boolean): CakeSessi
 });
 
 describe("conversation domain", () => {
+  it("keeps a stored file's input reference so the transcript can reopen the original", () => {
+    const inputReference = {
+      kind: "input" as const,
+      id: "20000000-0000-4000-8000-000000000001",
+      name: "Pasted text · 90 lines",
+      mimeType: "text/plain",
+      byteLength: 700,
+    };
+    expect(
+      projectAttachments([
+        { kind: "file", name: inputReference.name, path: "/inputs/input.txt", inputReference },
+        { kind: "file", name: "plain.md", path: "/project/plain.md" },
+      ]),
+    ).toEqual([
+      { kind: "file", name: inputReference.name, path: "/inputs/input.txt", inputReference },
+      { kind: "file", name: "plain.md", path: "/project/plain.md" },
+    ]);
+  });
+
   it("maps Pi queue state into a detached Cake conversation value", () => {
     const piQueue = { steering: ["change direction"], followUp: ["do this next"] };
 
