@@ -51,7 +51,10 @@ export function labelIn(sessionId: string, roster: readonly SessionReferenceEntr
   return title ? `${ref} (${title})` : ref;
 }
 
-/** Live metadata only, no second transcript or reference registry. Include inactive family bindings. */
+/** Identity-only roster, not a sidebar catalog. Never open transcripts just to resolve a suffix.
+ * Resolved sessions stay in their Pi directory; archived project metadata also retains identities
+ * whose worktree no longer exists. Include inactive family bindings without acquiring runtimes.
+ */
 export const catalog = Effect.fn("SessionReferences.catalog")(
   function* () {
     const sessions = yield* CakeSessionRuntimes;
@@ -66,23 +69,13 @@ export const catalog = Effect.fn("SessionReferences.catalog")(
       for (const entry of yield* Stream.runCollect(archive.resolvedProjects(project.path)))
         roster.set(entry.sessionId, { sessionId: entry.sessionId });
     for (const location of locations) {
-      const entries = yield* Stream.runCollect(
-        sessions.catalog({
+      const ids = yield* Stream.runCollect(
+        sessions.sessionIds({
           workingDirectory: location.workingDirectory,
           sessionDirectory: location.sessionDirectory,
         }),
       );
-      for (const entry of entries)
-        roster.set(entry.id, { sessionId: entry.id, title: entry.title });
-      const resolved = yield* Stream.runCollect(
-        archive.resolved({
-          cwd: location.workingDirectory,
-          activeRoot: location.sessionDirectory,
-          resolvedRoot: location.resolvedSessionDirectory,
-        }),
-      );
-      for (const entry of resolved)
-        roster.set(entry.id, { sessionId: entry.id, title: entry.title });
+      for (const sessionId of ids) roster.set(sessionId, { sessionId });
     }
     const drafts = yield* Effect.serviceOption(SavedDraftStorage);
     if (Option.isSome(drafts))
