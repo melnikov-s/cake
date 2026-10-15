@@ -1,5 +1,5 @@
 import * as sessionFamilies from "../session-families/sessionFamilies";
-import { substantiveTurnResult } from "../../contracts/pi/turn-result-data";
+import { implicitTurnResultFor } from "../../contracts/pi/turn-result-data";
 import * as sessionFamilyMessaging from "../session-families/sessionFamilyMessaging";
 import * as projectSessionAgentPolicy from "./projectSessionAgentPolicy";
 import { resolveCakeModelSelection } from "../model-presets/cake-model-selection";
@@ -336,14 +336,14 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
         const workflowOwnsCompletion = yield* workflowLifecycle
           .holdsTurnCompletion(sessionId, event.turnId)
           .pipe(Effect.provideService(WorkflowSupervisor, workflowSupervisor));
-        if (
-          workflowOwnsCompletion &&
-          (yield* families.state()).turns.some(
-            (turn) => turn.turnId === event.turnId && turn.completionContract,
-          )
-        )
-          return;
-        const text = substantiveTurnResult(event.result);
+        const familyTurn = (yield* families.state()).turns.find(
+          (turn) => turn.turnId === event.turnId,
+        );
+        if (workflowOwnsCompletion && familyTurn?.completionContract) return;
+        // Only an answer to the requester itself may become its implicit result.
+        const text = familyTurn
+          ? implicitTurnResultFor(event.result, familyTurn.senderSessionId)
+          : undefined;
         const failed = event.outcome === "failed" || event.result?.stopReason === "error";
         const outcome = event.outcome === "aborted" ? "aborted" : failed ? "failed" : "complete";
         const diagnostic = (event.message ?? event.result?.errorMessage)?.trim().slice(0, 100_000);

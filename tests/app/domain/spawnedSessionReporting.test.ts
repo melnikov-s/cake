@@ -211,7 +211,15 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
                           text,
                         });
                         const result = yield* Deferred.await(finish);
-                        options.onTurnResult?.(turnId, result);
+                        // Like the runtime capture: the final answer addresses this input's sender
+                        // unless a test says a later input (e.g. the local user) was answered.
+                        const sender = parseCrossSessionMessage(text)?.metadata.sender.sessionId;
+                        options.onTurnResult?.(
+                          turnId,
+                          "respondsToSessionId" in result || !sender
+                            ? result
+                            : { ...result, respondsToSessionId: sender },
+                        );
                         executing.delete(options.sessionId ?? "");
                       }
                     }),
@@ -636,6 +644,65 @@ describe("automatic spawned-session reporting", () => {
         }),
       );
     }),
+  );
+
+  it.effect.each(["family", "cake-chat"] as const)(
+    "%s: a final answer to the local user is never forwarded as the requester's result",
+    (origin) =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        const userFacing =
+          "You're right—I sent far too many coordination messages. I'll stop messaging the parent.";
+        yield* f.run(
+          Effect.gen(function* () {
+            if (origin === "cake-chat") yield* createFromChat();
+            else {
+              const root = yield* projectOptions({
+                location,
+                sessionId: parentId,
+                newSession: false,
+              });
+              yield* (yield* CakeSessionRuntimes).acquire(root);
+              yield* Effect.promise(() =>
+                root.runtime.currentSessionControl!.createChildSession!(
+                  {
+                    requestId: "local-answer-child",
+                    title: "Child",
+                    initialPrompt: createArgs.initialPrompt,
+                    model: configuration,
+                    placement: "none",
+                    senderContext: { usedTokens: null, windowTokens: null },
+                  },
+                  new AbortController().signal,
+                ),
+              );
+            }
+            yield* Deferred.await(f.entered);
+            // The user typed into the child while its delegated run was active; Pi consumed
+            // that input into the same run, so the final answer addresses the user.
+            yield* Deferred.succeed(f.finish, {
+              stopReason: "stop",
+              text: userFacing,
+              respondsToSessionId: undefined,
+            });
+            yield* Deferred.await(f.settled);
+            const turn = yield* onlyTurn();
+            assert.equal(turn.outcome, "complete");
+            assert.equal(turn.report, undefined);
+            yield* families.deliver(turn);
+            yield* Deferred.await(f.received);
+            assert.equal(f.transcript.length, 1);
+            const notice = parseCrossSessionMessage(f.transcript[0] ?? "");
+            assert.ok(notice);
+            assert.equal(notice.metadata.generatedNotice, true);
+            assert.equal(notice.metadata.expectsResponse, false);
+            assert.doesNotMatch(notice.text, /— result/);
+            assert.ok(!f.transcript.some((content) => content.includes(userFacing)));
+            yield* families.deliver(turn);
+            assert.equal(f.deliveries.length, 1);
+          }),
+        );
+      }),
   );
 
   it.effect(

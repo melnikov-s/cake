@@ -147,7 +147,9 @@ projections needed by a surface. References do not transfer ownership.
   presentation, without changing model-facing input roles.
 - Automatic Project Session result handoff belongs to actual family parent-child assignments
   and independent sessions spawned by permanent Cake Chat, not arbitrary independent creators.
-  Requester provenance and the pending delivery journal are Cake metadata; Pi remains transcript
+  Without an explicit report, a run's final answer becomes the result only when it answers the
+  requester: Pi can consume later local-user or third-party input into the same run, and an answer
+  to that input yields a factual stop notice instead of forwarding its text. Requester provenance and the pending delivery journal are Cake metadata; Pi remains transcript
   and run authority.
 
 ## Process boundaries

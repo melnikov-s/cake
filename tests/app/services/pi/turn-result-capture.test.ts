@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { createTurnResultCapture } from "../../../../src/services/pi/runtime/turn-result-capture";
 import {
+  implicitTurnResultFor,
   substantiveTurnResult,
   type PiTurnResult,
 } from "../../../../src/contracts/pi/turn-result-data";
+import { encodeCrossSessionMessage } from "../../../../src/contracts/conversations/cross-session-message";
+import { addPresentationModeReminder } from "../../../../src/contracts/conversations/presentation-mode-reminders";
 
 const assistant = (
   text: string,
@@ -34,6 +37,109 @@ const user: AgentSessionEvent = {
   type: "message_end",
   message: { role: "user", content: "Task", timestamp: 0 },
 };
+
+const parent = "474e9d62-e606-4d77-ac57-07bc53830481";
+const sibling = "bf90dcd3-83d1-4857-ba3b-9c6344d3d802";
+const grandchild = "5c47caf0-9bb6-487e-89e0-60c6dad7d164";
+let sequence = 0;
+const fromSession = (
+  sessionId: string,
+  extra: { replyToMessageId?: string; generatedNotice?: boolean } = {},
+): AgentSessionEvent => ({
+  type: "message_end",
+  message: {
+    role: "user",
+    content: encodeCrossSessionMessage("Coordination", {
+      version: 1,
+      messageId: `00000000-0000-4000-8000-${String(++sequence).padStart(12, "0")}`,
+      threadId: "00000000-0000-4000-8000-100000000000",
+      sequence: 1,
+      expectsResponse: true,
+      ...extra,
+      sender: { sessionId, title: "Session", kind: "project-session" },
+    }),
+    timestamp: 0,
+  },
+});
+const finalAnswer = "A substantive final answer with findings and verification.";
+const settledResult = (events: readonly AgentSessionEvent[]) => {
+  const results: PiTurnResult[] = [];
+  const capture = createTurnResultCapture(
+    () => ["delegated"],
+    (_id, result) => results.push(result),
+  );
+  for (const event of events) capture(event);
+  capture(assistant(finalAnswer));
+  capture({ type: "agent_settled" });
+  return results[0];
+};
+
+describe("Pi run final-answer addressee", () => {
+  it("attributes a delegated run's answer to its requester", () => {
+    const result = settledResult([fromSession(parent), assistant("Working", "toolUse")]);
+    expect(result?.respondsToSessionId).toBe(parent);
+    expect(implicitTurnResultFor(result, parent)).toBe(finalAnswer);
+  });
+
+  it("never attributes an answer to the local user's later input to the requester", () => {
+    // Reproduces the reported child: the user typed into a busy delegated child and Pi
+    // consumed that follow-up into the same run, so its final answer addressed the user.
+    const result = settledResult([fromSession(parent), assistant("Reported", "stop"), user]);
+    expect(result?.respondsToSessionId).toBeUndefined();
+    expect(implicitTurnResultFor(result, parent)).toBeUndefined();
+    const reminded = (content: string): AgentSessionEvent => ({
+      type: "message_end",
+      message: {
+        role: "user",
+        content: addPresentationModeReminder(content, "normal", "browser"),
+        timestamp: 0,
+      },
+    });
+    expect(
+      implicitTurnResultFor(settledResult([fromSession(parent), reminded("STOP")]), parent),
+    ).toBeUndefined();
+    const parentRequest = fromSession(parent);
+    const parentContent =
+      parentRequest.type === "message_end" && parentRequest.message.role === "user"
+        ? String(parentRequest.message.content)
+        : "";
+    expect(settledResult([reminded(parentContent)])?.respondsToSessionId).toBe(parent);
+  });
+
+  it("follows the latest new request but not replies or generated notices", () => {
+    expect(
+      settledResult([fromSession(parent), user, fromSession(parent)])?.respondsToSessionId,
+    ).toBe(parent);
+    const answeredSibling = settledResult([fromSession(parent), fromSession(sibling)]);
+    expect(implicitTurnResultFor(answeredSibling, parent)).toBeUndefined();
+    expect(implicitTurnResultFor(answeredSibling, sibling)).toBe(finalAnswer);
+    const nested = settledResult([
+      fromSession(parent),
+      fromSession(grandchild, { replyToMessageId: "00000000-0000-4000-8000-200000000000" }),
+      fromSession(grandchild, { generatedNotice: true }),
+    ]);
+    expect(implicitTurnResultFor(nested, parent)).toBe(finalAnswer);
+    expect(
+      settledResult([user, fromSession(grandchild, { generatedNotice: true })])
+        ?.respondsToSessionId,
+    ).toBeUndefined();
+  });
+
+  it("starts every run unattributed", () => {
+    const results: PiTurnResult[] = [];
+    const capture = createTurnResultCapture(
+      () => ["turn"],
+      (_id, result) => results.push(result),
+    );
+    capture(fromSession(parent));
+    capture(assistant(finalAnswer));
+    capture({ type: "agent_settled" });
+    capture(fromSession(grandchild, { generatedNotice: true }));
+    capture(assistant(finalAnswer));
+    capture({ type: "agent_settled" });
+    expect(results.map((result) => result.respondsToSessionId)).toEqual([parent, undefined]);
+  });
+});
 
 describe("Pi run result evidence", () => {
   it("uses the final assistant message only and correlates every consumed input", () => {
