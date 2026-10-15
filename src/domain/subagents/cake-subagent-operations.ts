@@ -4,6 +4,7 @@ import { messageRefsSchema } from "../../contracts/conversations/message-referen
 import type {
   CakeModelSelection,
   ExplicitCakeModelSelection,
+  CakeModelLaunch,
 } from "../../contracts/model-presets/cake-model-selection";
 import { type JsonObject, type JsonValue } from "../../contracts/serialization/json-contract";
 import type { AgentOperationControl } from "../../contracts/agent/cake-operation-options";
@@ -18,7 +19,10 @@ import {
 export function createAgentControlOperations(
   control: AgentOperationControl,
   parentSessionId: () => string | undefined,
-  resolveModel: (selection: CakeModelSelection | undefined) => ExplicitCakeModelSelection,
+  resolveModel: (
+    selection: CakeModelSelection | undefined,
+    launch: CakeModelLaunch,
+  ) => ExplicitCakeModelSelection,
   projectAware = false,
 ): CakeOperationDefinition[] {
   const promptSchema = Schema.Struct({
@@ -45,10 +49,13 @@ export function createAgentControlOperations(
       : "Handles are parent-owned and remain available for follow-up until explicitly closed; parallel batches contain at most eight tasks.",
     "Attachments are not inherited. Select exact attachment IDs in inputRefs on a task or follow-up to grant that worker access. Forwarding shares only metadata; the worker must explicitly call attachments.read to inspect text or native image pixels. Never substitute a storage path or describe unseen image content.",
     "Pass exact Cake message links in messageRefs to share source identities without reading or paraphrasing them. Workers may explicitly read only the selected references; forwarding does not read message bodies or grant attached input contents.",
-    "Omit model unless the user explicitly asks for a specific model. When omitted, a subagent uses the configured default model preset's complete settings (provider, model, thinking level, and Fast mode; see models.list), not the calling session's current model. Only when no default preset is configured does it use the calling session's current settings.",
+    projectAware
+      ? "Omit model unless the user explicitly asks for a specific model. When omitted, a subagent uses the user's Subagent default model setting: by default your current model, thinking level, and Fast mode, or else the configured default preset, the utility model, one chosen preset, or one chosen model. An explicit model always overrides that setting."
+      : "Omit model unless the user explicitly asks for a specific model. When omitted, a subagent uses the configured default model preset's complete settings (provider, model, thinking level, and Fast mode; see models.list), not the calling session's current model. Only when no default preset is configured does it use the calling session's current settings.",
   ];
   const resolveTask = (input: SubagentTaskInput): DomainSubagentTaskInput => {
-    const model = resolveModel(input.model);
+    // An omitted model follows the user's Subagent default model setting.
+    const model = resolveModel(input.model, "subagent");
     return {
       ...input,
       model: {

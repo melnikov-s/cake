@@ -5,6 +5,7 @@ import type {
 } from "../../contracts/conversations/session-contract";
 import { defaultCakeChatPreferences } from "../../contracts/cake-chats/cake-chat-preferences";
 import type { CakeChatPreferences } from "../../contracts/application/application-data";
+import type { SubagentDefaultModel } from "../../contracts/model-presets/cake-model-selection";
 import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../lib/error-details";
 
@@ -36,6 +37,15 @@ export class CakeChatSettingsStore extends Store {
     const preferences = { ...this.preferences };
     delete preferences.summarizationModel;
     return this.save(model ? { ...preferences, summarizationModel: model } : preferences);
+  }
+
+  /** Choosing Inherit stores nothing, matching the out-of-the-box value. */
+  setSubagentDefaultModel(model: SubagentDefaultModel) {
+    const preferences = { ...this.preferences };
+    delete preferences.subagentDefaultModel;
+    return this.save(
+      model.source === "inherit" ? preferences : { ...preferences, subagentDefaultModel: model },
+    );
   }
 
   private save(preferences: CakeChatPreferences) {

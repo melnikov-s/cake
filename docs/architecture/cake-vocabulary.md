@@ -308,12 +308,18 @@ string always names a preset; it is never interpreted as a raw model ID. Cake
 resolves a preset from authoritative application configuration when the
 operation executes and passes the resulting concrete selection to Pi. The
 result is a snapshot, not a live binding to later preset edits. Agents omit the
-model unless the user requests one. When a launch operation (session, draft,
-child, subagent, or workflow agent) omits the model, Cake snapshots the
-configured default preset's complete settings; only when no default preset is
-configured does it snapshot the calling session's current model, thinking
-level, and Fast mode setting instead. Workflow runs take that snapshot once at
-run start. Existing sessions, resumes, and forks keep their own configuration.
+model unless the user requests one. When a session launch (session, draft,
+child, or workflow agent) omits the model, Cake snapshots the configured
+default preset's complete settings; only when no default preset is configured
+does it snapshot the calling session's current model, thinking level, and Fast
+mode setting instead. Workflow runs take that snapshot once at run start. Project
+Session subagents that omit the model resolve like session launches. A Cake
+Chat subagent that omits the model follows the Cake Chat Subagent default model
+setting (Settings → Cake Chat). Inherit (the out-of-the-box value) snapshots
+Cake Chat's current model, thinking level, and Fast mode, using the default
+preset only when there is no current model; Default behaves like a session
+launch; Utility, a chosen preset, or a chosen model are used exactly and fail
+clearly when unconfigured or deleted. Existing sessions, resumes, and forks keep their own configuration.
 
 ### Utility Model Preference
 

@@ -334,10 +334,11 @@ describe("Pi 1.0.0 foundation contract", () => {
     ).toThrow();
   });
 
-  /** Drives one real Pi turn whose model calls session.create with `toolInput`. */
+  /** Drives one real Pi turn whose model calls `command` (session.create) with `toolInput`. */
   async function createSessionThroughModelTurn(
     toolInput: Record<string, unknown>,
     resolveModelSelection?: Parameters<typeof createCakeSessionRuntime>[0]["resolveModelSelection"],
+    command = "session.create",
   ) {
     const directory = await createTemporaryDirectory();
     const agentDir = join(directory, "agent");
@@ -365,7 +366,7 @@ describe("Pi 1.0.0 foundation contract", () => {
                 function: {
                   name: "cake",
                   arguments: JSON.stringify({
-                    command: "session.create",
+                    command,
                     input: toolInput,
                   }),
                 },
@@ -412,6 +413,8 @@ describe("Pi 1.0.0 foundation contract", () => {
       sessionId: "created-session",
       workspacePath: "/projects/.cake-worktrees/investigate-rendering",
     }));
+    const startSubagent = vi.fn(async () => ({ status: "running" }));
+    const unused = async () => ({});
     try {
       const runtime = await createCakeSessionRuntime({
         cwd: directory,
@@ -428,6 +431,15 @@ describe("Pi 1.0.0 foundation contract", () => {
           resolveDeferredStandalone: async () => undefined,
           createSession,
         },
+        agentControl: {
+          run: unused,
+          start: startSubagent,
+          parallel: unused,
+          prompt: unused,
+          wait: unused,
+          abort: unused,
+          close: unused,
+        },
         onEvent: () => undefined,
       });
       runtimes.push(runtime);
@@ -435,7 +447,7 @@ describe("Pi 1.0.0 foundation contract", () => {
       await runtime.prompt("Create the investigation session", "prompt", []);
 
       const caller = (await runtime.snapshot()).model;
-      return { createSession, caller };
+      return { createSession, startSubagent, caller };
     } finally {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));
@@ -478,11 +490,12 @@ describe("Pi 1.0.0 foundation contract", () => {
     } as const;
     const { createSession, caller } = await createSessionThroughModelTurn(
       { name: "Default model", initialPrompt: "Work with the default model." },
-      (selection, fallback) =>
+      (selection, caller, omitted) =>
         resolveCakeModelSelection(
           selection,
           { presets: [defaultPreset], defaultPresetId: defaultPreset.id },
-          fallback,
+          caller,
+          omitted,
         ),
     );
     expect(createSession).toHaveBeenCalledWith(
@@ -501,6 +514,59 @@ describe("Pi 1.0.0 foundation contract", () => {
     // Launching another session never reconfigures the calling session.
     expect(caller).toMatchObject({ provider: "fixture-provider", id: "fixture-model" });
   });
+
+  it.each([
+    [
+      "default",
+      { provider: "openai-codex", modelId: "gpt-5.6-sol", thinkingLevel: "xhigh", fastMode: true },
+    ],
+    [
+      "inherit",
+      {
+        provider: "fixture-provider",
+        modelId: "fixture-model",
+        thinkingLevel: "off",
+        fastMode: false,
+      },
+    ],
+  ] as const)(
+    "starts an omitted-model subagent from the %s Subagent default model setting",
+    async (source, { fastMode, ...expected }) => {
+      const defaultPreset = {
+        id: "00000000-0000-4000-8000-000000000001",
+        name: "Configured default",
+        provider: "openai-codex",
+        modelId: "gpt-5.6-sol",
+        thinkingLevel: "xhigh",
+        fastMode: true,
+      } as const;
+      const { startSubagent } = await createSessionThroughModelTurn(
+        { task: "Inspect the renderer" },
+        (selection, caller, launch) =>
+          resolveCakeModelSelection(
+            selection,
+            {
+              presets: [defaultPreset],
+              defaultPresetId: defaultPreset.id,
+              subagentDefaultModel: { source },
+            },
+            caller,
+            launch,
+          ),
+        "subagents.start",
+      );
+      expect(startSubagent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          task: "Inspect the renderer",
+          model: { prefer: "exact", ...expected },
+          fastMode,
+        }),
+        expect.any(String),
+        expect.any(AbortSignal),
+        expect.anything(),
+      );
+    },
+  );
 
   it("executes ! and !! commands without starting a model turn", async () => {
     const directory = await createTemporaryDirectory();

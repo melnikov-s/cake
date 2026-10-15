@@ -9,6 +9,7 @@ import { Option, Schema } from "effect";
 import {
   type CakeModelSelection,
   type ExplicitCakeModelSelection,
+  type CakeModelLaunch,
 } from "../../../contracts/model-presets/cake-model-selection";
 import type {
   ChatConfiguration,
@@ -76,7 +77,10 @@ export function createCakeSessionRuntimeConfigurationState(
 export interface CakeSessionRuntimeConfiguration {
   modelOptions(): Promise<ModelOption[]>;
   currentModelSelection(): ExplicitCakeModelSelection | undefined;
-  resolveModelSelection(selection: CakeModelSelection | undefined): ExplicitCakeModelSelection;
+  resolveModelSelection(
+    selection: CakeModelSelection | undefined,
+    launch?: CakeModelLaunch,
+  ): ExplicitCakeModelSelection;
   setModel(provider: string, modelId: string): Promise<void>;
   setThinkingLevel(level: ThinkingLevel): Promise<void>;
   applyConfiguration(configuration: ChatConfiguration): Promise<void>;
@@ -125,12 +129,14 @@ export function createCakeSessionRuntimeConfiguration(input: {
 
   const resolveModelSelection = (
     selection: CakeModelSelection | undefined,
+    launch?: CakeModelLaunch,
   ): ExplicitCakeModelSelection => {
-    const fallback = currentModelSelection();
-    if (options.resolveModelSelection) return options.resolveModelSelection(selection, fallback);
+    const caller = currentModelSelection();
+    if (options.resolveModelSelection)
+      return options.resolveModelSelection(selection, caller, launch);
     if (typeof selection === "string")
       throw new Error("Model preset resolution is unavailable in this runtime");
-    const configuration = selection ?? fallback;
+    const configuration = selection ?? caller;
     if (!configuration)
       throw new Error("A model selection is required because there is no model to inherit");
     return { ...configuration };

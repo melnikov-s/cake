@@ -1,6 +1,9 @@
 import { createMessageOperations } from "../domain/conversations/cake-message-operations";
 import { createAttachmentReferenceOperations } from "../domain/conversations/cake-attachment-operations";
-import type { CakeModelSelection } from "../contracts/model-presets/cake-model-selection";
+import type {
+  CakeModelSelection,
+  CakeModelLaunch,
+} from "../contracts/model-presets/cake-model-selection";
 import { createCakeSettingsOperations } from "../domain/application/cake-settings-operations";
 import { createCakeWidgetPackageOperations } from "../domain/application/cake-widget-package-operations";
 import { createCakeWorkflowOperations } from "../domain/workflows/cake-workflow-operations";
@@ -45,8 +48,8 @@ import { createCakeVscodeOperations } from "../domain/editor/cake-vscode-operati
 export function projectCakeOperations(options: CakeOperationOptions): ProjectCakeOperations {
   return (bridge) => {
     // Capture a lazy resolver: the SDK loads extensions before the session API is ready.
-    const resolveApiModel = (selection: CakeModelSelection | undefined) =>
-      bridge.api().resolveModelSelection(selection);
+    const resolveApiModel = (selection: CakeModelSelection | undefined, launch?: CakeModelLaunch) =>
+      bridge.api().resolveModelSelection(selection, launch);
     const persistArtifact =
       options.persistArtifact ??
       (async (artifact: CakeArtifactV1) =>

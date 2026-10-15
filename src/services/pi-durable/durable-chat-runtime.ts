@@ -33,6 +33,7 @@ import type { PiPendingMessageReorder } from "../../contracts/conversations/pend
 import type {
   CakeModelSelection,
   ExplicitCakeModelSelection,
+  CakeModelLaunch,
 } from "../../contracts/model-presets/cake-model-selection";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import {
@@ -169,17 +170,21 @@ export async function createDurableCakeChatRuntime(
   let streaming = false;
   let activeTurnIds: string[] = [];
   const diagnostics: string[] = [...providerDiagnostics];
-  const resolveModel = (selection: CakeModelSelection | undefined): ExplicitCakeModelSelection => {
-    const fallback = {
+  const resolveModel = (
+    selection: CakeModelSelection | undefined,
+    launch?: CakeModelLaunch,
+  ): ExplicitCakeModelSelection => {
+    const caller = {
       provider: selected.provider,
       modelId: selected.id,
       thinkingLevel,
       fastMode,
     };
-    if (options.resolveModelSelection) return options.resolveModelSelection(selection, fallback);
+    if (options.resolveModelSelection)
+      return options.resolveModelSelection(selection, caller, launch);
     if (typeof selection === "string")
       throw new Error("Model preset resolution is unavailable in this runtime");
-    return { ...(selection ?? fallback) };
+    return { ...(selection ?? caller) };
   };
   const operations = new CakeOperationRegistry(
     options.coordinator.operations({

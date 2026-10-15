@@ -281,7 +281,8 @@ adapter at `<CAKE_HOME>/pi/global-chat/coordinator.sqlite`. It owns originals,
 inbox, execution checkpoints, and recovery. Cake does not implement a second SQL
 store, mirror JSONL, or archive the coordinator through Project Session storage.
 Its summary nodes and memory checkpoints live through the same SDK storage API.
-Application storage separately owns memory preferences and dedicated instructions.
+Application storage separately owns memory preferences, dedicated instructions,
+and the Subagent default model setting (absent means inherit).
 The permanent coordinator can read and update only its dedicated instructions with
 `settings.cake-chat.get` and `settings.cake-chat.update`. Updates use the existing
 application-state transaction, preserve other preferences, and require the exact

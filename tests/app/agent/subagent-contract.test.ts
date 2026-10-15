@@ -1,6 +1,10 @@
 import { Schema } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import { resolveCakeModelSelection } from "../../../src/domain/model-presets/cake-model-selection";
+import type {
+  ExplicitCakeModelSelection,
+  SubagentDefaultModel,
+} from "../../../src/contracts/model-presets/cake-model-selection";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { createAgentControlOperations } from "../../../src/domain/subagents/cake-subagent-operations";
 import { subagentTaskSchema } from "../../../src/contracts/subagents/subagent-tool-input";
@@ -219,38 +223,101 @@ describe("subagent contract", () => {
       },
     );
 
-    const resolve = (selection: Parameters<typeof resolveCakeModelSelection>[0]) =>
-      resolveCakeModelSelection(selection, { presets: [preset] }, inherited);
-    await new CakeOperationRegistry(
-      createAgentControlOperations(
-        control,
-        () => "parent",
-        (selection) =>
-          resolveCakeModelSelection(
-            selection,
-            { presets: [preset], defaultPresetId: preset.id },
-            inherited,
-          ),
-      ),
-    ).invoke(
-      { command: "subagents.start", input: { task: "Use the default model" } },
-      { signal: new AbortController().signal, toolCallId: "call-default", runtime: {} },
-    );
-    expect(control.start).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        task: "Use the default model",
-        model: {
-          prefer: "exact",
-          provider: "openai-codex",
-          modelId: "gpt-5.6-sol",
-          thinkingLevel: "high",
-        },
+    const resolve = (
+      selection: Parameters<typeof resolveCakeModelSelection>[0],
+      launch: Parameters<typeof resolveCakeModelSelection>[3],
+    ) => resolveCakeModelSelection(selection, { presets: [preset] }, inherited, launch);
+    const other = {
+      id: "00000000-0000-4000-8000-000000000002",
+      name: "Luna",
+      provider: "anthropic",
+      modelId: "claude-luna",
+      thinkingLevel: "low" as const,
+      fastMode: false,
+    };
+    const utilityModel = {
+      provider: "openai",
+      modelId: "gpt-mini",
+      thinkingLevel: "minimal" as const,
+    };
+    const freeform = {
+      provider: "custom",
+      modelId: "not-a-preset",
+      thinkingLevel: "xhigh" as const,
+      fastMode: true,
+    };
+    const asDomain = ({ fastMode, ...model }: ExplicitCakeModelSelection) => ({
+      model: { prefer: "exact", ...model },
+      fastMode,
+    });
+    const configuration = ({
+      provider,
+      modelId,
+      thinkingLevel,
+      fastMode,
+    }: ExplicitCakeModelSelection) => ({
+      provider,
+      modelId,
+      thinkingLevel,
+      fastMode,
+    });
+    const settings: Array<[SubagentDefaultModel | undefined, ExplicitCakeModelSelection]> = [
+      [undefined, inherited],
+      [{ source: "default" }, configuration(preset)],
+      [{ source: "inherit" }, inherited],
+      [{ source: "utility" }, { ...utilityModel, fastMode: false }],
+      [{ source: "preset", presetId: other.id }, configuration(other)],
+      [{ source: "model", model: freeform }, freeform],
+    ];
+    for (const [subagentDefaultModel, expected] of settings) {
+      const configured = new CakeOperationRegistry(
+        createAgentControlOperations(
+          control,
+          () => "parent",
+          (selection, launch) =>
+            resolveCakeModelSelection(
+              selection,
+              {
+                presets: [preset, other],
+                defaultPresetId: preset.id,
+                utilityModel,
+                subagentDefaultModel,
+              },
+              inherited,
+              launch,
+            ),
+        ),
+      );
+      const label = subagentDefaultModel?.source ?? "unset";
+      await configured.invoke(
+        { command: "subagents.start", input: { task: `Omitted with ${label}` } },
+        { signal: new AbortController().signal, toolCallId: `omitted-${label}`, runtime: {} },
+      );
+      const { model, fastMode } = asDomain(expected);
+      expect(control.start).toHaveBeenLastCalledWith(
+        expect.objectContaining({ task: `Omitted with ${label}`, model, fastMode }),
+        "parent",
+        expect.any(AbortSignal),
+        `tool-omitted-${label}`,
+      );
+      // An explicit model overrides every setting exactly.
+      const explicit = {
+        provider: "openai-codex",
+        modelId: "gpt-5.6-luna",
+        thinkingLevel: "low" as const,
         fastMode: true,
-      }),
-      "parent",
-      expect.any(AbortSignal),
-      "tool-call-default",
-    );
+      };
+      await configured.invoke(
+        { command: "subagents.start", input: { task: `Explicit with ${label}`, model: explicit } },
+        { signal: new AbortController().signal, toolCallId: `explicit-${label}`, runtime: {} },
+      );
+      expect(control.start).toHaveBeenLastCalledWith(
+        expect.objectContaining({ task: `Explicit with ${label}`, ...asDomain(explicit) }),
+        "parent",
+        expect.any(AbortSignal),
+        `tool-explicit-${label}`,
+      );
+    }
     const ordinary = createAgentControlOperations(control, () => "parent", resolve);
     const projectAware = createAgentControlOperations(control, () => "cake-chat", resolve, true);
     expect(ordinary[0]?.guidance).toContain(
@@ -260,6 +327,10 @@ describe("subagent contract", () => {
       "Delegate every question depending on a registered project's code",
     );
     expect(projectAware[0]?.guidance?.join("\n")).toContain("clarify ambiguous project identity");
+    // Only Cake Chat (project-aware) subagents follow the Subagent default model setting.
+    expect(projectAware[0]?.guidance?.join("\n")).toContain("Subagent default model setting");
+    expect(ordinary[0]?.guidance?.join("\n")).not.toContain("Subagent default model setting");
+    expect(ordinary[0]?.guidance?.join("\n")).toContain("configured default model preset");
     await new CakeOperationRegistry(projectAware).invoke(
       {
         command: "subagents.start",

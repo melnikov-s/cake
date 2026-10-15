@@ -85,6 +85,32 @@ describe("Session model policy composition", () => {
             thinkingLevel: "high",
             fastMode: true,
           });
+          // Only Cake Chat subagents read the live Subagent default model setting (absent means
+          // Inherit); Project Session subagents and all session launches use the default preset.
+          const sessionDefault = resolve(undefined, inherited);
+          assert.equal(sessionDefault.modelId, "gpt-5.6");
+          const subagent = () => resolve(undefined, inherited, "subagent");
+          assert.deepEqual(subagent(), kind === "cake-chat" ? inherited : sessionDefault);
+          const preferences = { memoryViewBytes: 40_000, instructions: "" };
+          state = {
+            ...state,
+            cakeChatPreferences: { ...preferences, subagentDefaultModel: { source: "default" } },
+          };
+          assert.deepEqual(subagent(), sessionDefault);
+          assert.equal(resolve("Sol", inherited, "subagent").modelId, "gpt-5.6");
+          assert.deepEqual(resolve(inherited, first, "subagent"), inherited);
+          state = {
+            ...state,
+            utilityModel: { provider: "openai", modelId: "gpt-mini", thinkingLevel: "low" },
+            cakeChatPreferences: { ...preferences, subagentDefaultModel: { source: "utility" } },
+          };
+          assert.deepEqual(
+            subagent(),
+            kind === "cake-chat"
+              ? { provider: "openai", modelId: "gpt-mini", thinkingLevel: "low", fastMode: false }
+              : sessionDefault,
+          );
+          state = { ...state, cakeChatPreferences: preferences };
           state = {
             ...state,
             modelPresets: [

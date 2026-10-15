@@ -2,7 +2,7 @@ import * as sessionFamilies from "../session-families/sessionFamilies";
 import { implicitTurnResultFor } from "../../contracts/pi/turn-result-data";
 import * as sessionFamilyMessaging from "../session-families/sessionFamilyMessaging";
 import * as projectSessionAgentPolicy from "./projectSessionAgentPolicy";
-import { resolveCakeModelSelection } from "../model-presets/cake-model-selection";
+import { cakeModelCatalog, resolveCakeModelSelection } from "../model-presets/cake-model-selection";
 import * as projectSessionLocations from "./projectSessionLocations";
 import * as sessionReferences from "./sessionReferences";
 import * as managedWorktrees from "../worktrees/managedWorktrees";
@@ -162,13 +162,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   const agentControl = makeSubagentControl({
     runEffect: (effect, signal) => run(effect, { signal }),
   });
-  const modelPresets = () => {
-    const state = application.snapshot();
-    return {
-      presets: state.modelPresets.map((preset) => ({ ...preset })),
-      defaultPresetId: state.defaultModelPresetId,
-    };
-  };
+  const modelPresets = () => cakeModelCatalog(application.snapshot());
 
   yield* access
     .rememberSessionLocation(location.workingDirectory, sessionId)
@@ -456,8 +450,10 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
           );
       },
       modelPresets,
-      resolveModelSelection: (selection, fallback) =>
-        resolveCakeModelSelection(selection, modelPresets(), fallback),
+      // The Subagent default model setting is Cake Chat-only: Project Session subagents
+      // resolve an omitted model exactly like session launches (the default preset).
+      resolveModelSelection: (selection, caller) =>
+        resolveCakeModelSelection(selection, modelPresets(), caller),
       nonChatModelPreferences: () => application.snapshot().nonChatModelPreferences ?? {},
       sessionPluginControl: {
         sessionId,

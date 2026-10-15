@@ -40,6 +40,7 @@ import {
 import type {
   CakeModelSelection,
   ExplicitCakeModelSelection,
+  CakeModelLaunch,
 } from "../../../contracts/model-presets/cake-model-selection";
 import { crossSessionContextSnapshot } from "../../../contracts/conversations/cross-session-message";
 import type {
@@ -188,13 +189,14 @@ export interface CakeSessionRuntimeOptions {
   reviewContextPath?(sessionId: string): string;
   utilityModel?(): UtilityModel | undefined;
   /**
-   * Cake policy is supplied by composition; Pi only applies concrete configurations. An
-   * omitted selection resolves the configured default preset; `fallback` is the caller's
-   * current configuration, used only when no default preset is configured.
+   * Cake policy is supplied by composition; Pi only applies concrete configurations. `caller`
+   * is the calling session's current configuration; `launch` says whether a session or a
+   * subagent is being launched, which decides what an omitted selection resolves to.
    */
   resolveModelSelection?(
     selection: CakeModelSelection | undefined,
-    fallback: ExplicitCakeModelSelection | undefined,
+    caller: ExplicitCakeModelSelection | undefined,
+    launch?: CakeModelLaunch,
   ): ExplicitCakeModelSelection;
   fastMode?: {
     get(): boolean;

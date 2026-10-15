@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect";
-import type { ModelPreset } from "../application/application-data";
+import type { ModelPreset, UtilityModel } from "../application/application-data";
 import { ThinkingLevel } from "../pi/model-data";
 
 const trimmed = (maximum: number) =>
@@ -23,7 +23,38 @@ export const CakeModelSelection = Schema.Union([
 export type ExplicitCakeModelSelection = typeof ExplicitCakeModelSelection.Type;
 export type CakeModelSelection = typeof CakeModelSelection.Type;
 
+/**
+ * Stored Cake Chat "Subagent default model" setting: what a Cake Chat subagent launched
+ * without a model uses. Absent means `inherit`. Project Session subagents ignore it.
+ * - default: the configured default model preset.
+ * - inherit: the calling session's current model, thinking level, and Fast mode.
+ * - utility: the configured utility model (Fast mode off).
+ * - preset: one configured preset, referenced by ID so renames keep working.
+ * - model: one explicit provider, model ID, thinking level, and Fast mode.
+ */
+export const SubagentDefaultModel = Schema.Union([
+  Schema.Struct({ source: Schema.Literal("default") }),
+  Schema.Struct({ source: Schema.Literal("inherit") }),
+  Schema.Struct({ source: Schema.Literal("utility") }),
+  Schema.Struct({
+    source: Schema.Literal("preset"),
+    presetId: Schema.String.check(Schema.isUUID(4)),
+  }),
+  Schema.Struct({ source: Schema.Literal("model"), model: ExplicitCakeModelSelection }),
+]);
+export type SubagentDefaultModel = typeof SubagentDefaultModel.Type;
+
+/**
+ * Which launch path is resolving a model. An omitted model on a `session` launch (sessions,
+ * drafts, children, workflow agents, and Project Session subagents) uses the default preset;
+ * on a Cake Chat `subagent` launch it follows the catalog's `subagentDefaultModel` setting.
+ */
+export type CakeModelLaunch = "session" | "subagent";
+
+/** Cake-owned model configuration snapshot read at operation execution time. */
 export interface CakeModelPresetCatalog {
   readonly presets: readonly ModelPreset[];
   readonly defaultPresetId?: string;
+  readonly utilityModel?: UtilityModel;
+  readonly subagentDefaultModel?: SubagentDefaultModel;
 }

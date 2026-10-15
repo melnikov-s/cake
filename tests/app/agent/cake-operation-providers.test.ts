@@ -129,6 +129,60 @@ describe("Backend-owned Cake operation composition", () => {
     expect(result.details).toMatchObject({ result: model });
   });
 
+  it("resolves Cake Chat's omitted-model subagents as subagent launches", async () => {
+    const model = {
+      provider: "anthropic",
+      modelId: "claude-sonnet",
+      thinkingLevel: "medium" as const,
+      fastMode: true,
+    };
+    const resolveModel = vi.fn(() => model);
+    const start = vi.fn(async () => ({ status: "running" }));
+    const unused = async () => ({});
+    const configured = configureCakeSessionRuntime({
+      ...options("/workspace"),
+      globalControl: { tools: [], invoke: async () => ({}) },
+      agentControl: {
+        run: unused,
+        start,
+        parallel: unused,
+        prompt: unused,
+        wait: unused,
+        abort: unused,
+        close: unused,
+      },
+      allowedCakeOperations: ["subagents.start"],
+    });
+    if (!configured.coordinator) throw new Error("Expected coordinator composition");
+    const registry = new CakeOperationRegistry(
+      configured.coordinator.operations({
+        sessionId: "coordinator",
+        resolveModel,
+        setModel: async () => undefined,
+        info: async () => ({}),
+        usage: async () => ({}),
+        contextStatus: async () => ({}),
+        compact: async () => ({}),
+      }),
+    );
+    await registry.invoke({ command: "subagents.start", input: { task: "Investigate" } }, context);
+    expect(resolveModel).toHaveBeenCalledWith(undefined, "subagent");
+    expect(start).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: {
+          prefer: "exact",
+          provider: "anthropic",
+          modelId: "claude-sonnet",
+          thinkingLevel: "medium",
+        },
+        fastMode: true,
+      }),
+      "coordinator",
+      context.signal,
+      expect.anything(),
+    );
+  });
+
   it("exposes validated permanent guidance tools only through coordinator composition", async () => {
     const get = vi.fn(async () => ({ instructions: "Existing guidance." }));
     const update = vi.fn(async (input: { instructions: string }) => ({

@@ -3,6 +3,7 @@ import type { SettingsStore } from "../stores/SettingsStore";
 import { ModelPicker } from "./model-picker";
 import { Select } from "./ui/select";
 import { SettingsPromptField } from "./settings/settings-prompt-field";
+import { SettingsSubagentModelField } from "./settings-subagent-model-field";
 
 export const SettingsCakeChatSection = observer(function SettingsCakeChatSection({
   settings,
@@ -63,6 +64,7 @@ export const SettingsCakeChatSection = observer(function SettingsCakeChatSection
             }
           />
         </div>
+        <SettingsSubagentModelField settings={settings} />
         <SettingsPromptField
           id="setting-cake-chat-instructions"
           label="Cake Chat instructions"

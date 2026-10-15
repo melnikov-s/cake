@@ -4,6 +4,7 @@ import { ThinkingLevel } from "../pi/model-data";
 import { SESSION_LABEL_COLORS } from "../../utils/session-label-palette";
 import { CakePromptOverrides } from "./cake-prompt-data";
 import { NonChatModelPreferences } from "../models/non-chat-model-data";
+import { SubagentDefaultModel } from "../model-presets/cake-model-selection";
 
 export { SESSION_LABEL_COLORS } from "../../utils/session-label-palette";
 
@@ -22,6 +23,8 @@ export const UtilityModel = Schema.Struct({
 export const CakeChatPreferences = Schema.Struct({
   memoryViewBytes: Schema.Int.check(Schema.isBetween({ minimum: 2_048, maximum: 128_000 })),
   summarizationModel: Schema.optionalKey(UtilityModel),
+  /** What Cake Chat subagents launched without a model use; absent means inherit. */
+  subagentDefaultModel: Schema.optionalKey(SubagentDefaultModel),
   instructions: boundedString(16_384),
 });
 export interface CakeChatPreferences extends Schema.Schema.Type<typeof CakeChatPreferences> {}

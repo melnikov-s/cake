@@ -122,6 +122,16 @@ describe("Application domain", () => {
         memoryViewBytes: 8_000,
         instructions: "Original guidance.",
         summarizationModel: { provider: "p", modelId: "summary", thinkingLevel: "low" as const },
+        // Instruction updates preserve, and reloads restore, the Subagent default model.
+        subagentDefaultModel: {
+          source: "model" as const,
+          model: {
+            provider: "p",
+            modelId: "worker",
+            thinkingLevel: "high" as const,
+            fastMode: true,
+          },
+        },
       };
       return Effect.gen(function* () {
         yield* Effect.gen(function* () {

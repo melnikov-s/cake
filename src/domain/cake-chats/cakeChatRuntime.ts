@@ -12,7 +12,7 @@ import { toJsonValue } from "../../utils/to-json-value";
 import { forwardTaskInputControl, safeCoordinatorProjection } from "./taskInputControls";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 import { SavedDraftStorage } from "../../services/storage/SavedDraftStorage";
-import { resolveCakeModelSelection } from "../model-presets/cake-model-selection";
+import { cakeModelCatalog, resolveCakeModelSelection } from "../model-presets/cake-model-selection";
 import {
   getCakeChatInstructions,
   updateCakeChatInstructions,
@@ -137,13 +137,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
   const agentControl = makeSubagentControl({
     runEffect: (effect, signal) => run(effect, { signal }),
   });
-  const modelPresets = () => {
-    const state = application.snapshot();
-    return {
-      presets: state.modelPresets.map((preset) => ({ ...preset })),
-      defaultPresetId: state.defaultModelPresetId,
-    };
-  };
+  const modelPresets = () => cakeModelCatalog(application.snapshot());
   const getRuntimeOptions = () => runtimeOptions;
   const runtimeOptions: CakeSessionRuntimeAcquireOptions = {
     profile: { _tag: "CakeChatSession" },
@@ -212,8 +206,8 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
       slashCommands: ["compact", "model"],
       requestUi: async () => undefined,
       modelPresets,
-      resolveModelSelection: (selection, fallback) =>
-        resolveCakeModelSelection(selection, modelPresets(), fallback),
+      resolveModelSelection: (selection, caller, launch) =>
+        resolveCakeModelSelection(selection, modelPresets(), caller, launch),
       fastMode: {
         get: () => application.snapshot().fastModeSessionIds.includes(target.sessionId),
         set: (enabled) => run(setSessionFastMode(target.sessionId, enabled)).then(() => undefined),

@@ -1,6 +1,7 @@
 import type {
   CakeModelSelection,
   ExplicitCakeModelSelection,
+  CakeModelLaunch,
 } from "../model-presets/cake-model-selection";
 import type { JsonObject, JsonValue } from "../serialization/json-contract";
 import type {
@@ -55,7 +56,10 @@ export interface RuntimeOperationApi {
     keepBranch: boolean,
     signal: AbortSignal,
   ): Promise<JsonValue>;
-  resolveModelSelection(selection: CakeModelSelection | undefined): ExplicitCakeModelSelection;
+  resolveModelSelection(
+    selection: CakeModelSelection | undefined,
+    launch?: CakeModelLaunch,
+  ): ExplicitCakeModelSelection;
   setModel(model: CakeModelSelection): Promise<JsonValue>;
   setResolved(resolved: boolean): Promise<JsonValue>;
 }
@@ -75,7 +79,10 @@ export type ProjectCakeOperations = (bridge: {
 
 export type CoordinatorCakeOperations = (bridge: {
   sessionId: string;
-  resolveModel(selection: CakeModelSelection | undefined): ExplicitCakeModelSelection;
+  resolveModel(
+    selection: CakeModelSelection | undefined,
+    launch?: CakeModelLaunch,
+  ): ExplicitCakeModelSelection;
   info(): Promise<JsonValue>;
   usage(): Promise<JsonValue>;
   contextStatus(): Promise<JsonValue>;
