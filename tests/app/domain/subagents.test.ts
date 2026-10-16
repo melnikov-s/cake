@@ -947,6 +947,80 @@ describe("Cake Chat project investigators", () => {
         }).pipe(Effect.provide(fixture.layer));
       }),
   );
+  it.effect("never expires a worker mid-turn and releases it once idle after its lifetime", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture();
+      yield* Effect.gen(function* () {
+        const coordinator = yield* SubagentCoordinator;
+        const handleOf = (handleId: string) =>
+          SubscriptionRef.get(coordinator.state).pipe(
+            Effect.map((state) =>
+              state.handles.get(Schema.decodeUnknownSync(subagents.SubagentHandleId)(handleId)),
+            ),
+          );
+        const receipt = yield* subagents.start(
+          { task: "Long architecture audit", projectPath: "/another" },
+          cakeChatParent(fixture),
+        );
+        const sessionId = yield* Queue.take(fixture.childStarted);
+
+        // The initial turn outlives the handle lifetime.
+        yield* TestClock.adjust("45 minutes");
+        assert.equal((yield* handleOf(receipt.handleId))?.status, "running");
+        assert.equal(yield* Queue.size(fixture.reports), 0);
+        yield* completeChild(fixture, sessionId);
+        const first = Schema.decodeUnknownSync(subagents.SubagentResult)(
+          yield* Queue.take(fixture.reports),
+        );
+        assert.equal(first.status, "complete");
+        assert.match(JSON.stringify(first.parts), /config.ts:12/);
+
+        // Once idle after its lifetime, the worker is released.
+        yield* SubscriptionRef.changes(coordinator.state).pipe(
+          Stream.filter((state) => state.handles.size === 0),
+          Stream.runHead,
+        );
+        assert.equal(yield* handleOf(receipt.handleId), undefined);
+      }).pipe(Effect.provide(fixture.layer));
+    }),
+  );
+
+  it.effect("keeps a follow-up running past the lifetime before releasing the idle worker", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture();
+      yield* Effect.gen(function* () {
+        const coordinator = yield* SubagentCoordinator;
+        const receipt = yield* subagents.start({ task: "Initial pass" }, cakeChatParent(fixture));
+        const sessionId = yield* Queue.take(fixture.childStarted);
+        yield* completeChild(fixture, sessionId);
+        yield* Queue.take(fixture.reports);
+        yield* TestClock.adjust("20 minutes");
+        yield* subagents.prompt(
+          "parent-cake-chat",
+          receipt.handleId,
+          "Dig deeper",
+          "follow-up",
+          true,
+        );
+        assert.equal(yield* Queue.take(fixture.childStarted), sessionId);
+        yield* TestClock.adjust("3 hours");
+        const during = (yield* SubscriptionRef.get(coordinator.state)).handles.get(
+          Schema.decodeUnknownSync(subagents.SubagentHandleId)(receipt.handleId),
+        );
+        assert.equal(during?.status, "running");
+        yield* completeChild(fixture, sessionId);
+        const followUp = Schema.decodeUnknownSync(subagents.SubagentResult)(
+          yield* Queue.take(fixture.reports),
+        );
+        assert.equal(followUp.status, "complete");
+        yield* SubscriptionRef.changes(coordinator.state).pipe(
+          Stream.filter((state) => state.handles.size === 0),
+          Stream.runHead,
+        );
+      }).pipe(Effect.provide(fixture.layer));
+    }),
+  );
+
   it.effect("validates registered trusted project roots before constructing a worker", () =>
     Effect.gen(function* () {
       const fixture = yield* makeFixture();
@@ -1359,6 +1433,39 @@ describe("Subagents", () => {
         yield* completeChild(fixture, childId);
         const result = yield* Fiber.join(nextTurn);
         assert.equal(JSON.stringify(result).includes(receipt.handleId), true);
+        assert.equal(yield* Ref.get(fixture.constructions), 1);
+        yield* subagents.close("parent", receipt.handleId);
+      });
+      yield* program.pipe(Effect.provide(fixture.layer));
+    }),
+  );
+
+  it.effect("does not cut off long-running initial or follow-up turns", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture();
+      const program = Effect.gen(function* () {
+        const receipt = yield* subagents.start({ task: "Self-healing audit" }, parent(fixture));
+        const childId = yield* Queue.take(fixture.childStarted);
+        const waiter = yield* subagents.wait("parent", receipt.handleId).pipe(Effect.forkChild);
+        yield* TestClock.adjust("6 hours");
+        assert.equal(waiter.pollUnsafe(), undefined);
+        yield* completeChild(fixture, childId);
+        const initial = Schema.decodeUnknownSync(subagents.SubagentResult)(
+          yield* Fiber.join(waiter),
+        );
+        assert.equal(initial.status, "complete");
+
+        const followUp = yield* subagents
+          .prompt("parent", receipt.handleId, "Keep going", "follow-up")
+          .pipe(Effect.forkChild);
+        assert.equal(yield* Queue.take(fixture.childStarted), childId);
+        yield* TestClock.adjust("6 hours");
+        assert.equal(followUp.pollUnsafe(), undefined);
+        yield* completeChild(fixture, childId);
+        const result = Schema.decodeUnknownSync(subagents.SubagentResult)(
+          yield* Fiber.join(followUp),
+        );
+        assert.equal(result.status, "complete");
         assert.equal(yield* Ref.get(fixture.constructions), 1);
         yield* subagents.close("parent", receipt.handleId);
       });

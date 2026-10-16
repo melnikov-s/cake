@@ -147,7 +147,8 @@ projections needed by a surface. References do not transfer ownership.
   isolated instructions and read/bash/message_parent, without repository
   resources or guaranteed web/search access. Explicitly forwarded attachment/message
   references additionally grant a scoped Cake read gateway, never broad application control. Cake Chat handles support follow-ups
-  until closed, 30 minutes after creation, or backend shutdown; they are not
+  until closed, backend shutdown, or the first idle moment 30 minutes after
+  creation; turns have no time limit and an active turn is never expired. They are not
   restored after restart. Completion status is distinct from resource disposal.
   Reports retain Cake-authored structured provenance for Markdown response
   presentation, without changing model-facing input roles.

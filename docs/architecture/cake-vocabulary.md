@@ -176,7 +176,8 @@ registered project root, with normal project resources and investigation-only
 permissions unless started with `allowMutations: true`, which permits scoped,
 reported operational mutations. Project-free general researchers use isolated instructions without
 repository resources and have only read/bash/message_parent. Both Cake Chat modes
-expire after 30 minutes, explicit close or backend shutdown. Their Pi history is
+end on explicit close, backend shutdown, or the first idle moment 30 minutes
+after creation; turns have no time limit. Their Pi history is
 in-memory; their parent retains only compact
 receipts/reports and usage. Ordinary Project Session subagents keep their existing
 private on-disk Pi history and explicit-delegation policy.

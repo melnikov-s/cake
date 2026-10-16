@@ -70,7 +70,8 @@ export * from "../../contracts/subagents/subagent-data";
 
 const MAX_HANDLES_PER_PARENT = 8;
 const MAX_PRIVATE_RUNTIMES_PER_WORKING_DIRECTORY = 32;
-const WAIT_TIMEOUT = "5 minutes";
+/** Idle Cake Chat workers are released after this lifetime; active turns are never cut off. */
+const HANDLE_LIFETIME = "30 minutes";
 
 const SUBAGENT_TOOLS = ["read", "bash", "edit", "write", "message_parent"] as const;
 
@@ -537,12 +538,15 @@ const observeTurn = Effect.fn("Subagents.observeTurn")(function* (
       operation: delivery,
       message: "The subagent is still starting",
     });
-  const ready = yield* Deferred.make<void>();
+  const ready = yield* Deferred.make<void, SubagentError>();
   const settled = yield* Ref.make<ReadonlyMap<string, { outcome: string; message?: string }>>(
     new Map(),
   );
   const target = yield* Ref.make<Option.Option<string>>(Option.none());
-  const targetSettled = yield* Deferred.make<{ outcome: string; message?: string }>();
+  const targetSettled = yield* Deferred.make<
+    { outcome: string; message?: string },
+    SubagentError
+  >();
   const consume = piHandle.updates.pipe(
     Stream.runForEach((update) =>
       Effect.gen(function* () {
@@ -613,8 +617,19 @@ const observeTurn = Effect.fn("Subagents.observeTurn")(function* (
       }),
     ),
   );
-  const observer = yield* consume.pipe(Effect.forkChild);
-  yield* Deferred.await(ready).pipe(Effect.timeout(WAIT_TIMEOUT), asError(delivery));
+  // Turns have no time limit. They end only when Pi settles them, when the worker is
+  // aborted or closed, or when its runtime stops publishing updates (e.g. backend exit).
+  const stopped = new SubagentError({
+    operation: delivery,
+    message: "The subagent runtime stopped before its turn settled",
+  });
+  const observer = yield* consume.pipe(
+    Effect.exit,
+    Effect.andThen(Deferred.fail(ready, stopped)),
+    Effect.andThen(Deferred.fail(targetSettled, stopped)),
+    Effect.forkChild,
+  );
+  yield* Deferred.await(ready);
   const turnId = yield* (
     delivery === "prompt"
       ? piHandle.prompt(text)
@@ -624,9 +639,7 @@ const observeTurn = Effect.fn("Subagents.observeTurn")(function* (
   ).pipe(asError(delivery));
   yield* Ref.set(target, Option.some(turnId));
   const already = (yield* Ref.get(settled)).get(turnId);
-  const settlement = already
-    ? already
-    : yield* Deferred.await(targetSettled).pipe(Effect.timeout(WAIT_TIMEOUT), asError(delivery));
+  const settlement = already ? already : yield* Deferred.await(targetSettled);
   yield* Fiber.interrupt(observer);
   const finalSnapshot = yield* piHandle.snapshot().pipe(asError(delivery));
   const current = yield* requireHandleById(handleId);
@@ -888,9 +901,8 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
     );
     yield* FiberMap.run(coordinator.fibers, handleId, worker);
     if (prepared.parent.options.profile._tag === "CakeChatSession") {
-      const expiry = yield* Effect.sleep("30 minutes").pipe(
-        Effect.andThen(close(prepared.parent.parentSessionId, handleId)),
-        Effect.catchTag("SubagentError", () => Effect.void),
+      const expiry = yield* Effect.sleep(HANDLE_LIFETIME).pipe(
+        Effect.andThen(expireWhenIdle(handleId)),
         Effect.forkIn(coordinator.scope),
       );
       yield* Scope.addFinalizer(
@@ -1041,8 +1053,6 @@ export const wait = Effect.fn("Subagents.wait")(function* (
       )
     : undefined;
   const completed = yield* Deferred.await(handle.completion).pipe(
-    Effect.timeout(WAIT_TIMEOUT),
-    asError("wait"),
     Effect.onExit((exit) =>
       registered
         ? SubscriptionRef.modify(coordinator.state, (state) => {
@@ -1228,11 +1238,7 @@ export const abort = Effect.fn("Subagents.abort")(function* (
   } else yield* handle.piHandle.abort().pipe(asError("abort"));
 });
 
-export const close = Effect.fn("Subagents.close")(function* (
-  parentSessionId: string,
-  rawHandleId: string,
-) {
-  const handle = yield* requireHandle(parentSessionId, rawHandleId);
+const releaseHandle = Effect.fn("Subagents.releaseHandle")(function* (handle: SubagentHandleState) {
   const coordinator = yield* SubagentCoordinator;
   if (handle.privateSessionId) yield* releaseDirectChildren(handle.privateSessionId);
   yield* Deferred.fail(
@@ -1242,7 +1248,51 @@ export const close = Effect.fn("Subagents.close")(function* (
   yield* SubscriptionRef.update(coordinator.state, (state) => removeHandle(state, handle.handleId));
   yield* FiberMap.remove(coordinator.fibers, handle.handleId);
   yield* Scope.close(handle.scope, Exit.void);
+});
+
+export const close = Effect.fn("Subagents.close")(function* (
+  parentSessionId: string,
+  rawHandleId: string,
+) {
+  const handle = yield* requireHandle(parentSessionId, rawHandleId);
+  yield* releaseHandle(handle);
   return jsonValue({ handleId: handle.handleId, closed: true });
+});
+
+/** A worker is busy while a turn is queued/running or its completion is still being delivered. */
+const turnActive = (handle: SubagentHandleState) =>
+  handle.status === "queued" ||
+  handle.status === "running" ||
+  handle.completionDisposition === "notifying";
+
+/**
+ * Releases an expired worker only once it has no active turn. The idle check and removal are
+ * one atomic state transition, so a follow-up cannot be claimed and then torn down mid-turn.
+ */
+const expireWhenIdle = Effect.fn("Subagents.expireWhenIdle")(function* (
+  handleId: SubagentHandleId,
+) {
+  const coordinator = yield* SubagentCoordinator;
+  type Claim = "busy" | "gone" | SubagentHandleState;
+  const claimIdle = SubscriptionRef.modify(
+    coordinator.state,
+    (state): readonly [Claim, SubagentCoordinatorState] => {
+      const current = state.handles.get(handleId);
+      if (!current) return ["gone", state];
+      if (turnActive(current)) return ["busy", state];
+      return [current, removeHandle(state, handleId)];
+    },
+  );
+  const claimed = yield* SubscriptionRef.changes(coordinator.state).pipe(
+    Stream.filter((state) => {
+      const current = state.handles.get(handleId);
+      return current === undefined || !turnActive(current);
+    }),
+    Stream.mapEffect(() => claimIdle),
+    Stream.filter((claim) => claim !== "busy"),
+    Stream.runHead,
+  );
+  if (Option.isSome(claimed) && claimed.value !== "gone") yield* releaseHandle(claimed.value);
 });
 
 export const abortParentChildren = Effect.fn("Subagents.abortParentChildren")(function* (
