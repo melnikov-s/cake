@@ -152,6 +152,7 @@ export const Chat = observer(function Chat({
   embedded = false,
   compact = false,
   composerFocusEnabled = true,
+  parkComposerFocusWhileDictating = true,
   showContextUsage = true,
   transcriptTransition,
 }: {
@@ -169,6 +170,8 @@ export const Chat = observer(function Chat({
   embedded?: boolean;
   compact?: boolean;
   composerFocusEnabled?: boolean;
+  /** Drop-down entry is an explicit writing action, even with dictation enabled. */
+  parkComposerFocusWhileDictating?: boolean;
   showContextUsage?: boolean;
   transcriptTransition?: { requestedKey?: string; ready: boolean };
 }) {
@@ -340,6 +343,7 @@ export const Chat = observer(function Chat({
               inputRef={composerInputRef}
               focusRef={composerFocusRef}
               focusEnabled={composerFocusEnabled}
+              parkFocusWhileDictating={parkComposerFocusWhileDictating}
               onReword={(selection) => void reword(selection)}
               onPromptedReword={setPromptedSelection}
               onSubmit={(value) => submitMessage(value)}

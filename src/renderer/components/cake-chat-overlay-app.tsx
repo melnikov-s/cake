@@ -56,9 +56,11 @@ export const CakeChatOverlayApp = observer(function CakeChatOverlayApp() {
       hide();
     };
     window.addEventListener(cakeChatOverlayShownEventName, shown);
+    window.addEventListener("focus", focusComposer);
     window.addEventListener("keydown", escape);
     return () => {
       window.removeEventListener(cakeChatOverlayShownEventName, shown);
+      window.removeEventListener("focus", focusComposer);
       window.removeEventListener("keydown", escape);
     };
   }, [root, hide]);

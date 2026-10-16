@@ -20,6 +20,7 @@ export const ChatComposerInput = observer(function ChatComposerInput({
   inputRef,
   focusRef,
   focusEnabled,
+  parkFocusWhileDictating,
   onReword,
   onPromptedReword,
   onSubmit,
@@ -28,6 +29,7 @@ export const ChatComposerInput = observer(function ChatComposerInput({
   inputRef: RefObject<HTMLTextAreaElement | null>;
   focusRef: RefObject<ComposerFocusHandle | null>;
   focusEnabled: boolean;
+  parkFocusWhileDictating: boolean;
   onReword(selection: ComposerSelection): void;
   onPromptedReword(selection: ComposerSelection): void;
   onSubmit(value: string): Promise<void>;
@@ -43,6 +45,7 @@ export const ChatComposerInput = observer(function ChatComposerInput({
       provisionalText={voiceOwnsInput ? conversation.workflow.provisionalInput : undefined}
       autoFocus={focusEnabled}
       focusEnabled={focusEnabled}
+      parkFocusWhileDictating={parkFocusWhileDictating}
       focusRef={focusRef}
       data-cake-hint-key="i"
       aria-label={store.inputLabel}

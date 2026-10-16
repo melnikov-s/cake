@@ -36,6 +36,7 @@ interface SlashCommandComboboxProps extends Omit<
 > {
   commands: ReadonlyArray<SlashCommand>;
   focusEnabled?: boolean;
+  parkFocusWhileDictating?: boolean;
   focusRequestRevision?: number;
   focusRef?: Ref<ComposerFocusHandle>;
   value: string;
@@ -135,6 +136,7 @@ export function findFileMention(text: string, cursor: number): FileMention | und
 export function SlashCommandCombobox({
   commands,
   focusEnabled = true,
+  parkFocusWhileDictating = true,
   focusRequestRevision,
   focusRef,
   autoFocus = false,
@@ -152,12 +154,14 @@ export function SlashCommandCombobox({
   const focusEnabledRef = useRef(focusEnabled);
   focusEnabledRef.current = focusEnabled;
   const initialFocus = useRef(autoFocus);
+  const parkFocusRef = useRef(parkFocusWhileDictating);
+  parkFocusRef.current = parkFocusWhileDictating;
   const requestFocus = useCallback(() => {
     const input = inputRef.current;
     if (!focusEnabledRef.current || !input?.isConnected) return false;
     // Read current intent at execution time, including after async submit/animation frames.
     // Phase is deliberately irrelevant: enabled + unmuted can start listening on focus.
-    if (dictation?.enabled && !dictation.muted) {
+    if (parkFocusRef.current && dictation?.enabled && !dictation.muted) {
       focusAnchorRef.current?.focus({ preventScroll: true });
       return false;
     }
@@ -169,7 +173,9 @@ export function SlashCommandCombobox({
     () => ({
       requestFocus,
       shouldParkFocus: () =>
-        focusEnabledRef.current && Boolean(dictation?.enabled && !dictation.muted),
+        focusEnabledRef.current &&
+        parkFocusRef.current &&
+        Boolean(dictation?.enabled && !dictation.muted),
       parkingAnchor: () => focusAnchorRef.current,
     }),
     [requestFocus, dictation],

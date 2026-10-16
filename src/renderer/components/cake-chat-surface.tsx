@@ -24,6 +24,7 @@ export const CakeChatSurface = observer(function CakeChatSurface({
   const sidebarCollapsed = !root.sidebarStore.visible;
   const cakeChatProps = (paneSession: CakeChatSessionStore) => ({
     showContextUsage: false,
+    parkComposerFocusWhileDictating: !overlay,
     composerHeader: <CakeChatLaunchedSessions />,
     transcriptTransition: {
       ready:

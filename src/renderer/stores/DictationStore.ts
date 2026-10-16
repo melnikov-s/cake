@@ -169,12 +169,15 @@ export class DictationStore extends Store<{
   }
   focus(target: DictationTarget) {
     if (this.target === target) return;
+    // A field replacement cancels capture preparation, not mode enablement. Remember the
+    // capture before ending it so its successor can prepare instead of waiting forever.
+    const replacingCapture = this.utterance !== undefined;
     this.endUtterance(true);
     this.target = target;
     if (!this.enabled || this.muted || this.busy) return;
     if (this.state?.status === "error")
       this.reportError(new Error(this.state.message ?? "Dictation unavailable"));
-    else if (this.phase !== "preparing" || this.utterance) void this.start(target);
+    else if (this.phase !== "preparing" || replacingCapture) void this.start(target);
   }
   blur(id: string) {
     if (this.target?.id !== id) return;

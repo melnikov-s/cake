@@ -20,18 +20,14 @@ export function overlayShortcutActive(accelerator: string, focus: CakeWindowFocu
 
 /** A wide strip across the top of the display's work area, about 45% of its height. */
 export function overlayBounds(workArea: Rectangle): Rectangle {
-  const width = Math.min(
-    workArea.width,
-    Math.max(Math.min(760, workArea.width), Math.round(workArea.width * 0.8)),
-  );
   const height = Math.min(
     workArea.height,
     Math.max(Math.min(360, workArea.height), Math.round(workArea.height * 0.45)),
   );
   return {
-    x: workArea.x + Math.round((workArea.width - width) / 2),
+    x: workArea.x,
     y: workArea.y,
-    width,
+    width: workArea.width,
     height,
   };
 }

@@ -14,6 +14,7 @@ const native = vi.hoisted(() => ({
   windowOptions: [] as BrowserWindowConstructorOptions[],
   registered: new Map<string, () => void>(),
   blocked: new Set<string>(),
+  workArea: { x: 1440, y: 25, width: 2000, height: 1100 },
 }));
 vi.mock("electron", () => ({
   BrowserWindow: class extends EventEmitter {
@@ -43,7 +44,7 @@ vi.mock("electron", () => ({
   screen: {
     getCursorScreenPoint: () => ({ x: 2000, y: 10 }),
     getDisplayNearestPoint: () => ({
-      workArea: { x: 1440, y: 25, width: 2000, height: 1100 },
+      workArea: native.workArea,
     }),
   },
   globalShortcut: {
@@ -59,6 +60,7 @@ vi.mock("electron", () => ({
 }));
 
 beforeEach(() => {
+  native.workArea = { x: 1440, y: 25, width: 2000, height: 1100 };
   native.windows.splice(0);
   native.windowOptions.splice(0);
   native.registered.clear();
@@ -183,7 +185,7 @@ describe("Drop-down Cake Chat window", () => {
       query: { cakeChatOverlay: "1" },
     });
     expect(prepareWindow).toHaveBeenCalledWith(window);
-    expect(window.setBounds).toHaveBeenCalledWith({ x: 1640, y: 25, width: 1600, height: 495 });
+    expect(window.setBounds).toHaveBeenCalledWith({ x: 1440, y: 25, width: 2000, height: 495 });
     expect(window.show).toHaveBeenCalledTimes(1);
     expect(window.focus).toHaveBeenCalledTimes(1);
     expect(onShown).toHaveBeenCalledWith(window, {});
@@ -193,8 +195,10 @@ describe("Drop-down Cake Chat window", () => {
     expect(window.hide).toHaveBeenCalledTimes(1);
     expect(overlay.isVisible).toBe(false);
 
+    native.workArea = { x: -1280, y: 0, width: 1280, height: 800 };
     press();
     await vi.waitFor(() => expect(window.show).toHaveBeenCalledTimes(2));
+    expect(window.setBounds).toHaveBeenLastCalledWith({ x: -1280, y: 0, width: 1280, height: 360 });
     expect(native.windows).toHaveLength(1);
     overlay.stop();
     expect(native.registered.size).toBe(0);
@@ -249,11 +253,11 @@ describe("Drop-down Cake Chat window", () => {
     overlay.stop();
   });
 
-  it("uses a wide strip about 45% of the work-area height, within small displays", () => {
+  it("spans the full work-area width and preserves height, including small displays", () => {
     expect(overlayBounds({ x: 0, y: 25, width: 1440, height: 875 })).toEqual({
-      x: 144,
+      x: 0,
       y: 25,
-      width: 1152,
+      width: 1440,
       height: 394,
     });
     expect(overlayBounds({ x: 0, y: 0, width: 700, height: 300 })).toEqual({

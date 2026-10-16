@@ -1664,6 +1664,59 @@ const cakeChatScenario: VisualCaptureScenario = {
   region: (page) => page.locator("body"),
 };
 
+const cakeChatOverlayScenario: VisualCaptureScenario = {
+  name: "cake-chat-overlay",
+  description: "Full-width native drop-down with centered conversation and focused composer",
+  states: ["default", "reopen"],
+  seed: cakeChatScenario.seed,
+  async prepare(page, state, application) {
+    if (!application) throw new Error("Cake Chat overlay requires Electron");
+    await cakeChatScenario.prepare(page, "default");
+    // Synthetic work area makes display sizes deterministic without changing the desktop.
+    await application.evaluate(({ BrowserWindow, screen }) => {
+      const [width, height] = BrowserWindow.getAllWindows()[0]!.getContentSize();
+      const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+      screen.getDisplayNearestPoint = () => ({
+        ...display,
+        workArea: { x: 0, y: 25, width: width!, height: height! },
+      });
+    });
+    const toggle = () =>
+      application.evaluate(({ Menu }) => {
+        const item = Menu.getApplicationMenu()!
+          .items.flatMap((entry) => entry.submenu?.items ?? [])
+          .find((entry) => entry.label === "Drop-down Cake Chat")!;
+        Reflect.apply(item.click, item, [item, undefined, { triggeredByAccelerator: false }]);
+      });
+    const opened = application.waitForEvent("window");
+    await toggle();
+    const overlay = await opened;
+    const input = overlay.getByRole("combobox", { name: "Message Cake Chat" });
+    await expect(input).toBeFocused({ timeout: 20_000 });
+    await expect(
+      overlay.getByText("Will I still see my original conversation history?", { exact: true }),
+    ).toBeVisible();
+    if (state === "reopen") {
+      await input.pressSequentially(
+        "Keep the conversation centered while the window spans the screen.",
+      );
+      await toggle();
+      await toggle();
+      await expect(input).toBeFocused();
+    }
+    await overlay.waitForFunction(() => document.fonts.status === "loaded");
+    await overlay.mouse.move(1, 1);
+  },
+  region(page) {
+    const overlay = page
+      .context()
+      .pages()
+      .find((candidate) => new URL(candidate.url()).searchParams.has("cakeChatOverlay"));
+    if (!overlay) throw new Error("Cake Chat overlay is missing");
+    return overlay.locator('[data-slot="cake-chat-overlay"]');
+  },
+};
+
 const subagentReportsScenario: VisualCaptureScenario = {
   name: "subagent-reports",
   description:
@@ -2975,6 +3028,7 @@ export const visualCaptureScenarios = [
   newSessionScenario,
   sessionSearchScenario,
   cakeChatScenario,
+  cakeChatOverlayScenario,
   subagentReportsScenario,
   cakeChatArtifactScenario,
   cakeChatInspectorScenario,

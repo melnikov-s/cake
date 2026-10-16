@@ -50,16 +50,22 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
           <SidebarIcon />
         </IconButton>
       )}
-      <SessionArtifactMenu
-        session={paneSession}
-        onOpen={() => root.navigationStore.focusCakeChatPane(pane.paneId)}
-      />
+      {!overlay && (
+        <SessionArtifactMenu
+          session={paneSession}
+          onOpen={() => root.navigationStore.focusCakeChatPane(pane.paneId)}
+        />
+      )}
       <SideChatsMenu
         store={paneSession}
         onOpen={() => root.navigationStore.focusCakeChatPane(pane.paneId)}
       />
-      <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />
-      <RequestInspector store={paneSession.requestInspectorStore} />
+      {!overlay && (
+        <>
+          <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />
+          <RequestInspector store={paneSession.requestInspectorStore} />
+        </>
+      )}
       {overlay ? (
         <>
           <IconButton

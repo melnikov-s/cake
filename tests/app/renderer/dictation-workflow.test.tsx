@@ -134,6 +134,7 @@ function renderDictation(
     modelReady?: Promise<void>;
     submissionReady?: Promise<void>;
     composerFocusEnabled?: boolean;
+    parkComposerFocusWhileDictating?: boolean;
     permission?: Promise<void>;
     microphoneReady?: Promise<void>;
     flushReady?: Promise<void>;
@@ -208,20 +209,27 @@ function renderDictation(
     },
   });
   let revision = 1;
-  const view = render(
+  const surface = (composerKey: number) => (
     <StoreProvider store={fixture.root.dictationStore}>
       <SettingsDictationSection
         store={fixture.root.settingsStore.dictation}
         prompts={fixture.root.settingsStore.cakePrompts}
       />
       <Chat
+        key={composerKey}
+        parkComposerFocusWhileDictating={options.parkComposerFocusWhileDictating}
         store={session.conversationSessionStore.chatStore}
         embedded
         composerFocusEnabled={options.composerFocusEnabled ?? false}
       />
-    </StoreProvider>,
+    </StoreProvider>
   );
+  let composerKey = 0;
+  const view = render(surface(composerKey));
   return {
+    remountComposer() {
+      view.rerender(surface(++composerKey));
+    },
     user: userEvent.setup(),
     root: fixture.root,
     client: fixture.client,
@@ -831,6 +839,27 @@ describe("Dictation writing-field workflow", () => {
     await fixture.recognize(0, "Latest field receives speech");
     expect(message().value).toBe("Latest field receives speech");
     expect(trial().value).toBe("");
+  });
+
+  it("continues dictation preparation when loading replaces an autofocused drop-down composer", async () => {
+    const model = deferred<void>();
+    using fixture = renderDictation({
+      modelReady: model.promise,
+      composerFocusEnabled: true,
+      parkComposerFocusWhileDictating: false,
+      snapshot: {
+        state: {},
+        children: { dictationStore: { state: { enabled: true }, children: {} } },
+      },
+    });
+    await waitFor(() => expect(fixture.prepare).toHaveBeenCalled());
+    fixture.remountComposer();
+    await act(async () => model.resolve());
+    await waitFor(listening);
+    await fixture.audio.push(new Float32Array(12_800));
+    await fixture.recognize(0, "Speech reaches the replacement composer");
+    expect(message().value).toBe("Speech reaches the replacement composer");
+    expect(mode().getAttribute("aria-checked")).toBe("true");
   });
 
   it("inserts progressive speech with bounded PCM and discards unfinished speech on field changes", async () => {
