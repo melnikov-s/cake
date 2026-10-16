@@ -11,8 +11,9 @@ it("describes Cake Chat's direct tools and delegates project work by policy", ()
   expect(prompt).toContain("You have read, bash and mcp tools plus the cake gateway");
   expect(prompt).toContain("There is no edit or write tool.");
   // Delegation is framed around context hygiene, not permissions.
-  expect(prompt).toContain("Delegation keeps the permanent conversation's context clean");
-  expect(prompt).toContain("an independent Project Session in its own Cake-managed worktree");
+  expect(prompt).toContain(
+    "Delegation is an implementation detail that keeps the permanent conversation's context clean",
+  );
   expect(prompt).toContain("Never mutate a project root checkout from bash");
   expect(prompt).not.toContain("you MUST delegate to a project investigator");
 });
@@ -23,26 +24,32 @@ it("names each delegation operation's assignment field", () => {
   );
 });
 
-it("routes requests by the four-tier delegation rule without a source-reading loophole", () => {
-  expect(prompt).toContain("Prefer to delegate. Route every request with this four-tier rule:");
+it("routes by whether the request is known to be about a project", () => {
   expect(prompt).toContain(
-    "1. **Understanding how something works in a project** (code, architecture, configuration, behavior, including how Cake itself works): start a project investigator subagent with subagents.start and the exact registered projectPath. Never grep, sed, cat or read project source yourself",
-  );
-  expect(prompt).toContain(
-    "2. **Doing work in a project** (code changes, commits, merges, rebases, branch or dependency changes): an independent Project Session in its own Cake-managed worktree",
+    "Route every request by one question: do you know it is about a registered project? Not how many tool calls it would take.",
   );
   expect(prompt).toContain(
-    "3. **Other investigation or research not about a project's code** (several searches, Slack/Vault digging, web research): a general subagent",
+    "- Research or a question: start a project investigator with subagents.start and that project's exact registered projectPath.",
   );
   expect(prompt).toContain(
-    "4. **Quick one-off tool calls**: do these directly—copying text with pbcopy, opening a URL with open, gh pr view, git log to check whether a commit landed, reading a file the user explicitly points at, or a single Slack/Vault/Tool Gateway lookup through mcp.",
+    "- A clear task to do: start a Project Session with sessions.create, in its own Cake-managed worktree (worktreeName) when it may modify code.",
   );
-  expect(prompt).toContain("When unsure which tier applies, delegate.");
-  expect(prompt).not.toContain("quick read-only checks may be done directly");
-  expect(prompt).not.toContain(
-    "a quick read-only check (one file, git log, gh pr view) may be done directly",
+  expect(prompt).toContain(
+    "As soon as a lookup shows which project it is about, stop and delegate to that project.",
   );
-  expect(prompt).not.toContain("Read-only inspection is fine.");
+  expect(prompt).toContain(
+    "Never look at a project yourself: no bash, read, grep, git or gh against a project directory or its PRs, not even a single quick check.",
+  );
+  expect(prompt).toContain(
+    "Harmless conveniences stay allowed: copying to the clipboard, opening a URL, or reading a file the user explicitly hands you.",
+  );
+  expect(prompt).toContain(
+    "Never tell the user you can't answer or can't look; say in one line what is happening",
+  );
+  // The retired tier-4 examples invited Cake Chat to run git/gh in project checkouts.
+  expect(prompt).not.toContain("gh pr view");
+  expect(prompt).not.toContain("git log to check whether a commit landed");
+  expect(prompt).not.toContain("four-tier rule");
 });
 
 it("lands session work through the native worktree merge, never by hand", () => {
