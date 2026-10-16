@@ -791,6 +791,20 @@ function parseUserMessageEnvelope(content: string): UserMessageEnvelope {
   return { text: content };
 }
 
+/** Display fields for a not-yet-consumed input; the raw queued text stays model-facing. */
+export function queuedUserMessageDisplay(content: string) {
+  const envelope = parseUserMessageEnvelope(content);
+  return {
+    text: envelope.text,
+    renderAs:
+      envelope.crossSession && shouldRenderMarkdown(envelope.text)
+        ? ("markdown" as const)
+        : undefined,
+    crossSession: envelope.crossSession,
+    scheduled: envelope.scheduled,
+  };
+}
+
 export type QueuedMessageList = "steering" | "followUp" | "pending";
 
 const queuedMessageLists: ReadonlyArray<{
@@ -832,19 +846,14 @@ export function projectQueuedMessages(
     const messages = queues[list];
     return queuedMessageIds(idPrefix, deliveryState, messages).flatMap((id, index): UiPart[] => {
       if (id === undefined) return [];
-      const envelope = parseUserMessageEnvelope(messages[index]!);
       return [
         {
           id,
           kind: "text",
           role: "user",
-          text: envelope.text,
           status: "complete",
           deliveryState,
-          renderAs:
-            envelope.crossSession && shouldRenderMarkdown(envelope.text) ? "markdown" : undefined,
-          crossSession: envelope.crossSession,
-          scheduled: envelope.scheduled,
+          ...queuedUserMessageDisplay(messages[index]!),
         },
       ];
     });

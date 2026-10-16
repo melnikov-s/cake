@@ -41,6 +41,8 @@ import { SessionFamilyStorageError } from "../../contracts/storage/session-famil
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
 import {
   encodeCrossSessionMessage,
+  formatCrossSessionNoticeText,
+  formatCrossSessionReportText,
   parseCrossSessionMessage,
   type CrossSessionContextSnapshot,
 } from "../../contracts/conversations/cross-session-message";
@@ -493,14 +495,10 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
       newSession: false,
     }),
   );
-  const outcome =
-    turn.outcome === "aborted"
-      ? turn.stop
-        ? `was ${describeTurnStop(turn.stop, "agent")} (not completed)`
-        : "was canceled or interrupted (not completed)"
-      : turn.outcome === "failed"
-        ? "stopped with an error"
-        : "stopped";
+  const reason =
+    turn.outcome === "aborted" ? "canceled" : turn.outcome === "failed" ? "failed" : "stopped";
+  const stoppedBy =
+    turn.outcome === "aborted" && turn.stop ? describeTurnStop(turn.stop, "agent") : undefined;
   const report =
     turn.outcome === "complete" || (turn.outcome === "failed" && turn.report?.outcome === "failed")
       ? turn.report
@@ -517,10 +515,18 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
   const missingResponse = turn.outcome === "complete";
   const text = encodeCrossSessionMessage(
     report
-      ? `Session ${turn.sessionId} — ${report.outcome}\n\n${report.text}`
-      : missingResponse
-        ? `Session ${turn.sessionId} stopped without replying to request ${turn.requestMessageId}.`
-        : `Session ${turn.sessionId} ${outcome} while processing message ${turn.requestMessageId}.`,
+      ? formatCrossSessionReportText(turn.sessionId, report.outcome, report.text)
+      : formatCrossSessionNoticeText(
+          turn.sessionId,
+          missingResponse
+            ? { kind: "no-reply", requestMessageId: turn.requestMessageId }
+            : {
+                kind: "interrupted",
+                reason,
+                requestMessageId: turn.requestMessageId,
+                ...(stoppedBy ? { stoppedBy } : null),
+              },
+        ),
     {
       version: 1,
       messageId: turn.turnId,
@@ -874,14 +880,20 @@ const deliverCoordinatorNotice = Effect.fn("SessionFamilies.deliverCoordinatorNo
   const sender = yield* sessions.acquireSession(CAKE_CHAT_SESSION_ID);
   const text = encodeCrossSessionMessage(
     report
-      ? `Session ${turn.sessionId} — ${report.outcome}\n\n${report.text}`
-      : turn.outcome === "aborted"
-        ? turn.stop
-          ? `Session ${turn.sessionId} was ${describeTurnStop(turn.stop, "agent")}; no result handoff occurred.`
-          : `Session ${turn.sessionId} was canceled or interrupted; no successful result handoff occurred.`
-        : turn.outcome === "failed"
-          ? `Session ${turn.sessionId} failed; no successful result handoff occurred.`
-          : `Session ${turn.sessionId} stopped without a substantive result. This is not a successful completion.`,
+      ? formatCrossSessionReportText(turn.sessionId, report.outcome, report.text)
+      : formatCrossSessionNoticeText(
+          turn.sessionId,
+          turn.outcome === "aborted" && turn.stop
+            ? { kind: "stopped", stoppedBy: describeTurnStop(turn.stop, "agent") }
+            : {
+                kind:
+                  turn.outcome === "aborted"
+                    ? "canceled"
+                    : turn.outcome === "failed"
+                      ? "failed"
+                      : "no-result",
+              },
+        ),
     {
       version: 1,
       messageId: turn.turnId,

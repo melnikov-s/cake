@@ -91,10 +91,14 @@ a metadata-only file/input link with the same copy affordance; previews fetch th
 original through the session-authorized attachment boundary, never a backend path.
 
 [`SessionMessage`](../../src/renderer/components/ui/session-message.tsx) presents
-incoming session communication as an expanded card with an explicit attribution
-header and a source-session link. Use recorded provenance; do not infer the sender
-from message text. Missing source identity/title is disclosed, not invented.
-System/reminder context remains `ContextPill`.
+incoming session communication as an expanded card with a compact attribution
+header (direction, source-session link, status/metadata badges) and an on-demand
+"Raw envelope" disclosure of the exact agent-facing text. Use recorded provenance;
+do not infer the sender from message text. Missing source identity/title is
+disclosed, not invented. Badges and bodies come from
+[`crossSessionPresentation`](../../src/renderer/lib/cross-session-presentation.ts),
+which reads Cake's own report/notice wording through the parser colocated with the
+envelope format in `cross-session-message.ts`. System/reminder context remains `ContextPill`.
 
 | Component                                                                                                                                                                                                                                 | Use for                                                                                   |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |

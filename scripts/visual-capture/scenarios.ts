@@ -7,7 +7,11 @@ import { defaultApplicationState } from "../../src/contracts/application/applica
 import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-data.ts";
 import { openRequestInspectorFixture } from "./request-inspector-fixture.ts";
 import { addResponseModeReminder } from "../../src/contracts/conversations/response-mode-reminders.ts";
-import { encodeCrossSessionMessage } from "../../src/contracts/conversations/cross-session-message.ts";
+import {
+  encodeCrossSessionMessage,
+  formatCrossSessionNoticeText,
+  formatCrossSessionReportText,
+} from "../../src/contracts/conversations/cross-session-message.ts";
 import {
   addSessionDigestReminder,
   formatSessionDigestReminder,
@@ -2041,6 +2045,131 @@ const sessionMessagesScenario: VisualCaptureScenario = {
   region: (page) => page.locator(".transcript"),
 };
 
+const sessionMessageVariantsScenario: VisualCaptureScenario = {
+  name: "session-message-variants",
+  description:
+    "Incoming reply, lifecycle notice, and Cake Chat request headers with badges; raw envelope on demand",
+  states: ["default", "project", "raw"],
+  async seed(paths, theme) {
+    await sessionMessagesScenario.seed(paths, theme);
+    const timestamp = new Date(0).toISOString();
+    const sourceId = "visual-report-source";
+    const threadId = "8358c2b7-bd3c-42ee-9fec-fcb726b66c18";
+    const source = {
+      sessionId: sourceId,
+      title: "Add and globally install manual post-mortem skill",
+      kind: "project-session" as const,
+      projectName: "Cake",
+    };
+    const blocked = encodeCrossSessionMessage(
+      formatCrossSessionReportText(
+        sourceId,
+        "blocked",
+        "The skill installer needs write access to `~/.pi/agent/skills`.\n\nShould I install it **per project** instead?",
+      ),
+      {
+        version: 1,
+        messageId: "0b6d3c8e-5f0a-4d7e-9a61-2c4b8e1f7a93",
+        threadId,
+        sequence: 1,
+        expectsResponse: true,
+        replyToMessageId: threadId,
+        sender: source,
+      },
+    );
+    const stopped = encodeCrossSessionMessage(
+      formatCrossSessionNoticeText(sourceId, { kind: "canceled" }),
+      {
+        version: 1,
+        messageId: "5e2f8a1c-7b3d-4c9e-8f60-1a2b3c4d5e6f",
+        threadId,
+        sequence: 1,
+        expectsResponse: false,
+        generatedNotice: true,
+        sender: source,
+      },
+    );
+    const request = encodeCrossSessionMessage(
+      "Please add a **post-mortem** section to the release checklist and tell me when it lands.",
+      {
+        version: 1,
+        messageId: "9c1e4b7a-2d5f-4e8b-a3c6-7f0d1e2b3c4a",
+        threadId: "9c1e4b7a-2d5f-4e8b-a3c6-7f0d1e2b3c4a",
+        sequence: 1,
+        expectsResponse: true,
+        report: "digest",
+        sender: { sessionId: CAKE_CHAT_SESSION_ID, title: "Cake Chat", kind: "cake-chat" },
+      },
+    );
+    const messages = [
+      { role: "user" as const, timestamp: 12, content: blocked },
+      { role: "user" as const, timestamp: 13, content: stopped },
+    ];
+    // Project Sessions also receive Cake Chat requests; Cake Chat never messages itself.
+    const projectMessages = [
+      ...messages,
+      { role: "user" as const, timestamp: 14, content: request },
+    ];
+    const file = join(
+      workspaceSessionDirectory(paths.project, join(paths.cakeHome, "pi", "sessions")),
+      "1970-01-01T00-00-00-000Z_visual-assistant-markdown-code.jsonl",
+    );
+    await writeFile(
+      file,
+      `${await readFile(file, "utf8")}${projectMessages
+        .map((message, index) =>
+          JSON.stringify({
+            type: "message",
+            id: `variant-${index}`,
+            parentId: index === 0 ? "incoming-1" : `variant-${index - 1}`,
+            timestamp,
+            message,
+          }),
+        )
+        .join("\n")}\n`,
+    );
+    const storage = await openNodeSqliteStorage(
+      join(paths.cakeHome, "pi", "global-chat", "coordinator.sqlite"),
+    );
+    const harness = await Harness.open(
+      storage,
+      { models: createModels(), registry: createRegistry() },
+      BACKGROUND_CONTEXT,
+    );
+    try {
+      const root = await harness.root(BACKGROUND_CONTEXT);
+      await root.commit(async (tx) => {
+        for (const message of messages)
+          await tx.appendEntry(UserEntry, root.id, { model: [message] });
+      }, BACKGROUND_CONTEXT);
+    } finally {
+      await harness.close(BACKGROUND_CONTEXT);
+      await storage.close(BACKGROUND_CONTEXT);
+    }
+  },
+  async prepare(page, state) {
+    await page
+      .locator('[data-slot="session-message"]')
+      .first()
+      .waitFor({ state: "visible", timeout: 20_000 });
+    if (state === "default") {
+      await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+      await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText("Cake Chat");
+    }
+    await expect(
+      page.getByRole("region", { name: "Notice about another session" }).last(),
+    ).toBeVisible();
+    if (state === "raw") {
+      const request = page.getByRole("region", { name: "Message from another session" }).last();
+      await request.getByRole("button", { name: "Raw envelope" }).click();
+      await request.locator("pre").scrollIntoViewIfNeeded();
+    }
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator(".transcript"),
+};
+
 const cakeChatSessionUpdatesScenario: VisualCaptureScenario = {
   name: "cake-chat-session-updates",
   description:
@@ -3014,6 +3143,7 @@ export const visualCaptureScenarios = [
   assistantMarkdownCode,
   contextPillsScenario,
   sessionMessagesScenario,
+  sessionMessageVariantsScenario,
   cakeChatSessionUpdatesScenario,
   conversationEntryScenario,
   conversationCountdownScenario,

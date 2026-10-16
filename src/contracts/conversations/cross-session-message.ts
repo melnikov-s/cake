@@ -95,6 +95,140 @@ export function projectCrossSessionMessageForAgent(
   });
 }
 
+/** Result labels a session may attach to the report it hands back to its requester. */
+export type CrossSessionReportOutcome = "result" | "completed" | "blocked" | "failed";
+const reportOutcomes: ReadonlySet<string> = new Set<CrossSessionReportOutcome>([
+  "result",
+  "completed",
+  "blocked",
+  "failed",
+]);
+const isReportOutcome = (value: string): value is CrossSessionReportOutcome =>
+  reportOutcomes.has(value);
+
+/** Lifecycle facts Cake reports on a session's behalf when it handed back no result. */
+export type CrossSessionNotice =
+  | { readonly kind: "canceled" }
+  | { readonly kind: "failed" }
+  | { readonly kind: "no-result" }
+  | { readonly kind: "no-reply"; readonly requestMessageId: string }
+  /** A deliberate, attributed stop, e.g. "stopped by the user (wrong project)". */
+  | { readonly kind: "stopped"; readonly stoppedBy: string }
+  | {
+      readonly kind: "interrupted";
+      readonly reason: "canceled" | "failed" | "stopped";
+      readonly requestMessageId: string;
+      /** Attribution of a deliberate stop; replaces the generic canceled wording. */
+      readonly stoppedBy?: string;
+    };
+
+const interruptedReasonText = {
+  canceled: "was canceled or interrupted (not completed)",
+  failed: "stopped with an error",
+  stopped: "stopped",
+} as const;
+
+/** Agent-facing body of a session's result handoff. The leading line is parsed back for display. */
+export function formatCrossSessionReportText(
+  sessionId: string,
+  outcome: CrossSessionReportOutcome,
+  text: string,
+) {
+  return `Session ${sessionId} — ${outcome}\n\n${text}`;
+}
+
+/** Agent-facing body of a generated lifecycle notice (`generatedNotice: true`). */
+export function formatCrossSessionNoticeText(sessionId: string, notice: CrossSessionNotice) {
+  const session = `Session ${sessionId}`;
+  switch (notice.kind) {
+    case "canceled":
+      return `${session} was canceled or interrupted; no successful result handoff occurred.`;
+    case "failed":
+      return `${session} failed; no successful result handoff occurred.`;
+    case "no-result":
+      return `${session} stopped without a substantive result. This is not a successful completion.`;
+    case "no-reply":
+      return `${session} stopped without replying to request ${notice.requestMessageId}.`;
+    case "stopped":
+      return `${session} was ${notice.stoppedBy}; no result handoff occurred.`;
+    case "interrupted":
+      return `${session} ${notice.stoppedBy ? `was ${notice.stoppedBy} (not completed)` : interruptedReasonText[notice.reason]} while processing message ${notice.requestMessageId}.`;
+  }
+}
+
+function parseNoticeText(sessionId: string, text: string): CrossSessionNotice | undefined {
+  const prefix = `Session ${sessionId} `;
+  if (!text.startsWith(prefix)) return undefined;
+  const fixed = (["canceled", "failed", "no-result"] as const).find(
+    (kind) => formatCrossSessionNoticeText(sessionId, { kind }) === text,
+  );
+  if (fixed) return { kind: fixed };
+  const rest = text.slice(prefix.length);
+  const noReply = /^stopped without replying to request (\S+)\.$/.exec(rest);
+  if (noReply?.[1]) return { kind: "no-reply", requestMessageId: noReply[1] };
+  const stopped = /^was (stopped by .+); no result handoff occurred\.$/s.exec(rest);
+  if (stopped?.[1]) return { kind: "stopped", stoppedBy: stopped[1] };
+  const stoppedWhile =
+    /^was (stopped by .+) \(not completed\) while processing message (\S+)\.$/s.exec(rest);
+  if (stoppedWhile?.[1] && stoppedWhile[2])
+    return {
+      kind: "interrupted",
+      reason: "canceled",
+      requestMessageId: stoppedWhile[2],
+      stoppedBy: stoppedWhile[1],
+    };
+  for (const reason of ["canceled", "failed", "stopped"] as const) {
+    const lead = `${interruptedReasonText[reason]} while processing message `;
+    if (rest.startsWith(lead) && rest.endsWith(".") && !rest.slice(lead.length, -1).includes(" "))
+      return { kind: "interrupted", reason, requestMessageId: rest.slice(lead.length, -1) };
+  }
+  return undefined;
+}
+
+/** Display-only reading of a parsed message: what it is, its status, and the body to show. */
+export interface CrossSessionMessageDescription {
+  readonly relation: "request" | "reply" | "notice";
+  /** Present when the body led with Cake's `Session <id> — <outcome>` report line. */
+  readonly outcome?: CrossSessionReportOutcome;
+  /** Present for recognized generated notices; the body is then empty. */
+  readonly notice?: CrossSessionNotice;
+  readonly expectsResponse: boolean;
+  readonly report?: "digest" | "interrupt";
+  /** Body without Cake's own leading report or notice text. Unrecognized text is kept whole. */
+  readonly body: string;
+}
+
+export function describeCrossSessionMessage(
+  text: string,
+  metadata: CrossSessionMessageMetadata,
+): CrossSessionMessageDescription {
+  const sessionId = metadata.sender.sessionId;
+  const common = {
+    expectsResponse: metadata.expectsResponse,
+    ...(metadata.report ? { report: metadata.report } : null),
+  };
+  const notice = metadata.generatedNotice ? parseNoticeText(sessionId, text.trim()) : undefined;
+  if (notice) return { ...common, relation: "notice", notice, body: "" };
+  const relation = metadata.generatedNotice
+    ? "notice"
+    : metadata.replyToMessageId
+      ? "reply"
+      : "request";
+  const lead = `Session ${sessionId} — `;
+  if (text.startsWith(lead)) {
+    const end = text.indexOf("\n", lead.length);
+    const outcome = text.slice(lead.length, end < 0 ? undefined : end).trim();
+    if (isReportOutcome(outcome))
+      return {
+        ...common,
+        relation,
+        outcome,
+        body: end < 0 ? "" : text.slice(end).trim(),
+      };
+  }
+  return { ...common, relation, body: text };
+}
+
 export function parseCrossSessionMessage(
   content: string,
 ): { readonly text: string; readonly metadata: CrossSessionMessageMetadata } | undefined {

@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type MouseEventHandler,
@@ -42,6 +43,7 @@ import type { MessageCommentAnchorRect } from "./message-comment-anchor";
 import { describeScheduledOrigin } from "../../utils/scheduled-message-time";
 import { SubagentReportHeader } from "./subagent-report-header";
 import { subagentReportFindings, subagentReportHeading } from "../lib/subagent-report-presentation";
+import { crossSessionPresentation } from "../lib/cross-session-presentation";
 
 export function chatWorkIsActive(
   parts: UiPart[],
@@ -91,7 +93,13 @@ export const ChatTextMessage = forwardRef<
   ref,
 ) {
   const report = part.subagentReport;
-  const text = report ? subagentReportFindings(part.text, report) : part.text;
+  const crossSession = useMemo(
+    () => (part.crossSession ? crossSessionPresentation(part.text, part.crossSession) : undefined),
+    [part.text, part.crossSession],
+  );
+  const text = report
+    ? subagentReportFindings(part.text, report)
+    : (crossSession?.body ?? part.text);
   const assistant = part.role === "assistant";
   const scheduled = part.scheduled ? describeScheduledOrigin(part.scheduled) : undefined;
   const userLabel = scheduled
@@ -157,7 +165,9 @@ export const ChatTextMessage = forwardRef<
       {part.crossSession ? (
         <SessionMessage
           source={part.crossSession.sender}
-          notice={part.crossSession.generatedNotice}
+          relation={crossSession?.relation}
+          badges={crossSession?.badges}
+          raw={crossSession?.raw}
         >
           {content}
         </SessionMessage>

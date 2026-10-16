@@ -46,6 +46,7 @@ import { applyPiSetting, projectPiSettings } from "../pi/runtime/settings-transl
 import {
   projectSessionEntries,
   parseContextAttachmentBlocks,
+  queuedUserMessageDisplay,
 } from "../pi/runtime/session-projection";
 import { projectModelCatalog } from "../pi/live/PiModelsLive";
 import { supportsFastMode } from "../pi/fast-mode";
@@ -529,17 +530,18 @@ export async function createDurableCakeChatRuntime(
         for (const item of items)
           if (item.mode !== "write") {
             const id = await requestId(item);
-            const text = textOf(item.content);
-            const crossSession = parseCrossSessionMessage(text);
+            // Queued rows show routing envelopes and reminders exactly as history does.
+            const display = queuedUserMessageDisplay(textOf(item.content));
             parts.push({
               id: `queued-${id}`,
               kind: "text",
               role: "user",
-              text: splitSessionDigestReminder(text).text,
+              text: display.text,
               status: "complete",
               deliveryState: item.mode === "steer" ? "steering" : "queued",
+              renderAs: display.renderAs,
               subagentReport: presentationOf(item.content).subagentReport,
-              crossSession: crossSession?.metadata,
+              crossSession: display.crossSession,
               queuedInput: queuedInput(item, id),
             });
           }
