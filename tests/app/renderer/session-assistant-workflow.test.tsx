@@ -93,7 +93,10 @@ describe("Session assistant workflow", () => {
     );
     await fixture.user.click(await screen.findByRole("button", { name: "Stop" }));
     await waitFor(() =>
-      expect(abort).toHaveBeenCalledWith({ sessionId: "sidecar-assistant" }, expect.any(Object)),
+      expect(abort).toHaveBeenCalledWith(
+        { sessionId: "sidecar-assistant", stop: { by: "user" } },
+        expect.any(Object),
+      ),
     );
   });
 

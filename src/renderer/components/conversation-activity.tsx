@@ -1,5 +1,9 @@
 import { observer, useStore } from "r-state-tree/react";
-import { launchedSessionStatusLabel, type LaunchedSessionStatus } from "../lib/cake-chat-launches";
+import {
+  launchedSessionNeedsAttention,
+  launchedSessionStatusLabel,
+  type LaunchedSessionStatus,
+} from "../lib/cake-chat-launches";
 import { RootStore } from "../stores/RootStore";
 import type { SubagentActivityStore } from "../stores/SubagentActivityStore";
 import type { SideChatStore } from "../stores/SideChatStore";
@@ -10,7 +14,8 @@ const dotStatus = {
   running: "running",
   "needs-you": "attention",
   failed: "failed",
-  stopped: "interrupted",
+  stopped: "stopped",
+  interrupted: "interrupted",
   done: "complete",
   idle: "pending",
 } satisfies Record<LaunchedSessionStatus, StatusDotProps["status"]>;
@@ -30,8 +35,8 @@ export const ConversationActivity = observer(function ConversationActivity({
   const activity = useStore(RootStore).conversationActivityStore;
   const sessions = activity.sessionsFor(sessionId);
   const runs = subagents.activeRuns;
-  const attention = sessions.filter(
-    (session) => session.status === "needs-you" || session.status === "failed",
+  const attention = sessions.filter((session) =>
+    launchedSessionNeedsAttention(session.status),
   ).length;
   const running = sessions.filter((session) => session.status === "running").length + runs.length;
   if (running === 0 && attention === 0) return null;

@@ -224,6 +224,7 @@ export class SidebarSessionListStore extends Store<{
     if (activities.includes("running")) return "running";
     if (activities.includes("error")) return "error";
     if (activities.includes("unread")) return "unread";
+    if (activities.includes("stopped")) return "stopped";
     return undefined;
   }
 

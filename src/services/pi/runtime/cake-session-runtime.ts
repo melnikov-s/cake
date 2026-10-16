@@ -60,6 +60,7 @@ import {
   type JsonObject,
   type JsonValue,
 } from "../../../contracts/serialization/json-contract";
+import type { TurnStop } from "../../../contracts/conversations/turn-stop";
 import type { ArtifactPointer } from "../../../contracts/artifacts/artifact-contract";
 import type { ProjectSessionPresentationMode } from "../../../contracts/project-sessions/project-session-presentation";
 import { assertSessionPath } from "./session-path";
@@ -72,6 +73,8 @@ import {
   userMessagePresentationEntrySchema,
   userMessagePresentationEntryType,
   turnHandoffEntryType,
+  turnStopEntryType,
+  type AbortPresentation,
   type ReviewRunEntry,
 } from "./session-projection";
 import {
@@ -263,7 +266,8 @@ export interface CakeSessionRuntime {
   compact(instructions?: string): Promise<void>;
   queueCommand(command: string, onSettled?: () => void): Promise<QueuedSessionCommandReceipt>;
   inspectSession(query: SessionInspectionQuery): Promise<JsonValue>;
-  abort(): Promise<void>;
+  /** `stop` attributes a deliberate stop; omitted, the abort reads as an interruption. */
+  abort(stop?: TurnStop): Promise<void>;
   setModel(provider: string, modelId: string): Promise<void>;
   setThinkingLevel(level: ThinkingLevel): Promise<void>;
   /** Applies a full chat configuration atomically, emitting a single snapshot. */
@@ -434,13 +438,21 @@ export async function createCakeSessionRuntime(
 
   let compactionQueuedMessages: () => readonly string[] = () => [];
   const queueProjection = { parts: (): UiPart[] => [], handoffActive: () => false };
+  // Attribution for the deliberate stop in progress; the aborted message is marked with it.
+  let pendingStop: TurnStop | undefined;
+  const abortPresentation = (): AbortPresentation =>
+    queueProjection.handoffActive()
+      ? { kind: "handoff" }
+      : pendingStop
+        ? { kind: "stopped", stop: pendingStop }
+        : { kind: "interrupted" };
   const projection = createCakeSessionRuntimeEventProjection({
     session,
     sessionId: cakeSessionId,
     emit: options.onEvent,
     compactionQueuedMessages: () => compactionQueuedMessages(),
     queuedParts: () => queueProjection.parts(),
-    suppressAbort: () => queueProjection.handoffActive(),
+    abortPresentation,
     isDisposed: () => disposed,
   });
   const configuration = createCakeSessionRuntimeConfiguration({
@@ -581,12 +593,19 @@ export async function createCakeSessionRuntime(
     if (
       event.type === "message_end" &&
       event.message.role === "assistant" &&
-      event.message.stopReason === "aborted" &&
-      queueProjection.handoffActive()
-    )
-      session.sessionManager.appendCustomEntry(turnHandoffEntryType, {
-        timestamp: event.message.timestamp,
-      });
+      event.message.stopReason === "aborted"
+    ) {
+      const presentation = abortPresentation();
+      if (presentation.kind === "handoff")
+        session.sessionManager.appendCustomEntry(turnHandoffEntryType, {
+          timestamp: event.message.timestamp,
+        });
+      else if (presentation.kind === "stopped")
+        session.sessionManager.appendCustomEntry(turnStopEntryType, {
+          timestamp: event.message.timestamp,
+          stop: presentation.stop,
+        });
+    }
     projection.projectEvent(event);
     if (event.type === "session_info_changed" && event.name)
       void options.sessionTitleChanged?.(cakeSessionId, event.name).catch(() => undefined);
@@ -952,7 +971,14 @@ export async function createCakeSessionRuntime(
       await emitSnapshot();
     },
     editMessage: turnController.editMessage,
-    abort: turnController.abort,
+    async abort(stop) {
+      pendingStop = stop;
+      try {
+        await turnController.abort();
+      } finally {
+        pendingStop = undefined;
+      }
+    },
     setModel: configuration.setModel,
     setThinkingLevel: configuration.setThinkingLevel,
     applyConfiguration: configuration.applyConfiguration,

@@ -6,6 +6,7 @@ export type LaunchedSessionStatus =
   | "needs-you"
   | "failed"
   | "stopped"
+  | "interrupted"
   | "done"
   | "idle";
 
@@ -39,7 +40,8 @@ export function launchedSessionStatus(
   if (session.running || activity === "running") return "running";
   if (report?.status === "blocked") return "needs-you";
   if (report?.status === "failed" || activity === "error") return "failed";
-  if (report?.status === "stopped") return "stopped";
+  if (report?.status === "interrupted") return "interrupted";
+  if (report?.status === "stopped" || activity === "stopped") return "stopped";
   if (report?.status === "completed") return "done";
   return "idle";
 }
@@ -68,11 +70,17 @@ export function launchedSessions(
     });
 }
 
+/** Statuses the user should look at. A deliberate stop never counts. */
+export function launchedSessionNeedsAttention(status: LaunchedSessionStatus) {
+  return status === "needs-you" || status === "failed" || status === "interrupted";
+}
+
 export const launchedSessionStatusLabel = {
   running: "Running",
   "needs-you": "Needs you",
   failed: "Failed",
   stopped: "Stopped",
+  interrupted: "Interrupted",
   done: "Done",
   idle: "Idle",
 } satisfies Record<LaunchedSessionStatus, string>;

@@ -1,3 +1,5 @@
+import type { CakeChatLaunchStatus } from "../project-sessions/session-reporting";
+
 /**
  * Cake Chat's quiet session inbox reaches the model as one Cake-owned block prefixed to the
  * user's next message. It is status, never instructions, and never starts a turn by itself.
@@ -12,7 +14,7 @@ export interface SessionDigestLine {
   readonly reference: string;
   readonly sessionId: string;
   readonly title: string;
-  readonly status: "completed" | "failed" | "blocked" | "stopped";
+  readonly status: CakeChatLaunchStatus;
   readonly summary: string;
 }
 
@@ -21,7 +23,8 @@ const statusText = {
   failed: "failed",
   blocked: "is blocked",
   stopped: "stopped without a result",
-} as const;
+  interrupted: "was interrupted",
+} satisfies Record<CakeChatLaunchStatus, string>;
 
 function sessionDigestLine(line: SessionDigestLine) {
   const summary = line.summary ? `: ${line.summary}` : "";

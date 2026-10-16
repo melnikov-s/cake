@@ -1,3 +1,4 @@
+import { describeTurnStop, type TurnStop } from "../../contracts/conversations/turn-stop";
 import { appendMessageReferences } from "../../contracts/conversations/message-reference-forwarding";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 import { ensureBoard } from "../artifacts/messageBoards";
@@ -398,6 +399,29 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
     (yield* workflowLifecycle.holdsCompletion(turn.sessionId, turn.turnId))
   )
     return;
+  if (stoppedByRequester(turn)) {
+    // The requester stopped this work itself; telling it so would be noise. The obligation
+    // is settled, and Cake Chat's launch status still records the neutral stop.
+    const spawn = (yield* storage.state()).spawnedSessions.find(
+      (item) => item.sessionId === turn.sessionId,
+    );
+    if (turn.senderSessionId === CAKE_CHAT_SESSION_ID && spawn)
+      yield* storage.recordLaunchReport(spawn.sessionId, {
+        status: "stopped",
+        summary: stoppedSummary(turn.stop),
+        reportedAt: DateTime.formatIso(yield* DateTime.now),
+      });
+    yield* storage.completeNotice(turn.turnId);
+    if (spawn)
+      yield* (yield* SessionCatalogChanges).publish({
+        _tag: "ProjectSessionChanged",
+        sessionId: spawn.sessionId,
+        projectPath: spawn.projectPath,
+        workingDirectory: spawn.workingDirectory,
+        resolved: false,
+      });
+    return;
+  }
   if (turn.senderSessionId === CAKE_CHAT_SESSION_ID)
     return yield* deliverCoordinatorNotice(
       turn,
@@ -471,7 +495,9 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
   );
   const outcome =
     turn.outcome === "aborted"
-      ? "was canceled or interrupted (not completed)"
+      ? turn.stop
+        ? `was ${describeTurnStop(turn.stop, "agent")} (not completed)`
+        : "was canceled or interrupted (not completed)"
       : turn.outcome === "failed"
         ? "stopped with an error"
         : "stopped";
@@ -728,6 +754,17 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
   },
 );
 
+/** A deliberate stop by the session that is owed the result settles without a notice. */
+const stoppedByRequester = (turn: FamilyTurn) =>
+  turn.outcome === "aborted" &&
+  turn.stop?.by === "session" &&
+  turn.stop.sessionId === turn.senderSessionId;
+
+const stoppedSummary = (stop: TurnStop | undefined) => {
+  const text = stop ? describeTurnStop(stop, "agent") : "stopped";
+  return (text.charAt(0).toUpperCase() + text.slice(1)).slice(0, 500);
+};
+
 const launchStatus = (
   turn: FamilyTurn,
   report: SessionCompletionReport | undefined,
@@ -740,11 +777,18 @@ const launchStatus = (
         : "completed"
     : turn.outcome === "failed"
       ? "failed"
-      : "stopped";
+      : turn.outcome === "aborted" && !turn.stop
+        ? "interrupted"
+        : "stopped";
 
 /** One compact status line; Cake Chat reads the full report on demand. */
 const digestSummary = (turn: FamilyTurn, report: SessionCompletionReport | undefined) => {
-  if (!report) return turn.outcome === "aborted" ? "canceled or interrupted" : "";
+  if (!report)
+    return turn.outcome === "aborted"
+      ? turn.stop
+        ? stoppedSummary(turn.stop)
+        : "canceled or interrupted"
+      : "";
   const line = report.text
     .split("\n")
     .map((candidate) =>
@@ -832,7 +876,9 @@ const deliverCoordinatorNotice = Effect.fn("SessionFamilies.deliverCoordinatorNo
     report
       ? `Session ${turn.sessionId} — ${report.outcome}\n\n${report.text}`
       : turn.outcome === "aborted"
-        ? `Session ${turn.sessionId} was canceled or interrupted; no successful result handoff occurred.`
+        ? turn.stop
+          ? `Session ${turn.sessionId} was ${describeTurnStop(turn.stop, "agent")}; no result handoff occurred.`
+          : `Session ${turn.sessionId} was canceled or interrupted; no successful result handoff occurred.`
         : turn.outcome === "failed"
           ? `Session ${turn.sessionId} failed; no successful result handoff occurred.`
           : `Session ${turn.sessionId} stopped without a substantive result. This is not a successful completion.`,

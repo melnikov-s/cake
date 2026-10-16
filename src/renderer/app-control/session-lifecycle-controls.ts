@@ -6,6 +6,7 @@ import {
   SESSION_TITLE_MAX_LENGTH,
   thinkingLevelSchema,
 } from "../../contracts/conversations/session-contract";
+import type { TurnStop } from "../../contracts/conversations/turn-stop";
 import { isActiveSessionActivity } from "../lib/session-activity";
 import { CakeModelSelection } from "../../contracts/model-presets/cake-model-selection";
 import { CakeChatReportPolicy } from "../../contracts/project-sessions/session-reporting";
@@ -262,20 +263,30 @@ export const sessionLifecycleControls = [
   }),
   defineSessionControl({
     command: "sessions.abort",
-    args: sessionIdTargetSchema,
+    args: Schema.Struct({
+      ...sessionIdTargetSchema.fields,
+      reason: Schema.optionalKey(trimmed(1, 500)),
+    }),
     scope: "global",
     discovery: {
       topic: "sessions",
       summary: "Stop one explicitly targeted running session.",
+      guidance: [
+        "A deliberate stop is not a failure: the session shows as stopped, never as needing attention, and a result you were owed from it is settled silently. Pass a short reason (for example, “the user asked to stop”) so the stop is attributed in the transcript.",
+      ],
     },
-    run: async (input, { host }, command, known): Promise<AppControlResult> => {
+    run: async (input, { host, source }, command, known): Promise<AppControlResult> => {
       const { sessionId } = input;
+      const reason = input.reason ? { reason: input.reason } : null;
+      const stop: TurnStop = source
+        ? { by: "session", sessionId: source.sessionId, title: source.title, ...reason }
+        : { by: "user", ...reason };
 
       const workspacePath = known.workingDirectory;
       const target = { workspacePath, sessionId };
       if (!isActiveSessionActivity(host.state.sessionActivity(sessionId)))
         return { ok: false, command, error: "That session is not currently running." };
-      await host.sessions.abort(sessionId);
+      await host.sessions.abort(sessionId, stop);
       return { ok: true, command, target, status: "stopping" };
     },
   }),

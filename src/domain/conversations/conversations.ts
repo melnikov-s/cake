@@ -1,4 +1,5 @@
 import { Effect, Stream } from "effect";
+import type { TurnStop } from "../../contracts/conversations/turn-stop";
 import type {
   CakeSessionRuntimeAcquireOptions,
   PiSessionError,
@@ -220,8 +221,9 @@ export const deliverWhenAvailable = Effect.fn("Conversations.deliverWhenAvailabl
 
 export const abort = Effect.fn("Conversations.abort")(function* <E, R>(
   acquisition: Effect.Effect<CakeSessionHandle, E, R>,
+  stop?: TurnStop,
 ) {
-  yield* use(acquisition, (handle) => handle.abort());
+  yield* use(acquisition, (handle) => handle.abort(stop));
 });
 
 export const compact = Effect.fn("Conversations.compact")(function* <E, R>(

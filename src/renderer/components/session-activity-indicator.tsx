@@ -17,7 +17,9 @@ export function SessionActivityIndicator({
         ? "Running"
         : activity === "error"
           ? "Error"
-          : "Ready, unread";
+          : activity === "stopped"
+            ? "Stopped"
+            : "Ready, unread";
   return (
     <StatusDot
       status={activity === "waiting" ? "attention" : activity === "unread" ? "success" : activity}
@@ -27,6 +29,7 @@ export function SessionActivityIndicator({
         activity === "running" && cn("session-status-running", selected && "bg-primary"),
         activity === "unread" && "session-status-unread ring-2 ring-success/20",
         activity === "error" && "session-status-error ring-2 ring-destructive/20",
+        activity === "stopped" && "session-status-stopped",
       )}
       role="img"
       aria-hidden={undefined}

@@ -350,11 +350,11 @@ export function createRootApplicationControlHost(
             { signal: capabilities.signal },
           );
         }),
-      abort: (sessionId) =>
+      abort: (sessionId, stop) =>
         capabilities.applicationControlStore().runOperation(async () => {
           await capabilities.prepareProjectSessionChat(sessionId);
           return capabilities.client.sessionChats.abort(
-            { sessionId },
+            { sessionId, stop },
             { signal: capabilities.signal },
           );
         }),

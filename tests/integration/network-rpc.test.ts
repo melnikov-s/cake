@@ -927,7 +927,7 @@ it.live("explicit_stop_after_reconnect_is_distinct_from_disconnect", () =>
       steering: [],
       followUp: [],
     });
-    yield* b.client["sessionChats.abort"]({ sessionId });
+    yield* b.client["sessionChats.abort"]({ sessionId, stop: { by: "user" } });
     yield* Queue.take(backend.settled);
     expect(backend.stats.aborted).toBe(1);
     expect(backend.stats.turns).toBe(1);

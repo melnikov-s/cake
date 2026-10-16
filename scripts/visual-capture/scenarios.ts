@@ -2064,6 +2064,11 @@ const cakeChatSessionUpdatesScenario: VisualCaptureScenario = {
         title: "fix-x",
         lastReport: { status: "failed", summary: "Typecheck failed in src/app.ts" },
       },
+      {
+        sessionId: "2b3c4d5e-6f70-4a81-9b2c-3d4e5f6a7b84",
+        title: "rename-pass",
+        lastReport: { status: "stopped", summary: "Stopped by Cake Chat (the user asked to stop)" },
+      },
       { sessionId: "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e13", title: "docs-pass" },
     ] as const;
     for (const session of launched)

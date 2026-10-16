@@ -13,7 +13,8 @@ const statusDotVariants = cva("inline-block shrink-0 rounded-full", {
       running: "bg-accent motion-safe:animate-pulse",
       failed: "bg-destructive",
       error: "bg-destructive",
-      stopped: "bg-destructive",
+      // Deliberate stop: hollow and neutral, distinct from failures and pending work.
+      stopped: "border border-muted-foreground bg-transparent",
       interrupted: "bg-attention",
       accent: "bg-accent",
       attention: "bg-attention",

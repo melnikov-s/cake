@@ -7,6 +7,7 @@ import {
 } from "../../contracts/application/session-navigation";
 import { SessionHistoryQuery } from "../../contracts/conversations/session-query-data";
 import { jsonObjectSchema } from "../../contracts/serialization/json-contract";
+import { launchedSessionNeedsAttention } from "../lib/cake-chat-launches";
 import type { AppControlResult } from "./app-control-data";
 import {
   getAppState,
@@ -27,7 +28,7 @@ export const sessionInspectionControls = [
       summary:
         "List all project sessions, ordered by recency, and attention-worthy project sessions.",
       guidance: [
-        "launchedByCakeChat: true lists only unresolved sessions Cake Chat launched, each with launch.status (running, needs-you, failed, stopped, done or idle) and the latest report summary. Use it to answer “what's going on?” instead of polling sessions one by one.",
+        "launchedByCakeChat: true lists only unresolved sessions Cake Chat launched, each with launch.status (running, needs-you, failed, interrupted, stopped, done or idle; stopped is a deliberate stop and never needs attention) and the latest report summary. Use it to answer “what's going on?” instead of polling sessions one by one.",
       ],
       examples: [{ input: {} }, { input: { launchedByCakeChat: true } }],
     },
@@ -42,8 +43,7 @@ export const sessionInspectionControls = [
           command,
           sessions: launched,
           attentionSessions: launched.filter(
-            (session) =>
-              session.launch?.status === "needs-you" || session.launch?.status === "failed",
+            (session) => session.launch && launchedSessionNeedsAttention(session.launch.status),
           ),
         });
       }

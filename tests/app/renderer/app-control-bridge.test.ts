@@ -1253,7 +1253,23 @@ describe("AppControlBridge", () => {
       undefined,
       ["selected-input/grant"],
     );
-    expect(abortSession).toHaveBeenCalledWith("session-2");
+    expect(abortSession).toHaveBeenCalledWith("session-2", { by: "user" });
+    // An agent's stop is attributed to it, with its reason, so it is never read as a failure.
+    await expect(
+      bridge.invoke(
+        {
+          name: "sessions.abort",
+          arguments: { sessionId: "session-2", reason: "The user asked to stop" },
+        },
+        { kind: "cake-chat", sessionId: "cake-chat", title: "Cake Chat" },
+      ),
+    ).resolves.toMatchObject({ ok: true, status: "stopping" });
+    expect(abortSession).toHaveBeenLastCalledWith("session-2", {
+      by: "session",
+      sessionId: "cake-chat",
+      title: "Cake Chat",
+      reason: "The user asked to stop",
+    });
   });
 
   it("controls a child's individual queued inputs and clears its remaining queue", async () => {

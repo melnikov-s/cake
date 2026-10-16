@@ -1,3 +1,4 @@
+import type { TurnStop } from "../../contracts/conversations/turn-stop";
 import { stat } from "node:fs/promises";
 import type { CakeOperationOptions } from "../../contracts/agent/cake-operation-options";
 import {
@@ -141,6 +142,8 @@ export interface CakeSessionRuntimeAcquireOptions {
     readonly outcome: "complete" | "failed" | "aborted";
     readonly result?: PiTurnResult;
     readonly message?: string;
+    /** Present only on an aborted turn that a user or agent deliberately stopped. */
+    readonly stop?: TurnStop;
   }) => Effect.Effect<void, unknown>;
   /** Publishes lightweight activity after accepted turns start or settle. */
   readonly onTurnActivityChanged?: Effect.Effect<void>;
@@ -202,7 +205,8 @@ export interface CakeSessionHandle {
     entryId: string,
     renderAsMarkdown: boolean,
   ) => Effect.Effect<void, PiSessionError>;
-  readonly abort: () => Effect.Effect<void, PiSessionError>;
+  /** A `stop` attributes a deliberate stop; omitted, the abort is an unexpected interruption. */
+  readonly abort: (stop?: TurnStop) => Effect.Effect<void, PiSessionError>;
   readonly queueCommand: (
     command: string,
   ) => Effect.Effect<QueuedSessionCommandReceipt, PiSessionError>;
@@ -810,6 +814,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
 
         const settleAbortedTurns = Effect.fn("CakeSessionRuntimes.settleAbortedTurns")(function* (
           turnIds: ReadonlyArray<string>,
+          stop: TurnStop | undefined,
         ) {
           yield* Effect.forEach(
             turnIds,
@@ -830,6 +835,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                       sessionId: shared.runtime.sessionId,
                       turnId,
                       outcome: "aborted",
+                      ...(stop ? { stop } : null),
                     })
                     .pipe(
                       Effect.mapError(
@@ -933,7 +939,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
               const result = yield* call("sendQueuedMessageNow", (runtime) =>
                 runtime.sendQueuedMessageNow(partId),
               );
-              yield* settleAbortedTurns(claimed);
+              yield* settleAbortedTurns(claimed, undefined);
               return result.queued;
             }),
           editMessage: (
@@ -967,10 +973,10 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
             call("setUserMessageMarkdown", (runtime) =>
               runtime.setUserMessageMarkdown(entryId, renderAsMarkdown),
             ),
-          abort: Effect.fn("CakeSessionRuntimes.abort")(function* () {
+          abort: Effect.fn("CakeSessionRuntimes.abort")(function* (stop?: TurnStop) {
             const claimed = yield* claimAbortedTurns(shared.runtime.executingTurnIds?.() ?? []);
-            yield* call("abort", (runtime) => runtime.abort());
-            yield* settleAbortedTurns(claimed);
+            yield* call("abort", (runtime) => runtime.abort(stop));
+            yield* settleAbortedTurns(claimed, stop);
           }),
           executeCommand: (command, arguments_) =>
             command === "changelog"

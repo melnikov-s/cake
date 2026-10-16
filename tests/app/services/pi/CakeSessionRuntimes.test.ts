@@ -178,6 +178,8 @@ describe("CakeSessionRuntimes", () => {
       const release = yield* Deferred.make<void>();
       const returned = yield* Deferred.make<void>();
       const outcomes: string[] = [];
+      const stops: unknown[] = [];
+      const runtimeStops: unknown[] = [];
       const activity: boolean[] = [];
       let executingTurnIds: string[] = [];
       const layer = makeCakeSessionRuntimesLayer({
@@ -200,8 +202,10 @@ describe("CakeSessionRuntimes", () => {
               );
             },
             executingTurnIds: () => executingTurnIds,
-            abort: () =>
-              Effect.runPromise(Deferred.succeed(release, undefined)).then(() => undefined),
+            abort: (stop) => {
+              runtimeStops.push(stop);
+              return Effect.runPromise(Deferred.succeed(release, undefined)).then(() => undefined);
+            },
           }),
       });
       const context = yield* Layer.build(layer);
@@ -222,13 +226,18 @@ describe("CakeSessionRuntimes", () => {
         onTurnSettled: (event) =>
           Effect.sync(() => {
             outcomes.push(event.outcome);
+            stops.push(event.stop);
           }),
       });
       yield* handle.prompt("work");
       yield* Deferred.await(started);
-      yield* handle.abort();
+      // The stop's attribution reaches both Pi's transcript marker and the settlement.
+      const stop = { by: "session", sessionId: "cake-chat", title: "Cake Chat" } as const;
+      yield* handle.abort(stop);
       yield* Deferred.await(returned);
       assert.deepEqual(outcomes, ["aborted"]);
+      assert.deepEqual(stops, [stop]);
+      assert.deepEqual(runtimeStops, [stop]);
       assert.deepEqual(activity, [true, false]);
     }),
   );

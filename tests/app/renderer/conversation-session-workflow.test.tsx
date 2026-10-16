@@ -40,7 +40,7 @@ describe.each(["project", "cake-chat"] as const)("%s shared conversation lifecyc
     await fixture.user.click(screen.getByRole("button", { name: "Stop" }));
     expect(await screen.findByText("Runtime could not stop")).toBeDefined();
     expect(abort).toHaveBeenCalledWith(
-      { sessionId: fixture.sessionId },
+      { sessionId: fixture.sessionId, stop: { by: "user" } },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     expect(screen.getByRole("button", { name: "Stop" })).toBeDefined();

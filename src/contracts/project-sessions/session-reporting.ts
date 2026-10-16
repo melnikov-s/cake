@@ -39,7 +39,14 @@ export function cakeChatReportPolicy(input: {
 }
 
 /** Latest outcome of a session Cake Chat launched, projected for status surfaces. */
-export const CakeChatLaunchStatus = Schema.Literals(["completed", "failed", "blocked", "stopped"]);
+/** `stopped` is deliberate or result-less; `interrupted` is an unexpected abort (crash, restart). */
+export const CakeChatLaunchStatus = Schema.Literals([
+  "completed",
+  "failed",
+  "blocked",
+  "stopped",
+  "interrupted",
+]);
 export type CakeChatLaunchStatus = typeof CakeChatLaunchStatus.Type;
 export const CakeChatLaunchReport = Schema.Struct({
   status: CakeChatLaunchStatus,

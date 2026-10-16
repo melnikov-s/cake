@@ -296,3 +296,57 @@ it("workers belonging to another conversation do not appear in this session's ac
   );
   expect(screen.queryByRole("button", { name: /^Activity ·/ })).toBeNull();
 });
+
+it("a deliberate stop reads as neutral Stopped, while interruptions and failures still need attention", async () => {
+  const launched = (status: "stopped" | "interrupted") =>
+    child({
+      familyParentSessionId: undefined,
+      running: false,
+      cakeChatLaunch: {
+        launchedAt: "2026-01-01T00:00:00Z",
+        lastReport: {
+          status,
+          summary: status === "stopped" ? "Stopped by Cake Chat" : "canceled or interrupted",
+          reportedAt: "2026-01-01T00:01:00Z",
+        },
+      },
+    });
+  using view = renderActivity("cake-chat", [launched("stopped")]);
+  const settle = (ending: ConversationSnapshot["parts"][number]) =>
+    act(() => {
+      const session = view.fixture.root.sessionRegistry.load(childId, "/project");
+      applyConversationSnapshot(session.model, {
+        ...snapshot(childId),
+        parts: [...snapshot(childId).parts, ending],
+      });
+      session.model.settledTurnRevision += 1;
+    });
+  settle({
+    id: "stopped",
+    kind: "notice",
+    tone: "info",
+    title: "Stopped",
+    detail: "Stopped by Cake Chat",
+  });
+  const metadata = view.fixture.root.sessionMetadataStore;
+  expect(metadata.sessionActivity(childId)).toBe("stopped");
+  view.publishWorker("running");
+  // Not "needs attention": the stop was requested.
+  await view.user.click(screen.getByRole("button", { name: "Activity · 1 running" }));
+  const menu = screen.getByRole("dialog", { name: "Conversation activity" });
+  expect(within(menu).getByText(/^Stopped · project · Stopped by Cake Chat$/)).toBeTruthy();
+
+  view.publishSessions([launched("interrupted")]);
+  expect(screen.getByRole("button", { name: "Activity · 1 needs attention" })).toBeTruthy();
+
+  view.publishSessions([launched("stopped")]);
+  settle({
+    id: "failed",
+    kind: "notice",
+    tone: "error",
+    title: "Model request failed",
+    detail: "Provider unavailable",
+  });
+  expect(metadata.sessionActivity(childId)).toBe("error");
+  expect(screen.getByRole("button", { name: "Activity · 1 needs attention" })).toBeTruthy();
+});

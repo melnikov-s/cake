@@ -397,7 +397,10 @@ describe("Review side-chat workflow", () => {
     expect(screen.getByText("And then?")).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: "Stop" }));
     await waitFor(() =>
-      expect(abort).toHaveBeenCalledWith({ sessionId: "sidecar-thread-1" }, expect.any(Object)),
+      expect(abort).toHaveBeenCalledWith(
+        { sessionId: "sidecar-thread-1", stop: { by: "user" } },
+        expect.any(Object),
+      ),
     );
     fixture.settle();
     await waitFor(() =>

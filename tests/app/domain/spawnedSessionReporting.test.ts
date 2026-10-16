@@ -1006,6 +1006,77 @@ describe("automatic spawned-session reporting", () => {
       }),
   );
 
+  it.effect.each([
+    {
+      name: "the requester (Cake Chat) stopped it",
+      stop: { by: "session", sessionId: CAKE_CHAT_SESSION_ID, title: "Cake Chat" },
+      delivered: undefined,
+      status: "stopped",
+      summary: "Stopped by Cake Chat",
+    },
+    {
+      name: "the user stopped it",
+      stop: { by: "user", reason: "changed plans" },
+      delivered: /was stopped by the user \(changed plans\); no result handoff/,
+      status: "stopped",
+      summary: "Stopped by the user (changed plans)",
+    },
+    {
+      name: "it was interrupted unexpectedly",
+      stop: undefined,
+      delivered: /canceled or interrupted/,
+      status: "interrupted",
+      summary: "canceled or interrupted",
+    },
+  ] as const)("settles an aborted handoff when $name", ({ stop, delivered, status, summary }) =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      yield* f.run(
+        Effect.gen(function* () {
+          const workerId = "6a4cdbd8-3f5e-4c43-9a55-3c63b8a4e0a1";
+          const turnId = "f0e7c2b1-1d2a-4b0e-9a7d-0c0b4b6a9d11";
+          yield* f.storage.registerSpawn({
+            sessionId: workerId,
+            projectPath: "/project",
+            workingDirectory: "/project",
+            requester: { kind: "cake-chat", sessionId: CAKE_CHAT_SESSION_ID, title: "Cake Chat" },
+            reportDelivered: false,
+            handoffSettled: false,
+          });
+          yield* f.storage.recordTurn({
+            sessionId: workerId,
+            senderSessionId: CAKE_CHAT_SESSION_ID,
+            turnId,
+            requestMessageId: workerId,
+            threadId: workerId,
+            reported: false,
+          });
+          yield* f.storage.settleTurn(turnId, "aborted", undefined, stop);
+          const turn = yield* onlyTurn();
+          assert.deepEqual(turn.stop, stop);
+          yield* assembleCoordinator();
+          yield* families.deliver(turn);
+          if (delivered) {
+            yield* Deferred.await(f.received);
+            assert.match(parseCrossSessionMessage(f.transcript[0] ?? "")?.text ?? "", delivered);
+          } else {
+            // Cake Chat stopped the session itself; reporting the stop back would be noise.
+            assert.deepEqual(f.deliveries, []);
+            assert.deepEqual(f.transcript, []);
+          }
+          const state = yield* f.storage.state();
+          if (!delivered) {
+            assert.deepEqual(state.turns, []);
+            assert.equal(state.spawnedSessions[0]?.handoffSettled, true);
+            assert.equal(state.spawnedSessions[0]?.reportDelivered, false);
+          }
+          assert.equal(state.spawnedSessions[0]?.lastReport?.status, status);
+          assert.equal(state.spawnedSessions[0]?.lastReport?.summary, summary);
+        }),
+      );
+    }),
+  );
+
   it.effect.each(["empty", "toolUse", "abort", "providerAbort", "error"] as const)(
     "%s never becomes a successful completion",
     (mode) =>
@@ -1378,7 +1449,7 @@ describe("automatic spawned-session reporting", () => {
             yield* families.deliver(turn);
             assert.deepEqual(f.deliveries, []);
             const [item] = (yield* f.storage.state()).coordinatorDigest ?? [];
-            assert.equal(item?.status, "stopped");
+            assert.equal(item?.status, "interrupted");
             assert.equal(item?.summary, "canceled or interrupted");
           }),
         );

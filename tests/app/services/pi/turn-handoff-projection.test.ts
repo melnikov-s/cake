@@ -5,6 +5,7 @@ import {
   createLiveMessageProjector,
   projectSessionEntries,
   turnHandoffEntryType,
+  turnStopEntryType,
 } from "../../../../src/services/pi/runtime/session-projection";
 
 function assistant(text = ""): AssistantMessage {
@@ -52,7 +53,9 @@ function entries(text: string, handoff: boolean): SessionEntry[] {
 }
 describe("Intentional send-now handoff presentation", () => {
   it("suppresses live interruption errors but preserves partial output", () => {
-    const project = createLiveMessageProjector({ suppressAbort: () => true });
+    const project = createLiveMessageProjector({
+      abortPresentation: () => ({ kind: "handoff" }),
+    });
     expect(project({ type: "message_end", message: assistant() })).toEqual([]);
     expect(project({ type: "message_end", message: assistant("Partial work") })).toEqual([
       expect.objectContaining({ text: "Partial work", status: "complete" }),
@@ -75,5 +78,55 @@ describe("Intentional send-now handoff presentation", () => {
     if (entry.type === "message" && entry.message.role === "assistant")
       entry.message.stopReason = "error";
     expect(projectSessionEntries(failed)).toEqual([expect.objectContaining({ tone: "error" })]);
+  });
+});
+
+describe("Deliberate stop presentation", () => {
+  const stopEntry = (stop: unknown): SessionEntry => ({
+    type: "custom",
+    id: "stop",
+    parentId: "assistant",
+    timestamp: new Date(0).toISOString(),
+    customType: turnStopEntryType,
+    data: { timestamp: 10, stop },
+  });
+
+  it("shows an agent-initiated stop as a neutral notice naming the agent and reason", () => {
+    const project = createLiveMessageProjector({
+      abortPresentation: () => ({
+        kind: "stopped",
+        stop: { by: "session", sessionId: "cake-chat", title: "Cake Chat", reason: "user asked" },
+      }),
+    });
+    expect(project({ type: "message_end", message: assistant("Partial work") })).toEqual([
+      expect.objectContaining({ text: "Partial work", status: "complete" }),
+      expect.objectContaining({
+        kind: "notice",
+        tone: "info",
+        title: "Stopped",
+        detail: "Stopped by Cake Chat (user asked)",
+      }),
+    ]);
+  });
+
+  it("keeps a user-initiated stop neutral when reopening the persisted Pi branch", () => {
+    const parts = projectSessionEntries([...entries("", false), stopEntry({ by: "user" })]);
+    expect(parts).toEqual([
+      expect.objectContaining({ kind: "notice", tone: "info", detail: "Stopped by you" }),
+    ]);
+    expect(parts.some((part) => part.kind === "notice" && part.tone === "error")).toBe(false);
+  });
+
+  it("keeps an unexpected interruption or provider error as a failure", () => {
+    expect(projectSessionEntries(entries("Partial work", false))).toEqual([
+      expect.objectContaining({ text: "Partial work", status: "error" }),
+    ]);
+    const failed = [...entries("", false), stopEntry({ by: "user" })];
+    const entry = failed[0]!;
+    if (entry.type === "message" && entry.message.role === "assistant")
+      entry.message.stopReason = "error";
+    expect(projectSessionEntries(failed)).toEqual([
+      expect.objectContaining({ tone: "error", title: "Model request failed" }),
+    ]);
   });
 });

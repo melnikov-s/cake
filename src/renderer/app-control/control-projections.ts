@@ -20,8 +20,12 @@ export function getAppState(host: AppControlHost, source?: AgentControlSource): 
       name: project.name,
       sessionCount: sessions.filter((session) => session.workingDirectory === project.path).length,
     })),
+    // A deliberate stop is a requested outcome, not something for the user to look at.
     attentionSessions: sessions
-      .filter((session) => host.state.sessionActivity(session.sessionId))
+      .filter((session) => {
+        const activity = host.state.sessionActivity(session.sessionId);
+        return activity !== undefined && activity !== "stopped";
+      })
       .map((session) => toControlSession(host, session)),
     recentSessions: sessions.map((session) => toControlSession(host, session)),
   };

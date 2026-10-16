@@ -417,7 +417,10 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
   private async abort() {
     if (!this.streaming) return;
     try {
-      await this.client.sessionChats.abort({ sessionId: this.sessionId }, { signal: this.signal });
+      await this.client.sessionChats.abort(
+        { sessionId: this.sessionId, stop: { by: "user" } },
+        { signal: this.signal },
+      );
     } catch (error) {
       if (!this.signal.aborted) this.composerStore.reportError(error);
     }

@@ -288,7 +288,10 @@ export class BrowserSessionStore extends Store<{
   }
   private async stop() {
     try {
-      await this.client.sessionChats.abort({ sessionId: this.id }, { signal: this.signal });
+      await this.client.sessionChats.abort(
+        { sessionId: this.id, stop: { by: "user" } },
+        { signal: this.signal },
+      );
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error);
     }

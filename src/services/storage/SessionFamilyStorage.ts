@@ -1,3 +1,4 @@
+import { TurnStop } from "../../contracts/conversations/turn-stop";
 import {
   Context,
   Effect,
@@ -156,6 +157,8 @@ const FamilyTurn = Schema.Struct({
   outcome: Schema.optionalKey(Schema.Literals(["complete", "failed", "aborted"])),
   /** Cake Chat requests only. Absent means immediate delivery, as for family parents. */
   reportPolicy: Schema.optionalKey(CakeChatReportDelivery),
+  /** Who deliberately stopped an aborted turn. Absent on an unexpected interruption. */
+  stop: Schema.optionalKey(TurnStop),
 });
 export interface FamilyTurn extends Schema.Schema.Type<typeof FamilyTurn> {}
 /** Version 6 recorded every correlated message, including ones that requested no response. */
@@ -204,6 +207,7 @@ export class SessionFamilyStorage extends Context.Service<
       turnId: string,
       outcome: "complete" | "failed" | "aborted",
       report?: SessionCompletionReport,
+      stop?: TurnStop,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly pendingResponseRequest: (
       sessionId: string,
@@ -612,6 +616,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
           turnId: string,
           outcome: "complete" | "failed" | "aborted",
           report?: SessionCompletionReport,
+          stop?: TurnStop,
         ) =>
           update((document) => ({
             ...document,
@@ -625,6 +630,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
                         ...turn,
                         outcome,
                         ...(report && (!turn.report || outcome === "failed") ? { report } : null),
+                        ...(stop && outcome === "aborted" ? { stop } : null),
                       },
                     ],
             ),

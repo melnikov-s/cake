@@ -195,7 +195,7 @@ describe("generated renderer command adaptation", () => {
         { accepted: true },
         options,
       );
-      await test.client.sessionChats.abort({ sessionId: "session" }, options);
+      await test.client.sessionChats.abort({ sessionId: "session", stop: { by: "user" } }, options);
       expect(requests(test.messages).map(({ tag, payload }) => ({ tag, payload }))).toEqual([
         { tag: "application.getHomeDirectory", payload: null },
         { tag: "speechOutput.installLocal", payload: null },
@@ -208,7 +208,7 @@ describe("generated renderer command adaptation", () => {
           tag: "projectSessions.respondControl",
           payload: { sessionId: "session", controlRequestId: presetId, result: { accepted: true } },
         },
-        { tag: "sessionChats.abort", payload: { sessionId: "session" } },
+        { tag: "sessionChats.abort", payload: { sessionId: "session", stop: { by: "user" } } },
       ]);
     } finally {
       await test.runtime.dispose();

@@ -367,7 +367,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
             : text
               ? { outcome: "result" as const, text }
               : undefined;
-        yield* families.settleTurn(event.turnId, outcome, report).pipe(
+        yield* families.settleTurn(event.turnId, outcome, report, event.stop).pipe(
           Effect.tapError((error) => Effect.logError("Retrying durable session settlement", error)),
           Effect.retry(Schedule.spaced("1 second")),
         );

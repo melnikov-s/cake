@@ -1,4 +1,5 @@
 import type { AttachmentReadInput } from "../../contracts/conversations/attachment-reference-control";
+import type { TurnStop } from "../../contracts/conversations/turn-stop";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 import { Effect } from "effect";
 import * as cakeChatDigest from "../cake-chats/cakeChatDigest";
@@ -130,8 +131,10 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
   return turnId;
 });
 
-export const abort = Effect.fn("SessionChats.abort")(function* (target: SessionChatTarget) {
-  yield* abortConversation(acquire(target.sessionId)).pipe(asError("abort"));
+export const abort = Effect.fn("SessionChats.abort")(function* (
+  target: SessionChatTarget & { readonly stop: TurnStop },
+) {
+  yield* abortConversation(acquire(target.sessionId), target.stop).pipe(asError("abort"));
 });
 
 export const history = Effect.fn("SessionChats.history")(function* (

@@ -32,12 +32,30 @@ import {
 } from "../../../contracts/conversations/session-contract";
 
 import { toolCompactEntryType, toolCompactMarkerSchema } from "./tool-compaction-provenance";
+import {
+  describeTurnStop,
+  TURN_STOPPED_NOTICE_TITLE,
+  TurnStop,
+} from "../../../contracts/conversations/turn-stop";
 
 export const reviewRunEntryType = "cake.review-run/v1";
 export const userMessagePresentationEntryType = "cake.user-message-presentation/v1";
 /** Presentation-only provenance: an intentional interruption is not a provider failure. */
 export const turnHandoffEntryType = "cake.turn-handoff/v1";
 const turnHandoffEntrySchema = Schema.Struct({ timestamp: Schema.Number });
+/** Presentation-only provenance: a deliberate stop names who stopped it and is not a failure. */
+export const turnStopEntryType = "cake.turn-stop/v1";
+const turnStopEntrySchema = Schema.Struct({ timestamp: Schema.Number, stop: TurnStop });
+
+/**
+ * How an aborted assistant message reads. `interrupted` is an unexpected cut-off and keeps the
+ * failure presentation; a handoff hides it; a deliberate stop shows a neutral notice.
+ */
+export type AbortPresentation =
+  | { readonly kind: "interrupted" }
+  | { readonly kind: "handoff" }
+  | { readonly kind: "stopped"; readonly stop: TurnStop };
+const interruptedAbort: AbortPresentation = { kind: "interrupted" };
 export const userMessagePresentationEntrySchema = Schema.Struct({
   targetId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
   renderAs: Schema.Literals(["markdown", "plain"]),
@@ -325,7 +343,7 @@ function partsFromMessage(
   entryId?: string,
   renderUserMessageAsMarkdown = false,
   streamingToolContentIndex?: number,
-  suppressAbort = false,
+  abortPresentation: AbortPresentation = interruptedAbort,
 ): UiPart[] {
   if (typeof message !== "object" || message === null) return [];
   const role = Reflect.get(message, "role");
@@ -500,6 +518,8 @@ function partsFromMessage(
             cacheWriteTokens: tokenCount("cacheWrite"),
           }
         : undefined;
+    const deliberateAbort =
+      Reflect.get(message, "stopReason") === "aborted" && abortPresentation.kind !== "interrupted";
     const takeResponse = () => {
       const current = response;
       response = undefined;
@@ -531,8 +551,7 @@ function partsFromMessage(
             text,
             status: streaming
               ? "streaming"
-              : Reflect.get(message, "errorMessage") &&
-                  !(suppressAbort && Reflect.get(message, "stopReason") === "aborted")
+              : Reflect.get(message, "errorMessage") && !deliberateAbort
                 ? "error"
                 : "complete",
             response: takeResponse(),
@@ -576,9 +595,23 @@ function partsFromMessage(
       }
       return [];
     });
+    if (
+      !streaming &&
+      Reflect.get(message, "stopReason") === "aborted" &&
+      abortPresentation.kind === "stopped"
+    ) {
+      parts.push({
+        id: `${baseId}-stopped`,
+        kind: "notice",
+        tone: "info",
+        title: TURN_STOPPED_NOTICE_TITLE,
+        detail: capitalize(describeTurnStop(abortPresentation.stop)),
+      });
+      return parts;
+    }
     const errorMessage = Reflect.get(message, "errorMessage");
     if (
-      !(suppressAbort && Reflect.get(message, "stopReason") === "aborted") &&
+      !deliberateAbort &&
       !parts.some((part) => part.kind === "text") &&
       typeof errorMessage === "string" &&
       errorMessage.trim()
@@ -646,7 +679,7 @@ function partsFromMessage(
 export function createLiveMessageProjector(
   options: {
     deferProviderErrors?: boolean;
-    suppressAbort?(): boolean;
+    abortPresentation?(): AbortPresentation;
     currentSystemPrompt?(): string;
     currentSystemTools?(): readonly Tool[];
     renderUserMessageAsMarkdown?(message: unknown): boolean;
@@ -720,7 +753,7 @@ export function createLiveMessageProjector(
               undefined,
               false,
               undefined,
-              options.suppressAbort?.() ?? false,
+              options.abortPresentation?.() ?? interruptedAbort,
             );
       for (const part of parts) activeAssistantPartIds.add(part.id);
       lastAssistantPartIds = [...activeAssistantPartIds];
@@ -899,11 +932,21 @@ export function projectSessionEntries(
       systemCheckpoints.add(marker.value.systemCheckpointEntryId);
   }
 
-  const handoffTimestamps = new Set<number>();
+  const abortPresentations = new Map<number, AbortPresentation>();
   for (const entry of entries) {
-    if (entry.type !== "custom" || entry.customType !== turnHandoffEntryType) continue;
-    const handoff = Schema.decodeUnknownOption(turnHandoffEntrySchema)(entry.data);
-    if (Option.isSome(handoff)) handoffTimestamps.add(handoff.value.timestamp);
+    if (entry.type !== "custom") continue;
+    if (entry.customType === turnHandoffEntryType) {
+      const handoff = Schema.decodeUnknownOption(turnHandoffEntrySchema)(entry.data);
+      if (Option.isSome(handoff))
+        abortPresentations.set(handoff.value.timestamp, { kind: "handoff" });
+    } else if (entry.customType === turnStopEntryType) {
+      const stopped = Schema.decodeUnknownOption(turnStopEntrySchema)(entry.data);
+      if (Option.isSome(stopped))
+        abortPresentations.set(stopped.value.timestamp, {
+          kind: "stopped",
+          stop: stopped.value.stop,
+        });
+    }
   }
 
   const intermediateRetryErrors = new Set<string>();
@@ -933,7 +976,7 @@ export function projectSessionEntries(
         entry.id,
         userMessagePresentations.get(entry.id) === "markdown",
         undefined,
-        handoffTimestamps.has(entry.message.timestamp),
+        abortPresentations.get(entry.message.timestamp),
       ))
         append(part);
       continue;
@@ -1210,3 +1253,5 @@ export function projectArtifactPointers(sessionManager: SessionManager): Artifac
   }
   return [...pointers.values()];
 }
+
+const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);

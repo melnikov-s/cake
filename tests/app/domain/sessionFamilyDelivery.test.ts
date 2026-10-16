@@ -123,6 +123,43 @@ describe("Session Family outcome delivery", () => {
     }),
   );
 
+  it.effect("settles silently when the parent itself stopped its child", () =>
+    Effect.gen(function* () {
+      const storage = yield* SessionFamilyStorage;
+      const stopped = {
+        ...outcome,
+        outcome: "aborted" as const,
+        stop: { by: "session" as const, sessionId: "session-1", title: "Parent" },
+      };
+      yield* storage.addChild(reservation);
+      yield* storage.recordTurn(stopped);
+      yield* Effect.scoped(deliver(stopped));
+      assert.deepEqual((yield* storage.state()).turns, []);
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          familyStorageHarness().layer,
+          environment,
+          Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
+          makeCakeSessionRuntimesLayer({
+            sessionIds: () => Stream.empty,
+            catalog: () => Stream.empty,
+            catalogEntry: () => Effect.succeed(undefined),
+            inspect: () => Effect.succeed(undefined),
+            changelog: () => Effect.succeed(""),
+            createRuntime: (runtimeOptions) =>
+              Effect.succeed({
+                ...fakeRuntime(runtimeOptions, () => undefined),
+                prompt: async () => {
+                  throw new Error("The parent must not be told about a stop it made");
+                },
+              }),
+          }),
+        ),
+      ),
+    ),
+  );
+
   it.effect("never messages a child about its parent's turn", () =>
     Effect.gen(function* () {
       const storage = yield* SessionFamilyStorage;

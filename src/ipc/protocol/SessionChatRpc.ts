@@ -9,6 +9,7 @@ import {
   QueuedSessionCommandReceipt,
   SessionInspectionQuery,
 } from "../../contracts/conversations/session-query-data";
+import { TurnStop } from "../../contracts/conversations/turn-stop";
 import { jsonValueSchema } from "../../contracts/serialization/json-contract";
 import {
   ConversationHistoryPage,
@@ -37,7 +38,10 @@ export const SessionChatRpc = RpcGroup.make(
     success: TurnId,
     error: SessionChatError,
   }),
-  Rpc.make("sessionChats.abort", { payload: SessionChatTarget, error: SessionChatError }),
+  Rpc.make("sessionChats.abort", {
+    payload: { ...SessionChatTarget.fields, stop: TurnStop },
+    error: SessionChatError,
+  }),
   Rpc.make("sessionChats.history", {
     payload: {
       ...SessionChatTarget.fields,

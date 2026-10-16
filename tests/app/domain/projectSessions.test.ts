@@ -3674,7 +3674,7 @@ describe("Project Sessions domain", () => {
         yield* sessionChats.cancelSteering(target);
         yield* sessionChats.removeQueuedMessage(target, "queued-part");
         yield* sessionChats.steerQueuedMessage(target, "queued-part");
-        yield* sessionChats.abort(target);
+        yield* sessionChats.abort({ ...target, stop: { by: "user" } });
 
         assert.equal(runtimeConstructions, 1);
         assert.deepEqual(operations, [

@@ -17,6 +17,7 @@ import {
   toolFilePath,
   toolResultDiff,
   toolResultOutputContent,
+  type AbortPresentation,
 } from "./session-projection";
 import type { ResponseRetryNotice } from "./response-retry";
 import { createNestedToolActivityProjection } from "./nested-tool-activity-projection";
@@ -77,7 +78,7 @@ export function createCakeSessionRuntimeEventProjection(input: {
   readonly emit: (event: RuntimeProjectionEvent) => void;
   readonly compactionQueuedMessages: () => readonly string[];
   readonly queuedParts?: () => UiPart[];
-  readonly suppressAbort?: () => boolean;
+  readonly abortPresentation?: () => AbortPresentation;
   readonly isDisposed: () => boolean;
 }): RuntimeEventProjection {
   const { session, sessionId, emit } = input;
@@ -105,7 +106,7 @@ export function createCakeSessionRuntimeEventProjection(input: {
   );
   const projectLiveMessage = createLiveMessageProjector({
     deferProviderErrors: true,
-    suppressAbort: input.suppressAbort,
+    abortPresentation: input.abortPresentation,
     currentSystemPrompt: isFork ? undefined : () => session.systemPrompt,
     currentSystemTools: () => runtimeSystemTools(session),
     renderUserMessageAsMarkdown: (message) => {

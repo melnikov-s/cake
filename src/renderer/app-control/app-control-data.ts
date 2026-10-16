@@ -6,6 +6,7 @@ import type {
   AgentSettingsInvocation,
   agentSettingsSections,
 } from "../../contracts/application/agent-settings-schema";
+import type { TurnStop } from "../../contracts/conversations/turn-stop";
 import { type JsonValue, type JsonObject } from "../../contracts/serialization/json-contract";
 import {
   type ChatConfiguration,
@@ -239,7 +240,8 @@ export interface AppControlHost {
     removeQueuedMessage(sessionId: string, partId: string): Promise<QueuedConversationMessages>;
     steerQueuedMessage(sessionId: string, partId: string): Promise<QueuedConversationMessages>;
     sendQueuedMessageNow(sessionId: string, partId: string): Promise<QueuedConversationMessages>;
-    abort(sessionId: string): Promise<void>;
+    /** `stop` records who deliberately stopped the session; it is never a failure. */
+    abort(sessionId: string, stop: TurnStop): Promise<void>;
     rename(sessionId: string, title: string): Promise<void>;
     setProjectSessionsResolved(sessionIds: readonly string[], resolved: boolean): Promise<number>;
   };
