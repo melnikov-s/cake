@@ -161,10 +161,12 @@ the Discussion Session's transcript. **Side chat** is UI copy only; domain code
 uses **Discussion Session**.
 
 The permanent Cake Chat can also parent Discussion Sessions, anchored to a whole
-message or a selected passage. A Cake Chat side chat is a tool-free branch: Cake
-captures the Cake Chat conversation through the anchored message once, when the
-side chat starts, and inlines it as read-only context. It cannot control Cake;
-the user returns to Cake Chat for actions.
+message or a selected passage. A Cake Chat side chat is a native fork of Cake Chat's
+Durable conversation after the anchored exchange: it continues from Cake Chat's
+exact context, separately from Cake Chat, and keeps its quick-check tools but not
+Cake controls; the user returns to Cake Chat for actions. When Cake Chat cannot
+fork there, the side chat is a tool-free branch whose context is the Cake Chat
+text through the anchored message, captured once when it starts.
 
 ### Subagent Session
 

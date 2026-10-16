@@ -36,18 +36,13 @@ import type {
   CakeModelLaunch,
 } from "../../contracts/model-presets/cake-model-selection";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
-import { splitSessionDigestReminder } from "../../contracts/cake-chats/session-digest-reminder";
 import {
   CakeOperationRegistry,
   cakeToolDescription,
   cakeToolEnvelopeSchema,
 } from "../pi/runtime/cake-operation-registry";
 import { applyPiSetting, projectPiSettings } from "../pi/runtime/settings-translation";
-import {
-  projectSessionEntries,
-  parseContextAttachmentBlocks,
-  queuedUserMessageDisplay,
-} from "../pi/runtime/session-projection";
+import { projectSessionEntries, queuedUserMessageDisplay } from "../pi/runtime/session-projection";
 import { projectModelCatalog } from "../pi/live/PiModelsLive";
 import { supportsFastMode } from "../pi/fast-mode";
 import { TurnCanceledError } from "../pi/runtime/RuntimeTurnCompletion";
@@ -59,6 +54,7 @@ import {
 import { durableModels } from "./durable-models";
 import type { RequestInspection } from "./request-inspection";
 import { openDurableChatEngine } from "./durable-chat-engine";
+import { createDurableSideChats, type DurableSideChats } from "./durable-side-chats";
 import { readDurableOriginalPage } from "./durable-chat-history";
 import {
   listDurableMessageReferences,
@@ -81,61 +77,29 @@ import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-ident
 import { SubagentResult, SubagentReportOrigin } from "../../contracts/subagents/subagent-data";
 import { Option } from "effect";
 import {
-  durableInputPresentation,
   durableInputText,
+  durableQueuedDisplayText,
+  durableQueuedInput,
+  durableQueuedPresentation,
+  durableQueuedText,
   markDurableInputSteering,
 } from "./durable-input-presentation";
 import { durableInputResponse, previousDurableResponseMode } from "./durable-response-mode";
 import type { ConversationResponseMode } from "../../contracts/conversations/response-mode-reminders";
-import { splitContextReminders } from "../pi/runtime/session-context-reminders";
-const presentationOf = (content: string | ReadonlyArray<{ type: string; text?: string }>) =>
-  durableInputPresentation(
-    typeof content === "string"
-      ? content
-      : content.flatMap((part) => (part.text === undefined ? [] : [part.text])).join("\n"),
-  );
-const textOf = (content: string | ReadonlyArray<{ type: string; text?: string }>) =>
-  presentationOf(content).body;
-// Queued rows show the user's words, not Cake-owned model guidance such as a voice reminder.
-const displayTextOf = (content: string | ReadonlyArray<{ type: string; text?: string }>) =>
-  splitContextReminders(textOf(content)).text;
-const queuedInput = (item: Extract<InboxItem, { content: unknown }>, id: string) => {
-  const input = presentationOf(item.content);
-  const images =
-    typeof item.content === "string"
-      ? []
-      : item.content
-          .filter((block) => block.type === "image")
-          .map((block, index) => ({
-            kind: "image" as const,
-            name: input.imageNames[index] ?? `Image ${index + 1}`,
-            data: block.data,
-            mimeType: block.mimeType,
-          }));
-  return {
-    itemId: id,
-    turnId: id,
-    // The session digest prefix is Cake-owned model context, not editable user text.
-    text: splitSessionDigestReminder(input.text).text,
-    renderUserMessageAsMarkdown: input.markdown,
-    attachments: [
-      ...input.files,
-      ...parseContextAttachmentBlocks(input.body).attachments,
-      ...images,
-    ],
-  };
-};
 const unsupported = async () => {
   throw new Error(
-    "The permanent Cake Chat cannot be forked, edited, renamed or navigated as a Project Session",
+    "The permanent Cake Chat cannot be edited, renamed or navigated as a Project Session",
   );
 };
+
+/** The coordinator runtime and the side-chat forks that share its Durable database. */
+export type DurableCakeChatRuntime = CakeSessionRuntime & { readonly sideChats: DurableSideChats };
 
 /** The shared Cake conversation contract, backed solely by Pi Durable for the coordinator. */
 export async function createDurableCakeChatRuntime(
   options: CakeSessionRuntimeOptions,
   inspection?: RequestInspection,
-): Promise<CakeSessionRuntime> {
+): Promise<DurableCakeChatRuntime> {
   if (!options.coordinator || !options.cakeChatMemory || options.sessionId !== CAKE_CHAT_SESSION_ID)
     throw new Error("Durable Cake Chat requires the coordinator capability profile");
   const preferences = options.cakeChatMemory;
@@ -246,6 +210,12 @@ export async function createDurableCakeChatRuntime(
     replay: "unsafe",
     executionMode: "sequential",
     async execute(input, api, context) {
+      // Side-chat forks inherit this tool so their request stays cache-identical to
+      // Cake Chat's, but acting as Cake Chat from a side chat would write back into it.
+      if (api.conversationId !== engine.root.id)
+        throw new Error(
+          "Cake controls are unavailable in side chats. Return to Cake Chat to act on Cake.",
+        );
       const result = await operations.invoke(input, {
         signal: context.abortSignal ?? new AbortController().signal,
         toolCallId: api.callId,
@@ -393,12 +363,12 @@ export async function createDurableCakeChatRuntime(
     return {
       steering: items
         .filter((item): item is Extract<InboxItem, { content: unknown }> => item.mode === "steer")
-        .map((item) => displayTextOf(item.content)),
+        .map((item) => durableQueuedDisplayText(item.content)),
       followUp: items
         .filter(
           (item): item is Extract<InboxItem, { content: unknown }> => item.mode === "followUp",
         )
-        .map((item) => displayTextOf(item.content)),
+        .map((item) => durableQueuedDisplayText(item.content)),
     };
   };
   const requestId = async (item: InboxItem) =>
@@ -468,9 +438,20 @@ export async function createDurableCakeChatRuntime(
       BACKGROUND_CONTEXT,
     );
   };
-  const runtime: CakeSessionRuntime = {
+  const sideChats = createDurableSideChats({
+    harness: engine.harness,
+    root: engine.root,
+    storage,
+    sessionFile,
+    catalog: catalogRuntime,
+    settings,
+    models: () => modelOptions,
+    fastMode: () => fastMode,
+  });
+  const runtime: DurableCakeChatRuntime = {
     sessionId,
     sessionFile,
+    sideChats,
     get streaming() {
       return streaming;
     },
@@ -544,7 +525,7 @@ export async function createDurableCakeChatRuntime(
           if (item.mode !== "write") {
             const id = await requestId(item);
             // Queued rows show routing envelopes and reminders exactly as history does.
-            const display = queuedUserMessageDisplay(textOf(item.content));
+            const display = queuedUserMessageDisplay(durableQueuedText(item.content));
             parts.push({
               id: `queued-${id}`,
               kind: "text",
@@ -553,9 +534,9 @@ export async function createDurableCakeChatRuntime(
               status: "complete",
               deliveryState: item.mode === "steer" ? "steering" : "queued",
               renderAs: display.renderAs,
-              subagentReport: presentationOf(item.content).subagentReport,
+              subagentReport: durableQueuedPresentation(item.content).subagentReport,
               crossSession: display.crossSession,
-              queuedInput: queuedInput(item, id),
+              queuedInput: durableQueuedInput(item, id),
             });
           }
         const sums = Object.values(usage?.models ?? {}).concat(Object.values(usage?.tools ?? {}));
@@ -649,7 +630,7 @@ export async function createDurableCakeChatRuntime(
         items: await Promise.all(
           items.map(async (item, index) => {
             const id = await requestId(item);
-            const text = textOf(item.content);
+            const text = durableQueuedText(item.content);
             return {
               itemId: id,
               partId: `queued-${id}`,
@@ -799,7 +780,10 @@ export async function createDurableCakeChatRuntime(
       publish();
     },
     rename: unsupported,
-    fork: unsupported,
+    // Forks only ever become side chats; Cake Chat itself stays one permanent conversation.
+    async fork(entryId) {
+      return { sessionId: await sideChats.fork(entryId), sessionFile, artifactPointers: [] };
+    },
     toolCompact: unsupported,
     navigate: unsupported,
     async dispose() {

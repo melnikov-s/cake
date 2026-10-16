@@ -3,7 +3,10 @@ import { acquireOptions as acquireProjectSessionOptions } from "../project-sessi
 import { Effect, Option, Schema, Stream } from "effect";
 import type { DiscussionCatalogUpdate } from "../../contracts/application/catalog-data";
 import { type CakeControlTool } from "../../contracts/cake-chats/cake-chat-data";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
+import {
+  CAKE_CHAT_SESSION_ID,
+  cakeChatSideChatConversationId,
+} from "../../contracts/cake-chats/cake-chat-identity";
 import { jsonObjectSchema } from "../../contracts/serialization/json-contract";
 import { makePiCallbackExecutor } from "../../services/pi/PiCallbackAdapter";
 import {
@@ -228,10 +231,14 @@ const acquireRecord = Effect.fn("DiscussionSessions.acquireRecord")(function* (
 const sideChatConfiguration = Effect.fn("DiscussionSessions.sideChatConfiguration")(function* (
   record: DiscussionSessionRecord,
 ): Effect.fn.Return<SidecarConfiguration, DiscussionSessionError, DiscussionSessionEnvironment> {
+  // A Durable fork inherits Cake Chat's exact agent (prompt, model and tools) at
+  // its branch point; Cake Chat's runtime refuses Cake controls inside it.
+  if (cakeChatSideChatConversationId(record.sidecarSessionId) !== undefined)
+    return { systemPrompt: "", tools: [] };
   const environment = yield* DiscussionSessionEnvironment;
   const systemPrompt = yield* environment.sidecarSystemPrompt(record).pipe(asError("acquire"));
-  // Cake Chat itself has no file tools; its side chat discusses the inlined
-  // branch context and cannot act on the workspace or Cake.
+  // A copied-context Cake Chat side chat discusses the inlined branch context
+  // and cannot act on the workspace or Cake.
   return {
     systemPrompt,
     tools: isCakeChatSideChat(record) ? [] : ["read", "grep", "find", "ls"],
@@ -514,9 +521,13 @@ export const start = Effect.fn("DiscussionSessions.start")(function* (
 });
 
 /**
- * Branches a side chat from one Cake Chat message. The conversation through
- * that message is captured from the assembled Cake Chat before the thread is
- * stored, so a missing message never leaves an empty thread behind.
+ * Branches a side chat from one Cake Chat message. Cake Chat forks its Durable
+ * conversation after that exchange, so the side chat continues from Cake Chat's
+ * exact model context (and its provider prompt cache). When Cake Chat cannot
+ * fork there, the conversation text through that message is copied into the
+ * side chat's instructions instead. Either way the branch point is resolved
+ * before the thread is stored, so a missing message never leaves an empty
+ * thread behind.
  */
 export const startCakeChatSideChat = Effect.fn("DiscussionSessions.startCakeChatSideChat")(
   function* (input: CakeChatSideChatStartInput, workingDirectory: string) {
@@ -528,6 +539,32 @@ export const startCakeChatSideChat = Effect.fn("DiscussionSessions.startCakeChat
         message: "A Cake Chat side chat must branch from a message",
       });
     const sessions = yield* CakeSessionRuntimes;
+    const environment = yield* DiscussionSessionEnvironment;
+    const entryId = input.anchor.entryId;
+    const forked = entryId
+      ? yield* Effect.scoped(
+          sessions
+            .acquireSession(CAKE_CHAT_SESSION_ID)
+            .pipe(Effect.flatMap((handle) => handle.fork(entryId, "Side chat"))),
+        ).pipe(
+          Effect.map((fork) => fork.sessionId),
+          Effect.catch((error) =>
+            Effect.logWarning(
+              "Cake Chat side chat falls back to copied context",
+              error.message,
+            ).pipe(Effect.as(undefined)),
+          ),
+        )
+      : undefined;
+    if (forked && cakeChatSideChatConversationId(forked) !== undefined) {
+      const record = yield* environment
+        .create(workingDirectory, CAKE_CHAT_SESSION_ID, input.anchor)
+        .pipe(asError("start"));
+      const linked = yield* environment
+        .linkSidecar(record, { sessionId: forked })
+        .pipe(asError("start"));
+      return yield* deliverFirstPrompt(linked, input);
+    }
     const snapshot = yield* Effect.scoped(
       sessions
         .acquireSession(CAKE_CHAT_SESSION_ID)
@@ -539,7 +576,6 @@ export const startCakeChatSideChat = Effect.fn("DiscussionSessions.startCakeChat
         operation: "start",
         message: "That Cake Chat message is no longer available",
       });
-    const environment = yield* DiscussionSessionEnvironment;
     const record = yield* environment
       .create(workingDirectory, CAKE_CHAT_SESSION_ID, input.anchor)
       .pipe(asError("start"));

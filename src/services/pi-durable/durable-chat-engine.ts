@@ -12,8 +12,10 @@ import { getCurrentSystemMessage } from "@earendil-works/pi-durable-ai/utils/tra
 import {
   Harness,
   LiveDoc,
+  ProviderDoc,
   ResetEntry,
   defineDoc,
+  type CommitChange,
   type Conversation,
   type EntryId,
   type Registry,
@@ -41,6 +43,14 @@ const BoundaryDoc = defineDoc<Boundary>({
   fork: "initial",
   initial: () => ({ input: -1, marker: -1 }),
 });
+
+/** The conversation one committed change belongs to; undefined for Session documents. */
+export const changeConversation = (change: CommitChange) =>
+  change.type === "document" || change.type === "document.copy"
+    ? change.conversationId
+    : change.type === "conversation"
+      ? change.value.id
+      : change.value.conversationId;
 
 /** Durable's inbox owns acceptance/steering/follow-ups. Only the provider-request boundary
  * changes: first request of each independent run gets a persisted fresh context. Failures
@@ -84,6 +94,27 @@ export async function openDurableChatEngine(options: {
           ? AbortSignal.any([closing.signal, streamOptions.signal])
           : closing.signal;
         const context = withAbortSignal(signal, BACKGROUND_CONTEXT);
+        // Side-chat forks share this Harness. Durable gives every fork a fresh provider
+        // identity, so a request under another identity is a fork's: it sends exactly the
+        // context Durable prepared and never touches Cake Chat's run boundary or memory.
+        // At the wire it carries Cake Chat's identity, as Project Session forks share their
+        // source's prompt cache key, so session-keyed provider caches serve its prefix too.
+        const identity = await harness.snapshot(ProviderDoc, root.id, context);
+        if (
+          identity !== undefined &&
+          streamOptions?.sessionId !== undefined &&
+          streamOptions.sessionId !== identity.sessionId
+        ) {
+          const source = options.models.streamSimple(
+            model,
+            {
+              messages: request.messages.map((message) => withoutDurableInputPresentation(message)),
+            },
+            { ...streamOptions, sessionId: identity.sessionId },
+          );
+          for await (const event of source) stream.push(event);
+          return;
+        }
         const live = await harness.snapshot(LiveDoc, root.id, context);
         const input = live?.run?.inputs[0];
         if (input !== undefined) {
@@ -221,6 +252,9 @@ export async function openDurableChatEngine(options: {
       let visible = false;
       let originals = 0;
       for (const change of publication.changes) {
+        // Side-chat forks commit through this Harness too; only Cake Chat's own
+        // changes count toward its metadata, memory index and snapshots.
+        if (changeConversation(change) !== root.id) continue;
         if (
           change.type === "entry" &&
           ["pi.user", "pi.assistant", "pi.tool-result"].includes(change.value.kind)

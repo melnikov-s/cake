@@ -51,7 +51,7 @@ export interface DiscussionSessionEnvironmentService {
   ) => Effect.Effect<DiscussionSessionRecord, DiscussionSessionEnvironmentError>;
   readonly linkSidecar: (
     record: DiscussionSessionRecord,
-    sidecar: { readonly sessionId: string; readonly sessionFile: string },
+    sidecar: { readonly sessionId: string; readonly sessionFile?: string },
   ) => Effect.Effect<DiscussionSessionRecord, DiscussionSessionEnvironmentError>;
   readonly setResolved: (
     record: DiscussionSessionRecord,

@@ -49,6 +49,7 @@ import {
   type CakeSessionRuntimeOptions,
 } from "./runtime/cake-session-runtime";
 import { CakeChatDurable } from "../pi-durable/CakeChatDurable";
+import { cakeChatSideChatConversationId } from "../../contracts/cake-chats/cake-chat-identity";
 import { TurnCanceledError } from "./runtime/RuntimeTurnCompletion";
 import {
   loadDurableArtifactReferences,
@@ -1323,23 +1324,27 @@ export const makeCakeSessionRuntimesLive = (
         inspect: (target) =>
           coordinatorDirectory(target.sessionDirectory)
             ? durable.inspect(target.sessionDirectory, target.sessionId)
-            : Effect.tryPromise({
-                try: () =>
-                  loadWorkspacePiSessionPreview(
-                    target.workingDirectory,
-                    target.sessionId,
-                    target.sessionDirectory,
-                    target.direct,
-                  ),
-                catch: (cause) => cause,
-              }),
+            : cakeChatSideChatConversationId(target.sessionId) !== undefined
+              ? durable.inspectSideChat(target.sessionId)
+              : Effect.tryPromise({
+                  try: () =>
+                    loadWorkspacePiSessionPreview(
+                      target.workingDirectory,
+                      target.sessionId,
+                      target.sessionDirectory,
+                      target.direct,
+                    ),
+                  catch: (cause) => cause,
+                }),
         createRuntime: (options) =>
           options.globalControl
             ? durable.createRuntime(options)
-            : Effect.tryPromise({
-                try: () => createRuntime(options),
-                catch: (cause) => cause,
-              }),
+            : cakeChatSideChatConversationId(options.sessionId) !== undefined
+              ? durable.createSideChatRuntime(options)
+              : Effect.tryPromise({
+                  try: () => createRuntime(options),
+                  catch: (cause) => cause,
+                }),
         changelog: () => Effect.sync(loadPiChangelog),
         durableArtifactReferences: (sessionRoots) =>
           Effect.tryPromise({

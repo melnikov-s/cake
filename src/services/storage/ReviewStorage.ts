@@ -55,7 +55,8 @@ export interface ReviewStorageService {
     workingDirectory: string,
     sessionId: string,
     threadId: string,
-    sidecar: { readonly sessionId: string; readonly sessionFile: string },
+    /** A Durable side chat lives in Cake Chat's database and has no transcript file. */
+    sidecar: { readonly sessionId: string; readonly sessionFile?: string },
   ) => Effect.Effect<ReviewThreadRecord, ReviewStorageError>;
   readonly resolve: (
     workingDirectory: string,

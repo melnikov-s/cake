@@ -266,10 +266,15 @@ message and turn.
 Discussion and other regular-Pi sidecar sessions use their narrower Pi roots.
 Cake stores review/message anchors and sidecar references, while sidecar replies
 remain only in their Pi Session files. Cake Chat side chats are Discussion
-Sessions whose parent is the permanent Cake Chat; they use the same storage,
-keyed by Cake Chat's fixed identity and location. Their derived branch context
-(Cake Chat text through the anchored message) is written once when the side chat
-starts and is never regenerated, so later Cake Chat messages stay out of it.
+Sessions whose parent is the permanent Cake Chat; their records use the same
+storage, keyed by Cake Chat's fixed identity and location. A side chat's
+transcript is normally a Pi Durable fork inside Cake Chat's own
+`coordinator.sqlite` (see below): the record stores only the fork's session ID
+(`<Cake Chat ID>:side-chat:<conversation ID>`) and no transcript file. When
+Cake Chat cannot fork at the anchored message, the side chat falls back to a
+regular-Pi sidecar whose derived branch context (Cake Chat text through the
+anchored message) is written once when the side chat starts and is never
+regenerated, so later Cake Chat messages stay out of it.
 
 Window state stores stable Cake/Pi identifiers and Working Directories, never
 absolute transcript filenames. Restart resolution asks Pi beneath the current
@@ -300,6 +305,21 @@ application-state transaction, preserve other preferences, and require the exact
 previous instructions to reject stale replacements. The user-facing setting remains
 Settings → Application → Cake Chat → Cake Chat instructions. Saved changes apply to
 the next Chat message without a reload; they are never summarized into memory.
+
+Side chats fork the coordinator conversation with Durable `fork()` after the
+completed reply that closes the anchored exchange. The fork inherits Cake Chat's
+exact model context and agent (prompt, model and tools) as of that entry, runs on
+the coordinator's own Harness (one process owns the database), and survives
+restart with it. Forks never write to the root conversation: the coordinator's
+run-boundary memory reset, memory index, message count and snapshots consider
+only root changes, and its `cake` tool refuses calls from a fork. Provider
+requests from a fork carry Cake Chat's provider session identity, so their first
+request reads Cake Chat's prompt cache. Durable treats a head marker as dropping
+the system prompt and would re-send a complete baseline system message after it;
+because Cake Chat's run resets already carry the system message, the fork's
+creating commit adds an empty `pi.system` marker so the first request repeats
+Cake Chat's prefix exactly. That relies on Durable 1.1.0 prompt planning, which
+is experimental.
 
 The Pi Durable SDK supplies process-crash recovery, not a newest-commit power-loss
 guarantee. Replay-unsafe Cake mutations require inspecting live state rather than

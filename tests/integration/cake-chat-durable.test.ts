@@ -59,6 +59,7 @@ async function fixture() {
   const model = { ...durableModel, provider: "openai" };
   const requests: Context[] = [];
   const keys: Array<string | undefined> = [];
+  const providerSessions: Array<string | undefined> = [];
   const started = Deferred.makeUnsafe<void>();
   let hold = false;
   const finishes: Array<() => void> = [];
@@ -66,6 +67,7 @@ async function fixture() {
   const streamSimple: Provider["streamSimple"] = (selected, request, options) => {
     requests.push(structuredClone(request));
     keys.push(options?.apiKey);
+    providerSessions.push(options?.sessionId);
     const stream = createAssistantMessageEventStream();
     const message = {
       ...answer(requests.length),
@@ -183,14 +185,46 @@ async function fixture() {
     cleanup.push(close);
     return { runtime, close };
   };
+  /** Opens a side-chat fork the way a Discussion Session sidecar acquisition does. */
+  const openSideChat = async (sessionId: string) => {
+    const events: ConversationSnapshot[] = [];
+    const runtime = await serviceRuntime.runPromise(
+      service.createSideChatRuntime({
+        cwd: directory,
+        trusted: true,
+        agentDir,
+        sessionDir: join(directory, "reviews", "side-chat"),
+        directSessionDir: true,
+        newSession: false,
+        sessionId,
+        auxiliary: true,
+        tools: [],
+        requestUi: async () => undefined,
+        onEvent(event) {
+          if (event.type === "snapshot") events.push(event.snapshot);
+        },
+      }),
+    );
+    let closed = false;
+    const close = async () => {
+      if (!closed) {
+        closed = true;
+        await runtime.dispose();
+      }
+    };
+    cleanup.push(close);
+    return { runtime, close, events };
+  };
   return {
     directory,
     agentDir,
     sessionDir,
     service,
+    openSideChat,
     serviceRuntime,
     requests,
     keys,
+    providerSessions,
     summarize,
     snapshots,
     waitSnapshot,
@@ -773,4 +807,170 @@ it("does not replay a session-creation mutation interrupted after its external s
   expect(
     snapshot.parts.filter((part) => part.kind === "text" && part.text === "Create one worker"),
   ).toHaveLength(1);
+});
+
+const textParts = (snapshot: ConversationSnapshot) =>
+  snapshot.parts.flatMap((part) =>
+    part.kind === "text" ? [{ role: part.role, text: part.text }] : [],
+  );
+const entryOf = (snapshot: ConversationSnapshot, text: string) => {
+  const part = snapshot.parts.find(
+    (candidate) => candidate.kind === "text" && candidate.text === text,
+  );
+  if (part?.kind !== "text" || part.entryId === undefined) throw new Error(`No entry for ${text}`);
+  return part.entryId;
+};
+
+it("forks a side chat from Cake Chat's exact provider context and leaves Cake Chat untouched", async () => {
+  const f = await fixture();
+  f.answer((index) =>
+    index === 1
+      ? durableAnswer("", [
+          { type: "toolCall", id: "read-1", name: "read", arguments: { path: "missing.txt" } },
+        ])
+      : index === 2
+        ? durableAnswer("First answer")
+        : index === 3
+          ? durableAnswer("Second answer")
+          : index === 4
+            ? durableAnswer("Side answer")
+            : durableAnswer("Third answer"),
+  );
+  const { runtime } = await f.open();
+  await runtime.prompt("First question", "prompt", [], false, ids.first);
+  await runtime.prompt("Second question", "prompt", [], false, ids.second);
+  const before = await runtime.snapshot();
+  const summaries = f.summarize.mock.calls.length;
+
+  // Anchored at a user message whose reply needed a tool round: the fork lands on the
+  // completed reply, never on a dangling tool call.
+  const fork = await runtime.fork(entryOf(before, "First question"), "Side chat");
+  expect(fork.sessionId).toMatch(/:side-chat:\d+$/);
+  const side = await f.openSideChat(fork.sessionId);
+  expect(textParts(await side.runtime.snapshot())).toEqual([]);
+  await side.runtime.prompt("Side question", "prompt", [], false, ids.first);
+
+  // The fork's first request extends Cake Chat's last request for that exchange
+  // byte-for-byte: same system prompt, offered tools, memory view and tool round.
+  const parent = f.requests[1]!;
+  const forked = f.requests[3]!;
+  expect(forked.systemPrompt).toEqual(parent.systemPrompt);
+  expect(forked.tools).toEqual(parent.tools);
+  expect(forked.messages.slice(0, parent.messages.length)).toEqual(parent.messages);
+  const [reply, question, ...rest] = forked.messages.slice(parent.messages.length);
+  expect(rest).toEqual([]);
+  expect(reply).toMatchObject({
+    role: "assistant",
+    content: [{ type: "text", text: "First answer" }],
+  });
+  expect(JSON.stringify(question)).toContain("Side question");
+  expect(JSON.stringify(question)).toContain("<cake-side-chat>");
+  expect(JSON.stringify(forked)).not.toContain("Second question");
+  expect(JSON.stringify(forked)).not.toContain("cake-input-presentation");
+
+  // The side chat shows only its own exchange, without the model-only note.
+  expect(textParts(await side.runtime.snapshot())).toEqual([
+    { role: "user", text: "Side question" },
+    { role: "assistant", text: "Side answer" },
+  ]);
+  const preview = await f.serviceRuntime.runPromise(f.service.inspectSideChat(fork.sessionId));
+  expect(preview?.parts.map((part) => part.kind === "text" && part.text)).toEqual([
+    "Side question",
+    "Side answer",
+  ]);
+
+  // Cake Chat's transcript, queue, usage and memory never see the side chat.
+  const after = await runtime.snapshot();
+  expect(after.parts).toEqual(before.parts);
+  expect(after.usage).toEqual(before.usage);
+  expect(await runtime.pendingMessages()).toEqual({ items: [] });
+  expect(f.summarize.mock.calls.length).toBe(summaries);
+  await runtime.prompt("Third question", "prompt", [], false, ids.third);
+  const next = JSON.stringify(f.requests[4]);
+  expect(next).toContain("Second answer");
+  expect(next).not.toContain("Side question");
+  expect(next).not.toContain("Side answer");
+  expect(next).not.toContain("<cake-side-chat>");
+  expect(JSON.stringify(f.summarize.mock.calls)).not.toContain("Side answer");
+  expect(textParts(await side.runtime.snapshot())).toHaveLength(2);
+});
+
+it("keeps side-chat forks across restart and refuses Cake controls inside them", async () => {
+  const f = await fixture();
+  const invoke = vi.fn<NonNullable<CakeSessionRuntimeSetup["globalControl"]>["invoke"]>(
+    async () => ({ ok: true }),
+  );
+  f.answer((index) =>
+    index === 1
+      ? durableAnswer("Parent answer")
+      : index === 2
+        ? durableAnswer("", [
+            {
+              type: "toolCall",
+              id: "cake-1",
+              name: "cake",
+              arguments: { command: "sessions.create", input: {} },
+            },
+          ])
+        : durableAnswer(index === 3 ? "Side answer" : "Later side answer"),
+  );
+  const first = await f.open({ tools: [], invoke });
+  await first.runtime.prompt("Parent question", "prompt", [], false, ids.first);
+  const parentParts = (await first.runtime.snapshot()).parts;
+  const fork = await first.runtime.fork(
+    entryOf(await first.runtime.snapshot(), "Parent answer"),
+    "Side chat",
+  );
+  const side = await f.openSideChat(fork.sessionId);
+  await side.runtime.prompt("Start a session", "prompt", [], false, ids.first);
+  // A reply without tool rounds leaves only Cake Chat's run reset before the fork point;
+  // the fork still repeats that request exactly instead of re-sending the system prompt.
+  const parent = f.requests[0]!;
+  const forked = f.requests[1]!;
+  expect(forked.messages.slice(0, parent.messages.length)).toEqual(parent.messages);
+  expect(forked.messages.slice(parent.messages.length).map((message) => message.role)).toEqual([
+    "assistant",
+    "user",
+  ]);
+  // Session-keyed provider caches see the same identity as Cake Chat.
+  expect(f.providerSessions[1]).toBe(f.providerSessions[0]);
+  expect(invoke).not.toHaveBeenCalled();
+  expect(JSON.stringify(f.requests[2])).toContain("Cake controls are unavailable in side chats");
+  await side.close();
+  await first.close();
+
+  const second = await f.open({ tools: [], invoke });
+  expect((await second.runtime.snapshot()).parts).toEqual(parentParts);
+  const reopened = await f.openSideChat(fork.sessionId);
+  expect(textParts(await reopened.runtime.snapshot()).filter((part) => part.text !== "")).toEqual([
+    { role: "user", text: "Start a session" },
+    { role: "assistant", text: "Side answer" },
+  ]);
+  await reopened.runtime.prompt("Follow up", "prompt", [], false, ids.second);
+  const followUp = JSON.stringify(f.requests[3]);
+  expect(followUp).toContain("Parent answer");
+  expect(followUp).toContain("Side answer");
+  // The orientation note is sent once, with the first side-chat input.
+  expect(followUp.split("<cake-side-chat>")).toHaveLength(2);
+  expect((await second.runtime.snapshot()).parts).toEqual(parentParts);
+});
+
+it("rejects side-chat forks from a message without a completed reply", async () => {
+  const f = await fixture();
+  f.hold(true);
+  const { runtime } = await f.open();
+  const pending = runtime.prompt("Still running", "prompt", [], false, ids.first);
+  await Effect.runPromise(Deferred.await(f.started));
+  const snapshot = await f.waitSnapshot(runtime, (value) =>
+    value.parts.some(
+      (part) => part.kind === "text" && part.text === "Still running" && part.entryId,
+    ),
+  );
+  await expect(runtime.fork(entryOf(snapshot, "Still running"), "Side chat")).rejects.toThrow(
+    "has no completed reply",
+  );
+  await expect(runtime.fork("999999", "Side chat")).rejects.toThrow("no longer available");
+  f.hold(false);
+  f.finishes[0]!();
+  await pending;
 });
