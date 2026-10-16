@@ -315,10 +315,12 @@ run-boundary memory reset, memory index, message count and snapshots consider
 only root changes, and its `cake` tool refuses calls from a fork. Provider
 requests from a fork carry Cake Chat's provider session identity, so their first
 request reads Cake Chat's prompt cache. Durable treats a head marker as dropping
-the system prompt and would re-send a complete baseline system message after it;
-because Cake Chat's run resets already carry the system message, the fork's
-creating commit adds an empty `pi.system` marker so the first request repeats
-Cake Chat's prefix exactly. That relies on Durable 1.1.0 prompt planning, which
+the system prompt and would re-send a complete baseline system message after it.
+Cake Chat's run resets already carry the system message, so each reset is followed
+by an empty `pi.system` marker in the same commit: tool rounds and later runs extend
+the cached prefix, and Durable patches the prompt only when it really changes. A
+fork whose branch point predates that marker gets one in its creating commit, so
+its first request repeats Cake Chat's prefix exactly. That relies on Durable 1.1.0 prompt planning, which
 is experimental.
 
 The Pi Durable SDK supplies process-crash recovery, not a newest-commit power-loss

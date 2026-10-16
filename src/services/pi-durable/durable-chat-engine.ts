@@ -14,15 +14,18 @@ import {
   LiveDoc,
   ProviderDoc,
   ResetEntry,
+  SystemEntry,
   defineDoc,
   type CommitChange,
   type Conversation,
+  type ConversationId,
   type EntryId,
   type Registry,
   type Storage,
   type AgentChange,
   type HarnessOptions,
   type HarnessSettings,
+  type Tx,
 } from "@earendil-works/pi-durable";
 import { Schema } from "effect";
 import { ChatMetadataDoc } from "./durable-chat-metadata";
@@ -51,6 +54,17 @@ export const changeConversation = (change: CommitChange) =>
     : change.type === "conversation"
       ? change.value.id
       : change.value.conversationId;
+
+/**
+ * Durable assumes a head marker drops the system prompt: when no `pi.system` entry follows
+ * the newest head, its next request re-sends a complete baseline system message (every
+ * section and tool) after the history, breaking the cached prefix. Cake Chat's resets carry
+ * the current system message themselves, so an empty marker after one lets Durable diff
+ * against that copy instead and emit a patch only when the prompt or tools really change.
+ */
+export const markSystemCarried = async (tx: Tx, conversationId: ConversationId) => {
+  await tx.appendEntry(SystemEntry, conversationId, {});
+};
 
 /** Durable's inbox owns acceptance/steering/follow-ups. Only the provider-request boundary
  * changes: first request of each independent run gets a persisted fresh context. Failures
@@ -168,6 +182,7 @@ export async function openDurableChatEngine(options: {
                   head: "self",
                   model: [...(system ? [system] : []), ...current],
                 });
+                if (system) await markSystemCarried(tx, root.id);
               }, context);
               const view = await index(signal, cutoff);
               const messages: Message[] = system ? [system] : [];
@@ -185,6 +200,7 @@ export async function openDurableChatEngine(options: {
                   head: "self",
                   model: messages,
                 });
+                if (system) await markSystemCarried(tx, root.id);
                 doc.input = input;
                 doc.marker = reset.id;
               }, context);

@@ -35,7 +35,7 @@ import type {
   CakeSessionRuntimeOptions,
 } from "../pi/runtime/cake-session-runtime";
 import { supportsFastMode } from "../pi/fast-mode";
-import { changeConversation } from "./durable-chat-engine";
+import { changeConversation, markSystemCarried } from "./durable-chat-engine";
 import { readDurableOriginalPage } from "./durable-chat-history";
 import { abortDurableActiveTurn, startDurableQueuedInput } from "./durable-chat-queue";
 import {
@@ -500,12 +500,8 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
   return {
     async fork(entryId) {
       const at = await sideChatForkPoint(root, entryId);
-      // Durable assumes a head marker drops the system prompt, so a request whose context
-      // has no `pi.system` entry after its head re-sends a complete baseline system message
-      // (every section and tool again) after the history. Cake Chat's run resets carry the
-      // current system message themselves; an empty marker in the fork's creating commit
-      // lets Durable diff against that copy instead, so the fork's first request repeats
-      // Cake Chat's prefix byte for byte and reads its prompt cache.
+      // Forks from history written before Cake Chat marked its resets need the marker
+      // themselves; see markSystemCarried.
       const view = await root.context(BACKGROUND_CONTEXT, { at });
       const systemCarried =
         view.head?.model?.[0]?.role === "system" &&
@@ -516,9 +512,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
           ownership: { kind: "ownerless" },
           ...(systemCarried
             ? {
-                init: async (tx: Tx, id: ConversationId) => {
-                  await tx.appendEntry(SystemEntry, id, {});
-                },
+                init: (tx: Tx, id: ConversationId) => markSystemCarried(tx, id),
               }
             : null),
         },
