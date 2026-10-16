@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { observer, useStore } from "r-state-tree/react";
 import { Sidebar } from "@/components/sidebar";
 import { RootStore } from "../stores/RootStore";
+import { isPhoneLayout } from "../lib/phone-layout";
 
 export const AppSidebar = observer(function AppSidebar() {
   const root = useStore(RootStore);
@@ -11,7 +12,8 @@ export const AppSidebar = observer(function AppSidebar() {
   const shell = root.appShellStore;
   const toggleSidebar = () => sidebar.toggle();
   const closeNarrowNavigation = useCallback(() => {
-    if (window.matchMedia("(max-width: 620px)").matches && sidebar.visible) sidebar.toggle();
+    if ((window.matchMedia("(max-width: 620px)").matches || isPhoneLayout()) && sidebar.visible)
+      sidebar.toggle();
   }, [sidebar]);
   const openSettings = () => {
     closeNarrowNavigation();

@@ -106,7 +106,7 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
     />
   ) : undefined;
   return (
-    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]">
+    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] phone:block phone:overflow-y-auto">
       <header className={cn("border-b border-border/65 px-6 py-4", compact && "px-4 py-3")}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">

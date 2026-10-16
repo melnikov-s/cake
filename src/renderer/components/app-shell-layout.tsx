@@ -78,7 +78,7 @@ export const AppShellLayout = observer(function AppShellLayout({
       ref={shellRef}
       className={cn(
         "relative grid h-full w-full max-w-[100vw] overflow-hidden bg-background text-foreground transition-[grid-template-columns] duration-180 ease-out",
-        "grid-cols-[var(--sidebar-width)_minmax(0,1fr)_var(--right-pane-width)] max-[820px]:grid-cols-[min(var(--sidebar-width),230px)_minmax(0,1fr)_var(--right-pane-width)] max-[620px]:grid-cols-[0px_minmax(0,1fr)]",
+        "grid-cols-[var(--sidebar-width)_minmax(0,1fr)_var(--right-pane-width)] max-[820px]:grid-cols-[min(var(--sidebar-width),230px)_minmax(0,1fr)_var(--right-pane-width)] max-[620px]:grid-cols-[0px_minmax(0,1fr)] phone:grid-cols-[0px_minmax(0,1fr)]",
         resizingPanel && "cursor-col-resize select-none transition-none",
       )}
       style={shellStyle}
@@ -88,7 +88,7 @@ export const AppShellLayout = observer(function AppShellLayout({
           <Button
             variant="ghost"
             aria-label="Close navigation"
-            className="absolute inset-0 z-40 hidden h-full w-full rounded-none bg-foreground/28 max-[620px]:block"
+            className="absolute inset-0 z-40 hidden h-full w-full rounded-none bg-foreground/28 max-[620px]:block phone:block"
             onClick={() => sidebar.toggle()}
           />
           <AppSidebar />
@@ -96,7 +96,7 @@ export const AppShellLayout = observer(function AppShellLayout({
       )}
       {projectSidebarVisible && (
         <ResizeHandle
-          className="left-[calc(var(--sidebar-width)-5px)] max-[820px]:left-[calc(min(var(--sidebar-width),230px)-5px)] max-[620px]:hidden"
+          className="left-[calc(var(--sidebar-width)-5px)] max-[820px]:left-[calc(min(var(--sidebar-width),230px)-5px)] max-[620px]:hidden phone:hidden"
           label="Resize project sidebar"
           value={displayedSidebarWidth}
           min={220}
@@ -127,7 +127,7 @@ export const AppShellLayout = observer(function AppShellLayout({
         {surface !== "settings" && (
           <IconButton
             className={cn(
-              "absolute bottom-[9.5px] left-4 z-20 hidden size-8 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground max-[620px]:grid",
+              "absolute bottom-[9.5px] left-4 z-20 hidden phone:!hidden size-8 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground max-[620px]:grid",
               sidebarCollapsed && "grid",
             )}
             data-slot="workspace-settings"
@@ -148,7 +148,7 @@ export const AppShellLayout = observer(function AppShellLayout({
       <CommandPane store={store} extensionUi={extensionUi} />
       {store.commandPaneStore.pane && (
         <ResizeHandle
-          className="right-[calc(var(--right-pane-width)-5px)] max-[620px]:hidden"
+          className="right-[calc(var(--right-pane-width)-5px)] max-[620px]:hidden phone:hidden"
           label="Resize command pane"
           value={commandPaneWidth}
           min={320}

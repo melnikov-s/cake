@@ -72,7 +72,25 @@ describe("visual capture arguments", () => {
 describe("browser visual scenarios", () => {
   it("advertises browser proof surfaces as named deterministic scenarios", () => {
     expect(browserVisualScenarios.map(({ name, states }) => [name, states])).toEqual([
+      [
+        "browser-responsive",
+        [
+          "default",
+          "multiline",
+          "long-draft",
+          "model-menu",
+          "tree",
+          "cake-chat",
+          "inspector",
+          "new-session",
+          "project-settings",
+          "tools",
+          "artifact",
+        ],
+      ],
       ["browser-shared-chat", ["default"]],
+      ["browser-phone-navigation", ["default"]],
+      ["browser-phone-settings", ["default"]],
       ["browser-vscode", ["default"]],
     ]);
   });

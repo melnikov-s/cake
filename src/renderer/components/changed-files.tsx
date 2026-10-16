@@ -1,4 +1,5 @@
 import { useId } from "react";
+import { usePhoneLayout } from "../lib/phone-layout";
 import { Button } from "@/components/ui/button";
 import { DisclosureTrigger } from "@/components/ui/disclosure-trigger";
 import { ChevronIcon } from "@/components/ui/icons";
@@ -20,6 +21,7 @@ export function ChangedFiles({
   onOpenFile?(path: string): void;
 }) {
   const contentId = useId();
+  const phone = usePhoneLayout();
   const changes = workLogChanges(parts);
   if (changes.length === 0) return null;
 
@@ -55,7 +57,7 @@ export function ChangedFiles({
                 key={change.path}
                 className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-3.5 py-2 font-mono text-xs"
               >
-                {onOpenFile ? (
+                {onOpenFile && !phone ? (
                   <Button
                     className="h-auto min-w-0 justify-start p-0 font-mono text-xs font-normal text-foreground underline decoration-border underline-offset-4 hover:bg-transparent hover:decoration-foreground"
                     variant="ghost"

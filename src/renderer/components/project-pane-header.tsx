@@ -41,8 +41,8 @@ export const ProjectPaneHeader = observer(function ProjectPaneHeader({
         {firstPane && (
           <IconButton
             className={cn(
-              "absolute left-[84px] top-[9px] max-[620px]:left-2 [@media(pointer:coarse)]:top-1 z-20 size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
-              sidebarCollapsed ? "grid" : "hidden max-[620px]:grid",
+              "absolute left-[84px] top-[9px] max-[620px]:left-2 phone:left-2 [@media(pointer:coarse)]:top-1 z-20 size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
+              sidebarCollapsed ? "grid" : "hidden max-[620px]:grid phone:grid",
             )}
             data-slot="header-sidebar-toggle"
             tooltip="Toggle sidebar"
@@ -67,8 +67,8 @@ export const ProjectPaneHeader = observer(function ProjectPaneHeader({
       {firstPane && (
         <IconButton
           className={cn(
-            "absolute left-[84px] top-[9px] max-[620px]:left-2 [@media(pointer:coarse)]:top-1 z-20 size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
-            sidebarCollapsed ? "grid" : "hidden max-[620px]:grid",
+            "absolute left-[84px] top-[9px] max-[620px]:left-2 phone:left-2 [@media(pointer:coarse)]:top-1 z-20 size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
+            sidebarCollapsed ? "grid" : "hidden max-[620px]:grid phone:grid",
           )}
           data-slot="header-sidebar-toggle"
           data-cake-hint-key="s"
@@ -101,7 +101,7 @@ export const ProjectPaneHeader = observer(function ProjectPaneHeader({
       <SessionArtifactMenu session={paneSession} onOpen={focusPane} />
       <div className="mx-0.5 h-4 w-px shrink-0 bg-border/60" aria-hidden="true" />
       <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />
-      <div className="mx-0.5 h-4 w-px shrink-0 bg-border/60" aria-hidden="true" />
+      <div className="mx-0.5 h-4 w-px shrink-0 bg-border/60 phone:hidden" aria-hidden="true" />
       {!browserMode && (
         <IconButton
           tooltip="Open Browser Mode"
@@ -116,6 +116,7 @@ export const ProjectPaneHeader = observer(function ProjectPaneHeader({
       )}
       <IconButton
         data-cake-hint-key="v"
+        className="phone:hidden"
         tooltip="Open VS Code"
         hotkey="open-editor"
         onClick={() => {
@@ -128,6 +129,7 @@ export const ProjectPaneHeader = observer(function ProjectPaneHeader({
       {!store.sessionRegistry.pendingSessions.isTemporary(paneSession.sessionId) && (
         <IconButton
           data-cake-hint-key="d"
+          className="phone:hidden"
           tooltip="Open workspace changes in VS Code"
           hotkey="open-changes"
           onClick={() => {
@@ -140,6 +142,7 @@ export const ProjectPaneHeader = observer(function ProjectPaneHeader({
       )}
       <IconButton
         data-cake-hint-key="t"
+        className="phone:hidden"
         tooltip="Terminal"
         hotkey="toggle-terminal"
         disabled={!terminal.available}
@@ -151,7 +154,7 @@ export const ProjectPaneHeader = observer(function ProjectPaneHeader({
       >
         <TerminalIcon />
       </IconButton>
-      <div className="mx-0.5 h-4 w-px shrink-0 bg-border/60" aria-hidden="true" />
+      <div className="mx-0.5 h-4 w-px shrink-0 bg-border/60 phone:hidden" aria-hidden="true" />
     </>
   );
 });

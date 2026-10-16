@@ -3,7 +3,12 @@ import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
-import { _electron as electron, chromium, type ElectronApplication } from "@playwright/test";
+import {
+  _electron as electron,
+  chromium,
+  devices,
+  type ElectronApplication,
+} from "@playwright/test";
 import {
   findBrowserVisualScenario,
   prepareBrowserVisual,
@@ -29,8 +34,10 @@ export async function captureVisual(
     throw new Error(
       `Unknown scenario "${options.scenario}". Use --list to see available scenarios.`,
     );
-  if (browserScenario && options.state !== "default")
-    throw new Error(`Scenario "${browserScenario.name}" supports only state "default".`);
+  if (browserScenario && !(browserScenario.states as readonly string[]).includes(options.state))
+    throw new Error(
+      `Scenario "${browserScenario.name}" does not support state "${options.state}".`,
+    );
   if (scenario && !scenario.states.includes(options.state))
     throw new Error(
       `Scenario "${scenario.name}" does not support state "${options.state}". ` +
@@ -65,7 +72,7 @@ export async function captureVisual(
 
   try {
     if (browserScenario) {
-      await seedBrowserVisual(paths);
+      await seedBrowserVisual(paths, ["tools", "artifact"].includes(options.state));
       const png = await captureBrowserPage(repositoryRoot, paths, options, browserScenario.name);
       await mkdir(dirname(outputPath), { recursive: true });
       await writeFile(outputPath, png);
@@ -225,17 +232,20 @@ async function captureBrowserPage(
     });
     const browser = await chromium.launch({ channel: "chromium-headless-shell" });
     try {
+      // Use a maintained Android profile, not a desktop UA with a narrow window.
+      // Overridden dimensions are CSS-pixel layout probes, not a claim about a physical S22.
+      const phone = options.width <= 620 || (options.width <= 1000 && options.height <= 500);
       const context = await browser.newContext({
+        ...(phone
+          ? devices[options.width > options.height ? "Galaxy S24 landscape" : "Galaxy S24"]
+          : {}),
         viewport: { width: options.width, height: options.height },
-        deviceScaleFactor: 1,
-        hasTouch: options.width <= 620,
-        isMobile: options.width <= 620,
         colorScheme: options.theme,
       });
       const page = await context.newPage();
       await page.goto(origin);
-      await prepareBrowserVisual(page, scenario);
-      return await page.screenshot({ animations: "disabled", type: "png" });
+      await prepareBrowserVisual(page, scenario, options.state);
+      return await page.screenshot({ animations: "disabled", type: "png", scale: "css" });
     } finally {
       await browser.close();
     }

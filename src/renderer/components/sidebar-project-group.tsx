@@ -214,7 +214,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
                 </>
               )}
               <IconButton
-                className="size-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-sidebar-hover opacity-0 group-hover/proj:opacity-100 focus-visible:opacity-100 transition-opacity"
+                className="size-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-sidebar-hover opacity-0 group-hover/proj:opacity-100 focus-visible:opacity-100 transition-opacity phone:opacity-100"
                 tooltip="Project settings"
                 ariaLabel={`Open settings for ${projects.nameFromPath(path)}`}
                 onClick={() => onOpenSettings(path)}
@@ -222,7 +222,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
                 <SettingsIcon />
               </IconButton>
               <IconButton
-                className="size-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-sidebar-hover opacity-0 group-hover/proj:opacity-100 focus-visible:opacity-100 transition-opacity"
+                className="size-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-sidebar-hover opacity-0 group-hover/proj:opacity-100 focus-visible:opacity-100 transition-opacity phone:opacity-100"
                 tooltip="New chat"
                 ariaLabel={`New chat in ${projects.nameFromPath(path)}`}
                 onClick={() => onCreateSession(path)}

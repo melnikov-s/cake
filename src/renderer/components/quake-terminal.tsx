@@ -80,7 +80,7 @@ export const QuakeTerminal = observer(function QuakeTerminal({
       <section
         ref={panelRef}
         className={cn(
-          "flex min-h-[220px] flex-col bg-background",
+          "flex min-h-[220px] flex-col bg-background phone:!hidden",
           store.docked
             ? "relative z-30 w-full border-t border-border"
             : "fixed inset-x-0 top-0 z-[100] border-b border-border shadow-[0_20px_60px_-24px_hsl(var(--shadow)/0.7)] transition-transform duration-180 ease-out",

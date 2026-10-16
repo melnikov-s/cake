@@ -33,7 +33,7 @@ export const AppSurfaceHeader = observer(function AppSurfaceHeader() {
     <header
       data-slot="workspace-header"
       className={cn(
-        "relative flex h-[52px] w-full max-w-full min-w-0 items-center justify-between overflow-hidden border-b border-border/65 px-5 [app-region:drag] max-[620px]:pl-14",
+        "relative flex h-[52px] w-full max-w-full min-w-0 items-center justify-between overflow-hidden border-b border-border/65 px-5 [app-region:drag] max-[620px]:pl-14 phone:pl-14",
         sidebarCollapsed && surface !== "settings" && "pl-[124px]",
         surface === "settings" && "pl-[84px]",
       )}
@@ -41,12 +41,12 @@ export const AppSurfaceHeader = observer(function AppSurfaceHeader() {
       <div className="flex w-0 min-w-0 flex-1 items-center gap-3">
         <IconButton
           className={cn(
-            "absolute left-[84px] top-[9px] max-[620px]:left-2 [@media(pointer:coarse)]:top-1 z-20 size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground [app-region:no-drag]",
+            "absolute left-[84px] top-[9px] max-[620px]:left-2 phone:left-2 [@media(pointer:coarse)]:top-1 z-20 size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground [app-region:no-drag]",
             surface === "settings"
               ? "hidden"
               : sidebarCollapsed
                 ? "grid"
-                : "hidden max-[620px]:grid",
+                : "hidden max-[620px]:grid phone:grid",
           )}
           data-slot="header-sidebar-toggle"
           data-cake-hint-key="s"
@@ -99,6 +99,7 @@ export const AppSurfaceHeader = observer(function AppSurfaceHeader() {
         {terminal.available && (
           <IconButton
             data-cake-hint-key="t"
+            className="phone:hidden"
             tooltip="Terminal"
             hotkey="toggle-terminal"
             aria-pressed={terminal.open}

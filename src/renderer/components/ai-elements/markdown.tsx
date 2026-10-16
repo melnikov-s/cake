@@ -18,6 +18,7 @@ import {
   type StreamdownProps,
 } from "streamdown";
 import { unified } from "unified";
+import { usePhoneLayout } from "../../lib/phone-layout";
 import { useResolvedColorTheme } from "@/lib/resolved-color-theme";
 import {
   supportsSyntaxHighlightLanguage,
@@ -484,6 +485,7 @@ function MarkdownRenderer({
   ...props
 }: MarkdownProps & { richPlugins?: RichMarkdownPlugins }) {
   const colorTheme = useResolvedColorTheme();
+  const phone = usePhoneLayout();
   const linkActions = useContext(MarkdownLinkContext);
   const [fullscreenMermaid, setFullscreenMermaid] = useState<string>();
   const [fullscreenTable, setFullscreenTable] = useState<ReactNode>();
@@ -575,6 +577,8 @@ function MarkdownRenderer({
         const location = parseSourceLocation(reference);
         if (!location || (nonPathHref.test(href) && !href.startsWith(workspacePathPrefix)))
           return linkAnchor(allProps, linkActions);
+        // Keep source references readable, without an editor entry point on phones.
+        if (phone) return <span>{allProps.children}</span>;
         const props = { ...allProps, href: reference };
         delete props.node;
         return (
@@ -606,7 +610,7 @@ function MarkdownRenderer({
         );
       },
     };
-  }, [linkActions, omitArtifactEmbeds, onOpenSourceLocation]);
+  }, [linkActions, omitArtifactEmbeds, onOpenSourceLocation, phone]);
   return (
     <>
       <div className="contents" onClickCapture={openMermaidFullscreen}>

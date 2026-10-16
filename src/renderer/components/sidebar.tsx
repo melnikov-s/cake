@@ -80,7 +80,7 @@ export const Sidebar = observer(function Sidebar({
       data-slot="sidebar"
       data-focus-mode={focusMode ? "true" : undefined}
       className={cn(
-        "flex h-full min-w-0 flex-col overflow-hidden border-r border-border/72 bg-sidebar select-none max-[620px]:absolute max-[620px]:inset-y-0 max-[620px]:left-0 max-[620px]:z-50 max-[620px]:w-[min(360px,calc(100%-44px))]",
+        "flex h-full min-w-0 flex-col overflow-hidden border-r border-border/72 bg-sidebar select-none max-[620px]:absolute max-[620px]:inset-y-0 max-[620px]:left-0 max-[620px]:z-50 max-[620px]:w-[min(360px,calc(100%-44px))] phone:absolute phone:inset-y-0 phone:left-0 phone:z-50 phone:w-[min(360px,calc(100%-44px))]",
         focusMode && "[&_svg]:size-5",
       )}
     >

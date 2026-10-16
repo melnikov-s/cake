@@ -97,7 +97,7 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
         data-session-id={sessionId}
         data-focused={focused ? "true" : "false"}
         className={cn(
-          "group/pane @container/session-pane relative grid h-full min-h-0 min-w-0 grid-rows-[52px_minmax(0,1fr)] overflow-hidden border border-transparent bg-background",
+          "group/pane @container/session-pane relative grid h-full min-h-0 min-w-0 grid-rows-[52px_minmax(0,1fr)] phone:grid-rows-[96px_minmax(0,1fr)] overflow-hidden border border-transparent bg-background",
           multiplePanes &&
             focused &&
             "border-accent/40 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--accent)_10%,transparent)]",
@@ -115,7 +115,7 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
         <header
           data-slot="workspace-header"
           className={cn(
-            "relative flex h-[52px] min-w-0 items-center gap-3 overflow-hidden border-b border-border/65 px-5 [app-region:drag] max-[620px]:gap-1.5 max-[620px]:pr-3",
+            "relative flex h-[52px] min-w-0 items-center gap-3 overflow-hidden border-b border-border/65 px-5 [app-region:drag] max-[620px]:gap-1.5 max-[620px]:pr-3 phone:h-24 phone:flex-wrap phone:content-center phone:gap-y-0 phone:py-1 phone:pl-14 phone:pr-3",
             multiplePanes && "bg-muted/20 pr-10",
             multiplePanes && focused && "bg-muted/35",
             headerClassName?.(node),
@@ -130,7 +130,7 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
           <strong className="min-w-0 flex-1 truncate text-[13px] font-semibold">
             {title(sessionId)}
           </strong>
-          <div className="flex min-w-0 shrink-0 items-center gap-1 [app-region:no-drag] max-[620px]:max-w-[50%] max-[620px]:overflow-x-auto">
+          <div className="flex min-w-0 shrink-0 items-center gap-1 [app-region:no-drag] max-[620px]:max-w-[50%] max-[620px]:overflow-x-auto phone:-ml-11 phone:w-[calc(100%+2.75rem)] phone:max-w-none phone:flex-none phone:overflow-x-auto">
             {renderHeader(node)}
             {onSplit && (
               <>

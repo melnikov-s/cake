@@ -39,8 +39,8 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
       {firstPane && !overlay && (
         <IconButton
           className={cn(
-            "absolute left-[84px] top-[9px] max-[620px]:left-2 [@media(pointer:coarse)]:top-1 z-20 size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
-            sidebarCollapsed ? "grid" : "hidden max-[620px]:grid",
+            "absolute left-[84px] top-[9px] max-[620px]:left-2 phone:left-2 [@media(pointer:coarse)]:top-1 z-20 size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
+            sidebarCollapsed ? "grid" : "hidden max-[620px]:grid phone:grid",
           )}
           data-slot="header-sidebar-toggle"
           data-cake-hint-key="s"
@@ -89,6 +89,7 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
       ) : (
         <IconButton
           data-cake-hint-key="t"
+          className="phone:hidden"
           tooltip="Terminal"
           hotkey="toggle-terminal"
           disabled={!terminal.available}

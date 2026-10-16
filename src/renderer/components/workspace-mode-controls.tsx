@@ -49,6 +49,7 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
       <IconButton
         key={target}
         data-cake-hint-key="v"
+        className="phone:hidden"
         tooltip="Open VS Code"
         hotkey="open-editor"
         onClick={onOpenIde}
@@ -75,6 +76,7 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
       {(["browser", "vscode"] as const).map(modeControl)}
       <IconButton
         data-cake-hint-key="t"
+        className="phone:hidden"
         tooltip="Terminal"
         hotkey="toggle-terminal"
         disabled={!terminalAvailable}

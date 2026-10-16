@@ -3407,8 +3407,8 @@ async function seedSessionAssistant(
   );
 }
 
-async function seedArtifact(
-  paths: ScenarioFixturePaths,
+export async function seedArtifact(
+  paths: Pick<ScenarioFixturePaths, "cakeHome" | "project">,
   artifact: CakeArtifactV1,
   timestamp: string,
 ) {

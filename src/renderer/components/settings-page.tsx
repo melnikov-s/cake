@@ -1,3 +1,4 @@
+import { usePhoneLayout } from "../lib/phone-layout";
 import { SettingsCakeChatSection } from "./settings-cake-chat-section";
 import { SettingsCakeChatOverlaySection } from "./settings-cake-chat-overlay-section";
 import { SettingsMcpSection } from "./settings-mcp-section";
@@ -71,7 +72,12 @@ export const SettingsPage = observer(function SettingsPage({
   const providers = settings.providers;
   const utility = settings.utilityModel;
   const appearance = settings.appearance;
-  const activePage = settings.activePage;
+  const phone = usePhoneLayout();
+  const activePage = phone && settings.activePage === "editor" ? "appearance" : settings.activePage;
+  const navigationGroups = SETTINGS_NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => !phone || item.page !== "editor"),
+  }));
   const pageMetadata = SETTINGS_NAV_GROUPS.flatMap((group) => group.items).find(
     (page) => page.page === activePage,
   );
@@ -109,8 +115,8 @@ export const SettingsPage = observer(function SettingsPage({
     setScrollRequest({ targetId });
   };
   return (
-    <div className="grid h-full min-h-0 min-w-0 grid-cols-[220px_minmax(0,1fr)] max-[620px]:grid-cols-1 max-[620px]:grid-rows-[auto_minmax(0,1fr)]">
-      <div className="hidden border-b border-border px-4 py-2 max-[620px]:block">
+    <div className="grid h-full min-h-0 min-w-0 grid-cols-[220px_minmax(0,1fr)] max-[620px]:grid-cols-1 max-[620px]:grid-rows-[auto_minmax(0,1fr)] phone:grid-cols-1 phone:grid-rows-[auto_minmax(0,1fr)]">
+      <div className="hidden border-b border-border px-4 py-2 max-[620px]:block phone:block">
         <Select
           aria-label="Settings section"
           value={activePage}
@@ -122,7 +128,7 @@ export const SettingsPage = observer(function SettingsPage({
             if (page) settings.selectPage(page.page);
           }}
         >
-          {SETTINGS_NAV_GROUPS.map((group) => (
+          {navigationGroups.map((group) => (
             <optgroup key={group.label} label={group.label}>
               {group.items.map((item) => (
                 <option key={item.page} value={item.page}>
@@ -135,7 +141,7 @@ export const SettingsPage = observer(function SettingsPage({
       </div>
       <aside
         aria-label="Settings sections"
-        className="min-h-0 overflow-y-auto border-r border-border/65 bg-sidebar px-3 py-5 max-[620px]:hidden"
+        className="min-h-0 overflow-y-auto border-r border-border/65 bg-sidebar px-3 py-5 max-[620px]:hidden phone:hidden"
       >
         <h1 className="px-2 text-lg font-bold text-foreground">Settings</h1>
         <p className="mb-4 mt-1 px-2 text-[11px] leading-relaxed text-muted-foreground">
@@ -179,7 +185,7 @@ export const SettingsPage = observer(function SettingsPage({
                   </div>
                 </div>
               ))
-            : SETTINGS_NAV_GROUPS.map((group) => (
+            : navigationGroups.map((group) => (
                 <div key={group.label}>
                   <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/75">
                     {group.label}

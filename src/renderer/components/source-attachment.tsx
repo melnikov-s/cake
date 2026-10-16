@@ -1,3 +1,4 @@
+import { usePhoneLayout } from "../lib/phone-layout";
 import type { SourceLocation } from "../../contracts/editor/source-location";
 import { formatSourceLocation } from "../../utils/source-location";
 import { cn } from "../lib/utils";
@@ -23,6 +24,8 @@ export function SourceAttachment({
   onRemove?(): void;
   presentation?: "context" | "attachment";
 }) {
+  const phone = usePhoneLayout();
+  const openSource = phone ? undefined : onOpen;
   const start = attachment.location.range?.start;
   const end = attachment.location.range?.end;
   const label =
@@ -52,13 +55,13 @@ export function SourceAttachment({
         <AttachmentTile name={label} popover onRemove={onRemove} />
         <PopoverContent className="w-[min(36rem,90vw)]" data-cake-private-preview="true">
           {content}
-          {onOpen && (
+          {openSource && (
             <Button
               variant="outline"
               size="sm"
               className="mt-3"
               aria-label={`Open ${label} in VS Code`}
-              onClick={() => onOpen(attachment.location)}
+              onClick={() => openSource(attachment.location)}
             >
               Open in VS Code
             </Button>
@@ -69,12 +72,12 @@ export function SourceAttachment({
   const surface = "w-full rounded-lg border border-border bg-muted/40 px-3 py-2 text-left text-sm";
   return (
     <div className="relative w-full">
-      {onOpen ? (
+      {openSource ? (
         <Button
           className={cn(surface, "h-auto block whitespace-normal font-normal hover:bg-muted/70")}
           variant="ghost"
           aria-label={`Open ${label} in VS Code`}
-          onClick={() => onOpen(attachment.location)}
+          onClick={() => openSource(attachment.location)}
         >
           {content}
         </Button>

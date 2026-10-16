@@ -76,7 +76,7 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
               <span id="project-icon-title" className="text-xs font-semibold text-foreground">
                 Project icon
               </span>
-              <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/25 p-3">
+              <div className="flex items-center gap-3 phone:flex-wrap rounded-lg border border-border bg-muted/25 p-3">
                 <Avatar
                   kind="project"
                   seed={store.projectName}
@@ -183,7 +183,7 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
 
             <div className="rounded-lg border border-border bg-muted/45 p-3">
               <h3 className="text-xs font-semibold text-foreground">Available variables</h3>
-              <dl className="mt-2 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+              <dl className="mt-2 grid grid-cols-[max-content_1fr] phone:grid-cols-1 phone:break-words gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
                 {variables.map(([name, description]) => (
                   <div key={name} className="contents">
                     <dt className="font-mono text-foreground">{name}</dt>
@@ -207,7 +207,7 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
             )}
           </div>
 
-          <DialogFooter className="items-center justify-between">
+          <DialogFooter className="items-center justify-between phone:flex-wrap phone:gap-3">
             <Button
               type="button"
               variant="ghost"

@@ -235,6 +235,22 @@ it("real Chromium uses the shared sidebar, project chat and Cake Chat without re
             .first();
           await browserExpect(row).toBeVisible();
           await row.click();
+          // Fine-pointer desktop retains its header and editor/console controls,
+          // including at phone and intermediate breakpoint boundaries.
+          for (const width of [619, 620, 621, 820, 821, 1000, 1001, 1280, 1440]) {
+            await page.setViewportSize({ width, height: 900 });
+            await browserExpect(page.locator('[data-slot="workspace-header"]')).toHaveCSS(
+              "height",
+              "52px",
+            );
+            await browserExpect(
+              page.getByRole("button", { name: "Open VS Code", exact: true }),
+            ).not.toHaveCSS("display", "none");
+            await browserExpect(
+              page.getByRole("button", { name: "Terminal", exact: true }),
+            ).not.toHaveCSS("display", "none");
+          }
+          await page.setViewportSize({ width: 1280, height: 900 });
           const input = page.locator('[data-slot="workspace"] textarea').first();
           await browserExpect(input).toBeVisible();
           await input.fill("From the shared browser shell");

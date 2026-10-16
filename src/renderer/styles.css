@@ -4,6 +4,14 @@
 @source "../../node_modules/@streamdown/math/dist/*.js";
 @source "../../node_modules/@streamdown/mermaid/dist/*.js";
 
+/* Phone-only presentation; keep in sync with lib/phone-layout.ts. */
+@custom-variant phone {
+  @media (pointer: coarse) and (max-width: 620px),
+    (pointer: coarse) and (max-width: 1000px) and (max-height: 500px) {
+    @slot;
+  }
+}
+
 /* Native range highlights are shared by transcript and fullscreen content. */
 ::highlight(cake-message-comment) {
   background: color-mix(in oklab, var(--accent) 28%, transparent);

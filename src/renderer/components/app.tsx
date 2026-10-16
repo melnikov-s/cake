@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { usePhoneLayout } from "../lib/phone-layout";
 import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
 import { useAppDocument } from "../hooks/use-app-document";
@@ -17,11 +18,15 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
   const fullscreen = useAppFullscreenResponse(root);
   useAppHotkeys(root, fullscreen.openResponse);
 
+  const phone = usePhoneLayout();
   const workbench = root.projectWorkbenchStore;
   const session = workbench.activeSession;
   const presentation = workbench.presentationStore;
   const mode =
-    root.appShellStore.surface === "workbench" && session && !workbench.activeSessionResolved
+    !phone &&
+    root.appShellStore.surface === "workbench" &&
+    session &&
+    !workbench.activeSessionResolved
       ? session.presentationMode === "browser" && presentation.browserStore.visible
         ? "browser"
         : session.presentationMode === "vscode" && presentation.embeddedEditorStore.visible

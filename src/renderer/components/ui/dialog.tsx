@@ -20,7 +20,7 @@ export const DialogBackdrop = forwardRef<HTMLDivElement, DialogBackdropProps>(
           if (e.target === e.currentTarget) onClose?.();
         }}
         className={cn(
-          "fixed inset-0 z-50 grid place-items-center bg-foreground/28 p-6 backdrop-blur-md",
+          "fixed inset-0 z-50 grid place-items-center bg-foreground/28 p-6 backdrop-blur-md phone:p-2",
           className,
         )}
         {...props}
@@ -38,7 +38,7 @@ export const DialogContent = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivEl
       <div
         ref={ref}
         className={cn(
-          "w-full max-w-[34rem] rounded-xl border border-border bg-card p-6 text-card-foreground shadow-2xl animate-in fade-in zoom-in-95 duration-150",
+          "w-full max-w-[34rem] rounded-xl border border-border bg-card p-6 text-card-foreground shadow-2xl animate-in fade-in zoom-in-95 duration-150 phone:max-h-[calc(100dvh-1rem)] phone:min-w-0 phone:overflow-y-auto phone:p-4",
           className,
         )}
         {...props}

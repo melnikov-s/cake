@@ -70,7 +70,7 @@ export const CakeChatSurface = observer(function CakeChatSurface({
       headerClassName={(pane) =>
         // The frameless overlay has no traffic lights or sidebar toggle to make room for.
         !overlay && cakeChatCollection.sessionLayoutStore.panes[0]?.paneId === pane.paneId
-          ? cn("max-[620px]:pl-14", sidebarCollapsed && "pl-[124px]")
+          ? cn("max-[620px]:pl-14 phone:pl-14", sidebarCollapsed && "pl-[124px]")
           : undefined
       }
       renderHeader={(pane, session) => (
