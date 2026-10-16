@@ -2,7 +2,8 @@ import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { piSettingsSchema } from "../../../../src/contracts/conversations/session-contract";
 import { projectPiSettings } from "../../../../src/services/pi/runtime/settings-translation";
 import { createRendererStoreFixture } from "../renderer-store-fixture";
-import { Effect, Schema, Stream } from "effect";
+import { Effect, Queue, Schema, Stream } from "effect";
+import type { CakeEvent } from "../../../../src/contracts/application/cake-rpc-contract";
 import { describe, expect, it, vi } from "vitest";
 import { CakeIpcClient, type CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
 import { observeApplicationEvents } from "../../../../src/renderer/observers/application-events";
@@ -73,6 +74,64 @@ describe("observeApplicationEvents", () => {
     } finally {
       cancel();
     }
+  });
+
+  it("has one native request intake, never replays duplicates, and stops late widget replies on disposal", async () => {
+    const events = Effect.runSync(Queue.unbounded<CakeEvent>());
+    const enter = vi.fn<CakeIpcClientService["browser"]["native-browser-enter"]>(() =>
+      Effect.succeed({}),
+    );
+    const browserReply = vi.fn<CakeIpcClientService["browser"]["respond-browser-native"]>(() =>
+      Effect.succeed({}),
+    );
+    let finishCapture!: (value: { pngBase64: string; diagnostics: string[] }) => void;
+    const capture = vi.fn<CakeIpcClientService["widgets"]["capture-native-widget"]>(() =>
+      Effect.promise(
+        () =>
+          new Promise((resolve) => {
+            finishCapture = resolve;
+          }),
+      ),
+    );
+    const widgetReply = vi.fn<CakeIpcClientService["widgets"]["respond-widget-capture"]>(() =>
+      Effect.succeed({}),
+    );
+    const application = vi.fn(() => Stream.fromQueue(events));
+    const client = {
+      events: { application },
+      browser: { "native-browser-enter": enter, "respond-browser-native": browserReply },
+      widgets: { "capture-native-widget": capture, "respond-widget-capture": widgetReply },
+    } as unknown as CakeIpcClientService;
+    const setError = vi.fn();
+    const root = { projectWorkbenchStore: { setError } } as unknown as RootStore;
+    const stop = observeApplicationEvents(runtimeFor(client), root);
+    const request: Extract<CakeEvent, { type: "browser-native-requested" }> = {
+      type: "browser-native-requested",
+      requestId: "00000000-0000-4000-8000-000000000001",
+      sessionId: "session",
+      workspacePath: "/project",
+      operation: "enter",
+    };
+    Queue.offerUnsafe(events, request);
+    Queue.offerUnsafe(events, request);
+    await vi.waitFor(() => expect(browserReply).toHaveBeenCalledTimes(1));
+    Queue.offerUnsafe(events, request);
+    Queue.offerUnsafe(events, {
+      type: "widget-capture-requested",
+      requestId: "00000000-0000-4000-8000-000000000002",
+      sessionId: "session",
+      widget: { token: "token", url: "cake-widget://token" },
+      pluginState: { version: 9 },
+    });
+    await vi.waitFor(() => expect(capture).toHaveBeenCalledTimes(1));
+    expect(application).toHaveBeenCalledTimes(1);
+    expect(enter).toHaveBeenCalledTimes(1);
+    stop();
+    finishCapture({ pngBase64: "late-native-result", diagnostics: [] });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(widgetReply).not.toHaveBeenCalled();
+    expect(setError).not.toHaveBeenCalled();
   });
 
   it.each([undefined, "session-1"])(

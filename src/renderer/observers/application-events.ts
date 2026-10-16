@@ -1,7 +1,7 @@
 import { toStoreEvent } from "../events/StoreEvent";
-import { Effect } from "effect";
-import { CakeIpcClient } from "../../ipc/client/CakeIpcClient";
-import { RenderedWidgetCaptureError } from "../../contracts/widgets/rendered-widget-capture-errors";
+import { respondBrowserNative } from "./browser-native-responder";
+import { respondWidgetCapture } from "./widget-capture-responder";
+import { createNativeRequestDispatch } from "./native-request-dispatch";
 import { cakeNativeHotkeyInputEventName } from "../lib/hotkeys";
 import { cakeChatOverlayShownEventName } from "../lib/cake-chat-overlay";
 import { receiveCakeChatOverlayContext } from "../bootstrap/start-cake-chat-overlay";
@@ -13,8 +13,11 @@ export const observeApplicationEvents = (
   runtime: Runtime,
   root: RootStore,
   host: "desktop" | "browser" = "desktop",
-) =>
-  runtime.observe(
+) => {
+  const nativeRequests = createNativeRequestDispatch(runtime, (error, context) =>
+    root.projectWorkbenchStore.setError(error, context),
+  );
+  const stop = runtime.observe(
     (client) => client.events.application(),
     (event) => {
       if (event.type === "screen-capture-requested") {
@@ -69,95 +72,19 @@ export const observeApplicationEvents = (
         return;
       }
       if (event.type === "browser-native-requested") {
-        void runtime
-          .execute(
-            Effect.gen(function* () {
-              const client = yield* CakeIpcClient;
-              const result = yield* Effect.gen(function* () {
-                if (host === "browser")
-                  throw new Error("Native Browser Mode is unavailable in this browser");
-                if (event.operation === "enter") {
-                  yield* client.browser["native-browser-enter"]({
-                    sessionId: event.sessionId,
-                    workspacePath: event.workspacePath,
-                  });
-                  return { status: "completed" as const, value: null };
-                }
-                if (event.operation === "cdp") {
-                  if (!event.method || !event.params) throw new Error("Incomplete CDP request");
-                  return yield* client.browser["native-browser-cdp"]({
-                    sessionId: event.sessionId,
-                    method: event.method,
-                    params: event.params,
-                  });
-                }
-                return yield* client.browser["native-browser-events"]({
-                  sessionId: event.sessionId,
-                  methods: event.methods ?? [],
-                  limit: event.limit ?? 100,
-                  clear: event.clear ?? true,
-                });
-              }).pipe(
-                Effect.catch((cause) =>
-                  Effect.succeed({
-                    status: "failed" as const,
-                    message: (cause instanceof Error ? cause.message : String(cause)).slice(
-                      0,
-                      2_000,
-                    ),
-                  }),
-                ),
-              );
-              yield* client.browser["respond-browser-native"]({
-                requestId: event.requestId,
-                sessionId: event.sessionId,
-                result,
-              });
-            }),
-          )
-          .catch((error) => root.projectWorkbenchStore.setError(error, "Browser native response"));
+        nativeRequests.dispatch(
+          event.requestId,
+          respondBrowserNative(event, host),
+          "Browser native response",
+        );
         return;
       }
       if (event.type === "widget-capture-requested") {
-        void runtime
-          .execute(
-            Effect.gen(function* () {
-              const client = yield* CakeIpcClient;
-              const result =
-                host === "browser"
-                  ? {
-                      ok: false as const,
-                      kind: "infrastructure" as const,
-                      message: "Native widget capture is unavailable in this browser",
-                    }
-                  : yield* client.widgets["capture-native-widget"]({
-                      sessionId: event.sessionId,
-                      widget: event.widget,
-                      pluginState: event.pluginState,
-                    }).pipe(
-                      Effect.map((value) => ({ ok: true as const, ...value })),
-                      Effect.catch((cause) =>
-                        Effect.succeed({
-                          ok: false as const,
-                          kind:
-                            cause instanceof RenderedWidgetCaptureError
-                              ? cause.kind
-                              : ("infrastructure" as const),
-                          message:
-                            cause instanceof Error
-                              ? cause.message.slice(0, 2000)
-                              : "Desktop capture unavailable",
-                        }),
-                      ),
-                    );
-              yield* client.widgets["respond-widget-capture"]({
-                requestId: event.requestId,
-                sessionId: event.sessionId,
-                result,
-              });
-            }),
-          )
-          .catch((error) => root.projectWorkbenchStore.setError(error, "Widget capture response"));
+        nativeRequests.dispatch(
+          event.requestId,
+          respondWidgetCapture(event, host),
+          "Widget capture response",
+        );
         return;
       }
       if (event.type === "application-hotkey-input") {
@@ -196,3 +123,8 @@ export const observeApplicationEvents = (
         root.projectWorkbenchStore.setError(error, "Application event observation"),
     },
   );
+  return () => {
+    stop();
+    nativeRequests.dispose();
+  };
+};
