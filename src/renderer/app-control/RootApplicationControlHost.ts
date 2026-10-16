@@ -7,6 +7,7 @@ import type { CakeChatCollectionStore } from "../stores/CakeChatCollectionStore"
 import type { NotificationStore } from "../stores/NotificationStore";
 import type { ProjectCatalogStore } from "../stores/ProjectCatalogStore";
 import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
+import type { ProjectRemovalStore } from "../stores/ProjectRemovalStore";
 import type { SessionManagementStore } from "../stores/SessionManagementStore";
 import type { ProjectSessionCreationStore } from "../stores/ProjectSessionCreationStore";
 import type { SessionCatalogStore } from "../stores/SessionCatalogStore";
@@ -31,6 +32,7 @@ export interface RootApplicationControlCapabilities {
   notificationStore: NotificationStore;
   projectCatalogStore: ProjectCatalogStore;
   projectWorkbenchStore: ProjectWorkbenchStore;
+  projectRemovalStore: ProjectRemovalStore;
   sessionManagementStore: SessionManagementStore;
   projectSessionCreationStore: ProjectSessionCreationStore;
   sessionCatalogStore: SessionCatalogStore;
@@ -198,6 +200,12 @@ export function createRootApplicationControlHost(
         }),
       setSessionLabels: (sessionId, labelIds) =>
         capabilities.sessionManagementStore.setSessionLabels(sessionId, labelIds),
+    },
+    projects: {
+      remove: (path, deleteSessions) =>
+        capabilities
+          .applicationControlStore()
+          .runOperation(() => capabilities.projectRemovalStore.remove(path, deleteSessions)),
     },
     worktrees: {
       merge: async ({ sessionId, workingDirectory }) => {

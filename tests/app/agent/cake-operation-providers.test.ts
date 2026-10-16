@@ -301,6 +301,87 @@ describe("Backend-owned Cake operation composition", () => {
     ).rejects.toThrow();
   });
 
+  it("exposes Cake Chat's Project registry as a discoverable projects topic", async () => {
+    const project = {
+      path: "/Users/me/world/trees/agents",
+      name: "agents",
+      addedAt: "2026-01-01T00:00:00.000Z",
+      lastOpenedAt: "2026-01-01T00:00:00.000Z",
+      trusted: false,
+    };
+    const control = {
+      list: vi.fn(async () => ({ projects: [project] })),
+      add: vi.fn(async () => ({ project, alreadyRegistered: false })),
+      rename: vi.fn(async () => ({ project: { ...project, name: "Agents" } })),
+      remove: vi.fn(async () => ({ ok: true, path: project.path, deleteSessions: false })),
+    };
+    const commands = ["projects.list", "projects.add", "projects.rename", "projects.remove"];
+    const configured = configureCakeSessionRuntime({
+      ...options("/workspace"),
+      globalControl: { tools: [], invoke: vi.fn() },
+      cakeChatProjects: control,
+      allowedCakeOperations: commands,
+    });
+    if (!configured.coordinator) throw new Error("Expected coordinator composition");
+    const registry = new CakeOperationRegistry(
+      configured.coordinator.operations({
+        sessionId: "coordinator",
+        resolveModel: () => ({
+          provider: "p",
+          modelId: "m",
+          thinkingLevel: "off",
+          fastMode: false,
+        }),
+        setModel: async () => undefined,
+        info: async () => ({}),
+        usage: async () => ({}),
+        contextStatus: async () => ({}),
+        compact: async () => ({}),
+      }),
+    );
+    expect(registry.definitions().map((operation) => operation.command)).toEqual(commands);
+    expect(registry.help()).toContain("projects — List, register (add), rename, and remove");
+    const help = registry.operationHelp("projects.add");
+    expect(help).toContain("delegate it to an allowMutations worker first");
+    expect(help).toContain("alreadyRegistered");
+    expect(help).toContain("/Users/me/world/trees/agents");
+
+    const added = await registry.invoke(
+      { command: "projects.add", input: { path: project.path, name: " Agents " } },
+      context,
+    );
+    expect(control.add).toHaveBeenCalledWith(
+      { path: project.path, name: "Agents" },
+      context.signal,
+    );
+    expect(added.details).toMatchObject({ result: { project, alreadyRegistered: false } });
+    await registry.invoke({ command: "projects.remove", input: { path: project.path } }, context);
+    expect(control.remove).toHaveBeenCalledWith(
+      { path: project.path, deleteSessions: false },
+      context.signal,
+    );
+    await registry.invoke({ command: "projects.list" }, context);
+    expect(control.list).toHaveBeenCalledWith(context.signal);
+    await expect(
+      registry.invoke({ command: "projects.add", input: { name: "No path" } }, context),
+    ).rejects.toThrow();
+    await expect(
+      registry.invoke(
+        { command: "projects.rename", input: { path: project.path, name: " " } },
+        context,
+      ),
+    ).rejects.toThrow();
+    expect(control.rename).not.toHaveBeenCalled();
+
+    // Ordinary Project Sessions never receive Cake Chat's Project registry authority.
+    const projectSession = new CakeOperationRegistry(
+      projectCakeOperations({ cwd: "/workspace", cakeChatProjects: control })(bridge()),
+    );
+    expect(projectSession.definitions().every((operation) => operation.topic !== "projects")).toBe(
+      true,
+    );
+  });
+
   it("rejects coordinator composition without its authority", () => {
     expect(() => coordinatorCakeOperations({ cwd: "/workspace" })).toThrow(
       "coordinator control is unavailable",

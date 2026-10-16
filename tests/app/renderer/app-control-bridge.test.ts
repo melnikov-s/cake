@@ -41,6 +41,7 @@ type AppControlHostOverrides = Partial<
   sessionLabels?: AppControlHost["sessionLabels"];
   vscode?: Partial<AppControlHost["vscode"]>;
   worktrees?: AppControlHost["worktrees"];
+  projectRegistry?: AppControlHost["projects"];
 };
 
 function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
@@ -121,6 +122,7 @@ function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
       ...overrides.vscode,
     },
     ...(overrides.worktrees ? { worktrees: overrides.worktrees } : null),
+    projects: overrides.projectRegistry ?? { remove: async () => true },
     sessions: {
       lookup:
         overrides.lookup ??
@@ -474,6 +476,56 @@ describe("AppControlBridge", () => {
       keepBranch: false,
     });
     expect(listAppControlTools().map(({ command }) => command)).not.toContain("worktrees.merge");
+  });
+
+  it("removes a registered Project through the window's removal workflow without advertising it", async () => {
+    const remove = vi.fn(async () => true);
+    const showAgentAction = vi.fn();
+    const source = { kind: "cake-chat" as const, sessionId: "cake-chat", title: "Cake Chat" };
+    const bridge = new AppControlBridge(
+      createHost({
+        projectRegistry: { remove },
+        showAgentAction,
+        projects: () => [
+          {
+            path: "/projects/agents",
+            name: "agents",
+            addedAt: "2026-01-01T00:00:00.000Z",
+            lastOpenedAt: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+      }),
+    );
+
+    await expect(
+      bridge.invoke({ name: "projects.remove", arguments: { path: "/projects/agents" } }, source),
+    ).resolves.toEqual({
+      ok: true,
+      command: "projects.remove",
+      path: "/projects/agents",
+      name: "agents",
+      deleteSessions: false,
+    });
+    expect(remove).toHaveBeenCalledWith("/projects/agents", false);
+    expect(showAgentAction).toHaveBeenCalledWith(
+      expect.objectContaining({ source, message: "Removed Project “agents”" }),
+    );
+
+    await expect(
+      bridge.invoke({ name: "projects.remove", arguments: { path: "/projects/unknown" } }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: "No registered Project has the exact path /projects/unknown",
+    });
+    remove.mockResolvedValueOnce(false);
+    await expect(
+      bridge.invoke({
+        name: "projects.remove",
+        arguments: { path: "/projects/agents", deleteSessions: true },
+      }),
+    ).resolves.toMatchObject({ ok: false, command: "projects.remove" });
+    expect(remove).toHaveBeenLastCalledWith("/projects/agents", true);
+    expect(listAppControlTools().map(({ command }) => command)).not.toContain("projects.remove");
   });
 
   it("describes the live pane layout relative to the calling project session", async () => {

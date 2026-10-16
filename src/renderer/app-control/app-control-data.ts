@@ -184,6 +184,10 @@ export interface AppControlHost {
     enter(source: AgentControlSource): Promise<void>;
     performEditorAction(source: AgentControlSource, action: VscodeEditorAction): Promise<JsonValue>;
   };
+  projects: {
+    /** Runs the sidebar's removal workflow; false when it failed and reported its own error. */
+    remove(path: string, deleteSessions: boolean): Promise<boolean>;
+  };
   worktrees?: {
     merge(input: { sessionId: string; workingDirectory: string }): Promise<string>;
     discard(input: {
@@ -522,6 +526,13 @@ type AppControlSuccess =
         | "vscode.diagnostics.list"
         | "vscode.panel.show";
       result: JsonValue;
+    }
+  | {
+      ok: true;
+      command: "projects.remove";
+      path: string;
+      name: string;
+      deleteSessions: boolean;
     }
   | { ok: true; command: "notifications.send"; status: "queued" }
   | {

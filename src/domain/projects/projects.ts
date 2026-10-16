@@ -1,5 +1,12 @@
+import { stat } from "node:fs/promises";
+import { basename, isAbsolute, resolve } from "node:path";
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
 import { Effect, Stream } from "effect";
+import type {
+  AgentProjectAddInput,
+  AgentProjectRenameInput,
+  AgentProjectView,
+} from "../../contracts/projects/agent-projects";
 import type { cakeRpcPayloadSchemas } from "../../contracts/application/cake-rpc-contract";
 import { ClientWorkspaces } from "../../services/clients/ClientWorkspaces";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
@@ -270,22 +277,115 @@ export const register = Effect.fn("Projects.register")(function* (
   request: Payload<"register-project">,
 ) {
   yield* requireAllowed(request.path);
+  return { state: yield* registerAllowed(request.path, request.name) };
+});
+
+/** The one registration transaction behind the UI picker and agent registration. */
+const registerAllowed = Effect.fn("Projects.registerAllowed")(function* (
+  path: string,
+  name: string,
+) {
   const application = yield* ApplicationState;
   const access = yield* ProjectAccess;
   const worktrees = yield* ManagedWorktrees;
   const records = yield* mapProjectError("registerProject", worktrees.records());
-  if (records.some((entry) => entry.worktreePath === request.path))
-    return { state: application.snapshot() };
-  const state = yield* mapProjectError(
-    "registerProject",
-    upsertProject(request.path, request.name),
-  );
+  if (records.some((entry) => entry.worktreePath === path)) return application.snapshot();
+  const state = yield* mapProjectError("registerProject", upsertProject(path, name));
   yield* Effect.forEach(
-    records.filter((record) => record.projectPath === request.path),
+    records.filter((record) => record.projectPath === path),
     (record) => access.allow(record.worktreePath),
     { discard: true },
   );
-  return { state };
+  return state;
+});
+
+const agentProjectView = (project: ProjectRecord, trustedPaths: readonly string[]) =>
+  ({
+    path: project.path,
+    name: project.name,
+    addedAt: project.addedAt,
+    lastOpenedAt: project.lastOpenedAt,
+    trusted: trustedPaths.includes(project.path),
+  }) satisfies AgentProjectView;
+
+/** Registered Projects as agents should route them: exact paths, display names and trust. */
+export const listForAgent = Effect.fn("Projects.listForAgent")(function* () {
+  const state = (yield* ApplicationState).snapshot();
+  return {
+    projects: state.projects.map((project) => agentProjectView(project, state.trustedProjectPaths)),
+  };
+});
+
+/**
+ * Registers a Project on behalf of the trusted application-level assistant. The user asked
+ * the assistant to add this directory, which stands in for the picker's path selection;
+ * Pi resource trust is still granted only by the user when the Project is opened.
+ */
+export const addForAgent = Effect.fn("Projects.addForAgent")(function* (
+  request: AgentProjectAddInput,
+) {
+  if (!isAbsolute(request.path))
+    return yield* new ProjectError({
+      operation: "addProject",
+      message: `Project path must be absolute: ${request.path}`,
+    });
+  const path = resolve(request.path);
+  const directory = yield* Effect.tryPromise({
+    try: () => stat(path).then((info) => info.isDirectory()),
+    catch: () => projectError("addProject", `No directory exists at ${path}`),
+  });
+  if (!directory)
+    return yield* new ProjectError({
+      operation: "addProject",
+      message: `Project path is not a directory: ${path}`,
+    });
+  const application = yield* ApplicationState;
+  const existing = application.snapshot().projects.find((project) => project.path === path);
+  if (existing)
+    return {
+      project: agentProjectView(existing, application.snapshot().trustedProjectPaths),
+      alreadyRegistered: true,
+    };
+  const worktrees = yield* ManagedWorktrees;
+  const worktree = (yield* mapProjectError("addProject", worktrees.records())).find(
+    (record) => record.worktreePath === path,
+  );
+  if (worktree)
+    return yield* new ProjectError({
+      operation: "addProject",
+      message: `${path} is a Cake-managed worktree of the Project ${worktree.projectPath}, not a Project root`,
+    });
+  yield* (yield* ProjectAccess).allow(path);
+  const state = yield* registerAllowed(path, request.name ?? basename(path));
+  const project = state.projects.find((candidate) => candidate.path === path);
+  if (!project)
+    return yield* new ProjectError({
+      operation: "addProject",
+      message: `Cake could not register ${path}`,
+    });
+  return {
+    project: agentProjectView(project, state.trustedProjectPaths),
+    alreadyRegistered: false,
+  };
+});
+
+export const renameForAgent = Effect.fn("Projects.renameForAgent")(function* (
+  request: AgentProjectRenameInput,
+) {
+  const application = yield* ApplicationState;
+  if (!application.snapshot().projects.some((project) => project.path === request.path))
+    return yield* new ProjectError({
+      operation: "renameProject",
+      message: `No registered Project has the exact path ${request.path}`,
+    });
+  const state = yield* mapProjectError("renameProject", renameProject(request.path, request.name));
+  const project = state.projects.find((candidate) => candidate.path === request.path);
+  if (!project)
+    return yield* new ProjectError({
+      operation: "renameProject",
+      message: `Cake could not rename ${request.path}`,
+    });
+  return { project: agentProjectView(project, state.trustedProjectPaths) };
 });
 
 export const rename = Effect.fn("Projects.rename")(function* (

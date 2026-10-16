@@ -177,6 +177,11 @@ export function agentActionReceipt(
       ...projectTarget(result.target.sessionId),
       coalesceKey: `label:${result.target.sessionId}`,
     };
+  if (result.command === "projects.remove")
+    return {
+      message: `Removed Project “${result.name}”`,
+      coalesceKey: `project:remove:${result.path}`,
+    };
   if (result.command === "session-labels.add")
     return {
       message: `Added session label “${result.label.name}”`,

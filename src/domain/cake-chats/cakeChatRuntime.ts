@@ -6,6 +6,7 @@ import { messageNavigationTarget } from "../../contracts/conversations/message-r
 import { makeAttachmentReferenceControl } from "../conversations/attachmentReferences";
 import * as projectSessionCreation from "../project-sessions/projectSessionCreation";
 import * as sessionReferences from "../project-sessions/sessionReferences";
+import * as projects from "../projects/projects";
 import { AgentProjectSessionCreate } from "../../contracts/project-sessions/session-reporting";
 import { inputRefsSchema } from "../../contracts/conversations/task-input";
 import { toJsonValue } from "../../utils/to-json-value";
@@ -86,6 +87,10 @@ const CAKE_CHAT_OPERATIONS = [
   "sessions.cancel-scheduled",
   "session-labels.list",
   "sessions.set-labels",
+  "projects.list",
+  "projects.add",
+  "projects.rename",
+  "projects.remove",
   "worktrees.merge",
   "subagents.start",
   "subagents.follow-up",
@@ -140,6 +145,8 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
     | TaskInputStorage
     | Effect.Services<ReturnType<typeof workflowControl.invoke>>
     | Effect.Services<ReturnType<typeof sessionReferences.catalog>>
+    | Effect.Services<ReturnType<typeof projects.addForAgent>>
+    | Effect.Services<ReturnType<typeof projects.renameForAgent>>
     | Effect.Services<ReturnType<typeof worktreeMerges.resolveSessionWorktree>>
     | Exclude<
         Effect.Services<ReturnType<typeof worktreeMerges.merge>>,
@@ -214,6 +221,24 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
                   ),
               );
             }),
+            { signal },
+          ),
+      },
+      cakeChatProjects: {
+        list: (signal) => run(projects.listForAgent().pipe(Effect.map(toJsonValue)), { signal }),
+        add: (input, signal) =>
+          run(projects.addForAgent(input).pipe(Effect.map(toJsonValue)), { signal }),
+        rename: (input, signal) =>
+          run(projects.renameForAgent(input).pipe(Effect.map(toJsonValue)), { signal }),
+        // Removal retires window navigation and session history, so it runs through the
+        // invoking window's sidebar removal workflow rather than only the main transaction.
+        remove: (input, signal) =>
+          run(
+            rendererRequests.requestCakeChatControl(
+              target.sessionId,
+              { name: "projects.remove", arguments: { ...input } },
+              signal,
+            ),
             { signal },
           ),
       },

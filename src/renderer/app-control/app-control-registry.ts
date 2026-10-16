@@ -5,6 +5,7 @@ import { settingsControls } from "./settings-controls";
 import { sessionLabelControls } from "./session-label-controls";
 import { vscodeControls } from "./vscode-controls";
 import { worktreeControls } from "./worktree-controls";
+import { projectControls } from "./project-controls";
 import { sessionInspectionControls } from "./session-inspection-controls";
 import { sessionMessageControls } from "./session-message-controls";
 import { sessionQueueControls } from "./session-queue-controls";
@@ -50,6 +51,7 @@ export const appControlRegistry = new AppControlRegistry([
   ...sessionLabelControls,
   ...vscodeControls,
   ...worktreeControls,
+  ...projectControls,
   ...sessionInspectionControls,
   ...sessionMessageControls,
   ...sessionQueueControls,

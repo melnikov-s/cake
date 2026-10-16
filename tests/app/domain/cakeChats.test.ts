@@ -152,6 +152,14 @@ describe("permanent Cake Chat", () => {
         expect(options.runtime.allowedCakeOperations).toContain("worktrees.merge");
         expect(options.runtime.allowedCakeOperations).not.toContain("worktrees.discard");
         expect(options.runtime.cakeChatWorktrees?.merge).toBeTypeOf("function");
+        for (const command of [
+          "projects.list",
+          "projects.add",
+          "projects.rename",
+          "projects.remove",
+        ])
+          expect(options.runtime.allowedCakeOperations).toContain(command);
+        expect(options.runtime.cakeChatProjects?.add).toBeTypeOf("function");
         expect(options.runtime.cakeChatMemory?.preferences()).toEqual(defaultCakeChatPreferences());
         f.setState({
           ...defaultApplicationState(),

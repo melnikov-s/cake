@@ -807,6 +807,7 @@ export class RootStore extends Store<{
         notificationStore: this.notificationStore,
         projectCatalogStore: this.projectCatalogStore,
         projectWorkbenchStore: this.projectWorkbenchStore,
+        projectRemovalStore: this.projectRemovalStore,
         sessionManagementStore: this.sessionManagementStore,
         projectSessionCreationStore: this.projectSessionCreationStore,
         sessionCatalogStore: this.sessionCatalogStore,
