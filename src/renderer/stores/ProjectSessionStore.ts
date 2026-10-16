@@ -1,6 +1,10 @@
 import { Store, child, computed, createStore, observable, snapshot } from "r-state-tree";
 import type { InterviewRecord, InterviewResult } from "../../contracts/interviews/interview";
-import { ConversationModeContext, type ConversationModeTarget } from "./ConversationModeStore";
+import {
+  ConversationModeContext,
+  conversationModeTarget,
+  type ConversationModeTarget,
+} from "./ConversationModeStore";
 import { isSessionAssistantThread } from "../../contracts/discussion-sessions/discussion-session-data";
 import type { StoreEvent } from "../events/StoreEvent";
 import type { Conversation } from "../models/Conversation";
@@ -361,19 +365,13 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   }
 
   get conversationTarget(): ConversationModeTarget {
-    return {
+    return conversationModeTarget({
       sessionId: this.sessionId,
       parts: () => this.model.uiParts,
+      composer: () => this.conversationSessionStore.chatStore,
       canEnter: () =>
         this.props.isActive() && this.canSubmit() && !this.pending.isTemporary(this.sessionId),
-      draft: () => this.conversationSessionStore.chatStore.draft,
-      setDraft: (text) => this.conversationSessionStore.chatStore.setDraft(text),
-      submitUtterance: () => {
-        if (!this.props.isActive() || !this.canSubmit() || this.pending.isTemporary(this.sessionId))
-          return Promise.resolve(false);
-        return this.conversationSessionStore.chatStore.submit();
-      },
-    };
+    });
   }
 
   @child
@@ -398,10 +396,8 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       composer: {
         projectPath: () => this.workspacePath,
         presentationMode: () => this.presentationMode,
-        responseMode: () => {
-          const mode = ConversationModeContext.consume(this);
-          return mode?.phase === "active" && mode.sessionId === this.sessionId ? "voice" : "text";
-        },
+        responseMode: () =>
+          ConversationModeContext.consume(this)?.responseModeFor(this.sessionId) ?? "text",
         openCommandPane: (pane) => CommandPaneContext.consume(this)!.open(pane),
         createSideChat: (prompt) => this.createSideChat(prompt),
         renameSession: (name) => management.renameSession(this.sessionId, name),

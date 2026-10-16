@@ -24,6 +24,34 @@ export interface ConversationModeTarget {
   setDraft(text: string): void;
   submitUtterance(): Promise<boolean>;
 }
+/** The composer a target drives; Project Sessions and Cake Chat both provide their ChatStore. */
+interface ConversationModeComposer {
+  readonly draft: string;
+  setDraft(text: string): void;
+  submit(): Promise<boolean>;
+}
+
+/**
+ * Binds voice mode to one conversation's transcript and composer. The runtime behind it
+ * (plain Pi or Pi Durable) is irrelevant here: spoken input becomes an ordinary composer
+ * submission, so it follows that conversation's own queueing and delivery rules.
+ */
+export function conversationModeTarget(input: {
+  sessionId: string;
+  parts(): readonly UiPart[];
+  composer(): ConversationModeComposer;
+  canEnter(): boolean;
+}): ConversationModeTarget {
+  return {
+    sessionId: input.sessionId,
+    parts: input.parts,
+    canEnter: input.canEnter,
+    draft: () => input.composer().draft,
+    setDraft: (text) => input.composer().setDraft(text),
+    submitUtterance: () => (input.canEnter() ? input.composer().submit() : Promise.resolve(false)),
+  };
+}
+
 export interface ConversationModeStoreProps {
   preferences: SpeechInputSettingsStore;
   speech: SpeechOutputCommands;
@@ -133,6 +161,14 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
   get enabled(): boolean {
     return this.props.enabled();
   }
+  /** Voice mode can bind only to the window's focused conversation. */
+  isActiveSession(sessionId: string): boolean {
+    return this.props.activeSessionId() === sessionId;
+  }
+  /** Inputs submitted while voice mode owns this conversation ask for spoken replies. */
+  responseModeFor(sessionId: string): "voice" | "text" {
+    return this.phase === "active" && this.sessionId === sessionId ? "voice" : "text";
+  }
   async enter(target: ConversationModeTarget): Promise<boolean> {
     if (!this.enabled) return false;
     if (
@@ -159,7 +195,7 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
     const signal = AbortSignal.any([controller.signal, this.signal]);
     try {
       if (!target.canEnter() || this.props.activeSessionId() !== target.sessionId)
-        throw new Error("Select an existing writable Project Session to enter conversation mode.");
+        throw new Error("Select an existing writable conversation to enter conversation mode.");
       const settings = this.props.settings();
       recordVoiceDiagnostic("enter", {
         provider: settings?.provider,

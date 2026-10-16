@@ -148,14 +148,14 @@ export class SessionLayoutStore extends Store<{ allowSplit?: boolean }> {
     };
   }
 
-  ensureSession(sessionId: string): string {
+  /** `paneId` names the first pane of a new layout, so a rebuilt layout can keep a visible pane mounted. */
+  ensureSession(sessionId: string, paneId: string = crypto.randomUUID()): string {
     const existing = this.paneForSession(sessionId);
     if (existing) {
       this.focusedPaneId = existing.paneId;
       return existing.paneId;
     }
     if (!this.layout) {
-      const paneId = crypto.randomUUID();
       this.layout = paneNode(paneId, sessionId);
       this.focusedPaneId = paneId;
       return paneId;

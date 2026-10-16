@@ -4,6 +4,10 @@ import { attachmentSchema, type Attachment } from "../../contracts/conversations
 import { promptText } from "../pi/runtime/session-projection";
 
 import { SubagentReportOrigin } from "../../contracts/subagents/subagent-data";
+import {
+  addResponseModeReminder,
+  ConversationResponseMode,
+} from "../../contracts/conversations/response-mode-reminders";
 
 const Presentation = Schema.Struct({
   textLength: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
@@ -12,18 +16,29 @@ const Presentation = Schema.Struct({
   files: Schema.Array(attachmentSchema),
   imageNames: Schema.Array(Schema.String),
   subagentReport: Schema.optionalKey(SubagentReportOrigin),
+  /** Effective response mode of this input; absent on inputs admitted before voice support. */
+  responseMode: Schema.optionalKey(ConversationResponseMode),
 });
 const prefix = /^<cake-input-presentation>([^\n]*)<\/cake-input-presentation>\n/;
 
+/** Response mode recorded with an input, and whether its model text carries the transition reminder. */
+export interface DurableInputResponse {
+  readonly mode: ConversationResponseMode;
+  readonly remind: boolean;
+}
+
 /** Tiny admission metadata travels with the SDK's durable queued content, not a
  * second history or a lifetime map. Selected source text remains in promptText's
- * existing attachment envelope; image bytes remain only in their image blocks. */
+ * existing attachment envelope; image bytes remain only in their image blocks.
+ * The recorded response mode lets the next admission find the previous mode from
+ * the newest Cake input alone, so a restart recovers it without a second store. */
 export function durableInputText(
   text: string,
   attachments: readonly Attachment[],
   markdown: boolean,
   steering = false,
   subagentReport?: SubagentReportOrigin,
+  response: DurableInputResponse = { mode: "text", remind: false },
 ) {
   const metadata = {
     subagentReport,
@@ -32,8 +47,11 @@ export function durableInputText(
     steering,
     files: attachments.filter((item) => item.kind === "file"),
     imageNames: attachments.flatMap((item) => (item.kind === "image" ? [item.name] : [])),
+    responseMode: response.mode,
   };
-  return `<cake-input-presentation>${JSON.stringify(metadata).replaceAll("<", "\\u003c")}</cake-input-presentation>\n${promptText(text, [...attachments])}${subagentReport ? `\n\nWorker provenance: ${JSON.stringify(subagentReport)}` : ""}`;
+  const body = `${promptText(text, [...attachments])}${subagentReport ? `\n\nWorker provenance: ${JSON.stringify(subagentReport)}` : ""}`;
+  // The reminder ends the body, at the boundary the shared projection reads as a context pill.
+  return `<cake-input-presentation>${JSON.stringify(metadata).replaceAll("<", "\\u003c")}</cake-input-presentation>\n${response.remind ? addResponseModeReminder(body, response.mode) : body}`;
 }
 
 export function durableInputPresentation(value: string) {
@@ -50,6 +68,7 @@ export function durableInputPresentation(value: string) {
         steering: decoded.value.steering ?? false,
         files: decoded.value.files,
         imageNames: decoded.value.imageNames,
+        responseMode: decoded.value.responseMode ?? ("text" as const),
       };
     }
   }
@@ -62,6 +81,8 @@ export function durableInputPresentation(value: string) {
     files: [],
     imageNames: [],
     subagentReport: undefined,
+    // Not a Cake input, so it carries no response mode of its own.
+    responseMode: undefined,
   };
 }
 
@@ -74,6 +95,7 @@ export function markDurableInputSteering(value: string, steering = true): string
     steering,
     files: input.files,
     imageNames: input.imageNames,
+    responseMode: input.responseMode,
   };
   return `<cake-input-presentation>${JSON.stringify(metadata).replaceAll("<", "\\u003c")}</cake-input-presentation>\n${input.body}`;
 }

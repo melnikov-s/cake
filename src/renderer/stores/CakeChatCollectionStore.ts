@@ -54,6 +54,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
   private initialization: Promise<void> | undefined;
   private resolveInitialization: (() => void) | undefined;
   private initializing = false;
+  private hydrationPaneId: string | undefined;
   private selectionRevision = 0;
   /** Same window-local completion acknowledgement as Project Sessions, not transcript storage. */
   private readSettledTurnRevision = 0;
@@ -201,6 +202,9 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
     try {
       this.reconcileAuthoritativeSessions();
       this.hydrated = true;
+      // Hydration rebuilds one pane, reusing the visible pane's identity so a composer
+      // already on screen (the drop-down focuses it at once) is not remounted mid-typing.
+      this.hydrationPaneId = this.sessionLayoutStore.focusedPaneId;
       this.sessionLayoutStore.layout = undefined;
       this.sessionLayoutStore.focusedPaneId = undefined;
       const restored = this.sessionId
@@ -224,6 +228,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
     } catch (error) {
       if (!this.signal.aborted) this.reportError(error, "Cake Chat could not load sessions");
     } finally {
+      this.hydrationPaneId = undefined;
       this.initializing = false;
       this.resolveInitialization?.();
       this.resolveInitialization = undefined;
@@ -309,7 +314,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
   private selectSession(sessionId: string) {
     this.selectionRevision += 1;
     if (this.sessionLayoutStore.layout) this.sessionLayoutStore.showSession(sessionId);
-    else this.sessionLayoutStore.ensureSession(sessionId);
+    else this.sessionLayoutStore.ensureSession(sessionId, this.hydrationPaneId);
   }
 
   private reconcileAuthoritativeSessions() {

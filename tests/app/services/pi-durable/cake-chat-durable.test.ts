@@ -6,7 +6,12 @@ import {
   MemoryStorage,
   InboxDoc,
   LiveDoc,
+  type Storage,
 } from "@earendil-works/pi-durable";
+import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Type } from "@earendil-works/pi-durable-ai";
 import { afterEach, expect, it, vi } from "vitest";
 import { openDurableChatEngine } from "../../../../src/services/pi-durable/durable-chat-engine";
@@ -28,12 +33,25 @@ import {
 } from "../../../../src/services/pi/runtime/session-projection";
 import { subagentCompletionMessage } from "../../../../src/services/pi/runtime/cake-session-runtime";
 import { durableAnswer, durableModels } from "../../../fixtures/durable-chat";
+import {
+  durableInputResponse,
+  previousDurableResponseMode,
+} from "../../../../src/services/pi-durable/durable-response-mode";
+import {
+  addResponseModeReminder,
+  responseModeReminders,
+  type ConversationResponseMode,
+} from "../../../../src/contracts/conversations/response-mode-reminders";
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close();
 });
-async function fixture(answer?: Parameters<typeof durableModels>[0], keepRecentTokens = 20_000) {
+async function fixture(
+  answer?: Parameters<typeof durableModels>[0],
+  keepRecentTokens = 20_000,
+  storage: Storage = new MemoryStorage(),
+) {
   const f = durableModels(answer);
   const summarize = vi.fn(async () => "talk: exact details remain available through zoom");
   let budget = 4_000;
@@ -54,7 +72,7 @@ async function fixture(answer?: Parameters<typeof durableModels>[0], keepRecentT
   });
   registry.install(defineExtension({ name: "memory", tools: [zoom] }));
   const engine = await openDurableChatEngine({
-    storage: new MemoryStorage(),
+    storage,
     models: f.models,
     registry,
     agent: {
@@ -366,4 +384,138 @@ it("admits before failing summarization, parks a bounded head and recovers witho
   await f.send("Try again", "retry");
   expect((await f.view()).sourceCount).toBe(8);
   expect((await f.zoom(2, 1)).text).toContain(original);
+});
+
+it("adds voice guidance only on transitions, recovering the mode from durable storage after a restart", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "cake-chat-voice-"));
+  cleanup.unshift(() => rm(directory, { recursive: true, force: true }));
+  const database = join(directory, "cake-chat.sqlite");
+  const f = await fixture(undefined, 20_000, await openNodeSqliteStorage(database));
+  const admit = async (
+    engine: typeof f.engine,
+    text: string,
+    requestId: string,
+    mode: ConversationResponseMode | undefined,
+  ) => {
+    const inbox =
+      (await engine.harness.snapshot(InboxDoc, engine.root.id, BACKGROUND_CONTEXT))?.items ?? [];
+    const response = durableInputResponse(
+      await previousDurableResponseMode(engine.root, inbox, "prompt"),
+      mode,
+    );
+    const submission = await engine.root.submit(
+      {
+        type: "input",
+        content: durableInputText(text, [], false, false, undefined, response),
+        requestId,
+      },
+      BACKGROUND_CONTEXT,
+    );
+    await submission.wait(BACKGROUND_CONTEXT);
+    return response;
+  };
+  expect(await admit(f.engine, "Typed first", "typed", "text")).toEqual({
+    mode: "text",
+    remind: false,
+  });
+  expect(await admit(f.engine, "Spoken question", "voice-1", "voice")).toEqual({
+    mode: "voice",
+    remind: true,
+  });
+  expect(await admit(f.engine, "Spoken follow-up", "voice-2", "voice")).toEqual({
+    mode: "voice",
+    remind: false,
+  });
+  // Worker reports and cross-session messages keep the conversation's mode silently.
+  expect(await admit(f.engine, "Background report", "report", undefined)).toEqual({
+    mode: "voice",
+    remind: false,
+  });
+  expect(JSON.stringify(f.requests[1])).toContain(
+    JSON.stringify(responseModeReminders.voice).slice(1, 60),
+  );
+  await f.engine.close();
+  cleanup.pop();
+
+  const reopened = await fixture(undefined, 20_000, await openNodeSqliteStorage(database));
+  expect(await previousDurableResponseMode(reopened.engine.root, [], "prompt")).toBe("voice");
+  expect(await admit(reopened.engine, "Typed again", "typed-2", "text")).toEqual({
+    mode: "text",
+    remind: true,
+  });
+  const users = (await readDurableOriginalPage(reopened.engine.root)).parts.filter(
+    (part) => part.kind === "text" && part.role === "user",
+  );
+  expect(users.map((part) => part.kind === "text" && part.text)).toEqual([
+    "Typed first",
+    "Spoken question",
+    "Spoken follow-up",
+    "Background report",
+    "Typed again",
+  ]);
+});
+
+it("renders a durable voice turn with the same context pill as a Project Session voice turn", async () => {
+  const f = await fixture();
+  await f.send(
+    durableInputText("What is running?", [], false, false, undefined, {
+      mode: "voice",
+      remind: true,
+    }),
+    "voice",
+  );
+  const cakeChat = (await readDurableOriginalPage(f.engine.root)).parts.filter(
+    (part) => part.kind === "context" || (part.kind === "text" && part.role === "user"),
+  );
+  const projectSession = projectSessionEntries([
+    {
+      type: "message",
+      id: "project-entry",
+      parentId: null,
+      timestamp: new Date(0).toISOString(),
+      message: {
+        role: "user",
+        content: addResponseModeReminder("What is running?", "voice"),
+        timestamp: 0,
+      },
+    },
+  ]).filter((part) => part.kind === "context" || (part.kind === "text" && part.role === "user"));
+  const shape = (parts: typeof cakeChat) =>
+    parts.map((part) =>
+      part.kind === "text"
+        ? { kind: part.kind, text: part.text }
+        : { kind: part.kind, title: "title" in part ? part.title : undefined },
+    );
+  expect(shape(cakeChat)).toEqual(shape(projectSession));
+  expect(cakeChat.some((part) => part.kind === "context")).toBe(true);
+});
+
+it("reads the previous mode from queued input ahead of committed history", async () => {
+  const f = await fixture();
+  await f.send(
+    durableInputText("Spoken", [], false, false, undefined, { mode: "voice", remind: true }),
+    "voice",
+  );
+  const queued = (mode: "steer" | "followUp", response: ConversationResponseMode) => ({
+    id: 99 as never,
+    mode,
+    content: durableInputText("Queued", [], false, false, undefined, {
+      mode: response,
+      remind: false,
+    }),
+  });
+  expect(
+    await previousDurableResponseMode(f.engine.root, [queued("followUp", "text")], "prompt"),
+  ).toBe("text");
+  // Steering lands ahead of follow-ups, so only queued steering precedes it.
+  expect(
+    await previousDurableResponseMode(f.engine.root, [queued("followUp", "text")], "steer"),
+  ).toBe("voice");
+  // Inputs admitted before voice support carry no recorded mode and read as text.
+  expect(
+    durableInputPresentation(
+      `<cake-input-presentation>${JSON.stringify({ textLength: 1, markdown: false, files: [], imageNames: [] })}</cake-input-presentation>\nx`,
+    ).responseMode,
+  ).toBe("text");
+  expect(durableInputPresentation("plain synthetic text").responseMode).toBeUndefined();
 });

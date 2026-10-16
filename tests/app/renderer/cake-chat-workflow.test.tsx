@@ -442,3 +442,17 @@ it("opens Cake Chat project investigators in the existing subagent interface and
     view.unmount();
   }
 });
+
+it("hydrating Cake Chat keeps the visible pane mounted instead of replacing it mid-typing", async () => {
+  using fixture = createRendererStoreFixture();
+  const collection = fixture.root.cakeChatCollectionStore;
+  // The drop-down shows and focuses the composer before the catalog finishes loading.
+  collection.sessionLayoutStore.ensureSession(CAKE_CHAT_SESSION_ID, "visible-pane");
+  applySnapshot(fixture.models.cakeChatCatalog, {
+    loaded: true,
+    sessions: [{ sessionId: CAKE_CHAT_SESSION_ID, title: "Cake Chat" }],
+  });
+  await act(() => collection.openSession(CAKE_CHAT_SESSION_ID));
+  expect(collection.sessionLayoutStore.panes.map((pane) => pane.paneId)).toEqual(["visible-pane"]);
+  expect(collection.sessionLayoutStore.focusedSessionId).toBe(CAKE_CHAT_SESSION_ID);
+});

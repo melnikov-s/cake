@@ -85,6 +85,9 @@ import {
   durableInputText,
   markDurableInputSteering,
 } from "./durable-input-presentation";
+import { durableInputResponse, previousDurableResponseMode } from "./durable-response-mode";
+import type { ConversationResponseMode } from "../../contracts/conversations/response-mode-reminders";
+import { splitContextReminders } from "../pi/runtime/session-context-reminders";
 const presentationOf = (content: string | ReadonlyArray<{ type: string; text?: string }>) =>
   durableInputPresentation(
     typeof content === "string"
@@ -93,6 +96,9 @@ const presentationOf = (content: string | ReadonlyArray<{ type: string; text?: s
   );
 const textOf = (content: string | ReadonlyArray<{ type: string; text?: string }>) =>
   presentationOf(content).body;
+// Queued rows show the user's words, not Cake-owned model guidance such as a voice reminder.
+const displayTextOf = (content: string | ReadonlyArray<{ type: string; text?: string }>) =>
+  splitContextReminders(textOf(content)).text;
 const queuedInput = (item: Extract<InboxItem, { content: unknown }>, id: string) => {
   const input = presentationOf(item.content);
   const images =
@@ -387,12 +393,12 @@ export async function createDurableCakeChatRuntime(
     return {
       steering: items
         .filter((item): item is Extract<InboxItem, { content: unknown }> => item.mode === "steer")
-        .map((item) => textOf(item.content)),
+        .map((item) => displayTextOf(item.content)),
       followUp: items
         .filter(
           (item): item is Extract<InboxItem, { content: unknown }> => item.mode === "followUp",
         )
-        .map((item) => textOf(item.content)),
+        .map((item) => displayTextOf(item.content)),
     };
   };
   const requestId = async (item: InboxItem) =>
@@ -423,6 +429,7 @@ export async function createDurableCakeChatRuntime(
     id?: string,
     markdown = false,
     subagentReport?: SubagentReportOrigin,
+    responseMode?: ConversationResponseMode,
   ) => {
     // Defense in depth: no caller may submit payload-bearing attachments to the coordinator.
     // Annotations quote Cake Chat's own transcript and stay inline.
@@ -438,10 +445,16 @@ export async function createDurableCakeChatRuntime(
       delivery === "steer" &&
       (await engine.harness.snapshot(LiveDoc, engine.root.id, BACKGROUND_CONTEXT))?.run !==
         undefined;
+    // Voice guidance follows the same transition rule as Project Sessions, read from
+    // the durable inbox and history rather than in-memory state.
+    const response = durableInputResponse(
+      await previousDurableResponseMode(engine.root, await inbox(), delivery),
+      responseMode,
+    );
     const content = [
       {
         type: "text" as const,
-        text: durableInputText(text, attachments, markdown, busy, subagentReport),
+        text: durableInputText(text, attachments, markdown, busy, subagentReport, response),
       },
       // Reference attachments have no image parts.
     ];
@@ -584,9 +597,26 @@ export async function createDurableCakeChatRuntime(
         } satisfies ConversationSnapshot;
       }, BACKGROUND_CONTEXT);
     },
-    async prompt(text, delivery, attachments, _markdown, turnId) {
+    async prompt(
+      text,
+      delivery,
+      attachments,
+      markdown,
+      turnId,
+      _presentation,
+      _title,
+      responseMode,
+    ) {
       if (disposed) throw new Error("Coordinator has closed");
-      const submission = await admit(text, delivery, attachments, turnId, _markdown);
+      const submission = await admit(
+        text,
+        delivery,
+        attachments,
+        turnId,
+        markdown,
+        undefined,
+        responseMode,
+      );
       const settled = await submission.wait(BACKGROUND_CONTEXT);
       if (settled.status === "unanswered") {
         if (settled.reason === "aborted") throw new TurnCanceledError();

@@ -21,6 +21,7 @@ import type { ArtifactCatalog } from "../models/ArtifactCatalog";
 import type { DiscussionCatalog } from "../models/DiscussionCatalog";
 import { CakeChatSideChatsStore } from "./CakeChatSideChatsStore";
 import { MessageCommentsStore } from "./MessageCommentsStore";
+import { ConversationModeContext, conversationModeTarget } from "./ConversationModeStore";
 
 export interface CakeChatSessionStoreProps {
   sessionId: string;
@@ -177,6 +178,25 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     return createStore(ConversationHistoryStore, { model: this.model });
   }
 
+  /** Voice mode drives this composer exactly as it does a Project Session's. Spoken input is
+   * an ordinary submission, so it reaches Durable's queue with the same dedup as typed text. */
+  private get conversationMode() {
+    const workflow = ConversationModeContext.consume(this);
+    if (!workflow) return undefined;
+    return {
+      workflow,
+      target: conversationModeTarget({
+        sessionId: this.sessionId,
+        parts: () => this.model.uiParts,
+        composer: () => this.conversationSessionStore.chatStore,
+        // An unmaterialized Cake Chat starts through its own creation path; voice joins after.
+        canEnter: () =>
+          workflow.isActiveSession(this.sessionId) &&
+          !this.props.pendingSessions.isPending(this.sessionId),
+      }),
+    };
+  }
+
   @child
   get conversationSessionStore(): ConversationSessionStore {
     return createStore(ConversationSessionStore, {
@@ -205,6 +225,8 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
           this.props.pendingSessions.conversation(sessionId)?.applyGeneratedDraftName(title),
         editorText: (entryId) =>
           this.model.tree.find((entry) => entry.piId === entryId)?.editorText,
+        responseMode: () =>
+          ConversationModeContext.consume(this)?.responseModeFor(this.sessionId) ?? "text",
       },
       configuration: {
         deferredNewSession: () => this.props.pendingSessions.isPending(this.sessionId),
@@ -217,6 +239,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         commands: () => this.model.commands.filter((command) => command.name !== "sidechat"),
         placeholder: () => "Ask Cake to find or control a task…",
         inputLabel: () => "Message Cake Chat",
+        conversationMode: this.conversationMode,
         isDraftSession: () =>
           this.props.pendingSessions.conversation(this.sessionId)?.isDraft ?? false,
       },

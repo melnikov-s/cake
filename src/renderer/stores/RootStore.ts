@@ -640,10 +640,8 @@ export class RootStore extends Store<{
             },
           },
         }),
-      activeSessionId: () =>
-        this.appShellStore.activeConversation?.kind === "project-session"
-          ? this.appShellStore.activeConversation.sessionId
-          : undefined,
+      // Voice mode follows the window's focused conversation: a Project Session or Cake Chat.
+      activeSessionId: () => this.appShellStore.activeConversation?.sessionId,
       deviceId: () => this.dictationStore.deviceId,
       suspendDictation: async () => this.dictationStore.pauseCapture(),
       canReleaseRecognition: () => !this.dictationStore.enabled,
