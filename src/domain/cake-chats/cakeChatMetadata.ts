@@ -1,5 +1,5 @@
 import { Effect, Stream } from "effect";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import type { PiSessionSummary } from "../../contracts/conversations/session-contract";
 import { CakeSessionRuntimes, type PiSessionError } from "../../services/pi/CakeSessionRuntimes";
 import type { CakeChatLocation } from "./cakeChatLocations";

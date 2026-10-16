@@ -4,7 +4,7 @@ import {
   MESSAGE_BOARD_FIXTURE_ID,
 } from "../../tests/fixtures/message-board.ts";
 import { defaultApplicationState } from "../../src/contracts/application/application-data.ts";
-import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-data.ts";
+import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-identity.ts";
 import { openRequestInspectorFixture } from "./request-inspector-fixture.ts";
 import { addResponseModeReminder } from "../../src/contracts/conversations/response-mode-reminders.ts";
 import {

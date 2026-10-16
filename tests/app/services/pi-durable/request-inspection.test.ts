@@ -2,7 +2,7 @@ import { expect, it, vi } from "vitest";
 import { Schema } from "effect";
 import { createModels, createProvider, normalizeContext, type Model } from "@earendil-works/pi-ai";
 import { stream, streamSimple } from "@earendil-works/pi-ai/api/openai-completions";
-import { CAKE_CHAT_SESSION_ID } from "../../../../src/contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../../../src/contracts/cake-chats/cake-chat-identity";
 import { createRequestInspectionHistory } from "../../../../src/services/pi-durable/request-inspection";
 import { durableModels } from "../../../../src/services/pi-durable/durable-models";
 import { openDurableChatEngine } from "../../../../src/services/pi-durable/durable-chat-engine";

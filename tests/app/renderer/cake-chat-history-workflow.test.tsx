@@ -5,7 +5,7 @@ import { applySnapshot } from "r-state-tree";
 import { afterEach, expect, it, vi } from "vitest";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
 import type { Client } from "../../../src/renderer/client/Client";
-import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { Chat } from "../../../src/renderer/components/chat";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { createRendererStoreFixture } from "./renderer-store-fixture";

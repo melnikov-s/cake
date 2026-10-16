@@ -1,5 +1,5 @@
 import { reaction } from "r-state-tree";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import type { CakeChatOverlayShownContext } from "../../contracts/desktop/cake-chat-overlay-data";
 import type { AppSelection } from "../stores/AppShellStore";
 import type { RootStore } from "../stores/RootStore";

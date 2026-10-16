@@ -1,9 +1,7 @@
 import { applySnapshot } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
-import {
-  CAKE_CHAT_SESSION_ID,
-  type CakeChatControlRequest,
-} from "../../../../src/contracts/cake-chats/cake-chat-data";
+import { type CakeChatControlRequest } from "../../../../src/contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../../../src/contracts/cake-chats/cake-chat-identity";
 import { TurnId } from "../../../../src/contracts/conversations/conversation-data";
 import type { JsonValue } from "../../../../src/contracts/serialization/json-contract";
 import type { ProjectSessionControlRequest } from "../../../../src/contracts/project-sessions/project-session-data";

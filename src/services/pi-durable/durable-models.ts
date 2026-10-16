@@ -17,7 +17,7 @@ import {
 } from "../pi/fast-mode";
 import { durableModelFacade } from "./durable-model-facade";
 import type { RequestInspection } from "./request-inspection";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import type { SessionReferenceControl } from "../../contracts/agent/cake-operation-options";
 import {
   parseCrossSessionMessage,

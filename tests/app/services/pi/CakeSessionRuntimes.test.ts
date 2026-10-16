@@ -23,7 +23,7 @@ import {
   type CakeSessionRuntimesAdapter,
   type CakeSessionRuntimeAcquireOptions,
 } from "../../../../src/services/pi/CakeSessionRuntimes";
-import { CAKE_CHAT_SESSION_ID } from "../../../../src/contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../../../src/contracts/cake-chats/cake-chat-identity";
 import { TurnCanceledError } from "../../../../src/services/pi/runtime/RuntimeTurnCompletion";
 import { options, fakeRuntime } from "../../helpers/piRuntimeFixture";
 

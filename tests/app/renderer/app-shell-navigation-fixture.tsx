@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { applySnapshot, type StoreSnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
-import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
 import { App } from "../../../src/renderer/components/app";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";

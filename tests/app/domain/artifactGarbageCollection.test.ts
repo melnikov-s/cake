@@ -6,7 +6,7 @@ import { it } from "@effect/vitest";
 import { Effect, Layer, Schema } from "effect";
 import { afterEach, describe, expect } from "vitest";
 import { collectGarbage } from "../../../src/domain/artifacts/artifactGarbageCollection";
-import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { ArtifactLineageId } from "../../../src/contracts/artifacts/artifact-lineage";
 import type { CakeArtifactV1 } from "../../../src/contracts/artifacts/artifact-contract";
 import { makeArtifactProjectionLive } from "../../../src/services/artifacts/ArtifactProjectionLive";

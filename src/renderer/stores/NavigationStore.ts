@@ -1,7 +1,7 @@
 import { Store, child, createStore } from "r-state-tree";
 import { MessageReferencePreviewStore } from "./MessageReferencePreviewStore";
 import { AttachmentReferencePreviewStore } from "./AttachmentReferencePreviewStore";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import { resolveSessionLinkReference } from "../../contracts/project-sessions/session-reference";
 import {
   decodeArtifactLineageId,

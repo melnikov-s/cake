@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { Effect, Layer, Schema } from "effect";
 import { it as effectIt } from "@effect/vitest";
-import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   ArtifactLineageId,

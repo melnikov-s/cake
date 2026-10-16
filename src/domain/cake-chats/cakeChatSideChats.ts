@@ -1,5 +1,6 @@
 import { Effect, Stream } from "effect";
-import { CAKE_CHAT_SESSION_ID, CakeChatError } from "../../contracts/cake-chats/cake-chat-data";
+import { CakeChatError } from "../../contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import type { CakeChatSideChatStartInput } from "../../contracts/discussion-sessions/discussion-session-data";
 import * as discussionSessions from "../discussion-sessions/discussionSessions";
 import type { CakeChatLocation } from "./cakeChatLocations";

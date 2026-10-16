@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
-import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { cakeChatOverlayHandoff } from "../../../src/renderer/bootstrap/start-cake-chat-overlay";
 import type { Client } from "../../../src/renderer/client/Client";
 import { SettingsPage } from "../../../src/renderer/components/settings-page";

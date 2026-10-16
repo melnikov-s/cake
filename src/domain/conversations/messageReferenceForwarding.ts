@@ -4,7 +4,7 @@ import {
   messageNavigationTarget,
   messageRefsSchema,
 } from "../../contracts/conversations/message-reference";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { SessionChatError } from "../../contracts/conversations/conversation-data";
 import { acquireTarget } from "../project-sessions/projectSessionOperations";

@@ -12,11 +12,11 @@ import {
   TurnId,
 } from "../conversations/conversations";
 import {
-  CAKE_CHAT_SESSION_ID,
   CakeChatError,
   type CakeChatStartInput,
   type CakeChatTarget,
 } from "../../contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import { asError, publishCatalogChange, sessionNamespace } from "./cakeChatMetadata";
 import { prepareTaskInputs } from "../conversations/taskInputs";
 

@@ -2,7 +2,7 @@ import { Effect, FileSystem, Layer, Path } from "effect";
 import { projectReviewThread, type ReviewThreadRecord } from "../contracts/reviews/review-contract";
 import { ReviewStorage } from "../services/storage/ReviewStorage";
 import { ApplicationState } from "../services/storage/ApplicationState";
-import { CAKE_CHAT_SESSION_ID } from "../contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../contracts/cake-chats/cake-chat-identity";
 import {
   cakeChatSideChatSystemPrompt,
   reviewSidecarSystemPrompt,

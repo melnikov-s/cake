@@ -10,7 +10,7 @@ import { SessionChatError } from "../../contracts/conversations/conversation-dat
 import { acquireTarget } from "../project-sessions/projectSessionOperations";
 import { findLocation } from "../project-sessions/projectSessionMetadata";
 import * as sessionReferences from "../project-sessions/sessionReferences";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 
 const asError =

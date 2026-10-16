@@ -5,7 +5,7 @@ import { applySnapshot } from "r-state-tree";
 import { observer } from "r-state-tree/react";
 import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, expect, it, vi } from "vitest";
-import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import {
   receiveCakeChatOverlayContext,
   startCakeChatOverlay,

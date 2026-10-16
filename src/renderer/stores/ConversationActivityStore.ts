@@ -1,5 +1,5 @@
 import { Store } from "r-state-tree";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import {
   launchedSessions,
   launchedSessionStatus,

@@ -2,10 +2,8 @@ import * as projectSessionLocations from "../project-sessions/projectSessionLoca
 import { acquireOptions as acquireProjectSessionOptions } from "../project-sessions/projectSessionRuntime";
 import { Effect, Option, Schema, Stream } from "effect";
 import type { DiscussionCatalogUpdate } from "../../contracts/application/catalog-data";
-import {
-  CAKE_CHAT_SESSION_ID,
-  type CakeControlTool,
-} from "../../contracts/cake-chats/cake-chat-data";
+import { type CakeControlTool } from "../../contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import { jsonObjectSchema } from "../../contracts/serialization/json-contract";
 import { makePiCallbackExecutor } from "../../services/pi/PiCallbackAdapter";
 import {

@@ -28,6 +28,7 @@ import {
   cakeChatModelSettingDefaults,
   defaultCakeChatPreferences,
 } from "../../contracts/cake-chats/cake-chat-preferences";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import type { CakeChatTarget } from "../../contracts/cake-chats/cake-chat-data";
 import type { CakeChatLocation } from "./cakeChatLocations";
 import { makeSubagentControl } from "../subagents/subagentControl";
@@ -366,6 +367,17 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
               const args = yield* Schema.decodeUnknownEffect(
                 Schema.Struct({ sessionId: Schema.optionalKey(Schema.String) }),
               )(invocation.arguments);
+              // Project Sessions reach Cake Chat by omitting sessionId; Cake Chat cannot message itself.
+              if (
+                invocation.name === "sessions.send" &&
+                (args.sessionId === undefined || args.sessionId === CAKE_CHAT_SESSION_ID)
+              )
+                return {
+                  ok: false,
+                  command: "sessions.send",
+                  error:
+                    "Cake Chat cannot message itself. Omitting sessionId addresses Cake Chat only when a Project Session sends; from Cake Chat, pass the target Project Session's sessionId (see sessions.list).",
+                };
               yield* Effect.scoped(validateMessageReferenceControl(invocation));
               const forwarded = yield* forwardTaskInputControl(target.sessionId, invocation);
               // Explicit selection reads are allowed. Attachment pixels use the scoped

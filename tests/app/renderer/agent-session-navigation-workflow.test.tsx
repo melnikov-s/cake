@@ -3,7 +3,7 @@ import { act, cleanup, screen } from "@testing-library/react";
 import { toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { messageReference } from "../../../src/contracts/conversations/message-reference";
-import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import type { JsonObject } from "../../../src/contracts/serialization/json-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { WindowStatePersistence } from "../../../src/renderer/persistence/WindowStatePersistence";

@@ -99,8 +99,10 @@ export function createSessionFamilyOperations(
       command: "sessions.send",
       requires: "invokeAppControl",
       topic: "sessions",
-      summary: "Send a message to an explicitly targeted Project Session in any Cake project.",
+      summary:
+        "Send a message to an explicitly targeted Project Session in any Cake project, or omit sessionId to message Cake Chat.",
       guidance: [
+        'Omit sessionId to reach Cake Chat. Cake Chat has no session ID; never pass the sender ID shown on Cake Chat\'s messages (it is labelled "cake-chat"). delivery, expectsResponse, threadId, and replyToMessageId mean the same as in sessions.reply to Cake Chat. To ask the user a question through Cake Chat, set expectsResponse: true; to report a blocker on assigned work, prefer sessions.reply with outcome: "blocked".',
         "Set delivery to steer to interrupt and redirect a running target. Omit delivery for normal behavior: start an idle target or queue behind an active target.",
         "expectsResponse defaults to false. Set true only when you need an answer (an assignment, question, or blocker); the recipient then owes exactly one result, or one failure/stopped notice if the turn handling this message ends without one. With false, the recipient never reports back automatically.",
         "Set replyToMessageId when this message answers a specific request. A different or unrelated message never clears that request's response obligation.",
@@ -108,7 +110,12 @@ export function createSessionFamilyOperations(
         "Delivery receipts are informational tool results. Never acknowledge a receipt; send another message only for substantive coordination.",
       ],
       inputSchema: Schema.Struct({
-        sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+        sessionId: Schema.optionalKey(
+          Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)).annotate({
+            description:
+              "Target Project Session ID or s: reference. Omit to message Cake Chat, which has no session ID.",
+          }),
+        ),
         inputRefs: Schema.optionalKey(inputRefsSchema),
         messageRefs: Schema.optionalKey(messageRefsSchema),
         text: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100_000))),
@@ -135,6 +142,13 @@ export function createSessionFamilyOperations(
             expectsResponse: false,
             replyToMessageId: "00000000-0000-4000-8000-000000000000",
           },
+        },
+        {
+          input: {
+            text: "Should I drop the legacy column or keep it behind a flag?",
+            expectsResponse: true,
+          },
+          description: "No sessionId: ask Cake Chat (and through it, the user) a question.",
         },
       ],
       result:

@@ -11,7 +11,7 @@ import {
   type ArtifactRevision,
   type EffectiveArtifactProjection,
 } from "../../../src/contracts/artifacts/artifact-lineage";
-import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import type { Client } from "../../../src/renderer/client/Client";
 import { renderAppShellNavigation } from "./app-shell-navigation-fixture";
 

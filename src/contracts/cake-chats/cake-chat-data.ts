@@ -5,9 +5,6 @@ import {
   SessionChatPromptInput,
 } from "../conversations/conversation-data";
 
-/** Stable identity of the one application-level conversation, never a Project Session. */
-export const CAKE_CHAT_SESSION_ID = "ca4ec4a7-0000-4000-8000-000000000001";
-
 const boundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 
 export const CakeControlTool = Schema.Struct({

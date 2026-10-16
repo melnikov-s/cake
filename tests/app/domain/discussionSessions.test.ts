@@ -21,7 +21,7 @@ import { ApplicationState } from "../../../src/services/storage/ApplicationState
 import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { sessionAssistantThreadPath } from "../../../src/contracts/discussion-sessions/discussion-session-data";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
-import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 
 const makeSnapshot = (sessionId: string, sessionFile: string): ConversationSnapshot => ({

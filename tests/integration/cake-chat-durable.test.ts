@@ -28,7 +28,7 @@ import {
   CakeChatDurable,
   makeCakeChatDurableLive,
 } from "../../src/services/pi-durable/CakeChatDurable";
-import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-identity";
 import type { CakeSessionRuntime } from "../../src/services/pi/runtime/cake-session-runtime";
 import type { ConversationSnapshot } from "../../src/contracts/conversations/session-contract";
 import { durableAnswer, durableModel } from "../fixtures/durable-chat";

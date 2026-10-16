@@ -6,6 +6,10 @@ import {
   resolveSessionReference,
   sessionReference,
 } from "../../../src/contracts/project-sessions/session-reference";
+import {
+  CAKE_CHAT_REFERENCE,
+  CAKE_CHAT_SESSION_ID,
+} from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { sessionLink } from "../../../src/contracts/conversations/message-reference";
 import {
   encodeCrossSessionMessage,
@@ -101,10 +105,44 @@ describe("session references", () => {
       ok: true,
       sessionId: uppercaseId,
     });
-    expect(sessionReference("cake-chat", ids)).toBe("cake-chat");
-    expect(resolveSessionReference("cake-chat", ["cake-chat"])).toEqual({
+    expect(sessionReference("draft-1", ids)).toBe("draft-1");
+    expect(resolveSessionReference("draft-1", ["draft-1"])).toEqual({
       ok: true,
+      sessionId: "draft-1",
+    });
+  });
+
+  it("labels Cake Chat as cake-chat, never as an s: Project Session reference", () => {
+    // Cake Chat's fixed UUID ends in 00000001; shortening it produced the unroutable s:00000001.
+    expect(sessionReference(CAKE_CHAT_SESSION_ID, [...ids, CAKE_CHAT_SESSION_ID])).toBe(
+      CAKE_CHAT_REFERENCE,
+    );
+    expect(projectSessionReferences({ sender: { sessionId: CAKE_CHAT_SESSION_ID } }, ids)).toEqual({
+      sender: { sessionId: "cake-chat" },
+    });
+    // The emitted label routes back to Cake Chat; the old short form is just an unknown reference.
+    expect(resolveSessionReference("cake-chat", ids)).toEqual({
+      ok: true,
+      sessionId: CAKE_CHAT_SESSION_ID,
+    });
+    expect(resolveSessionReference("s:00000001", ids).ok).toBe(false);
+    const projected = parseCrossSessionMessage(
+      projectCrossSessionMessageForAgent(
+        encodeCrossSessionMessage("Please review.", {
+          version: 1,
+          messageId: "00000000-0000-4000-8000-000000000001",
+          threadId: "00000000-0000-4000-8000-000000000001",
+          sequence: 1,
+          expectsResponse: true,
+          sender: { sessionId: CAKE_CHAT_SESSION_ID, title: "Cake Chat", kind: "cake-chat" },
+        }),
+        ids,
+      ),
+    );
+    expect(projected?.metadata.sender).toEqual({
       sessionId: "cake-chat",
+      title: "Cake Chat",
+      kind: "cake-chat",
     });
   });
 

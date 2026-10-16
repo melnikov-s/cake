@@ -1,5 +1,5 @@
 import { Cause, DateTime, Effect, Exit } from "effect";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import {
   cakeChatReportPolicy,
   type CakeChatReportPolicy,

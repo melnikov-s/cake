@@ -2,7 +2,7 @@ import { describeTurnStop, type TurnStop } from "../../contracts/conversations/t
 import { appendMessageReferences } from "../../contracts/conversations/message-reference-forwarding";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 import { ensureBoard } from "../artifacts/messageBoards";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import { inheritTaskInputProtection, prepareCoordinatorNotice } from "../conversations/taskInputs";
 import type {
   CakeChatLaunchStatus,
@@ -646,7 +646,9 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
       !(yield* storage.familyForMember(sessionId));
     const requesterId =
       spawn?.requester.sessionId ?? (owesCoordinator ? CAKE_CHAT_SESSION_ID : undefined);
-    const targetId = command === "sessions.reply" ? requesterId : input.sessionId;
+    // Cake Chat has no session address of its own: a send without sessionId reaches it.
+    const targetId =
+      command === "sessions.reply" ? requesterId : (input.sessionId ?? CAKE_CHAT_SESSION_ID);
     if (targetId !== CAKE_CHAT_SESSION_ID) return undefined;
     const sessions = yield* CakeSessionRuntimes;
     const executingIds = yield* sessions.executingTurnIds({
@@ -748,9 +750,11 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
     return toJsonValue({
       ok: true,
       command,
-      target: { kind: "cake-chat", sessionId: targetId },
+      // No sessionId: Cake Chat is addressed by omitting it, never by a session reference.
+      target: { kind: "cake-chat" },
       targetTitle: "Cake Chat",
       status: delivery === "queue" ? "queued" : "accepted",
+      delivery,
       turnId,
       messageId,
       threadId: metadata.threadId,

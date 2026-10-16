@@ -6,7 +6,7 @@ import { ROOT_CONVERSATION_ID } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { _electron as electron, expect, test, type ElectronApplication } from "@playwright/test";
-import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-identity";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");

@@ -6,7 +6,7 @@ import { StoreProvider } from "r-state-tree/react";
 import { VirtuosoMockContext } from "react-virtuoso";
 import { expect, it, vi } from "vitest";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
-import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
 import { CakeChatSurface } from "../../../src/renderer/components/cake-chat-surface";
 import { ProjectConversationSurface } from "../../../src/renderer/components/project-conversation-surface";

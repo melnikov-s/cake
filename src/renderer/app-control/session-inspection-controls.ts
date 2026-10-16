@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import { resolveSessionReference } from "../../contracts/project-sessions/session-reference";
 import {
   SessionNavigationInput,

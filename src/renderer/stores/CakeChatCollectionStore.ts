@@ -1,6 +1,6 @@
 import { Store, child, createStore } from "r-state-tree";
 import type { SessionActivity } from "../lib/session-activity";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import type {
   ChatConfiguration,
   ModelPreset,

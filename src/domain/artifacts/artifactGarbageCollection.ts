@@ -5,7 +5,7 @@ import { ProjectSessionConfiguration } from "../../services/project-sessions/Pro
 import { ArtifactStorage } from "../../services/storage/ArtifactStorage";
 import { SessionFamilyStorage, familyMemberIds } from "../../services/storage/SessionFamilyStorage";
 import { ArtifactLineageId } from "../../contracts/artifacts/artifact-lineage";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 
 interface ArtifactGarbageCollectionStats {
   readonly skipped: boolean;

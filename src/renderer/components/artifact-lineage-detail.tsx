@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import type { SourceLocation } from "../../contracts/editor/source-location";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import { observer } from "r-state-tree/react";
 import { ArtifactHost } from "@/components/artifact-host";
 import { cn } from "@/lib/utils";

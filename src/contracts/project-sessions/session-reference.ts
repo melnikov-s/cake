@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { jsonObjectSchema, type JsonValue } from "../serialization/json-contract";
+import { CAKE_CHAT_REFERENCE, CAKE_CHAT_SESSION_ID } from "../cake-chats/cake-chat-identity";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const shortReference = /^s:([0-9a-f]{8,32})$/i;
@@ -7,6 +8,8 @@ const hex = (id: string) => id.replaceAll("-", "").toLowerCase();
 
 /** Agent-facing identity only. UUIDv7 prefixes are not sufficiently distinctive. */
 export function sessionReference(sessionId: string, knownSessionIds: readonly string[]): string {
+  // Cake Chat's fixed UUID would otherwise shorten to an `s:` ref that looks like a Project Session.
+  if (sessionId === CAKE_CHAT_SESSION_ID) return CAKE_CHAT_REFERENCE;
   if (!uuid.test(sessionId)) return sessionId;
   const value = hex(sessionId);
   const others = knownSessionIds.filter((id) => uuid.test(id) && hex(id) !== value).map(hex);
@@ -25,6 +28,8 @@ export function resolveSessionReference(
   reference: string,
   knownSessionIds: readonly string[],
 ): SessionReferenceResolution {
+  // The emitted Cake Chat label routes to Cake Chat; callers decide whether it is a valid target.
+  if (reference === CAKE_CHAT_REFERENCE) return { ok: true, sessionId: CAKE_CHAT_SESSION_ID };
   if (knownSessionIds.includes(reference) || uuid.test(reference))
     return { ok: true, sessionId: reference };
   const suffix = shortReference.exec(reference)?.[1]?.toLowerCase();

@@ -10,7 +10,7 @@ import {
   formatSessionDigestReminder,
   splitSessionDigestReminder,
 } from "../../../src/contracts/cake-chats/session-digest-reminder";
-import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import {
   CakeSessionRuntimes,
