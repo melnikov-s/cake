@@ -1706,7 +1706,7 @@ describe("AppControlBridge", () => {
   });
 
   it("recovers exact UUIDs for info, open and rename when discovery is missing, while unknown IDs and undiscovered short references fail", async () => {
-    const sessionId = "10000000-0000-4000-8000-000000000001";
+    const sessionId = "10000000-0000-4000-8000-000000000011";
     const recovered = {
       workingDirectory: "/managed-worktree",
       projectName: "Project",
@@ -1758,7 +1758,7 @@ describe("AppControlBridge", () => {
       sessions: [{ sessionId, deepLink: `cake://session/${sessionId}` }],
     });
     await expect(
-      bridge.invoke({ name: "sessions.info", arguments: { sessionId: "s:00000001" } }),
+      bridge.invoke({ name: "sessions.info", arguments: { sessionId: "s:00000011" } }),
     ).resolves.toMatchObject({
       ok: true,
       session: { sessionId, deepLink: `cake://session/${sessionId}` },
@@ -1774,7 +1774,7 @@ describe("AppControlBridge", () => {
     discovered = [];
     const count = lookup.mock.calls.length;
     await expect(
-      bridge.invoke({ name: "sessions.info", arguments: { sessionId: "s:00000001" } }),
+      bridge.invoke({ name: "sessions.info", arguments: { sessionId: "s:00000011" } }),
     ).resolves.toMatchObject({ ok: false });
     expect(lookup).toHaveBeenCalledTimes(count);
   });

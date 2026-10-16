@@ -120,12 +120,16 @@ describe("session references", () => {
     expect(projectSessionReferences({ sender: { sessionId: CAKE_CHAT_SESSION_ID } }, ids)).toEqual({
       sender: { sessionId: "cake-chat" },
     });
-    // The emitted label routes back to Cake Chat; the old short form is just an unknown reference.
-    expect(resolveSessionReference("cake-chat", ids)).toEqual({
-      ok: true,
-      sessionId: CAKE_CHAT_SESSION_ID,
-    });
-    expect(resolveSessionReference("s:00000001", ids).ok).toBe(false);
+    // Both the emitted label and the short form older transcripts showed route to Cake Chat.
+    for (const reference of ["cake-chat", "s:00000001", "S:000000000001"])
+      expect(resolveSessionReference(reference, ids)).toEqual({
+        ok: true,
+        sessionId: CAKE_CHAT_SESSION_ID,
+      });
+    // A Project Session that genuinely owns the suffix still wins.
+    const owner = "01957936-0000-7000-8000-000100000001";
+    expect(resolveSessionReference("s:00000001", [owner])).toEqual({ ok: true, sessionId: owner });
+    expect(resolveSessionReference("s:10000001", ids).ok).toBe(false);
     const projected = parseCrossSessionMessage(
       projectCrossSessionMessageForAgent(
         encodeCrossSessionMessage("Please review.", {

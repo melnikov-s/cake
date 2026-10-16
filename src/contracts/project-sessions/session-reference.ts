@@ -39,6 +39,9 @@ export function resolveSessionReference(
   );
   const [match] = matches;
   if (matches.length === 1 && match !== undefined) return { ok: true, sessionId: match };
+  // Older transcripts showed Cake Chat as its short form (s:00000001); keep those routable.
+  if (matches.length === 0 && hex(CAKE_CHAT_SESSION_ID).endsWith(suffix))
+    return { ok: true, sessionId: CAKE_CHAT_SESSION_ID };
   return {
     ok: false,
     error:
