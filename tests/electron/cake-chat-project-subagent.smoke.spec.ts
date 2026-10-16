@@ -178,6 +178,17 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
     await page.getByRole("button", { name: "Send", exact: true }).click();
     const log = page.locator('[data-slot="activity-group"]').first();
     await expect(log).toBeVisible({ timeout: 20_000 });
+    // The coordinator has finished, but its independently running worker still
+    // owns the existing sidebar activity dot.
+    await expect(
+      page.getByText("The investigator is answering with evidence.", { exact: true }),
+    ).toBeVisible();
+    const foreground = page.locator(".workbench-composer").filter({ has: composer });
+    await expect(foreground.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
+    const sidebarRunning = page
+      .locator('[data-slot="cake-chat-group"]')
+      .getByRole("img", { name: "Running", exact: true });
+    await expect(sidebarRunning).toBeVisible();
     const activity = page
       .locator('[data-slot="workspace-header"]')
       .getByRole("button", { name: "Activity · 1 running" });
@@ -200,6 +211,7 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
     gate.resolve();
     await expect(panel).toContainText("config.ts:1 sets limit to 7.", { timeout: 20_000 });
     await expect(activity).toHaveCount(0);
+    await expect(sidebarRunning).toHaveCount(0);
     const workerComposer = panel.getByRole("combobox", { name: "Message subagent" });
     await workerComposer.click();
     await workerComposer.pressSequentially("Recheck the current default");

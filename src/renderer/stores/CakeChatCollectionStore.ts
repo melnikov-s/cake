@@ -128,7 +128,17 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
 
   get activity(): SessionActivity | undefined {
     const model = this.props.sessionModel(CAKE_CHAT_SESSION_ID);
-    if (model.streaming || model.activeTurnIds.length > 0) return "running";
+    const subagents = this.props.subagentCatalog(CAKE_CHAT_SESSION_ID);
+    if (
+      model.streaming ||
+      model.activeTurnIds.length > 0 ||
+      subagents.activities.some(
+        (activity) =>
+          !subagents.releasedHandleIds.includes(activity.handleId) &&
+          (activity.status === "queued" || activity.status === "running"),
+      )
+    )
+      return "running";
     if (!this.props.isSelected() && model.settledTurnRevision > this.readSettledTurnRevision)
       return model.settledTurns.at(-1)?.outcome === "failed" ? "error" : "unread";
     return this.summaries.some((session) => session.unread) ? "unread" : undefined;
