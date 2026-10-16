@@ -255,7 +255,7 @@ test("opens completed historical subagent results in a read-only side chat", asy
     await expect(sideChat.locator("textarea")).toHaveCount(0);
     await sideChat.getByRole("button", { name: "Close Subagent" }).click();
 
-    await expect(page.getByRole("button", { name: /subagents running/ })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Activity ·/ })).toHaveCount(0);
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

@@ -2044,7 +2044,7 @@ const sessionMessagesScenario: VisualCaptureScenario = {
 const cakeChatSessionUpdatesScenario: VisualCaptureScenario = {
   name: "cake-chat-session-updates",
   description:
-    "Quiet status strip for sessions Cake Chat launched and a digest reminder on the next user message",
+    "Header activity for sessions Cake Chat launched and a digest reminder on the next user message",
   states: ["default", "open"],
   async seed(paths, theme) {
     await cakeChatScenario.seed(paths, theme);
@@ -2155,12 +2155,12 @@ const cakeChatSessionUpdatesScenario: VisualCaptureScenario = {
     await expect(
       page.getByRole("button", { name: "Cake · session updates", exact: true }),
     ).toBeVisible();
-    const strip = page.getByRole("button", { name: /^Launched sessions: 3 sessions/ });
-    await expect(strip).toBeVisible();
+    const activity = page.getByRole("button", { name: "Activity · 1 needs attention" });
+    await expect(activity).toBeVisible();
     if (state === "open") {
-      await strip.click();
+      await activity.click();
       await expect(
-        page.getByRole("dialog", { name: "Sessions launched from Cake Chat", exact: true }),
+        page.getByRole("dialog", { name: "Conversation activity", exact: true }),
       ).toBeVisible();
     }
     await page.waitForFunction(() => document.fonts.status === "loaded");

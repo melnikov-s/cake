@@ -76,19 +76,3 @@ export const launchedSessionStatusLabel = {
   done: "Done",
   idle: "Idle",
 } satisfies Record<LaunchedSessionStatus, string>;
-
-/** "3 sessions · 1 running · 1 needs you": attention counts only, never a progress feed. */
-export function launchedSessionsSummary(sessions: readonly LaunchedSession[]): string {
-  const count = (status: LaunchedSessionStatus) =>
-    sessions.filter((session) => session.status === status).length;
-  const parts = [`${sessions.length} session${sessions.length === 1 ? "" : "s"}`];
-  for (const [status, label] of [
-    ["needs-you", "needs you"],
-    ["failed", "failed"],
-    ["running", "running"],
-  ] as const) {
-    const value = count(status);
-    if (value > 0) parts.push(`${value} ${label}`);
-  }
-  return parts.join(" · ");
-}

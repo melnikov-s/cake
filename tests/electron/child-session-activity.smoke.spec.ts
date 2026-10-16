@@ -25,6 +25,8 @@ test("background family children show running activity and only offer Mark as Un
   const project = join(temporaryRoot, "project");
   const cakeHome = join(temporaryRoot, "cake-home");
   let childResponse: ServerResponse | undefined;
+  let subagentResponse: ServerResponse | undefined;
+  let subagentStarted = false;
   let firstRequest = true;
   const server = createServer((request, response) => {
     let body = "";
@@ -56,13 +58,46 @@ test("background family children show running activity and only offer Mark as Un
             "data: [DONE]\n\n",
         );
       } else if (
+        JSON.parse(body).messages.some(
+          (message: { role: string; content: unknown }) =>
+            message.role === "user" &&
+            JSON.stringify(message.content).includes("Subagent activity fixture"),
+        )
+      ) {
+        subagentResponse = response;
+        response.write(chunk({ content: "Inspecting shared UI components." }));
+      } else if (
         !JSON.parse(body).messages.some((message: { role: string }) => message.role === "tool")
       ) {
         childResponse = response;
         response.write(chunk({ content: "Working on the child assignment." }));
+      } else if (!subagentStarted) {
+        subagentStarted = true;
+        response.end(
+          chunk({
+            tool_calls: [
+              {
+                index: 0,
+                id: "create-private-subagent",
+                type: "function",
+                function: {
+                  name: "cake",
+                  arguments: JSON.stringify({
+                    command: "subagents.start",
+                    input: { task: "Subagent activity fixture" },
+                  }),
+                },
+              },
+            ],
+          }) +
+            chunk({}, "tool_calls") +
+            "data: [DONE]\n\n",
+        );
       } else {
         response.end(
-          chunk({ content: "Child launched." }) + chunk({}, "stop") + "data: [DONE]\n\n",
+          chunk({ content: "Child and subagent launched." }) +
+            chunk({}, "stop") +
+            "data: [DONE]\n\n",
         );
       }
     });
@@ -158,6 +193,30 @@ test("background family children show running activity and only offer Mark as Un
       parentId!,
     );
 
+    const activity = page
+      .locator('[data-slot="workspace-header"]')
+      .getByRole("button", { name: "Activity · 2 running" });
+    await expect(activity).toBeVisible();
+    await activity.click();
+    const activityMenu = page.getByRole("dialog", { name: "Conversation activity" });
+    await expect(
+      activityMenu.getByRole("button", { name: "Open session: Background worker" }),
+    ).toBeVisible();
+    await activityMenu.press("Escape");
+    await expect(activityMenu).toHaveCount(0);
+    await expect(activity).toBeFocused();
+    await activity.click();
+    await activityMenu
+      .getByRole("button", { name: "Inspect subagent: Subagent activity fixture" })
+      .click();
+    const subagentPanel = page.getByRole("complementary", { name: "Subagent" });
+    await expect(subagentPanel).toContainText("Inspecting shared UI components.");
+    await expect.poll(() => Boolean(subagentResponse)).toBe(true);
+    subagentResponse!.end(chunk({}, "stop") + "data: [DONE]\n\n");
+    await expect(page.getByRole("button", { name: "Activity · 1 running" })).toBeVisible();
+    await expect(subagentPanel).toContainText("Inspecting shared UI components.");
+    await subagentPanel.getByRole("button", { name: "Close Subagent" }).click();
+
     // Inspect the real native menu without opening an OS popup in the hidden test window.
     await application.evaluate(({ Menu }) => {
       const build = Menu.buildFromTemplate.bind(Menu);
@@ -192,6 +251,7 @@ test("background family children show running activity and only offer Mark as Un
 
     childResponse!.end(chunk({}, "stop") + "data: [DONE]\n\n");
     await expect(childRow.locator('[aria-label="Running"]')).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Activity ·/ })).toHaveCount(0);
     await expect(childRow.locator('[aria-label="Ready, unread"]')).toBeVisible();
     expect(await sessionMenu()).not.toContain("Mark as Unread");
 

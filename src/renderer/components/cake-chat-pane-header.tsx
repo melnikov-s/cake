@@ -9,6 +9,7 @@ import type { SessionPaneNode } from "../stores/SessionLayoutStore";
 import type { CakeChatSessionStore } from "../stores/CakeChatSessionStore";
 import { SessionArtifactMenu } from "./session-artifact-menu";
 import { SideChatsMenu } from "./side-chats-menu";
+import { ConversationActivity } from "./conversation-activity";
 
 export interface CakeChatOverlayChrome {
   /** Puts the drop-down overlay away. */
@@ -50,6 +51,12 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
           <SidebarIcon />
         </IconButton>
       )}
+      <ConversationActivity
+        sessionId={paneSession.sessionId}
+        subagents={paneSession.subagentActivityStore}
+        sideChat={paneSession.conversationSessionStore.sideChatStore}
+        onOpen={() => root.navigationStore.focusCakeChatPane(pane.paneId)}
+      />
       {!overlay && (
         <SessionArtifactMenu
           session={paneSession}

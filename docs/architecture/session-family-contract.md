@@ -146,7 +146,12 @@ is aborted first and the reminder tells Cake Chat to answer the user and fold in
 the report. Cake Chat may request results from sessions it did not launch; those
 obligations follow the same policy. Each launch record keeps `launchedAt` and the
 latest report so catalog summaries can project `cakeChatLaunch` for Cake Chat's
-status strip and `sessions.list { launchedByCakeChat: true }`.
+header Activity menu and `sessions.list { launchedByCakeChat: true }`. The shared
+Activity menu also presents a regular Project Session's direct family children and
+either kind of conversation's own temporary subagents in separate groups. It is
+hidden unless delegated work is running, queued, or needs attention; idle sessions
+alone do not keep it visible. Sessions open through ordinary navigation, while
+subagents open in their owner's existing side-chat surface.
 
 Family storage version 5 established recursive parentage, per-child Working
 Directory bindings, sender/recipient request and reply correlation, response

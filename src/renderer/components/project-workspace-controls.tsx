@@ -3,6 +3,7 @@ import { WorkspaceModeControls } from "@/components/workspace-mode-controls";
 import { RootStore } from "../stores/RootStore";
 import type { ProjectSessionStore } from "../stores/ProjectSessionStore";
 import { SessionArtifactMenu } from "./session-artifact-menu";
+import { ConversationActivity } from "./conversation-activity";
 
 export const ProjectWorkspaceControls = observer(function ProjectWorkspaceControls({
   session,
@@ -18,6 +19,12 @@ export const ProjectWorkspaceControls = observer(function ProjectWorkspaceContro
   const terminal = root.terminalStore;
   return (
     <>
+      <ConversationActivity
+        sessionId={session.sessionId}
+        subagents={session.subagentActivityStore}
+        sideChat={session.conversationSessionStore.sideChatStore}
+        onOpen={() => session.showWorkspaceChatSidebar()}
+      />
       <SessionArtifactMenu session={session} />
       <WorkspaceModeControls
         mode={mode}

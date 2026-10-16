@@ -33,6 +33,7 @@ import { SessionContinuationContext } from "./context/SessionContinuationContext
 import { ProjectOpenContext } from "./context/ProjectOpenContext";
 import { SidebarStore } from "./SidebarStore";
 import { SessionMetadataStore } from "./SessionMetadataStore";
+import { ConversationActivityStore } from "./ConversationActivityStore";
 import { ReviewsStore } from "./ReviewsStore";
 import { SettingsStore } from "./SettingsStore";
 import { ExtensionUiStore } from "./ExtensionUiStore";
@@ -499,6 +500,15 @@ export class RootStore extends Store<{
       model: this.sessionCatalogModel,
       worktrees: this.props.projection.worktrees,
       pendingSessions: () => this.sessionRegistry.pendingSessions.summaries,
+    });
+  }
+
+  @child
+  get conversationActivityStore(): ConversationActivityStore {
+    return createStore(ConversationActivityStore, {
+      catalog: this.sessionCatalogStore,
+      metadata: () => this.sessionMetadataStore,
+      openSession: (sessionId) => this.navigationStore.openSessionLink(sessionId),
     });
   }
 

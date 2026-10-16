@@ -105,7 +105,7 @@ export function WorkspaceChatLayout({
               />
               <aside
                 data-popover-boundary
-                className="flex w-[var(--workspace-chat-sidebar-width)] min-w-0 flex-col border-l border-border bg-background shadow-[-12px_0_32px_color-mix(in_oklab,var(--foreground)_8%,transparent)]"
+                className="@container/session-pane flex w-[var(--workspace-chat-sidebar-width)] min-w-0 flex-col border-l border-border bg-background shadow-[-12px_0_32px_color-mix(in_oklab,var(--foreground)_8%,transparent)]"
               >
                 {chatSidebar}
               </aside>

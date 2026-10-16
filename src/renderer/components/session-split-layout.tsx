@@ -97,7 +97,7 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
         data-session-id={sessionId}
         data-focused={focused ? "true" : "false"}
         className={cn(
-          "group/pane relative grid h-full min-h-0 min-w-0 grid-rows-[52px_minmax(0,1fr)] overflow-hidden border border-transparent bg-background",
+          "group/pane @container/session-pane relative grid h-full min-h-0 min-w-0 grid-rows-[52px_minmax(0,1fr)] overflow-hidden border border-transparent bg-background",
           multiplePanes &&
             focused &&
             "border-accent/40 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--accent)_10%,transparent)]",

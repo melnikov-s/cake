@@ -42,7 +42,7 @@ export const ProjectSessionSummary = Schema.Struct({
   familyChildSessionIds: Schema.optionalKey(Schema.Array(boundedId)),
   familyChildOrder: Schema.optionalKey(Schema.Int),
   familyDepth: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
-  /** Present when Cake Chat launched this session; drives its status strip. */
+  /** Present when Cake Chat launched this session; drives its header activity. */
   cakeChatLaunch: Schema.optionalKey(
     Schema.Struct({
       launchedAt: Schema.optionalKey(Schema.String),

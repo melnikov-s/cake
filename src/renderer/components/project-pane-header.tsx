@@ -15,6 +15,7 @@ import { RootStore } from "../stores/RootStore";
 import type { SessionPaneNode } from "../stores/SessionLayoutStore";
 import type { ProjectSessionStore } from "../stores/ProjectSessionStore";
 import { SessionArtifactMenu } from "./session-artifact-menu";
+import { ConversationActivity } from "./conversation-activity";
 
 export const ProjectPaneHeader = observer(function ProjectPaneHeader({
   pane,
@@ -51,6 +52,12 @@ export const ProjectPaneHeader = observer(function ProjectPaneHeader({
             <SidebarIcon />
           </IconButton>
         )}
+        <ConversationActivity
+          sessionId={paneSession.sessionId}
+          subagents={paneSession.subagentActivityStore}
+          sideChat={paneSession.conversationSessionStore.sideChatStore}
+          onOpen={focusPane}
+        />
         <SideChatsMenu store={paneSession} onOpen={focusPane} />
         <SessionArtifactMenu session={paneSession} onOpen={focusPane} />
       </>
@@ -72,6 +79,12 @@ export const ProjectPaneHeader = observer(function ProjectPaneHeader({
           <SidebarIcon />
         </IconButton>
       )}
+      <ConversationActivity
+        sessionId={paneSession.sessionId}
+        subagents={paneSession.subagentActivityStore}
+        sideChat={paneSession.conversationSessionStore.sideChatStore}
+        onOpen={focusPane}
+      />
       <IconButton
         data-cake-hint-key="r"
         tooltip="Session tree"

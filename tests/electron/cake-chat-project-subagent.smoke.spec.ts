@@ -178,14 +178,28 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
     await page.getByRole("button", { name: "Send", exact: true }).click();
     const log = page.locator('[data-slot="activity-group"]').first();
     await expect(log).toBeVisible({ timeout: 20_000 });
-    await log.locator(":scope > summary").click();
-    await log.getByRole("button", { name: "Open subagent chat" }).click();
+    const activity = page
+      .locator('[data-slot="workspace-header"]')
+      .getByRole("button", { name: "Activity · 1 running" });
+    await expect(activity).toBeVisible();
+    await activity.focus();
+    await activity.press("Enter");
+    const activityMenu = page.getByRole("dialog", { name: "Conversation activity" });
+    await expect(
+      activityMenu.getByRole("region", { name: "Subagents for this chat" }),
+    ).toBeVisible();
+    await activityMenu.press("Escape");
+    await expect(activityMenu).toHaveCount(0);
+    await expect(activity).toBeFocused();
+    await activity.click();
+    await activityMenu.getByRole("button", { name: /^Inspect subagent:/ }).click();
     const panel = page.getByRole("complementary", { name: "Subagent" });
     await expect(panel).toBeVisible();
     await expect.poll(() => workerRequests.length).toBe(2);
     await expect(panel.getByRole("combobox", { name: "Message subagent" })).toBeVisible();
     gate.resolve();
     await expect(panel).toContainText("config.ts:1 sets limit to 7.", { timeout: 20_000 });
+    await expect(activity).toHaveCount(0);
     const workerComposer = panel.getByRole("combobox", { name: "Message subagent" });
     await workerComposer.click();
     await workerComposer.pressSequentially("Recheck the current default");

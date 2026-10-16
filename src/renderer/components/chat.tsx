@@ -22,7 +22,6 @@ import { QueuedPrompts } from "@/components/queued-prompts";
 import { ScheduledPrompts } from "@/components/scheduled-prompts";
 import { RewordPromptDialog } from "@/components/reword-prompt-dialog";
 import { SourceAttachment } from "@/components/source-attachment";
-import { SubagentStatus } from "@/components/subagent-status";
 import { AttachmentTile } from "@/components/ui/attachment-tile";
 import { TextAttachment } from "./ui/text-attachment";
 import { ContentTransition } from "@/components/ui/content-transition";
@@ -320,16 +319,7 @@ export const Chat = observer(function Chat({
       <ChatComposer
         className={embedded ? "chat-embedded-workbench-composer" : undefined}
         configuration={composerConfiguration}
-        header={
-          (transcriptBehavior?.subagents || composerHeader) && (
-            <>
-              {transcriptBehavior?.subagents && (
-                <SubagentStatus store={transcriptBehavior.subagents} />
-              )}
-              {composerHeader}
-            </>
-          )
-        }
+        header={composerHeader}
         onSubmit={(event) => {
           event.preventDefault();
           if (activatingDraft) void store.activateDraft();
