@@ -193,7 +193,7 @@ test("selects assistant messages with the keyboard in the focused pane", async (
   }
 });
 
-/** Waits for smooth scrolling to bring the item's top into the transcript viewport. */
+/** Waits for virtualization to mount and reveal the target in the transcript viewport. */
 async function expectTopRevealed(transcript: Locator, item: Locator) {
   await expect
     .poll(async () => {

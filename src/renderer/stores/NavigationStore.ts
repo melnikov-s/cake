@@ -1,4 +1,5 @@
 import { Store, child, createStore } from "r-state-tree";
+import { linkedMessageTarget } from "../lib/message-navigation";
 import { MessageReferencePreviewStore } from "./MessageReferencePreviewStore";
 import { AttachmentReferencePreviewStore } from "./AttachmentReferencePreviewStore";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
@@ -69,9 +70,7 @@ export class NavigationStore extends Store<{
       await this.openCakeChat(sessionId);
       const chat = this.props.cakeChat().registry.find(sessionId)
         ?.conversationSessionStore.chatStore;
-      const part = chat?.parts.find(
-        (part) => part.id === messageId || ("entryId" in part && part.entryId === messageId),
-      );
+      const part = chat && linkedMessageTarget(chat.parts, messageId);
       if (part && chat) {
         chat.transcriptInteraction.navigateToMessage(part.id);
         return true;
@@ -86,11 +85,9 @@ export class NavigationStore extends Store<{
     const session = this.props.registry.findSession(sessionId);
     if (!session) return false;
     if (!messageId) return true;
-    const message = session.conversationSessionStore.chatStore.parts.find(
-      (part) =>
-        part.id === messageId ||
-        ("entryId" in part && part.entryId === messageId) ||
-        part.id.startsWith(`entry-${messageId}-`),
+    const message = linkedMessageTarget(
+      session.conversationSessionStore.chatStore.parts,
+      messageId,
     );
     // Original entries hidden by a branch change or Tool Compact remain in Pi.
     // Inspect them without changing the branch or injecting old text into the conversation.

@@ -4,6 +4,8 @@ import { toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { messageReference } from "../../../src/contracts/conversations/message-reference";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
+import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
+import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import type { JsonObject } from "../../../src/contracts/serialization/json-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { WindowStatePersistence } from "../../../src/renderer/persistence/WindowStatePersistence";
@@ -140,6 +142,51 @@ describe("Agent session navigation workflow", () => {
         screen.getByRole("button", { name: "Exit fullscreen user · original-entry" }),
       );
       expect(screen.queryByRole("dialog", { name: "user · original-entry" })).toBeNull();
+    },
+  );
+
+  it.each(["beta", CAKE_CHAT_SESSION_ID])(
+    "resolves linked entry text before activity and continues keyboard navigation in %s",
+    async (sessionId) => {
+      using fixture = renderAppShellNavigation();
+      const session =
+        sessionId === CAKE_CHAT_SESSION_ID
+          ? fixture.root.cakeChatCollectionStore.registry.find(sessionId)!
+          : fixture.root.sessionRegistry.findSession(sessionId)!;
+      const parts: UiPart[] = [
+        { id: "before", kind: "text", role: "assistant", text: "Before", status: "complete" },
+        { id: "entry-linked-reasoning-0", kind: "reasoning", text: "Thinking", status: "complete" },
+        {
+          id: "entry-linked-text-1",
+          entryId: "linked",
+          kind: "text",
+          role: "assistant",
+          text: "Linked answer",
+          status: "complete",
+        },
+        { id: "after", kind: "text", role: "assistant", text: "After", status: "complete" },
+      ];
+      act(() => {
+        for (const part of parts)
+          applyConversationUpdate(session.model, {
+            _tag: "Event",
+            revision: 2,
+            event: { _tag: "PartUpdated", sessionId, part },
+          });
+      });
+      await act(async () => fixture.root.navigationStore.openSessionLink(sessionId, "linked"));
+      const interaction = session.conversationSessionStore.chatStore.transcriptInteraction;
+      expect(interaction.selectedMessageId).toBe("entry-linked-text-1");
+      act(() => interaction.selectPreviousAssistantMessage());
+      expect(interaction.selectedMessageId).toBe("before");
+      await act(async () => fixture.root.navigationStore.openSessionLink(sessionId, "linked"));
+      act(() => interaction.selectNextAssistantMessage());
+      expect(interaction.selectedMessageId).toBe("after");
+      // An exact activity part link remains exact rather than jumping to text.
+      await act(async () =>
+        fixture.root.navigationStore.openSessionLink(sessionId, "entry-linked-reasoning-0"),
+      );
+      expect(interaction.selectedMessageId).toBe("entry-linked-reasoning-0");
     },
   );
 

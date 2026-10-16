@@ -50,7 +50,7 @@ export {
 } from "./chat-transcript-parts";
 
 export interface ChatTranscriptHandle {
-  scrollToBottom(): void;
+  scrollToBottom(options?: { fromMessageNavigation?: boolean }): void;
 }
 
 const defaultTranscriptBehavior: ChatTranscriptBehavior = {};
@@ -64,18 +64,11 @@ const selectionRevealMargin = 16;
 function revealSelectedItem(
   scroller: HTMLElement,
   item: HTMLElement | null,
-  scrollToIndex: (location: {
-    align: "start";
-    behavior: "auto" | "smooth";
-    offset: number;
-  }) => void,
+  scrollToIndex: (location: { align: "start"; behavior: "auto"; offset: number }) => void,
+  virtualized: boolean,
 ) {
-  const behavior: "auto" | "smooth" = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")
-    .matches
-    ? "auto"
-    : "smooth";
   if (!item) {
-    scrollToIndex({ align: "start", behavior, offset: -selectionRevealMargin });
+    scrollToIndex({ align: "start", behavior: "auto", offset: -selectionRevealMargin });
     return;
   }
   const viewport = scroller.getBoundingClientRect();
@@ -90,7 +83,17 @@ function revealSelectedItem(
       : rect.bottom > bottom
         ? rect.bottom - bottom
         : 0;
-  if (Math.abs(delta) >= 1) scroller.scrollTo?.({ top: scroller.scrollTop + delta, behavior });
+  if (virtualized) {
+    // Always use the same scrolling authority, even for an already rendered row.
+    // A new scrollToIndex cancels Virtuoso's measurement retries for the previous
+    // selection, so rapid direction changes cannot jump back to a stale target.
+    scrollToIndex({
+      align: "start",
+      behavior: "auto",
+      offset: delta - (rect.top - viewport.top),
+    });
+  } else if (Math.abs(delta) >= 1)
+    scroller.scrollTo?.({ top: scroller.scrollTop + delta, behavior: "instant" });
 }
 
 export const ChatTranscript = observer(function ChatTranscript({
@@ -137,7 +140,10 @@ export const ChatTranscript = observer(function ChatTranscript({
   const allowFollowing = useRef(
     !restoredScrollPosition || restoredScrollPosition.kind === "bottom",
   );
+  const pendingSelectionReveal = useRef<(() => void) | undefined>(undefined);
+  const handleRangeChanged = useCallback(() => pendingSelectionReveal.current?.(), []);
   const handleTotalHeightChange = useCallback(() => {
+    pendingSelectionReveal.current?.();
     if (!atBottom.current || !scroller || bottomFrame.current !== undefined) return;
     // Virtuoso's scrollToIndex retries as row measurements change, even after
     // upward input cancels following. Align the committed DOM once instead and
@@ -155,12 +161,20 @@ export const ChatTranscript = observer(function ChatTranscript({
     },
     [scroller],
   );
-  const scrollToBottom = useCallback(() => {
-    allowFollowing.current = true;
-    atBottom.current = true;
-    if (virtualized) handleTotalHeightChange();
-    else void scrollCompactToBottom("instant");
-  }, [handleTotalHeightChange, scrollCompactToBottom, virtualized]);
+  const scrollToBottom = useCallback(
+    (options?: { fromMessageNavigation?: boolean }) => {
+      pendingSelectionReveal.current = undefined;
+      // Returning to writing must also supersede an offscreen selection's pending
+      // measurement retry, not just move the native scrollbar for one frame.
+      if (virtualized && options?.fromMessageNavigation)
+        virtuosoRef.current?.scrollToIndex({ index: "LAST", align: "end", behavior: "auto" });
+      allowFollowing.current = true;
+      atBottom.current = true;
+      if (virtualized) handleTotalHeightChange();
+      else void scrollCompactToBottom("instant");
+    },
+    [handleTotalHeightChange, scrollCompactToBottom, virtualized],
+  );
   useImperativeHandle(ref, () => ({ scrollToBottom }), [scrollToBottom]);
   const attachScroller = useCallback(
     (element: HTMLDivElement | null) => {
@@ -270,19 +284,40 @@ export const ChatTranscript = observer(function ChatTranscript({
     const item = scroller.querySelector<HTMLElement>(
       `[data-transcript-item-index="${selectedItemIndex}"]`,
     );
-    if (messageSelection.origin === "navigation") {
-      if (virtualized)
-        virtuosoRef.current?.scrollToIndex({
-          index: selectedItemIndex,
-          align: "center",
-          behavior: "auto",
-        });
-      else item?.scrollIntoView?.({ block: "center" });
-      return;
-    }
-    revealSelectedItem(scroller, item, (location) => {
-      virtuosoRef.current?.scrollToIndex({ index: selectedItemIndex, ...location });
-    });
+    const reveal = (element: HTMLElement | null) =>
+      revealSelectedItem(
+        scroller,
+        element,
+        (location) => {
+          virtuosoRef.current?.scrollToIndex({ index: selectedItemIndex, ...location });
+        },
+        virtualized,
+      );
+    reveal(item);
+    if (!virtualized || item) return;
+    // The first jump can use estimated sizes. Reconcile after Virtuoso commits
+    // its new range/measurements, rather than declaring an unrendered row revealed.
+    // This callback belongs only to this selection revision; rapid keys or clear
+    // cancel it before it can move the viewport to an obsolete target.
+    let frame: number | undefined;
+    const scheduleReveal = () => {
+      if (frame !== undefined) return;
+      frame = requestAnimationFrame(() => {
+        frame = undefined;
+        if (pendingSelectionReveal.current !== scheduleReveal) return;
+        const rendered = scroller.querySelector<HTMLElement>(
+          `[data-transcript-item-index="${selectedItemIndex}"]`,
+        );
+        reveal(rendered);
+        if (rendered) pendingSelectionReveal.current = undefined;
+      });
+    };
+    pendingSelectionReveal.current = scheduleReveal;
+    scheduleReveal();
+    return () => {
+      if (frame !== undefined) cancelAnimationFrame(frame);
+      pendingSelectionReveal.current = undefined;
+    };
   }, [messageSelection, scroller, selectedItemIndex, stopScroll, virtualized]);
   // Clicking anywhere outside the selected message ends the selection; clicks
   // inside it are left for actions on that message.
@@ -555,6 +590,7 @@ export const ChatTranscript = observer(function ChatTranscript({
                 initialTopMostItemIndex={openingItemLocation}
                 followOutput={false}
                 totalListHeightChanged={handleTotalHeightChange}
+                rangeChanged={handleRangeChanged}
                 components={{ List: TranscriptList, Footer: ChatTranscriptFooter }}
                 itemContent={(index, item) => renderItem(item, index)}
               />

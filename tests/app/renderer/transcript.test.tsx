@@ -649,6 +649,126 @@ describe("Transcript scrolling", () => {
     expect(message).not.toBeNull();
   });
 
+  it("uses immediate virtualized scrolling for every keyboard revision, including direction changes", () => {
+    const parts: UiPart[] = [1, 2].map((turn) => ({
+      id: `assistant-${turn}`,
+      kind: "text",
+      role: "assistant",
+      text: `Answer ${turn}`,
+      status: "complete",
+    }));
+    const render = (messageSelection?: MessageSelection) =>
+      root.render(
+        <Transcript
+          parts={parts}
+          sessionId="session-1"
+          isStreaming={false}
+          messageSelection={messageSelection}
+        />,
+      );
+    act(() => render());
+    scrollToIndex.mockClear();
+    for (const [index, messageId] of ["assistant-2", "assistant-1", "assistant-2"].entries()) {
+      act(() => render({ messageId, origin: "keyboard", revision: index + 1 }));
+    }
+    expect(scrollToIndex.mock.calls.map(([location]) => location)).toEqual([
+      { index: 1, align: "start", behavior: "auto", offset: -16 },
+      { index: 0, align: "start", behavior: "auto", offset: -16 },
+      { index: 1, align: "start", behavior: "auto", offset: -16 },
+    ]);
+  });
+
+  it("reconciles an estimated offscreen jump after range rendering and cancels stale revisions", () => {
+    const frames = new Map<number, FrameRequestCallback>();
+    let frameId = 0;
+    const request = vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.set(++frameId, callback);
+      return frameId;
+    });
+    const cancel = vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation((id) => {
+      frames.delete(id);
+    });
+    const flush = () => {
+      const pending = [...frames.values()];
+      frames.clear();
+      act(() => pending.forEach((callback) => callback(0)));
+    };
+    const parts: UiPart[] = [1, 2].map((turn) => ({
+      id: `assistant-${turn}`,
+      kind: "text",
+      role: "assistant",
+      text: `Answer ${turn}`,
+      status: "complete",
+    }));
+    const render = (messageSelection?: MessageSelection) =>
+      root.render(
+        <Transcript
+          parts={parts}
+          sessionId="virtual"
+          isStreaming={false}
+          messageSelection={messageSelection}
+        />,
+      );
+    try {
+      act(() => render());
+      const scroller = container.querySelector<HTMLElement>(".transcript")!;
+      const query = scroller.querySelector.bind(scroller);
+      let rendered = false;
+      vi.spyOn(scroller, "querySelector").mockImplementation((selector) =>
+        rendered ? query(selector) : null,
+      );
+      act(() => render({ messageId: "assistant-1", origin: "keyboard", revision: 1 }));
+      flush(); // The first estimated jump has not rendered its target yet.
+      expect(scrollToIndex).toHaveBeenLastCalledWith({
+        index: 0,
+        align: "start",
+        behavior: "auto",
+        offset: -16,
+      });
+      act(() => (virtualizedProps.current?.rangeChanged as () => void)());
+      // Supersede the queued correction before the previous row's frame commits.
+      act(() => render({ messageId: "assistant-2", origin: "keyboard", revision: 2 }));
+      scrollToIndex.mockClear();
+      rendered = true;
+      flush();
+      expect(scrollToIndex.mock.calls).toEqual([
+        [{ index: 1, align: "start", behavior: "auto", offset: -16 }],
+      ]);
+      scrollToIndex.mockClear();
+      act(() => (virtualizedProps.current?.rangeChanged as () => void)());
+      flush();
+      expect(scrollToIndex).not.toHaveBeenCalled(); // A measured reveal is finished, not scroll-following.
+    } finally {
+      request.mockRestore();
+      cancel.mockRestore();
+    }
+  });
+
+  it("immediately reveals a compact selection above the composer without animating", () => {
+    const parts: UiPart[] = [
+      { id: "assistant-1", kind: "text", role: "assistant", text: "Answer", status: "complete" },
+    ];
+    const render = (messageSelection?: MessageSelection) =>
+      root.render(
+        <Transcript
+          parts={parts}
+          sessionId="compact"
+          isStreaming={false}
+          virtualized={false}
+          messageSelection={messageSelection}
+        />,
+      );
+    act(() => render());
+    const scroller = container.querySelector<HTMLElement>(".transcript")!;
+    const item = container.querySelector<HTMLElement>('[data-slot="transcript-item"]')!;
+    scroller.getBoundingClientRect = () => ({ top: 0, bottom: 600, height: 600 }) as DOMRect;
+    scroller.style.setProperty("--composer-dock-height", "100px");
+    item.getBoundingClientRect = () => ({ top: 900, bottom: 1000, height: 100 }) as DOMRect;
+    scroller.scrollTo = vi.fn();
+    act(() => render({ messageId: "assistant-1", origin: "keyboard", revision: 1 }));
+    expect(scroller.scrollTo).toHaveBeenCalledWith({ top: 516, behavior: "instant" });
+  });
+
   it("indicates when Pi is busy before the first turn part appears", () => {
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith([], true)} />));
 

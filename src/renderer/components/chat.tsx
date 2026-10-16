@@ -262,7 +262,7 @@ export const Chat = observer(function Chat({
     event.stopPropagation();
     if (action === "select-next" && interaction.selectedMessageId === undefined) {
       // Leaving the newest message returns to writing.
-      transcriptRef.current?.scrollToBottom();
+      transcriptRef.current?.scrollToBottom({ fromMessageNavigation: true });
       if (document.activeElement !== composerInputRef.current)
         composerFocusRef.current?.requestFocus();
     }
