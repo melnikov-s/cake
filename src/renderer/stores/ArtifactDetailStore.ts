@@ -1,4 +1,4 @@
-import { Store, child, createStore } from "r-state-tree";
+import { Store, child, createStore, untracked } from "r-state-tree";
 import { decodeArtifactRevisionNumber } from "../../contracts/artifacts/artifact-lineage";
 import { MessageBoardStore } from "./MessageBoardStore";
 import type {
@@ -29,6 +29,7 @@ export class ArtifactDetailStore extends Store<{
   comparison: ArtifactTextComparison | undefined;
   private followLatest = true;
   private selectionRequest = 0;
+  private detailRequest = 0;
   private historyRequest = 0;
   private revisionRequest = 0;
   private compareRequest = 0;
@@ -36,6 +37,10 @@ export class ArtifactDetailStore extends Store<{
 
   constructor(props: ArtifactDetailStore["props"]) {
     super(props);
+    this.effect(() => {
+      void this.props.model.invalidationVersion;
+      untracked(() => void this.refreshDetail());
+    });
     this.reaction(
       () =>
         this.followLatest && !this.detailLoading ? this.selectedLineage?.latestRevision : undefined,
@@ -71,15 +76,19 @@ export class ArtifactDetailStore extends Store<{
       : [];
   }
 
-  async receive(lineageId?: string) {
+  private async refreshDetail() {
     const id = this.selectedLineageId;
-    if (!id || (lineageId && id !== lineageId)) return;
+    if (!id) return;
     const request = this.selectionRequest;
+    const detailRequest = ++this.detailRequest;
     try {
       const detail = await this.client.artifacts.detail(id, { signal: this.signal });
-      if (this.isCurrentSelection(request, id)) this.props.model.applyDetail(detail);
+      if (this.isCurrentSelection(request, id) && detailRequest === this.detailRequest) {
+        this.props.model.applyDetail(detail);
+        this.error = undefined;
+      }
     } catch (error) {
-      if (this.isCurrentSelection(request, id))
+      if (this.isCurrentSelection(request, id) && detailRequest === this.detailRequest)
         this.error = error instanceof Error ? error.message : String(error);
     }
   }
@@ -87,6 +96,7 @@ export class ArtifactDetailStore extends Store<{
   async select(lineageId: ArtifactLineageId, initialRevision?: ArtifactRevisionNumber) {
     this.props.clearReferenceOperationError();
     const selectionRequest = ++this.selectionRequest;
+    const detailRequest = ++this.detailRequest;
     this.historyRequest += 1;
     this.revisionRequest += 1;
     this.compareRequest += 1;
@@ -110,9 +120,12 @@ export class ArtifactDetailStore extends Store<{
       try {
         const value = await this.client.artifacts.detail(lineageId, { signal: this.signal });
         if (!this.isCurrentSelection(selectionRequest, lineageId)) return;
-        this.props.model.applyDetail(value);
+        if (detailRequest === this.detailRequest) this.props.model.applyDetail(value);
         const targetRevision =
-          initialRevision ?? decodeArtifactRevisionNumber(this.selectedLineage!.latestRevision);
+          initialRevision ??
+          decodeArtifactRevisionNumber(
+            this.selectedLineage?.latestRevision ?? value.lineage.latestRevision,
+          );
         this.selectedRevision = targetRevision;
         revisionRequest = ++this.revisionRequest;
         const revision = await this.client.artifacts.readExact(lineageId, targetRevision, {
@@ -127,7 +140,9 @@ export class ArtifactDetailStore extends Store<{
       } catch (error) {
         if (
           this.isCurrentSelection(selectionRequest, lineageId) &&
-          (revisionRequest === undefined || revisionRequest === this.revisionRequest)
+          (revisionRequest === undefined
+            ? detailRequest === this.detailRequest
+            : revisionRequest === this.revisionRequest)
         )
           this.error = error instanceof Error ? error.message : String(error);
       } finally {

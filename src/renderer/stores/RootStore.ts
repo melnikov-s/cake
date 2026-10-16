@@ -221,26 +221,17 @@ export class RootStore extends Store<{
           ? selection.sessionId
           : undefined;
       },
-      artifactsChanged: () => this.refreshSessionArtifacts(),
+      artifactsChanged: () => this.props.projection.artifacts.invalidate(),
       clearReferenceOperationError: (lineageId) =>
         this.artifactReferencePreviewStore.clearOperationError(lineageId),
     });
-  }
-
-  refreshSessionArtifacts() {
-    void this.inlineArtifactPreviewStore.receive();
-    void this.artifactPaneStore.detailStore.receive();
-    void this.artifactLibraryStore.detailStore.receive();
-    for (const session of this.sessionRegistry.sessions) session.sessionArtifactsStore.receive();
-    for (const session of this.cakeChatCollectionStore.registry.sessions)
-      session.sessionArtifactsStore.receive();
   }
 
   @child
   get artifactLibraryStore(): ArtifactLibraryStore {
     return createStore(ArtifactLibraryStore, {
       model: this.props.projection.artifacts,
-      artifactsChanged: () => this.refreshSessionArtifacts(),
+      artifactsChanged: () => this.props.projection.artifacts.invalidate(),
       clearReferenceOperationError: (lineageId) =>
         this.artifactReferencePreviewStore.clearOperationError(lineageId),
     });
@@ -250,7 +241,7 @@ export class RootStore extends Store<{
   get artifactReferencePreviewStore(): ArtifactReferencePreviewStore {
     return createStore(ArtifactReferencePreviewStore, {
       model: this.props.projection.artifacts,
-      artifactsChanged: () => this.refreshSessionArtifacts(),
+      artifactsChanged: () => this.props.projection.artifacts.invalidate(),
     });
   }
 

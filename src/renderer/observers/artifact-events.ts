@@ -19,8 +19,7 @@ export const observeArtifactEvents = (runtime: Runtime, root: RootStore) =>
         }
         if (event.type === "renderer-events-ready") {
           root.inlineWidgetStore.refreshArtifactState();
-          root.refreshSessionArtifacts();
-          void root.artifactLibraryStore.load();
+          root.props.projection.artifacts.invalidate();
           // Reconcile content after stream subscription/reconnection, not only after opening.
           root.artifactLibraryStore.receiveBoardChange();
           root.artifactPaneStore.receiveBoardChange();
@@ -30,12 +29,11 @@ export const observeArtifactEvents = (runtime: Runtime, root: RootStore) =>
           // Native artifact events are ordered invalidations. Every loaded session refetches its
           // effective projection because a family link may make a change visible there;
           // reconnect/remount starts with that same authoritative current query.
-          root.refreshSessionArtifacts();
+          root.props.projection.artifacts.invalidate();
           const lineageId =
             event.type === "artifact-updated" ? event.record.artifact.id : event.lineageId;
           root.artifactLibraryStore.receiveBoardChange(lineageId);
           root.artifactPaneStore.receiveBoardChange(lineageId);
-          void root.artifactLibraryStore.load();
           return;
         }
         const storeEvent = toStoreEvent(event);

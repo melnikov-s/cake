@@ -21,6 +21,7 @@ export class SessionArtifactsStore extends Store<{
     super(props);
     this.effect(() => {
       if (this.props.enabled?.() === false) return;
+      void this.props.model.invalidationVersion;
       untracked(() => {
         void this.refresh();
       });
@@ -61,9 +62,5 @@ export class SessionArtifactsStore extends Store<{
     } finally {
       if (request === this.request && !this.signal.aborted) this.loading = false;
     }
-  }
-
-  receive() {
-    void this.refresh();
   }
 }

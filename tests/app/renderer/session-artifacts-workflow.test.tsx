@@ -156,7 +156,7 @@ function renderSessionArtifacts(
   );
   return {
     user: userEvent.setup(),
-    invalidate: () => fixture.root.refreshSessionArtifacts(),
+    invalidate: () => fixture.models.artifacts.invalidate(),
     [Symbol.dispose]() {
       view.unmount();
       fixture[Symbol.dispose]();
@@ -615,9 +615,9 @@ describe("Session artifact workflows", () => {
     await fixture.user.click(await screen.findByRole("button", { name: "Pin r2" }));
     expect(await screen.findByText("Artifact catalog unavailable")).toBeDefined();
     expect(screen.getByText("Family report content r2")).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: "Pin r2" }));
+    // The mutation committed even though its immediate detail read failed. Reactive
+    // effective-query reconciliation recovers that pin without replaying the mutation.
     expect(await screen.findByText("Pinned r2")).toBeDefined();
-    expect(screen.queryByText("Artifact catalog unavailable")).toBeNull();
     expect(screen.getByText("Family report content r2")).toBeDefined();
     expect(setSelection).toHaveBeenCalledWith(
       {
@@ -630,10 +630,43 @@ describe("Session artifact workflows", () => {
     );
     await fixture.user.click(screen.getByRole("button", { name: "Follow latest" }));
     expect(await screen.findByText("Following latest")).toBeDefined();
+    expect(screen.queryByText("Artifact catalog unavailable")).toBeNull();
     expect(setSelection).toHaveBeenLastCalledWith(
       expect.objectContaining({ selection: { mode: "follow-latest" } }),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
+  });
+
+  it("keeps a newer link pin when overlapping detail invalidations finish out of order", async () => {
+    let authority = effective();
+    const currentDetail = (): Awaited<ReturnType<Client["artifacts"]["detail"]>> => ({
+      lineage: reportSummary(),
+      links: [authority.link],
+      stableRef: authority.stableRef,
+    });
+    const detail = vi.fn<Client["artifacts"]["detail"]>(async () => currentDetail());
+    using fixture = renderSessionArtifacts({ effective: async () => [authority], detail });
+    await fixture.user.click(await screen.findByRole("button", { name: "1 artifacts" }));
+    await fixture.user.click(await screen.findByRole("button", { name: /Family report/ }));
+    await screen.findByText("Family report content r2");
+    const initialCalls = detail.mock.calls.length;
+    const superseded = gate<Awaited<ReturnType<Client["artifacts"]["detail"]>>>();
+    const stale = currentDetail();
+    detail.mockReturnValueOnce(superseded.promise);
+    act(() => fixture.invalidate());
+    await waitFor(() => expect(detail).toHaveBeenCalledTimes(initialCalls + 1));
+    authority = {
+      ...authority,
+      link: {
+        ...authority.link,
+        selection: { mode: "pinned", revision: authority.revision.metadata.revision },
+      },
+    };
+    act(() => fixture.invalidate());
+    await screen.findByText("Pinned r2");
+    await act(async () => superseded.resolve(stale));
+    expect(screen.getByText("Pinned r2")).toBeDefined();
+    expect(screen.getByText("Family report content r2")).toBeDefined();
   });
 
   it("offers the library from an empty popup", async () => {

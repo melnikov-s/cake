@@ -1,4 +1,4 @@
-import { Model, applySnapshot, batch, child, observable } from "r-state-tree";
+import { Model, applySnapshot, batch, child, observable, transient } from "r-state-tree";
 import type {
   ArtifactLineageDetail,
   ArtifactLineageSummary,
@@ -39,6 +39,15 @@ const linkSnapshot = (value: ArtifactLinkValue) => ({
 });
 
 export class ArtifactCatalog extends Model {
+  /** Read demand only, not a source revision, link pin, board sequence or widget CAS version.
+   * Every mounted effective query must reconcile: a new family link need not be known here yet.
+   * Readiness/reconnect uses the same signal to recover changes missed while unsubscribed. */
+  @transient invalidationVersion = 0;
+
+  invalidate() {
+    this.invalidationVersion += 1;
+  }
+
   @child(ArtifactLineage) lineages: ArtifactLineage[] = observable([]);
   @child(ArtifactLink) links: ArtifactLink[] = observable([]);
   @child(ArtifactAssociation) associations: ArtifactAssociation[] = observable([]);
@@ -155,8 +164,11 @@ export class ArtifactCatalog extends Model {
       if (value.metadata.revision >= lineage.latestRevision && value.snapshot.title !== undefined)
         lineage.title = value.snapshot.title;
       const existing = lineage.revision(value.metadata.revision);
-      if (existing) applySnapshot(existing, revisionSnapshot(value.lineageId, value));
-      else
+      // Revision bytes are immutable. Reconciliation must not replace an already-loaded
+      // payload and remount widget hosts (including fullscreen) for link-only changes.
+      if (existing) {
+        if (!existing.snapshot) applySnapshot(existing, revisionSnapshot(value.lineageId, value));
+      } else
         lineage.revisions.push(ArtifactRevision.create(revisionSnapshot(value.lineageId, value)));
     });
     return this.find(value.lineageId)!;

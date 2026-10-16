@@ -1,4 +1,4 @@
-import { Store } from "r-state-tree";
+import { Store, untracked } from "r-state-tree";
 import type {
   ArtifactLineageId,
   ArtifactLink,
@@ -20,6 +20,19 @@ export class ArtifactReferencePreviewStore extends Store<{
   private operationErrorLineageId: ArtifactLineageId | undefined;
   private operationRequest = 0;
 
+  constructor(props: ArtifactReferencePreviewStore["props"]) {
+    super(props);
+    this.effect(() => {
+      void this.props.model.invalidationVersion;
+      untracked(() => {
+        // Reference presentation is mutable even for an exact/history reference:
+        // its lineage title and links can change without changing revision bytes.
+        for (const reference of Object.keys(this.previewStates))
+          void this.previewReference(reference, true);
+      });
+    });
+  }
+
   get client() {
     return ClientContext.consume(this)!;
   }
@@ -35,20 +48,28 @@ export class ArtifactReferencePreviewStore extends Store<{
     };
   }
 
-  async previewReference(reference: ArtifactStableRef) {
+  async previewReference(reference: ArtifactStableRef, refresh = false) {
     const current = this.previewStates[reference];
-    if (current?.loading || current?.metadata) return current?.metadata;
-    this.setPreviewState(reference, { loading: true });
+    if (!refresh && (current?.loading || current?.metadata)) return current?.metadata;
+    this.setPreviewState(reference, { loading: true, metadata: current?.metadata });
+    const state = this.previewStates[reference];
+    const version = this.props.model.invalidationVersion;
+    const isCurrent = () =>
+      !this.signal.aborted &&
+      this.previewStates[reference] === state &&
+      version === this.props.model.invalidationVersion;
     try {
       const metadata = await this.client.artifacts.referenceMetadata(reference, {
         signal: this.signal,
       });
-      if (!this.signal.aborted) this.setPreviewState(reference, { loading: false, metadata });
+      if (!isCurrent()) return undefined;
+      this.setPreviewState(reference, { loading: false, metadata });
       return metadata;
     } catch (error) {
-      if (!this.signal.aborted)
+      if (isCurrent())
         this.setPreviewState(reference, {
           loading: false,
+          metadata: current?.metadata,
           error: error instanceof Error ? error.message : String(error),
         });
       return undefined;
@@ -94,23 +115,10 @@ export class ArtifactReferencePreviewStore extends Store<{
     }
   }
 
-  private updatePreviewLinks(lineageId: ArtifactLineageId, links: ReadonlyArray<ArtifactLink>) {
-    this.previewStates = Object.fromEntries(
-      Object.entries(this.previewStates).map(([reference, state]) => [
-        reference,
-        state.metadata?.lineage.id === lineageId
-          ? { ...state, metadata: { ...state.metadata, links } }
-          : state,
-      ]),
-    );
-  }
-
-  private async refreshLinks(lineageId: ArtifactLineageId) {
+  private async refreshLinks(lineageId: ArtifactLineageId, request: number) {
     const detail = await this.client.artifacts.detail(lineageId, { signal: this.signal });
-    if (!this.signal.aborted) {
+    if (!this.signal.aborted && request === this.operationRequest)
       this.props.model.applyDetail(detail);
-      this.updatePreviewLinks(lineageId, detail.links);
-    }
   }
 
   async link(
@@ -132,7 +140,7 @@ export class ArtifactReferencePreviewStore extends Store<{
     }
     if (!this.signal.aborted) this.props.artifactsChanged(lineageId);
     try {
-      await this.refreshLinks(lineageId);
+      await this.refreshLinks(lineageId, operationRequest);
     } catch (error) {
       this.failOperation(lineageId, operationRequest, error);
     }
@@ -151,8 +159,11 @@ export class ArtifactReferencePreviewStore extends Store<{
         { sessionId, lineageId, target, selection },
         { signal: this.signal },
       );
-      await this.refreshLinks(lineageId);
-      if (!this.signal.aborted) this.props.artifactsChanged(lineageId);
+      try {
+        await this.refreshLinks(lineageId, operationRequest);
+      } finally {
+        if (!this.signal.aborted) this.props.artifactsChanged(lineageId);
+      }
       return link;
     } catch (error) {
       this.failOperation(lineageId, operationRequest, error);
@@ -164,8 +175,11 @@ export class ArtifactReferencePreviewStore extends Store<{
     const operationRequest = this.beginOperation(lineageId);
     try {
       await this.client.artifacts.unlink({ sessionId, lineageId, target }, { signal: this.signal });
-      await this.refreshLinks(lineageId);
-      if (!this.signal.aborted) this.props.artifactsChanged(lineageId);
+      try {
+        await this.refreshLinks(lineageId, operationRequest);
+      } finally {
+        if (!this.signal.aborted) this.props.artifactsChanged(lineageId);
+      }
     } catch (error) {
       this.failOperation(lineageId, operationRequest, error);
     }

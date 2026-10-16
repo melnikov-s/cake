@@ -26,6 +26,10 @@ export class InlineArtifactPreviewStore extends Store<{ model: ArtifactCatalog }
   constructor(props: InlineArtifactPreviewStore["props"]) {
     super(props);
     this.effect(() => {
+      void this.props.model.invalidationVersion;
+      untracked(() => void this.refreshMetadata());
+    });
+    this.effect(() => {
       for (const [key, state] of Object.entries(this.states)) {
         const parsed = parseArtifactRef(state.reference);
         const latest = this.props.model.find(parsed.lineageId)?.latestRevision;
@@ -74,23 +78,26 @@ export class InlineArtifactPreviewStore extends Store<{ model: ArtifactCatalog }
     void this.load(key);
   }
 
-  async receive(lineageId?: string) {
+  private metadataRequest = 0;
+
+  private async refreshMetadata() {
+    const request = ++this.metadataRequest;
     const references = new Set(Object.values(this.states).map((state) => state.reference));
     await Promise.all(
       [...references].map(async (reference) => {
         const parsed = parseArtifactRef(reference);
-        if (parsed.revision || (lineageId && parsed.lineageId !== lineageId)) return;
+        if (parsed.revision) return;
         try {
           const metadata = await this.client.artifacts.referenceMetadata(reference, {
             signal: this.signal,
           });
-          if (!this.signal.aborted) {
+          if (!this.signal.aborted && request === this.metadataRequest) {
             this.props.model.upsertSummary(metadata.lineage);
             for (const [key, state] of Object.entries(this.states))
               if (state.reference === reference) void this.load(key);
           }
         } catch (error) {
-          if (!this.signal.aborted)
+          if (!this.signal.aborted && request === this.metadataRequest)
             for (const state of Object.values(this.states))
               if (state.reference === reference)
                 state.error = error instanceof Error ? error.message : String(error);

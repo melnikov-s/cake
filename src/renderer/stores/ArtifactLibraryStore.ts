@@ -29,6 +29,7 @@ export class ArtifactLibraryStore extends Store<{
   constructor(props: ArtifactLibraryStore["props"]) {
     super(props);
     this.effect(() => {
+      void this.props.model.invalidationVersion;
       untracked(() => {
         void this.load();
       });
