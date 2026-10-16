@@ -6,6 +6,8 @@ out/
 coverage/
 playwright-report/
 test-results/
+.workflow-electron-test-*/
+.workflow-node-test-*/
 .performance-captures/
 .visual-captures/
 *.log
