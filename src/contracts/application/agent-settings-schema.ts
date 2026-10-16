@@ -57,7 +57,7 @@ const dictationView = Schema.Struct({
   error: Schema.NullOr(Schema.String),
 });
 
-/** Data-only discovery contract. Execution stays behind the existing originating-window Client. */
+/** Data-only discovery contract. Backend settings execute in domain handlers; device interactions remain in the originating window. */
 function setting<const Name extends string, Input extends Schema.Constraint>(
   name: Name,
   input: Input,
@@ -533,7 +533,7 @@ export const agentSettingsSections = [
 ] as const;
 
 export const agentSettingsGuidance = [
-  "These operations route through the originating Cake window/device and reuse manual Settings' typed Client/services. Backend settings remain on the selected backend; appearance/editor/hotkeys remain window-local via settings.get/update.",
+  "Backend settings execute on the selected backend through the same domain/services as manual Settings, without requiring a connected window. Native/device interactions still target the originating Cake window; appearance/editor/hotkeys remain window-local via settings.get/update.",
   "Use settings.sections for coverage and scope, then exact settings.<operation>.help for schemas. Current chat model uses session.set-model, not an image/classifier preference.",
   "Cancellation does not undo a setting already saved. Interactive credentials and permissions remain user-owned; stored credentials are never returned.",
 ];

@@ -3,7 +3,7 @@ import { ProjectSettings } from "../application/application-data";
 
 const boundedProjectPath = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096));
 
-export const ProjectSettingsChanges = Schema.Struct({
+const ProjectSettingsChanges = Schema.Struct({
   worktreeCreateCommand: Schema.optionalKey(ProjectSettings.fields.worktreeCreateCommand),
   worktreeSetupCommands: Schema.optionalKey(ProjectSettings.fields.worktreeSetupCommands),
   worktreeSetupInstructions: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(16_384))),
@@ -14,8 +14,6 @@ export const ProjectSettingsChanges = Schema.Struct({
     expected: "at least one project setting",
   }),
 );
-
-export type ProjectSettingsChanges = typeof ProjectSettingsChanges.Type;
 
 export const CurrentProjectSettingsGetInput = Schema.Struct({});
 

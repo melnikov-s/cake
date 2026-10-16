@@ -1,4 +1,8 @@
-import { Effect, Stream } from "effect";
+import { SettingsManager } from "@earendil-works/pi-coding-agent";
+import { piSettingsSchema } from "../../../../src/contracts/conversations/session-contract";
+import { projectPiSettings } from "../../../../src/services/pi/runtime/settings-translation";
+import { createRendererStoreFixture } from "../renderer-store-fixture";
+import { Effect, Schema, Stream } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import { CakeIpcClient, type CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
 import { observeApplicationEvents } from "../../../../src/renderer/observers/application-events";
@@ -20,6 +24,57 @@ const runtimeFor = (client: CakeIpcClientService): Runtime => {
 };
 
 describe("observeApplicationEvents", () => {
+  it("projects backend Pi settings and attributed mutation notices into the real renderer Stores", async () => {
+    using fixture = createRendererStoreFixture();
+    const settings = Schema.decodeUnknownSync(piSettingsSchema)(
+      projectPiSettings(
+        SettingsManager.fromStorage(
+          {
+            withLock(_scope, update) {
+              update("{}");
+            },
+          },
+          { projectTrusted: true },
+        ),
+      ),
+    );
+    const show = vi.spyOn(fixture.root.toastStore, "show");
+    const notice = {
+      type: "agent-action-notice" as const,
+      source: { kind: "project-session" as const, sessionId: "source", title: "Source" },
+      message: "Updated Cake Project settings",
+      coalesceKey: "project-settings:/project",
+    };
+    const events: CakeIpcClientService["events"] = {
+      artifacts: () => Stream.never,
+      terminals: () => Stream.never,
+      vscode: () => Stream.never,
+      surfaces: () => Stream.never,
+      application: () =>
+        Stream.concat(
+          Stream.make({ type: "pi-settings-changed" as const, settings }, notice),
+          Stream.never,
+        ),
+    };
+    // SAFETY: This test stream exercises only events.application; all Store behavior is real.
+    const client = { events } as CakeIpcClientService;
+    const cancel = observeApplicationEvents(runtimeFor(client), fixture.root);
+    try {
+      await vi.waitFor(() => {
+        expect(fixture.root.settingsStore.providers.piSettings).toEqual(settings);
+        expect(show).toHaveBeenCalledWith(
+          expect.objectContaining({
+            title: "Agent action · Source",
+            message: notice.message,
+            coalesceKey: "agent:source:project-settings:/project",
+          }),
+        );
+      });
+    } finally {
+      cancel();
+    }
+  });
+
   it.each([undefined, "session-1"])(
     "keeps auth details in the provider Store (session %s)",
     async (sessionId) => {

@@ -1,4 +1,10 @@
 import * as sessionFamilies from "../session-families/sessionFamilies";
+import * as backendAgentControl from "../application/agentControl";
+import type { PiSettings } from "../../services/pi/PiSettings";
+import type { McpSettings } from "../../services/pi/McpSettings";
+import type { WidgetPackages } from "../../services/widgets/WidgetPackages";
+import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
+import { SessionCoordination } from "../../services/session-catalogs/SessionCoordination";
 import { implicitTurnResultFor } from "../../contracts/pi/turn-result-data";
 import * as sessionFamilyMessaging from "../session-families/sessionFamilyMessaging";
 import * as projectSessionAgentPolicy from "./projectSessionAgentPolicy";
@@ -119,6 +125,10 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   | ManagedWorktrees
   | Terminal
   | TaskInputStorage
+  | PiSettings
+  | McpSettings
+  | WidgetPackages
+  | SessionCoordination
   | Effect.Services<ReturnType<typeof workflowControl.invoke>>
 > {
   const access = yield* ProjectAccess;
@@ -134,6 +144,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   const sessions = yield* CakeSessionRuntimes;
   const workflowSupervisor = yield* WorkflowSupervisor;
   const families = yield* SessionFamilyStorage;
+  const coordination = yield* SessionCoordination;
   const catalogs = yield* SessionCatalogChanges;
   const browser = yield* Effect.serviceOption(Browser);
   const vscode = yield* Effect.serviceOption(VsCodeServer);
@@ -153,6 +164,10 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
     | ManagedWorktrees
     | Terminal
     | TaskInputStorage
+    | PiSettings
+    | McpSettings
+    | WidgetPackages
+    | SessionCoordination
     | Effect.Services<ReturnType<typeof workflowControl.invoke>>
   >();
   const run = makePiCallbackExecutor(
@@ -328,8 +343,15 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
       resolved: false,
     }),
     onTurnActivityChanged: publishActivity,
-    admitTurn: (input, accept) =>
-      sessionFamilies
+    admitTurn: (input, accept) => {
+      const message = parseCrossSessionMessage(input.text);
+      // Bind before Pi can settle a fast turn; the existing family policy still owns admission.
+      const admit = message
+        ? coordination
+            .bindTurn(sessionId, message.metadata.messageId, input.turnId)
+            .pipe(Effect.andThen(accept))
+        : accept;
+      return sessionFamilies
         .admitTurn(
           sessionId,
           {
@@ -338,14 +360,16 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
             resolvedRoot: configuration.resolvedSessionDirectory,
           },
           input,
-          accept,
+          admit,
         )
         .pipe(
           Effect.provideService(SessionFamilyStorage, families),
           Effect.provideService(SessionArchiveStorage, archive),
-        ),
+        );
+    },
     onTurnSettled: (event) =>
       Effect.gen(function* () {
+        yield* coordination.settleTurn(event.turnId, event.outcome);
         if (event.outcome !== "aborted") yield* markFinishedTurnUnread;
         const workflowOwnsCompletion = yield* workflowLifecycle
           .holdsTurnCompletion(sessionId, event.turnId)
@@ -806,6 +830,11 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
             { signal },
           ),
         invokeAppControl: async (command, input, signal) => {
+          if (backendAgentControl.handles(command) && Schema.is(Schema.String)(input.sessionId))
+            input = {
+              ...input,
+              sessionId: await run(sessionReferences.resolve(input.sessionId), { signal }),
+            };
           await run(
             Effect.scoped(validateMessageReferenceControl({ name: command, arguments: input })),
             { signal },
@@ -814,6 +843,31 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
             forwardTaskInputControl(sessionId, { name: command, arguments: input }),
             { signal },
           );
+          const result = !backendAgentControl.handles(command)
+            ? undefined
+            : await run(
+                Effect.scoped(
+                  Effect.gen(function* () {
+                    const summary = yield* sessions.catalogEntry(
+                      {
+                        workingDirectory: location.workingDirectory,
+                        sessionDirectory: location.sessionDirectory,
+                      },
+                      sessionId,
+                    );
+                    return yield* backendAgentControl.invoke(command, invocation.arguments, {
+                      kind: "project-session",
+                      sessionId,
+                      title: summary?.title ?? `Project Session ${sessionId}`,
+                      projectPath: location.projectPath,
+                      projectName: location.projectName,
+                      workingDirectory: location.workingDirectory,
+                    });
+                  }),
+                ),
+                { signal },
+              );
+          if (result !== undefined) return result;
           return runtimeIntegrations.requestApplicationControl(
             {
               _tag: "InvokeAppControl",

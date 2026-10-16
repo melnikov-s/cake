@@ -8,6 +8,7 @@ import {
   Stream,
   SubscriptionRef,
 } from "effect";
+import type { AgentActionNotice } from "../../contracts/application/agent-action-notice";
 import type { CakeChatControlRequest } from "../../contracts/cake-chats/cake-chat-data";
 import type { ProjectSessionControlInvocation } from "../../contracts/project-sessions/project-session-data";
 import {
@@ -107,6 +108,8 @@ class RendererRequestCoordinatorError extends Schema.TaggedError<RendererRequest
 ) {}
 
 export interface RendererRequestCoordinatorService {
+  /** Best-effort presentation only; never creates a pending request or controls admission. */
+  readonly presentAgentAction: (notice: AgentActionNotice) => Effect.Effect<void>;
   readonly registerProjectSession: (
     sessionId: string,
     workingDirectory: string,
@@ -1081,6 +1084,26 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
       requestUiForTarget,
       requestUiForConnection,
       requestInterview,
+      presentAgentAction: Effect.fn("RendererRequestCoordinator.presentAgentAction")((notice) =>
+        Effect.try({
+          try: () =>
+            requireBinding(
+              {
+                _tag: notice.source.kind === "cake-chat" ? "CakeChatSession" : "ProjectSession",
+                sessionId: notice.source.sessionId,
+              },
+              true,
+            ),
+          catch: () => undefined,
+        }).pipe(
+          Effect.match({
+            onFailure: () => undefined,
+            onSuccess: (connectionId) => {
+              clientEvents.sendTo(connectionId, { type: "agent-action-notice", ...notice });
+            },
+          }),
+        ),
+      ),
       requestProjectControl,
       requestCakeChatControl,
       requestWidgetCapture,

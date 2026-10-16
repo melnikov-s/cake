@@ -11,7 +11,6 @@ import type { ProjectRemovalStore } from "../stores/ProjectRemovalStore";
 import type { SessionManagementStore } from "../stores/SessionManagementStore";
 import type { ProjectSessionCreationStore } from "../stores/ProjectSessionCreationStore";
 import type { SessionCatalogStore } from "../stores/SessionCatalogStore";
-import type { SessionCoordinationStore } from "../stores/SessionCoordinationStore";
 import type { SessionLayoutStore } from "../stores/SessionLayoutStore";
 import type { SessionRegistryStore } from "../stores/SessionRegistryStore";
 import type { SettingsStore } from "../stores/SettingsStore";
@@ -19,8 +18,6 @@ import type { ToastStore } from "../stores/ToastStore";
 import type { SessionMetadataStore } from "../stores/SessionMetadataStore";
 import type { SessionRetirementStore } from "../stores/SessionRetirementStore";
 import type { NavigationStore } from "../stores/NavigationStore";
-import { defaultProjectSettings } from "../../contracts/application/application-data";
-import { crossSessionContextSnapshot } from "../../contracts/conversations/cross-session-message";
 
 export interface RootApplicationControlCapabilities {
   client: Client;
@@ -36,7 +33,6 @@ export interface RootApplicationControlCapabilities {
   sessionManagementStore: SessionManagementStore;
   projectSessionCreationStore: ProjectSessionCreationStore;
   sessionCatalogStore: SessionCatalogStore;
-  sessionCoordinationStore: SessionCoordinationStore;
   sessionLayoutStore: SessionLayoutStore;
   sessionRegistry: SessionRegistryStore;
   settingsStore: SettingsStore;
@@ -59,7 +55,6 @@ export function createRootApplicationControlHost(
     return session.editorSelectionsStore;
   };
   return {
-    sessionCoordination: capabilities.sessionCoordinationStore,
     state: {
       userSelection: () => window.getSelection()?.toString().slice(0, 48_000) || null,
       currentSelection: () => {
@@ -151,20 +146,6 @@ export function createRootApplicationControlHost(
         return view;
       },
     },
-    projectSettings: {
-      get: (projectPath) => capabilities.projectCatalogStore.find(projectPath)?.settings,
-      update: (projectPath, changes) =>
-        capabilities.applicationControlStore().runOperation(async () => {
-          const current =
-            capabilities.projectCatalogStore.find(projectPath)?.settings ??
-            defaultProjectSettings();
-          const settings = { ...current, ...changes };
-          await capabilities.client.workspaces.setProjectSettings(projectPath, settings, {
-            signal: capabilities.signal,
-          });
-          return settings;
-        }),
-    },
     vscode: {
       enter: (source) => capabilities.projectWorkbenchStore.showSessionEditor(source.sessionId),
       open: (source, location) => {
@@ -183,23 +164,6 @@ export function createRootApplicationControlHost(
           action,
           { signal: capabilities.signal },
         ),
-    },
-    sessionLabels: {
-      mutate: ({ projectPath }, mutation) =>
-        capabilities.applicationControlStore().runOperation(async () => {
-          if (projectPath)
-            await capabilities.client.projectWorkflow.mutate(
-              { projectPath, mutation },
-              { signal: capabilities.signal },
-            );
-          else
-            await capabilities.client.projectWorkflow.mutateGlobal(
-              { mutation },
-              { signal: capabilities.signal },
-            );
-        }),
-      setSessionLabels: (sessionId, labelIds) =>
-        capabilities.sessionManagementStore.setSessionLabels(sessionId, labelIds),
     },
     projects: {
       remove: (path, deleteSessions) =>
@@ -237,48 +201,11 @@ export function createRootApplicationControlHost(
     },
     sessions: {
       lookup: (sessionId) => capabilities.sessionCatalogStore.lookup(sessionId),
-      contextSnapshot: (sessionId) => {
-        const model =
-          capabilities.sessionRegistry.findSession(sessionId)?.model ??
-          capabilities.cakeChatCollectionStore.registry.find(sessionId)?.model;
-        return crossSessionContextSnapshot(model?.usage?.context);
-      },
-      inspect: (sessionId) =>
-        capabilities.client.projectSessions.inspect({ sessionId }, { signal: capabilities.signal }),
       navigationEnabled: () => capabilities.settingsStore.agentNavigation.enabled,
       open: (sessionId, messageId) =>
         capabilities.navigationStore.openSession(sessionId, messageId),
       create: (input) => capabilities.projectSessionCreationStore.createPromptedSession(input),
       createDraft: (input) => capabilities.projectSessionCreationStore.createDraftSession(input),
-      sendMessage: (sessionId, text, delivery, crossSession, inputRefs) =>
-        capabilities.applicationControlStore().runOperation(async () => {
-          await capabilities.prepareProjectSessionChat(sessionId);
-          const command =
-            delivery === "steer"
-              ? capabilities.client.sessionChats.steer
-              : delivery === "follow-up"
-                ? capabilities.client.sessionChats.followUp
-                : capabilities.client.sessionChats.prompt;
-          return command(
-            {
-              sessionId,
-              text,
-              renderUserMessageAsMarkdown: false,
-              attachments: (inputRefs ?? []).map((reference) => ({
-                kind: "forwarded-input",
-                name: "Attachment",
-                reference,
-              })),
-              ...(crossSession ? { crossSession } : null),
-            },
-            { signal: capabilities.signal },
-          );
-        }),
-      callCakeOperation: (sessionId, command, input) =>
-        capabilities.client.projectSessions.callCakeOperation(
-          { sessionId, command, input },
-          { signal: capabilities.signal },
-        ),
       query: (sessionId, query) =>
         capabilities.client.sessionChats.inspect(
           { sessionId, ...query },

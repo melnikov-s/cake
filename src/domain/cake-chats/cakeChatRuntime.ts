@@ -1,4 +1,5 @@
 import { Context, Effect, Option, Schema } from "effect";
+import * as backendAgentControl from "../application/agentControl";
 import { validateMessageReferenceControl } from "../conversations/messageReferenceForwarding";
 import { grantMessageAttachments } from "../conversations/messageReferenceAccess";
 import * as messageReferences from "../conversations/messageReferences";
@@ -429,11 +430,18 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
                         );
                       }),
                     )
-                  : yield* rendererRequests.requestCakeChatControl(
+                  : ((yield* Effect.scoped(
+                      backendAgentControl.invoke(forwarded.name, forwarded.arguments, {
+                        kind: "cake-chat",
+                        sessionId: target.sessionId,
+                        title: "Cake Chat",
+                      }),
+                    )) ??
+                    (yield* rendererRequests.requestCakeChatControl(
                       target.sessionId,
                       forwarded,
                       signal,
-                    );
+                    )));
               return yield* safeCoordinatorProjection(result);
             }).pipe(Effect.orDie),
             { signal },

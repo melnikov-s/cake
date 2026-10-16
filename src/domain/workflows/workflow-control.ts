@@ -1,4 +1,8 @@
 import { Effect, Schema } from "effect";
+import type { PiSettings } from "../../services/pi/PiSettings";
+import type { McpSettings } from "../../services/pi/McpSettings";
+import type { WidgetPackages } from "../../services/widgets/WidgetPackages";
+import type { SessionCoordination } from "../../services/session-catalogs/SessionCoordination";
 import {
   WorkflowOwner,
   WorkflowRelaunchInput,
@@ -36,6 +40,10 @@ import { workflowError } from "./run-state";
 /** Explicit capability set breaks the type-inference cycle with Project runtime assembly. */
 type WorkflowControlServices =
   | ApplicationState
+  | PiSettings
+  | McpSettings
+  | WidgetPackages
+  | SessionCoordination
   | SessionFamilyStorage
   | SessionArchiveStorage
   | TaskInputStorage

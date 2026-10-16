@@ -1,4 +1,9 @@
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
+import * as backendAgentControl from "../application/agentControl";
+import * as sessionReferences from "../project-sessions/sessionReferences";
+import { findLocation } from "../project-sessions/projectSessionMetadata";
+import { forwardTaskInputControl } from "../cake-chats/taskInputControls";
+import { validateMessageReferenceControl } from "../conversations/messageReferenceForwarding";
 import { acquireOptions as acquireProjectSessionOptions } from "../project-sessions/projectSessionRuntime";
 import { Effect, Option, Schema, Stream } from "effect";
 import type { DiscussionCatalogUpdate } from "../../contracts/application/catalog-data";
@@ -262,7 +267,9 @@ const sessionAssistantConfiguration = Effect.fn("DiscussionSessions.sessionAssis
         operation: "acquire",
         message: "Configure a utility model in Settings before using the session assistant",
       });
-    const run = makePiCallbackExecutor(yield* Effect.context<never>());
+    const run = makePiCallbackExecutor(
+      yield* Effect.context<backendAgentControl.AgentControlServices>(),
+    );
     const controlTools = tools.map((tool) => ({
       ...tool,
       parameters: Schema.decodeUnknownSync(jsonObjectSchema)(tool.parameters),
@@ -290,18 +297,66 @@ const sessionAssistantConfiguration = Effect.fn("DiscussionSessions.sessionAssis
         // Cake-owned control Effect to the Pi runtime callback contract.
         invoke: (invocation, signal) =>
           run(
-            rendererRequests
-              .requestProjectControl(
-                record.parentSessionId,
-                {
-                  _tag: "InvokeAppControl",
-                  command: invocation.name,
-                  input: Schema.decodeUnknownSync(jsonObjectSchema)(invocation.arguments),
-                },
-                signal,
-                "discussion-session",
-              )
-              .pipe(Effect.orDie),
+            Effect.scoped(
+              Effect.gen(function* () {
+                if (!backendAgentControl.handles(invocation.name))
+                  return yield* rendererRequests.requestProjectControl(
+                    record.parentSessionId,
+                    {
+                      _tag: "InvokeAppControl",
+                      command: invocation.name,
+                      input: Schema.decodeUnknownSync(jsonObjectSchema)(invocation.arguments),
+                    },
+                    signal,
+                    "discussion-session",
+                  );
+                const argumentsObject = yield* Schema.decodeUnknownEffect(jsonObjectSchema)(
+                  invocation.arguments,
+                );
+                if (Schema.is(Schema.String)(argumentsObject.sessionId))
+                  invocation = {
+                    ...invocation,
+                    arguments: {
+                      ...argumentsObject,
+                      sessionId: yield* sessionReferences.resolve(argumentsObject.sessionId),
+                    },
+                  };
+                const location = yield* findLocation({
+                  sessionId: record.parentSessionId,
+                  workingDirectory: record.workingDirectory,
+                });
+                yield* validateMessageReferenceControl(invocation);
+                const forwarded = yield* forwardTaskInputControl(
+                  record.parentSessionId,
+                  invocation,
+                );
+                const summary = yield* (yield* CakeSessionRuntimes).catalogEntry(
+                  {
+                    workingDirectory: location.workingDirectory,
+                    sessionDirectory: location.sessionDirectory,
+                  },
+                  record.parentSessionId,
+                );
+                const result = yield* backendAgentControl.invoke(
+                  forwarded.name,
+                  forwarded.arguments,
+                  {
+                    kind: "project-session",
+                    sessionId: record.parentSessionId,
+                    title: summary?.title ?? `Project Session ${record.parentSessionId}`,
+                    projectName: location.projectName,
+                    projectPath: location.projectPath,
+                    workingDirectory: location.workingDirectory,
+                  },
+                );
+                if (result === undefined)
+                  return yield* new DiscussionSessionError({
+                    operation: "control",
+                    message: "Backend control was not handled",
+                  });
+                return result;
+              }),
+            ).pipe(Effect.orDie),
             { signal },
           ),
       },
@@ -337,7 +392,10 @@ export const ensureSessionAssistant = Effect.fn("DiscussionSessions.ensureSessio
   ): Effect.fn.Return<
     SessionAssistantEnsured,
     DiscussionSessionError,
-    RefreshServices | RendererRequestCoordinator | ApplicationState
+    | RefreshServices
+    | RendererRequestCoordinator
+    | ApplicationState
+    | backendAgentControl.AgentControlServices
   > {
     const environment = yield* DiscussionSessionEnvironment;
     const record = yield* environment

@@ -82,6 +82,8 @@ export const ClientEventsLive = Layer.effect(
           "fatal",
           "notification",
           "provider-auth-notice",
+          "agent-action-notice",
+          "pi-settings-changed",
           "interview-requested",
           "extension-ui-intent",
           "project-session-control-requested",

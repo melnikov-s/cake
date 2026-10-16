@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
+import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
+import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
+import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
+import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { it } from "@effect/vitest";
 import { Effect, Layer, Scope, Stream } from "effect";
-import { describe } from "vitest";
+import { describe, expect } from "vitest";
 import * as discussionSessions from "../../../src/domain/discussion-sessions/discussionSessions";
 import * as sessionChats from "../../../src/domain/conversations/sessionChats";
 import {
@@ -103,6 +107,7 @@ const makeLayer = (
     readonly cakeChat?: boolean;
     /** Cake Chat forks natively into this Durable conversation instead of refusing. */
     readonly durableFork?: number;
+    readonly backendControl?: boolean;
   } = {},
 ) => {
   const durableFork = options.durableFork;
@@ -148,6 +153,7 @@ const makeLayer = (
   const runtimeOptions: CakeSessionRuntimeSetup[] = [];
   const modelSelections: Array<{ provider: string; modelId: string }> = [];
   const controlInvocations: unknown[] = [];
+  const forwardedInputs: unknown[] = [];
   let stagedProjections = 0;
   const prompts: Parameters<CakeSessionRuntime["prompt"]>[] = [];
   const queueOperations: string[] = [];
@@ -235,7 +241,19 @@ const makeLayer = (
   const adapter: CakeSessionRuntimesAdapter = {
     sessionIds: () => Stream.empty,
     catalog: () => Stream.empty,
-    catalogEntry: () => Effect.succeed(undefined),
+    catalogEntry: (_query, id) =>
+      Effect.succeed(
+        options.backendControl
+          ? {
+              id,
+              title: "Parent authority",
+              created: "2026-01-01",
+              modified: "2026-01-01",
+              messageCount: 1,
+              resolved: false,
+            }
+          : undefined,
+      ),
     inspect: () => Effect.succeed(undefined),
     createRuntime: (options) =>
       Effect.sync(() => {
@@ -292,13 +310,45 @@ const makeLayer = (
       }),
   });
   const projectRuntime = makeProjectSessionRuntimeTestLayer();
+  let applicationState: ReturnType<ApplicationState["Service"]["snapshot"]> = {
+    ...defaultApplicationState(),
+    utilityModel: { provider: "google", modelId: "gemini-3.5-flash-lite", thinkingLevel: "low" },
+    projects: [
+      {
+        path: "/project",
+        name: "Project",
+        addedAt: "2026-01-01T00:00:00.000Z",
+        lastOpenedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ],
+    trustedProjectPaths: ["/project"],
+  };
   return {
     layer: Layer.mergeAll(
       WorkflowTestLive,
       makeCakeSessionRuntimesLayer(adapter),
       discussions,
       projectRuntime,
+      ...(options.backendControl
+        ? [
+            familyStorageHarness().layer,
+            Layer.mock(ManagedWorktrees, {
+              records: () => Effect.succeed([]),
+              awaitSetup: () => Effect.void,
+            }),
+            Layer.mock(TaskInputStorage, {
+              isRecipient: () => Effect.succeed(false),
+              authorizeForward: (owner, refs, recipient) =>
+                Effect.sync(() => {
+                  forwardedInputs.push({ owner, refs, recipient });
+                  return refs;
+                }),
+              resolve: (_session, attachments) => Effect.succeed(attachments),
+            }),
+          ]
+        : []),
       Layer.mock(RendererRequestCoordinator, {
+        presentAgentAction: () => Effect.void,
         requestProjectControl: (sessionId, invocation) =>
           Effect.sync(() => {
             controlInvocations.push({ sessionId, invocation });
@@ -306,23 +356,16 @@ const makeLayer = (
           }),
       }),
       Layer.mock(ApplicationState, {
-        snapshot: () => ({
-          ...defaultApplicationState(),
-          utilityModel: {
-            provider: "google",
-            modelId: "gemini-3.5-flash-lite",
-            thinkingLevel: "low",
-          },
-          projects: [
-            {
-              path: "/project",
-              name: "Project",
-              addedAt: "2026-01-01T00:00:00.000Z",
-              lastOpenedAt: "2026-01-01T00:00:00.000Z",
-            },
-          ],
-          trustedProjectPaths: ["/project"],
-        }),
+        snapshot: () => applicationState,
+        current: () => Effect.succeed(applicationState),
+        transact: (transition) =>
+          transition(applicationState).pipe(
+            Effect.tap((next) =>
+              Effect.sync(() => {
+                applicationState = next;
+              }),
+            ),
+          ),
       }),
     ),
     options: runtimeOptions,
@@ -336,6 +379,7 @@ const makeLayer = (
     forkedEntries,
     modelSelections,
     controlInvocations,
+    forwardedInputs,
     record: () => record,
   };
 };
@@ -726,7 +770,19 @@ describe("Discussion Sessions domain", () => {
           modelId: "gemini-3.5-flash-lite",
         });
 
-        // The control gateway reaches the parent's renderer-owned application control.
+        // Backend-owned inspection/settings do not visit the parent renderer.
+        const settings = yield* Effect.promise(() =>
+          sidecar.sessionControl!.invoke(
+            { name: "settings.models.get", arguments: {} },
+            new AbortController().signal,
+          ),
+        );
+        expect(settings).toMatchObject({
+          ok: true,
+          value: { utilityModel: { modelId: "gemini-3.5-flash-lite" } },
+        });
+        assert.deepEqual(fixture.controlInvocations, []);
+        // Window-owned controls still reach the parent renderer.
         assert.deepEqual(
           sidecar.sessionControl?.tools.map((candidate) => candidate.command),
           ["sessions.open"],
@@ -772,6 +828,58 @@ describe("Discussion Sessions domain", () => {
         assert.equal(again.thread.sidecarSessionId, thread.sidecarSessionId);
         assert.equal(fixture.prompts.length, 2);
       }).pipe(Effect.provide(fixture.layer));
+    },
+  );
+
+  it.effect(
+    "session assistant sends with parent identity and scoped attachment authorization, not sidecar identity",
+    () => {
+      const f = makeLayer({ assistant: true, backendControl: true });
+      return Effect.gen(function* () {
+        const ensured = yield* discussionSessions.ensureSessionAssistant({
+          parentSessionId: "parent-1",
+          workingDirectory: "/project",
+          tools: [],
+          staged: false,
+          stagedMessages: [],
+          firstPrompt: { text: "Coordinate" },
+        });
+        yield* Effect.yieldNow;
+        const sidecar = f.options.find((options) => options.auxiliary);
+        assert.ok(sidecar?.sessionControl);
+        const recipient = "00000000-0000-4000-8000-000000000044";
+        const result = yield* Effect.promise(() =>
+          sidecar.sessionControl!.invoke(
+            {
+              name: "sessions.send",
+              arguments: {
+                sessionId: recipient,
+                text: "Parent-scoped task",
+                inputRefs: ["selected"],
+              },
+            },
+            new AbortController().signal,
+          ),
+        );
+        expect(result).toMatchObject({
+          ok: true,
+          expectsResponse: false,
+          target: { sessionId: recipient },
+        });
+        yield* Effect.yieldNow;
+        const message = f.prompts
+          .map((input) => parseCrossSessionMessage(input[0]))
+          .find((input) => input?.text === "Parent-scoped task");
+        expect(message?.metadata.sender).toMatchObject({
+          kind: "project-session",
+          sessionId: "parent-1",
+          title: "Parent authority",
+          workingDirectory: "/project",
+        });
+        expect(message?.metadata.sender.sessionId).not.toBe(ensured.thread.sidecarSessionId);
+        expect(f.forwardedInputs).toEqual([{ owner: "parent-1", refs: ["selected"], recipient }]);
+        expect(f.controlInvocations).toEqual([]);
+      }).pipe(Effect.provide(f.layer));
     },
   );
 

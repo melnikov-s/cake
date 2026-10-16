@@ -1,10 +1,6 @@
 import { Schema } from "effect";
 import { jsonValueSchema, type JsonValue } from "../../contracts/serialization/json-contract";
 import type { AgentSettingsInvocation } from "../../contracts/application/agent-settings-schema";
-import {
-  defaultCakePrompts,
-  resolveCakePrompts,
-} from "../../contracts/application/cake-prompt-defaults";
 import { normalizeServerUrl } from "../../contracts/desktop/desktop-host-data";
 import type { AgentControlSource } from "./app-control-data";
 import type { Client } from "../client/Client";
@@ -42,21 +38,10 @@ async function executeAgentSettings(
   const { client, settings, signal } = host;
   signal.throwIfAborted();
   const options = { signal };
-  const application = () => client.application.getState(options);
   const catalog = async () => ({
     chat: await client.models.list(options),
     nonChat: await client.nonChatModels.list(options),
   });
-  const projectScope = (scope: "backend" | "project") => {
-    if (scope === "backend") return {};
-    const projectPath =
-      source?.kind === "project-session" ? host.workingDirectory(source.sessionId) : undefined;
-    if (!projectPath)
-      throw new Error(
-        "Project MCP scope requires the calling Project Session's Working Directory.",
-      );
-    return { projectPath };
-  };
   const desktop = () => {
     const connection = settings.desktopConnection;
     if (!connection)
@@ -84,71 +69,9 @@ async function executeAgentSettings(
     };
   };
   switch (invocation.name) {
-    case "settings.widgets.list":
-      return client.widgetPackages.list({}, options);
-    case "settings.widgets.install":
-      return client.widgetPackages.install(invocation.arguments, options);
-    case "settings.widgets.remove":
-      return client.widgetPackages.remove(invocation.arguments, options);
-    case "settings.pi.get":
-      return client.piSettings.get(options);
-    case "settings.pi.update": {
-      const value = await client.piSettings.update(invocation.arguments, options);
-      settings.providers.piSettings = value;
-      return value;
-    }
-    case "settings.pi.reload":
-      return client.piSettings.reload(options);
-    case "settings.models.get": {
-      const state = await application();
-      return {
-        presets: state.modelPresets,
-        defaultPresetId: state.defaultModelPresetId ?? null,
-        utilityModel: state.utilityModel ?? null,
-        nonChatPreferences: state.nonChatModelPreferences ?? {},
-      };
-    }
-    case "settings.models.set-utility": {
-      const state = await client.workspaces.setUtilityModel(
-        invocation.arguments.model ?? undefined,
-        options,
-      );
-      return { utilityModel: state.utilityModel ?? null };
-    }
-    case "settings.models.set-non-chat":
-      return client.nonChatModels.updatePreference(invocation.arguments, options);
-    case "settings.presets.create":
-      return client.modelPresets.create(invocation.arguments, options);
-    case "settings.presets.update":
-      return client.modelPresets.update(invocation.arguments, options);
-    case "settings.presets.reorder":
-      return client.modelPresets.reorder(invocation.arguments, options);
-    case "settings.presets.remove":
-      return client.modelPresets.remove(invocation.arguments.id, options);
-    case "settings.presets.set-default":
-      return client.modelPresets.setDefault(invocation.arguments.id ?? undefined, options);
-    case "settings.providers.list":
-      return catalog();
-    case "settings.providers.refresh": {
-      await client.models.refresh(options);
-      return catalog();
-    }
     case "settings.providers.login": {
       await client.models.login(invocation.arguments, options);
       return { authorized: true, ...(await catalog()) };
-    }
-    case "settings.providers.logout": {
-      await client.models.logout(invocation.arguments, options);
-      return catalog();
-    }
-    case "settings.mcp.get":
-      return client.mcpSettings.get(
-        { ...projectScope(invocation.arguments.scope), revealSecrets: false },
-        options,
-      );
-    case "settings.mcp.update": {
-      const { scope, ...mutation } = invocation.arguments;
-      return client.mcpSettings.mutate({ ...mutation, ...projectScope(scope) }, options);
     }
     case "settings.mcp.native": {
       const { name, action, sessionId } = invocation.arguments;
@@ -169,31 +92,6 @@ async function executeAgentSettings(
         authorization: "interactive-not-confirmed",
       };
     }
-    case "settings.instructions.get": {
-      const state = await application();
-      return {
-        instructions: state.globalCustomInstructions,
-        prompts: resolveCakePrompts(state.cakePrompts),
-        defaults: defaultCakePrompts(),
-      };
-    }
-    case "settings.instructions.update": {
-      await settings.globalInstructions.update(invocation.arguments.instructions);
-      if (settings.globalInstructions.error) throw new Error(settings.globalInstructions.error);
-      return { instructions: (await application()).globalCustomInstructions };
-    }
-    case "settings.prompts.update": {
-      const { key, value } = invocation.arguments;
-      if (!settings.cakePrompts.prompts)
-        throw new Error("Settings are not hydrated; retry after application state loads.");
-      await settings.cakePrompts.update(key, value ?? "");
-      if (settings.cakePrompts.error) throw new Error(settings.cakePrompts.error);
-      return { prompts: resolveCakePrompts((await application()).cakePrompts) };
-    }
-    case "settings.labels.get":
-      return (await application()).globalSessionLabels;
-    case "settings.labels.update":
-      return client.projectWorkflow.mutateGlobal(invocation.arguments, options);
     case "settings.desktop.get": {
       const connection = desktop();
       return {
@@ -317,5 +215,7 @@ async function executeAgentSettings(
       if (store.error) throw new Error(store.error);
       return dictationView();
     }
+    default:
+      throw new Error(`${invocation.name} is owned by the backend`);
   }
 }

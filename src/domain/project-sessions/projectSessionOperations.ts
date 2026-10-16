@@ -261,6 +261,17 @@ export const observeConversation = Effect.fn("ProjectSessions.observeConversatio
   );
 });
 
+/** Backend equivalent of preparing an existing Project Session for an agent command.
+ * Restores standalone resolution, but never implicitly restores a Session Family.
+ * No renderer observation, selection, or device binding is acquired.
+ */
+export const prepareAgentCommand = Effect.fn("ProjectSessions.prepareAgentCommand")(function* (
+  target: ProjectSessionTarget,
+) {
+  yield* restoreIfResolved(target);
+  return yield* acquireExistingTarget(target);
+});
+
 /** Delivers an unattended message now, queueing it as a follow-up when the target is busy. */
 export const sendAutomatically = Effect.fn("ProjectSessions.sendAutomatically")(function* (
   input: ProjectSessionPromptInput,

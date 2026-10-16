@@ -1,3 +1,5 @@
+import { backendAgentSettingsTools } from "../../contracts/application/agent-settings-tools";
+import { backendAgentTools } from "../../contracts/application/backend-agent-tools";
 import type { JsonValue } from "../../contracts/serialization/json-contract";
 import type { AgentControlSource, AppControlHost, AppControlState } from "./app-control-data";
 import { appControlRegistry } from "./app-control-registry";
@@ -7,11 +9,19 @@ import { agentActionReceipt } from "./control-receipts";
 import { toJsonValue } from "./control-json";
 
 export function listAppControlTools() {
-  return appControlRegistry.listTools("global");
+  return [
+    ...backendAgentTools(),
+    ...backendAgentSettingsTools(),
+    ...appControlRegistry.listTools("global"),
+  ];
 }
 
 export function listSessionAssistantControlTools() {
-  return appControlRegistry.listTools("session-assistant");
+  return [
+    ...backendAgentTools(),
+    ...backendAgentSettingsTools(),
+    ...appControlRegistry.listTools("session-assistant"),
+  ];
 }
 
 export class AppControlBridge {

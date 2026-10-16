@@ -1,3 +1,6 @@
+import type { CakeEvent } from "../../../src/contracts/application/cake-rpc-contract";
+import { ClientEvents } from "../../../src/services/clients/ClientEvents";
+import type { AgentControlSource } from "../../../src/renderer/app-control/app-control-data";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { ModelType, ModelTypeMap } from "@earendil-works/pi-ai";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
@@ -13,6 +16,10 @@ import {
   type ApplicationState as ApplicationValue,
 } from "../../../src/contracts/application/application-data";
 import * as application from "../../../src/domain/application/application";
+import { isBackendAgentSetting } from "../../../src/contracts/application/agent-settings-tools";
+import * as backendSettings from "../../../src/domain/application/agentSettings";
+import { PiModels } from "../../../src/services/pi/PiModels";
+import { WidgetPackages } from "../../../src/services/widgets/WidgetPackages";
 import { defaultCakePrompts } from "../../../src/contracts/application/cake-prompt-defaults";
 import * as presets from "../../../src/domain/model-presets/modelPresets";
 import { updateNonChatModelPreference } from "../../../src/domain/model-preferences/non-chat-model-preferences";
@@ -60,6 +67,7 @@ async function fixture(trusted = true) {
   const files = new Map<string, string>();
   const reads: string[] = [];
   const reloads: string[] = [];
+  const piEvents: CakeEvent[] = [];
   const manager = SettingsManager.fromStorage(
     {
       withLock(scope, update) {
@@ -75,6 +83,12 @@ async function fixture(trusted = true) {
   );
   const runtime = ManagedRuntime.make(
     Layer.mergeAll(
+      Layer.mock(ClientEvents, {
+        sendTo: () => false,
+        broadcast: (event) => {
+          piEvents.push(event);
+        },
+      }),
       ApplicationState.layer.pipe(
         Layer.provide(
           Layer.succeed(
@@ -229,10 +243,68 @@ async function fixture(trusted = true) {
     projectPath: "/project",
     workingDirectory: "/project",
   };
-  const dispatch = vi.fn((command: string, input: JsonObject, signal: AbortSignal) => {
-    signal.throwIfAborted();
-    return root.root.applicationControlStore.invoke({ name: command, arguments: input }, source);
-  });
+  const dispatch = vi.fn(
+    (
+      command: string,
+      input: JsonObject,
+      signal: AbortSignal,
+      caller: AgentControlSource = source,
+    ) => {
+      signal.throwIfAborted();
+      if (!isBackendAgentSetting(command))
+        return root.root.applicationControlStore.invoke(
+          { name: command, arguments: input },
+          caller,
+        );
+      return runtime
+        .runPromise(
+          Schema.decodeUnknownEffect(AgentSettingsInvocation)(
+            { name: command, arguments: input },
+            { onExcessProperty: "error" },
+          ).pipe(
+            Effect.flatMap((invocation) => backendSettings.invoke(invocation, caller)),
+            Effect.provideService(
+              PiModels,
+              PiModels.of({
+                list: () => Effect.succeed([]),
+                listNonChat: () => Effect.succeed([]),
+                refreshCatalog: () => Effect.void,
+                login: () => Effect.die("Interactive login must stay renderer-owned"),
+                logout: (provider) =>
+                  Effect.tryPromise({
+                    try: (signal) => logout({ provider }, { signal }),
+                    catch: () => new Error("logout failed"),
+                  }).pipe(Effect.orDie),
+                resolve: (selection) => Effect.succeed(selection),
+                complete: () => Effect.die("Unexpected completion"),
+              }),
+            ),
+            Effect.provideService(
+              WidgetPackages,
+              WidgetPackages.of({
+                directory: packageSnapshot.directory,
+                list: () => Effect.succeed(packageSnapshot),
+                install: (specifier) =>
+                  Effect.tryPromise({
+                    try: (signal) => widgetInstall({ specifier, userApproved: true }, { signal }),
+                    catch: () => new Error("install failed"),
+                  }).pipe(Effect.orDie),
+                remove: (name) =>
+                  Effect.tryPromise({
+                    try: (signal) => widgetRemove({ name }, { signal }),
+                    catch: () => new Error("remove failed"),
+                  }).pipe(Effect.orDie),
+              }),
+            ),
+          ),
+          { signal },
+        )
+        .then(async (result) => {
+          await publish(saved);
+          return result;
+        });
+    },
+  );
   const registry = new CakeOperationRegistry([
     ...createCakeSettingsOperations(dispatch),
     ...createCakeWidgetPackageOperations(dispatch),
@@ -245,6 +317,7 @@ async function fixture(trusted = true) {
     files,
     reads,
     reloads,
+    piEvents,
     registry,
     dispatch,
     call,
@@ -366,6 +439,23 @@ describe("Agent Settings through the real application-control/Client/domain boun
           arguments: { scope: "backend", revealSecrets: true },
         }),
       ).rejects.toThrow();
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("publishes authoritative Pi settings after backend update/reload for observing windows", async () => {
+    const h = await fixture();
+    try {
+      await h.call("settings.pi.update", { key: "autoCompact", value: false });
+      const current = value(await h.call("settings.pi.get"));
+      expect(h.piEvents).toEqual([{ type: "pi-settings-changed", settings: current }]);
+      await h.call("settings.pi.reload");
+      expect(h.piEvents).toEqual([
+        { type: "pi-settings-changed", settings: current },
+        { type: "pi-settings-changed", settings: current },
+      ]);
+      expect(h.reloads).toEqual(["all", "all"]);
     } finally {
       await h.dispose();
     }
@@ -516,10 +606,11 @@ describe("Agent Settings through the real application-control/Client/domain boun
       expect(latest.entries[0]?.overridden).toBe(true);
       expect(latest.entries[1]?.config.args).toEqual([MCP_STORED_SECRET, MCP_STORED_SECRET]);
       await expect(
-        h.root.root.applicationControlStore.invoke(
-          { name: "settings.mcp.get", arguments: { scope: "project" } },
-          { kind: "cake-chat", sessionId: "cake", title: "Cake" },
-        ),
+        h.dispatch("settings.mcp.get", { scope: "project" }, new AbortController().signal, {
+          kind: "cake-chat",
+          sessionId: "cake",
+          title: "Cake",
+        }),
       ).rejects.toThrow("calling Project Session");
     } finally {
       await h.dispose();

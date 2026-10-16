@@ -34,7 +34,7 @@ export function getAppState(host: AppControlHost, source?: AgentControlSource): 
   return state;
 }
 
-export function sessionLabels(host: AppControlHost): AppControlSessionLabel[] {
+function sessionLabels(host: AppControlHost): AppControlSessionLabel[] {
   return [
     ...host.state.globalSessionLabels().map((label) => ({
       ...label,
@@ -60,42 +60,7 @@ export function knownSession(host: AppControlHost, sessionId: string) {
   return host.state.sessions().find((session) => session.sessionId === sessionId);
 }
 
-export function orderedFamilySessions(
-  host: AppControlHost,
-  familyId: string,
-): SessionSummaryView[] {
-  const members = host.state.sessions().filter((session) => session.familyId === familyId);
-  const byId = new Map(members.map((session) => [session.sessionId, session]));
-  const root = members.find((session) => session.familyDepth === 0);
-  if (!root) return [];
-  const ordered: SessionSummaryView[] = [];
-  const visited = new Set<string>();
-  const visit = (session: SessionSummaryView) => {
-    if (visited.has(session.sessionId)) return;
-    visited.add(session.sessionId);
-    ordered.push(session);
-    for (const childId of session.familyChildSessionIds ?? []) {
-      const child = byId.get(childId);
-      if (child) visit(child);
-    }
-  };
-  visit(root);
-  // Preserve visibility if a temporarily incomplete projection omits a child link.
-  for (const session of members
-    .filter((member) => !visited.has(member.sessionId))
-    .sort(
-      (left, right) =>
-        (left.familyDepth ?? 0) - (right.familyDepth ?? 0) ||
-        (left.familyChildOrder ?? 0) - (right.familyChildOrder ?? 0),
-    ))
-    visit(session);
-  return ordered;
-}
-
-export function toControlSession(
-  host: AppControlHost,
-  session: SessionSummaryView,
-): AppControlSession {
+function toControlSession(host: AppControlHost, session: SessionSummaryView): AppControlSession {
   const activity = host.state.sessionActivity(session.sessionId);
   const result = {
     workspacePath: session.workingDirectory,

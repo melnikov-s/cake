@@ -1,4 +1,8 @@
 import { Effect, Layer, Option, Ref } from "effect";
+import { PiSettings } from "../../../src/services/pi/PiSettings";
+import { McpSettings } from "../../../src/services/pi/McpSettings";
+import { WidgetPackages } from "../../../src/services/widgets/WidgetPackages";
+import { SessionCoordination } from "../../../src/services/session-catalogs/SessionCoordination";
 import {
   WorkflowRunId,
   WorkflowStepId,
@@ -88,9 +92,17 @@ export const makeMemoryWorkflowStorage = Effect.fn("WorkflowFixture.storage")(fu
   return { service, records };
 });
 
+export const AgentControlTestLive = Layer.mergeAll(
+  SessionCoordination.layer,
+  Layer.mock(PiSettings, {}),
+  Layer.mock(McpSettings, {}),
+  Layer.mock(WidgetPackages, { directory: "/test/widgets" }),
+);
+
 /** Ordinary session tests supply all new capabilities, failing loudly if unexpectedly invoked. */
 export const WorkflowTestLive = Layer.mergeAll(
   WorkflowSupervisorLive,
+  AgentControlTestLive,
   Layer.effect(
     WorkflowRunStorage,
     makeMemoryWorkflowStorage().pipe(Effect.map((fixture) => fixture.service)),

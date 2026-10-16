@@ -1,4 +1,6 @@
 import { Schema } from "effect";
+import { piSettingsSchema } from "../conversations/session-contract";
+import { AgentActionNotice } from "./agent-action-notice";
 import { WidgetBrowserOutput } from "../widgets/widget-browser-output";
 import {
   CaptureImage,
@@ -201,6 +203,13 @@ const cakeEventSchemas = {
     sessionId: stringMax(256),
     intent: extensionUiIntentSchema,
   }),
+  "pi-settings-changed": Schema.Struct({
+    type: Schema.Literal("pi-settings-changed"),
+    settings: piSettingsSchema,
+  }),
+  "agent-action-notice": AgentActionNotice.pipe(
+    Schema.fieldsAssign({ type: Schema.Literal("agent-action-notice") }),
+  ),
   "project-session-control-requested": ProjectSessionControlRequest.pipe(
     Schema.fieldsAssign({ type: Schema.Literal("project-session-control-requested") }),
   ),
@@ -307,6 +316,8 @@ const cakeEventSchemas = {
 } as const;
 
 export const applicationEventSchema = Schema.Union([
+  cakeEventSchemas["agent-action-notice"],
+  cakeEventSchemas["pi-settings-changed"],
   cakeEventSchemas["interview-requested"],
   cakeEventSchemas["screen-capture-requested"],
   cakeEventSchemas["window-blurred"],
@@ -364,6 +375,8 @@ export const surfaceEventSchema = Schema.Union([
 ]);
 
 export const cakeEventSchema = Schema.Union([
+  cakeEventSchemas["agent-action-notice"],
+  cakeEventSchemas["pi-settings-changed"],
   cakeEventSchemas["artifact-state-invalidated"],
   cakeEventSchemas["screen-capture-requested"],
   cakeEventSchemas["window-blurred"],

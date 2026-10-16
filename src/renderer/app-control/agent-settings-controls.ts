@@ -2,28 +2,21 @@ import { Schema } from "effect";
 import {
   AgentSettingsInvocation,
   agentSettingsOperations,
-  agentSettingsGuidance,
 } from "../../contracts/application/agent-settings-schema";
-import { CakeControlTool } from "../../contracts/cake-chats/cake-chat-data";
+import {
+  agentSettingsTool,
+  isBackendAgentSetting,
+} from "../../contracts/application/agent-settings-tools";
 import { jsonValueSchema } from "../../contracts/serialization/json-contract";
 import type { RegisteredControl } from "./control-definition";
-/** Shared settings schemas/discovery stay data-only. Execution uses this window's host. */
-export const agentSettingsControls: RegisteredControl[] = agentSettingsOperations.map(
-  (definition) => ({
+
+/** Only device/window execution belongs here; backend discovery is shared data. */
+export const agentSettingsControls: RegisteredControl[] = agentSettingsOperations
+  .filter((definition) => !isBackendAgentSetting(definition.command))
+  .map((definition) => ({
     command: definition.command,
     scope: "global",
-    tool: () =>
-      Schema.decodeUnknownSync(CakeControlTool)({
-        command: definition.command,
-        topic: "settings",
-        summary: definition.summary,
-        parameters: Schema.toStandardJSONSchemaV1(definition.input)["~standard"].jsonSchema.input({
-          target: "draft-07",
-        }),
-        guidance: [...agentSettingsGuidance, ...definition.guidance],
-        examples: [{ input: definition.example }],
-        result: "The existing Settings service's result; credentials remain masked.",
-      }),
+    tool: () => agentSettingsTool(definition),
     async invoke(untrustedInput, { host, source }) {
       const invocation = await Schema.decodeUnknownPromise(AgentSettingsInvocation)(
         untrustedInput,
@@ -36,5 +29,4 @@ export const agentSettingsControls: RegisteredControl[] = agentSettingsOperation
         ),
       };
     },
-  }),
-);
+  }));

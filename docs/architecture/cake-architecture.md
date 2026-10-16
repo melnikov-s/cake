@@ -192,6 +192,17 @@ until parsed by shared runtime Schemas at the receiving boundary. Services, Laye
 Scopes, Fibers, Stores, and Models never cross that boundary. RPC handlers adapt to
 domain operations; they do not own business policy.
 
+Agent-invoked backend settings, Project settings, labels, session inspection, and
+non-family message/thread coordination execute through domain handlers without a
+renderer binding. Project Session, permanent Cake Chat, and session-assistant
+gateways retain their distinct sender and task-input policies before dispatch;
+family messaging and backend-direct creation/fork/worktree routes stay separate.
+Thread bindings are transient backend metadata, not another transcript or a
+restart-durable queue. Inspection reports backend facts; window selection remains
+in `app.state`. Accepted mutations never wait for presentation: attributed action
+notices are best-effort events to the caller's bound window, and shared Pi settings
+changes refresh observing windows. Device/window actions still use reverse requests.
+
 One process-scoped renderer-request coordinator owns transient reverse-request
 correlation, targeting, cancellation, and cleanup through the existing RPC and
 native-event Streams. A renderer-owned mutation must complete persistence and

@@ -1,4 +1,4 @@
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Stream } from "effect";
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import { PiModels } from "../../../src/services/pi/PiModels";
 import type { ProjectSessionRuntimeIntegrations } from "../../../src/services/pi/ProjectSessionRuntimeHost";
@@ -51,7 +51,7 @@ export const makeHeadlessProjectSessionRuntimeMechanismTestLayer = (
       releaseSession: () => Effect.void,
     }),
     Layer.mock(PiModels, {}),
-    Layer.mock(RendererRequestCoordinator, {}),
+    Layer.mock(RendererRequestCoordinator, { presentAgentAction: () => Effect.void }),
     Layer.mock(Terminal, {
       closeWorkingDirectory: () => Effect.void,
     }),
@@ -86,6 +86,8 @@ export const makeProjectSessionRuntimeTestLayer = (
     makeProjectSessionRuntimeMechanismTestLayer(integrations),
     SessionCatalogChanges.layer,
     Layer.mock(SessionArchiveStorage, {
+      resolvedProjectEntry: () => Effect.succeed(undefined),
+      resolvedProjects: () => Stream.empty,
       locate: () => Effect.succeed("active" as const),
     }),
     Layer.mock(SessionFamilyStorage, {

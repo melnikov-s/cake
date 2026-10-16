@@ -7,7 +7,7 @@ import type {
   agentSettingsSections,
 } from "../../contracts/application/agent-settings-schema";
 import type { TurnStop } from "../../contracts/conversations/turn-stop";
-import { type JsonValue, type JsonObject } from "../../contracts/serialization/json-contract";
+import { type JsonValue } from "../../contracts/serialization/json-contract";
 import {
   type ChatConfiguration,
   type ProjectRecord,
@@ -15,7 +15,6 @@ import {
 import { type CakeChatSummary } from "../../contracts/cake-chats/cake-chat-data";
 import type { SessionSummary } from "../models/SessionSummary";
 import type { WorktreeRecord } from "../../contracts/worktrees/managed-worktree-data";
-import type { ProjectSessionPreview } from "../../contracts/project-sessions/project-session-data";
 import type { ScheduledMessage } from "../../contracts/scheduled-messages/scheduled-message-data";
 import { type EditorLocation } from "../../contracts/editor/editor-location";
 import type { VscodeEditorAction } from "../../contracts/vscode/vscode-editor-action";
@@ -27,11 +26,9 @@ import type {
 } from "../../contracts/editor/editor-selection";
 import type {
   CoordinationMessage,
-  CoordinationThread,
   CrossSessionDeliveryStatus,
 } from "../../contracts/conversations/cross-session-coordination";
 import type {
-  CrossSessionMessageMetadata,
   CrossSessionContextSnapshot,
   CrossSessionQueueSnapshot,
 } from "../../contracts/conversations/cross-session-message";
@@ -47,9 +44,7 @@ import {
 import {
   type ProjectSettings,
   type SessionLabel,
-  type SessionLabelMutation,
 } from "../../contracts/application/application-data";
-import { type ProjectSettingsChanges } from "../../contracts/projects/project-settings-schema";
 
 export type SessionSummaryView = Pick<
   SessionSummary,
@@ -106,19 +101,6 @@ export interface AgentActionReceipt {
   coalesceKey: string;
 }
 
-interface SessionCoordinationHost {
-  create(
-    sourceSessionId: string,
-    targetSessionId: string,
-    maxMessages?: number,
-  ): CoordinationThread;
-  get(threadId: string): CoordinationThread | undefined;
-  find(sessionId: string, explicitThreadId?: string): CoordinationThread | undefined;
-  record(thread: CoordinationThread, message: CoordinationMessage): void;
-  refresh(thread: CoordinationThread): void;
-  close(thread: CoordinationThread): void;
-}
-
 /**
  * Session-local selection authority exposed through the application-control bridge.
  * RootApplicationControlHost resolves source.sessionId to that ProjectSessionStore's
@@ -136,7 +118,6 @@ interface AppControlVscodeSelectionsHost {
 }
 
 export interface AppControlHost {
-  sessionCoordination: SessionCoordinationHost;
   state: {
     currentSelection(): AppControlSelection;
     userSelection(): string | null;
@@ -172,14 +153,6 @@ export interface AppControlHost {
     get(section: CakeSettingsSectionId): CakeSettingsSectionView;
     update(input: CakeSettingsUpdate): Promise<CakeSettingsSectionView>;
   };
-  projectSettings: {
-    get(projectPath: string): ProjectSettings | undefined;
-    update(projectPath: string, changes: ProjectSettingsChanges): Promise<ProjectSettings>;
-  };
-  sessionLabels: {
-    mutate(scope: { projectPath?: string }, mutation: SessionLabelMutation): Promise<void>;
-    setSessionLabels(sessionId: string, labelIds: readonly string[]): Promise<boolean>;
-  };
   vscode: AppControlVscodeSelectionsHost & {
     enter(source: AgentControlSource): Promise<void>;
     performEditorAction(source: AgentControlSource, action: VscodeEditorAction): Promise<JsonValue>;
@@ -198,7 +171,6 @@ export interface AppControlHost {
   };
   sessions: {
     lookup(sessionId: string): Promise<SessionSummaryView | undefined>;
-    inspect(sessionId: string): Promise<ProjectSessionPreview>;
     navigationEnabled(): boolean;
     open(sessionId: string, messageId?: string): Promise<boolean | void>;
     create(input: {
@@ -215,17 +187,9 @@ export interface AppControlHost {
       initialPrompt: string;
       model?: ChatConfiguration;
     }): Promise<{ workspacePath: string; sessionId: string }>;
-    contextSnapshot?(sessionId: string): CrossSessionContextSnapshot;
-    sendMessage(
-      sessionId: string,
-      text: string,
-      delivery: "prompt" | "follow-up" | "steer",
-      crossSession?: CrossSessionMessageMetadata,
-      inputRefs?: readonly string[],
-    ): Promise<string>;
+
     compact(sessionId: string, instructions?: string): Promise<void>;
     query(sessionId: string, query: SessionInspectionQuery): Promise<JsonValue>;
-    callCakeOperation(sessionId: string, command: string, input: JsonObject): Promise<JsonValue>;
     queueCommand(sessionId: string, command: string): Promise<QueuedSessionCommandReceipt>;
     reorderQueuedMessage(
       sessionId: string,
@@ -315,7 +279,7 @@ export interface AppControlState {
   recentSessions: AppControlSession[];
 }
 
-export interface CoordinationThreadView {
+interface CoordinationThreadView {
   threadId: string;
   state: "open" | "closed";
   participants: Array<{
@@ -377,7 +341,6 @@ type AppControlSuccess =
       ok: true;
       command: "sessions.info";
       session: AppControlSession;
-      selected: boolean;
       status: SessionActivity | "idle";
     }
   | {

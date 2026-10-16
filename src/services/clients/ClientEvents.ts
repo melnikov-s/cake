@@ -21,6 +21,8 @@ export interface ClientEventsService {
       | "fatal"
       | "notification"
       | "provider-auth-notice"
+      | "agent-action-notice"
+      | "pi-settings-changed"
       | "extension-ui-intent"
       | "project-session-control-requested"
       | "browser-native-requested"

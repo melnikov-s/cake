@@ -1,3 +1,4 @@
+import type { AgentActionNotice } from "../../contracts/application/agent-action-notice";
 import { Store, child, createStore, untracked } from "r-state-tree";
 import type {
   CakeChatControlRequest,
@@ -70,6 +71,10 @@ export class ApplicationControlStore extends Store<{
 
   runOperation<A>(action: () => Promise<A>): Promise<A> {
     return this.operationStore.run(action);
+  }
+
+  presentAgentAction(notice: AgentActionNotice) {
+    this.props.host.presentation.showAgentAction(notice);
   }
 
   tools(): ReadonlyArray<CakeControlTool> {

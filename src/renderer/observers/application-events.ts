@@ -46,6 +46,14 @@ export const observeApplicationEvents = (
         void root.conversationModeStore.exit();
         return;
       }
+      if (event.type === "pi-settings-changed") {
+        root.settingsStore.providers.piSettings = event.settings;
+        return;
+      }
+      if (event.type === "agent-action-notice") {
+        root.applicationControlStore.presentAgentAction(event);
+        return;
+      }
       if (event.type === "provider-auth-notice") {
         root.settingsStore.providers.receiveAuthNotice(event);
         if (

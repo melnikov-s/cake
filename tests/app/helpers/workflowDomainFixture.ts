@@ -25,7 +25,12 @@ import {
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
-import { checkpoint, model, makeMemoryWorkflowStorage } from "./workflowFixture";
+import {
+  checkpoint,
+  model,
+  makeMemoryWorkflowStorage,
+  AgentControlTestLive,
+} from "./workflowFixture";
 import { fakeRuntime, options, snapshot } from "./piRuntimeFixture";
 import { familyStorageHarness } from "./familyStorageHarness";
 import type { JsonValue } from "../../../src/contracts/serialization/json-contract";
@@ -104,6 +109,7 @@ export const makeWorkflowDomainFixture = Effect.fn("WorkflowFixture.domain")(fun
   });
   const layer = Layer.mergeAll(
     WorkflowSupervisorLive,
+    AgentControlTestLive,
     makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
     SessionCatalogChanges.layer,
     familyStorageHarness().layer,

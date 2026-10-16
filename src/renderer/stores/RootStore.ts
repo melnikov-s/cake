@@ -56,7 +56,6 @@ import { ToastStore } from "./ToastStore";
 import { TerminalStore, type TerminalTarget } from "./TerminalStore";
 import { WorkingDirectoryRetirementStore } from "./WorkingDirectoryRetirementStore";
 import { SessionLayoutStore } from "./SessionLayoutStore";
-import { SessionCoordinationStore } from "./SessionCoordinationStore";
 import { resolveDraftUpdate } from "../../utils/resolve-draft-update";
 import type { RootProjection } from "../models/RootProjection";
 import { formatHotkey } from "../lib/hotkeys";
@@ -551,11 +550,6 @@ export class RootStore extends Store<{
   }
 
   @child
-  get sessionCoordinationStore(): SessionCoordinationStore {
-    return createStore(SessionCoordinationStore);
-  }
-
-  @child
   get sessionMetadataStore(): SessionMetadataStore {
     return createStore(SessionMetadataStore, {
       projects: this.projectCatalogStore,
@@ -809,7 +803,6 @@ export class RootStore extends Store<{
         sessionManagementStore: this.sessionManagementStore,
         projectSessionCreationStore: this.projectSessionCreationStore,
         sessionCatalogStore: this.sessionCatalogStore,
-        sessionCoordinationStore: this.sessionCoordinationStore,
         sessionLayoutStore: this.sessionLayoutStore,
         sessionRegistry: this.sessionRegistry,
         settingsStore: this.settingsStore,

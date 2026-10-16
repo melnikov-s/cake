@@ -55,6 +55,7 @@ import { RemoteRenderedWidgetCaptureLive } from "../services/widgets/RemoteRende
 import { RemoteBrowserLive } from "../services/browser/RemoteBrowserLive";
 import { PreviewLeases, PreviewLeasesLive } from "../services/browser/PreviewLeases";
 import { RendererRequestCoordinator } from "../services/renderer-requests/RendererRequestCoordinator";
+import { SessionCoordination } from "../services/session-catalogs/SessionCoordination";
 import { publishInlineWidget } from "../services/widgets/inline-widget-document-registry";
 import { ManagedWorktreesLive } from "../services/worktrees/ManagedWorktreesLive";
 import { WorktreeLandingCoordinatorLive } from "../services/worktrees/WorktreeLandingCoordinator";
@@ -193,6 +194,7 @@ export const makeBackendLive = <HostServices, HostError>(
   });
   const SessionCoreLive = Layer.mergeAll(
     RewordingRequestsLive,
+    SessionCoordination.layer,
     SubagentCoordinatorLive,
     WorktreeLandingCoordinatorLive,
     RendererRequestsLive,

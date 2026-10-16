@@ -2,12 +2,10 @@ import { Schema } from "effect";
 import type { RegisteredControl, ControlContext, ControlScope } from "./control-definition";
 import { applicationControls } from "./application-controls";
 import { settingsControls } from "./settings-controls";
-import { sessionLabelControls } from "./session-label-controls";
 import { vscodeControls } from "./vscode-controls";
 import { worktreeControls } from "./worktree-controls";
 import { projectControls } from "./project-controls";
 import { sessionInspectionControls } from "./session-inspection-controls";
-import { sessionMessageControls } from "./session-message-controls";
 import { sessionQueueControls } from "./session-queue-controls";
 import { sessionLifecycleControls } from "./session-lifecycle-controls";
 import { agentSettingsControls } from "./agent-settings-controls";
@@ -48,12 +46,10 @@ export class AppControlRegistry {
 export const appControlRegistry = new AppControlRegistry([
   ...applicationControls,
   ...settingsControls,
-  ...sessionLabelControls,
   ...vscodeControls,
   ...worktreeControls,
   ...projectControls,
   ...sessionInspectionControls,
-  ...sessionMessageControls,
   ...sessionQueueControls,
   ...sessionLifecycleControls,
   ...agentSettingsControls,

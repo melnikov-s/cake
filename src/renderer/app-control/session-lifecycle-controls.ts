@@ -11,7 +11,7 @@ import { isActiveSessionActivity } from "../lib/session-activity";
 import { CakeModelSelection } from "../../contracts/model-presets/cake-model-selection";
 import { CakeChatReportPolicy } from "../../contracts/project-sessions/session-reporting";
 import type { AppControlResult } from "./app-control-data";
-import { sessionLabels } from "./control-projections";
+
 import { bounded, trimmed, sessionIdTargetSchema } from "./control-arguments";
 import { defineControl, defineSessionControl } from "./control-definition";
 import { toStrictJson } from "./control-json";
@@ -310,60 +310,7 @@ export const sessionLifecycleControls = [
       return { ok: true, command, target, title: input.title };
     },
   }),
-  defineSessionControl({
-    command: "sessions.set-labels",
-    args: Schema.Struct({
-      ...sessionIdTargetSchema.fields,
-      labelIds: Schema.Array(Schema.String.check(Schema.isUUID(4))).check(
-        Schema.isMaxLength(100),
-        Schema.isUnique(),
-      ),
-    }),
-    scope: "global",
-    discovery: {
-      topic: "sessions",
-      summary: "Replace the ordered labels on one Project Session. The first label is primary.",
-      guidance: [
-        "Call session-labels.list to discover label IDs available to the target session.",
-        "Pass an empty labelIds array to clear all labels.",
-      ],
-      examples: [
-        {
-          input: {
-            sessionId: "target-session-id",
-            labelIds: ["00000000-0000-4000-8000-000000000001"],
-          },
-        },
-        {
-          input: {
-            sessionId: "target-session-id",
-            labelIds: [],
-          },
-          description: "Clear all labels.",
-        },
-      ],
-    },
-    run: async (input, { host }, command, known): Promise<AppControlResult> => {
-      const { sessionId } = input;
 
-      const workspacePath = known.workingDirectory;
-      const target = { workspacePath, sessionId };
-      const available = sessionLabels(host);
-      const labels = input.labelIds.flatMap((labelId) => {
-        const label = available.find((item) => item.id === labelId);
-        return label ? [label] : [];
-      });
-      if (labels.length !== input.labelIds.length)
-        return { ok: false, command, error: "Cake could not find a selected session label." };
-      if (
-        labels.some((label) => label.scope === "project" && label.projectPath !== known.projectPath)
-      )
-        return { ok: false, command, error: "A selected label belongs to a different Project." };
-      if (!(await host.sessionLabels.setSessionLabels(sessionId, input.labelIds)))
-        return { ok: false, command, error: "Cake could not update those session labels." };
-      return { ok: true, command, target, labels };
-    },
-  }),
   defineControl({
     command: "sessions.resolve",
     args: Schema.Struct({
