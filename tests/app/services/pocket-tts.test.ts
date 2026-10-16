@@ -29,7 +29,7 @@ vi.mock("../../../src/services/speech/pocket-tts-manifest.json", async () => {
       repository: "fixture/pocket",
       revision: "pinned",
       remoteDirectory: "v2.1/english",
-      modelDirectory: "Models/pocket-tts-coreml/v2.1/english",
+      modelDirectory: "Models/pocket-tts/v2.1/english",
       files: fixture.paths.map((path) => ({
         path,
         bytes: Buffer.byteLength(fixture.content),

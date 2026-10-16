@@ -5,7 +5,7 @@
   "repository": "FluidInference/pocket-tts-coreml",
   "revision": "91748676fe3c8b2eb3007b3125253bcd898202c3",
   "remoteDirectory": "v2.1/english",
-  "modelDirectory": "Models/pocket-tts-coreml/v2.1/english",
+  "modelDirectory": "Models/pocket-tts/v2.1/english",
   "files": [
     {
       "path": "cond_prefill.mlmodelc/analytics/coremldata.bin",

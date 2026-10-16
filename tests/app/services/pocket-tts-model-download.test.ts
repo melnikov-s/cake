@@ -28,7 +28,7 @@ vi.mock("../../../src/services/speech/pocket-tts-manifest.json", async () => {
       repository: "fixture/pocket-tts",
       revision: "pinned-revision",
       remoteDirectory: "v2.1/english",
-      modelDirectory: "Models/pocket-tts-coreml/v2.1/english",
+      modelDirectory: "Models/pocket-tts/v2.1/english",
       files: fixture.paths.map((path) => ({
         path,
         bytes: Buffer.byteLength(fixture.content),
@@ -116,10 +116,7 @@ describe("Pocket TTS model installation", () => {
     expect(await pocketTtsInstalled(model)).toBe(false);
     await installPocketTts(root, new AbortController().signal, () => {}, goodFetch);
     expect(await pocketTtsInstalled(model)).toBe(true);
-    await writeFile(
-      join(model, "Models/pocket-tts-coreml/v2.1/english", fixture.paths[0]!),
-      "truncated",
-    );
+    await writeFile(join(model, "Models/pocket-tts/v2.1/english", fixture.paths[0]!), "truncated");
     expect(await pocketTtsInstalled(model)).toBe(false);
     await rm(join(model, "installation.sha256"));
     expect(await pocketTtsInstalled(model)).toBe(false);

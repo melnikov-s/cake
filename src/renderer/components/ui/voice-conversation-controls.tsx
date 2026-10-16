@@ -7,6 +7,7 @@ import { AudioLinesIcon, CountdownRingIcon, EarIcon, EarOffIcon, StopIcon } from
 export interface VoiceConversationControlsProps {
   active: boolean;
   preparing: boolean;
+  loadingVoice?: boolean;
   muted: boolean;
   disabled: boolean;
   sendProgress?: number;
@@ -85,6 +86,19 @@ export function VoiceConversationControls(props: VoiceConversationControlsProps)
               {props.sendProgress !== undefined && (
                 <CountdownRingIcon progress={props.sendProgress} />
               )}
+            </IconButton>
+          )}
+          {props.loadingVoice && (
+            <IconButton
+              tooltip="Loading voice…"
+              ariaLabel="Loading voice"
+              aria-busy
+              disabled
+              className="rounded-full"
+            >
+              <span aria-hidden="true" className="grid">
+                <LoadingSpinner />
+              </span>
             </IconButton>
           )}
           <IconButton tooltip="Exit conversation mode" onClick={props.onExit}>

@@ -70,6 +70,8 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
   muted = false;
   listening = false;
   speaking = false;
+  /** A reply is waiting longer than a moment for its first audio (for example, a cold local model). */
+  loadingVoice = false;
   transcript = "";
   private provisionalText: ProvisionalTextSpan | undefined;
   get provisionalInput(): ProvisionalTextSpan | undefined {
@@ -656,6 +658,14 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
     this.outputController = controller;
     const signal = AbortSignal.any([controller.signal, this.controller.signal, this.signal]);
     this.speaking = true;
+    // Only the wait before a reply's first audio is silent; later sentences overlap playback.
+    const loading = setTimeout(() => {
+      if (revision === this.outputRevision) this.loadingVoice = true;
+    }, 1000);
+    const loaded = () => {
+      clearTimeout(loading);
+      this.loadingVoice = false;
+    };
     try {
       await this.props.playback.start(signal);
       while (!signal.aborted && revision === this.outputRevision) {
@@ -691,10 +701,12 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
           { text },
           async (audio) => {
             if (!signal.aborted && revision === this.outputRevision) {
-              if (++chunks === 1)
+              if (++chunks === 1) {
+                loaded();
                 recordVoiceDiagnostic("first-audio", {
                   elapsedMillis: Math.round(performance.now() - started),
                 });
+              }
               await this.props.playback.enqueue(audio, signal);
             }
           },
@@ -711,6 +723,7 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
     } catch (error) {
       if (!signal.aborted && revision === this.outputRevision) this.fail(error);
     } finally {
+      loaded();
       this.outputRunning = false;
       if (revision === this.outputRevision) {
         this.speaking = false;

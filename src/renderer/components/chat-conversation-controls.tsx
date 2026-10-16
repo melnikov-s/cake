@@ -18,6 +18,7 @@ export const ChatConversationControls = observer(function ChatConversationContro
     <VoiceConversationControls
       active={selected && conversation.phase === "active"}
       preparing={selected && conversation.phase === "preparing"}
+      loadingVoice={selected && conversation.loadingVoice}
       muted={conversation.muted}
       sendProgress={selected ? conversation.sendProgress : undefined}
       onCancelSend={() => conversation.cancelPendingSend()}

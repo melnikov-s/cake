@@ -1052,6 +1052,23 @@ describe("Project Session conversation mode", () => {
     await waitFor(() => expect(f.synthesize).toHaveBeenCalledTimes(2));
     expect(f.synthesize.mock.calls[1]?.[0].text).toBe("Second phrase.");
   });
+  it("shows a loading-voice status while a reply's first audio is slow, and clears it when audio arrives", async () => {
+    const audio = deferred<void>();
+    using f = fixture({
+      synthesize: async (_request, consume) => {
+        await audio.promise;
+        await consume({ encoding: "pcm_s16le", sampleRate: 24000, pcm: "AAA=" });
+      },
+    });
+    await f.enter();
+    f.publish([consumed(), assistant("Slow first phrase. Next")]);
+    await waitFor(() => expect(f.synthesize).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("button", { name: "Loading voice" })).toBeNull();
+    const status = await screen.findByRole("button", { name: "Loading voice" }, { timeout: 2000 });
+    expect(status.getAttribute("aria-busy")).toBe("true");
+    await act(async () => audio.resolve());
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Loading voice" })).toBeNull());
+  });
   it("speaks a live completed reply even when no streaming projection was observed, but never replays durable reconnection history", async () => {
     using f = fixture();
     await f.enter();

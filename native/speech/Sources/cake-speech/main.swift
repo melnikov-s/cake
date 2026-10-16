@@ -39,9 +39,12 @@ private func emit(_ reply: Reply) throws {
 /// Validate the complete pinned installation before calling FluidAudio's cache loader.
 /// All required graphs, constants, the BOS backfill and Alba are present, so neither
 /// initialize nor makeSession can enter its downloader. No voices/cloning are exposed.
+/// The path must match FluidAudio's cache layout: `Repo.pocketTts.folderName` strips
+/// "-coreml", so the files live under `Models/pocket-tts/`. A mismatch passes this
+/// check but makes FluidAudio silently re-download the full repository.
 private func validateInstallation(_ directory: URL, manifestURL: URL) throws {
     let manifest = try JSONDecoder().decode(Manifest.self, from: Data(contentsOf: manifestURL))
-    guard manifest.modelDirectory == "Models/pocket-tts-coreml/v2.1/english",
+    guard manifest.modelDirectory == "Models/pocket-tts/v2.1/english",
           !manifest.files.isEmpty else {
         throw failure("Invalid local speech installation manifest.")
     }
