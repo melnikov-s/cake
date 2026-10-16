@@ -35,14 +35,93 @@ the actual URL; no restart is required. Desktop development builds need
 `pnpm build:browser` if assets are absent.
 
 Sharing is off at every desktop launch and binds loopback by default. `127.0.0.1` only
-works on that computer. For a trusted device, explicitly use the host's concrete private
-IPv4 address or an authenticated tunnel. The desktop control does not accept wildcard
-binds. Browser clients cannot reconfigure desktop exposure.
+works on that computer. For a phone, prefer the private HTTPS path below rather than
+binding to all interfaces. The desktop control accepts an optional **Proxy HTTPS origin**;
+this derives exact Host/Origin allowlists and displays the configured HTTPS URL. It does
+not start TLS, configure a proxy, or prove reachability. Leave it empty for ordinary direct
+HTTP access. A concrete private IPv4 address is also an explicit trusted-network option;
+wildcard binds are refused. Browser clients cannot reconfigure desktop exposure.
 
 Disabling sharing closes remote connections, not accepted local agent work. Closing
 the last desktop window while serving keeps the backend alive; **Window → New Cake
 Window** reopens the UI. **Quit Cake** stops the process and its turns. Keep the host
 awake and reachable for remote work.
+
+## Phone access over private Tailscale HTTPS
+
+This initial access model trusts your own devices; it does **not** add Cake login,
+device pairing, restricted users, a managed relay, or standalone public remote access.
+Private VPN access is sufficient only when its access policy restricts this service to
+trusted devices. A compromised or otherwise permitted device has full laptop authority.
+Host/Origin validation is browser-request protection, not authentication.
+
+Configure networking yourself; Cake never installs Tailscale or changes host networking:
+
+1. Put the laptop and phone on your private Tailscale network. Restrict the service with
+   your tailnet access policy to your trusted devices/user. Do not assume that every
+   member of a shared tailnet is trusted. Enable HTTPS certificates for your tailnet
+   if required by Tailscale Serve. **Do not use Funnel** (public exposure).
+2. On the laptop, arrange private Tailscale Serve to forward HTTPS to the IPv4 loopback
+   port you chose, for example `tailscale serve --bg --https=443 http://127.0.0.1:4317`.
+   Use `tailscale serve status` to find the actual HTTPS origin. Serve's private access
+   controls are the access boundary; do not forward router ports or open a public listener.
+3. In Cake desktop **Settings → Network & privacy → Browser sharing**, keep bind
+   **127.0.0.1**, choose fixed port **4317** (or your proxy target port), enter the exact
+   origin, e.g. **https://laptop.your-tailnet.ts.net**, and enable sharing. No path or
+   trailing slash is accepted. Sharing remains off at each Cake launch.
+4. Open the displayed HTTPS URL on the phone with Tailscale connected. The laptop must
+   remain awake, online and running Cake; closing its lid may suspend it. Closing a Cake
+   window is not quitting Cake. Stop sharing in Settings when finished; separately disable
+   Serve if no longer wanted (`tailscale serve --https=443 off`).
+
+With a proxy origin configured, only that exact Host authority and HTTPS Origin are
+accepted; direct `http://127.0.0.1:4317/` access is intentionally refused. Local desktop
+IPC continues unchanged. The status shows the actual internal bind/port and the
+**configured, not reachability-tested** external URL. A `403 Unexpected Host/Origin`
+means the URL or proxy's preserved Host/Origin does not match; fix the exact values,
+not a wildcard or missing-Origin bypass. Forwarded headers are never used to infer trust.
+If the port is busy, choose another fixed port and change the proxy target to match.
+
+For standalone browser hosting use the same loopback bind and set
+`CAKE_SERVER_ALLOWED_HOSTS=laptop.your-tailnet.ts.net` and
+`CAKE_SERVER_ALLOWED_ORIGINS=https://laptop.your-tailnet.ts.net` with the browser/listener
+opt-ins below. Include non-default public ports exactly in both values when used.
+
+### Other authenticated HTTPS proxies
+
+An external proxy must require authentication **before serving any Cake assets, RPC
+WebSocket upgrades or editor endpoints**, preserve the original exact Host (including
+non-default port) and Origin, support long-lived WebSocket upgrades, and use trusted TLS
+certificates. Keep internal listeners inaccessible to untrusted clients, normally on
+loopback. A proxy's login must work in the phone browser before the WebSocket connects;
+redirecting an unauthenticated WebSocket to a login page is not a usable login flow.
+Never rewrite an arbitrary client's Origin to the allowed value or strip it. Do not
+publish a bare unauthenticated HTTPS proxy: encryption alone does not provide access control.
+
+The desktop proxy field supports the Cake conversation UI. Browser VS Code additionally
+needs a separately protected HTTPS origin and fixed editor listener; use the standalone
+configuration in **Browser VS Code behind HTTPS** below. Do not proxy the desktop's
+random HTTP editor port onto the Cake origin. Clipboard, notifications, uploads and
+on-screen keyboard behavior depend on browser/platform permissions and secure context.
+
+### Phone acceptance checks
+
+Browser viewport/touch emulation is not physical-phone verification. Before relying on
+this setup, check on your actual iOS Safari or Android Chrome device:
+
+- Open and dismiss navigation; switch Project Sessions and Cake Chat; reach Settings.
+- Focus the composer, type multiple lines, select text, send, and dismiss/reopen the
+  keyboard in portrait and landscape. Confirm the composer and Send remain visible
+  above the keyboard/browser chrome and safe-area insets, including with large text.
+- Lock/unlock, background/foreground, change Wi-Fi/mobile data, and briefly disconnect
+  Tailscale. Confirm state refreshes and the unsent draft remains. Accepted work must
+  not be replayed; if delivery is uncertain, inspect history before acknowledging it.
+- Confirm an untrusted device cannot reach the service, and that disabling sharing or
+  quitting Cake disconnects it. Test proxy-auth expiry/sign-in and denied access separately.
+
+Browser resume starts a fresh transport instead of trusting a suspended half-open socket;
+only observations retry. Tab-local drafts survive ordinary refreshes, but browser eviction,
+closing the tab or clearing site data may discard them. This is not offline editing.
 
 ## Standalone build and launch
 

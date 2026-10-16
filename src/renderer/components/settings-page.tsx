@@ -109,10 +109,33 @@ export const SettingsPage = observer(function SettingsPage({
     setScrollRequest({ targetId });
   };
   return (
-    <div className="grid h-full min-h-0 grid-cols-[220px_minmax(0,1fr)]">
+    <div className="grid h-full min-h-0 min-w-0 grid-cols-[220px_minmax(0,1fr)] max-[620px]:grid-cols-1 max-[620px]:grid-rows-[auto_minmax(0,1fr)]">
+      <div className="hidden border-b border-border px-4 py-2 max-[620px]:block">
+        <Select
+          aria-label="Settings section"
+          value={activePage}
+          className="[@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-base"
+          onChange={(event) => {
+            const page = SETTINGS_NAV_GROUPS.flatMap((group) => group.items).find(
+              (item) => item.page === event.target.value,
+            );
+            if (page) settings.selectPage(page.page);
+          }}
+        >
+          {SETTINGS_NAV_GROUPS.map((group) => (
+            <optgroup key={group.label} label={group.label}>
+              {group.items.map((item) => (
+                <option key={item.page} value={item.page}>
+                  {item.label}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </Select>
+      </div>
       <aside
         aria-label="Settings sections"
-        className="min-h-0 border-r border-border/65 bg-sidebar px-3 py-5"
+        className="min-h-0 overflow-y-auto border-r border-border/65 bg-sidebar px-3 py-5 max-[620px]:hidden"
       >
         <h1 className="px-2 text-lg font-bold text-foreground">Settings</h1>
         <p className="mb-4 mt-1 px-2 text-[11px] leading-relaxed text-muted-foreground">
@@ -185,7 +208,7 @@ export const SettingsPage = observer(function SettingsPage({
         id="settings-content-scroll"
         className="min-h-0 overflow-y-auto [scrollbar-gutter:stable]"
       >
-        <div className="mx-auto max-w-4xl px-8 py-8 pb-16">
+        <div className="mx-auto max-w-4xl px-8 py-8 pb-16 max-[620px]:px-4 max-[620px]:py-4">
           <div className="mb-8">
             <span className="text-xs font-medium text-accent">Cake / Pi</span>
             <h2 className="mt-1 text-2xl font-bold text-foreground">{pageMetadata.label}</h2>
@@ -440,7 +463,7 @@ export const SettingsPage = observer(function SettingsPage({
                   />
                   <label
                     id="setting-steering-mode"
-                    className="scroll-mt-8 flex items-center justify-between gap-6 text-sm"
+                    className="scroll-mt-8 flex items-center justify-between gap-6 text-sm max-[620px]:flex-col max-[620px]:items-stretch max-[620px]:gap-2"
                   >
                     <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                       <strong className="text-xs font-medium text-foreground">Steering mode</strong>
@@ -465,7 +488,7 @@ export const SettingsPage = observer(function SettingsPage({
                   </label>
                   <label
                     id="setting-follow-up-mode"
-                    className="scroll-mt-8 flex items-center justify-between gap-6 text-sm"
+                    className="scroll-mt-8 flex items-center justify-between gap-6 text-sm max-[620px]:flex-col max-[620px]:items-stretch max-[620px]:gap-2"
                   >
                     <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                       <strong className="text-xs font-medium text-foreground">
@@ -685,7 +708,7 @@ export const SettingsPage = observer(function SettingsPage({
                   <div className="grid gap-4">
                     <label
                       id="setting-transport"
-                      className="scroll-mt-8 flex items-center justify-between gap-6 text-sm"
+                      className="scroll-mt-8 flex items-center justify-between gap-6 text-sm max-[620px]:flex-col max-[620px]:items-stretch max-[620px]:gap-2"
                     >
                       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <strong className="text-xs font-medium text-foreground">Transport</strong>
@@ -712,7 +735,7 @@ export const SettingsPage = observer(function SettingsPage({
                     </label>
                     <label
                       id="setting-http-idle-timeout"
-                      className="scroll-mt-8 flex items-center justify-between gap-6 text-sm"
+                      className="scroll-mt-8 flex items-center justify-between gap-6 text-sm max-[620px]:flex-col max-[620px]:items-stretch max-[620px]:gap-2"
                     >
                       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <strong className="text-xs font-medium text-foreground">
@@ -761,7 +784,7 @@ export const SettingsPage = observer(function SettingsPage({
                   <div className="grid gap-4">
                     <label
                       id="setting-default-project-trust"
-                      className="scroll-mt-8 flex items-center justify-between gap-6 text-sm"
+                      className="scroll-mt-8 flex items-center justify-between gap-6 text-sm max-[620px]:flex-col max-[620px]:items-stretch max-[620px]:gap-2"
                     >
                       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <strong className="text-xs font-medium text-foreground">

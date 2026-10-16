@@ -18,8 +18,8 @@ export const BrowserConnectionStatus = observer(function BrowserConnectionStatus
         {connection.connected
           ? "Connected"
           : connection.everConnected
-            ? "Disconnected — reconnecting"
-            : "Connecting…"}
+            ? "Disconnected — reconnecting. Keep the laptop awake and check VPN or proxy access."
+            : "Connecting… If this persists, check laptop sharing, VPN and proxy sign-in."}
       </span>
       {connection.uncertainOperation && (
         <>

@@ -25,7 +25,8 @@ export const SettingsDesktopSharingSection = observer(function SettingsDesktopSh
       <Callout variant="warning">
         No authentication: anyone who can connect has full host access, including files, credentials
         through agent operations, and code execution. Only share with trusted devices on a private
-        network or authenticated tunnel.
+        Tailscale network restricted to your devices, or behind an authenticated HTTPS proxy.
+        Host/Origin allowlists are not a login and do not restrict trusted clients’ authority.
       </Callout>
       <label className="flex items-center justify-between gap-4 text-sm">
         Enable browser sharing
@@ -54,18 +55,43 @@ export const SettingsDesktopSharingSection = observer(function SettingsDesktopSh
           onChange={(event) => sharing.setPort(event.target.value)}
         />
       </label>
+      <label className="grid gap-1 text-xs">
+        Proxy HTTPS origin (optional)
+        <Input
+          aria-label="Browser sharing HTTPS origin"
+          placeholder="https://laptop.your-tailnet.ts.net"
+          value={sharing.publicOrigin}
+          disabled={sharing.enabled || sharing.pending}
+          onChange={(event) => sharing.setPublicOrigin(event.target.value)}
+        />
+      </label>
       <p className="text-xs text-muted-foreground">
-        127.0.0.1 is reachable only on this computer, not from a phone. To use another trusted
-        device, explicitly bind this computer’s private network IPv4 address. Do not expose Cake to
-        a public network.
+        Recommended for a phone: keep 127.0.0.1, choose a fixed port, and use private Tailscale
+        Serve on your laptop with Tailscale on your phone. Enter its exact HTTPS origin without a
+        path or trailing slash. This allows only that URL’s exact Host and Origin, replacing direct
+        HTTP access. The proxy must preserve Host and WebSocket Origin; forwarded headers are not
+        trusted. Cake does not configure the proxy or verify its access controls.
       </p>
-      <p role="status" className="text-sm">
+      <p className="text-xs text-muted-foreground">
+        Without a proxy, 127.0.0.1 works only on this computer. A concrete private IPv4 bind is an
+        explicit alternative for trusted devices, but HTTP outside loopback lacks secure browser
+        features. Never expose an unauthenticated listener publicly or use Tailscale Funnel.
+      </p>
+      <p role="status" className="break-words text-sm">
         {sharing.state?.status ?? "Loading sharing status…"}
         {sharing.state?.url ? ` — ${sharing.state.url}` : ""}
       </p>
+      {sharing.state?.status === "serving" && sharing.state.publicOrigin && (
+        <p className="break-words text-xs text-muted-foreground">
+          Allowed Host: {new URL(sharing.state.publicOrigin).host}. Allowed Origin:{" "}
+          {sharing.state.publicOrigin}. Listener: {sharing.state.bind}:{sharing.state.port}. The
+          HTTPS URL is configured, not reachability-tested.
+        </p>
+      )}
       <p className="text-xs text-muted-foreground">
-        Closing the last window keeps enabled sharing and agent work running. Use Quit Cake to stop
-        the process. Disabling disconnects browsers, not accepted turns.
+        Keep the laptop awake and online; closing its lid may suspend access. Closing the last
+        window keeps enabled sharing and agent work running. Use Quit Cake to stop the process.
+        Disabling disconnects browsers, not accepted turns.
       </p>
       {(sharing.error ?? sharing.state?.error) && (
         <Callout variant="error">{sharing.error ?? sharing.state?.error}</Callout>

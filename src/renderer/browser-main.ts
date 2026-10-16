@@ -1,4 +1,5 @@
 import { createElement, Fragment } from "react";
+import { observeBrowserPageLifecycle } from "./lib/browser-page-lifecycle";
 import { createRoot } from "react-dom/client";
 import { createStore, effect, mount, onSnapshot, toSnapshot } from "r-state-tree";
 import { BrowserConnectionStore } from "./stores/BrowserConnectionStore";
@@ -157,12 +158,15 @@ const stopTerminalEvents = observeTerminalEvents(runtime, rootStore);
 const stopSavedDrafts = observeSavedDrafts(
   runtime,
   (records) => rootStore.sessionRegistry.pendingSessions.applySavedDraftSnapshot(records),
-  (error) =>
+  (error) => {
+    // The connection banner already covers an expected socket loss/resume.
+    if (!connection.connected) return;
     rootStore.toastStore.show({
       tone: "warning",
       title: "Saved Draft updates disconnected",
       message: error instanceof Error ? error.message : String(error),
-    }),
+    });
+  },
 );
 async function initialize(rootStore: ReturnType<typeof mountRootStore>) {
   void rootStore.settingsStore.modelPresets.hydrate();
@@ -208,11 +212,12 @@ root.render(
     createElement(ContextActionMenu, { store: menus }),
   ),
 );
-window.addEventListener(
-  "pagehide",
-  () => {
+const stopPageLifecycle = observeBrowserPageLifecycle(rootElement, {
+  persist,
+  reconnect: () => runtime.reconnect(),
+  dispose: () => {
+    stopPageLifecycle();
     if (saveTimer) clearTimeout(saveTimer);
-    persist();
     stopPersistence();
     stopConnectionPersistence();
     stopModels();
@@ -230,5 +235,4 @@ window.addEventListener(
     projection[Symbol.dispose]();
     void runtime.dispose();
   },
-  { once: true },
-);
+});

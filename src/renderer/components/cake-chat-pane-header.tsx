@@ -39,7 +39,7 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
       {firstPane && !overlay && (
         <IconButton
           className={cn(
-            "absolute left-[84px] top-[9px] z-20 size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
+            "absolute left-[84px] top-[9px] max-[620px]:left-2 [@media(pointer:coarse)]:top-1 z-20 size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
             sidebarCollapsed ? "grid" : "hidden max-[620px]:grid",
           )}
           data-slot="header-sidebar-toggle"

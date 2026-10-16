@@ -80,11 +80,11 @@ export const Sidebar = observer(function Sidebar({
       data-slot="sidebar"
       data-focus-mode={focusMode ? "true" : undefined}
       className={cn(
-        "flex h-full min-w-0 flex-col overflow-hidden border-r border-border/72 bg-sidebar select-none",
+        "flex h-full min-w-0 flex-col overflow-hidden border-r border-border/72 bg-sidebar select-none max-[620px]:absolute max-[620px]:inset-y-0 max-[620px]:left-0 max-[620px]:z-50 max-[620px]:w-[min(360px,calc(100%-44px))]",
         focusMode && "[&_svg]:size-5",
       )}
     >
-      <div className="flex h-[46px] shrink-0 items-center gap-1 pl-[103px] pr-3 [app-region:drag]">
+      <div className="flex h-[46px] shrink-0 items-center gap-1 pl-[103px] pr-3 [app-region:drag] max-[620px]:pl-2 max-[620px]:h-auto max-[620px]:min-h-11 max-[620px]:flex-wrap [@media(pointer:coarse)]:pl-2 [@media(pointer:coarse)]:h-auto [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:flex-wrap">
         <IconButton
           data-cake-hint-key="s"
           tooltip="Toggle sidebar"

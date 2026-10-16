@@ -62,7 +62,7 @@ const ObservedIconButton = observer(function ObservedIconButton({
       ref={buttonRef}
       type={type}
       className={cn(
-        "icon-button grid size-[30px] place-items-center rounded-[7px] border-0 bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-muted-foreground [app-region:no-drag]",
+        "icon-button grid shrink-0 touch-manipulation size-[30px] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 place-items-center rounded-[7px] border-0 bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-muted-foreground [app-region:no-drag]",
         pressedAppearance === "solid"
           ? "aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:shadow-sm aria-pressed:hover:bg-primary/90"
           : "aria-pressed:text-accent aria-pressed:hover:bg-accent/10",

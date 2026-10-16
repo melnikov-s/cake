@@ -228,6 +228,8 @@ async function captureBrowserPage(
       const context = await browser.newContext({
         viewport: { width: options.width, height: options.height },
         deviceScaleFactor: 1,
+        hasTouch: options.width <= 620,
+        isMobile: options.width <= 620,
         colorScheme: options.theme,
       });
       const page = await context.newPage();

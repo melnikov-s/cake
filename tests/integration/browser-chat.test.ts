@@ -84,7 +84,7 @@ it("compiled standalone host serves the shared browser shell independently of cw
 it("retains a lost-receipt draft but blocks resending until browser delivery is acknowledged", async () => {
   await Effect.runPromise(
     Effect.gen(function* () {
-      const controlled = browserBackendAdapter();
+      const controlled = browserBackendAdapter("/project", true);
       const backend = yield* makeNetworkTestBackend({
         adapter: controlled.adapter,
         models: [browserTestModel],
@@ -107,7 +107,11 @@ it("retains a lost-receipt draft but blocks resending until browser delivery is 
       yield* Effect.promise(async () => {
         const browser = await chromium.launch({ channel: "chromium-headless-shell" });
         try {
-          const page = await browser.newPage();
+          const page = await browser.newPage({
+            viewport: { width: 390, height: 844 },
+            hasTouch: true,
+            isMobile: true,
+          });
           page.setDefaultTimeout(15_000);
           let dropReceipt = true;
           let promptId: string | undefined;
@@ -163,6 +167,9 @@ it("retains a lost-receipt draft but blocks resending until browser delivery is 
           await browserExpect(page.getByText("Completed answer 1", { exact: true })).toBeVisible();
           const send = page.getByRole("button", { name: "Send", exact: true });
           await browserExpect(send).toBeDisabled();
+          const sendBox = await send.boundingBox();
+          assert.ok(sendBox);
+          expect(sendBox.y + sendBox.height).toBeLessThanOrEqual(844);
           expect(controlled.stats.turns).toBe(1);
           await page.getByRole("button", { name: "I checked the server state" }).click();
           await browserExpect(page.getByText("Delivery uncertain", { exact: false })).toHaveCount(
@@ -182,7 +189,7 @@ it("retains a lost-receipt draft but blocks resending until browser delivery is 
 it("real Chromium uses the shared sidebar, project chat and Cake Chat without replay on refresh or reconnect", async () => {
   await Effect.runPromise(
     Effect.gen(function* () {
-      const controlled = browserBackendAdapter();
+      const controlled = browserBackendAdapter("/project", true);
       const backend = yield* makeNetworkTestBackend({
         adapter: controlled.adapter,
         models: [browserTestModel],

@@ -81,11 +81,12 @@ const makeNetworkLayer = (
   url: string,
   onConnection: (connected: boolean) => void,
   disconnected: Effect.Effect<void> = Effect.void,
+  webSocketConstructor = Socket.layerWebSocketConstructorGlobal,
 ) => {
   const protocol = RpcClient.layerProtocolSocket({ retryTransientErrors: false }).pipe(
     Layer.provide(
       Layer.mergeAll(
-        Socket.layerWebSocket(url).pipe(Layer.provide(Socket.layerWebSocketConstructorGlobal)),
+        Socket.layerWebSocket(url).pipe(Layer.provide(webSocketConstructor)),
         RpcSerialization.layerJson,
         Layer.succeed(RpcClient.ConnectionHooks, {
           onConnect: Effect.sync(() => onConnection(true)),
@@ -100,13 +101,28 @@ const makeNetworkLayer = (
 export const makeNetworkRuntime = (
   url: string,
   onConnection: (connected: boolean) => void,
-): Runtime => {
-  const runtime = ManagedRuntime.make(makeNetworkLayer(url, onConnection));
+): Runtime & { reconnect(): void } => {
+  let socket: WebSocket | undefined;
+  const constructor = Layer.succeed(Socket.WebSocketConstructor, (address, protocols) => {
+    socket = new WebSocket(address, protocols);
+    return socket;
+  });
+  const runtime = ManagedRuntime.make(
+    makeNetworkLayer(url, onConnection, Effect.void, constructor),
+  );
   const execute: ExecuteRendererEffect = (effect, signal) =>
     runtime.runPromise(effect, signal ? { signal } : undefined);
   return {
     execute,
     observe: (source, consume, options) => observeStream(execute, source, consume, options),
+    // A suspended tab can retain a half-open socket. Start a fresh transport on resume,
+    // letting RPC fail pending commands and retry only observations, never mutations.
+    reconnect: () => {
+      if (socket && socket.readyState < WebSocket.CLOSING) {
+        onConnection(false);
+        socket.close(4000, "Browser connection refresh");
+      }
+    },
     dispose: () => runtime.dispose(),
   };
 };

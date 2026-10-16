@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { observer, useStore } from "r-state-tree/react";
 import { IconButton } from "@/components/ui/icon-button";
+import { Button } from "./ui/button";
 import { SettingsIcon } from "@/components/ui/icons";
 import { ResizeHandle } from "@/components/ui/resize-handle";
 import { CommandPane } from "@/components/command-pane";
@@ -76,16 +77,26 @@ export const AppShellLayout = observer(function AppShellLayout({
     <main
       ref={shellRef}
       className={cn(
-        "relative grid h-screen w-screen max-w-[100vw] overflow-hidden bg-background text-foreground transition-[grid-template-columns] duration-180 ease-out",
+        "relative grid h-full w-full max-w-[100vw] overflow-hidden bg-background text-foreground transition-[grid-template-columns] duration-180 ease-out",
         "grid-cols-[var(--sidebar-width)_minmax(0,1fr)_var(--right-pane-width)] max-[820px]:grid-cols-[min(var(--sidebar-width),230px)_minmax(0,1fr)_var(--right-pane-width)] max-[620px]:grid-cols-[0px_minmax(0,1fr)]",
         resizingPanel && "cursor-col-resize select-none transition-none",
       )}
       style={shellStyle}
     >
-      {projectSidebarVisible && <AppSidebar />}
+      {projectSidebarVisible && (
+        <>
+          <Button
+            variant="ghost"
+            aria-label="Close navigation"
+            className="absolute inset-0 z-40 hidden h-full w-full rounded-none bg-foreground/28 max-[620px]:block"
+            onClick={() => sidebar.toggle()}
+          />
+          <AppSidebar />
+        </>
+      )}
       {projectSidebarVisible && (
         <ResizeHandle
-          className="left-[calc(var(--sidebar-width)-5px)] max-[820px]:left-[calc(min(var(--sidebar-width),230px)-5px)]"
+          className="left-[calc(var(--sidebar-width)-5px)] max-[820px]:left-[calc(min(var(--sidebar-width),230px)-5px)] max-[620px]:hidden"
           label="Resize project sidebar"
           value={displayedSidebarWidth}
           min={220}
@@ -137,7 +148,7 @@ export const AppShellLayout = observer(function AppShellLayout({
       <CommandPane store={store} extensionUi={extensionUi} />
       {store.commandPaneStore.pane && (
         <ResizeHandle
-          className="right-[calc(var(--right-pane-width)-5px)]"
+          className="right-[calc(var(--right-pane-width)-5px)] max-[620px]:hidden"
           label="Resize command pane"
           value={commandPaneWidth}
           min={320}

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { createServer } from "node:http";
+import { createServer, request as httpRequest } from "node:http";
+import { DesktopSharingState } from "../../src/contracts/desktop/desktop-sharing-data";
 import type { CakeEvent } from "../../src/contracts/application/cake-rpc-contract";
 import {
   rendererConnectionHeader,
@@ -10,7 +11,18 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it } from "@effect/vitest";
-import { Context, Deferred, Effect, Exit, Fiber, Layer, Queue, Scope, Stream } from "effect";
+import {
+  Context,
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  Queue,
+  Schema,
+  Scope,
+  Stream,
+} from "effect";
 import { RpcClient } from "effect/unstable/rpc";
 import { expect, vi } from "vitest";
 import { BackendRpc } from "../../src/ipc/protocol/BackendRpc";
@@ -25,7 +37,7 @@ import { ClientWorkspaces } from "../../src/services/clients/ClientWorkspaces";
 import { RendererRequestCoordinator } from "../../src/services/renderer-requests/RendererRequestCoordinator";
 import { ClientEvents } from "../../src/services/clients/ClientEvents";
 import * as cakeChatLocations from "../../src/domain/cake-chats/cakeChatLocations";
-import { connectClient } from "./fixtures/network-client";
+import { connectClient, rawClient } from "./fixtures/network-client";
 import { makeNetworkTestBackend } from "./fixtures/network-backend";
 import { cakeBuildId } from "../../src/ipc/protocol/BackendConnectionRpc";
 
@@ -469,4 +481,79 @@ it.live("accepted_host_toggle_outlives_its_request_cancellation", () =>
     yield* sharing.configure({ enabled: false, bind: "127.0.0.1", port: 0 });
     expect(sharing.keepsProcessAlive()).toBe(false);
   }).pipe(Effect.scoped),
+);
+
+it.live(
+  "desktop HTTPS origin derives exact allowlists and configured URL without changing local authority",
+  () =>
+    Effect.gen(function* () {
+      const { sharing, local } = yield* setup();
+      const invalid = yield* sharing
+        .configure({
+          enabled: true,
+          bind: "127.0.0.1",
+          port: 0,
+          publicOrigin: "https://cake.example/",
+        })
+        .pipe(Effect.flip);
+      expect(invalid.message).toContain("origin");
+      expect(sharing.keepsProcessAlive()).toBe(false);
+      const publicOrigin = "https://laptop.tailnet.ts.net:8443";
+      const state = yield* sharing.configure({
+        enabled: true,
+        bind: "127.0.0.1",
+        port: 0,
+        publicOrigin,
+      });
+      expect(state).toMatchObject({
+        status: "serving",
+        bind: "127.0.0.1",
+        publicOrigin,
+        url: publicOrigin + "/",
+      });
+      const status = (headers: Record<string, string>) =>
+        Effect.callback<number, Error>((resume) => {
+          const request = httpRequest(
+            {
+              hostname: "127.0.0.1",
+              port: state.port,
+              path: "/",
+              headers,
+            },
+            (response) => {
+              response.resume();
+              resume(Effect.succeed(response.statusCode ?? 0));
+            },
+          );
+          request.once("error", (error) => resume(Effect.fail(error)));
+          request.end();
+          return Effect.sync(() => request.destroy());
+        });
+      const host = new URL(publicOrigin).host;
+      expect(yield* status({ Host: host })).toBe(200); // Top-level navigation has no Origin.
+      expect(yield* status({ Host: host, Origin: publicOrigin })).toBe(200);
+      expect(yield* status({ Host: host, Origin: "http://" + host })).toBe(403);
+      expect(yield* status({ Host: host, Origin: "https://attacker.example" })).toBe(403);
+      expect(
+        yield* status({
+          Host: "127.0.0.1:" + state.port,
+          "X-Forwarded-Host": host,
+          "X-Forwarded-Proto": "https",
+          Origin: publicOrigin,
+        }),
+      ).toBe(403);
+      const socket = yield* rawClient(`ws://127.0.0.1:${state.port}/rpc`, {
+        headers: { Host: host },
+        origin: publicOrigin,
+      });
+      socket.ws.send(JSON.stringify({ _tag: "Ping" }));
+      expect(yield* Queue.take(socket.messages)).toEqual({ _tag: "Pong" });
+      expect(yield* local["models.list"]()).toEqual([]);
+      yield* sharing.configure({ enabled: false, bind: "127.0.0.1", port: 0 });
+      const direct = yield* sharing.configure({ enabled: true, bind: "127.0.0.1", port: 0 });
+      expect(direct.url).toBe(`http://127.0.0.1:${direct.port}/`);
+      expect(direct.publicOrigin).toBeUndefined();
+      // RPC optional keys must be omitted, not present with undefined.
+      expect(Schema.decodeUnknownSync(DesktopSharingState)(direct)).toEqual(direct);
+    }).pipe(Effect.scoped),
 );

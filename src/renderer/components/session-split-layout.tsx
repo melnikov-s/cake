@@ -115,7 +115,7 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
         <header
           data-slot="workspace-header"
           className={cn(
-            "relative flex h-[52px] min-w-0 items-center gap-3 overflow-hidden border-b border-border/65 px-5 [app-region:drag]",
+            "relative flex h-[52px] min-w-0 items-center gap-3 overflow-hidden border-b border-border/65 px-5 [app-region:drag] max-[620px]:gap-1.5 max-[620px]:pr-3",
             multiplePanes && "bg-muted/20 pr-10",
             multiplePanes && focused && "bg-muted/35",
             headerClassName?.(node),
@@ -130,7 +130,7 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
           <strong className="min-w-0 flex-1 truncate text-[13px] font-semibold">
             {title(sessionId)}
           </strong>
-          <div className="flex min-w-0 shrink-0 items-center gap-1 [app-region:no-drag]">
+          <div className="flex min-w-0 shrink-0 items-center gap-1 [app-region:no-drag] max-[620px]:max-w-[50%] max-[620px]:overflow-x-auto">
             {renderHeader(node)}
             {onSplit && (
               <>

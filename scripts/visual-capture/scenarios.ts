@@ -2765,7 +2765,7 @@ const dictationSettingsScenario: VisualCaptureScenario = {
 const serverClientSettingsScenario: VisualCaptureScenario = {
   name: "server-client-settings",
   description: "Real local backend selection and browser sharing controls in Network & privacy",
-  states: ["backend", "sharing"],
+  states: ["backend", "sharing", "sharing-https"],
   seed: (paths, theme) => cakePromptsSettingsScenario.seed(paths, theme),
   async prepare(page, state) {
     await page
@@ -2783,6 +2783,21 @@ const serverClientSettingsScenario: VisualCaptureScenario = {
         : page.locator("#setting-browser-sharing");
     await section.waitFor({ state: "visible", timeout: 20_000 });
     await section.scrollIntoViewIfNeeded();
+    if (state === "sharing-https") {
+      await page.getByLabel("Browser sharing port", { exact: true }).fill("0");
+      await page
+        .getByLabel("Browser sharing HTTPS origin", { exact: true })
+        .fill("https://laptop.your-tailnet.ts.net");
+      await page.getByRole("switch", { name: "Enable browser sharing" }).click();
+      await page
+        .getByRole("switch", { name: "Enable browser sharing" })
+        .waitFor({ state: "visible" });
+      await page.waitForFunction(() =>
+        document
+          .querySelector("#setting-browser-sharing [role=status]")
+          ?.textContent?.includes("serving"),
+      );
+    }
     await page.waitForFunction(() => document.fonts.status === "loaded");
   },
   region(page) {

@@ -25,7 +25,7 @@ export function ComposerInput({
       dictation={dictation}
       rows={1}
       className={cn(
-        "min-h-10 max-h-80 w-full resize-none overflow-y-auto rounded-none border-0 bg-transparent px-2 py-2 text-sm leading-6 outline-none focus-visible:ring-0 [field-sizing:content] placeholder:text-muted-foreground",
+        "min-h-10 max-h-80 [@media(pointer:coarse)]:max-h-[30dvh] [@media(pointer:coarse)]:text-base w-full resize-none overflow-y-auto rounded-none border-0 bg-transparent px-2 py-2 text-sm leading-6 outline-none focus-visible:ring-0 [field-sizing:content] placeholder:text-muted-foreground",
         className,
       )}
       {...props}

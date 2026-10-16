@@ -10,30 +10,45 @@ export const AppSidebar = observer(function AppSidebar() {
   const projects = root.projectCatalogStore;
   const shell = root.appShellStore;
   const toggleSidebar = () => sidebar.toggle();
-  const openSettings = () => root.navigationStore.showSettings();
+  const closeNarrowNavigation = useCallback(() => {
+    if (window.matchMedia("(max-width: 620px)").matches && sidebar.visible) sidebar.toggle();
+  }, [sidebar]);
+  const openSettings = () => {
+    closeNarrowNavigation();
+    root.navigationStore.showSettings();
+  };
   const openCakeChat = useCallback(
     (sessionId?: string) => {
+      closeNarrowNavigation();
       void root.navigationStore.openCakeChat(sessionId);
     },
-    [root],
+    [root, closeNarrowNavigation],
   );
   const openSession = useCallback(
     (sessionId: string) => {
+      closeNarrowNavigation();
       void root.navigationStore.openSession(sessionId);
     },
-    [root],
+    [root, closeNarrowNavigation],
   );
   const createSession = useCallback(
     (workspacePath: string) => {
+      closeNarrowNavigation();
       void root.navigationStore.createSession(workspacePath);
     },
-    [root],
+    [root, closeNarrowNavigation],
   );
   const chooseProject = useCallback(() => {
     void root.navigationStore.chooseProject();
   }, [root]);
-  const goBack = useCallback(() => root.navigationStore.navigateBack(), [root]);
-  const goForward = useCallback(() => root.navigationStore.navigateForward(), [root]);
+  const goBack = useCallback(() => {
+    closeNarrowNavigation();
+    root.navigationStore.navigateBack();
+  }, [root, closeNarrowNavigation]);
+  const goForward = useCallback(() => {
+    closeNarrowNavigation();
+    root.navigationStore.navigateForward();
+  }, [root, closeNarrowNavigation]);
   return (
     <Sidebar
       store={sidebar}
@@ -48,7 +63,10 @@ export const AppSidebar = observer(function AppSidebar() {
       onToggle={toggleSidebar}
       onOpenSettings={openSettings}
       onOpenCakeChat={openCakeChat}
-      onNewSession={() => root.newSessionStore.show()}
+      onNewSession={() => {
+        closeNarrowNavigation();
+        root.newSessionStore.show();
+      }}
       onOpenSession={openSession}
       onCreateSession={createSession}
       onRemoveProject={(path, deleteSessions) =>

@@ -4,7 +4,7 @@ import {
   DesktopSharingInput,
   type DesktopSharingState,
 } from "../contracts/desktop/desktop-sharing-data";
-import { openNetworkListener } from "../server/NetworkListener";
+import { openNetworkListener, type NetworkListenerOptions } from "../server/NetworkListener";
 import { DesktopSharing } from "../services/electron/DesktopSharing";
 
 type Backend = Exclude<Effect.Services<ReturnType<typeof openNetworkListener>>, Scope.Scope>;
@@ -44,16 +44,23 @@ export const makeDesktopSharingLive = (
             return state;
           }
           yield* publish({ status: "starting", bind: settings.bind, port: settings.port });
-          const opened = yield* openNetworkListener(
-            { bind: settings.bind, port: settings.port, browserAssetsDirectory },
-            configuration,
-          ).pipe(
+          const options: NetworkListenerOptions = {
+            bind: settings.bind,
+            port: settings.port,
+            browserAssetsDirectory,
+          };
+          if (settings.publicOrigin)
+            Object.assign(options, {
+              allowedHosts: [new URL(settings.publicOrigin).host],
+              allowedOrigins: [settings.publicOrigin],
+            });
+          const opened = yield* openNetworkListener(options, configuration).pipe(
             Effect.provide(backend),
             Scope.provide(lifetime),
             Effect.mapError(
               (error) =>
                 new DesktopSharingError({
-                  message: `${error.message} Build browser assets with pnpm build if they are missing.`,
+                  message: `${error.message} Check the bind address and whether the port is in use. If browser assets are missing, build them with pnpm build:browser.`,
                 }),
             ),
             Effect.tapError((error) =>
@@ -63,13 +70,18 @@ export const makeDesktopSharingLive = (
           listener = opened;
           if (opened.address._tag !== "TcpAddress")
             return yield* Effect.die("Expected TCP listener");
-          yield* publish({
+          const serving: DesktopSharingState = {
             status: "serving",
             bind: settings.bind,
             port: opened.address.port,
             editorPort: opened.editorPort,
-            url: `http://${settings.bind}:${opened.address.port}/`,
-          });
+            url: settings.publicOrigin
+              ? `${settings.publicOrigin}/`
+              : `http://${settings.bind}:${opened.address.port}/`,
+          };
+          if (settings.publicOrigin)
+            Object.assign(serving, { publicOrigin: settings.publicOrigin });
+          yield* publish(serving);
           return state;
         },
         (effect) => lock.withPermits(1)(Effect.uninterruptible(effect)),

@@ -368,9 +368,8 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
     Layer.mock(McpSettings, {}),
     Layer.mock(PiAgentResources, {}),
     Layer.mock(ScheduledMessages, {
-      snapshot: () => {
-        throw new Error("Unused schedules");
-      },
+      snapshot: () => ({ revision: 0, messages: [] }),
+      changes: () => Stream.concat(Stream.succeed({ revision: 0, messages: [] }), Stream.never),
     }),
   );
   const context = yield* Layer.build(layer);

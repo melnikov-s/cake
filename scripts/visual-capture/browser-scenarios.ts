@@ -17,6 +17,16 @@ export const browserVisualScenarios = [
     states: ["default"],
   },
   {
+    name: "browser-phone-navigation",
+    description: "Shared browser navigation drawer at a phone viewport",
+    states: ["default"],
+  },
+  {
+    name: "browser-phone-settings",
+    description: "Shared browser narrow-screen Network & privacy settings",
+    states: ["default"],
+  },
+  {
     name: "browser-vscode",
     description:
       "Chromium leased, installed code-server inside Cake (requires /opt/homebrew/bin/code-server)",
@@ -154,6 +164,18 @@ export async function prepareBrowserVisual(page: Page, scenario: string) {
       await trust.getByRole("button", { name: /Yes, I trust the authors/ }).click();
   } else {
     await expect(page.locator('[data-slot="workspace"] textarea').first()).toBeVisible();
+  }
+  if (scenario === "browser-phone-navigation" || scenario === "browser-phone-settings") {
+    await page.locator('[data-slot="header-sidebar-toggle"]').first().click();
+    await expect(page.locator('[data-slot="sidebar"]')).toBeVisible();
+    if (scenario === "browser-phone-settings") {
+      await page
+        .locator('[data-slot="sidebar"]')
+        .getByRole("button", { name: "Open settings", exact: true })
+        .click();
+      await page.getByRole("combobox", { name: "Settings section" }).selectOption("network");
+      await expect(page.getByRole("heading", { name: "Network & privacy" })).toBeVisible();
+    }
   }
   await page.waitForFunction(() => document.fonts.status === "loaded");
   await page.mouse.move(1, 1);

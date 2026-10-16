@@ -91,7 +91,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
       {!flattenSessions && (
         <div
           className={cn(
-            "group/proj flex h-8 w-full items-center gap-1 px-1 select-none text-muted-foreground",
+            "group/proj flex h-8 w-full items-center gap-1 px-1 select-none text-muted-foreground [@media(pointer:coarse)]:h-auto [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:flex-wrap [@media(pointer:coarse)]:[&_.icon-button]:opacity-100",
             focusMode &&
               "h-11 gap-2 px-1.5 text-foreground [&_[data-slot=avatar]]:size-7 [&_svg]:size-5",
           )}
@@ -161,7 +161,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
             <span className="truncate">{projects.nameForPath(path)}</span>
           </Button>
           {!resolved && (
-            <>
+            <div className="flex shrink-0 items-center gap-1 [@media(pointer:coarse)]:basis-full [@media(pointer:coarse)]:justify-end">
               {!focusMode && (
                 <>
                   <IconButton
@@ -229,7 +229,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
               >
                 <PlusIcon />
               </IconButton>
-            </>
+            </div>
           )}
         </div>
       )}

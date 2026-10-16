@@ -133,7 +133,7 @@ export const ProjectConversationSurface = observer(function ProjectConversationS
       loadingLabel="Opening session"
       headerClassName={(pane) =>
         root.sessionLayoutStore.panes[0]?.paneId === pane.paneId
-          ? cn("max-[620px]:pl-[84px]", sidebarCollapsed && "pl-[124px]")
+          ? cn("max-[620px]:pl-14", sidebarCollapsed && "pl-[124px]")
           : undefined
       }
       renderHeader={(pane, session) => (

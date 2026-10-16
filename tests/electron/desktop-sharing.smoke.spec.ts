@@ -81,6 +81,18 @@ test("desktop Settings shares the existing backend; window closure, reopen, disa
     await openSharing(local);
     const toggle = local.getByRole("switch", { name: "Enable browser sharing" });
     await expect(toggle).not.toBeChecked();
+    const httpsOrigin = local.getByRole("textbox", {
+      name: "Browser sharing HTTPS origin",
+      exact: true,
+    });
+    await httpsOrigin.fill("http://not-https.example");
+    await toggle.click();
+    await expect(local.locator("#setting-browser-sharing")).toContainText(
+      "Expected an exact HTTPS origin",
+    );
+    await expect(toggle).not.toBeChecked();
+    await expect(toggle).toBeEnabled();
+    await httpsOrigin.fill("");
     // A real listener failure remains actionable in Settings and never enables sharing.
     const occupied = createServer();
     await new Promise<void>((resolve) => occupied.listen(0, "127.0.0.1", resolve));

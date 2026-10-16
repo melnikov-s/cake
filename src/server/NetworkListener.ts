@@ -1,4 +1,5 @@
 import { NodeSocketServer } from "@effect/platform-node-shared";
+import { exactHost, exactOrigin, exactHttpsOrigin } from "../contracts/desktop/network-access";
 import { Effect, Exit, Layer, Option, Predicate, Result, Schema, Scope } from "effect";
 import { RpcSerialization } from "effect/unstable/rpc";
 import { Socket, SocketServer } from "effect/unstable/socket";
@@ -20,48 +21,6 @@ import { cakeRpcPayloadSchemas } from "../contracts/application/cake-rpc-contrac
 import { RendererRequestCoordinator } from "../services/renderer-requests/RendererRequestCoordinator";
 import type { PreviewLeases } from "../services/browser/PreviewLeases";
 
-const exactHost = Schema.NonEmptyString.check(
-  Schema.isMaxLength(512),
-  Schema.makeFilter(
-    (value) => {
-      try {
-        const url = new URL(`http://${value}`);
-        return (
-          !value.includes("*") &&
-          (url.host === value.toLowerCase() || `${url.hostname}:80` === value.toLowerCase()) &&
-          url.pathname === "/" &&
-          !url.username &&
-          !url.password
-        );
-      } catch {
-        return false;
-      }
-    },
-    {
-      message:
-        "Expected an exact Host authority (hostname with optional port), not a wildcard or URL",
-    },
-  ),
-);
-const exactOrigin = Schema.NonEmptyString.check(
-  Schema.isMaxLength(2048),
-  Schema.makeFilter(
-    (value) => {
-      try {
-        const url = new URL(value);
-        return (
-          (url.protocol === "http:" || url.protocol === "https:") &&
-          url.origin === value &&
-          !value.includes("*")
-        );
-      } catch {
-        return false;
-      }
-    },
-    { message: "Expected an exact http(s) origin without a path or wildcard" },
-  ),
-);
-
 export const NetworkListenerOptions = Schema.Struct({
   browserAssetsDirectory: Schema.optionalKey(Schema.NonEmptyString),
   bind: Schema.optionalKey(Schema.NonEmptyString.check(Schema.isMaxLength(253))),
@@ -74,13 +33,7 @@ export const NetworkListenerOptions = Schema.Struct({
   editorPort: Schema.optionalKey(
     Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 65535 })),
   ),
-  editorPublicOrigin: Schema.optionalKey(
-    exactOrigin.check(
-      Schema.makeFilter((value) => value.startsWith("https://"), {
-        message: "Expected an exact HTTPS editor origin",
-      }),
-    ),
-  ),
+  editorPublicOrigin: Schema.optionalKey(exactHttpsOrigin),
   allowMissingOrigin: Schema.optionalKey(Schema.Boolean),
   maxPayloadBytes: Schema.optionalKey(
     Schema.Int.check(Schema.isBetween({ minimum: 1024, maximum: 16 * 1024 * 1024 })),
