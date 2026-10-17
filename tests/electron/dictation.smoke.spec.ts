@@ -291,6 +291,29 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await page.keyboard.type("Explicitly chosen input");
     await expect(composer).toHaveValue("Explicitly chosen input");
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+
+    // Detector false positives must not delete selected text or move the caret before words exist.
+    await configure({ ready: true, hold: true, speech: true, text: "" });
+    await composer.evaluate((element: HTMLTextAreaElement) => {
+      element.setSelectionRange(11, 11);
+    });
+    for (let index = 0; index < 6; index++) await composer.press("Shift+ArrowRight");
+    const requestCount = async () =>
+      JSON.parse(await readFile(join(model, "request.json"), "utf8")).count as number;
+    const beforeNoise = await requestCount();
+    await configure({ ready: true, speech: true, text: "" });
+    await expect.poll(requestCount).toBeGreaterThanOrEqual(beforeNoise + 2);
+    await expect(composer).toHaveValue("Explicitly chosen input");
+    expect(
+      await composer.evaluate((element: HTMLTextAreaElement) => [
+        element.selectionStart,
+        element.selectionEnd,
+      ]),
+    ).toEqual([11, 17]);
+    await configure({ ready: true, speech: true, text: "spoken" });
+    await expect(composer).toHaveValue("Explicitly spoken input");
+    await expect(composer).toBeFocused();
+    await configure({ ready: true, speech: false, text: "" });
     await composer.fill("");
 
     // Temporary mute preserves typing-mode convenience focus, even across sessions.

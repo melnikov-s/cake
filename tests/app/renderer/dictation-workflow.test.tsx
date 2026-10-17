@@ -991,6 +991,31 @@ describe("Dictation writing-field workflow", () => {
     expect(fixture.release).toHaveBeenCalledOnce();
   });
 
+  it("preserves selected text through noise-only results and edits only when recognition changes", async () => {
+    using fixture = renderDictation();
+    await fixture.user.type(message(), "Keep chosen text");
+    await fixture.user.click(mode());
+    await fixture.user.click(message());
+    act(() => {
+      message().setSelectionRange(5, 11);
+      fireEvent.select(message());
+    });
+    const input = vi.fn();
+    message().addEventListener("input", input);
+    for (const [index, text] of ["", " \n ", "spoken", "spoken", " spoken "].entries()) {
+      await fixture.audio.push(new Float32Array(12_800).fill(0.1));
+      await fixture.recognize(index, text);
+      if (index < 2) {
+        expect(message().value).toBe("Keep chosen text");
+        expect([message().selectionStart, message().selectionEnd]).toEqual([5, 11]);
+        expect(input).not.toHaveBeenCalled();
+      } else {
+        expect(message().value).toBe("Keep spoken text");
+        expect(input).toHaveBeenCalledOnce();
+      }
+    }
+  });
+
   it("replaces punctuation revisions without duplicating or stripping recognizer punctuation", async () => {
     using fixture = renderDictation();
     await fixture.user.click(mode());

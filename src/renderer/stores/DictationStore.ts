@@ -325,6 +325,9 @@ export class DictationStore extends Store<{
       { signal: this.signal },
     );
     if (this.utterance === run && run.id === utteranceId) {
+      // Empty/no-change recognition is not an edit: preserve the user's selection until
+      // words arrive, even when background noise triggers the speech detector.
+      if (text.trim() === run.rawText.trim()) return;
       run.rawText = text;
       const cleaned = this.textProcessingMode !== "raw" && run.cleanedRaw === text;
       const span = run.target.replace(cleaned ? (run.cleanedText ?? text) : text);
