@@ -549,13 +549,14 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
               ...record,
               inputs,
               ...(canceledInputIds ? { canceledInputIds } : null),
-              state: inputs.length
-                ? outcome === "aborted"
-                  ? "stopped"
-                  : record.state
-                : outcome === "aborted"
-                  ? "stopped"
-                  : outcome,
+              // Withdrawing an input does not stop the session. Only an explicit
+              // stop pauses remaining recovery work, including later settlements.
+              state:
+                inputs.length || record.state === "stopped"
+                  ? record.state
+                  : outcome === "aborted"
+                    ? "complete"
+                    : outcome,
             });
           }),
         );
@@ -1353,10 +1354,12 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
             editQueue("steerQueuedMessage", (runtime) => runtime.steerQueuedMessage(partId)),
           sendQueuedMessageNow: (partId) =>
             Effect.gen(function* () {
-              const claimed = yield* claimAbortedTurns(shared.runtime.executingTurnIds?.() ?? []);
+              // Pi validates the selection before aborting. Leave completion ownership
+              // intact on rejection (and let prompt settlement clean up post-abort failures).
               const result = yield* call("sendQueuedMessageNow", (runtime) =>
                 runtime.sendQueuedMessageNow(partId),
               );
+              const claimed = yield* claimAbortedTurns(result.abortedTurnIds);
               yield* settleAbortedTurns(claimed, undefined);
               return result.queued;
             }),
@@ -1392,6 +1395,14 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
               runtime.setUserMessageMarkdown(entryId, renderAsMarkdown),
             ),
           abort: Effect.fn("CakeSessionRuntimes.abort")(function* (stop?: TurnStop) {
+            yield* recoveryGate
+              .withPermit(
+                Effect.gen(function* () {
+                  const record = yield* recoveryStorage.get(shared.runtime.sessionId);
+                  if (record) yield* recoveryStorage.update({ ...record, state: "stopped" });
+                }),
+              )
+              .pipe(sessionError("abort"));
             const claimed = yield* claimAbortedTurns(shared.runtime.executingTurnIds?.() ?? []);
             yield* settleAbortedTurns(claimed, stop);
             yield* call("abort", (runtime) => runtime.abort(stop));
