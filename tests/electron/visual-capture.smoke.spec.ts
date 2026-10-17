@@ -13,8 +13,8 @@ for (const [width, height] of [
   [915, 412],
   [1440, 900],
 ] as const) {
-  for (const state of ["default", "restored-open", "restored-closed"]) {
-    test(`browser sidebar ${state} at ${width}x${height}`, async () => {
+  for (const state of ["default", "restored-open", "restored-closed", "restored-settings"]) {
+    test(`browser entry ${state} at ${width}x${height}`, async () => {
       const outputRoot = await mkdtemp(join(tmpdir(), "cake-sidebar-defaults-"));
       try {
         const result = await captureVisual(

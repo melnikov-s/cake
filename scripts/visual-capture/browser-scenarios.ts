@@ -10,13 +10,14 @@ interface BrowserPaths {
 }
 
 const sessionId = "00000000-0000-4000-8000-000000000001";
+const linkSessionId = "00000000-0000-4000-8000-000000000002";
 
 export const browserVisualScenarios = [
   {
     name: "browser-sidebar-defaults",
     description:
-      "Initial sidebar defaults, restoration, toggling and navigation on phone and desktop",
-    states: ["default", "restored-open", "restored-closed"],
+      "Initial Cake Chat/sidebar defaults, restoration, manual navigation and links on phone and desktop",
+    states: ["default", "restored-open", "restored-closed", "restored-settings"],
   },
   {
     name: "browser-responsive",
@@ -193,6 +194,35 @@ export async function seedBrowserVisual(paths: BrowserPaths, rich = false) {
       .map((entry) => JSON.stringify(entry))
       .join("\n") + "\n",
   );
+  await writeFile(
+    join(directory, `1970-01-01T00-00-01-000Z_${linkSessionId}.jsonl`),
+    [
+      { type: "session", version: 3, id: linkSessionId, timestamp, cwd: paths.project },
+      {
+        type: "message",
+        id: "linked-user",
+        parentId: null,
+        timestamp,
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "Follow the links to the original conversation.",
+            },
+          ],
+          timestamp: 0,
+        },
+      },
+      assistant(
+        `Open the [original session](cake://session/${sessionId}) or the [exact request](cake://session/${sessionId}?message=user).`,
+        "linked-answer",
+        "linked-user",
+      ),
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n") + "\n",
+  );
   if (rich)
     await seedArtifact(
       paths,
@@ -356,13 +386,31 @@ async function prepareSidebarDefaults(page: Page, state: string) {
   const sidebar = page.locator('[data-slot="sidebar"]');
   const headerToggle = page.locator('[data-slot="header-sidebar-toggle"]').first();
   await expect(headerToggle).toBeAttached();
-  if (phone) await expect(sidebar).toBeHidden();
-  else await expect(sidebar).toBeVisible();
+  const cakeChat = page.getByRole("combobox", { name: "Message Cake Chat", exact: true });
+  if (phone) {
+    await expect(sidebar).toBeHidden();
+    await expect(cakeChat).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "What can I help you find or do?" }),
+    ).toBeVisible();
+  } else await expect(sidebar).toBeVisible();
 
   if (state !== "default") {
-    // Model a previously open desktop tab (or an explicitly closed tab) entering
-    // this viewport, retaining all other tab-local presentation state.
-    // Seed after the outgoing page has flushed its snapshot on pagehide.
+    // Persist a real visited Project Session (and optionally Settings), including
+    // its registry and layout, rather than fabricating a partial navigation record.
+    if (!(await sidebar.isVisible())) await headerToggle.click();
+    await sidebar.locator(`[data-session-id="${sessionId}"]`).last().click();
+    await expect(
+      page
+        .locator(".transcript")
+        .getByText("Can I use the same Cake workspace in my browser?", { exact: true }),
+    ).toBeVisible();
+    if (state === "restored-settings") {
+      if (!(await sidebar.isVisible())) await headerToggle.click();
+      await sidebar.getByRole("button", { name: "Open settings", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Back to chat", exact: true })).toBeVisible();
+    }
+    // Seed visibility only after the outgoing page flushes its coherent snapshot.
     await page.addInitScript((hidden) => {
       const key = "cake.browser.presentation.v1";
       const saved = JSON.parse(sessionStorage.getItem(key) ?? '{"state":{},"children":{}}');
@@ -372,8 +420,21 @@ async function prepareSidebarDefaults(page: Page, state: string) {
     }, state === "restored-closed");
     await page.reload();
     await expect(headerToggle).toBeAttached();
-    if (phone || state === "restored-closed") await expect(sidebar).toBeHidden();
-    else await expect(sidebar).toBeVisible();
+    if (phone) {
+      await expect(sidebar).toBeHidden();
+      await expect(cakeChat).toBeVisible();
+    } else if (state === "restored-settings") {
+      await expect(page.getByRole("button", { name: "Back to chat", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Back to chat", exact: true }).click();
+    } else {
+      await expect(
+        page
+          .locator(".transcript")
+          .getByText("Can I use the same Cake workspace in my browser?", { exact: true }),
+      ).toBeVisible();
+      if (state === "restored-closed") await expect(sidebar).toBeHidden();
+      else await expect(sidebar).toBeVisible();
+    }
   }
 
   if (!(await sidebar.isVisible())) await headerToggle.click();
@@ -391,6 +452,11 @@ async function prepareSidebarDefaults(page: Page, state: string) {
   await sidebar.locator(`[data-session-id="${sessionId}"]`).last().click();
   const input = page.locator('[data-slot="workspace"] textarea').first();
   await expect(input).toBeVisible();
+  await expect(
+    page
+      .locator(".transcript")
+      .getByText("Can I use the same Cake workspace in my browser?", { exact: true }),
+  ).toBeVisible();
   // Selecting a conversation retains the existing narrow-drawer close behavior.
   if (phone) await expect(sidebar).toBeHidden();
   else await expect(sidebar).toBeVisible();
@@ -410,6 +476,34 @@ async function prepareSidebarDefaults(page: Page, state: string) {
   await expect(input).toBeVisible();
   if (phone) await expect(sidebar).toBeHidden();
   else await expect(sidebar).toBeVisible();
+
+  // Viewport changes must not reapply either startup default after manual navigation.
+  if (!(await sidebar.isVisible())) await headerToggle.click();
+  const viewport = page.viewportSize()!;
+  await page.setViewportSize(phone ? { width: 1200, height: 800 } : { width: 500, height: 800 });
+  await expect(input).toBeVisible();
+  await expect(sidebar).toBeVisible();
+  await page.setViewportSize(viewport);
+  await expect(input).toBeVisible();
+  await expect(sidebar).toBeVisible();
+
+  // Intentional session and exact-message links still select their requested target.
+  for (const name of ["original session", "exact request"]) {
+    if (!(await sidebar.isVisible())) await headerToggle.click();
+    await sidebar.locator(`[data-session-id="${linkSessionId}"]`).last().click();
+    await page.getByRole("link", { name, exact: true }).click();
+    await expect(
+      page
+        .locator(".transcript")
+        .getByText("Can I use the same Cake workspace in my browser?", { exact: true }),
+    ).toBeVisible();
+    if (name === "exact request")
+      await expect(
+        page.locator('[data-slot="transcript-item"][aria-current="true"]'),
+      ).toContainText("Can I use the same Cake workspace in my browser?");
+    if (phone) await expect(sidebar).toBeHidden();
+    else await expect(sidebar).toBeVisible();
+  }
   await page.waitForFunction(() => document.fonts.status === "loaded");
   await page.mouse.move(1, 1);
 }
