@@ -23,10 +23,16 @@ const ready: BrowserStateSnapshot = {
   inspecting: false,
 };
 
-function renderBrowser(client: TestClientOverrides = {}) {
+function renderBrowser(client: TestClientOverrides = {}, secondary = false) {
   const fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: "/project", name: "Project" })],
-    sessions: [sessionSummary({ sessionId, projectPath: "/project", title: "Browser task" })],
+    sessions: [sessionId, ...(secondary ? ["other-session"] : [])].map((id) =>
+      sessionSummary({
+        sessionId: id,
+        projectPath: "/project",
+        title: id === sessionId ? "Browser task" : "Other task",
+      }),
+    ),
     client: {
       ...client,
       browser: {
@@ -36,25 +42,27 @@ function renderBrowser(client: TestClientOverrides = {}) {
       },
     },
   });
-  fixture.root.sessionRegistry.load(sessionId, "/project");
-  applyConversationUpdate(fixture.models.projectConversation(sessionId, "/project"), {
-    _tag: "Snapshot",
-    revision: 1,
-    snapshot: {
-      sessionId,
-      sessionFile: "/sessions/browser-session.jsonl",
-      parts: [],
-      models: [],
-      thinkingLevel: "off",
-      availableThinkingLevels: ["off"],
-      streaming: false,
-      diagnostics: [],
-      commands: [],
-      compatibility: { resources: [], diagnostics: [] },
-      extensionUi: { statuses: [] },
-      tree: [],
-    },
-  });
+  for (const id of [sessionId, ...(secondary ? ["other-session"] : [])]) {
+    fixture.root.sessionRegistry.load(id, "/project");
+    applyConversationUpdate(fixture.models.projectConversation(id, "/project"), {
+      _tag: "Snapshot",
+      revision: 1,
+      snapshot: {
+        sessionId: id,
+        sessionFile: `/sessions/${id}.jsonl`,
+        parts: [],
+        models: [],
+        thinkingLevel: "off",
+        availableThinkingLevels: ["off"],
+        streaming: false,
+        diagnostics: [],
+        commands: [],
+        compatibility: { resources: [], diagnostics: [] },
+        extensionUi: { statuses: [] },
+        tree: [],
+      },
+    });
+  }
   fixture.root.appShellStore.selectProjectSession(sessionId);
   fixture.root.projectWorkbenchStore.showLoadedSession(sessionId);
   fixture.root.sessionLayoutStore.ensureSession(sessionId);
@@ -90,6 +98,34 @@ afterEach(() => {
 // These tests cover renderer workflows over a controlled native Browser Client, not Chromium
 // navigation, native focus/keyboard capture, or real viewport geometry.
 describe("Browser workspace workflow", () => {
+  it("does not present a late native open over another session and restores the original browser deliberately", async () => {
+    let finish!: (state: BrowserStateSnapshot) => void;
+    const pending = new Promise<BrowserStateSnapshot>((resolve) => {
+      finish = resolve;
+    });
+    const open = vi
+      .fn<Client["browser"]["open"]>()
+      .mockReturnValueOnce(pending)
+      .mockResolvedValueOnce(ready);
+    using fixture = renderBrowser({ browser: { open } }, true);
+    await fixture.user.click(screen.getByRole("button", { name: "Open Browser Mode" }));
+    await waitFor(() => expect(open).toHaveBeenCalledTimes(1));
+    await fixture.user.click(screen.getByRole("button", { name: /^Other task / }));
+    expect(screen.queryByRole("textbox", { name: "Browser address" })).toBeNull();
+    await act(async () => {
+      finish({ ...ready, url: "http://localhost:3000/stale" });
+      await pending;
+    });
+    expect(screen.queryByRole("textbox", { name: "Browser address" })).toBeNull();
+    expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: /^Browser task / }));
+    await waitFor(() => expect(address().value).toBe(ready.url));
+    expect(open).toHaveBeenCalledTimes(2);
+    expect(open.mock.calls.map(([id]) => id)).toEqual([sessionId, sessionId]);
+    await fixture.user.click(screen.getByRole("button", { name: "Back to agent" }));
+    expect(screen.queryByRole("textbox", { name: "Browser address" })).toBeNull();
+  });
+
   it("opens the session's browser, follows host navigation capabilities, and returns to chat", async () => {
     const open = vi.fn<Client["browser"]["open"]>(async () => ready);
     const action = vi
