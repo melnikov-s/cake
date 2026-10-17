@@ -10,6 +10,14 @@ import {
   reportRef,
 } from "./artifact-reference-workflow-fixture";
 
+const emptyCatalog: Client["artifacts"]["catalog"] = async () => ({
+  items: [],
+  offset: 0,
+  limit: 50,
+  total: 0,
+  hasMore: false,
+});
+
 function gate<Value>() {
   let resolve!: (value: Value) => void;
   let reject!: (error: Error) => void;
@@ -59,11 +67,12 @@ describe("Artifact reference workflow", () => {
       {
         referenceMetadata: metadata,
         readExact,
+        catalog: emptyCatalog,
       },
     );
     await screen.findByRole("link", { name: "report" });
     expect(screen.getByRole("link", { name: "Custom report label" })).toBeDefined();
-    expect(metadata).toHaveBeenCalledOnce();
+    expect(metadata).toHaveBeenCalledWith(reportRef, expect.anything());
     expect(readExact).not.toHaveBeenCalled();
     await act(async () => pending.resolve(referenceMetadata(reportRef)));
     const bare = await screen.findByRole("link", { name: "Quarterly report" });
@@ -72,6 +81,11 @@ describe("Artifact reference workflow", () => {
     expect(screen.getByRole("link", { name: "Custom report label" }).getAttribute("href")).toBe(
       reportRef,
     );
+    // Initial workspace composition can remount the transcript. Once mounted,
+    // both labels reconcile through a single active reference request.
+    metadata.mockClear();
+    await fixture.publishArtifactsChanged();
+    expect(metadata).toHaveBeenCalledOnce();
     await fixture.user.click(screen.getByRole("link", { name: "Custom report label" }));
     expect(await screen.findByText("report content r1")).toBeDefined();
     expect(screen.getByText("Revision 1 of 2 · Historical revision")).toBeDefined();
@@ -91,7 +105,10 @@ describe("Artifact reference workflow", () => {
   it("keeps a reference readable and able to open its exact destination after metadata fails", async () => {
     const pending = gate<ArtifactReferenceMetadata>();
     const metadata = vi.fn<Client["artifacts"]["referenceMetadata"]>(() => pending.promise);
-    using fixture = renderArtifactReferences(reportRef, { referenceMetadata: metadata });
+    using fixture = renderArtifactReferences(reportRef, {
+      referenceMetadata: metadata,
+      catalog: emptyCatalog,
+    });
     const link = await screen.findByRole("link", { name: "report" });
     expect(link.getAttribute("aria-description")).toBe(reportRef);
     await act(async () => pending.reject(new Error("Metadata unavailable")));
@@ -117,7 +134,7 @@ describe("Artifact reference workflow", () => {
       referenceMetadata: metadata,
       readExact,
     });
-    await waitFor(() => expect(pending).toHaveLength(2));
+    await waitFor(() => expect(new Set(pending.map((request) => request.reference)).size).toBe(2));
     await act(async () => {
       for (const request of pending.splice(0))
         request.resolve(referenceMetadata(request.reference));
@@ -211,26 +228,68 @@ describe("Artifact reference workflow", () => {
     expect(screen.queryByText("Report link unavailable")).toBeNull();
   });
 
-  it("reuses recent metadata and refetches an evicted reference after more than 100 distinct previews", async () => {
+  it("reconciles a remounted reference after its previous renderer demand is released", async () => {
     const metadata = vi.fn<Client["artifacts"]["referenceMetadata"]>(async (reference) =>
       referenceMetadata(reference),
     );
-    using fixture = renderArtifactReferences(
-      Array.from({ length: 100 }, (_, index) => `cake://artifact/report-${index}`).join("\n\n"),
-      { referenceMetadata: metadata },
-    );
+    using fixture = renderArtifactReferences("cake://artifact/report-99", {
+      referenceMetadata: metadata,
+    });
     await screen.findByRole("link", { name: "Artifact report-99" });
-    expect(metadata).toHaveBeenCalledTimes(100);
+    const initialRequests = metadata.mock.calls.length;
     await fixture.receiveTranscript("cake://artifact/extra");
     await screen.findByRole("link", { name: "Artifact extra" });
-    expect(metadata).toHaveBeenCalledTimes(101);
+    expect(metadata.mock.calls.length).toBeGreaterThan(initialRequests);
+    const afterRelease = metadata.mock.calls.length;
     await fixture.receiveTranscript("cake://artifact/report-99");
     await screen.findByRole("link", { name: "Artifact report-99" });
-    expect(metadata).toHaveBeenCalledTimes(101);
-    await fixture.receiveTranscript("cake://artifact/report-0");
-    await screen.findByRole("link", { name: "Artifact report-0" });
-    expect(metadata).toHaveBeenCalledTimes(102);
-    expect(metadata).toHaveBeenLastCalledWith("cake://artifact/report-0", expect.anything());
+    expect(metadata.mock.calls.length).toBeGreaterThan(afterRelease);
+    expect(metadata).toHaveBeenLastCalledWith("cake://artifact/report-99", expect.anything());
+  });
+
+  it("shares inline/reference resolution and preserves the lineage title when a delayed exact read completes", async () => {
+    const exactRef = "cake://artifact/report@r2";
+    const pendingMetadata = gate<ArtifactReferenceMetadata>();
+    const pendingRead = gate<Awaited<ReturnType<Client["artifacts"]["readExact"]>>>();
+    const metadata = vi.fn<Client["artifacts"]["referenceMetadata"]>(() => pendingMetadata.promise);
+    const readExact = vi.fn<Client["artifacts"]["readExact"]>(() => pendingRead.promise);
+    using fixture = renderArtifactReferences(
+      exactRef,
+      { referenceMetadata: metadata, readExact, catalog: emptyCatalog },
+      [
+        {
+          id: "publication",
+          kind: "tool",
+          name: "cake",
+          command: "artifacts.present",
+          input: "",
+          state: "success",
+          artifactId: "report",
+          artifactRevision: 2,
+          artifactReference: exactRef,
+        },
+      ],
+    );
+    await waitFor(() => expect(readExact).toHaveBeenCalledWith("report", 2, expect.anything()));
+    expect(metadata).toHaveBeenCalledWith(exactRef, expect.anything());
+    await act(async () =>
+      pendingMetadata.resolve({
+        ...referenceMetadata(exactRef),
+        lineage: { ...referenceMetadata(exactRef).lineage, title: "Renamed report" },
+      }),
+    );
+    await screen.findByRole("link", { name: "Renamed report" });
+    expect(screen.getByRole("button", { name: "Renamed report Collapse" })).toBeDefined();
+    metadata.mockClear();
+    await fixture.publishArtifactsChanged();
+    expect(metadata).toHaveBeenCalledOnce(); // The inline mount and prose link share reconciliation.
+    await act(async () =>
+      pendingRead.resolve(artifactRevision(referenceMetadata(exactRef).lineage.id, 2)),
+    );
+    expect(await screen.findByText("report content r2")).toBeDefined();
+    expect(screen.getByRole("link", { name: "Renamed report" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Renamed report Collapse" })).toBeDefined();
+    expect(readExact).toHaveBeenCalledWith("report", 2, expect.anything());
   });
 
   it("aborts pending metadata on window disposal and keeps the next window independent of late results", async () => {

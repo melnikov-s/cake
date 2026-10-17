@@ -343,7 +343,11 @@ review policy.
 
 Inline disclosures mount a live renderer only while expanded. A focused window-owned
 `InlineArtifactPreviewStore` owns per-mount expansion and read status; exact payloads
-stay in the shared Artifact Catalog Model. Stable embeds and ordinary publication
+stay in the shared Artifact Catalog Model. Reference links and inline previews share
+metadata resolution through `ArtifactReferencePreviewStore` while mounted. It retains
+only exact reference identity and loading/error status; mutable lineage titles and
+links, plus revision metadata, normalize into the shared Artifact Catalog Model.
+Stable embeds and ordinary publication
 cards follow the latest published source, including already-open mounts. Publication
 revision metadata is provenance, not a display pin. Explicit `@rN` embeds, pinned
 session/family links, and deliberate history selections retain their selected source.

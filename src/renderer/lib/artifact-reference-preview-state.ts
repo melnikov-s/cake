@@ -1,7 +1,7 @@
-import type { ArtifactReferenceMetadata } from "../../contracts/artifacts/artifact-lineage";
+import type { ArtifactStableRef } from "../../contracts/artifacts/artifact-lineage";
 
 export type ArtifactReferencePreviewState = {
   loading: boolean;
-  metadata?: ArtifactReferenceMetadata;
+  exactRef?: ArtifactStableRef;
   error?: string;
 };

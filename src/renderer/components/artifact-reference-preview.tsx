@@ -17,9 +17,10 @@ export const ArtifactReferencePreview = observer(function ArtifactReferencePrevi
   onOpen(lineageId: string, revision?: number): void;
 }) {
   useEffect(() => {
-    void store.previewReference(reference);
+    store.retainReference(reference);
+    return () => store.releaseReference(reference);
   }, [reference, store]);
-  const state = store.previewStates[reference];
+  const lineage = store.lineage(reference);
   const parsed = parseArtifactRef(reference);
   return (
     <Link
@@ -30,7 +31,7 @@ export const ArtifactReferencePreview = observer(function ArtifactReferencePrevi
         onOpen(parsed.lineageId, parsed.revision);
       }}
     >
-      {children ?? state?.metadata?.lineage.title ?? parsed.lineageId}
+      {children ?? lineage?.title ?? parsed.lineageId}
     </Link>
   );
 });

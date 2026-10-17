@@ -11,6 +11,7 @@ import {
   type ArtifactRevision,
 } from "../../../src/contracts/artifacts/artifact-lineage";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
+import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { RendererRoot } from "../../../src/renderer/components/renderer-root";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
@@ -79,6 +80,7 @@ export function artifactRevision(
 export function renderArtifactReferences(
   text: string,
   artifacts: Partial<Client["artifacts"]> = {},
+  inlineParts: UiPart[] = [],
 ) {
   const fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: "/project", name: "Project" })],
@@ -129,7 +131,10 @@ export function renderArtifactReferences(
   const snapshot = (content: string): ConversationSnapshot => ({
     sessionId: "session-1",
     sessionFile: "/sessions/session-1.jsonl",
-    parts: [{ id: "response", kind: "text", role: "assistant", status: "complete", text: content }],
+    parts: [
+      ...inlineParts,
+      { id: "response", kind: "text", role: "assistant", status: "complete", text: content },
+    ],
     models: [],
     thinkingLevel: "off",
     availableThinkingLevels: ["off"],

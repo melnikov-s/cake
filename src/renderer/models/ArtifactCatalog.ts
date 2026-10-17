@@ -5,6 +5,7 @@ import type {
   ArtifactLink as ArtifactLinkValue,
   ArtifactRevision as ArtifactRevisionValue,
   ArtifactRevisionMetadata,
+  ArtifactReferenceMetadata,
   EffectiveArtifactProjection,
 } from "../../contracts/artifacts/artifact-lineage";
 import { ArtifactAssociation } from "./ArtifactAssociation";
@@ -113,6 +114,13 @@ export class ArtifactCatalog extends Model {
     });
   }
 
+  applyReferenceMetadata(metadata: ArtifactReferenceMetadata) {
+    batch(() => {
+      this.applyDetail(metadata);
+      this.applyHistory(metadata.lineage.id, [metadata.revision]);
+    });
+  }
+
   applyHistory(lineageId: string, revisions: ReadonlyArray<ArtifactRevisionMetadata>) {
     batch(() => {
       const lineage = this.find(lineageId);
@@ -161,7 +169,12 @@ export class ArtifactCatalog extends Model {
         authoritativeLatestRevision,
         value.metadata.revision,
       );
-      if (value.metadata.revision >= lineage.latestRevision && value.snapshot.title !== undefined)
+      // Loading immutable bytes must not overwrite a title already supplied by
+      // current lineage metadata for this revision (including a delayed exact read).
+      if (
+        value.metadata.revision >= lineage.latestRevision &&
+        (value.metadata.revision > previousLatestRevision || lineage.title === undefined)
+      )
         lineage.title = value.snapshot.title;
       const existing = lineage.revision(value.metadata.revision);
       // Revision bytes are immutable. Reconciliation must not replace an already-loaded

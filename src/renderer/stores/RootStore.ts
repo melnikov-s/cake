@@ -252,7 +252,10 @@ export class RootStore extends Store<{
 
   @child
   get inlineArtifactPreviewStore(): InlineArtifactPreviewStore {
-    return createStore(InlineArtifactPreviewStore, { model: this.props.projection.artifacts });
+    return createStore(InlineArtifactPreviewStore, {
+      model: this.props.projection.artifacts,
+      references: this.artifactReferencePreviewStore,
+    });
   }
 
   @child

@@ -5,7 +5,10 @@ import { VirtuosoMockContext } from "react-virtuoso";
 import { Schema } from "effect";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { EffectiveArtifactProjection } from "../../../src/contracts/artifacts/artifact-lineage";
+import {
+  EffectiveArtifactProjection,
+  parseArtifactRef,
+} from "../../../src/contracts/artifacts/artifact-lineage";
 import type { Client } from "../../../src/renderer/client/Client";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import { RendererRoot } from "../../../src/renderer/components/renderer-root";
@@ -113,6 +116,29 @@ function renderSessionArtifacts(
           hasMore: false,
         }),
         readExact: async (_id, revision) => effective(revision).revision,
+        referenceMetadata: async (reference) => {
+          const parsed = parseArtifactRef(reference);
+          const latest =
+            initial?.find((item) => item.revision.lineageId === parsed.lineageId) ??
+            effective(2, parsed.lineageId);
+          return {
+            lineage: {
+              id: latest.revision.lineageId,
+              createdAt: latest.revision.metadata.publishedAt,
+              latestRevision: latest.latestRevision,
+              latest: latest.revision.metadata,
+              title: latest.revision.snapshot.title,
+              stableRef: latest.stableRef,
+            },
+            revision: {
+              ...latest.revision.metadata,
+              revision: parsed.revision ?? latest.latestRevision,
+            },
+            links: [latest.link],
+            stableRef: latest.stableRef,
+            exactRef: `cake://artifact/${parsed.lineageId}@r${parsed.revision ?? latest.latestRevision}`,
+          };
+        },
         ...artifacts,
       },
     },
@@ -324,6 +350,116 @@ describe("Session artifact workflows", () => {
     act(() => fixture.invalidate());
     await screen.findByText("Family report content r3");
     expect(screen.getAllByText("Family report content r1")).toHaveLength(2);
+  });
+
+  it("shares title/link updates across inline, reference and detail without moving a pinned selection or coupling expansion", async () => {
+    let authority = effective(1);
+    let title = "Family report";
+    let links = [authority.link];
+    const detail = () => ({
+      lineage: {
+        ...reportSummary(),
+        title,
+        latestRevision: authority.latestRevision,
+        latest: authority.revision.metadata,
+      },
+      links,
+      stableRef: authority.stableRef,
+    });
+    const pendingDetail = gate<Awaited<ReturnType<Client["artifacts"]["detail"]>>>();
+    let holdDetail = false;
+    const referenceMetadata = vi.fn<Client["artifacts"]["referenceMetadata"]>(
+      async (reference) => ({
+        ...detail(),
+        revision: effective(parseArtifactRef(reference).revision ?? authority.latestRevision)
+          .revision.metadata,
+        exactRef: parseArtifactRef(reference).revision ? effective(1).exactRef : authority.exactRef,
+      }),
+    );
+    using fixture = renderSessionArtifacts(
+      {
+        effective: async () => [authority],
+        referenceMetadata,
+        catalog: async () => ({
+          items: [detail().lineage],
+          offset: 0,
+          limit: 50,
+          total: 1,
+          hasMore: false,
+        }),
+        detail: () => (holdDetail ? pendingDetail.promise : Promise.resolve(detail())),
+        readExact: async (_id, revision) => effective(revision).revision,
+      },
+      [authority],
+      [
+        { ...visualPart, id: "first", artifactId: "shared", artifactRevision: 1 },
+        { ...visualPart, id: "second", artifactId: "shared", artifactRevision: 1 },
+        {
+          id: "references",
+          kind: "text",
+          role: "assistant",
+          status: "complete",
+          text: "cake://artifact/shared and cake://artifact/shared@r1",
+        },
+      ],
+    );
+    await screen.findAllByRole("button", { name: "Family report Collapse" });
+    await waitFor(() =>
+      expect(screen.getAllByRole("link", { name: "Family report" })).toHaveLength(2),
+    );
+    const initialRequests = referenceMetadata.mock.calls.length;
+    await fixture.user.click(screen.getAllByRole("button", { name: "Family report Collapse" })[0]!);
+
+    // Detail independently learns newer metadata; every existing presentation sees that same Model.
+    authority = effective(2);
+    title = "Renamed report";
+    links = [
+      authority.link,
+      {
+        ...authority.link,
+        target: { type: "session", sessionId: "session-2" },
+        selection: { mode: "pinned", revision: effective(1).revision.metadata.revision },
+      },
+    ];
+    await fixture.user.click(screen.getByRole("button", { name: "1 artifacts" }));
+    await fixture.user.click(
+      within(await screen.findByRole("dialog", { name: "Artifacts" })).getByRole("button", {
+        name: /Family report/,
+      }),
+    );
+    await screen.findByRole("heading", { name: title });
+    await fixture.user.selectOptions(
+      screen.getByRole("combobox", { name: "Selected artifact revision" }),
+      "1",
+    );
+    expect(screen.getAllByRole("link", { name: title })).toHaveLength(2);
+    expect(screen.getByRole("button", { name: `${title} Expand` })).toBeDefined();
+    expect(screen.getByRole("button", { name: `${title} Collapse` })).toBeDefined();
+    expect(screen.getByText("Pinned r1")).toBeDefined();
+    expect(
+      (screen.getByRole("combobox", { name: "Selected artifact revision" }) as HTMLSelectElement)
+        .value,
+    ).toBe("1");
+    expect(referenceMetadata).toHaveBeenCalledTimes(initialRequests);
+
+    // Reference reconciliation alone can update an already-open detail's links/title.
+    holdDetail = true;
+    title = "Reconnected report";
+    links = [authority.link];
+    await act(async () => fixture.invalidate());
+    await screen.findByRole("heading", { name: title });
+    expect(screen.queryByText("Pinned r1")).toBeNull();
+    expect(screen.getAllByRole("link", { name: title })).toHaveLength(2);
+    expect(screen.getByRole("button", { name: `${title} Expand` })).toBeDefined();
+    expect(screen.getByRole("button", { name: `${title} Collapse` })).toBeDefined();
+    expect(
+      (screen.getByRole("combobox", { name: "Selected artifact revision" }) as HTMLSelectElement)
+        .value,
+    ).toBe("1");
+    expect(screen.getByText("Family report content r1")).toBeDefined();
+    expect(screen.getByText("Family report content r2")).toBeDefined();
+    expect(referenceMetadata).toHaveBeenCalledTimes(initialRequests + 2); // One refresh per reference, not per inline mount.
+    await act(async () => pendingDetail.resolve(detail()));
   });
 
   it("retries an explicit historical embed and lets the user collapse it", async () => {

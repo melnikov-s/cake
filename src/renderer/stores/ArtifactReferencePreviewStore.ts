@@ -1,4 +1,4 @@
-import { Store, untracked } from "r-state-tree";
+import { observable, Store, untracked } from "r-state-tree";
 import type {
   ArtifactLineageId,
   ArtifactLink,
@@ -6,6 +6,7 @@ import type {
   ArtifactRevisionNumber,
   ArtifactStableRef,
 } from "../../contracts/artifacts/artifact-lineage";
+import { parseArtifactRef } from "../../contracts/artifacts/artifact-lineage";
 import type { ArtifactProjectionMetadata } from "../../contracts/artifacts/artifact-projection-data";
 import type { ArtifactReferencePreviewState } from "../lib/artifact-reference-preview-state";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
@@ -15,7 +16,10 @@ export class ArtifactReferencePreviewStore extends Store<{
   model: ArtifactCatalog;
   artifactsChanged(lineageId: string): void;
 }> {
-  previewStates: Record<string, ArtifactReferencePreviewState> = {};
+  /** Resolution identities/status only. Mutable lineage facts live in ArtifactCatalog. */
+  readonly previewStates = observable<Record<string, ArtifactReferencePreviewState>>({});
+  private readonly pending = new Map<string, Promise<ArtifactStableRef | undefined>>();
+  private readonly mounts = new Map<string, number>();
   operationError: string | undefined;
   private operationErrorLineageId: ArtifactLineageId | undefined;
   private operationRequest = 0;
@@ -37,22 +41,64 @@ export class ArtifactReferencePreviewStore extends Store<{
     return ClientContext.consume(this)!;
   }
 
-  private setPreviewState(reference: ArtifactStableRef, state: ArtifactReferencePreviewState) {
-    this.previewStates = {
-      ...Object.fromEntries(
-        Object.entries(this.previewStates)
-          .filter(([cachedReference]) => cachedReference !== reference)
-          .slice(-99),
-      ),
-      [reference]: state,
-    };
+  lineage(reference: ArtifactStableRef) {
+    return this.props.model.find(parseArtifactRef(reference).lineageId);
   }
 
-  async previewReference(reference: ArtifactStableRef, refresh = false) {
-    const current = this.previewStates[reference];
-    if (!refresh && (current?.loading || current?.metadata)) return current?.metadata;
-    this.setPreviewState(reference, { loading: true, metadata: current?.metadata });
+  exactReference(reference: ArtifactStableRef): ArtifactStableRef | undefined {
     const state = this.previewStates[reference];
+    if (!state?.exactRef) return undefined;
+    const parsed = parseArtifactRef(reference);
+    // An exact destination never follows publication. A stable destination also follows
+    // updates arriving through detail/effective projections, without another cached copy.
+    const latest = this.lineage(reference)?.latestRevision;
+    return !parsed.revision && latest
+      ? `cake://artifact/${parsed.lineageId}@r${latest}`
+      : state.exactRef;
+  }
+
+  /** Renderer metadata demand only; this does not acquire a widget/backend resource. */
+  retainReference(reference: ArtifactStableRef) {
+    this.mounts.set(reference, (this.mounts.get(reference) ?? 0) + 1);
+    void this.previewReference(reference);
+  }
+
+  releaseReference(reference: ArtifactStableRef) {
+    const remaining = (this.mounts.get(reference) ?? 0) - 1;
+    if (remaining > 0) this.mounts.set(reference, remaining);
+    else {
+      this.mounts.delete(reference);
+      this.pending.delete(reference);
+      delete this.previewStates[reference];
+    }
+  }
+
+  previewReference(reference: ArtifactStableRef, refresh = false) {
+    if (this.signal.aborted) return Promise.resolve(undefined);
+    const current = this.previewStates[reference];
+    if (!refresh) {
+      const pending = this.pending.get(reference);
+      if (pending) return pending;
+      if (current?.exactRef && !current.error)
+        return Promise.resolve(this.exactReference(reference));
+    }
+    const state = observable<ArtifactReferencePreviewState>({
+      loading: true,
+      exactRef: current?.exactRef,
+    });
+    this.previewStates[reference] = state;
+    const request = this.resolveReference(reference, state);
+    this.pending.set(reference, request);
+    void request.finally(() => {
+      if (this.pending.get(reference) === request) this.pending.delete(reference);
+    });
+    return request;
+  }
+
+  private async resolveReference(
+    reference: ArtifactStableRef,
+    state: ArtifactReferencePreviewState,
+  ) {
     const version = this.props.model.invalidationVersion;
     const isCurrent = () =>
       !this.signal.aborted &&
@@ -63,15 +109,15 @@ export class ArtifactReferencePreviewStore extends Store<{
         signal: this.signal,
       });
       if (!isCurrent()) return undefined;
-      this.setPreviewState(reference, { loading: false, metadata });
-      return metadata;
+      this.props.model.applyReferenceMetadata(metadata);
+      state.exactRef = parseArtifactRef(reference).revision ? reference : metadata.exactRef;
+      state.loading = false;
+      return this.exactReference(reference);
     } catch (error) {
-      if (isCurrent())
-        this.setPreviewState(reference, {
-          loading: false,
-          metadata: current?.metadata,
-          error: error instanceof Error ? error.message : String(error),
-        });
+      if (isCurrent()) {
+        state.loading = false;
+        state.error = error instanceof Error ? error.message : String(error);
+      }
       return undefined;
     }
   }

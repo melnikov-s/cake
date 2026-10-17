@@ -2,13 +2,17 @@ import { observable, Store, untracked } from "r-state-tree";
 import type { ArtifactStableRef } from "../../contracts/artifacts/artifact-lineage";
 import { parseArtifactRef } from "../../contracts/artifacts/artifact-lineage";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
+import type { ArtifactReferencePreviewStore } from "./ArtifactReferencePreviewStore";
 import { ClientContext } from "./context/ClientContext";
 
 /** Window-local inline disclosures. Payloads remain in the shared artifact Model;
  * stable references follow publication; explicit @rN references stay pinned. Independent mounts have
  * independent expansion state. Reads deduplicate per mount and ignore stale or
  * disposed results; nothing here is persisted or changes session links. */
-export class InlineArtifactPreviewStore extends Store<{ model: ArtifactCatalog }> {
+export class InlineArtifactPreviewStore extends Store<{
+  model: ArtifactCatalog;
+  references: ArtifactReferencePreviewStore;
+}> {
   readonly states = observable<
     Record<
       string,
@@ -26,18 +30,19 @@ export class InlineArtifactPreviewStore extends Store<{ model: ArtifactCatalog }
   constructor(props: InlineArtifactPreviewStore["props"]) {
     super(props);
     this.effect(() => {
-      void this.props.model.invalidationVersion;
-      untracked(() => void this.refreshMetadata());
-    });
-    this.effect(() => {
       for (const [key, state] of Object.entries(this.states)) {
         const parsed = parseArtifactRef(state.reference);
+        const resolution = this.props.references.previewStates[state.reference];
+        const resolved = resolution && !resolution.loading && !resolution.error;
         const latest = this.props.model.find(parsed.lineageId)?.latestRevision;
-        if (!parsed.revision && latest) {
+        const reference: ArtifactStableRef | undefined =
+          !parsed.revision && latest
+            ? `cake://artifact/${parsed.lineageId}@r${latest}`
+            : this.props.references.exactReference(state.reference);
+        if (reference) {
           untracked(() => {
-            const reference: ArtifactStableRef = `cake://artifact/${parsed.lineageId}@r${latest}`;
-            if (state.targetRef === reference) return;
-            state.targetRef = reference;
+            if (state.targetRef !== reference) state.targetRef = reference;
+            else if (!resolved) return;
             void this.load(key);
           });
         }
@@ -69,44 +74,21 @@ export class InlineArtifactPreviewStore extends Store<{ model: ArtifactCatalog }
     const state = this.states[key];
     if (!state) return undefined;
     const lineage = this.props.model.find(parseArtifactRef(state.reference).lineageId);
-    return this.revision(key)?.record?.artifact.title ?? lineage?.title;
+    return lineage?.title;
   }
 
   prepare(key: string, reference: ArtifactStableRef) {
-    if (this.states[key]?.reference === reference) return;
+    const previous = this.states[key];
+    if (previous?.reference === reference) return;
+    if (previous) this.props.references.releaseReference(previous.reference);
     this.states[key] = observable({ reference, expanded: true, loading: false });
+    this.props.references.retainReference(reference);
     void this.load(key);
   }
 
-  private metadataRequest = 0;
-
-  private async refreshMetadata() {
-    const request = ++this.metadataRequest;
-    const references = new Set(Object.values(this.states).map((state) => state.reference));
-    await Promise.all(
-      [...references].map(async (reference) => {
-        const parsed = parseArtifactRef(reference);
-        if (parsed.revision) return;
-        try {
-          const metadata = await this.client.artifacts.referenceMetadata(reference, {
-            signal: this.signal,
-          });
-          if (!this.signal.aborted && request === this.metadataRequest) {
-            this.props.model.upsertSummary(metadata.lineage);
-            for (const [key, state] of Object.entries(this.states))
-              if (state.reference === reference) void this.load(key);
-          }
-        } catch (error) {
-          if (!this.signal.aborted && request === this.metadataRequest)
-            for (const state of Object.values(this.states))
-              if (state.reference === reference)
-                state.error = error instanceof Error ? error.message : String(error);
-        }
-      }),
-    );
-  }
-
   release(key: string) {
+    const state = this.states[key];
+    if (state) this.props.references.releaseReference(state.reference);
     delete this.states[key];
   }
 
@@ -130,15 +112,14 @@ export class InlineArtifactPreviewStore extends Store<{ model: ArtifactCatalog }
         if (known) {
           state.targetRef = `cake://artifact/${parsed.lineageId}@r${known}`;
         } else {
-          const metadata = await this.client.artifacts.referenceMetadata(state.reference, {
-            signal: this.signal,
-          });
+          const reference = await this.props.references.previewReference(state.reference);
           if (!current()) return;
-          this.props.model.upsertSummary(metadata.lineage);
-          this.props.model.applyHistory(metadata.lineage.id, [metadata.revision]);
-          state.targetRef = parsed.revision
-            ? metadata.exactRef
-            : `cake://artifact/${parsed.lineageId}@r${this.props.model.find(parsed.lineageId)!.latestRevision}`;
+          if (!reference) {
+            const error = this.props.references.previewStates[state.reference]?.error;
+            if (error) state.error = error;
+            return;
+          }
+          state.targetRef = reference;
         }
       }
       if (!state.expanded) return;
