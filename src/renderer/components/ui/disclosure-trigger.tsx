@@ -11,6 +11,8 @@ export interface DisclosureTriggerProps extends ButtonHTMLAttributes<HTMLButtonE
   badge?: ReactNode;
   trailing?: ReactNode;
   showChevron?: boolean;
+  chevronPosition?: "start" | "end";
+  wrapTitle?: boolean;
 }
 
 export const DisclosureTrigger = forwardRef<HTMLButtonElement, DisclosureTriggerProps>(
@@ -24,6 +26,8 @@ export const DisclosureTrigger = forwardRef<HTMLButtonElement, DisclosureTrigger
       badge,
       trailing,
       showChevron = true,
+      chevronPosition = "end",
+      wrapTitle = false,
       type = "button",
       disabled,
       children,
@@ -46,9 +50,24 @@ export const DisclosureTrigger = forwardRef<HTMLButtonElement, DisclosureTrigger
         )}
         {...props}
       >
-        <div className="flex min-w-0 flex-1 items-center gap-2">
+        <div
+          className={cn(
+            "flex min-w-0 flex-1 gap-2",
+            chevronPosition === "start" ? "items-start" : "items-center",
+          )}
+        >
+          {showChevron && chevronPosition === "start" && (
+            <ChevronIcon
+              className={cn(
+                "mt-1 shrink-0 text-muted-foreground transition-transform duration-150",
+                !open && "-rotate-90",
+              )}
+            />
+          )}
           {status && <StatusDot status={status} />}
-          <span className="truncate">{title}</span>
+          <span className={cn(wrapTitle ? "min-w-0 whitespace-pre-wrap break-words" : "truncate")}>
+            {title}
+          </span>
           {subtitle && (
             <span className="font-normal text-muted-foreground truncate">{subtitle}</span>
           )}
@@ -56,7 +75,7 @@ export const DisclosureTrigger = forwardRef<HTMLButtonElement, DisclosureTrigger
         </div>
         <div className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
           {trailing}
-          {showChevron && (
+          {showChevron && chevronPosition === "end" && (
             <ChevronIcon
               className={cn("transition-transform duration-150", open && "rotate-180")}
             />

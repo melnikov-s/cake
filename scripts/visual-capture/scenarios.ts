@@ -2801,6 +2801,53 @@ const cakeChatInspectorScenario: VisualCaptureScenario = {
     state === "icon" ? page.locator('[data-slot="workspace-header"]') : page.locator("body"),
 };
 
+const contextOutlineScenario: VisualCaptureScenario = {
+  name: "context-outline",
+  description: "Read-only Outline context sources and retained memory originals from real runtimes",
+  states: ["default", "system", "memory", "project"],
+  async seed(paths, theme) {
+    await cakeChatScenario.seed(paths, theme);
+    await writeFile(
+      join(paths.project, "AGENTS.md"),
+      "Keep changes focused. Verify the relevant behavior before reporting completion.\n",
+    );
+    return openRequestInspectorFixture(paths);
+  },
+  async prepare(page, state) {
+    if (state === "project") {
+      await assistantMarkdownCode.prepare(page, "default");
+    } else {
+      await cakeChatScenario.prepare(page, "default");
+      const composer = page.getByRole("combobox", { name: "Message Cake Chat", exact: true });
+      await composer.fill("Keep the context view quiet and simple.");
+      await page.getByRole("button", { name: "Send", exact: true }).click();
+      await expect(
+        page.getByText("Request captured by the local inspection fixture.", { exact: true }),
+      ).toBeVisible();
+    }
+    const trigger = page.getByRole("button", { name: "Browse context", exact: true });
+    await trigger.click();
+    const dialog = page.getByRole("dialog", { name: "Context", exact: true });
+    await expect(dialog.getByRole("button", { name: "System prompt", exact: true })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Close context", exact: true })).toBeFocused();
+    if (state === "system")
+      await dialog.getByRole("button", { name: "System prompt", exact: true }).click();
+    if (state === "project") {
+      await dialog.getByRole("button", { name: "AGENTS.md", exact: true }).click();
+      await expect(dialog).toContainText("Keep changes focused.");
+    }
+    if (state === "memory") {
+      const memory = dialog.locator('[data-source-id="memory"]');
+      await memory.getByRole("button").nth(1).click();
+      await expect(memory).toContainText("Earlier detail · not in the prompt");
+      await expect(memory.locator("blockquote").first()).toBeVisible();
+    }
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator('[data-slot="context-inspector"]'),
+};
+
 const queuedPromptsScenario: VisualCaptureScenario = {
   name: "queued-prompts",
   description: "Bounded, scrollable message queue above the shared chat composer",
@@ -3704,6 +3751,7 @@ export const visualCaptureScenarios = [
   subagentReportsScenario,
   cakeChatArtifactScenario,
   cakeChatInspectorScenario,
+  contextOutlineScenario,
   queuedPromptsScenario,
   taskInputAttachmentsScenario,
   cakeChatSidebarUnread,

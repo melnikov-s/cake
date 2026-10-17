@@ -15,7 +15,12 @@ import { Schema } from "effect";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import { MEMORY_COMPACTOR_PROMPT, MEMORY_NODE_BYTES, memoryBytes } from "./durable-memory-policy";
 import type { DurableChatMemoryView } from "./durable-chat-data";
-import { durableInputPresentation } from "./durable-input-presentation";
+import {
+  durableInputPresentation,
+  withoutDurableInputPresentation,
+} from "./durable-input-presentation";
+import type { ContextInspection } from "../../contracts/conversations/context-inspection";
+import { contextMessage } from "../pi/runtime/context-outline";
 
 const Id = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 const Range = Schema.Struct({ id: Id, n: Schema.Int.check(Schema.isGreaterThan(0)), entry: Id });
@@ -305,7 +310,7 @@ export function createDurableChatMemory(
     };
   };
 
-  const zoom = async (id: number, n: number, signal: AbortSignal) => {
+  const lookup = async (id: number, n: number, signal: AbortSignal) => {
     const current = await state(signal);
     if (
       !Number.isSafeInteger(id) ||
@@ -324,6 +329,11 @@ export function createDurableChatMemory(
       if (!found.children) throw new Error("Cake Chat summary has no children");
       found = await node(found.children[id < found.id + found.n / 2 ? 0 : 1], signal);
     }
+    return found;
+  };
+
+  const zoom = async (id: number, n: number, signal: AbortSignal) => {
+    const found = await lookup(id, n, signal);
     if (found.n === 1) {
       if (found.original === undefined) throw new Error("Cake Chat summary has no original");
       const original = (await storage.entry(root.id, entryId(found.original), contextFor(signal)))
@@ -337,5 +347,38 @@ export function createDurableChatMemory(
       messages: [],
     };
   };
-  return { synchronize, zoom };
+  const inspect = async (
+    id: number,
+    n: number,
+    signal: AbortSignal,
+  ): Promise<ContextInspection> => {
+    const found = await lookup(id, n, signal);
+    if (found.children) {
+      const children = await Promise.all(found.children.map((ref) => node(ref, signal)));
+      return {
+        sources: children.map((child) => ({
+          id: `memory-${child.id}+${child.n}`,
+          title: child.text,
+          kind: "summary",
+          source: `Pi Durable summary ${child.id}+${child.n}`,
+          detail: { memoryId: child.id, memoryCount: child.n },
+        })),
+      };
+    }
+    if (found.original === undefined) throw new Error("Cake Chat summary has no original");
+    const original = (await storage.entry(root.id, entryId(found.original), contextFor(signal)))
+      ?.entry;
+    if (!original) throw new Error("Cake Chat original is missing");
+    return {
+      sources: (original.model ?? []).map((message, index) => ({
+        ...contextMessage(
+          `original-${original.id}-${index}`,
+          message.role,
+          withoutDurableInputPresentation(message).content,
+        ),
+        source: `Pi Durable entry ${original.id}`,
+      })),
+    };
+  };
+  return { synchronize, zoom, inspect };
 }

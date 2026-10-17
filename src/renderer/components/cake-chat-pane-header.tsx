@@ -9,6 +9,7 @@ import {
   TerminalIcon,
 } from "@/components/ui/icons";
 import { RequestInspector } from "@/components/request-inspector";
+import { ContextInspector } from "@/components/context-inspector";
 import { WorkLogControls } from "@/components/work-log-controls";
 import { cn } from "@/lib/utils";
 import { RootStore } from "../stores/RootStore";
@@ -104,6 +105,7 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
             </IconButton>
           )}
           <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />
+          <ContextInspector store={paneSession.conversationSessionStore.contextInspectorStore} />
           <RequestInspector store={paneSession.requestInspectorStore} />
         </>
       )}

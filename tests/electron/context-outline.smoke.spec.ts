@@ -1,0 +1,93 @@
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { _electron as electron, expect, test } from "@playwright/test";
+import { openRequestInspectorFixture } from "../../scripts/visual-capture/request-inspector-fixture";
+
+const repositoryRoot = resolve(import.meta.dirname, "../..");
+
+test("Outline reveals literal sources and retained originals while preserving composer input and focus", async () => {
+  test.setTimeout(90_000);
+  const root = await mkdtemp(join(tmpdir(), "cake-context-outline-"));
+  const cakeHome = join(root, "cake-home");
+  const project = join(root, "project");
+  const userData = join(root, "user-data");
+  await Promise.all([
+    mkdir(join(cakeHome, "state"), { recursive: true }),
+    mkdir(join(cakeHome, "pi"), { recursive: true }),
+    mkdir(project),
+    mkdir(userData),
+  ]);
+  const closeProvider = await openRequestInspectorFixture({ cakeHome, project });
+  const app = await electron.launch({
+    args: [repositoryRoot],
+    cwd: repositoryRoot,
+    env: {
+      ...process.env,
+      CAKE_ELECTRON_SMOKE: "1",
+      CAKE_ELECTRON_USER_DATA: userData,
+      CAKE_HOME: cakeHome,
+      PI_CODING_AGENT_DIR: join(cakeHome, "pi"),
+      PI_CODING_AGENT_SESSION_DIR: "",
+    },
+  });
+  try {
+    const page = await app.firstWindow();
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+    const input = page.getByRole("combobox", { name: "Message Cake Chat", exact: true });
+    await input.click();
+    await input.pressSequentially("Keep the interface quiet.");
+    await expect(input).toHaveValue("Keep the interface quiet.");
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(
+      page.getByText("Request captured by the local inspection fixture.", { exact: true }),
+    ).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
+    await input.fill("Use familiar disclosure triangles.");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(
+      page.getByText("Request captured by the local inspection fixture.", { exact: true }),
+    ).toHaveCount(2);
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
+    await input.fill("Unsent draft stays here");
+    const trigger = page.getByRole("button", { name: "Browse context", exact: true });
+    await trigger.click();
+    const dialog = page.getByRole("dialog", { name: "Context", exact: true });
+    await expect(dialog.getByRole("button", { name: "Close context", exact: true })).toBeFocused();
+    await dialog.getByRole("button", { name: "Cake Chat instructions", exact: true }).click();
+    await expect(dialog).toContainText("Prefer independent worktrees. Ask before merging changes.");
+    await dialog.getByRole("button", { name: "System prompt", exact: true }).click();
+    await expect(dialog.locator("pre").first()).toBeVisible();
+    const literal = await dialog.locator("pre").first().textContent();
+    await dialog
+      .locator("pre")
+      .first()
+      .evaluate((element) => {
+        const selection = window.getSelection()!;
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      });
+    expect(await page.evaluate(() => window.getSelection()?.toString())).toBe(literal);
+    await dialog.getByRole("button", { name: "System prompt", exact: true }).click();
+    const memory = dialog.locator('[data-source-id="memory"]');
+    await memory.getByRole("button").nth(1).click();
+    await expect(memory).toContainText("Earlier detail · not in the prompt");
+    await expect(memory.locator("blockquote").first()).toContainText("Keep the interface quiet.");
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+    await expect(input).toHaveValue("Unsent draft stays here");
+    await input.click();
+    await input.pressSequentially(" and remains editable");
+    await expect(input).toHaveValue("Unsent draft stays here and remains editable");
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+  } finally {
+    await app.close();
+    await closeProvider();
+    await rm(root, { recursive: true, force: true });
+  }
+});

@@ -35,6 +35,7 @@ import {
   withoutDurableInputPresentation,
 } from "./durable-input-presentation";
 import { durableModelFacade } from "./durable-model-facade";
+import { durableContextInspection } from "./durable-context-inspection";
 
 const Boundary = Schema.Struct({ input: Schema.Int, marker: Schema.Int });
 type Boundary = Schema.Schema.Type<typeof Boundary>;
@@ -310,8 +311,20 @@ export async function openDurableChatEngine(options: {
       harness,
       root,
       memory,
+      signal: closing.signal,
       storage: options.storage,
       index,
+      async contextInspection(cwd: string) {
+        const context = await root.context(BACKGROUND_CONTEXT);
+        const boundary = await harness.snapshot(BoundaryDoc, root.id, BACKGROUND_CONTEXT);
+        // Only Cake's committed memory reset supplies range handles. User-authored
+        // lookalike markup (including copied clocks) is still an original message.
+        const handoff =
+          context.head?.id === boundary?.marker
+            ? context.head?.model?.find((message) => message.role === "user")
+            : undefined;
+        return durableContextInspection(context.messages, cwd, handoff);
+      },
       async close() {
         unsubscribe();
         // Mark the Harness closing first: a cancelled preparation must preserve

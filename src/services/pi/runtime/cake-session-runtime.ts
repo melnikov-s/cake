@@ -52,6 +52,8 @@ import type {
   QueuedSessionCommandReceipt,
 } from "../../../contracts/conversations/session-query-data";
 import { inspectSessionHistory } from "./session-inspection";
+import { projectContextInspection, projectMemoryDetail } from "./project-context-inspection";
+import { runtimeSystemTools } from "./system-context-projection";
 import { listMessageReferences, readMessageReference } from "./message-references";
 import { piBuiltinSlashCommands } from "../../../contracts/conversations/session-contract";
 import { SubagentResult as subagentResultSchema } from "../../../contracts/subagents/subagent-data";
@@ -1036,6 +1038,14 @@ export async function createCakeSessionRuntime(
     },
     async inspectSession(query) {
       if (disposed) throw new Error("The Cake runtime has been disposed");
+      if (query.kind === "context-outline")
+        return Schema.decodeUnknownSync(jsonValueSchema)(
+          projectContextInspection(session, options.cwd, runtimeSystemTools(session)),
+        );
+      if (query.kind === "memory-detail")
+        return Schema.decodeUnknownSync(jsonValueSchema)(
+          projectMemoryDetail(session.sessionManager, query.entryId ?? "", query.offset),
+        );
       if (query.kind === "messages-list")
         return Schema.decodeUnknownSync(jsonValueSchema)(
           listMessageReferences(session.sessionManager, {

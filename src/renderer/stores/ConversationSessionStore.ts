@@ -16,6 +16,7 @@ import { ChatStore, type ChatStoreProps, type QueuedPrompt } from "./ChatStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import { SideChatStore } from "./SideChatStore";
+import { ContextInspectorStore } from "./ContextInspectorStore";
 import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
 import type { ScheduledMessageCapabilities } from "./ScheduledMessageInteractionStore";
 import { ClientContext } from "./context/ClientContext";
@@ -193,6 +194,11 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
       presets: this.props.modelPresets,
       openPresetSettings: this.props.openModelPresetSettings,
     });
+  }
+
+  @child
+  get contextInspectorStore(): ContextInspectorStore {
+    return createStore(ContextInspectorStore, { sessionId: this.sessionId });
   }
 
   @child

@@ -24,6 +24,10 @@ See `AGENTS.md` for renderer implementation rules.
 | [Link](../../src/renderer/components/ui/link.tsx)                                                                                                                       | Shared anchors, source references and Cake links with destination tooltips.                                           |
 | [LoadingState](../../src/renderer/components/ui/loading-state.tsx)                                                                                                      | Shared loading treatments.                                                                                            |
 
+`DisclosureTrigger` also supports leading disclosure triangles and wrapping titles
+for source outlines. Keep context expansion state and lazy provenance reads in the
+conversation's `ContextInspectorStore`, not in the shared control.
+
 `SearchableChoiceDialog` composes [`SearchableChoiceInput`](../../src/renderer/components/ui/searchable-choice-input.tsx)
 for local draft text and transition-scheduled filtering. Its choice callback must not
 write reactive state. Results are paged in batches of 25; arrow-key navigation crosses

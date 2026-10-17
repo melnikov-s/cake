@@ -366,6 +366,15 @@ store, mirror JSONL, or archive the coordinator through Project Session storage.
 Its direct `read`/`bash` tools start in the disposable sibling `scratch/`
 directory, never a project root.
 Its summary nodes and memory checkpoints live through the same SDK storage API.
+The Outline context inspector reads the committed active head, then lazily reads
+paired summary nodes and their original entries through that API. It does not
+synchronize the memory index, recompress, invoke the model's zoom tool, or change
+the head. Project Session inspection instead follows Pi's compaction-aware entry
+projection and departed-branch provenance. Both are ephemeral renderer views:
+closing discards their contents, and retained history never becomes model input.
+Included instruction bytes are projected from the assembled prompt, not reread
+from disk. This assembled-context view is distinct from outbound request capture,
+which remains the authority for provider-transformed request bodies.
 Application storage separately owns memory preferences, dedicated instructions,
 and two model choices that share one shape and Settings control (Inherit, Default
 preset, Utility, a preset, or a specific model): the Summarization model (absent

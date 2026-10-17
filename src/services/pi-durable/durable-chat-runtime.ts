@@ -486,6 +486,16 @@ export async function createDurableCakeChatRuntime(
       throw new Error("Queued Pi slash commands are available only in Project Sessions");
     },
     async inspectSession(query) {
+      if (query.kind === "context-outline") {
+        return toJsonValue(await engine.contextInspection(options.cwd));
+      }
+      if (query.kind === "memory-detail") {
+        if (query.memoryId === undefined || query.memoryCount === undefined)
+          throw new Error("A memory range is required");
+        return toJsonValue(
+          await engine.memory.inspect(query.memoryId, query.memoryCount, engine.signal),
+        );
+      }
       if (query.kind === "messages-list")
         return toJsonValue(await listDurableMessageReferences(engine.root, sessionId, query));
       if (query.kind === "messages-read")

@@ -95,6 +95,8 @@ export const SessionInspectionQuery = Schema.Struct({
     "compactions",
     "tree",
     "context",
+    "context-outline",
+    "memory-detail",
     "usage",
     "commands",
     "pending",
@@ -102,6 +104,8 @@ export const SessionInspectionQuery = Schema.Struct({
     "messages-read",
   ]),
   entryId: Schema.optionalKey(entryId),
+  memoryId: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+  memoryCount: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThan(0))),
   ...SessionHistoryQuery.fields,
 });
 export interface SessionInspectionQuery extends Schema.Schema.Type<typeof SessionInspectionQuery> {}
