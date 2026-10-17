@@ -156,7 +156,9 @@ describe("Markdown rendering integration", () => {
       const link = screen.getByRole("link", { name: "Exact source" });
       expect(link.getAttribute("href")).toBe(target);
       await fixture.user.click(link);
-      expect(openSession).toHaveBeenCalledWith("session-123", messageId, attachmentId);
+      if (attachmentId)
+        expect(openSession).toHaveBeenCalledWith("session-123", undefined, attachmentId);
+      else expect(openSession).toHaveBeenCalledWith("session-123", messageId);
     },
   );
 
