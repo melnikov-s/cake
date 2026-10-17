@@ -195,14 +195,17 @@ export class CakeChatOverlayWindow {
       this.visible = false;
     });
     this.options.prepareWindow(window);
-    if (this.options.rendererUrl) {
-      const url = new URL(this.options.rendererUrl);
-      url.searchParams.set(CAKE_CHAT_OVERLAY_QUERY, "1");
-      void window.loadURL(url.href);
-    } else
-      void window.loadFile(this.options.rendererPath, {
-        query: { [CAKE_CHAT_OVERLAY_QUERY]: "1" },
-      });
+    const url = this.options.rendererUrl ? new URL(this.options.rendererUrl) : undefined;
+    url?.searchParams.set(CAKE_CHAT_OVERLAY_QUERY, "1");
+    const loading = url
+      ? window.loadURL(url.href)
+      : window.loadFile(this.options.rendererPath, {
+          query: { [CAKE_CHAT_OVERLAY_QUERY]: "1" },
+        });
+    // Quitting mid-load aborts navigation; that is not an application failure.
+    void loading.catch((error: unknown) => {
+      if (!window.isDestroyed()) throw error;
+    });
     return window;
   }
 }

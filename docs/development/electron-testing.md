@@ -6,7 +6,7 @@ Cake's renderer runs inside Electron. Browser-only previews and jsdom tests are 
 
 The Electron Playwright fixtures launch Cake from `out/`. Source edits are not present there until the application is rebuilt. Run `pnpm build:slim` after the final source change and before diagnosing an ordinary Electron smoke-test result. Slim builds omit local Swift speech/dictation helpers and never invoke Swift or download native speech assets, even when a full build previously populated `out/`. The app reports those local engines as unavailable; it does not compile them at runtime. Use `pnpm build` only when the test genuinely verifies bundled native engines or native packaging. A passing or failing smoke test against stale output is not evidence about the current source tree.
 
-`pnpm test:electron` builds slim output before running Playwright; `pnpm test:electron:full` is the explicit full-build alternative. For normal agent work, build slim once and run only the affected cases with `pnpm exec playwright test ...`. Launch a slim snapshot with `pnpm build:start:slim`. If unsure whether native compilation is needed, use slim.
+Remote-backend smoke tests also spawn `out/server/main.mjs`; build it with `node scripts/build-server.mjs` (or `pnpm build:server`) before running them directly. `pnpm test:electron` builds slim output and the server before running Playwright; `pnpm test:electron:full` is the explicit full-build alternative. For normal agent work, build slim once and run only the affected cases with `pnpm exec playwright test ...`. Launch a slim snapshot with `pnpm build:start:slim`. If unsure whether native compilation is needed, use slim.
 
 ## Interaction coverage
 
@@ -45,6 +45,17 @@ CAKE_ELECTRON_FOREGROUND_TESTS=1 pnpm exec playwright test --config playwright.f
 This opt-in preserves native window-blur coverage without opening/focusing a window for every
 microphone, playback, typing, or speech-settings test. Hidden-window results are not proof of
 native OS focus behavior.
+
+## Process lifetime
+
+Playwright launches Electron as its own process-group leader and kills it only from the
+runner's exit handlers. A runner that is SIGKILLed (for example by an agent command timeout)
+never runs them, so smoke-mode Cake (`CAKE_ELECTRON_SMOKE=1`) watches its parent process
+(`src/main/parent-watchdog.ts`) and quits itself within about a second of being orphaned.
+Smoke-mode fatal errors are logged to stderr instead of opening a modal dialog, so
+startup-failure tests exit instead of waiting for a click. `orphaned-runner.smoke.spec.ts`
+guards this. Still give every launch an isolated `CAKE_ELECTRON_USER_DATA`; a shared profile
+collides with the user's single-instance lock.
 
 ## Regression scope
 

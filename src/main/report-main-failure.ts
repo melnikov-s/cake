@@ -2,6 +2,11 @@ import { app, BrowserWindow, clipboard, dialog } from "electron";
 
 /** Await acknowledgment before main tears down the runtime and exits. */
 export async function reportMainFailure(details: string) {
+  // Unattended test instances must exit instead of blocking on (and surfacing) a modal dialog.
+  if (process.env.CAKE_ELECTRON_SMOKE === "1") {
+    console.error("[cake.main] Fatal error", details);
+    return;
+  }
   await app.whenReady();
   const parent =
     BrowserWindow.getFocusedWindow() ??

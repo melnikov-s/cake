@@ -37,7 +37,7 @@ for (const theme of ["light", "dark"] as const) {
       await scenario.prepare(page, "default");
       const iframe = page.locator('iframe[title="A prompt through Cake"]');
       const frame = iframe.contentFrame();
-      await expect(iframe).toHaveAttribute("sandbox", "allow-scripts");
+      await expect(iframe).toHaveAttribute("sandbox", "allow-scripts allow-downloads");
       await expect(iframe).toHaveAttribute("src", /^cake-widget:/);
       await expect(frame.getByRole("heading", { name: "Intent, not privilege." })).toBeVisible();
       const next = frame.getByRole("button", { name: "Next: Cross" });

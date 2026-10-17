@@ -43,7 +43,7 @@ test("legacy Application storage migrates before normal renderer hydration", asy
     const document = JSON.parse(
       await readFile(join(cakeHome, "state", "application.json"), "utf8"),
     );
-    expect(document.version).toBe(6);
+    expect(document.version).toBe(7);
     expect(document.data).toMatchObject({
       projects: [],
       modelPresets: [],

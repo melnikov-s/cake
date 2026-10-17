@@ -1,4 +1,4 @@
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { reportMainFailure } from "../../../src/main/report-main-failure";
 
 const native = vi.hoisted(() => ({
@@ -15,6 +15,7 @@ vi.mock("electron", () => ({
   clipboard: { writeText: native.writeText },
 }));
 beforeEach(() => vi.clearAllMocks());
+afterEach(() => vi.unstubAllEnvs());
 
 it("keeps fatal diagnostics pending until the native dialog is acknowledged", async () => {
   let acknowledge!: (result: { response: number }) => void;
@@ -51,4 +52,13 @@ it("parents the error to the active window and keeps it open after copying detai
     expect.objectContaining({ type: "error" }),
   );
   expect(native.writeText).toHaveBeenCalledWith("Failure details");
+});
+
+it("logs instead of opening a modal dialog in unattended smoke instances", async () => {
+  vi.stubEnv("CAKE_ELECTRON_SMOKE", "1");
+  const error = vi.spyOn(console, "error").mockImplementation(() => {});
+  await reportMainFailure("Startup failed");
+  expect(native.showMessageBox).not.toHaveBeenCalled();
+  expect(error).toHaveBeenCalledWith("[cake.main] Fatal error", "Startup failed");
+  error.mockRestore();
 });

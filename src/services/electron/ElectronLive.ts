@@ -187,8 +187,14 @@ const makeElectronService = (
   };
 
   const loadRenderer = async (window: BrowserWindow) => {
-    if (process.env.ELECTRON_RENDERER_URL) await window.loadURL(process.env.ELECTRON_RENDERER_URL);
-    else await window.loadFile(options.rendererPath);
+    try {
+      if (process.env.ELECTRON_RENDERER_URL)
+        await window.loadURL(process.env.ELECTRON_RENDERER_URL);
+      else await window.loadFile(options.rendererPath);
+    } catch (error) {
+      // Closing or quitting mid-load aborts navigation; that is not an application failure.
+      if (!window.isDestroyed()) throw error;
+    }
   };
 
   const connectionForWindow = (window: BrowserWindow) => {

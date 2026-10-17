@@ -39,12 +39,22 @@ import { makeMainLive } from "./MainLive";
 import { installStdioErrorHandlers } from "./stdio-errors";
 import { reportMainFailure } from "./report-main-failure";
 import { installProcessErrorHandlers } from "./process-errors";
+import { installParentProcessWatchdog } from "./parent-watchdog";
 import cakeIconPath from "../assets/cake.png?asset";
 import annotationMenuIconPath from "../assets/menu-annotation.png?asset";
 import chatMenuIconPath from "../assets/menu-chat.png?asset";
 
 installStdioErrorHandlers(process.stdout, process.stderr);
 installProcessErrorHandlers(process, reportMainFailure, () => app.exit(1));
+
+// Test-launched Cake must not outlive a killed test runner.
+if (process.env.CAKE_ELECTRON_SMOKE === "1")
+  installParentProcessWatchdog(process, () => {
+    console.error("[cake.main] Test runner exited; quitting orphaned smoke instance");
+    app.quit();
+    // Quit finalizes child processes; force exit if shutdown is wedged or startup is incomplete.
+    setTimeout(() => app.exit(1), 5_000).unref();
+  });
 
 app.setName("Cake");
 registerRichContentSchemes();

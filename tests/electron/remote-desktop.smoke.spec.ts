@@ -212,6 +212,8 @@ test("remote Electron uses the full shell and only the server owns agent state",
           );
         };
       });
+      // Reloading during the initial file navigation aborts one of the two loads.
+      await page.waitForLoadState("load");
       await page.reload();
       await expect(
         page.locator(".transcript").getByText("Existing remote transcript", { exact: true }),
