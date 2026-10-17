@@ -6,7 +6,11 @@ import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-wo
 import { App } from "../../../src/renderer/components/app";
 import { applySessionCatalogGroupUpdate } from "../../../src/renderer/reducers/CatalogReducer";
 import { applyManagedWorktreeCatalogUpdate } from "../../../src/renderer/reducers/WorktreeCatalogReducer";
-import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
+import {
+  projectRecord,
+  sessionSummary,
+  type SessionSummaryFixture,
+} from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import type { TestClientOverrides } from "./test-client";
 
@@ -16,6 +20,7 @@ export function renderSessionIdentity(
   options: {
     client?: TestClientOverrides;
     snapshot?: StoreSnapshot;
+    terminalReady?: boolean;
   } = {},
 ) {
   const fixture = createRendererStoreFixture({
@@ -38,6 +43,7 @@ export function renderSessionIdentity(
     root.sessionLayoutStore.ensureSession("staged-original");
     root.projectWorkbenchStore.showLoadedSession("staged-original");
   }
+  if (options.terminalReady) root.terminalStore.readyForEvents();
   const view = render(
     <StoreProvider store={root}>
       <App />
@@ -52,6 +58,15 @@ export function renderSessionIdentity(
           _tag: "Snapshot",
           worktrees: records,
         }),
+      );
+    },
+    publishSessions(sessions: SessionSummaryFixture[]) {
+      act(() =>
+        applySessionCatalogGroupUpdate(
+          fixture.models.sessionCatalog,
+          { projectPath: identityProjectPath, resolved: false },
+          { _tag: "Snapshot", revision: 2, sessions },
+        ),
       );
     },
     publishCreatedSession(workingDirectory: string) {

@@ -50,6 +50,37 @@ function paneFor(input: HTMLElement) {
 }
 
 describe("Session identity workflows", () => {
+  it("routes terminal actions through authoritative identity and falls back to the loaded directory after catalog removal", async () => {
+    const open = vi.fn<Client["terminals"]["open"]>(async ({ target }) => ({
+      terminalId: target.workingDirectory,
+      shell: target.workingDirectory === identityProjectPath ? "loaded-shell" : "authority-shell",
+    }));
+    using fixture = renderSessionIdentity({
+      terminalReady: true,
+      client: { terminals: { open, close: async () => undefined } },
+    });
+    // The selected temporary identity already exists at /project. Catalog updates arrive
+    // independently; they must take precedence without rewriting that loaded identity.
+    fixture.publishCreatedSession("/authoritative");
+    await fixture.user.click(screen.getByRole("button", { name: "Terminal" }));
+    expect(await screen.findByRole("tab", { name: "authority-shell" })).toBeDefined();
+    expect(open).toHaveBeenLastCalledWith({
+      target: { workingDirectory: "/authoritative" },
+      cols: 80,
+      rows: 24,
+    });
+
+    fixture.publishSessions([]);
+    expect(await screen.findByRole("tab", { name: "loaded-shell" })).toBeDefined();
+    expect(open).toHaveBeenLastCalledWith({
+      target: { workingDirectory: identityProjectPath },
+      cols: 80,
+      rows: 24,
+    });
+    expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
+    expect(open).toHaveBeenCalledTimes(2);
+  });
+
   it("restores independent unsent pane inputs and closing one leaves the other usable", async () => {
     const start = vi.fn<Client["projectSessions"]["start"]>();
     let snapshot: StoreSnapshot;
