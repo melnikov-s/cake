@@ -1,6 +1,5 @@
 import { Store, child, createStore, snapshot } from "r-state-tree";
 import { formatRelativeSessionTime } from "../../utils/format-relative-session-time";
-import type { WorktreeOperationCatalog } from "../models/WorktreeOperationCatalog";
 import type { CakeChatCollectionStore } from "./CakeChatCollectionStore";
 import { ClientContext } from "./context/ClientContext";
 import type { EmbeddedEditorSettingsStore } from "./EmbeddedEditorSettingsStore";
@@ -14,7 +13,6 @@ import { SessionSearchStore } from "./SessionSearchStore";
 
 export interface SidebarStoreProps {
   catalog: SessionCatalogStore;
-  worktreeOperations?: WorktreeOperationCatalog;
   cakeChat(): CakeChatCollectionStore;
   selectedConversation?(): { kind: "project-session" | "cake-chat"; sessionId: string } | undefined;
   embeddedEditorSettings: EmbeddedEditorSettingsStore;
@@ -73,7 +71,6 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   get sessionListStore(): SidebarSessionListStore {
     return createStore(SidebarSessionListStore, {
       catalog: this.props.catalog,
-      worktreeOperations: this.props.worktreeOperations,
       cakeChat: this.props.cakeChat,
       selectedConversation: this.props.selectedConversation,
     });

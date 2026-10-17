@@ -387,74 +387,81 @@ describe("Sidebar projects", () => {
     ).not.toBeNull();
   });
 
-  it("keeps activity times visible while hiding resolve controls for active sessions", () => {
-    const modified = new Date(0).toISOString();
-    const setSessionResolved = vi.fn();
-    const store = {
-      recentProjectPaths: ["/work/cake"],
-      projects: [{ path: "/work/cake", name: "Cake" }],
-      projectSessions: () => [
-        { sessionId: "running", title: "Still working", modifiedAt: modified },
-        { sessionId: "ready", title: "Finished work", modifiedAt: modified },
-      ],
-      sessionLimit: () => 8,
-      sessionActivity: (id: string) =>
-        id === "running" ? "running" : id === "ready" ? "unread" : undefined,
-      sessionActivityTime: vi.fn(() => "Today"),
-      nameFromPath: () => "cake",
-      startOneOffChat: vi.fn(),
-      chooseProject: vi.fn(),
-      showMoreSessions: vi.fn(),
-      renameSession: vi.fn(),
-      setSessionResolved,
-    } as unknown as ProjectWorkbenchStore;
+  it.each(["running", "waiting"] as const)(
+    "hides timestamps and resolve controls for %s sessions",
+    (activity) => {
+      const modified = new Date(0).toISOString();
+      const setSessionResolved = vi.fn();
+      const store = {
+        recentProjectPaths: ["/work/cake"],
+        projects: [{ path: "/work/cake", name: "Cake" }],
+        projectSessions: () => [
+          { sessionId: "running", title: "Still working", modifiedAt: modified },
+          { sessionId: "ready", title: "Finished work", modifiedAt: modified },
+        ],
+        sessionLimit: () => 8,
+        sessionActivity: (id: string) =>
+          id === "running" ? activity : id === "ready" ? "unread" : undefined,
+        sessionActivityTime: vi.fn(() => "Today"),
+        nameFromPath: () => "cake",
+        startOneOffChat: vi.fn(),
+        chooseProject: vi.fn(),
+        showMoreSessions: vi.fn(),
+        renameSession: vi.fn(),
+        setSessionResolved,
+      } as unknown as ProjectWorkbenchStore;
 
-    act(() =>
-      root.render(
-        <Sidebar
-          {...sidebarProps(store)}
-          shell={
-            {
-              selection: {
-                kind: "project-session",
-                sessionId: "ready",
-              },
-            } as any
-          }
-          onOpenSettings={vi.fn()}
-          onToggle={vi.fn()}
-        />,
-      ),
-    );
+      act(() =>
+        root.render(
+          <Sidebar
+            {...sidebarProps(store)}
+            shell={
+              {
+                selection: {
+                  kind: "project-session",
+                  sessionId: "ready",
+                },
+              } as any
+            }
+            onOpenSettings={vi.fn()}
+            onToggle={vi.fn()}
+          />,
+        ),
+      );
 
-    expect(
-      container.querySelector('[data-session-id="running"] [aria-label="Running"]'),
-    ).not.toBeNull();
-    expect(container.querySelector('[data-session-id="running"] .session-time')).not.toBeNull();
-    expect(container.querySelector('[data-session-id="ready"] .session-time')).not.toBeNull();
-    expect(container.querySelector('[data-session-id="ready"] .session-resolve-action')).toBeNull();
+      expect(
+        container.querySelector(
+          `[data-session-id="running"] [aria-label="${activity === "running" ? "Running" : "Waiting for your answer"}"]`,
+        ),
+      ).not.toBeNull();
+      expect(container.querySelector('[data-session-id="running"] time')).toBeNull();
+      expect(container.querySelector('[data-session-id="ready"] .session-time')).not.toBeNull();
+      expect(
+        container.querySelector('[data-session-id="ready"] .session-resolve-action'),
+      ).toBeNull();
 
-    act(() =>
-      root.render(
-        <Sidebar
-          {...sidebarProps(store)}
-          shell={
-            {
-              selection: {
-                kind: "project-session",
-                sessionId: "running",
-              },
-            } as any
-          }
-          onOpenSettings={vi.fn()}
-          onToggle={vi.fn()}
-        />,
-      ),
-    );
-    expect(
-      container.querySelector('[data-session-id="running"] .session-resolve-action'),
-    ).toBeNull();
-  });
+      act(() =>
+        root.render(
+          <Sidebar
+            {...sidebarProps(store)}
+            shell={
+              {
+                selection: {
+                  kind: "project-session",
+                  sessionId: "running",
+                },
+              } as any
+            }
+            onOpenSettings={vi.fn()}
+            onToggle={vi.fn()}
+          />,
+        ),
+      );
+      expect(
+        container.querySelector('[data-session-id="running"] .session-resolve-action'),
+      ).toBeNull();
+    },
+  );
 
   it("shows family depth rails with aligned titles and activity time below", () => {
     const modified = new Date("2026-08-16T12:00:00.000Z").toISOString();

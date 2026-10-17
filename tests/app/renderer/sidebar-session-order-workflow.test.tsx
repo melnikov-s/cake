@@ -137,8 +137,10 @@ for (const kind of ["project-session"] as const) {
         const sessionId = "previous";
         const turnId = TurnId.make("20000000-0000-4000-8000-000000000001");
         const running = () => screen.queryByRole("img", { name: "Running" });
+        const timestamp = () => document.querySelector(`[data-session-id="${sessionId}"] time`);
         await fixture.user.click(screen.getByRole("button", { name: /^previous / }));
         expect(running()).toBeNull();
+        expect(timestamp()).not.toBeNull();
         // A queued follow-up is not work that Pi has begun processing.
         fixture.publishEvent({
           _tag: "TurnAccepted",
@@ -149,6 +151,7 @@ for (const kind of ["project-session"] as const) {
         expect(running()).toBeNull();
         fixture.publishEvent({ _tag: "TurnAccepted", sessionId, turnId, delivery: "prompt" });
         expect(running()).not.toBeNull();
+        expect(timestamp()).toBeNull();
         await fixture.user.click(screen.getByRole("button", { name: /^older / }));
         expect(running()).not.toBeNull();
         fixture.publishEvent({ _tag: "StreamingChanged", sessionId, streaming: true });
@@ -156,6 +159,7 @@ for (const kind of ["project-session"] as const) {
         fixture.publishEvent({ _tag: "StreamingChanged", sessionId, streaming: false });
         // Pi has stopped; delayed correlation bookkeeping is not agent work.
         expect(running()).toBeNull();
+        expect(timestamp()).not.toBeNull();
         fixture.publishEvent({ _tag: "TurnSettled", sessionId, turnId, outcome });
         expect(running()).toBeNull();
       },
@@ -186,31 +190,7 @@ for (const kind of ["project-session"] as const) {
       },
     );
 
-    it("pins transcript updates but only reserves slots for preceding rows still in the lane", async () => {
-      using fixture = renderOrdering();
-      await fixture.user.click(screen.getByRole("button", { name: /^previous / }));
-      const updated = initialSessions.map((session) =>
-        session.sessionId === "previous"
-          ? { ...session, modifiedAt: "2026-02-01T00:00:00.000Z" }
-          : session,
-      );
-      fixture.publish(updated);
-      expect(fixture.order()).toEqual(["newer", "previous", "older", "oldest"]);
-      // Removing a row below the selection must not move its pin upward.
-      fixture.publish(updated.filter((session) => session.sessionId !== "oldest"));
-      expect(fixture.order()).toEqual(["newer", "previous", "older"]);
-      // A resolved row above the selection must stop reserving a slot.
-      fixture.publish(
-        updated
-          .filter((session) => session.sessionId !== "oldest")
-          .map((session) => ({ ...session, resolved: session.sessionId === "newer" })),
-      );
-      expect(fixture.order()).toEqual(["previous", "older"]);
-      await fixture.user.click(screen.getByRole("button", { name: /^older / }));
-      expect(fixture.order()).toEqual(["previous", "older"]);
-    });
-
-    it("releases the transcript-update pin on deselection", async () => {
+    it("moves selected inactive rows with recency without changing selection identity", async () => {
       using fixture = renderOrdering();
       await fixture.user.click(screen.getByRole("button", { name: /^previous / }));
       fixture.publish(
@@ -220,9 +200,11 @@ for (const kind of ["project-session"] as const) {
             : session,
         ),
       );
-      expect(fixture.order()).toEqual(["newer", "previous", "older", "oldest"]);
-      await fixture.user.click(screen.getByRole("button", { name: /^oldest / }));
       expect(fixture.order()).toEqual(["previous", "newer", "older", "oldest"]);
+      expect(fixture.selected()).toBe("previous");
+      await fixture.user.click(screen.getByRole("button", { name: /^older / }));
+      expect(fixture.order()).toEqual(["previous", "newer", "older", "oldest"]);
+      expect(fixture.selected()).toBe("older");
     });
   });
 }

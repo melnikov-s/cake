@@ -1,4 +1,5 @@
-import { Store } from "r-state-tree";
+import { computed, Store } from "r-state-tree";
+import { isActiveSessionActivity } from "../lib/session-activity";
 import type { SessionLabel } from "../../contracts/application/application-data";
 import type { WorktreeOperationCatalog } from "../models/WorktreeOperationCatalog";
 import type { SessionActivity } from "../lib/session-activity";
@@ -67,17 +68,31 @@ export class SessionMetadataStore extends Store<{
     });
   }
 
+  /** Sparse active membership for list ordering, without loading/querying every session. */
+  @computed
+  get activeSessionIds() {
+    const ids = new Set(
+      this.props.catalog.sessions
+        .filter((session) => session.running)
+        .map((session) => session.sessionId),
+    );
+    for (const session of this.props.sessions.sessions) {
+      if (isActiveSessionActivity(session.activity)) ids.add(session.sessionId);
+    }
+    for (const operation of this.props.worktreeOperations?.operations ?? []) {
+      if (
+        operation.kind === "landing" &&
+        (operation.phase === "waiting" || operation.phase === "queued")
+      )
+        ids.add(operation.sessionId);
+    }
+    return ids;
+  }
+
   sessionActivity(sessionId: string): SessionActivity | undefined {
     const activity = this.props.sessions.findSession(sessionId)?.activity;
     if (activity === "waiting" || activity === "running") return activity;
-    if (this.props.catalog.find(sessionId)?.running) return "running";
-    const waitingToMerge = this.props.worktreeOperations?.operations.some(
-      (operation) =>
-        operation.sessionId === sessionId &&
-        operation.kind === "landing" &&
-        (operation.phase === "waiting" || operation.phase === "queued"),
-    );
-    if (waitingToMerge) return "running";
+    if (this.activeSessionIds.has(sessionId)) return "running";
     return activity ?? (this.props.catalog.find(sessionId)?.unread ? "unread" : undefined);
   }
 }

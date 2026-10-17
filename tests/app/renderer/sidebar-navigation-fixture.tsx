@@ -1,10 +1,14 @@
 import { act, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { applySnapshot } from "r-state-tree";
+import { applySnapshot, toSnapshot } from "r-state-tree";
+import type { CakeChatSummary } from "../../../src/contracts/cake-chats/cake-chat-data";
 import { StoreProvider } from "r-state-tree/react";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 import type { WorktreeLandingOperation } from "../../../src/contracts/worktrees/worktree-landing-data";
-import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
+import type {
+  ConversationEvent,
+  ConversationSnapshot,
+} from "../../../src/contracts/conversations/conversation-data";
 import { App } from "../../../src/renderer/components/app";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import {
@@ -94,6 +98,37 @@ export function renderSidebarNavigation(
   );
   return {
     user: userEvent.setup(),
+    snapshot: () => toSnapshot(fixture.root),
+    async publishEvent(event: Exclude<ConversationEvent, { _tag: "SnapshotUpdated" }>) {
+      await act(async () =>
+        applyConversationUpdate(
+          fixture.models.projectConversation(
+            event.sessionId,
+            options.sessions!.find((session) => session.sessionId === event.sessionId)!
+              .workingDirectory,
+          ),
+          { _tag: "Event", revision: ++revision, event },
+        ),
+      );
+    },
+    async publishProjectChats(sessions: readonly CakeChatSummary[]) {
+      await act(async () =>
+        applySnapshot(fixture.models.cakeChatCatalog, {
+          loaded: true,
+          sessions: [...sessions],
+          resolvedHasMore: false,
+        }),
+      );
+    },
+    async publishProjectChatStreaming(sessionId: string, streaming: boolean) {
+      await act(async () =>
+        applyConversationUpdate(fixture.models.cakeChatConversation(sessionId), {
+          _tag: "Event",
+          revision: ++revision,
+          event: { _tag: "StreamingChanged", sessionId, streaming },
+        }),
+      );
+    },
     async publishStreaming(sessionIds: readonly string[], streaming: boolean) {
       await act(async () => {
         for (const sessionId of sessionIds) {

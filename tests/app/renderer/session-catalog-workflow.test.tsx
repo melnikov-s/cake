@@ -212,7 +212,7 @@ describe("Session catalog lifecycle workflows", () => {
     });
     const row = () =>
       sidebar()
-        .getByRole("button", { name: /^Background worker / })
+        .getByRole("button", { name: /^Background worker(?: |$)/ })
         .closest<HTMLElement>(".session-item")!;
     expect(within(row()).getByRole("img", { name: "Running" })).toBeTruthy();
     expect(

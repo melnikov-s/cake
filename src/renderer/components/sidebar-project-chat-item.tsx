@@ -1,4 +1,5 @@
 import { observer } from "r-state-tree/react";
+import { isActiveSessionActivity } from "../lib/session-activity";
 import { formatRelativeSessionTime } from "../../utils/format-relative-session-time";
 import type { CakeChatSummaryProjection } from "../stores/CakeChatPendingSessionsStore";
 import type { CakeChatCollectionStore } from "../stores/CakeChatCollectionStore";
@@ -30,7 +31,11 @@ export const SidebarProjectChatItem = observer(function SidebarProjectChatItem({
       data-session-id={summary.sessionId}
       data-animated-list-key={summary.sessionId}
       label={summary.title}
-      description={`Project Chat · ${formatRelativeSessionTime(summary.modifiedAt, now)}`}
+      description={
+        isActiveSessionActivity(activity)
+          ? "Project Chat"
+          : `Project Chat · ${formatRelativeSessionTime(summary.modifiedAt, now)}`
+      }
       icon={<CakeIcon aria-hidden />}
       active={selected}
       className="text-[13px] [&_[data-slot=icon]]:size-4"

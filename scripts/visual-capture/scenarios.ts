@@ -1639,6 +1639,68 @@ const projectChatSidebar: VisualCaptureScenario = {
   region: (page) => page.locator('[data-slot="sidebar"]'),
 };
 
+const activeSidebarSessions: VisualCaptureScenario = {
+  name: "active-sidebar-sessions",
+  description: "Active sidebar rows omit all timestamps while retaining inactive metadata",
+  states: ["projects", "activity"],
+  async seed(paths, theme) {
+    await projectChatSidebar.seed(paths, theme);
+    const sessions = workspaceSessionDirectory(
+      paths.project,
+      join(paths.cakeHome, "pi", "sessions"),
+    );
+    const original = await readFile(
+      join(sessions, "1970-01-01T00-00-00-000Z_visual-assistant-markdown-code.jsonl"),
+      "utf8",
+    );
+    await writeFile(
+      join(sessions, "1970-01-01T00-00-00-000Z_visual-sidebar-inactive.jsonl"),
+      original
+        .replaceAll("visual-assistant-markdown-code", "visual-sidebar-inactive")
+        .replaceAll(
+          "How should agents capture Cake UI changes?",
+          "Completed sidebar investigation",
+        ),
+    );
+  },
+  async prepare(page, state, application) {
+    if (!application) throw new Error("Active sidebar sessions require Electron");
+    await projectChatSidebar.prepare(page, "unselected", application);
+    // Native interview requests represent active turns blocked on user input; no model/network work.
+    for (const sessionId of ["visual-assistant-markdown-code", "visual-sidebar-unread"]) {
+      const row = page.locator(`.session-item[data-session-id="${sessionId}"]`);
+      await row.locator(".session-row").click();
+      await expect(row).toHaveAttribute("data-navigation-active", "true");
+      await emitRendererEvent(application, {
+        type: "interview-requested",
+        requestId: randomUUID(),
+        interviewRequestId: randomUUID(),
+        record: {
+          id: `interview-${sessionId}`,
+          sessionId,
+          request: {
+            protocol: "cake.request/v1",
+            id: "sidebar-question",
+            title: "Continue?",
+            responseSchema: { type: "object" },
+            view: { type: "form", fields: [{ id: "answer", label: "Answer", type: "text" }] },
+            fallback: { markdown: "Continue when ready." },
+          },
+        },
+      });
+      await expect(row.getByRole("img", { name: "Waiting for your answer" })).toBeVisible();
+      await expect(row.locator("time")).toHaveCount(0);
+    }
+    if (state === "activity")
+      await page.getByRole("button", { name: "Show activity", exact: true }).click();
+    await expect(
+      page.locator('.session-item[data-session-id="visual-sidebar-inactive"] time'),
+    ).toBeVisible();
+    await page.mouse.move(1, 1);
+  },
+  region: projectChatSidebar.region,
+};
+
 const cakeChatSidebarUnread: VisualCaptureScenario = {
   name: "cake-chat-sidebar-unread",
   description:
@@ -3413,6 +3475,7 @@ export const visualCaptureScenarios = [
   taskInputAttachmentsScenario,
   cakeChatSidebarUnread,
   projectChatSidebar,
+  activeSidebarSessions,
   dictationInputScenario,
   dictationSettingsScenario,
   serverClientSettingsScenario,

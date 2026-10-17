@@ -580,7 +580,6 @@ export class RootStore extends Store<{
   get sidebarStore(): SidebarStore {
     return createStore(SidebarStore, {
       catalog: this.sessionCatalogStore,
-      worktreeOperations: this.props.projection.worktreeOperations,
       cakeChat: () => this.cakeChatCollectionStore,
       selectedConversation: () => {
         const selection = this.appShellStore.selection;
