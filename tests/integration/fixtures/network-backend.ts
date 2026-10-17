@@ -63,10 +63,15 @@ import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamil
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { ScheduledMessages } from "../../../src/services/scheduled-messages/ScheduledMessages";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
+import { makeSubagentStorageLive } from "../../../src/services/storage/SubagentStorage";
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
 import { SubagentEnvironment } from "../../../src/services/subagents/SubagentEnvironment";
 import { Terminal } from "../../../src/services/terminal/Terminal";
-import { fakeRuntime, snapshot } from "../../app/helpers/piRuntimeFixture";
+import {
+  makeRuntimeRecoveryStorageTestLayer,
+  fakeRuntime,
+  snapshot,
+} from "../../app/helpers/piRuntimeFixture";
 import type {
   Attachment,
   ConversationSnapshot,
@@ -171,7 +176,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
           };
         }),
     },
-  );
+  ).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
   const application = ApplicationState.layer.pipe(
     Layer.provide(
       Layer.succeed(ApplicationStorage, {
@@ -291,7 +296,13 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
     runtimes,
     makeCakeChatDurableLive(createCoordinatorRuntime),
     SessionCatalogChanges.layer,
-    SubagentCoordinatorLive,
+    SubagentCoordinatorLive.pipe(
+      Layer.provide(
+        makeSubagentStorageLive(join(tmpdir(), `cake-test-workers-${randomUUID()}`)).pipe(
+          Layer.provide(Layer.merge(NodeFileSystem.layer, NodePath.layer)),
+        ),
+      ),
+    ),
     AgentAvailability.layer,
     Layer.effectDiscard(
       Effect.addFinalizer(() =>

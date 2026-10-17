@@ -36,6 +36,8 @@ export const prepareUserMessage = Effect.fn("CakeChatDigest.prepareUserMessage")
   const interruptedReport = snapshot.streaming && runStartedByReport(snapshot.parts);
   if (interruptedReport) yield* handle.abort();
   const storage = yield* SessionFamilyStorage;
+  const admitted = handle.admittedDigestIds ? yield* handle.admittedDigestIds() : [];
+  if (admitted.length) yield* storage.removeDigest(admitted);
   const state = yield* storage.state();
   const items = (state.coordinatorDigest ?? []).filter(
     (item) => (item.coordinatorSessionId ?? CAKE_CHAT_SESSION_ID) === snapshot.sessionId,
@@ -72,6 +74,7 @@ export const prepareUserMessage = Effect.fn("CakeChatDigest.prepareUserMessage")
     })),
     running,
     interruptedReport,
+    receiptIds: items.map((item) => item.id),
   });
   return {
     text: addSessionDigestReminder(text, reminder),

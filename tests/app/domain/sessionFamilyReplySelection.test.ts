@@ -20,7 +20,11 @@ import {
 } from "../../../src/services/pi/CakeSessionRuntimes";
 import { makeProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
-import { fakeRuntime, snapshot } from "../helpers/piRuntimeFixture";
+import {
+  makeRuntimeRecoveryStorageTestLayer,
+  fakeRuntime,
+  snapshot,
+} from "../helpers/piRuntimeFixture";
 
 const location = {
   projectPath: "/project",
@@ -148,7 +152,7 @@ const piLayer = (
           );
         },
       }),
-  });
+  }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
 
 it.effect("routes an automatic reply to the consumed request instead of later queued work", () =>
   Effect.gen(function* () {

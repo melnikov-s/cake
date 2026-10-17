@@ -6,6 +6,14 @@ import { Effect, Layer } from "effect";
 import type { CakePaths } from "../config/CakePaths";
 import * as scheduledMessages from "../domain/scheduled-messages/scheduledMessages";
 import * as sessionFamilies from "../domain/session-families/sessionFamilies";
+import * as runtimeRecovery from "../domain/project-sessions/runtimeRecovery";
+import * as subagentRecovery from "../domain/subagents/subagentRecovery";
+import { SubagentStorage, makeSubagentStorageLive } from "../services/storage/SubagentStorage";
+import {
+  RuntimeRecoveryStorage,
+  makeRuntimeRecoveryStorageLive,
+} from "../services/storage/RuntimeRecoveryStorage";
+import { makeSessionCoordinationStorageLive } from "../services/storage/SessionCoordinationStorage";
 import { makeDiscussionSessionEnvironmentLive } from "../layers/DiscussionSessionEnvironmentLive";
 import { makeSubagentEnvironmentLive } from "../layers/SubagentEnvironmentLive";
 import { WorktreeLandingAgentLive } from "../layers/WorktreeLandingAgentLive";
@@ -101,6 +109,9 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
     applicationStorage,
     ApplicationState.layer.pipe(Layer.provide(applicationStorage)),
     scheduledMessageStorage,
+    makeRuntimeRecoveryStorageLive(paths.state),
+    makeSubagentStorageLive(paths.state),
+    makeSessionCoordinationStorageLive(join(paths.state, "session-coordination.json")),
     makeSavedDraftStorageLive(paths.state),
     ScheduledMessages.layer.pipe(Layer.provide(scheduledMessageStorage)),
     makeSessionFamilyStorageLive(paths.sessionFamilies),
@@ -133,6 +144,7 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
     makePiAgentResourcesLive(paths.piAgent),
     makeCakeSessionRuntimesLive(createProjectSessionRuntime).pipe(
       Layer.provideMerge(makeCakeChatDurableLive(createCoordinatorRuntime)),
+      Layer.provide(StorageLive),
     ),
     AgentAvailability.layer,
   );
@@ -269,9 +281,40 @@ export const makeBackendLive = <HostServices, HostError>(
     ),
     Layer.effectDiscard(
       Effect.gen(function* () {
+        const recovery = yield* RuntimeRecoveryStorage;
+        const coordination = yield* SessionCoordination;
+        const workers = yield* SubagentStorage;
+        // Missing/corrupt recovery evidence must never be interpreted as no
+        // unfinished work. Keep the app usable, but start no automatic work or
+        // orphan-abort reconciliation until all recovery authorities can be read.
+        const ready = yield* Effect.all([
+          coordination.checkStorage(),
+          recovery.list(),
+          workers.list(),
+        ]).pipe(Effect.result);
+        if (ready._tag === "Failure") {
+          yield* Effect.logWarning(
+            "Automatic restart recovery is paused. Repair the reported metadata file and restart; saved conversations remain available.",
+            ready.failure,
+          );
+          return;
+        }
+        const recoverable = (sessionId: string, turnId?: string) =>
+          recovery
+            .get(sessionId)
+            .pipe(
+              Effect.map(
+                (record) =>
+                  record?.inputs.some((input) => turnId === undefined || input.turnId === turnId) ??
+                  false,
+              ),
+            );
         yield* sessionFamilies
-          .initialize(paths.piSessions, paths.piResolvedSessions)
+          .initialize(paths.piSessions, paths.piResolvedSessions, recoverable)
           .pipe(Effect.orDie);
+        const resumeWorkers = yield* subagentRecovery.initialize().pipe(Effect.orDie);
+        yield* runtimeRecovery.initialize().pipe(Effect.orDie);
+        yield* resumeWorkers;
         yield* sessionFamilies.runWorker.pipe(Effect.forkScoped);
       }),
     ),

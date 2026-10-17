@@ -245,25 +245,29 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
     profile: { _tag: "CakeChatSession" },
     admitTurn: (input, accept) => {
       const message = parseCrossSessionMessage(input.text);
-      return sessionFamilies
-        .admitTurn(
-          target.sessionId,
-          {
-            cwd: configuration.location.workingDirectory,
-            activeRoot: configuration.location.sessionDirectory,
-            resolvedRoot: configuration.location.sessionDirectory,
-          },
-          input,
-          message
-            ? coordination
-                .bindTurn(target.sessionId, message.metadata.messageId, input.turnId)
-                .pipe(Effect.andThen(accept))
-            : accept,
-        )
-        .pipe(
-          Effect.provideService(SessionFamilyStorage, families),
-          Effect.provideService(SessionArchiveStorage, archive),
-        );
+      return coordination.checkStorage().pipe(
+        Effect.andThen(
+          sessionFamilies
+            .admitTurn(
+              target.sessionId,
+              {
+                cwd: configuration.location.workingDirectory,
+                activeRoot: configuration.location.sessionDirectory,
+                resolvedRoot: configuration.location.sessionDirectory,
+              },
+              input,
+              message
+                ? coordination
+                    .bindTurn(target.sessionId, message.metadata.messageId, input.turnId)
+                    .pipe(Effect.andThen(accept))
+                : accept,
+            )
+            .pipe(
+              Effect.provideService(SessionFamilyStorage, families),
+              Effect.provideService(SessionArchiveStorage, archive),
+            ),
+        ),
+      );
     },
     onTurnSettled: (event) =>
       Effect.gen(function* () {

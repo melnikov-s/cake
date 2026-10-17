@@ -1,3 +1,4 @@
+import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
 import { Effect, Layer, Stream } from "effect";
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import { PiModels } from "../../../src/services/pi/PiModels";
@@ -64,7 +65,7 @@ export const makeHeadlessProjectSessionRuntimeMechanismTestLayer = (
           trusted: true,
         }),
     }),
-    SubagentCoordinatorLive,
+    SubagentCoordinatorLive.pipe(Layer.provide(makeSubagentStorageTestLayer())),
   );
 
 export const makeProjectSessionRuntimeMechanismTestLayer = (

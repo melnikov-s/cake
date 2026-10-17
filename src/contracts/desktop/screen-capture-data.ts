@@ -25,7 +25,9 @@ export const CaptureSessionOption = Schema.Struct({
   modifiedAt: Schema.String,
   activityTime: Schema.String,
   labels: Schema.Array(SessionLabel),
-  activity: Schema.optionalKey(Schema.Literals(["waiting", "running", "unread", "error"])),
+  activity: Schema.optionalKey(
+    Schema.Literals(["waiting", "running", "blocked", "unread", "error", "stopped"]),
+  ),
   draft: Schema.optionalKey(Schema.Boolean),
   worktreeName: Schema.optionalKey(Schema.String),
   familyParentSessionId: Schema.optionalKey(Schema.String),

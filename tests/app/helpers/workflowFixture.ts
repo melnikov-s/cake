@@ -3,6 +3,7 @@ import { PiSettings } from "../../../src/services/pi/PiSettings";
 import { McpSettings } from "../../../src/services/pi/McpSettings";
 import { WidgetPackages } from "../../../src/services/widgets/WidgetPackages";
 import { SessionCoordination } from "../../../src/services/session-catalogs/SessionCoordination";
+import { coordinationStorageHarness } from "./coordinationStorageHarness";
 import {
   WorkflowRunId,
   WorkflowStepId,
@@ -93,7 +94,9 @@ export const makeMemoryWorkflowStorage = Effect.fn("WorkflowFixture.storage")(fu
 });
 
 export const AgentControlTestLive = Layer.mergeAll(
-  SessionCoordination.layer,
+  SessionCoordination.layer.pipe(
+    Layer.provide(Layer.suspend(() => coordinationStorageHarness().layer)),
+  ),
   Layer.mock(PiSettings, {}),
   Layer.mock(McpSettings, {}),
   Layer.mock(WidgetPackages, { directory: "/test/widgets" }),

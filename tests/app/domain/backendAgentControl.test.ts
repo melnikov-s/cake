@@ -47,7 +47,11 @@ import { SessionCatalogChanges } from "../../../src/services/session-catalogs/Se
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
-import { fakeRuntime, snapshot } from "../helpers/piRuntimeFixture";
+import {
+  makeRuntimeRecoveryStorageTestLayer,
+  fakeRuntime,
+  snapshot,
+} from "../helpers/piRuntimeFixture";
 import { makeHeadlessProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
 
 const source = "00000000-0000-4000-8000-000000000011";
@@ -214,7 +218,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* () {
           },
         };
       }),
-  });
+  }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
   const dependencies = Layer.mergeAll(
     WorkflowTestLive,
     Layer.mock(SavedDraftStorage, {

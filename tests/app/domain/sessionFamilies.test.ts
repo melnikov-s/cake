@@ -114,14 +114,15 @@ describe("Session Family lifecycle", () => {
     Effect.gen(function* () {
       const storage = yield* SessionFamilyStorage;
       yield* storage.addChild(reservation);
-      yield* Effect.exit(
+      const error = yield* Effect.flip(
         admitTurn(
           "child",
           archiveLocation,
           { turnId: "rejected-turn", text: message("parent", true) },
-          Effect.die("rejected"),
+          Effect.fail("rejected"),
         ),
       );
+      assert.equal(error, "rejected");
       assert.deepEqual((yield* storage.state()).turns, []);
     }).pipe(Effect.provide(layer())),
   );

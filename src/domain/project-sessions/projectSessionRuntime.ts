@@ -335,21 +335,25 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
             .bindTurn(sessionId, message.metadata.messageId, input.turnId)
             .pipe(Effect.andThen(accept))
         : accept;
-      return sessionFamilies
-        .admitTurn(
-          sessionId,
-          {
-            cwd: location.workingDirectory,
-            activeRoot: configuration.sessionDirectory,
-            resolvedRoot: configuration.resolvedSessionDirectory,
-          },
-          input,
-          admit,
-        )
-        .pipe(
-          Effect.provideService(SessionFamilyStorage, families),
-          Effect.provideService(SessionArchiveStorage, archive),
-        );
+      return coordination.checkStorage().pipe(
+        Effect.andThen(
+          sessionFamilies
+            .admitTurn(
+              sessionId,
+              {
+                cwd: location.workingDirectory,
+                activeRoot: configuration.sessionDirectory,
+                resolvedRoot: configuration.resolvedSessionDirectory,
+              },
+              input,
+              admit,
+            )
+            .pipe(
+              Effect.provideService(SessionFamilyStorage, families),
+              Effect.provideService(SessionArchiveStorage, archive),
+            ),
+        ),
+      );
     },
     onTurnSettled: (event) =>
       Effect.gen(function* () {

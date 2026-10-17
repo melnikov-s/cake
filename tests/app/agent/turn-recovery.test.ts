@@ -4,7 +4,6 @@ import {
   classifyTurnFailure,
   isAbortedAssistantTurn,
   isEmptyAssistantTurn,
-  shouldAutoResumeInterruptedTurn,
   turnRecoveryPrompt,
 } from "../../../src/services/pi/runtime/turn-recovery";
 
@@ -113,33 +112,5 @@ describe("classifyTurnFailure", () => {
   it("provides hidden continuation context without impersonating the user", () => {
     expect(turnRecoveryPrompt("empty")).toContain("previous response");
     expect(turnRecoveryPrompt("aborted")).toContain("cut off");
-  });
-});
-
-describe("shouldAutoResumeInterruptedTurn", () => {
-  it("resumes when the conversation ends in unanswered tool results", () => {
-    expect(
-      shouldAutoResumeInterruptedTurn([
-        { role: "user" },
-        { role: "assistant", stopReason: "toolUse" },
-        { role: "toolResult" },
-      ]),
-    ).toBe(true);
-  });
-
-  it("rejects completed, ambiguous, and intentionally aborted tails", () => {
-    expect(
-      shouldAutoResumeInterruptedTurn([
-        { role: "user" },
-        { role: "assistant", stopReason: "stop" },
-      ]),
-    ).toBe(false);
-    expect(shouldAutoResumeInterruptedTurn([{ role: "user" }])).toBe(false);
-    expect(
-      shouldAutoResumeInterruptedTurn([
-        { role: "assistant", stopReason: "aborted" },
-        { role: "toolResult" },
-      ]),
-    ).toBe(false);
   });
 });

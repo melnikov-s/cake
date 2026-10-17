@@ -19,7 +19,7 @@ import type { ApplicationState } from "../../services/storage/ApplicationState";
 import type { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import * as subagents from "./subagents";
 
-type SubagentControlRequirements =
+export type SubagentControlRequirements =
   | ApplicationState
   | CakeSessionRuntimes
   | SubagentCoordinator
@@ -78,6 +78,27 @@ const makeMessageAccess = (
   };
 };
 
+export const makeSubagentParent = (
+  options: CakeSessionRuntimeAcquireOptions,
+  parentSessionId: string,
+  workingDirectory: string,
+  runEffect: SubagentControlOptions["runEffect"],
+): subagents.SubagentParentRuntime => ({
+  parentSessionId,
+  workingDirectory,
+  options,
+  runEffect: (effect) => runEffect(effect),
+  messages: (recipientSessionId) =>
+    makeMessageAccess(options.runtime.messageReferenceControl, recipientSessionId, runEffect),
+  attachments: (ownerSessionId, recipientSessionId) => ({
+    forward: (inputRefs, signal) =>
+      runEffect(forwardAttachments(ownerSessionId, recipientSessionId, inputRefs), signal),
+    control: makeAttachmentReferenceControl(recipientSessionId, (effect, { signal }) =>
+      runEffect(effect, signal),
+    ),
+  }),
+});
+
 /** Adapts Cake's Subagent domain operations to the callback API consumed by Pi. */
 export const makeSubagentControl =
   ({ runEffect }: SubagentControlOptions) =>
@@ -85,21 +106,8 @@ export const makeSubagentControl =
     options: () => CakeSessionRuntimeAcquireOptions,
     workingDirectory: string,
   ): AgentOperationControl => {
-    const parent = (parentSessionId: string): subagents.SubagentParentRuntime => ({
-      parentSessionId,
-      workingDirectory,
-      options: options(),
-      runEffect: (effect) => runEffect(effect),
-      messages: (recipientSessionId) =>
-        makeMessageAccess(options().runtime.messageReferenceControl, recipientSessionId, runEffect),
-      attachments: (ownerSessionId, recipientSessionId) => ({
-        forward: (inputRefs, signal) =>
-          runEffect(forwardAttachments(ownerSessionId, recipientSessionId, inputRefs), signal),
-        control: makeAttachmentReferenceControl(recipientSessionId, (effect, { signal }) =>
-          runEffect(effect, signal),
-        ),
-      }),
-    });
+    const parent = (parentSessionId: string) =>
+      makeSubagentParent(options(), parentSessionId, workingDirectory, runEffect);
     return {
       run: (input, parentSessionId, signal, onUpdate, anchorPartId) =>
         runEffect(

@@ -1,3 +1,4 @@
+import { makeRuntimeRecoveryStorageTestLayer } from "../helpers/piRuntimeFixture";
 import assert from "node:assert/strict";
 import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
@@ -326,7 +327,9 @@ const makeLayer = (
   return {
     layer: Layer.mergeAll(
       WorkflowTestLive,
-      makeCakeSessionRuntimesLayer(adapter),
+      makeCakeSessionRuntimesLayer(adapter).pipe(
+        Layer.provide(makeRuntimeRecoveryStorageTestLayer()),
+      ),
       discussions,
       projectRuntime,
       ...(options.backendControl

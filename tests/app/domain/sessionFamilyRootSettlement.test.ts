@@ -16,7 +16,7 @@ import {
 } from "../../../src/services/pi/CakeSessionRuntimes";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
-import { fakeRuntime } from "../helpers/piRuntimeFixture";
+import { makeRuntimeRecoveryStorageTestLayer, fakeRuntime } from "../helpers/piRuntimeFixture";
 import { makeProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
 
 const location = {
@@ -82,7 +82,7 @@ const environment = (disposed: Deferred.Deferred<void>) =>
           }),
           sessionId: options.sessionId ?? "root",
         }),
-    }),
+    }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
   );
 
 it.effect("settles an informational message received by a family root without a notice", () =>
@@ -101,7 +101,9 @@ it.effect("settles an informational message received by a family root without a 
 
       const storage = yield* SessionFamilyStorage;
       assert.deepEqual((yield* storage.state()).turns, []);
-      yield* initialize(location.sessionDirectory, location.resolvedSessionDirectory);
+      yield* initialize(location.sessionDirectory, location.resolvedSessionDirectory, () =>
+        Effect.succeed(false),
+      );
       assert.deepEqual((yield* storage.state()).turns, []);
     }).pipe(Effect.provide(environment(disposed)));
   }),
@@ -137,7 +139,9 @@ it.effect("retains a completed root request that expected a response", () =>
       const pending = yield* storage.pendingResponseRequest("root", [], familyId, requestId);
       assert.equal(pending?.outcome, "complete");
       assert.equal(pending?.reported, false);
-      yield* initialize(location.sessionDirectory, location.resolvedSessionDirectory);
+      yield* initialize(location.sessionDirectory, location.resolvedSessionDirectory, () =>
+        Effect.succeed(false),
+      );
       assert.equal(
         (yield* storage.pendingResponseRequest("root", [], familyId, requestId))?.outcome,
         "complete",

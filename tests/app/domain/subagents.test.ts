@@ -1,3 +1,6 @@
+import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
+import type { SubagentRecord } from "../../../src/services/storage/SubagentStorage";
+import { makeRuntimeRecoveryStorageTestLayer } from "../helpers/piRuntimeFixture";
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import {
@@ -133,6 +136,7 @@ interface Fixture {
 
 const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
   failStart = false,
+  initialWorkers: readonly SubagentRecord[] = [],
   finalAnswer?: string,
 ): Effect.fn.Return<Fixture> {
   const childStarted = yield* Queue.unbounded<string>();
@@ -157,45 +161,46 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
       sessionId,
       sessionFile: options.ephemeral ? "" : `/sessions/${sessionId}.jsonl`,
       workspacePath: options.cwd,
-      parts: options.ephemeral
-        ? [
-            {
-              id: "system",
-              kind: "context",
-              title: "System prompt",
-              text: "PRIVATE_WORKER_CONTEXT",
-            },
-            {
-              id: "read",
-              kind: "tool",
-              name: "read",
-              input: "config.ts",
-              output: "PRIVATE_TOOL_OUTPUT",
-              state: "success",
-            },
-            ...(answered
-              ? [
-                  {
-                    id: "answer",
-                    kind: "text" as const,
-                    role: "assistant" as const,
-                    status: "complete" as const,
-                    text: finalAnswer ?? "Evidence: config.ts:12 defines the setting.",
-                  },
-                ]
-              : []),
-          ]
-        : answered && finalAnswer
+      parts:
+        options.auxiliary && !options.tools?.includes("edit")
           ? [
               {
-                id: "answer",
-                kind: "text",
-                role: "assistant",
-                status: "complete",
-                text: finalAnswer,
+                id: "system",
+                kind: "context",
+                title: "System prompt",
+                text: "PRIVATE_WORKER_CONTEXT",
               },
+              {
+                id: "read",
+                kind: "tool",
+                name: "read",
+                input: "config.ts",
+                output: "PRIVATE_TOOL_OUTPUT",
+                state: "success",
+              },
+              ...(answered
+                ? [
+                    {
+                      id: "answer",
+                      kind: "text" as const,
+                      role: "assistant" as const,
+                      status: "complete" as const,
+                      text: finalAnswer ?? "Evidence: config.ts:12 defines the setting.",
+                    },
+                  ]
+                : []),
             ]
-          : [],
+          : answered && finalAnswer
+            ? [
+                {
+                  id: "answer",
+                  kind: "text",
+                  role: "assistant",
+                  status: "complete",
+                  text: finalAnswer,
+                },
+              ]
+            : [],
       streaming,
     });
     return {
@@ -314,8 +319,10 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
   };
   const layer = Layer.mergeAll(
     applicationLayer,
-    makeCakeSessionRuntimesLayer(adapter),
-    SubagentCoordinatorLive,
+    makeCakeSessionRuntimesLayer(adapter).pipe(
+      Layer.provide(makeRuntimeRecoveryStorageTestLayer()),
+    ),
+    SubagentCoordinatorLive.pipe(Layer.provide(makeSubagentStorageTestLayer(initialWorkers))),
     familyStorageHarness().layer,
     makeSubagentEnvironmentLayer({
       location: (workingDirectory) =>
@@ -872,7 +879,7 @@ describe("Cake Chat project investigators", () => {
           );
           assert.ok(options);
           assert.equal(options.cwd, "/home");
-          assert.equal(options.ephemeral, true);
+          assert.equal(options.ephemeral, undefined);
           assert.equal(options.projectInvestigation, undefined);
           assert.deepEqual(options.tools, ["read", "bash", "message_parent"]);
           assert.match(
@@ -1105,7 +1112,7 @@ describe("Cake Chat project investigators", () => {
   );
 
   it.effect(
-    "binds an in-memory worker to the selected root and keeps its detailed activity private across async follow-ups",
+    "binds a persisted worker to the selected root and keeps its detailed activity private across async follow-ups",
     () =>
       Effect.gen(function* () {
         const fixture = yield* makeFixture();
@@ -1124,7 +1131,7 @@ describe("Cake Chat project investigators", () => {
           );
           assert.ok(options);
           assert.equal(options.cwd, "/another");
-          assert.equal(options.ephemeral, true);
+          assert.equal(options.ephemeral, undefined);
           assert.equal(options.projectInvestigation, true);
           assert.equal(options.allowMutations, false);
           assert.equal(options.isolatedSystemPrompt, undefined);
@@ -1191,7 +1198,7 @@ describe("Subagents", () => {
     (chat) =>
       Effect.gen(function* () {
         const reference = "[Result](cake://session/worker?message=exact%3Aentry)";
-        const fixture = yield* makeFixture(false, reference);
+        const fixture = yield* makeFixture(false, [], reference);
         yield* Effect.gen(function* () {
           const caller = chat ? cakeChatParent(fixture) : parent(fixture);
           const started = yield* subagents.start(
@@ -1209,17 +1216,111 @@ describe("Subagents", () => {
           assert.deepEqual(yield* Ref.get(fixture.completions), []);
           assert.deepEqual(yield* Ref.get(fixture.parentMessages), []);
           const storage = yield* SessionFamilyStorage;
+          const worker = (yield* coordinator.storage.list())[0];
+          assert.ok(worker);
           assert.deepEqual(
-            (yield* storage.state()).deferredReferences?.map(({ recipientSessionId, text }) => ({
-              recipientSessionId,
-              text,
-            })),
-            [{ recipientSessionId: caller.parentSessionId, text: reference }],
+            (yield* storage.state()).deferredReferences?.map(
+              ({ id, recipientSessionId, text }) => ({
+                id,
+                recipientSessionId,
+                text,
+              }),
+            ),
+            [
+              {
+                id: worker.completionId,
+                recipientSessionId: caller.parentSessionId,
+                text: reference,
+              },
+            ],
           );
         }).pipe(Effect.provide(fixture.layer));
       }),
   );
 
+  it.effect(
+    "restores terminal handles without Pi resources, hydrates once on demand, and closes dormant handles without opening them",
+    () =>
+      Effect.gen(function* () {
+        const original = yield* makeFixture();
+        const record = yield* Effect.gen(function* () {
+          const running = yield* subagents
+            .run({ task: "Already done" }, parent(original))
+            .pipe(Effect.forkChild);
+          const child = yield* Queue.take(original.childStarted);
+          yield* completeChild(original, child);
+          yield* Fiber.join(running);
+          const saved = (yield* (yield* SubagentCoordinator).storage.list())[0];
+          assert.ok(saved);
+          return saved;
+        }).pipe(Effect.provide(original.layer));
+        for (const access of ["wait", "observe", "close"] as const) {
+          const fixture = yield* makeFixture(false, [record]);
+          yield* Effect.gen(function* () {
+            const paused = yield* Effect.flip(subagents.wait("parent", record.handleId));
+            assert.match(paused.message, /has not been restored/);
+            yield* subagents.restore(record, parent(fixture), true);
+            assert.deepEqual(yield* Ref.get(fixture.constructedOptions), []);
+            if (access === "wait") {
+              const results = yield* Effect.all(
+                [
+                  subagents.wait("parent", record.handleId),
+                  subagents.wait("parent", record.handleId),
+                ],
+                { concurrency: "unbounded" },
+              );
+              assert.equal(results.length, 2);
+              assert.equal(yield* Ref.get(fixture.constructions), 1);
+            } else if (access === "observe") {
+              const updates = yield* subagents.observe("parent");
+              yield* updates.pipe(
+                Stream.filter((update) => update._tag === "Activity"),
+                Stream.runHead,
+              );
+              assert.equal(yield* Ref.get(fixture.constructions), 1);
+            }
+            yield* subagents.close("parent", record.handleId);
+            if (access === "close")
+              assert.deepEqual(yield* Ref.get(fixture.constructedOptions), []);
+            assert.deepEqual(yield* (yield* SubagentCoordinator).storage.list(), []);
+          }).pipe(Effect.provide(fixture.layer));
+        }
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "persists the current notification policy when a foreground worker is reused in the background",
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture();
+        yield* Effect.gen(function* () {
+          const running = yield* subagents
+            .run({ task: "Foreground" }, parent(fixture))
+            .pipe(Effect.forkChild);
+          const child = yield* Queue.take(fixture.childStarted);
+          yield* completeChild(fixture, child);
+          yield* Fiber.join(running);
+          const coordinator = yield* SubagentCoordinator;
+          const record = (yield* coordinator.storage.list())[0];
+          assert.ok(record);
+          yield* subagents.prompt(
+            "parent",
+            record.handleId,
+            "Background follow-up",
+            "follow-up",
+            true,
+          );
+          yield* Queue.take(fixture.childStarted);
+          const handle = (yield* SubscriptionRef.get(coordinator.state)).handles.get(
+            record.handleId,
+          );
+          assert.equal(handle?.recovery.notifyOnCompletion, true);
+          assert.equal((yield* coordinator.storage.list())[0]?.notifyOnCompletion, true);
+          yield* completeChild(fixture, child);
+          yield* Queue.take(fixture.reports);
+        }).pipe(Effect.provide(fixture.layer));
+      }).pipe(Effect.scoped),
+  );
   it.effect("uses one stable public handle without exposing the private Pi Session ID", () =>
     Effect.gen(function* () {
       const fixture = yield* makeFixture();

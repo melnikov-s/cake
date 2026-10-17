@@ -15,7 +15,7 @@ import { SessionCatalogChanges } from "../../../src/services/session-catalogs/Se
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { WorkflowTestLive } from "../helpers/workflowFixture";
-import { fakeRuntime } from "../helpers/piRuntimeFixture";
+import { makeRuntimeRecoveryStorageTestLayer, fakeRuntime } from "../helpers/piRuntimeFixture";
 import { makeProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
 
 const location = {
@@ -88,7 +88,7 @@ const environment = (forked: string[] = []) =>
             return { sessionId: "fork", sessionFile: "/sessions/fork.jsonl", artifactPointers: [] };
           },
         }),
-    }),
+    }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
   );
 
 describe("Project Session live agent policy", () => {

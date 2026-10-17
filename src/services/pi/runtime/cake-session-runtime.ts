@@ -6,6 +6,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { observeMessageBoardRequests } from "./message-board-extension";
 import { createTurnResultCapture } from "./turn-result-capture";
@@ -84,6 +85,13 @@ import {
 import { projectCakeSessionRuntimeSnapshot } from "./cake-session-runtime-snapshot";
 import { createCakeSessionRuntimeTurnController } from "./cake-session-runtime-turn-controller";
 import { createCakeSessionRuntimeRecovery } from "./cake-session-runtime-recovery";
+import type { RuntimeRecoveryInput } from "../../storage/RuntimeRecoveryStorage";
+import {
+  recoveryInputEntryType,
+  restartDecision,
+  restartResumePrompt,
+  RestartRecoveryBlockedError,
+} from "./restart-recovery";
 import {
   createCakeSessionRuntimeResourceLifecycle,
   shutdownCakeSessionExtensions,
@@ -219,11 +227,17 @@ export interface CakeSessionRuntime {
   /** Returns Pi's live turn state without assembling a ConversationSnapshot. */
   readonly streaming: boolean;
   executingTurnIds?(): ReadonlyArray<string>;
+  recoverInput?(input: RuntimeRecoveryInput): Promise<void>;
+  restoreInput?(input: RuntimeRecoveryInput): Promise<void>;
+  checkRecovery?(inputs: ReadonlyArray<RuntimeRecoveryInput>): void;
+  hasConsumedInput?(turnId: string): boolean;
+  acknowledgeRecovery?(): Promise<void>;
+  pendingRecoveryInputs?(): ReadonlyArray<{ turnId: string; delivery: "steer" | "follow-up" }>;
   getReviewParentContext?(): ReviewParentContext;
   recordReviewRun(run: ReviewRunEntry): void;
   snapshot(): Promise<ConversationSnapshot>;
   history?(cursor: string): Promise<{ parts: UiPart[]; cursor?: string }>;
-  notifySubagentCompletion?(result: JsonValue): Promise<void>;
+  notifySubagentCompletion?(result: JsonValue, completionId?: string): Promise<void>;
   prompt(
     text: string,
     delivery: "prompt" | "steer" | "follow-up",
@@ -316,8 +330,8 @@ export async function createCakeSessionRuntime(
       ...mcpExtensions,
     ],
   });
-  if (options.projectInvestigation && (!options.ephemeral || !options.auxiliary))
-    throw new Error("Project investigators require an ephemeral auxiliary runtime");
+  if (options.projectInvestigation && !options.auxiliary)
+    throw new Error("Project investigators require an auxiliary runtime");
   if (options.allowMutations && !options.projectInvestigation)
     throw new Error("Mutation mode applies only to project investigator runtimes");
   if (options.ephemeral && (!options.newSession || options.sessionFile))
@@ -399,6 +413,7 @@ export async function createCakeSessionRuntime(
   });
   let disposed = false;
   let disposePromise: Promise<void> | undefined;
+  const completionReceipts = new AbortController();
   const emitPart = (part: UiPart) =>
     options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part });
   const removePart = (partId: string) =>
@@ -620,7 +635,12 @@ export async function createCakeSessionRuntime(
     }
     if (event.type === "message_end" && event.message.role === "user") {
       const content = textFromContent(event.message.content);
-      turnController.consumeUserMessage(content);
+      const consumedTurnId = turnController.consumeUserMessage(content);
+      if (consumedTurnId && !options.ephemeral)
+        session.sessionManager.appendCustomEntry(recoveryInputEntryType, {
+          turnId: consumedTurnId,
+          timestamp: event.message.timestamp,
+        });
       const presentation = projection.consumeUserPresentation(content);
       if (presentation?.renderUserMessageAsMarkdown)
         queueMicrotask(() => {
@@ -648,7 +668,6 @@ export async function createCakeSessionRuntime(
       void continuations.finishSettledTurn();
     }
   });
-  void recovery.resumeInterruptedTurn();
 
   const currentContextSnapshot = () =>
     crossSessionContextSnapshot(session.getSessionStats().contextUsage);
@@ -836,15 +855,169 @@ export async function createCakeSessionRuntime(
       emitPart(reviewRunPart(parsed));
     },
     snapshot: () => makeSnapshot(),
-    async notifySubagentCompletion(result) {
+    restoreInput: (input) =>
+      turnController.restorePending({ ...input, attachments: [...input.attachments] }),
+    async acknowledgeRecovery() {
+      await session.sendCustomMessage(
+        {
+          customType: "cake.restart-review",
+          display: false,
+          content:
+            "The user sent a new message after Cake's interrupted-work warning. A prior tool may have executed without a saved result. Inspect current state before further mutations; do not automatically replay unfinished tool calls or already-sent reports.",
+        },
+        { triggerTurn: false },
+      );
+    },
+    pendingRecoveryInputs: turnController.pendingRecoveryInputs,
+    hasConsumedInput(turnId) {
+      return restartDecision(session.sessionManager.getEntries(), turnId).kind !== "pending";
+    },
+    checkRecovery(inputs) {
+      for (const input of inputs) {
+        const decision = restartDecision(session.sessionManager.getBranch(), input.turnId);
+        if (decision.kind === "blocked") throw new RestartRecoveryBlockedError(decision.issue);
+        if (decision.kind === "pending" && /^[!/]/.test(input.text))
+          throw new RestartRecoveryBlockedError(
+            "An interrupted command needs review before it can be run again.",
+          );
+      }
+    },
+    async recoverInput(input) {
+      const decision = restartDecision(session.sessionManager.getBranch(), input.turnId);
+      if (decision.kind === "blocked") {
+        emitPart({
+          id: "restart-recovery",
+          kind: "notice",
+          tone: "error",
+          title: "Recovery needs your review",
+          detail: decision.issue,
+        });
+        throw new RestartRecoveryBlockedError(decision.issue);
+      }
+      if (decision.kind === "settled") {
+        options.onTurnResult?.(input.turnId, decision.result);
+        return;
+      }
+      if (decision.kind === "pending") {
+        // Extension commands and user shell commands can mutate before a user
+        // message is committed. They cannot be replayed on an uncertain handoff.
+        if (/^[!/]/.test(input.text))
+          throw new RestartRecoveryBlockedError(
+            "An interrupted command needs review before it can be run again.",
+          );
+        await turnController.prompt(
+          input.text,
+          input.delivery,
+          [...input.attachments],
+          input.markdown,
+          input.turnId,
+          input.presentationMode,
+          input.responseMode,
+        );
+        return;
+      }
+      emitPart({
+        id: "restart-recovery",
+        kind: "notice",
+        tone: "info",
+        title: "Recovering interrupted work",
+      });
+      try {
+        await turnController.resume(input.turnId, restartResumePrompt);
+        const settled = restartDecision(session.sessionManager.getBranch(), input.turnId);
+        if (settled.kind === "settled") options.onTurnResult?.(input.turnId, settled.result);
+      } finally {
+        removePart("restart-recovery");
+      }
+    },
+    async notifySubagentCompletion(result, completionId) {
       if (disposed) throw new Error("The Cake runtime has been disposed");
+      const receiptSchema = Schema.Struct({ completionId: Schema.String });
+      const matchesReceipt = (details: unknown) => {
+        const receipt = Schema.decodeUnknownOption(receiptSchema)(details);
+        return Option.isSome(receipt) && receipt.value.completionId === completionId;
+      };
+      const persistedReceiptSchema = Schema.fromJsonString(
+        Schema.Struct({
+          type: Schema.Literal("custom_message"),
+          customType: Schema.Literal("cake.subagent-completion"),
+          details: receiptSchema,
+        }),
+      );
+      const hasReceipt = async () => {
+        const file = session.sessionFile;
+        if (completionId === undefined || !file || !existsSync(file)) return false;
+        if (
+          !session.sessionManager
+            .getEntries()
+            .some(
+              (entry) =>
+                entry.type === "custom_message" &&
+                entry.customType === "cake.subagent-completion" &&
+                matchesReceipt(entry.details),
+            )
+        )
+          return false;
+        // Pi updates its entry index before writing. An index entry alone is
+        // not proof of receipt if the transcript append failed.
+        const transcript = await readFile(file, "utf8");
+        return transcript.split("\n").some((line) => {
+          if (!line.includes("cake.subagent-completion")) return false;
+          const receipt = Schema.decodeUnknownOption(persistedReceiptSchema)(line);
+          return Option.isSome(receipt) && receipt.value.details.completionId === completionId;
+        });
+      };
+      if (await hasReceipt()) return;
+      const parsed = Schema.decodeUnknownOption(subagentResultSchema)(result);
       const message = {
         customType: "cake.subagent-completion",
         content: subagentCompletionMessage(result),
         display: false,
-        details: result,
+        details: completionId && Option.isSome(parsed) ? { ...parsed.value, completionId } : result,
       };
-      await session.sendCustomMessage(message, { triggerTurn: true, deliverAs: "followUp" });
+      if (!completionId) {
+        await session.sendCustomMessage(message, { triggerTurn: true, deliverAs: "followUp" });
+        return;
+      }
+      let unsubscribe = () => {};
+      let onDispose = () => {};
+      const receipt = new Promise<void>((resolve, reject) => {
+        let observed = false;
+        onDispose = () => reject(new Error("Cake stopped before the worker report was persisted"));
+        if (completionReceipts.signal.aborted) {
+          onDispose();
+          return;
+        }
+        completionReceipts.signal.addEventListener("abort", onDispose, { once: true });
+        unsubscribe = session.subscribe((event) => {
+          if (event.type !== "message_end") return;
+          if (
+            event.message.role === "custom" &&
+            event.message.customType === "cake.subagent-completion" &&
+            matchesReceipt(event.message.details)
+          )
+            observed = true;
+          if (!observed) return;
+          // Pi emits message_end before its synchronous transcript append. Wait
+          // until after that append; accepting an in-memory follow-up is not a receipt.
+          queueMicrotask(() => {
+            void hasReceipt().then((persisted) => {
+              if (persisted) {
+                unsubscribe();
+                resolve();
+              }
+            }, reject);
+          });
+        });
+      });
+      void receipt.catch(() => undefined);
+      try {
+        await session.sendCustomMessage(message, { triggerTurn: true, deliverAs: "followUp" });
+        await receipt;
+      } finally {
+        unsubscribe();
+        completionReceipts.signal.removeEventListener("abort", onDispose);
+      }
     },
     compact: turnController.compact,
     async queueCommand(command, onSettled) {
@@ -1013,6 +1186,7 @@ export async function createCakeSessionRuntime(
     dispose() {
       if (disposed) return disposePromise;
       disposed = true;
+      completionReceipts.abort();
       turnController.dispose();
       continuations.dispose();
       projection.dispose();

@@ -14,7 +14,7 @@ import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamil
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { makeHeadlessProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
-import { fakeRuntime } from "../helpers/piRuntimeFixture";
+import { makeRuntimeRecoveryStorageTestLayer, fakeRuntime } from "../helpers/piRuntimeFixture";
 
 it.effect("creates independent Pi-backed Project Session without any renderer", () => {
   const prompts: string[] = [];
@@ -54,7 +54,9 @@ it.effect("creates independent Pi-backed Project Session without any renderer", 
         throw new Error("Unexpected widget generation");
       },
     }),
-    makeCakeSessionRuntimesLayer(adapter),
+    makeCakeSessionRuntimesLayer(adapter).pipe(
+      Layer.provide(makeRuntimeRecoveryStorageTestLayer()),
+    ),
     SessionCatalogChanges.layer,
     Layer.mock(ApplicationState, {
       snapshot: () => ({

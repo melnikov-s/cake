@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describeTurnStop, type TurnStop } from "../../contracts/conversations/turn-stop";
 import {
   appendMessageReferences,
@@ -72,11 +73,11 @@ const assertAdmission = Effect.fn("SessionFamilies.assertAdmission")(function* (
     );
 });
 
-export const admitTurn = Effect.fn("SessionFamilies.admitTurn")(function* (
+export const admitTurn = Effect.fn("SessionFamilies.admitTurn")(function* <E, R>(
   sessionId: string,
   location: SessionArchiveLocation,
   input: { readonly turnId: string; readonly text: string },
-  accept: Effect.Effect<void>,
+  accept: Effect.Effect<void, E, R>,
 ) {
   const storage = yield* SessionFamilyStorage;
   yield* storage.withMemberLock(
@@ -346,14 +347,18 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(function* <
   return { ...identity, launch: { status: "accepted", turnId: launched.success } };
 });
 
-export const initialize = Effect.fn("SessionFamilies.initialize")(function* (
+export const initialize = Effect.fn("SessionFamilies.initialize")(function* <E, R>(
   activeRoot: string,
   resolvedRoot: string,
+  isRecoverable: (sessionId: string, turnId?: string) => Effect.Effect<boolean, E, R>,
 ) {
   const storage = yield* SessionFamilyStorage;
   const archive = yield* SessionArchiveStorage;
   for (const family of yield* storage.list()) {
     for (const child of family.children) {
+      // Durable admission can precede Pi's first transcript write. Recovery, not
+      // transcript presence, decides whether this reservation is still live.
+      if (yield* isRecoverable(child.sessionId)) continue;
       if (
         yield* archive.locate(child.sessionId, {
           cwd: child.workingDirectory,
@@ -362,8 +367,11 @@ export const initialize = Effect.fn("SessionFamilies.initialize")(function* (
         })
       )
         continue;
-      // The process ended before Pi materialized the reservation. It must not
-      // remain a phantom member that prevents the family from being archived.
+      // An existing obligation (including a settled report awaiting delivery)
+      // must retain its member routing and must not gain a second failure notice.
+      if ((yield* storage.state()).turns.some((turn) => turn.sessionId === child.sessionId))
+        continue;
+      // No accepted input or report remains for this unmaterialized reservation.
       yield* storage.recordTurn({
         sessionId: child.sessionId,
         senderSessionId: child.parentSessionId,
@@ -380,6 +388,7 @@ export const initialize = Effect.fn("SessionFamilies.initialize")(function* (
   for (const spawn of state.spawnedSessions) {
     if (spawn.handoffSettled || state.turns.some((turn) => turn.sessionId === spawn.sessionId))
       continue;
+    if (yield* isRecoverable(spawn.sessionId)) continue;
     // Covers a crash after recording the requester but before Pi accepted its initial input.
     // Spawns created without an initial obligation are registered already settled.
     yield* storage.recordTurn({
@@ -394,11 +403,22 @@ export const initialize = Effect.fn("SessionFamilies.initialize")(function* (
     });
   }
   for (const turn of (yield* storage.state()).turns) {
-    // No process-local turn survives restart. Accepted-but-unsettled work is
-    // reported as interrupted, never silently treated as complete.
-    if (!turn.outcome) yield* storage.settleTurn(turn.turnId, "aborted");
+    // Accepted primary inputs may resume after restart. Only genuinely orphaned
+    // obligations become interrupted notices; settled reports are never rewritten.
+    if (!turn.outcome && !(yield* isRecoverable(turn.sessionId, turn.turnId)))
+      yield* storage.settleTurn(turn.turnId, "aborted");
   }
 });
+
+/** The report is a new admission, not the worker's input. Reusing that input ID
+ * lets the recipient settle the worker's still-pending obligation a second time. */
+const reportMessageId = (turnId: string) => {
+  const bytes = createHash("sha256").update(`cake:automatic-report:${turnId}`).digest();
+  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40;
+  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
+  const hex = bytes.subarray(0, 16).toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+};
 
 export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (turn: FamilyTurn) {
   const storage = yield* SessionFamilyStorage;
@@ -539,7 +559,7 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
         ),
     {
       version: 1,
-      messageId: turn.turnId,
+      messageId: reportMessageId(turn.turnId),
       threadId: turn.threadId,
       sequence: 1,
       expectsResponse: false,
@@ -572,6 +592,14 @@ const deliverOutcome = Effect.fn("SessionFamilies.deliverOutcome")(function* (
       );
       if (!current) return;
       turn = current;
+      if (
+        sender.inputReceipt &&
+        (yield* sender.inputReceipt(reportMessageId(turn.turnId))) === "canceled"
+      ) {
+        // The recipient withdrew this accepted report; a restart must not reinsert it.
+        yield* storage.completeNotice(turn.turnId);
+        return;
+      }
       if (isCakeChatSessionId(turn.senderSessionId))
         text = yield* prepareCoordinatorNotice(turn.senderSessionId, text).pipe(
           Effect.mapError((error) => failure(error.message)),
@@ -598,7 +626,7 @@ const deliverOutcome = Effect.fn("SessionFamilies.deliverOutcome")(function* (
           (part.kind === "context" || (part.kind === "text" && !part.deliveryState)) &&
           "crossSession" in part &&
           part.crossSession &&
-          (part.crossSession.messageId === turn.turnId ||
+          (part.crossSession.messageId === reportMessageId(turn.turnId) ||
             (turn.outcome === "complete" &&
               turn.replyMessageIds?.includes(part.crossSession.messageId))),
       );
@@ -1009,7 +1037,7 @@ const deliverCoordinatorNotice = Effect.fn("SessionFamilies.deliverCoordinatorNo
         ),
     {
       version: 1,
-      messageId: turn.turnId,
+      messageId: reportMessageId(turn.turnId),
       threadId: turn.threadId,
       sequence: 1,
       expectsResponse: false,

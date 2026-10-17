@@ -38,7 +38,7 @@ describe("SessionFamilyStorage", () => {
     () =>
       Effect.gen(function* () {
         const storage = yield* SessionFamilyStorage;
-        const completed = turn({ outcome: "complete" });
+        const completed = turn({ outcome: "complete", deliveryTurnId: "recipient-report" });
         const activeReply = turn({ turnId: "active", replyMessageIds: ["reply"] });
         const unrelated = turn({ turnId: "keep", outcome: "complete" });
         const otherRecipient = turn({
@@ -49,7 +49,7 @@ describe("SessionFamilyStorage", () => {
         });
         for (const item of [completed, activeReply, unrelated, otherRecipient])
           yield* storage.recordTurn(item);
-        yield* storage.withdrawNotices("parent", ["turn", "reply"]);
+        yield* storage.withdrawNotices("parent", ["recipient-report", "reply"]);
         assert.deepEqual((yield* storage.state()).turns, [
           { ...activeReply, reported: true },
           unrelated,

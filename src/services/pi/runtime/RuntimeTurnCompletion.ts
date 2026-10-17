@@ -29,10 +29,12 @@ export class RuntimeTurnCompletion {
   }
 
   consume(content: string) {
-    const waiting = [...this.pending.values()].filter((item) => !item.consumed);
+    const waiting = [...this.pending].filter(([, item]) => !item.consumed);
     const entry =
-      waiting.find((item) => item.content === content) ?? waiting.find((item) => item.mayTransform);
-    if (entry) entry.consumed = true;
+      waiting.find(([, item]) => item.content === content) ??
+      waiting.find(([, item]) => item.mayTransform);
+    if (entry) entry[1].consumed = true;
+    return entry?.[0];
   }
 
   executingIds() {

@@ -486,6 +486,7 @@ export const deleteResolved = Effect.fn("ProjectSessions.deleteResolved")(functi
   yield* archive.deleteResolvedProject(sessionId).pipe(asError(operation));
   const garbageCollector = yield* ArtifactGarbageCollector;
   yield* Effect.gen(function* () {
+    yield* (yield* CakeSessionRuntimes).forgetRecovery(sessionId).pipe(asError(operation));
     yield* artifacts.deleteSession(entry.workingDirectory, sessionId).pipe(asError(operation));
     yield* reviews.deleteSession(entry.workingDirectory, sessionId).pipe(asError(operation));
     yield* (yield* ProjectAccess).forgetSessionLocation(sessionId).pipe(asError(operation));
@@ -522,6 +523,7 @@ export const deleteProjectSessions = Effect.fn("ProjectSessions.deleteProjectSes
     workingDirectory: string,
     sessionId: string,
   ) {
+    yield* sessions.forgetRecovery(sessionId).pipe(asError(operation));
     yield* artifacts.deleteSession(workingDirectory, sessionId).pipe(asError(operation));
     yield* reviews.deleteSession(workingDirectory, sessionId).pipe(asError(operation));
     forgotten.add(sessionId);

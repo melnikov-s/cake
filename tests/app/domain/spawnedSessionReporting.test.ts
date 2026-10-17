@@ -38,7 +38,11 @@ import { makeHeadlessProjectSessionRuntimeMechanismTestLayer } from "./projectSe
 import { messageBoardHarness } from "../helpers/messageBoardHarness";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import type { SessionInspectionQuery } from "../../../src/contracts/conversations/session-query-data";
-import { fakeRuntime, snapshot } from "../helpers/piRuntimeFixture";
+import {
+  makeRuntimeRecoveryStorageTestLayer,
+  fakeRuntime,
+  snapshot,
+} from "../helpers/piRuntimeFixture";
 import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
 import { TurnCanceledError } from "../../../src/services/pi/runtime/RuntimeTurnCompletion";
 import * as sessionChats from "../../../src/domain/conversations/sessionChats";
@@ -259,7 +263,7 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
                   ),
               };
             }),
-    }),
+    }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
   );
   const context = yield* Layer.build(environment);
   const storage = yield* SessionFamilyStorage.pipe(Effect.provide(context));
@@ -1481,7 +1485,9 @@ describe("automatic spawned-session reporting", () => {
                   ? { report: { outcome: "result" as const, text: resultText } }
                   : null),
               });
-            yield* families.initialize("/cake/sessions", "/cake/resolved");
+            yield* families.initialize("/cake/sessions", "/cake/resolved", () =>
+              Effect.succeed(false),
+            );
             const turn = yield* onlyTurn();
             assert.equal(
               turn.outcome,
@@ -1514,7 +1520,9 @@ describe("automatic spawned-session reporting", () => {
                 mode === "result",
               );
               assert.equal((yield* storage.state()).spawnedSessions[0]?.handoffSettled, true);
-              yield* families.initialize("/cake/sessions", "/cake/resolved");
+              yield* families.initialize("/cake/sessions", "/cake/resolved", () =>
+                Effect.succeed(false),
+              );
               assert.equal((yield* storage.state()).turns.length, 0);
             }).pipe(Effect.provide(familyStorageHarness(f.harness.files).layer));
             assert.equal(f.deliveries.length, 1);
@@ -1685,6 +1693,11 @@ describe("automatic spawned-session reporting", () => {
         assert.deepEqual(state.turns, []);
         assert.equal(state.spawnedSessions[0]?.reportDelivered, true);
         assert.equal(f.deliveries.length, 1);
+        // A result is a distinct admission: the coordinator must not settle the worker input again.
+        assert.notEqual(
+          parseCrossSessionMessage(f.transcript[0] ?? "")?.metadata.messageId,
+          entered.turnId,
+        );
         return yield* (yield* CakeSessionRuntimes).acquire(
           yield* projectOptions({ location, sessionId: created.sessionId, newSession: false }),
         );
@@ -1785,7 +1798,9 @@ describe("automatic spawned-session reporting", () => {
             assert.deepEqual(state.turns, []);
             assert.equal(state.spawnedSessions[0]?.handoffSettled, true);
             // A restart cannot invent an "interrupted" notice for work that owed nothing.
-            yield* families.initialize("/cake/sessions", "/cake/resolved");
+            yield* families.initialize("/cake/sessions", "/cake/resolved", () =>
+              Effect.succeed(false),
+            );
             assert.deepEqual((yield* f.storage.state()).turns, []);
             assert.equal(f.deliveries.length, 0);
           }),
@@ -1960,7 +1975,9 @@ describe("automatic spawned-session reporting", () => {
               handoffSettled: false,
               reportPolicy: "digest",
             });
-            yield* families.initialize("/cake/sessions", "/cake/resolved");
+            yield* families.initialize("/cake/sessions", "/cake/resolved", () =>
+              Effect.succeed(false),
+            );
             const turn = yield* onlyTurn();
             assert.equal(turn.reportPolicy, "digest");
             yield* families.deliver(turn);

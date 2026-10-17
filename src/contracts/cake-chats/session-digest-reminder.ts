@@ -1,3 +1,4 @@
+import { Option, Schema } from "effect";
 import type { CakeChatLaunchStatus } from "../project-sessions/session-reporting";
 
 /**
@@ -36,6 +37,7 @@ export function formatSessionDigestReminder(input: {
   readonly lines: readonly SessionDigestLine[];
   readonly running: number;
   readonly interruptedReport: boolean;
+  readonly receiptIds?: readonly string[];
 }): string | undefined {
   if (!input.lines.length && !input.interruptedReport) return undefined;
   const body: string[] = [];
@@ -53,11 +55,25 @@ export function formatSessionDigestReminder(input: {
     body.push(
       "The user sent this message while you were handling a session report, so that turn was stopped. Answer the user first and fold in anything important from the report.",
     );
+  if (input.receiptIds?.length)
+    body.push(`<cake-digest-receipts>${JSON.stringify(input.receiptIds)}</cake-digest-receipts>`);
   return `${HEADER}\n${body.join("\n")}${FOOTER}`;
 }
 
 export function addSessionDigestReminder(text: string, reminder: string | undefined) {
   return reminder ? `${reminder}${text ? `\n\n${text}` : ""}` : text;
+}
+
+/** Durable handoff receipts, restricted to the Cake-owned reminder boundary. */
+export function sessionDigestReceiptIds(text: string): readonly string[] {
+  const reminder = block.exec(text)?.[0];
+  const payload =
+    reminder && /<cake-digest-receipts>([^\n]*)<\/cake-digest-receipts>/.exec(reminder)?.[1];
+  if (!payload) return [];
+  const parsed = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Array(Schema.String)))(
+    payload,
+  );
+  return Option.isSome(parsed) ? parsed.value : [];
 }
 
 /** Only removes the exact Cake-owned block at its injection boundary. */

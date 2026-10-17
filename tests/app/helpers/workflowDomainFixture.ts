@@ -31,7 +31,12 @@ import {
   makeMemoryWorkflowStorage,
   AgentControlTestLive,
 } from "./workflowFixture";
-import { fakeRuntime, options, snapshot } from "./piRuntimeFixture";
+import {
+  makeRuntimeRecoveryStorageTestLayer,
+  fakeRuntime,
+  options,
+  snapshot,
+} from "./piRuntimeFixture";
 import { familyStorageHarness } from "./familyStorageHarness";
 import type { JsonValue } from "../../../src/contracts/serialization/json-contract";
 import type {
@@ -106,7 +111,7 @@ export const makeWorkflowDomainFixture = Effect.fn("WorkflowFixture.domain")(fun
           await Effect.runPromise(Queue.offer(reports, text));
         },
       }),
-  });
+  }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
   const layer = Layer.mergeAll(
     WorkflowSupervisorLive,
     AgentControlTestLive,

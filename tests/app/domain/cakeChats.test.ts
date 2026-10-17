@@ -1,3 +1,4 @@
+import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
 import { it } from "@effect/vitest";
 import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { Effect, Layer, Stream } from "effect";
@@ -88,7 +89,7 @@ function fixture() {
         ),
     }),
     Layer.mock(SessionArchiveStorage, {}),
-    SubagentCoordinatorLive,
+    SubagentCoordinatorLive.pipe(Layer.provide(makeSubagentStorageTestLayer())),
     Layer.mock(SubagentEnvironment, {}),
   );
   return {

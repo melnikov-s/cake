@@ -8,6 +8,7 @@
     "scripts/visual-capture/cli.ts",
     "scripts/performance/session-references.ts",
     "tests/integration/fixtures/headless-backend.ts",
+    "tests/integration/fixtures/restart-backend.ts",
     "tests/integration/fixtures/workflow-sandbox-backend.ts"
   ],
   "ignore": [".agents/skills/**/assets/**"],

@@ -20,7 +20,11 @@ import { SessionCatalogChanges } from "../../../src/services/session-catalogs/Se
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
-import { fakeRuntime, snapshot } from "../helpers/piRuntimeFixture";
+import {
+  makeRuntimeRecoveryStorageTestLayer,
+  fakeRuntime,
+  snapshot,
+} from "../helpers/piRuntimeFixture";
 import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
 
 const location = {
@@ -116,7 +120,7 @@ describe("Session Family outcome delivery", () => {
                     Deferred.doneUnsafe(first, Effect.void);
                   },
                 }),
-            }),
+            }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
           ),
         ),
       );
@@ -154,7 +158,7 @@ describe("Session Family outcome delivery", () => {
                   throw new Error("The parent must not be told about a stop it made");
                 },
               }),
-          }),
+          }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
         ),
       ),
     ),
@@ -196,7 +200,7 @@ describe("Session Family outcome delivery", () => {
                   throw new Error("A child must not receive notices about its parent");
                 },
               }),
-          }),
+          }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
         ),
       ),
     ),
@@ -266,7 +270,7 @@ describe("Session Family outcome delivery", () => {
                   throw new Error("Do not send a fallback for a delivered reply");
                 },
               }),
-          }),
+          }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
         ),
       ),
     );
@@ -310,7 +314,7 @@ describe("Session Family outcome delivery", () => {
                 },
               };
             }),
-        });
+        }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
         const dependencies = Layer.mergeAll(
           environment,
           pi,
@@ -391,7 +395,7 @@ describe("Session Family outcome delivery", () => {
                       Deferred.doneUnsafe(received, Effect.succeed(text));
                     },
                   }),
-              }),
+              }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
             ),
           ),
         );
@@ -428,7 +432,7 @@ describe("Session Family outcome delivery", () => {
                     Deferred.doneUnsafe(received, Effect.void);
                   },
                 }),
-            }),
+            }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
           ),
         ),
       );
@@ -439,10 +443,10 @@ describe("Session Family outcome delivery", () => {
     Effect.gen(function* () {
       const storage = yield* SessionFamilyStorage;
       yield* storage.addChild(reservation);
-      yield* initialize("/sessions", "/resolved");
+      yield* initialize("/sessions", "/resolved", () => Effect.succeed(false));
       assert.deepEqual((yield* storage.list())[0]?.children, []);
       assert.equal((yield* storage.state()).turns[0]?.outcome, "failed");
-      yield* initialize("/sessions", "/resolved");
+      yield* initialize("/sessions", "/resolved", () => Effect.succeed(false));
       assert.equal((yield* storage.state()).turns.length, 1);
     }).pipe(
       Effect.provide(

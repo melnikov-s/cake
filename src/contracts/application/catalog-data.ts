@@ -32,6 +32,11 @@ const SessionCatalogEvent = Schema.TaggedUnion({
     running: ProjectSessionSummary.fields.running,
     modifiedAt: Schema.optionalKey(ProjectSessionSummary.fields.modifiedAt),
     unread: Schema.optionalKey(ProjectSessionSummary.fields.unread),
+    /** Null explicitly clears a previously blocked recovery. */
+    recoveryIssue: Schema.optionalKey(Schema.NullOr(Schema.String)),
+    latestTurnOutcome: Schema.optionalKey(
+      Schema.NullOr(Schema.Literals(["complete", "failed", "aborted"])),
+    ),
   },
   Removed: { sessionId: ProjectSessionSummary.fields.sessionId },
   RemovedBatch: { sessionIds: Schema.Array(ProjectSessionSummary.fields.sessionId) },

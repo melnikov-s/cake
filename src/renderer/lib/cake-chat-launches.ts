@@ -41,7 +41,7 @@ export function launchedSessionStatus(
   activity: SessionActivity | undefined,
 ): LaunchedSessionStatus {
   const report = session.cakeChatLaunch?.lastReport;
-  if (activity === "waiting") return "needs-you";
+  if (activity === "waiting" || activity === "blocked") return "needs-you";
   if (session.running || activity === "running") return "running";
   if (report?.status === "blocked") return "needs-you";
   if (report?.status === "failed" || activity === "error") return "failed";

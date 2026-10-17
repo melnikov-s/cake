@@ -597,6 +597,45 @@ it("uses production SQLite, existing credentials and exact originals across reop
   ).toHaveLength(2);
 });
 
+it.each(["global", "project"])(
+  "permanent %s chat recovery does not wake an idle chat or replay its completed input",
+  async (kind) => {
+    const f = await fixture();
+    const scope =
+      kind === "global"
+        ? undefined
+        : {
+            sessionId: projectChatSessionId("/idle-project"),
+            sessionDir: join(f.directory, "idle-project-chat"),
+          };
+    const first = await f.open(undefined, undefined, scope);
+    await first.runtime.prompt("Completed assignment", "prompt", [], false, ids.first);
+    const original = textParts(await first.runtime.snapshot());
+    expect(original.map((part) => part.text)).toEqual(["Completed assignment", "Done"]);
+    await first.close();
+    const before = f.requests.length;
+
+    const reopened = await f.open(undefined, undefined, scope);
+    const snapshot = await reopened.runtime.snapshot();
+    expect(snapshot.streaming).toBe(false);
+    expect(await reopened.runtime.pendingMessages()).toMatchObject({ items: [] });
+    expect(textParts(snapshot)).toEqual(original);
+    expect(f.requests).toHaveLength(before);
+    // Close drains the resumed Harness, proving there was no latent generation task.
+    await reopened.close();
+    expect(f.requests).toHaveLength(before);
+
+    const next = await f.open(undefined, undefined, scope);
+    await next.runtime.prompt("New user input", "prompt", [], false, ids.second);
+    expect(f.requests).toHaveLength(before + 1);
+    expect(
+      textParts(await next.runtime.snapshot())
+        .filter((part) => part.role === "user")
+        .map((part) => part.text),
+    ).toEqual(["Completed assignment", "New user input"]);
+  },
+);
+
 it("Stop preserves the inbox; send-now retains reference-only attachments and Markdown without image payloads", async () => {
   const f = await fixture();
   f.hold(true);
@@ -652,6 +691,39 @@ it("Stop preserves the inbox; send-now retains reference-only attachments and Ma
   ).toEqual(["Hold", "Two", "One"]);
   expect(JSON.stringify(f.requests[1])).not.toContain("c2FtcGxl");
   expect(JSON.stringify(f.requests[1])).toContain(ids.first);
+});
+
+it("permanent chat recovery retains a stopped run and its queued input without waking it", async () => {
+  const f = await fixture();
+  f.hold(true);
+  const first = await f.open();
+  const active = first.runtime
+    .prompt("Stop this task", "prompt", [], false, ids.first)
+    .catch((error: unknown) => error);
+  await Effect.runPromise(Deferred.await(f.started));
+  const queued = first.runtime
+    .prompt("Retain this queued input", "follow-up", [], false, ids.second)
+    .catch((error: unknown) => error);
+  await f.waitSnapshot(first.runtime, (snapshot) =>
+    snapshot.parts.some((part) => part.kind === "text" && part.queuedInput?.itemId === ids.second),
+  );
+  await first.runtime.abort();
+  expect(await active).toBeInstanceOf(Error);
+  expect((await first.runtime.pendingMessages()).items).toHaveLength(1);
+  await first.close();
+  await queued;
+  const before = f.requests.length;
+  f.hold(false);
+
+  const reopened = await f.open();
+  const snapshot = await reopened.runtime.snapshot();
+  expect(snapshot.streaming).toBe(false);
+  expect((await reopened.runtime.pendingMessages()).items).toMatchObject([
+    { itemId: ids.second, text: "Retain this queued input" },
+  ]);
+  expect(f.requests).toHaveLength(before);
+  await reopened.close();
+  expect(f.requests).toHaveLength(before);
 });
 
 it("restart resumes a placed run and a queued worker report without resubmission or duplicate originals", async () => {

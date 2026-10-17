@@ -17,7 +17,11 @@ import { SessionCatalogChanges } from "../../../src/services/session-catalogs/Se
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { VsCodeServer } from "../../../src/services/vscode/VsCodeServer";
 import { makeHeadlessProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
-import { fakeRuntime, snapshot } from "../helpers/piRuntimeFixture";
+import {
+  makeRuntimeRecoveryStorageTestLayer,
+  fakeRuntime,
+  snapshot,
+} from "../helpers/piRuntimeFixture";
 
 const input = {
   sessionId: "session-1",
@@ -99,7 +103,7 @@ it.effect.each([false, true])(
             };
           }),
         ),
-      );
+      ).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
       const context = yield* Layer.build(Layer.merge(dependencies, runtimes));
       yield* Effect.gen(function* () {
         const sessions = yield* CakeSessionRuntimes;
@@ -164,7 +168,9 @@ it.effect("missing_desktop_controls_reject_immediately_without_renderer_requests
     Effect.provide(
       Layer.merge(
         dependencies,
-        makeCakeSessionRuntimesLayer(adapter(() => Effect.die("Unexpected Pi acquisition"))),
+        makeCakeSessionRuntimesLayer(adapter(() => Effect.die("Unexpected Pi acquisition"))).pipe(
+          Layer.provide(makeRuntimeRecoveryStorageTestLayer()),
+        ),
       ),
     ),
   ),
@@ -185,7 +191,9 @@ it.effect("provided_desktop_controls_retain_native_editor_behavior", () =>
       Layer.mergeAll(
         dependencies,
         native,
-        makeCakeSessionRuntimesLayer(adapter(() => Effect.die("Unexpected Pi acquisition"))),
+        makeCakeSessionRuntimesLayer(adapter(() => Effect.die("Unexpected Pi acquisition"))).pipe(
+          Layer.provide(makeRuntimeRecoveryStorageTestLayer()),
+        ),
       ),
     );
     const options = yield* acquireOptions(input).pipe(Effect.provide(context));

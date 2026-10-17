@@ -24,6 +24,9 @@ filtering for shared custom directories. Tests must explicitly isolate both home
 │   ├── worktrees.json
 │   ├── session-metadata/
 │   ├── session-families.json
+│   ├── recovery-intents/
+│   ├── private-workers/
+│   ├── session-coordination.json
 │   ├── resolved-project-metadata/
 │   │   └── resolution.json
 │   ├── artifacts/
@@ -158,8 +161,8 @@ framework or an exactly-once guarantee:
 | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Family child creation — `sessionFamilies`                                | Child identity and request correlation persist before the initial Pi prompt; creation completes at turn acceptance, not task completion | The same request returns the child identity; a failed launch retains a materialized child, while a reservation without a transcript is removed. See [family membership](./session-family-contract.md#membership-invariants).                                          |
 | Worktree landing — `worktreeLandings` and its process-scoped coordinator | Accepted work owns a repository queue slot independently of renderer lifetime                                                           | Queue position/progress are process-local; persisted conflict/squash-message pauses can be adopted, and merge-and-resolve intent remains durable until completion. See [worktree ownership](./effect-architecture.md#filesystem-git-worktrees-vs-code-and-terminals). |
-| Result reporting — response journal and delivery worker                  | Recipient transcript receipt, not queue insertion, confirms handoff                                                                     | Durable outbox intents retry using correlation and receipt checks; interrupted Project work is reported, not rerun.                                                                                                                                                   |
-| Scheduled Project messages — scheduled delivery workflow/storage         | The durable intent remains cancellable until delivery; normal Pi admission is the handoff                                               | Pending schedules persist; after handoff, Project runtime queues retain their ordinary lifetime. This is not a general idempotent command bus.                                                                                                                        |
+| Result reporting — response journal and delivery worker                  | Recipient transcript receipt, not queue insertion, confirms handoff                                                                     | Durable outbox intents retry with stable message identities and Pi consumption receipts. Active Project work is reconciled before interruption notices; digest receipts prevent reattaching an already-admitted update.                                               |
+| Scheduled Project messages — scheduled delivery workflow/storage         | The durable intent remains cancellable until delivery; normal Pi admission is the handoff                                               | Pending schedules persist; after handoff, primary-session admission recovery retains unfinished input intents. This is not a general idempotent command bus.                                                                                                          |
 | Permanent Cake Chat — Pi Durable                                         | SDK-owned admission, inbox, tasks, and checkpoints                                                                                      | Process-crash recovery follows the SDK contract; replay-unsafe Cake mutations require inspecting live state rather than blind repetition. See [Durable ownership](#permanent-cake-chat).                                                                              |
 
 Surviving a client disconnect is not the same as surviving a backend restart.
@@ -262,6 +265,73 @@ Scheduled Project Session messages are Cake-owned delivery intents stored in
 deadline. Once Cake submits one through the normal Project Session prompt or
 follow-up operation, it removes the intent and Pi owns the resulting user
 message and turn.
+
+### Primary-session restart recovery
+
+`state/recovery-intents/<sha256-of-session-id>.json` retains accepted unfinished Project
+Session, private worker and permanent chat inputs, their stable identities, and target bindings.
+Admission commits this intent before starting Pi. Each versioned file belongs to one session;
+reads and updates do not parse or rewrite other sessions' journals. It retains only unfinished
+input envelopes, never a second transcript; settlement removes payloads and keeps the visible
+terminal outcome and required delivery receipts. Permanent session deletion and explicit worker
+close/expiry remove their recovery documents. Ordinary runtime release does not.
+Blocked recovery retains its diagnostic and obligations rather than displaying a fake running status.
+`state/session-coordination.json` separately retains message/thread correlation metadata,
+closed state and outcomes, with no message bodies.
+
+Backend startup reacquires journaled active sessions, including background sessions without
+an open renderer pane. It does not start idle chats. Regular Pi's own custom entries identify
+consumed inputs. Saved completed responses settle the original obligations without a new
+model request; unconsumed ordinary inputs are restored once. Reconciliation stops at the
+next run's input, while steering inputs consumed before the same answer share that answer. Interrupted generation or saved
+tool-result boundaries get a contextual continuation, not a replay of the original prompt.
+An unresolved tool call or ambiguous command handoff requires review, because its external
+side effect may already have occurred. Deliberately stopped queues are restored paused and
+wait for the next user input. Queue edits update the recovery intent before acknowledging.
+
+Cross-session inputs use the message ID as the admission ID. An already consumed or pending
+identity is not delivered again; permanent chats use Durable's idempotent request IDs.
+Automatic reports use a separate deterministic message ID, never the worker's originating
+input ID, so recipient settlement cannot overwrite the worker's obligation. Queue withdrawal
+matches the recipient admission ID recorded by the delivery journal.
+Digest status updates remain next-user-input-only, and the admitted recovery record retains
+receipt IDs to reconcile a crash between user admission and outbox removal. One backend
+serializes digest preparation through admission, not through the model response.
+
+These guarantees apply to new admissions under this implementation. Old process-local queues
+cannot be reconstructed after they have already been lost. Queued extension commands,
+workflow-script execution and native subprocess lifetimes retain their
+separate recovery limitations; this journal does not turn them into replay-safe operations.
+
+### Private-worker restart recovery
+
+`state/private-workers/<sha256-of-handle-id>.json` stores stable worker/parent identities and locations, model
+and tool policy, exact forwarded attachment metadata and message references, unfinished
+input envelopes, and completion-delivery IDs/dispositions. It stores no transcript parts
+or tool outputs. Detailed worker history remains in Pi's subagent-session files, including
+Cake Chat investigations previously held only in memory. Attachment grants remain in the
+input vault; startup rebuilds each worker's exact message-reference allowlist without reading
+source bodies or widening access.
+
+Startup restores handle metadata before resuming parent inputs and releases worker continuations
+after parent recovery admission. Terminal handles whose reports are already acknowledged acquire
+neither parent nor worker Pi runtimes until the handle is used or its parent is observed. Shutdown
+never turns these workers into aborted results. Completed replies are projected from Pi without
+another model call. A report queued in a busy Project Session is not acknowledged until Pi has
+appended its custom message; shutdown before that receipt leaves the worker's durable disposition
+pending for retry. Stable completion IDs suppress retries after consumption. Worker notification
+policy has one in-memory owner and is persisted with the current completion state. Missing transcripts or an
+unfinished tool produce a visible worker failure/review requirement rather than a replay.
+Explicit close and idle expiry remove the durable handle; they do not erase Pi history.
+Workflow script workers retain their separately defined supervisor recovery policy.
+
+Startup checks all restart-recovery documents before any automatic continuation or orphan-abort
+reconciliation. Unreadable or unsupported metadata pauses automatic recovery without preventing
+the backend from opening or replacing the evidence with an empty catalog. Errors name the file
+and required repair. Saved conversations remain readable; malformed per-session journal metadata
+appears as a repair notice. Affected coordination and admissions fail rather than claiming durable
+acceptance, and unrestored worker handles report that recovery is paused. Repair the named file and restart to
+retry automatic recovery. Pi transcript files are never rewritten to repair Cake metadata.
 
 Discussion and other regular-Pi sidecar sessions use their narrower Pi roots.
 Cake stores review/message anchors and sidecar references, while sidecar replies

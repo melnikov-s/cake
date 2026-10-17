@@ -1,3 +1,4 @@
+import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
 import type * as FileSystemPromises from "node:fs/promises";
 import { it } from "@effect/vitest";
 import { Effect, Fiber, Layer, Queue, Stream } from "effect";
@@ -147,7 +148,7 @@ describe("portable Project operations", () => {
             throw new Error("Unexpected discussion context lookup");
           },
         }),
-        SubagentCoordinatorLive,
+        SubagentCoordinatorLive.pipe(Layer.provide(makeSubagentStorageTestLayer())),
       );
       return Effect.gen(function* () {
         yield* initialize;

@@ -645,7 +645,7 @@ export async function createDurableCakeChatRuntime(
         );
       }
     },
-    async notifySubagentCompletion(result) {
+    async notifySubagentCompletion(result, completionId) {
       const parsed = Schema.decodeUnknownOption(SubagentResult)(result);
       const provenance: SubagentReportOrigin | undefined = Option.isSome(parsed)
         ? Schema.decodeUnknownSync(SubagentReportOrigin)(parsed.value)
@@ -654,7 +654,7 @@ export async function createDurableCakeChatRuntime(
         subagentCompletionMessage(result),
         "follow-up",
         [],
-        undefined,
+        completionId,
         true,
         provenance,
       );

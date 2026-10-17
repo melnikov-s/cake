@@ -68,6 +68,8 @@ const summary = (
   running: boolean,
   family?: SessionFamily,
   spawn?: SpawnedSession,
+  recoveryIssue?: string,
+  latestTurnOutcome?: ProjectSessionSummary["latestTurnOutcome"],
 ): ProjectSessionSummary => {
   const projected: ProjectSessionSummary = {
     sessionId: item.id,
@@ -88,6 +90,8 @@ const summary = (
     Object.assign(projected, {
       worktreeName: location.managedWorktree.branch.replace(/^agent\//, ""),
     });
+  if (recoveryIssue !== undefined) Object.assign(projected, { recoveryIssue });
+  if (latestTurnOutcome !== undefined) Object.assign(projected, { latestTurnOutcome });
   applyFamilySummary(projected, family);
   if (spawn?.requester.kind === "cake-chat")
     Object.assign(projected, {
@@ -307,6 +311,8 @@ const familyCatalog = Effect.fn("ProjectSessions.familyCatalog")(function* (
             status?.streaming ?? false,
             family,
             spawns.get(sessionId),
+            status?.recoveryIssue,
+            status?.latestTurnOutcome,
           )
         : undefined;
     }),
@@ -424,6 +430,8 @@ const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
                     status?.streaming ?? false,
                     undefined,
                     spawns.get(item.id),
+                    status?.recoveryIssue,
+                    status?.latestTurnOutcome,
                   ),
                 ),
               ),
@@ -493,6 +501,8 @@ const discoverSessionAt = Effect.fn("ProjectSessions.discoverSessionAt")(functio
     status?.streaming ?? false,
     family,
     (yield* spawnedSessions()).get(sessionId),
+    status?.recoveryIssue,
+    status?.latestTurnOutcome,
   );
 });
 
@@ -550,6 +560,8 @@ const catalogEventForChange = Effect.fn("ProjectSessions.catalogEventForChange")
       _tag: "ActivityChanged",
       sessionId: change.sessionId,
       running: status?.streaming ?? false,
+      recoveryIssue: status?.recoveryIssue ?? null,
+      latestTurnOutcome: status?.latestTurnOutcome ?? null,
       unread: state.unreadSessionIds.includes(change.sessionId),
       ...(modifiedAt ? { modifiedAt } : null),
     } as const;

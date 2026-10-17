@@ -116,6 +116,107 @@ function sidebar() {
 afterEach(cleanup);
 
 describe("Session catalog lifecycle workflows", () => {
+  it("restores a blocked recovery as needs-input in a fresh sidebar without opening or waking the session", async () => {
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>();
+    const open = vi.fn<Client["projectSessions"]["open"]>();
+    const blocked = summary("blocked", {
+      title: "Interrupted task",
+      unread: false,
+      recoveryIssue: "A tool was interrupted. Confirm its result before continuing.",
+    });
+    // Reconstructing the Root from the same backend facts models window close/reopen.
+    for (let reopen = 0; reopen < 2; reopen += 1) {
+      using fixture = await renderCatalog({
+        sessions: [blocked],
+        client: { projectSessions: { open }, sessionChats: { prompt } },
+      });
+      const row = sidebar()
+        .getByRole("button", { name: /^Interrupted task(?: |$)/ })
+        .closest<HTMLElement>(".session-item")!;
+      expect(within(row).getByRole("img", { name: "Needs your input" })).toBeTruthy();
+      expect(within(row).queryByRole("img", { name: "Running" })).toBeNull();
+      expect(prompt).not.toHaveBeenCalled();
+      expect(open).not.toHaveBeenCalled();
+      await fixture.publish([blocked]);
+      expect(within(row).getByRole("img", { name: "Needs your input" })).toBeTruthy();
+    }
+  });
+
+  it.each([
+    { outcome: "complete", unread: true, label: "Ready, unread" },
+    { outcome: "failed", unread: false, label: "Error" },
+    { outcome: "aborted", unread: false, label: null },
+  ] as const)(
+    "preserves closed/reopened $outcome activity without loading a transcript",
+    async ({ outcome, unread, label }) => {
+      const completed = summary("finished", {
+        title: "Finished task",
+        latestTurnOutcome: outcome,
+        unread,
+      });
+      for (let reopen = 0; reopen < 2; reopen += 1) {
+        using fixture = await renderCatalog({ sessions: [completed] });
+        const row = sidebar()
+          .getByRole("button", { name: /^Finished task(?: |$)/ })
+          .closest<HTMLElement>(".session-item")!;
+        if (label === null) expect(within(row).queryByRole("img")).toBeNull();
+        else expect(within(row).getByRole("img", { name: label })).toBeTruthy();
+        expect(within(row).queryByRole("img", { name: "Running" })).toBeNull();
+        await fixture.publishUpdate({
+          _tag: "Event",
+          revision: 2,
+          event: {
+            _tag: "ActivityChanged",
+            sessionId: "finished",
+            running: true,
+            latestTurnOutcome: null,
+          },
+        });
+        expect(within(row).getByRole("img", { name: "Running" })).toBeTruthy();
+        await fixture.publishUpdate({
+          _tag: "Event",
+          revision: 3,
+          event: { _tag: "ActivityChanged", sessionId: "finished", running: false, unread: false },
+        });
+        expect(within(row).queryByRole("img")).toBeNull();
+      }
+    },
+  );
+
+  it("clears a blocked recovery only on an authoritative retry update, then preserves normal unread settlement", async () => {
+    using fixture = await renderCatalog({
+      sessions: [
+        summary("retry", {
+          title: "Retry task",
+          recoveryIssue: "Confirm the interrupted command before retrying.",
+        }),
+      ],
+    });
+    const row = () =>
+      sidebar()
+        .getByRole("button", { name: /^Retry task(?: |$)/ })
+        .closest<HTMLElement>(".session-item")!;
+    expect(within(row()).getByRole("img", { name: "Needs your input" })).toBeTruthy();
+    await fixture.publishUpdate({
+      _tag: "Event",
+      revision: 2,
+      event: { _tag: "ActivityChanged", sessionId: "retry", running: false, unread: false },
+    });
+    expect(within(row()).getByRole("img", { name: "Needs your input" })).toBeTruthy();
+    await fixture.publishUpdate({
+      _tag: "Event",
+      revision: 3,
+      event: { _tag: "ActivityChanged", sessionId: "retry", running: true, recoveryIssue: null },
+    });
+    expect(within(row()).getByRole("img", { name: "Running" })).toBeTruthy();
+    expect(within(row()).queryByRole("img", { name: "Needs your input" })).toBeNull();
+    await fixture.publishUpdate({
+      _tag: "Event",
+      revision: 4,
+      event: { _tag: "ActivityChanged", sessionId: "retry", running: false, unread: true },
+    });
+    expect(within(row()).getByRole("img", { name: "Ready, unread" })).toBeTruthy();
+  });
   it("shows a finished background turn as unread but clears it for the selected session", async () => {
     const setSessionUnread = vi.fn<Client["workspaces"]["setSessionUnread"]>(
       async () => ({}) as never,

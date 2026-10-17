@@ -15,7 +15,11 @@ import { SessionCatalogChanges } from "../../../src/services/session-catalogs/Se
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
 import { messageBoardHarness } from "../helpers/messageBoardHarness";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
-import { fakeRuntime, options } from "../helpers/piRuntimeFixture";
+import {
+  makeRuntimeRecoveryStorageTestLayer,
+  fakeRuntime,
+  options,
+} from "../helpers/piRuntimeFixture";
 
 const location = {
   projectPath: "/project",
@@ -78,7 +82,7 @@ describe("Session Family creation", () => {
               inspect: () => Effect.succeed(undefined),
               changelog: () => Effect.succeed(""),
               createRuntime: () => Effect.fail(new Error("Could not load resources")),
-            }),
+            }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
           ),
         ),
       ),
@@ -117,7 +121,7 @@ describe("Session Family creation", () => {
                   throw new Error("Configuration failed");
                 },
               }),
-          }),
+          }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
         ),
       ),
     ),
@@ -206,7 +210,7 @@ describe("Session Family creation", () => {
                 ...fakeRuntime(runtimeOptions, () => undefined),
                 sessionId: runtimeOptions.sessionId ?? "missing",
               }),
-          }),
+          }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
         ),
       ),
     ),
@@ -236,7 +240,7 @@ describe("Session Family creation", () => {
               Deferred.doneUnsafe(started, Effect.void);
             },
           }),
-      });
+      }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
       yield* Effect.gen(function* () {
         const factory = (id: string) =>
           Effect.succeed(

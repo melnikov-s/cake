@@ -1,9 +1,42 @@
+import { Effect, Layer, Ref } from "effect";
+import {
+  RuntimeRecoveryStorage,
+  type RuntimeRecoveryRecord,
+} from "../../../src/services/storage/RuntimeRecoveryStorage";
 import type { CakeSessionRuntimeAcquireOptions } from "../../../src/services/pi/CakeSessionRuntimes";
 import type {
   CakeSessionRuntime,
   CakeSessionRuntimeOptions,
 } from "../../../src/services/pi/runtime/cake-session-runtime";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/session-contract";
+
+export const makeRuntimeRecoveryStorageTestLayer = (
+  initialRecords: ReadonlyArray<RuntimeRecoveryRecord> = [],
+) =>
+  Layer.effect(
+    RuntimeRecoveryStorage,
+    Effect.gen(function* () {
+      const records = yield* Ref.make(initialRecords);
+      return RuntimeRecoveryStorage.of({
+        list: Effect.fn("RuntimeRecoveryStorage.Test.list")(() => Ref.get(records)),
+        get: Effect.fn("RuntimeRecoveryStorage.Test.get")((sessionId) =>
+          Ref.get(records).pipe(
+            Effect.map((current) => current.find((record) => record.sessionId === sessionId)),
+          ),
+        ),
+        update: Effect.fn("RuntimeRecoveryStorage.Test.update")((record) =>
+          Ref.update(records, (current) => [
+            ...current.filter((item) => item.sessionId !== record.sessionId),
+            record,
+          ]),
+        ),
+        remove: Effect.fn("RuntimeRecoveryStorage.Test.remove")((sessionId) =>
+          Ref.update(records, (current) => current.filter((item) => item.sessionId !== sessionId)),
+        ),
+      });
+    }),
+  );
+
 export const snapshot: ConversationSnapshot = {
   workspacePath: "/project",
   sessionId: "session-1",

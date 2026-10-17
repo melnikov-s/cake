@@ -855,7 +855,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             const withdrawn = document.turns.filter(
               (turn) =>
                 turn.senderSessionId === recipientSessionId &&
-                (messageIds.includes(turn.turnId) ||
+                ((turn.deliveryTurnId !== undefined && messageIds.includes(turn.deliveryTurnId)) ||
                   turn.replyMessageIds?.some((id) => messageIds.includes(id))),
             );
             return {

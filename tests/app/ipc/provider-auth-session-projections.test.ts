@@ -10,7 +10,12 @@ import {
 } from "../../../src/services/pi/CakeSessionRuntimes";
 import { makePiModelsLayer } from "../../../src/services/pi/PiModels";
 import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
-import { fakeRuntime, options, snapshot } from "../helpers/piRuntimeFixture";
+import {
+  makeRuntimeRecoveryStorageTestLayer,
+  fakeRuntime,
+  options,
+  snapshot,
+} from "../helpers/piRuntimeFixture";
 
 const projectedModel = (authenticated: boolean) => ({
   provider: "example",
@@ -60,7 +65,7 @@ describe("provider auth across acquired Pi sessions", () => {
                   },
                 };
               }),
-          });
+          }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
           const layer = Layer.mergeAll(
             sessionsLayer,
             makePiModelsLayer({

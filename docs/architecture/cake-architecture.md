@@ -106,15 +106,18 @@ projections needed by a surface. References do not transfer ownership.
   content. The checkpoint does not add a new context pill; genuine later
   instruction changes do.
 - Waiting user and cross-session inputs use the owning Pi backend's admission
-  and queue mechanism. Regular-Pi queue metadata is transient; permanent Cake
-  Chat's inbox is Pi Durable-owned. Cake does not persist a competing runtime
-  queue. Scheduled delivery and report outboxes retain only their separately
-  defined Cake-owned intents until handoff.
+  and queue mechanism. Primary-session admission retains a durable recovery intent
+  until settlement; it is not transcript history or a second execution queue.
+  Regular Pi records input-consumption identities in its own transcript metadata,
+  allowing restart to reconstruct unconsumed inputs without replaying consumed
+  messages. Permanent Cake Chat's inbox and task checkpoints remain Pi Durable-owned.
+  Scheduled delivery and report outboxes retain their separately defined intents.
 - Sidecar discussions and private subagents have independent Pi transcripts.
   Parent anchors, handles, and projections do not merge transcript ownership.
-  Cake Chat investigators use Pi's in-memory SessionManager: their
-  detailed history is process-local, while only compact reports and provenance
-  remain in the parent Conversation.
+  Private workers, including Cake Chat investigators, retain their detailed history in
+  Pi-owned session files. Cake checkpoints handle identities, exact capability grants,
+  unfinished admissions and completion receipts, not a copy of that history. Only
+  compact reports and provenance cross into the parent Conversation.
 
 ### Lifecycle invariants
 
@@ -147,9 +150,12 @@ projections needed by a surface. References do not transfer ownership.
   isolated instructions and read/bash/message_parent, without repository
   resources or guaranteed web/search access. Explicitly forwarded attachment/message
   references additionally grant a scoped Cake read gateway, never broad application control. Cake Chat handles support follow-ups
-  until closed, backend shutdown, or the first idle moment 30 minutes after
-  creation; turns have no time limit and an active turn is never expired. They are not
-  restored after restart. Completion status is distinct from resource disposal.
+  until closed or expired while idle; turns have no time limit and an active turn
+  is never expired. Backend shutdown releases resources without closing handles or
+  reporting cancellation. Startup restores worker identities and exact grants before
+  parent continuations, then resumes safe work using Pi's saved branch. Unfinished
+  tools require review rather than replay. Completion receipts suppress duplicate
+  parent reports. Completion status is distinct from resource disposal.
   Reports retain Cake-authored structured provenance for Markdown response
   presentation, without changing model-facing input roles.
 - Passive worker/result message-reference notifications never start or queue a parent turn.
@@ -203,8 +209,8 @@ non-family message/thread coordination execute through domain handlers without a
 renderer binding. Project Session, permanent Cake Chat, and session-assistant
 gateways retain their distinct sender and task-input policies before dispatch;
 family messaging and backend-direct creation/fork/worktree routes stay separate.
-Thread bindings are transient backend metadata, not another transcript or a
-restart-durable queue. Inspection reports backend facts; window selection remains
+Thread bindings, closed state, message identities and settled outcomes are durable
+Cake coordination metadata, never another transcript or execution queue. Inspection reports backend facts; window selection remains
 in `app.state`. Accepted mutations never wait for presentation: attributed action
 notices are best-effort events to the caller's bound window, and shared Pi settings
 changes refresh observing windows. Device/window actions still use reverse requests.

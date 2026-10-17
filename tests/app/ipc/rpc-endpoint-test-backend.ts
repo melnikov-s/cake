@@ -1,3 +1,4 @@
+import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
 import { createCoordinatorRuntime } from "../../../src/layers/CakeOperations";
 import { makeCakeChatDurableLive } from "../../../src/services/pi-durable/CakeChatDurable";
 import { ClientConnectionsLive } from "../../../src/services/clients/ClientConnections";
@@ -70,7 +71,7 @@ export const unusedEndpointServices = Layer.mergeAll(
   Layer.mock(SessionCatalogChanges, {}),
   Layer.mock(CakeSessionRuntimes, {}),
   Layer.mock(SessionArchiveStorage, {}),
-  SubagentCoordinatorLive,
+  SubagentCoordinatorLive.pipe(Layer.provide(makeSubagentStorageTestLayer())),
   Layer.mock(SubagentEnvironment, {}),
   Layer.succeed(ProjectSessionConfiguration, {
     agentDirectory: "/agent",

@@ -25,7 +25,15 @@ import {
 } from "../../../../src/services/pi/CakeSessionRuntimes";
 import { CAKE_CHAT_SESSION_ID } from "../../../../src/contracts/cake-chats/cake-chat-identity";
 import { TurnCanceledError } from "../../../../src/services/pi/runtime/RuntimeTurnCompletion";
-import { options, fakeRuntime } from "../../helpers/piRuntimeFixture";
+import {
+  RuntimeRecoveryStorage,
+  RuntimeRecoveryStorageError,
+} from "../../../../src/services/storage/RuntimeRecoveryStorage";
+import {
+  makeRuntimeRecoveryStorageTestLayer,
+  options,
+  fakeRuntime,
+} from "../../helpers/piRuntimeFixture";
 
 const adapter = (
   acquisitions: Ref.Ref<number>,
@@ -48,6 +56,50 @@ const adapter = (
 
 describe("CakeSessionRuntimes", () => {
   it.effect(
+    "keeps saved conversations readable with an actionable repair notice when recovery metadata is corrupt",
+    () =>
+      Effect.gen(function* () {
+        const constructions = yield* Ref.make(0);
+        const finalizations = yield* Ref.make(0);
+        const problem = new RuntimeRecoveryStorageError({
+          operation: "decode",
+          message: "Restore /state/recovery-intents/broken.json and retry",
+        });
+        const storage = Layer.succeed(RuntimeRecoveryStorage, {
+          get: () => Effect.fail(problem),
+          list: () => Effect.fail(problem),
+          update: () => Effect.fail(problem),
+          remove: () => Effect.fail(problem),
+        });
+        yield* Effect.gen(function* () {
+          const sessions = yield* CakeSessionRuntimes;
+          const handle = yield* sessions.acquire(options());
+          const snapshot = yield* handle.snapshot();
+          const issue = snapshot.parts.find(
+            (part) => part.kind === "notice" && part.id === "restart-recovery",
+          );
+          assert.ok(issue?.kind === "notice");
+          assert.equal(issue.title, "Recovery metadata needs repair");
+          assert.equal(issue.detail, problem.message);
+          const status = yield* sessions.currentStatus({
+            workingDirectory: "/project",
+            sessionDirectory: "/sessions",
+            sessionId: "session-1",
+          });
+          assert.equal(status?.recoveryIssue, problem.message);
+          const submission = yield* Effect.flip(handle.prompt("Do not accept unrecoverable work"));
+          assert.match(submission.message, /Restore/);
+          assert.deepEqual(yield* handle.currentTurnIds(), []);
+        }).pipe(
+          Effect.provide(
+            makeCakeSessionRuntimesLayer(adapter(constructions, finalizations)).pipe(
+              Layer.provide(storage),
+            ),
+          ),
+        );
+      }),
+  );
+  it.effect(
     "fails new-session creation if preparation fails before persistence, but permits commands handled without a transcript",
     () =>
       Effect.gen(function* () {
@@ -64,7 +116,7 @@ describe("CakeSessionRuntimes", () => {
                 if (text === "fail") throw new Error("Initial preparation failed");
               },
             }),
-        });
+        }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
         const context = yield* Layer.build(layer);
         const handle = yield* Context.get(context, CakeSessionRuntimes).acquire(
           options({ newSession: true }),
@@ -104,7 +156,7 @@ describe("CakeSessionRuntimes", () => {
                 };
               },
             }),
-        });
+        }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
         const context = yield* Layer.build(layer);
         const sessions = Context.get(context, CakeSessionRuntimes);
         const callerScope = yield* Scope.make();
@@ -149,7 +201,7 @@ describe("CakeSessionRuntimes", () => {
               return { steering: [], followUp: [] };
             },
           }),
-      });
+      }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
       const context = yield* Layer.build(layer);
       const sessions = Context.get(context, CakeSessionRuntimes);
       const first = yield* sessions.acquire(options());
@@ -207,7 +259,7 @@ describe("CakeSessionRuntimes", () => {
               return Effect.runPromise(Deferred.succeed(release, undefined)).then(() => undefined);
             },
           }),
-      });
+      }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
       const context = yield* Layer.build(layer);
       const sessions = Context.get(context, CakeSessionRuntimes);
       const handle = yield* sessions.acquire({
@@ -264,7 +316,7 @@ describe("CakeSessionRuntimes", () => {
                   : new Error("Provider unavailable"),
               ),
           }),
-      });
+      }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
       const context = yield* Layer.build(layer);
       const sessions = Context.get(context, CakeSessionRuntimes);
       const turnTexts = new Map<string, string>();
@@ -322,7 +374,7 @@ describe("CakeSessionRuntimes", () => {
               ),
           });
         },
-      });
+      }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
       const context = yield* Layer.build(layer);
       const sessions = Context.get(context, CakeSessionRuntimes);
       const handle = yield* sessions.acquire({
@@ -374,7 +426,7 @@ describe("CakeSessionRuntimes", () => {
                 }),
               ),
           }),
-      });
+      }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
       const context = yield* Layer.build(layer);
       const sessions = Context.get(context, CakeSessionRuntimes);
       const handle = yield* sessions.acquire({
@@ -427,7 +479,7 @@ describe("CakeSessionRuntimes", () => {
               ),
           });
         },
-      });
+      }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
       const context = yield* Layer.build(layer);
       const sessions = Context.get(context, CakeSessionRuntimes);
       const handle = yield* sessions.acquire(options());
@@ -455,7 +507,9 @@ describe("CakeSessionRuntimes", () => {
       const acquisitions = yield* Ref.make(0);
       const finalizations = yield* Ref.make(0);
       const context = yield* Layer.build(
-        makeCakeSessionRuntimesLayer(adapter(acquisitions, finalizations)),
+        makeCakeSessionRuntimesLayer(adapter(acquisitions, finalizations)).pipe(
+          Layer.provide(makeRuntimeRecoveryStorageTestLayer()),
+        ),
       );
       const sessions = Context.get(context, CakeSessionRuntimes);
       const firstScope = yield* Scope.make();
@@ -483,7 +537,9 @@ describe("CakeSessionRuntimes", () => {
       const finalizations = yield* Ref.make(0);
       const integrationFinalizations = yield* Ref.make(0);
       const context = yield* Layer.build(
-        makeCakeSessionRuntimesLayer(adapter(acquisitions, finalizations)),
+        makeCakeSessionRuntimesLayer(adapter(acquisitions, finalizations)).pipe(
+          Layer.provide(makeRuntimeRecoveryStorageTestLayer()),
+        ),
       );
       const sessions = Context.get(context, CakeSessionRuntimes);
       const firstScope = yield* Scope.make();
@@ -508,7 +564,9 @@ describe("CakeSessionRuntimes", () => {
       const acquisitions = yield* Ref.make(0);
       const finalizations = yield* Ref.make(0);
       const context = yield* Layer.build(
-        makeCakeSessionRuntimesLayer(adapter(acquisitions, finalizations)),
+        makeCakeSessionRuntimesLayer(adapter(acquisitions, finalizations)).pipe(
+          Layer.provide(makeRuntimeRecoveryStorageTestLayer()),
+        ),
       );
       const sessions = Context.get(context, CakeSessionRuntimes);
       const owner = yield* Scope.make();
@@ -554,7 +612,7 @@ describe("CakeSessionRuntimes", () => {
                   },
                 })),
               ),
-          }),
+          }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
         ).pipe(Effect.provideService(Scope.Scope, applicationScope));
         const sessions = Context.get(context, CakeSessionRuntimes);
         const pane = yield* Scope.make();
@@ -594,7 +652,7 @@ describe("CakeSessionRuntimes", () => {
             requestedCreationModes.push(runtimeOptions.newSession);
             return base.createRuntime(runtimeOptions);
           },
-        }),
+        }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
       );
       const sessions = Context.get(context, CakeSessionRuntimes);
       const owner = yield* Scope.make();
@@ -620,7 +678,9 @@ describe("CakeSessionRuntimes", () => {
       const acquisitions = yield* Ref.make(0);
       const finalizations = yield* Ref.make(0);
       const context = yield* Layer.build(
-        makeCakeSessionRuntimesLayer(adapter(acquisitions, finalizations)),
+        makeCakeSessionRuntimesLayer(adapter(acquisitions, finalizations)).pipe(
+          Layer.provide(makeRuntimeRecoveryStorageTestLayer()),
+        ),
       );
       const sessions = Context.get(context, CakeSessionRuntimes);
       const target = {
@@ -638,6 +698,8 @@ describe("CakeSessionRuntimes", () => {
         streaming: false,
         pending: false,
         persisted: true,
+        recoveryIssue: undefined,
+        latestTurnOutcome: undefined,
       });
       assert.equal(yield* Ref.get(acquisitions), 1);
 
@@ -669,7 +731,7 @@ describe("CakeSessionRuntimes", () => {
                 },
               ),
             ),
-        }),
+        }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
       );
       const sessions = Context.get(context, CakeSessionRuntimes);
       const target = {
@@ -712,7 +774,7 @@ describe("CakeSessionRuntimes", () => {
             ),
           ),
         changelog: () => Effect.succeed("# Changelog"),
-      });
+      }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
       const context = yield* Layer.build(layer);
       const sessions = Context.get(context, CakeSessionRuntimes);
       const owner = yield* Scope.make();
@@ -734,7 +796,9 @@ describe("CakeSessionRuntimes", () => {
       const acquisitions = yield* Ref.make(0);
       const finalizations = yield* Ref.make(0);
       const context = yield* Layer.build(
-        makeCakeSessionRuntimesLayer(adapter(acquisitions, finalizations)),
+        makeCakeSessionRuntimesLayer(adapter(acquisitions, finalizations)).pipe(
+          Layer.provide(makeRuntimeRecoveryStorageTestLayer()),
+        ),
       );
       const sessions = Context.get(context, CakeSessionRuntimes);
       const retained = yield* Scope.make();
@@ -761,7 +825,9 @@ describe("CakeSessionRuntimes", () => {
       const acquisitions = yield* Ref.make(0);
       const finalizations = yield* Ref.make(0);
       const context = yield* Layer.build(
-        makeCakeSessionRuntimesLayer(adapter(acquisitions, finalizations)),
+        makeCakeSessionRuntimesLayer(adapter(acquisitions, finalizations)).pipe(
+          Layer.provide(makeRuntimeRecoveryStorageTestLayer()),
+        ),
       );
       const sessions = Context.get(context, CakeSessionRuntimes);
       const handle = yield* sessions.acquire(options());

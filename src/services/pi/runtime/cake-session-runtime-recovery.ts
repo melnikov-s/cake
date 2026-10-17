@@ -3,12 +3,9 @@ import type { UiPart } from "../../../contracts/conversations/session-contract";
 import { projectRetryNotice } from "./cake-session-runtime-event-projection";
 import { ResponseRetryController } from "./response-retry";
 import {
-  INTERRUPTED_TURN_NOTICE_PART_ID,
   TURN_RECOVERY_MAX_AUTO_CONTINUATIONS,
   TURN_RECOVERY_NOTICE_PART_ID,
   classifyTurnFailure,
-  interruptedTurnResumePrompt,
-  shouldAutoResumeInterruptedTurn,
   turnRecoveryPrompt,
 } from "./turn-recovery";
 
@@ -19,7 +16,6 @@ export interface CakeSessionRuntimeRecovery {
   readonly onUserInput: () => void;
   readonly onAbort: () => void;
   readonly handleSettledTurn: () => Promise<void>;
-  readonly resumeInterruptedTurn: () => Promise<void>;
   readonly dispose: () => void;
 }
 
@@ -117,7 +113,6 @@ export function createCakeSessionRuntimeRecovery(input: {
         if (turnRecoveryContinuations > 0) {
           turnRecoveryContinuations = 0;
           removeRecoveryNotice();
-          input.removePart(INTERRUPTED_TURN_NOTICE_PART_ID);
         }
         return;
       }
@@ -125,31 +120,11 @@ export function createCakeSessionRuntimeRecovery(input: {
         !input.retryEnabled() ||
         turnRecoveryContinuations >= TURN_RECOVERY_MAX_AUTO_CONTINUATIONS
       ) {
-        input.removePart(INTERRUPTED_TURN_NOTICE_PART_ID);
         emitRecoveryFailure(failure.detail);
         return;
       }
       turnRecoveryContinuations += 1;
       await continueTurnHidden(turnRecoveryPrompt(failure.kind));
-    },
-    async resumeInterruptedTurn() {
-      if (input.isDisposed() || session.isStreaming) return;
-      const tail = session.messages.at(-1);
-      const settledFailure = classifyTurnFailure(tail?.role === "assistant" ? tail : undefined);
-      if (settledFailure?.kind === "empty") {
-        emitRecoveryFailure(settledFailure.detail);
-        return;
-      }
-      if (!input.retryEnabled() || !shouldAutoResumeInterruptedTurn(session.messages)) return;
-      turnRecoveryContinuations = TURN_RECOVERY_MAX_AUTO_CONTINUATIONS;
-      input.emitPart({
-        id: INTERRUPTED_TURN_NOTICE_PART_ID,
-        kind: "notice",
-        tone: "info",
-        title: "Resuming interrupted turn",
-      });
-      if (!(await continueTurnHidden(interruptedTurnResumePrompt)) && !input.isDisposed())
-        input.removePart(INTERRUPTED_TURN_NOTICE_PART_ID);
     },
     dispose() {
       responseRetries.cancel();

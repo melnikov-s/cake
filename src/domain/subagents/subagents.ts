@@ -11,6 +11,7 @@ import {
   Schema,
   Scope,
   Stream,
+  Struct,
   SubscriptionRef,
 } from "effect";
 import {
@@ -68,6 +69,8 @@ import {
   type SubagentEnvironmentError,
 } from "../../services/subagents/SubagentEnvironment";
 import { subagentErrorMessage } from "./subagent-error-message";
+import type { SubagentRecord } from "../../services/storage/SubagentStorage";
+import type { RuntimeRecoveryInput } from "../../services/storage/RuntimeRecoveryStorage";
 
 export * from "../../contracts/subagents/subagent-data";
 
@@ -396,9 +399,31 @@ const mutateHandle = Effect.fn("Subagents.mutateHandle")(function* (
   );
 });
 
+const checkpoint = Effect.fn("Subagents.checkpoint")(function* (handleId: SubagentHandleId) {
+  const coordinator = yield* SubagentCoordinator;
+  yield* coordinator.checkpoints.withPermit(
+    Effect.gen(function* () {
+      if (yield* Ref.get(coordinator.shuttingDown)) return;
+      const handle = (yield* SubscriptionRef.get(coordinator.state)).handles.get(handleId);
+      if (!handle) return;
+      const record = Struct.omit(handle.recovery, ["error", "failurePhase"]);
+      yield* coordinator.storage.update({
+        ...record,
+        status: handle.status,
+        completionDisposition: handle.completionDisposition,
+        inputReferences: handle.inputReferences,
+        messageReferences: handle.messageReferences,
+        ...(handle.error === undefined ? null : { error: handle.error }),
+        ...(handle.failurePhase === undefined ? null : { failurePhase: handle.failurePhase }),
+      });
+    }),
+  );
+});
+
 const requireHandle = Effect.fn("Subagents.requireHandle")(function* (
   parentSessionId: string,
   handleId: string,
+  hydrate = true,
 ) {
   const decoded = yield* Schema.decodeUnknownEffect(SubagentHandleId)(handleId).pipe(
     Effect.mapError(
@@ -407,17 +432,32 @@ const requireHandle = Effect.fn("Subagents.requireHandle")(function* (
   );
   const coordinator = yield* SubagentCoordinator;
   const handle = (yield* SubscriptionRef.get(coordinator.state)).handles.get(decoded);
+  if (!handle) {
+    // A failed startup preflight retains saved handles instead of pretending
+    // they never existed. Surface storage repair evidence to the caller too.
+    const saved = yield* coordinator.storage.get(decoded);
+    if (saved?.parentSessionId === parentSessionId)
+      return yield* new SubagentError({
+        operation: "handle",
+        message:
+          "This saved worker has not been restored. Repair the recovery metadata reported at startup and restart Cake before using this handle.",
+      });
+  }
   if (!handle || handle.parentSessionId !== parentSessionId)
     return yield* new SubagentError({
       operation: "handle",
       message: "That subagent handle does not belong to this parent session",
     });
+  if (hydrate && handle.hydrate) {
+    yield* handle.hydrate;
+    return (yield* SubscriptionRef.get(coordinator.state)).handles.get(decoded) ?? handle;
+  }
   return handle;
 });
 
 /** Only the compact final answer may cross into Cake Chat's durable tool/report history. */
 const parentResult = (handle: SubagentHandleState, result: SubagentResult): SubagentResult => {
-  if (!handle.runtimeOptions.runtime.ephemeral) return result;
+  if (handle.recovery.parentProfile !== "CakeChatSession") return result;
   if (result.status !== "complete") return { ...result, parts: [] };
   const answer = result.parts
     .flatMap((part) => {
@@ -475,7 +515,11 @@ const completeHandle = Effect.fn("Subagents.completeHandle")(function* (
   const shouldNotify = yield* SubscriptionRef.modify(coordinator.state, (state) => {
     const current = state.handles.get(handleId);
     if (!current || current.result) return [false, state] as const;
-    const notify = current.notifyOnCompletion && current.waiters === 0;
+    const notify =
+      current.recovery.notifyOnCompletion &&
+      current.waiters === 0 &&
+      (current.completionDisposition === "pending" ||
+        current.completionDisposition === "notifying");
     const next: SubagentHandleState = {
       ...current,
       status: result.status,
@@ -485,17 +529,16 @@ const completeHandle = Effect.fn("Subagents.completeHandle")(function* (
       error: result.error,
       failurePhase: result.failurePhase,
       result,
-      completionDisposition: current.notifyOnCompletion
-        ? notify
-          ? "notifying"
-          : "waited"
-        : "waited",
+      recovery: { ...current.recovery, pendingInputs: [] },
+      completionDisposition:
+        current.completionDisposition === "notified" ? "notified" : notify ? "notifying" : "waited",
       activityRevision: current.activityRevision + 1,
     };
     return [notify, updateHandle(state, handleId, () => next)] as const;
   });
   const handle = (yield* SubscriptionRef.get(coordinator.state)).handles.get(handleId);
   if (!handle) return;
+  yield* checkpoint(handleId);
   yield* Deferred.succeed(handle.completion, result);
   if (shouldNotify) yield* deliverCompletion(handleId);
 });
@@ -511,7 +554,7 @@ const deliverCompletion = Effect.fn("Subagents.deliverCompletion")(function* (
     yield* storage
       .withNoticeDelivery(
         storage.deferReferenceNotice({
-          id: crypto.randomUUID(),
+          id: handle.recovery.completionId,
           recipientSessionId: handle.parentSessionId,
           text: answer,
         }),
@@ -519,18 +562,22 @@ const deliverCompletion = Effect.fn("Subagents.deliverCompletion")(function* (
       .pipe(asError("completion"));
   } else {
     const delivered = handle.parentPiHandle
-      ? handle.parentPiHandle.notifySubagentCompletion(parentResult(handle, handle.result)).pipe(
-          asError("completion"),
-          Effect.catchTag("SubagentError", () => Effect.void),
-        )
+      ? handle.parentPiHandle
+          .notifySubagentCompletion(
+            parentResult(handle, handle.result),
+            handle.recovery.completionId,
+          )
+          .pipe(asError("completion"))
       : Effect.void;
     yield* delivered;
   }
   yield* mutateHandle(handleId, (current) =>
-    current.completionDisposition === "notifying"
+    current.completionDisposition === "notifying" &&
+    current.recovery.completionId === handle.recovery.completionId
       ? { ...current, completionDisposition: "notified" }
       : current,
   );
+  yield* checkpoint(handleId);
 });
 
 const requireHandleById = Effect.fn("Subagents.requireHandleById")(function* (
@@ -547,6 +594,8 @@ const observeTurn = Effect.fn("Subagents.observeTurn")(function* (
   handleId: SubagentHandleId,
   delivery: "prompt" | "steer" | "follow-up",
   text: string,
+  recoveryInputs?: readonly RuntimeRecoveryInput[],
+  recovering = false,
 ) {
   const handle = yield* requireHandleById(handleId);
   const piHandle = handle.piHandle;
@@ -582,6 +631,19 @@ const observeTurn = Effect.fn("Subagents.observeTurn")(function* (
           return;
         }
         const event = update.event;
+        if (event.type === "snapshot-updated") {
+          const issue = event.snapshot.parts.find(
+            (part) =>
+              part.id === "restart-recovery" && part.kind === "notice" && part.tone === "error",
+          );
+          if (issue?.kind === "notice") {
+            yield* Deferred.fail(
+              targetSettled,
+              new SubagentError({ operation: "recover", message: issue.detail ?? issue.title }),
+            );
+            return;
+          }
+        }
         if (event.type === "snapshot-updated")
           yield* mutateHandle(handleId, (current) => ({
             ...current,
@@ -647,13 +709,24 @@ const observeTurn = Effect.fn("Subagents.observeTurn")(function* (
     Effect.forkChild,
   );
   yield* Deferred.await(ready);
-  const turnId = yield* (
-    delivery === "prompt"
-      ? piHandle.prompt(text)
-      : delivery === "steer"
-        ? piHandle.steer(text)
-        : piHandle.followUp(text)
-  ).pipe(asError(delivery));
+  const inputs = recoveryInputs ?? [
+    { turnId: crypto.randomUUID(), text, delivery, attachments: [], markdown: false },
+  ];
+  yield* mutateHandle(handleId, (current) => ({
+    ...current,
+    recovery: { ...current.recovery, pendingInputs: inputs },
+  }));
+  yield* checkpoint(handleId);
+  const firstInput = inputs[0];
+  const turnId = inputs.at(-1)?.turnId;
+  if (!firstInput || !turnId)
+    return yield* new SubagentError({
+      operation: "recover",
+      message: "Worker has no accepted input to recover",
+    });
+  yield* (recovering ? piHandle.recover(inputs) : piHandle.submit(firstInput)).pipe(
+    asError(delivery),
+  );
   yield* Ref.set(target, Option.some(turnId));
   const already = (yield* Ref.get(settled)).get(turnId);
   const settlement = already ? already : yield* Deferred.await(targetSettled);
@@ -698,27 +771,21 @@ const abortDirectChildren = Effect.fn("Subagents.abortDirectChildren")(function*
 
 const releaseDirectChildren = Effect.fn("Subagents.releaseDirectChildren")(function* (
   parentSessionId: string,
-) {
+): Effect.fn.Return<void, SubagentError, SubagentCoordinator | CakeSessionRuntimes> {
   const coordinator = yield* SubagentCoordinator;
   const children = [...(yield* SubscriptionRef.get(coordinator.state)).handles.values()].filter(
     (handle) => handle.parentSessionId === parentSessionId,
   );
-  yield* Effect.forEach(
-    children,
-    (child) =>
-      SubscriptionRef.update(coordinator.state, (state) =>
-        removeHandle(state, child.handleId),
-      ).pipe(
-        Effect.andThen(FiberMap.remove(coordinator.fibers, child.handleId)),
-        Effect.andThen(Scope.close(child.scope, Exit.void)),
-      ),
-    { concurrency: "unbounded", discard: true },
-  );
+  yield* Effect.forEach(children, (child) => releaseHandle(child), {
+    concurrency: "unbounded",
+    discard: true,
+  });
 });
 
 const executeInitial = Effect.fn("Subagents.executeInitial")(function* (
   handleId: SubagentHandleId,
   prepared: PreparedTask,
+  restored?: SubagentRecord,
 ) {
   const coordinator = yield* SubagentCoordinator;
   const handle = yield* requireHandleById(handleId);
@@ -730,9 +797,11 @@ const executeInitial = Effect.fn("Subagents.executeInitial")(function* (
       yield* mutateHandle(handleId, (current) => ({ ...current, status: "running" }));
       const current = yield* requireHandleById(handleId);
       const sessions = yield* CakeSessionRuntimes;
-      const piHandle = yield* sessions
-        .acquire(current.runtimeOptions)
-        .pipe(Effect.provideService(Scope.Scope, current.scope), asError("start"));
+      const piHandle =
+        current.piHandle ??
+        (yield* sessions
+          .acquire(current.runtimeOptions)
+          .pipe(Effect.provideService(Scope.Scope, current.scope), asError("start")));
       yield* mutateHandle(handleId, (value) => ({ ...value, piHandle }));
       const initial = yield* piHandle.snapshot().pipe(asError("start"));
       yield* mutateHandle(handleId, (value) => ({
@@ -765,6 +834,8 @@ const executeInitial = Effect.fn("Subagents.executeInitial")(function* (
           withInputReferences(assignment, current.inputReferences),
           current.messageReferences,
         ),
+        current.recovery.pendingInputs,
+        restored !== undefined,
       );
       yield* completeHandle(handleId, result);
     }),
@@ -775,11 +846,18 @@ const failHandle = Effect.fn("Subagents.failHandle")(function* (
   handleId: SubagentHandleId,
   cause: Cause.Cause<unknown>,
 ) {
+  const coordinator = yield* SubagentCoordinator;
+  if (yield* Ref.get(coordinator.shuttingDown)) return;
   const handle = yield* requireHandleById(handleId).pipe(
     Effect.catchTag("SubagentError", () => Effect.succeed(undefined)),
   );
   if (!handle || handle.result) return;
   const aborted = Cause.hasInterrupts(cause) || handle.status === "aborted";
+  const failure = Cause.findErrorOption(cause);
+  const message =
+    Option.isSome(failure) && failure.value instanceof SubagentError
+      ? failure.value.message
+      : Cause.pretty(cause);
   const result: SubagentResult = {
     handleId: handle.handleId,
     task: handle.task,
@@ -788,7 +866,7 @@ const failHandle = Effect.fn("Subagents.failHandle")(function* (
     fastMode: handle.fastMode,
     streaming: false,
     parts: handle.parts,
-    error: boundedError(aborted ? "Subagent aborted" : Cause.pretty(cause)),
+    error: boundedError(aborted ? "Subagent aborted" : message),
   };
   if (handle.projectPath) Object.assign(result, { projectPath: handle.projectPath });
   if (!aborted && !handle.piHandle) Object.assign(result, { failurePhase: "start" });
@@ -799,35 +877,70 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
   prepared: PreparedTask,
   anchorPartId: string,
   notifyOnCompletion: boolean,
+  restored?: SubagentRecord,
+  transcriptExpected = false,
+  activate: Effect.Effect<void> = Effect.void,
 ) {
   const coordinator = yield* SubagentCoordinator;
   const environment = yield* SubagentEnvironment;
   const sessions = yield* CakeSessionRuntimes;
   const location = yield* environment.location(prepared.workingDirectory).pipe(asError("start"));
-  const handleId = SubagentHandleId.make(crypto.randomUUID());
+  const handleId = restored?.handleId ?? SubagentHandleId.make(crypto.randomUUID());
+  const lazy =
+    restored !== undefined &&
+    restored.status !== "queued" &&
+    restored.status !== "running" &&
+    (restored.completionDisposition === "notified" || restored.completionDisposition === "waited");
   const scope = yield* Scope.make();
   return yield* Effect.gen(function* () {
     const completion = yield* Deferred.make<SubagentResult, SubagentError>();
-    const parentHandle = yield* sessions
-      .acquire(prepared.parent.options)
-      .pipe(Effect.provideService(Scope.Scope, scope), asError("start"));
+    const acquireParent = yield* Effect.cached(
+      sessions
+        .acquire(prepared.parent.options)
+        .pipe(Effect.provideService(Scope.Scope, scope), asError("start")),
+    );
+    const parentHandle = lazy ? undefined : yield* acquireParent;
     const parentMessage = (text: string) =>
       prepared.parent.runEffect(
-        parentHandle
-          .followUp(
-            `Message from subagent ${handleId} (${prepared.input.task.slice(0, 500)}):\n\n${text}\n\nReply through this subagent's handle if a response is needed.`,
-          )
-          .pipe(asError("messageParent"), Effect.asVoid),
+        acquireParent.pipe(
+          Effect.flatMap((parent) =>
+            parent.followUp(
+              `Message from subagent ${handleId} (${prepared.input.task.slice(0, 500)}):\n\n${text}\n\nReply through this subagent's handle if a response is needed.`,
+            ),
+          ),
+          asError("messageParent"),
+          Effect.asVoid,
+        ),
       );
-    const recipientSessionId = crypto.randomUUID();
+    const recipientSessionId = restored?.privateSessionId ?? crypto.randomUUID();
     const attachmentAccess = prepared.parent.attachments?.(
       prepared.parent.parentSessionId,
       recipientSessionId,
     );
-    const inputReferences = yield* forwardInputs(attachmentAccess, prepared.input.inputRefs);
+    const inputReferences =
+      restored?.inputReferences ??
+      (yield* forwardInputs(attachmentAccess, prepared.input.inputRefs));
     const messageAccess = prepared.parent.messages?.(recipientSessionId);
-    const messageReferences = yield* forwardMessages(messageAccess, prepared.input.messageRefs);
-    const tools = attachmentAccess || messageAccess ? [...prepared.tools, "cake"] : prepared.tools;
+    const messageReferences = yield* forwardMessages(
+      messageAccess,
+      restored?.messageReferences ?? prepared.input.messageRefs,
+    );
+    const tools =
+      attachmentAccess || messageAccess
+        ? [...new Set([...prepared.tools, "cake"])]
+        : prepared.tools;
+    const persisted =
+      restored && !lazy
+        ? yield* sessions
+            .catalogEntry(
+              {
+                workingDirectory: location.workingDirectory,
+                sessionDirectory: location.sessionDirectory,
+              },
+              recipientSessionId,
+            )
+            .pipe(asError("restore"))
+        : undefined;
     const runtimeOptions: CakeSessionRuntimeAcquireOptions = {
       profile: { _tag: "SubagentSession" },
       runtime: {
@@ -835,10 +948,9 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
         trusted: location.trusted,
         agentDir: location.agentDirectory,
         sessionDir: location.sessionDirectory,
-        newSession: true,
+        newSession: !lazy && persisted === undefined && !transcriptExpected,
         sessionId: recipientSessionId,
         auxiliary: true,
-        ephemeral: prepared.parent.options.profile._tag === "CakeChatSession",
         ...(prepared.input.projectPath
           ? {
               projectInvestigation: true,
@@ -869,8 +981,91 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
       allowedCakeOperations.push("messages.read");
     }
     runtimeOptions.runtime.allowedCakeOperations = allowedCakeOperations;
+    const assignment =
+      prepared.parent.options.profile._tag === "CakeChatSession" && prepared.input.instructions
+        ? `Assignment guidance (subject to your ${prepared.input.allowMutations ? "scoped mutation-mode" : "investigation-only"} system instructions):\n${prepared.input.instructions}\n\nTask:\n${prepared.input.task}`
+        : prepared.input.task;
+    const initialInput: RuntimeRecoveryInput = {
+      turnId: crypto.randomUUID(),
+      text: withMessageReferences(
+        withInputReferences(assignment, inputReferences),
+        messageReferences,
+      ),
+      delivery: "prompt",
+      attachments: [],
+      markdown: false,
+    };
+    const hydrate = lazy
+      ? yield* Effect.cached(
+          Effect.fn("Subagents.hydrate")(function* () {
+            const current = (yield* SubscriptionRef.get(coordinator.state)).handles.get(handleId);
+            if (!current || current.piHandle) return;
+            const currentLocation = yield* environment
+              .location(prepared.workingDirectory)
+              .pipe(asError("restore"));
+            if (prepared.input.projectPath && !currentLocation.trusted)
+              return yield* new SubagentError({
+                operation: "restore",
+                message:
+                  "The worker’s Project is no longer trusted. Restore trust before continuing.",
+              });
+            const parentPiHandle = yield* acquireParent;
+            const piHandle = yield* sessions
+              .acquire({
+                ...runtimeOptions,
+                runtime: { ...runtimeOptions.runtime, trusted: currentLocation.trusted },
+              })
+              .pipe(Effect.provideService(Scope.Scope, scope), asError("restore"));
+            const snapshot = yield* piHandle.snapshot().pipe(asError("restore"));
+            const result = snapshotResult(current, snapshot, current.status, current.error);
+            yield* SubscriptionRef.update(coordinator.state, (state) =>
+              updateHandle(state, handleId, (value) => ({
+                ...value,
+                parentPiHandle,
+                piHandle,
+                result,
+                parts: result.parts,
+                usage: result.usage,
+                activityRevision: value.activityRevision + 1,
+              })),
+            );
+            yield* Deferred.succeed(completion, result);
+          })(),
+        )
+      : undefined;
     const handle: SubagentHandleState = {
       handleId,
+      hydrate,
+      recovery: restored ?? {
+        handleId,
+        privateSessionId: recipientSessionId,
+        parentSessionId: prepared.parent.parentSessionId,
+        parentProfile:
+          prepared.parent.options.profile._tag === "CakeChatSession"
+            ? "CakeChatSession"
+            : "ProjectSession",
+        parentWorkingDirectory: prepared.parent.workingDirectory,
+        parentSessionDirectory: prepared.parent.options.runtime.sessionDir,
+        anchorPartId,
+        workingDirectory: prepared.workingDirectory,
+        ...(prepared.input.projectPath ? { projectPath: prepared.input.projectPath } : null),
+        task: prepared.input.task,
+        ...(prepared.input.instructions === undefined
+          ? null
+          : { instructions: prepared.input.instructions }),
+        allowMutations: prepared.input.allowMutations,
+        resolvedModel: prepared.resolvedModel,
+        fastMode: prepared.input.fastMode,
+        tools,
+        inputReferences,
+        messageReferences,
+        notifyOnCompletion,
+        completionId: crypto.randomUUID(),
+        completionDisposition: notifyOnCompletion ? "pending" : "waited",
+        status: "queued",
+        pendingInputs: [initialInput],
+      },
+      privateSessionId: recipientSessionId,
       parentSessionId: prepared.parent.parentSessionId,
       anchorPartId,
       workingDirectory: prepared.workingDirectory,
@@ -880,7 +1075,6 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
       tools,
       instructions: prepared.input.instructions,
       fastMode: prepared.input.fastMode,
-      notifyOnCompletion,
       scope,
       completion,
       runtimeOptions,
@@ -889,12 +1083,15 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
       inputReferences,
       messageAccess,
       messageReferences,
-      status: "queued",
+      status: restored?.status ?? "queued",
+      ...(restored?.error === undefined ? null : { error: restored.error }),
+      ...(restored?.failurePhase === undefined ? null : { failurePhase: restored.failurePhase }),
       activityRevision: 0,
       streaming: false,
       parts: [],
       waiters: 0,
-      completionDisposition: notifyOnCompletion ? "pending" : "waited",
+      completionDisposition:
+        restored?.completionDisposition ?? (notifyOnCompletion ? "pending" : "waited"),
     };
     const inserted = yield* SubscriptionRef.modify(coordinator.state, (state) => {
       const owned = [...state.handles.values()].filter(
@@ -910,13 +1107,57 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
         operation: "start",
         message: `An agent may own at most ${MAX_HANDLES_PER_PARENT} subagent handles.`,
       });
-    const worker = executeInitial(handleId, prepared).pipe(
+    if (!lazy) yield* checkpoint(handleId);
+    const hydration =
+      restored && !lazy
+        ? yield* (
+            prepared.input.projectPath && !location.trusted
+              ? Effect.fail(
+                  new SubagentError({
+                    operation: "restore",
+                    message:
+                      "The worker’s Project is no longer trusted. Restore trust before continuing.",
+                  }),
+                )
+              : sessions.acquire(runtimeOptions).pipe(asError("restore"))
+          ).pipe(
+            Effect.provideService(Scope.Scope, scope),
+            asError("restore"),
+            Effect.tap((piHandle) => mutateHandle(handleId, (value) => ({ ...value, piHandle }))),
+            Effect.exit,
+          )
+        : undefined;
+    const terminal = restored && restored.status !== "queued" && restored.status !== "running";
+    if (terminal && hydration && Exit.isSuccess(hydration)) {
+      const snapshot = yield* hydration.value.snapshot().pipe(asError("restore"));
+      const result = snapshotResult(handle, snapshot, restored.status, restored.error);
+      yield* mutateHandle(handleId, (value) => ({
+        ...value,
+        result,
+        parts: result.parts,
+        usage: result.usage,
+        streaming: false,
+        completionDisposition:
+          restored.completionDisposition === "pending"
+            ? "notifying"
+            : restored.completionDisposition,
+      }));
+      yield* checkpoint(handleId);
+      yield* Deferred.succeed(completion, result);
+    }
+    const resume =
+      hydration && Exit.isFailure(hydration)
+        ? failHandle(handleId, hydration.cause)
+        : terminal
+          ? deliverCompletion(handleId)
+          : executeInitial(handleId, prepared, restored);
+    const worker = activate.pipe(Effect.andThen(resume)).pipe(
       Effect.matchCauseEffect({
         onSuccess: () => Effect.void,
         onFailure: (cause) => failHandle(handleId, cause),
       }),
     );
-    yield* FiberMap.run(coordinator.fibers, handleId, worker);
+    if (!lazy) yield* FiberMap.run(coordinator.fibers, handleId, worker);
     if (prepared.parent.options.profile._tag === "CakeChatSession") {
       const expiry = yield* Effect.sleep(HANDLE_LIFETIME).pipe(
         Effect.andThen(expireWhenIdle(handleId)),
@@ -951,6 +1192,44 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
   );
 });
 
+/** Rebuild a private capability scope with the same handle and Pi identity, never a fresh assignment. */
+export const restore = Effect.fn("Subagents.restore")(function* (
+  record: SubagentRecord,
+  parent: SubagentParentRuntime,
+  transcriptExpected: boolean,
+  activate: Effect.Effect<void> = Effect.void,
+) {
+  const coordinator = yield* SubagentCoordinator;
+  if ((yield* SubscriptionRef.get(coordinator.state)).handles.has(record.handleId)) return;
+  const input: SubagentTask = {
+    task: record.task,
+    model: {
+      prefer: "exact",
+      provider: record.resolvedModel.provider,
+      modelId: record.resolvedModel.modelId,
+      thinkingLevel: record.resolvedModel.thinkingLevel,
+    },
+    fastMode: record.fastMode,
+    allowMutations: record.allowMutations,
+    ...(record.instructions === undefined ? null : { instructions: record.instructions }),
+    ...(record.projectPath === undefined ? null : { projectPath: record.projectPath }),
+  };
+  yield* startPrepared(
+    {
+      input,
+      parent,
+      workingDirectory: record.workingDirectory,
+      resolvedModel: record.resolvedModel,
+      tools: record.tools,
+    },
+    record.anchorPartId,
+    record.notifyOnCompletion,
+    record,
+    transcriptExpected,
+    activate,
+  );
+});
+
 export const start = Effect.fn("Subagents.start")(function* (
   input: SubagentTaskInput,
   parent: SubagentParentRuntime,
@@ -975,7 +1254,11 @@ export const run = Effect.fn("Subagents.run")(function* (
   return yield* wait(parent.parentSessionId, started.handleId, onUpdate).pipe(
     Effect.onExit((exit) =>
       Exit.isFailure(exit)
-        ? close(parent.parentSessionId, started.handleId).pipe(Effect.ignore)
+        ? Effect.gen(function* () {
+            const coordinator = yield* SubagentCoordinator;
+            if (!(yield* Ref.get(coordinator.shuttingDown)))
+              yield* close(parent.parentSessionId, started.handleId).pipe(Effect.ignore);
+          })
         : Effect.void,
     ),
   );
@@ -1027,9 +1310,12 @@ export const parallel = Effect.fn("Subagents.parallel")(function* (
   return yield* execute.pipe(
     Effect.onExit((exit) =>
       Exit.isFailure(exit)
-        ? Effect.forEach(started, (handleId) => close(parent.parentSessionId, handleId), {
-            concurrency: "unbounded",
-            discard: true,
+        ? Effect.gen(function* () {
+            if (yield* Ref.get(coordinator.shuttingDown)) return;
+            yield* Effect.forEach(started, (handleId) => close(parent.parentSessionId, handleId), {
+              concurrency: "unbounded",
+              discard: true,
+            });
           })
         : Effect.void,
     ),
@@ -1057,7 +1343,9 @@ export const wait = Effect.fn("Subagents.wait")(function* (
   });
   const parentActivity = (value: SubagentHandleState) => {
     const activity = activityOf(value);
-    return value.runtimeOptions.runtime.ephemeral ? { ...activity, parts: [] } : activity;
+    return value.recovery.parentProfile === "CakeChatSession"
+      ? { ...activity, parts: [] }
+      : activity;
   };
   onUpdate?.(jsonValue(parentActivity(handle)));
   const observer = onUpdate
@@ -1120,9 +1408,17 @@ export const prompt = Effect.fn("Subagents.prompt")(function* (
   const inputReferences = yield* forwardInputs(handle.attachmentAccess, inputRefs);
   const messageReferences = yield* forwardMessages(handle.messageAccess, messageRefs);
   const coordinator = yield* SubagentCoordinator;
-  const completion = background
-    ? yield* Deferred.make<SubagentResult, SubagentError>()
-    : handle.completion;
+  const completion = yield* Deferred.make<SubagentResult, SubagentError>();
+  const input: RuntimeRecoveryInput = {
+    turnId: crypto.randomUUID(),
+    text: withMessageReferences(
+      withInputReferences(normalized, inputReferences),
+      messageReferences,
+    ),
+    delivery,
+    attachments: [],
+    markdown: false,
+  };
   const claimed = yield* SubscriptionRef.modify(coordinator.state, (state) => {
     const current = state.handles.get(handle.handleId);
     if (
@@ -1140,7 +1436,18 @@ export const prompt = Effect.fn("Subagents.prompt")(function* (
         error: undefined,
         result: undefined,
         completion,
-        notifyOnCompletion: background ? true : value.notifyOnCompletion,
+        inputReferences: [
+          ...new Map(
+            [...value.inputReferences, ...inputReferences].map((ref) => [ref.id, ref]),
+          ).values(),
+        ],
+        messageReferences: [...new Set([...value.messageReferences, ...messageReferences])],
+        recovery: {
+          ...value.recovery,
+          completionId: crypto.randomUUID(),
+          pendingInputs: [input],
+          notifyOnCompletion: background ? true : value.recovery.notifyOnCompletion,
+        },
         completionDisposition: background ? "pending" : "waited",
         activityRevision: value.activityRevision + 1,
       })),
@@ -1151,6 +1458,7 @@ export const prompt = Effect.fn("Subagents.prompt")(function* (
       operation: delivery,
       message: "That subagent already has active work; steer or abort it instead",
     });
+  yield* checkpoint(handle.handleId);
   const slot = yield* RcMap.get(coordinator.slots, handle.workingDirectory).pipe(
     Effect.provideService(Scope.Scope, handle.scope),
   );
@@ -1165,13 +1473,17 @@ export const prompt = Effect.fn("Subagents.prompt")(function* (
               withInputReferences(normalized, inputReferences),
               messageReferences,
             ),
+            [input],
           ),
         ),
       ),
     )
     .pipe(
       Effect.onInterrupt(() =>
-        handle.piHandle ? handle.piHandle.abort().pipe(Effect.ignore) : Effect.void,
+        Effect.gen(function* () {
+          if (yield* Ref.get(coordinator.shuttingDown)) return;
+          if (handle.piHandle) yield* handle.piHandle.abort().pipe(Effect.ignore);
+        }),
       ),
     );
   if (background) {
@@ -1197,17 +1509,12 @@ export const prompt = Effect.fn("Subagents.prompt")(function* (
   const result = yield* execute.pipe(
     Effect.onExit((exit) =>
       Exit.isSuccess(exit)
-        ? mutateHandle(handle.handleId, (current) => ({
-            ...current,
-            result: exit.value,
-            status: exit.value.status,
-          }))
-        : mutateHandle(handle.handleId, (current) => ({
-            ...current,
-            status: Cause.hasInterrupts(exit.cause) ? "aborted" : "error",
-            streaming: false,
-            error: boundedError(Cause.pretty(exit.cause)),
-          })),
+        ? completeHandle(handle.handleId, exit.value)
+        : Ref.get(coordinator.shuttingDown).pipe(
+            Effect.flatMap((stopping) =>
+              stopping ? Effect.void : failHandle(handle.handleId, exit.cause),
+            ),
+          ),
     ),
   );
   return jsonValue(parentResult(handle, result));
@@ -1227,7 +1534,19 @@ export const steer = Effect.fn("Subagents.steer")(function* (
   const normalized = text.trim();
   if (!normalized)
     return yield* new SubagentError({ operation: "steer", message: "Steer text is required" });
-  yield* handle.piHandle.steer(normalized).pipe(asError("steer"), Effect.asVoid);
+  const input: RuntimeRecoveryInput = {
+    turnId: crypto.randomUUID(),
+    text: normalized,
+    delivery: "steer",
+    attachments: [],
+    markdown: false,
+  };
+  yield* mutateHandle(handle.handleId, (current) => ({
+    ...current,
+    recovery: { ...current.recovery, pendingInputs: [...current.recovery.pendingInputs, input] },
+  }));
+  yield* checkpoint(handle.handleId);
+  yield* handle.piHandle.submit(input).pipe(asError("steer"));
 });
 
 export const abort = Effect.fn("Subagents.abort")(function* (
@@ -1243,6 +1562,7 @@ export const abort = Effect.fn("Subagents.abort")(function* (
     status: "aborted",
     streaming: false,
   }));
+  yield* checkpoint(handle.handleId);
   if (handle.status === "queued" || !handle.piHandle) {
     yield* FiberMap.remove(coordinator.fibers, handle.handleId);
     // A queued fiber can be interrupted before its supervisor begins. Complete
@@ -1255,23 +1575,36 @@ export const abort = Effect.fn("Subagents.abort")(function* (
   } else yield* handle.piHandle.abort().pipe(asError("abort"));
 });
 
-const releaseHandle = Effect.fn("Subagents.releaseHandle")(function* (handle: SubagentHandleState) {
+const releaseHandle = Effect.fn("Subagents.releaseHandle")(function* (
+  handle: SubagentHandleState,
+): Effect.fn.Return<void, SubagentError, SubagentCoordinator | CakeSessionRuntimes> {
   const coordinator = yield* SubagentCoordinator;
   if (handle.privateSessionId) yield* releaseDirectChildren(handle.privateSessionId);
+  if (handle.piHandle) yield* handle.piHandle.abort().pipe(asError("close"));
   yield* Deferred.fail(
     handle.completion,
     new SubagentError({ operation: "close", message: "The subagent was closed" }),
   );
-  yield* SubscriptionRef.update(coordinator.state, (state) => removeHandle(state, handle.handleId));
+  yield* coordinator.checkpoints.withPermit(
+    Effect.gen(function* () {
+      yield* coordinator.storage.remove(handle.handleId);
+      yield* SubscriptionRef.update(coordinator.state, (state) =>
+        removeHandle(state, handle.handleId),
+      );
+    }),
+  );
   yield* FiberMap.remove(coordinator.fibers, handle.handleId);
   yield* Scope.close(handle.scope, Exit.void);
+  yield* (yield* CakeSessionRuntimes)
+    .forgetRecovery(handle.recovery.privateSessionId)
+    .pipe(asError("close"));
 });
 
 export const close = Effect.fn("Subagents.close")(function* (
   parentSessionId: string,
   rawHandleId: string,
 ) {
-  const handle = yield* requireHandle(parentSessionId, rawHandleId);
+  const handle = yield* requireHandle(parentSessionId, rawHandleId, false);
   yield* releaseHandle(handle);
   return jsonValue({ handleId: handle.handleId, closed: true });
 });
@@ -1350,57 +1683,74 @@ const backgroundActive = (activities: ReadonlyArray<SubagentActivity>) =>
 
 export const observe = Effect.fn("Subagents.observe")(function* (parentSessionId: string) {
   const coordinator = yield* SubagentCoordinator;
-  return Stream.suspend(() => {
-    let previous: ReadonlyMap<SubagentHandleId, SubagentActivity> | undefined;
-    let previousBackground = false;
-    return SubscriptionRef.changes(coordinator.state).pipe(
-      Stream.flatMap((state) => {
-        const activities = parentActivities(state, parentSessionId);
-        const current = new Map(
-          activities.map((activity) => [activity.handleId, activity] as const),
+  return Stream.unwrap(
+    Effect.gen(function* () {
+      const handles = (yield* SubscriptionRef.get(coordinator.state)).handles.values();
+      yield* Effect.forEach(
+        [...handles].filter(
+          (handle) => handle.parentSessionId === parentSessionId && handle.hydrate,
+        ),
+        (handle) =>
+          (handle.hydrate ?? Effect.void).pipe(
+            Effect.catch((error) =>
+              Effect.logWarning("Worker transcript needs attention", handle.handleId, error),
+            ),
+          ),
+        { concurrency: 4, discard: true },
+      ).pipe(Effect.forkScoped);
+      return Stream.suspend(() => {
+        let previous: ReadonlyMap<SubagentHandleId, SubagentActivity> | undefined;
+        let previousBackground = false;
+        return SubscriptionRef.changes(coordinator.state).pipe(
+          Stream.flatMap((state) => {
+            const activities = parentActivities(state, parentSessionId);
+            const current = new Map(
+              activities.map((activity) => [activity.handleId, activity] as const),
+            );
+            const background = backgroundActive(activities);
+            if (!previous) {
+              previous = current;
+              previousBackground = background;
+              return Stream.succeed<SubagentUpdate>({
+                _tag: "Snapshot",
+                revision: state.revision,
+                parentSessionId,
+                activities,
+                backgroundActive: background,
+              });
+            }
+            const updates: SubagentUpdate[] = [];
+            for (const activity of activities) {
+              if (previous.get(activity.handleId)?.revision !== activity.revision)
+                updates.push({
+                  _tag: "Activity",
+                  revision: state.revision,
+                  parentSessionId,
+                  activity,
+                });
+            }
+            for (const handleId of previous.keys()) {
+              if (!current.has(handleId))
+                updates.push({
+                  _tag: "Removed",
+                  revision: state.revision,
+                  parentSessionId,
+                  handleId,
+                });
+            }
+            if (background !== previousBackground)
+              updates.push({
+                _tag: "Background",
+                revision: state.revision,
+                parentSessionId,
+                active: background,
+              });
+            previous = current;
+            previousBackground = background;
+            return Stream.fromIterable(updates);
+          }),
         );
-        const background = backgroundActive(activities);
-        if (!previous) {
-          previous = current;
-          previousBackground = background;
-          return Stream.succeed<SubagentUpdate>({
-            _tag: "Snapshot",
-            revision: state.revision,
-            parentSessionId,
-            activities,
-            backgroundActive: background,
-          });
-        }
-        const updates: SubagentUpdate[] = [];
-        for (const activity of activities) {
-          if (previous.get(activity.handleId)?.revision !== activity.revision)
-            updates.push({
-              _tag: "Activity",
-              revision: state.revision,
-              parentSessionId,
-              activity,
-            });
-        }
-        for (const handleId of previous.keys()) {
-          if (!current.has(handleId))
-            updates.push({
-              _tag: "Removed",
-              revision: state.revision,
-              parentSessionId,
-              handleId,
-            });
-        }
-        if (background !== previousBackground)
-          updates.push({
-            _tag: "Background",
-            revision: state.revision,
-            parentSessionId,
-            active: background,
-          });
-        previous = current;
-        previousBackground = background;
-        return Stream.fromIterable(updates);
-      }),
-    );
-  });
+      });
+    }),
+  );
 });

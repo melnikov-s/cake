@@ -33,6 +33,9 @@ export const ProjectSessionSummary = Schema.Struct({
   resolved: Schema.Boolean,
   unread: Schema.Boolean,
   running: Schema.Boolean,
+  /** Recovery paused safely; this session needs fresh user input, not automatic replay. */
+  recoveryIssue: Schema.optionalKey(boundedText),
+  latestTurnOutcome: Schema.optionalKey(Schema.Literals(["complete", "failed", "aborted"])),
   projectPath: boundedPath,
   projectName: Schema.String,
   workingDirectory: boundedPath,

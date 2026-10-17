@@ -1,3 +1,4 @@
+import { makeRuntimeRecoveryStorageTestLayer } from "../../helpers/piRuntimeFixture";
 import { Deferred, Effect, Layer, Queue, Stream } from "effect";
 import type {
   ConversationSnapshot,
@@ -215,7 +216,7 @@ export const makeWorkerFixture = Effect.fn("WorkflowWorkersTest.fixture")(functi
           : undefined;
       }),
     changelog: () => Effect.succeed("test"),
-  });
+  }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
   const models = Layer.succeed(
     PiModels,
     makePiModels({

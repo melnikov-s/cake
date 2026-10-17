@@ -23,7 +23,11 @@ import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamil
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { WorkflowTestLive } from "../helpers/workflowFixture";
-import { fakeRuntime, snapshot } from "../helpers/piRuntimeFixture";
+import {
+  makeRuntimeRecoveryStorageTestLayer,
+  fakeRuntime,
+  snapshot,
+} from "../helpers/piRuntimeFixture";
 import { makeProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
 
 const location = {
@@ -149,7 +153,7 @@ it.effect.each([
               );
             },
           }),
-      });
+      }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
       yield* Effect.gen(function* () {
         yield* addFamily;
         // Exercise the decoder/cancellation adapter as well as the extracted route.
@@ -265,7 +269,7 @@ it.effect.each([
             await Effect.runPromise(Queue.offer(received, text));
           },
         }),
-    });
+    }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
     yield* Effect.gen(function* () {
       yield* addFamily;
       const text =

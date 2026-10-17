@@ -14,7 +14,7 @@ import { SessionCatalogChanges } from "../../../src/services/session-catalogs/Se
 import { makeHeadlessProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
 import { messageBoardHarness } from "../helpers/messageBoardHarness";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
-import { fakeRuntime } from "../helpers/piRuntimeFixture";
+import { makeRuntimeRecoveryStorageTestLayer, fakeRuntime } from "../helpers/piRuntimeFixture";
 
 it.effect.each([
   { placement: "none" as const, launchFails: false, rendererUnavailable: false },
@@ -54,7 +54,7 @@ it.effect.each([
       catalogEntry: () => Effect.succeed(undefined),
       inspect: () => Effect.succeed(undefined),
       changelog: () => Effect.succeed(""),
-    }),
+    }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
     SessionCatalogChanges.layer,
     familyStorageHarness().layer,
     messageBoardHarness().layer,

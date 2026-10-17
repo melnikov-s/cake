@@ -8,7 +8,9 @@ import {
   Scope,
   Semaphore,
   SubscriptionRef,
+  Ref,
 } from "effect";
+import { SubagentStorage, type SubagentRecord } from "../storage/SubagentStorage";
 import type { Deferred, Schema } from "effect";
 import type { TaskInputReference } from "../../contracts/conversations/task-input";
 import type { SubagentAttachmentAccess } from "../../contracts/subagents/subagent-attachments";
@@ -28,6 +30,7 @@ import type {
 
 export interface SubagentHandleState {
   readonly handleId: SubagentHandleId;
+  readonly recovery: SubagentRecord;
   readonly parentSessionId: string;
   readonly anchorPartId: string;
   readonly workingDirectory: string;
@@ -37,11 +40,12 @@ export interface SubagentHandleState {
   readonly tools: ReadonlyArray<string>;
   readonly instructions?: string;
   readonly fastMode: boolean;
-  readonly notifyOnCompletion: boolean;
   readonly scope: Scope.Closeable;
   readonly completion: Deferred.Deferred<SubagentResult, SubagentError>;
   readonly runtimeOptions: CakeSessionRuntimeAcquireOptions;
-  readonly parentPiHandle: CakeSessionHandle;
+  readonly parentPiHandle?: CakeSessionHandle;
+  /** Terminal workers acquire Pi resources only when their parent is observed or the handle is used. */
+  readonly hydrate?: Effect.Effect<void, SubagentError>;
   readonly piHandle?: CakeSessionHandle;
   readonly privateSessionId?: string;
   readonly attachmentAccess?: SubagentAttachmentAccess;
@@ -70,9 +74,12 @@ export interface SubagentCoordinatorService {
   readonly fibers: FiberMap.FiberMap<SubagentHandleId>;
   readonly slots: RcMap.RcMap<string, Semaphore.Semaphore>;
   readonly scope: Scope.Scope;
+  readonly storage: SubagentStorage["Service"];
+  readonly checkpoints: Semaphore.Semaphore;
+  readonly shuttingDown: Ref.Ref<boolean>;
 }
 
-/** Process-scoped transient resource owner used by the free Subagents domain operations. */
+/** Process-scoped resource owner; durable worker facts are checkpointed separately from Pi history. */
 export class SubagentCoordinator extends Context.Service<
   SubagentCoordinator,
   SubagentCoordinatorService
@@ -82,6 +89,9 @@ export const SubagentCoordinatorLive = Layer.effect(
   SubagentCoordinator,
   Effect.gen(function* () {
     const scope = yield* Effect.scope;
+    const storage = yield* SubagentStorage;
+    const checkpoints = yield* Semaphore.make(1);
+    const shuttingDown = yield* Ref.make(false);
     const state = yield* SubscriptionRef.make<SubagentCoordinatorState>({
       revision: 0,
       handles: new Map(),
@@ -92,6 +102,7 @@ export const SubagentCoordinatorLive = Layer.effect(
     });
     yield* Effect.addFinalizer(() =>
       Effect.gen(function* () {
+        yield* Ref.set(shuttingDown, true);
         const current = yield* SubscriptionRef.get(state);
         yield* Effect.forEach(
           current.handles.values(),
@@ -100,7 +111,15 @@ export const SubagentCoordinatorLive = Layer.effect(
         );
       }),
     );
-    return SubagentCoordinator.of({ state, fibers, slots, scope });
+    return SubagentCoordinator.of({
+      state,
+      fibers,
+      slots,
+      scope,
+      storage,
+      checkpoints,
+      shuttingDown,
+    });
   }),
 );
 

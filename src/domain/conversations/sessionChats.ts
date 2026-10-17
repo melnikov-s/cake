@@ -169,6 +169,7 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
     yield* handle.publishSessionChanged().pipe(asError("deliver"));
     return turnId;
   });
+  // Serialize preparation through durable admission, never a model answer.
   return yield* (storage ? storage.withNoticeDelivery(admission) : admission).pipe(
     asError("deliver"),
   );

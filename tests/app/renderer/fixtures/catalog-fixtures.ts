@@ -17,6 +17,8 @@ export interface SessionSummaryFixture {
   readonly resolved: boolean;
   readonly unread: boolean;
   readonly running: boolean;
+  readonly recoveryIssue?: string;
+  readonly latestTurnOutcome?: ProjectSessionSummary["latestTurnOutcome"];
   readonly projectPath: string;
   readonly projectName: string;
   readonly workingDirectory: string;
@@ -66,6 +68,10 @@ export function sessionSummary(
     resolved: input.resolved ?? false,
     unread: input.unread ?? false,
     running: input.running ?? false,
+    ...(input.recoveryIssue === undefined ? null : { recoveryIssue: input.recoveryIssue }),
+    ...(input.latestTurnOutcome === undefined
+      ? null
+      : { latestTurnOutcome: input.latestTurnOutcome }),
     projectPath: input.projectPath,
     projectName: input.projectName ?? input.projectPath.split("/").at(-1) ?? input.projectPath,
     workingDirectory: input.workingDirectory ?? input.projectPath,

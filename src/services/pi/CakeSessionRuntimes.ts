@@ -1,4 +1,11 @@
 import type { TurnStop } from "../../contracts/conversations/turn-stop";
+import { sessionDigestReceiptIds } from "../../contracts/cake-chats/session-digest-reminder";
+import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
+import {
+  RuntimeRecoveryStorage,
+  type RuntimeRecoveryInput,
+} from "../storage/RuntimeRecoveryStorage";
+import { RestartRecoveryBlockedError } from "./runtime/restart-recovery";
 import { stat } from "node:fs/promises";
 import type { CakeOperationOptions } from "../../contracts/agent/cake-operation-options";
 import {
@@ -17,6 +24,7 @@ import {
   Semaphore,
   Scope,
   Stream,
+  Struct,
 } from "effect";
 import type {
   PiPendingMessageReorder,
@@ -137,7 +145,7 @@ export interface CakeSessionRuntimeAcquireOptions {
       readonly text: string;
       readonly delivery: "prompt" | "steer" | "follow-up";
     },
-    accept: Effect.Effect<void>,
+    accept: Effect.Effect<void, PiSessionError>,
   ) => Effect.Effect<void, unknown>;
   readonly onTurnSettled?: (event: {
     readonly sessionId: string;
@@ -156,6 +164,17 @@ export interface CakeSessionRuntimeAcquireOptions {
 
 export interface CakeSessionHandle {
   readonly currentTurnIds: () => Effect.Effect<ReadonlyArray<string>>;
+  readonly recover: (
+    inputs: ReadonlyArray<RuntimeRecoveryInput>,
+    paused?: boolean,
+  ) => Effect.Effect<void, PiSessionError>;
+  /** Admit a new input with its owner's durable ID; unlike recover, this is explicit continuation. */
+  readonly submit: (input: RuntimeRecoveryInput) => Effect.Effect<string, PiSessionError>;
+  /** Permanent-chat receipt metadata; other profiles do not expose a digest inbox. */
+  readonly admittedDigestIds?: () => Effect.Effect<ReadonlyArray<string>, PiSessionError>;
+  readonly inputReceipt?: (
+    turnId: string,
+  ) => Effect.Effect<"consumed" | "canceled" | "pending" | undefined, PiSessionError>;
   readonly profile: CakeSessionRuntimeAcquireOptions["profile"]["_tag"];
   readonly updates: Stream.Stream<PiSessionUpdate, PiSessionError>;
   readonly snapshot: () => Effect.Effect<ConversationSnapshot, PiSessionError>;
@@ -250,6 +269,7 @@ export interface CakeSessionHandle {
   readonly reviewParentContext: () => Effect.Effect<ReviewParentContext, PiSessionError>;
   readonly notifySubagentCompletion: (
     result: Schema.Schema.Type<typeof Schema.Json>,
+    completionId?: string,
   ) => Effect.Effect<void, PiSessionError>;
   readonly reload: () => Effect.Effect<void, PiSessionError>;
   readonly publishSessionChanged: () => Effect.Effect<void, PiSessionError>;
@@ -265,6 +285,8 @@ export interface CakeSessionHandle {
 }
 
 export interface CakeSessionRuntimeStatus {
+  readonly recoveryIssue?: string;
+  readonly latestTurnOutcome?: "complete" | "failed" | "aborted";
   readonly streaming: boolean;
   readonly pending: boolean;
   readonly persisted: boolean;
@@ -326,6 +348,8 @@ export class CakeSessionRuntimes extends Context.Service<
     readonly executingTurnIds: (
       target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
     ) => Effect.Effect<ReadonlyArray<string>>;
+    /** Called after permanent session/worker deletion, never on ordinary runtime release. */
+    readonly forgetRecovery: (sessionId: string) => Effect.Effect<void, PiSessionError>;
     readonly refreshModels: () => Effect.Effect<void, PiSessionError>;
     readonly reloadWorkingDirectory: (
       workingDirectory: string,
@@ -355,6 +379,7 @@ interface SharedRuntime {
   readonly settledInputIds: Set<string>;
   readonly turnResults: Map<string, PiTurnResult>;
   readonly queueEdits: Semaphore.Semaphore;
+  readonly turnAdmissions: Semaphore.Semaphore;
 }
 
 class RuntimeKey implements Equal.Equal {
@@ -443,11 +468,7 @@ const validateProfile = Effect.fn("CakeSessionRuntimes.validateProfile")(functio
       runtime.auxiliary === true &&
       runtime.globalControl === undefined &&
       runtime.sessionControl === undefined);
-  if (
-    valid &&
-    (!runtime.projectInvestigation || (profile === "SubagentSession" && runtime.ephemeral === true))
-  )
-    return;
+  if (valid && (!runtime.projectInvestigation || profile === "SubagentSession")) return;
   return yield* new PiSessionError({
     operation: "acquire",
     message: `Runtime options conflict with the ${profile} capability profile`,
@@ -467,6 +488,78 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
     CakeSessionRuntimes,
     Effect.gen(function* () {
       const layerScope = yield* Effect.scope;
+      const recoveryStorage = yield* RuntimeRecoveryStorage;
+      const recoveryGate = yield* Semaphore.make(1);
+      const persistInput = Effect.fn("CakeSessionRuntimes.persistInput")(function* (
+        shared: SharedRuntime,
+        input: RuntimeRecoveryInput,
+        paused = false,
+      ) {
+        const profile = shared.profile;
+        if (profile === "DiscussionSession") return;
+        const persisted = yield* Effect.promise(() =>
+          stat(shared.runtime.sessionFile).then(
+            () => true,
+            () => false,
+          ),
+        );
+        yield* recoveryGate.withPermit(
+          Effect.gen(function* () {
+            const previous = yield* recoveryStorage.get(shared.runtime.sessionId);
+            yield* recoveryStorage.update({
+              sessionId: shared.runtime.sessionId,
+              workingDirectory: shared.workingDirectory,
+              sessionDirectory: shared.sessionDirectory,
+              profile,
+              transcriptPersisted: previous?.transcriptPersisted || persisted,
+              canceledInputIds: previous?.canceledInputIds ?? [],
+              deliveredDigestIds: [
+                ...new Set([
+                  ...(previous?.deliveredDigestIds ?? []),
+                  ...sessionDigestReceiptIds(input.text),
+                ]),
+              ],
+              state: previous?.state === "blocked" ? "blocked" : paused ? "stopped" : "active",
+              ...(previous?.state === "blocked" && previous.issue
+                ? { issue: previous.issue }
+                : null),
+              inputs: [
+                ...(previous?.inputs ?? []).filter((item) => item.turnId !== input.turnId),
+                input,
+              ],
+            });
+          }),
+        );
+      });
+      const removeRecoveryInput = Effect.fn("CakeSessionRuntimes.removeRecoveryInput")(function* (
+        sessionId: string,
+        turnId: string,
+        outcome: "complete" | "failed" | "aborted",
+      ) {
+        yield* recoveryGate.withPermit(
+          Effect.gen(function* () {
+            const record = yield* recoveryStorage.get(sessionId);
+            if (!record) return;
+            const inputs = record.inputs.filter((item) => item.turnId !== turnId);
+            const canceledInputIds =
+              outcome === "aborted"
+                ? [...new Set([...(record.canceledInputIds ?? []), turnId])]
+                : record.canceledInputIds;
+            yield* recoveryStorage.update({
+              ...record,
+              inputs,
+              ...(canceledInputIds ? { canceledInputIds } : null),
+              state: inputs.length
+                ? outcome === "aborted"
+                  ? "stopped"
+                  : record.state
+                : outcome === "aborted"
+                  ? "stopped"
+                  : outcome,
+            });
+          }),
+        );
+      });
       // RcMap remains the sole resource owner. This set is only a process-local projection used
       // to fan explicit refresh intents to currently acquired runtimes; it never acquires or
       // retains a runtime.
@@ -520,6 +613,23 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                 },
               });
               currentRuntime = runtime;
+              if (
+                key.options.runtime.newSession &&
+                key.options.profile._tag !== "DiscussionSession"
+              )
+                yield* Deferred.await(initialTranscriptPersisted).pipe(
+                  Effect.andThen(
+                    recoveryGate.withPermit(
+                      Effect.gen(function* () {
+                        const record = yield* recoveryStorage.get(runtime.sessionId);
+                        if (record && !record.transcriptPersisted)
+                          yield* recoveryStorage.update({ ...record, transcriptPersisted: true });
+                      }),
+                    ),
+                  ),
+                  Effect.orDie,
+                  Effect.forkScoped,
+                );
               const shared: SharedRuntime = {
                 applicationLease: false,
                 initialTranscriptPersisted,
@@ -533,6 +643,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                 events,
                 activeTurns,
                 queueEdits: Semaphore.makeUnsafe(1),
+                turnAdmissions: Semaphore.makeUnsafe(1),
               };
               activeRuntimes.add(shared);
               acquiredOptions.set(runtimeTarget(key.options), key.options);
@@ -653,20 +764,85 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
           operation: string,
           evaluate: (runtime: CakeSessionRuntime) => Promise<A>,
         ) => runtimeOperation(operation, () => evaluate(shared.runtime));
+        const snapshot = Effect.fn("CakeSessionRuntimes.recoverySnapshot")(function* () {
+          const value = yield* call("snapshot", (runtime) => runtime.snapshot());
+          const recovered = yield* recoveryStorage.get(value.sessionId).pipe(Effect.result);
+          const record = recovered._tag === "Success" ? recovered.success : undefined;
+          const issue =
+            recovered._tag === "Failure"
+              ? recovered.failure.message
+              : record?.state === "blocked"
+                ? (record.issue ?? "Interrupted work needs your review")
+                : undefined;
+          if (!issue) return value;
+          return {
+            ...value,
+            parts: [
+              ...value.parts.filter((part) => part.id !== "restart-recovery"),
+              {
+                id: "restart-recovery",
+                kind: "notice" as const,
+                tone: "error" as const,
+                title:
+                  recovered._tag === "Failure"
+                    ? "Recovery metadata needs repair"
+                    : "Recovery needs your review",
+                detail: issue,
+              },
+            ],
+          };
+        });
         // Whole-queue replacements from every acquired handle share one runtime gate.
         // Never hold this gate for an executing prompt or send-now's new turn.
-        const editQueue = <A>(
+        const editQueue = Effect.fn("CakeSessionRuntimes.editQueue")(function* <A>(
           operation: string,
           evaluate: (runtime: CakeSessionRuntime) => Promise<A>,
-        ) => call(operation, evaluate).pipe(shared.queueEdits.withPermit);
+        ) {
+          const before = shared.runtime.pendingRecoveryInputs?.();
+          const result = yield* call(operation, evaluate);
+          const after = shared.runtime.pendingRecoveryInputs?.();
+          if (before && after)
+            yield* recoveryGate
+              .withPermit(
+                Effect.gen(function* () {
+                  const record = yield* recoveryStorage.get(shared.runtime.sessionId);
+                  if (!record) return;
+                  const cancelled = before
+                    .filter(
+                      (item) =>
+                        !after.some((next) => next.turnId === item.turnId) &&
+                        !shared.runtime.hasConsumedInput?.(item.turnId),
+                    )
+                    .map((item) => item.turnId);
+                  const retained = record.inputs.filter((item) => !cancelled.includes(item.turnId));
+                  const pendingIds = after.map((item) => item.turnId);
+                  const inputs = [
+                    ...retained.filter((item) => !pendingIds.includes(item.turnId)),
+                    ...after.flatMap((queued) => {
+                      const input = retained.find((item) => item.turnId === queued.turnId);
+                      return input ? [{ ...input, delivery: queued.delivery }] : [];
+                    }),
+                  ];
+                  yield* recoveryStorage.update({
+                    ...record,
+                    inputs,
+                    canceledInputIds: [
+                      ...new Set([...(record.canceledInputIds ?? []), ...cancelled]),
+                    ],
+                  });
+                }),
+              )
+              .pipe(sessionError(operation));
+          return result;
+        }, shared.queueEdits.withPermit);
         const updates = Stream.unwrap(
           Effect.gen(function* () {
             // Subscribe before reading the snapshot. Runtime events produced
             // while Pi builds the snapshot are buffered by this subscription,
             // eliminating the initial snapshot/live-event gap.
             const subscription = yield* PubSub.subscribe(shared.events);
-            const snapshot = yield* call("observe", (runtime) => runtime.snapshot());
-            return Stream.make({ _tag: "Snapshot" as const, snapshot }).pipe(
+            const initial = yield* snapshot();
+            return Stream.make({ _tag: "Snapshot" as const, snapshot: initial }).pipe(
               Stream.concat(
                 Stream.fromEffect(PubSub.take(subscription)).pipe(
                   Stream.repeat(Schedule.forever),
@@ -685,8 +861,40 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
           presentationMode?: ProjectSessionPresentationMode,
           automaticTitle?: boolean,
           responseMode?: ConversationResponseMode,
+          recovered?: RuntimeRecoveryInput,
+          paused = false,
+          admissionId?: string,
         ) {
-          const turnId = crypto.randomUUID();
+          const coordination = parseCrossSessionMessage(text);
+          const turnId =
+            recovered?.turnId ??
+            admissionId ??
+            coordination?.metadata.messageId ??
+            crypto.randomUUID();
+          if (
+            (yield* Ref.get(shared.activeTurns)).has(turnId) ||
+            shared.settledInputIds.has(turnId)
+          )
+            return turnId;
+          if (!recovered && (coordination || admissionId)) {
+            if (shared.runtime.hasConsumedInput?.(turnId)) return turnId;
+            const record = yield* recoveryStorage
+              .get(shared.runtime.sessionId)
+              .pipe(sessionError(delivery));
+            if (
+              record?.inputs.some((input) => input.turnId === turnId) ||
+              record?.canceledInputIds?.includes(turnId)
+            )
+              return turnId;
+            if (
+              record?.state === "blocked" ||
+              (record?.state === "stopped" && record.inputs.length > 0)
+            )
+              return yield* new PiSessionError({
+                operation: delivery,
+                message: "This session needs user input before accepting more automatic work",
+              });
+          }
           const turnScope = yield* Scope.make();
           const retained = yield* RcMap.get(runtimes, key).pipe(
             Effect.provideService(Scope.Scope, turnScope),
@@ -702,7 +910,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
               next.delete(turnId);
               return [true, next] as const;
             });
-            retained.settledInputIds.delete(turnId);
+            retained.settledInputIds.add(turnId);
             const result = retained.turnResults.get(turnId);
             retained.turnResults.delete(turnId);
             const settledOutcome =
@@ -722,7 +930,6 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
               };
               if (message !== undefined) Object.assign(event, { message });
               yield* PubSub.publish(retained.events, event);
-              yield* key.options.onTurnActivityChanged ?? Effect.void;
               if (key.options.onTurnSettled)
                 yield* key.options.onTurnSettled({
                   sessionId: retained.runtime.sessionId,
@@ -731,43 +938,98 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                   ...(result ? { result } : null),
                   ...(message ? { message } : null),
                 });
+              yield* removeRecoveryInput(retained.runtime.sessionId, turnId, settledOutcome).pipe(
+                Effect.orDie,
+              );
+              yield* key.options.onTurnActivityChanged ?? Effect.void;
             }
+            retained.settledInputIds.delete(turnId);
           });
           const finished = yield* Deferred.make<void, PiSessionError>();
           // Input the user withdrew (abort, removed queue row, cleared queue) is a
           // cancellation of accepted work, not a failure of the session.
           const run = Effect.tryPromise({
             try: () =>
-              retained.runtime.prompt(
-                text,
-                delivery,
-                [...attachments],
-                markdown,
-                turnId,
-                presentationMode,
-                automaticTitle,
-                responseMode,
-              ),
+              paused && retained.runtime.restoreInput
+                ? retained.runtime.restoreInput(
+                    recovered ?? {
+                      turnId,
+                      text,
+                      delivery,
+                      attachments: [...attachments],
+                      markdown,
+                    },
+                  )
+                : recovered && retained.runtime.recoverInput
+                  ? retained.runtime.recoverInput(recovered)
+                  : retained.runtime.prompt(
+                      text,
+                      delivery,
+                      [...attachments],
+                      markdown,
+                      turnId,
+                      presentationMode,
+                      automaticTitle,
+                      responseMode,
+                    ),
             catch: (cause) => cause,
           }).pipe(
             Effect.matchEffect({
               onSuccess: () => settle("complete"),
               onFailure: (cause) =>
-                (cause instanceof TurnCanceledError
-                  ? settle("aborted")
-                  : settle("failed", messageOf(cause))
-                ).pipe(
-                  Effect.andThen(
-                    Deferred.fail(
-                      finished,
-                      new PiSessionError({ operation: delivery, message: messageOf(cause) }),
+                cause instanceof RestartRecoveryBlockedError
+                  ? recoveryGate
+                      .withPermit(
+                        Effect.gen(function* () {
+                          const record = yield* recoveryStorage.get(retained.runtime.sessionId);
+                          if (record)
+                            yield* recoveryStorage.update({
+                              ...record,
+                              state: "blocked",
+                              issue: cause.message,
+                            });
+                          yield* Ref.update(retained.activeTurns, (turns) => {
+                            const next = new Map(turns);
+                            next.delete(turnId);
+                            return next;
+                          });
+                          yield* PubSub.publish(retained.events, {
+                            type: "snapshot-updated",
+                            snapshot: yield* snapshot(),
+                          });
+                          yield* key.options.onTurnActivityChanged ?? Effect.void;
+                        }),
+                      )
+                      .pipe(Effect.orDie)
+                  : (cause instanceof TurnCanceledError
+                      ? settle("aborted")
+                      : settle("failed", messageOf(cause))
+                    ).pipe(
+                      Effect.andThen(
+                        Deferred.fail(
+                          finished,
+                          new PiSessionError({ operation: delivery, message: messageOf(cause) }),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
             }),
             Effect.ensuring(Scope.close(turnScope, Exit.void)),
           );
           const accept = Effect.gen(function* () {
+            yield* persistInput(
+              retained,
+              {
+                turnId,
+                text,
+                delivery,
+                attachments: [...attachments],
+                markdown,
+                ...(presentationMode === undefined ? null : { presentationMode }),
+                ...(responseMode === undefined ? null : { responseMode }),
+                ...(automaticTitle === undefined ? null : { automaticTitle }),
+              },
+              paused,
+            ).pipe(sessionError(delivery));
             yield* Ref.update(retained.activeTurns, (turns) =>
               new Map(turns).set(turnId, delivery),
             );
@@ -801,8 +1063,24 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
               Effect.raceFirst(Deferred.await(finished)),
             );
           }
+          const persisted = yield* Effect.promise(() =>
+            stat(retained.runtime.sessionFile).then(
+              () => true,
+              () => false,
+            ),
+          );
+          if (persisted)
+            yield* recoveryGate
+              .withPermit(
+                Effect.gen(function* () {
+                  const record = yield* recoveryStorage.get(retained.runtime.sessionId);
+                  if (record && !record.transcriptPersisted)
+                    yield* recoveryStorage.update({ ...record, transcriptPersisted: true });
+                }),
+              )
+              .pipe(sessionError(delivery));
           return turnId;
-        });
+        }, shared.turnAdmissions.withPermit);
 
         const claimAbortedTurns = Effect.fn("CakeSessionRuntimes.claimAbortedTurns")(function* (
           turnIds: ReadonlyArray<string>,
@@ -831,7 +1109,6 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                   turnId,
                   outcome: "aborted",
                 });
-                yield* options.onTurnActivityChanged ?? Effect.void;
                 if (options.onTurnSettled)
                   yield* options
                     .onTurnSettled({
@@ -846,17 +1123,155 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                           new PiSessionError({ operation: "abort", message: String(cause) }),
                       ),
                     );
+                yield* removeRecoveryInput(shared.runtime.sessionId, turnId, "aborted").pipe(
+                  sessionError("abort"),
+                );
+                yield* options.onTurnActivityChanged ?? Effect.void;
               }),
             { discard: true },
           );
         });
 
+        const deliverInput = Effect.fn("CakeSessionRuntimes.deliverInput")(function* (
+          delivery: "prompt" | "steer" | "follow-up",
+          text: string,
+          attachments: ReadonlyArray<Attachment>,
+          markdown = false,
+          presentationMode?: ProjectSessionPresentationMode,
+          automaticTitle?: boolean,
+          responseMode?: ConversationResponseMode,
+          admissionId?: string,
+        ) {
+          const record = yield* recoveryStorage
+            .get(shared.runtime.sessionId)
+            .pipe(sessionError(delivery));
+          if (record?.state === "blocked" && !parseCrossSessionMessage(text)) {
+            // Only a new local-user input may supersede the blocked run. Keep
+            // unconsumed ordinary queue items; never replay an uncertain command.
+            const queued = record.inputs.filter(
+              (input) =>
+                !shared.runtime.hasConsumedInput?.(input.turnId) && !/^[!/]/.test(input.text),
+            );
+            const stopped = record.inputs.filter((input) => !queued.includes(input));
+            const reviewed = Struct.omit(record, ["issue"]);
+            yield* recoveryGate
+              .withPermit(recoveryStorage.update({ ...reviewed, state: "stopped" }))
+              .pipe(sessionError(delivery));
+            yield* settleAbortedTurns(
+              stopped.map((input) => input.turnId),
+              { by: "user", reason: "Continued after reviewing interrupted work" },
+            );
+            yield* call("reviewRecovery", async (runtime) => {
+              await runtime.acknowledgeRecovery?.();
+            });
+            for (const input of queued)
+              yield* startTurn(
+                "follow-up",
+                input.text,
+                input.attachments,
+                input.markdown,
+                input.presentationMode,
+                input.automaticTitle,
+                input.responseMode,
+                input,
+                true,
+              );
+          }
+          return yield* startTurn(
+            delivery,
+            text,
+            attachments,
+            markdown,
+            presentationMode,
+            automaticTitle,
+            responseMode,
+            undefined,
+            false,
+            admissionId,
+          );
+        }, shared.queueEdits.withPermit);
+
         return {
+          submit: (input) =>
+            deliverInput(
+              input.delivery,
+              input.text,
+              input.attachments,
+              input.markdown,
+              input.presentationMode,
+              input.automaticTitle,
+              input.responseMode,
+              input.turnId,
+            ),
+          recover: (inputs, paused = false) =>
+            Effect.gen(function* () {
+              const check = yield* Effect.try({
+                try: () => (paused ? undefined : shared.runtime.checkRecovery?.(inputs)),
+                catch: (cause) => cause,
+              }).pipe(Effect.result);
+              if (check._tag === "Failure") {
+                yield* recoveryGate
+                  .withPermit(
+                    Effect.gen(function* () {
+                      const record = (yield* recoveryStorage.list()).find(
+                        (item) => item.sessionId === shared.runtime.sessionId,
+                      );
+                      if (record)
+                        yield* recoveryStorage.update({
+                          ...record,
+                          state: "blocked",
+                          issue: messageOf(check.failure),
+                        });
+                    }),
+                  )
+                  .pipe(sessionError("recover"));
+                yield* PubSub.publish(shared.events, {
+                  type: "snapshot-updated",
+                  snapshot: yield* snapshot(),
+                });
+                yield* options.onTurnActivityChanged ?? Effect.void;
+                return;
+              }
+              yield* Effect.forEach(
+                inputs,
+                (input) =>
+                  startTurn(
+                    paused ? "follow-up" : input.delivery,
+                    input.text,
+                    input.attachments,
+                    input.markdown,
+                    input.presentationMode,
+                    input.automaticTitle,
+                    input.responseMode,
+                    input,
+                    paused,
+                  ),
+                { discard: true },
+              );
+            }).pipe(shared.queueEdits.withPermit),
           currentTurnIds: () =>
             Ref.get(shared.activeTurns).pipe(Effect.map((turns) => [...turns.keys()])),
           profile: shared.profile,
           updates,
-          snapshot: () => call("snapshot", (runtime) => runtime.snapshot()),
+          snapshot,
+          inputReceipt: (turnId) =>
+            Effect.gen(function* () {
+              const record = yield* recoveryStorage
+                .get(shared.runtime.sessionId)
+                .pipe(sessionError("inputReceipt"));
+              if (record?.canceledInputIds?.includes(turnId)) return "canceled" as const;
+              if (shared.runtime.hasConsumedInput?.(turnId)) return "consumed" as const;
+              if (record?.inputs.some((item) => item.turnId === turnId)) return "pending" as const;
+              return undefined;
+            }),
+          admittedDigestIds:
+            shared.profile === "CakeChatSession"
+              ? () =>
+                  recoveryStorage.get(shared.runtime.sessionId).pipe(
+                    Effect.map((record) => record?.deliveredDigestIds ?? []),
+                    sessionError("digestReceipts"),
+                  )
+              : undefined,
           prompt: (
             text,
             attachments = [],
@@ -865,7 +1280,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
             automaticTitle,
             responseMode,
           ) =>
-            startTurn(
+            deliverInput(
               "prompt",
               text,
               attachments,
@@ -875,7 +1290,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
               responseMode,
             ),
           steer: (text, attachments = [], markdown = false, presentationMode, responseMode) =>
-            startTurn(
+            deliverInput(
               "steer",
               text,
               attachments,
@@ -885,7 +1300,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
               responseMode,
             ),
           followUp: (text, attachments = [], markdown = false, presentationMode, responseMode) =>
-            startTurn(
+            deliverInput(
               "follow-up",
               text,
               attachments,
@@ -978,8 +1393,8 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
             ),
           abort: Effect.fn("CakeSessionRuntimes.abort")(function* (stop?: TurnStop) {
             const claimed = yield* claimAbortedTurns(shared.runtime.executingTurnIds?.() ?? []);
-            yield* call("abort", (runtime) => runtime.abort(stop));
             yield* settleAbortedTurns(claimed, stop);
+            yield* call("abort", (runtime) => runtime.abort(stop));
           }),
           executeCommand: (command, arguments_) =>
             command === "changelog"
@@ -1039,13 +1454,14 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                     ),
               ),
             ),
-          notifySubagentCompletion: (result) =>
+          notifySubagentCompletion: (result, completionId) =>
             shared.runtime.notifySubagentCompletion
               ? call(
                   "notifySubagentCompletion",
                   (runtime) =>
                     runtime.notifySubagentCompletion?.(
                       Schema.decodeUnknownSync(jsonValueSchema)(result),
+                      completionId,
                     ) ?? Promise.resolve(),
                 )
               : Effect.fail(
@@ -1220,11 +1636,36 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
             candidate.sessionDirectory === target.sessionDirectory &&
             candidate.runtime.sessionId === target.sessionId,
         );
-        if (!shared) return undefined;
+        const recovered = yield* recoveryStorage.get(target.sessionId).pipe(Effect.result);
+        const recovery = recovered._tag === "Success" ? recovered.success : undefined;
+        const recoveryIssue =
+          recovered._tag === "Failure"
+            ? recovered.failure.message
+            : recovery?.state === "blocked"
+              ? (recovery.issue ?? "Interrupted work needs your review")
+              : undefined;
+        const latestTurnOutcome =
+          recovery?.state === "complete" || recovery?.state === "failed"
+            ? recovery.state
+            : recovery?.state === "stopped"
+              ? ("aborted" as const)
+              : undefined;
+        if (!shared)
+          return recovery || recoveryIssue
+            ? {
+                streaming: false,
+                pending: (recovery?.inputs.length ?? 0) > 0,
+                persisted: true,
+                recoveryIssue,
+                latestTurnOutcome,
+              }
+            : undefined;
         const queued = yield* runtimeOperation("currentStatus", () =>
           shared.runtime.listQueuedMessages(),
         ).pipe(Effect.orDie);
         return {
+          recoveryIssue,
+          latestTurnOutcome,
           streaming:
             shared.runtime.streaming ||
             // Accepted prompts bridge preparation to Pi's first event. Queued
@@ -1257,6 +1698,10 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
       });
 
       return CakeSessionRuntimes.of({
+        forgetRecovery: (sessionId) =>
+          recoveryGate
+            .withPermit(recoveryStorage.remove(sessionId))
+            .pipe(sessionError("forgetRecovery")),
         sessionIds,
         catalog,
         catalogEntry,
@@ -1279,7 +1724,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
 
 export const makeCakeSessionRuntimesLive = (
   createRuntime: (options: CakeSessionRuntimeSetup) => Promise<CakeSessionRuntime>,
-): Layer.Layer<CakeSessionRuntimes, never, CakeChatDurable> =>
+): Layer.Layer<CakeSessionRuntimes, never, CakeChatDurable | RuntimeRecoveryStorage> =>
   Layer.unwrap(
     Effect.gen(function* () {
       const durable = yield* CakeChatDurable;

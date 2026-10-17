@@ -98,6 +98,152 @@ async function createFixtureRuntime(directory: string, onEvent = vi.fn()) {
 }
 
 describe("response retry and recovery", () => {
+  for (const shutdown of ["clean quit", "crash"] as const) {
+    it(`recovers ${shutdown} once from the saved Pi branch without duplicating the user input`, async () => {
+      const directory = await createTemporaryDirectory();
+      let signalStarted: () => void = () => undefined;
+      const started = new Promise<void>((resolve) => {
+        signalStarted = resolve;
+      });
+      const provider = await registerFixtureProvider(directory, (index, response) => {
+        response.writeHead(200, { "content-type": "text/event-stream" });
+        if (index === 1) {
+          response.write(sseChunk({ role: "assistant", content: "Working" }));
+          signalStarted();
+          return;
+        }
+        response.write(sseChunk({ role: "assistant", content: "Recovered after restart" }));
+        response.write(sseChunk({}, "stop"));
+        response.end("data: [DONE]\n\n");
+      });
+      const { runtime } = await createFixtureRuntime(directory);
+      const input = {
+        turnId: "restart-turn",
+        text: "Original assignment",
+        delivery: "prompt" as const,
+        attachments: [],
+        markdown: false,
+      };
+      const running = runtime
+        .prompt(input.text, input.delivery, [], false, input.turnId)
+        .catch(() => undefined);
+      await started;
+      const file = runtime.sessionFile;
+      const crashCheckpoint = await readFile(file, "utf8");
+      await runtime.dispose();
+      await running;
+      // An abrupt process exit cannot append the graceful SDK abort message.
+      if (shutdown === "crash") await writeFile(file, crashCheckpoint);
+      const reopened = await createCakeSessionRuntime({
+        cwd: directory,
+        agentDir: join(directory, "agent"),
+        sessionDir: join(directory, "sessions"),
+        sessionId: runtime.sessionId,
+        trusted: true,
+        requestUi: async () => undefined,
+        onEvent: () => undefined,
+      });
+      runtimes.push(reopened);
+      // Opening/observing a session does not admit a turn.
+      expect((await reopened.snapshot()).streaming).toBe(false);
+      expect(provider.requestCount()).toBe(1);
+      await reopened.recoverInput?.(input);
+      expect(provider.requestCount()).toBe(2);
+      await reopened.recoverInput?.(input);
+      expect(provider.requestCount()).toBe(2);
+      const transcript = await readFile(file, "utf8");
+      expect(transcript.match(/"role":"user"/g)).toHaveLength(1);
+      expect(
+        (await reopened.snapshot()).parts.some(
+          (part) => part.kind === "text" && part.text === "Recovered after restart",
+        ),
+      ).toBe(true);
+    }, 15_000);
+  }
+
+  it("keeps a busy parent's worker report unacknowledged until Pi persists it and retries once after a crash", async () => {
+    const directory = await createTemporaryDirectory();
+    let started = () => {};
+    const ready = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const provider = await registerFixtureProvider(directory, (index, response) => {
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.write(
+        sseChunk({ role: "assistant", content: index === 1 ? "Busy" : "Report received" }),
+      );
+      if (index === 1) started();
+      else {
+        response.write(sseChunk({}, "stop"));
+        response.end("data: [DONE]\n\n");
+      }
+    });
+    const { runtime } = await createFixtureRuntime(directory);
+    const running = runtime
+      .prompt("Parent work", "prompt", [], false, "parent-turn")
+      .catch(() => undefined);
+    await ready;
+    const completionId = "c3c0aba9-e0ba-496a-96a5-60be562db027";
+    const report = {
+      handleId: "1490b261-4ce9-4744-b0fb-f2d013787ff1",
+      task: "Worker task",
+      status: "complete",
+      resolvedModel: {
+        requested: "current",
+        source: "current",
+        provider: "fixture-provider",
+        modelId: "fixture-model",
+        thinkingLevel: "off",
+        fallbacks: [],
+      },
+      fastMode: false,
+      streaming: false,
+      parts: [],
+    };
+    let acknowledged = false;
+    const delivery = runtime.notifySubagentCompletion?.(report, completionId).then(() => {
+      acknowledged = true;
+    });
+    const checkpoint = await readFile(runtime.sessionFile, "utf8");
+    expect(acknowledged).toBe(false);
+    expect(checkpoint).not.toContain(completionId);
+    const rejected = expect(delivery).rejects.toThrow("before the worker report was persisted");
+    await runtime.dispose();
+    await Promise.all([running, rejected]);
+    await writeFile(runtime.sessionFile, checkpoint);
+    const reopened = await createCakeSessionRuntime({
+      cwd: directory,
+      agentDir: join(directory, "agent"),
+      sessionDir: join(directory, "sessions"),
+      sessionId: runtime.sessionId,
+      trusted: true,
+      requestUi: async () => undefined,
+      onEvent: () => undefined,
+    });
+    runtimes.push(reopened);
+    await reopened.notifySubagentCompletion?.(report, completionId);
+    expect(provider.requestCount()).toBe(2);
+    await reopened.notifySubagentCompletion?.(report, completionId);
+    expect(provider.requestCount()).toBe(2);
+    const persisted = await readFile(reopened.sessionFile, "utf8");
+    expect(persisted.match(/cake.subagent-completion/g)).toHaveLength(1);
+
+    // A failed append can leave Pi's entry index ahead of its file. An indexed
+    // receipt without its persisted line must not suppress the durable retry.
+    await writeFile(
+      reopened.sessionFile,
+      persisted
+        .split("\n")
+        .filter((line) => !line.includes(completionId))
+        .join("\n"),
+    );
+    await reopened.notifySubagentCompletion?.(report, completionId);
+    expect(provider.requestCount()).toBe(3);
+    expect(
+      (await readFile(reopened.sessionFile, "utf8")).match(/cake.subagent-completion/g),
+    ).toHaveLength(1);
+  }, 15_000);
+
   it("settles correlated follow-up input only after Pi consumes it", async () => {
     const directory = await createTemporaryDirectory();
     let started: () => void = () => undefined;

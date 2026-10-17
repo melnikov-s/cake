@@ -9,6 +9,7 @@ import {
 import {
   formatSessionDigestReminder,
   splitSessionDigestReminder,
+  sessionDigestReceiptIds,
 } from "../../../src/contracts/cake-chats/session-digest-reminder";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
@@ -19,7 +20,8 @@ import {
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
-import { snapshot } from "../helpers/piRuntimeFixture";
+import { snapshot, makeRuntimeRecoveryStorageTestLayer } from "../helpers/piRuntimeFixture";
+import { RuntimeRecoveryStorage } from "../../../src/services/storage/RuntimeRecoveryStorage";
 
 const reportId = "2b7e6c1a-9d4f-4e0b-8a3c-1f5d7e9b2c40";
 const runningId = "5c8a1e3b-7f2d-4b6e-9c0a-3d1f5e7b9a21";
@@ -47,10 +49,11 @@ const reportPart: TextPart = {
   },
 };
 
-const coordinator = (streaming: boolean, parts: UiPart[]) => {
+const coordinator = (streaming: boolean, parts: UiPart[], admitted: readonly string[] = []) => {
   const calls: string[] = [];
   const handle = {
     profile: "CakeChatSession",
+    admittedDigestIds: () => Effect.succeed(admitted),
     snapshot: () =>
       Effect.succeed({ ...snapshot, sessionId: CAKE_CHAT_SESSION_ID, streaming, parts }),
     abort: () =>
@@ -66,6 +69,7 @@ const environment = (running: readonly string[] = []) => {
   const harness = familyStorageHarness();
   return Layer.mergeAll(
     harness.layer,
+    makeRuntimeRecoveryStorageTestLayer(),
     Layer.mock(CakeSessionRuntimes, {
       currentStatus: (target) =>
         Effect.succeed(
@@ -182,12 +186,40 @@ describe("Cake Chat user priority and digest reminders", () => {
           ],
           running: 1,
           interruptedReport: false,
+          receiptIds: ["turn-1"],
         }),
       );
       assert.match(split.reminder ?? "", /\[fix-x\]\(cake:\/\/session\/2b7e6c1a/);
       assert.match(split.reminder ?? "", /failed: Typecheck failed/);
       assert.match(split.reminder ?? "", /1 session you launched is still running\./);
     }).pipe(Effect.provide(environment([runningId]))),
+  );
+
+  it.effect(
+    "reconciles a crash after durable user admission but before removing digest outbox entries",
+    () =>
+      Effect.gen(function* () {
+        yield* seed();
+        const { handle } = coordinator(false, []);
+        const original = yield* prepareUserMessage(handle, "First message");
+        assert.deepEqual(sessionDigestReceiptIds(original.text), ["turn-1"]);
+        yield* (yield* RuntimeRecoveryStorage).update({
+          sessionId: CAKE_CHAT_SESSION_ID,
+          workingDirectory: "/home",
+          sessionDirectory: "/chats",
+          profile: "CakeChatSession",
+          transcriptPersisted: true,
+          inputs: [],
+          state: "complete",
+          deliveredDigestIds: ["turn-1"],
+        });
+        const saved = (yield* (yield* RuntimeRecoveryStorage).list())[0];
+        const reopened = coordinator(false, [], saved?.deliveredDigestIds);
+        const next = yield* prepareUserMessage(reopened.handle, "Next user message after restart");
+        assert.deepEqual(next.digestIds, []);
+        assert.equal(next.text, "Next user message after restart");
+        assert.deepEqual((yield* (yield* SessionFamilyStorage).state()).coordinatorDigest, []);
+      }).pipe(Effect.provide(environment())),
   );
 
   it("only strips the exact Cake-owned block at the start of a message", () => {

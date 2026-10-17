@@ -38,6 +38,10 @@ export interface CakeSessionRuntimeTurnController {
   readonly compactionQueuedMessages: () => readonly string[];
   readonly queuedParts: () => UiPart[];
   readonly handoffActive: () => boolean;
+  readonly pendingRecoveryInputs: () => ReadonlyArray<{
+    turnId: string;
+    delivery: "steer" | "follow-up";
+  }>;
   readonly executingTurnIds: () => ReadonlyArray<string>;
   readonly prompt: (
     text: string,
@@ -76,7 +80,16 @@ export interface CakeSessionRuntimeTurnController {
     queued: { steering: string[]; followUp: string[] };
     abortedTurnIds: string[];
   }>;
-  readonly consumeUserMessage: (content: string) => void;
+  readonly consumeUserMessage: (content: string) => string | undefined;
+  readonly resume: (turnId: string, content: string) => Promise<void>;
+  readonly restorePending: (input: {
+    turnId: string;
+    text: string;
+    attachments: Attachment[];
+    markdown: boolean;
+    presentationMode?: ProjectSessionPresentationMode;
+    responseMode?: ConversationResponseMode;
+  }) => Promise<void>;
   readonly settleTurn: () => void;
   readonly compactionEnded: (willRetry: boolean) => void;
   readonly abort: () => Promise<void>;
@@ -147,6 +160,8 @@ export function createCakeSessionRuntimeTurnController(input: {
     command?: string;
   }[] = [];
   let flushingHeldQueue = false;
+  let restoringRun = false;
+  let pausedAfterRestart = false;
   let commandRunning = false;
   let rebuildingQueue = false;
   let handingOff = false;
@@ -267,6 +282,7 @@ export function createCakeSessionRuntimeTurnController(input: {
   const flushCompactionQueue = async () => {
     if (
       input.isDisposed() ||
+      pausedAfterRestart ||
       (session.isStreaming && compactionQueue.some((item) => item.command)) ||
       session.isCompacting ||
       flushingHeldQueue ||
@@ -302,6 +318,7 @@ export function createCakeSessionRuntimeTurnController(input: {
           const lane = item.delivery === "steer" ? "steering" : "follow-up";
           trackedQueue[lane].push({
             itemId: item.itemId,
+            ...(item.turnId ? { turnId: item.turnId } : null),
             text: item.text,
             content,
             attachments: item.attachments,
@@ -362,6 +379,7 @@ export function createCakeSessionRuntimeTurnController(input: {
     assertImageSupport(attachments);
     const generation = abortGeneration;
     input.recovery.onUserInput();
+    if (!parseCrossSessionMessage(text)) pausedAfterRestart = false;
     const builtin = parsePiBuiltinCommand(text);
     if (builtin?.name === "compact") {
       await runCompact(builtin.args || undefined, generation);
@@ -985,6 +1003,77 @@ export function createCakeSessionRuntimeTurnController(input: {
         ],
       };
     },
+    pendingRecoveryInputs() {
+      reconcileQueue();
+      return [
+        ...trackedQueue.steering.flatMap((item) =>
+          item.turnId ? [{ turnId: item.turnId, delivery: "steer" as const }] : [],
+        ),
+        ...compactionQueue
+          .filter((item) => item.delivery === "steer")
+          .flatMap((item) =>
+            item.turnId ? [{ turnId: item.turnId, delivery: "steer" as const }] : [],
+          ),
+        ...trackedQueue["follow-up"].flatMap((item) =>
+          item.turnId ? [{ turnId: item.turnId, delivery: "follow-up" as const }] : [],
+        ),
+        ...compactionQueue
+          .filter((item) => item.delivery === "follow-up")
+          .flatMap((item) =>
+            item.turnId ? [{ turnId: item.turnId, delivery: "follow-up" as const }] : [],
+          ),
+      ];
+    },
+    async restorePending(restored) {
+      const content = contentForPresentation(
+        restored.text,
+        restored.attachments,
+        "follow-up",
+        restored.presentationMode,
+        restored.responseMode,
+      );
+      const completion = turnCompletions.track(restored.turnId, content, true);
+      pausedAfterRestart = true;
+      compactionQueue.push({
+        itemId: randomUUID(),
+        turnId: restored.turnId,
+        text: restored.text,
+        content,
+        attachments: restored.attachments,
+        delivery: "follow-up",
+        renderUserMessageAsMarkdown: restored.markdown,
+        ...(restored.presentationMode === undefined
+          ? null
+          : { presentationMode: restored.presentationMode }),
+      });
+      input.syncQueuedParts();
+      await completion;
+    },
+    async resume(turnId, content) {
+      assertActive();
+      input.recovery.onUserInput();
+      const completion = turnCompletions.track(turnId, content);
+      turnCompletions.consume(content);
+      try {
+        if (!session.isStreaming && !restoringRun) {
+          restoringRun = true;
+          await input.withResponseRetries(() =>
+            session.sendCustomMessage(
+              {
+                customType: "cake.restart-recovery",
+                content,
+                display: false,
+              },
+              { triggerTurn: true, deliverAs: "followUp" },
+            ),
+          );
+        }
+        await completion;
+      } finally {
+        turnCompletions.forget(turnId);
+        restoringRun = false;
+      }
+    },
     consumeUserMessage(content) {
       for (const lane of ["steering", "follow-up"] as const) {
         const index = trackedQueue[lane].findIndex((item) => item.content === content);
@@ -993,7 +1082,7 @@ export function createCakeSessionRuntimeTurnController(input: {
           break;
         }
       }
-      turnCompletions.consume(content);
+      return turnCompletions.consume(content);
     },
     settleTurn: () => {
       turnCompletions.settle();

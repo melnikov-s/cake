@@ -1,6 +1,10 @@
+import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
+import { makeRuntimeRecoveryStorageTestLayer } from "../helpers/piRuntimeFixture";
 import assert from "node:assert/strict";
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import { WorkflowTestLive } from "../helpers/workflowFixture";
+import { coordinationStorageHarness } from "../helpers/coordinationStorageHarness";
+import { RuntimeRecoveryStorage } from "../../../src/services/storage/RuntimeRecoveryStorage";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { FileSystem, Path } from "effect";
 import { makeSessionArchiveStorageLive } from "../../../src/services/storage/SessionArchiveStorageLive";
@@ -478,8 +482,10 @@ const makeLayer = (
             )
           : Effect.sync(() => hooks.onRemoveFamilyProject?.(projectPath)),
     }),
-    makeCakeSessionRuntimesLayer(adapter),
-    SubagentCoordinatorLive,
+    makeCakeSessionRuntimesLayer(adapter).pipe(
+      Layer.provideMerge(makeRuntimeRecoveryStorageTestLayer()),
+    ),
+    SubagentCoordinatorLive.pipe(Layer.provide(makeSubagentStorageTestLayer())),
     Layer.mock(RendererRequestCoordinator, {}),
     Layer.succeed(ProjectSessionConfiguration, {
       agentDirectory: "/agent",
@@ -2156,6 +2162,120 @@ describe("Project Sessions domain", () => {
       ),
     );
   });
+
+  it.effect(
+    "retains a blocked recovery across catalog hydration and lookup without acquiring a runtime, then explicitly clears it",
+    () => {
+      let acquisitions = 0;
+      const issue = "A tool was interrupted. Confirm its result before continuing.";
+      return Effect.gen(function* () {
+        const storage = yield* RuntimeRecoveryStorage;
+        yield* storage.update({
+          sessionId: "session-1",
+          workingDirectory: "/project",
+          sessionDirectory: "/sessions",
+          profile: "ProjectSession",
+          transcriptPersisted: true,
+          state: "blocked",
+          issue,
+          inputs: [],
+        });
+        const query = { projectPath: "/project", resolved: false };
+        for (let reopen = 0; reopen < 2; reopen += 1) {
+          const updates = yield* projectSessionMetadata.observeCatalog(query);
+          const initial = (yield* updates.pipe(Stream.take(1), Stream.runCollect))[0];
+          assert.equal(initial?._tag === "Snapshot" && initial.sessions[0]?.recoveryIssue, issue);
+          assert.equal(initial?._tag === "Snapshot" && initial.sessions[0]?.running, false);
+        }
+        assert.equal(
+          (yield* projectSessionMetadata.lookup({ sessionId: "session-1" })).recoveryIssue,
+          issue,
+        );
+        assert.equal(acquisitions, 0);
+
+        const received = yield* Queue.unbounded<SessionCatalogUpdate>();
+        const updates = yield* projectSessionMetadata.observeCatalog(query);
+        yield* updates.pipe(
+          Stream.runForEach((update) => Queue.offer(received, update)),
+          Effect.forkChild,
+        );
+        yield* Queue.take(received);
+        yield* storage.remove("session-1");
+        yield* (yield* SessionCatalogChanges).publish({
+          _tag: "ProjectSessionActivityChanged",
+          sessionId: "session-1",
+          projectPath: "/project",
+          workingDirectory: "/project",
+          sessionDirectory: "/sessions",
+        });
+        const update = yield* Queue.take(received);
+        assert.equal(
+          update._tag === "Event" &&
+            update.event._tag === "ActivityChanged" &&
+            update.event.recoveryIssue,
+          null,
+        );
+        assert.equal(
+          (yield* projectSessionMetadata.lookup({ sessionId: "session-1" })).recoveryIssue,
+          undefined,
+        );
+        assert.equal(acquisitions, 0);
+      }).pipe(
+        Effect.provide(
+          makeLayer(undefined, {
+            onRuntimeOptions: () => {
+              acquisitions += 1;
+            },
+          }).pipe(Layer.provide(coordinationStorageHarness().layer)),
+        ),
+      );
+    },
+  );
+
+  it.effect.each([
+    { state: "complete", outcome: "complete" },
+    { state: "failed", outcome: "failed" },
+    { state: "stopped", outcome: "aborted" },
+  ] as const)(
+    "projects retained $state status through a fresh catalog and lookup without runtime acquisition",
+    ({ state, outcome }) => {
+      let acquisitions = 0;
+      return Effect.gen(function* () {
+        yield* (yield* RuntimeRecoveryStorage).update({
+          sessionId: "session-1",
+          workingDirectory: "/project",
+          sessionDirectory: "/sessions",
+          profile: "ProjectSession",
+          transcriptPersisted: true,
+          state,
+          inputs: [],
+        });
+        const query = { projectPath: "/project", resolved: false };
+        const initial = (yield* (yield* projectSessionMetadata.observeCatalog(query)).pipe(
+          Stream.take(1),
+          Stream.runCollect,
+        ))[0];
+        assert.equal(
+          initial?._tag === "Snapshot" && initial.sessions[0]?.latestTurnOutcome,
+          outcome,
+        );
+        assert.equal(initial?._tag === "Snapshot" && initial.sessions[0]?.running, false);
+        assert.equal(
+          (yield* projectSessionMetadata.lookup({ sessionId: "session-1" })).latestTurnOutcome,
+          outcome,
+        );
+        assert.equal(acquisitions, 0);
+      }).pipe(
+        Effect.provide(
+          makeLayer(undefined, {
+            onRuntimeOptions: () => {
+              acquisitions += 1;
+            },
+          }).pipe(Layer.provide(coordinationStorageHarness().layer)),
+        ),
+      );
+    },
+  );
 
   it.effect("updates one catalog entry without restarting its initial scan", () => {
     let catalogScans = 0;

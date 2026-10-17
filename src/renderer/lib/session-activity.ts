@@ -3,12 +3,14 @@ import { TURN_STOPPED_NOTICE_TITLE } from "../../contracts/conversations/turn-st
 /**
  * `stopped` is a deliberate stop by the user or an agent: a neutral outcome that never asks
  * for attention, unlike `error` (a failure or unexpected interruption).
+ * `blocked` recovery needs input but no longer owns an executing turn.
  */
-export type SessionActivity = "waiting" | "running" | "unread" | "error" | "stopped";
+export type SessionActivity = "waiting" | "running" | "blocked" | "unread" | "error" | "stopped";
 
 /** Chat activity never uses the generic StatusDot's gray default/pending treatment. */
 export const sessionActivityDotStatus = {
   waiting: "attention",
+  blocked: "attention",
   running: "running",
   unread: "success",
   error: "error",
