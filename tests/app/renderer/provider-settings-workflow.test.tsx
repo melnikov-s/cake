@@ -1,9 +1,13 @@
 /**
  * @vitest-environment jsdom
  */
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { StoreProvider } from "r-state-tree/react";
+import type { CakeEvent } from "../../../src/contracts/application/cake-rpc-contract";
+import { App } from "../../../src/renderer/components/app";
+import { toStoreEvent } from "../../../src/renderer/events/StoreEvent";
 import type {
   ModelOption,
   PiSettings,
@@ -60,7 +64,10 @@ const piSettings: PiSettings = {
   reloadPending: false,
 };
 
-async function renderProviderSettings(client: TestClientOverrides = {}) {
+async function renderProviderSettings(
+  client: TestClientOverrides = {},
+  surface: "page" | "app" = "page",
+) {
   const rootFixture = createRendererStoreFixture({
     client: {
       ...client,
@@ -71,9 +78,31 @@ async function renderProviderSettings(client: TestClientOverrides = {}) {
   // Renderer bootstrap hydrates providers even when no chat is active.
   await rootFixture.root.settingsStore.providers.hydrate();
   rootFixture.root.settingsStore.selectPage("providers");
-  const view = render(<SettingsPage settings={rootFixture.root.settingsStore} />);
+  if (surface === "app") rootFixture.root.navigationStore.showSettings();
+  const view = render(
+    surface === "app" ? (
+      <StoreProvider store={rootFixture.root}>
+        <App />
+      </StoreProvider>
+    ) : (
+      <SettingsPage settings={rootFixture.root.settingsStore} />
+    ),
+  );
   return {
     user: userEvent.setup(),
+    async publish(event: CakeEvent) {
+      // Same typed service-event delivery as renderer bootstrap. Stores and
+      // dialog scoping remain real; transport delivery is covered separately.
+      await act(async () => {
+        if (event.type === "provider-auth-notice")
+          rootFixture.root.settingsStore.providers.receiveAuthNotice(event);
+        else {
+          const translated = toStoreEvent(event);
+          if (!translated) throw new Error(`Unsupported provider event: ${event.type}`);
+          rootFixture.root.extensionUiStore.receive(translated);
+        }
+      });
+    },
     [Symbol.dispose]() {
       view.unmount();
       rootFixture[Symbol.dispose]();
@@ -87,9 +116,133 @@ function providerCard(name: string) {
   return within(card);
 }
 
-afterEach(cleanup);
+beforeEach(() => {
+  Object.defineProperty(SVGElement.prototype, "getBBox", {
+    configurable: true,
+    value: () => ({ x: 0, y: 0, width: 24, height: 24 }),
+  });
+});
+afterEach(() => {
+  cleanup();
+  Reflect.deleteProperty(SVGElement.prototype, "getBBox");
+});
 
 describe("Provider settings workflow without an active chat", () => {
+  it("presents a device-code challenge during sign-in and opens only safe authentication URLs on this device", async () => {
+    let finishLogin!: () => void;
+    const loginGate = new Promise<void>((resolve) => {
+      finishLogin = resolve;
+    });
+    const login = vi.fn<Client["models"]["login"]>(() => loginGate);
+    const openExternalUrl = vi.fn<Client["electron"]["openExternalUrl"]>(async () => undefined);
+    using fixture = await renderProviderSettings({
+      models: {
+        list: async () => [
+          model({
+            provider: "xai",
+            providerName: "xAI",
+            id: "grok",
+            name: "Grok",
+            authTypes: ["oauth"],
+          }),
+        ],
+        login,
+      },
+      electron: { openExternalUrl },
+    });
+    await fixture.user.click(screen.getByRole("button", { name: "Connect" }));
+    expect(login).toHaveBeenCalledWith(
+      { provider: "xai", authType: "oauth" },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    await fixture.publish({
+      type: "provider-auth-notice",
+      provider: "xai",
+      notice: {
+        type: "device_code",
+        verificationUri: "https://auth.example/device",
+        userCode: "1234-ABCD",
+      },
+    });
+    expect(providerCard("xAI").getByText("1234-ABCD")).toBeDefined();
+    expect(providerCard("xAI").getByText("https://auth.example/device")).toBeDefined();
+    await fixture.user.click(
+      screen.getByRole("button", { name: "Open verification page on this device" }),
+    );
+    expect(openExternalUrl).toHaveBeenCalledWith(
+      "https://auth.example/device",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    await fixture.publish({
+      type: "provider-auth-notice",
+      provider: "xai",
+      notice: { type: "auth_url", url: "http://localhost:1455/auth/callback?code=private" },
+    });
+    await fixture.user.click(
+      screen.getByRole("button", { name: "Open sign-in page on this device" }),
+    );
+    expect(await screen.findByText(/This callback belongs to the server/)).toBeDefined();
+    expect(openExternalUrl).toHaveBeenCalledTimes(1);
+    await fixture.publish({
+      type: "provider-auth-notice",
+      provider: "xai",
+      notice: { type: "auth_url", url: "javascript:alert('bad')" },
+    });
+    await fixture.user.click(
+      screen.getByRole("button", { name: "Open sign-in page on this device" }),
+    );
+    expect(await screen.findByText("Invalid authentication URL")).toBeDefined();
+    expect(openExternalUrl).toHaveBeenCalledTimes(1);
+    await act(async () => finishLogin());
+    await screen.findByRole("button", { name: "Connect" });
+  });
+
+  it.each([
+    { sessionId: "provider-settings:11:unique", provider: "xai", visible: true },
+    { sessionId: "provider-settings:22:unique", provider: "other", visible: false },
+    { sessionId: "session-123", provider: "xai", visible: false },
+  ])(
+    "scopes a provider challenge to its authentication dialog ($sessionId / $provider)",
+    async ({ sessionId, provider, visible }) => {
+      const respondToUi = vi.fn<Client["artifacts"]["respondToUi"]>(async () => undefined);
+      using fixture = await renderProviderSettings({ artifacts: { respondToUi } }, "app");
+      await fixture.publish({
+        type: "provider-auth-notice",
+        provider: "xai",
+        notice: {
+          type: "device_code",
+          verificationUri: "https://auth.example/device",
+          userCode: "1234-ABCD",
+        },
+      });
+      const title = `Provider authentication · ${provider}`;
+      await fixture.publish({
+        type: "ui-request",
+        requestId: "auth-request",
+        uiRequestId: "auth-dialog",
+        sessionId,
+        kind: "text",
+        title,
+        message: "Paste the resulting code",
+      });
+      const dialog = screen.getByRole("alertdialog", { name: title });
+      expect(Boolean(within(dialog).queryByText("1234-ABCD"))).toBe(visible);
+      expect(
+        Boolean(
+          within(dialog).queryByRole("button", { name: "Open verification page on this device" }),
+        ),
+      ).toBe(visible);
+      await fixture.user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+      expect(screen.queryByRole("alertdialog")).toBeNull();
+      expect(respondToUi).toHaveBeenCalledWith({
+        operationId: "auth-request",
+        uiRequestId: "auth-dialog",
+        sessionId,
+        value: undefined,
+        cancelled: true,
+      });
+    },
+  );
   it("groups models by provider and shows newly available providers after refreshing", async () => {
     const catalog = [model(), model({ id: "claude-opus", name: "Claude Opus" })];
     const refresh = vi.fn<Client["models"]["refresh"]>(async () => {
