@@ -3,11 +3,14 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TurnId } from "../../../src/ipc/conversation-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { App } from "../../../src/renderer/components/app";
+import type { StoreEvent } from "../../../src/renderer/events/StoreEvent";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
+import type { TestClientOverrides } from "./test-client";
 
 function deferredOpen() {
   let resolve!: () => void;
@@ -19,7 +22,11 @@ function deferredOpen() {
   return { promise, resolve, reject };
 }
 
-function renderCachedWorkbench(open: Client["projectSessions"]["open"]) {
+function renderCachedWorkbench(
+  open: Client["projectSessions"]["open"],
+  nativeEditor = false,
+  client: TestClientOverrides = {},
+) {
   const summaries = ["alpha", "beta"].map((name) =>
     sessionSummary({
       sessionId: name,
@@ -31,7 +38,18 @@ function renderCachedWorkbench(open: Client["projectSessions"]["open"]) {
   const fixture = createRendererStoreFixture({
     projects: ["alpha", "beta"].map((name) => projectRecord({ path: `/${name}`, name })),
     sessions: summaries,
-    client: { projectSessions: { open } },
+    client: {
+      ...client,
+      projectSessions: { open, ...client.projectSessions },
+      vscode: {
+        open: async () => undefined,
+        updateBounds: async () => undefined,
+        updateAnnotations: async () => undefined,
+        updateSelectionHighlights: async () => undefined,
+        setTheme: async () => undefined,
+        ...client.vscode,
+      },
+    },
   });
   for (const summary of summaries) {
     fixture.root.sessionRegistry.load(summary.sessionId, summary.workingDirectory);
@@ -45,6 +63,7 @@ function renderCachedWorkbench(open: Client["projectSessions"]["open"]) {
           sessionFile: `/sessions/${summary.sessionId}.jsonl`,
           parts: [],
           models: [],
+          model: { provider: "openai", id: "gpt-5", name: "GPT-5" },
           thinkingLevel: "off",
           availableThinkingLevels: ["off"],
           streaming: false,
@@ -60,6 +79,56 @@ function renderCachedWorkbench(open: Client["projectSessions"]["open"]) {
   fixture.root.appShellStore.selectProjectSession("alpha");
   fixture.root.projectWorkbenchStore.showLoadedSession("alpha");
   fixture.root.sessionLayoutStore.ensureSession("alpha");
+  if (nativeEditor) {
+    fixture.root.sessionRegistry.findSession("alpha")!.workspaceChatSidebarVisible = false;
+    fixture.root.projectWorkbenchStore.presentationStore.embeddedEditorStore.applyState({
+      status: "ready",
+    });
+  }
+  const view = render(
+    <StoreProvider store={fixture.root}>
+      <App />
+    </StoreProvider>,
+  );
+  return {
+    user: userEvent.setup(),
+    hostEditorRequest(
+      event: Extract<
+        StoreEvent,
+        { type: "embedded-editor-side-chat-requested" | "embedded-editor-annotation-requested" }
+      >,
+    ) {
+      // Same delivery point as observeVscodeEvents; native editor selection and
+      // transport delivery are outside this in-process workflow's proof.
+      act(() => fixture.root.projectWorkbenchStore.receive(event));
+    },
+    [Symbol.dispose]() {
+      view.unmount();
+      fixture[Symbol.dispose]();
+    },
+  };
+}
+
+async function renderRestoredWorkbench(client: TestClientOverrides) {
+  const fixture = createRendererStoreFixture({
+    projects: [projectRecord({ path: "/project" })],
+    sessions: [sessionSummary({ sessionId: "session-1", projectPath: "/project" })],
+    client,
+    snapshot: {
+      state: {},
+      children: {
+        appShellStore: {
+          state: {
+            selection: { kind: "project-session", sessionId: "session-1" },
+            activeConversation: { kind: "project-session", sessionId: "session-1" },
+          },
+          children: {},
+        },
+      },
+    },
+  });
+  // This is the real renderer bootstrap entry point, not a simulated user control.
+  await act(async () => fixture.root.initialize());
   const view = render(
     <StoreProvider store={fixture.root}>
       <App />
@@ -75,6 +144,14 @@ function renderCachedWorkbench(open: Client["projectSessions"]["open"]) {
 }
 
 beforeEach(() => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
   Object.defineProperty(SVGElement.prototype, "getBBox", {
     configurable: true,
     value: () => ({ x: 0, y: 0, width: 24, height: 24 }),
@@ -100,7 +177,118 @@ afterEach(() => {
 // conversation is selected immediately. Its runtime-open failure must attach to
 // that visible chat, not the previous one; this is service/rendered-state proof,
 // not native focus or keyboard correctness.
-describe("Workbench cached conversation lifecycle", () => {
+describe("Workbench conversation lifecycle", () => {
+  it("re-authorizes a restored workspace before opening its conversation and lets the user decline", async () => {
+    const inspect = vi.fn<Client["workspaces"]["inspect"]>(async (input) => ({
+      ...input,
+      trustRequired: true,
+    }));
+    const open = vi.fn<Client["projectSessions"]["open"]>();
+    const respondToTrust = vi.fn<Client["workspaces"]["respondToTrust"]>(async () => undefined);
+    using fixture = await renderRestoredWorkbench({
+      workspaces: { inspect, respondToTrust },
+      projectSessions: { open },
+    });
+    const dialog = screen.getByRole("alertdialog", { name: "Trust this workspace?" });
+    expect(
+      within(dialog).getByText(/\/project contains project-local executable Pi resources/),
+    ).toBeDefined();
+    expect(inspect).toHaveBeenCalledWith(
+      expect.objectContaining({ path: "/project" }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(open).not.toHaveBeenCalled();
+    await fixture.user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(respondToTrust).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: "/project",
+        approved: false,
+        operationId: expect.any(String),
+      }),
+    );
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it("routes editor requests only to their working directory and replaces a selection chat with its source attachment", async () => {
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
+      TurnId.make("10000000-0000-4000-8000-000000000001"),
+    );
+    using fixture = renderCachedWorkbench(async () => undefined, true, {
+      sessionChats: { prompt },
+    });
+    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    expect(screen.getByRole("region", { name: "VS Code workspace" })).toBeDefined();
+    expect(screen.queryByRole("combobox", { name: "Message" })).toBeNull();
+    const selection = {
+      path: "src/main.ts",
+      startLine: 4,
+      startColumn: 2,
+      endLine: 5,
+      endColumn: 8,
+      selectedText: "const answer =\n  calculate();",
+      contextBefore: "function run() {",
+      contextAfter: "}",
+    };
+    fixture.hostEditorRequest({
+      type: "embedded-editor-side-chat-requested",
+      workspacePath: "/elsewhere",
+      ...selection,
+    });
+    expect(screen.queryByText("Chat about selection")).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Message" })).toBeNull();
+    fixture.hostEditorRequest({
+      type: "embedded-editor-side-chat-requested",
+      workspacePath: "/alpha",
+      ...selection,
+    });
+    expect(screen.getByText("Chat about selection")).toBeDefined();
+    expect(screen.getByText("src/main.ts · L5–6")).toBeDefined();
+    fixture.hostEditorRequest({
+      type: "embedded-editor-annotation-requested",
+      workspacePath: "/elsewhere",
+      ...selection,
+      comment: "Ignore this other workspace",
+    });
+    expect(screen.getByText("Chat about selection")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Remove src/main.ts#L5-L6" })).toBeNull();
+    fixture.hostEditorRequest({
+      type: "embedded-editor-annotation-requested",
+      workspacePath: "/alpha",
+      ...selection,
+      comment: "Why is this here?",
+    });
+    expect(screen.queryByText("Chat about selection")).toBeNull();
+    expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Remove src/main.ts#L5-L6" })).toBeDefined();
+    expect(screen.getByText("src/main.ts#L5-L6")).toBeDefined();
+    await fixture.user.type(
+      screen.getByRole("combobox", { name: "Message" }),
+      "Explain this source",
+    );
+    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
+    expect(prompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "alpha",
+        text: "Explain this source",
+        attachments: [
+          {
+            kind: "source",
+            name: "src/main.ts",
+            location: { path: "src/main.ts", range: { start: { line: 4 }, end: { line: 5 } } },
+            selectedText: selection.selectedText,
+            comment: "Why is this here?",
+          },
+        ],
+      }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Remove src/main.ts#L5-L6" })).toBeNull(),
+    );
+  });
+
   it("shows a cached destination's open error in its chat, preserves drafts and clears the error on navigation and retry", async () => {
     const failedOpen = deferredOpen();
     const retry = deferredOpen();

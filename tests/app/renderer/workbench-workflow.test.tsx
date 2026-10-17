@@ -46,14 +46,14 @@ function deferred<Value>() {
   return { promise, resolve };
 }
 function renderWorkbench(client: TestClientOverrides, resolved = false) {
-  const summaries = ["one", "two"].map((sessionId) =>
+  const summaries = ["one", "two", "previous"].map((sessionId) =>
     sessionSummary({
       sessionId,
       title: `${sessionId} conversation`,
       projectPath: "/project",
       projectName: "Project",
-      workingDirectory: "/worktree",
-      resolved,
+      workingDirectory: sessionId === "previous" ? "/project" : "/worktree",
+      resolved: sessionId !== "previous" && resolved,
     }),
   );
   const fixture = createRendererStoreFixture({
@@ -190,6 +190,42 @@ describe("Workbench workflow", () => {
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
   });
+
+  it.each([
+    ["previous", "one"],
+    ["previous", "one", "two"],
+    ["previous", "one", "two", "one"],
+  ])(
+    "returns to the nearest retained visit after bulk retirement, deduplicating repeated visits: %j",
+    async (...visits) => {
+      const resolveWorkingDirectory = vi.fn<Client["projectSessions"]["resolveWorkingDirectory"]>(
+        async () => ({
+          projectPath: "/project",
+          workingDirectory: "/worktree",
+          resolvedSessionIds: ["one", "two"],
+          failures: [],
+        }),
+      );
+      using fixture = renderWorkbench({ projectSessions: { resolveWorkingDirectory } });
+      for (const id of visits)
+        await fixture.user.click(
+          screen.getByRole("button", { name: new RegExp(`^${id} conversation `) }),
+        );
+      await fixture.user.click(screen.getByRole("button", { name: "Resolve" }));
+      await waitFor(() =>
+        expect(screen.getAllByText("previous conversation").length).toBeGreaterThan(1),
+      );
+      expect(screen.getByRole("button", { name: "Go back in session history" })).toHaveProperty(
+        "disabled",
+        true,
+      );
+      expect(screen.getByRole("button", { name: "Go forward in session history" })).toHaveProperty(
+        "disabled",
+        true,
+      );
+      expect(resolveWorkingDirectory).toHaveBeenCalledOnce();
+    },
+  );
 
   it("does not replace a sibling conversation selected while resolution is pending", async () => {
     const pending =
