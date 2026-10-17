@@ -79,6 +79,11 @@ retained after Pi settles. Pi activity transitions and acceptance/settlement eve
 refresh sidebar indicators without demanding a Conversation observation or selecting
 the session. These activity events also carry the transcript's last write time (one
 file stat, never a transcript read), so sidebar recency follows background turns.
+Selection alone does not pin sidebar sessions against the chosen sort. Running or
+waiting sessions and families retain their active recency anchors; inactive sessions
+follow live recency, including selected sessions. Reordering preserves selection by
+session identity and leaves the open Conversation unchanged; activity never selects
+another session. Project groups retain their user-defined order.
 A completed or failed turn durably marks its session unread, carried on the same
 activity event, so sessions no window observes still show completion. Opening the
 session clears it, as does finishing while selected, unless the user set that

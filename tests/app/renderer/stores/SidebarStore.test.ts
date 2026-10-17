@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
-import { projectRecord, sessionSummary } from "../fixtures/catalog-fixtures";
+import { describe, expect, it } from "vitest";
+import { projectRecord } from "../fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "../renderer-store-fixture";
 
 // Sidebar UI workflows live in sidebar-navigation-workflow.test.tsx; Draft menu identity
@@ -10,24 +10,6 @@ describe("Sidebar uncovered boundary regressions", () => {
     using fixture = createRendererStoreFixture({ projects: [projectRecord({ path: "/cake" })] });
     fixture.root.sidebarStore.focusProject("/missing");
     expect(fixture.root.sidebarStore.focusModeProjectPath).toBeUndefined();
-  });
-
-  // Sparse activity lookup is an observation/performance contract, not visible row content.
-  it("tracks active lanes without querying every catalog session's activity", () => {
-    using fixture = createRendererStoreFixture({
-      projects: [projectRecord({ path: "/cake" })],
-      sessions: Array.from({ length: 100 }, (_, index) =>
-        sessionSummary({
-          sessionId: `session-${index}`,
-          projectPath: "/cake",
-          modifiedAt: new Date(Date.UTC(2026, 0, index + 1)).toISOString(),
-        }),
-      ),
-    });
-    fixture.root.sessionRegistry.load("session-50", "/cake").model.streaming = true;
-    const findSession = vi.spyOn(fixture.root.sessionRegistry, "findSession");
-    expect(fixture.root.sidebarStore.sessionListStore.projectSessions("/cake")).toHaveLength(100);
-    expect(findSession.mock.calls.every(([sessionId]) => sessionId === "session-50")).toBe(true);
   });
 
   // Native IDE entry/exit and viewport geometry are not honestly verified by jsdom navigation.

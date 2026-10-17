@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -19,7 +19,17 @@ function chunk(content: string, finishReason: string | null = null) {
   })}\n\n`;
 }
 
-test("session shortcuts respect Project focus and restore cross-project navigation on exit", async () => {
+for (const [title, activityOrdering] of [
+  ["session shortcuts respect Project focus and restore cross-project navigation on exit", false],
+  [
+    "activity completion reorders rows while preserving the selected conversation and composer",
+    true,
+  ],
+] as const) {
+  test(title, () => verifyNavigation(activityOrdering));
+}
+
+async function verifyNavigation(activityOrdering: boolean) {
   test.setTimeout(60_000);
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-active-navigation-"));
   const userData = join(temporaryRoot, "user-data");
@@ -94,8 +104,9 @@ test("session shortcuts respect Project focus and restore cross-project navigati
   ]) {
     const directory = cakeWorkspaceSessionDirectory(project!, join(cakeHome, "pi", "sessions"));
     await mkdir(directory, { recursive: true });
+    const file = join(directory, `1970-01-01T00-00-00-000Z_${id}.jsonl`);
     await writeFile(
-      join(directory, `1970-01-01T00-00-00-000Z_${id}.jsonl`),
+      file,
       [
         { type: "session", version: 3, id, timestamp, cwd: project },
         {
@@ -117,6 +128,10 @@ test("session shortcuts respect Project focus and restore cross-project navigati
         .map((entry) => JSON.stringify(entry))
         .join("\n") + "\n",
     );
+    if (activityOrdering) {
+      const modifiedAt = new Date(id === "alpha-idle" ? "2020-01-01T00:00:00.000Z" : timestamp);
+      await utimes(file, modifiedAt, modifiedAt);
+    }
   }
   const application = await electron.launch({
     args: [repositoryRoot],
@@ -141,6 +156,54 @@ test("session shortcuts respect Project focus and restore cross-project navigati
     const back = process.platform === "darwin" ? "Meta+BracketLeft" : "Alt+ArrowLeft";
     const forward = process.platform === "darwin" ? "Meta+BracketRight" : "Alt+ArrowRight";
     await expect(pane).toHaveAttribute("data-session-id", "alpha-worker", { timeout: 20_000 });
+    if (activityOrdering) {
+      const alphaOrder = () =>
+        row("alpha-worker")
+          .locator('xpath=ancestor::*[@data-slot="project-group"]')
+          .locator(".session-item")
+          .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-session-id")));
+      const composer = page.getByRole("combobox", { name: "Message", exact: true });
+      await expect.poll(alphaOrder).toEqual(["alpha-idle", "alpha-worker"]);
+      await composer.click();
+      await expect(composer).toBeFocused();
+      await page.keyboard.type("Start worker");
+      await expect(composer).toHaveValue("Start worker");
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+      await page.keyboard.press("Enter");
+      await expect(row("alpha-worker").locator('[aria-label="Running"]')).toBeVisible();
+      await expect(row("alpha-worker").locator("time")).toHaveCount(0);
+      await expect(row("alpha-worker")).toHaveAttribute("data-navigation-active", "true");
+      await expect(pane).toHaveAttribute("data-session-id", "alpha-worker");
+      await row("alpha-idle").locator(".session-row").click();
+      await expect(pane).toHaveAttribute("data-session-id", "alpha-idle");
+      await composer.fill("Start idle");
+      await page.keyboard.press("Enter");
+      await expect(row("alpha-idle").locator('[aria-label="Running"]')).toBeVisible();
+      await expect(row("alpha-idle").locator("time")).toHaveCount(0);
+      await expect.poll(() => streams.length).toBe(2);
+      await composer.click();
+      await expect(composer).toBeFocused();
+      await page.keyboard.type("Keep this unsent draft");
+      await expect(composer).toHaveValue("Keep this unsent draft");
+      // Completion returns the background row to live recency without navigating to it.
+      streams[0]!.end(chunk("Finished.", "stop") + "data: [DONE]\n\n");
+      await expect(row("alpha-worker").locator('[aria-label="Running"]')).toHaveCount(0);
+      await expect.poll(alphaOrder).toEqual(["alpha-worker", "alpha-idle"]);
+      await expect(row("alpha-idle")).toHaveAttribute("data-navigation-active", "true");
+      await expect(pane).toHaveAttribute("data-session-id", "alpha-idle");
+      await expect(composer).toBeFocused();
+      await expect(composer).toHaveValue("Keep this unsent draft");
+      // The selected row also rejoins live recency when it stops; selection never pins it.
+      streams[1]!.end(chunk("Finished.", "stop") + "data: [DONE]\n\n");
+      await expect(row("alpha-idle").locator('[aria-label="Running"]')).toHaveCount(0);
+      await expect.poll(alphaOrder).toEqual(["alpha-idle", "alpha-worker"]);
+      await expect(row("alpha-idle")).toHaveAttribute("data-navigation-active", "true");
+      await expect(row("alpha-idle").locator("time")).toHaveCount(1);
+      await expect(pane).toHaveAttribute("data-session-id", "alpha-idle");
+      await expect(composer).toBeFocused();
+      await expect(composer).toHaveValue("Keep this unsent draft");
+      return;
+    }
     for (const id of ["alpha-worker", "beta-worker"]) {
       await row(id).locator(".session-row").click();
       await expect(pane).toHaveAttribute("data-session-id", id);
@@ -217,4 +280,4 @@ test("session shortcuts respect Project focus and restore cross-project navigati
     );
     await rm(temporaryRoot, { recursive: true, force: true });
   }
-});
+}

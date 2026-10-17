@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { cleanup, screen, within } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../src/renderer/client/Client";
 import { projectRecord } from "./fixtures/catalog-fixtures";
@@ -287,6 +287,75 @@ describe("Sidebar navigation workflow", () => {
     expect(document.querySelector('[data-slot="project-chat-item"]')!.textContent).not.toBe(
       "Project ChatProject Chat",
     );
+  });
+
+  it.each(["projects", "activity"] as const)(
+    "reorders selected and unselected inactive sessions by activity in %s without changing the open conversation",
+    async (mode) => {
+      const sessions = [
+        sidebarSummary("newest", 3),
+        sidebarSummary("middle", 2),
+        sidebarSummary("oldest", 1),
+      ];
+      using fixture = renderSidebarNavigation({
+        projects: [project],
+        sessions,
+        loadedIds: sessions.map((session) => session.sessionId),
+        client: { projectSessions: { open: async () => undefined } },
+      });
+      if (mode === "activity")
+        await fixture.user.click(screen.getByRole("button", { name: "Show activity" }));
+      await fixture.user.click(rowButton("middle"));
+      const pane = document.querySelector('[data-slot="session-pane"]');
+      await waitFor(() => expect(pane?.getAttribute("data-session-id")).toBe("middle"));
+      const assertSelection = () => {
+        expect(
+          document
+            .querySelector('[data-navigation-active="true"].session-item')
+            ?.getAttribute("data-session-id"),
+        ).toBe("middle");
+        expect(document.querySelector('[data-slot="session-pane"]')).toBe(pane);
+        expect(pane?.getAttribute("data-session-id")).toBe("middle");
+      };
+      expect(order()).toEqual(["newest", "middle", "oldest"]);
+      // Selection alone does not pin an inactive row against recency.
+      await fixture.publishSessions([sessions[0]!, sidebarSummary("middle", 5), sessions[2]!]);
+      expect(order()).toEqual(["middle", "newest", "oldest"]);
+      assertSelection();
+      // Background activity moves above the selection, but never navigates to it.
+      await fixture.publishSessions([
+        sessions[0]!,
+        sidebarSummary("middle", 5),
+        sidebarSummary("oldest", 6),
+      ]);
+      expect(order()).toEqual(["oldest", "middle", "newest"]);
+      assertSelection();
+    },
+  );
+
+  it("moves a family on selected descendant activity without changing its selected child or open pane", async () => {
+    using fixture = renderSidebarNavigation({
+      projects: [project],
+      sessions: [...sidebarFamily, sidebarSummary("standalone", 31)],
+      loadedIds: ["worker"],
+      client: { projectSessions: { open: async () => undefined } },
+    });
+    await fixture.user.click(rowButton("worker"));
+    const pane = document.querySelector('[data-slot="session-pane"]');
+    await waitFor(() => expect(pane?.getAttribute("data-session-id")).toBe("worker"));
+    expect(order()).toEqual(["standalone", "root", "planner", "worker", "sibling"]);
+    await fixture.publishSessions([
+      ...sidebarFamily.map((session) =>
+        session.sessionId === "worker"
+          ? { ...session, modifiedAt: "2026-02-01T00:00:00.000Z" }
+          : session,
+      ),
+      sidebarSummary("standalone", 31),
+    ]);
+    expect(order()).toEqual(["root", "planner", "worker", "sibling", "standalone"]);
+    expect(row("worker").getAttribute("data-navigation-active")).toBe("true");
+    expect(document.querySelector('[data-slot="session-pane"]')).toBe(pane);
+    expect(pane?.getAttribute("data-session-id")).toBe("worker");
   });
 
   it("flattens nested families parent-first and moves descendant activity onto collapsed ancestors", async () => {
