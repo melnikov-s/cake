@@ -2,6 +2,8 @@ import type { CakeArtifactOperationOptions } from "../../contracts/artifacts/art
 import type { CakeOperationHost } from "../../contracts/agent/cake-operation-context";
 import { editText } from "../../services/pi/edit-text";
 import { createCakeArtifactStateOperations } from "./cake-artifact-state-operations";
+import { createSelectedDesignOperations } from "./cake-selected-design-operations";
+import { readPrototypeSource } from "../../services/widgets/prototype-source";
 import { Schema } from "effect";
 import { retainedWidgetPreviewEvidence } from "../../contracts/widgets/widget-view-evidence";
 import { jsonValueSchema } from "../../contracts/serialization/json-contract";
@@ -235,6 +237,7 @@ export function createCakeArtifactOperations(
 
   const operations: CakeOperationDefinition[] = [
     ...createCakeArtifactStateOperations(options),
+    ...createSelectedDesignOperations(options),
     {
       command: "artifacts.list",
       topic: "artifacts",
@@ -566,6 +569,19 @@ export function createCakeArtifactOperations(
           if (context.signal.aborted) throw new Error("Widget revision was cancelled");
           if (!generated.browser)
             throw new Error("Accepted widget revision has no retained browser output");
+          const previousPrototype = readPrototypeSource(current.artifact.payload.source);
+          if (previousPrototype) {
+            const nextPrototype = readPrototypeSource(generated.source);
+            if (
+              !nextPrototype ||
+              previousPrototype.options.some(
+                (option) => !nextPrototype.options.some((next) => next.id === option.id),
+              )
+            )
+              throw new Error(
+                "Prototype revisions must preserve the manifest and all five stable option IDs",
+              );
+          }
           if (generated.state !== undefined)
             stagedState = {
               expectedVersion: latestState.version,

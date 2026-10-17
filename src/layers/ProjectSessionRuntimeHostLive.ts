@@ -8,6 +8,7 @@ import {
 } from "../contracts/artifacts/artifact-lineage";
 import * as artifactWorkflows from "../domain/artifacts/artifactWorkflows";
 import * as artifactState from "../domain/artifacts/artifactState";
+import * as agentArtifactAccess from "../domain/artifacts/agentArtifactAccess";
 import * as messageBoards from "../domain/artifacts/messageBoards";
 import type { MessageBoardStorage } from "../services/storage/MessageBoardStorage";
 import { ClientEvents } from "../services/clients/ClientEvents";
@@ -113,17 +114,11 @@ export const makeProjectSessionRuntimeHostLive = (
         sessionId: string,
         reference: string,
       ) {
-        const stableRef = Schema.decodeUnknownSync(ArtifactStableRef)(reference);
-        const effective = yield* provideArtifactServices(
-          artifactWorkflows.resolveEffectiveReference(sessionId, stableRef),
+        return yield* provideArtifactServices(
+          agentArtifactAccess
+            .resolve(sessionId, reference)
+            .pipe(Effect.provideService(ArtifactProjection, artifactProjection)),
         );
-        const metadata = yield* artifactProjection.materialize({
-          sessionId,
-          revision: effective.revision,
-          latestRevision: effective.latestRevision,
-          linkMode: effective.link.selection.mode,
-        });
-        return { record: artifactRevisionToRecord(effective.revision), metadata };
       });
       const listMetadataForSession = Effect.fn("ProjectSessionRuntimeHost.listArtifactMetadata")(
         function* (sessionId: string) {
@@ -359,28 +354,14 @@ export const makeProjectSessionRuntimeHostLive = (
               }),
             link: (targetSessionId, reference) =>
               Effect.gen(function* () {
-                const parsed = parseArtifactRef(
-                  Schema.decodeUnknownSync(ArtifactStableRef)(reference),
+                return yield* provideArtifactServices(
+                  agentArtifactAccess
+                    .link(targetSessionId, reference)
+                    .pipe(
+                      Effect.provideService(ArtifactProjection, artifactProjection),
+                      Effect.provideService(ClientEvents, clientEvents),
+                    ),
                 );
-                yield* provideArtifactServices(
-                  artifactWorkflows.resolveReferenceMetadata(
-                    Schema.decodeUnknownSync(ArtifactStableRef)(reference),
-                  ),
-                );
-                yield* provideArtifactServices(
-                  artifactWorkflows.linkForSession(
-                    parsed.lineageId,
-                    targetSessionId,
-                    parsed.revision === undefined
-                      ? { mode: "follow-latest" }
-                      : { mode: "pinned", revision: parsed.revision },
-                  ),
-                );
-                clientEvents.broadcast({
-                  type: "artifact-catalog-invalidated",
-                  lineageId: parsed.lineageId,
-                });
-                return (yield* resolveForSession(targetSessionId, reference)).metadata;
               }),
             unlink: (targetSessionId, lineageIdInput) =>
               Effect.gen(function* () {

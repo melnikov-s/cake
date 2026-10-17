@@ -180,6 +180,22 @@ export function coordinatorCakeOperations(
           )
         : []),
       ...createCoordinatorOperations(bridge),
+      ...createCakeArtifactOperations(
+        { appendEntry: () => undefined },
+        {
+          ...options,
+          persistArtifact: async () => {
+            throw new Error("Artifact publication is unavailable in Cake Chat");
+          },
+        },
+      ).filter((operation) =>
+        [
+          "artifacts.link",
+          "artifacts.state.read",
+          "artifacts.selection.capture",
+          "artifacts.source",
+        ].includes(operation.command),
+      ),
       ...(options.browserControl ? createCakeBrowserOperations(options.browserControl) : []),
       ...(options.vscodeControl ? createCakeVscodeOperations(options.vscodeControl) : []),
       ...(options.cakeChatInstructions

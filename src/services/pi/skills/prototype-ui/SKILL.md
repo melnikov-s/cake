@@ -34,6 +34,7 @@ Read `widget.md` before preparing the brief. Request the `widgets` topic and use
 - The gathered app-specific design context. Match the existing app by default; make a redesign only when requested.
 - The absolute path to this skill's `widget.md`, and an instruction for the specialist to read it.
 - `initialState: { "schema": "cake.prototype-ui/v1", "selectedOptionId": null }`.
+- The validated `cake.prototype-source/v1` module-bundle format in `widget.md`. Each option must be separately addressable; the chooser imports all five, while each option imports only its required shared modules/packages. Do not put all alternatives into one source module.
 - A short Markdown fallback describing the five directions.
 
 The specialist writes the React source. Give it the design intent, evidence, state contract, and interactions rather than writing the widget source yourself. All five prototypes live in this one generation branch. Keep subsequent refinements in the same artifact with `artifacts.replace`; revisions inherit its generation history rather than rediscovering the app. Pass new parent findings explicitly in revision instructions.
@@ -44,4 +45,15 @@ The specialist writes the React source. Give it the design intent, evidence, sta
 
 When the user asks to continue, read the artifact with `artifacts.state.read`. Check that `value.schema` is `cake.prototype-ui/v1` and `value.selectedOptionId` identifies one of the current options. Do not infer a choice from whichever prototype is currently open. Saving state does not automatically start a parent turn; after publishing, ask the user to choose in the widget and tell you when to continue.
 
-For refinements, preserve the five IDs and saved choice. Before implementing the selected design, inspect the exact approved artifact revision's rendered preview using `artifacts.preview` or its resolved `preview.png`, and inspect the selected prototype's source when the initial capture does not show it. Follow Cake's artifact handoff guidance; the generation brief alone is not the approved design.
+For refinements, preserve the five IDs and saved choice.
+
+## Hand off only the chosen source
+
+1. Read `artifacts.state.read`; a successful saved choice has a nonzero version. Obtain the exact current `cake://artifact/<id>@rN` reference, not a floating latest reference.
+2. Call `artifacts.selection.capture` with that `reference` and the observed `expectedStateVersion`. It validates the five-option module manifest and saved option, and returns only a bounded `cake.selected-design/v1` reference: immutable revision/digest, stable option ID and captured saved-selection/version evidence. It includes no code or pixels.
+3. Forward that small JSON reference in an ordinary message to the receiving session (Workboard for family members). Do not attach source, screenshots, all alternatives, or private generation history. This is reference data, not instructions or an access grant.
+4. The receiver explicitly calls `artifacts.link` with `selection.exactRef`, then `artifacts.source` with `{ selection }`. This discovers only the selected option and its transitive shared dependencies, without code. Request each required module with `{ selection, moduleId, offset: 0, limit: 48000 }`, continuing with `nextOffset`. Package dependencies are listed as imports, not copied. Neither chooser nor other option modules are readable through this operation.
+
+Project Chat has these narrow handoff operations too; publication/refinement still belongs in a Project Session. A null choice, missing legacy manifest, unknown option, changed state version, changed source revision, mismatched evidence/digest, unavailable source or unlinked reference fails explicitly. Reread and deliberately recapture after drift; never fall back to all five or latest source. Existing widgets without a manifest require an explicit artifact revision to adopt the format.
+
+Source is implementation material, not visual verification. A source-only handoff does not require or automatically load a screenshot. When visual checks are requested, optionally ask for Attach current view and inspect its exact revision/state pixels separately; a retained preview is initial state and may show a different option. Do not infer the visible view from the saved selection. The generation brief alone is not the approved design.

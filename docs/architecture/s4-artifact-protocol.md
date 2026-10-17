@@ -449,6 +449,40 @@ accepts messages only from its own frame and active compilation token, settles
 at most once, and validates the submitted value against the request's declared
 JSON Schema.
 
+## Selected-prototype source handoff
+
+New prototype-ui widgets encode `export default <strict JSON>;` with schema
+`cake.prototype-source/v1`: one chooser, exactly five stable option modules and
+bounded shared modules. Each module contains an ID, TSX source and exact static
+import/re-export dependency manifest. The compiler and source reader validate the
+same structure and AST imports; missing modules, duplicate IDs, cycles, dynamic
+imports and cross-option dependencies fail. The chooser compiles all five options
+as one interactive widget; extraction does not guess component boundaries.
+
+`artifacts.selection.capture` requires a linked exact current revision and observed
+nonzero state version. It captures only `cake.selected-design/v1` metadata: exact
+reference/digest, stable option ID, saved choice schema/value and version. This
+bounded JSON can be forwarded as ordinary message data, or via Workboard within a
+family; no new attachment type, automatic source expansion or transcript authority
+is introduced. The receiving session explicitly uses `artifacts.link`, then
+`artifacts.source` with the captured reference. Discovery returns only the chosen
+option and transitive shared module IDs/dependencies. An explicit module ID reads
+one character-paged source (maximum 48000 characters). External package imports
+are listed, not copied. Chooser/other-option modules cannot be requested.
+
+The receiver retains the existing effective-link permission check. References
+are not access grants or authenticated claims about pixels. Saved state is mutable
+and advisory: stale versions/revisions, digest/evidence mismatches, unknown choices,
+missing manifests/source/dependencies and unauthorized reads fail explicitly.
+Recapture after drift; never silently return latest or all alternatives. Historical
+widgets remain viewable but need an explicit revision adopting the manifest before
+selected-source retrieval. Project Chat exposes only link, saved-state read,
+selection capture and selected-source retrieval for this workflow, not generation,
+publication, state writes, preview or whole-widget source tools.
+
+No screenshot or generation history is included in source handoffs. Source is not
+visual verification; current-view pixels remain a separate optional user action.
+
 ## Live editable artifact state
 
 The SDK, live host and isolated review host reject non-JSON saves rather than

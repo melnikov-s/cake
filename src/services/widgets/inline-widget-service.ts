@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import { TextEncoder } from "node:util";
 import { fileURLToPath } from "node:url";
 import { build, type Message, type Plugin } from "esbuild";
+import { readPrototypeSource, prototypeModuleSpecifier } from "./prototype-source";
 import {
   widgetPackageResolver,
   type WidgetBrowserAsset,
@@ -248,6 +249,15 @@ button[data-variant="primary"]:not(:disabled):hover{background:color-mix(in srgb
 }
 
 function widgetModulePlugin(source: string): Plugin {
+  const prototype = readPrototypeSource(source);
+  const modules = new Map(
+    prototype
+      ? [prototype.chooser, ...prototype.options, ...prototype.shared].map((module) => [
+          prototypeModuleSpecifier(module.id),
+          module.source,
+        ])
+      : [],
+  );
   return {
     name: "cake-inline-widget",
     setup(builder) {
@@ -303,8 +313,17 @@ function widgetModulePlugin(source: string): Plugin {
         ].join("\n"),
         resolveDir: cakeModuleResolveDirectory,
       }));
+      builder.onResolve({ filter: /^cake:prototype\// }, ({ path }) => {
+        if (!modules.has(path)) throw new Error(`Missing prototype source module: ${path}`);
+        return { path, namespace: "cake-prototype" };
+      });
+      builder.onLoad({ filter: /.*/, namespace: "cake-prototype" }, ({ path }) => ({
+        contents: modules.get(path),
+        loader: "tsx",
+        resolveDir: process.cwd(),
+      }));
       builder.onLoad({ filter: /.*/, namespace: "cake-widget" }, () => ({
-        contents: source,
+        contents: prototype ? prototype.chooser.source : source,
         loader: "tsx",
         resolveDir: process.cwd(),
       }));

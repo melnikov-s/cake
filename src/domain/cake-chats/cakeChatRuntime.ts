@@ -63,7 +63,18 @@ import { WorktreeLandingCoordinator } from "../../services/worktrees/WorktreeLan
 import { WorktreeLandingAgent } from "../../services/worktrees/WorktreeLandingAgent";
 import { WorktreeLandingCompletion } from "../../services/worktrees/WorktreeLandingCompletion";
 
+import { ArtifactStorage } from "../../services/storage/ArtifactStorage";
+import { ArtifactProjection } from "../../services/artifacts/ArtifactProjection";
+import { ClientEvents } from "../../services/clients/ClientEvents";
+import * as agentArtifactAccess from "../artifacts/agentArtifactAccess";
+import * as artifactState from "../artifacts/artifactState";
+import { ArtifactLineageId } from "../../contracts/artifacts/artifact-lineage";
+
 const CAKE_CHAT_OPERATIONS = [
+  "artifacts.link",
+  "artifacts.state.read",
+  "artifacts.selection.capture",
+  "artifacts.source",
   "browser.enter",
   "browser.cdp",
   "browser.events",
@@ -197,6 +208,31 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
   const vscode = yield* Effect.serviceOption(VsCodeServer);
   const families = yield* SessionFamilyStorage;
   const archive = yield* SessionArchiveStorage;
+  const artifactStorage = yield* Effect.serviceOption(ArtifactStorage);
+  const artifactProjection = yield* Effect.serviceOption(ArtifactProjection);
+  const clientEvents = yield* Effect.serviceOption(ClientEvents);
+  const runArtifact = <A, E>(
+    effect: Effect.Effect<
+      A,
+      E,
+      ArtifactStorage | ArtifactProjection | ClientEvents | SessionFamilyStorage
+    >,
+  ) => {
+    if (
+      Option.isNone(artifactStorage) ||
+      Option.isNone(artifactProjection) ||
+      Option.isNone(clientEvents)
+    )
+      return Promise.reject(new Error("Artifact source access is unavailable"));
+    return run(
+      effect.pipe(
+        Effect.provideService(ArtifactStorage, artifactStorage.value),
+        Effect.provideService(ArtifactProjection, artifactProjection.value),
+        Effect.provideService(ClientEvents, clientEvents.value),
+        Effect.provideService(SessionFamilyStorage, families),
+      ),
+    );
+  };
   const coordination = yield* SessionCoordination;
   const project = application
     .snapshot()
@@ -336,6 +372,19 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
       // selection, which does not necessarily activate extension tools.
       tools: ["cake", "zoom", "date", "read", "bash", "mcp"],
       allowedCakeOperations: CAKE_CHAT_OPERATIONS,
+      resolveArtifact: (reference) =>
+        runArtifact(agentArtifactAccess.resolve(target.sessionId, reference)),
+      linkArtifact: (reference) =>
+        runArtifact(agentArtifactAccess.link(target.sessionId, reference)),
+      readArtifactState: (lineageId) =>
+        runArtifact(
+          Effect.gen(function* () {
+            return yield* artifactState.read({
+              sessionId: target.sessionId,
+              lineageId: yield* Schema.decodeUnknownEffect(ArtifactLineageId)(lineageId),
+            });
+          }),
+        ),
       cakeChatWorktrees: {
         merge: (reference, signal) =>
           run(

@@ -183,6 +183,19 @@ describe("permanent Cake Chat", () => {
       const trusted = yield* options();
       expect(trusted.runtime.trusted).toBe(true);
       expect(trusted.runtime.tools).toEqual(untrusted.runtime.tools);
+      expect(trusted.runtime.allowedCakeOperations).toEqual(
+        expect.arrayContaining([
+          "artifacts.link",
+          "artifacts.state.read",
+          "artifacts.selection.capture",
+          "artifacts.source",
+        ]),
+      );
+      expect(trusted.runtime.allowedCakeOperations).not.toContain("artifacts.resolve-reference");
+      expect(trusted.runtime.allowedCakeOperations).not.toContain("artifacts.preview");
+      expect(trusted.runtime.resolveArtifact).toBeTypeOf("function");
+      expect(trusted.runtime.linkArtifact).toBeTypeOf("function");
+      expect(trusted.runtime.readArtifactState).toBeTypeOf("function");
     }).pipe(Effect.provide(f.layer));
   });
 
