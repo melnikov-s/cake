@@ -43,7 +43,7 @@ export const makeWorkflowRunStorageLive = (directory: string) =>
       const load = Effect.fn("WorkflowRunStorage.load")((id: WorkflowRunId) =>
         lock.withPermits(1)(loadUnlocked(id)),
       );
-      const list = Effect.fn("WorkflowRunStorage.list")(function* (ownerSessionId: string) {
+      const list = Effect.fn("WorkflowRunStorage.list")(function* (ownerSessionId?: string) {
         return yield* lock.withPermits(1)(
           Effect.gen(function* () {
             if (
@@ -61,7 +61,10 @@ export const makeWorkflowRunStorageLive = (directory: string) =>
                 Effect.mapError((error) => failure("list", error)),
               );
               const loaded = yield* loadUnlocked(id);
-              if (Option.isSome(loaded) && loaded.value.run.ownerSessionId === ownerSessionId)
+              if (
+                Option.isSome(loaded) &&
+                (ownerSessionId === undefined || loaded.value.run.ownerSessionId === ownerSessionId)
+              )
                 result.push(workflowSummary(loaded.value.run));
             }
             return result;

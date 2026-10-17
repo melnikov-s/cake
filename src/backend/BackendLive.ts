@@ -7,6 +7,9 @@ import type { CakePaths } from "../config/CakePaths";
 import * as scheduledMessages from "../domain/scheduled-messages/scheduledMessages";
 import * as sessionFamilies from "../domain/session-families/sessionFamilies";
 import * as runtimeRecovery from "../domain/project-sessions/runtimeRecovery";
+import * as workflows from "../domain/workflows/workflows";
+import * as workflowLifecycle from "../domain/workflows/workflow-lifecycle";
+import { WorkflowRunStorage } from "../services/storage/WorkflowRunStorage";
 import * as subagentRecovery from "../domain/subagents/subagentRecovery";
 import { SubagentStorage, makeSubagentStorageLive } from "../services/storage/SubagentStorage";
 import {
@@ -291,6 +294,7 @@ export const makeBackendLive = <HostServices, HostError>(
           coordination.checkStorage(),
           recovery.list(),
           workers.list(),
+          (yield* WorkflowRunStorage).list(),
         ]).pipe(Effect.result);
         if (ready._tag === "Failure") {
           yield* Effect.logWarning(
@@ -299,22 +303,27 @@ export const makeBackendLive = <HostServices, HostError>(
           );
           return;
         }
+        yield* workflows.reconcile().pipe(Effect.orDie);
         const recoverable = (sessionId: string, turnId?: string) =>
-          recovery
-            .get(sessionId)
-            .pipe(
-              Effect.map(
-                (record) =>
-                  record?.inputs.some((input) => turnId === undefined || input.turnId === turnId) ??
-                  false,
-              ),
-            );
+          recovery.get(sessionId).pipe(
+            Effect.map(
+              (record) =>
+                record?.inputs.some((input) => turnId === undefined || input.turnId === turnId) ??
+                false,
+            ),
+            Effect.flatMap((pending) =>
+              pending
+                ? Effect.succeed(true)
+                : workflowLifecycle.holdsTurnCompletion(sessionId, turnId),
+            ),
+          );
         yield* sessionFamilies
           .initialize(paths.piSessions, paths.piResolvedSessions, recoverable)
           .pipe(Effect.orDie);
         const resumeWorkers = yield* subagentRecovery.initialize().pipe(Effect.orDie);
         yield* runtimeRecovery.initialize().pipe(Effect.orDie);
         yield* resumeWorkers;
+        yield* workflows.recoverReports().pipe(Effect.orDie);
         yield* sessionFamilies.runWorker.pipe(Effect.forkScoped);
       }),
     ),

@@ -3,12 +3,15 @@ import { WorkflowSupervisor } from "../../services/workflows/WorkflowSupervisor"
 
 export const holdsTurnCompletion = Effect.fn("Workflows.holdsTurnCompletion")(function* (
   sessionId: string,
-  turnId: string,
+  turnId?: string,
 ) {
   const supervisor = yield* WorkflowSupervisor;
   return [...(yield* SubscriptionRef.get(supervisor.state)).values()].some(
     ({ checkpoint }) =>
-      checkpoint.run.ownerSessionId === sessionId && checkpoint.completionTurnIds.includes(turnId),
+      checkpoint.run.ownerSessionId === sessionId &&
+      (turnId === undefined
+        ? checkpoint.completionTurnIds.length > 0
+        : checkpoint.completionTurnIds.includes(turnId)),
   );
 });
 
@@ -35,7 +38,7 @@ export const holdsCompletion = Effect.fn("Workflows.holdsCompletion")(function* 
       checkpoint.run.ownerSessionId === sessionId &&
       (turnId === undefined || checkpoint.completionTurnIds.includes(turnId)) &&
       (["running", "paused", "stopping"].includes(checkpoint.run.status) ||
-        (["complete", "error", "stopped"].includes(checkpoint.run.status) &&
+        (["complete", "error", "stopped", "interrupted"].includes(checkpoint.run.status) &&
           checkpoint.completionDelivery === "pending")),
   );
 });

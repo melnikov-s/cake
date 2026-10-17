@@ -124,7 +124,17 @@ const deliverCompletion = Effect.fn("Workflows.deliverCompletion")(function* (
           asError("report"),
         );
         const report = `Dynamic workflow ${run.program.meta.name} ${run.status}. Run: ${run.id}.\n${text}`;
-        yield* handle.followUp(report).pipe(asError("report"));
+        // Retry the same admission if shutdown or a checkpoint failure happens
+        // after Pi accepts the report but before completionDelivery is saved.
+        yield* handle
+          .submit({
+            turnId: `workflow-report:${run.id}:${run.execution}`,
+            text: report,
+            delivery: "follow-up",
+            attachments: [],
+            markdown: false,
+          })
+          .pipe(asError("report"));
       }),
     );
     yield* updateRun(target.runId, (checkpoint) => ({
@@ -404,28 +414,49 @@ export const propose = Effect.fn("Workflows.propose")(function* (
   return { choice: "workflow" as const, run };
 }, Effect.scoped);
 
+/** Rebuild completion ownership before startup classifies any assignment as orphaned.
+ * Loading all runs first also restores multi-run assignment aggregation. No scripts replay.
+ */
+export const reconcile = Effect.fn("Workflows.reconcile")(function* () {
+  const records = yield* (yield* WorkflowRunStorage).list();
+  for (const record of records)
+    yield* getRun({ sessionId: record.ownerSessionId, runId: record.id });
+});
+
+/** Backend lifecycle only: a catalog read must never start a conversation. */
+export const recoverReports = Effect.fn("Workflows.recoverReports")(function* () {
+  const supervisor = yield* WorkflowSupervisor;
+  const turns = (yield* (yield* SessionFamilyStorage).state()).turns;
+  for (const { checkpoint } of (yield* SubscriptionRef.get(supervisor.state)).values()) {
+    if (
+      ["complete", "error", "stopped", "interrupted"].includes(checkpoint.run.status) &&
+      (checkpoint.completionDelivery === "pending" ||
+        turns.some((turn) => !turn.outcome && checkpoint.completionTurnIds.includes(turn.turnId)))
+    )
+      yield* queueCompletion({
+        sessionId: checkpoint.run.ownerSessionId,
+        runId: checkpoint.run.id,
+      });
+  }
+});
+
 export const list = Effect.fn("Workflows.list")(function* (owner: WorkflowOwner) {
   yield* ownerLocation(owner);
   const records = yield* (yield* WorkflowRunStorage).list(owner.sessionId);
-  const result = [];
-  for (const record of records) {
-    const target = { sessionId: owner.sessionId, runId: record.id };
-    const live = yield* getRun(target);
-    if (
-      ["complete", "error", "stopped"].includes(live.checkpoint.run.status) &&
-      live.checkpoint.completionDelivery === "pending"
-    )
-      yield* queueCompletion(target);
-    result.push(workflowSummary(live.checkpoint.run));
-  }
-  return result;
+  const state = yield* SubscriptionRef.get((yield* WorkflowSupervisor).state);
+  return records.map((record) => {
+    const live = state.get(record.id);
+    return live ? workflowSummary(live.checkpoint.run) : record;
+  });
 });
 export const inspect = Effect.fn("Workflows.inspect")(function* (target: WorkflowRunTarget) {
   return (yield* getRun(target)).checkpoint.run;
 });
 
 export const observe = Effect.fn("Workflows.observe")(function* (owner: WorkflowOwner) {
-  yield* list(owner);
+  yield* ownerLocation(owner);
+  for (const record of yield* (yield* WorkflowRunStorage).list(owner.sessionId))
+    yield* getRun({ sessionId: owner.sessionId, runId: record.id });
   const supervisor = yield* WorkflowSupervisor;
   // SubscriptionRef changes begins with a current snapshot and has no subscribe/read gap.
   return SubscriptionRef.changes(supervisor.state).pipe(

@@ -66,7 +66,7 @@ export const makeMemoryWorkflowStorage = Effect.fn("WorkflowFixture.storage")(fu
       Ref.get(records).pipe(
         Effect.map((values) =>
           [...values.values()]
-            .filter((item) => item.run.ownerSessionId === owner)
+            .filter((item) => owner === undefined || item.run.ownerSessionId === owner)
             .map((item) => workflowSummary(item.run)),
         ),
       ),

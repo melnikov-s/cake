@@ -60,6 +60,7 @@ export const makeWorkflowDomainFixture = Effect.fn("WorkflowFixture.domain")(fun
   const reports = yield* Queue.unbounded<string>();
   const programs = yield* Queue.unbounded<WorkflowProgram>();
   const executing: string[] = [];
+  const consumedInputs = new Set<string>();
   const disposed = yield* Queue.unbounded<string>();
   const scripts = new Map<string, WorkflowProgram>([
     ["/project/workflow.js", checkpoint().run.program],
@@ -107,7 +108,9 @@ export const makeWorkflowDomainFixture = Effect.fn("WorkflowFixture.domain")(fun
           model: { provider: model.provider, id: model.modelId, name: "Test model" },
           fastMode: false,
         }),
-        prompt: async (text) => {
+        hasConsumedInput: (turnId) => consumedInputs.has(turnId),
+        prompt: async (text, _delivery, _attachments, _markdown, turnId) => {
+          if (turnId) consumedInputs.add(turnId);
           await Effect.runPromise(Queue.offer(reports, text));
         },
       }),

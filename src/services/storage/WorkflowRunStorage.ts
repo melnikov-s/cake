@@ -45,7 +45,7 @@ export class WorkflowRunStorage extends Context.Service<
       id: WorkflowRunId,
     ) => Effect.Effect<Option.Option<WorkflowCheckpoint>, WorkflowError>;
     readonly list: (
-      ownerSessionId: string,
+      ownerSessionId?: string,
     ) => Effect.Effect<ReadonlyArray<WorkflowRunSummary>, WorkflowError>;
     /** null means create-only; an integer requires that exact stored revision. */
     readonly save: (
