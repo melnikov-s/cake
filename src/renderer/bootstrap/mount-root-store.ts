@@ -3,6 +3,7 @@ import { createStore, mount, type StoreSnapshot } from "r-state-tree";
 import type { Client } from "../client/Client";
 import { RootStore } from "../stores/RootStore";
 import type { RootProjection } from "../models/RootProjection";
+import { migratePendingSessions } from "../persistence/migrate-pending-sessions";
 
 export function mountRootStore(
   client: Client,
@@ -22,7 +23,7 @@ export function mountRootStore(
       projection,
       flushWindowState,
     }),
-    { snapshot },
+    { snapshot: migratePendingSessions(snapshot) },
   );
   return root;
 }

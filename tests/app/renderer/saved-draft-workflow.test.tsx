@@ -14,6 +14,7 @@ import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-pr
 import { WorktreePill } from "../../../src/renderer/components/worktree-pill";
 import { SavedDraftRecovery } from "../../../src/renderer/components/saved-draft-recovery";
 import { fakeSavedDrafts } from "./fakes/saved-drafts";
+import { configurationModel } from "./chat-configuration-workflow-fixture";
 import {
   fixtureTimestamp,
   projectRecord,
@@ -26,6 +27,7 @@ import type { TestClientOverrides } from "./test-client";
 
 const projectPath = "/project";
 const sessionId = "10000000-0000-4000-8000-000000000001";
+const labelId = "10000000-0000-4000-8000-000000000002";
 const attachment = {
   kind: "text",
   name: "Pasted text · 51 lines",
@@ -63,7 +65,17 @@ async function renderDrafts(
   initialSessions: SessionSummaryFixture[] = [],
 ) {
   const fixture = createRendererStoreFixture({
-    projects: [projectRecord({ path: projectPath, name: "Project" })],
+    projects: [
+      projectRecord({
+        path: projectPath,
+        name: "Project",
+        workflow: {
+          labels: [{ id: labelId, name: "Feature", color: "blue" }],
+          assignments: [],
+          sessionDetails: [],
+        },
+      }),
+    ],
     sessions: initialSessions,
     client: {
       ...client,
@@ -161,6 +173,9 @@ async function renderDrafts(
   const view = render(<Surface />);
   return {
     user: userEvent.setup(),
+    async refreshDrafts() {
+      await act(async () => fixture.root.sessionRegistry.pendingSessions.refreshSavedDrafts());
+    },
     async publishDrafts(records: SavedDraft[]) {
       await act(async () =>
         fixture.root.sessionRegistry.pendingSessions.applySavedDraftSnapshot(records),
@@ -215,6 +230,78 @@ afterEach(() => {
 });
 
 describe("Saved Draft workflows", () => {
+  it("persists a saved model change through refresh and activation without changing other saved facts", async () => {
+    const drafts = fakeSavedDrafts();
+    const original = savedDraft({ attachments: [attachment], labelIds: [labelId] });
+    drafts.records.set(sessionId, original);
+    const update = vi.fn(drafts.client.update);
+    const activate = vi.fn(drafts.client.activate);
+    const configuration = {
+      provider: "openai",
+      modelId: "gpt-5",
+      thinkingLevel: "high",
+      fastMode: false,
+    } as const;
+    using fixture = await renderDrafts(drafts, {
+      savedDrafts: { update, activate },
+      models: { list: async () => [configurationModel()] },
+    });
+    const picker = () => screen.getByRole("button", { name: "Model configuration" });
+    await fixture.user.click(picker());
+    await fixture.user.click(await screen.findByRole("button", { name: "GPT-5 gpt-5" }));
+    await fixture.user.click(screen.getByRole("button", { name: "High" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(update).toHaveBeenCalledOnce());
+    expect(drafts.records.get(sessionId)).toEqual({ ...original, configuration, revision: 2 });
+    await fixture.refreshDrafts();
+    expect(picker().textContent).toContain("GPT-5");
+    expect(picker().textContent).toContain("High");
+    expect(sidebar().getByText(original.title)).toBeDefined();
+    expect(screen.getByText(original.text)).toBeDefined();
+    expect(screen.getByText(attachment.name, { exact: false })).toBeDefined();
+    expect(sidebar().getByRole("img", { name: "Labels: Feature" })).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "Activate draft" }));
+    await waitFor(() => expect(activate).toHaveBeenCalledOnce());
+    expect(activate).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId, expectedRevision: 2 }),
+      expect.anything(),
+    );
+    expect(drafts.records.get(sessionId)).toMatchObject({
+      configuration,
+      title: original.title,
+      text: original.text,
+      attachments: [attachment],
+      labelIds: original.labelIds,
+      status: "activated",
+    });
+  });
+
+  it("reports a rejected saved model change, refreshes authority, and allows retry", async () => {
+    const drafts = fakeSavedDrafts();
+    drafts.records.set(sessionId, savedDraft());
+    const update = vi
+      .fn(drafts.client.update)
+      .mockRejectedValueOnce(new Error("Model save failed"));
+    using fixture = await renderDrafts(drafts, {
+      savedDrafts: { update },
+      models: { list: async () => [configurationModel()] },
+    });
+    const choose = async () => {
+      await fixture.user.click(screen.getByRole("button", { name: "Model configuration" }));
+      await fixture.user.click(await screen.findByRole("button", { name: "GPT-5 gpt-5" }));
+      await fixture.user.click(screen.getByRole("button", { name: "Apply" }));
+    };
+    await choose();
+    await screen.findByText("Model save failed");
+    expect(drafts.records.get(sessionId)?.configuration).toBeUndefined();
+    await choose();
+    await waitFor(() =>
+      expect(drafts.records.get(sessionId)?.configuration?.modelId).toBe("gpt-5"),
+    );
+    await fixture.refreshDrafts();
+    expect(screen.queryByText("Model save failed")).toBeNull();
+  });
+
   it("persists an automatic draft title and restores it in a fresh window", async () => {
     const drafts = fakeSavedDrafts();
     const generated = deferred<string>();
@@ -517,16 +604,25 @@ describe("Saved Draft workflows", () => {
     );
   });
 
-  it("adopts another window's newer saved prompt without reverting to a stale snapshot", async () => {
+  it("projects canonical saved title, prompt, attachments and labels without reverting to a stale snapshot", async () => {
     const drafts = fakeSavedDrafts();
     drafts.records.set(sessionId, savedDraft());
     using fixture = await renderDrafts(drafts);
-    const newer = savedDraft({ text: "Updated in another window", revision: 2 });
+    const newer = savedDraft({
+      title: "Renamed in another window",
+      text: "Updated in another window",
+      attachments: [attachment],
+      labelIds: [labelId],
+      revision: 2,
+    });
     drafts.records.set(sessionId, newer);
     await fixture.publishDrafts([newer]);
     expect(screen.getByText(newer.text)).toBeDefined();
     await fixture.publishDrafts([savedDraft()]);
     expect(screen.getByText(newer.text)).toBeDefined();
+    expect(sidebar().getByText(newer.title)).toBeDefined();
+    expect(sidebar().getByRole("img", { name: "Labels: Feature" })).toBeDefined();
+    expect(screen.getByText(attachment.name, { exact: false })).toBeDefined();
   });
 
   // Known production blocker: materializeIdentity asserts the old temporary directory before

@@ -15,7 +15,7 @@ export interface PendingConversationStoreProps {
   sessionId: string;
 }
 
-/** Owns the persisted per-conversation state shared by pending Project and Cake Chat owners. */
+/** Owns unsaved Project conversation data and local pending Cake Chat data. */
 export class PendingConversationStore extends Store<PendingConversationStoreProps> {
   @snapshot name: string | undefined;
   @snapshot configuration: ChatConfiguration | undefined;
@@ -92,13 +92,6 @@ export class PendingConversationStore extends Store<PendingConversationStoreProp
     this.draftPrompt = undefined;
     this.touch();
     return prompt;
-  }
-
-  setDraftResolved(resolved: boolean) {
-    if (!this.draftPrompt) return false;
-    this.draftPrompt = { ...this.draftPrompt, resolved };
-    this.touch();
-    return true;
   }
 
   markMaterialized() {

@@ -108,10 +108,7 @@ try {
         },
         {
           sessions,
-          pendingSessions: store(
-            { conversationIds: [], temporarySessionIds: [], stagedSessionIds: [] },
-            { conversations: [] },
-          ),
+          pendingSessions: store({ lifecycleVersion: 1, sessionsById: {} }, { conversations: [] }),
         },
       ),
       sessionLayoutStore: store({

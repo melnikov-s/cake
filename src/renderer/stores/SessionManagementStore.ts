@@ -90,10 +90,6 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
         return false;
       }
     }
-    if (this.pending.conversation(sessionId)?.setDraftResolved(resolved)) {
-      if (resolved) await onResolved?.([sessionId]);
-      return !this.signal.aborted;
-    }
     if (resolved && this.pending.isTemporary(sessionId)) {
       this.registry.removeSession(sessionId);
       await onResolved?.([sessionId]);

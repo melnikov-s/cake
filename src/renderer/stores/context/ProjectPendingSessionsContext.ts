@@ -12,6 +12,7 @@ export const ProjectPendingSessionsContext =
       | "updateSavedMetadata"
       | "conversation"
       | "setLabels"
+      | "setConfiguration"
       | "deleteResolvedDraft"
       | "prepare"
       | "createDraft"

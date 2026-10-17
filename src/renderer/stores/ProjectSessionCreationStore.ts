@@ -202,7 +202,7 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
       sessionId,
       projectPath,
       firstUserMessage,
-      this.pending.conversation(sessionId)?.name,
+      this.pending.savedRecord(sessionId)?.title ?? this.pending.conversation(sessionId)?.name,
     );
   }
 
@@ -224,8 +224,6 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
     );
     if (this.signal.aborted) return false;
     this.pending.markActivated(activated.record);
-    if (this.pending.isTemporary(sessionId))
-      this.pending.materialize(sessionId, activated.workingDirectory);
     return true;
   }
 
@@ -369,8 +367,11 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
     return {
       path: session.workspacePath,
       configuration:
-        this.pending.conversation(sessionId)?.configuration ?? this.props.defaultConfiguration?.(),
-      name: this.pending.conversation(sessionId)?.name,
+        this.pending.savedRecord(sessionId)?.configuration ??
+        this.pending.conversation(sessionId)?.configuration ??
+        this.props.defaultConfiguration?.(),
+      name:
+        this.pending.savedRecord(sessionId)?.title ?? this.pending.conversation(sessionId)?.name,
     };
   }
 }

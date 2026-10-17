@@ -383,7 +383,12 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
         toolCompactSession: (entryId, prompt) =>
           SessionContinuationContext.consume(this)!.toolCompactAt(entryId, prompt),
         scheduleMessage: (sessionId, args) => this.scheduleMessage(sessionId, args),
-        draftSessionPrompt: (sessionId) => pending.conversation(sessionId)?.draftPrompt,
+        draftSessionPrompt: (sessionId) => {
+          const record = pending.savedRecord(sessionId);
+          return record && record.status !== "activated"
+            ? { text: record.text, attachments: [...record.attachments], resolved: record.resolved }
+            : undefined;
+        },
         isDeferredSession: (sessionId) => pending.isTemporary(sessionId),
         createDraftSession: async (sessionId, text, attachments) => {
           await pending.createDraft(sessionId, text, attachments);
@@ -410,7 +415,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
         deferredNewSession: () => pending.isTemporary(this.sessionId),
         effectiveConfiguration: () => creation.request(this.sessionId)?.configuration,
         setPendingConfiguration: (configuration) =>
-          pending.conversation(this.sessionId)?.setConfiguration(configuration),
+          pending.setConfiguration(this.sessionId, configuration),
       },
       chat: {
         conversationMode: ConversationModeContext.consume(this)

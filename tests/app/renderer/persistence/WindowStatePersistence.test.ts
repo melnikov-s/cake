@@ -7,7 +7,8 @@ import { createTestClient } from "../test-client";
 import { mountRootStore } from "../../../../src/renderer/bootstrap/mount-root-store";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
 import { WindowStatePersistence } from "../../../../src/renderer/persistence/WindowStatePersistence";
-import { extractSavedDrafts } from "../../../../src/contracts/project-sessions/saved-draft-extraction";
+import { fakeSavedDrafts } from "../fakes/saved-drafts";
+import { fixtureTimestamp } from "../fixtures/catalog-fixtures";
 
 const workspace = "/projects/example";
 const sessionId = "00000000-0000-4000-8000-000000000001";
@@ -25,17 +26,15 @@ function harness({
 } = {}) {
   const save = vi.fn<Client["windowState"]["save"]>(async () => undefined);
   const reportError = vi.fn();
-  const client = createTestClient({
-    windowState: { save },
-    savedDrafts: { list: async () => [] },
-  });
+  const drafts = fakeSavedDrafts();
+  const client = createTestClient({ windowState: { save }, savedDrafts: drafts.client });
   const models = RootProjection.create();
   const persistence = new WindowStatePersistence(client, reportError, savedDraftsReady);
   const root = mountRootStore(client, loaded, () => persistence.flush(), models);
   const session = root.sessionRegistry.pendingSessions.prepareStaged(workspace, sessionId);
   const draft = session.conversationSessionStore.composerStore.draftStore;
-  draft.setText("unsent request");
-  draft.attachments.push(attachment);
+  if (!draft.text) draft.setText("unsent request");
+  if (!draft.attachments.length) draft.attachments.push(attachment);
   root.appShellStore.selectProjectSession(sessionId);
   root.projectWorkbenchStore.showLoadedSession(sessionId);
   persistence.observe(root);
@@ -45,7 +44,7 @@ function harness({
     models[Symbol.dispose]();
   });
   const expected = (): JsonValue => JSON.parse(JSON.stringify(toSnapshot(root)));
-  return { root, draft, models, save, reportError, persistence, expected };
+  return { root, draft, drafts, models, save, reportError, persistence, expected };
 }
 
 function deferredSave() {
@@ -231,31 +230,49 @@ describe("WindowStatePersistence", () => {
     expect(h.save).toHaveBeenCalledTimes(2);
   });
 
-  it.each([false, true])(
-    "strips only valid saved Drafts when migration readiness is %s",
-    async (savedDraftsReady) => {
-      vi.useFakeTimers();
-      const h = harness({ savedDraftsReady });
-      const saved = h.root.sessionRegistry.pendingSessions.prepare(workspace, savedId);
-      const conversation = h.root.sessionRegistry.pendingSessions.conversation(saved.sessionId)!;
-      conversation.createDraft("saved request", [attachment]);
-      conversation.setName("Saved draft");
-      const snapshot = h.expected();
-      const extracted = extractSavedDrafts(snapshot);
-      expect(extracted.records).toMatchObject([{ sessionId: savedId, text: "saved request" }]);
-      await h.persistence.flush();
-      expect(h.save).toHaveBeenCalledExactlyOnceWith(
-        savedDraftsReady ? extracted.windowSnapshot : snapshot,
-      );
-      expect(extractSavedDrafts(h.save.mock.calls[0]![0]).records).toHaveLength(
-        savedDraftsReady ? 0 : 1,
-      );
-      // Persistence never alters the mounted tree or its unsent composer state.
-      expect(h.expected()).toEqual(snapshot);
-      expect(h.draft.text).toBe("unsent request");
-      expect(h.draft.attachments.slice()).toEqual([attachment]);
-    },
-  );
+  it("persists pane identities and unsent data while saved facts remain backend-owned", async () => {
+    const h = harness({ savedDraftsReady: true });
+    const saved = {
+      sessionId: savedId,
+      projectPath: workspace,
+      workingDirectory: workspace,
+      title: "Saved draft",
+      text: "saved request",
+      attachments: [attachment],
+      labelIds: [],
+      resolved: false,
+      createdAt: fixtureTimestamp,
+      modifiedAt: fixtureTimestamp,
+      revision: 1,
+      status: "saved" as const,
+    };
+    h.drafts.records.set(savedId, saved);
+    await h.root.sessionRegistry.pendingSessions.refreshSavedDrafts();
+    h.root.sessionLayoutStore.ensureSession(savedId);
+    await h.persistence.flush();
+    const payload = h.save.mock.calls[0]![0];
+    expect(payload).toEqual(h.expected());
+    expect(payload).toMatchObject({
+      children: {
+        sessionRegistry: {
+          children: {
+            pendingSessions: {
+              state: { lifecycleVersion: 1, sessionsById: { [sessionId]: { phase: "staged" } } },
+              children: { conversations: [{ key: sessionId }] },
+            },
+          },
+        },
+      },
+    });
+    const snapshot = toSnapshot(h.root);
+    const restored = harness({ savedDraftsReady: true, loaded: snapshot });
+    restored.drafts.records.set(savedId, saved);
+    await restored.root.sessionRegistry.pendingSessions.refreshSavedDrafts();
+    expect(restored.root.sessionLayoutStore.focusedSessionId).toBe(savedId);
+    expect(restored.root.sessionRegistry.pendingSessions.savedRecord(savedId)).toEqual(saved);
+    expect(restored.draft.text).toBe("unsent request");
+    expect(restored.draft.attachments.slice()).toEqual([attachment]);
+  });
 
   it("preserves normalization of supported non-JSON snapshot values", async () => {
     const save = vi.fn<Client["windowState"]["save"]>(async () => undefined);

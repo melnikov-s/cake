@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { toSnapshot } from "r-state-tree";
+import { toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
@@ -35,14 +35,21 @@ function snapshot(sessionId: string): ConversationSnapshot {
     ],
   };
 }
-function renderLayout(restoredRatio?: number) {
+function renderLayout({
+  restored,
+  restoredRatio,
+}: {
+  restored?: StoreSnapshot;
+  restoredRatio?: number;
+} = {}) {
   const open = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);
   const setFullscreenSurfaceOpen = vi.fn<Client["electron"]["setFullscreenSurfaceOpen"]>(
     async () => undefined,
   );
   const fixture = createRendererStoreFixture({
     snapshot:
-      restoredRatio === undefined
+      restored ??
+      (restoredRatio === undefined
         ? undefined
         : {
             state: {},
@@ -72,7 +79,7 @@ function renderLayout(restoredRatio?: number) {
                 children: {},
               },
             },
-          },
+          }),
     projects: [projectRecord({ path: "/project", name: "Project" })],
     sessions: ["alpha", "beta", "gamma"].map((sessionId) =>
       sessionSummary({ sessionId, title: `${sessionId} conversation`, projectPath: "/project" }),
@@ -91,9 +98,11 @@ function renderLayout(restoredRatio?: number) {
       snapshot: snapshot(id),
     });
   }
-  fixture.root.appShellStore.selectProjectSession("alpha");
-  fixture.root.projectWorkbenchStore.showLoadedSession("alpha");
-  fixture.root.sessionLayoutStore.ensureSession("alpha");
+  if (!restored) {
+    fixture.root.appShellStore.selectProjectSession("alpha");
+    fixture.root.projectWorkbenchStore.showLoadedSession("alpha");
+    fixture.root.sessionLayoutStore.ensureSession("alpha");
+  }
   const view = render(
     <StoreProvider store={fixture.root}>
       <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
@@ -113,6 +122,7 @@ function renderLayout(restoredRatio?: number) {
       // not Electron transport delivery or native Escape/hit testing.
       act(() => fixture.root.fullscreenSurfaceStore.requestClose(surfaceId));
     },
+    snapshot: () => toSnapshot(fixture.root),
     [Symbol.dispose]() {
       view.unmount();
       fixture[Symbol.dispose]();
@@ -159,6 +169,29 @@ function pane(title: string) {
 }
 
 describe("Session layout workflow", () => {
+  it("restores an independent unsent pane and its input after persisting the phase record", async () => {
+    let saved: StoreSnapshot;
+    {
+      using fixture = renderLayout();
+      await fixture.user.click(screen.getByRole("button", { name: "Split right" }));
+      await fixture.user.type(
+        pane("New chat").getByRole("combobox", { name: "Message" }),
+        "Unsent pane request",
+      );
+      saved = fixture.snapshot();
+    }
+    using restored = renderLayout({ restored: saved });
+    expect(pane("alpha conversation").getByRole("combobox", { name: "Message" })).toBeDefined();
+    expect(pane("New chat").getByRole("combobox", { name: "Message" })).toHaveProperty(
+      "value",
+      "Unsent pane request",
+    );
+    expect(screen.getAllByRole("combobox", { name: "Message" })).toHaveLength(2);
+    await restored.user.click(screen.getByRole("button", { name: /^beta conversation / }));
+    expect(pane("alpha conversation").getByRole("combobox", { name: "Message" })).toBeDefined();
+    expect(pane("beta conversation").getByRole("combobox", { name: "Message" })).toBeDefined();
+  });
+
   it("back enables Forward, forward returns to the selected session, and a divergent visit truncates it", async () => {
     using fixture = renderLayout();
     const back = screen.getByRole("button", { name: "Go back in session history" });
@@ -235,7 +268,7 @@ describe("Session layout workflow", () => {
   });
 
   it("restores saved split geometry into the real panes and persists a fresh split after closing one", async () => {
-    using fixture = renderLayout(0.65);
+    using fixture = renderLayout({ restoredRatio: 0.65 });
     const split = () => document.querySelector<HTMLElement>('[data-slot="session-split"]')!;
     expect(screen.getAllByRole("combobox", { name: "Message" })).toHaveLength(2);
     expect(split().style.getPropertyValue("--split-first")).toBe("0.65fr");
@@ -251,7 +284,7 @@ describe("Session layout workflow", () => {
 
   it("restores the staged draft without dropping the focused pane's persisted forward history", async () => {
     using fixture = renderLayout();
-    const newChat = () => screen.getByRole("button", { name: "Start new chat in project" });
+    const newChat = () => screen.getByRole("button", { name: "New chat in project" });
     const input = () => screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message" });
     await fixture.user.click(newChat());
     await fixture.user.type(input(), "Retained staged work");

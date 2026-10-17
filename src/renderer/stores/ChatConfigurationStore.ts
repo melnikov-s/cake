@@ -25,7 +25,7 @@ export interface ChatConfigurationStoreProps {
   deferredNewSession?(): boolean;
   /** The configuration the first prompt will carry (pending override or default preset). */
   effectiveConfiguration?(): ChatConfiguration | undefined;
-  setPendingConfiguration?(configuration: ChatConfiguration): void;
+  setPendingConfiguration?(configuration: ChatConfiguration): void | Promise<void>;
   setConfiguration(configuration: ChatConfiguration): Promise<void>;
   setModel(provider: string, modelId: string): Promise<void>;
   setThinkingLevel(level: ThinkingLevel): Promise<void>;
@@ -131,10 +131,10 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
     if (separator < 1) return;
     const provider = value.slice(0, separator);
     const modelId = value.slice(separator + 1);
-    // A deferred new session has no runtime; keep the choice locally so the
-    // first prompt carries it instead of failing to resolve an unknown session.
+    // Deferred chats have no runtime. The owner persists saved Draft choices or
+    // keeps unsaved choices locally for the first prompt.
     if (this.deferred) {
-      this.writePendingConfiguration({
+      await this.writePendingConfiguration({
         ...(this.effectiveConfiguration ?? { thinkingLevel: "off", fastMode: false }),
         provider,
         modelId,
@@ -147,7 +147,7 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
   async selectConfiguration(configuration: ChatConfiguration) {
     if (this.deferred) {
       // Presets carry presentation fields; persist only the runtime contract.
-      this.writePendingConfiguration({
+      await this.writePendingConfiguration({
         provider: configuration.provider,
         modelId: configuration.modelId,
         thinkingLevel: configuration.thinkingLevel,
@@ -176,7 +176,7 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
   async selectThinkingLevel(level: ThinkingLevel) {
     if (this.deferred) {
       const base = this.effectiveConfiguration;
-      if (base) this.writePendingConfiguration({ ...base, thinkingLevel: level });
+      if (base) await this.writePendingConfiguration({ ...base, thinkingLevel: level });
       return;
     }
     await this.run(() => this.props.setThinkingLevel(level));
@@ -185,7 +185,7 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
   async selectFastMode(enabled: boolean) {
     if (this.deferred) {
       const base = this.effectiveConfiguration;
-      if (base) this.writePendingConfiguration({ ...base, fastMode: enabled });
+      if (base) await this.writePendingConfiguration({ ...base, fastMode: enabled });
       return;
     }
     this.fastModeOverride = enabled;
@@ -194,9 +194,9 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
   }
 
   private writePendingConfiguration(configuration: ChatConfiguration) {
-    this.error = undefined;
-    this.errorDetails = undefined;
-    this.props.setPendingConfiguration?.(configuration);
+    return this.run(async () => {
+      await this.props.setPendingConfiguration?.(configuration);
+    });
   }
 
   private async run(command: () => Promise<void>) {

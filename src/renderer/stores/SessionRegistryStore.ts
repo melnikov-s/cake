@@ -128,11 +128,13 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
             projectPath,
       )
       .map((session) => {
-        const conversation = this.pendingSessions.conversation(session.sessionId)!;
+        const facts =
+          this.pendingSessions.savedRecord(session.sessionId) ??
+          this.pendingSessions.conversation(session.sessionId)!;
         return {
           sessionId: session.sessionId,
-          title: conversation.title,
-          modifiedAt: conversation.modifiedAt,
+          title: facts.title,
+          modifiedAt: facts.modifiedAt,
           workingDirectory: session.workspacePath,
           draft: true,
           familyParentSessionId: undefined,

@@ -2,15 +2,16 @@ import { Store, batch, child, computed, createStore, observable, snapshot } from
 import {
   SESSION_TITLE_MAX_LENGTH,
   type Attachment,
+  type ChatConfiguration,
 } from "../../contracts/conversations/session-contract";
 import type { ProjectSessionStore } from "./ProjectSessionStore";
 import type { SavedDraft } from "../../contracts/project-sessions/saved-draft-data";
 import type { Client } from "../client/Client";
 import type { SessionCatalogStore, PendingSessionSummary } from "./SessionCatalogStore";
-
-export type SavedDraftClient = Client["savedDrafts"];
 import { PendingConversationStore } from "./PendingConversationStore";
 import { ClientContext } from "./context/ClientContext";
+
+export type SavedDraftClient = Client["savedDrafts"];
 
 export interface ProjectPendingSessionsStoreProps {
   catalog?: SessionCatalogStore;
@@ -32,21 +33,31 @@ interface ProjectPendingSummaryMetadata {
   familyDepth?: number;
 }
 
-/** Owns window-persisted staged, saved-draft, and starting Project Session workflows. */
-export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsStoreProps> {
-  @snapshot private readonly conversationIds: string[] = observable([]);
+type UnlistedSummary = Pick<
+  PendingSessionSummary,
+  "title" | "createdAt" | "modifiedAt" | "messageCount" | "resolved"
+>;
+type PendingSessionPhase =
+  | { phase: "prepared" | "staged" | "submitting" }
   // Pi may take time to include a newly started session in its disk-backed listing.
-  @snapshot private readonly unlistedNewSessionIds: string[] = observable([]);
-  @snapshot private readonly temporarySessionIds: string[] = observable([]);
+  | { phase: "unlisted"; summary: UnlistedSummary };
+
+/** Owns window-persisted unsaved workflows and the shared Saved Draft projection. */
+export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsStoreProps> {
+  @snapshot private readonly lifecycleVersion = 1;
+  @snapshot private readonly sessionsById: Record<string, PendingSessionPhase> = observable({});
   @snapshot private readonly summaryMetadataBySession: Record<
     string,
     ProjectPendingSummaryMetadata
   > = observable({});
-  /** Unsent, unsaved project chats retained by independent session panes. */
-  @snapshot private readonly stagedSessionIds: string[] = observable([]);
-  private readonly submittingSessionIds: string[] = observable([]);
   private readonly savedRecords: Record<string, SavedDraft> = observable({});
   private loadRevision = 0;
+
+  private get conversationIds() {
+    return Object.keys(this.sessionsById).filter(
+      (id) => this.sessionsById[id]?.phase !== "unlisted",
+    );
+  }
 
   @child
   get conversations(): PendingConversationStore[] {
@@ -57,9 +68,9 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
 
   @computed
   private get conversationsById(): ReadonlyMap<string, PendingConversationStore> {
-    // Track IDs directly so lookup also sees membership changes inside a batch,
-    // before child-Store listeners flush. Reconcile the array only when rebuilding.
-    const ids = this.conversationIds.slice();
+    // Track membership directly so lookup also sees changes inside a batch,
+    // before child-Store listeners flush.
+    const ids = this.conversationIds;
     const conversations = this.conversations;
     return new Map(ids.map((sessionId, index) => [sessionId, conversations[index]!]));
   }
@@ -73,44 +84,40 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
       ...Object.keys(this.savedRecords).filter(
         (id) => this.savedRecords[id]?.status !== "activated",
       ),
-      ...this.conversations
-        .filter((conversation) => conversation.isDraft)
-        .map(({ sessionId }) => sessionId),
-      ...this.submittingSessionIds,
-      ...this.unlistedNewSessionIds,
+      ...Object.keys(this.sessionsById).filter((id) => {
+        const phase = this.sessionsById[id]?.phase;
+        return phase === "submitting" || phase === "unlisted";
+      }),
     ]);
     return [...visibleIds].flatMap((sessionId) => {
       const session = this.props.session(sessionId);
-      const conversation = this.conversation(sessionId);
-      if (!session || !conversation) return [];
+      const record = this.savedRecords[sessionId];
+      const entry = this.sessionsById[sessionId];
+      const saved = record && record.status !== "activated" ? record : undefined;
+      const facts =
+        saved ?? (entry?.phase === "unlisted" ? entry.summary : this.conversation(sessionId));
+      if (!session || !facts) return [];
       const metadata = this.summaryMetadataBySession[sessionId];
       const projectPath =
-        this.props.catalog?.projectPathFor(session.workspacePath) ?? session.workspacePath;
+        record?.projectPath ??
+        this.props.catalog?.projectPathFor(session.workspacePath) ??
+        session.workspacePath;
       return [
         {
           sessionId,
-          title: conversation.title,
-          createdAt: conversation.createdAt,
-          modifiedAt: conversation.modifiedAt,
-          messageCount: conversation.messageCount,
-          resolved: conversation.resolved,
+          title: facts.title,
+          createdAt: facts.createdAt,
+          modifiedAt: facts.modifiedAt,
+          messageCount: saved ? 0 : "messageCount" in facts ? facts.messageCount : 0,
+          resolved: facts.resolved,
           unread: false,
           running: false,
           projectPath,
           projectName: this.props.projectName(projectPath),
           workingDirectory: session.workspacePath,
-          ...(metadata?.familyId !== undefined ? { familyId: metadata.familyId } : null),
-          ...(metadata?.familyParentSessionId !== undefined
-            ? { familyParentSessionId: metadata.familyParentSessionId }
-            : null),
-          ...(metadata?.familyChildSessionIds !== undefined
-            ? { familyChildSessionIds: metadata.familyChildSessionIds }
-            : null),
-          ...(metadata?.familyChildOrder !== undefined
-            ? { familyChildOrder: metadata.familyChildOrder }
-            : null),
+          ...metadata,
           pending: true as const,
-          draft: conversation.isDraft,
+          draft: saved !== undefined,
         },
       ];
     });
@@ -118,14 +125,17 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
 
   prepare(workingDirectory: string, sessionId: string) {
     const session = this.props.prepareIdentity(sessionId, workingDirectory);
-    addUnique(this.temporarySessionIds, sessionId);
-    this.ensureConversation(sessionId);
+    if (!this.sessionsById[sessionId] && !this.savedRecords[sessionId]) {
+      this.sessionsById[sessionId] = { phase: "prepared" };
+      this.conversation(sessionId);
+    }
     return session;
   }
 
   prepareStaged(workingDirectory: string, sessionId: string) {
     const session = this.prepare(workingDirectory, sessionId);
-    addUnique(this.stagedSessionIds, sessionId);
+    if (this.sessionsById[sessionId]?.phase === "prepared")
+      this.sessionsById[sessionId] = { phase: "staged" };
     return session;
   }
 
@@ -145,9 +155,11 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
     title: string,
     family: { familyId: string; parentSessionId: string; childOrder: number; depth: number },
   ) {
-    const conversation = this.ensureConversation(sessionId);
-    conversation.setName(title);
-    conversation.fallbackTitle = title;
+    const now = new Date().toISOString();
+    this.sessionsById[sessionId] = {
+      phase: "unlisted",
+      summary: { title, createdAt: now, modifiedAt: now, messageCount: 0, resolved: false },
+    };
     this.summaryMetadataBySession[sessionId] = {
       familyId: family.familyId,
       familyParentSessionId: family.parentSessionId,
@@ -162,74 +174,93 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
         ...new Set([...(parentMetadata?.familyChildSessionIds ?? []), sessionId]),
       ],
     };
-    addUnique(this.unlistedNewSessionIds, sessionId);
   }
 
   /** Pi title events remain authoritative while a started session awaits catalog registration. */
   applyLiveTitle(sessionId: string, title: string) {
-    const conversation = this.conversation(sessionId);
-    if (this.canCreateRuntime(sessionId) && conversation && !conversation.isDraft)
-      conversation.setName(title);
+    const entry = this.sessionsById[sessionId];
+    if (entry?.phase === "unlisted" && entry.summary)
+      this.sessionsById[sessionId] = {
+        ...entry,
+        summary: { ...entry.summary, title, modifiedAt: new Date().toISOString() },
+      };
+    else if (!this.savedRecords[sessionId]) this.conversation(sessionId)?.setName(title);
   }
 
   materialize(sessionId: string, workingDirectory: string) {
-    if (!this.temporarySessionIds.includes(sessionId))
+    if (!this.isTemporary(sessionId))
       throw new Error("Only a successfully started renderer draft can be materialized.");
     return batch(() => {
       this.props.session(sessionId)?.stagedCommandStore.invalidate();
       const session = this.props.materializeIdentity(sessionId, workingDirectory);
-      removeValue(this.temporarySessionIds, sessionId);
-      removeValue(this.submittingSessionIds, sessionId);
-      removeValue(this.stagedSessionIds, sessionId);
-      this.conversation(sessionId)?.markMaterialized();
+      const facts = this.conversation(sessionId) ?? this.savedRecords[sessionId]!;
+      // Once started, this is only a temporary Pi catalog summary, never pending
+      // conversation data or a second writable representation of a saved Draft.
+      this.sessionsById[sessionId] = {
+        phase: "unlisted",
+        summary: {
+          title: facts.title,
+          createdAt: facts.createdAt,
+          modifiedAt: new Date().toISOString(),
+          messageCount: "messageCount" in facts ? Math.max(1, facts.messageCount) : 1,
+          resolved: false,
+        },
+      };
       if (this.props.catalog?.authoritativeSessionIds.includes(sessionId))
         this.clearSummary(sessionId);
-      else addUnique(this.unlistedNewSessionIds, sessionId);
       return session;
     });
   }
 
   projectSubmission(sessionId: string, text: string) {
-    if (!this.temporarySessionIds.includes(sessionId) || !this.props.session(sessionId)) return;
+    if (!this.conversation(sessionId) || !this.props.session(sessionId)) return;
+    const conversation = this.conversation(sessionId)!;
     const title = text.trim().slice(0, SESSION_TITLE_MAX_LENGTH) || "New chat";
-    addUnique(this.submittingSessionIds, sessionId);
-    removeValue(this.stagedSessionIds, sessionId);
-    const conversation = this.ensureConversation(sessionId);
-    conversation.setFallbackTitle(title);
-    conversation.messageCount = Math.max(1, conversation.messageCount);
+    batch(() => {
+      this.sessionsById[sessionId] = { phase: "submitting" };
+      conversation.setFallbackTitle(title);
+      conversation.messageCount = Math.max(1, conversation.messageCount);
+    });
   }
 
   cancelSubmission(sessionId: string) {
-    removeValue(this.submittingSessionIds, sessionId);
-    if (this.temporarySessionIds.includes(sessionId)) addUnique(this.stagedSessionIds, sessionId);
+    if (this.sessionsById[sessionId]?.phase === "submitting")
+      this.sessionsById[sessionId] = { phase: "staged" };
   }
 
   isStaged(sessionId: string) {
-    return this.stagedSessionIds.includes(sessionId);
+    return this.sessionsById[sessionId]?.phase === "staged";
   }
 
   /** A renderer-known identity whose transcript may not exist yet. */
   canCreateRuntime(sessionId: string) {
-    return this.isTemporary(sessionId) || this.unlistedNewSessionIds.includes(sessionId);
+    return this.isTemporary(sessionId) || this.sessionsById[sessionId]?.phase === "unlisted";
   }
 
   isTemporary(sessionId: string) {
-    return this.temporarySessionIds.includes(sessionId);
+    const entry = this.sessionsById[sessionId];
+    if (entry) return entry.phase !== "unlisted";
+    const saved = this.savedRecords[sessionId];
+    return saved !== undefined && saved.status !== "activated";
   }
 
   isDraft(sessionId: string) {
     return this.savedRecords[sessionId]?.status === "saved";
   }
 
+  async setConfiguration(sessionId: string, configuration: ChatConfiguration) {
+    if (this.savedRecords[sessionId]) await this.updateSavedMetadata(sessionId, { configuration });
+    else this.conversation(sessionId)?.setConfiguration(configuration);
+  }
+
   async createDraft(sessionId: string, text: string, attachments: Attachment[]) {
-    if (!this.temporarySessionIds.includes(sessionId))
+    const conversation = this.conversation(sessionId);
+    if (!conversation || !this.isTemporary(sessionId))
       throw new Error("Only a new session can be saved as a draft");
     const session = this.props.session(sessionId);
     if (!session) throw new Error("Cake could not find that new session");
     const projectPath =
       this.props.catalog?.projectPathFor(session.workspacePath) ?? session.workspacePath;
-    const conversation = this.ensureConversation(sessionId);
-    // Capture explicit naming before hydration puts the saved placeholder into conversation.name.
     const automaticTitle = !conversation.name && Boolean(text.trim());
     const record = await this.authority.create(
       {
@@ -243,9 +274,9 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
       },
       { signal: this.signal },
     );
+    if (this.signal.aborted) return;
     this.relocate(sessionId, projectPath);
     this.applySavedRecord(record);
-    removeValue(this.stagedSessionIds, sessionId);
     if (automaticTitle)
       void ClientContext.consume(this)!
         .workspaces.generateSessionTitle(text, { signal: this.signal })
@@ -269,7 +300,7 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
 
   async updateSavedMetadata(
     sessionId: string,
-    changes: Partial<Pick<SavedDraft, "title" | "resolved" | "labelIds">>,
+    changes: Partial<Pick<SavedDraft, "title" | "resolved" | "labelIds" | "configuration">>,
   ) {
     const record = this.savedRecords[sessionId];
     if (record?.status !== "saved") throw new Error("Cake could not find that saved Draft");
@@ -277,7 +308,7 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
       const updated = await this.authority.update({ ...record, ...changes }, record.revision, {
         signal: this.signal,
       });
-      this.applySavedRecord(updated);
+      if (!this.signal.aborted) this.applySavedRecord(updated);
     } catch (error) {
       await this.refreshSavedDrafts();
       throw error;
@@ -290,7 +321,7 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
     const updated = await this.authority.update({ ...record, text, attachments }, record.revision, {
       signal: this.signal,
     });
-    this.applySavedRecord(updated);
+    if (!this.signal.aborted) this.applySavedRecord(updated);
   }
 
   savedRecord(sessionId: string) {
@@ -298,7 +329,7 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
   }
 
   markActivated(record: SavedDraft) {
-    this.savedRecords[record.sessionId] = record;
+    this.applySavedRecord(record);
   }
 
   async recoverUncertain(sessionId: string) {
@@ -307,7 +338,7 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
     const recovered = await this.authority.recoverUncertain(sessionId, record.revision, {
       signal: this.signal,
     });
-    this.applySavedRecord(recovered);
+    if (!this.signal.aborted) this.applySavedRecord(recovered);
   }
 
   async refreshSavedDrafts() {
@@ -322,11 +353,7 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
     // In-flight list requests cannot overwrite a newer pushed snapshot.
     ++this.loadRevision;
     batch(() => {
-      for (const record of records) {
-        const existing = this.savedRecords[record.sessionId];
-        if (existing && existing.revision > record.revision) continue;
-        this.applySavedRecord(record);
-      }
+      for (const record of records) this.applySavedRecord(record);
       const ids = new Set(records.map((record) => record.sessionId));
       for (const id of Object.keys(this.savedRecords)) if (!ids.has(id)) this.removeSavedRecord(id);
     });
@@ -338,32 +365,35 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
   }
 
   private applySavedRecord(record: SavedDraft) {
-    this.savedRecords[record.sessionId] = record;
-    if (record.status === "activated") {
-      if (this.isTemporary(record.sessionId))
-        this.materialize(record.sessionId, record.workingDirectory);
-      return;
-    }
-    if (!this.props.session(record.sessionId)) this.prepare(record.projectPath, record.sessionId);
-    const conversation = this.ensureConversation(record.sessionId);
-    conversation.name = record.title;
-    conversation.draftPrompt = {
-      text: record.text,
-      attachments: [...record.attachments],
-      resolved: record.resolved,
-    };
-    conversation.configuration = record.configuration;
-    conversation.labelIds = record.labelIds;
-    conversation.createdAt = record.createdAt;
-    conversation.modifiedAt = record.modifiedAt;
+    const existing = this.savedRecords[record.sessionId];
+    if (existing && existing.revision > record.revision) return;
+    batch(() => {
+      if (record.status === "activated") {
+        if (this.isTemporary(record.sessionId))
+          this.materialize(record.sessionId, record.workingDirectory);
+        this.savedRecords[record.sessionId] = record;
+        return;
+      }
+      this.savedRecords[record.sessionId] = record;
+      if (!this.props.session(record.sessionId))
+        this.props.prepareIdentity(record.sessionId, record.projectPath);
+      // Saving transfers facts to the shared authority, disposing only unsaved data,
+      // not the stable ProjectSessionStore or its composer/pane presentation.
+      delete this.sessionsById[record.sessionId];
+    });
   }
 
   private removeSavedRecord(sessionId: string) {
+    const temporary = this.isTemporary(sessionId);
     delete this.savedRecords[sessionId];
-    if (this.isTemporary(sessionId)) this.props.removeSession(sessionId);
+    if (temporary) this.props.removeSession(sessionId);
   }
 
   async setLabels(sessionId: string, labelIds: readonly string[]) {
+    if (this.isDraft(sessionId)) {
+      await this.updateSavedMetadata(sessionId, { labelIds: [...new Set(labelIds)] });
+      return;
+    }
     const conversation = this.conversation(sessionId);
     if (!conversation || !this.isTemporary(sessionId))
       throw new Error("Cake could not find that pending session");
@@ -380,60 +410,35 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
   }
 
   relocate(sessionId: string, workingDirectory: string) {
-    if (!this.temporarySessionIds.includes(sessionId))
+    if (!this.isTemporary(sessionId))
       throw new Error("Only an unsent session can choose another worktree.");
     const session = this.props.session(sessionId);
     if (!session) throw new Error("Cake could not find that draft session.");
     if (session.workspacePath === workingDirectory) return;
     this.props.relocateIdentity(sessionId, workingDirectory);
     void session.stagedCommandStore.load(workingDirectory);
-    if (this.isDraft(sessionId)) this.conversation(sessionId)?.touch();
   }
 
   remove(sessionId: string) {
-    removeValue(this.temporarySessionIds, sessionId);
-    removeValue(this.stagedSessionIds, sessionId);
-    removeValue(this.unlistedNewSessionIds, sessionId);
-    removeValue(this.conversationIds, sessionId);
+    delete this.sessionsById[sessionId];
     delete this.summaryMetadataBySession[sessionId];
-    removeValue(this.submittingSessionIds, sessionId);
-  }
-
-  private ensureConversation(sessionId: string) {
-    addUnique(this.conversationIds, sessionId);
-    return this.conversation(sessionId)!;
   }
 
   private clearSummary(sessionId: string) {
-    removeValue(this.unlistedNewSessionIds, sessionId);
-    removeValue(this.conversationIds, sessionId);
+    delete this.sessionsById[sessionId];
     delete this.summaryMetadataBySession[sessionId];
   }
 
   private reconcileAuthoritativeSessions(sessionIds: readonly string[]) {
-    const authoritative = new Set(sessionIds);
-    for (let index = this.unlistedNewSessionIds.length - 1; index >= 0; index -= 1) {
-      const sessionId = this.unlistedNewSessionIds[index]!;
-      if (authoritative.has(sessionId)) this.clearSummary(sessionId);
-    }
+    for (const sessionId of sessionIds)
+      if (this.sessionsById[sessionId]?.phase === "unlisted") this.clearSummary(sessionId);
   }
 
   constructor(props: ProjectPendingSessionsStore["props"]) {
     super(props);
     this.reaction(
       () => this.props.catalog?.authoritativeSessionIds ?? [],
-      (sessionIds) => {
-        this.reconcileAuthoritativeSessions(sessionIds);
-      },
+      (sessionIds) => this.reconcileAuthoritativeSessions(sessionIds),
     );
   }
-}
-
-function addUnique(values: string[], value: string) {
-  if (!values.includes(value)) values.push(value);
-}
-
-function removeValue(values: string[], value: string) {
-  const index = values.indexOf(value);
-  if (index >= 0) values.splice(index, 1);
 }

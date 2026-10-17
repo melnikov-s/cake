@@ -49,9 +49,11 @@ export class SessionMetadataStore extends Store<{
   sessionLabelIds(sessionId: string): readonly string[] {
     const availableIds = new Set(this.availableSessionLabels(sessionId).map((label) => label.id));
     if (this.props.sessions.pendingSessions.isTemporary(sessionId))
-      return (this.props.sessions.pendingSessions.conversation(sessionId)?.labelIds ?? []).filter(
-        (labelId) => availableIds.has(labelId),
-      );
+      return (
+        this.props.sessions.pendingSessions.savedRecord(sessionId)?.labelIds ??
+        this.props.sessions.pendingSessions.conversation(sessionId)?.labelIds ??
+        []
+      ).filter((labelId) => availableIds.has(labelId));
     const session = this.props.catalog.find(sessionId);
     if (!session || session.resolved) return [];
     const assignment = this.props.projects
