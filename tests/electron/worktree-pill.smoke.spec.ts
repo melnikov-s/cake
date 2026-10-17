@@ -191,7 +191,7 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
   }
 });
 
-test("shows only the active branch or target-warning tooltip across hover and focus transitions", async () => {
+test("keeps target-warning tooltips and merges directly while preserving dirty target changes", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-worktree-tooltip-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -212,9 +212,10 @@ test("shows only the active branch or target-warning tooltip across hover and fo
   await writeFile(join(project, "target.ts"), "export const target = true;\n");
   await git(["add", "-A"]);
   await git(["commit", "-m", "advance target"]);
-  // Both checkouts are dirty, just as in the report: warning and disabled Rebase are legitimate.
-  await writeFile(join(project, "README.md"), "uncommitted target edits\n");
   await writeFile(join(worktreePath, "change.ts"), "export const change = true;\n");
+  await git(["add", "change.ts"], worktreePath);
+  await git(["commit", "-m", "worktree change"], worktreePath);
+  await writeFile(join(project, "README.md"), "uncommitted target edits\n");
   const initialTargetStatus = (await git(["status", "--porcelain"])).stdout;
   const sessionDirectory = cakeWorkspaceSessionDirectory(
     worktreePath,
@@ -283,7 +284,7 @@ test("shows only the active branch or target-warning tooltip across hover and fo
     const tooltips = page.getByRole("tooltip");
     await expect(warning).toBeVisible({ timeout: 20_000 });
     await expect(warning).toHaveAccessibleName(warningText);
-    await expect(page.getByRole("button", { name: "Rebase", exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Rebase", exact: true })).toBeEnabled();
 
     // Enter the warning directly: entering a nested trigger must not also show the branch tooltip.
     await warning.hover();
@@ -321,11 +322,17 @@ test("shows only the active branch or target-warning tooltip across hover and fo
     await page.getByLabel("Message", { exact: true }).hover();
     await expect(tooltips).toHaveCount(0);
 
-    // Tooltip changes do not alter the dirty-target safeguard or the target's files.
-    await page.getByRole("button", { name: "Commit & merge", exact: true }).click();
-    const confirmation = page.getByRole("alertdialog");
-    await expect(confirmation).toContainText("Merge with uncommitted target changes?");
-    await confirmation.getByRole("button", { name: "Cancel", exact: true }).click();
+    // Merge goes through native landing without another confirmation or a Pi commit turn.
+    await page.getByRole("button", { name: "Merge", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Resolve", exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
+    expect(await readFile(join(project, "change.ts"), "utf8")).toBe(
+      "export const change = true;\n",
+    );
+    await expect(warning).toBeVisible();
+    await warning.hover();
+    await expect(tooltips).toHaveText(warningText);
     expect((await git(["status", "--porcelain"])).stdout).toBe(initialTargetStatus);
     expect(await readFile(join(project, "README.md"), "utf8")).toBe("uncommitted target edits\n");
   } finally {

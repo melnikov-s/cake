@@ -202,7 +202,7 @@ describe("Worktree operation workflows", () => {
     });
   });
 
-  it("refreshes status when a turn ends and submits commit-and-merge with explicit dirty-target confirmation", async () => {
+  it("refreshes status when a turn ends and immediately submits commit-and-merge for a dirty target", async () => {
     const startLanding = vi.fn<Client["managedWorktrees"]["startLanding"]>(async () =>
       operation("waiting"),
     );
@@ -216,11 +216,10 @@ describe("Worktree operation workflows", () => {
     expect(screen.getByText("feature")).toBeDefined();
     await fixture.finishTurn(status({ dirtyCount: 2, targetDirty: true }));
     await fixture.user.click(await screen.findByRole("button", { name: "Commit & merge" }));
-    const dialog = screen.getByRole("alertdialog", {
-      name: "Merge with uncommitted target changes?",
-    });
-    expect(startLanding).not.toHaveBeenCalled();
-    await fixture.user.click(within(dialog).getByRole("button", { name: "Continue" }));
+    expect(startLanding).toHaveBeenCalledOnce();
+    expect(screen.getByTestId("worktree-target-warning").getAttribute("aria-label")).toBe(
+      "The merge target has uncommitted changes.",
+    );
     expect(startLanding).toHaveBeenCalledWith(
       expect.objectContaining({
         workspacePath: "/worktree",
@@ -234,6 +233,58 @@ describe("Worktree operation workflows", () => {
     expect(screen.getByRole("button", { name: "Committing…" })).toHaveProperty("disabled", true);
     expect(fixture.landing.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
+
+  it.each([
+    { label: "Merge", resolveAfterLanding: false, landed: false },
+    { label: "Merge & resolve", resolveAfterLanding: true, landed: false },
+    { label: "Land new commit", resolveAfterLanding: false, landed: true },
+  ])(
+    "submits $label directly for a dirty target and retains native failure presentation",
+    async ({ label, resolveAfterLanding, landed }) => {
+      const startLanding = vi.fn<Client["managedWorktrees"]["startLanding"]>(async (request) =>
+        operation("waiting", {
+          operationId: request.operationId,
+          allowDirtyTarget: request.allowDirtyTarget,
+          resolveAfterLanding: request.resolveAfterLanding,
+        }),
+      );
+      using fixture = renderWorktree({
+        status: status({
+          targetDirty: true,
+          record: { ...status().record, state: landed ? "landed" : "active" },
+        }),
+        client: { managedWorktrees: { startLanding } },
+      });
+      await fixture.user.click(await screen.findByRole("button", { name: label }));
+      expect(startLanding).toHaveBeenCalledOnce();
+      expect(startLanding).toHaveBeenCalledWith(
+        expect.objectContaining({
+          strategy: "preserve",
+          allowDirtyTarget: true,
+          commitBeforeLanding: true,
+          resolveAfterLanding,
+        }),
+      );
+      expect(
+        screen.getByRole("img", { name: "The merge target has uncommitted changes." }),
+      ).toBeDefined();
+
+      const request = startLanding.mock.calls[0]![0];
+      await fixture.publish(
+        operation("failed", {
+          operationId: request.operationId,
+          allowDirtyTarget: true,
+          resolveAfterLanding,
+          error: "Git refused to overwrite local changes in README.md",
+        }),
+      );
+      expect(
+        await screen.findByText("Git refused to overwrite local changes in README.md"),
+      ).toBeDefined();
+      expect(screen.getByRole("button", { name: label })).toHaveProperty("disabled", false);
+      expect(screen.getByTestId("worktree-target-warning")).toBeDefined();
+    },
+  );
 
   it("keeps dirty landed work actionable without inventing new commits", async () => {
     const startLanding = vi.fn<Client["managedWorktrees"]["startLanding"]>(async () =>
@@ -463,7 +514,10 @@ describe("Worktree operation workflows", () => {
       .fn<Client["managedWorktrees"]["startLanding"]>()
       .mockRejectedValueOnce(new Error("Landing service unavailable"))
       .mockResolvedValueOnce(operation("waiting"));
-    using fixture = renderWorktree({ client: { managedWorktrees: { startLanding } } });
+    using fixture = renderWorktree({
+      status: status({ targetDirty: true }),
+      client: { managedWorktrees: { startLanding } },
+    });
     await fixture.user.click(await screen.findByRole("button", { name: "Merge" }));
     expect(await screen.findByText("Landing service unavailable")).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: "Merge" }));

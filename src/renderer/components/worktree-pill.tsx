@@ -13,7 +13,6 @@ import {
 } from "./ai-elements/confirmation";
 import { ChatTranscriptControlsContext } from "./chat-transcript-controls-context";
 import { Button } from "./ui/button";
-import { DialogBackdrop } from "./ui/dialog";
 import { IconButton } from "./ui/icon-button";
 import {
   BranchIcon,
@@ -51,8 +50,6 @@ export interface WorktreePillProps {
   header?: ReactNode;
 }
 
-type ConfirmationKind = "dirty-target" | "dirty-target-resolve" | "discard-resolve";
-
 /** Horizontal session-start choices and deterministic worktree actions for running sessions. */
 export const WorktreePill = observer(function WorktreePill({
   creation,
@@ -67,8 +64,7 @@ export const WorktreePill = observer(function WorktreePill({
   header,
 }: WorktreePillProps) {
   const [existingOpen, setExistingOpen] = useState(false);
-  const [confirmation, setConfirmation] = useState<ConfirmationKind>();
-  const pillRef = useRef<HTMLDivElement>(null);
+  const [discardConfirmationOpen, setDiscardConfirmationOpen] = useState(false);
   const transcriptControls = useContext(ChatTranscriptControlsContext);
   const branchRef = useRef<HTMLSpanElement>(null);
   const { anchor: tooltipAnchor, hide: hideTooltip, show: showTooltip } = useTooltip();
@@ -84,7 +80,7 @@ export const WorktreePill = observer(function WorktreePill({
     queueMicrotask(onConfigured);
   };
   const run = (operation: Promise<unknown>) => {
-    setConfirmation(undefined);
+    setDiscardConfirmationOpen(false);
     transcriptControls?.scrollToBottom();
     void operation.catch(() => undefined);
   };
@@ -295,273 +291,210 @@ export const WorktreePill = observer(function WorktreePill({
   const tooltipLabel = tooltipAnchor === branchRef.current ? branch : targetWarning;
 
   return (
-    <>
-      <ComposerCap
-        ref={pillRef}
-        data-testid="worktree-pill"
-        data-slot="worktree-pill"
-        className="gap-1"
+    <ComposerCap data-testid="worktree-pill" data-slot="worktree-pill" className="gap-1">
+      {header}
+      <div
+        className="flex min-w-0 flex-nowrap items-center gap-2 text-xs"
+        data-testid="worktree-pill-toolbar"
       >
-        {header}
-        <div
-          className="flex min-w-0 flex-nowrap items-center gap-2 text-xs"
-          data-testid="worktree-pill-toolbar"
-        >
-          <span className="flex h-7.5 min-w-0 flex-1 items-center gap-1.5 px-2 text-xs font-normal text-foreground">
+        <span className="flex h-7.5 min-w-0 flex-1 items-center gap-1.5 px-2 text-xs font-normal text-foreground">
+          <span
+            ref={branchRef}
+            className="flex h-full min-w-0 items-center gap-1.5"
+            data-testid="worktree-branch"
+            tabIndex={0}
+            onMouseEnter={(event) => showTooltip(event.currentTarget)}
+            onMouseLeave={hideTooltip}
+            onFocus={(event) => showTooltip(event.currentTarget)}
+            onBlur={hideTooltip}
+          >
+            <WorktreeStatusIcon state={record.state} className="shrink-0" />
+            <span className="min-w-0 truncate">{branch}</span>
+          </span>
+          {targetWarning && (
             <span
-              ref={branchRef}
-              className="flex h-full min-w-0 items-center gap-1.5"
-              data-testid="worktree-branch"
+              className="shrink-0 cursor-default text-warning"
+              data-testid="worktree-target-warning"
+              role="img"
+              aria-label={targetWarning}
               tabIndex={0}
               onMouseEnter={(event) => showTooltip(event.currentTarget)}
               onMouseLeave={hideTooltip}
               onFocus={(event) => showTooltip(event.currentTarget)}
               onBlur={hideTooltip}
             >
-              <WorktreeStatusIcon state={record.state} className="shrink-0" />
-              <span className="min-w-0 truncate">{branch}</span>
+              <CautionIcon />
             </span>
-            {targetWarning && (
-              <span
-                className="shrink-0 cursor-default text-warning"
-                data-testid="worktree-target-warning"
-                role="img"
-                aria-label={targetWarning}
-                tabIndex={0}
-                onMouseEnter={(event) => showTooltip(event.currentTarget)}
-                onMouseLeave={hideTooltip}
-                onFocus={(event) => showTooltip(event.currentTarget)}
-                onBlur={hideTooltip}
-              >
-                <CautionIcon />
-              </span>
-            )}
-          </span>
-          {tooltipAnchor && tooltipLabel && (
-            <TooltipBubble
-              label={tooltipLabel}
-              anchor={tooltipAnchor}
-              placement={tooltipAnchor === branchRef.current ? "above" : "below"}
-            />
           )}
-          <div className="ml-auto flex min-w-0 flex-nowrap items-center justify-end gap-1">
-            {status && (!landed || hasWorkSinceLanding) && status.behindCount > 0 && (
-              <WorktreePillAction
-                icon={<RebaseIcon />}
-                aria-label="Rebase"
-                tooltip="Rebase onto target branch"
-                disabledReason={rebaseDisabledReason}
-                onClick={() => run(actions.rebase())}
-              >
-                {actions.phase === "rebasing"
-                  ? "Rebasing…"
-                  : actions.phase === "resolving-rebase"
-                    ? "Resolving rebase…"
-                    : "Rebase"}
-              </WorktreePillAction>
-            )}
-            {!landed && (
-              <>
-                <WorktreePillAction
-                  icon={<MergeIcon />}
-                  aria-label={mergeLabel}
-                  tooltip={hasUncommittedChanges ? "Commit changes and merge" : "Merge worktree"}
-                  disabledReason={mergeDisabledReason}
-                  onClick={() => {
-                    if (status?.targetDirty) {
-                      setConfirmation("dirty-target");
-                      return;
-                    }
-                    run(actions.commitAndMerge());
-                  }}
-                >
-                  {mergeLabel}
-                </WorktreePillAction>
-                {!isFamilyChild && (
-                  <WorktreePillAction
-                    icon={<MergeResolveIcon />}
-                    aria-label={mergeAndResolveLabel}
-                    tooltip={
-                      hasUncommittedChanges
-                        ? "Commit changes, merge, and resolve sessions"
-                        : "Merge and resolve sessions"
-                    }
-                    disabledReason={mergeDisabledReason}
-                    onClick={() => {
-                      if (status?.targetDirty) {
-                        setConfirmation("dirty-target-resolve");
-                        return;
-                      }
-                      run(actions.commitAndMerge(false, true));
-                    }}
-                  >
-                    {mergeAndResolveLabel}
-                  </WorktreePillAction>
-                )}
-              </>
-            )}
-            {hasWorkSinceLanding && (
+        </span>
+        {tooltipAnchor && tooltipLabel && (
+          <TooltipBubble
+            label={tooltipLabel}
+            anchor={tooltipAnchor}
+            placement={tooltipAnchor === branchRef.current ? "above" : "below"}
+          />
+        )}
+        <div className="ml-auto flex min-w-0 flex-nowrap items-center justify-end gap-1">
+          {status && (!landed || hasWorkSinceLanding) && status.behindCount > 0 && (
+            <WorktreePillAction
+              icon={<RebaseIcon />}
+              aria-label="Rebase"
+              tooltip="Rebase onto target branch"
+              disabledReason={rebaseDisabledReason}
+              onClick={() => run(actions.rebase())}
+            >
+              {actions.phase === "rebasing"
+                ? "Rebasing…"
+                : actions.phase === "resolving-rebase"
+                  ? "Resolving rebase…"
+                  : "Rebase"}
+            </WorktreePillAction>
+          )}
+          {!landed && (
+            <>
               <WorktreePillAction
                 icon={<MergeIcon />}
-                aria-label={landNewCommitsLabel}
-                tooltip={
-                  hasUncommittedChanges
-                    ? "Commit changes and land"
-                    : "Land commits added since the previous landing"
-                }
+                aria-label={mergeLabel}
+                tooltip={hasUncommittedChanges ? "Commit changes and merge" : "Merge worktree"}
                 disabledReason={mergeDisabledReason}
-                onClick={() => {
-                  if (status?.targetDirty) {
-                    setConfirmation("dirty-target");
-                    return;
+                onClick={() => run(actions.commitAndMerge(true))}
+              >
+                {mergeLabel}
+              </WorktreePillAction>
+              {!isFamilyChild && (
+                <WorktreePillAction
+                  icon={<MergeResolveIcon />}
+                  aria-label={mergeAndResolveLabel}
+                  tooltip={
+                    hasUncommittedChanges
+                      ? "Commit changes, merge, and resolve sessions"
+                      : "Merge and resolve sessions"
                   }
-                  run(actions.commitAndMerge());
-                }}
-              >
-                {landNewCommitsLabel}
-              </WorktreePillAction>
-            )}
-            {landed && !hasWorkSinceLanding && !isFamilyChild && (
+                  disabledReason={mergeDisabledReason}
+                  onClick={() => run(actions.commitAndMerge(true, true))}
+                >
+                  {mergeAndResolveLabel}
+                </WorktreePillAction>
+              )}
+            </>
+          )}
+          {hasWorkSinceLanding && (
+            <WorktreePillAction
+              icon={<MergeIcon />}
+              aria-label={landNewCommitsLabel}
+              tooltip={
+                hasUncommittedChanges
+                  ? "Commit changes and land"
+                  : "Land commits added since the previous landing"
+              }
+              disabledReason={mergeDisabledReason}
+              onClick={() => run(actions.commitAndMerge(true))}
+            >
+              {landNewCommitsLabel}
+            </WorktreePillAction>
+          )}
+          {landed && !hasWorkSinceLanding && !isFamilyChild && (
+            <WorktreePillAction
+              icon={<ResolveIcon />}
+              aria-label="Resolve"
+              tooltip="Resolve worktree sessions"
+              disabledReason={operationDisabledReason}
+              onClick={() => run(actions.resolve())}
+            >
+              {actions.phase === "resolving-session" ? "Resolving…" : "Resolve"}
+            </WorktreePillAction>
+          )}
+          {actions.stalled && (
+            <>
               <WorktreePillAction
-                icon={<ResolveIcon />}
-                aria-label="Resolve"
-                tooltip="Resolve worktree sessions"
-                disabledReason={operationDisabledReason}
-                onClick={() => run(actions.resolve())}
+                icon={<RestoreIcon />}
+                aria-label="Retry"
+                tooltip="Retry worktree operation"
+                disabledReason={sessionDisabledReason}
+                onClick={() => run(actions.retryLanding())}
               >
-                {actions.phase === "resolving-session" ? "Resolving…" : "Resolve"}
+                Retry
               </WorktreePillAction>
-            )}
-            {actions.stalled && (
-              <>
-                <WorktreePillAction
-                  icon={<RestoreIcon />}
-                  aria-label="Retry"
-                  tooltip="Retry worktree operation"
-                  disabledReason={sessionDisabledReason}
-                  onClick={() => run(actions.retryLanding())}
-                >
-                  Retry
-                </WorktreePillAction>
-                <WorktreePillAction
-                  icon={<CloseIcon size={14} />}
-                  aria-label="Dismiss"
-                  tooltip="Dismiss worktree operation"
-                  disabledReason={sessionDisabledReason}
-                  onClick={() => run(actions.cancelLanding())}
-                >
-                  Dismiss
-                </WorktreePillAction>
-              </>
-            )}
-            {actions.isQueued && (
               <WorktreePillAction
                 icon={<CloseIcon size={14} />}
-                aria-label="Cancel queued merge"
-                tooltip="Remove this merge from the queue"
+                aria-label="Dismiss"
+                tooltip="Dismiss worktree operation"
+                disabledReason={sessionDisabledReason}
                 onClick={() => run(actions.cancelLanding())}
               >
-                Cancel
+                Dismiss
               </WorktreePillAction>
-            )}
-            {(!landed || isFamilyChild) && (
-              <Popover
-                open={confirmation === "discard-resolve"}
-                onOpenChange={(open) => setConfirmation(open ? "discard-resolve" : undefined)}
+            </>
+          )}
+          {actions.isQueued && (
+            <WorktreePillAction
+              icon={<CloseIcon size={14} />}
+              aria-label="Cancel queued merge"
+              tooltip="Remove this merge from the queue"
+              onClick={() => run(actions.cancelLanding())}
+            >
+              Cancel
+            </WorktreePillAction>
+          )}
+          {(!landed || isFamilyChild) && (
+            <Popover open={discardConfirmationOpen} onOpenChange={setDiscardConfirmationOpen}>
+              <WorktreePillAction
+                popoverTrigger
+                icon={<TrashIcon />}
+                aria-label={isFamilyChild ? "Discard" : "Discard & resolve"}
+                tooltip={
+                  isFamilyChild ? "Discard worktree" : "Discard worktree and resolve sessions"
+                }
+                tone="destructive"
+                disabledReason={operationDisabledReason}
               >
-                <WorktreePillAction
-                  popoverTrigger
-                  icon={<TrashIcon />}
-                  aria-label={isFamilyChild ? "Discard" : "Discard & resolve"}
-                  tooltip={
-                    isFamilyChild ? "Discard worktree" : "Discard worktree and resolve sessions"
-                  }
-                  tone="destructive"
-                  disabledReason={operationDisabledReason}
-                >
-                  {actions.phase === "discarding"
-                    ? "Discarding…"
-                    : isFamilyChild
-                      ? "Discard"
-                      : "Discard & resolve"}
-                </WorktreePillAction>
-                <PopoverContent align="end" side="top" className="!w-80 !p-0">
-                  <Confirmation state="requested" className="border-0 shadow-none">
-                    <ConfirmationRequest>
-                      <ConfirmationTitle>Discard this worktree?</ConfirmationTitle>
-                      <ConfirmationDescription>
-                        {isFamilyChild
-                          ? "The worktree and its branch will be deleted, and all unmerged work will be lost. The Session Family will remain active."
-                          : "The worktree and its branch will be deleted, all unmerged work will be lost, and its sessions will be resolved."}
-                      </ConfirmationDescription>
-                      <ConfirmationActions>
-                        <ConfirmationAction
-                          variant="outline"
-                          onClick={() => setConfirmation(undefined)}
-                        >
-                          Cancel
-                        </ConfirmationAction>
-                        <ConfirmationAction
-                          variant="destructive"
-                          onClick={() => run(actions.discard(false, !isFamilyChild))}
-                        >
-                          {isFamilyChild ? "Discard" : "Discard & resolve"}
-                        </ConfirmationAction>
-                      </ConfirmationActions>
-                    </ConfirmationRequest>
-                  </Confirmation>
-                </PopoverContent>
-              </Popover>
-            )}
-          </div>
+                {actions.phase === "discarding"
+                  ? "Discarding…"
+                  : isFamilyChild
+                    ? "Discard"
+                    : "Discard & resolve"}
+              </WorktreePillAction>
+              <PopoverContent align="end" side="top" className="!w-80 !p-0">
+                <Confirmation state="requested" className="border-0 shadow-none">
+                  <ConfirmationRequest>
+                    <ConfirmationTitle>Discard this worktree?</ConfirmationTitle>
+                    <ConfirmationDescription>
+                      {isFamilyChild
+                        ? "The worktree and its branch will be deleted, and all unmerged work will be lost. The Session Family will remain active."
+                        : "The worktree and its branch will be deleted, all unmerged work will be lost, and its sessions will be resolved."}
+                    </ConfirmationDescription>
+                    <ConfirmationActions>
+                      <ConfirmationAction
+                        variant="outline"
+                        onClick={() => setDiscardConfirmationOpen(false)}
+                      >
+                        Cancel
+                      </ConfirmationAction>
+                      <ConfirmationAction
+                        variant="destructive"
+                        onClick={() => run(actions.discard(false, !isFamilyChild))}
+                      >
+                        {isFamilyChild ? "Discard" : "Discard & resolve"}
+                      </ConfirmationAction>
+                    </ConfirmationActions>
+                  </ConfirmationRequest>
+                </Confirmation>
+              </PopoverContent>
+            </Popover>
+          )}
         </div>
-        {hasNewCommitsSinceLanding && !actions.isQueued && (
-          <p className="px-2 text-xs text-muted-foreground">
-            {newCommitCount} new {newCommitCount === 1 ? "commit" : "commits"} since landing
-          </p>
-        )}
-        {actions.isQueued && (
-          <p className="px-2 text-xs text-muted-foreground">
-            Another merge is in progress. This merge will start automatically when it finishes.
-          </p>
-        )}
-        {actions.error && <p className="px-2 text-xs text-destructive">{actions.error}</p>}
-      </ComposerCap>
-      {(confirmation === "dirty-target" || confirmation === "dirty-target-resolve") && (
-        <DialogBackdrop
-          className="absolute"
-          portalContainer={pillRef.current?.closest<HTMLElement>('[data-slot="session-pane"]')}
-        >
-          <Confirmation
-            state="requested"
-            role="alertdialog"
-            aria-labelledby="dirty-target-title"
-            aria-describedby="dirty-target-description"
-          >
-            <ConfirmationRequest>
-              <ConfirmationTitle id="dirty-target-title">
-                Merge with uncommitted target changes?
-              </ConfirmationTitle>
-              <ConfirmationDescription id="dirty-target-description">
-                The merge target has uncommitted or untracked changes. Git will preserve them when
-                possible, but may refuse the merge if they overlap this worktree.
-              </ConfirmationDescription>
-              <ConfirmationActions>
-                <ConfirmationAction variant="outline" onClick={() => setConfirmation(undefined)}>
-                  Cancel
-                </ConfirmationAction>
-                <ConfirmationAction
-                  onClick={() =>
-                    run(actions.commitAndMerge(true, confirmation === "dirty-target-resolve"))
-                  }
-                >
-                  Continue
-                </ConfirmationAction>
-              </ConfirmationActions>
-            </ConfirmationRequest>
-          </Confirmation>
-        </DialogBackdrop>
+      </div>
+      {hasNewCommitsSinceLanding && !actions.isQueued && (
+        <p className="px-2 text-xs text-muted-foreground">
+          {newCommitCount} new {newCommitCount === 1 ? "commit" : "commits"} since landing
+        </p>
       )}
-    </>
+      {actions.isQueued && (
+        <p className="px-2 text-xs text-muted-foreground">
+          Another merge is in progress. This merge will start automatically when it finishes.
+        </p>
+      )}
+      {actions.error && <p className="px-2 text-xs text-destructive">{actions.error}</p>}
+    </ComposerCap>
   );
 });

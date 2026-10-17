@@ -654,7 +654,9 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
 
     await writeFile(join(record.worktreePath, "uncommitted.ts"), "x\n");
     await expect(
-      worktrees.land(record.worktreePath, { request: { strategy: "preserve" } }),
+      worktrees.land(record.worktreePath, {
+        request: { strategy: "preserve", allowDirtyTarget: true },
+      }),
     ).rejects.toThrow(/uncommitted changes/i);
     await rm(join(record.worktreePath, "uncommitted.ts"));
 
@@ -665,13 +667,20 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     await rm(join(repo, "dirty.ts"));
   });
 
-  it("lands after the user confirms a dirty target and preserves its changes", async () => {
+  it("lands with dirty-target permission and preserves staged, unstaged, and untracked changes", async () => {
     const repo = await repository();
     const worktrees = service();
     const record = await worktrees.create(repo);
     await writeFile(join(record.worktreePath, "feature.ts"), "feature\n");
     await commitAll(record.worktreePath, "feature");
-    await writeFile(join(repo, "in-progress.ts"), "target change\n");
+    await writeFile(join(repo, "in-progress.ts"), "staged target change\n");
+    await git(repo, "add", "in-progress.ts");
+    await writeFile(join(repo, "in-progress.ts"), "unstaged target change\n");
+    await writeFile(join(repo, "README.md"), "unfinished target edits\n");
+    await writeFile(join(repo, "scratch.ts"), "untracked target change\n");
+    const beforeStatus = (await git(repo, "status", "--porcelain")).stdout;
+    const beforeIndex = (await git(repo, "diff", "--cached")).stdout;
+    const beforeDiff = (await git(repo, "diff")).stdout;
 
     await expect(
       worktrees.land(record.worktreePath, {
@@ -679,8 +688,44 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
       }),
     ).resolves.toMatchObject({ outcome: "landed" });
     await expect(readFile(join(repo, "feature.ts"), "utf8")).resolves.toBe("feature\n");
-    await expect(readFile(join(repo, "in-progress.ts"), "utf8")).resolves.toBe("target change\n");
+    await expect(readFile(join(repo, "in-progress.ts"), "utf8")).resolves.toBe(
+      "unstaged target change\n",
+    );
+    await expect(readFile(join(repo, "scratch.ts"), "utf8")).resolves.toBe(
+      "untracked target change\n",
+    );
+    expect((await git(repo, "status", "--porcelain")).stdout).toBe(beforeStatus);
+    expect((await git(repo, "diff", "--cached")).stdout).toBe(beforeIndex);
+    expect((await git(repo, "diff")).stdout).toBe(beforeDiff);
+    expect((await git(repo, "stash", "list")).stdout).toBe("");
   });
+
+  it.each(["tracked", "untracked"] as const)(
+    "refuses to overwrite overlapping %s target changes even with dirty-target permission",
+    async (kind) => {
+      const repo = await repository();
+      const worktrees = service();
+      const record = await worktrees.create(repo);
+      const file = kind === "tracked" ? "README.md" : "feature.ts";
+      await writeFile(join(record.worktreePath, file), "source changes\n");
+      await commitAll(record.worktreePath, "feature");
+      await writeFile(join(repo, file), "unfinished target changes\n");
+      const beforeHead = (await git(repo, "rev-parse", "HEAD")).stdout;
+      const beforeStatus = (await git(repo, "status", "--porcelain")).stdout;
+
+      await expect(
+        worktrees.land(record.worktreePath, {
+          request: { strategy: "preserve", allowDirtyTarget: true },
+        }),
+      ).rejects.toThrow(/would be overwritten by merge/i);
+
+      expect(await readFile(join(repo, file), "utf8")).toBe("unfinished target changes\n");
+      expect((await git(repo, "rev-parse", "HEAD")).stdout).toBe(beforeHead);
+      expect((await git(repo, "status", "--porcelain")).stdout).toBe(beforeStatus);
+      expect((await git(repo, "stash", "list")).stdout).toBe("");
+      expect((await worktrees.records())[0]?.state).toBe("active");
+    },
+  );
 
   it("refuses to land while the canonical checkout is on another branch", async () => {
     const repo = await repository();
@@ -690,7 +735,9 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     await commitAll(record.worktreePath, "feature");
     await git(repo, "checkout", "-b", "exploration");
     await expect(
-      worktrees.land(record.worktreePath, { request: { strategy: "preserve" } }),
+      worktrees.land(record.worktreePath, {
+        request: { strategy: "preserve", allowDirtyTarget: true },
+      }),
     ).rejects.toThrow(/back to "main"/i);
     await git(repo, "checkout", "main");
   });
