@@ -370,12 +370,7 @@ describe("Transcript scrolling", () => {
     expect(virtualizedProps.current?.followOutput).toBe(false);
   });
 
-  it("cancels pending bottom alignment and only resumes after moving back down", () => {
-    const frames: FrameRequestCallback[] = [];
-    Object.assign(globalThis, {
-      requestAnimationFrame: (callback: FrameRequestCallback) => frames.push(callback),
-    });
-    const flushFrames = () => act(() => frames.splice(0).forEach((callback) => callback(0)));
+  it("aligns bottom synchronously and detaches on upward intent until moving back down", () => {
     const parts: UiPart[] = [
       { id: "assistant-1", kind: "text", role: "assistant", text: "Latest", status: "complete" },
     ];
@@ -401,7 +396,6 @@ describe("Transcript scrolling", () => {
       });
     };
     grow();
-    flushFrames();
     expect(top).toBe(900);
 
     // A queued native bottom event can arrive after upward intent, before the
@@ -412,10 +406,8 @@ describe("Transcript scrolling", () => {
       transcript.dispatchEvent(new Event("scroll"));
     });
     grow();
-    flushFrames();
     expect(top).toBe(900);
     grow();
-    flushFrames();
     expect(top).toBe(900);
     expect(scrollToIndex).not.toHaveBeenCalled();
 
@@ -425,7 +417,6 @@ describe("Transcript scrolling", () => {
       transcript.dispatchEvent(new Event("scroll"));
     });
     grow();
-    flushFrames();
     expect(top).toBe(height - 200);
 
     // Dragging the scrollbar also detaches without a wheel event.
@@ -437,7 +428,6 @@ describe("Transcript scrolling", () => {
     act(() => window.dispatchEvent(new MouseEvent("pointerup")));
     const readingTop = top;
     grow();
-    flushFrames();
     expect(top).toBe(readingTop);
   });
 

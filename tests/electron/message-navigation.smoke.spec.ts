@@ -166,9 +166,48 @@ for (const surface of ["Project Session", "Cake Chat"] as const) {
       await composer.press("ArrowUp");
       await expect(selected).toContainText("Answer 12.");
       await expectRevealed(transcript, selected);
+      // Inspect completed rendering updates, not only eventual alignment. Once
+      // the offscreen target renders, no painted frame may expose its estimate.
+      await transcript.evaluate((element) => {
+        const offsets: number[] = [];
+        let frame: number;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const sample = () => {
+          timer = setTimeout(() => {
+            const target = element.querySelector<HTMLElement>(
+              '[data-slot="transcript-item"][aria-current="true"]',
+            );
+            if (
+              target?.textContent?.includes("Answer 6.") &&
+              getComputedStyle(target).visibility === "visible"
+            )
+              offsets.push(
+                target.getBoundingClientRect().top - element.getBoundingClientRect().top,
+              );
+            frame = requestAnimationFrame(sample);
+          }, 0);
+        };
+        frame = requestAnimationFrame(sample);
+        Object.assign(element, {
+          stopNavigationFrames: () => {
+            cancelAnimationFrame(frame);
+            clearTimeout(timer);
+            return offsets;
+          },
+        });
+      });
       await selected.getByRole("link", { name: "Linked answer", exact: true }).click();
       await expect(selected).toContainText("Answer 6.");
       await expectRevealed(transcript, selected);
+      await transcript.evaluate(async () => {
+        for (let frame = 0; frame < 6; frame++)
+          await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+      });
+      const linkedOffsets = await transcript.evaluate((element) =>
+        (element as HTMLElement & { stopNavigationFrames(): number[] }).stopNavigationFrames(),
+      );
+      expect(linkedOffsets.length).toBeGreaterThan(0);
+      expect(linkedOffsets.every((offset) => Math.abs(offset - 16) <= 1)).toBe(true);
       // Focus, not a pointer click: clicking the composer intentionally clears selection.
       await composer.focus();
       await composer.press("ArrowUp");

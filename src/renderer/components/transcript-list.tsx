@@ -1,12 +1,14 @@
-import { forwardRef, type ComponentProps } from "react";
+import { forwardRef, useLayoutEffect, type ComponentProps } from "react";
 import { cn } from "@/lib/utils";
 
 export const TranscriptList = forwardRef<
   HTMLDivElement,
-  ComponentProps<"div"> & { context?: unknown }
+  ComponentProps<"div"> & { context?: { onLayout?: () => void } }
 >(function TranscriptList({ className, context, ...props }, ref) {
-  // Virtuoso's render context is not a DOM attribute.
-  void context;
+  // A measured row can resize the virtualizer's shallower container. Its
+  // ResizeObserver notification may be deferred by the browser's depth limit;
+  // reconcile this commit in a layout effect instead of painting that gap.
+  useLayoutEffect(() => context?.onLayout?.());
   return (
     <div
       ref={ref}

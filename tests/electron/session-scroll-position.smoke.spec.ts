@@ -3,7 +3,7 @@ import { createServer, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { _electron as electron, expect, test, type Locator } from "@playwright/test";
+import { _electron as electron, expect, test, type Locator, type Page } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
 
@@ -116,6 +116,62 @@ async function streamingProvider(cakeHome: string) {
   };
 }
 
+// Sample after the rendering update (all rAF callbacks and ResizeObservers), not
+// at the start of rAF where a later callback could still correct before paint.
+async function paintFrames(page: Page, count: number) {
+  await page.evaluate(async (count) => {
+    for (let frame = 0; frame < count; frame++)
+      await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+  }, count);
+}
+
+type TranscriptFrameSample = {
+  gap: number;
+  anchorId?: string;
+  anchorText?: string | null;
+  offset?: number;
+};
+
+async function startTranscriptFrameSamples(transcript: Locator) {
+  await transcript.evaluate((element) => {
+    const samples: TranscriptFrameSample[] = [];
+    let frame: number;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const tick = () => {
+      timer = setTimeout(() => {
+        const list = element.querySelector<HTMLElement>('[data-testid="virtuoso-item-list"]');
+        if (list && getComputedStyle(list).visibility === "visible") {
+          const top = element.getBoundingClientRect().top;
+          const anchor = Array.from(
+            element.querySelectorAll<HTMLElement>('[data-slot="transcript-item"]'),
+          ).find((item) => item.getBoundingClientRect().bottom > top + 1);
+          samples.push({
+            gap: element.scrollHeight - element.clientHeight - element.scrollTop,
+            anchorId: anchor?.dataset.transcriptAnchorId,
+            anchorText: anchor?.textContent,
+            offset: anchor ? anchor.getBoundingClientRect().top - top : undefined,
+          });
+        }
+        frame = requestAnimationFrame(tick);
+      }, 0);
+    };
+    frame = requestAnimationFrame(tick);
+    Object.assign(element, {
+      stopFrameSamples: () => {
+        cancelAnimationFrame(frame);
+        clearTimeout(timer);
+        return samples;
+      },
+    });
+  });
+}
+
+async function stopTranscriptFrameSamples(transcript: Locator) {
+  return transcript.evaluate((element) =>
+    (element as HTMLElement & { stopFrameSamples(): TranscriptFrameSample[] }).stopFrameSamples(),
+  );
+}
+
 async function transcriptAnchor(transcript: Locator) {
   return transcript.evaluate((element) => {
     const viewportTop = element.getBoundingClientRect().top;
@@ -153,6 +209,9 @@ async function expectRestoredAnchor(
 }
 
 for (const scenario of [
+  "keeps every streaming frame at the bottom",
+  "keeps every resize frame at the bottom",
+  "preserves the reading anchor during row resize",
   "reopens a large loaded session",
   "restores session position",
   "follows the full bottom and isolates nested scrolling",
@@ -206,7 +265,8 @@ for (const scenario of [
     ]);
 
     const stream =
-      scenario === "keeps reading position while another session streams"
+      scenario === "keeps reading position while another session streams" ||
+      scenario === "keeps every streaming frame at the bottom"
         ? await streamingProvider(cakeHome)
         : undefined;
     const application = await electron.launch({
@@ -239,6 +299,132 @@ for (const scenario of [
           ),
         )
         .toBeLessThanOrEqual(1);
+
+      if (scenario === "keeps every streaming frame at the bottom" && stream) {
+        await expect(transcript.locator('[data-slot="transcript-item"]').last()).toContainText(
+          "transcript item 47",
+        );
+        await page.getByRole("button", { name: "Model configuration" }).click();
+        await page.getByRole("button", { name: "Change model" }).click();
+        await page.getByLabel("Search presets and models").fill("Scroll fixture");
+        await page
+          .getByRole("button", { name: /Scroll fixture/ })
+          .first()
+          .click();
+        await page.getByRole("button", { name: "Apply", exact: true }).click();
+        const composer = page.getByRole("combobox", { name: "Message" });
+        await composer.click();
+        await expect(composer).toBeFocused();
+        await page.keyboard.type("Stream without jumping");
+        await expect(composer).toHaveValue("Stream without jumping");
+        await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+        await page.keyboard.press("Enter");
+        await expect.poll(stream.ready).toBe(true);
+        stream.send("Initial streaming paragraph.\n\n");
+        await expect(transcript).toContainText("Initial streaming paragraph.");
+        await paintFrames(page, 6);
+        await startTranscriptFrameSamples(transcript);
+        for (let index = 0; index < 4; index++) {
+          stream.send(
+            Array.from(
+              { length: 6 },
+              (_, line) =>
+                `Chunk ${index} paragraph ${line}. Streaming content changes the real message height.\n\n`,
+            ).join(""),
+          );
+          await expect(transcript).toContainText(`Chunk ${index} paragraph 5.`);
+          await paintFrames(page, 6);
+        }
+        stream.finish();
+        await expect(firstSession.locator('[aria-label="Running"]')).toHaveCount(0);
+        await paintFrames(page, 6);
+        const samples = await stopTranscriptFrameSamples(transcript);
+        expect(samples.length).toBeGreaterThan(10);
+        expect(Math.max(...samples.map((sample) => sample.gap))).toBeLessThanOrEqual(1);
+        return;
+      }
+
+      if (scenario === "keeps every resize frame at the bottom") {
+        await expect(transcript.locator('[data-slot="transcript-item"]').last()).toContainText(
+          "transcript item 47",
+        );
+        await paintFrames(page, 6);
+        await startTranscriptFrameSamples(transcript);
+        for (const height of [700, 1100, 400]) {
+          await transcript.evaluate(
+            (element, height) =>
+              new Promise<void>((resolve) =>
+                requestAnimationFrame(() => {
+                  const row = Array.from(
+                    element.querySelectorAll<HTMLElement>('[data-slot="transcript-item"]'),
+                  ).at(-1);
+                  if (!row) throw new Error("Missing transcript row");
+                  row.style.minHeight = `${height}px`;
+                  resolve();
+                }),
+              ),
+            height,
+          );
+          await paintFrames(page, 6);
+        }
+        const composer = page.getByRole("combobox", { name: "Message" });
+        await composer.fill(Array.from({ length: 15 }, (_, index) => `Line ${index}`).join("\n"));
+        await paintFrames(page, 6);
+        await composer.fill("");
+        await paintFrames(page, 6);
+        const samples = await stopTranscriptFrameSamples(transcript);
+        expect(samples.length).toBeGreaterThan(10);
+        expect(Math.max(...samples.map((sample) => sample.gap))).toBeLessThanOrEqual(1);
+        expect(samples.every((sample) => sample.anchorId !== undefined)).toBe(true);
+        return;
+      }
+
+      if (scenario === "preserves the reading anchor during row resize") {
+        await expect(transcript.locator('[data-slot="transcript-item"]').last()).toContainText(
+          "transcript item 47",
+        );
+        await transcript.hover({ position: { x: 20, y: 200 } });
+        const bottomTop = await transcript.evaluate((element) => element.scrollTop);
+        await page.mouse.wheel(0, -100);
+        await expect
+          .poll(() => transcript.evaluate((element) => element.scrollTop))
+          .toBeLessThan(bottomTop - 50);
+        await paintFrames(page, 6);
+        const saved = await transcriptAnchor(transcript);
+        await startTranscriptFrameSamples(transcript);
+        for (const delta of [100, -50]) {
+          await transcript.evaluate(
+            (element, delta) =>
+              new Promise<void>((resolve) =>
+                requestAnimationFrame(() => {
+                  const top = element.getBoundingClientRect().top;
+                  const above = Array.from(
+                    element.querySelectorAll<HTMLElement>('[data-slot="transcript-item"]'),
+                  ).find((row) => row.getBoundingClientRect().bottom <= top);
+                  if (!above) throw new Error("Missing overscanned row above the reading anchor");
+                  above.style.minHeight = `${above.offsetHeight + delta}px`;
+                  resolve();
+                }),
+              ),
+            delta,
+          );
+          await paintFrames(page, 8);
+        }
+        const composer = page.getByRole("combobox", { name: "Message" });
+        await composer.fill("Line one\nLine two\nLine three\nLine four");
+        await paintFrames(page, 6);
+        await composer.fill("");
+        await paintFrames(page, 6);
+        const samples = await stopTranscriptFrameSamples(transcript);
+        expect(samples.length).toBeGreaterThan(2);
+        expect(
+          samples.filter(
+            (sample) =>
+              sample.anchorText !== saved.text || Math.abs(sample.offset! - saved.offset) > 1,
+          ),
+        ).toEqual([]);
+        return;
+      }
 
       if (scenario === "escapes bottom following during height measurement") {
         // Growing the last row starts bottom alignment. Reproduce the ordering
