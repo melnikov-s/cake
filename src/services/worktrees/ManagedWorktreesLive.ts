@@ -27,7 +27,7 @@ import {
   type WorktreeStatus,
 } from "../../contracts/worktrees/worktree-contract";
 import { Git } from "../git/Git";
-import { WorktreeStorage } from "../storage/WorktreeStorage";
+import { WorktreeStorage, type WorktreeStorageError } from "../storage/WorktreeStorage";
 import { ManagedWorktreeError } from "../../contracts/worktrees/managed-worktrees-errors";
 import { ManagedWorktrees } from "./ManagedWorktrees";
 import { renderWorktreeCommand, type WorktreeCommandVariables } from "./worktree-command-template";
@@ -61,7 +61,7 @@ const slugify = (value: string) =>
  * interruptible Deferred queues with exact FIFO promotion. */
 export const ManagedWorktreesLive: Layer.Layer<
   ManagedWorktrees,
-  never,
+  WorktreeStorageError,
   | Git
   | WorktreeStorage
   | FileSystem.FileSystem
@@ -76,7 +76,7 @@ export const ManagedWorktreesLive: Layer.Layer<
     const path = yield* Path.Path;
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const scope = yield* Effect.scope;
-    const initialRecords = yield* storage.load().pipe(Effect.orDie);
+    const initialRecords = yield* storage.load();
     const recordsRef = yield* Ref.make<ReadonlyArray<WorktreeRecord>>(initialRecords);
     const recordsLock = yield* Semaphore.make(1);
     const repositoryLocks = yield* Ref.make(new Map<string, Semaphore.Semaphore>());

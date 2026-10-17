@@ -4,8 +4,8 @@ import { atomicWriteFile } from "./internal/atomicFile";
 import { WorktreeStorage, WorktreeStorageError } from "./WorktreeStorage";
 
 const StoredWorktrees = Schema.Struct({
-  schemaVersion: Schema.Literal(1).pipe(Schema.withDecodingDefaultKey(Effect.succeed(1 as const))),
-  records: Schema.Array(WorktreeRecord).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
+  schemaVersion: Schema.Literal(1),
+  records: Schema.Array(WorktreeRecord),
 });
 
 const messageOf = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
@@ -33,8 +33,12 @@ export const makeWorktreeStorageLive = (
           .pipe(Effect.mapError((cause) => storageError("WorktreeStorage.load", cause)));
         return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(StoredWorktrees))(text).pipe(
           Effect.map((document) => [...document.records]),
-          // Preserve the established recovery policy for malformed legacy storage.
-          Effect.catch(() => Effect.succeed([])),
+          Effect.mapError((cause) =>
+            storageError(
+              "WorktreeStorage.load",
+              `Cannot decode worktree catalog at ${storagePath}: ${messageOf(cause)}`,
+            ),
+          ),
         );
       });
 

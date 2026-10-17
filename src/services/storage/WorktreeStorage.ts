@@ -10,6 +10,7 @@ export class WorktreeStorageError extends Schema.TaggedError<WorktreeStorageErro
 ) {}
 
 export interface WorktreeStorageService {
+  /** Only a missing file is empty. Invalid or unsupported documents fail without rewriting them. */
   readonly load: () => Effect.Effect<ReadonlyArray<WorktreeRecord>, WorktreeStorageError>;
   readonly save: (
     records: ReadonlyArray<WorktreeRecord>,
