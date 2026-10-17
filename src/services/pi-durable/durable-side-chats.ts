@@ -12,7 +12,6 @@ import {
   type EntryId,
   type EntryQuery,
   type Harness,
-  type InboxItem,
   type Storage,
   type Tx,
 } from "@earendil-works/pi-durable";
@@ -28,7 +27,6 @@ import type {
   PiSessionPreview,
   UiPart,
 } from "../../contracts/conversations/session-contract";
-import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import { applyPiSetting, projectPiSettings } from "../pi/runtime/settings-translation";
 import { projectSessionEntries, queuedUserMessageDisplay } from "../pi/runtime/session-projection";
 import { TurnCanceledError } from "../pi/runtime/RuntimeTurnCompletion";
@@ -39,14 +37,12 @@ import type {
 import { supportsFastMode } from "../pi/fast-mode";
 import { changeConversation, markSystemCarried } from "./durable-chat-engine";
 import { readDurableOriginalPage } from "./durable-chat-history";
-import { abortDurableActiveTurn, startDurableQueuedInput } from "./durable-chat-queue";
+import { abortDurableActiveTurn, createDurableConversationQueue } from "./durable-chat-queue";
 import {
   DURABLE_SIDE_CHAT_NOTE,
   durableInputText,
-  durableQueuedDisplayText,
   durableQueuedInput,
   durableQueuedText,
-  markDurableInputSteering,
   withoutDurableSideChatNote,
 } from "./durable-input-presentation";
 
@@ -165,24 +161,17 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
     let disposed = false;
     let streaming = false;
     let activeTurnIds: string[] = [];
-    const inbox = async () =>
-      (await harness.snapshot(InboxDoc, conversation.id, BACKGROUND_CONTEXT))?.items ?? [];
-    const queued = async () => {
-      const items = await inbox();
-      const lane = (mode: InboxItem["mode"]) =>
-        items
-          .filter((item): item is Extract<InboxItem, { content: unknown }> => item.mode === mode)
-          .map((item) => durableQueuedDisplayText(item.content));
-      return { steering: lane("steer"), followUp: lane("followUp") };
-    };
-    const requestId = async (item: InboxItem) =>
-      (await storage.submission(item.id, BACKGROUND_CONTEXT))?.requestId ?? String(item.id);
-    const itemFor = async (partId: string) => {
-      for (const item of await inbox())
-        if (partId === `queued-${await requestId(item)}` || partId === (await requestId(item)))
-          return item;
-      throw new Error("That queued message no longer exists");
-    };
+    const {
+      inbox,
+      requestId,
+      operations: queueOperations,
+    } = createDurableConversationQueue({
+      harness,
+      conversation,
+      storage,
+      kind: "side-chat",
+      executingTurnIds: () => activeTurnIds,
+    });
     const history = (cursor?: string) =>
       readDurableOriginalPage(
         ownEntries(
@@ -369,86 +358,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
           );
         }
       },
-      listQueuedMessages: queued,
-      async pendingMessages() {
-        const items = (await inbox()).filter((item) => item.mode !== "write");
-        return {
-          items: await Promise.all(
-            items.map(async (item, index) => {
-              const id = await requestId(item);
-              const text = durableQueuedText(item.content);
-              return {
-                itemId: id,
-                partId: `queued-${id}`,
-                lane: item.mode === "steer" ? ("steering" as const) : ("follow-up" as const),
-                position: items.slice(0, index + 1).filter((other) => other.mode === item.mode)
-                  .length,
-                state: "queued" as const,
-                text,
-                crossSession: parseCrossSessionMessage(text)?.metadata,
-              };
-            }),
-          ),
-        };
-      },
-      async reorderPendingMessage(input) {
-        const item = await itemFor(input.itemId);
-        await conversation.commit(async (tx) => {
-          const doc = await tx.doc(InboxDoc, conversation.id);
-          const index = doc.items.findIndex((entry) => entry.id === item.id);
-          if (index < 0) throw new Error("That message was already consumed");
-          const [moved] = doc.items.splice(index, 1);
-          const positions = doc.items.flatMap((entry, position) =>
-            entry.mode === item.mode ? [position] : [],
-          );
-          doc.items.splice(positions[input.position - 1] ?? doc.items.length, 0, moved!);
-        }, BACKGROUND_CONTEXT);
-        return runtime.pendingMessages();
-      },
-      async clearQueue() {
-        for (const item of await inbox())
-          if (item.mode !== "write")
-            await harness.abortSubmission(item.id, BACKGROUND_CONTEXT, conversation.id);
-        return queued();
-      },
-      async cancelSteering() {
-        for (const item of await inbox())
-          if (item.mode === "steer")
-            await harness.abortSubmission(item.id, BACKGROUND_CONTEXT, conversation.id);
-        return queued();
-      },
-      async removeQueuedMessage(partId) {
-        const item = await itemFor(partId);
-        const result = await harness.abortSubmission(item.id, BACKGROUND_CONTEXT, conversation.id);
-        if (result === "already_placed") throw new Error("That message was already consumed");
-        return queued();
-      },
-      async steerQueuedMessage(partId) {
-        const item = await itemFor(partId);
-        await conversation.commit(async (tx) => {
-          const doc = await tx.doc(InboxDoc, conversation.id);
-          const queuedItem = doc.items.find((entry) => entry.id === item.id);
-          if (!queuedItem || queuedItem.mode === "write")
-            throw new Error("That message was already consumed");
-          queuedItem.mode = "steer";
-          if (typeof queuedItem.content === "string")
-            queuedItem.content = markDurableInputSteering(queuedItem.content);
-          else {
-            const block = queuedItem.content.find((entry) => entry.type === "text");
-            if (block?.type === "text") block.text = markDurableInputSteering(block.text);
-          }
-        }, BACKGROUND_CONTEXT);
-        return queued();
-      },
-      async sendQueuedMessageNow(partId) {
-        const item = partId
-          ? await itemFor(partId)
-          : (await inbox()).find((entry) => entry.mode !== "write");
-        if (!item || item.mode === "write") throw new Error("No queued message to send");
-        const abortedTurnIds = [...activeTurnIds];
-        await startDurableQueuedInput(harness, conversation, item.id);
-        return { queued: await queued(), abortedTurnIds };
-      },
+      ...queueOperations,
       setUserMessageMarkdown: unsupported,
       async compact(instructions) {
         const job = await conversation.compact(instructions, BACKGROUND_CONTEXT);

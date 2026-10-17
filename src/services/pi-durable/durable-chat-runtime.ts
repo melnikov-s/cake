@@ -9,7 +9,6 @@ import {
   InboxDoc,
   LiveDoc,
   UsageDoc,
-  type InboxItem,
   type HarnessSettings,
 } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
@@ -29,13 +28,11 @@ import type {
   UiPart,
 } from "../../contracts/conversations/session-contract";
 import type { JsonObject, JsonValue } from "../../contracts/serialization/json-contract";
-import type { PiPendingMessageReorder } from "../../contracts/conversations/pending-message-data";
 import type {
   CakeModelSelection,
   ExplicitCakeModelSelection,
   CakeModelLaunch,
 } from "../../contracts/model-presets/cake-model-selection";
-import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import {
   CakeOperationRegistry,
   cakeToolDescription,
@@ -66,7 +63,7 @@ import { durableChatDatabase } from "./durable-chat-location";
 import { coordinatorSystemPrompt } from "./coordinator-system-prompt";
 import { cakeAgentDocumentationDirectory } from "../pi/runtime/cake-agent-documentation";
 import { createDurableChatCommands } from "./durable-chat-commands";
-import { abortDurableActiveTurn, startDurableQueuedInput } from "./durable-chat-queue";
+import { abortDurableActiveTurn, createDurableConversationQueue } from "./durable-chat-queue";
 import { loadAgentDirectoryExtensions } from "../pi/runtime/extension-providers";
 import {
   cakeChatExecutionEnv,
@@ -80,11 +77,9 @@ import { SubagentResult, SubagentReportOrigin } from "../../contracts/subagents/
 import { Option } from "effect";
 import {
   durableInputText,
-  durableQueuedDisplayText,
   durableQueuedInput,
   durableQueuedPresentation,
   durableQueuedText,
-  markDurableInputSteering,
 } from "./durable-input-presentation";
 import { durableInputResponse, previousDurableResponseMode } from "./durable-response-mode";
 import type { ConversationResponseMode } from "../../contracts/conversations/response-mode-reminders";
@@ -375,29 +370,17 @@ export async function createDurableCakeChatRuntime(
       );
     },
   });
-  const inbox = async () =>
-    (await engine.harness.snapshot(InboxDoc, engine.root.id, BACKGROUND_CONTEXT))?.items ?? [];
-  const queued = async () => {
-    const items = await inbox();
-    return {
-      steering: items
-        .filter((item): item is Extract<InboxItem, { content: unknown }> => item.mode === "steer")
-        .map((item) => durableQueuedDisplayText(item.content)),
-      followUp: items
-        .filter(
-          (item): item is Extract<InboxItem, { content: unknown }> => item.mode === "followUp",
-        )
-        .map((item) => durableQueuedDisplayText(item.content)),
-    };
-  };
-  const requestId = async (item: InboxItem) =>
-    (await storage.submission(item.id, BACKGROUND_CONTEXT))?.requestId ?? String(item.id);
-  const itemFor = async (partId: string) => {
-    for (const item of await inbox())
-      if (partId === `queued-${await requestId(item)}` || partId === (await requestId(item)))
-        return item;
-    throw new Error("That queued message no longer exists");
-  };
+  const {
+    inbox,
+    requestId,
+    operations: queueOperations,
+  } = createDurableConversationQueue({
+    harness: engine.harness,
+    conversation: engine.root,
+    storage,
+    kind: "root",
+    executingTurnIds: () => activeTurnIds,
+  });
   const history = (cursor?: string) => readDurableOriginalPage(engine.root, cursor);
   const configureAgent = async () => {
     await engine.root.configure(
@@ -672,90 +655,7 @@ export async function createDurableCakeChatRuntime(
       );
       await submission.wait(BACKGROUND_CONTEXT);
     },
-    listQueuedMessages: queued,
-    async pendingMessages() {
-      const items = (await inbox()).filter((item) => item.mode !== "write");
-      return {
-        items: await Promise.all(
-          items.map(async (item, index) => {
-            const id = await requestId(item);
-            const text = durableQueuedText(item.content);
-            return {
-              itemId: id,
-              partId: `queued-${id}`,
-              lane: item.mode === "steer" ? ("steering" as const) : ("follow-up" as const),
-              position: items.slice(0, index + 1).filter((other) => other.mode === item.mode)
-                .length,
-              state: "queued" as const,
-              text,
-              crossSession: parseCrossSessionMessage(text)?.metadata,
-            };
-          }),
-        ),
-      };
-    },
-    async reorderPendingMessage(input: PiPendingMessageReorder) {
-      const item = await itemFor(input.itemId);
-      await engine.root.commit(async (tx) => {
-        const doc = await tx.doc(InboxDoc, engine.root.id);
-        const index = doc.items.findIndex((entry) => entry.id === item.id);
-        if (index < 0) throw new Error("That message was already consumed");
-        const [moved] = doc.items.splice(index, 1);
-        const positions = doc.items.flatMap((entry, position) =>
-          entry.mode === item.mode ? [position] : [],
-        );
-        const target = positions[input.position - 1] ?? doc.items.length;
-        doc.items.splice(target, 0, moved!);
-      }, BACKGROUND_CONTEXT);
-      return runtime.pendingMessages();
-    },
-    async clearQueue() {
-      for (const item of await inbox())
-        if (item.mode !== "write")
-          await engine.harness.abortSubmission(item.id, BACKGROUND_CONTEXT, engine.root.id);
-      return queued();
-    },
-    async cancelSteering() {
-      for (const item of await inbox())
-        if (item.mode === "steer")
-          await engine.harness.abortSubmission(item.id, BACKGROUND_CONTEXT, engine.root.id);
-      return queued();
-    },
-    async removeQueuedMessage(partId) {
-      const item = await itemFor(partId);
-      const result = await engine.harness.abortSubmission(
-        item.id,
-        BACKGROUND_CONTEXT,
-        engine.root.id,
-      );
-      if (result === "already_placed") throw new Error("That message was already consumed");
-      return queued();
-    },
-    async steerQueuedMessage(partId) {
-      const item = await itemFor(partId);
-      await engine.root.commit(async (tx) => {
-        const doc = await tx.doc(InboxDoc, engine.root.id);
-        const queuedItem = doc.items.find((entry) => entry.id === item.id);
-        if (!queuedItem || queuedItem.mode === "write")
-          throw new Error("That message was already consumed");
-        queuedItem.mode = "steer";
-        if (typeof queuedItem.content === "string")
-          queuedItem.content = markDurableInputSteering(queuedItem.content);
-        else
-          for (const block of queuedItem.content)
-            if (block.type === "text") block.text = markDurableInputSteering(block.text);
-      }, BACKGROUND_CONTEXT);
-      return queued();
-    },
-    async sendQueuedMessageNow(partId) {
-      const item = partId
-        ? await itemFor(partId)
-        : (await inbox()).find((entry) => entry.mode !== "write");
-      if (!item || item.mode === "write") throw new Error("No queued message to send");
-      const abortedTurnIds = [...activeTurnIds];
-      await startDurableQueuedInput(engine.harness, engine.root, item.id);
-      return { queued: await queued(), abortedTurnIds };
-    },
+    ...queueOperations,
     setUserMessageMarkdown: unsupported,
     async compact(instructions) {
       const job = await engine.root.compact(instructions, BACKGROUND_CONTEXT);
