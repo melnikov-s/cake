@@ -14,7 +14,12 @@ import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-pr
 import { WorktreePill } from "../../../src/renderer/components/worktree-pill";
 import { SavedDraftRecovery } from "../../../src/renderer/components/saved-draft-recovery";
 import { fakeSavedDrafts } from "./fakes/saved-drafts";
-import { fixtureTimestamp, projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
+import {
+  fixtureTimestamp,
+  projectRecord,
+  sessionSummary,
+  type SessionSummaryFixture,
+} from "./fixtures/catalog-fixtures";
 import { applySessionCatalogGroupUpdate } from "../../../src/renderer/reducers/CatalogReducer";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import type { TestClientOverrides } from "./test-client";
@@ -52,9 +57,14 @@ function deferred<Value>() {
   });
   return { promise, resolve, reject };
 }
-async function renderDrafts(drafts = fakeSavedDrafts(), client: TestClientOverrides = {}) {
+async function renderDrafts(
+  drafts = fakeSavedDrafts(),
+  client: TestClientOverrides = {},
+  initialSessions: SessionSummaryFixture[] = [],
+) {
   const fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: projectPath, name: "Project" })],
+    sessions: initialSessions,
     client: {
       ...client,
       savedDrafts: { ...drafts.client, ...client.savedDrafts },
@@ -175,7 +185,10 @@ async function renderDrafts(drafts = fakeSavedDrafts(), client: TestClientOverri
           {
             _tag: "Snapshot",
             revision: 1,
-            sessions: [sessionSummary({ sessionId, projectPath, title, messageCount: 1 })],
+            sessions: [
+              ...initialSessions,
+              sessionSummary({ sessionId, projectPath, title, messageCount: 1 }),
+            ],
           },
         ),
       );
@@ -325,6 +338,57 @@ describe("Saved Draft workflows", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
+  it("keeps one selected sidebar identity through activation and catalog takeover in a full session list", async () => {
+    const drafts = fakeSavedDrafts();
+    const title = "Duplicate title";
+    drafts.records.set(sessionId, savedDraft({ title }));
+    const otherId = "10000000-0000-4000-8000-000000000003";
+    drafts.records.set(otherId, savedDraft({ sessionId: otherId, title }));
+    const start = vi.fn<Client["projectSessions"]["start"]>();
+    const activate = vi.fn(drafts.client.activate);
+    using fixture = await renderDrafts(
+      drafts,
+      { savedDrafts: { activate }, projectSessions: { start } },
+      Array.from({ length: 10 }, (_, index) =>
+        sessionSummary({
+          sessionId: `recent-${index}`,
+          projectPath,
+          title: `Recent Pi session ${index}`,
+          // Real lightweight Pi entries need not have inspected messages.
+          messageCount: 0,
+          modifiedAt: "2026-02-01T00:00:00.000Z",
+        }),
+      ),
+    );
+    const rows = () => sidebar().getAllByRole("button", { name: /^Duplicate title / });
+    const rowIds = () =>
+      rows().map((row) => row.closest("[data-session-id]")?.getAttribute("data-session-id"));
+    expect(rowIds().sort()).toEqual([sessionId, otherId]);
+    const held = drafts.holdActivation();
+    await fixture.user.click(screen.getByRole("button", { name: "Activate draft" }));
+    const claimed = await held.claimed;
+    await fixture.publishDrafts([claimed, drafts.records.get(otherId)!]);
+    expect(rowIds().sort()).toEqual([sessionId, otherId]);
+    expect(screen.getByText(/This saved Draft may already have started/)).toBeDefined();
+
+    // The Pi catalog may arrive before the Saved Draft activation result. It must
+    // replace the same selected row, not duplicate it or drop it below Show more.
+    fixture.publishCatalog(title);
+    expect(rowIds().sort()).toEqual([sessionId, otherId]);
+    await act(async () => held.release());
+    await waitFor(() => expect(input()).toBeDefined());
+    expect(rowIds().sort()).toEqual([sessionId, otherId]);
+    const selected = rows().find(
+      (row) => row.closest("[data-session-id]")?.getAttribute("data-session-id") === sessionId,
+    );
+    expect(selected?.textContent).not.toContain("Draft");
+    expect(activate).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ sessionId, expectedRevision: 1 }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(start).not.toHaveBeenCalled();
+  });
+
   it("saves an attachment-only draft, restores it in a fresh window, and activates the same identity", async () => {
     const drafts = fakeSavedDrafts();
     const create = vi.fn(drafts.client.create);
@@ -466,7 +530,7 @@ describe("Saved Draft workflows", () => {
   });
 
   // Known production blocker: materializeIdentity asserts the old temporary directory before
-  // relocating it. Keep this real-Root regression alongside the retained legacy relocation case.
+  // relocating it. Keep the real Chat/sidebar regression rather than weakening the expected failure.
   it.fails("adopts another window's activated Working Directory without changing session identity", async () => {
     const drafts = fakeSavedDrafts();
     drafts.records.set(sessionId, savedDraft());
