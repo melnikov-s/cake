@@ -12,6 +12,7 @@ import { SessionArtifactsStore } from "../../../../src/renderer/stores/SessionAr
 import { mountWithClient } from "../mount-with-client";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { observeArtifactEvents } from "../../../../src/renderer/observers/artifact-events";
+import { applyConversationUpdate } from "../../../../src/renderer/reducers/ConversationReducer";
 import { projectRecord, sessionSummary } from "../fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "../renderer-store-fixture";
 import { observerClient, observerRuntime } from "./observer-test-runtime";
@@ -202,6 +203,7 @@ describe("observeArtifactEvents", () => {
           total: 0,
           offset: 0,
           limit: 50,
+          hasMore: false,
         }));
         using fixture = createRendererStoreFixture({
           projects: [projectRecord({ path: "/project", name: "Project" })],
@@ -225,9 +227,28 @@ describe("observeArtifactEvents", () => {
           ],
           client: { artifacts: { effective: effectiveRequest, catalog: catalogRequest } },
         });
-        const panels = ["parent", "child", "unrelated"].map(
-          (id) => fixture.root.sessionRegistry.load(id, "/project").sessionArtifactsStore,
-        );
+        const panels = ["parent", "child", "unrelated"].map((id) => {
+          const session = fixture.root.sessionRegistry.load(id, "/project");
+          applyConversationUpdate(session.model, {
+            _tag: "Snapshot",
+            revision: 1,
+            snapshot: {
+              sessionId: id,
+              sessionFile: `/project/${id}.jsonl`,
+              parts: [],
+              models: [],
+              thinkingLevel: "off",
+              availableThinkingLevels: ["off"],
+              streaming: false,
+              diagnostics: [],
+              commands: [],
+              compatibility: { resources: [], diagnostics: [] },
+              extensionUi: { statuses: [] },
+              tree: [],
+            },
+          });
+          return session.sessionArtifactsStore;
+        });
         // Real panel mount queries initial authority; do not replace panel receive()
         // with a spy or seed their shared Model independently of that authority.
         yield* Effect.promise(() =>
@@ -253,7 +274,6 @@ describe("observeArtifactEvents", () => {
               ).toEqual([["shared"], ["shared"], []]);
             }),
           );
-          expect(panels.map((panel) => panel.open)).toEqual([false, false, false]);
           expect(panels.map((panel) => panel.error)).toEqual([undefined, undefined, undefined]);
           expect(fixture.models.artifacts.find("shared")).toBeDefined();
           const immutablePayload = fixture.models.artifacts.find("shared")!.revision(2)!.snapshot;

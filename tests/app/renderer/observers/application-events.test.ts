@@ -6,7 +6,6 @@ import type { Client } from "../../../../src/renderer/client/Client";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { piSettingsSchema } from "../../../../src/contracts/conversations/session-contract";
 import { projectPiSettings } from "../../../../src/services/pi/runtime/settings-translation";
-import type { CakeEvent } from "../../../../src/contracts/application/cake-rpc-contract";
 import type { CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
 import { observeApplicationEvents } from "../../../../src/renderer/observers/application-events";
 import { createRendererStoreFixture } from "../renderer-store-fixture";
@@ -69,7 +68,7 @@ describe("observeApplicationEvents", () => {
   });
 
   it("has one native request intake, never replays duplicates, and stops late widget replies on disposal", async () => {
-    const events = Effect.runSync(Queue.unbounded<CakeEvent>());
+    const events = Effect.runSync(Queue.unbounded<typeof applicationEventSchema.Type>());
     const enter = vi.fn<CakeIpcClientService["browser"]["native-browser-enter"]>(() =>
       Effect.succeed({}),
     );
@@ -98,7 +97,10 @@ describe("observeApplicationEvents", () => {
     const setError = vi.spyOn(fixture.root.projectWorkbenchStore, "setError");
     const root = fixture.root;
     const stop = observeApplicationEvents(observerRuntime(client), root);
-    const request: Extract<CakeEvent, { type: "browser-native-requested" }> = {
+    const request: Extract<
+      typeof applicationEventSchema.Type,
+      { type: "browser-native-requested" }
+    > = {
       type: "browser-native-requested",
       requestId: "00000000-0000-4000-8000-000000000001",
       sessionId: "session",
