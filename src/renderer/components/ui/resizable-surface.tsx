@@ -48,8 +48,7 @@ export function ResizableSurface({
       {createPortal(children, mount)}
       {renderExpanded?.(expandedRef)}
       {!renderExpanded && (
-        <div className="relative h-7 border-t border-border text-center text-xs leading-7 text-muted-foreground">
-          Drag to resize · arrow keys when focused
+        <div className="relative h-7 border-t border-border">
           <ResizeHandle
             label={`Resize ${label}`}
             value={height}
