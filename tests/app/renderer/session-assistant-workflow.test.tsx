@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { cleanup, screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import type { Client } from "../../../src/renderer/client/Client";
@@ -11,6 +11,84 @@ afterEach(cleanup);
 // These exercise rendered state and service payloads, not native portal, focus,
 // or parent-composer selection behavior (which needs Electron verification).
 describe("Session assistant workflow", () => {
+  it("sends parent composer selection with the first quick prompt only, then reuses the assistant without resending it", async () => {
+    const ensure = vi.fn<Client["discussionSessions"]["ensureSessionAssistant"]>(async () => ({
+      thread: assistantThread,
+      turnId,
+    }));
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () => turnId);
+    using fixture = renderSessionAssistant(
+      { discussionSessions: { ensureSessionAssistant: ensure }, sessionChats: { prompt } },
+      { parentComposer: true },
+    );
+    const parentInput = screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message" });
+    await fixture.user.type(parentInput, "plan for later");
+    // The event driver supplies textarea selection, without fake Range geometry,
+    // window.getSelection mocks, or Store capture calls. This proves the outgoing
+    // annotation contract, not Chromium's native selection/focus retention.
+    await fixture.user.pointer([
+      { target: parentInput, offset: 0, keys: "[MouseLeft>]" },
+      { target: parentInput, offset: 4 },
+      { target: parentInput, offset: 4, keys: "[/MouseLeft]" },
+    ]);
+    expect(parentInput.value.slice(parentInput.selectionStart, parentInput.selectionEnd)).toBe(
+      "plan",
+    );
+    await fixture.user.click(screen.getByRole("button", { name: "Ask session assistant" }));
+    const quick = within(screen.getByRole("dialog", { name: "Quick session assistant" }));
+    await fixture.user.type(
+      quick.getByRole("combobox", { name: "Ask session assistant" }),
+      "Where is the plan?",
+    );
+    await fixture.user.click(quick.getByRole("button", { name: "Send" }));
+    await waitFor(() =>
+      expect(ensure).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          firstPrompt: {
+            text: "Where is the plan?",
+            annotations: [
+              expect.objectContaining({
+                messageId: "composer-selection",
+                selectedText: "plan",
+                startOffset: 0,
+                endOffset: 4,
+              }),
+            ],
+          },
+        }),
+        expect.any(Object),
+      ),
+    );
+    fixture.observe([], true);
+    fixture.settle(turnId, "It is in docs/plan.md.", "Where is the plan?");
+    expect(await screen.findByText("It is in docs/plan.md.")).toBeDefined();
+    expect(parentInput.value).toBe("plan for later");
+    // Clear the selection through a normal composer click before opening the
+    // durable assistant. The original quick context must not leak into its send.
+    await fixture.user.click(parentInput);
+    await fixture.user.pointer({
+      target: screen.getByRole("button", { name: "Ask session assistant" }),
+      keys: "[MouseRight]",
+    });
+    const full = within(screen.getByRole("dialog", { name: "Session assistant chat" }));
+    await fixture.user.type(
+      full.getByRole("combobox", { name: "Message session assistant" }),
+      "What next?",
+    );
+    await fixture.user.click(full.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
+    expect(prompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "sidecar-assistant",
+        text: "What next?",
+        attachments: [],
+      }),
+      expect.any(Object),
+    );
+    expect(prompt.mock.calls[0]?.[0].annotations).toBeUndefined();
+    expect(ensure).toHaveBeenCalledOnce();
+  });
+
   it("starts a quick chat, waits for its reply, then reuses that conversation in full chat", async () => {
     const ensure = vi.fn<Client["discussionSessions"]["ensureSessionAssistant"]>(async () => ({
       thread: assistantThread,

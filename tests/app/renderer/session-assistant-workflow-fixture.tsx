@@ -9,6 +9,7 @@ import {
   type DiscussionThread,
 } from "../../../src/contracts/discussion-sessions/discussion-session-data";
 import { SessionAssistant } from "../../../src/renderer/components/session-assistant";
+import { Chat } from "../../../src/renderer/components/chat";
 import {
   applyConversationSnapshot,
   applyDiscussionSessionUpdate,
@@ -115,6 +116,7 @@ export function createSessionAssistantFixture(
   }
   return {
     assistant: session.sessionAssistantStore,
+    parentChat: session.conversationSessionStore.chatStore,
     observe(parts: ConversationSnapshot["parts"], streaming = false) {
       act(() => observe(parts, streaming));
     },
@@ -170,11 +172,24 @@ export function createSessionAssistantFixture(
 
 export function renderSessionAssistant(
   client: TestClientOverrides,
-  options: { staged?: boolean } = {},
+  options: { staged?: boolean; parentComposer?: boolean } = {},
 ) {
   const fixture = createSessionAssistantFixture(client, options);
+  const assistant = (
+    <SessionAssistant store={fixture.assistant} seed="parent-1" labels={[]} value={[]} />
+  );
   const view = render(
-    <SessionAssistant store={fixture.assistant} seed="parent-1" labels={[]} value={[]} />,
+    options.parentComposer ? (
+      <Chat
+        store={fixture.parentChat}
+        compact
+        embedded
+        composerFocusEnabled={false}
+        composerLeadingAccessory={{ content: assistant, visible: true }}
+      />
+    ) : (
+      assistant
+    ),
   );
   return {
     user: userEvent.setup(),
