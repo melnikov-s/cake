@@ -48,7 +48,7 @@ async function renderRelocatedAuthorityWorkflow(landing: Client["managedWorktree
   });
   const { root } = fixture;
   await root.sessionRegistry.pendingSessions.refreshSavedDrafts();
-  root.appShellStore.selectProjectSession("draft");
+  root.navigationStore.selectProjectSession("draft");
   root.projectWorkbenchStore.showLoadedSession("draft");
   const session = root.sessionRegistry.findSession("draft");
   if (!session) throw new Error("Expected saved Draft identity");

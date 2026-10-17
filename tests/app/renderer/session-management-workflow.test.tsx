@@ -67,7 +67,7 @@ async function renderManagement(
   const pending = options.pendingSessionId
     ? root.sessionRegistry.pendingSessions.prepare(projectPath, options.pendingSessionId)
     : undefined;
-  if (pending) root.appShellStore.selectProjectSession(pending.sessionId);
+  if (pending) root.navigationStore.selectProjectSession(pending.sessionId);
   for (const id of options.history ?? []) {
     root.sessionRegistry.load(id, projectPath);
     applyConversationUpdate(fixture.models.projectConversation(id, projectPath), {
@@ -88,7 +88,7 @@ async function renderManagement(
         tree: [],
       },
     });
-    root.appShellStore.selectProjectSession(id);
+    root.navigationStore.selectProjectSession(id);
     root.projectWorkbenchStore.showLoadedSession(id);
     root.sessionLayoutStore.ensureSession(id);
   }

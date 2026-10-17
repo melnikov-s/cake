@@ -40,15 +40,16 @@ export function windowStateChildren(options: WindowStateOptions): Record<string,
   const selection = { kind: "project-session", sessionId };
   return {
     appShellStore: store({
-      selection,
-      activeConversation: selection,
+      navigationVersion: 2,
+      workspace: "project-sessions",
       sessionHistory: [selection],
       sessionHistoryCursor: 0,
     }),
-    projectWorkbenchStore: store(
-      { selectedSessionId: sessionId },
-      { projectOpenStore: store({ projectPath: options.project }) },
-    ),
+    sessionLayoutStore: store({
+      layout: { kind: "pane", paneId: "initial-pane", history: [sessionId], historyCursor: 0 },
+      focusedPaneId: "initial-pane",
+    }),
+    projectWorkbenchStore: store({}, { projectOpenStore: store({ projectPath: options.project }) }),
     projectCatalogStore: store({ projectOrder: options.projects ?? [options.project] }),
     sessionRegistry: store(
       { targets: [{ sessionId, workspacePath: options.project }] },

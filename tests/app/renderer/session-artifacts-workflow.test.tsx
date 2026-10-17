@@ -165,7 +165,7 @@ function renderSessionArtifacts(
       },
     });
   }
-  fixture.root.appShellStore.selectProjectSession("session-1");
+  fixture.root.navigationStore.selectProjectSession("session-1");
   fixture.root.projectWorkbenchStore.showLoadedSession("session-1");
   fixture.root.sessionLayoutStore.ensureSession("session-1");
   fixture.root.sessionRegistry
@@ -865,7 +865,7 @@ it("does not load artifacts for unhydrated session identities restored from wind
       },
     },
   });
-  fixture.root.appShellStore.selectProjectSession(ids[0]!);
+  fixture.root.navigationStore.selectProjectSession(ids[0]!);
   fixture.root.projectWorkbenchStore.showLoadedSession(ids[0]!);
   fixture.root.sessionLayoutStore.ensureSession(ids[0]!);
   const view = render(

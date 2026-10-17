@@ -89,7 +89,7 @@ describe("artifact widget state renderer workflow", () => {
         tree: [],
       },
     });
-    fixture.root.appShellStore.selectProjectSession("viewer");
+    fixture.root.navigationStore.selectProjectSession("viewer");
     const draft =
       fixture.root.sessionRegistry.findSession("viewer")!.conversationSessionStore.composerStore
         .draftStore;

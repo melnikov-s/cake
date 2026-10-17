@@ -546,6 +546,9 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   showLoadedSession(sessionId: string) {
+    // Explicit pane navigation supersedes an earlier async open, including bootstrap.
+    this.sessionOpenRevision += 1;
+    this.openingSession = undefined;
     return this.showLoadedSessionTarget(sessionId, false, false);
   }
 

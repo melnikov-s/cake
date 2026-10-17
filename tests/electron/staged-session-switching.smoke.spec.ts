@@ -6,7 +6,7 @@ import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("switches directly between new Project chats and retains each composer", async () => {
+test("switches Project Session, Project Chat and Cake Chat workspaces and restores covered composers", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-staged-switching-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const cakeHome = join(temporaryRoot, "cake-home");
@@ -115,6 +115,36 @@ test("switches directly between new Project chats and retains each composer", as
         () => (window as typeof window & { contentTransitions: string[] }).contentTransitions,
       ),
     ).toEqual(["exit-start", "exit-finished", "enter-start"]);
+
+    await page.getByRole("button", { name: "Open Project Chat for first", exact: true }).click();
+    const projectChat = page.getByRole("combobox", { name: "Message Project Chat", exact: true });
+    await expect(projectChat).toBeFocused();
+    await projectChat.pressSequentially("Project Chat draft");
+    await expect(projectChat).toHaveValue("Project Chat draft");
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+
+    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+    const cakeChat = page.getByRole("combobox", { name: "Message Cake Chat", exact: true });
+    await expect(cakeChat).toBeFocused();
+    await cakeChat.pressSequentially("Cake Chat draft");
+    await expect(cakeChat).toHaveValue("Cake Chat draft");
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Open settings", exact: true }).first().click();
+    await page.getByRole("button", { name: "Back to chat", exact: true }).click();
+    await expect(cakeChat).toHaveValue("Cake Chat draft");
+
+    await page.getByRole("button", { name: "Open Project Chat for first", exact: true }).click();
+    await expect(projectChat).toHaveValue("Project Chat draft");
+    await page.getByRole("button", { name: /^(?:\d+ artifacts|Artifacts)$/ }).click();
+    await page.getByRole("button", { name: "Browse all artifacts", exact: true }).click();
+    await expect(
+      page.getByRole("textbox", { name: "Search artifact library", exact: true }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Close all artifacts", exact: true }).click();
+    await expect(projectChat).toHaveValue("Project Chat draft");
+    await newSecond.click();
+    await expect(composer).toHaveValue("Second project draft");
+    await expect(composer).toBeFocused();
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

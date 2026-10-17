@@ -98,11 +98,9 @@ function renderLayout({
       snapshot: snapshot(id),
     });
   }
-  if (!restored) {
-    fixture.root.appShellStore.selectProjectSession("alpha");
-    fixture.root.projectWorkbenchStore.showLoadedSession("alpha");
-    fixture.root.sessionLayoutStore.ensureSession("alpha");
-  }
+  if (!restored) fixture.root.navigationStore.selectProjectSession("alpha");
+  const sessionId = fixture.root.sessionLayoutStore.focusedSessionId;
+  if (sessionId) fixture.root.projectWorkbenchStore.showLoadedSession(sessionId);
   const view = render(
     <StoreProvider store={fixture.root}>
       <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
@@ -111,6 +109,7 @@ function renderLayout({
     </StoreProvider>,
   );
   return {
+    root: fixture.root,
     user: userEvent.setup(),
     open,
     setFullscreenSurfaceOpen,
@@ -169,6 +168,31 @@ function pane(title: string) {
 }
 
 describe("Session layout workflow", () => {
+  it("pane focus/split/close and persisted-window restore agree on the current conversation", async () => {
+    let saved: StoreSnapshot;
+    {
+      using fixture = renderLayout();
+      await fixture.user.click(screen.getByRole("button", { name: "Split right" }));
+      await fixture.user.click(screen.getByRole("button", { name: /^beta conversation / }));
+      await fixture.user.click(
+        pane("alpha conversation").getByRole("combobox", { name: "Message" }),
+      );
+      saved = toSnapshot(fixture.root);
+    }
+    using restored = renderLayout({ restored: saved });
+    expect(
+      screen.getByRole("button", { name: /^alpha conversation / }).getAttribute("aria-current"),
+    ).toBe("page");
+    expect(pane("beta conversation").getByRole("combobox", { name: "Message" })).toBeDefined();
+    await restored.user.click(
+      pane("alpha conversation").getByRole("button", { name: "Close pane" }),
+    );
+    expect(screen.getAllByRole("combobox", { name: "Message" })).toHaveLength(1);
+    expect(
+      screen.getByRole("button", { name: /^beta conversation / }).getAttribute("aria-current"),
+    ).toBe("page");
+  });
+
   it("restores an independent unsent pane and its input after persisting the phase record", async () => {
     let saved: StoreSnapshot;
     {

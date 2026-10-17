@@ -34,7 +34,7 @@ export function renderRootAppWorkflow(client: TestClientOverrides) {
   });
   const session = fixture.root.sessionRegistry.load(rootAppSession.sessionId, "/alpha");
   fixture.root.projectWorkbenchStore.projectOpenStore.projectPath = "/alpha";
-  fixture.root.appShellStore.selectProjectSession(session.sessionId);
+  fixture.root.navigationStore.selectProjectSession(session.sessionId);
   fixture.root.projectWorkbenchStore.showLoadedSession(session.sessionId);
   fixture.root.sessionLayoutStore.ensureSession(session.sessionId);
   applyConversationUpdate(session.model, {

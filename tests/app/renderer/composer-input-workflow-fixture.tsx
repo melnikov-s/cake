@@ -20,7 +20,7 @@ export function createComposerInputFixture(
     sessions: [sessionSummary({ sessionId: composerInputSessionId, projectPath: "/project" })],
   });
   const session = fixture.root.sessionRegistry.load(composerInputSessionId, "/project");
-  fixture.root.appShellStore.selectProjectSession(composerInputSessionId);
+  fixture.root.navigationStore.selectProjectSession(composerInputSessionId);
   fixture.root.projectWorkbenchStore.showLoadedSession(composerInputSessionId);
   let revision = 1;
   applyConversationUpdate(session.model, {

@@ -92,7 +92,8 @@ try {
     {},
     {
       appShellStore: store({
-        selection: { kind: "project-session", sessionId: id(0) },
+        navigationVersion: 2,
+        workspace: "project-sessions",
         sessionHistory: Array.from({ length: 7500 }, (_, index) => ({
           kind: "project-session",
           sessionId: id(index % sessions.length),

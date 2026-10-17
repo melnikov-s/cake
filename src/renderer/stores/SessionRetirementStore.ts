@@ -71,8 +71,12 @@ export class SessionRetirementStore extends Store<SessionRetirementStoreProps> {
     const activeProjectPath = activeSessionId
       ? this.props.catalog.find(activeSessionId)?.projectPath
       : undefined;
+    // Capture the visit target before pruning its authoritative focused pane.
+    const target = this.props.shell.removeSessionsFromHistory(sessionIds);
     this.props.layout.removeSessions(sessionIds);
     for (const sessionId of sessionIds) this.props.registry.removeSession(sessionId);
-    await this.forgetSessions(sessionIds, fallbackProjectPath ?? activeProjectPath);
+    const fallback = fallbackProjectPath ?? activeProjectPath;
+    if (target) await this.props.navigate(target);
+    else if (activeSessionId && fallback) await this.props.createProjectSession(fallback);
   }
 }

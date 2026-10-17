@@ -309,6 +309,16 @@ is a refactoring signal, not precedent.
   primitives; shared chat primitives do not consume Project-only contexts.
   **ScreenCaptureAttachmentStore** owns capture destination presentation and routing,
   including unsent pane identities that intentionally remain outside sidebar lists.
+- **Conversation navigation**: pane layouts own the focused session and pane-local
+  histories within the Project Session and Cake Chat/Project Chat workspaces.
+  `AppShellStore` owns the selected workspace and optional Settings/artifact-library
+  cover; its visible selection and retained conversation are derived from that
+  workspace's focused pane, never separately persisted session identities.
+  `NavigationStore` coordinates workspace changes and window visits. Window visit
+  history and pane-local history remain distinct; covering/uncovering a workspace
+  does not create a visit. The renderer navigation snapshot v1 → v2 migration
+  retains existing layouts (their focus wins over conflicting old shell IDs) and
+  seeds only missing layouts from old shell selection before mounting.
 - **Agent session navigation** uses `sessions.open` through the invoking renderer’s
   existing application-control gateway and `NavigationStore`. Project Session targets
   are validated against the catalog; ordinary focused-pane/history policy applies,

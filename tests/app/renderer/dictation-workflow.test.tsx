@@ -199,9 +199,9 @@ function renderDictation(
   const session = isCakeChat
     ? fixture.root.cakeChatCollectionStore.registry.load(sessionId)
     : fixture.root.sessionRegistry.load(sessionId, "/project");
-  if (isCakeChat) fixture.root.appShellStore.selectCakeChat(sessionId);
+  if (isCakeChat) fixture.root.navigationStore.selectCakeChat(sessionId);
   else {
-    fixture.root.appShellStore.selectProjectSession(sessionId);
+    fixture.root.navigationStore.selectProjectSession(sessionId);
     fixture.root.projectWorkbenchStore.showLoadedSession(sessionId);
   }
   fixture.root.dictationStore.applyState({

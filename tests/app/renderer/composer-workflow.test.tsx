@@ -45,7 +45,7 @@ async function renderComposer(
     },
   });
   const session = fixture.root.sessionRegistry.load(sessionId, "/project");
-  fixture.root.appShellStore.selectProjectSession(sessionId);
+  fixture.root.navigationStore.selectProjectSession(sessionId);
   fixture.root.projectWorkbenchStore.showLoadedSession(sessionId);
   const model = fixture.models.projectConversation(sessionId, "/project");
   applyConversationUpdate(model, {

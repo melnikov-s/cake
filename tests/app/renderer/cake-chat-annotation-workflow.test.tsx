@@ -76,7 +76,7 @@ it("adds a selected Cake Chat passage as a composer annotation sent with the nex
   act(() => {
     fixture.root.cakeChatCollectionStore.pendingSessions.markMaterialized(CAKE_CHAT_SESSION_ID);
     fixture.root.cakeChatCollectionStore.sessionLayoutStore.showSession(CAKE_CHAT_SESSION_ID);
-    fixture.root.appShellStore.selectCakeChat(CAKE_CHAT_SESSION_ID);
+    fixture.root.navigationStore.selectCakeChat(CAKE_CHAT_SESSION_ID);
     applyConversationSnapshot(chat.model, snapshot);
     chat.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
       kind: "top",

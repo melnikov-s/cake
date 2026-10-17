@@ -76,7 +76,7 @@ async function renderMetadata(options: { pendingWorktree?: boolean; avatars?: bo
     });
     await fixture.root.sessionRegistry.pendingSessions.refreshSavedDrafts();
     pending = fixture.root.sessionRegistry.pendingSessions.prepare("/worktree", "draft-1");
-    fixture.root.appShellStore.selectProjectSession(pending.sessionId);
+    fixture.root.navigationStore.selectProjectSession(pending.sessionId);
     const conversation = fixture.root.sessionRegistry.pendingSessions.conversation("draft-1");
     if (!conversation) throw new Error("Pending conversation was not created");
     conversation.labelIds = [globalLabel.id, deletedLabelId];

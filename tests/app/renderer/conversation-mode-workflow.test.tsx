@@ -143,7 +143,7 @@ function fixture(
     voices: [{ id: "voice", name: "Fixture voice" }],
   });
   const session = root.sessionRegistry.load("one", "/project");
-  root.appShellStore.selectProjectSession("one");
+  root.navigationStore.selectProjectSession("one");
   root.projectWorkbenchStore.showLoadedSession("one");
   let revision = 0;
   let parts: UiPart[] = [assistant("Historical answer", "complete", "history")];

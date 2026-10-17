@@ -86,7 +86,7 @@ export function renderSubagentActivity(options: {
     sessions: [sessionSummary({ sessionId: parentSessionId, projectPath: "/project" })],
   });
   const session = fixture.root.sessionRegistry.load(parentSessionId, "/project");
-  fixture.root.appShellStore.selectProjectSession(parentSessionId);
+  fixture.root.navigationStore.selectProjectSession(parentSessionId);
   fixture.root.projectWorkbenchStore.showLoadedSession(parentSessionId);
   const snapshot: ConversationSnapshot = {
     sessionId: parentSessionId,

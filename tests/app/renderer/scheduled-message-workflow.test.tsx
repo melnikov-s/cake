@@ -54,7 +54,7 @@ function renderScheduled(
     sessions: [sessionSummary({ sessionId, projectPath: "/project" })],
   });
   const session = fixture.root.sessionRegistry.load(sessionId, "/project");
-  fixture.root.appShellStore.selectProjectSession(sessionId);
+  fixture.root.navigationStore.selectProjectSession(sessionId);
   fixture.root.projectWorkbenchStore.showLoadedSession(sessionId);
   applyConversationUpdate(fixture.models.projectConversation(sessionId, "/project"), {
     _tag: "Snapshot",

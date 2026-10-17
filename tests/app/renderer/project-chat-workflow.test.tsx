@@ -120,7 +120,7 @@ async function fixture() {
   }
   await f.root.cakeChatCollectionStore.initialize();
   f.root.terminalStore.readyForEvents();
-  f.root.appShellStore.selectCakeChat(CAKE_CHAT_SESSION_ID);
+  f.root.navigationStore.selectCakeChat(CAKE_CHAT_SESSION_ID);
   const view = render(
     <StoreProvider store={f.root}>
       <App />

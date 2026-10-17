@@ -47,7 +47,7 @@ export function renderAnnotationComment(start: Client["discussionSessions"]["sta
   });
   const session = fixture.root.sessionRegistry.load("parent-1", "/project");
   fixture.root.projectWorkbenchStore.projectOpenStore.projectPath = "/project";
-  fixture.root.appShellStore.selectProjectSession("parent-1");
+  fixture.root.navigationStore.selectProjectSession("parent-1");
   applyConversationSnapshot(session.model, {
     sessionId: "parent-1",
     sessionFile: "/sessions/parent-1.jsonl",

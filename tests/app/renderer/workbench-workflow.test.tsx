@@ -83,8 +83,8 @@ function renderWorkbench(client: TestClientOverrides, resolved = false) {
       { _tag: "Snapshot", revision: 1, snapshot: snapshot(summary.sessionId) },
     );
   }
-  if (resolved) fixture.root.appShellStore.previewResolvedProjectSession("one");
-  else fixture.root.appShellStore.selectProjectSession("one");
+  if (resolved) fixture.root.navigationStore.selectProjectSession("one");
+  else fixture.root.navigationStore.selectProjectSession("one");
   fixture.root.projectWorkbenchStore.showLoadedSession("one");
   fixture.root.sessionLayoutStore.ensureSession("one");
   const view = render(

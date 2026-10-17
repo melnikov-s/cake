@@ -349,7 +349,6 @@ export class RootStore extends Store<{
     this.applicationControlStore.start();
     const selection = this.appShellStore.selection;
     if (selection.kind === "project-session") {
-      this.sessionLayoutStore.ensureSession(selection.sessionId);
       return this.projectWorkbenchStore.initialize({
         sessionId: selection.sessionId,
         workspacePath: this.requireProjectSessionWorkingDirectory(selection.sessionId),
@@ -388,7 +387,7 @@ export class RootStore extends Store<{
     return createStore(ProjectSessionPlacementStore, {
       layout: this.sessionLayoutStore,
       dismissSecondarySurfaces: () => this.projectWorkbenchStore.dismissSecondarySurfaces(),
-      selectSession: (sessionId) => this.navigationStore.selectProjectSessionForShell(sessionId),
+      selectSession: (sessionId) => this.navigationStore.selectProjectSession(sessionId),
       showLoadedSession: (sessionId) => this.projectWorkbenchStore.showLoadedSession(sessionId),
     });
   }
@@ -815,6 +814,10 @@ export class RootStore extends Store<{
   @child
   get appShellStore(): AppShellStore {
     return createStore(AppShellStore, {
+      focusedSessionId: (workspace) =>
+        workspace === "cake-chat"
+          ? this.cakeChatCollectionStore.sessionLayoutStore.focusedSessionId
+          : this.sessionLayoutStore.focusedSessionId,
       sessionInNavigationScope: (entry) => this.navigationStore.sessionInNavigationScope(entry),
       onProjectSessionDeparted: (sessionId) =>
         this.sessionRegistry.findSession(sessionId)?.depart(),

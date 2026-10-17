@@ -79,7 +79,7 @@ function cakeChatVoiceFixture(options: { materialized?: boolean; streaming?: boo
       sessions: [{ sessionId: CAKE_CHAT_SESSION_ID, title: "Cake Chat" }],
     });
   const chat = root.cakeChatCollectionStore.registry.load(CAKE_CHAT_SESSION_ID);
-  root.appShellStore.selectCakeChat(CAKE_CHAT_SESSION_ID);
+  root.navigationStore.selectCakeChat(CAKE_CHAT_SESSION_ID);
   const publish = (parts: UiPart[]) =>
     act(() => {
       applyConversationSnapshot(chat.model, {
@@ -208,7 +208,7 @@ it("typed Cake Chat turns carry voice style only while voice mode is active", as
 it("leaving Cake Chat for a Project Session exits voice mode and releases capture", async () => {
   using f = cakeChatVoiceFixture();
   await f.enter();
-  act(() => f.root.appShellStore.selectProjectSession("project-one"));
+  act(() => f.root.navigationStore.selectProjectSession("project-one"));
   await waitFor(() => expect(f.root.conversationModeStore.phase).toBe("off"));
   expect(f.stopCapture).toHaveBeenCalled();
 });

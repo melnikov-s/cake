@@ -372,8 +372,9 @@ describe("focused projection lifetimes", () => {
       async () => undefined,
       projection,
     );
-    root.appShellStore.selectProjectSession("selected");
-    root.sessionLayoutStore.ensureSession("visible");
+    root.navigationStore.selectProjectSession("selected");
+    root.sessionLayoutStore.splitFocused("visible", "x");
+    root.sessionLayoutStore.focusSession("selected");
     projection.projectConversation("running", "/project").streaming = true;
     for (const sessionId of [
       "selected",
@@ -412,8 +413,8 @@ describe("focused projection lifetimes", () => {
       const count = cancellations.length;
       const ensure = vi.spyOn(projection, "projectConversation");
       batch(() => {
-        root.appShellStore.selectProjectSession("idle-4");
-        root.sessionRegistry.observationRetention.retain("idle-4");
+        root.navigationStore.selectProjectSession("visible");
+        root.sessionRegistry.observationRetention.retain("visible");
       });
       expect(conversations).toHaveBeenCalledTimes(7);
       expect(cancellations).toHaveLength(count);
@@ -424,8 +425,11 @@ describe("focused projection lifetimes", () => {
 
       // Losing a visible pin moves it into the idle LRU, evicting only its oldest
       // idle peer while selected/running projections stay authoritative.
-      root.sessionLayoutStore.showSession("idle-4");
-      expect(conversations).toHaveBeenCalledTimes(7);
+      batch(() => {
+        root.navigationStore.selectProjectSession("replacement");
+        root.sessionRegistry.load("replacement", "/project");
+      });
+      expect(conversations).toHaveBeenCalledTimes(8);
       // Conversation, discussions, schedules, subagents and compact workflows.
       expect(cancellations.filter((cancel) => cancel.mock.calls.length > 0)).toHaveLength(5);
       expect(projection.findProjectConversation("idle-1")?.parts).toEqual([]);

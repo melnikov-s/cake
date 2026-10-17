@@ -72,7 +72,7 @@ export function renderSessionObservation(options: { restored?: boolean; split?: 
     });
   for (const session of sessions) publish(session.sessionId, session.sessionId === "running");
   if (!options.restored) root.sessionRegistry.load("selected", projectPath);
-  root.appShellStore.selectProjectSession("selected");
+  root.navigationStore.selectProjectSession("selected");
   root.projectWorkbenchStore.showLoadedSession("selected");
   root.sessionLayoutStore.ensureSession("selected");
   if (options.split) {

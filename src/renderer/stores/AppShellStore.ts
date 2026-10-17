@@ -2,6 +2,7 @@ import { Store, observable, snapshot } from "r-state-tree";
 import { SessionMetadataContext } from "./context/SessionMetadataContext";
 
 export type AppSurface = "workbench" | "cake-chat" | "artifact-library" | "settings";
+export type ConversationWorkspace = "home" | "project-sessions" | "cake-chat";
 
 export type WindowConversationSelection =
   | { kind: "project-session"; sessionId: string }
@@ -19,8 +20,9 @@ export type SessionHistoryEntry =
   | { kind: "project-session"; sessionId: string }
   | { kind: "cake-chat"; sessionId: string };
 
-/** Owns the one active application selection and its session navigation history in this window. */
+/** Owns workspace/cover selection and window visits, never the layouts' session identities. */
 export interface AppShellStoreProps {
+  focusedSessionId(workspace: "project-sessions" | "cake-chat"): string | undefined;
   sessionInNavigationScope(entry: SessionHistoryEntry): boolean;
   onProjectSessionDeparted(sessionId: string): void;
 }
@@ -29,8 +31,26 @@ const sameSessionEntry = (left: SessionHistoryEntry, right: SessionHistoryEntry)
   left.kind === right.kind && left.sessionId === right.sessionId;
 
 export class AppShellStore extends Store<AppShellStoreProps> {
-  @snapshot selection: AppSelection = { kind: "workbench" };
-  @snapshot activeConversation: WindowConversationSelection | undefined;
+  @snapshot readonly navigationVersion = 2;
+  @snapshot workspace: ConversationWorkspace = "home";
+  @snapshot coveringSurface: "settings" | "artifact-library" | undefined;
+
+  get activeConversation(): WindowConversationSelection | undefined {
+    if (this.workspace === "home") return undefined;
+    const sessionId = this.props.focusedSessionId(this.workspace);
+    return sessionId
+      ? { kind: this.workspace === "cake-chat" ? "cake-chat" : "project-session", sessionId }
+      : undefined;
+  }
+
+  get selection(): AppSelection {
+    if (this.coveringSurface) return { kind: this.coveringSurface };
+    return (
+      this.activeConversation ?? {
+        kind: this.workspace === "cake-chat" ? "cake-chat" : "workbench",
+      }
+    );
+  }
   @snapshot private readonly sessionHistory: SessionHistoryEntry[] = observable([]);
   @snapshot private sessionHistoryCursor = -1;
   private pendingTraversal: { entry: SessionHistoryEntry; cursor: number } | undefined;
@@ -41,6 +61,12 @@ export class AppShellStore extends Store<AppShellStoreProps> {
 
   constructor(props: AppShellStore["props"]) {
     super(props);
+    this.reaction(
+      () => (this.selection.kind === "project-session" ? this.selection.sessionId : undefined),
+      (current, previous) => {
+        if (previous && previous !== current) this.props.onProjectSessionDeparted(previous);
+      },
+    );
     this.reaction(
       () => {
         const active = this.activeConversation;
@@ -57,7 +83,7 @@ export class AppShellStore extends Store<AppShellStoreProps> {
           current.resolved !== false
         )
           return;
-        this.selectProjectSession(current.sessionId);
+        this.recordCurrentConversationVisit();
       },
     );
   }
@@ -152,67 +178,31 @@ export class AppShellStore extends Store<AppShellStoreProps> {
     return currentRemoved ? this.sessionHistory[this.sessionHistoryCursor] : undefined;
   }
 
-  showWorkbench() {
-    this.markDepartingProjectSession();
-    this.selection = { kind: "workbench" };
-    this.activeConversation = undefined;
-  }
-  selectProjectSession(sessionId: string) {
-    this.setProjectSessionSelection(sessionId);
-    this.recordSessionVisit({ kind: "project-session", sessionId });
-  }
-  /** Selects an archived transcript without adding it to back/forward history. */
-  previewResolvedProjectSession(sessionId: string) {
-    this.setProjectSessionSelection(sessionId);
-  }
-  private setProjectSessionSelection(sessionId: string) {
-    if (
-      this.selection.kind === "project-session" &&
-      this.selection.sessionId === sessionId &&
-      this.activeConversation?.kind === "project-session" &&
-      this.activeConversation.sessionId === sessionId
-    )
-      return;
-    this.markDepartingProjectSession(sessionId);
-    const selection = { kind: "project-session", sessionId } as const;
-    this.selection = selection;
-    this.activeConversation = selection;
-  }
-  selectCakeChat(sessionId?: string) {
-    this.setCakeChatSelection(sessionId);
-    if (sessionId) this.recordSessionVisit({ kind: "cake-chat", sessionId });
-  }
-  private setCakeChatSelection(sessionId?: string) {
-    if (
-      this.selection.kind === "cake-chat" &&
-      this.selection.sessionId === sessionId &&
-      (sessionId === undefined
-        ? this.activeConversation === undefined
-        : this.activeConversation?.kind === "cake-chat" &&
-          this.activeConversation.sessionId === sessionId)
-    )
-      return;
-    this.markDepartingProjectSession();
-    const selection = { kind: "cake-chat", sessionId } as const;
-    this.selection = selection;
-    this.activeConversation = sessionId ? { kind: "cake-chat", sessionId } : undefined;
-  }
-  showArtifactLibrary() {
-    this.markDepartingProjectSession();
-    this.selection = { kind: "artifact-library" };
-    // Like Settings, the artifact browser temporarily covers the current conversation.
-  }
-  showSettings() {
-    this.markDepartingProjectSession();
-    this.selection = { kind: "settings" };
-    // Settings temporarily overlays the current chat. Keep its identity so
-    // Back to chat can restore a local or migrated saved Draft precisely.
+  selectWorkspace(workspace: ConversationWorkspace) {
+    this.workspace = workspace;
+    this.coveringSurface = undefined;
   }
 
-  private markDepartingProjectSession(nextSessionId?: string) {
-    if (this.selection.kind === "project-session" && this.selection.sessionId !== nextSessionId)
-      this.props.onProjectSessionDeparted(this.selection.sessionId);
+  dismissCoveringSurface() {
+    this.coveringSurface = undefined;
   }
+
+  showArtifactLibrary() {
+    this.coveringSurface = "artifact-library";
+  }
+
+  showSettings() {
+    this.coveringSurface = "settings";
+  }
+
+  /** Records the landed layout selection, excluding archived Project Session previews. */
+  recordCurrentConversationVisit() {
+    const entry = this.activeConversation;
+    if (!entry) return;
+    if (entry.kind === "project-session" && this.metadata.isResolved(entry.sessionId)) return;
+    this.recordSessionVisit(entry);
+  }
+
   /**
    * Records a visit to the top of the history, truncating any forward branch. A pending
    * traversal commits once its target selection actually lands; any other selection

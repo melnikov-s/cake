@@ -71,7 +71,7 @@ export function renderResolvedProjectLifecycle(client: TestClientOverrides) {
   const session = fixture.root.sessionRegistry.load("resolved", "/project");
   const snapshot = conversation("resolved");
   applyConversationUpdate(session.model, { _tag: "Snapshot", revision: 1, snapshot });
-  fixture.root.appShellStore.previewResolvedProjectSession("resolved");
+  fixture.root.navigationStore.selectProjectSession("resolved");
   fixture.root.sessionLayoutStore.ensureSession("resolved");
   fixture.root.projectWorkbenchStore.showLoadedSession("resolved");
   const view = render(
@@ -123,7 +123,7 @@ export function renderProjectSelectionLifecycle(start: Client["discussionSession
       ],
     },
   });
-  fixture.root.appShellStore.selectProjectSession("parent");
+  fixture.root.navigationStore.selectProjectSession("parent");
   fixture.root.sessionLayoutStore.ensureSession("parent");
   fixture.root.projectWorkbenchStore.showLoadedSession("parent");
   // Establish an already-open selection draft; native text-selection initiation is separate.

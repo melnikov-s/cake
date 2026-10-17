@@ -92,15 +92,15 @@ function renderActivity(
   const cakeChat = fixture.root.cakeChatCollectionStore.registry.load(CAKE_CHAT_SESSION_ID);
   applyConversationSnapshot(cakeChat.model, snapshot(CAKE_CHAT_SESSION_ID));
   if (kind === "cake-chat") {
-    fixture.root.appShellStore.selectCakeChat(CAKE_CHAT_SESSION_ID);
+    fixture.root.navigationStore.selectCakeChat(CAKE_CHAT_SESSION_ID);
     fixture.root.cakeChatCollectionStore.sessionLayoutStore.showSession(CAKE_CHAT_SESSION_ID);
   } else {
-    fixture.root.appShellStore.selectProjectSession(parentId);
+    fixture.root.navigationStore.selectProjectSession(parentId);
     fixture.root.projectWorkbenchStore.showLoadedSession(parentId);
     fixture.root.sessionLayoutStore.showSession(parentId);
     if (splitSessionId) {
       fixture.root.sessionLayoutStore.splitFocused(splitSessionId, "x");
-      fixture.root.appShellStore.selectProjectSession(splitSessionId);
+      fixture.root.navigationStore.selectProjectSession(splitSessionId);
     }
   }
   const catalog = fixture.models.subagentCatalog(ownerId);

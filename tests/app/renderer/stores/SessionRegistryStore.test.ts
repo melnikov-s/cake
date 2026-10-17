@@ -1,7 +1,6 @@
 import { toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import { piBuiltinSlashCommands } from "../../../../src/contracts/conversations/session-contract";
-import { applySessionCatalogGroupUpdate } from "../../../../src/renderer/reducers/CatalogReducer";
 import { applyConversationUpdate } from "../../../../src/renderer/reducers/ConversationReducer";
 import { createRendererStoreFixture } from "../renderer-store-fixture";
 import type { TestClientOverrides } from "../test-client";
@@ -81,8 +80,8 @@ describe("Session Registry identity and observation integration", () => {
     const sessionsGetter = vi.spyOn(registry, "sessions", "get");
     const second = registry.findSession("session-2");
     expect(second?.sessionId).toBe("session-2");
-    restored.root.appShellStore.selectProjectSession("session-1");
-    restored.root.appShellStore.selectProjectSession("session-2");
+    restored.root.navigationStore.selectProjectSession("session-1");
+    restored.root.navigationStore.selectProjectSession("session-2");
     expect(registry.findSession("session-1")).toBe(first);
     expect(registry.findSession("session-2")).toBe(second);
     expect(sessionsGetter).not.toHaveBeenCalled();

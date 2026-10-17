@@ -39,7 +39,7 @@ function restoredSession(client: TestClientOverrides = {}) {
   });
   const { root } = fixture;
   root.sessionRegistry.load("restored", "/cake");
-  root.appShellStore.selectProjectSession("restored");
+  root.navigationStore.selectProjectSession("restored");
   root.projectWorkbenchStore.showLoadedSession("restored");
   root.sessionLayoutStore.ensureSession("restored");
   const view = render(

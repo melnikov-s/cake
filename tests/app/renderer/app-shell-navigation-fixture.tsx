@@ -101,7 +101,7 @@ export function renderAppShellNavigation(
     snapshot: snapshot(CAKE_CHAT_SESSION_ID),
   });
   for (const sessionId of options.history ?? [])
-    fixture.root.appShellStore.selectProjectSession(sessionId);
+    fixture.root.navigationStore.selectProjectSession(sessionId);
   const current = options.history?.at(-1);
   if (current) {
     fixture.root.projectWorkbenchStore.showLoadedSession(current);

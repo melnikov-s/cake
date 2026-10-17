@@ -139,7 +139,7 @@ export function renderEmbeddedEditor(
       },
     );
   }
-  fixture.root.appShellStore.selectProjectSession(editorSessionId);
+  fixture.root.navigationStore.selectProjectSession(editorSessionId);
   fixture.root.projectWorkbenchStore.showLoadedSession(editorSessionId);
   if (options.savedIde)
     fixture.root.sessionRegistry.findSession(editorSessionId)!.showPresentation("vscode");

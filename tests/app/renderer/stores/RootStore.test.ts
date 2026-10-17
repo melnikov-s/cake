@@ -46,7 +46,7 @@ describe("RootStore agent-control transport and composition", () => {
 
     root.sessionRegistry.load("parent", projectPath);
     root.sessionLayoutStore.ensureSession("parent");
-    root.appShellStore.selectProjectSession("parent");
+    root.navigationStore.selectProjectSession("parent");
     root.projectWorkbenchStore.showLoadedSession("parent");
 
     await root.applicationControlStore.handleProjectSessionRequest({
@@ -137,7 +137,7 @@ describe("RootStore agent-control transport and composition", () => {
     root.sessionRegistry.load("focused", projectPath);
     root.sessionRegistry.load("background", projectPath);
     root.sessionLayoutStore.ensureSession("focused");
-    root.appShellStore.selectProjectSession("focused");
+    root.navigationStore.selectProjectSession("focused");
     root.projectWorkbenchStore.showLoadedSession("focused");
 
     await root.applicationControlStore.handleProjectSessionRequest({

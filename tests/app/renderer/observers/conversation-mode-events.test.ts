@@ -93,7 +93,7 @@ async function workflow(events: ClientEvents["Service"], initialDraft = "") {
   });
   const session = root.sessionRegistry.load("one", "/project");
   session.conversationSessionStore.composerStore.draftStore.setText(initialDraft);
-  root.appShellStore.selectProjectSession("one");
+  root.navigationStore.selectProjectSession("one");
   root.projectWorkbenchStore.showLoadedSession("one");
   let revision = 0;
   const publish = (parts: UiPart[]) =>

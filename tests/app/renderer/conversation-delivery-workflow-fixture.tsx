@@ -50,7 +50,7 @@ export function renderConversationDelivery(
     sessions: [sessionSummary({ sessionId: deliverySessionId, projectPath: "/project" })],
   });
   const session = fixture.root.sessionRegistry.load(deliverySessionId, "/project");
-  fixture.root.appShellStore.selectProjectSession(deliverySessionId);
+  fixture.root.navigationStore.selectProjectSession(deliverySessionId);
   fixture.root.projectWorkbenchStore.showLoadedSession(deliverySessionId);
   let revision = 0;
   function publish(parts: ConversationSnapshot["parts"], streaming: boolean) {

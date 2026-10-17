@@ -77,7 +77,7 @@ function renderNavigation(
     );
   fixture.root.sessionRegistry.load("alpha", "/alpha");
   publish("alpha");
-  fixture.root.appShellStore.selectProjectSession("alpha");
+  fixture.root.navigationStore.selectProjectSession("alpha");
   fixture.root.projectWorkbenchStore.showLoadedSession("alpha");
   fixture.root.sessionLayoutStore.ensureSession("alpha");
   const view = render(
@@ -196,6 +196,22 @@ function pressActiveSessionShortcut(direction: "next" | "previous") {
 }
 
 describe("Project navigation workflow", () => {
+  it("keeps a newer split-pane selection when an earlier session open finishes", async () => {
+    const opening = deferred<void>();
+    const open = vi.fn<Client["projectSessions"]["open"]>(() => opening.promise);
+    using fixture = renderNavigation(open);
+    await fixture.user.click(screen.getByRole("button", { name: /^beta session / }));
+    await fixture.user.click(screen.getByRole("button", { name: "Split right" }));
+    expect(screen.getAllByRole("combobox", { name: "Message" })).toHaveLength(2);
+    expect(screen.getByText("New chat", { exact: true })).toBeDefined();
+    await act(async () => opening.resolve());
+    await fixture.hydrate("beta");
+    expect(screen.getByText("New chat", { exact: true })).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /^beta session / }).getAttribute("aria-current"),
+    ).not.toBe("page");
+  });
+
   it("does not let an older delayed exact-ID lookup replace a newer navigation", async () => {
     const slow = sessionSummary({ sessionId: "slow", projectPath: "/beta" });
     const fast = sessionSummary({ sessionId: "fast", projectPath: "/gamma" });

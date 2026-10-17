@@ -1,7 +1,9 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, screen, waitFor } from "@testing-library/react";
+import { toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../src/renderer/client/Client";
+import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { renderAppShellNavigation } from "./app-shell-navigation-fixture";
 
 beforeEach(() => {
@@ -49,6 +51,47 @@ const expectCakeChat = async () => {
 // The artifact browser exposes the shell's conversation history; workbench Back/Forward
 // first traverses pane-local history (covered by project-navigation/workbench workflows).
 describe("App shell navigation workflow", () => {
+  it.each(
+    (["project", "cake-chat"] as const).flatMap((workspace) =>
+      (["settings", "artifact-library"] as const).map((cover) => ({ workspace, cover })),
+    ),
+  )(
+    "persisted-window restore keeps $workspace under its $cover cover",
+    async ({ workspace, cover }) => {
+      let saved: StoreSnapshot;
+      {
+        using fixture = renderAppShellNavigation();
+        await fixture.user.click(sessionButton("alpha"));
+        await fixture.user.click(sessionButton("beta"));
+        if (workspace === "cake-chat") {
+          await fixture.user.click(cakeChatButton());
+          await expectCakeChat();
+        }
+        if (cover === "settings") await fixture.user.click(settings());
+        else await openLibrary(fixture.user);
+        saved = toSnapshot(fixture.root);
+      }
+      using restored = renderAppShellNavigation({}, { snapshot: saved });
+      if (cover === "settings") {
+        expect(await screen.findByText("Model configuration")).toBeDefined();
+        await restored.user.click(screen.getByRole("button", { name: "Back to chat" }));
+      } else {
+        expect(await screen.findByText("No artifacts match this view.")).toBeDefined();
+        await restored.user.click(screen.getByRole("button", { name: "Close all artifacts" }));
+      }
+      if (workspace === "cake-chat") await expectCakeChat();
+      else await expectProjectChat("beta");
+      // Window visits survive covering/restoration without becoming pane-local history.
+      await openLibrary(restored.user);
+      await restored.user.click(back());
+      await expectProjectChat(workspace === "cake-chat" ? "beta" : "alpha");
+      await openLibrary(restored.user);
+      await restored.user.click(forward());
+      if (workspace === "cake-chat") await expectCakeChat();
+      else await expectProjectChat("beta");
+    },
+  );
+
   it("traverses project and Cake Chat visits without recording reselections and truncates a divergent forward branch", async () => {
     const open = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);
     using fixture = renderAppShellNavigation({ projectSessions: { open } });
@@ -155,6 +198,7 @@ describe("App shell navigation workflow", () => {
   it("deletes an archived preview and returns to the retained visit without recording the preview", async () => {
     const deleteSession = vi.fn<Client["workspaces"]["deleteSession"]>(async (sessionId) => {
       await fixture.publishRemoved(sessionId);
+      return defaultApplicationState();
     });
     using fixture = renderAppShellNavigation(
       {

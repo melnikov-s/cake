@@ -117,8 +117,11 @@ function renderSessions(selectedSessionId = "parent") {
       fixture.root.sessionRegistry.load(session.sessionId, session.workingDirectory),
     ]),
   );
-  fixture.root.appShellStore.selectProjectSession(selectedSessionId);
-  for (const session of sessions) fixture.root.sessionLayoutStore.ensureSession(session.sessionId);
+  fixture.root.navigationStore.selectProjectSession(selectedSessionId);
+  for (const session of sessions)
+    if (!fixture.root.sessionLayoutStore.hasSession(session.sessionId))
+      fixture.root.sessionLayoutStore.splitFocused(session.sessionId, "x");
+  fixture.root.navigationStore.selectProjectSession(selectedSessionId);
   const view = render(
     <>
       {sessions.map((session) => (

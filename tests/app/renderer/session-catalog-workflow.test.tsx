@@ -57,7 +57,7 @@ async function renderCatalog(
   const { root } = fixture;
   await root.sessionRegistry.pendingSessions.refreshSavedDrafts();
   const staged = root.sessionRegistry.pendingSessions.prepareStaged(projectPath, sessionId);
-  root.appShellStore.selectProjectSession(sessionId);
+  root.navigationStore.selectProjectSession(sessionId);
   root.sessionLayoutStore.ensureSession(sessionId);
   root.projectWorkbenchStore.showLoadedSession(sessionId);
   const view = render(

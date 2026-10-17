@@ -117,7 +117,7 @@ function renderTerminal({
       ],
     });
   }
-  fixture.root.appShellStore.selectProjectSession("one");
+  fixture.root.navigationStore.selectProjectSession("one");
   fixture.root.projectWorkbenchStore.showLoadedSession("one");
   fixture.root.sessionLayoutStore.ensureSession("one");
   // External subscription readiness is routed here exactly as in terminal-events.ts.

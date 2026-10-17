@@ -119,8 +119,8 @@ async function fixture(additionalChild = false) {
         {},
         {
           appShellStore: store({
-            selection: { kind: "project-session", sessionId: id(0) },
-            activeConversation: { kind: "project-session", sessionId: id(0) },
+            navigationVersion: 2,
+            workspace: "project-sessions",
             sessionHistory: Array.from({ length: historyCount }, (_, index) => ({
               kind: "project-session",
               sessionId: id(index % sessionCount),
@@ -386,7 +386,8 @@ test("compares warm session switching in isolated baseline and patched Electron 
       await expect
         .poll(async () => {
           const saved = JSON.parse(await readFile(join(f.userData, "window-state.json"), "utf8"));
-          return saved.data.children.appShellStore.state.selection.sessionId;
+          const layout = saved.data.children.sessionLayoutStore.state;
+          return layout.layout.history[layout.layout.historyCursor];
         })
         .toBe(id(0));
       await page.evaluate(() => {

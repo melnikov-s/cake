@@ -34,7 +34,7 @@ export function renderChatSurface(
     sessions: [sessionSummary({ sessionId: chatSessionId, projectPath: "/project" })],
   });
   const session = fixture.root.sessionRegistry.load(chatSessionId, "/project");
-  fixture.root.appShellStore.selectProjectSession(chatSessionId);
+  fixture.root.navigationStore.selectProjectSession(chatSessionId);
   fixture.root.projectWorkbenchStore.showLoadedSession(chatSessionId);
   let snapshot: ConversationSnapshot = {
     sessionId: chatSessionId,

@@ -120,7 +120,7 @@ describe("BrowserStore native presentation boundaries", () => {
       // Hydrated-session navigation changes selection before suspending in one batch.
       batch(() => {
         if (nextSessionId) root.navigationStore.selectProjectSession(nextSessionId);
-        else root.appShellStore.showWorkbench();
+        else root.navigationStore.showEmptyWorkbench();
         root.projectWorkbenchStore.presentationStore.suspend();
         store.setMeasuredBounds(undefined);
       });

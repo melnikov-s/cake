@@ -70,7 +70,7 @@ async function renderCreation(
     },
   });
   await fixture.root.sessionRegistry.pendingSessions.refreshSavedDrafts();
-  fixture.root.appShellStore.selectProjectSession("draft-0");
+  fixture.root.navigationStore.selectProjectSession("draft-0");
   fixture.root.projectWorkbenchStore.showLoadedSession("draft-0");
   const Surface = observer(function Surface() {
     return (

@@ -140,7 +140,7 @@ function renderWorktree(
       },
     });
   publishConversation(options.streaming ?? false);
-  fixture.root.appShellStore.selectProjectSession("session-1");
+  fixture.root.navigationStore.selectProjectSession("session-1");
   fixture.root.projectWorkbenchStore.showLoadedSession("session-1");
   fixture.root.sessionLayoutStore.ensureSession("session-1");
   const Surface = observer(function Surface() {

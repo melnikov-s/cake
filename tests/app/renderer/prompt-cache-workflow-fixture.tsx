@@ -40,7 +40,7 @@ export function renderPromptCache(response: CacheResponse, client: TestClientOve
     sessions: [sessionSummary({ sessionId: cacheSessionId, projectPath: "/project" })],
   });
   const session = fixture.root.sessionRegistry.load(cacheSessionId, "/project");
-  fixture.root.appShellStore.selectProjectSession(cacheSessionId);
+  fixture.root.navigationStore.selectProjectSession(cacheSessionId);
   fixture.root.projectWorkbenchStore.showLoadedSession(cacheSessionId);
   let revision = 0;
   function publish(parts: readonly UiPart[]) {

@@ -19,7 +19,7 @@ export function renderTranscriptRendering(
     sessions: [sessionSummary({ sessionId: "transcript-rendering", projectPath: "/project" })],
   });
   const session = fixture.root.sessionRegistry.load("transcript-rendering", "/project");
-  fixture.root.appShellStore.selectProjectSession("transcript-rendering");
+  fixture.root.navigationStore.selectProjectSession("transcript-rendering");
   fixture.root.projectWorkbenchStore.showLoadedSession("transcript-rendering");
   const snapshot: ConversationSnapshot = {
     sessionId: "transcript-rendering",

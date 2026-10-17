@@ -82,9 +82,9 @@ export function renderConversationSession(
   };
   publish({});
   if (profile === "project") {
-    fixture.root.appShellStore.selectProjectSession(sessionId);
+    fixture.root.navigationStore.selectProjectSession(sessionId);
     fixture.root.projectWorkbenchStore.showLoadedSession(sessionId);
-  } else fixture.root.appShellStore.selectCakeChat(sessionId);
+  } else fixture.root.navigationStore.selectCakeChat(sessionId);
   // jsdom cannot settle the initial bottom alignment. Begin at the top so the
   // real latest-prompt action mounts; native scrolling is not under test.
   session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({

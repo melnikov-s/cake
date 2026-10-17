@@ -76,7 +76,7 @@ export function createSessionAssistantFixture(
     ? fixture.root.sessionRegistry.pendingSessions.prepareStaged("/project", "parent-1")
     : fixture.root.sessionRegistry.load("parent-1", "/project");
   fixture.root.projectWorkbenchStore.projectOpenStore.projectPath = "/project";
-  fixture.root.appShellStore.selectProjectSession("parent-1");
+  fixture.root.navigationStore.selectProjectSession("parent-1");
   applyConversationSnapshot(
     session.model,
     conversation("parent-1", {

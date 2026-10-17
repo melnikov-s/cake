@@ -148,7 +148,7 @@ export function renderArtifactReferences(
   const conversation = fixture.models.projectConversation("session-1", "/project");
   let revision = 1;
   applyConversationUpdate(conversation, { _tag: "Snapshot", revision, snapshot: snapshot(text) });
-  fixture.root.appShellStore.selectProjectSession("session-1");
+  fixture.root.navigationStore.selectProjectSession("session-1");
   fixture.root.projectWorkbenchStore.showLoadedSession("session-1");
   fixture.root.sessionLayoutStore.ensureSession("session-1");
   session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({

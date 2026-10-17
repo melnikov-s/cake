@@ -87,7 +87,7 @@ function renderSideChats(
   });
   const session = fixture.root.sessionRegistry.load("parent-1", "/project");
   fixture.root.projectWorkbenchStore.projectOpenStore.projectPath = "/project";
-  fixture.root.appShellStore.selectProjectSession("parent-1");
+  fixture.root.navigationStore.selectProjectSession("parent-1");
   const snapshot = conversation("parent-1");
   if (options.withoutModel) Object.assign(snapshot, { model: undefined });
   applyConversationSnapshot(session.model, snapshot);

@@ -85,7 +85,7 @@ function renderRetirement(
         tree: [],
       },
     });
-    fixture.root.appShellStore.selectProjectSession(id);
+    fixture.root.navigationStore.selectProjectSession(id);
     fixture.root.projectWorkbenchStore.showLoadedSession(id);
     fixture.root.sessionLayoutStore.ensureSession(id);
   }

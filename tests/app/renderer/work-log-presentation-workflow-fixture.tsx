@@ -51,7 +51,7 @@ export function renderWorkLog(parts: UiPart[], options: { streaming?: boolean } 
     sessions: [sessionSummary({ sessionId: "work-log", projectPath: "/project" })],
   });
   const session = fixture.root.sessionRegistry.load("work-log", "/project");
-  fixture.root.appShellStore.selectProjectSession("work-log");
+  fixture.root.navigationStore.selectProjectSession("work-log");
   fixture.root.projectWorkbenchStore.showLoadedSession("work-log");
   const snapshot: ConversationSnapshot = {
     sessionId: "work-log",

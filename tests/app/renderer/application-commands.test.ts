@@ -75,7 +75,7 @@ describe("Application command registry", () => {
     expect(root.appShellStore.activeConversation?.sessionId).toBe(source.sessionId);
 
     // Cake Chat focus must not redirect to the still-loaded Project pane; splitting is Project-only.
-    root.appShellStore.selectCakeChat(CAKE_CHAT_SESSION_ID);
+    root.navigationStore.selectCakeChat(CAKE_CHAT_SESSION_ID);
     root.commands.execute("focus-pane-1");
     root.commands.execute("split-right");
     expect(root.appShellStore.activeConversation).toEqual({
@@ -88,7 +88,7 @@ describe("Application command registry", () => {
   it("returns from Settings to the same conversation and leaves snapshot authority with shell and layout", () => {
     using fixture = createRendererStoreFixture();
     const { root } = fixture;
-    root.appShellStore.selectCakeChat(CAKE_CHAT_SESSION_ID);
+    root.navigationStore.selectCakeChat(CAKE_CHAT_SESSION_ID);
     root.commands.execute("open-settings");
     expect(root.appShellStore.surface).toBe("settings");
     root.commands.execute("open-settings");
@@ -99,7 +99,7 @@ describe("Application command registry", () => {
     expect(root.appShellStore.surface).toBe("cake-chat");
     const snapshot = toSnapshot(root);
     expect(snapshot.children?.appShellStore).toMatchObject({
-      state: { selection: { kind: "cake-chat", sessionId: CAKE_CHAT_SESSION_ID } },
+      state: { navigationVersion: 2, workspace: "cake-chat" },
     });
     expect(snapshot.children?.navigationStore).toMatchObject({ state: {} });
   });

@@ -76,7 +76,7 @@ function renderCachedWorkbench(
       },
     );
   }
-  fixture.root.appShellStore.selectProjectSession("alpha");
+  fixture.root.navigationStore.selectProjectSession("alpha");
   fixture.root.projectWorkbenchStore.showLoadedSession("alpha");
   fixture.root.sessionLayoutStore.ensureSession("alpha");
   if (nativeEditor) {

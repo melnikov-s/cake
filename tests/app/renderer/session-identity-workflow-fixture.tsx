@@ -39,7 +39,7 @@ export function renderSessionIdentity(
   const { root } = fixture;
   if (!options.snapshot) {
     root.sessionRegistry.pendingSessions.prepareStaged(identityProjectPath, "staged-original");
-    root.appShellStore.selectProjectSession("staged-original");
+    root.navigationStore.selectProjectSession("staged-original");
     root.sessionLayoutStore.ensureSession("staged-original");
     root.projectWorkbenchStore.showLoadedSession("staged-original");
   }

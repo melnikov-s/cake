@@ -1,3 +1,4 @@
+import { migrateNavigation } from "../persistence/migrate-navigation";
 import type { DesktopConnectionStore } from "../stores/DesktopConnectionStore";
 import { createStore, mount, type StoreSnapshot } from "r-state-tree";
 import type { Client } from "../client/Client";
@@ -23,7 +24,7 @@ export function mountRootStore(
       projection,
       flushWindowState,
     }),
-    { snapshot: migratePendingSessions(snapshot) },
+    { snapshot: migrateNavigation(migratePendingSessions(snapshot)) },
   );
   return root;
 }

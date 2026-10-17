@@ -2,10 +2,7 @@ import { Store, child, createStore } from "r-state-tree";
 import { linkedMessageTarget } from "../lib/message-navigation";
 import { MessageReferencePreviewStore } from "./MessageReferencePreviewStore";
 import { AttachmentReferencePreviewStore } from "./AttachmentReferencePreviewStore";
-import {
-  CAKE_CHAT_SESSION_ID,
-  isCakeChatSessionId,
-} from "../../contracts/cake-chats/cake-chat-identity";
+import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import { resolveSessionLinkReference } from "../../contracts/project-sessions/session-reference";
 import {
   decodeArtifactLineageId,
@@ -83,7 +80,6 @@ export class NavigationStore extends Store<{
     }
     const workbench = this.workbench;
     workbench.dismissSecondarySurfaces();
-    this.props.layout.focusSession(sessionId);
     const opened = await workbench.openSession(sessionId);
     if (opened === false || workbench.activeSessionId !== sessionId) return false;
     const session = this.props.registry.findSession(sessionId);
@@ -102,13 +98,13 @@ export class NavigationStore extends Store<{
 
   selectProjectSession(sessionId: string) {
     this.props.layout.showSession(sessionId);
-    this.selectProjectSessionForShell(sessionId);
+    this.commitProjectSelection();
   }
 
   showLoadedProjectSession(sessionId: string) {
     this.props.layout.ensureSession(sessionId);
     this.workbench.showLoadedSession(sessionId);
-    this.selectProjectSessionForShell(sessionId);
+    this.commitProjectSelection();
   }
 
   restoreStagedSession(projectPath: string) {
@@ -123,10 +119,9 @@ export class NavigationStore extends Store<{
     return this.props.layout.restoreFocusedHistorySession(sessionId) ? sessionId : undefined;
   }
 
-  selectProjectSessionForShell(sessionId: string) {
-    if (this.props.metadata().isResolved(sessionId))
-      this.props.shell.previewResolvedProjectSession(sessionId);
-    else this.props.shell.selectProjectSession(sessionId);
+  private commitProjectSelection() {
+    this.props.shell.selectWorkspace("project-sessions");
+    this.props.shell.recordCurrentConversationVisit();
   }
 
   /** Opens either kind of Cake Session addressed by a Markdown session link.
@@ -170,7 +165,7 @@ export class NavigationStore extends Store<{
     await this.workbench.startNewSession(workspacePath);
     const sessionId = this.workbench.activeSessionId;
     if (sessionId && this.props.registry.findSession(sessionId))
-      this.selectProjectSessionForShell(sessionId);
+      this.selectProjectSession(sessionId);
   }
 
   async startOneOffChat() {
@@ -235,9 +230,10 @@ export class NavigationStore extends Store<{
   }
 
   focusSessionPane(paneId: string) {
+    const previousSessionId = this.workbench.activeSessionId;
     const sessionId = this.props.layout.focusPane(paneId);
-    if (!sessionId || this.workbench.activeSessionId === sessionId) return;
-    this.selectProjectSessionForShell(sessionId);
+    if (!sessionId || previousSessionId === sessionId) return;
+    this.commitProjectSelection();
     this.workbench.showLoadedSession(sessionId);
   }
 
@@ -275,7 +271,7 @@ export class NavigationStore extends Store<{
       this.props.registry.removeSession(sessionId);
       return;
     }
-    this.selectProjectSessionForShell(sessionId);
+    this.commitProjectSelection();
     this.workbench.showLoadedSession(sessionId);
     void session.stagedCommandStore.load(source.workspacePath);
     return { paneId, sessionId };
@@ -283,12 +279,12 @@ export class NavigationStore extends Store<{
 
   focusCakeChatPane(paneId: string) {
     const sessionId = this.props.cakeChat().focusPane(paneId);
-    if (sessionId) this.props.shell.selectCakeChat(sessionId);
+    if (sessionId) this.commitCakeChatSelection();
   }
 
   closeCakeChatPane(paneId: string) {
     const result = this.props.cakeChat().closePane(paneId);
-    if (result?.focusedSessionId) this.props.shell.selectCakeChat(result.focusedSessionId);
+    if (result?.focusedSessionId) this.commitCakeChatSelection();
   }
 
   closeSessionPane(paneId: string) {
@@ -299,7 +295,7 @@ export class NavigationStore extends Store<{
         this.props.registry.removeSession(sessionId);
     }
     if (result.focusedSessionId) {
-      this.selectProjectSessionForShell(result.focusedSessionId);
+      this.commitProjectSelection();
       this.workbench.showLoadedSession(result.focusedSessionId);
     }
   }
@@ -313,20 +309,16 @@ export class NavigationStore extends Store<{
   showWorkbench() {
     const workbench = this.workbench;
     workbench.dismissSecondarySurfaces();
-    const context = workbench.sessionContext();
-    if (context) this.props.shell.selectProjectSession(context.sessionId);
-    else this.props.shell.showWorkbench();
+    this.props.shell.selectWorkspace(
+      this.props.layout.focusedSessionId ? "project-sessions" : "home",
+    );
     this.presentation.restore();
   }
 
   returnToWorkbench() {
-    const active = this.props.shell.activeConversation;
-    if (active?.kind === "cake-chat") {
-      this.props.shell.selectCakeChat(active.sessionId);
-      return;
-    }
-    this.showWorkbench();
-    this.workbench.requestComposerFocus();
+    this.props.shell.dismissCoveringSurface();
+    this.presentation.restore();
+    if (this.props.shell.workspace === "project-sessions") this.workbench.requestComposerFocus();
   }
 
   dismissTopSecondarySurface() {
@@ -356,19 +348,31 @@ export class NavigationStore extends Store<{
     this.commands.tryClose();
   }
 
+  /** Selects a Cake Chat or Project Chat in its conversation workspace. */
+  selectCakeChat(sessionId: string) {
+    this.props.cakeChat().sessionLayoutStore.showSession(sessionId);
+    this.commitCakeChatSelection();
+  }
+
+  private commitCakeChatSelection() {
+    this.props.shell.selectWorkspace("cake-chat");
+    this.props.shell.recordCurrentConversationVisit();
+  }
+
   async openCakeChat(sessionId?: string) {
     if (!sessionId) return this.startCakeChat();
     this.workbench.dismissSecondarySurfaces();
-    this.props.shell.selectCakeChat(sessionId);
+    this.props.shell.selectWorkspace("cake-chat");
     await this.props.cakeChat().openSession(sessionId);
+    this.commitCakeChatSelection();
     this.presentation.restore();
   }
 
   async startCakeChat(prompt?: string) {
     this.workbench.dismissSecondarySurfaces();
-    this.props.shell.selectCakeChat(CAKE_CHAT_SESSION_ID);
+    this.props.shell.selectWorkspace("cake-chat");
     await this.props.cakeChat().activate(prompt);
-    this.props.shell.selectCakeChat(this.props.cakeChat().sessionId);
+    this.commitCakeChatSelection();
     this.presentation.restore();
   }
 
@@ -409,6 +413,6 @@ export class NavigationStore extends Store<{
 
   showEmptyWorkbench() {
     this.workbench.dismissSecondarySurfaces();
-    this.props.shell.showWorkbench();
+    this.props.shell.selectWorkspace("home");
   }
 }

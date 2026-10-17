@@ -85,7 +85,7 @@ function renderCapture(
     });
   }
   const select = (id: string) => {
-    fixture.root.appShellStore.selectProjectSession(id);
+    fixture.root.navigationStore.selectProjectSession(id);
     fixture.root.projectWorkbenchStore.showLoadedSession(id);
     fixture.root.sessionLayoutStore.ensureSession(id);
   };
@@ -367,7 +367,7 @@ describe("Screen capture attachment workflow", () => {
     const start = vi.fn<Client["electron"]["startScreenCapture"]>(async () => captured);
     using fixture = renderCapture(start);
     act(() => {
-      fixture.root.appShellStore.showWorkbench();
+      fixture.root.navigationStore.showEmptyWorkbench();
       fixture.root.appShellStore.showSettings();
     });
     await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));

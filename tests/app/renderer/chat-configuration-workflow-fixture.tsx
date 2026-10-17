@@ -84,7 +84,7 @@ export function renderChatConfiguration(options: {
   const session = options.deferred
     ? fixture.root.sessionRegistry.pendingSessions.prepareStaged("/project", "first")
     : fixture.root.sessionRegistry.load("first", "/project");
-  fixture.root.appShellStore.selectProjectSession("first");
+  fixture.root.navigationStore.selectProjectSession("first");
   fixture.root.projectWorkbenchStore.showLoadedSession("first");
   let revision = 0;
   function publish(snapshot: ConversationSnapshot) {

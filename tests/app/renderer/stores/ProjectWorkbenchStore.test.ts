@@ -13,7 +13,7 @@ function loadedWorkbench(client: TestClientOverrides = {}) {
     sessions: [sessionSummary({ sessionId: "session-1", projectPath: "/project" })],
   });
   const session = fixture.root.sessionRegistry.load("session-1", "/project");
-  fixture.root.appShellStore.selectProjectSession("session-1");
+  fixture.root.navigationStore.selectProjectSession("session-1");
   fixture.root.projectWorkbenchStore.showLoadedSession("session-1");
   return { ...fixture, session };
 }

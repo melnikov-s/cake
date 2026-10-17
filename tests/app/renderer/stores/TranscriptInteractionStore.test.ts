@@ -50,7 +50,7 @@ describe("Transcript control-protocol navigation boundary", () => {
       extensionUi: { statuses: [] },
       tree: [],
     });
-    fixture.root.appShellStore.selectProjectSession("session-1");
+    fixture.root.navigationStore.selectProjectSession("session-1");
     fixture.root.projectWorkbenchStore.showLoadedSession("session-1");
     const interaction = session.conversationSessionStore.chatStore.transcriptInteraction;
     interaction.setTranscriptScrollPosition({ kind: "message", messageId: "user-1", offset: -20 });

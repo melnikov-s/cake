@@ -51,7 +51,7 @@ function harness() {
   const b = root.sessionRegistry.load("b", workspace);
   const editor = root.projectWorkbenchStore.presentationStore.embeddedEditorStore;
   const select = (sessionId: string) => {
-    root.appShellStore.selectProjectSession(sessionId);
+    root.navigationStore.selectProjectSession(sessionId);
     root.projectWorkbenchStore.showLoadedSession(sessionId);
   };
   select("a");

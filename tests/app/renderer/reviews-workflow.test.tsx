@@ -196,7 +196,7 @@ function renderReview(
   if (options.observed !== false) deliverSnapshot();
   if (options.draft) {
     fixture.root.projectWorkbenchStore.projectOpenStore.projectPath = "/project";
-    fixture.root.appShellStore.selectProjectSession("parent-1");
+    fixture.root.navigationStore.selectProjectSession("parent-1");
     fixture.root.reviewsStore.prepareDraft(codeAnchor);
   }
   const chat = options.draft

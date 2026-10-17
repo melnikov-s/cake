@@ -35,7 +35,7 @@ function harness({
   const draft = session.conversationSessionStore.composerStore.draftStore;
   if (!draft.text) draft.setText("unsent request");
   if (!draft.attachments.length) draft.attachments.push(attachment);
-  root.appShellStore.selectProjectSession(sessionId);
+  if (!root.appShellStore.activeConversation) root.navigationStore.selectProjectSession(sessionId);
   root.projectWorkbenchStore.showLoadedSession(sessionId);
   persistence.observe(root);
   cleanups.push(() => {
@@ -104,7 +104,8 @@ describe("WindowStatePersistence", () => {
     expect(JSON.parse(JSON.stringify(payload))).toEqual(payload);
     expect(payload).toMatchObject({
       children: {
-        appShellStore: { state: { selection: { kind: "project-session", sessionId } } },
+        appShellStore: { state: { navigationVersion: 2, workspace: "project-sessions" } },
+        sessionLayoutStore: { state: { layout: { history: [sessionId], historyCursor: 0 } } },
         sessionRegistry: {
           children: {
             sessions: [
@@ -135,7 +136,7 @@ describe("WindowStatePersistence", () => {
     h.draft.setText("first");
     await vi.advanceTimersByTimeAsync(179);
     expect(h.save).not.toHaveBeenCalled();
-    h.root.appShellStore.showWorkbench();
+    h.root.navigationStore.showEmptyWorkbench();
     h.draft.setText("latest");
     h.draft.attachments.push({
       ...attachment,

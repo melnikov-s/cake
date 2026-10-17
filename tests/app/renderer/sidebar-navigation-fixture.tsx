@@ -120,7 +120,7 @@ export function renderSidebarNavigation(
     const id = options.loadedIds![0]!;
     fixture.root.settingsStore.embeddedEditor.sidebarAutoHide = options.ide.sidebarAutoHide;
     fixture.root.settingsStore.embeddedEditor.sidebarAutoHideWidth = options.ide.width ?? 1440;
-    fixture.root.appShellStore.selectProjectSession(id);
+    fixture.root.navigationStore.selectProjectSession(id);
     fixture.root.projectWorkbenchStore.showLoadedSession(id);
     fixture.root.sessionLayoutStore.ensureSession(id);
     fixture.root.projectWorkbenchStore.presentationStore.embeddedEditorStore.applyState({

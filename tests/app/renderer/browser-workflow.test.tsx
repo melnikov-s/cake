@@ -63,7 +63,7 @@ function renderBrowser(client: TestClientOverrides = {}, secondary = false) {
       },
     });
   }
-  fixture.root.appShellStore.selectProjectSession(sessionId);
+  fixture.root.navigationStore.selectProjectSession(sessionId);
   fixture.root.projectWorkbenchStore.showLoadedSession(sessionId);
   fixture.root.sessionLayoutStore.ensureSession(sessionId);
   const view = render(

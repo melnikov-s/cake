@@ -92,7 +92,7 @@ async function renderDrafts(
   if (!drafts.records.has(sessionId))
     fixture.root.sessionRegistry.pendingSessions.prepareStaged(projectPath, sessionId);
   fixture.root.sessionLayoutStore.ensureSession(sessionId);
-  fixture.root.appShellStore.selectProjectSession(sessionId);
+  fixture.root.navigationStore.selectProjectSession(sessionId);
   fixture.root.projectWorkbenchStore.showLoadedSession(sessionId);
   const { root } = fixture;
   const Surface = observer(function Surface() {

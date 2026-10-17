@@ -22,7 +22,7 @@ export function renderCommandPane(client: TestClientOverrides) {
     },
   });
   const session = fixture.root.sessionRegistry.load("source", "/project");
-  fixture.root.appShellStore.selectProjectSession("source");
+  fixture.root.navigationStore.selectProjectSession("source");
   const workbench = fixture.root.projectWorkbenchStore;
   workbench.showLoadedSession("source");
   applyConversationUpdate(fixture.models.projectConversation("source", "/project"), {

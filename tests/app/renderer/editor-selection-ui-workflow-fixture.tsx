@@ -68,7 +68,7 @@ export async function createSelectionCommandFixture(
       tree: [],
     });
   }
-  fixture.root.appShellStore.selectProjectSession(selectionSessionId);
+  fixture.root.navigationStore.selectProjectSession(selectionSessionId);
   fixture.root.projectWorkbenchStore.showLoadedSession(selectionSessionId);
   fixture.root.sessionLayoutStore.ensureSession(selectionSessionId);
   fixture.root.projectWorkbenchStore.presentationStore.embeddedEditorStore.applyState({

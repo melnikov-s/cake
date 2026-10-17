@@ -107,7 +107,7 @@ function renderContinuation(client: TestClientOverrides, managed = true) {
     revision: 1,
     snapshot: snapshot("source"),
   });
-  fixture.root.appShellStore.selectProjectSession("source");
+  fixture.root.navigationStore.selectProjectSession("source");
   fixture.root.projectWorkbenchStore.showLoadedSession("source");
   fixture.root.sessionLayoutStore.ensureSession("source");
   const view = render(
