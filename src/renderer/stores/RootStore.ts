@@ -1,5 +1,6 @@
 import { DictationStore } from "./DictationStore";
 import { ScreenCaptureAttachmentStore } from "./ScreenCaptureAttachmentStore";
+import { WidgetViewAttachmentContext } from "./context/WidgetViewAttachmentContext";
 import { microphone, type Microphone } from "../dictation/microphone";
 import { createSpeechPlayback, type SpeechPlayback } from "../speech/playback";
 import { ConversationModeStore, ConversationModeContext } from "./ConversationModeStore";
@@ -138,6 +139,10 @@ export class RootStore extends Store<{
   }
   get cakeChatCatalogModel() {
     return this.props.projection.cakeChatCatalog;
+  }
+
+  [WidgetViewAttachmentContext.provide]() {
+    return this.screenCaptureStore;
   }
 
   [ClientContext.provide]() {

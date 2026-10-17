@@ -402,16 +402,29 @@ and persistence owner for them.
 `artifacts.preview` requires an exact `@rN` reference and uses the same effective-link
 resolver as ordinary artifact inspection. It returns exact metadata and the stored
 native PNG image. Use a direct Cake tool call for native images; codemode's text/structured
-result does not itself expose native image blocks. Alternatively resolve the exact
+result does not itself expose native image blocks and explicitly warns when pixels were not forwarded. Alternatively resolve the exact
 reference and read `preview.png` with an image-capable file tool. Historical snapshots
 without a retained capture report an explicit unavailable error; there is no new render,
 private-transcript recovery, latest-revision substitution, or mutation of old snapshots.
 
-Before implementation, inspect the user-approved exact preview, not merely the originating
-brief. Read source selectively for ambiguous layout or dynamic behavior, without importing
-the generation conversation. After implementation, compare a real implementation screenshot
-against that same approved revision and verify relevant interactions. Approval identifies
-an artifact revision; it does not snapshot arbitrary user interaction state in a live widget.
+Retained previews are labeled **Initial state—not current interactive view** in the UI and
+image-operation metadata (`retained-initial-state`, with exact reference). They remain immutable.
+The live widget provides **Attach current view**: a user-initiated native Electron capture of that
+specific mounted iframe, after paint settlement, plus exact revision, capture timestamp, dimensions,
+`live-widget-view` provenance and available last host-observed saved lineage state. Pixels and evidence
+metadata are paired attachments in the active conversation's draft; capture never auto-sends,
+navigates, revises the artifact, resumes an agent, or persists widget-local React state. The destination
+is frozen before capture. Closed, unready, minimized, clipped or covered views fail explicitly, without
+substituting retained or freshly rendered initial pixels. Browser-only hosts do not support native capture.
+The image covers the visible widget viewport, not all internal scrolling content or other viewports.
+
+Saved lineage state is advisory, not an atomic snapshot of arbitrary widget-local state. Local
+variant/selection metadata is explicitly unavailable unless represented in saved state; even then,
+inspect the actual pixels. A matching revision alone can still mean initial A versus live C.
+Before implementing an approved interactive view, inspect matching revision **and state** pixels,
+requesting Attach current view when needed. Source or image descriptions alone are never visual
+verification. Read source selectively for behavior, without importing the generation conversation.
+Compare the implementation's real screenshot against the approved view and verify relevant interactions.
 
 Normal artifact presentation does not expose generated Source or a renderer-local
 Repair control. User-requested repair is a durable `artifacts.replace`: a new

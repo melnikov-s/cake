@@ -48,6 +48,10 @@ export interface ElectronService {
     connectionId: number,
     request: Payload<"show-main-window">,
   ) => Effect.Effect<Success<"show-main-window">, ElectronError>;
+  readonly captureWidgetView: (
+    connectionId: number,
+    request: Payload<"capture-widget-view">,
+  ) => Effect.Effect<Success<"capture-widget-view">, ElectronError>;
   readonly startScreenCapture: (
     connectionId: number,
     request: Payload<"start-screen-capture">,

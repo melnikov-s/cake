@@ -4,6 +4,7 @@ import { observer } from "r-state-tree/react";
 import { VirtualizedConversation } from "@/components/ai-elements/conversation";
 import { WorkLogDiff } from "@/components/ai-elements/work-log-diff";
 import { ImagePreview } from "@/components/image-preview";
+import { toolImageCaption } from "../../utils/cake-tool";
 import { StatusDot } from "@/components/ui/status-dot";
 import { WorkLogActivityTrigger } from "@/components/work-log-activity-trigger";
 import { toolDisplayTitle } from "@/lib/tool-presentation";
@@ -299,8 +300,13 @@ export const ActivityGroup = observer(function ActivityGroup({
                   >
                     <ImagePreview
                       src={`data:${item.mimeType};base64,${item.data}`}
-                      alt={`Tool output image ${index + 1}`}
+                      alt={toolImageCaption(part) ?? `Tool output image ${index + 1}`}
                     />
+                    {toolImageCaption(part) && (
+                      <figcaption className="px-3 py-2 text-xs text-muted-foreground">
+                        {toolImageCaption(part)}
+                      </figcaption>
+                    )}
                   </figure>,
                 ]
               : [],

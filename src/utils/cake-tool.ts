@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { INITIAL_WIDGET_PREVIEW_LABEL } from "../contracts/widgets/widget-view-evidence";
 import type { UiPart } from "../contracts/conversations/session-contract";
 
 export type ToolPart = Extract<UiPart, { kind: "tool" }>;
@@ -7,6 +8,17 @@ export type ToolPart = Extract<UiPart, { kind: "tool" }>;
 const cakeEnvelopeProjectionSchema = Schema.Struct({
   command: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
 });
+
+export function toolImageCaption(part: ToolPart) {
+  return [
+    "widgets.present",
+    "artifacts.preview",
+    "artifacts.replace",
+    "artifacts.restore",
+  ].includes(toolOperationName(part))
+    ? INITIAL_WIDGET_PREVIEW_LABEL
+    : undefined;
+}
 
 export function toolOperationName(part: ToolPart) {
   if (part.name !== "cake") return part.name;

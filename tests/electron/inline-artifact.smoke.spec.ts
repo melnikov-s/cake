@@ -83,7 +83,10 @@ for (const theme of ["light", "dark"] as const) {
       const initialHeight = await iframe.evaluate(
         (element) => element.getBoundingClientRect().height,
       );
-      expect(initialHeight).toBe(600);
+      const toolbarHeight = await inline
+        .locator('[data-slot="widget-view-toolbar"]')
+        .evaluate((element) => element.getBoundingClientRect().height);
+      expect(initialHeight).toBe(600 - toolbarHeight);
       const resize = inline.getByRole("separator", { name: "Resize Inline visualization" });
       await resize.focus();
       await resize.press("ArrowDown");
@@ -96,7 +99,7 @@ for (const theme of ["light", "dark"] as const) {
       await expect(resize).toHaveAttribute("aria-valuenow", "680");
       await expect
         .poll(() => iframe.evaluate((element) => element.getBoundingClientRect().height))
-        .toBe(680);
+        .toBe(680 - toolbarHeight);
       const explore = frame.getByRole("button", { name: "Explore detail" });
       await explore.focus();
       await explore.press("Enter");
@@ -167,7 +170,13 @@ for (const theme of ["light", "dark"] as const) {
         0,
       );
       await expect(frame.getByRole("button", { name: "Hide detail" })).toBeVisible();
-      await inline.getByRole("button", { name: "View Inline visualization fullscreen" }).click();
+      // Exercise keyboard activation after native viewport resize; the evidence smoke
+      // separately covers pointer activation of the same fullscreen control.
+      const fullscreenExpand = inline.getByRole("button", {
+        name: "View Inline visualization fullscreen",
+      });
+      await fullscreenExpand.focus();
+      await fullscreenExpand.press("Enter");
       const fullscreen = page.getByRole("dialog", { name: "Inline visualization" });
       await expect(
         fullscreen
@@ -185,8 +194,11 @@ for (const theme of ["light", "dark"] as const) {
         const bounds = (await fullFrame.boundingBox())!;
         const viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
         expect(bounds.width).toBe(viewport.width);
-        expect(bounds.height).toBeCloseTo(viewport.height - header.height, 0);
-        expect(bounds.y).toBeCloseTo(header.height, 0);
+        const toolbar = (await fullscreen
+          .locator('[data-slot="widget-view-toolbar"]')
+          .boundingBox())!;
+        expect(bounds.height).toBeCloseTo(viewport.height - header.height - toolbar.height, 0);
+        expect(bounds.y).toBeCloseTo(header.height + toolbar.height, 0);
         expect(
           await fullContent
             .locator("body")
@@ -213,7 +225,7 @@ for (const theme of ["light", "dark"] as const) {
       await expect(frame.getByRole("button", { name: "Hide detail" })).toBeVisible();
       await expect
         .poll(() => iframe.evaluate((element) => element.getBoundingClientRect().height))
-        .toBe(680);
+        .toBe(680 - toolbarHeight);
       await expect(resize).toHaveAttribute("aria-valuenow", "680");
       const collapse = inline.getByRole("button", { name: "Inline visualization Collapse" });
       await collapse.focus();

@@ -351,7 +351,11 @@ export class CakeOperationRegistry {
       text,
       content: [{ type: "text", text }, ...images],
       details: { protocol: CAKE_OPERATION_PROTOCOL, command, result: boundedResult },
-      structuredContent: operation.outputSchema ? { command, result: structured } : text,
+      structuredContent: operation.outputSchema
+        ? { command, result: structured }
+        : richResult
+          ? `${text}\n\nWARNING: This nested/structured result contains text metadata only; native image pixels were NOT forwarded. Descriptions and source are not image inspection. Call cake directly (outside codemode) to receive the images, or use an image-capable read on the resolved file.`
+          : text,
     };
   }
 }

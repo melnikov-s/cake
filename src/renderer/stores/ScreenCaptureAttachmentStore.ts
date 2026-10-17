@@ -218,6 +218,45 @@ export class ScreenCaptureAttachmentStore extends Store<{
     void this.configure();
   }
 
+  async attachWidgetView(viewId: string) {
+    // Freeze the destination before asynchronous native work. Do not navigate or resume a runtime.
+    const target = this.props.shell.activeConversation;
+    if (!target) throw new Error("Open a conversation before attaching a widget view.");
+    const draft = this.findDraft(target);
+    if (!draft) throw new Error("The destination conversation is not editable.");
+    if (draft.attachments.length > 18)
+      throw new Error("The draft needs room for pixels and evidence metadata (2 attachments).");
+    const capture = await this.props.client.captureWidgetView(viewId, { signal: this.signal });
+    if (this.signal.aborted) return;
+    if (this.findDraft(target) !== draft)
+      throw new Error("The destination draft is no longer available.");
+    if (draft.attachments.length > 18) throw new Error("The draft needs room for 2 attachments.");
+    const { data, ...metadata } = capture;
+    const name = `Current widget view · ${capture.exactRef} · ${capture.capturedAt}`;
+    draft.appendAttachments([
+      { kind: "image", name: `${name}.png`, mimeType: "image/png", data },
+      {
+        kind: "text",
+        name: "Widget view evidence",
+        text: JSON.stringify(
+          {
+            ...metadata,
+            imageAttachment: `${name}.png`,
+            scope:
+              "Capture-time pixels of this live widget viewport, not the retained initial-state preview.",
+            stateNote:
+              "savedState is last host-observed lineage state, not a complete or atomic snapshot of local UI state. Unreported variant/selection must be identified from these pixels or confirmed with the user.",
+            verification:
+              "Inspect the attached pixels before claiming visual verification. Exact revision alone does not identify a selected variant.",
+          },
+          null,
+          2,
+        ),
+      },
+    ]);
+    draft.requestFocus();
+  }
+
   async capture() {
     if (this.busy || this.recordingShortcut) return;
     const choices = this.cakeChatOnly ? { ...this.destinations, projects: [] } : this.destinations;

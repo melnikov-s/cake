@@ -6,6 +6,7 @@ import type {
 } from "../../contracts/widgets/inline-widget-contract";
 import type { WidgetBrowserOutput } from "../../contracts/widgets/widget-browser-output";
 import { ClientContext } from "./context/ClientContext";
+import { WidgetViewAttachmentContext } from "./context/WidgetViewAttachmentContext";
 import type { ArtifactState } from "../../contracts/artifacts/artifact-state";
 import type { ArtifactLineageId } from "../../contracts/artifacts/artifact-lineage";
 import type { JsonValue } from "../../contracts/serialization/json-contract";
@@ -22,6 +23,33 @@ export interface InlineWidgetState {
 
 /** Owns compilation state for sandboxed inline transcript widgets. */
 export class InlineWidgetStore extends Store {
+  evidenceBusy = false;
+  evidenceViewId: string | undefined;
+  evidenceMessage: string | undefined;
+  evidenceFailed = false;
+
+  async attachCurrentView(viewId: string) {
+    if (this.evidenceBusy) return;
+    this.evidenceBusy = true;
+    this.evidenceViewId = viewId;
+    this.evidenceMessage = undefined;
+    this.evidenceFailed = false;
+    try {
+      const attachments = WidgetViewAttachmentContext.consume(this);
+      if (!attachments) throw new Error("Current-view attachment is unavailable in this window.");
+      await attachments.attachWidgetView(viewId);
+      if (!this.signal.aborted)
+        this.evidenceMessage = "Current view + revision added to draft. Send when ready.";
+    } catch (error) {
+      if (!this.signal.aborted) {
+        this.evidenceFailed = true;
+        this.evidenceMessage = error instanceof Error ? error.message : String(error);
+      }
+    } finally {
+      this.evidenceBusy = false;
+    }
+  }
+
   get inlineWidgets() {
     return ClientContext.consume(this)!.inlineWidgets;
   }

@@ -191,7 +191,7 @@ describe("ArtifactHost", () => {
       const frame = view.container.querySelector("iframe")!;
       expect(frame.getAttribute("sandbox")).toBe("allow-scripts allow-downloads");
       expect(view.container.textContent).not.toContain(source);
-      const surface = frame.parentElement!.parentElement!;
+      const surface = frame.parentElement!.parentElement!.parentElement!;
       expect(surface.style.height).toBe("600px");
       const resize = screen.getByRole("separator", { name: "Resize Comparison" });
       resize.focus();

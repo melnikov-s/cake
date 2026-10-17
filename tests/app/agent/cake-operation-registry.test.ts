@@ -177,6 +177,11 @@ describe("Cake operation registry", () => {
       result: { boardId: "board-1", width: 640, height: 480 },
     });
     expect(JSON.stringify(result.details)).not.toContain(tinyPng.data);
+    expect(result.structuredContent).toContain("native image pixels were NOT forwarded");
+    expect(result.structuredContent).toContain("Descriptions and source are not image inspection");
+    expect(result.structuredContent).toContain("Call cake directly");
+    expect(JSON.stringify(result.structuredContent)).not.toContain(tinyPng.data);
+    expect(result.text).not.toContain("NOT forwarded"); // direct result really carries pixels
   });
 
   it("keeps a bounded image when oversized metadata is truncated", async () => {

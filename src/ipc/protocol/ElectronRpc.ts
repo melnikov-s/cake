@@ -12,6 +12,7 @@ type ElectronOperation = keyof Pick<
   | "configure-cake-chat-overlay"
   | "hide-cake-chat-overlay"
   | "show-main-window"
+  | "capture-widget-view"
   | "start-screen-capture"
   | "screen-capture-state"
   | "finish-screen-capture"
@@ -37,6 +38,7 @@ export const ElectronRpc = RpcGroup.make(
   electronRpc("configure-cake-chat-overlay"),
   electronRpc("hide-cake-chat-overlay"),
   electronRpc("show-main-window"),
+  electronRpc("capture-widget-view"),
   electronRpc("start-screen-capture"),
   electronRpc("screen-capture-state"),
   electronRpc("finish-screen-capture"),

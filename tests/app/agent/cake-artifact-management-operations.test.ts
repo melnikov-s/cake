@@ -121,6 +121,46 @@ function makeHarness(initial: CakeArtifactV1 = markdown(1, "one")) {
 }
 
 describe("Cake artifact management operations", () => {
+  it("returns exact retained initial pixels with provenance, never live C state or regenerated pixels", async () => {
+    const widget = widgetArtifact();
+    if (widget.kind !== "widget") throw new Error("Expected widget");
+    const preview = { mimeType: "image/png" as const, data: "cG5n" };
+    const { registry, callbacks } = makeHarness({
+      ...widget,
+      revision: 3,
+      payload: { ...widget.payload, preview },
+    });
+    callbacks.readArtifactState = vi.fn(async (lineageId) => ({
+      lineageId,
+      version: 9,
+      value: { variant: "C" },
+    }));
+    const result = await registry.invoke(
+      { command: "artifacts.preview", input: { reference: "chart@r3" } },
+      context(),
+    );
+    expect(result.content[1]).toEqual({ type: "image", ...preview });
+    expect(result.details).toMatchObject({
+      result: {
+        exactRef: "cake://artifact/chart@r3",
+        previewEvidence: {
+          provenance: "retained-initial-state",
+          exactRef: "cake://artifact/chart@r3",
+          label: "Initial state—not current interactive view",
+        },
+      },
+    });
+    expect(callbacks.readArtifactState).not.toHaveBeenCalled();
+    expect(callbacks.persistArtifact).not.toHaveBeenCalled();
+    expect(result.structuredContent).toContain("native image pixels were NOT forwarded");
+    await expect(
+      registry.invoke(
+        { command: "artifacts.preview", input: { reference: "chart@r2" } },
+        context(),
+      ),
+    ).rejects.toThrow("Unknown artifact revision");
+  });
+
   it("present-existing-widget-does-not-regenerate-or-revise, including repeated calls", async () => {
     const { registry, callbacks, appendEntry } = makeHarness(widgetArtifact());
     for (const call of ["first", "second"]) {

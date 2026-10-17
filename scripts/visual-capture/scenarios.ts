@@ -1232,7 +1232,12 @@ async function seedArtifactScenario(
               role: "toolResult",
               toolCallId: "inline-publication",
               toolName: "cake",
-              content: [{ type: "text", text: "Published" }],
+              content: [
+                { type: "text", text: "Published" },
+                ...(artifact.kind === "widget" && artifact.payload.preview
+                  ? [{ type: "image", ...artifact.payload.preview }]
+                  : []),
+              ],
               details: { artifactId: artifact.id, artifactRevision: artifact.revision },
               isError: false,
               timestamp: 2,
@@ -1289,6 +1294,85 @@ async function seedArtifactScenario(
     );
   }
 }
+
+const widgetViewEvidenceScenario: VisualCaptureScenario = {
+  name: "widget-view-evidence",
+  description:
+    "Initial A and live C at the same revision, with current-view evidence attached to a draft",
+  states: ["initial", "selected", "attached"],
+  async seed(paths, theme, supplied) {
+    const source = `import React, { useState } from "react";
+import { useArtifactState } from "@cake/artifact-sdk";
+export default function Visual() {
+  const saved = useArtifactState({ variant: "A" });
+  const [variant, setVariant] = useState("A");
+  return <main style={{ height: "100%", padding: 24, boxSizing: "border-box", color: "var(--foreground)", background: "var(--background)", fontFamily: "var(--font-sans)" }}>
+    <h1>Variant {variant}</h1>
+    <p>Same revision. Different interactive pixels.</p>
+    <button onClick={() => setVariant("A")}>Select A</button>{" "}
+    <button onClick={() => setVariant("C")}>Select C</button>{" "}
+    <button disabled={!saved.hydrated} onClick={() => saved.save({ variant: "A" })}>Save A state</button>
+    <section style={{ marginTop: 24, padding: 24, border: "2px solid var(--border)", borderRadius: variant === "A" ? 0 : 24 }}>
+      {variant === "A" ? "INITIAL A · retained preview baseline" : "LIVE C · user-selected view"}
+    </section>
+  </main>;
+}`;
+    const artifact: CakeArtifactV1 = {
+      protocol: "cake.artifact/v1",
+      id: "widget-view-evidence",
+      sessionId: "visual-widget-view-evidence",
+      revision: 3,
+      kind: "widget",
+      title: "Widget view evidence",
+      payload: {
+        language: "react",
+        source,
+        brief: "A-initial/C-live mismatch fixture",
+        generationSessionId: "visual-evidence-generation",
+        browser: await retainArtifactBrowser(paths, "react", source),
+        ...(supplied?.kind === "widget" && supplied.payload.preview
+          ? { preview: supplied.payload.preview }
+          : {}),
+      },
+      fallback: { markdown: "Widget view evidence" },
+      interaction: { mode: "present" },
+    };
+    await seedArtifactScenario(paths, theme, artifact, true);
+    for (const revision of [1, 2]) {
+      const serialized = `${JSON.stringify({ ...artifact, revision }, null, 2)}\n`;
+      await writeFile(
+        join(paths.cakeHome, "state", "artifacts", "blobs", `${sha256(serialized)}.json`),
+        serialized,
+      );
+    }
+  },
+  async prepare(page, state) {
+    const host = page.locator('[data-artifact-id="widget-view-evidence"]').first();
+    await expect(
+      host.locator("iframe").contentFrame().getByRole("heading", { name: "Variant A" }),
+    ).toBeVisible();
+    await host.getByRole("button", { name: "View Widget view evidence fullscreen" }).click();
+    const dialog = page.getByRole("dialog", { name: "Widget view evidence", exact: true });
+    const frame = dialog.locator("iframe").contentFrame();
+    await frame.getByRole("button", { name: "Save A state" }).click();
+    if (state !== "initial") {
+      await frame.getByRole("button", { name: "Select C" }).click();
+      await expect(frame.getByRole("heading", { name: "Variant C" })).toBeVisible();
+    }
+    if (state === "attached") {
+      await dialog.getByRole("button", { name: "Attach current view" }).click();
+      await expect(
+        dialog.getByText("Current view + revision added to draft. Send when ready."),
+      ).toBeVisible();
+      await dialog.getByRole("button", { name: "Exit fullscreen Widget view evidence" }).click();
+    }
+  },
+  region(page, state) {
+    return state === "attached"
+      ? page.locator("body")
+      : page.getByRole("dialog", { name: "Widget view evidence", exact: true });
+  },
+};
 
 const inlineArtifactScenario: VisualCaptureScenario = {
   name: "inline-artifact",
@@ -3546,6 +3630,7 @@ export const visualCaptureScenarios = [
   requestExplanationScenario,
   messageBoardScenario,
   inlineArtifactScenario,
+  widgetViewEvidenceScenario,
   cakePromptsSettingsScenario,
   mcpSettingsScenario,
   appearanceSettingsScenario,

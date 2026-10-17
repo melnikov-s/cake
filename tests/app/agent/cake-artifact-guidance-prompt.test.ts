@@ -53,6 +53,12 @@ describe.each([
       "Compare the implementation's real screenshot against the same approved revision",
     );
     expect(prompt).toContain("verify relevant interactions");
+    expect(prompt).toContain("A matching revision is not enough");
+    expect(prompt).toContain("Attach current view");
+    expect(prompt).toContain(
+      "Never claim visual verification from source or an image description alone",
+    );
+    expect(prompt).toContain("disclose missing pixels");
   });
 
   it("preserves ordinary chat, maintained project docs, and requested files", () => {

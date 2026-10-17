@@ -3,6 +3,7 @@ import type { CakeOperationHost } from "../../contracts/agent/cake-operation-con
 import { editText } from "../../services/pi/edit-text";
 import { createCakeArtifactStateOperations } from "./cake-artifact-state-operations";
 import { Schema } from "effect";
+import { retainedWidgetPreviewEvidence } from "../../contracts/widgets/widget-view-evidence";
 import { jsonValueSchema } from "../../contracts/serialization/json-contract";
 
 import {
@@ -273,7 +274,7 @@ export function createCakeArtifactOperations(
       summary: "Resolve a linked stable or exact artifact reference to an exact read-only path.",
       guidance: [
         "An unlinked pasted URI is not readable. Explicitly link it first; temporary read leases are deferred until Cake has a durable lease owner.",
-        "For approved widget designs, read preview.png or call artifacts.preview with the approved exact @rN reference before implementation. The brief describes intent, not the approved rendering. Read source.tsx.txt/source.html.txt selectively for ambiguous layout or behavior; do not import private generation history. Compare a real implementation screenshot against that same approved revision.",
+        "For approved initial-state widget designs, read preview.png or call artifacts.preview with the approved exact @rN reference before implementation. For user-selected variants, ask for Attach current view pixels and exact revision metadata; an initial-state preview at the same revision is not matching evidence. The brief describes intent, not the approved rendering. Read source.tsx.txt/source.html.txt selectively for ambiguous layout or behavior; do not import private generation history. Compare a real implementation screenshot against that same approved revision.",
       ],
       inputSchema: artifactResolveSchema,
       outputSchema: ArtifactProjectionMetadata,
@@ -293,7 +294,7 @@ export function createCakeArtifactOperations(
         "Use this when the user wants to see an existing artifact again, including after state-only edits. Do not regenerate it with widgets.present, replace it, or repeat a Markdown embed.",
         "Stable references resolve the current source; exact @rN references select that immutable source revision. Widgets hydrate current lineage state in either case.",
         "Each successful call adds a new inline surface, even if the same revision was already published or presented. No artifact revision, link, or mutable state is changed. All artifact kinds use their existing renderer and sandbox.",
-        "This presents to the user, not a new model-visible screenshot. Use artifacts.preview for the retained review image.",
+        "This presents to the user, not a new model-visible screenshot. Use artifacts.preview for the retained initial-state image—not the current interactive view. Ask the user to Attach current view for live pixels.",
       ],
       inputSchema: artifactResolveSchema,
       outputSchema: ArtifactProjectionMetadata,
@@ -312,10 +313,11 @@ export function createCakeArtifactOperations(
     {
       command: "artifacts.preview",
       topic: "artifacts",
-      summary: "Inspect the retained rendered preview of an exact linked widget revision.",
+      summary:
+        "Inspect an exact widget revision’s initial-state preview—not its current interactive view.",
       guidance: [
         "Use the user-approved exact @rN reference, never latest. Link an unlinked reference first. This returns the accepted review capture, not a new render or the private generation conversation.",
-        "The capture is one bounded initial-state view; inspect projected source selectively for interactions or layout details it cannot show. Compare your implementation's real screenshot against this approved preview.",
+        "Initial state—not current interactive view. This immutable preview does not track the user’s selected variant, even at the same revision. For an approved interactive selection, ask the user to use Attach current view on that widget and send the pixels + evidence metadata. Inspect pixels matching both revision and selected state before implementation; source alone is never visual verification.",
       ],
       inputSchema: Schema.Struct({
         reference: artifactReferenceSchema.check(Schema.isPattern(/@r[1-9][0-9]*$/)),
@@ -336,9 +338,13 @@ export function createCakeArtifactOperations(
           throw new Error("Rendered previews are only available for widgets");
         if (!artifact.payload.preview)
           throw new Error(`No retained rendered preview for ${resolved.metadata.exactRef}`);
-        return cakeOperationImageResult(resolved.metadata, [
-          { type: "image", ...artifact.payload.preview },
-        ]);
+        return cakeOperationImageResult(
+          {
+            ...resolved.metadata,
+            previewEvidence: retainedWidgetPreviewEvidence(resolved.metadata.exactRef),
+          },
+          [{ type: "image", ...artifact.payload.preview }],
+        );
       },
     },
     {
@@ -564,9 +570,13 @@ export function createCakeArtifactOperations(
           `cake://artifact/${record.artifact.id}@r${revision}`,
         );
         return record.artifact.kind === "widget" && record.artifact.payload.preview
-          ? cakeOperationImageResult(resolved.metadata, [
-              { type: "image", ...record.artifact.payload.preview },
-            ])
+          ? cakeOperationImageResult(
+              {
+                ...resolved.metadata,
+                previewEvidence: retainedWidgetPreviewEvidence(resolved.metadata.exactRef),
+              },
+              [{ type: "image", ...record.artifact.payload.preview }],
+            )
           : resolved.metadata;
       },
     },
@@ -586,9 +596,13 @@ export function createCakeArtifactOperations(
         appendPointer(restored.record, pointerOrigin(context));
         return restored.record.artifact.kind === "widget" &&
           restored.record.artifact.payload.preview
-          ? cakeOperationImageResult(restored.metadata, [
-              { type: "image", ...restored.record.artifact.payload.preview },
-            ])
+          ? cakeOperationImageResult(
+              {
+                ...restored.metadata,
+                previewEvidence: retainedWidgetPreviewEvidence(restored.metadata.exactRef),
+              },
+              [{ type: "image", ...restored.record.artifact.payload.preview }],
+            )
           : restored.metadata;
       },
     },
@@ -631,7 +645,7 @@ export function createCakeArtifactOperations(
       guidance: [
         "Prefer ordinary inline Markdown—including Mermaid and small tables—whenever it communicates the result clearly. Create a widget only for a substantial, reusable, or genuinely interactive/visual deliverable, especially when requested.",
         "Supply the explanation goal, audience, verified facts/source references, bounded data, and a readable Markdown fallback. Do not write the generated React source yourself.",
-        "Publication supplies the accepted rendered preview to the agent as a native image, with an immutable exact reference. The user sees a live interactive widget. Before implementing an approved design, inspect that exact preview (artifacts.preview or the resolved preview.png), not merely your original brief. Read projected source selectively when needed and compare the implementation's real screenshot against the approved revision.",
+        "Publication supplies the accepted rendered preview to the agent as a native image, with an immutable exact reference. The user sees a live interactive widget. The retained PNG is Initial state—not current interactive view. Revision alone does not identify a selected variant. Before implementing an approved design, inspect matching revision AND state pixels: use the exact preview for the initial state, or ask the user to Attach current view for their interactive selection. Never claim visual verification from source or textual image descriptions. Read projected source selectively when needed and compare the implementation's real screenshot against the approved revision.",
         "The specialist can read domain skills and combine React, installed widget libraries, editable canvases, filters and details. Supply initialState for artifact-scoped JSON data; the widget owns its format and save timing. Describe intended relationships and useful interactions, not pixel coordinates or a mandatory graph DSL.",
         "The published visualization is shown inline, expanded by default with a collapse control. Do not add a redundant embed or Open artifact link after publication. To show an existing artifact again on demand, use artifacts.present with its stable or exact reference, not widgets.present regeneration or duplicate Markdown embeds. Ordinary [Title](cake://artifact/<id>) links stay compact. Use exact revisions for historical explanations.",
       ],
@@ -715,6 +729,9 @@ export function createCakeArtifactOperations(
             artifactRevision: record.artifact.revision,
             exactRef: `cake://artifact/${record.artifact.id}@r${record.artifact.revision}`,
             digest: record.digest,
+            previewEvidence: retainedWidgetPreviewEvidence(
+              `cake://artifact/${record.artifact.id}@r${record.artifact.revision}`,
+            ),
           },
           [{ type: "image", ...record.artifact.payload.preview }],
         );

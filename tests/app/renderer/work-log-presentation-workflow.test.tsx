@@ -22,6 +22,28 @@ afterEach(() => {
 });
 
 describe("Work-log presentation workflow", () => {
+  it.each(["widgets.present", "artifacts.preview", "artifacts.replace", "artifacts.restore"])(
+    "labels %s retained pixels as initial state outside the collapsed log",
+    (command) => {
+      using fixture = renderWorkLog([
+        {
+          id: "initial-preview",
+          kind: "tool",
+          name: "cake",
+          input: JSON.stringify({ command }),
+          state: "success",
+          outputContent: [{ type: "image", mimeType: "image/png", data: "AA==" }],
+        },
+      ]);
+      expect(workLog().group.open).toBe(false);
+      expect(screen.getByText("Initial state—not current interactive view")).toBeDefined();
+      expect(
+        screen.getByRole("img", { name: "Initial state—not current interactive view" }),
+      ).toBeDefined();
+      expect(fixture).toBeDefined();
+    },
+  );
+
   it("reveals native image results as a tool settles and keeps them visible across log disclosure and replay", async () => {
     const tool: Extract<UiPart, { kind: "tool" }> = {
       id: "generate-image",

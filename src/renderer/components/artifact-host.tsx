@@ -8,6 +8,7 @@ import type { ArtifactRecord } from "../../contracts/artifacts/artifact-contract
 import type { SourceLocation } from "../../contracts/editor/source-location";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
 import { WidgetArtifact } from "./widget-artifact";
+import { WidgetInitialPreview } from "./widget-initial-preview";
 import { DiagramArtifact } from "./diagram-artifact";
 import { FileArtifact } from "./file-artifact";
 import { HtmlArtifact } from "./html-artifact";
@@ -103,6 +104,7 @@ export const ArtifactHost = observer(function ArtifactHost({
       ) : (
         renderArtifact()
       )}
+      {artifact.kind === "widget" && <WidgetInitialPreview artifact={artifact} />}
       {fullscreen && artifact.kind !== "widget" && (
         <FullscreenSurface
           mode={canvas ? "canvas" : "reader"}

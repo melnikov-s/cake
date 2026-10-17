@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { WidgetViewCapture } from "../widgets/widget-view-evidence";
 import { piSettingsSchema } from "../conversations/session-contract";
 import { AgentActionNotice } from "./agent-action-notice";
 import { WidgetBrowserOutput } from "../widgets/widget-browser-output";
@@ -426,6 +427,9 @@ export const cakeRpcPayloadSchemas = {
   "configure-cake-chat-overlay": CakeChatOverlaySettings,
   "hide-cake-chat-overlay": Schema.Struct({}),
   "show-main-window": Schema.Struct({ sessionId: Schema.optionalKey(bounded(1, 256)) }),
+  "capture-widget-view": Schema.Struct({
+    viewId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2048)),
+  }),
   "start-screen-capture": CaptureRouting,
   "screen-capture-state": Schema.Struct({}),
   "finish-screen-capture": Schema.Struct({
@@ -879,6 +883,7 @@ export const cakeRpcSuccessSchemas = {
   "configure-cake-chat-overlay": Schema.Struct({}),
   "hide-cake-chat-overlay": Schema.Struct({}),
   "show-main-window": Schema.Struct({}),
+  "capture-widget-view": WidgetViewCapture,
   "start-screen-capture": Schema.Struct({ capture: Schema.optionalKey(CaptureResult) }),
   "screen-capture-state": ScreenCaptureSnapshot,
   "finish-screen-capture": Schema.Struct({}),

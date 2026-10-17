@@ -24,6 +24,10 @@ export const electronHandlers = ElectronRpc.of({
     withConnection((id) =>
       Effect.flatMap(Electron, (service) => service.showMainWindow(id, request)),
     ),
+  "electron.capture-widget-view": (request) =>
+    withConnection((id) =>
+      Effect.flatMap(Electron, (service) => service.captureWidgetView(id, request)),
+    ),
   "electron.start-screen-capture": (request) =>
     withConnection((id) =>
       Effect.flatMap(Electron, (service) => service.startScreenCapture(id, request)),
