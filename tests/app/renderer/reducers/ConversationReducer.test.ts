@@ -24,6 +24,27 @@ const snapshot = (parts: ConversationSnapshot["parts"] = []): ConversationSnapsh
 });
 
 describe("ConversationReducer", () => {
+  it.each([true, false])(
+    "preserves local diagnostics while preserveActiveTurns is %s",
+    (preserveActiveTurns) => {
+      using model = Conversation.create({ sessionId: "session" });
+      const diagnostic = {
+        id: "local",
+        severity: "warning" as const,
+        source: "compatibility" as const,
+        message: "Unsupported extension API",
+      };
+      model.activeTurnIds.push("turn");
+      model.extensionUi.compatibilityDiagnostics.push(diagnostic);
+
+      applyConversationSnapshot(model, snapshot(), preserveActiveTurns);
+
+      expect(model.activeTurnIds).toEqual(preserveActiveTurns ? ["turn"] : []);
+      expect(model.extensionUi.compatibilityDiagnostics).toEqual([diagnostic]);
+      expect(model.sessionFile).toBe("/sessions/session.jsonl");
+    },
+  );
+
   it("hydrates an independently observed Conversation and applies ordered events", () => {
     const model = Conversation.create({ sessionId: "session" });
     applyConversationUpdate(model, { _tag: "Snapshot", revision: 1, snapshot: snapshot() });

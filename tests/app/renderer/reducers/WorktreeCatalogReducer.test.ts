@@ -1,4 +1,4 @@
-import { createStore, mount } from "r-state-tree";
+import { createStore, effect, mount } from "r-state-tree";
 import { describe, expect, it } from "vitest";
 import { SessionCatalog } from "../../../../src/renderer/models/SessionCatalog";
 import { WorktreeCatalog } from "../../../../src/renderer/models/WorktreeCatalog";
@@ -30,6 +30,37 @@ const summary = (sessionId: string) => ({
 });
 
 describe("Managed Worktree catalog projection", () => {
+  it("reactively resolves indexed paths across empty, populated, and replaced snapshots", () => {
+    using catalog = WorktreeCatalog.create();
+    const observed: Array<ReturnType<typeof catalog.find>> = [];
+    const stop = effect(() => {
+      observed.push(catalog.find(active.worktreePath));
+    });
+    try {
+      expect(observed.at(-1)).toBeUndefined();
+      applyManagedWorktreeCatalogUpdate(catalog, { _tag: "Snapshot", worktrees: [active] });
+      const first = catalog.find(active.worktreePath);
+      expect(first).toBeDefined();
+      expect(observed.at(-1)).toBe(first);
+      expect(catalog.find("/missing")).toBeUndefined();
+
+      applyManagedWorktreeCatalogUpdate(catalog, {
+        _tag: "Snapshot",
+        worktrees: [{ ...active, worktreePath: "/other" }],
+      });
+      expect(observed.at(-1)).toBeUndefined();
+      expect(catalog.find("/other")?.branch).toBe(active.branch);
+
+      applyManagedWorktreeCatalogUpdate(catalog, { _tag: "Snapshot", worktrees: [active] });
+      expect(observed.at(-1)).toBe(catalog.find(active.worktreePath));
+      expect(observed.at(-1)).not.toBe(first);
+      applyManagedWorktreeCatalogUpdate(catalog, { _tag: "Snapshot", worktrees: [] });
+      expect(observed.at(-1)).toBeUndefined();
+    } finally {
+      stop();
+    }
+  });
+
   it("applies a current snapshot then preserves entity identity across lifecycle events", () => {
     const catalog = WorktreeCatalog.create();
     applyManagedWorktreeCatalogUpdate(catalog, { _tag: "Snapshot", worktrees: [active] });

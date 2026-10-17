@@ -1,5 +1,5 @@
 import type { SavedDraft } from "../../../../src/contracts/project-sessions/saved-draft-data";
-import { applySnapshot } from "r-state-tree";
+import { applySnapshot, effect } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import { fakeSavedDrafts } from "../fakes/saved-drafts";
 import { fixtureTimestamp, projectRecord, sessionSummary } from "../fixtures/catalog-fixtures";
@@ -11,6 +11,38 @@ import { createRendererStoreFixture } from "../renderer-store-fixture";
 // saved-draft-workflow.test.tsx supplies the corresponding visible Chat/sidebar regression;
 // other saved-draft, staged-command, naming, and configuration journeys live in their workflows.
 describe("Project pending-session authority integration", () => {
+  // Lookup membership is the cache contract, independent of the saved-draft UI workflow.
+  it("keeps pending-conversation lookups reactive across insertion, removal, and ID reuse", () => {
+    using fixture = createRendererStoreFixture();
+    const pending = fixture.root.sessionRegistry.pendingSessions;
+    const observed: Array<ReturnType<typeof pending.conversation>> = [];
+    const stop = effect(() => {
+      observed.push(pending.conversation("one"));
+    });
+    try {
+      expect(observed.at(-1)).toBeUndefined();
+      pending.prepareStaged("/project", "one");
+      const first = pending.conversation("one");
+      expect(first).toBeDefined();
+      expect(observed.at(-1)).toBe(first);
+
+      pending.prepareStaged("/project", "two");
+      expect(pending.conversation("one")).toBe(first);
+      first!.setName("Renamed");
+      expect(pending.conversation("one")?.title).toBe("Renamed");
+
+      fixture.root.sessionRegistry.removeSession("one");
+      expect(observed.at(-1)).toBeUndefined();
+      expect(pending.conversation("two")).toBeDefined();
+
+      pending.prepareStaged("/project", "one");
+      expect(pending.conversation("one")).not.toBe(first);
+      expect(observed.at(-1)).toBe(pending.conversation("one"));
+    } finally {
+      stop();
+    }
+  });
+
   it("hydrates through explicit refresh and pushed authority, not construction or catalog reconciliation", async () => {
     const sessionId = "00000000-0000-4000-8000-000000000001";
     const startedId = "00000000-0000-4000-8000-000000000002";

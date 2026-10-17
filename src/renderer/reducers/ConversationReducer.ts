@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { applySnapshot, batch, toSnapshot, type Snapshot } from "r-state-tree";
+import { applySnapshot, batch, type Snapshot } from "r-state-tree";
 import type {
   ConversationEvent,
   ConversationSnapshot,
@@ -103,7 +103,10 @@ export function applyConversationSnapshot(
   conversation: ConversationSnapshot,
   preserveActiveTurns = false,
 ) {
-  const current = toSnapshot(model);
+  // Only these local fields survive hydration; do not snapshot the old transcript,
+  // model catalog, resources, and Pi tree just to retain them.
+  const activeTurnIds = preserveActiveTurns ? model.activeTurnIds.slice() : [];
+  const compatibilityDiagnostics = model.extensionUi.compatibilityDiagnostics.slice();
   const parsed = Schema.decodeUnknownSync(conversationSnapshotSchema)({
     ...conversation,
     workspacePath: "",
@@ -134,10 +137,10 @@ export function applyConversationSnapshot(
     applyConversationCatalog(model, parsed);
     applySnapshot(model, {
       ...authoritative,
-      activeTurnIds: preserveActiveTurns ? current.activeTurnIds : [],
+      activeTurnIds,
       extensionUi: {
         ...authoritative.extensionUi,
-        compatibilityDiagnostics: current.extensionUi?.compatibilityDiagnostics ?? [],
+        compatibilityDiagnostics,
       },
     });
   });

@@ -1,4 +1,4 @@
-import { Store, batch, child, createStore, observable, snapshot } from "r-state-tree";
+import { Store, batch, child, computed, createStore, observable, snapshot } from "r-state-tree";
 import {
   SESSION_TITLE_MAX_LENGTH,
   type Attachment,
@@ -55,8 +55,17 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
     );
   }
 
+  @computed
+  private get conversationsById(): ReadonlyMap<string, PendingConversationStore> {
+    // Track IDs directly so lookup also sees membership changes inside a batch,
+    // before child-Store listeners flush. Reconcile the array only when rebuilding.
+    const ids = this.conversationIds.slice();
+    const conversations = this.conversations;
+    return new Map(ids.map((sessionId, index) => [sessionId, conversations[index]!]));
+  }
+
   conversation(sessionId: string) {
-    return this.conversations.find((conversation) => conversation.sessionId === sessionId);
+    return this.conversationsById.get(sessionId);
   }
 
   get summaries(): readonly PendingSessionSummary[] {
