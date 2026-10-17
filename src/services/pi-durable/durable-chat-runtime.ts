@@ -64,6 +64,7 @@ import { toJsonValue } from "../../utils/to-json-value";
 
 import { durableChatDatabase } from "./durable-chat-location";
 import { coordinatorSystemPrompt } from "./coordinator-system-prompt";
+import { createDurableChatCommands } from "./durable-chat-commands";
 import { abortDurableActiveTurn, startDurableQueuedInput } from "./durable-chat-queue";
 import { loadAgentDirectoryExtensions } from "../pi/runtime/extension-providers";
 import {
@@ -110,14 +111,18 @@ export async function createDurableCakeChatRuntime(
   const preferences = options.cakeChatMemory;
   const sessionId = options.sessionId;
   const sessionFile = durableChatDatabase(options.sessionDir);
+  const settings = SettingsManager.create(options.cwd, options.agentDir, {
+    projectTrusted: options.trusted,
+  });
+  const commands = await createDurableChatCommands(options.cwd, options.agentDir, settings);
   const instructions = () =>
     [
       coordinatorSystemPrompt(preferences.preferences().instructions),
       options.additionalSystemPrompt,
+      commands.instructions(),
     ]
       .filter(Boolean)
       .join("\n\n");
-  const settings = SettingsManager.create(options.cwd, options.agentDir, { projectTrusted: true });
   const catalogRuntime = await ModelRuntime.create({
     authPath: join(options.agentDir, "auth.json"),
     modelsPath: join(options.agentDir, "models.json"),
@@ -421,7 +426,9 @@ export async function createDurableCakeChatRuntime(
       )
     )
       throw new Error("Cake Chat accepts attachment references only");
-    // No `!` shell escape is parsed: all text is a literal model input, never a user shell command.
+    // Skill expansion is text-only and never changes the coordinator's tool profile.
+    // No `!` shell escape is parsed, so input is never a user shell command.
+    text = await commands.expand(text);
     await configureAgent();
     const busy =
       delivery === "steer" &&
@@ -583,9 +590,9 @@ export async function createDurableCakeChatRuntime(
           fastModeAvailable: supportsFastMode(selected),
           piSettings: projectPiSettings(settings),
           diagnostics: [...diagnostics],
-          commands: [],
+          commands: commands.catalog(),
           usage: { tokens, cost: sums.reduce((sum, use) => sum + use.cost.total, 0) },
-          compatibility: { resources: [], diagnostics: [] },
+          compatibility: commands.compatibility(),
           extensionUi: { statuses: [] },
           tree: [],
         } satisfies ConversationSnapshot;
@@ -803,7 +810,7 @@ export async function createDurableCakeChatRuntime(
     async reload() {
       // Global settings reload includes Cake Chat, but is not a Project Session edit.
       // Durable keeps its engine/history; its settings getters read this manager live.
-      await settings.reload();
+      await commands.reload();
       const errors = settings.drainErrors();
       if (errors.length) throw new Error(errors.map((error) => error.error.message).join("\n"));
       await configureAgent();

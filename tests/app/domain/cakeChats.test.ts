@@ -154,6 +154,37 @@ describe("permanent Cake Chat", () => {
       }).pipe(Effect.provide(f.layer));
     },
   );
+  it.effect("uses the registered project's trust for permanent-chat resource discovery", () => {
+    const f = fixture();
+    const project = {
+      path: "/zombies",
+      name: "zombies",
+      addedAt: "2026-01-01T00:00:00.000Z",
+      lastOpenedAt: "2026-01-01T00:00:00.000Z",
+    };
+    f.setState({ ...defaultApplicationState(), projects: [project] });
+    return Effect.gen(function* () {
+      const sessionId = chatLocations.projectChatSessionId(project.path);
+      const projectConfiguration = {
+        ...configuration,
+        location: yield* chatLocations.resolve(location, sessionId),
+      };
+      const options = () =>
+        acquireOptions({
+          configuration: projectConfiguration,
+          target: { sessionId, tools: [] },
+          newSession: false,
+        });
+      const untrusted = yield* options();
+      expect(untrusted.runtime.cwd).toBe(project.path);
+      expect(untrusted.runtime.trusted).toBe(false);
+      f.setState({ ...f.state(), trustedProjectPaths: [project.path] });
+      const trusted = yield* options();
+      expect(trusted.runtime.trusted).toBe(true);
+      expect(trusted.runtime.tools).toEqual(untrusted.runtime.tools);
+    }).pipe(Effect.provide(f.layer));
+  });
+
   it.effect(
     "persists manual reminders under the coordinator identity and projects them in fresh catalogs and live updates",
     () => {

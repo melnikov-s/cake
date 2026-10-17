@@ -318,7 +318,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
             { signal },
           ),
       },
-      trusted: true,
+      trusted: !project || application.snapshot().trustedProjectPaths.includes(project.path),
       agentDir: configuration.agentDirectory,
       sessionDir: configuration.location.sessionDirectory,
       newSession,

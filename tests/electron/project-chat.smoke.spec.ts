@@ -26,8 +26,9 @@ test("Project Chat isolates history and restores its root workspace, while globa
     }
     let body = "";
     for await (const chunk of request) body += chunk;
-    requests.push(body);
-    const content = `Reply ${requests.length}`;
+    const summary = body.includes("You write the memory of Cake Chat");
+    if (!summary) requests.push(body);
+    const content = summary ? "talk: project guidance discussed" : `Reply ${requests.length}`;
     const chunk = (delta: object, finish_reason: string | null) =>
       `data: ${JSON.stringify({ id: "fixture", object: "chat.completion.chunk", created: 0, model: "fixture", choices: [{ index: 0, delta, finish_reason }] })}\n\n`;
     response.writeHead(200, { "content-type": "text/event-stream" });
@@ -46,7 +47,18 @@ test("Project Chat isolates history and restores its root workspace, while globa
       mkdir(join(cakeHome, "state"), { recursive: true }),
       mkdir(join(cakeHome, "pi"), { recursive: true }),
       mkdir(userData),
+      mkdir(join(directory, "home")),
+      mkdir(join(project, ".agents/skills/project-fixture"), { recursive: true }),
+      mkdir(join(cakeHome, "pi/skills/global-fixture"), { recursive: true }),
     ]);
+    await writeFile(
+      join(project, ".agents/skills/project-fixture/SKILL.md"),
+      "---\nname: project-fixture\ndescription: Project fixture skill\n---\nPROJECT_SKILL_BODY\n",
+    );
+    await writeFile(
+      join(cakeHome, "pi/skills/global-fixture/SKILL.md"),
+      "---\nname: global-fixture\ndescription: Global fixture skill\n---\nGLOBAL_SKILL_BODY\n",
+    );
     await writeFile(join(project, "example.ts"), "export const zombies = 7;\n");
     await writeFile(
       join(cakeHome, "pi", "models.json"),
@@ -111,6 +123,7 @@ test("Project Chat isolates history and restores its root workspace, while globa
             },
           ],
           defaultModelPresetId: presetId,
+          utilityModel: { provider: "fixture", modelId: "fixture", thinkingLevel: "off" },
         },
       }),
     );
@@ -120,6 +133,7 @@ test("Project Chat isolates history and restores its root workspace, while globa
         cwd: repository,
         env: {
           ...process.env,
+          HOME: join(directory, "home"),
           CAKE_ELECTRON_SMOKE: "1",
           CAKE_HOME: cakeHome,
           CAKE_ELECTRON_USER_DATA: userData,
@@ -145,6 +159,12 @@ test("Project Chat isolates history and restores its root workspace, while globa
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     await input.press("Enter");
     await expect(page.getByText("Reply 1", { exact: true })).toBeVisible();
+    await input.fill("/");
+    await expect(page.getByRole("listbox", { name: "Slash commands" })).toBeVisible();
+    await expect(page.getByRole("option", { name: /skill:global-fixture/ })).toBeVisible();
+    await expect(page.getByRole("option", { name: /skill:project-fixture/ })).toHaveCount(0);
+    await input.press("Escape");
+    await input.fill("");
     const projectId = `project-chat:${createHash("sha256").update(project).digest("hex")}`;
     const openProject = () =>
       page
@@ -157,8 +177,12 @@ test("Project Chat isolates history and restores its root workspace, while globa
     await expect(input).toBeVisible();
     await input.click();
     await expect(input).toBeFocused();
+    await input.pressSequentially("/skill:project");
+    await expect(page.getByRole("option", { name: /skill:project-fixture/ })).toBeVisible();
+    await input.press("Tab");
+    await expect(input).toBeFocused();
     await input.pressSequentially("PROJECT_PRIVATE");
-    await expect(input).toHaveValue("PROJECT_PRIVATE");
+    await expect(input).toHaveValue("/skill:project-fixture PROJECT_PRIVATE");
     const screenshot = await app.evaluate(({ nativeImage }) =>
       nativeImage
         .createFromBitmap(Buffer.alloc(32 * 32 * 4, 255), { width: 32, height: 32 })
@@ -187,6 +211,7 @@ test("Project Chat isolates history and restores its root workspace, while globa
     await input.press("Enter");
     await expect(page.getByText("Reply 2", { exact: true })).toBeVisible();
     expect(requests[1]).toContain("PROJECT_PRIVATE");
+    expect(requests[1]).toContain("PROJECT_SKILL_BODY");
     expect(requests[1]).not.toContain("GLOBAL_PRIVATE");
     expect(requests[1]).toContain("Screenshot.png");
     expect(requests[1]).not.toContain(screenshot);
@@ -313,6 +338,58 @@ test("Project Chat isolates history and restores its root workspace, while globa
         BrowserWindow.getAllWindows().every((window) => !window.isVisible()),
       ),
     ).toBe(true);
+
+    input = page.getByRole("combobox", { name: "Message Project Chat" });
+    await input.fill("");
+    // Permanent Project Chat uses the shared picker, backed by its own scoped catalog.
+    await input.click();
+    await input.pressSequentially("/");
+    await expect(page.getByRole("listbox", { name: "Slash commands" })).toBeVisible();
+    await expect(page.getByRole("option", { name: /^\/compact / })).toBeVisible();
+    await expect(page.getByRole("option", { name: /^\/model / })).toBeVisible();
+    await input.pressSequentially("skill:project");
+    const projectSkill = page.getByRole("option", {
+      name: /skill:project-fixture Project fixture skill/,
+    });
+    await expect(projectSkill).toBeVisible();
+    await input.press("Tab");
+    await expect(input).toBeFocused();
+    await expect(input).toHaveValue("/skill:project-fixture ");
+    await input.pressSequentially("review this project");
+    await expect(input).toHaveValue("/skill:project-fixture review this project");
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await input.press("Enter");
+    await expect(page.getByText("Reply 3", { exact: true })).toBeVisible();
+    await expect(input).toHaveValue("");
+    expect(requests[2]).toContain("PROJECT_SKILL_BODY");
+    expect(requests[2]).toContain("review this project");
+    expect(requests[2]).toContain(join(project, ".agents/skills/project-fixture/SKILL.md"));
+    await expect(transcript()).toContainText("project-fixture");
+    await expect(transcript()).toContainText("review this project");
+    const skillRequest = JSON.parse(requests[2]);
+    expect(
+      skillRequest.tools.map((tool: { function: { name: string } }) => tool.function.name).sort(),
+    ).toEqual(["bash", "cake", "date", "mcp", "read", "zoom"]);
+
+    // Mouse selection completes without sending; Enter on a filtered option executes.
+    await input.fill("/skill:global");
+    await page.getByRole("option", { name: /skill:global-fixture Global fixture skill/ }).click();
+    await expect(input).toBeFocused();
+    await expect(input).toHaveValue("/skill:global-fixture ");
+    await input.pressSequentially("use global guidance");
+    await input.press("Enter");
+    await expect(page.getByText("Reply 4", { exact: true })).toBeVisible();
+    expect(requests[3]).toContain("GLOBAL_SKILL_BODY");
+    await input.fill("/skill:project");
+    await expect(projectSkill).toBeVisible();
+    await input.press("Enter");
+    await expect(page.getByText("Reply 5", { exact: true })).toBeVisible();
+    await expect(input).toHaveValue("");
+
+    await input.fill("/model fixture/fixture");
+    await input.press("Enter");
+    await expect(input).toHaveValue("");
+    expect(requests).toHaveLength(5);
   } finally {
     await app?.close();
     await new Promise<void>((done) => server.close(() => done()));
