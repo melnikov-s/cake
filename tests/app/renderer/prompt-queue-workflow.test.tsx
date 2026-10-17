@@ -246,6 +246,14 @@ describe("Prompt queue workflow", () => {
     );
     expect(fixture.pi.abort).not.toHaveBeenCalled();
     expect(queuedTexts()).toEqual(["Keep steering", "Send agent now", "Keep queued"]);
+    expect(
+      within(screen.getByRole("group", { name: "Steering" }))
+        .getAllByRole("status")
+        .map((status) => status.textContent),
+    ).toEqual(["Waiting for agent", "Waiting for agent"]);
+    expect(
+      within(screen.getByRole("group", { name: "Queued" })).getByRole("status").textContent,
+    ).toBe("After this response");
     expect(screen.queryByRole("button", { name: "Stop and send now: Keep queued" })).toBeNull();
     await fixture.user.click(
       screen.getByRole("button", { name: "Stop and send now: Send agent now" }),
@@ -280,6 +288,15 @@ describe("Prompt queue workflow", () => {
     });
     await fixture.enqueue("Pending");
     expect(queuedTexts()).toEqual(["First", "Pending"]);
+    const pendingRow = screen
+      .getByRole("button", { name: "View queued message: Pending" })
+      .closest('[role="listitem"]')! as HTMLElement;
+    expect(within(pendingRow).getByRole("status").textContent).toBe("Sending…");
+    for (const button of within(pendingRow).getAllByRole<HTMLButtonElement>("button")) {
+      if (button.getAttribute("aria-label") !== "View queued message: Pending") {
+        expect(button.disabled).toBe(true);
+      }
+    }
     expect(
       screen.getByRole<HTMLButtonElement>("button", { name: "Move down: First" }).disabled,
     ).toBe(true);
@@ -294,6 +311,11 @@ describe("Prompt queue workflow", () => {
     expect(
       screen.getByRole<HTMLButtonElement>("button", { name: "Move down: First" }).disabled,
     ).toBe(false);
+    expect(
+      within(screen.getByRole("group", { name: "Queued" }))
+        .getAllByRole("status")
+        .map((status) => status.textContent),
+    ).toEqual(["After this response", "After this response"]);
     await fixture.user.click(screen.getByRole("button", { name: "Move up: Pending" }));
     expect(queuedTexts()).toEqual(["Pending", "First"]);
   });

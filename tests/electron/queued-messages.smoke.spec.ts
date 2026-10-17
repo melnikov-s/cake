@@ -228,20 +228,40 @@ test("reorders both lanes, cancels one item, hands off without an error, and lin
       0,
     );
     expect(responses.length).toBe(1);
+    await expect(stopAndSend).toHaveText("Send now");
+    await expect(stopAndSend).toHaveAttribute("title", "Stop current response and send now");
+    await expect(queue.getByRole("group", { name: "Steering" }).getByRole("status")).toHaveText([
+      "Waiting for agent",
+      "Waiting for agent",
+    ]);
+    await expect(queue.getByRole("group", { name: "Queued" }).getByRole("status")).toHaveText(
+      "After this response",
+    );
     for (const theme of ["light", "dark"]) {
+      await page.mouse.move(1, 1);
       await page.evaluate((value) => {
         document.documentElement.dataset.theme = value;
       }, theme);
       await expect(stopAndSend).toHaveCSS(
         "color",
-        theme === "light" ? "oklch(0.67 0.16 55)" : "oklch(0.75 0.17 60)",
+        theme === "light" ? "oklch(0.5 0.018 250)" : "oklch(0.66 0.015 250)",
       );
       await stopAndSend.hover();
       await expect(stopAndSend).toHaveCSS(
         "color",
-        theme === "light" ? "oklch(0.67 0.16 55)" : "oklch(0.75 0.17 60)",
+        theme === "light" ? "oklch(0.22 0.012 252)" : "oklch(0.91 0.008 250)",
       );
     }
+    const viewport = await page.evaluate(() => ({
+      width: window.innerWidth,
+      height: window.innerHeight,
+    }));
+    await page.setViewportSize({ width: 640, height: 760 });
+    await expect(stopAndSend).toBeInViewport({ ratio: 1 });
+    expect(await queue.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+      true,
+    );
+    await page.setViewportSize(viewport);
     await stopAndSend.click();
     await expect.poll(() => responses.length).toBeGreaterThan(1);
     await expect(queue).toContainText("Keep queued");

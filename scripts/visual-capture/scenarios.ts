@@ -2850,8 +2850,8 @@ const contextOutlineScenario: VisualCaptureScenario = {
 
 const queuedPromptsScenario: VisualCaptureScenario = {
   name: "queued-prompts",
-  description: "Bounded, scrollable message queue above the shared chat composer",
-  states: ["default", "bottom"],
+  description: "Quiet pending-message status and bounded queue above the shared chat composer",
+  states: ["default", "bottom", "steering", "queued"],
   async seed(paths, theme) {
     await cakeChatScenario.seed(paths, theme);
     return openRequestInspectorFixture(paths, { holdResponse: true });
@@ -2863,10 +2863,24 @@ const queuedPromptsScenario: VisualCaptureScenario = {
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
     const queue = page.getByRole("list", { name: "Queued prompts" });
-    for (let index = 1; index <= 20; index++) {
-      await input.fill(`Follow-up ${index}: verify the implementation and report the results.`);
+    if (state === "steering" || state === "queued") {
+      const text =
+        "oh! vscode should be available for project chats open in project folder. terminal also. and browser too but browser should open in the project workspace.";
+      await input.fill(text);
       await page.getByRole("button", { name: "Send", exact: true }).click();
-      await expect(queue.getByRole("listitem")).toHaveCount(index);
+      await expect(queue.getByRole("listitem")).toHaveCount(1);
+      if (state === "steering") {
+        await queue.getByRole("button", { name: `Send now as steering: ${text}` }).click();
+      }
+      await expect(queue.getByRole("status")).toHaveText(
+        state === "steering" ? "Waiting for agent" : "After this response",
+      );
+    } else {
+      for (let index = 1; index <= 20; index++) {
+        await input.fill(`Follow-up ${index}: verify the implementation and report the results.`);
+        await page.getByRole("button", { name: "Send", exact: true }).click();
+        await expect(queue.getByRole("listitem")).toHaveCount(index);
+      }
     }
     if (state === "bottom") {
       await queue.hover();
@@ -2876,7 +2890,10 @@ const queuedPromptsScenario: VisualCaptureScenario = {
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.mouse.move(1, 1);
   },
-  region: (page) => page.locator("body"),
+  region: (page, state) =>
+    state === "steering" || state === "queued"
+      ? page.locator(".workbench-composer")
+      : page.locator("body"),
 };
 
 const taskInputAttachmentsScenario: VisualCaptureScenario = {

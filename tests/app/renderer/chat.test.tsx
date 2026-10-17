@@ -291,11 +291,17 @@ describe("Chat", () => {
     expect(
       container.querySelector('[aria-label="Cancel queued message: Do this next"]'),
     ).not.toBeNull();
-    expect(container.querySelector('[aria-label="Steering: Change direction"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Steering"] [role="status"]')?.textContent).toBe(
+      "Waiting for agent",
+    );
+    expect(container.querySelector('[aria-label="Queued"] [role="status"]')?.textContent).toBe(
+      "After this response",
+    );
     const stopAndSendButton = container.querySelector<HTMLButtonElement>(
       '[aria-label="Stop and send now: Change direction"]',
     );
-    expect(stopAndSendButton).not.toBeNull();
+    expect(stopAndSendButton?.textContent).toBe("Send now");
+    expect(stopAndSendButton?.title).toBe("Stop current response and send now");
     expect(
       container.querySelector('[aria-label="Message from Storage implementation"]'),
     ).not.toBeNull();

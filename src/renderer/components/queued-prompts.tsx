@@ -2,16 +2,8 @@ import { useState } from "react";
 import { observer } from "r-state-tree/react";
 import { FullscreenMessage } from "@/components/fullscreen-message";
 import { Button } from "@/components/ui/button";
-import {
-  ChatIcon,
-  ClockIcon,
-  EditIcon,
-  RemoveIcon,
-  SteerIcon,
-  StopAndSendIcon,
-} from "@/components/ui/icons";
+import { ChatIcon, ClockIcon, EditIcon, RemoveIcon } from "@/components/ui/icons";
 import { IconButton } from "@/components/ui/icon-button";
-import { LoadingSpinner } from "@/components/ui/loading-state";
 import { ReorderControls } from "@/components/ui/reorder-controls";
 import type { ChatStore } from "../stores/ChatStore";
 import { describeScheduledOrigin } from "../../utils/scheduled-message-time";
@@ -48,13 +40,13 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
                   : undefined;
                 return (
                   <div
-                    className="flex items-center justify-between gap-2 rounded-md bg-muted px-2 py-1 text-xs"
+                    className="flex flex-col gap-1 rounded-md bg-muted/40 px-2 py-1.5 text-xs"
                     role="listitem"
                     key={entry.id}
                   >
                     <Button
                       variant="ghost"
-                      className="h-auto min-w-0 flex-1 justify-start gap-1.5 rounded-sm p-0 text-left text-xs font-normal text-foreground hover:bg-transparent"
+                      className="h-auto min-w-0 w-full justify-start gap-1.5 rounded-sm p-0 text-left text-sm font-normal text-foreground hover:bg-transparent"
                       aria-label={`View queued message: ${label}`}
                       onClick={() => setFullscreenPromptId(entry.id)}
                     >
@@ -80,62 +72,82 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
                         {label}
                       </span>
                     </Button>
-                    <div className="flex shrink-0 items-center gap-0.5">
-                      {store.canReorderQueuedPrompt && entries.length > 1 && (
-                        <ReorderControls
-                          label={label}
-                          position={index + 1}
-                          count={admittedCount}
-                          disabled={entry.pending}
-                          onMove={(position) => void store.reorderQueuedPrompt(entry.id, position)}
-                        />
-                      )}
-                      {entry.state === "steering" && store.canStopAndSendQueuedPrompt && (
-                        <IconButton
-                          className="bg-warning/15 text-warning hover:bg-warning/25 hover:text-warning disabled:hover:text-warning"
-                          disabled={entry.pending}
-                          tooltip="Stop current response and send now"
-                          ariaLabel={`Stop and send now: ${label}`}
-                          onClick={() => void store.stopAndSendQueuedPrompt(entry.id)}
-                        >
-                          <StopAndSendIcon />
-                        </IconButton>
-                      )}
-                      {entry.state === "steering" ? (
-                        <LoadingSpinner label={`Steering: ${label}`} />
-                      ) : (
-                        store.canSteerQueuedPrompt &&
-                        !entry.command && (
+                    <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                      <span
+                        role="status"
+                        className="flex items-center gap-1.5 text-muted-foreground"
+                      >
+                        <span aria-hidden="true">
+                          <ClockIcon />
+                        </span>
+                        {entry.pending
+                          ? "Sending…"
+                          : entry.state === "steering"
+                            ? "Waiting for agent"
+                            : "After this response"}
+                      </span>
+                      <div className="ml-auto flex shrink-0 items-center gap-0.5">
+                        {store.canReorderQueuedPrompt && entries.length > 1 && (
+                          <ReorderControls
+                            label={label}
+                            position={index + 1}
+                            count={admittedCount}
+                            disabled={entry.pending}
+                            onMove={(position) =>
+                              void store.reorderQueuedPrompt(entry.id, position)
+                            }
+                          />
+                        )}
+                        {entry.state === "steering" && store.canStopAndSendQueuedPrompt && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 font-normal"
+                            disabled={entry.pending}
+                            title="Stop current response and send now"
+                            aria-label={`Stop and send now: ${label}`}
+                            aria-description="Stops the current response and sends this message immediately."
+                            onClick={() => void store.stopAndSendQueuedPrompt(entry.id)}
+                          >
+                            Send now
+                          </Button>
+                        )}
+                        {entry.state === "queued" &&
+                          store.canSteerQueuedPrompt &&
+                          !entry.command && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 font-normal"
+                              disabled={entry.pending}
+                              title="Send now as steering"
+                              aria-label={`Send now as steering: ${label}`}
+                              onClick={() => void store.steerQueuedPrompt(entry.id)}
+                            >
+                              Send as steering
+                            </Button>
+                          )}
+                        {entry.editable !== false && store.canEditQueuedPrompt && (
                           <IconButton
                             disabled={entry.pending}
-                            tooltip="Send now as steering"
-                            ariaLabel={`Send now as steering: ${label}`}
-                            onClick={() => void store.steerQueuedPrompt(entry.id)}
+                            tooltip="Edit"
+                            ariaLabel={`Edit queued prompt: ${label}`}
+                            onClick={() => void store.editQueuedPrompt(entry.id)}
                           >
-                            <SteerIcon />
+                            <EditIcon />
                           </IconButton>
-                        )
-                      )}
-                      {entry.editable !== false && store.canEditQueuedPrompt && (
-                        <IconButton
-                          disabled={entry.pending}
-                          tooltip="Edit"
-                          ariaLabel={`Edit queued prompt: ${label}`}
-                          onClick={() => void store.editQueuedPrompt(entry.id)}
-                        >
-                          <EditIcon />
-                        </IconButton>
-                      )}
-                      {store.canRemoveQueuedPrompt && (
-                        <IconButton
-                          disabled={entry.pending}
-                          tooltip="Cancel message"
-                          ariaLabel={`Cancel ${entry.state === "steering" ? "steering" : "queued message"}: ${label}`}
-                          onClick={() => store.removeQueuedPrompt(entry.id)}
-                        >
-                          <RemoveIcon />
-                        </IconButton>
-                      )}
+                        )}
+                        {store.canRemoveQueuedPrompt && (
+                          <IconButton
+                            disabled={entry.pending}
+                            tooltip="Cancel message"
+                            ariaLabel={`Cancel ${entry.state === "steering" ? "steering" : "queued message"}: ${label}`}
+                            onClick={() => store.removeQueuedPrompt(entry.id)}
+                          >
+                            <RemoveIcon />
+                          </IconButton>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
