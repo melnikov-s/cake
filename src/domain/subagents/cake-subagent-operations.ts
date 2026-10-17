@@ -37,7 +37,7 @@ export function createAgentControlOperations(
       ? "Subagents are private, hidden general research or project investigators—not full Project Sessions. Use sessions.create for implementation in an independent Project Session, not an investigation worker."
       : "Subagents are private, hidden, bounded workers—not full Project Sessions. A request for a child session, related session, or Session Family member is not subagent delegation; use sessions.create-child instead.",
     projectAware
-      ? "Delegate every question depending on a registered project's code, architecture, configuration or current behavior. Discover exact project paths with app.state, supply projectPath, and clarify ambiguous project identity before starting. Omit projectPath for general research unrelated to a registered repository; never choose an arbitrary project for external research. No separate delegation permission is needed for Cake Chat investigations."
+      ? "Use a project investigator when broader research, project-loaded resources or context isolation helps. Discover exact registered roots with projects.list, supply projectPath, and clarify ambiguous project identity before starting. Omit projectPath for general research unrelated to a registered repository; never choose an arbitrary project for external research. No separate delegation permission is needed for Cake Chat investigations."
       : "Use subagents only when the user explicitly requested delegation, subagents, or parallel agent work.",
     "Use subagents.start for ordinary delegation so the parent turn remains independent and the user can continue messaging it. Start multiple handles for parallel work; Cake automatically queues each compact final report to the parent, so do not poll.",
     "Use subagents.run, subagents.parallel, or subagents.wait only when the user explicitly requires the parent turn to block on delegated work.",
@@ -83,7 +83,13 @@ export function createAgentControlOperations(
     command: definition.command,
     topic: "subagents",
     summary: definition.summary,
-    guidance,
+    guidance: ["subagents.start", "subagents.run", "subagents.parallel"].includes(
+      definition.command,
+    )
+      ? guidance
+      : definition.command === "subagents.prompt" || definition.command === "subagents.follow-up"
+        ? guidance.slice(5, 8)
+        : guidance.slice(5, 6),
     inputSchema: definition.schema,
     examples: [{ input: definition.example }],
     result:
@@ -119,7 +125,7 @@ export function createAgentControlOperations(
     operation({
       command: "subagents.start",
       summary:
-        "Start one parent-owned subagent asynchronously. In Cake Chat, omit projectPath for general research or select an exact registered root for project-aware work; workers are investigation-only unless allowMutations is true. Cake queues its compact final report to the parent without interrupting active work.",
+        "Start an asynchronous investigator; select projectPath for registered code or omit it for general research. Cake queues its final report.",
       schema: subagentTaskSchema,
       example: projectAware
         ? {

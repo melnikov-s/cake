@@ -1037,7 +1037,7 @@ describe("AppControlBridge", () => {
       ok: true,
       command: "sessions.schedule",
       status: "scheduled",
-      scheduledMessage: { targetSessionId: "session-2", text: "Review this" },
+      scheduledMessage: { targetSessionId: "session-2", sendAt: "2030-01-01T12:00:00.000Z" },
     });
     expect(compactSession).toHaveBeenCalledWith("session-2", "Keep decisions");
     expect(scheduleSessionMessage).toHaveBeenCalledWith({
@@ -1126,7 +1126,7 @@ describe("AppControlBridge", () => {
     }
     await expect(
       bridge.invoke({ name: "sessions.clear-queue", arguments: { sessionId: "child" } }),
-    ).resolves.toMatchObject({ ok: true, messages: { steering: ["third"] } });
+    ).resolves.toMatchObject({ ok: true, cleared: { steeringCount: 1, followUpCount: 0 } });
     expect(removeQueuedMessage).toHaveBeenCalledWith("child", "queued-follow-up-id-1");
     expect(steerQueuedMessage).toHaveBeenCalledWith("child", "queued-follow-up-id-1");
     expect(sendQueuedMessageNow).toHaveBeenCalledWith("child", "queued-follow-up-id-1");
@@ -1280,50 +1280,6 @@ describe("AppControlBridge", () => {
       command: "sessions.open",
       opened: { sessionId: "target" },
     });
-  });
-
-  it("inspects structured pending inputs and dequeues their text in bulk", async () => {
-    const messages = { steering: ["Change direction"], followUp: ["Do this next"] };
-    const pending = {
-      items: [
-        {
-          itemId: "input-1",
-          partId: "queued-follow-up-1",
-          lane: "follow-up",
-          position: 1,
-          state: "command-queued",
-          text: "/compact",
-        },
-      ],
-    };
-    const query = vi.fn(async () => pending);
-    const dequeuePendingMessages = vi.fn(async () => messages);
-    const bridge = new AppControlBridge(
-      createHost({
-        sessions: () => [
-          {
-            workingDirectory: "/projects/cake",
-            projectName: "Cake",
-            sessionId: "session-1",
-            title: "Session",
-            modifiedAt: "2026-09-04T12:00:00.000Z",
-            messageCount: 1,
-            resolved: false,
-            draft: false,
-          },
-        ],
-        query,
-        dequeuePendingMessages,
-      }),
-    );
-
-    await expect(
-      bridge.invoke({ name: "sessions.pending", arguments: { sessionId: "session-1" } }),
-    ).resolves.toMatchObject({ ok: true, result: pending });
-    await expect(
-      bridge.invoke({ name: "sessions.dequeue", arguments: { sessionId: "session-1" } }),
-    ).resolves.toMatchObject({ ok: true, messages });
-    expect(dequeuePendingMessages).toHaveBeenCalledWith("session-1");
   });
 
   it("discovers backend and window controls together and validates window queue commands", async () => {

@@ -83,6 +83,7 @@ const CAKE_CHAT_OPERATIONS = [
   "settings.cake-chat.get",
   "settings.cake-chat.update",
   "models.list",
+  "models.info",
   "session.info",
   "session.usage",
   "session.set-model",
@@ -101,6 +102,7 @@ const CAKE_CHAT_OPERATIONS = [
   "sessions.rename",
   "sessions.resolve",
   "sessions.pending",
+  "sessions.pending-info",
   "sessions.reorder",
   "sessions.cancel-queued",
   "sessions.steer-queued",
@@ -108,10 +110,12 @@ const CAKE_CHAT_OPERATIONS = [
   "sessions.clear-queue",
   "sessions.schedule",
   "sessions.scheduled",
+  "sessions.scheduled-info",
   "sessions.cancel-scheduled",
   "session-labels.list",
   "sessions.set-labels",
   "projects.list",
+  "projects.info",
   "projects.add",
   "projects.rename",
   "projects.remove",
@@ -133,6 +137,7 @@ const CAKE_CHAT_OPERATIONS = [
   "workflows.restartWorker",
   "workflows.inspectWorker",
   "workflows.saved",
+  "workflows.inspect-saved",
   "workflows.save",
   "workflows.authoring",
 ] as const;
@@ -358,7 +363,10 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
           ),
       },
       cakeChatProjects: {
-        list: (signal) => run(projects.listForAgent().pipe(Effect.map(toJsonValue)), { signal }),
+        list: (input, signal) =>
+          run(projects.listForAgent(input).pipe(Effect.map(toJsonValue)), { signal }),
+        info: (input, signal) =>
+          run(projects.infoForAgent(input).pipe(Effect.map(toJsonValue)), { signal }),
         add: (input, signal) =>
           run(projects.addForAgent(input).pipe(Effect.map(toJsonValue)), { signal }),
         rename: (input, signal) =>

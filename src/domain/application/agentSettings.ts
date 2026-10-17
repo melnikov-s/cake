@@ -16,6 +16,7 @@ import * as modelPresets from "../model-presets/modelPresets";
 import { updateNonChatModelPreference } from "../model-preferences/non-chat-model-preferences";
 import { loadMcpSettings, mutateMcpSettings } from "../mcp/mcp-settings";
 import { toJsonValue } from "../../utils/to-json-value";
+import { agentListLabel, agentListPage } from "../../contracts/agent/agent-list-data";
 
 const catalog = Effect.fn("AgentSettings.catalog")(function* () {
   const models = yield* PiModels;
@@ -34,12 +35,20 @@ export const invoke = Effect.fn("AgentSettings.invoke")(function* (
 ) {
   const value = yield* Effect.gen(function* () {
     switch (invocation.name) {
-      case "settings.widgets.list":
-        return yield* (yield* WidgetPackages).list();
+      case "settings.widgets.list": {
+        const snapshot = yield* (yield* WidgetPackages).list();
+        const query = invocation.arguments.query?.toLowerCase();
+        const packages = snapshot.packages.filter(
+          (item) => !query || item.name.toLowerCase().includes(query),
+        );
+        return { directory: snapshot.directory, ...agentListPage(packages, invocation.arguments) };
+      }
       case "settings.widgets.install":
-        return yield* (yield* WidgetPackages).install(invocation.arguments.specifier);
+        yield* (yield* WidgetPackages).install(invocation.arguments.specifier);
+        return { installed: true, specifier: invocation.arguments.specifier };
       case "settings.widgets.remove":
-        return yield* (yield* WidgetPackages).remove(invocation.arguments.name);
+        yield* (yield* WidgetPackages).remove(invocation.arguments.name);
+        return { removed: true, name: invocation.arguments.name };
       case "settings.pi.get":
         return yield* (yield* PiSettings).load();
       case "settings.pi.update":
@@ -71,15 +80,54 @@ export const invoke = Effect.fn("AgentSettings.invoke")(function* (
         return yield* modelPresets.remove(invocation.arguments.id);
       case "settings.presets.set-default":
         return yield* modelPresets.setDefault(invocation.arguments.id ?? undefined);
-      case "settings.providers.list":
-        return yield* catalog();
+      case "settings.providers.list": {
+        const { chat, nonChat } = yield* catalog();
+        const input = invocation.arguments;
+        const query = input.query?.toLowerCase();
+        const entries = [...chat.map((model) => ({ ...model, type: "chat" as const })), ...nonChat]
+          .filter(
+            (model) =>
+              (!input.provider || model.provider === input.provider) &&
+              (!input.type || model.type === input.type) &&
+              (!query ||
+                [model.id, model.name, model.provider, model.providerName].some((value) =>
+                  value.toLowerCase().includes(query),
+                )),
+          )
+          .map(({ id, provider, name, type, authenticated, available }) => ({
+            id,
+            provider,
+            name: agentListLabel(name),
+            type,
+            authenticated,
+            available,
+          }));
+        return agentListPage(entries, input);
+      }
+      case "settings.providers.info": {
+        const { provider, modelId, type } = invocation.arguments;
+        const models = yield* PiModels;
+        const entries =
+          type === "chat"
+            ? (yield* models.list()).map(({ supportedThinkingLevels, ...model }) => ({
+                ...model,
+                availableThinkingLevels: supportedThinkingLevels,
+              }))
+            : (yield* models.listNonChat()).filter((model) => model.type === type);
+        const model = entries.find((entry) => entry.provider === provider && entry.id === modelId);
+        if (!model)
+          return yield* new AgentControlError({
+            message: `Unknown ${type} model: ${provider}/${modelId}`,
+          });
+        return model;
+      }
       case "settings.providers.refresh": {
         yield* (yield* PiModels).refreshCatalog();
-        return yield* catalog();
+        return { refreshed: true };
       }
       case "settings.providers.logout": {
         yield* (yield* PiModels).logout(invocation.arguments.provider);
-        return yield* catalog();
+        return { provider: invocation.arguments.provider, disconnected: true };
       }
       case "settings.mcp.get":
       case "settings.mcp.update": {

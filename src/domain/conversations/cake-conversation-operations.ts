@@ -1,4 +1,11 @@
 import { Schema } from "effect";
+import { AgentSessionListInput } from "../../contracts/project-sessions/agent-session-list";
+import {
+  AgentPendingListInput,
+  AgentPendingReadInput,
+  agentPendingPage,
+  agentPendingRead,
+} from "../../contracts/conversations/agent-pending-messages";
 import {
   SessionNavigationInput,
   sessionNavigationHelp,
@@ -64,15 +71,16 @@ export function createConversationOperations(
       command: "sessions.list",
       requires: "invokeAppControl",
       topic: "sessions",
-      summary: "List Project Sessions across all registered Cake projects.",
+      summary: "List a bounded session roster with titles and selection metadata.",
       guidance: [
+        "Filter by projectPath, title query, status or attentionOnly before paging with offset/limit. Use sessions.info for details and user-facing deep links.",
         "Use sessions.list-family when only the calling Project Session's family is needed.",
       ],
-      inputSchema: empty,
+      inputSchema: AgentSessionListInput,
       examples: [{}],
       result:
-        "Project Session identities, ready-made full-UUID deepLink values for user-facing links, projects, paths, titles, activity, and resolution state.",
-      execute: (_input, context) => api().invokeAppControl("sessions.list", {}, context.signal),
+        "Session references, titles, kind, project name and status; total and nextOffset bound discovery.",
+      execute: invokeAppControl("sessions.list"),
     },
     {
       command: "sessions.open",
@@ -93,7 +101,7 @@ export function createConversationOperations(
         input: Schema.optionalKey(jsonObjectSchema),
       }),
       guidance: [
-        "Use command: help for the target's topic index, a topic name for its protocol, or <operation>.help for an exact schema, then invoke it with operation arguments in input.",
+        "Use command: help for topics, a topic for operation summaries, or <operation>.help directly for an exact input contract. Invoke with operation arguments in input; <operation>.output-schema opts into the full result schema.",
         "Singular session.* and context.* operations act on the target, not the caller. A session assistant uses its attached parent's ID.",
       ],
       examples: [{ input: { sessionId: "target-session-id", command: "help" } }],
@@ -173,18 +181,36 @@ export function createConversationOperations(
       summary: "List the live pending inputs for an explicitly targeted Project Session.",
       guidance: [
         "Items have stable process-lifetime itemIds and projected partIds for cancel-queued, steer-queued, and send-now. position is one-based within the named lane.",
-        "Cross-session items expose plain message text plus crossSession routing and sender metadata; they do not expose transcript or tool history.",
+        "Returns short labels, not full message text. Filter with query, page with offset/limit, and read one item with sessions.pending-info.",
         "The steering lane redirects an active turn at Pi's next steering boundary; follow-up starts after the active turn settles.",
       ],
-      inputSchema: Schema.Struct({
-        sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
-      }),
+      inputSchema: AgentPendingListInput,
       examples: [{ input: { sessionId: "target-session-id" } }],
-      result: "The target session's ordered steering and follow-up queue items.",
-      execute: (input, context) => {
-        // SAFETY: CakeOperationRegistry decoded input with this operation's schema.
-        const { sessionId } = input as { sessionId: string };
-        return api().pendingMessages(sessionId, context.signal);
+      result:
+        "A bounded page of item/part IDs, lanes, positions, states and short labels, with nextOffset.",
+      execute: async (input, context) => {
+        const parsed = Schema.decodeUnknownSync(AgentPendingListInput)(input);
+        return agentPendingPage(
+          await api().pendingMessages(parsed.sessionId, context.signal),
+          parsed,
+        );
+      },
+    },
+    {
+      command: "sessions.pending-info",
+      requires: "pendingMessages",
+      topic: "sessions",
+      summary: "Read one exact live queued input, in bounded text slices.",
+      inputSchema: AgentPendingReadInput,
+      examples: [],
+      result:
+        "Queue identity/label and text (4000 characters by default, max 20000), totalChars and nextOffset.",
+      execute: async (input, context) => {
+        const parsed = Schema.decodeUnknownSync(AgentPendingReadInput)(input);
+        return agentPendingRead(
+          await api().pendingMessages(parsed.sessionId, context.signal),
+          parsed,
+        );
       },
     },
     {
@@ -210,15 +236,19 @@ export function createConversationOperations(
           },
         },
       ],
-      result: "The target session's updated pending queue with authoritative lane positions.",
-      execute: (input, context) => {
+      result:
+        "The first bounded page of updated queue identities/labels with authoritative lane positions.",
+      execute: async (input, context) => {
         // SAFETY: CakeOperationRegistry decoded input with this operation's schema.
         const { sessionId, ...reorder } = input as {
           sessionId: string;
           itemId: string;
           position: number;
         };
-        return api().reorderPendingMessage(sessionId, reorder, context.signal);
+        return agentPendingPage(
+          await api().reorderPendingMessage(sessionId, reorder, context.signal),
+          {},
+        );
       },
     },
     ...(["sessions.cancel-queued", "sessions.steer-queued", "sessions.send-now"] as const).map(
@@ -241,7 +271,8 @@ export function createConversationOperations(
           partId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
         }),
         examples: [{ input: { sessionId: "child-session-id", partId: "queued-follow-up-...-1" } }],
-        result: "The target's remaining steering and follow-up queues.",
+        result:
+          "Remaining steering/follow-up counts; inspect sessions.pending for item identities.",
         execute: invokeAppControl(command),
       }),
     ),
@@ -254,7 +285,7 @@ export function createConversationOperations(
         sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
       }),
       examples: [{ input: { sessionId: "child-session-id" } }],
-      result: "The removed steering and follow-up queues.",
+      result: "Counts of cleared steering and follow-up inputs, without their contents.",
       execute: invokeAppControl("sessions.clear-queue"),
     },
     {

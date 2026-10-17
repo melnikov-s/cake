@@ -13,6 +13,8 @@ import {
   type CakeOperationImageResult,
 } from "../../../src/contracts/agent/cake-operation";
 import { createCakeToolDefinition } from "../../../src/services/pi/runtime/cake-session-runtime-capabilities";
+import { backendAgentTools } from "../../../src/contracts/application/backend-agent-tools";
+import { backendAgentSettingsTools } from "../../../src/contracts/application/agent-settings-tools";
 
 function context() {
   return {
@@ -80,19 +82,34 @@ describe("Cake operation registry", () => {
     );
   });
 
-  it("advertises topic discovery before prose without eagerly disclosing operations", () => {
-    expect(cakeToolDescription).toContain(
-      "app, projects, sessions, attachments, messages, context, models, settings, interview, artifacts, boards, widgets, plugins, vscode, browser, subagents, notifications, and worktrees",
+  it("describes progressive discovery and return conventions once in a bounded envelope", () => {
+    expect(cakeToolDescription.length).toBeLessThan(700);
+    expect(cakeToolDescription).toContain("{} lists enabled topics");
+    expect(cakeToolDescription).toContain("<operation>.help");
+    expect(cakeToolDescription).toContain("Known operations need no prior discovery");
+    expect(cakeToolDescription).toContain("<operation>.output-schema");
+    expect(cakeToolDescription).toContain("typed operations resolve to {command,result}");
+    expect(cakeToolDescription).toContain("Artifact content is not preloaded");
+    expect(cakeToolDescription).toContain("artifacts.present");
+  });
+
+  it("budgets real backend catalogs independently of their full schemas", () => {
+    const available = new CakeOperationRegistry(
+      [...backendAgentTools(), ...backendAgentSettingsTools()].map((tool) => ({
+        command: tool.command,
+        topic: tool.topic,
+        summary: tool.summary,
+        guidance: tool.guidance,
+        inputSchema: Schema.Struct({}),
+        inputJsonSchema: tool.parameters,
+        result: tool.result ?? "Result",
+        examples: tool.examples ?? [],
+        execute: async () => null,
+      })),
     );
-    expect(cakeToolDescription).toContain("Before defaulting to prose");
-    expect(cakeToolDescription).toContain("even when unsure");
-    expect(cakeToolDescription).toContain("Users do not need to name the tool explicitly");
-    expect(cakeToolDescription).toContain(
-      "use artifacts.list or artifacts.search to discover them and artifacts.resolve-reference for an exact readable path",
-    );
-    expect(cakeToolDescription).toContain("Artifact content is not automatically in context");
-    expect(cakeToolDescription).not.toContain("vscode.open");
-    expect(cakeToolDescription).not.toContain("sessions.create");
+    expect(available.help().length).toBeLessThan(2_000);
+    for (const topic of available.availableTopics())
+      expect(available.topicHelp(topic)?.length, topic).toBeLessThan(8_000);
   });
 
   it("treats a missing command and help with incidental input as equivalent", async () => {
@@ -111,22 +128,116 @@ describe("Cake operation registry", () => {
     expect(missing.text).not.toContain("widgets —");
   });
 
-  it("generates deterministic complete topic help from registered schemas", async () => {
+  it("discloses a deterministic selection catalog before the exact contract", async () => {
     const available = registry();
     const first = await available.invoke({ command: "context" }, context());
-    const second = await available.invoke({ command: "context" }, context());
-    expect(first).toEqual(second);
-    expect(first.text).toContain("context.compact");
-    expect(first.text).toContain('"instructions"');
-    expect(first.text).toContain("Keep decisions");
+    expect(await available.invoke({ command: "context" }, context())).toEqual(first);
+    expect(first.text).toBe(
+      [
+        "context — Inspect context use or compact the current session.",
+        "context.compact — Compact context.",
+        "Request <operation>.help for its exact contract before invoking an unfamiliar operation.",
+      ].join("\n"),
+    );
+    const exact = await available.invoke({ command: "context.compact.help" }, context());
+    expect(exact.text).toContain('"instructions"');
+    expect(exact.text).toContain("Keep decisions");
   });
 
-  it("renders an eager complete protocol from the registered operations", () => {
-    const help = registry().completeHelp();
-    expect(help.indexOf("context —")).toBeLessThan(help.indexOf("sessions —"));
-    expect(help).toContain("context.compact");
-    expect(help).toContain("session.info");
-    expect(help).toContain('"instructions"');
+  it("keeps operation-specific guidance at the selected contract, with direct exact help", async () => {
+    const execute = vi.fn(async () => ({ status: "ok" }));
+    const available = new CakeOperationRegistry([
+      {
+        command: "context.compact",
+        topic: "context",
+        summary: "Compact context.",
+        guidance: ["Retain unresolved decisions."],
+        limitations: ["Cannot undo compaction."],
+        inputSchema: Schema.Struct({}),
+        examples: [{}],
+        result: "Status",
+        execute,
+      },
+    ]);
+    const exact = await available.invoke({ command: "context.compact.help" }, context());
+    expect(exact.text).toContain("Guidance: Retain unresolved decisions.");
+    expect(exact.text).toContain("Limitation: Cannot undo compaction.");
+    expect(available.topicHelp("context")).not.toContain("Retain unresolved decisions.");
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("gates every discovery layer on current operation availability", async () => {
+    let enabled = false;
+    const available = new CakeOperationRegistry([
+      {
+        command: "widgets.fixture",
+        topic: "widgets",
+        summary: "A fixture.",
+        inputSchema: Schema.Struct({}),
+        outputSchema: Schema.Struct({ status: Schema.String }),
+        examples: [],
+        result: "Status",
+        available: () => enabled,
+        execute: async () => ({ status: "ok" }),
+      },
+    ]);
+    expect(available.help()).toBe("");
+    expect(available.topicHelp("widgets")).toBeUndefined();
+    expect(available.operationHelp("widgets.fixture")).toBeUndefined();
+    expect(available.operationOutputSchema("widgets.fixture")).toBeUndefined();
+    for (const command of [
+      "widgets.fixture",
+      "widgets.fixture.help",
+      "widgets.fixture.output-schema",
+    ]) {
+      expect((await available.invoke({ command }, context())).text).toContain(
+        "Unknown Cake command",
+      );
+    }
+    enabled = true;
+    expect(available.help()).toContain("widgets —");
+    expect(available.topicHelp("widgets")).toContain("widgets.fixture — A fixture.");
+    expect(available.operationHelp("widgets.fixture")).toContain(
+      "Result schema: widgets.fixture.output-schema",
+    );
+    expect(available.operationOutputSchema("widgets.fixture")).toContain('"status"');
+  });
+
+  it("discloses complete validated output constraints only on explicit schema discovery", async () => {
+    const execute = vi.fn(async () => ({ count: 2 }));
+    const outputSchema = Schema.Struct({
+      count: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 3 })),
+    });
+    const available = new CakeOperationRegistry([
+      {
+        command: "context.fixture",
+        topic: "context",
+        summary: "Fixture.",
+        inputSchema: Schema.Struct({}),
+        outputSchema,
+        examples: [],
+        result: "A count.",
+        execute,
+      },
+    ]);
+    expect(available.operationHelp("context.fixture")).not.toContain('"maximum"');
+    const explicit = await available.invoke(
+      { command: "context.fixture.output-schema" },
+      context(),
+    );
+    const schema = JSON.parse(explicit.text.split("\n").slice(1).join("\n"));
+    expect(schema).toMatchObject({
+      additionalProperties: false,
+      required: ["count"],
+      properties: { count: { type: "integer", minimum: 1, maximum: 3 } },
+    });
+    expect(explicit.structuredContent).toBe(explicit.text);
+    expect(execute).not.toHaveBeenCalled();
+    execute.mockResolvedValueOnce({ count: 4 });
+    await expect(available.invoke({ command: "context.fixture" }, context())).rejects.toThrow();
+    expect(
+      (await registry().invoke({ command: "session.info.output-schema" }, context())).text,
+    ).toContain("no structured output schema");
   });
 
   it("returns deterministic nearest matches without executing", async () => {
@@ -143,8 +254,8 @@ describe("Cake operation registry", () => {
       { command: "context", input: { instructions: "Keep decisions" } },
       context(),
     );
-    expect(result.text).toContain("context.compact");
-    expect(result.text).toContain('"instructions"');
+    expect(result.text).toContain("context.compact — Compact context.");
+    expect(result.text).toContain("<operation>.help");
   });
 
   it("rejects invalid operation input before execution", async () => {
@@ -196,6 +307,36 @@ describe("Cake operation registry", () => {
     expect(result.content.at(-1)).toEqual(tinyPng);
     expect(result.details).toMatchObject({ result: { truncated: true } });
     expect(JSON.stringify(result.details)).not.toContain(tinyPng.data);
+  });
+
+  it("keeps oversized JSON readable as valid JSON without corrupting canonical data", async () => {
+    const payload = { title: '\\"\\n'.repeat(20_000) };
+    const available = new CakeOperationRegistry([
+      {
+        command: "context.fixture",
+        topic: "context",
+        summary: "Fixture.",
+        inputSchema: Schema.Struct({}),
+        outputSchema: Schema.Struct({ title: Schema.String }),
+        result: "A title.",
+        examples: [],
+        execute: async () => payload,
+      },
+    ]);
+    const result = await available.invoke({ command: "context.fixture" }, context());
+    expect(JSON.parse(result.text)).toMatchObject({
+      truncated: true,
+      characterLength: JSON.stringify(payload, null, 2).length,
+      preview: expect.any(String),
+      guidance: expect.stringContaining("pagination"),
+    });
+    expect(result.structuredContent).toEqual({ command: "context.fixture", result: payload });
+    expect(result.details).toEqual({
+      protocol: "cake.operation/v1",
+      command: "context.fixture",
+      result: payload,
+    });
+    expect(result.content).toEqual([{ type: "text", text: result.text }]);
   });
 
   it.each([

@@ -503,6 +503,56 @@ it.effect(
     }),
 );
 
+it.effect("bounds label discovery and filters project/name before pagination", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    for (let index = 0; index < 24; index++) {
+      yield* f.call("session-labels.add", {
+        name: `Label ${index}`,
+        color: "cyan",
+        ...(index % 2 ? { projectPath: "/project" } : {}),
+      });
+    }
+    const first = yield* f.call("session-labels.list");
+    const decoded = yield* Schema.decodeUnknownEffect(
+      Schema.Struct({
+        total: Schema.Int,
+        nextOffset: Schema.NullOr(Schema.Int),
+        labels: Schema.Array(Schema.Unknown),
+      }),
+    )(first);
+    expect(decoded.total).toBe(24);
+    expect(decoded.labels).toHaveLength(20);
+    expect(decoded.nextOffset).toBe(20);
+    expect(yield* f.call("session-labels.list", { offset: 20, limit: 50 })).toMatchObject({
+      total: 24,
+      offset: 20,
+      nextOffset: null,
+    });
+    expect(
+      yield* f.call("session-labels.list", {
+        projectPath: "/unregistered",
+        query: "Label 1",
+        limit: 2,
+        offset: 1,
+      }),
+    ).toMatchObject({
+      total: 5,
+      offset: 1,
+      nextOffset: 3,
+      labels: [{ name: "Label 12" }, { name: "Label 14" }],
+    });
+    expect(yield* f.call("session-labels.list", { query: "absent" })).toMatchObject({
+      total: 0,
+      nextOffset: null,
+      labels: [],
+    });
+    expect(yield* f.call("session-labels.list", { limit: 51 }).pipe(Effect.exit)).toMatchObject({
+      _tag: "Failure",
+    });
+  }),
+);
+
 it.effect("executes settings, label lifecycle, and authoritative inspection with no renderer", () =>
   Effect.gen(function* () {
     const f = yield* fixture();
@@ -789,7 +839,7 @@ it.effect(
         status: "saved",
       });
       expect(yield* f.call("sessions.list")).toMatchObject({
-        sessions: [{ sessionId: draftId, draft: true }, {}, {}, {}],
+        sessions: [{ sessionId: draftId, status: "draft" }, {}, {}, {}],
       });
       expect(yield* f.call("sessions.info", { sessionId: draftId })).toMatchObject({
         ok: true,
@@ -818,53 +868,140 @@ it.effect(
     }),
 );
 
-it.effect("sessions.list preserves Cake Chat launch status, reports, and attention filtering", () =>
+it.effect("paginates a minimal session roster and filters before selecting a page", () =>
   Effect.gen(function* () {
     const f = yield* fixture();
-    const families = Context.get(f.context, SessionFamilyStorage);
-    for (const [sessionId, status, summaryText] of [
-      [target, "failed", "Typecheck failed"],
-      [third, "completed", "Landed abc123"],
-    ] as const)
-      yield* families.registerSpawn({
-        sessionId,
+    for (let index = 0; index < 61; index++)
+      f.drafts.push({
+        sessionId: `00000000-0000-4000-8000-${String(index + 100).padStart(12, "0")}`,
         projectPath: "/project",
         workingDirectory: "/project",
-        requester: { kind: "cake-chat", sessionId: CAKE_CHAT_SESSION_ID, title: "Cake Chat" },
-        reportDelivered: true,
-        handoffSettled: true,
-        launchedAt: "2026-01-01",
-        lastReport: { status, summary: summaryText, reportedAt: "2026-01-02" },
+        title: `Paging ${index}`,
+        text: "This request must not appear in a roster.",
+        attachments: [],
+        labelIds: [],
+        resolved: false,
+        createdAt: "2026-02-01",
+        modifiedAt: "2026-02-01",
+        revision: 1,
+        status: "saved",
       });
-    expect(yield* f.call("sessions.list", { launchedByCakeChat: true })).toMatchObject({
-      sessions: [
-        {
-          sessionId: target,
+    const decode = Schema.decodeUnknownEffect(
+      Schema.Struct({
+        ok: Schema.Boolean,
+        command: Schema.String,
+        total: Schema.Int,
+        offset: Schema.Int,
+        nextOffset: Schema.NullOr(Schema.Int),
+        sessions: Schema.Array(
+          Schema.Struct({
+            sessionId: Schema.String,
+            title: Schema.String,
+            kind: Schema.String,
+            projectName: Schema.String,
+            status: Schema.String,
+          }),
+        ),
+      }),
+      { onExcessProperty: "error" },
+    );
+    const first = yield* decode(yield* f.call("sessions.list"));
+    expect(first.total).toBe(64);
+    expect(first.sessions).toHaveLength(20);
+    expect(first.nextOffset).toBe(20);
+    const filtered = yield* decode(
+      yield* f.call("sessions.list", {
+        status: "draft",
+        query: "Paging 1",
+        offset: 9,
+        limit: 2,
+        projectPath: "/project",
+      }),
+    );
+    expect(filtered).toMatchObject({
+      total: 11,
+      nextOffset: null,
+      sessions: [{ title: "Paging 18" }, { title: "Paging 19" }],
+    });
+    const last = yield* decode(
+      yield* f.call("sessions.list", { status: "draft", limit: 50, offset: 50 }),
+    );
+    expect(last.sessions).toHaveLength(11);
+    expect(last.nextOffset).toBeNull();
+    expect(yield* f.call("sessions.list", { projectPath: "/absent" })).toMatchObject({
+      total: 0,
+      nextOffset: null,
+      sessions: [],
+    });
+    expect(yield* f.call("sessions.info", { sessionId: target })).toMatchObject({
+      session: { firstUserMessage: "First input", sessionFile: `/cake/sessions/${target}.jsonl` },
+    });
+    expect(yield* f.call("sessions.list", { limit: 51 }).pipe(Effect.exit)).toMatchObject({
+      _tag: "Failure",
+    });
+  }),
+);
+
+it.effect(
+  "sessions.list keeps launch status minimal and reports available through exact inspection",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const families = Context.get(f.context, SessionFamilyStorage);
+      for (const [sessionId, status, summaryText] of [
+        [target, "failed", "Typecheck failed"],
+        [third, "completed", "Landed abc123"],
+      ] as const)
+        yield* families.registerSpawn({
+          sessionId,
+          projectPath: "/project",
+          workingDirectory: "/project",
+          requester: { kind: "cake-chat", sessionId: CAKE_CHAT_SESSION_ID, title: "Cake Chat" },
+          reportDelivered: true,
+          handoffSettled: true,
+          launchedAt: "2026-01-01",
+          lastReport: { status, summary: summaryText, reportedAt: "2026-01-02" },
+        });
+      expect(yield* f.call("sessions.list", { launchedByCakeChat: true })).toMatchObject({
+        sessions: [
+          {
+            sessionId: target,
+            status: "failed",
+          },
+          { sessionId: third, status: "done" },
+        ],
+      });
+      expect(yield* f.call("sessions.info", { sessionId: target })).toMatchObject({
+        session: {
           launch: { status: "failed", summary: "Typecheck failed", reportedAt: "2026-01-02" },
         },
-        { sessionId: third, launch: { status: "done", summary: "Landed abc123" } },
-      ],
-      attentionSessions: [{ sessionId: target }],
-    });
-    for (const status of ["interrupted", "stopped"] as const) {
-      yield* families.recordLaunchReport(target, {
-        status,
-        summary: status,
-        reportedAt: "2026-01-03",
       });
+      expect(
+        yield* f.call("sessions.list", { launchedByCakeChat: true, attentionOnly: true }),
+      ).toMatchObject({ total: 1, sessions: [{ sessionId: target, status: "failed" }] });
+      for (const status of ["interrupted", "stopped"] as const) {
+        yield* families.recordLaunchReport(target, {
+          status,
+          summary: status,
+          reportedAt: "2026-01-03",
+        });
+        expect(yield* f.call("sessions.list", { launchedByCakeChat: true })).toMatchObject({
+          sessions: [{ sessionId: target, status }, { sessionId: third }],
+        });
+        expect(
+          yield* f.call("sessions.list", { launchedByCakeChat: true, attentionOnly: true }),
+        ).toMatchObject({
+          sessions: status === "interrupted" ? [{ sessionId: target }] : [],
+        });
+      }
+      f.pauseMessage();
+      yield* f.call("sessions.send", { sessionId: third, text: "Run" });
+      yield* Queue.take(f.prompts);
       expect(yield* f.call("sessions.list", { launchedByCakeChat: true })).toMatchObject({
-        sessions: [{ sessionId: target, launch: { status } }, { sessionId: third }],
-        attentionSessions: status === "interrupted" ? [{ sessionId: target }] : [],
+        sessions: [{ sessionId: target }, { sessionId: third, status: "running" }],
       });
-    }
-    f.pauseMessage();
-    yield* f.call("sessions.send", { sessionId: third, text: "Run" });
-    yield* Queue.take(f.prompts);
-    expect(yield* f.call("sessions.list", { launchedByCakeChat: true })).toMatchObject({
-      sessions: [{ sessionId: target }, { sessionId: third, launch: { status: "running" } }],
-    });
-    yield* Deferred.succeed(f.messageRelease, undefined);
-  }),
+      yield* Deferred.succeed(f.messageRelease, undefined);
+    }),
 );
 
 it.effect(

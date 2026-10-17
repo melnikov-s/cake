@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { AgentListInput } from "../agent/agent-list-data";
 import {
   CakeModelSelection,
   ExplicitCakeModelSelection,
@@ -86,6 +87,27 @@ export interface WorkflowProposal extends Schema.Schema.Type<typeof WorkflowProp
 /** A Project Session is the execution owner; Cake Chat can target it, not itself. */
 export const WorkflowOwner = Schema.Struct({ sessionId: nonEmpty(256) });
 export interface WorkflowOwner extends Schema.Schema.Type<typeof WorkflowOwner> {}
+
+/** Agent discovery only; renderer catalogs retain their complete UI projection. */
+export const WorkflowListInput = Schema.Struct({
+  ...WorkflowOwner.fields,
+  ...AgentListInput.fields,
+  status: Schema.optionalKey(WorkflowRunStatusSchema),
+});
+export interface WorkflowListInput extends Schema.Schema.Type<typeof WorkflowListInput> {}
+
+export const WorkflowSavedListInput = Schema.Struct({
+  ...WorkflowOwner.fields,
+  ...AgentListInput.fields,
+  location: Schema.optionalKey(Schema.Literals(["project", "personal"])),
+});
+export interface WorkflowSavedListInput extends Schema.Schema.Type<typeof WorkflowSavedListInput> {}
+
+export const WorkflowSavedTarget = Schema.Struct({
+  ...WorkflowOwner.fields,
+  scriptPath: nonEmpty(4_096),
+});
+export interface WorkflowSavedTarget extends Schema.Schema.Type<typeof WorkflowSavedTarget> {}
 
 export const WorkflowStartInput = Schema.Struct({
   ...WorkflowOwner.fields,

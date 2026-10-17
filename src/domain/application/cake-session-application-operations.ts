@@ -7,6 +7,9 @@ import {
 } from "../../contracts/application/cake-settings-schema";
 
 import { SessionLabelColor } from "../../contracts/application/application-data";
+import { SessionLabelListInput } from "../../contracts/application/backend-agent-control";
+import { AgentListInput } from "../../contracts/agent/agent-list-data";
+import { AgentProjectInfoInput } from "../../contracts/projects/agent-projects";
 
 import type { RuntimeOperationApi } from "../../contracts/agent/cake-operation-api";
 import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
@@ -37,11 +40,33 @@ export function createSessionApplicationOperations(
       command: "app.state",
       requires: "invokeAppControl",
       topic: "app",
-      summary: "Inspect the invoking Cake window's current selection and session summaries.",
+      summary: "Inspect the invoking Cake window's selection, layout and collection counts.",
       inputSchema: empty,
       examples: [{}],
-      result: "The current application selection, projects, and bounded session summaries.",
+      result:
+        "Current selection/layout and project/session counts. Discover collections with projects.list or sessions.list.",
       execute: (_input, context) => api().invokeAppControl("app.state", {}, context.signal),
+    },
+    {
+      command: "projects.list",
+      requires: "invokeAppControl",
+      topic: "projects",
+      summary: "List a bounded page of registered Project names and exact paths.",
+      inputSchema: AgentListInput,
+      examples: [{}],
+      result:
+        "Project names/paths, total and nextOffset; projects.info supplies trust and timestamps.",
+      execute: invokeAppControl("projects.list"),
+    },
+    {
+      command: "projects.info",
+      requires: "invokeAppControl",
+      topic: "projects",
+      summary: "Inspect one registered Project by its exact path.",
+      inputSchema: AgentProjectInfoInput,
+      examples: [{ input: { path: "/path/to/project" } }],
+      result: "Project path, full name, timestamps and Pi resource trust.",
+      execute: invokeAppControl("projects.info"),
     },
     {
       command: "app.split",
@@ -95,12 +120,14 @@ export function createSessionApplicationOperations(
       command: "session-labels.list",
       requires: "invokeAppControl",
       topic: "session-labels",
-      summary: "List global and project-specific labels available to Project Sessions.",
-      inputSchema: empty,
+      summary: "List a bounded page of global and project-specific session labels.",
+      guidance: [
+        "Filter by name with query. projectPath selects its labels plus global labels; offset/limit page results.",
+      ],
+      inputSchema: SessionLabelListInput,
       examples: [{}],
-      result: "All session labels with their IDs, names, colors, and scopes.",
-      execute: (_input, context) =>
-        api().invokeAppControl("session-labels.list", {}, context.signal),
+      result: "Label IDs, names, colors and scopes, total and nextOffset (null at the end).",
+      execute: invokeAppControl("session-labels.list"),
     },
     {
       command: "session-labels.add",

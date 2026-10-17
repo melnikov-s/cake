@@ -10,7 +10,7 @@ This restriction is intra-family only: continue replying normally to the user. C
 
 ## Discover the family and its board
 
-Call `{"command":"sessions.list-family"}` to discover the family identity, root, and member references. Request `{"command":"boards"}` for current schemas. Board operations automatically select the caller's family board; they do not accept a board ID. `boards.current` and `boards.read-new` return `boardId` with bounded descriptions.
+Call `{"command":"sessions.list-family"}` for the family identity, root and a bounded member roster; follow nextOffset to discover more members. Request `{"command":"boards"}` for operation summaries and `<operation>.help` for an exact contract. Board operations automatically select the caller's family board; they do not accept a board ID. `boards.current` and `boards.read-new` return `boardId` with bounded descriptions.
 
 There are no separate agent board-create or board-join operations. `sessions.create-child` establishes or extends the caller's family, creates its Workboard automatically, and gives every recursive descendant access to that same board. Do not create an unrelated artifact board or invent join commands. An independent session cannot join an existing family through these tools. If no family exists, create a child only when delegation is actually warranted; if a member's board is unavailable, report the limitation to the user rather than falling back to private family messages.
 

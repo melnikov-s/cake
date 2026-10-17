@@ -4,10 +4,16 @@ import * as projectSessionLocations from "../project-sessions/projectSessionLoca
 import { Effect, Stream } from "effect";
 import type {
   AgentProjectAddInput,
+  AgentProjectInfoInput,
   AgentProjectRenameInput,
   AgentProjectView,
 } from "../../contracts/projects/agent-projects";
 import type { cakeRpcPayloadSchemas } from "../../contracts/application/cake-rpc-contract";
+import {
+  agentListLabel,
+  agentListPage,
+  type AgentListInput,
+} from "../../contracts/agent/agent-list-data";
 import { ClientWorkspaces } from "../../services/clients/ClientWorkspaces";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { PiAgentResources } from "../../services/pi/PiAgentResources";
@@ -308,12 +314,31 @@ const agentProjectView = (project: ProjectRecord, trustedPaths: readonly string[
     trusted: trustedPaths.includes(project.path),
   }) satisfies AgentProjectView;
 
-/** Registered Projects as agents should route them: exact paths, display names and trust. */
-export const listForAgent = Effect.fn("Projects.listForAgent")(function* () {
+/** Discovery returns only the routing path and display name, in registry order. */
+export const listForAgent = Effect.fn("Projects.listForAgent")(function* (input: AgentListInput) {
   const state = (yield* ApplicationState).snapshot();
+  const query = input.query?.toLowerCase();
+  const selected = state.projects.filter(
+    (project) => !query || `${project.name}\n${project.path}`.toLowerCase().includes(query),
+  );
+  const { items, ...page } = agentListPage(selected, input);
   return {
-    projects: state.projects.map((project) => agentProjectView(project, state.trustedProjectPaths)),
+    ...page,
+    projects: items.map(({ path, name }) => ({ path, name: agentListLabel(name) })),
   };
+});
+
+export const infoForAgent = Effect.fn("Projects.infoForAgent")(function* (
+  input: AgentProjectInfoInput,
+) {
+  const state = (yield* ApplicationState).snapshot();
+  const project = state.projects.find((candidate) => candidate.path === input.path);
+  if (!project)
+    return yield* new ProjectError({
+      operation: "inspectProject",
+      message: "Project is not registered.",
+    });
+  return { project: agentProjectView(project, state.trustedProjectPaths) };
 });
 
 /**

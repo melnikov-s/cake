@@ -3,14 +3,18 @@ import { coordinatorSystemPrompt } from "../../../src/services/pi-durable/coordi
 import modelDocumentation from "../../../docs/agent/models.md?raw";
 import presentationDocumentation from "../../../docs/agent/presentation.md?raw";
 
-it.each([
-  ["Project Session documentation", presentationDocumentation],
-  ["Cake Chat", coordinatorSystemPrompt("")],
-])("%s instructs agents to display images inline rather than as clickable links", (_, prompt) => {
+it("shared presentation guidance requires inline images rather than clickable links", () => {
+  const prompt = presentationDocumentation;
   expect(prompt).toContain("Always present images, screenshots, and visual previews inline");
   expect(prompt).toContain("never as plain clickable links");
   expect(prompt).toContain("![Description](working-directory-relative-image-path)");
   expect(prompt).toContain("native inline image output");
+});
+
+it("Cake Chat keeps inline images in its kernel and gates detailed presentation guidance", () => {
+  const prompt = coordinatorSystemPrompt("", "/cake/docs");
+  expect(prompt).toContain("Show images inline, not as plain links");
+  expect(prompt).toContain("read `presentation.md`");
 });
 
 it("Project Session saved-image documentation also requires inline presentation", () => {

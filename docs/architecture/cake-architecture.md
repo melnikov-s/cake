@@ -118,6 +118,34 @@ projections needed by a surface. References do not transfer ownership.
   Pi-owned session files. Cake checkpoints handle identities, exact capability grants,
   unfinished admissions and completion receipts, not a copy of that history. Only
   compact reports and provenance cross into the parent Conversation.
+- Cake-owned prompt kernels are role-specific: Cake Chat and Project Sessions
+  share only role-neutral authority, trust and presentation rules. Project
+  investigators retain project resources plus their scoped worker/mutation policy,
+  not ordinary Project Session application/family authority. Family overlays supply
+  identity and root lifecycle, without repeating the main recursive Workboard policy.
+  Detailed operational and exact-revision visual handoff rules live in bundled,
+  content-addressed readable guides, with explicit pre-action reading gates in each
+  applicable kernel. Cake Chat deploys the same guides as Project Sessions; its
+  user-authored dedicated instructions are appended verbatim. Session assistants
+  retain parent context and identity but initially inject only the gateway topic
+  index, discovering operation contracts on demand rather than embedding schemas.
+- Agent discovery follows list → inspect → bounded read. Lists return exact routing
+  identities, short labels and selection-relevant metadata, not content, transcripts,
+  full settings, file manifests or reports. Apply domain filters and deterministic
+  ordering before pagination. New in-memory catalogs share `AgentListInput` (20 items
+  by default, maximum 50) and `agentListPage`; `nextOffset: null` marks completion.
+  Existing cursor-based, metadata-only discovery keeps its bounded protocol. Exact
+  inspection returns full metadata; content reads are explicit and independently
+  bounded. Pending and scheduled inputs expose short labels; `pending-info` and
+  `scheduled-info` read one exact input in text slices. Queue mutations return counts,
+  not message bodies; edit via read plus cancel/send rather than bulk dequeue.
+  `app.state` reports window orientation/counts, not duplicate rosters.
+  Gateway topics list enabled operation summaries, `<operation>.help` supplies the
+  selected input/behavior contract, and `<operation>.output-schema` opts into the
+  complete result schema. Runtime validation remains authoritative at every layer.
+  Oversized JSON text uses a valid truncation envelope, never clipped JSON; canonical
+  structured results retain their separately validated size limit. Character-budget
+  tests guard Cake-owned kernels/catalogs without charging arbitrary user resources.
 
 ### Lifecycle invariants
 

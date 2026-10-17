@@ -11,6 +11,9 @@ import { inputRefsSchema } from "../conversations/task-input";
 import { messageRefsSchema } from "../conversations/message-reference";
 import { CakeChatReportPolicy } from "../project-sessions/session-reporting";
 import { jsonObjectSchema } from "../serialization/json-contract";
+import { AgentListInput } from "../agent/agent-list-data";
+import { AgentSessionListInput } from "../project-sessions/agent-session-list";
+import { AgentProjectInfoInput } from "../projects/agent-projects";
 
 const bounded = (min: number, max: number) =>
   Schema.String.check(Schema.isMinLength(min), Schema.isMaxLength(max));
@@ -30,14 +33,21 @@ const operation = <const Name extends string, Input extends Schema.Constraint>(
   input: Input,
 ) => Schema.Struct({ name: Schema.Literal(name), arguments: input });
 
+export const SessionLabelListInput = Schema.Struct({
+  ...AgentListInput.fields,
+  projectPath: Schema.optionalKey(bounded(1, 4096)),
+});
+
 /** Shared decoding for backend-owned application controls. Window selection/layout is deliberately absent. */
 export const BackendAgentInvocation = Schema.Union([
   operation("settings.sections", Schema.Struct({})),
+  operation("projects.list", AgentListInput),
+  operation("projects.info", AgentProjectInfoInput),
   operation("project.settings.get", CurrentProjectSettingsGetInput),
   operation("project.settings.update", CurrentProjectSettingsUpdateInput),
   operation("projects.settings.get", ProjectSettingsGetInput),
   operation("projects.settings.update", ProjectSettingsUpdateInput),
-  operation("session-labels.list", Schema.Struct({})),
+  operation("session-labels.list", SessionLabelListInput),
   operation(
     "session-labels.add",
     Schema.Struct({
@@ -62,12 +72,9 @@ export const BackendAgentInvocation = Schema.Union([
       index: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(99)),
     }),
   ),
-  operation(
-    "sessions.list",
-    Schema.Struct({ launchedByCakeChat: Schema.optionalKey(Schema.Boolean) }),
-  ),
+  operation("sessions.list", AgentSessionListInput),
   operation("sessions.info", Schema.Struct(target)),
-  operation("sessions.list-family", Schema.Struct({})),
+  operation("sessions.list-family", AgentListInput),
   operation(
     "sessions.set-labels",
     Schema.Struct({
@@ -110,6 +117,8 @@ export type BackendAgentInvocation = Schema.Schema.Type<typeof BackendAgentInvoc
 
 export const backendAgentCommands: ReadonlySet<string> = new Set([
   "settings.sections",
+  "projects.list",
+  "projects.info",
   "project.settings.get",
   "project.settings.update",
   "projects.settings.get",

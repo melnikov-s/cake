@@ -27,7 +27,7 @@ const MAX_CAKE_OPERATION_IMAGES = 4;
 const MAX_CAKE_OPERATION_IMAGE_BASE64_LENGTH = Math.ceil(MAX_CAKE_OPERATION_IMAGE_BYTES / 3) * 4;
 
 export const cakeToolDescription =
-  'Cake capabilities are part of the response and are progressively disclosed by topic: app, projects, sessions, attachments, messages, context, models, settings, interview, artifacts, boards, widgets, plugins, vscode, browser, subagents, notifications, and worktrees. The help index reflects currently enabled capabilities; experimental features are unavailable unless enabled in Settings. Before defaulting to prose, consider whether the request may imply a Cake interaction. If a topic seems potentially relevant—even when unsure—request it to discover its current operations, exact schemas, and examples, then use it when it better fulfills the request. Users do not need to name the tool explicitly. Call with {} for the topic index; request a topic with {"command":"<topic>"}, not in input. Request one exact operation schema with {"command":"<operation>.help"}. Artifacts are durable linked records; use artifacts.list or artifacts.search to discover them and artifacts.resolve-reference for an exact readable path. Artifact content is not automatically in context. Use artifacts.present to show an existing linked artifact again inline without regeneration.';
+  'Use Cake controls when helpful. {} lists enabled topics; {"command":"<topic>"} lists operations; {"command":"<operation>.help"} gives the exact contract. Known operations need no prior discovery. Invoke with {"command":"<operation>","input":{...}}. Full result schemas: <operation>.output-schema. In codemode, typed operations resolve to {command,result}; help and untyped operations resolve to text. Artifact content is not preloaded: discover, resolve, then read it. Use artifacts.present to show an existing artifact.';
 
 const commandSchema = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)).annotate({
   description: "Exact topic or operation command. Omit for the help index.",
@@ -82,7 +82,8 @@ const cakeTopics = [
   },
   { name: "messages", summary: "Discover, read and navigate exact Pi message references." },
   { name: "context", summary: "Inspect context use or compact the current session." },
-  { name: "models", summary: "List configured model presets." },
+  { name: "models", summary: "Discover and inspect configured model presets." },
+  { name: "session-labels", summary: "Discover and manage session labels." },
   {
     name: "settings",
     summary: "Inspect and configure Cake/Pi Settings through their existing authorities.",
@@ -211,16 +212,6 @@ export class CakeOperationRegistry {
     return topicIndex(this.availableTopics());
   }
 
-  completeHelp() {
-    return [...this.availableTopics()]
-      .sort()
-      .flatMap((topic) => {
-        const help = this.topicHelp(topic);
-        return help ? [help] : [];
-      })
-      .join("\n\n");
-  }
-
   operationHelp(command: string) {
     const operation = this.operations.get(command);
     if (!operation || operation.available?.() === false) return undefined;
@@ -230,7 +221,7 @@ export class CakeOperationRegistry {
       `Input schema:\n${JSON.stringify(inputJson(operation))}`,
       ...aliasHelp(operation),
       `Result: ${operation.result}`,
-      ...structuredOutputHelp(operation),
+      ...(operation.outputSchema ? [`Result schema: ${operation.command}.output-schema`] : []),
       ...(operation.limitations ?? []).map((line) => `Limitation: ${line}`),
       ...operation.examples
         .slice(0, 1)
@@ -246,33 +237,20 @@ export class CakeOperationRegistry {
     const topicDefinition: CakeTopicDefinition | undefined = cakeTopics.find(
       (candidate) => candidate.name === topic,
     );
-    const guidance = [
-      ...new Set([
-        ...(topicDefinition?.guidance ?? []),
-        ...operations.flatMap((operation) => operation.guidance ?? []),
-      ]),
-    ];
     return [
       `${topic} — ${topicDefinition?.summary ?? "Cake operations."}`,
-      ...guidance.map((line) => `- ${line}`),
-      ...operations.flatMap((operation) => [
-        `\n${operation.command} — ${operation.summary}`,
-        `Input schema:\n${JSON.stringify(inputJson(operation), null, 2)}`,
-        ...aliasHelp(operation),
-        `Result: ${operation.result}`,
-        ...structuredOutputHelp(operation),
-        ...(operation.limitations ?? []).map((line) => `Limitation: ${line}`),
-        ...(operation.examples.length
-          ? [
-              `Example:\n${JSON.stringify(
-                exampleEnvelope(operation.command, operation.examples[0]!),
-                null,
-                2,
-              )}`,
-            ]
-          : []),
-      ]),
+      ...(topicDefinition?.guidance ?? []).map((line) => `- ${line}`),
+      ...operations.map((operation) => `${operation.command} — ${operation.summary}`),
+      "Request <operation>.help for its exact contract before invoking an unfamiliar operation.",
     ].join("\n");
+  }
+
+  operationOutputSchema(command: string) {
+    const operation = this.operations.get(command);
+    if (!operation || operation.available?.() === false) return undefined;
+    return operation.outputSchema
+      ? `Output schema (result):\n${JSON.stringify(schemaJson(operation.outputSchema, "output"))}`
+      : `${command} returns text; no structured output schema is declared.`;
   }
 
   unknown(command: string) {
@@ -304,6 +282,10 @@ export class CakeOperationRegistry {
     if (command.endsWith(".help")) {
       const help = this.operationHelp(command.slice(0, -5));
       if (help) return helpResult(command, help);
+    }
+    if (command.endsWith(".output-schema")) {
+      const schema = this.operationOutputSchema(command.slice(0, -14));
+      if (schema !== undefined) return helpResult(command, schema);
     }
     const operation = this.operations.get(command);
     if (!operation || operation.available?.() === false)
@@ -381,15 +363,6 @@ function decodeOperationInput(operation: CakeOperationDefinition, raw: JsonObjec
   }
 }
 
-function structuredOutputHelp(operation: CakeOperationDefinition) {
-  return operation.outputSchema
-    ? [
-        `Output schema (result):\n${JSON.stringify(schemaJson(operation.outputSchema, "output"))}`,
-        `Codemode: tools.cake resolves to { command: ${JSON.stringify(operation.command)}, result: <validated output> }. Help and operations without an output schema resolve to text.`,
-      ]
-    : [];
-}
-
 function helpResult(command: string, text: string) {
   return {
     text,
@@ -452,5 +425,14 @@ function base64ByteLength(value: string) {
 
 function formatCakeResult(value: JsonValue, limit = 24_000) {
   const formatted = typeof value === "string" ? value : JSON.stringify(value, null, 2);
-  return formatted.length > limit ? `${formatted.slice(0, limit)}\n… (truncated)` : formatted;
+  if (formatted.length <= limit) return formatted;
+  if (typeof value === "string") return `${formatted.slice(0, limit)}\n… (truncated)`;
+  const compact = JSON.stringify(value);
+  if (compact.length <= limit) return compact;
+  return JSON.stringify({
+    truncated: true,
+    characterLength: formatted.length,
+    preview: formatted.slice(0, 2_000),
+    guidance: "Narrow the query or use pagination or an exact-item read for complete data.",
+  });
 }

@@ -289,7 +289,9 @@ describe("Cake artifact management operations", () => {
     expect(listed.details).toMatchObject({
       result: {
         total: 1,
-        artifacts: [{ lineageId: "design-plan", exactPath: "/cache/design-plan/r1" }],
+        artifacts: [
+          { exactRef: "cake://artifact/design-plan@r1", title: "Design plan", kind: "markdown" },
+        ],
       },
     });
     const resolved = await registry.invoke(

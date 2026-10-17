@@ -1,3 +1,4 @@
+import { AgentListInput } from "../../contracts/agent/agent-list-data";
 import { messageRefsSchema } from "../../contracts/conversations/message-reference";
 import { inputRefsSchema } from "../../contracts/conversations/task-input";
 import { Effect, Schema } from "effect";
@@ -12,7 +13,6 @@ import { createSessionSendBatchOperation } from "../conversations/cake-session-b
 export function createSessionFamilyOperations(
   api: () => RuntimeOperationApi,
 ): CakeOperationDefinition[] {
-  const empty = Schema.Struct({});
   const invokeAppControl =
     (command: string): CakeOperationDefinition["execute"] =>
     (input, context) => {
@@ -91,12 +91,16 @@ export function createSessionFamilyOperations(
         "The family is derived from the calling Project Session; this operation never accepts a sessionId.",
         "Use sessions.list when sessions outside the calling session's family are needed.",
       ],
-      inputSchema: empty,
+      inputSchema: AgentListInput,
       examples: [{}],
       result:
-        "The family identity, root and calling session identities, and family members in stable tree order.",
-      execute: (_input, context) =>
-        api().invokeAppControl("sessions.list-family", {}, context.signal),
+        "Family/root/caller identities and a bounded member roster in stable tree order; nextOffset continues, sessions.info inspects one member.",
+      execute: (input, context) =>
+        api().invokeAppControl(
+          "sessions.list-family",
+          Schema.decodeUnknownSync(AgentListInput)(input),
+          context.signal,
+        ),
     },
     {
       command: "sessions.send",

@@ -23,7 +23,7 @@ describe("Cake workflow proposal operation", () => {
       input: { sessionId: "owner", scriptPath: "audit.js" },
     };
     expect(registry.help()).not.toContain("workflows");
-    expect(registry.completeHelp()).not.toContain("workflows");
+    expect(registry.topicHelp("workflows")).toBeUndefined();
     expect(registry.operationHelp("workflows.propose")).toBeUndefined();
     await registry.invoke(envelope, context);
     expect(invoke).not.toHaveBeenCalled();
@@ -43,7 +43,7 @@ describe("Cake workflow proposal operation", () => {
       createCakeWorkflowOperations({ invoke, isEnabled: () => true }),
     );
     expect(registry.help()).toContain("workflows");
-    expect(cakeToolDescription).toContain("currently enabled capabilities");
+    expect(cakeToolDescription).toContain("enabled topics");
     expect(registry.operationHelp("workflows.propose")).toContain("Continue normally");
     expect(registry.operationHelp("workflows.start")).toContain("explicit user request");
     const input = {

@@ -2,7 +2,7 @@ import { Schema } from "effect";
 import {
   WidgetPackageInstall,
   WidgetPackageRemove,
-  WidgetPackageSnapshot,
+  WidgetPackageName,
 } from "../widgets/widget-packages";
 import {
   piSettingUpdateSchema,
@@ -25,6 +25,7 @@ import { NativeMcpConfigEdit } from "../pi/mcp-config-validation";
 import { cakeSettingsSections } from "./cake-settings-data";
 import { TurnId } from "../conversations/conversation-data";
 import { SpeechOutputSettings, SpeechOutputVoice } from "../speech/speech-output-data";
+import { AgentListInput } from "../agent/agent-list-data";
 
 const empty = Schema.Struct({});
 const scope = Schema.Literals(["backend", "project"]);
@@ -35,9 +36,33 @@ const presetProjection = Schema.Struct({
   presets: Schema.Array(ModelPreset),
   defaultPresetId: Schema.optionalKey(id),
 });
+const providerModelType = Schema.Literals(["chat", "image", "classifier"]);
+const providerListInput = Schema.Struct({
+  ...AgentListInput.fields,
+  provider: Schema.optionalKey(provider),
+  type: Schema.optionalKey(providerModelType),
+});
+const providerModelSummary = Schema.Struct({
+  id: Schema.String,
+  provider: Schema.String,
+  name: Schema.String,
+  type: providerModelType,
+  authenticated: Schema.Boolean,
+  available: Schema.Boolean,
+});
+const listPageFields = {
+  total: Schema.Int,
+  offset: Schema.Int,
+  nextOffset: Schema.NullOr(Schema.Int),
+};
 const providerCatalog = Schema.Struct({
-  chat: Schema.Array(modelOptionSchema),
-  nonChat: Schema.Array(PiNonChatModel),
+  ...listPageFields,
+  items: Schema.Array(providerModelSummary),
+});
+const widgetPackageList = Schema.Struct({
+  ...listPageFields,
+  directory: Schema.String,
+  items: Schema.Array(Schema.Struct({ name: WidgetPackageName, version: Schema.String })),
 });
 const modelsView = Schema.Struct({
   presets: Schema.Array(ModelPreset),
@@ -86,17 +111,17 @@ const mcpGuidance = [
 export const widgetPackageSettingsOperations = [
   setting(
     "settings.widgets.list",
-    empty,
-    "List backend-wide user-installed widget packages and their directory.",
+    AgentListInput,
+    "List installed widget package names/versions and directory; filter by query, page with offset/limit (20 default, 50 maximum).",
     {},
-    WidgetPackageSnapshot,
+    widgetPackageList,
   ),
   setting(
     "settings.widgets.install",
     WidgetPackageInstall,
     "Install a user-approved npm registry dependency for widgets, without rebuilding Cake.",
     { specifier: "@excalidraw/excalidraw", userApproved: true },
-    WidgetPackageSnapshot,
+    Schema.Struct({ installed: Schema.Literal(true), specifier: Schema.String }),
     [
       "Install only after an explicit user dependency request or explicit approval. Otherwise ask first. userApproved:true records that approval; it is not permission to invent approval.",
       "Packages are shared by all backend widgets, outside Cake's application node_modules. React and ReactDOM are provided by Cake; package paths, URLs and aliases are not supported.",
@@ -107,7 +132,7 @@ export const widgetPackageSettingsOperations = [
     WidgetPackageRemove,
     "Remove a shared widget dependency. Accepted artifact browser output remains usable.",
     { name: "@excalidraw/excalidraw" },
-    WidgetPackageSnapshot,
+    Schema.Struct({ removed: Schema.Literal(true), name: WidgetPackageName }),
     [
       "Removal affects future compilation for all backend widgets. Previously accepted browser output is retained.",
     ],
@@ -214,24 +239,35 @@ export const agentSettingsOperations = [
   ),
   setting(
     "settings.providers.list",
-    empty,
-    "Inspect chat and non-chat provider catalogs, authentication status and supported login methods; never stored credentials.",
+    providerListInput,
+    "List model identity/name/type and availability; filter provider/type/query, page with offset/limit (20 default, 50 maximum). Use settings.providers.info for details.",
     {},
     providerCatalog,
   ),
   setting(
+    "settings.providers.info",
+    Schema.Struct({
+      provider,
+      modelId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
+      type: providerModelType,
+    }),
+    "Inspect one exact model's capabilities, authentication status and login methods; never stored credentials.",
+    { provider: "openai", modelId: "gpt-5.4", type: "chat" },
+    Schema.Union([modelOptionSchema, PiNonChatModel]),
+  ),
+  setting(
     "settings.providers.refresh",
     empty,
-    "Refresh provider/model catalogs through Pi; no generation or classification calls.",
+    "Refresh provider/model catalogs through Pi; returns confirmation only, not the catalogs.",
     {},
-    providerCatalog,
+    Schema.Struct({ refreshed: Schema.Literal(true) }),
   ),
   setting(
     "settings.providers.login",
     Schema.Struct({ provider, authType: Schema.Literals(["api_key", "oauth"]) }),
     "Launch the existing provider API-key or OAuth flow on the originating device.",
     { provider: "openrouter", authType: "api_key" },
-    Schema.Struct({ ...providerCatalog.fields, authorized: Schema.Boolean }),
+    Schema.Struct({ provider, authorized: Schema.Literal(true) }),
     [
       "Requires user interaction. API keys/codes are entered in the existing secure dialog, never tool arguments. This waits for the actual flow; cancellation or failure is not authorization.",
     ],
@@ -241,7 +277,7 @@ export const agentSettingsOperations = [
     Schema.Struct({ provider }),
     "Disconnect a provider through Pi's existing credential flow.",
     { provider: "openrouter" },
-    providerCatalog,
+    Schema.Struct({ provider, disconnected: Schema.Literal(true) }),
   ),
   setting(
     "settings.mcp.get",

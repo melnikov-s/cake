@@ -64,6 +64,7 @@ import { toJsonValue } from "../../utils/to-json-value";
 
 import { durableChatDatabase } from "./durable-chat-location";
 import { coordinatorSystemPrompt } from "./coordinator-system-prompt";
+import { cakeAgentDocumentationDirectory } from "../pi/runtime/cake-agent-documentation";
 import { createDurableChatCommands } from "./durable-chat-commands";
 import { abortDurableActiveTurn, startDurableQueuedInput } from "./durable-chat-queue";
 import { loadAgentDirectoryExtensions } from "../pi/runtime/extension-providers";
@@ -115,9 +116,10 @@ export async function createDurableCakeChatRuntime(
     projectTrusted: options.trusted,
   });
   const commands = await createDurableChatCommands(options.cwd, options.agentDir, settings);
+  const cakeDocsDirectory = await cakeAgentDocumentationDirectory(options.agentDir);
   const instructions = () =>
     [
-      coordinatorSystemPrompt(preferences.preferences().instructions),
+      coordinatorSystemPrompt(preferences.preferences().instructions, cakeDocsDirectory),
       options.additionalSystemPrompt,
       commands.instructions(),
     ]

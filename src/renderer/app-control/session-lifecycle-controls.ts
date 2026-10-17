@@ -6,6 +6,10 @@ import type { AppControlResult } from "./app-control-data";
 
 import { defineControl, defineSessionControl } from "./control-definition";
 import { toStrictJson } from "./control-json";
+import {
+  agentScheduledPage,
+  agentScheduledRead,
+} from "../../contracts/scheduled-messages/agent-scheduled-messages";
 
 export const sessionLifecycleControls = [
   defineControl({
@@ -75,7 +79,11 @@ export const sessionLifecycleControls = [
         ok: true,
         command,
         target,
-        scheduledMessage,
+        scheduledMessage: {
+          id: scheduledMessage.id,
+          targetSessionId: scheduledMessage.targetSessionId,
+          sendAt: scheduledMessage.sendAt,
+        },
         status: "scheduled",
       };
     },
@@ -95,9 +103,17 @@ export const sessionLifecycleControls = [
       return {
         ok: true,
         command,
-        messages: await host.sessions.listScheduledMessages(sessionId),
+        ...agentScheduledPage(await host.sessions.listScheduledMessages(sessionId), input),
       };
     },
+  }),
+  defineControl({
+    ...windowControlDefinitions["sessions.scheduled-info"],
+    run: async (input, { host }, command): Promise<AppControlResult> => ({
+      ok: true,
+      command,
+      message: agentScheduledRead(await host.sessions.listScheduledMessages(), input),
+    }),
   }),
   defineControl({
     ...windowControlDefinitions["sessions.cancel-scheduled"],

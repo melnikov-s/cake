@@ -5,10 +5,16 @@ import presentationDocumentation from "../../../docs/agent/presentation.md?raw";
 
 const projectGuidance = `${artifactDocumentation}\n\n${presentationDocumentation}`;
 
-describe.each([
-  ["Project Session documentation", projectGuidance],
-  ["Cake Chat", coordinatorSystemPrompt("")],
-])("%s artifact guidance", (_, prompt) => {
+it("requires Cake Chat to read the exact-revision visual handoff rules before acting", () => {
+  const prompt = coordinatorSystemPrompt("", "/cake/docs");
+  expect(prompt).toContain(
+    "Before artifact publication/sharing/design implementation read `artifacts.md`",
+  );
+  expect(prompt).toContain("read `presentation.md`");
+});
+
+describe("shared artifact guidance required by Project Sessions and Cake Chat", () => {
+  const prompt = projectGuidance;
   it("keeps investigations and ordinary task communication in chat unless explicitly requested", () => {
     expect(prompt).toContain(
       "Keep investigations, explanations, ordinary implementation details, progress, and reports in chat by default",

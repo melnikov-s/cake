@@ -38,9 +38,21 @@ describe("Widget package operations", () => {
   it("requires real user approval and dispatches typed list/install/remove Settings operations", async () => {
     const snapshot = {
       directory: "/backend/widget-packages",
-      packages: [{ name: "d3", version: "7.9.0" }],
+      items: [{ name: "d3", version: "7.9.0" }],
+      total: 1,
+      offset: 0,
+      nextOffset: null,
     };
-    const invoke = vi.fn(async (command: string) => ({ ok: true, command, value: snapshot }));
+    const invoke = vi.fn(async (command: string): Promise<Schema.Json> => ({
+      ok: true,
+      command,
+      value:
+        command === "settings.widgets.list"
+          ? snapshot
+          : command === "settings.widgets.install"
+            ? { installed: true, specifier: "d3" }
+            : { removed: true, name: "d3" },
+    }));
     const registry = new CakeOperationRegistry(createCakeWidgetPackageOperations(invoke));
     const signal = new AbortController().signal;
     const context = { signal, toolCallId: "package-test", runtime: {} };

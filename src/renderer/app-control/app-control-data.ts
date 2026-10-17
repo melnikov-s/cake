@@ -6,6 +6,7 @@ import type {
   AgentSettingsInvocation,
   agentSettingsSections,
 } from "../../contracts/application/agent-settings-schema";
+import type { AgentSessionStatus } from "../../contracts/project-sessions/agent-session-list";
 import type { TurnStop } from "../../contracts/conversations/turn-stop";
 import { type JsonValue } from "../../contracts/serialization/json-contract";
 import {
@@ -234,7 +235,7 @@ export interface AppControlHost {
   };
 }
 
-export interface AppControlSession {
+interface AppControlSession {
   workspacePath: string;
   workspaceName: string;
   sessionId: string;
@@ -264,7 +265,7 @@ export interface AppControlSession {
   };
 }
 
-export interface AppControlSessionLabel extends SessionLabel {
+interface AppControlSessionLabel extends SessionLabel {
   scope: "global" | "project";
   projectPath?: string;
 }
@@ -274,9 +275,6 @@ export interface AppControlState {
   sessionLayout?: ReturnType<NonNullable<AppControlHost["state"]["sessionLayout"]>>;
   projectCount: number;
   sessionCount: number;
-  projects: Array<{ path: string; name: string; sessionCount: number }>;
-  attentionSessions: AppControlSession[];
-  recentSessions: AppControlSession[];
 }
 
 interface CoordinationThreadView {
@@ -326,8 +324,16 @@ type AppControlSuccess =
   | {
       ok: true;
       command: "sessions.list";
-      sessions: AppControlSession[];
-      attentionSessions: AppControlSession[];
+      total: number;
+      offset: number;
+      nextOffset: number | null;
+      sessions: Array<{
+        sessionId: string;
+        title: string;
+        kind: string;
+        projectName?: string;
+        status: AgentSessionStatus;
+      }>;
     }
   | {
       ok: true;
@@ -335,7 +341,15 @@ type AppControlSuccess =
       familyId: string;
       rootSessionId: string;
       currentSessionId: string;
-      sessions: AppControlSession[];
+      total: number;
+      offset: number;
+      nextOffset: number | null;
+      sessions: Array<{
+        sessionId: string;
+        title: string;
+        status: AgentSessionStatus;
+        familyParentSessionId?: string;
+      }>;
     }
   | {
       ok: true;
@@ -406,26 +420,42 @@ type AppControlSuccess =
       itemId: string;
       status: "queued";
     }
-  | { ok: true; command: "sessions.reorder"; messages: QueuedConversationMessages }
+  | {
+      ok: true;
+      command: "sessions.reorder";
+      queue: { steeringCount: number; followUpCount: number };
+    }
   | {
       ok: true;
       command: "sessions.schedule";
       target: SessionTarget;
-      scheduledMessage: ScheduledMessage;
+      scheduledMessage: Pick<ScheduledMessage, "id" | "targetSessionId" | "sendAt">;
       status: "scheduled";
     }
-  | { ok: true; command: "sessions.scheduled"; messages: readonly ScheduledMessage[] }
-  | { ok: true; command: "sessions.cancel-scheduled"; id: string; status: "cancelled" }
-  | { ok: true; command: "sessions.pending"; result: JsonValue }
   | {
       ok: true;
-      command:
-        | "sessions.dequeue"
-        | "sessions.cancel-queued"
-        | "sessions.steer-queued"
-        | "sessions.send-now"
-        | "sessions.clear-queue";
-      messages: QueuedConversationMessages;
+      command: "sessions.scheduled";
+      messages: Array<{ id: string; targetSessionId: string; sendAt: string; label: string }>;
+      total: number;
+      offset: number;
+      nextOffset: number | null;
+    }
+  | {
+      ok: true;
+      command: "sessions.scheduled-info";
+      message: ScheduledMessage & { totalChars: number; offset: number; nextOffset: number | null };
+    }
+  | { ok: true; command: "sessions.cancel-scheduled"; id: string; status: "cancelled" }
+  | { ok: true; command: "sessions.pending" | "sessions.pending-info"; result: JsonValue }
+  | {
+      ok: true;
+      command: "sessions.cancel-queued" | "sessions.steer-queued" | "sessions.send-now";
+      queue: { steeringCount: number; followUpCount: number };
+    }
+  | {
+      ok: true;
+      command: "sessions.clear-queue";
+      cleared: { steeringCount: number; followUpCount: number };
     }
   | { ok: true; command: "sessions.abort"; target: SessionTarget; status: "stopping" }
   | { ok: true; command: "sessions.rename"; target: SessionTarget; title: string }
@@ -435,7 +465,14 @@ type AppControlSuccess =
       target: SessionTarget;
       labels: AppControlSessionLabel[];
     }
-  | { ok: true; command: "session-labels.list"; labels: AppControlSessionLabel[] }
+  | {
+      ok: true;
+      command: "session-labels.list";
+      labels: AppControlSessionLabel[];
+      total: number;
+      offset: number;
+      nextOffset: number | null;
+    }
   | {
       ok: true;
       command: "session-labels.add" | "session-labels.update";

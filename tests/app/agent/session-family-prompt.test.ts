@@ -8,7 +8,10 @@ import sessions from "../../../docs/agent/sessions.md?raw";
 import { renderPromptTemplate } from "../../../src/services/pi/runtime/prompt-template";
 import { createSessionFamilyOperations } from "../../../src/domain/session-families/cake-session-family-operations";
 
-const project = renderPromptTemplate(projectTemplate, { cakeDocsDirectory: "/cake/docs" });
+const project = renderPromptTemplate(projectTemplate, {
+  cakeDocsDirectory: "/cake/docs",
+  commonPrompt: renderPromptTemplate(commonTemplate),
+});
 const child = renderPromptTemplate(childTemplate, {
   familyId: "family-1",
   parentSessionId: "s:12345678",
@@ -16,73 +19,69 @@ const child = renderPromptTemplate(childTemplate, {
 });
 
 describe("Project Session family communication policy", () => {
-  it("puts recursive board-only policy directly in the Project Session system prompt", () => {
-    expect(project).toContain("parents, children, siblings, and descendants recursively");
-    expect(project).toContain("exclusively through the family's shared message board");
-    expect(project).toContain("never use `sessions.send`, `sessions.reply`, `sessions.send-batch`");
-    expect(project).toContain("even for urgent wake-ups or completion reports");
-    expect(project).toContain("Do not duplicate board entries with private notifications");
+  it("puts recursive board-only transport and runtime limits directly in the kernel", () => {
+    expect(project).toContain("parents, children, siblings and recursive descendants");
+    expect(project).toContain("communicate exclusively via Workboard");
     expect(project).toContain(
-      "does not apply to user-facing replies, Cake Chat, or unrelated independent sessions",
+      "never sessions.send/reply/send-batch, private subagents, files or side channels",
     );
-    expect(project).toContain("do not use them to relay family messages around the board");
+    expect(project).toContain("even urgent/completion notices");
+    expect(project).toContain("No private duplicates or relaying via outsiders");
+    expect(project).toContain(
+      "User-facing replies, Cake Chat and unrelated sessions are outside this rule",
+    );
+    expect(project).toContain("Create children with expectsResponse: false");
+    expect(project).toContain("bootstrap board discovery only");
+    expect(project).toContain(
+      "Board posts neither wake idle members nor clear runtime-managed report obligations",
+    );
+    expect(project).toContain("no private workaround, polling or extra report");
+    expect(project).toContain("let the user resume members");
+    expect(project).toContain("No board: disclose, never invent/fallback");
   });
 
-  it("keeps parent and child context aligned without weakening worktree safeguards", () => {
-    for (const prompt of [renderPromptTemplate(parentTemplate), child]) {
-      expect(prompt).toContain("exclusively through the shared Workboard");
-      expect(prompt).toContain("not `sessions.send` or `sessions.reply`");
-      expect(prompt).toContain("Create children with `expectsResponse: false`");
-    }
-    expect(child).toContain("immediate parent is s:12345678");
+  it("uses identity/lifecycle overlays without repeating the full common policy", () => {
+    expect(parentTemplate).toContain("main prompt's recursive Workboard-only");
+    expect(parentTemplate).toContain("Only the family root resolves/restores");
+    expect(child).toContain("family family-1; immediate parent: s:12345678");
     expect(child).toContain("Working Directory is fixed at /worktrees/child");
-    expect(child).toContain("they cannot be resolved or restored independently");
-    expect(workgroups).toContain("Never create an unrelated worktree base manually");
-    expect(workgroups).toContain("uncommitted edits remain in this session's checkout");
-    expect(workgroups).toContain("never merge a child's branch by hand");
-    expect(workgroups).toContain("resolution requires every member to be inactive");
+    expect(child).toContain("cannot resolve/restore independently");
+    expect(child).toContain("every member inactive");
+    expect(child).toContain("Before starting an assignment, coordinating or reporting");
+    expect(child).toContain("read workgroups.md and sessions.md");
+    expect(parentTemplate.length).toBeLessThan(400);
+    expect(child.length).toBeLessThan(650);
+    // This deliberately allows a little more than 300 tokens rather than dropping transport policy.
+    expect(project.length).toBeLessThan(2_100);
+    expect(project).not.toContain("{{");
   });
 
-  it("describes actual board discovery, automatic setup, targeting and selective reads", () => {
-    for (const text of [project, workgroups]) {
-      for (const operation of [
-        "sessions.list-family",
-        "sessions.create-child",
-        "boards.append",
-        "boards.current",
-        "boards.read-new",
-        "boards.read",
-      ]) {
-        expect(text).toContain(operation);
-      }
-      expect(text).toContain("no separate");
-      expect(text).toContain('audience: "workgroup"');
-    }
+  it("gates detailed mechanics behind precisely discoverable readable guides", () => {
+    expect(project).toContain("Cake documentation directory: `/cake/docs`");
+    expect(project).toContain("`workgroups.md` AND `sessions.md` before child assignments");
     expect(workgroups).toContain("they do not accept a board ID");
     expect(workgroups).toContain("An independent session cannot join an existing family");
     expect(workgroups).toContain("After the returned child reference is known");
     expect(workgroups).toContain("Use the initial prompt only for lifecycle/bootstrap directions");
+    for (const operation of [
+      "boards.current",
+      "boards.read-new",
+      "boards.read",
+      "sessions.create-child",
+    ])
+      expect(workgroups).toContain(operation);
     expect(workgroups).toContain("`nextAfter` as `after`");
     expect(workgroups).toContain("`supersedes: [sequence, ...]`");
+    expect(workgroups).toContain('audience: "workgroup"');
     expect(workgroups).toContain(
       "A user-facing final answer is not a substitute for this board result",
     );
-  });
-
-  it("reconciles creator reports and discloses runtime limits without a private fallback", () => {
-    for (const text of [project, workgroups, commonTemplate, sessions]) {
-      expect(text).toContain("expectsResponse: false");
-      expect(text).toContain("runtime-managed");
-    }
-    expect(project).toContain("Board entries/reminders do not wake idle sessions");
-    expect(project).toContain("board posts do not clear them");
-    expect(project).toContain("Do not add a manual private report");
     expect(workgroups).toContain("prompt text cannot disable or reroute them");
-    expect(workgroups).toContain("let them resume that member");
-    expect(commonTemplate).toContain(
-      "When Cake Chat assigned your work, your final answer is that report",
+    expect(workgroups).toContain("never merge a child's branch by hand");
+    expect(sessions).toContain(
+      "When Cake Chat assigned your work, lead your final answer with a one-line outcome",
     );
-    expect(commonTemplate).toContain("Outside the calling session's family, redirect");
+    expect(sessions).toContain('`sessions.reply` with `outcome: "blocked"`');
   });
 
   it("aligns progressively disclosed session help, including bootstrap examples", () => {

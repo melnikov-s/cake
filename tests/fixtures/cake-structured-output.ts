@@ -24,6 +24,11 @@ export function artifactMetadata(id = "design-plan"): ArtifactProjectionMetadata
   };
 }
 
+export function artifactSummary(id = "design-plan") {
+  const { exactRef, kind, title } = artifactMetadata(id);
+  return { exactRef, kind, title };
+}
+
 /** Only the authoritative artifact service boundary is replaced. */
 export function artifactOperationOptions(
   listArtifactMetadata: NonNullable<

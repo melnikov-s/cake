@@ -179,6 +179,56 @@ describe("Cake VS Code session selection operations", () => {
     });
   });
 
+  it("bounds selection discovery and mutation receipts, filtering before paging", async () => {
+    const { operations, listSelections, removeSelection } = registry();
+    const entries = Array.from({ length: 65 }, (_, index) =>
+      selection(`selection-${index}`, {
+        ...source(index),
+        path: index % 2 === 0 ? "src/even.ts" : "src/odd.ts",
+      }),
+    );
+    listSelections.mockResolvedValue(state(entries));
+    const first = await operations.invoke({ command: "vscode.selections.list" }, context());
+    expect(first.details).toMatchObject({
+      result: {
+        total: 65,
+        offset: 0,
+        nextOffset: 20,
+        selections: entries.slice(0, 20).map(({ id }) => ({ id })),
+      },
+    });
+    const filtered = await operations.invoke(
+      { command: "vscode.selections.list", input: { query: "even", offset: 30, limit: 2 } },
+      context(),
+    );
+    expect(filtered.details).toMatchObject({
+      result: {
+        total: 33,
+        offset: 30,
+        nextOffset: 32,
+        selections: [{ id: "selection-60" }, { id: "selection-62" }],
+      },
+    });
+    const end = await operations.invoke(
+      { command: "vscode.selections.list", input: { query: "even", offset: 32, limit: 50 } },
+      context(),
+    );
+    expect(end.details).toMatchObject({
+      result: { nextOffset: null, selections: [{ id: "selection-64" }] },
+    });
+    removeSelection.mockResolvedValue({ state: state(entries) });
+    const removed = await operations.invoke(
+      { command: "vscode.selections.remove", input: { id: "absent" } },
+      context(),
+    );
+    expect(removed.details).toMatchObject({ result: { nextOffset: 20 } });
+    listSelections.mockClear();
+    await expect(
+      operations.invoke({ command: "vscode.selections.list", input: { limit: 51 } }, context()),
+    ).rejects.toThrow();
+    expect(listSelections).not.toHaveBeenCalled();
+  });
+
   it("removes an explicit ID without treating an unknown ID as clear-all", async () => {
     const { removeSelection, clearSelections, operations } = registry();
     const remaining = state([selection("other", source(4))]);
@@ -236,13 +286,13 @@ describe("Cake VS Code session selection operations", () => {
 
   it("discloses session-local retention, non-persistence, and next-tour-step cleanup guidance", () => {
     const { operations } = registry();
-    const help = operations.topicHelp("vscode");
-    expect(help).toMatch(/session-local/i);
+    const help = operations.operationHelp("vscode.selections.list");
+    expect(help).toContain("calling session");
     expect(help).toMatch(/not persisted/i);
     expect(help).toMatch(/clear the previous tour step/i);
     expect(help).toContain("vscode.selections.list");
-    expect(help).toContain("vscode.selections.remove");
-    expect(help).toContain("vscode.selections.clear");
+    expect(operations.topicHelp("vscode")).toContain("vscode.selections.remove");
+    expect(operations.topicHelp("vscode")).toContain("vscode.selections.clear");
     expect(help).toMatch(/until removed\/cleared/i);
   });
 
@@ -437,13 +487,13 @@ describe("Cake VS Code operations", () => {
 
     expect(operations.help()).toContain("vscode —");
     expect(operations.topicHelp("vscode")).toContain("code tours and walkthroughs");
-    expect(operations.topicHelp("vscode")).toContain(
+    expect(operations.operationHelp("vscode.enter")).toContain(
       "users do not need to ask for VS Code explicitly",
     );
-    expect(operations.topicHelp("vscode")).toContain(
+    expect(operations.operationHelp("vscode.open")).toContain(
       "Use vscode.open whenever showing code or directing the user's attention",
     );
-    expect(operations.topicHelp("vscode")).toContain(
+    expect(operations.operationHelp("vscode.open")).toContain(
       "Do not recreate source opening or selection with vscode.script.run",
     );
     expect(operations.topicHelp("vscode")).toContain("vscode.enter");

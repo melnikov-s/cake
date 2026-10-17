@@ -20,7 +20,11 @@ import {
 import { createCakeArtifactOperations } from "../../src/domain/artifacts/cake-artifact-operations";
 import { createCakeToolDefinition } from "../../src/services/pi/runtime/cake-session-runtime-capabilities";
 import { shutdownCakeSessionExtensions } from "../../src/services/pi/runtime/cake-session-runtime-resources";
-import { artifactMetadata, artifactOperationOptions } from "../fixtures/cake-structured-output";
+import {
+  artifactMetadata,
+  artifactSummary,
+  artifactOperationOptions,
+} from "../fixtures/cake-structured-output";
 
 const directories: string[] = [];
 const sessions: AgentSession[] = [];
@@ -41,6 +45,11 @@ async function harness() {
   const agentDir = join(cwd, "agent");
   await mkdir(agentDir);
   const list = vi.fn(async () => [artifactMetadata()]);
+  const config = artifactOperationOptions(list);
+  const resolveArtifact = vi.fn(async (reference: string) => {
+    if (!config.resolveArtifact) throw new Error("Expected resolver");
+    return config.resolveArtifact(reference);
+  });
   const settingsManager = SettingsManager.inMemory({
     defaultTools: ["cake", "codemode"],
     retry: { enabled: false },
@@ -59,7 +68,7 @@ async function harness() {
       (pi) =>
         pi.registerTool(
           createCakeToolDefinition(
-            createCakeArtifactOperations(pi, artifactOperationOptions(list)),
+            createCakeArtifactOperations(pi, { ...config, resolveArtifact }),
           ),
         ),
     ],
@@ -136,7 +145,13 @@ async function harness() {
       unsubscribe();
     }
   }
-  return { session, list, invoke, script: (code: string) => invoke("codemode", { code }) };
+  return {
+    session,
+    list,
+    resolveArtifact,
+    invoke,
+    script: (code: string) => invoke("codemode", { code }),
+  };
 }
 
 function textOf(result: { content: ({ type: "text"; text: string } | { type: "image" })[] }) {
@@ -148,10 +163,10 @@ describe("Cake structured output through real Pi codemode", () => {
     const h = await harness();
     const direct = await h.invoke("cake", { command: "artifacts.list" });
     expect(direct.isError).toBe(false);
-    expect(textOf(direct)).toContain('"lineageId": "design-plan"');
+    expect(textOf(direct)).toContain('"exactRef": "cake://artifact/design-plan@r2"');
     expect(direct.structuredContent).toEqual({
       command: "artifacts.list",
-      result: { total: 1, truncated: false, artifacts: [artifactMetadata()] },
+      result: { total: 1, offset: 0, nextOffset: null, artifacts: [artifactSummary()] },
     });
 
     const scripted = await h.script(`
@@ -173,9 +188,14 @@ describe("Cake structured output through real Pi codemode", () => {
     expect(textOf(described).length).toBeLessThan(4_000);
     const help = await h.script(`return await tools.cake({command: "artifacts.search.help"});`);
     expect(help.isError).toBe(false);
-    expect(textOf(help)).toContain("Output schema (result):");
-    expect(textOf(help)).toContain("selectedRevision");
-    expect(textOf(help)).toContain("validated output");
+    expect(textOf(help)).toContain("Result schema: artifacts.search.output-schema");
+    expect(textOf(help)).not.toContain("Output schema (result):");
+    const schema = await h.script(
+      `return await tools.cake({command: "artifacts.search.output-schema"});`,
+    );
+    expect(schema.isError).toBe(false);
+    expect(textOf(schema)).toContain("Output schema (result):");
+    expect(textOf(schema)).toContain('"required"');
   });
 
   it("keeps help, unknown commands, and nonselected operations as the original strings", async () => {
@@ -200,14 +220,25 @@ describe("Cake structured output through real Pi codemode", () => {
 
   it("passes full machine data beyond readable truncation and rejects data exceeding the result budget", async () => {
     const h = await harness();
-    h.list.mockResolvedValueOnce([{ ...artifactMetadata(), title: "x".repeat(30_000) }]);
+    const config = artifactOperationOptions();
+    if (!config.resolveArtifact) throw new Error("Expected resolver");
+    const base = await config.resolveArtifact("cake://artifact/design-plan@r2");
+    h.resolveArtifact.mockResolvedValueOnce({
+      ...base,
+      metadata: { ...artifactMetadata(), title: "x".repeat(30_000) },
+    });
     const fullData = await h.script(
-      `const value = await tools.cake({command: "artifacts.list"}); return {length: value.result.artifacts[0].title.length};`,
+      `const value = await tools.cake({command: "artifacts.resolve-reference", input: {reference: "design-plan@r2"}}); return {length: value.result.title.length};`,
     );
     expect(fullData.isError).toBe(false);
     expect(textOf(fullData)).toContain('"length":30000');
-    h.list.mockResolvedValueOnce([{ ...artifactMetadata(), title: "x".repeat(1_048_576) }]);
-    const oversized = await h.script(`await tools.cake({command: "artifacts.list"});`);
+    h.resolveArtifact.mockResolvedValueOnce({
+      ...base,
+      metadata: { ...artifactMetadata(), title: "x".repeat(1_048_576) },
+    });
+    const oversized = await h.script(
+      `await tools.cake({command: "artifacts.resolve-reference", input: {reference: "design-plan@r2"}});`,
+    );
     expect(oversized.isError).toBe(true);
     expect(textOf(oversized)).toContain("1048576-byte result limit");
   });

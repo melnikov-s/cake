@@ -1,121 +1,17 @@
-import { sessionLink } from "../../contracts/conversations/message-reference";
-import { launchedSessionStatus } from "../lib/cake-chat-launches";
-import type {
-  AppControlHost,
-  AgentControlSource,
-  AppControlState,
-  AppControlSession,
-  AppControlSessionLabel,
-  SessionSummaryView,
-} from "./app-control-data";
+import type { AppControlHost, AgentControlSource, AppControlState } from "./app-control-data";
 
+/** Window state is orientation, not a second unbounded project/session roster. */
 export function getAppState(host: AppControlHost, source?: AgentControlSource): AppControlState {
-  const sessions = sortedSessions(host);
   const state: AppControlState = {
     selection: host.state.currentSelection(),
     projectCount: host.state.projects().length,
-    sessionCount: sessions.length,
-    projects: host.state.projects().map((project) => ({
-      path: project.path,
-      name: project.name,
-      sessionCount: sessions.filter((session) => session.workingDirectory === project.path).length,
-    })),
-    // A deliberate stop is a requested outcome, not something for the user to look at.
-    attentionSessions: sessions
-      .filter((session) => {
-        const activity = host.state.sessionActivity(session.sessionId);
-        return activity !== undefined && activity !== "stopped";
-      })
-      .map((session) => toControlSession(host, session)),
-    recentSessions: sessions.map((session) => toControlSession(host, session)),
+    sessionCount: host.state.sessions().length,
   };
   const sessionLayout = host.state.sessionLayout?.(source);
   if (sessionLayout) state.sessionLayout = sessionLayout;
   return state;
 }
 
-function sessionLabels(host: AppControlHost): AppControlSessionLabel[] {
-  return [
-    ...host.state.globalSessionLabels().map((label) => ({
-      ...label,
-      scope: "global" as const,
-    })),
-    ...host.state.projects().flatMap((project) =>
-      (project.workflow?.labels ?? []).map((label) => ({
-        ...label,
-        scope: "project" as const,
-        projectPath: project.path,
-      })),
-    ),
-  ];
-}
-
-function sortedSessions(host: AppControlHost) {
-  return [...host.state.sessions()].sort((left, right) =>
-    right.modifiedAt.localeCompare(left.modifiedAt),
-  );
-}
-
 export function knownSession(host: AppControlHost, sessionId: string) {
   return host.state.sessions().find((session) => session.sessionId === sessionId);
-}
-
-function toControlSession(host: AppControlHost, session: SessionSummaryView): AppControlSession {
-  const activity = host.state.sessionActivity(session.sessionId);
-  const result = {
-    workspacePath: session.workingDirectory,
-    workspaceName: session.projectName,
-    sessionId: session.sessionId,
-    deepLink: sessionLink(session.sessionId),
-    title: session.title,
-    modified: session.modifiedAt,
-    messageCount: session.messageCount,
-    resolved: session.resolved,
-    draft: session.draft,
-  };
-  const managedWorktree = host.state.managedWorktree(session.workingDirectory);
-  const resultWithWorktree = managedWorktree ? { ...result, managedWorktree } : result;
-  const resultWithFamily = session.familyId
-    ? {
-        ...resultWithWorktree,
-        familyId: session.familyId,
-        familyParentSessionId: session.familyParentSessionId,
-        familyChildSessionIds: session.familyChildSessionIds,
-        familyChildOrder: session.familyChildOrder,
-        familyDepth: session.familyDepth,
-      }
-    : resultWithWorktree;
-  const project = host.state.projects().find((item) => item.path === session.projectPath);
-  const labelIds =
-    project?.workflow?.assignments.find((assignment) => assignment.sessionId === session.sessionId)
-      ?.labelIds ?? [];
-  const available = sessionLabels(host);
-  const labels = labelIds.flatMap((labelId) => {
-    const label = available.find(
-      (item) =>
-        item.id === labelId && (item.scope === "global" || item.projectPath === project?.path),
-    );
-    return label ? [label] : [];
-  });
-  const resultWithLabels = labels.length > 0 ? { ...resultWithFamily, labels } : resultWithFamily;
-  const launch = session.cakeChatLaunch;
-  const resultWithLaunch = launch
-    ? {
-        ...resultWithLabels,
-        launch: {
-          status: launchedSessionStatus(
-            {
-              ...session,
-              running: session.running ?? false,
-            },
-            activity,
-          ),
-          ...(launch.launchedAt ? { launchedAt: launch.launchedAt } : null),
-          ...(launch.lastReport
-            ? { summary: launch.lastReport.summary, reportedAt: launch.lastReport.reportedAt }
-            : null),
-        },
-      }
-    : resultWithLabels;
-  return activity ? { ...resultWithLaunch, activity } : resultWithLaunch;
 }

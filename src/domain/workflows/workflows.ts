@@ -22,6 +22,7 @@ import {
   type WorkflowRelaunchInput,
   type WorkflowWorkerTarget,
   type WorkflowSaveInput,
+  type WorkflowSavedTarget,
   type WorkflowRunReceipt,
   type WorkflowProgram,
   type WorkflowCatalogUpdate,
@@ -667,6 +668,11 @@ export const inspectWorker = Effect.fn("Workflows.inspectWorker")(function* (
 });
 export const saved = Effect.fn("Workflows.saved")(function* (owner: WorkflowOwner) {
   return yield* (yield* WorkflowScripts).list(yield* ownerLocation(owner));
+});
+export const inspectSaved = Effect.fn("Workflows.inspectSaved")(function* (
+  input: WorkflowSavedTarget,
+) {
+  return yield* (yield* WorkflowScripts).read(yield* ownerLocation(input), input.scriptPath);
 });
 export const save = Effect.fn("Workflows.save")(function* (input: WorkflowSaveInput) {
   const { checkpoint } = yield* getRun(input);

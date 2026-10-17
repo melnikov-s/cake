@@ -9,6 +9,14 @@ import { inputRefsSchema } from "../conversations/task-input";
 import { CakeModelSelection } from "../model-presets/cake-model-selection";
 import { CakeChatReportPolicy } from "../project-sessions/session-reporting";
 import { SessionNavigationInput, sessionNavigationHelp } from "./session-navigation";
+import {
+  AgentPendingListInput,
+  AgentPendingReadInput,
+} from "../conversations/agent-pending-messages";
+import {
+  AgentScheduledListInput,
+  AgentScheduledReadInput,
+} from "../scheduled-messages/agent-scheduled-messages";
 
 const bounded = (min: number, max: number) =>
   Schema.String.check(Schema.isMinLength(min), Schema.isMaxLength(max));
@@ -63,7 +71,7 @@ export const windowControlDefinitions = {
     discovery: {
       topic: "app",
       summary:
-        "Inspect Cake's current selection, split-pane layout, directional neighbors, and project and session summaries.",
+        "Inspect Cake's current selection, split-pane layout, directional neighbors and collection counts; use projects.list/sessions.list for discovery.",
     },
   },
   "app.user-selection": {
@@ -142,24 +150,24 @@ export const windowControlDefinitions = {
   },
   "sessions.pending": {
     command: "sessions.pending",
-    args: sessionIdTargetSchema,
+    args: AgentPendingListInput,
     scope: "global",
     discovery: {
       topic: "sessions",
       summary:
-        "List queued commands and messages with itemIds, partIds, lanes, states and positions for inspection, reordering and cancellation.",
+        "List bounded queue identities, short labels, lanes and positions; offset/limit page results, pending-info reads exact text.",
     },
   },
-  "sessions.dequeue": {
-    command: "sessions.dequeue",
-    args: sessionIdTargetSchema,
+  "sessions.pending-info": {
+    command: "sessions.pending-info",
+    args: AgentPendingReadInput,
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary:
-        "Clear and return all steering and follow-up messages queued in one explicitly targeted Project Session. To edit queued content, dequeue it, modify the returned text, then use sessions.send.",
+      summary: "Read one exact live queued input in bounded text slices (maxChars up to 20000).",
     },
   },
+
   "sessions.cancel-queued": {
     command: "sessions.cancel-queued",
     args: Schema.Struct({
@@ -206,7 +214,7 @@ export const windowControlDefinitions = {
     discovery: {
       topic: "sessions",
       summary:
-        "Clear and return all steering and follow-up messages queued in one explicitly targeted Project Session.",
+        "Clear queued steering/follow-up inputs and return cleared counts, never message contents. Read selected items before clearing if needed.",
     },
   },
   "sessions.create": {
@@ -314,13 +322,22 @@ export const windowControlDefinitions = {
   },
   "sessions.scheduled": {
     command: "sessions.scheduled",
-    args: Schema.Struct({
-      sessionId: Schema.optionalKey(bounded(1, 256)),
-    }),
+    args: AgentScheduledListInput,
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary: "List scheduled messages, optionally filtered to one Project Session.",
+      summary:
+        "List bounded scheduled-message IDs, destinations, send times and short labels; filter session/query before offset/limit pagination.",
+    },
+  },
+  "sessions.scheduled-info": {
+    command: "sessions.scheduled-info",
+    args: AgentScheduledReadInput,
+    scope: "global",
+    discovery: {
+      topic: "sessions",
+      summary:
+        "Read one scheduled message by exact ID in bounded text slices (maxChars up to 20000).",
     },
   },
   "sessions.cancel-scheduled": {

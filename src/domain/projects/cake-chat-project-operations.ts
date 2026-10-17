@@ -1,7 +1,9 @@
 import { Schema } from "effect";
+import { AgentListInput } from "../../contracts/agent/agent-list-data";
 import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
 import {
   AgentProjectAddInput,
+  AgentProjectInfoInput,
   AgentProjectRemoveInput,
   AgentProjectRenameInput,
   type CakeChatProjectControl,
@@ -18,11 +20,23 @@ export function createCakeChatProjectOperations(
     {
       command: "projects.list",
       topic: "projects",
-      summary: "List the Projects registered in Cake with their exact paths and names.",
-      inputSchema: Schema.Struct({}),
+      summary: "List a bounded page of registered Project names and exact paths.",
+      guidance: ["Filter names/paths with query; use projects.info for trust and timestamps."],
+      inputSchema: AgentListInput,
       examples: [{}],
-      result: "Every registered Project's exact path, display name, timestamps and trust state.",
-      execute: (_input, context) => control.list(context.signal),
+      result: "Project names/paths, total and nextOffset (null at the end).",
+      execute: (input, context) =>
+        control.list(Schema.decodeUnknownSync(AgentListInput)(input), context.signal),
+    },
+    {
+      command: "projects.info",
+      topic: "projects",
+      summary: "Inspect one registered Project by its exact path.",
+      inputSchema: AgentProjectInfoInput,
+      examples: [{ input: { path: "/Users/me/src/project" } }],
+      result: projectResult,
+      execute: (input, context) =>
+        control.info(Schema.decodeUnknownSync(AgentProjectInfoInput)(input), context.signal),
     },
     {
       command: "projects.add",

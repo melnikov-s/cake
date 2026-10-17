@@ -5,6 +5,11 @@ import { createCakeArtifactStateOperations } from "./cake-artifact-state-operati
 import { Schema } from "effect";
 import { retainedWidgetPreviewEvidence } from "../../contracts/widgets/widget-view-evidence";
 import { jsonValueSchema } from "../../contracts/serialization/json-contract";
+import {
+  AgentListInput,
+  agentListLabel,
+  agentListPage,
+} from "../../contracts/agent/agent-list-data";
 
 import {
   MAX_ARTIFACT_INPUT_BYTES,
@@ -112,27 +117,54 @@ const artifactRestoreSchema = Schema.Struct({
 const artifactLinkSchema = Schema.Struct({ reference: artifactReferenceSchema });
 const artifactUnlinkSchema = Schema.Struct({ lineageId: artifactIdSchema });
 const artifactSearchSchema = Schema.Struct({
-  query: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
-  limit: Schema.optionalKey(
-    Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(50)),
-  ),
+  ...AgentListInput.fields,
+  query: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+});
+const artifactSummarySchema = Schema.Struct({
+  exactRef: ArtifactProjectionMetadata.fields.exactRef,
+  kind: ArtifactProjectionMetadata.fields.kind,
+  title: Schema.String.check(Schema.isMaxLength(256)),
 });
 const artifactListOutputSchema = Schema.Struct({
   total: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
-  truncated: Schema.Boolean,
-  artifacts: Schema.Array(ArtifactProjectionMetadata).check(Schema.isMaxLength(100)),
+  offset: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  nextOffset: Schema.NullOr(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+  artifacts: Schema.Array(artifactSummarySchema).check(Schema.isMaxLength(50)),
 });
-const artifactSearchOutputSchema = Schema.Struct({
-  ...artifactListOutputSchema.fields,
-  artifacts: Schema.Array(ArtifactProjectionMetadata).check(Schema.isMaxLength(50)),
+const artifactHistorySchema = Schema.Struct({
+  ...AgentListInput.fields,
+  lineageId: artifactIdSchema,
 });
 
-const artifactHistorySchema = Schema.Struct({
-  lineageId: artifactIdSchema,
-  limit: Schema.optionalKey(
-    Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(100)),
-  ),
-});
+function artifactPage(metadata: readonly ArtifactProjectionMetadata[], input: AgentListInput) {
+  const all = Schema.decodeUnknownSync(Schema.Array(ArtifactProjectionMetadata), {
+    onExcessProperty: "error",
+  })(metadata);
+  const query = input.query?.toLowerCase();
+  const selected = all.filter(
+    (artifact) =>
+      !query ||
+      [
+        artifact.lineageId,
+        artifact.title ?? "",
+        artifact.kind,
+        artifact.exactRef,
+        artifact.stableRef,
+      ]
+        .join("\n")
+        .toLowerCase()
+        .includes(query),
+  );
+  const { items, ...page } = agentListPage(selected, input);
+  return {
+    ...page,
+    artifacts: items.map((artifact) => ({
+      exactRef: artifact.exactRef,
+      kind: artifact.kind,
+      title: agentListLabel(artifact.title ?? artifact.lineageId),
+    })),
+  };
+}
 
 function runtimeContext(context: CakeOperationExecutionContext) {
   const sessionId = context.runtime.sessionId;
@@ -211,14 +243,17 @@ export function createCakeArtifactOperations(
         "Lists return metadata, not payloads. Resolve exact-revision files and read only what you need. Widget publication and artifacts.preview supply a native image to the agent; the user's live inline rendering alone is not model-visible evidence.",
         "Stable cake://artifact/<id> references follow latest; exact @rN references are reproducible.",
       ],
-      inputSchema: Schema.Struct({}),
+      inputSchema: AgentListInput,
       examples: [{}],
-      result: "Up to 100 linked artifact metadata records and exact read-only paths.",
+      result:
+        "Exact references, titles and kinds, total and nextOffset; resolve one reference for read-only files and full metadata.",
       outputSchema: artifactListOutputSchema,
-      async execute() {
+      async execute(input) {
         if (!options.listArtifactMetadata) throw new Error("Artifact listing is unavailable");
-        const all = await options.listArtifactMetadata();
-        return { total: all.length, truncated: all.length > 100, artifacts: all.slice(0, 100) };
+        return artifactPage(
+          await options.listArtifactMetadata(),
+          Schema.decodeUnknownSync(AgentListInput)(input),
+        );
       },
     },
     {
@@ -226,28 +261,15 @@ export function createCakeArtifactOperations(
       topic: "artifacts",
       summary: "Search linked artifact titles, kinds, IDs, and references.",
       inputSchema: artifactSearchSchema,
-      outputSchema: artifactSearchOutputSchema,
+      outputSchema: artifactListOutputSchema,
       examples: [{ input: { query: "design", limit: 20 } }],
       result: "Bounded matching artifact metadata; payload content is not searched or returned.",
       async execute(input) {
         if (!options.listArtifactMetadata) throw new Error("Artifact search is unavailable");
-        // SAFETY: CakeOperationRegistry parsed input with artifactSearchSchema.
-        const parsed = input as typeof artifactSearchSchema.Type;
-        const query = parsed.query.toLocaleLowerCase();
-        const all = (await options.listArtifactMetadata()).filter((artifact) =>
-          [
-            artifact.lineageId,
-            artifact.title ?? "",
-            artifact.kind,
-            artifact.stableRef,
-            artifact.exactRef,
-          ]
-            .join("\n")
-            .toLocaleLowerCase()
-            .includes(query),
+        return artifactPage(
+          await options.listArtifactMetadata(),
+          Schema.decodeUnknownSync(artifactSearchSchema)(input),
         );
-        const limit = parsed.limit ?? 20;
-        return { total: all.length, truncated: all.length > limit, artifacts: all.slice(0, limit) };
       },
     },
     {
@@ -256,16 +278,16 @@ export function createCakeArtifactOperations(
       summary: "List bounded immutable revision metadata for one linked lineage.",
       inputSchema: artifactHistorySchema,
       examples: [{ input: { lineageId: "design-plan", limit: 50 } }],
-      result: "Bounded exact revision metadata and read-only paths, newest first.",
+      result:
+        "Exact revision references, titles and kinds, newest first; nextOffset continues, resolve-reference supplies files.",
       async execute(input) {
         if (!options.historyArtifact) throw new Error("Artifact history is unavailable");
-        // SAFETY: CakeOperationRegistry parsed input with artifactHistorySchema.
-        const parsed = input as typeof artifactHistorySchema.Type;
+        const parsed = Schema.decodeUnknownSync(artifactHistorySchema)(input);
         const all = [
           ...(await options.historyArtifact(stableReference(parsed.lineageId))),
         ].reverse();
-        const limit = parsed.limit ?? 50;
-        return { total: all.length, truncated: all.length > limit, revisions: all.slice(0, limit) };
+        const { artifacts, ...page } = artifactPage(all, parsed);
+        return { ...page, revisions: artifacts };
       },
     },
     {

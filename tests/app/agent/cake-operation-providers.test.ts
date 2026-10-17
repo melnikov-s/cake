@@ -310,12 +310,24 @@ describe("Backend-owned Cake operation composition", () => {
       trusted: false,
     };
     const control = {
-      list: vi.fn(async () => ({ projects: [project] })),
+      list: vi.fn(async () => ({
+        projects: [{ path: project.path, name: project.name }],
+        total: 1,
+        offset: 0,
+        nextOffset: null,
+      })),
+      info: vi.fn(async () => ({ project })),
       add: vi.fn(async () => ({ project, alreadyRegistered: false })),
       rename: vi.fn(async () => ({ project: { ...project, name: "Agents" } })),
       remove: vi.fn(async () => ({ ok: true, path: project.path, deleteSessions: false })),
     };
-    const commands = ["projects.list", "projects.add", "projects.rename", "projects.remove"];
+    const commands = [
+      "projects.list",
+      "projects.info",
+      "projects.add",
+      "projects.rename",
+      "projects.remove",
+    ];
     const configured = configureCakeSessionRuntime({
       ...options("/workspace"),
       globalControl: { tools: [], invoke: vi.fn() },
@@ -361,7 +373,9 @@ describe("Backend-owned Cake operation composition", () => {
       context.signal,
     );
     await registry.invoke({ command: "projects.list" }, context);
-    expect(control.list).toHaveBeenCalledWith(context.signal);
+    expect(control.list).toHaveBeenCalledWith({}, context.signal);
+    await registry.invoke({ command: "projects.info", input: { path: project.path } }, context);
+    expect(control.info).toHaveBeenCalledWith({ path: project.path }, context.signal);
     await expect(
       registry.invoke({ command: "projects.add", input: { name: "No path" } }, context),
     ).rejects.toThrow();

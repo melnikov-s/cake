@@ -38,10 +38,6 @@ async function executeAgentSettings(
   const { client, settings, signal } = host;
   signal.throwIfAborted();
   const options = { signal };
-  const catalog = async () => ({
-    chat: await client.models.list(options),
-    nonChat: await client.nonChatModels.list(options),
-  });
   const desktop = () => {
     const connection = settings.desktopConnection;
     if (!connection)
@@ -71,7 +67,7 @@ async function executeAgentSettings(
   switch (invocation.name) {
     case "settings.providers.login": {
       await client.models.login(invocation.arguments, options);
-      return { authorized: true, ...(await catalog()) };
+      return { provider: invocation.arguments.provider, authorized: true };
     }
     case "settings.mcp.native": {
       const { name, action, sessionId } = invocation.arguments;

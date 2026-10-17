@@ -32,6 +32,6 @@ export function sessionAssistantSystemPrompt(options: {
   return renderPromptTemplate(sessionAssistantPromptTemplate, {
     parentContextPrompt: options.parentContextPrompt,
     parentSessionId: options.parentSessionId,
-    cakeProtocol: new CakeOperationRegistry(operations).completeHelp(),
+    cakeTopics: new CakeOperationRegistry(operations).help(),
   });
 }

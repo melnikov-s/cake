@@ -36,6 +36,8 @@ import { ProjectAccess } from "../../services/projects/ProjectAccess";
 import type { acquireOptions } from "../project-sessions/projectSessionRuntime";
 import * as sessionChats from "../conversations/sessionChats";
 import { toJsonValue } from "../../utils/to-json-value";
+import { agentListLabel, agentListPage } from "../../contracts/agent/agent-list-data";
+import type { AgentSessionStatus } from "../../contracts/project-sessions/agent-session-list";
 
 export interface AgentControlCaller {
   readonly kind: "project-session" | "cake-chat";
@@ -66,6 +68,22 @@ const labels = Effect.fn("AgentControl.labels")(function* () {
 });
 
 type AgentSessionSummary = ProjectSessionSummary & { readonly savedDraft?: SavedDraft };
+
+function sessionListStatus(session: AgentSessionSummary): AgentSessionStatus {
+  if (session.resolved) return "resolved";
+  if (session.savedDraft) return "draft";
+  if (session.running) return "running";
+  const report = session.cakeChatLaunch?.lastReport;
+  if (report?.status === "blocked") return "needs-you";
+  if (
+    report?.status === "failed" ||
+    report?.status === "interrupted" ||
+    report?.status === "stopped"
+  )
+    return report.status;
+  if (report) return "done";
+  return session.unread ? "unread" : "idle";
+}
 
 const lookupSession = Effect.fn("AgentControl.lookupSession")(function* (sessionId: string) {
   const storage = yield* Effect.serviceOption(SavedDraftStorage);
@@ -208,6 +226,18 @@ export const invoke: (
       switch (invocation.name) {
         case "settings.sections":
           return toJsonValue({ ok: true, command, sections: agentSettingsSections });
+        case "projects.list":
+          return toJsonValue({
+            ok: true,
+            command,
+            ...(yield* projects.listForAgent(invocation.arguments)),
+          });
+        case "projects.info":
+          return toJsonValue({
+            ok: true,
+            command,
+            ...(yield* projects.infoForAgent(invocation.arguments)),
+          });
         case "project.settings.get":
         case "project.settings.update":
         case "projects.settings.get":
@@ -247,8 +277,19 @@ export const invoke: (
               defaultProjectSettings(),
           });
         }
-        case "session-labels.list":
-          return toJsonValue({ ok: true, command, labels: yield* labels() });
+        case "session-labels.list": {
+          const input = invocation.arguments;
+          const query = input.query?.toLowerCase();
+          const selected = (yield* labels()).filter(
+            (label) =>
+              (!input.projectPath ||
+                label.scope === "global" ||
+                label.projectPath === input.projectPath) &&
+              (!query || label.name.toLowerCase().includes(query)),
+          );
+          const { items, ...page } = agentListPage(selected, input);
+          return toJsonValue({ ok: true, command, ...page, labels: items });
+        }
         case "session-labels.add": {
           const input = invocation.arguments;
           if (
@@ -317,16 +358,29 @@ export const invoke: (
           const family = yield* (yield* SessionFamilyStorage).familyForMember(caller.sessionId);
           if (!family)
             return fail("The calling Project Session does not belong to a Session Family.");
-          const sessions = yield* Effect.forEach(familyMemberIds(family), (sessionId) =>
-            metadata.lookup({ sessionId }).pipe(Effect.flatMap(controlSession)),
+          const summaries = yield* Effect.forEach(familyMemberIds(family), (sessionId) =>
+            metadata.lookup({ sessionId }),
           );
+          const query = invocation.arguments.query?.toLowerCase();
+          const selected = summaries.filter(
+            (session) => !query || session.title.toLowerCase().includes(query),
+          );
+          const { items, ...page } = agentListPage(selected, invocation.arguments);
           return toJsonValue({
             ok: true,
             command,
+            ...page,
             familyId: family.familyId,
             rootSessionId: family.parentSessionId,
             currentSessionId: caller.sessionId,
-            sessions,
+            sessions: items.map((session) => ({
+              sessionId: session.sessionId,
+              title: agentListLabel(session.title),
+              status: sessionListStatus(session),
+              ...(session.familyParentSessionId
+                ? { familyParentSessionId: session.familyParentSessionId }
+                : null),
+            })),
           });
         }
         case "sessions.set-labels": {
@@ -378,45 +432,65 @@ export const invoke: (
             ({ sessionId }) =>
               lookupSession(sessionId).pipe(Effect.catch(() => Effect.succeed(undefined))),
           );
-          const ordered = summaries
-            .filter((item): item is AgentSessionSummary => item !== undefined)
-            .sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
-          const projectEntries = (yield* Effect.forEach(
-            ordered.filter(
+          const input = invocation.arguments;
+          const projectEntries = summaries
+            .filter((session): session is AgentSessionSummary => session !== undefined)
+            .filter(
               (session) =>
-                !invocation.arguments.launchedByCakeChat ||
-                caller.kind !== "cake-chat" ||
-                session.cakeChatLaunch?.requesterSessionId === caller.sessionId,
-            ),
-            controlSession,
-          )).filter(
-            (session) =>
-              !invocation.arguments.launchedByCakeChat || (session.launch && !session.resolved),
-          );
+                !input.launchedByCakeChat ||
+                (!session.resolved &&
+                  session.cakeChatLaunch !== undefined &&
+                  (caller.kind !== "cake-chat" ||
+                    session.cakeChatLaunch.requesterSessionId === caller.sessionId)),
+            )
+            .map((session) => ({
+              sessionId: session.sessionId,
+              title: session.title,
+              kind: "project-session",
+              projectName: session.projectName,
+              projectPath: session.projectPath,
+              modifiedAt: session.modifiedAt,
+              status: sessionListStatus(session),
+            }));
           const chatConfiguration = yield* Effect.serviceOption(CakeChatConfiguration);
           const chatEntries =
-            Option.isSome(chatConfiguration) && !invocation.arguments.launchedByCakeChat
+            Option.isSome(chatConfiguration) && !input.launchedByCakeChat
               ? (yield* chatMetadata.catalog(chatConfiguration.value.location)).map((chat) => ({
                   sessionId: chat.sessionId,
                   title: chat.projectPath ? `${chat.title} / Project Chat` : chat.title,
                   kind: "cake-chat",
+                  projectName: chat.projectPath ? chat.title : undefined,
                   projectPath: chat.projectPath,
                   modifiedAt: chat.modifiedAt,
-                  resolved: false,
-                  launch: undefined,
-                  activity: chat.unread ? "unread" : undefined,
+                  status: chat.unread ? "unread" : "idle",
                 }))
               : [];
-          const sessions = [...projectEntries, ...chatEntries];
+          const query = input.query?.toLowerCase();
+          const selected = [...projectEntries, ...chatEntries]
+            .filter(
+              (session) =>
+                (!input.projectPath || session.projectPath === input.projectPath) &&
+                (!query || session.title.toLowerCase().includes(query)) &&
+                (!input.status || session.status === input.status) &&
+                (!input.attentionOnly ||
+                  ["needs-you", "failed", "interrupted", "unread"].includes(session.status)),
+            )
+            .sort(
+              (a, b) =>
+                b.modifiedAt.localeCompare(a.modifiedAt) || a.sessionId.localeCompare(b.sessionId),
+            );
+          const { items, ...page } = agentListPage(selected, input);
           return toJsonValue({
             ok: true,
             command,
-            sessions,
-            attentionSessions: sessions.filter((session) =>
-              invocation.arguments.launchedByCakeChat
-                ? ["needs-you", "failed", "interrupted"].includes(session.launch?.status ?? "")
-                : session.activity !== undefined,
-            ),
+            ...page,
+            sessions: items.map(({ sessionId, title, kind, projectName, status }) => ({
+              sessionId,
+              title: agentListLabel(title),
+              kind,
+              status,
+              ...(projectName ? { projectName: agentListLabel(projectName) } : null),
+            })),
           });
         }
         case "sessions.send":

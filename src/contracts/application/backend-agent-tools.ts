@@ -13,6 +13,8 @@ const definitions = [
         "List the Cake settings sections available to agents, including scope and writability.",
     },
   },
+  { command: "projects.list", scope: "internal" },
+  { command: "projects.info", scope: "internal" },
   {
     command: "project.settings.get",
     scope: "internal",
@@ -113,11 +115,13 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary:
-        "List all project sessions, ordered by recency, and attention-worthy project sessions.",
+      summary: "List a bounded session roster, newest first.",
       guidance: [
-        "launchedByCakeChat: true lists only unresolved sessions Cake Chat launched, each with launch.status (running, needs-you, failed, interrupted, stopped, done or idle; stopped is a deliberate stop and never needs attention) and the latest report summary. Use it to answer “what's going on?” instead of polling sessions one by one.",
+        "Use projectPath, title query, status or attentionOnly to narrow results before offset/limit pagination (default 20, maximum 50).",
+        "launchedByCakeChat: true selects your unresolved launches. Status is selection metadata; sessions.info supplies full metadata, deep links and the latest report. Never poll to wait for completion.",
       ],
+      result:
+        "Session references, titles, kind, project name and status, with total and nextOffset (null at the end).",
       examples: [
         {
           input: {},
@@ -150,7 +154,7 @@ const definitions = [
         "Discover or invoke any Cake capability registered on the target Project Session, using that session's own authority and scope.",
       guidance: [
         "This exposes the parent's full live Cake catalog, including artifacts, browser, models, plugins, worktrees, session configuration, forks and family operations when available.",
-        "Use command: help for the topic index, a topic name for its protocol, or <operation>.help for one exact schema. Then invoke that command with input containing only its operation arguments.",
+        "Use command: help for topics, a topic for operation summaries, or <operation>.help directly for an exact input contract. Invoke with operation arguments in input; <operation>.output-schema opts into the full result schema.",
         "Singular session.*, context.* and other session-scoped operations apply to the targeted parent, never to the assistant's side chat. Do not claim success without checking the operation result.",
       ],
       examples: [

@@ -1,7 +1,9 @@
 import type { WorkflowControl } from "../../contracts/workflows/workflow-agent-control";
 import { Schema } from "effect";
 import {
-  WorkflowOwner,
+  WorkflowListInput,
+  WorkflowSavedListInput,
+  WorkflowSavedTarget,
   WorkflowRelaunchInput,
   WorkflowRunTarget,
   WorkflowSaveInput,
@@ -25,7 +27,11 @@ export function createCakeWorkflowOperations(control: WorkflowControl): CakeOper
       "Start a script-driven background workflow owned by a Project Session.",
       WorkflowStartInput,
     ],
-    ["list", "List compact workflow progress for a Project Session.", WorkflowOwner],
+    [
+      "list",
+      "List workflow identity/name/status; filter status/query and page with offset/limit (20 default, 50 maximum). Use inspect for detail.",
+      WorkflowListInput,
+    ],
     [
       "inspect",
       "Read the frozen script, inputs, phases and step results of a run.",
@@ -54,7 +60,16 @@ export function createCakeWorkflowOperations(control: WorkflowControl): CakeOper
       WorkflowWorkerTarget,
     ],
     ["inspectWorker", "Inspect a worker's Pi-owned activity and result.", WorkflowWorkerTarget],
-    ["saved", "Discover project and personal saved workflow scripts.", WorkflowOwner],
+    [
+      "saved",
+      "List saved script paths/names/locations; filter location/query and page with offset/limit (20 default, 50 maximum). Use inspect-saved for detail.",
+      WorkflowSavedListInput,
+    ],
+    [
+      "inspect-saved",
+      "Read one saved script's frozen source, metadata and phases by exact path.",
+      WorkflowSavedTarget,
+    ],
     ["save", "Save the run's frozen script as a reusable workflow.", WorkflowSaveInput],
   ] as const;
   const operations: CakeOperationDefinition[] = definitions.map(([name, summary, inputSchema]) => ({

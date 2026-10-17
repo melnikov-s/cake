@@ -118,10 +118,10 @@ describe("Pi 1.0.0 foundation contract", () => {
     expect(systemPrompt).toContain("<rules>");
     expect(systemPrompt).toContain("Use read to examine files instead of cat or sed");
     expect(systemPrompt).toContain("<cake_system_prompt>");
-    expect(systemPrompt).toContain("exclusively through the family\u0027s shared message board");
-    expect(systemPrompt).toContain("parents, children, siblings, and descendants recursively");
-    expect(systemPrompt).toContain("Set `expectsResponse: false` for family child creation");
-    expect(systemPrompt).toContain("Board entries/reminders do not wake idle sessions");
+    expect(systemPrompt).toContain("communicate exclusively via Workboard");
+    expect(systemPrompt).toContain("parents, children, siblings and recursive descendants");
+    expect(systemPrompt).toContain("Create children with expectsResponse: false");
+    expect(systemPrompt).toContain("Board posts neither wake idle members");
     const docsDirectory = systemPrompt?.match(/Cake documentation directory: `([^`]+)`/)?.[1];
     if (!docsDirectory) throw new Error("Expected readable Cake documentation references");
     const modelDocs = await readFile(join(docsDirectory, "models.md"), "utf8");

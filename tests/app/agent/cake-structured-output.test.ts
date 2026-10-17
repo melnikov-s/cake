@@ -10,7 +10,11 @@ import {
   type CakeOperationDefinition,
 } from "../../../src/contracts/agent/cake-operation";
 import { createCakeToolDefinition } from "../../../src/services/pi/runtime/cake-session-runtime-capabilities";
-import { artifactMetadata, artifactOperationOptions } from "../../fixtures/cake-structured-output";
+import {
+  artifactMetadata,
+  artifactSummary,
+  artifactOperationOptions,
+} from "../../fixtures/cake-structured-output";
 
 const context = { signal: new AbortController().signal, toolCallId: "fixture", runtime: {} };
 const image = { type: "image", data: "aW1hZ2U=", mimeType: "image/png" } as const;
@@ -51,12 +55,12 @@ describe("Cake structured output", () => {
     {
       command: "artifacts.list",
       input: {},
-      result: { total: 1, truncated: false, artifacts: [artifactMetadata()] },
+      result: { total: 1, offset: 0, nextOffset: null, artifacts: [artifactSummary()] },
     },
     {
       command: "artifacts.search",
       input: { query: "DESIGN" },
-      result: { total: 1, truncated: false, artifacts: [artifactMetadata()] },
+      result: { total: 1, offset: 0, nextOffset: null, artifacts: [artifactSummary()] },
     },
     {
       command: "artifacts.resolve-reference",
@@ -82,7 +86,9 @@ describe("Cake structured output", () => {
     const registry = new CakeOperationRegistry(operations(list));
     expect(
       (await registry.invoke({ command: "artifacts.list" }, context)).structuredContent,
-    ).toMatchObject({ result: { total: 101, truncated: true, artifacts: expect.any(Array) } });
+    ).toMatchObject({
+      result: { total: 101, offset: 0, nextOffset: 20, artifacts: expect.any(Array) },
+    });
     const searched = await registry.invoke(
       { command: "artifacts.search", input: { query: "item-", limit: 2 } },
       context,
@@ -90,8 +96,9 @@ describe("Cake structured output", () => {
     expect(searched.structuredContent).toMatchObject({
       result: {
         total: 101,
-        truncated: true,
-        artifacts: [artifactMetadata("item-0"), artifactMetadata("item-1")],
+        offset: 0,
+        nextOffset: 2,
+        artifacts: [artifactSummary("item-0"), artifactSummary("item-1")],
       },
     });
     expect(
@@ -99,12 +106,66 @@ describe("Cake structured output", () => {
         .structuredContent,
     ).toEqual({
       command: "artifacts.search",
-      result: { total: 0, truncated: false, artifacts: [] },
+      result: { total: 0, offset: 0, nextOffset: null, artifacts: [] },
     });
     list.mockResolvedValueOnce([]);
     expect(
       (await registry.invoke({ command: "artifacts.list" }, context)).structuredContent,
-    ).toEqual({ command: "artifacts.list", result: { total: 0, truncated: false, artifacts: [] } });
+    ).toEqual({
+      command: "artifacts.list",
+      result: { total: 0, offset: 0, nextOffset: null, artifacts: [] },
+    });
+  });
+
+  it("continues artifact searches and newest-first revision catalogs without file payloads", async () => {
+    const list = vi.fn(async () =>
+      Array.from({ length: 61 }, (_, index) => artifactMetadata(`item-${index}`)),
+    );
+    const config = artifactOperationOptions(list);
+    const definitions = createCakeArtifactOperations(
+      { appendEntry: vi.fn() },
+      {
+        ...config,
+        historyArtifact: async () =>
+          Array.from({ length: 61 }, (_, index) => ({
+            ...artifactMetadata(),
+            selectedRevision: index + 1,
+            latestRevision: 61,
+            exactRef: `cake://artifact/design-plan@r${index + 1}`,
+          })),
+      },
+    );
+    const registry = new CakeOperationRegistry(definitions);
+    const matched = await registry.invoke(
+      { command: "artifacts.search", input: { query: "item-1", offset: 9, limit: 2 } },
+      context,
+    );
+    expect(matched.structuredContent).toEqual({
+      command: "artifacts.search",
+      result: {
+        total: 11,
+        offset: 9,
+        nextOffset: null,
+        artifacts: [artifactSummary("item-18"), artifactSummary("item-19")],
+      },
+    });
+    const last = await registry.invoke(
+      { command: "artifacts.list", input: { offset: 50, limit: 50 } },
+      context,
+    );
+    expect(last.structuredContent).toMatchObject({ result: { total: 61, nextOffset: null } });
+    const history = await registry.invoke(
+      { command: "artifacts.history", input: { lineageId: "design-plan", offset: 60, limit: 1 } },
+      context,
+    );
+    expect(JSON.parse(history.text)).toEqual({
+      total: 61,
+      offset: 60,
+      nextOffset: null,
+      revisions: [
+        { exactRef: "cake://artifact/design-plan@r1", title: "Design plan", kind: "markdown" },
+      ],
+    });
   });
 
   it("advertises a small fixed output envelope regardless of registered result schemas", () => {
@@ -178,37 +239,60 @@ describe("Cake structured output", () => {
     ).rejects.toThrow("Artifact is not linked");
   });
 
-  it("retains full valid script data beyond the readable limit but rejects oversized structured results", async () => {
-    const large = { ...artifactMetadata(), title: "x".repeat(30_000) };
-    const list = vi.fn(async () => [large]);
-    const result = await invokeTool(operations(list), "artifacts.list");
-    expect(result.content).toEqual([
-      { type: "text", text: expect.stringContaining("… (truncated)") },
-    ]);
-    expect(result.structuredContent).toMatchObject({ result: { artifacts: [large] } });
-    list.mockResolvedValueOnce([{ ...large, title: "x".repeat(1_048_576) }]);
-    await expect(invokeTool(operations(list), "artifacts.list")).rejects.toThrow(
-      /1048576-byte result limit/,
+  it("bounds list labels while retaining complete exact-item data and size validation", async () => {
+    let metadata = { ...artifactMetadata(), title: "x".repeat(30_000) };
+    const config = artifactOperationOptions(async () => [metadata]);
+    if (!config.resolveArtifact) throw new Error("Expected resolution fixture");
+    const base = await config.resolveArtifact("cake://artifact/design-plan@r2");
+    const definitions = createCakeArtifactOperations(
+      { appendEntry: vi.fn() },
+      { ...config, resolveArtifact: async () => ({ ...base, metadata }) },
     );
+    const list = await invokeTool(definitions, "artifacts.list");
+    expect(list.structuredContent).toMatchObject({
+      result: {
+        artifacts: [
+          { title: `${"x".repeat(255)}…`, exactRef: metadata.exactRef, kind: metadata.kind },
+        ],
+      },
+    });
+    const exact = await invokeTool(definitions, "artifacts.resolve-reference", {
+      reference: metadata.exactRef,
+    });
+    expect(exact.structuredContent).toMatchObject({ result: metadata });
+    expect(
+      JSON.parse(exact.content[0]?.type === "text" ? exact.content[0].text : ""),
+    ).toMatchObject({ truncated: true });
+    metadata = { ...metadata, title: "x".repeat(1_048_576) };
+    await expect(
+      invokeTool(definitions, "artifacts.resolve-reference", { reference: metadata.exactRef }),
+    ).rejects.toThrow(/1048576-byte result limit/);
   });
 
-  it.each(["help", "artifacts", "artifacts.search.help", "artifacts.unknown"])(
-    "keeps %s discovery readable and executable as a string",
-    async (command) => {
-      const list = vi.fn(async () => [artifactMetadata()]);
-      const result = await invokeTool(operations(list), command);
-      expect(result.structuredContent).toEqual(
-        result.content[0]?.type === "text" ? result.content[0].text : undefined,
-      );
-      expect(typeof result.structuredContent).toBe("string");
-      expect(list).not.toHaveBeenCalled();
-      if (command === "artifacts.search.help") {
-        expect(result.structuredContent).toContain("Output schema (result):");
-        expect(result.structuredContent).toContain("validated output");
-        expect(result.structuredContent).toContain('"selectedRevision"');
-      }
-    },
-  );
+  it.each([
+    "help",
+    "artifacts",
+    "artifacts.search.help",
+    "artifacts.search.output-schema",
+    "artifacts.unknown",
+  ])("keeps %s discovery readable and executable as a string", async (command) => {
+    const list = vi.fn(async () => [artifactMetadata()]);
+    const result = await invokeTool(operations(list), command);
+    expect(result.structuredContent).toEqual(
+      result.content[0]?.type === "text" ? result.content[0].text : undefined,
+    );
+    expect(typeof result.structuredContent).toBe("string");
+    expect(list).not.toHaveBeenCalled();
+    if (command === "artifacts.search.help") {
+      expect(result.structuredContent).toContain("Result schema: artifacts.search.output-schema");
+      expect(result.structuredContent).toContain("Input schema:");
+      expect(result.structuredContent).not.toContain("Output schema (result):");
+    }
+    if (command === "artifacts.search.output-schema") {
+      expect(result.structuredContent).toContain("Output schema (result):");
+      expect(result.structuredContent).toContain('"required"');
+    }
+  });
 
   it.each([
     { name: "JSON", value: { status: "ok" } },
@@ -223,7 +307,12 @@ describe("Cake structured output", () => {
       );
       const metadata = typeof value === "string" ? value : "_tag" in value ? value.metadata : value;
       const text = typeof metadata === "string" ? metadata : JSON.stringify(metadata, null, 2);
-      expect(result.structuredContent).toBe(text);
+      if (typeof value === "object" && "_tag" in value) {
+        expect(result.structuredContent).toContain(text);
+        expect(result.structuredContent).toContain("native image pixels were NOT forwarded");
+      } else {
+        expect(result.structuredContent).toBe(text);
+      }
       expect(result.content).toEqual([
         { type: "text", text },
         ...(typeof value === "object" && "_tag" in value ? [image] : []),

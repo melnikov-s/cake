@@ -4,7 +4,9 @@ import type { McpSettings } from "../../services/pi/McpSettings";
 import type { WidgetPackages } from "../../services/widgets/WidgetPackages";
 import type { SessionCoordination } from "../../services/session-catalogs/SessionCoordination";
 import {
-  WorkflowOwner,
+  WorkflowListInput,
+  WorkflowSavedListInput,
+  WorkflowSavedTarget,
   WorkflowRelaunchInput,
   WorkflowRunTarget,
   WorkflowSaveInput,
@@ -35,6 +37,7 @@ import type { WorkflowError } from "../../contracts/workflows/workflow-data";
 import type { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import * as workflows from "./workflows";
 import { workflowError } from "./run-state";
+import { agentListLabel, agentListPage } from "../../contracts/agent/agent-list-data";
 
 /** Validated domain dispatch for the Pi adapter's narrow JSON callback. */
 /** Explicit capability set breaks the type-inference cycle with Project runtime assembly. */
@@ -83,8 +86,19 @@ export const invoke = Effect.fn("Workflows.invoke")(function* (
           caller,
           signal,
         );
-      case "workflows.list":
-        return yield* workflows.list(yield* Schema.decodeUnknownEffect(WorkflowOwner)(input));
+      case "workflows.list": {
+        const decoded = yield* Schema.decodeUnknownEffect(WorkflowListInput)(input);
+        const query = decoded.query?.toLowerCase();
+        const runs = (yield* workflows.list(decoded))
+          .filter(
+            (run) =>
+              (!decoded.status || run.status === decoded.status) &&
+              (!query ||
+                [run.id, run.meta.name].some((value) => value.toLowerCase().includes(query))),
+          )
+          .map((run) => ({ id: run.id, name: agentListLabel(run.meta.name), status: run.status }));
+        return agentListPage(runs, decoded);
+      }
       case "workflows.inspect":
         return yield* workflows.inspect(
           yield* Schema.decodeUnknownEffect(WorkflowRunTarget)(input),
@@ -114,8 +128,29 @@ export const invoke = Effect.fn("Workflows.invoke")(function* (
         return yield* workflows.inspectWorker(
           yield* Schema.decodeUnknownEffect(WorkflowWorkerTarget)(input),
         );
-      case "workflows.saved":
-        return yield* workflows.saved(yield* Schema.decodeUnknownEffect(WorkflowOwner)(input));
+      case "workflows.saved": {
+        const decoded = yield* Schema.decodeUnknownEffect(WorkflowSavedListInput)(input);
+        const query = decoded.query?.toLowerCase();
+        const scripts = (yield* workflows.saved(decoded))
+          .filter(
+            (script) =>
+              (!decoded.location || script.location === decoded.location) &&
+              (!query ||
+                [script.path, script.meta.name].some((value) =>
+                  value.toLowerCase().includes(query),
+                )),
+          )
+          .map((script) => ({
+            path: script.path,
+            name: agentListLabel(script.meta.name),
+            location: script.location,
+          }));
+        return agentListPage(scripts, decoded);
+      }
+      case "workflows.inspect-saved":
+        return yield* workflows.inspectSaved(
+          yield* Schema.decodeUnknownEffect(WorkflowSavedTarget)(input),
+        );
       case "workflows.save":
         return yield* workflows.save(yield* Schema.decodeUnknownEffect(WorkflowSaveInput)(input));
       default:

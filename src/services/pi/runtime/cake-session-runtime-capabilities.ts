@@ -34,6 +34,7 @@ import { cakeAgentDocumentationDirectory } from "./cake-agent-documentation";
 import { cakeBuiltinSkillsOverride } from "./cake-builtin-skills";
 import { createCakeSystemPromptExtension } from "./cake-system-prompt-extension";
 import projectPromptTemplate from "./prompts/project.md?raw";
+import commonPromptTemplate from "./prompts/common.md?raw";
 import { projectInvestigationSystemPrompt } from "../subagent-system-prompt";
 import { renderPromptTemplate } from "./prompt-template";
 import { formatUnknown } from "./session-projection";
@@ -193,9 +194,12 @@ export async function createCakeSessionRuntimeCapabilities(input: {
   };
   const runtimeIdentity: RuntimeIdentity = {};
   const cakeProjectSystemPrompt =
-    options.isolatedSystemPrompt || options.auxiliaryProjectResources
+    options.isolatedSystemPrompt ||
+    options.auxiliaryProjectResources ||
+    options.projectInvestigation
       ? undefined
       : renderPromptTemplate(projectPromptTemplate, {
+          commonPrompt: renderPromptTemplate(commonPromptTemplate),
           cakeDocsDirectory: await cakeAgentDocumentationDirectory(agentDir),
         });
   const detectedWorktree = await detectGitWorktree(options.cwd);
@@ -238,7 +242,7 @@ export async function createCakeSessionRuntimeCapabilities(input: {
             ? []
             : [
                 ...base,
-                ...(options.auxiliaryProjectResources
+                ...(cakeProjectSystemPrompt === undefined
                   ? []
                   : [`<cake_system_prompt>\n${cakeProjectSystemPrompt}\n</cake_system_prompt>`]),
                 ...(options.additionalSystemPrompt

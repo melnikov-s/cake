@@ -1,4 +1,8 @@
 import { Schema } from "effect";
+import {
+  AgentScheduledListInput,
+  AgentScheduledReadInput,
+} from "../../contracts/scheduled-messages/agent-scheduled-messages";
 
 import { type JsonObject } from "../../contracts/serialization/json-contract";
 
@@ -34,7 +38,8 @@ export function createScheduledMessageOperations(
           },
         },
       ],
-      result: "The durable scheduled message and its ID.",
+      result:
+        "Scheduled message ID, destination, send time and confirmation; no repeated message body.",
       execute: invokeAppControl("sessions.schedule"),
     },
     {
@@ -42,14 +47,22 @@ export function createScheduledMessageOperations(
       requires: "invokeAppControl",
       topic: "sessions",
       summary: "List durable scheduled messages, optionally for one Project Session.",
-      inputSchema: Schema.Struct({
-        sessionId: Schema.optionalKey(
-          Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
-        ),
-      }),
+      inputSchema: AgentScheduledListInput,
       examples: [{}],
-      result: "Scheduled message IDs, destinations, text, and send times.",
+      result:
+        "Bounded IDs, destinations, short labels and send times, total and nextOffset; sessions.scheduled-info reads one exact message.",
       execute: invokeAppControl("sessions.scheduled"),
+    },
+    {
+      command: "sessions.scheduled-info",
+      requires: "invokeAppControl",
+      topic: "sessions",
+      summary: "Read one exact scheduled message in bounded text slices.",
+      inputSchema: AgentScheduledReadInput,
+      examples: [],
+      result:
+        "Message metadata and text (4000 characters by default, max 20000), totalChars and nextOffset.",
+      execute: invokeAppControl("sessions.scheduled-info"),
     },
     {
       command: "sessions.cancel-scheduled",

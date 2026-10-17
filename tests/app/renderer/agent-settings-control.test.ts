@@ -20,6 +20,7 @@ import { isBackendAgentSetting } from "../../../src/contracts/application/agent-
 import * as backendSettings from "../../../src/domain/application/agentSettings";
 import { PiModels } from "../../../src/services/pi/PiModels";
 import { WidgetPackages } from "../../../src/services/widgets/WidgetPackages";
+import type { PiModel, PiNonChatModel } from "../../../src/contracts/pi/model-data";
 import { defaultCakePrompts } from "../../../src/contracts/application/cake-prompt-defaults";
 import * as presets from "../../../src/domain/model-presets/modelPresets";
 import { updateNonChatModelPreference } from "../../../src/domain/model-preferences/non-chat-model-preferences";
@@ -58,7 +59,14 @@ import { slashCommandSchema } from "../../../src/contracts/conversations/session
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 
-async function fixture(trusted = true) {
+async function fixture(
+  trusted = true,
+  catalogs: {
+    chat?: PiModel[];
+    nonChat?: PiNonChatModel[];
+    packages?: { name: string; version: string }[];
+  } = {},
+) {
   let saved: ApplicationValue = {
     ...defaultApplicationState(),
     trustedProjectPaths: trusted ? ["/project"] : [],
@@ -142,7 +150,7 @@ async function fixture(trusted = true) {
   ) => runtime.runPromise(effect, options);
   const packageSnapshot = {
     directory: "/backend/widget-packages",
-    packages: [{ name: "d3", version: "7.9.0" }],
+    packages: catalogs.packages ?? [{ name: "d3", version: "7.9.0" }],
   };
   const widgetInstall = vi.fn<Client["widgetPackages"]["install"]>(async () => packageSnapshot);
   const widgetRemove = vi.fn<Client["widgetPackages"]["remove"]>(async () => ({
@@ -266,8 +274,8 @@ async function fixture(trusted = true) {
             Effect.provideService(
               PiModels,
               PiModels.of({
-                list: () => Effect.succeed([]),
-                listNonChat: () => Effect.succeed([]),
+                list: () => Effect.succeed(catalogs.chat ?? []),
+                listNonChat: () => Effect.succeed(catalogs.nonChat ?? []),
                 refreshCatalog: () => Effect.void,
                 login: () => Effect.die("Interactive login must stay renderer-owned"),
                 logout: (provider) =>
@@ -343,12 +351,160 @@ function value(result: Awaited<ReturnType<CakeOperationRegistry["invoke"]>>) {
 }
 
 describe("Agent Settings through the real application-control/Client/domain boundary", () => {
+  it("bounds provider discovery, filters before paging and inspects one full model", async () => {
+    const chat: PiModel[] = Array.from({ length: 61 }, (_, index) => ({
+      provider: index % 2 ? "other" : "fixture",
+      providerName: "Fixture provider",
+      id: `model-${index}`,
+      name: `Model ${index}`,
+      reasoning: true,
+      supportedThinkingLevels: ["off", "high"],
+      fastMode: true,
+      input: ["text", "image"],
+      authenticated: true,
+      available: true,
+      authTypes: ["api_key", "oauth"],
+    }));
+    const nonChat: PiNonChatModel[] = [
+      {
+        type: "image",
+        provider: "fixture",
+        providerName: "Fixture provider",
+        id: "image-model",
+        name: "Image model",
+        input: ["text"],
+        authenticated: true,
+        available: true,
+        authTypes: ["api_key"],
+      },
+    ];
+    const h = await fixture(true, { chat, nonChat });
+    try {
+      const first = value(await h.call("settings.providers.list"));
+      expect(first).toMatchObject({ total: 62, offset: 0, nextOffset: 20 });
+      const page = Schema.decodeUnknownSync(Schema.Struct({ items: Schema.Array(Schema.Unknown) }))(
+        first,
+      );
+      expect(page.items).toHaveLength(20);
+      expect(page.items[0]).toEqual({
+        id: "model-0",
+        provider: "fixture",
+        name: "Model 0",
+        type: "chat",
+        authenticated: true,
+        available: true,
+      });
+      expect(value(await h.call("settings.providers.list", { limit: 50 }))).toMatchObject({
+        nextOffset: 50,
+      });
+      expect(value(await h.call("settings.providers.list", { offset: 60 }))).toMatchObject({
+        items: [{ id: "model-60" }, { id: "image-model" }],
+        nextOffset: null,
+      });
+      expect(
+        value(
+          await h.call("settings.providers.list", {
+            provider: "fixture",
+            type: "chat",
+            query: "Model",
+            offset: 1,
+            limit: 1,
+          }),
+        ),
+      ).toMatchObject({ total: 31, items: [{ id: "model-2" }], nextOffset: 2 });
+      expect(value(await h.call("settings.providers.list", { type: "classifier" }))).toMatchObject({
+        items: [],
+        total: 0,
+        nextOffset: null,
+      });
+      expect(
+        value(
+          await h.call("settings.providers.info", {
+            provider: "fixture",
+            modelId: "model-0",
+            type: "chat",
+          }),
+        ),
+      ).toMatchObject({
+        availableThinkingLevels: ["off", "high"],
+        authTypes: ["api_key", "oauth"],
+      });
+      expect(
+        value(
+          await h.call("settings.providers.info", {
+            provider: "fixture",
+            modelId: "image-model",
+            type: "image",
+          }),
+        ),
+      ).toEqual(nonChat[0]);
+      await expect(
+        h.call("settings.providers.info", {
+          provider: "fixture",
+          modelId: "missing",
+          type: "chat",
+        }),
+      ).rejects.toThrow("Unknown");
+      for (const limit of [0, -1, 51, 1.5])
+        await expect(h.call("settings.providers.list", { limit })).rejects.toThrow();
+      await expect(h.call("settings.providers.list", { offset: -1 })).rejects.toThrow();
+      expect(value(await h.call("settings.providers.refresh"))).toEqual({ refreshed: true });
+      expect(value(await h.call("settings.providers.logout", { provider: "fixture" }))).toEqual({
+        provider: "fixture",
+        disconnected: true,
+      });
+      expect(
+        value(await h.call("settings.providers.login", { provider: "fixture", authType: "oauth" })),
+      ).toEqual({ provider: "fixture", authorized: true });
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("bounds widget package discovery and filters before pagination", async () => {
+    const packages = Array.from({ length: 61 }, (_, index) => ({
+      name: `package-${index}`,
+      version: "1.0.0",
+    }));
+    const h = await fixture(true, { packages });
+    try {
+      const first = value(await h.call("settings.widgets.list"));
+      expect(first).toMatchObject({ total: 61, offset: 0, nextOffset: 20 });
+      expect(
+        Schema.decodeUnknownSync(Schema.Struct({ items: Schema.Array(Schema.Unknown) }))(first)
+          .items,
+      ).toHaveLength(20);
+      expect(value(await h.call("settings.widgets.list", { limit: 50 }))).toMatchObject({
+        nextOffset: 50,
+      });
+      expect(value(await h.call("settings.widgets.list", { offset: 60 }))).toMatchObject({
+        items: [packages[60]],
+        nextOffset: null,
+      });
+      expect(
+        value(await h.call("settings.widgets.list", { query: "package-6", offset: 1, limit: 1 })),
+      ).toMatchObject({ items: [packages[60]], total: 2, nextOffset: null });
+      expect(value(await h.call("settings.widgets.list", { query: "absent" }))).toMatchObject({
+        items: [],
+        nextOffset: null,
+      });
+      for (const limit of [0, 51, 1.5])
+        await expect(h.call("settings.widgets.list", { limit })).rejects.toThrow();
+      expect(
+        value(await h.call("settings.widgets.install", { specifier: "d3", userApproved: true })),
+      ).toEqual({ installed: true, specifier: "d3" });
+    } finally {
+      await h.dispose();
+    }
+  });
   it("lists, installs only approved widget dependencies, and removes through the shared package Client", async () => {
     const h = await fixture();
     try {
       expect(value(await h.call("settings.widgets.list"))).toMatchObject({
         directory: "/backend/widget-packages",
-        packages: [{ name: "d3" }],
+        items: [{ name: "d3" }],
+        total: 1,
+        nextOffset: null,
       });
       await expect(h.call("settings.widgets.install", { specifier: "d3" })).rejects.toThrow();
       expect(h.widgetInstall).not.toHaveBeenCalled();
@@ -358,7 +514,8 @@ describe("Agent Settings through the real application-control/Client/domain boun
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       );
       expect(value(await h.call("settings.widgets.remove", { name: "d3" }))).toMatchObject({
-        packages: [],
+        name: "d3",
+        removed: true,
       });
       expect(h.widgetRemove).toHaveBeenCalledWith(
         { name: "d3" },

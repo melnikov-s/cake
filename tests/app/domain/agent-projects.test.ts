@@ -81,7 +81,7 @@ describe("agent Project registration", () => {
         project: { path, name: "agents", trusted: false },
       });
       expect(yield* (yield* ProjectAccess).isAllowed(path)).toBe(true);
-      expect((yield* projects.listForAgent()).projects.map((project) => project.path)).toEqual([
+      expect((yield* projects.listForAgent({})).projects.map((project) => project.path)).toEqual([
         path,
         join(root, "existing"),
       ]);
@@ -109,7 +109,24 @@ describe("agent Project registration", () => {
         alreadyRegistered: true,
         project: { name: "Existing", trusted: true },
       });
-      expect((yield* projects.listForAgent()).projects).toHaveLength(2);
+      expect((yield* projects.listForAgent({})).projects).toHaveLength(2);
+      expect(yield* projects.listForAgent({ query: "zone", limit: 1 })).toEqual({
+        total: 1,
+        offset: 0,
+        nextOffset: null,
+        projects: [{ path, name: "Agents zone" }],
+      });
+      expect(yield* projects.listForAgent({ limit: 1 })).toMatchObject({ total: 2, nextOffset: 1 });
+      expect(yield* projects.listForAgent({ limit: 1, offset: 1 })).toMatchObject({
+        total: 2,
+        nextOffset: null,
+      });
+      expect(yield* projects.infoForAgent({ path })).toMatchObject({
+        project: { path, name: "Agents zone", trusted: false },
+      });
+      expect(yield* projects.infoForAgent({ path: "/unknown" }).pipe(Effect.exit)).toMatchObject({
+        _tag: "Failure",
+      });
     }).pipe(Effect.provide(testLayer())),
   );
 
@@ -127,7 +144,7 @@ describe("agent Project registration", () => {
         `Project path is not a directory: ${join(root, "file.txt")}`,
         `${join(root, "worktree")} is a Cake-managed worktree of the Project ${join(root, "existing")}, not a Project root`,
       ]);
-      expect((yield* projects.listForAgent()).projects).toHaveLength(1);
+      expect((yield* projects.listForAgent({})).projects).toHaveLength(1);
       expect(yield* (yield* ProjectAccess).isAllowed(join(root, "worktree"))).toBe(false);
     }).pipe(
       Effect.provide(

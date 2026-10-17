@@ -82,7 +82,7 @@ describe("Project Session operation capabilities", () => {
     {
       capability: "pendingMessages",
       overrides: { pendingMessages: async () => ({ items: [] }) },
-      enabled: ["sessions.pending"],
+      enabled: ["sessions.pending", "sessions.pending-info"],
     },
     {
       capability: "reorderPendingMessage",
@@ -135,6 +135,23 @@ describe("Project Session operation capabilities", () => {
       );
       expect(withoutGateway).not.toContain(command);
     }
+  });
+
+  it("keeps real Project Session discovery within reviewed character budgets", () => {
+    const registry = new CakeOperationRegistry(
+      operations({
+        currentSessionControl: control({
+          invokeAppControl: async () => null,
+          createChildSession: async () => null,
+        }),
+      }),
+    );
+    // Character budgets avoid adding a tokenizer dependency; provider token counts differ.
+    expect(registry.help().length).toBeLessThan(2_000);
+    for (const topic of registry.availableTopics()) {
+      expect(registry.topicHelp(topic)?.length, topic).toBeLessThan(8_000);
+    }
+    expect(registry.operationHelp("sessions.open")?.length).toBeLessThan(4_000);
   });
 
   it("advertises the exact session navigation schema and user-owned permission in Cake help", () => {

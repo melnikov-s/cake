@@ -324,7 +324,7 @@ describe("subagent contract", () => {
       "Use subagents only when the user explicitly requested delegation, subagents, or parallel agent work.",
     );
     expect(projectAware[0]?.guidance?.join("\n")).toContain(
-      "Delegate every question depending on a registered project's code",
+      "Use a project investigator when broader research, project-loaded resources or context isolation helps",
     );
     expect(projectAware[0]?.guidance?.join("\n")).toContain("clarify ambiguous project identity");
     // Only Cake Chat (project-aware) subagents follow the Subagent default model setting.

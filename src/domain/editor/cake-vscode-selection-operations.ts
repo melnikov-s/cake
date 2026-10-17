@@ -7,8 +7,7 @@ import type {
 } from "../../contracts/editor/editor-selection";
 import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
 import { agentEditorLocation } from "../../utils/agent-editor-location";
-
-const vscodeSelectionsListInputSchema = Schema.Struct({});
+import { AgentListInput, agentListPage } from "../../contracts/agent/agent-list-data";
 const vscodeSelectionsRemoveInputSchema = Schema.Struct({ id: EditorSelectionId });
 const vscodeSelectionsClearInputSchema = Schema.Struct({});
 
@@ -36,13 +35,21 @@ const vscodeSelectionsClearInputSchema = Schema.Struct({});
 export function createCakeVscodeSelectionOperations(
   control: VscodeSelectionControl,
 ): CakeOperationDefinition[] {
-  const stateResult = (state: EditorSelectionState) => ({
-    sessionId: state.sessionId,
-    selections: state.selections.map(({ id, location }) => ({
-      id,
-      location: agentEditorLocation(location),
-    })),
-  });
+  const stateResult = (state: EditorSelectionState, input: AgentListInput = {}) => {
+    const query = input.query?.toLowerCase();
+    const selected = state.selections.filter(
+      ({ location }) => !query || location.path.toLowerCase().includes(query),
+    );
+    const { items, ...page } = agentListPage(selected, input);
+    return {
+      sessionId: state.sessionId,
+      ...page,
+      selections: items.map(({ id, location }) => ({
+        id,
+        location: agentEditorLocation(location),
+      })),
+    };
+  };
   const updateResult = (update: EditorSelectionUpdate) => ({
     ...stateResult(update.state),
     ...(update.warning ? { warning: update.warning } : null),
@@ -58,12 +65,18 @@ export function createCakeVscodeSelectionOperations(
       command: "vscode.selections.list",
       topic: "vscode",
       summary: "List the calling session's code-tour selections.",
-      inputSchema: vscodeSelectionsListInputSchema,
-      guidance,
+      inputSchema: AgentListInput,
+      guidance: [
+        ...guidance,
+        "Filter paths with query; offset/limit page selections (default 20, maximum 50).",
+      ],
       examples: [{}],
-      result: "Session identity and ordered selection IDs and one-based locations.",
-      async execute(_input, context) {
-        return stateResult(await control.listSelections(context.signal));
+      result: "Session identity, ordered selection IDs/one-based locations, total and nextOffset.",
+      async execute(input, context) {
+        return stateResult(
+          await control.listSelections(context.signal),
+          Schema.decodeUnknownSync(AgentListInput)(input),
+        );
       },
     },
     {
@@ -74,7 +87,7 @@ export function createCakeVscodeSelectionOperations(
       guidance,
       examples: [{ input: { id: "selection-id" } }],
       result:
-        "The updated collection and any highlight rendering warning. An unknown ID is a no-op.",
+        "The first bounded page of updated selections, continuation and any highlight rendering warning. An unknown ID is a no-op.",
       async execute(input, context) {
         // SAFETY: CakeOperationRegistry validated this operation's input schema.
         const { id } = input as typeof vscodeSelectionsRemoveInputSchema.Type;
