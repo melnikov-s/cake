@@ -2809,7 +2809,6 @@ const contextOutlineScenario: VisualCaptureScenario = {
     if (state === "memory") {
       const memory = dialog.locator('[data-source-id="memory"]');
       await memory.getByRole("button").nth(1).click();
-      await expect(memory).toContainText("Earlier detail · not in the prompt");
       await expect(memory.locator("blockquote").first()).toBeVisible();
     }
     await page.waitForFunction(() => document.fonts.status === "loaded");

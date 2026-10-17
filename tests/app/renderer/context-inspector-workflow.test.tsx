@@ -213,7 +213,7 @@ it.each(["project-chat", "global"])(
     try {
       await user.click(screen.getByRole("button", { name: "Browse context" }));
       await screen.findByRole("button", { name: "The current compressed summary" });
-      expect(screen.getByText("Compacted · depth 3")).toBeTruthy();
+      expect(screen.getByText("Depth 3")).toBeTruthy();
       expect(inspect).toHaveBeenCalledTimes(1);
       expect(inspect.mock.calls[0]?.[0]).toEqual({ sessionId, kind: "context-outline" });
       await user.click(screen.getByRole("button", { name: "System prompt" }));
@@ -226,14 +226,13 @@ it.each(["project-chat", "global"])(
       expect(inspect).toHaveBeenCalledTimes(1);
       await user.click(screen.getByRole("button", { name: "The current compressed summary" }));
       await screen.findByRole("button", { name: "Earlier summary A" });
-      expect(screen.getByText("Earlier detail · not in the prompt")).toBeTruthy();
-      expect(screen.getAllByText("Compacted · depth 2")).toHaveLength(2);
+      expect(screen.getAllByText("Depth 2")).toHaveLength(2);
       await user.click(screen.getByRole("button", { name: "Earlier summary A" }));
       await screen.findByRole("button", { name: "Summary of one original" });
-      expect(screen.getAllByText("Compacted · depth 1")).toHaveLength(2);
+      expect(screen.getAllByText("Depth 1")).toHaveLength(2);
       await user.click(screen.getByRole("button", { name: "Summary of one original" }));
       await screen.findByText("Keep it quiet and simple.");
-      expect(screen.getAllByText("Original · depth 0")).toHaveLength(2);
+      expect(screen.getAllByText("Original")).toHaveLength(2);
       expect(screen.getByText("I will use disclosure triangles.")).toBeTruthy();
       expect(inspect.mock.calls.map(([input]) => input.kind)).toEqual([
         "context-outline",

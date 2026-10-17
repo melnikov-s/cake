@@ -24,7 +24,7 @@ export const ContextInspectorNode = observer(function ContextInspectorNode({
         <figcaption className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
           {node.title}
           <Badge variant="outline" size="xs">
-            Original · depth 0
+            Original
           </Badge>
         </figcaption>
         <blockquote className="border-l-2 border-border pl-3">
@@ -44,18 +44,16 @@ export const ContextInspectorNode = observer(function ContextInspectorNode({
       <DisclosureTrigger
         title={node.title}
         aria-label={node.title}
-        aria-describedby={node.kind === "summary" ? `${contentId}-depth` : undefined}
+        aria-describedby={node.summaryDepth !== undefined ? `${contentId}-depth` : undefined}
         badge={
-          node.kind === "summary" ? (
+          node.kind === "summary" && node.summaryDepth !== undefined ? (
             <Badge
               id={`${contentId}-depth`}
               variant="accent"
               size="xs"
               className="mt-1 shrink-0 whitespace-nowrap"
             >
-              {node.summaryDepth === undefined
-                ? "Compacted"
-                : `Compacted · depth ${node.summaryDepth}`}
+              Depth {node.summaryDepth}
             </Badge>
           ) : undefined
         }
@@ -72,11 +70,6 @@ export const ContextInspectorNode = observer(function ContextInspectorNode({
             <pre className="whitespace-pre-wrap break-words font-sans text-[13px] leading-7">
               {node.text}
             </pre>
-          )}
-          {node.detail && !historical && (
-            <p className="mb-2 mt-3 text-xs text-muted-foreground">
-              Earlier detail · not in the prompt
-            </p>
           )}
           {pending && <LoadingSpinner label="Loading earlier detail" />}
           {error && (
