@@ -28,6 +28,18 @@ export function piProjectSessionDirectory(cwd: string, root: string) {
   return { directory: join(resolve(root), encoded), shared: false };
 }
 
+/** One SDK-owned discovery pass; the ID set lives only for this enumeration. */
+export async function piSessionIdsForWorkingDirectory(
+  cwd: string,
+  directory: string,
+  signal: AbortSignal,
+): Promise<ReadonlySet<string>> {
+  // The public list API owns cwd normalization and malformed-session handling.
+  // It reads bodies asynchronously with bounded concurrency; Cake keeps only IDs.
+  const sessions = await SessionManager.list(cwd, directory, undefined, signal);
+  return new Set(sessions.map((session) => session.id));
+}
+
 /** Pi's public lookup filters custom directories by the session header's cwd. */
 export function piSessionMatchesWorkingDirectory(
   cwd: string,

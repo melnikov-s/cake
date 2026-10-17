@@ -1,7 +1,11 @@
 import { opendir, readdir, stat } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
-import { Stream } from "effect";
-import { piProjectSessionDirectory, piSessionMatchesWorkingDirectory } from "../pi/PiPaths";
+import { Effect, Stream } from "effect";
+import {
+  piProjectSessionDirectory,
+  piSessionIdsForWorkingDirectory,
+  piSessionMatchesWorkingDirectory,
+} from "../pi/PiPaths";
 
 const SESSION_FILE_PATTERN = /^(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)_(.+)\.jsonl$/;
 
@@ -101,7 +105,23 @@ async function* readDirectoryMetadata(
   for (const metadata of await metadataBatch(batch)) if (metadata) yield metadata;
 }
 
-/** Emits IDs parsed from session filenames without statting or opening transcript files. */
+/** Shared directories need one SDK pass, never one synchronous lookup per filename. */
+function filterWorkingDirectory<A>(
+  source: Stream.Stream<A, unknown>,
+  directory: string,
+  cwd: string | undefined,
+  sessionId: (item: A) => string,
+): Stream.Stream<A, unknown> {
+  if (cwd === undefined) return source;
+  return Stream.unwrap(
+    Effect.tryPromise({
+      try: (signal) => piSessionIdsForWorkingDirectory(cwd, directory, signal),
+      catch: (cause) => cause,
+    }).pipe(Effect.map((ids) => source.pipe(Stream.filter((item) => ids.has(sessionId(item)))))),
+  );
+}
+
+/** Filename IDs; only custom shared directories require SDK transcript discovery. */
 export function streamSessionFileIds(input: {
   readonly workingDirectory: string;
   readonly root: string;
@@ -109,14 +129,15 @@ export function streamSessionFileIds(input: {
 }): Stream.Stream<string, unknown> {
   const directory = sessionDirectoryPath(input);
   const shared = isSharedProjectDirectory(input);
-  return Stream.fromAsyncIterable(readDirectorySessionIds(directory), (cause) => cause).pipe(
-    Stream.filter(
-      (id) => !shared || piSessionMatchesWorkingDirectory(input.workingDirectory, id, directory),
-    ),
+  return filterWorkingDirectory(
+    Stream.fromAsyncIterable(readDirectorySessionIds(directory), (cause) => cause),
+    directory,
+    shared ? input.workingDirectory : undefined,
+    (id) => id,
   );
 }
 
-/** Emits filesystem metadata only. Transcript contents are never opened. */
+/** Filesystem metadata, with SDK transcript discovery only for custom shared directories. */
 export function streamSessionFiles(input: {
   readonly workingDirectory: string;
   readonly root: string;
@@ -124,11 +145,11 @@ export function streamSessionFiles(input: {
 }): Stream.Stream<SessionFileMetadata, unknown> {
   const directory = sessionDirectoryPath(input);
   const shared = isSharedProjectDirectory(input);
-  return Stream.fromAsyncIterable(readDirectoryMetadata(directory), (cause) => cause).pipe(
-    Stream.filter(
-      (item) =>
-        !shared || piSessionMatchesWorkingDirectory(input.workingDirectory, item.id, directory),
-    ),
+  return filterWorkingDirectory(
+    Stream.fromAsyncIterable(readDirectoryMetadata(directory), (cause) => cause),
+    directory,
+    shared ? input.workingDirectory : undefined,
+    (item) => item.id,
   );
 }
 
