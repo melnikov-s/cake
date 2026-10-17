@@ -142,11 +142,39 @@ test("Project Chat isolates history and restores its root workspace, while globa
     await expect(input).toBeFocused();
     await input.pressSequentially("PROJECT_PRIVATE");
     await expect(input).toHaveValue("PROJECT_PRIVATE");
+    const screenshot = await app.evaluate(({ nativeImage }) =>
+      nativeImage
+        .createFromBitmap(Buffer.alloc(32 * 32 * 4, 255), { width: 32, height: 32 })
+        .toPNG()
+        .toString("base64"),
+    );
+    await input.evaluate((element, data) => {
+      const clipboard = new DataTransfer();
+      clipboard.items.add(
+        new File(
+          [Uint8Array.from(atob(data), (character) => character.charCodeAt(0))],
+          "Screenshot.png",
+          { type: "image/png" },
+        ),
+      );
+      element.dispatchEvent(
+        new ClipboardEvent("paste", {
+          bubbles: true,
+          cancelable: true,
+          clipboardData: clipboard,
+        }),
+      );
+    }, screenshot);
+    await expect(page.getByRole("button", { name: "Remove Screenshot.png" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     await input.press("Enter");
     await expect(page.getByText("Reply 2", { exact: true })).toBeVisible();
     expect(requests[1]).toContain("PROJECT_PRIVATE");
     expect(requests[1]).not.toContain("GLOBAL_PRIVATE");
+    expect(requests[1]).toContain("Screenshot.png");
+    expect(requests[1]).not.toContain(screenshot);
+    await expect(page.getByRole("button", { name: "Remove Screenshot.png" })).toHaveCount(0);
+    await expect(transcript()).toContainText("Screenshot.png");
     await expect(transcript()).not.toContainText("GLOBAL_PRIVATE");
 
     const header = page.locator(`[data-slot="project-header"][data-session-id="${projectId}"]`);
@@ -218,6 +246,7 @@ test("Project Chat isolates history and restores its root workspace, while globa
       { timeout: 20_000 },
     );
     await expect(transcript()).toContainText("PROJECT_PRIVATE");
+    await expect(transcript()).toContainText("Screenshot.png");
     await expect(transcript()).not.toContainText("GLOBAL_PRIVATE");
     expect(
       await app.evaluate(({ BrowserWindow }) =>

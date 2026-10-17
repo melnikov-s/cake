@@ -28,6 +28,8 @@ import {
 } from "../../../../src/services/pi/runtime/session-projection";
 import type { Attachment } from "../../../../src/contracts/conversations/session-contract";
 import { encodeCrossSessionMessage } from "../../../../src/contracts/conversations/cross-session-message";
+import { CAKE_CHAT_SESSION_ID } from "../../../../src/contracts/cake-chats/cake-chat-identity";
+import { projectChatSessionId } from "../../../../src/domain/cake-chats/cakeChatLocations";
 
 const owner = "00000000-0000-4000-8000-000000000001";
 const target = "00000000-0000-4000-8000-000000000002";
@@ -45,6 +47,62 @@ const fixture = <A, E>(work: (root: string) => Effect.Effect<A, E, TaskInputStor
   );
 
 describe("task-input isolation", () => {
+  it.effect.each([
+    { source: projectChatSessionId("/project"), recipient: target },
+    { source: owner, recipient: projectChatSessionId("/project") },
+    { source: CAKE_CHAT_SESSION_ID, recipient: projectChatSessionId("/project") },
+  ])("admits and forwards screenshots between session identities %#", ({ source, recipient }) =>
+    fixture(() =>
+      Effect.gen(function* () {
+        const storage = yield* TaskInputStorage;
+        const image: Attachment = {
+          kind: "image",
+          name: "Screenshot.png",
+          mimeType: "image/png",
+          data: Buffer.from("SCREENSHOT_PIXELS").toString("base64"),
+        };
+        const [ref] = yield* prepareTaskInputs(source, true, [image]);
+        if (ref?.kind !== "input") throw new Error("Missing reference");
+        expect(yield* storage.list(source, {})).toMatchObject({ references: [ref] });
+        expect(yield* storage.inspect(source, { reference: ref.id })).toMatchObject({
+          kind: "image",
+          data: image.data,
+        });
+        const unrelated = projectChatSessionId("/unrelated-project");
+        expect((yield* Effect.result(storage.inspect(unrelated, { reference: ref.id })))._tag).toBe(
+          "Failure",
+        );
+        const [grant] = yield* storage.authorizeForward(source, [ref.id], recipient);
+        if (!grant) throw new Error("Missing grant");
+        const resolved = yield* prepareTaskInputs(recipient, false, [forwarded(grant)]);
+        expect(resolved).toEqual([expect.objectContaining(image)]);
+        expect(yield* storage.list(recipient, {})).toMatchObject({ references: [ref] });
+        expect(yield* storage.isRecipient(recipient)).toBe(true);
+        expect(yield* storage.isRecipient(unrelated)).toBe(false);
+        yield* storage.protectRecipient(unrelated);
+        expect(yield* storage.isRecipient(unrelated)).toBe(true);
+      }),
+    ),
+  );
+
+  it.effect.each(["../escape", "project-chat:../escape", "project-chat:abc", "not-a-session"])(
+    "rejects invalid task-input session identities: %s",
+    (sessionId) =>
+      fixture(() =>
+        Effect.gen(function* () {
+          const storage = yield* TaskInputStorage;
+          const result = yield* Effect.result(
+            storage.isolate(sessionId, [{ kind: "text", name: "Notes", text: "private" }]),
+          );
+          expect(result).toMatchObject({
+            _tag: "Failure",
+            failure: { _tag: "AttachmentUploadError", operation: "sessionId" },
+          });
+          expect(yield* storage.isRecipient(sessionId)).toBe(false);
+        }),
+      ),
+  );
+
   it.effect("keeps Cake Chat annotations inline, exactly as Project Sessions admit them", () =>
     fixture(() =>
       Effect.gen(function* () {

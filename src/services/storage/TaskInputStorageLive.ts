@@ -7,6 +7,7 @@ import type {
 } from "../../contracts/conversations/attachment-reference-control";
 import { Clock, Effect, Layer, Option, Schema, Semaphore } from "effect";
 import { attachmentSchema, type Attachment } from "../../contracts/conversations/session-contract";
+import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import {
   TaskInputReference,
   MAX_PASTED_TEXT_BYTES,
@@ -14,6 +15,11 @@ import {
 import { AttachmentUploadError } from "../../contracts/filesystem/attachment-uploads-errors";
 import { TaskInputStorage } from "./TaskInputStorage";
 
+// Project Chats have stable non-UUID addresses. Keep every accepted key path-safe.
+const SessionKey = Schema.Union([
+  Schema.String.check(Schema.isUUID()),
+  Schema.String.check(Schema.makeFilter(isCakeChatSessionId)),
+]);
 const StoredInput = Schema.Struct({
   ownerSessionId: Schema.String,
   reference: TaskInputReference,
@@ -21,7 +27,7 @@ const StoredInput = Schema.Struct({
 const Grant = Schema.Struct({
   ownerSessionId: Schema.String,
   ids: Schema.Array(Schema.String.check(Schema.isUUID(4))),
-  recipientSessionId: Schema.NullOr(Schema.String.check(Schema.isUUID())),
+  recipientSessionId: Schema.NullOr(SessionKey),
   createdAt: Schema.Int,
 });
 const ForwardReference = Schema.String.check(Schema.isPattern(/^[0-9a-f-]{36}\/[0-9a-f-]{36}$/));
@@ -118,7 +124,7 @@ export const makeTaskInputStorageLive = (state: string) =>
           Effect.mapError(() => failure("id")),
         );
       const sessionKey = (value: string) =>
-        Schema.decodeUnknownEffect(Schema.String.check(Schema.isUUID()))(value).pipe(
+        Schema.decodeUnknownEffect(SessionKey)(value).pipe(
           Effect.mapError(() => failure("sessionId")),
         );
       const stored = Effect.fn("TaskInputStorage.stored")(function* (value: string) {
@@ -455,10 +461,7 @@ export const makeTaskInputStorageLive = (state: string) =>
           ),
       );
       const isRecipient = Effect.fn("TaskInputStorage.isRecipient")(function* (sessionId: string) {
-        if (
-          Option.isNone(Schema.decodeUnknownOption(Schema.String.check(Schema.isUUID()))(sessionId))
-        )
-          return false;
+        if (Option.isNone(Schema.decodeUnknownOption(SessionKey)(sessionId))) return false;
         return yield* io("isRecipient", async () => {
           try {
             await readFile(join(recipients, `${sessionId}.json`));
