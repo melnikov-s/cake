@@ -11,10 +11,6 @@ import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import type { TestClientOverrides } from "./test-client";
 
-const sessions = ["alpha", "beta", "gamma"].map((name) =>
-  sessionSummary({ sessionId: name, title: `${name} conversation`, projectPath: `/${name}` }),
-);
-
 function snapshot(sessionId: string): ConversationSnapshot {
   return {
     sessionId,
@@ -34,10 +30,23 @@ function snapshot(sessionId: string): ConversationSnapshot {
 
 export function renderAppShellNavigation(
   client: TestClientOverrides = {},
-  savedSnapshot?: StoreSnapshot,
+  options: {
+    snapshot?: StoreSnapshot;
+    resolvedIds?: readonly string[];
+    history?: readonly string[];
+    unhydratedIds?: readonly string[];
+  } = {},
 ) {
+  let sessions = ["alpha", "beta", "gamma"].map((name) =>
+    sessionSummary({
+      sessionId: name,
+      title: `${name} conversation`,
+      projectPath: `/${name}`,
+      resolved: options.resolvedIds?.includes(name) ?? false,
+    }),
+  );
   const fixture = createRendererStoreFixture({
-    snapshot: savedSnapshot,
+    snapshot: options.snapshot,
     projects: sessions.map((session) => projectRecord({ path: session.projectPath })),
     sessions,
     client: {
@@ -65,6 +74,7 @@ export function renderAppShellNavigation(
   // Loaded authority snapshots make history navigation independent of hydration timing.
   for (const summary of sessions) {
     fixture.root.sessionRegistry.load(summary.sessionId, summary.workingDirectory);
+    if (options.unhydratedIds?.includes(summary.sessionId)) continue;
     applyConversationUpdate(
       fixture.models.projectConversation(summary.sessionId, summary.workingDirectory),
       { _tag: "Snapshot", revision: 1, snapshot: snapshot(summary.sessionId) },
@@ -90,6 +100,13 @@ export function renderAppShellNavigation(
     revision: 1,
     snapshot: snapshot(CAKE_CHAT_SESSION_ID),
   });
+  for (const sessionId of options.history ?? [])
+    fixture.root.appShellStore.selectProjectSession(sessionId);
+  const current = options.history?.at(-1);
+  if (current) {
+    fixture.root.projectWorkbenchStore.showLoadedSession(current);
+    fixture.root.sessionLayoutStore.ensureSession(current);
+  }
   const view = render(
     <StoreProvider store={fixture.root}>
       <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
@@ -101,14 +118,32 @@ export function renderAppShellNavigation(
     root: fixture.root,
     client: fixture.client,
     user: userEvent.setup(),
-    async publishResolved(sessionId: string) {
+    async publishResolved(sessionId: string, resolved = true) {
+      sessions = sessions.map((session) =>
+        session.sessionId === sessionId ? { ...session, resolved } : session,
+      );
       await act(async () =>
         applySnapshot(fixture.models.sessionCatalog, {
-          sessions: sessions.map((session) => ({
-            ...session,
-            resolved: session.sessionId === sessionId,
-          })),
+          sessions,
           resolvedHasMoreByProject: {},
+        }),
+      );
+    },
+    async publishRemoved(sessionId: string) {
+      sessions = sessions.filter((session) => session.sessionId !== sessionId);
+      await act(async () =>
+        applySnapshot(fixture.models.sessionCatalog, {
+          sessions,
+          resolvedHasMoreByProject: {},
+        }),
+      );
+    },
+    async publishHydrated(sessionId: string) {
+      await act(async () =>
+        applyConversationUpdate(fixture.models.projectConversation(sessionId, `/${sessionId}`), {
+          _tag: "Snapshot",
+          revision: 1,
+          snapshot: snapshot(sessionId),
         }),
       );
     },

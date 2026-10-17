@@ -325,7 +325,10 @@ describe("Agent session navigation workflow", () => {
     const respondControl = vi.fn<Client["projectSessions"]["respondControl"]>(
       async () => undefined,
     );
-    using restored = renderAppShellNavigation({ projectSessions: { respondControl } }, saved);
+    using restored = renderAppShellNavigation(
+      { projectSessions: { respondControl } },
+      { snapshot: saved },
+    );
     expect((await openSettings(restored)).getAttribute("aria-checked")).toBe("false");
     await requestOpen(restored, { sessionId: "beta" });
     expect(respondControl.mock.calls.at(-1)?.[2]).toMatchObject({

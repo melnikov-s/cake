@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { cleanup, screen } from "@testing-library/react";
+import { act, cleanup, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../src/renderer/client/Client";
 import { renderAppShellNavigation } from "./app-shell-navigation-fixture";
@@ -120,6 +120,103 @@ describe("App shell navigation workflow", () => {
     await expectProjectChat("gamma");
     expect(forward()).toHaveProperty("disabled", true);
   });
+
+  it("keeps an archived preview out of history until restoration is published", async () => {
+    const restore = vi.fn<Client["projectSessions"]["restore"]>(async () => undefined);
+    using fixture = renderAppShellNavigation(
+      { projectSessions: { restore } },
+      { resolvedIds: ["beta"] },
+    );
+    await fixture.user.click(sessionButton("alpha"));
+    await fixture.user.click(screen.getByRole("button", { name: "Expand Resolved" }));
+    await fixture.user.click(screen.getAllByRole("button", { name: "Expand beta resolved" })[0]!);
+    await fixture.user.click(sessionButton("beta"));
+    await expectProjectChat("beta");
+    expect(back()).toHaveProperty("disabled", true);
+    expect(forward()).toHaveProperty("disabled", true);
+    await fixture.user.click(screen.getByRole("button", { name: "Restore beta conversation" }));
+    expect(restore).toHaveBeenCalledWith(
+      { sessionId: "beta", workingDirectory: "/beta" },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    // Successful RPC alone must not promote an archived preview.
+    expect(back()).toHaveProperty("disabled", true);
+    await fixture.publishResolved("beta", false);
+    await openLibrary(fixture.user);
+    await fixture.user.click(back());
+    await expectProjectChat("alpha");
+    expect(back()).toHaveProperty("disabled", true);
+    await openLibrary(fixture.user);
+    await fixture.user.click(forward());
+    await expectProjectChat("beta");
+    expect(forward()).toHaveProperty("disabled", true);
+  });
+
+  it("deletes an archived preview and returns to the retained visit without recording the preview", async () => {
+    const deleteSession = vi.fn<Client["workspaces"]["deleteSession"]>(async (sessionId) => {
+      await fixture.publishRemoved(sessionId);
+    });
+    using fixture = renderAppShellNavigation(
+      {
+        electron: { showSessionContextMenu: async () => ({ action: "delete" }) },
+        workspaces: { deleteSession },
+      },
+      { resolvedIds: ["beta"] },
+    );
+    await fixture.user.click(sessionButton("alpha"));
+    await fixture.user.click(screen.getByRole("button", { name: "Expand Resolved" }));
+    await fixture.user.click(screen.getAllByRole("button", { name: "Expand beta resolved" })[0]!);
+    await fixture.user.click(sessionButton("beta"));
+    await expectProjectChat("beta");
+    await fixture.user.pointer({ target: sessionButton("beta"), keys: "[MouseRight]" });
+    await waitFor(() =>
+      expect(deleteSession).toHaveBeenCalledWith(
+        "beta",
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      ),
+    );
+    await expectProjectChat("alpha");
+    expect(back()).toHaveProperty("disabled", true);
+    expect(forward()).toHaveProperty("disabled", true);
+  });
+
+  it.each([false, true])(
+    "commits history only when a deferred destination lands and discards a superseded traversal (diverge: %s)",
+    async (diverge) => {
+      let finish!: () => void;
+      const pending = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      const open = vi.fn<Client["projectSessions"]["open"]>((request) =>
+        request.sessionId === "beta" ? pending : Promise.resolve(),
+      );
+      using fixture = renderAppShellNavigation(
+        { projectSessions: { open } },
+        { history: ["alpha", "beta", "gamma"], unhydratedIds: ["beta"] },
+      );
+      await openLibrary(fixture.user);
+      await fixture.user.click(back());
+      await waitFor(() =>
+        expect(open).toHaveBeenCalledWith(
+          { sessionId: "beta", workingDirectory: "/beta" },
+          expect.objectContaining({ signal: expect.any(AbortSignal) }),
+        ),
+      );
+      expect(forward()).toHaveProperty("disabled", true);
+      if (diverge) {
+        await fixture.user.click(sessionButton("alpha"));
+        await expectProjectChat("alpha");
+      }
+      await act(async () => finish());
+      await fixture.publishHydrated("beta");
+      await expectProjectChat(diverge ? "alpha" : "beta");
+      expect(forward()).toHaveProperty("disabled", diverge);
+      await openLibrary(fixture.user);
+      await fixture.user.click(diverge ? back() : forward());
+      await expectProjectChat("gamma");
+      expect(forward()).toHaveProperty("disabled", diverge ? false : true);
+    },
+  );
 
   it("returns from Settings and the artifact browser to the same project or Cake Chat and retains current-chat settings", async () => {
     const catalog = vi.fn<Client["artifacts"]["catalog"]>(async (request) => ({
