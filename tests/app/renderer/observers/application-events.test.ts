@@ -1,29 +1,21 @@
+import { it } from "@effect/vitest";
+import { Effect, Queue, Schema, Stream } from "effect";
+import { afterEach, describe, expect, vi } from "vitest";
+import type { applicationEventSchema } from "../../../../src/contracts/application/cake-rpc-contract";
+import type { Client } from "../../../../src/renderer/client/Client";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { piSettingsSchema } from "../../../../src/contracts/conversations/session-contract";
 import { projectPiSettings } from "../../../../src/services/pi/runtime/settings-translation";
-import { createRendererStoreFixture } from "../renderer-store-fixture";
-import { Effect, Queue, Schema, Stream } from "effect";
 import type { CakeEvent } from "../../../../src/contracts/application/cake-rpc-contract";
-import { describe, expect, it, vi } from "vitest";
-import { CakeIpcClient, type CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
+import type { CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
 import { observeApplicationEvents } from "../../../../src/renderer/observers/application-events";
-import { observeStream } from "../../../../src/renderer/observers/observe-stream";
-import type { Runtime } from "../../../../src/renderer/runtime";
-import type { RootStore } from "../../../../src/renderer/stores/RootStore";
+import { createRendererStoreFixture } from "../renderer-store-fixture";
+import { observerClient, observerRuntime } from "./observer-test-runtime";
 
-const runtimeFor = (client: CakeIpcClientService): Runtime => {
-  const execute: Runtime["execute"] = (effect, signal) =>
-    Effect.runPromise(
-      Effect.provideService(effect, CakeIpcClient, client),
-      signal ? { signal } : undefined,
-    );
-  return {
-    execute,
-    observe: (source, consume, options) => observeStream(execute, source, consume, options),
-    dispose: async () => undefined,
-  };
-};
+afterEach(() => vi.useRealTimers());
 
+// Infrastructure integration: keep the real observer, routing and Store policy;
+// replace only the incoming transport and outgoing native-notification service.
 describe("observeApplicationEvents", () => {
   it("projects backend Pi settings and attributed mutation notices into the real renderer Stores", async () => {
     using fixture = createRendererStoreFixture();
@@ -58,8 +50,8 @@ describe("observeApplicationEvents", () => {
         ),
     };
     // SAFETY: This test stream exercises only events.application; all Store behavior is real.
-    const client = { events } as CakeIpcClientService;
-    const cancel = observeApplicationEvents(runtimeFor(client), fixture.root);
+    const client = observerClient({ events });
+    const cancel = observeApplicationEvents(observerRuntime(client), fixture.root);
     try {
       await vi.waitFor(() => {
         expect(fixture.root.settingsStore.providers.piSettings).toEqual(settings);
@@ -97,14 +89,15 @@ describe("observeApplicationEvents", () => {
       Effect.succeed({}),
     );
     const application = vi.fn(() => Stream.fromQueue(events));
-    const client = {
+    const client = observerClient({
       events: { application },
       browser: { "native-browser-enter": enter, "respond-browser-native": browserReply },
       widgets: { "capture-native-widget": capture, "respond-widget-capture": widgetReply },
-    } as unknown as CakeIpcClientService;
-    const setError = vi.fn();
-    const root = { projectWorkbenchStore: { setError } } as unknown as RootStore;
-    const stop = observeApplicationEvents(runtimeFor(client), root);
+    });
+    using fixture = createRendererStoreFixture();
+    const setError = vi.spyOn(fixture.root.projectWorkbenchStore, "setError");
+    const root = fixture.root;
+    const stop = observeApplicationEvents(observerRuntime(client), root);
     const request: Extract<CakeEvent, { type: "browser-native-requested" }> = {
       type: "browser-native-requested",
       requestId: "00000000-0000-4000-8000-000000000001",
@@ -134,81 +127,119 @@ describe("observeApplicationEvents", () => {
     expect(setError).not.toHaveBeenCalled();
   });
 
-  it.each([undefined, "session-1"])(
-    "keeps auth details in the provider Store (session %s)",
-    async (sessionId) => {
-      const receiveAuthNotice = vi.fn();
-      const show = vi.fn();
-      const enqueue = vi.fn();
-      const event = {
-        type: "provider-auth-notice" as const,
-        provider: "test-provider",
-        ...(sessionId ? { sessionId } : {}),
-        notice: {
-          type: "device_code" as const,
-          verificationUri: "https://auth.example/device",
-          userCode: "SECRET-CODE",
-        },
-      };
-      const client = {
-        events: { application: () => Stream.concat(Stream.make(event), Stream.never) },
-      } as unknown as CakeIpcClientService;
-      const root = {
-        settingsStore: { providers: { receiveAuthNotice } },
-        toastStore: { show },
-        notificationStore: { enqueue },
-      } as unknown as RootStore;
-      const cancel = observeApplicationEvents(runtimeFor(client), root);
-      try {
-        await vi.waitFor(() => expect(receiveAuthNotice).toHaveBeenCalledWith(event));
-        expect(enqueue).not.toHaveBeenCalled();
-        if (sessionId) {
-          expect(show).toHaveBeenCalledWith({
-            title: "Provider authentication",
-            message: "Open Settings → Providers to continue authentication on this device.",
-            coalesceKey: "provider-auth:test-provider",
-          });
-        } else {
-          expect(show).not.toHaveBeenCalled();
+  it.effect.each([undefined, "session-1"])(
+    "keeps authentication secrets in the real provider Store and redacts session toasts (session %s)",
+    (sessionId) =>
+      Effect.gen(function* () {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        const showNotification = vi.fn<Client["electron"]["showNotification"]>(
+          async () => undefined,
+        );
+        using fixture = createRendererStoreFixture({ client: { electron: { showNotification } } });
+        const authNotice = {
+          type: "provider-auth-notice" as const,
+          provider: "test-provider",
+          notice: {
+            type: "device_code" as const,
+            verificationUri: "https://auth.example/device",
+            userCode: "SECRET-CODE",
+          },
+        };
+        const event = sessionId ? { ...authNotice, sessionId } : authNotice;
+        const runtime = observerRuntime(
+          observerClient({
+            events: { application: () => Stream.make(event).pipe(Stream.concat(Stream.never)) },
+          }),
+        );
+        const cancel = observeApplicationEvents(runtime, fixture.root);
+        try {
+          expect(yield* Queue.take(runtime.consumed)).toEqual(event);
+          expect(fixture.root.settingsStore.providers.authNotices["test-provider"]).toEqual(
+            event.notice,
+          );
+          if (sessionId) {
+            expect(fixture.root.toastStore.toasts).toEqual([
+              expect.objectContaining({
+                title: "Provider authentication",
+                message: "Open Settings → Providers to continue authentication on this device.",
+                coalesceKey: "provider-auth:test-provider",
+              }),
+            ]);
+          } else expect(fixture.root.toastStore.toasts).toEqual([]);
+          yield* Effect.promise(() => vi.advanceTimersByTimeAsync(3_000));
+          expect(showNotification).not.toHaveBeenCalled();
+          expect(JSON.stringify(fixture.root.toastStore.toasts)).not.toContain("SECRET-CODE");
+        } finally {
+          cancel();
+          yield* Effect.promise(() => runtime.dispose());
         }
-      } finally {
-        cancel();
-      }
-    },
+      }),
   );
 
-  it("delivers notification events through macOS native notifications", async () => {
-    const enqueue = vi.fn(async () => undefined);
-    const showToast = vi.fn();
-    const client = {
-      events: {
-        application: () =>
-          Stream.concat(
-            Stream.make({
-              type: "notification" as const,
-              tone: "warning" as const,
+  it.effect(
+    "routes ordered notifications through real batching policy and ignores events after cancellation",
+    () =>
+      Effect.gen(function* () {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        const showNotification = vi.fn<Client["electron"]["showNotification"]>(
+          async () => undefined,
+        );
+        using fixture = createRendererStoreFixture({ client: { electron: { showNotification } } });
+        const events = yield* Queue.unbounded<typeof applicationEventSchema.Type>();
+        const runtime = observerRuntime(
+          observerClient({
+            events: { application: () => Stream.fromQueue(events) },
+          }),
+        );
+        const cancel = observeApplicationEvents(runtime, fixture.root);
+        try {
+          for (const message of ["Build starting", "Input is required."]) {
+            const event: typeof applicationEventSchema.Type = {
+              type: "notification",
+              tone: "warning",
+              title: "Build waiting",
+              message,
+            };
+            yield* Queue.offer(events, event);
+            expect(yield* Queue.take(runtime.consumed)).toEqual(event);
+          }
+          expect(showNotification).not.toHaveBeenCalled();
+          expect(fixture.root.toastStore.toasts).toEqual([]);
+          yield* Effect.promise(() => vi.advanceTimersByTimeAsync(3_000));
+          expect(showNotification).toHaveBeenCalledExactlyOnceWith(
+            {
+              title: "Build waiting",
+              body: "Input is required.",
+              level: "warning",
+              id: "cake-agent:cake-agent",
+              groupId: "cake-agent:cake-agent",
+            },
+            expect.objectContaining({ signal: expect.any(AbortSignal) }),
+          );
+          expect(fixture.root.toastStore.toasts).toEqual([
+            expect.objectContaining({
               title: "Build waiting",
               message: "Input is required.",
+              tone: "warning",
             }),
-            Stream.never,
-          ),
-      },
-    } as unknown as CakeIpcClientService;
-    const root = {
-      notificationStore: { enqueue },
-      toastStore: { show: showToast },
-    } as unknown as RootStore;
-
-    const cancel = observeApplicationEvents(runtimeFor(client), root);
-
-    await vi.waitFor(() =>
-      expect(enqueue).toHaveBeenCalledWith({
-        title: "Build waiting",
-        body: "Input is required.",
-        level: "warning",
+          ]);
+          cancel();
+          yield* Effect.promise(() => runtime.dispose());
+          yield* Queue.offer(events, {
+            type: "notification",
+            tone: "error",
+            title: "Late",
+            message: "Must not arrive",
+          });
+          yield* Effect.promise(() => vi.advanceTimersByTimeAsync(3_000));
+          expect(showNotification).toHaveBeenCalledTimes(1);
+          expect(fixture.root.toastStore.toasts.some((toast) => toast.title === "Late")).toBe(
+            false,
+          );
+        } finally {
+          cancel();
+          yield* Effect.promise(() => runtime.dispose());
+        }
       }),
-    );
-    expect(showToast).not.toHaveBeenCalled();
-    cancel();
-  });
+  );
 });
