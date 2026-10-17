@@ -14,7 +14,6 @@ import {
   Stream,
 } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
-import type { ProjectSettings } from "../../contracts/application/application-data";
 import type {
   ManagedWorktreeCatalogUpdate,
   WorktreeRecord,
@@ -29,8 +28,7 @@ import {
 import { Git } from "../git/Git";
 import { WorktreeStorage, type WorktreeStorageError } from "../storage/WorktreeStorage";
 import { ManagedWorktreeError } from "../../contracts/worktrees/managed-worktrees-errors";
-import { ManagedWorktrees } from "./ManagedWorktrees";
-import { renderWorktreeCommand, type WorktreeCommandVariables } from "./worktree-command-template";
+import { ManagedWorktrees, type WorktreeCheckoutPlan } from "./ManagedWorktrees";
 
 interface LandingEntry {
   readonly operationId: string;
@@ -50,12 +48,6 @@ interface SquashProposal {
 const messageOf = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
 const internalError = (message: string) => Effect.fail(new Error(message));
 const resolveNormalized = (path: string) => path.replace(/\/+$/, "");
-const slugify = (value: string) =>
-  value
-    .toLowerCase()
-    .replace(/[^a-z0-9-_]+/g, "-")
-    .replace(/^-+|-+$/g, "") || "worktree";
-
 /** Effect-native Managed Worktree capability. Mutable authority is held in Refs,
  * repository mutations use keyed Effect Semaphores, and landing reservations use
  * interruptible Deferred queues with exact FIFO promotion. */
@@ -322,19 +314,6 @@ export const ManagedWorktreesLive: Layer.Layer<
         .map((line) => line.trim())
         .filter(Boolean);
     });
-    const defaultBranch = Effect.fn("ManagedWorktrees.defaultBranch")(function* (
-      repository: string,
-    ) {
-      const remote = yield* gitOptional(repository, [
-        "symbolic-ref",
-        "-q",
-        "--short",
-        "refs/remotes/origin/HEAD",
-      ]);
-      if (remote._tag === "Some") return remote.value.replace(/^origin\//, "") || "main";
-      const current = yield* gitOptional(repository, ["rev-parse", "--abbrev-ref", "HEAD"]);
-      return current._tag === "Some" && current.value !== "HEAD" ? current.value : "main";
-    });
     const runCommand = Effect.fn("ManagedWorktrees.runCommand")(function* (
       workingDirectory: string,
       script: string,
@@ -345,93 +324,17 @@ export const ManagedWorktreesLive: Layer.Layer<
         )
         .pipe(Effect.asVoid, Effect.scoped);
     });
-    const runSetup = Effect.fn("ManagedWorktrees.runSetup")(function* (
-      worktreePath: string,
-      settings: ProjectSettings | undefined,
-      variables: WorktreeCommandVariables,
-    ) {
-      if (settings?.worktreeSetupCommands.trim())
-        yield* runCommand(
-          worktreePath,
-          renderWorktreeCommand(settings.worktreeSetupCommands, variables),
-        );
-    });
-    const availableName = Effect.fn("ManagedWorktrees.availableName")(function* (
-      repository: string,
-      directory: string,
-      requested: string,
-    ) {
-      const prefix = requested.slice(0, 56).replace(/-+$/g, "") || "worktree";
-      for (let attempt = 0; attempt < 100; attempt += 1) {
-        const name = `${prefix}-${crypto.randomUUID().slice(0, 6)}`;
-        if (
-          !(yield* revParseExists(repository, `refs/heads/agent/${name}`)) &&
-          !(yield* exists(path.join(directory, name)))
-        )
-          return name;
-      }
-      return yield* internalError("Cake could not generate a unique worktree name");
-    });
-
     const createRecord = Effect.fn("ManagedWorktrees.createRecord")(function* (
       root: string,
-      projectPath: string,
-      baseWorktreePath: string | undefined,
-      worktreeName: string | undefined,
-      settings: ProjectSettings | undefined,
-      setup: boolean,
+      plan: WorktreeCheckoutPlan,
+      backgroundSetup: boolean,
     ) {
-      const records = yield* Ref.get(recordsRef);
-      const normalizedBase = baseWorktreePath && resolveNormalized(baseWorktreePath);
-      const parent = normalizedBase
-        ? records.find(
-            (entry) =>
-              ["active", "landed"].includes(entry.state ?? "active") &&
-              resolveNormalized(entry.worktreePath) === normalizedBase,
-          )
-        : undefined;
-      const projectBase =
-        normalizedBase === projectPath || normalizedBase === resolveNormalized(root);
-      if (
-        normalizedBase &&
-        ((!parent && !projectBase) || (parent && parent.projectPath !== projectPath))
-      )
-        return yield* internalError("Cake could not find that base worktree");
-      const sourcePath = parent?.worktreePath ?? (projectBase ? normalizedBase : root);
-      if (!sourcePath || !(yield* exists(sourcePath)))
-        return yield* internalError("The base worktree no longer exists");
-      const baseBranch = parent
-        ? parent.branch
-        : projectBase
-          ? (yield* git(sourcePath, "rev-parse", "--abbrev-ref", "HEAD")).trim()
-          : yield* defaultBranch(root);
-      if (baseBranch === "HEAD")
-        return yield* internalError("Check out a branch before creating a child worktree.");
-      const baseCommit = (yield* git(
-        sourcePath,
-        "rev-parse",
-        normalizedBase ? "HEAD" : baseBranch,
-      )).trim();
-      const slug = slugify(path.basename(root));
-      const requestedName = worktreeName ?? slug;
-      if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(requestedName))
-        return yield* internalError("Invalid worktree name");
-      const directory = path.join(path.dirname(root), `.${slug}-worktrees`);
-      const name = yield* availableName(root, directory, requestedName);
-      const branch = `agent/${name}`;
-      const worktreePath = path.join(directory, name);
-      yield* fileSystem.makeDirectory(directory, { recursive: true });
-      const variables = {
-        projectPath,
-        worktreePath,
-        worktreeName: name,
-        branchName: branch,
-        baseBranch,
-        baseCommit,
-      };
+      const { record, createCommand, setupCommand } = plan;
+      const { branch, worktreePath, baseCommit } = record;
+      yield* fileSystem.makeDirectory(path.dirname(worktreePath), { recursive: true });
       const createCheckout = Effect.gen(function* () {
-        if (settings?.worktreeCreateCommand.trim()) {
-          yield* runCommand(root, renderWorktreeCommand(settings.worktreeCreateCommand, variables));
+        if (createCommand) {
+          yield* runCommand(root, createCommand);
           if (!(yield* exists(worktreePath)))
             return yield* internalError(
               "The worktree creation command did not create {worktreePath}",
@@ -447,20 +350,8 @@ export const ManagedWorktreesLive: Layer.Layer<
               `The worktree creation command checked out ${createdBranch}, not ${branch}`,
             );
         } else yield* gitMutation(root, "worktree", "add", "-b", branch, worktreePath, baseCommit);
-        if (setup) yield* runSetup(worktreePath, settings, variables);
+        if (!backgroundSetup && setupCommand) yield* runCommand(worktreePath, setupCommand);
       });
-      const base = {
-        projectPath,
-        worktreePath,
-        branch,
-        baseBranch,
-        baseCommit,
-        state: "active" as const,
-        createdAt: new Date().toISOString(),
-      };
-      const record: WorktreeRecord = parent
-        ? { ...base, parentWorktreePath: parent.worktreePath }
-        : base;
       return yield* createCheckout.pipe(
         Effect.andThen(mutateRecords((current) => [...current, record])),
         Effect.as(record),
@@ -482,20 +373,6 @@ export const ManagedWorktreesLive: Layer.Layer<
               )
             : Effect.void,
         ),
-      );
-    });
-    const createWithPolicy = Effect.fn("ManagedWorktrees.createWithPolicy")(function* (
-      projectPath: string,
-      baseWorktreePath: string | undefined,
-      worktreeName: string | undefined,
-      settings: ProjectSettings | undefined,
-      setup: boolean,
-    ) {
-      const registered = path.resolve(projectPath);
-      const root = yield* fileSystem.realPath(yield* repositoryRoot(projectPath));
-      return yield* withRepositoryLock(
-        root,
-        createRecord(root, registered, baseWorktreePath, worktreeName, settings, setup),
       );
     });
 
@@ -961,41 +838,48 @@ export const ManagedWorktreesLive: Layer.Layer<
             ),
           ),
         ),
-      create: Effect.fn("ManagedWorktrees.create")(
-        (projectPath, baseWorktreePath, worktreeName, settings) =>
-          mapError(
-            "ManagedWorktrees.create",
-            createWithPolicy(projectPath, baseWorktreePath, worktreeName, settings, true).pipe(
-              Effect.tap((record) => publish(record.worktreePath)),
-            ),
-          ),
-      ),
-      createWithBackgroundSetup: Effect.fn("ManagedWorktrees.createWithBackgroundSetup")(
-        (projectPath, baseWorktreePath, worktreeName, settings) =>
-          mapError(
-            "ManagedWorktrees.createWithBackgroundSetup",
-            Effect.gen(function* () {
-              const record = yield* createWithPolicy(
-                projectPath,
-                baseWorktreePath,
-                worktreeName,
-                settings,
-                false,
-              );
+      createCheckout: Effect.fn("ManagedWorktrees.createCheckout")(function* (
+        projectPath: string,
+        prepare: (
+          repository: string,
+          registeredProjectPath: string,
+          records: ReadonlyArray<WorktreeRecord>,
+        ) => Effect.Effect<
+          WorktreeCheckoutPlan,
+          ManagedWorktreeError,
+          Git | FileSystem.FileSystem | Path.Path
+        >,
+        backgroundSetup: boolean,
+      ) {
+        const operation = backgroundSetup
+          ? "ManagedWorktrees.createWithBackgroundSetup"
+          : "ManagedWorktrees.create";
+        return yield* mapError(
+          operation,
+          Effect.gen(function* () {
+            const registered = path.resolve(projectPath);
+            const root = yield* fileSystem.realPath(yield* repositoryRoot(projectPath));
+            const plan = yield* withRepositoryLock(
+              root,
+              Effect.gen(function* () {
+                const plan = yield* prepare(root, registered, yield* Ref.get(recordsRef)).pipe(
+                  Effect.provideService(Git, gitService),
+                  Effect.provideService(FileSystem.FileSystem, fileSystem),
+                  Effect.provideService(Path.Path, path),
+                );
+                yield* createRecord(root, plan, backgroundSetup);
+                return plan;
+              }),
+            );
+            const { record, setupCommand } = plan;
+            if (backgroundSetup) {
               const completion = yield* Deferred.make<void, ManagedWorktreeError>();
               yield* Ref.update(deferredSetups, (setups) =>
                 new Map(setups).set(record.worktreePath, completion),
               );
-              yield* runSetup(record.worktreePath, settings, {
-                projectPath: record.projectPath,
-                worktreePath: record.worktreePath,
-                worktreeName: record.branch.replace(/^agent\//, ""),
-                branchName: record.branch,
-                baseBranch: record.baseBranch,
-                baseCommit:
-                  record.baseCommit ??
-                  (yield* git(record.worktreePath, "rev-parse", "HEAD")).trim(),
-              }).pipe(
+              yield* (
+                setupCommand ? runCommand(record.worktreePath, setupCommand) : Effect.void
+              ).pipe(
                 (effect) => mapError("ManagedWorktrees.setup", effect),
                 Effect.matchEffect({
                   onSuccess: () =>
@@ -1017,11 +901,12 @@ export const ManagedWorktreesLive: Layer.Layer<
                 }),
                 Effect.forkIn(scope),
               );
-              yield* publish(record.worktreePath);
-              return record;
-            }),
-          ),
-      ),
+            }
+            yield* publish(record.worktreePath);
+            return record;
+          }),
+        );
+      }),
       awaitSetup: (worktreePath) =>
         Effect.gen(function* () {
           const completion = (yield* Ref.get(deferredSetups)).get(worktreePath);

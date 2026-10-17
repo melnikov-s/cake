@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderWorktreeCommand } from "../../../../src/services/worktrees/worktree-command-template";
+import { renderWorktreeCommand } from "../../../../src/domain/worktrees/worktree-command-template";
 
 const variables = {
   projectPath: "/work/Cake's app",

@@ -21,6 +21,7 @@ import {
 import { Terminal } from "../../services/terminal/Terminal";
 import { ManagedWorktreeError } from "../../contracts/worktrees/managed-worktrees-errors";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
+import * as worktreeCreation from "./worktreeCreation";
 import type { ResolvedManagedWorktreeCleanupFailure } from "../../contracts/worktrees/managed-worktree-cleanup-data";
 
 const policyError = (operation: string, cause: unknown) =>
@@ -77,18 +78,16 @@ export const create = Effect.fn("ManagedWorktrees.create")(function* (input: {
       firstUserMessage: input.firstUserMessage,
     }).pipe(Effect.catch(() => Effect.succeed(undefined)));
   }
-  const worktrees = yield* ManagedWorktrees;
   const settings =
     state.projects.find((project) => project.path === input.projectPath)?.settings ??
     defaultProjectSettings();
-  const record = yield* input.backgroundSetup
-    ? worktrees.createWithBackgroundSetup(
-        input.projectPath,
-        input.baseWorktreePath,
-        worktreeName,
-        settings,
-      )
-    : worktrees.create(input.projectPath, input.baseWorktreePath, worktreeName, settings);
+  const record = yield* worktreeCreation.createCheckout(
+    input.projectPath,
+    input.baseWorktreePath,
+    worktreeName,
+    settings,
+    input.backgroundSetup,
+  );
   const access = yield* ProjectAccess;
   yield* access
     .allow(record.worktreePath)

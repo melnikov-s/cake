@@ -78,8 +78,7 @@ function services(options: {
   const managed = ManagedWorktrees.of({
     records: () => Effect.succeed(options.records?.() ?? [record]),
     observe: () => Stream.never,
-    create: () => Effect.fail(failure("create")),
-    createWithBackgroundSetup: () => Effect.fail(failure("createWithBackgroundSetup")),
+    createCheckout: () => Effect.fail(failure("createCheckout")),
     awaitSetup: () => Effect.void,
     hasDeferredSetup: () => Effect.succeed(false),
     status: () => Effect.sync(options.status),

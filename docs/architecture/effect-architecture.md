@@ -708,6 +708,12 @@ reduces that Stream into its window-lifetime `WorktreeCatalog`; `SessionSummary`
 mutable lifecycle copy and joins by Working Directory. A pending creation fact exists only
 until the authoritative entity arrives.
 
+Creation naming, base/parent selection, and configured command rendering live in
+`worktreeCreation` free domain operations. `ManagedWorktrees.createCheckout` invokes
+that planner under the existing repository lock, then materializes the checkout
+and owns record persistence, failure rollback, and process-scoped background setup.
+The engine does not interpret Project settings or select Cake names/bases.
+
 A landed record's `landedSourceCommit` is the acknowledged source-history boundary,
 not its original `baseCommit` or the target's current tip. Status and landing exclude
 both that boundary and current target history when counting later source commits.

@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
-import { Context, Effect, Layer, Queue, Stream } from "effect";
+import { Context, Effect, FileSystem, Layer, Path, Queue, Stream } from "effect";
+import { Git, GitError } from "../../src/services/git/Git";
+import type { WorktreeRecord } from "../../src/contracts/worktrees/managed-worktree-data";
 import { acquireOptions } from "../../src/domain/project-sessions/projectSessionRuntime";
 import { ManagedWorktrees } from "../../src/services/worktrees/ManagedWorktrees";
 import { ProjectAccess } from "../../src/services/projects/ProjectAccess";
 import { PiModels } from "../../src/services/pi/PiModels";
 import { SessionFamilyStorage } from "../../src/services/storage/SessionFamilyStorage";
 import { familyStorageHarness } from "../app/helpers/familyStorageHarness";
+import { messageBoardHarness } from "../app/helpers/messageBoardHarness";
 import { SessionArchiveStorage } from "../../src/services/storage/SessionArchiveStorage";
 import { makeNetworkTestBackend } from "./fixtures/network-backend";
 
@@ -38,30 +41,49 @@ it.live(
       const archive = Context.get(backend.context, SessionArchiveStorage);
       const models = Context.get(backend.context, PiModels);
       const familyContext = yield* Layer.build(familyStorageHarness().layer);
+      const boardContext = yield* Layer.build(messageBoardHarness().layer);
       const families = Context.get(familyContext, SessionFamilyStorage);
-      const created: Array<{ projectPath: string; base?: string; name?: string }> = [];
-      const records: Array<{
-        projectPath: string;
-        worktreePath: string;
-        branch: string;
-        baseBranch: string;
-        createdAt: string;
-      }> = [];
+      const created: Array<{ projectPath: string; backgroundSetup: boolean }> = [];
+      const records: WorktreeRecord[] = [];
+      const planning = Layer.mergeAll(
+        Path.layer,
+        Layer.succeed(
+          FileSystem.FileSystem,
+          FileSystem.makeNoop({
+            exists: (target) => Effect.succeed(target === "/project"),
+          }),
+        ),
+        Layer.succeed(
+          Git,
+          Git.of({
+            run: (cwd, args) => {
+              if (args[1] === "--verify")
+                return Effect.fail(
+                  new GitError({
+                    operation: "rev-parse",
+                    workingDirectory: cwd,
+                    message: "no branch",
+                  }),
+                );
+              if (args[0] === "symbolic-ref") return Effect.succeed("origin/main");
+              if (args[1] === "--abbrev-ref") return Effect.succeed("main");
+              return Effect.succeed(`commit:${args[1]}`);
+            },
+          }),
+        ),
+      );
       const worktrees = ManagedWorktrees.of({
         ...service,
         records: () => Effect.succeed(records),
-        createWithBackgroundSetup: (projectPath, base, name) =>
-          Effect.sync(() => {
-            created.push({ projectPath, base, name });
-            const record = {
-              projectPath,
-              worktreePath: `/worktrees/${name}`,
-              branch: `agent/${name}`,
-              baseBranch: "main",
-              createdAt: "2026-01-01T00:00:00.000Z",
-            };
-            records.push(record);
-            return record;
+        createCheckout: (projectPath, prepare, backgroundSetup) =>
+          Effect.gen(function* () {
+            // Keep real domain planning; replace only checkout materialization.
+            const plan = yield* prepare(projectPath, projectPath, records).pipe(
+              Effect.provide(planning),
+            );
+            created.push({ projectPath, backgroundSetup });
+            records.push(plan.record);
+            return plan.record;
           }),
         awaitSetup: () => Effect.void,
       });
@@ -89,6 +111,7 @@ it.live(
               isAllowed: () => Effect.succeed(true),
             }),
           ),
+          Effect.provideContext(boardContext),
           Effect.provideContext(backend.context),
         );
       const options = yield* run(acquireOptions(project));
@@ -113,14 +136,11 @@ it.live(
           new AbortController().signal,
         ),
       );
-      assert.equal(
-        (isolated as { workspacePath: string }).workspacePath,
-        "/worktrees/isolated-job",
-      );
+      assert.equal((isolated as { workspacePath: string }).workspacePath, records[0]?.worktreePath);
+      assert.match(records[0]?.branch ?? "", /^agent\/isolated-job-[a-f0-9]{6}$/);
+      assert.equal(records[0]?.baseCommit, "commit:main");
       assert.equal(yield* Queue.take(backend.started), "Isolated work");
-      assert.deepEqual(created, [
-        { projectPath: "/project", base: undefined, name: "isolated-job" },
-      ]);
+      assert.deepEqual(created, [{ projectPath: "/project", backgroundSetup: true }]);
       assert.equal(backend.stats.turns, 2);
       const fork = options.runtime.currentSessionControl?.forkSession;
       assert.ok(fork);
@@ -149,11 +169,13 @@ it.live(
       );
       assert.equal(
         (child as { workingDirectory: string }).workingDirectory,
-        "/worktrees/child-isolated",
+        records[1]?.worktreePath,
       );
+      assert.match(records[1]?.branch ?? "", /^agent\/child-isolated-[a-f0-9]{6}$/);
+      assert.equal(records[1]?.baseCommit, "commit:HEAD");
       assert.equal((child as { launch: { status: string } }).launch.status, "accepted");
       assert.match(yield* Queue.take(backend.started), /Child work/);
-      assert.equal(created.at(-1)?.base, "/project");
+      assert.deepEqual(created.at(-1), { projectPath: "/project", backgroundSetup: true });
       assert.equal(backend.stats.turns, 3);
     }).pipe(Effect.scoped),
 );

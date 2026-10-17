@@ -1,6 +1,16 @@
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { it } from "@effect/vitest";
-import { Deferred, Effect, Fiber, FileSystem, Layer, Queue, Ref, Stream } from "effect";
+import {
+  Deferred,
+  Effect,
+  Fiber,
+  FileSystem,
+  Layer,
+  PlatformError,
+  Queue,
+  Ref,
+  Stream,
+} from "effect";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect } from "vitest";
@@ -21,6 +31,7 @@ import {
 } from "../../../../src/services/storage/WorktreeStorage";
 import { ManagedWorktrees } from "../../../../src/services/worktrees/ManagedWorktrees";
 import { ManagedWorktreesLive } from "../../../../src/services/worktrees/ManagedWorktreesLive";
+import { createCheckout } from "../../../../src/domain/worktrees/worktreeCreation";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
 const record = (projectPath: string, worktreePath: string, branch: string): WorktreeRecord => ({
@@ -62,7 +73,7 @@ const makeLayer = (
       workingDirectory: string,
       arguments_: ReadonlyArray<string>,
     ) => Effect.Effect<void>;
-    readonly runSetup?: Effect.Effect<string>;
+    readonly runSetup?: Effect.Effect<string, PlatformError.PlatformError>;
   },
 ) => {
   const storage = Layer.effect(
@@ -136,6 +147,365 @@ const makeLayer = (
 };
 
 describe("ManagedWorktrees Effect service", () => {
+  it.effect.each([
+    "origin-default",
+    "current-fallback",
+    "detached-fallback",
+    "explicit-root",
+    "active-parent",
+    "landed-parent",
+    "resolved-parent",
+    "discarded-parent",
+    "foreign-parent",
+    "missing-parent",
+    "detached-explicit",
+  ] as const)("preserves domain base selection and ownership: %s", (scenario) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const temporary = yield* fs.makeTempDirectoryScoped();
+        const repository = `${temporary}/repo`;
+        const parentPath = `${temporary}/parent`;
+        yield* fs.makeDirectory(`${repository}/.git`, { recursive: true });
+        if (scenario !== "missing-parent") yield* fs.makeDirectory(parentPath);
+        const isParent = scenario.endsWith("parent");
+        const state =
+          scenario === "landed-parent"
+            ? "landed"
+            : scenario === "resolved-parent"
+              ? "resolved"
+              : scenario === "discarded-parent"
+                ? "discarded"
+                : "active";
+        const initial = isParent
+          ? [
+              {
+                ...record(
+                  scenario === "foreign-parent" ? `${temporary}/other` : repository,
+                  parentPath,
+                  "agent/parent",
+                ),
+                state,
+              } satisfies WorktreeRecord,
+            ]
+          : [];
+        const detached = scenario.startsWith("detached");
+        const calls: Array<ReadonlyArray<string>> = [];
+        const layer = ManagedWorktreesLive.pipe(
+          Layer.provide(
+            makeLayer(initial, {
+              commonDirectory: () => repository,
+              run: (_cwd, args) => {
+                calls.push(args);
+                if (args[0] === "symbolic-ref")
+                  return scenario === "origin-default"
+                    ? Effect.succeed("origin/trunk\n")
+                    : Effect.fail(
+                        new GitError({
+                          operation: "symbolic-ref",
+                          workingDirectory: repository,
+                          message: "no remote",
+                        }),
+                      );
+                if (args[0] === "rev-parse" && args[1] === "--show-toplevel")
+                  return Effect.succeed(repository);
+                if (args[0] === "rev-parse" && args[1] === "--abbrev-ref")
+                  return Effect.succeed(detached ? "HEAD" : "topic");
+                if (args[0] === "rev-parse" && !args[1]?.startsWith("--"))
+                  return Effect.succeed(`commit:${args[1]}`);
+                return undefined;
+              },
+            }),
+          ),
+        );
+        yield* Effect.gen(function* () {
+          const worktrees = yield* ManagedWorktrees;
+          const base = isParent
+            ? `${parentPath}/`
+            : scenario === "explicit-root" || scenario === "detached-explicit"
+              ? `${repository}/`
+              : undefined;
+          const result = yield* Effect.result(createCheckout(repository, base, "base-rules"));
+          const rejected = [
+            "resolved-parent",
+            "discarded-parent",
+            "foreign-parent",
+            "missing-parent",
+            "detached-explicit",
+          ].includes(scenario);
+          if (rejected) {
+            expect(result).toMatchObject({ _tag: "Failure" });
+            expect(yield* worktrees.records()).toEqual(initial);
+            expect(calls.some((args) => args[0] === "worktree")).toBe(false);
+          } else {
+            const expectedBranch = isParent
+              ? "agent/parent"
+              : scenario === "origin-default"
+                ? "trunk"
+                : detached
+                  ? "main"
+                  : "topic";
+            const expectedRef = isParent || scenario === "explicit-root" ? "HEAD" : expectedBranch;
+            expect(result).toMatchObject({
+              _tag: "Success",
+              success: {
+                projectPath: repository,
+                baseBranch: expectedBranch,
+                baseCommit: `commit:${expectedRef}`,
+                ...(isParent ? { parentWorktreePath: parentPath } : {}),
+              },
+            });
+          }
+        }).pipe(Effect.provide(layer));
+      }),
+    ).pipe(Effect.provide(BootstrapLive)),
+  );
+
+  it.effect.each([
+    undefined,
+    "focused-fix",
+    "a".repeat(56) + "-------",
+    "Upper",
+    "",
+    "bad_name",
+    "a".repeat(64),
+  ])("preserves default, truncated and invalid naming rules: %s", (requestedName) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const temporary = yield* fs.makeTempDirectoryScoped();
+        const repository = `${temporary}/Example Repo`;
+        yield* fs.makeDirectory(`${repository}/.git`, { recursive: true });
+        const layer = ManagedWorktreesLive.pipe(
+          Layer.provide(
+            makeLayer([], {
+              run: (_cwd, args) =>
+                args[0] === "rev-parse" && args[1] === "--show-toplevel"
+                  ? Effect.succeed(repository)
+                  : undefined,
+            }),
+          ),
+        );
+        yield* Effect.gen(function* () {
+          const result = yield* Effect.result(createCheckout(repository, undefined, requestedName));
+          const valid =
+            requestedName === undefined ||
+            requestedName === "focused-fix" ||
+            requestedName.length === 63;
+          if (valid) {
+            expect(result._tag).toBe("Success");
+            if (result._tag !== "Success") return;
+            const prefix =
+              requestedName === undefined
+                ? "example-repo"
+                : requestedName.slice(0, 56).replace(/-+$/, "");
+            expect(result.success.branch).toMatch(new RegExp(`^agent/${prefix}-[a-f0-9]{6}$`));
+            expect(result.success.worktreePath).toBe(
+              `${yield* fs.realPath(temporary)}/.example-repo-worktrees/${result.success.branch.slice(6)}`,
+            );
+          } else
+            expect(result).toMatchObject({
+              _tag: "Failure",
+              failure: { message: "Invalid worktree name" },
+            });
+        }).pipe(Effect.provide(layer));
+      }),
+    ).pipe(Effect.provide(BootstrapLive)),
+  );
+
+  it.effect("retries branch and directory collisions before materializing the chosen name", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const temporary = yield* fs.makeTempDirectoryScoped();
+        const repository = `${temporary}/repo`;
+        yield* fs.makeDirectory(`${repository}/.git`, { recursive: true });
+        const rejected: string[] = [];
+        let probes = 0;
+        const layer = ManagedWorktreesLive.pipe(
+          Layer.provide(
+            makeLayer([], {
+              run: (_cwd, args) => {
+                if (args[0] === "rev-parse" && args[1] === "--show-toplevel")
+                  return Effect.succeed(repository);
+                if (args[0] !== "rev-parse" || !args[3]?.startsWith("refs/heads/agent/"))
+                  return undefined;
+                probes += 1;
+                if (probes > 2) return undefined;
+                const name = args[3].replace("refs/heads/agent/", "");
+                rejected.push(`agent/${name}`);
+                return probes === 1
+                  ? Effect.succeed("existing-branch")
+                  : fs
+                      .makeDirectory(`${temporary}/.repo-worktrees/${name}`, { recursive: true })
+                      .pipe(
+                        Effect.orDie,
+                        Effect.andThen(
+                          Effect.fail(
+                            new GitError({
+                              operation: "rev-parse",
+                              workingDirectory: repository,
+                              message: "no branch",
+                            }),
+                          ),
+                        ),
+                      );
+              },
+            }),
+          ),
+        );
+        yield* Effect.gen(function* () {
+          const created = yield* createCheckout(repository, undefined, "collision");
+          expect(probes).toBe(3);
+          expect(rejected).not.toContain(created.branch);
+        }).pipe(Effect.provide(layer));
+      }),
+    ).pipe(Effect.provide(BootstrapLive)),
+  );
+
+  it.effect(
+    "serializes creation planning, synchronous setup and cleanup in the same repository",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const temporary = yield* fs.makeTempDirectoryScoped();
+          const repository = `${temporary}/repo`;
+          const existingPath = `${temporary}/existing`;
+          yield* fs.makeDirectory(`${repository}/.git`, { recursive: true });
+          yield* fs.makeDirectory(existingPath);
+          const setupStarted = yield* Deferred.make<void>();
+          const finishSetup = yield* Deferred.make<void>();
+          const secondDiscovered = yield* Deferred.make<void>();
+          let discoveries = 0;
+          const mutations: string[] = [];
+          let probes = 0;
+          const layer = ManagedWorktreesLive.pipe(
+            Layer.provide(
+              makeLayer([record(repository, existingPath, "agent/existing")], {
+                commonDirectory: () => repository,
+                runSetup: Deferred.succeed(setupStarted, undefined).pipe(
+                  Effect.andThen(Deferred.await(finishSetup)),
+                  Effect.as(""),
+                ),
+                run: (_cwd, args) => {
+                  if (args[0] === "rev-parse" && args[1] === "--show-toplevel") {
+                    discoveries += 1;
+                    return discoveries === 1
+                      ? Effect.succeed(repository)
+                      : Deferred.succeed(secondDiscovered, undefined).pipe(Effect.as(repository));
+                  }
+                  if (args[0] === "rev-parse" && args[3]?.startsWith("refs/heads/agent/"))
+                    probes += 1;
+                  if (args[0] === "worktree") mutations.push(args[1] ?? "");
+                  return undefined;
+                },
+              }),
+            ),
+          );
+          yield* Effect.gen(function* () {
+            const worktrees = yield* ManagedWorktrees;
+            const first = yield* createCheckout(repository, undefined, "first", {
+              ...defaultProjectSettings(),
+              worktreeCreateCommand: "",
+              worktreeSetupCommands: "setup",
+            }).pipe(Effect.forkScoped);
+            yield* Deferred.await(setupStarted);
+            const cleanup = yield* worktrees.discard(existingPath, false).pipe(Effect.forkScoped);
+            const second = yield* createCheckout(repository, undefined, "second").pipe(
+              Effect.forkScoped,
+            );
+            yield* Deferred.await(secondDiscovered);
+            expect(probes).toBe(1);
+            expect(mutations).toEqual(["add"]);
+            expect(cleanup.pollUnsafe()).toBeUndefined();
+            expect(second.pollUnsafe()).toBeUndefined();
+            yield* Deferred.succeed(finishSetup, undefined);
+            yield* Fiber.join(first);
+            yield* Fiber.join(cleanup);
+            yield* Fiber.join(second);
+            expect(probes).toBe(3); // Both creations plus the discarded branch existence check.
+            expect(mutations.filter((operation) => operation === "add")).toHaveLength(2);
+            expect(
+              (yield* worktrees.records()).filter((entry) => entry.state === "active"),
+            ).toHaveLength(2);
+          }).pipe(Effect.provide(layer));
+        }),
+      ).pipe(Effect.provide(BootstrapLive)),
+  );
+
+  it.effect.each(["creation-command", "synchronous-setup", "background-setup"] as const)(
+    "preserves rollback and setup ownership after %s failure",
+    (scenario) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const temporary = yield* fs.makeTempDirectoryScoped();
+          const repository = `${temporary}/repo`;
+          yield* fs.makeDirectory(`${repository}/.git`, { recursive: true });
+          const calls: Array<ReadonlyArray<string>> = [];
+          const failure = PlatformError.badArgument({
+            module: "ChildProcess",
+            method: "string",
+            description: "command failed",
+          });
+          const layer = ManagedWorktreesLive.pipe(
+            Layer.provide(
+              makeLayer([], {
+                runSetup: Effect.fail(failure),
+                run: (_cwd, args) => {
+                  calls.push(args);
+                  return args[0] === "rev-parse" && args[1] === "--show-toplevel"
+                    ? Effect.succeed(repository)
+                    : undefined;
+                },
+              }),
+            ),
+          );
+          yield* Effect.gen(function* () {
+            const worktrees = yield* ManagedWorktrees;
+            const settings = {
+              ...defaultProjectSettings(),
+              worktreeCreateCommand: scenario === "creation-command" ? "create" : "",
+              worktreeSetupCommands: scenario === "creation-command" ? "" : "setup",
+            };
+            const result = yield* Effect.result(
+              createCheckout(
+                repository,
+                undefined,
+                "failure",
+                settings,
+                scenario === "background-setup",
+              ),
+            );
+            if (scenario === "background-setup") {
+              expect(result._tag).toBe("Success");
+              if (result._tag !== "Success") return;
+              const created = result.success;
+              expect(
+                yield* Effect.result(worktrees.awaitSetup(created.worktreePath)),
+              ).toMatchObject({
+                _tag: "Failure",
+                failure: { operation: "ManagedWorktrees.setup" },
+              });
+              expect(yield* worktrees.hasDeferredSetup(created.worktreePath)).toBe(true);
+              expect(yield* worktrees.records()).toEqual([created]);
+              expect(calls.some((args) => args[1] === "remove")).toBe(false);
+            } else {
+              expect(result).toMatchObject({ _tag: "Failure" });
+              expect(yield* worktrees.records()).toEqual([]);
+              expect(
+                calls.some(
+                  (args) => args[0] === "worktree" && args[1] === "remove" && args[2] === "--force",
+                ),
+              ).toBe(true);
+              expect(calls.some((args) => args[0] === "branch" && args[1] === "-D")).toBe(true);
+            }
+          }).pipe(Effect.provide(layer));
+        }),
+      ).pipe(Effect.provide(BootstrapLive)),
+  );
+
   it.effect.each(["discard", "resolve"] as const)(
     "keeps a stacked landing target while its child still exists during %s",
     (operation) =>
@@ -907,11 +1277,12 @@ describe("ManagedWorktrees Effect service", () => {
             worktreeCreateCommand: "",
             worktreeSetupCommands: "setup",
           };
-          const created = yield* worktrees.createWithBackgroundSetup(
+          const created = yield* createCheckout(
             repository,
             undefined,
             "background",
             settings,
+            true,
           );
           yield* Deferred.await(setupStarted);
           expect(yield* worktrees.hasDeferredSetup(created.worktreePath)).toBe(true);
@@ -995,7 +1366,7 @@ describe("ManagedWorktrees Effect service", () => {
         yield* Effect.gen(function* () {
           const worktrees = yield* ManagedWorktrees;
           const result = yield* Effect.result(
-            worktrees.create(repository, undefined, "rollback", undefined),
+            createCheckout(repository, undefined, "rollback", undefined),
           );
           expect(result._tag).toBe("Failure");
           expect(yield* worktrees.records()).toEqual([]);
@@ -1064,10 +1435,12 @@ describe("ManagedWorktrees Effect service", () => {
         const layer = ManagedWorktreesLive.pipe(Layer.provide(makeLiveLayer([], runner)));
 
         yield* Effect.gen(function* () {
-          const worktrees = yield* ManagedWorktrees;
-          const creation = yield* worktrees
-            .create(repository, undefined, "interrupted", undefined)
-            .pipe(Effect.forkScoped);
+          const creation = yield* createCheckout(
+            repository,
+            undefined,
+            "interrupted",
+            undefined,
+          ).pipe(Effect.forkScoped);
           yield* Effect.promise(() => addStarted);
 
           const interruption = yield* Fiber.interrupt(creation).pipe(Effect.forkScoped);
@@ -1195,9 +1568,12 @@ describe("ManagedWorktrees Effect service", () => {
 
         yield* Effect.gen(function* () {
           const worktrees = yield* ManagedWorktrees;
-          const creation = yield* worktrees
-            .create(repository, undefined, "interrupted", undefined)
-            .pipe(Effect.forkScoped);
+          const creation = yield* createCheckout(
+            repository,
+            undefined,
+            "interrupted",
+            undefined,
+          ).pipe(Effect.forkScoped);
           yield* Deferred.await(saveStarted);
           const interruption = yield* Fiber.interrupt(creation).pipe(Effect.forkScoped);
           yield* Effect.yieldNow;

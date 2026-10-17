@@ -1,4 +1,5 @@
 import { ManagedRuntime } from "effect";
+import { createCheckout } from "../../src/domain/worktrees/worktreeCreation";
 import type { ProjectSettings } from "../../src/contracts/application/application-data";
 import type { WorktreeLandRequest } from "../../src/contracts/worktrees/worktree-contract";
 import { BootstrapLive } from "../../src/main/BootstrapLive";
@@ -18,7 +19,7 @@ export const makeTestWorktreeService = (storagePath: string) => {
   const runtime = ManagedRuntime.make(ManagedWorktreesLive.pipe(Layer.provide(dependencies)));
   const run = <A, E>(effect: Effect.Effect<A, E, ManagedWorktrees>) => runtime.runPromise(effect);
   const withService = <A, E>(
-    operation: (service: ManagedWorktrees["Service"]) => Effect.Effect<A, E>,
+    operation: (service: ManagedWorktrees["Service"]) => Effect.Effect<A, E, ManagedWorktrees>,
   ) => run(Effect.flatMap(ManagedWorktrees, operation));
 
   return {
@@ -28,17 +29,14 @@ export const makeTestWorktreeService = (storagePath: string) => {
       baseWorktreePath?: string,
       worktreeName?: string,
       settings?: ProjectSettings,
-    ) =>
-      withService((service) =>
-        service.create(projectPath, baseWorktreePath, worktreeName, settings),
-      ),
+    ) => run(createCheckout(projectPath, baseWorktreePath, worktreeName, settings)),
     createBranchOff: (worktreePath: string, worktreeName?: string) =>
       withService((service) =>
         service.records().pipe(
           Effect.flatMap((records) => {
             const source = records.find((record) => record.worktreePath === worktreePath);
             return source
-              ? service.create(source.projectPath, source.worktreePath, worktreeName)
+              ? createCheckout(source.projectPath, source.worktreePath, worktreeName)
               : Effect.fail(new Error("Cake could not find that worktree"));
           }),
         ),

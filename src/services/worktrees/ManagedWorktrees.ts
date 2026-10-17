@@ -1,9 +1,9 @@
-import { Context, type Effect, type Stream } from "effect";
+import { Context, type Effect, type FileSystem, type Path, type Stream } from "effect";
+import type { Git } from "../git/Git";
 import type {
   ManagedWorktreeCatalogUpdate,
   WorktreeRecord,
 } from "../../contracts/worktrees/managed-worktree-data";
-import type { ProjectSettings } from "../../contracts/application/application-data";
 import type {
   WorktreeLandOutcome,
   WorktreeLandRequest,
@@ -12,21 +12,31 @@ import type {
 } from "../../contracts/worktrees/worktree-contract";
 import type { ManagedWorktreeError } from "../../contracts/worktrees/managed-worktrees-errors";
 
+/** Fully selected Cake creation request; the engine only materializes it. */
+export interface WorktreeCheckoutPlan {
+  readonly record: WorktreeRecord & { readonly baseCommit: string };
+  readonly createCommand?: string;
+  readonly setupCommand?: string;
+}
+
 export interface ManagedWorktreesService {
   readonly records: () => Effect.Effect<ReadonlyArray<WorktreeRecord>, ManagedWorktreeError>;
   readonly observe: () => Stream.Stream<ManagedWorktreeCatalogUpdate, ManagedWorktreeError>;
-  readonly create: (
+  /** Runs the domain planner with this engine's Git/filesystem/path capabilities
+   * under its repository lock, shared with checkout/persistence rollback.
+   * Background setup, when requested, remains owned by this Service's Scope. */
+  readonly createCheckout: (
     projectPath: string,
-    baseWorktreePath?: string,
-    worktreeName?: string,
-    settings?: ProjectSettings,
-  ) => Effect.Effect<WorktreeRecord, ManagedWorktreeError>;
-  /** Returns once the checkout exists while setup continues in this Service's Scope. */
-  readonly createWithBackgroundSetup: (
-    projectPath: string,
-    baseWorktreePath?: string,
-    worktreeName?: string,
-    settings?: ProjectSettings,
+    prepare: (
+      repository: string,
+      registeredProjectPath: string,
+      records: ReadonlyArray<WorktreeRecord>,
+    ) => Effect.Effect<
+      WorktreeCheckoutPlan,
+      ManagedWorktreeError,
+      Git | FileSystem.FileSystem | Path.Path
+    >,
+    backgroundSetup: boolean,
   ) => Effect.Effect<WorktreeRecord, ManagedWorktreeError>;
   /** Blocks runtime acquisition and turns until deferred setup has completed. */
   readonly awaitSetup: (worktreePath: string) => Effect.Effect<void, ManagedWorktreeError>;
