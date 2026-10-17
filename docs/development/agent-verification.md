@@ -1,5 +1,10 @@
 ## Visual capture workflow
 
+Choose verification that demonstrates the acceptance criterion. Static screenshots
+verify appearance, not temporal behavior such as activity-driven ordering or
+preserved navigation state. For behavioral-only changes, use event-driven workflow
+tests; do not generate screenshots unless they provide additional evidence.
+
 Use the repository-owned visual harness when a Cake UI change benefits from a screenshot or hover-state review; do not create a temporary browser or Playwright script. Run `pnpm visual:capture --list` to discover named scenarios and `pnpm visual:capture --help` for deterministic theme, viewport, state, region/window, and output options. Captures go to the Git-ignored `.visual-captures/` directory by default. Always present images and screenshots inline in chat with Markdown image syntax such as `![Screenshot](.visual-captures/capture.png)`, never as plain clickable links. The user must be able to see the image without clicking. See `docs/development/visual-capture.md` for the output contract and scenario-authoring rules.
 
 ## Verification
