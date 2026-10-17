@@ -8,8 +8,6 @@ import type { SavedDraft } from "../../../src/contracts/project-sessions/saved-d
 import type { SessionCatalogUpdate } from "../../../src/contracts/application/catalog-data";
 import { applySessionCatalogGroupUpdate } from "../../../src/renderer/reducers/CatalogReducer";
 import type { Client } from "../../../src/renderer/client/Client";
-import type { SessionCatalogUpdate } from "../../../src/contracts/application/catalog-data";
-import { applySessionCatalogGroupUpdate } from "../../../src/renderer/reducers/CatalogReducer";
 import { Chat } from "../../../src/renderer/components/chat";
 import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-project-group";
 import { fakeSavedDrafts } from "./fakes/saved-drafts";

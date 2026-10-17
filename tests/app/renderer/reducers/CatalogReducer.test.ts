@@ -87,7 +87,7 @@ describe("Catalog projection resource integration", () => {
       sessionSummary({ sessionId: id, modifiedAt, projectPath: "/project" });
     using fixture = createRendererStoreFixture({
       sessions: [
-        { ...record("one", "2026-01-01"), parentSessionId: "parent" },
+        { ...record("one", "2026-01-01"), familyParentSessionId: "parent" },
         { ...record("resolved", "2026-01-03"), resolved: true },
       ],
     });
@@ -161,8 +161,9 @@ describe("Catalog projection resource integration", () => {
       title: sessionId,
       messageCount: 1,
       resolved: false,
+      unread: false,
     });
-    const query = { resolved: false };
+    const query = { resolved: false } as const;
     applyCakeChatCatalogGroupUpdate(catalog, query, {
       _tag: "Snapshot",
       revision: 1,
