@@ -10,7 +10,11 @@ const pages: Array<{ page: SettingsPageId; title: string; introduction?: string 
   { page: "providers", title: "Providers" },
   { page: "agent", title: "Agent" },
   { page: "runtime", title: "Execution & resources" },
-  { page: "network", title: "Network & privacy" },
+  {
+    page: "network",
+    title: "Network & privacy",
+    introduction: "Host connection, browser sharing, provider transport, and workspace trust.",
+  },
   { page: "mcp", title: "MCP servers" },
   { page: "appearance", title: "Appearance" },
   { page: "editor", title: "VS Code" },

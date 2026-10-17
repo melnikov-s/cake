@@ -215,10 +215,9 @@ export const SettingsPage = observer(function SettingsPage({
         className="min-h-0 overflow-y-auto [scrollbar-gutter:stable]"
       >
         <div className="mx-auto max-w-4xl px-8 py-8 pb-16 max-[620px]:px-4 max-[620px]:py-4">
-          <div className="mb-8">
-            <span className="text-xs font-medium text-accent">Cake / Pi</span>
-            <h2 className="mt-1 text-2xl font-bold text-foreground">{pageMetadata.label}</h2>
-            <p className="mt-1.5 text-xs text-muted-foreground">
+          <div className="mb-6">
+            <h2 className="text-xl font-semibold text-foreground">{pageMetadata.label}</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
               {pageMetadata.introduction ??
                 "Configure the same Pi runtime used by the CLI. Pi preferences follow you across projects."}
             </p>
@@ -687,7 +686,7 @@ export const SettingsPage = observer(function SettingsPage({
           )}
 
           {activePage === "network" && (
-            <>
+            <div className="grid gap-5">
               {settings.desktopConnection && (
                 <SettingsDesktopHostSection connection={settings.desktopConnection} />
               )}
@@ -699,22 +698,15 @@ export const SettingsPage = observer(function SettingsPage({
               ) : !settings.desktopConnection?.remote ? (
                 <SettingsDesktopSharingSection sharing={settings.desktopSharing} />
               ) : null}
-              <section className="border-t border-border py-5" aria-labelledby="network-title">
-                <header className="mb-4">
-                  <div>
-                    <h2 id="network-title" className="text-[15px] font-semibold text-foreground">
-                      Network
-                    </h2>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      Choose Pi’s provider transport and idle timeout.
-                    </p>
-                  </div>
-                </header>
+              <section className="grid gap-1.5" aria-labelledby="network-title">
+                <h2 id="network-title" className="px-0.5 text-xs font-semibold text-foreground">
+                  Network
+                </h2>
                 {pi ? (
-                  <div className="grid gap-4">
+                  <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
                     <label
                       id="setting-transport"
-                      className="scroll-mt-8 flex items-center justify-between gap-6 text-sm max-[620px]:flex-col max-[620px]:items-stretch max-[620px]:gap-2"
+                      className="scroll-mt-8 flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm max-[620px]:flex-col max-[620px]:items-stretch max-[620px]:gap-2"
                     >
                       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <strong className="text-xs font-medium text-foreground">Transport</strong>
@@ -724,7 +716,7 @@ export const SettingsPage = observer(function SettingsPage({
                       </span>
                       <Select
                         aria-label="Provider transport"
-                        className="h-8 max-w-xs text-xs"
+                        className="h-8 w-44 rounded-sm text-xs max-[620px]:w-full"
                         value={pi.transport}
                         onChange={(event) =>
                           void providers.setPiSetting({
@@ -741,7 +733,7 @@ export const SettingsPage = observer(function SettingsPage({
                     </label>
                     <label
                       id="setting-http-idle-timeout"
-                      className="scroll-mt-8 flex items-center justify-between gap-6 text-sm max-[620px]:flex-col max-[620px]:items-stretch max-[620px]:gap-2"
+                      className="scroll-mt-8 flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm max-[620px]:flex-col max-[620px]:items-stretch max-[620px]:gap-2"
                     >
                       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <strong className="text-xs font-medium text-foreground">
@@ -753,7 +745,7 @@ export const SettingsPage = observer(function SettingsPage({
                       </span>
                       <Select
                         aria-label="HTTP idle timeout"
-                        className="h-8 max-w-xs text-xs"
+                        className="h-8 w-44 rounded-sm text-xs max-[620px]:w-full"
                         value={pi.httpIdleTimeoutMs}
                         onChange={(event) =>
                           void providers.setPiSetting({
@@ -775,22 +767,15 @@ export const SettingsPage = observer(function SettingsPage({
                 )}
               </section>
 
-              <section className="border-t border-border py-5" aria-labelledby="safety-title">
-                <header className="mb-4">
-                  <div>
-                    <h2 id="safety-title" className="text-[15px] font-semibold text-foreground">
-                      Safety & privacy
-                    </h2>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      Trust defaults, warnings, and Pi’s optional update telemetry.
-                    </p>
-                  </div>
-                </header>
+              <section className="grid gap-1.5" aria-labelledby="safety-title">
+                <h2 id="safety-title" className="px-0.5 text-xs font-semibold text-foreground">
+                  Safety & privacy
+                </h2>
                 {pi ? (
-                  <div className="grid gap-4">
+                  <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
                     <label
                       id="setting-default-project-trust"
-                      className="scroll-mt-8 flex items-center justify-between gap-6 text-sm max-[620px]:flex-col max-[620px]:items-stretch max-[620px]:gap-2"
+                      className="scroll-mt-8 flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm max-[620px]:flex-col max-[620px]:items-stretch max-[620px]:gap-2"
                     >
                       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <strong className="text-xs font-medium text-foreground">
@@ -802,7 +787,7 @@ export const SettingsPage = observer(function SettingsPage({
                       </span>
                       <Select
                         aria-label="Default project trust"
-                        className="h-8 max-w-xs text-xs"
+                        className="h-8 w-44 rounded-sm text-xs max-[620px]:w-full"
                         value={pi.defaultProjectTrust}
                         onChange={(event) =>
                           void providers.setPiSetting({
@@ -816,30 +801,34 @@ export const SettingsPage = observer(function SettingsPage({
                         <option value="never">Never trust</option>
                       </Select>
                     </label>
-                    <SettingsToggle
-                      id="setting-anthropic-extra-usage-warning"
-                      label="Anthropic extra usage warning"
-                      description="Warn when subscription authentication may use paid extra usage."
-                      checked={pi.anthropicExtraUsageWarning}
-                      onChange={(value) =>
-                        void providers.setPiSetting({ key: "anthropicExtraUsageWarning", value })
-                      }
-                    />
-                    <SettingsToggle
-                      id="setting-install-telemetry"
-                      label="Install telemetry"
-                      description="Send Pi’s anonymous version/update ping after detected updates."
-                      checked={pi.enableInstallTelemetry}
-                      onChange={(value) =>
-                        void providers.setPiSetting({ key: "enableInstallTelemetry", value })
-                      }
-                    />
+                    <div className="px-3.5 py-2.5">
+                      <SettingsToggle
+                        id="setting-anthropic-extra-usage-warning"
+                        label="Anthropic extra usage warning"
+                        description="Warn when subscription authentication may use paid extra usage."
+                        checked={pi.anthropicExtraUsageWarning}
+                        onChange={(value) =>
+                          void providers.setPiSetting({ key: "anthropicExtraUsageWarning", value })
+                        }
+                      />
+                    </div>
+                    <div className="px-3.5 py-2.5">
+                      <SettingsToggle
+                        id="setting-install-telemetry"
+                        label="Install telemetry"
+                        description="Send Pi’s anonymous version/update ping after detected updates."
+                        checked={pi.enableInstallTelemetry}
+                        onChange={(value) =>
+                          void providers.setPiSetting({ key: "enableInstallTelemetry", value })
+                        }
+                      />
+                    </div>
                   </div>
                 ) : (
                   <p className="text-xs text-muted-foreground">{piSettingsStatus}</p>
                 )}
               </section>
-            </>
+            </div>
           )}
 
           {activePage === "cake-chat" && (

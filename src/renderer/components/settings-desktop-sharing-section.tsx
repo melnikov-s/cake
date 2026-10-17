@@ -1,97 +1,115 @@
 import { observer } from "r-state-tree/react";
 import type { DesktopSharingSettingsStore } from "../stores/DesktopSharingSettingsStore";
-import { Input } from "./ui/input";
-import { Switch } from "./ui/switch";
 import { Callout } from "./ui/callout";
+import { Input } from "./ui/input";
+import { StatusDot } from "./ui/status-dot";
+import { Switch } from "./ui/switch";
 
 export const SettingsDesktopSharingSection = observer(function SettingsDesktopSharingSection({
   sharing,
 }: {
   sharing: DesktopSharingSettingsStore;
 }) {
+  const status = sharing.state?.status;
+  const dotStatus =
+    status === "serving"
+      ? "ready"
+      : status === "starting" || status === "stopping"
+        ? "running"
+        : "stopped";
+  const statusText = !sharing.state
+    ? "Loading sharing status…"
+    : sharing.state.status === "serving"
+      ? `Serving — ${sharing.state.url ?? `${sharing.state.bind}:${sharing.state.port}`}`
+      : sharing.state.status === "starting"
+        ? "Starting…"
+        : sharing.state.status === "stopping"
+          ? "Stopping…"
+          : "Off · resets at launch";
+
   return (
     <section
       id="setting-browser-sharing"
-      className="grid gap-4 border-t border-border py-5"
+      className="grid gap-1.5"
       aria-labelledby="browser-sharing-title"
     >
-      <h2 id="browser-sharing-title" className="text-[15px] font-semibold text-foreground">
+      <h2 id="browser-sharing-title" className="px-0.5 text-xs font-semibold text-foreground">
         Browser sharing
       </h2>
-      <p className="text-xs text-muted-foreground">
-        Share this running Cake backend. Existing sessions and active turns stay in this process.
-        Sharing is off at every app launch.
-      </p>
-      <Callout variant="warning">
-        No authentication: anyone who can connect has full host access, including files, credentials
-        through agent operations, and code execution. Only share with trusted devices on a private
-        Tailscale network restricted to your devices, or behind an authenticated HTTPS proxy.
-        Host/Origin allowlists are not a login and do not restrict trusted clients’ authority.
-      </Callout>
-      <label className="flex items-center justify-between gap-4 text-sm">
-        Enable browser sharing
-        <Switch
-          aria-label="Enable browser sharing"
-          checked={sharing.enabled}
-          disabled={sharing.pending}
-          onCheckedChange={(enabled) => void sharing.configure(enabled)}
-        />
-      </label>
-      <label className="grid gap-1 text-xs">
-        Bind IPv4 address
-        <Input
-          aria-label="Browser sharing bind address"
-          value={sharing.bind}
-          disabled={sharing.enabled || sharing.pending}
-          onChange={(event) => sharing.setBind(event.target.value)}
-        />
-      </label>
-      <label className="grid gap-1 text-xs">
-        Port (0 chooses an available port)
-        <Input
-          aria-label="Browser sharing port"
-          value={sharing.port}
-          disabled={sharing.enabled || sharing.pending}
-          onChange={(event) => sharing.setPort(event.target.value)}
-        />
-      </label>
-      <label className="grid gap-1 text-xs">
-        Proxy HTTPS origin (optional)
-        <Input
-          aria-label="Browser sharing HTTPS origin"
-          placeholder="https://laptop.your-tailnet.ts.net"
-          value={sharing.publicOrigin}
-          disabled={sharing.enabled || sharing.pending}
-          onChange={(event) => sharing.setPublicOrigin(event.target.value)}
-        />
-      </label>
-      <p className="text-xs text-muted-foreground">
-        Recommended for a phone: keep 127.0.0.1, choose a fixed port, and use private Tailscale
-        Serve on your laptop with Tailscale on your phone. Enter its exact HTTPS origin without a
-        path or trailing slash. This allows only that URL’s exact Host and Origin, replacing direct
-        HTTP access. The proxy must preserve Host and WebSocket Origin; forwarded headers are not
-        trusted. Cake does not configure the proxy or verify its access controls.
-      </p>
-      <p className="text-xs text-muted-foreground">
-        Without a proxy, 127.0.0.1 works only on this computer. A concrete private IPv4 bind is an
-        explicit alternative for trusted devices, but HTTP outside loopback lacks secure browser
-        features. Never expose an unauthenticated listener publicly or use Tailscale Funnel.
-      </p>
-      <p role="status" className="break-words text-sm">
-        {sharing.state?.status ?? "Loading sharing status…"}
-        {sharing.state?.url ? ` — ${sharing.state.url}` : ""}
-      </p>
-      {sharing.state?.status === "serving" && sharing.state.publicOrigin && (
-        <p className="break-words text-xs text-muted-foreground">
-          Allowed Host: {new URL(sharing.state.publicOrigin).host}. Allowed Origin:{" "}
-          {sharing.state.publicOrigin}. Listener: {sharing.state.bind}:{sharing.state.port}. The
-          HTTPS URL is configured, not reachability-tested.
-        </p>
-      )}
-      <p className="text-xs text-muted-foreground">
-        Keep the laptop awake and online; closing its lid may suspend access. Closing the last
-        window keeps enabled sharing and agent work running. Use Quit Cake to stop the process.
-        Disabling disconnects browsers, not accepted turns.
+      <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
+        <label className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm">
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <strong className="text-xs font-medium text-foreground">Enable browser sharing</strong>
+            <span
+              role="status"
+              className="flex items-center gap-1.5 break-all text-[11px] text-muted-foreground"
+            >
+              <StatusDot size="sm" status={dotStatus} />
+              <span>{statusText}</span>
+            </span>
+          </span>
+          <Switch
+            aria-label="Enable browser sharing"
+            checked={sharing.enabled}
+            disabled={sharing.pending}
+            onCheckedChange={(enabled) => void sharing.configure(enabled)}
+          />
+        </label>
+        <label className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm max-[620px]:flex-col max-[620px]:items-stretch">
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <strong className="text-xs font-medium text-foreground">Bind IPv4 address</strong>
+            <small className="text-[11px] text-muted-foreground">
+              Use 127.0.0.1 for local or proxied connections.
+            </small>
+          </span>
+          <Input
+            aria-label="Browser sharing bind address"
+            className="h-8 w-40 rounded-sm font-mono text-xs max-[620px]:w-full"
+            value={sharing.bind}
+            disabled={sharing.enabled || sharing.pending}
+            onChange={(event) => sharing.setBind(event.target.value)}
+          />
+        </label>
+        <label className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm max-[620px]:flex-col max-[620px]:items-stretch">
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <strong className="text-xs font-medium text-foreground">Port</strong>
+            <small className="text-[11px] text-muted-foreground">
+              Set to 0 to choose an available port automatically.
+            </small>
+          </span>
+          <Input
+            aria-label="Browser sharing port"
+            className="h-8 w-28 rounded-sm font-mono text-xs max-[620px]:w-full"
+            value={sharing.port}
+            disabled={sharing.enabled || sharing.pending}
+            onChange={(event) => sharing.setPort(event.target.value)}
+          />
+        </label>
+        <label className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm max-[620px]:flex-col max-[620px]:items-stretch">
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <strong className="text-xs font-medium text-foreground">Proxy HTTPS origin</strong>
+            <small className="text-[11px] text-muted-foreground">
+              Optional exact origin for Tailscale Serve or reverse proxy.
+            </small>
+          </span>
+          <Input
+            aria-label="Browser sharing HTTPS origin"
+            className="h-8 w-72 rounded-sm font-mono text-xs max-[620px]:w-full"
+            placeholder="https://laptop.your-tailnet.ts.net"
+            value={sharing.publicOrigin}
+            disabled={sharing.enabled || sharing.pending}
+            onChange={(event) => sharing.setPublicOrigin(event.target.value)}
+          />
+        </label>
+        {sharing.state?.status === "serving" && sharing.state.publicOrigin && (
+          <div className="px-3.5 py-2 font-mono text-[11px] text-muted-foreground">
+            Listener {sharing.state.bind}:{sharing.state.port} · Origin {sharing.state.publicOrigin}
+          </div>
+        )}
+      </div>
+      <p className="px-0.5 text-[11px] text-muted-foreground">
+        Anyone who can connect has full host access. Share only on a private Tailscale network or
+        behind an authenticated HTTPS proxy.
       </p>
       {(sharing.error ?? sharing.state?.error) && (
         <Callout variant="error">{sharing.error ?? sharing.state?.error}</Callout>

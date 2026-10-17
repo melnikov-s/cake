@@ -145,6 +145,7 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
       {
         page: "network",
         label: "Network & privacy",
+        introduction: "Host connection, browser sharing, provider transport, and workspace trust.",
         settings: [
           {
             label: "Browser sharing",
