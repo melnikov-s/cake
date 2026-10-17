@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toSnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
@@ -34,12 +35,44 @@ function snapshot(sessionId: string): ConversationSnapshot {
     ],
   };
 }
-function renderLayout() {
+function renderLayout(restoredRatio?: number) {
   const open = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);
   const setFullscreenSurfaceOpen = vi.fn<Client["electron"]["setFullscreenSurfaceOpen"]>(
     async () => undefined,
   );
   const fixture = createRendererStoreFixture({
+    snapshot:
+      restoredRatio === undefined
+        ? undefined
+        : {
+            state: {},
+            children: {
+              sessionLayoutStore: {
+                state: {
+                  focusedPaneId: "left-pane",
+                  layout: {
+                    kind: "split",
+                    splitId: "saved-split",
+                    axis: "x",
+                    ratio: restoredRatio,
+                    first: {
+                      kind: "pane",
+                      paneId: "left-pane",
+                      history: ["alpha"],
+                      historyCursor: 0,
+                    },
+                    second: {
+                      kind: "pane",
+                      paneId: "right-pane",
+                      history: ["beta"],
+                      historyCursor: 0,
+                    },
+                  },
+                },
+                children: {},
+              },
+            },
+          },
     projects: [projectRecord({ path: "/project", name: "Project" })],
     sessions: ["alpha", "beta", "gamma"].map((sessionId) =>
       sessionSummary({ sessionId, title: `${sessionId} conversation`, projectPath: "/project" }),
@@ -72,6 +105,14 @@ function renderLayout() {
     user: userEvent.setup(),
     open,
     setFullscreenSurfaceOpen,
+    persistedLayout() {
+      return toSnapshot(fixture.root.sessionLayoutStore);
+    },
+    hostClose(surfaceId: string) {
+      // Delivery point of observeSurfaceEvents; this exercises product close routing,
+      // not Electron transport delivery or native Escape/hit testing.
+      act(() => fixture.root.fullscreenSurfaceStore.requestClose(surfaceId));
+    },
     [Symbol.dispose]() {
       view.unmount();
       fixture[Symbol.dispose]();
@@ -193,6 +234,46 @@ describe("Session layout workflow", () => {
     expect(pane("gamma conversation").getByRole("combobox", { name: "Message" })).toBeDefined();
   });
 
+  it("restores saved split geometry into the real panes and persists a fresh split after closing one", async () => {
+    using fixture = renderLayout(0.65);
+    const split = () => document.querySelector<HTMLElement>('[data-slot="session-split"]')!;
+    expect(screen.getAllByRole("combobox", { name: "Message" })).toHaveLength(2);
+    expect(split().style.getPropertyValue("--split-first")).toBe("0.65fr");
+    expect(pane("alpha conversation").getByText("1")).toBeDefined();
+    expect(pane("beta conversation").getByText("2")).toBeDefined();
+    await fixture.user.click(pane("beta conversation").getByRole("button", { name: "Close pane" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Split right" }));
+    expect(split().style.getPropertyValue("--split-first")).toBe("0.5fr");
+    expect(fixture.persistedLayout()).toMatchObject({
+      state: { layout: { kind: "split", axis: "x", ratio: 0.5 } },
+    });
+  });
+
+  it("restores the staged draft without dropping the focused pane's persisted forward history", async () => {
+    using fixture = renderLayout();
+    const newChat = () => screen.getByRole("button", { name: "Start new chat in project" });
+    const input = () => screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message" });
+    await fixture.user.click(newChat());
+    await fixture.user.type(input(), "Retained staged work");
+    await fixture.user.click(screen.getByRole("button", { name: /^beta conversation / }));
+    expect(input().value).toBe("");
+    await fixture.user.click(newChat());
+    expect(input().value).toBe("Retained staged work");
+    expect(screen.getByText("New chat")).toBeDefined();
+    // Shell Forward records restoration as a new visit and cannot expose this
+    // pane-local branch. Assert the actual persistence representation instead;
+    // this does not claim native window-state transport/restoration coverage.
+    expect(fixture.persistedLayout()).toMatchObject({
+      state: {
+        layout: {
+          kind: "pane",
+          history: ["alpha", expect.any(String), "beta"],
+          historyCursor: 1,
+        },
+      },
+    });
+  });
+
   it("limits splitting to four panes and permits another split after closing one", async () => {
     using fixture = renderLayout();
     for (let index = 0; index < 3; index++)
@@ -234,5 +315,34 @@ describe("Session layout workflow", () => {
       false,
     ]);
     expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
+  });
+
+  it("closes only the fullscreen surface named by the host request and unregisters it before reopening", async () => {
+    using fixture = renderLayout();
+    const openDialog = async () => {
+      await fixture.user.click(screen.getByRole("button", { name: "Session tree" }));
+      await fixture.user.click(screen.getByRole("button", { name: "Fork from Finished work" }));
+      return screen.findByRole("dialog", { name: "Fork this conversation" });
+    };
+    await openDialog();
+    const firstId = fixture.setFullscreenSurfaceOpen.mock.calls[0]![0];
+    fixture.hostClose("unrelated-surface");
+    expect(screen.getByRole("dialog", { name: "Fork this conversation" })).toBeDefined();
+    fixture.hostClose(firstId);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(fixture.setFullscreenSurfaceOpen).toHaveBeenCalledWith(firstId, false);
+    await openDialog();
+    const secondId = fixture.setFullscreenSurfaceOpen.mock.calls.at(-1)![0];
+    expect(secondId).not.toBe(firstId);
+    fixture.hostClose(firstId);
+    expect(screen.getByRole("dialog", { name: "Fork this conversation" })).toBeDefined();
+    fixture.hostClose(secondId);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(fixture.setFullscreenSurfaceOpen.mock.calls.map(([, open]) => open)).toEqual([
+      true,
+      false,
+      true,
+      false,
+    ]);
   });
 });
