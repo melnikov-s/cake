@@ -7,6 +7,8 @@ export interface ContextInspectionNode {
   readonly text?: string;
   readonly source?: string;
   readonly kind?: "summary" | "original";
+  /** Summary-tree layers above originals, not UI nesting or model-call count. Originals are depth 0. */
+  readonly summaryDepth?: number;
   readonly children?: readonly ContextInspectionNode[];
   readonly detail?: {
     readonly entryId?: string;
@@ -22,6 +24,7 @@ export const ContextInspectionNode: Schema.Codec<ContextInspectionNode> = Schema
   text: Schema.optionalKey(Schema.String),
   source: Schema.optionalKey(Schema.String),
   kind: Schema.optionalKey(Schema.Literals(["summary", "original"])),
+  summaryDepth: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThan(0))),
   children: Schema.optionalKey(Schema.Array(Schema.suspend(() => ContextInspectionNode))),
   detail: Schema.optionalKey(
     Schema.Struct({

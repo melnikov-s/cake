@@ -273,12 +273,6 @@ export const ContextIcon = () => (
     <path d="m3 8 9-5 9 5-9 5zM3 12l9 5 9-5M3 16l9 5 9-5" />
   </Icon>
 );
-export const InfoIcon = () => (
-  <Icon>
-    <circle cx="12" cy="12" r="9" />
-    <path d="M12 11v6M12 7h.01" />
-  </Icon>
-);
 export const InspectIcon = () => (
   <Icon>
     <path d="M5 4h6M5 4v6M19 20h-6M19 20v-6" />

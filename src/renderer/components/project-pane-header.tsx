@@ -9,7 +9,6 @@ import {
   VsCodeIcon,
 } from "@/components/ui/icons";
 import { WorkLogControls } from "@/components/work-log-controls";
-import { ContextInspector } from "@/components/context-inspector";
 import { SideChatsMenu } from "@/components/side-chats-menu";
 import { cn } from "@/lib/utils";
 import { RootStore } from "../stores/RootStore";
@@ -106,7 +105,6 @@ export const ProjectPaneHeader = observer(function ProjectPaneHeader({
       <SessionArtifactMenu session={paneSession} onOpen={focusPane} />
       <div className="mx-0.5 h-4 w-px shrink-0 bg-border/60" aria-hidden="true" />
       <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />
-      <ContextInspector store={paneSession.conversationSessionStore.contextInspectorStore} />
       <div className="mx-0.5 h-4 w-px shrink-0 bg-border/60 phone:hidden" aria-hidden="true" />
       {!browserMode && (
         <IconButton

@@ -4,6 +4,7 @@ import type { ContextInspectionNode } from "../../contracts/conversations/contex
 import type { ContextInspectorStore } from "../stores/ContextInspectorStore";
 import { DisclosureTrigger } from "./ui/disclosure-trigger";
 import { Button } from "./ui/button";
+import { Badge } from "./ui/badge";
 import { Callout } from "./ui/callout";
 import { LoadingSpinner } from "./ui/loading-state";
 
@@ -20,7 +21,12 @@ export const ContextInspectorNode = observer(function ContextInspectorNode({
   if (node.kind === "original")
     return (
       <figure className="my-4" title={node.source}>
-        <figcaption className="mb-1 text-xs text-muted-foreground">{node.title}</figcaption>
+        <figcaption className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
+          {node.title}
+          <Badge variant="outline" size="xs">
+            Original · depth 0
+          </Badge>
+        </figcaption>
         <blockquote className="border-l-2 border-border pl-3">
           <pre className="whitespace-pre-wrap break-words font-sans text-[13px] leading-7">
             {node.text}
@@ -37,6 +43,22 @@ export const ContextInspectorNode = observer(function ContextInspectorNode({
     <section data-slot="context-source" data-source-id={node.id}>
       <DisclosureTrigger
         title={node.title}
+        aria-label={node.title}
+        aria-describedby={node.kind === "summary" ? `${contentId}-depth` : undefined}
+        badge={
+          node.kind === "summary" ? (
+            <Badge
+              id={`${contentId}-depth`}
+              variant="accent"
+              size="xs"
+              className="mt-1 shrink-0 whitespace-nowrap"
+            >
+              {node.summaryDepth === undefined
+                ? "Compacted"
+                : `Compacted · depth ${node.summaryDepth}`}
+            </Badge>
+          ) : undefined
+        }
         open={open}
         chevronPosition="start"
         wrapTitle

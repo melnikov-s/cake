@@ -2770,28 +2770,31 @@ const activityWorktreeScenario: VisualCaptureScenario = {
 
 const contextOutlineScenario: VisualCaptureScenario = {
   name: "context-outline",
-  description: "Read-only Outline context sources and retained memory originals from real runtimes",
-  states: ["default", "system", "memory", "project"],
+  description: "Cake Chat and Project Chat context sources, memory depths and retained originals",
+  states: ["default", "system", "memory", "project-chat"],
   async seed(paths, theme) {
     await cakeChatScenario.seed(paths, theme);
-    await writeFile(
-      join(paths.project, "AGENTS.md"),
-      "Keep changes focused. Verify the relevant behavior before reporting completion.\n",
-    );
     return openRequestInspectorFixture(paths);
   },
   async prepare(page, state) {
-    if (state === "project") {
-      await assistantMarkdownCode.prepare(page, "default");
-    } else {
-      await cakeChatScenario.prepare(page, "default");
-      const composer = page.getByRole("combobox", { name: "Message Cake Chat", exact: true });
-      await composer.fill("Keep the context view quiet and simple.");
-      await page.getByRole("button", { name: "Send", exact: true }).click();
-      await expect(
-        page.getByText("Request captured by the local inspection fixture.", { exact: true }),
-      ).toBeVisible();
+    await cakeChatScenario.prepare(page, "default");
+    if (state === "project-chat") {
+      await page
+        .locator(
+          '[data-slot="project-header"][data-session-id^="project-chat:"] [data-slot="project-label"]',
+        )
+        .first()
+        .click();
     }
+    const composer = page.getByRole("combobox", {
+      name: state === "project-chat" ? "Message Project Chat" : "Message Cake Chat",
+      exact: true,
+    });
+    await composer.fill("Keep the context view quiet and simple.");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(
+      page.getByText("Request captured by the local inspection fixture.", { exact: true }),
+    ).toBeVisible();
     const trigger = page.getByRole("button", { name: "Browse context", exact: true });
     await trigger.click();
     const dialog = page.getByRole("dialog", { name: "Context", exact: true });
@@ -2799,9 +2802,9 @@ const contextOutlineScenario: VisualCaptureScenario = {
     await expect(dialog.getByRole("button", { name: "Close context", exact: true })).toBeFocused();
     if (state === "system")
       await dialog.getByRole("button", { name: "System prompt", exact: true }).click();
-    if (state === "project") {
-      await dialog.getByRole("button", { name: "AGENTS.md", exact: true }).click();
-      await expect(dialog).toContainText("Keep changes focused.");
+    if (state === "project-chat") {
+      await dialog.getByRole("button", { name: "Messages", exact: true }).click();
+      await expect(dialog).toContainText("Keep the context view quiet and simple.");
     }
     if (state === "memory") {
       const memory = dialog.locator('[data-source-id="memory"]');

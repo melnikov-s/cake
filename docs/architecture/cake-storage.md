@@ -366,12 +366,14 @@ store, mirror JSONL, or archive the coordinator through Project Session storage.
 Its direct `read`/`bash` tools start in the disposable sibling `scratch/`
 directory, never a project root.
 Its summary nodes and memory checkpoints live through the same SDK storage API.
-The Outline context inspector reads the committed active head, then lazily reads
-paired summary nodes and their original entries through that API. It does not
-synchronize the memory index, recompress, invoke the model's zoom tool, or change
-the head. Project Session inspection instead follows Pi's compaction-aware entry
-projection and departed-branch provenance. Both are ephemeral renderer views:
-closing discards their contents, and retained history never becomes model input.
+The Cake Chat and Project Chat context browser reads the committed active head,
+then lazily reads paired summary nodes and their original entries through that API.
+Originals are depth 0; single-original summaries are depth 1, and each balanced
+merge adds one summary layer (1 + log2 of the original count). These are tree
+layers, not model-call counts. The browser is not shown in regular Project Sessions.
+It does not synchronize the memory index, recompress, invoke the model's zoom tool,
+or change the head. It is an ephemeral renderer view: closing discards its
+contents, and retained history never becomes model input.
 Included instruction bytes are projected from the assembled prompt, not reread
 from disk. This assembled-context view is distinct from outbound request capture,
 which remains the authority for provider-transformed request bodies.

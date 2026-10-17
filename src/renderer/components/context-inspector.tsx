@@ -4,8 +4,7 @@ import type { ContextInspectorStore } from "../stores/ContextInspectorStore";
 import { ContextInspectorNode } from "./context-inspector-node";
 import { DialogBackdrop, DialogContent, DialogTitle } from "./ui/dialog";
 import { IconButton } from "./ui/icon-button";
-import { CloseIcon, ContextIcon, InfoIcon, ReloadIcon } from "./ui/icons";
-import { Popover, PopoverContent, PopoverIconTrigger } from "./ui/popover";
+import { CloseIcon, ContextIcon, ReloadIcon } from "./ui/icons";
 import { Callout } from "./ui/callout";
 import { Button } from "./ui/button";
 import { LoadingSpinner } from "./ui/loading-state";
@@ -52,21 +51,6 @@ export const ContextInspector = observer(function ContextInspector({
                 >
                   <ReloadIcon />
                 </IconButton>
-                <Popover>
-                  <PopoverIconTrigger tooltip="About this context">
-                    <InfoIcon />
-                  </PopoverIconTrigger>
-                  <PopoverContent
-                    side="bottom"
-                    align="end"
-                    className="max-w-72 text-xs leading-6 text-muted-foreground"
-                  >
-                    The assembled context when you opened this view. Providers may transform it
-                    before sending. Opening earlier memory detail only changes what you see, not
-                    what the agent receives. Instruction text comes from the included prompt, not a
-                    fresh read of files.
-                  </PopoverContent>
-                </Popover>
                 <IconButton autoFocus tooltip="Close context" onClick={close}>
                   <CloseIcon />
                 </IconButton>

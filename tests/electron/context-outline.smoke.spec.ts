@@ -103,9 +103,11 @@ for (const scope of ["global", "project-chat"] as const) {
       expect(await page.evaluate(() => window.getSelection()?.toString())).toBe(literal);
       await dialog.getByRole("button", { name: "System prompt", exact: true }).click();
       const memory = dialog.locator('[data-source-id="memory"]');
+      await expect(memory.getByText("Compacted · depth 1").first()).toBeVisible();
       await memory.getByRole("button").nth(1).click();
       await expect(memory).toContainText("Earlier detail · not in the prompt");
       await expect(memory.locator("blockquote").first()).toContainText("Keep the interface quiet.");
+      await expect(memory.getByText("Original · depth 0").first()).toBeVisible();
       await page.keyboard.press("Escape");
       await expect(dialog).toHaveCount(0);
       await expect(trigger).toBeFocused();

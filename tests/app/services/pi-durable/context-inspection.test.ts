@@ -29,10 +29,12 @@ it("projects the active memory frontier, instructions and recent messages withou
   expect(context.sources.find((source) => source.id === "memory")?.children).toEqual([
     expect.objectContaining({
       title: "user: Keep changes small",
+      summaryDepth: 3,
       detail: { memoryId: 0, memoryCount: 4 },
     }),
     expect.objectContaining({
       title: "talk: Verified focused tests",
+      summaryDepth: 1,
       detail: { memoryId: 4, memoryCount: 1 },
     }),
   ]);

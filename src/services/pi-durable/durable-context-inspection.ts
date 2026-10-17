@@ -43,6 +43,7 @@ export function durableContextInspection(
           id: `memory-${range[1]}+${range[2]}`,
           title: range[3]!,
           kind: "summary",
+          summaryDepth: 1 + Math.log2(Number(range[2])),
           source: `Pi Durable summary ${range[1]}+${range[2]}`,
           detail: { memoryId: Number(range[1]), memoryCount: Number(range[2]) },
         });

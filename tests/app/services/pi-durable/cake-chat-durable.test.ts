@@ -129,6 +129,9 @@ it("reads paired memory sources and originals without recompressing or changing 
     { memoryId: 0, memoryCount: 2 },
     { memoryId: 2, memoryCount: 2 },
   ]);
+  expect(children.sources.map((node) => node.summaryDepth)).toEqual([2, 2]);
+  const summaries = await f.engine.memory.inspect(0, 2, signal);
+  expect(summaries.sources.map((node) => node.summaryDepth)).toEqual([1, 1]);
   const leaf = await f.engine.memory.inspect(0, 1, signal);
   expect(leaf.sources[0]).toMatchObject({
     title: "You",

@@ -360,6 +360,7 @@ export function createDurableChatMemory(
           id: `memory-${child.id}+${child.n}`,
           title: child.text,
           kind: "summary",
+          summaryDepth: 1 + Math.log2(child.n),
           source: `Pi Durable summary ${child.id}+${child.n}`,
           detail: { memoryId: child.id, memoryCount: child.n },
         })),
