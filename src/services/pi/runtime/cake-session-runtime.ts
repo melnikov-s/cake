@@ -25,7 +25,6 @@ import {
   registerPendingExtensionProviders,
 } from "./extension-providers";
 import {
-  uiPartSchema,
   type Attachment,
   type ChatConfiguration,
   type PiSettingUpdate,
@@ -55,6 +54,7 @@ import { inspectSessionHistory } from "./session-inspection";
 import { listMessageReferences, readMessageReference } from "./message-references";
 import { piBuiltinSlashCommands } from "../../../contracts/conversations/session-contract";
 import { SubagentResult as subagentResultSchema } from "../../../contracts/subagents/subagent-data";
+import { subagentFinalAnswer } from "../../../contracts/subagents/subagent-report";
 import {
   jsonValueSchema,
   type JsonObject,
@@ -119,16 +119,7 @@ export function subagentCompletionMessage(value: JsonValue): string {
   if (Option.isNone(decoded)) return "A background subagent finished, but its report was invalid.";
 
   const result = decoded.value;
-  const finalAnswer = result.parts
-    .flatMap((part) => {
-      const parsed = Schema.decodeUnknownOption(uiPartSchema)(part);
-      return Option.isSome(parsed) &&
-        parsed.value.kind === "text" &&
-        parsed.value.role === "assistant"
-        ? [parsed.value.text.trim()]
-        : [];
-    })
-    .findLast(Boolean);
+  const finalAnswer = subagentFinalAnswer(result)?.trim();
   const heading = `Background subagent ${result.status}: ${result.task.slice(0, 500)}`;
   const report = finalAnswer || result.error?.trim() || "No final report was produced.";
   const available = Math.max(0, SUBAGENT_REPORT_LIMIT - heading.length - 2);

@@ -29,6 +29,7 @@ import { SessionCatalogChanges } from "../../../src/services/session-catalogs/Se
 import {
   CakeSessionRuntimes,
   makeCakeSessionRuntimesLayer,
+  PiSessionError,
 } from "../../../src/services/pi/CakeSessionRuntimes";
 import { PiModels } from "../../../src/services/pi/PiModels";
 import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
@@ -42,6 +43,8 @@ import { projectSessionEntries } from "../../../src/services/pi/runtime/session-
 import { TurnCanceledError } from "../../../src/services/pi/runtime/RuntimeTurnCompletion";
 import * as sessionChats from "../../../src/domain/conversations/sessionChats";
 import { splitSessionDigestReminder } from "../../../src/contracts/cake-chats/session-digest-reminder";
+import { messageReference } from "../../../src/contracts/conversations/message-reference";
+import { splitContextReminders } from "../../../src/services/pi/runtime/session-context-reminders";
 import {
   CAKE_CHAT_COMPOSING_HOLD_MS,
   CakeChatComposerPresence,
@@ -281,6 +284,7 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
     received,
     persisted,
     consumeQueued,
+    queue,
     transcript,
     chatTranscripts,
     recipients,
@@ -351,6 +355,282 @@ const onlyTurn = Effect.fn("SpawnedReportingTest.onlyTurn")(function* () {
 });
 
 describe("automatic spawned-session reporting", () => {
+  it.effect(
+    "keeps explicit questions, substantive messages and deliberate steering immediate without draining passive references",
+    () =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        yield* f.run(
+          Effect.gen(function* () {
+            yield* assembleCoordinator();
+            const metadata = {
+              version: 1 as const,
+              messageId: "30000000-0000-4000-8000-000000000001",
+              threadId: "30000000-0000-4000-8000-000000000002",
+              sequence: 1,
+              expectsResponse: false,
+              sender: { sessionId: "worker", title: "Worker", kind: "project-session" as const },
+            };
+            const ref = messageReference("worker", "answer");
+            const send = (
+              text: string,
+              expectsResponse = false,
+              delivery = "prompt" as "prompt" | "steer",
+            ) =>
+              sessionChats.deliver(
+                {
+                  sessionId: CAKE_CHAT_SESSION_ID,
+                  text,
+                  attachments: [],
+                  renderUserMessageAsMarkdown: false,
+                  crossSession: { ...metadata, messageId: crypto.randomUUID(), expectsResponse },
+                },
+                delivery,
+              );
+            yield* send(`[Result](${ref})`);
+            assert.equal(f.deliveries.length, 0);
+            yield* send(`Can you decide which approach to take? ${ref}`, true);
+            yield* send(
+              `Implemented the change; the failing check needs your investigation. ${ref}`,
+            );
+            yield* send(ref, false, "steer");
+            while (f.deliveries.length < 3) yield* Effect.yieldNow;
+            assert.deepEqual(f.deliveries, ["prompt", "prompt", "steer"]);
+            assert.equal((yield* f.storage.state()).deferredReferences?.length, 1);
+            // A link typed by the local user is itself an input, not a worker notification.
+            yield* sessionChats.deliver(
+              {
+                sessionId: CAKE_CHAT_SESSION_ID,
+                text: ref,
+                attachments: [],
+                renderUserMessageAsMarkdown: false,
+              },
+              "prompt",
+            );
+            while (f.deliveries.length < 4) yield* Effect.yieldNow;
+            assert.deepEqual((yield* f.storage.state()).deferredReferences, []);
+          }).pipe(
+            Effect.provide(
+              Layer.mock(TaskInputStorage, { isRecipient: () => Effect.succeed(false) }),
+            ),
+          ),
+        );
+      }),
+  );
+
+  it.effect(
+    "retains exact pending references across storage reload and a failed user-input admission",
+    () =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        yield* f.run(
+          Effect.gen(function* () {
+            yield* assembleCoordinator();
+            const item = {
+              id: "notice",
+              recipientSessionId: CAKE_CHAT_SESSION_ID,
+              text: "[Result](cake://session/worker?message=original%3Aentry)",
+            };
+            yield* f.storage.deferReferenceNotice(item);
+            const reloaded = yield* Effect.gen(function* () {
+              return yield* (yield* SessionFamilyStorage).state();
+            }).pipe(Effect.provide(familyStorageHarness(f.harness.files).layer));
+            assert.deepEqual(reloaded.deferredReferences, [item]);
+            const handle = yield* (yield* CakeSessionRuntimes).acquireSession(CAKE_CHAT_SESSION_ID);
+            yield* sessionChats
+              .deliver(
+                {
+                  sessionId: CAKE_CHAT_SESSION_ID,
+                  text: "Continue",
+                  attachments: [],
+                  renderUserMessageAsMarkdown: false,
+                },
+                "prompt",
+              )
+              .pipe(
+                Effect.provide(
+                  Layer.mock(CakeSessionRuntimes, {
+                    acquireSession: () =>
+                      Effect.succeed({
+                        ...handle,
+                        prompt: () =>
+                          Effect.fail(
+                            new PiSessionError({
+                              operation: "prompt",
+                              message: "Admission rejected",
+                            }),
+                          ),
+                      }),
+                  }),
+                ),
+                Effect.flip,
+              );
+            assert.deepEqual((yield* f.storage.state()).deferredReferences, [item]);
+            assert.deepEqual(f.deliveries, []);
+          }),
+        );
+      }),
+  );
+
+  it.effect.each(["interrupt", "blocked"] as const)(
+    "preserves intentional immediate %s result delivery even when the report is only a reference",
+    (mode) =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        yield* f.run(
+          Effect.gen(function* () {
+            yield* assembleCoordinator();
+            const turn = {
+              turnId: "40000000-0000-4000-8000-000000000001",
+              sessionId: "worker",
+              senderSessionId: CAKE_CHAT_SESSION_ID,
+              requestMessageId: "40000000-0000-4000-8000-000000000002",
+              threadId: "40000000-0000-4000-8000-000000000003",
+              reported: false,
+              outcome: "complete" as const,
+              reportPolicy: mode === "interrupt" ? ("interrupt" as const) : ("digest" as const),
+              report: {
+                outcome: mode === "blocked" ? ("blocked" as const) : ("completed" as const),
+                text: "[Result](cake://session/worker?message=entry)",
+              },
+            };
+            yield* f.storage.recordTurn(turn);
+            yield* families.deliver(turn);
+            yield* Deferred.await(f.received);
+            assert.deepEqual(f.deliveries, ["prompt"]);
+            assert.equal((yield* f.storage.state()).deferredReferences?.length ?? 0, 0);
+            assert.ok(f.transcript[0]?.includes(turn.report.text));
+          }).pipe(
+            Effect.provide(
+              Layer.mock(TaskInputStorage, { isRecipient: () => Effect.succeed(false) }),
+            ),
+          ),
+        );
+      }),
+  );
+
+  it.effect(
+    "does not turn Project Session commands or shell escapes into model inputs while references wait",
+    () =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        yield* f.run(
+          Effect.gen(function* () {
+            yield* (yield* CakeSessionRuntimes).acquire(
+              yield* projectOptions({ location, sessionId: parentId, newSession: false }),
+            );
+            yield* f.storage.deferReferenceNotice({
+              id: "notice",
+              recipientSessionId: parentId,
+              text: "[Result](cake://session/worker?message=entry)",
+            });
+            for (const text of ["/compact", "!pwd"])
+              yield* sessionChats.deliver(
+                { sessionId: parentId, text, attachments: [], renderUserMessageAsMarkdown: false },
+                "prompt",
+              );
+            while (f.transcript.length < 2) yield* Effect.yieldNow;
+            assert.deepEqual(f.transcript, ["/compact", "!pwd"]);
+            assert.equal((yield* f.storage.state()).deferredReferences?.length, 1);
+          }),
+        );
+      }),
+  );
+
+  for (const busy of [false, true]) {
+    it.effect.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/project"), parentId])(
+      `defers exact result references for ${busy ? "active" : "idle"} parent %s until its next user input`,
+      (recipientSessionId) =>
+        Effect.gen(function* () {
+          const f = yield* fixture(busy);
+          yield* f.run(
+            Effect.gen(function* () {
+              const isChat = isCakeChatSessionId(recipientSessionId);
+              if (isChat) yield* assembleCoordinator(recipientSessionId);
+              else
+                yield* (yield* CakeSessionRuntimes).acquire(
+                  yield* projectOptions({
+                    location,
+                    sessionId: recipientSessionId,
+                    newSession: false,
+                  }),
+                );
+              const refs: string[] = [];
+              for (let index = 0; index < 2; index += 1) {
+                const childId = `20000000-0000-4000-8000-00000000000${index}`;
+                const ref = messageReference(childId, `entry-${index}-${"€".repeat(100)}`);
+                refs.push(ref);
+                if (!isChat)
+                  yield* f.storage.addChild({
+                    familyId: "reference-family",
+                    parentSessionId: recipientSessionId,
+                    parentWorkingDirectory: "/project",
+                    childSessionId: childId,
+                    childWorkingDirectory: "/project",
+                    requestId: childId,
+                    projectPath: "/project",
+                    createdAt: "2026-01-01",
+                  });
+                const turn = {
+                  sessionId: childId,
+                  senderSessionId: recipientSessionId,
+                  turnId: childId,
+                  requestMessageId: childId,
+                  threadId: childId,
+                  reported: false,
+                  outcome: "complete" as const,
+                  ...(isChat ? { reportPolicy: "digest" as const } : null),
+                  report: { outcome: "completed" as const, text: `[Result](${ref})` },
+                };
+                yield* f.storage.recordTurn(turn);
+                yield* families.deliver(turn);
+                yield* families.deliver(turn); // A retry cannot create another pending notification.
+              }
+              assert.deepEqual(f.deliveries, []);
+              assert.deepEqual(f.queue, []);
+              const before = yield* f.storage.state();
+              assert.equal(before.deferredReferences?.length, 2);
+              assert.equal(before.coordinatorDigest?.length ?? 0, 0);
+              assert.deepEqual(before.turns, []);
+              const send = (text: string) =>
+                sessionChats.deliver(
+                  {
+                    sessionId: recipientSessionId,
+                    text,
+                    attachments: [],
+                    renderUserMessageAsMarkdown: false,
+                  },
+                  busy ? "follow-up" : "prompt",
+                );
+              yield* send("My next question");
+              yield* Deferred.await(f.received);
+              const submitted = busy
+                ? f.queue[0]
+                : (f.chatTranscripts.get(recipientSessionId) ?? f.transcript)[0];
+              assert.ok(submitted);
+              assert.equal(splitContextReminders(submitted).text, "My next question");
+              for (const ref of refs) assert.equal(submitted.split(ref).length - 1, 1);
+              assert.equal(f.deliveries.length, 1);
+              assert.deepEqual((yield* f.storage.state()).deferredReferences, []);
+              yield* Deferred.succeed(f.consumeQueued, undefined);
+              yield* send("Another question");
+              while (f.deliveries.length < 2) yield* Effect.yieldNow;
+              assert.equal(f.deliveries.length, 2);
+              const transcript = f.chatTranscripts.get(recipientSessionId) ?? f.transcript;
+              while (transcript.length < 2) yield* Effect.yieldNow;
+              assert.equal(transcript[1], "Another question");
+            }).pipe(
+              Effect.provide(
+                Layer.mock(TaskInputStorage, {
+                  isRecipient: () => Effect.succeed(false),
+                }),
+              ),
+            ),
+          );
+        }),
+    );
+  }
+
   it.effect.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/project")])(
     "inspects permanent chat history at its own address: %s",
     (sessionId) =>

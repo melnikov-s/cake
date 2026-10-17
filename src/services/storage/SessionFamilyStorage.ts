@@ -167,6 +167,16 @@ const Version6FamilyTurn = Schema.Struct({
   completionContract: Schema.optionalKey(Schema.Boolean),
   expectsResponse: Schema.Boolean,
 });
+/** Pending reference-only delivery intent, not a second transcript or an executable Pi queue. */
+const DeferredReferenceNotice = Schema.Struct({
+  id: BoundedId,
+  recipientSessionId: BoundedId,
+  text: Schema.String,
+});
+export interface DeferredReferenceNotice extends Schema.Schema.Type<
+  typeof DeferredReferenceNotice
+> {}
+
 /** One quiet status line waiting for the user's next Cake Chat message. */
 const CoordinatorDigestItem = Schema.Struct({
   /** Absent denotes the global chat, including existing persisted inbox items. */
@@ -186,6 +196,7 @@ export const SessionFamilyDocument = Schema.Struct({
   spawnedSessions: Schema.Array(SpawnedSession),
   /** Cake Chat's inbox of digest-policy results, drained into its next user message. */
   coordinatorDigest: Schema.optionalKey(Schema.Array(CoordinatorDigestItem)),
+  deferredReferences: Schema.optionalKey(Schema.Array(DeferredReferenceNotice)),
 });
 export interface SessionFamilyDocument extends Schema.Schema.Type<typeof SessionFamilyDocument> {}
 
@@ -236,6 +247,14 @@ export class SessionFamilyStorage extends Context.Service<
     readonly digestNotice: (
       turnId: string,
       item: CoordinatorDigestItem,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
+    /** Atomically retains an exact notification and settles its optional report obligation. */
+    readonly deferReferenceNotice: (
+      item: DeferredReferenceNotice,
+      turnIds?: ReadonlyArray<string>,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
+    readonly removeReferenceNotices: (
+      ids: ReadonlyArray<string>,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly recordLaunchReport: (
       sessionId: string,
@@ -780,6 +799,36 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             };
           }),
       );
+      const deferReferenceNotice = Effect.fn("SessionFamilyStorage.deferReferenceNotice")(
+        (item: DeferredReferenceNotice, turnIds: ReadonlyArray<string> = []) =>
+          update((document) => {
+            if (
+              turnIds.length &&
+              !document.turns.some((turn) => turnIds.includes(turn.turnId) && !turn.reported)
+            )
+              return document;
+            const notices = document.deferredReferences ?? [];
+            return {
+              ...turnIds.reduce(withoutNotice, document),
+              deferredReferences: notices.some((notice) => notice.id === item.id)
+                ? notices
+                : [...notices, item],
+            };
+          }),
+      );
+      const removeReferenceNotices = Effect.fn("SessionFamilyStorage.removeReferenceNotices")(
+        (ids: ReadonlyArray<string>) =>
+          update((document) =>
+            document.deferredReferences === undefined
+              ? document
+              : {
+                  ...document,
+                  deferredReferences: document.deferredReferences.filter(
+                    (item) => !ids.includes(item.id),
+                  ),
+                },
+          ),
+      );
       const recordLaunchReport = Effect.fn("SessionFamilyStorage.recordLaunchReport")(
         (sessionId: string, report: CakeChatLaunchReport) =>
           update((document) => ({
@@ -848,6 +897,13 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
                   ),
                 }
               : null),
+            ...(document.deferredReferences
+              ? {
+                  deferredReferences: document.deferredReferences.filter(
+                    (item) => !removedMembers.has(item.recipientSessionId),
+                  ),
+                }
+              : null),
             spawnedSessions: document.spawnedSessions.filter(
               (spawn) => spawn.projectPath !== projectPath,
             ),
@@ -875,6 +931,8 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         markNoticeAttempt,
         completeNotice,
         digestNotice,
+        deferReferenceNotice,
+        removeReferenceNotices,
         recordLaunchReport,
         removeDigest,
         withNoticeDelivery: (effect) => noticeDeliveryLock.withPermit(effect),

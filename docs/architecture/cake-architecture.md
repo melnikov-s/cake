@@ -152,6 +152,12 @@ projections needed by a surface. References do not transfer ownership.
   restored after restart. Completion status is distinct from resource disposal.
   Reports retain Cake-authored structured provenance for Markdown response
   presentation, without changing model-facing input roles.
+- Passive worker/result message-reference notifications never start or queue a parent turn.
+  Cake retains their exact links as pending delivery intents and attaches them, without reading
+  the referenced bodies, to the parent's next accepted conversational user input. This applies
+  to Project Sessions, global Cake Chat, and Project Chat. Explicit substantive messages,
+  questions/blockers, `message_parent`, deliberate steering, and requested `interrupt` reports
+  retain their immediate-delivery semantics. Commands and shell escapes do not drain references.
 - Automatic Project Session result handoff belongs to actual family parent-child assignments
   and independent sessions spawned by permanent Cake Chat, not arbitrary independent creators.
   Without an explicit report, a run's final answer becomes the result only when it answers the

@@ -1,5 +1,9 @@
 import { describeTurnStop, type TurnStop } from "../../contracts/conversations/turn-stop";
-import { appendMessageReferences } from "../../contracts/conversations/message-reference-forwarding";
+import {
+  appendMessageReferences,
+  messageReferencesInText,
+} from "../../contracts/conversations/message-reference-forwarding";
+import { isReferenceNotification } from "../../contracts/conversations/reference-notification";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 import { ensureBoard } from "../artifacts/messageBoards";
 import {
@@ -576,6 +580,18 @@ const deliverOutcome = Effect.fn("SessionFamilies.deliverOutcome")(function* (
         yield* inheritTaskInputProtection(turn.sessionId, turn.senderSessionId).pipe(
           Effect.mapError((error) => failure(error.message)),
         );
+      if (
+        turn.report?.outcome !== "blocked" &&
+        turn.report?.outcome !== "failed" &&
+        turn.reportPolicy !== "interrupt" &&
+        isReferenceNotification(text)
+      ) {
+        yield* storage.deferReferenceNotice(
+          { id: turn.turnId, recipientSessionId: turn.senderSessionId, text },
+          [turn.turnId],
+        );
+        return;
+      }
       const snapshot = yield* sender.snapshot();
       const receipt = snapshot.parts.find(
         (part) =>
@@ -743,6 +759,47 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
           return yield* inputs.grant(targetId, grants);
         })
       : [];
+    if (
+      !input.expectsResponse &&
+      input.delivery !== "steer" &&
+      !attachments.length &&
+      input.outcome !== "blocked" &&
+      input.outcome !== "failed" &&
+      isReferenceNotification(input.text)
+    ) {
+      yield* storage.withNoticeDelivery(
+        Effect.gen(function* () {
+          const requests = pending
+            ? (yield* storage.state()).turns.filter((turn) =>
+                turn.replyMessageIds?.includes(messageId),
+              )
+            : [];
+          yield* storage.deferReferenceNotice(
+            {
+              id: messageId,
+              recipientSessionId: targetId,
+              text: encoded,
+            },
+            requests.map((request) => request.turnId),
+          );
+        }),
+      );
+      return toJsonValue({
+        ok: true,
+        command,
+        status: "deferred",
+        target: {
+          kind: "cake-chat",
+          ...(targetId === CAKE_CHAT_SESSION_ID ? null : { sessionId: targetId }),
+        },
+        targetTitle: targetId === CAKE_CHAT_SESSION_ID ? "Cake Chat" : "Project Chat",
+        messageId,
+        threadId: metadata.threadId,
+        delivery: input.delivery ?? (snapshot.streaming ? "queue" : "prompt"),
+        expectsResponse: false,
+        recipientContext: crossSessionContextSnapshot(snapshot.usage?.context),
+      });
+    }
     const delivery = input.delivery ?? (snapshot.streaming ? "queue" : "prompt");
     const turnId =
       delivery === "steer"
@@ -869,6 +926,45 @@ const deliverCoordinatorNotice = Effect.fn("SessionFamilies.deliverCoordinatorNo
         resolved: false,
       })
     : Effect.void;
+  // A passive reference is not a digest summary: retain its exact identity and never
+  // truncate it into the one-line status. Explicit interrupt policy still means immediate.
+  const referenceText =
+    report &&
+    turn.reportPolicy !== "interrupt" &&
+    status !== "blocked" &&
+    status !== "failed" &&
+    (isReferenceNotification(report.text) || messageReferencesInText(report.text).length > 0)
+      ? yield* prepareCoordinatorNotice(
+          turn.senderSessionId,
+          encodeCrossSessionMessage(
+            formatCrossSessionReportText(turn.sessionId, report.outcome, report.text),
+            {
+              version: 1,
+              messageId: turn.turnId,
+              threadId: turn.threadId,
+              sequence: 1,
+              expectsResponse: false,
+              replyToMessageId: turn.requestMessageId,
+              sender: {
+                sessionId: turn.sessionId,
+                title: `Session ${turn.sessionId}`,
+                kind: isCakeChatSessionId(turn.sessionId) ? "cake-chat" : "project-session",
+              },
+            },
+          ),
+        ).pipe(Effect.mapError((error) => failure(error.message)))
+      : undefined;
+  if (referenceText && isReferenceNotification(referenceText)) {
+    yield* storage.withNoticeDelivery(
+      storage.deferReferenceNotice(
+        { id: turn.turnId, recipientSessionId: turn.senderSessionId, text: referenceText },
+        [turn.turnId],
+      ),
+    );
+    if (spawn) yield* storage.recordLaunchReport(spawn.sessionId, launchReport);
+    yield* publishLaunch;
+    return;
+  }
   if ((turn.reportPolicy ?? "interrupt") === "digest" && status !== "blocked") {
     const title = yield* sessionTitle(turn.sessionId, spawn?.workingDirectory).pipe(
       Effect.catch(() => Effect.succeed(undefined)),

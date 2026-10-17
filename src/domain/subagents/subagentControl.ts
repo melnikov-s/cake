@@ -16,6 +16,7 @@ import type { AgentOperationControl } from "../../contracts/agent/cake-operation
 import type { SubagentCoordinator } from "../../services/subagents/SubagentCoordinator";
 import type { SubagentEnvironment } from "../../services/subagents/SubagentEnvironment";
 import type { ApplicationState } from "../../services/storage/ApplicationState";
+import type { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import * as subagents from "./subagents";
 
 type SubagentControlRequirements =
@@ -23,7 +24,8 @@ type SubagentControlRequirements =
   | CakeSessionRuntimes
   | SubagentCoordinator
   | SubagentEnvironment
-  | TaskInputStorage;
+  | TaskInputStorage
+  | SessionFamilyStorage;
 
 export interface SubagentControlOptions {
   readonly runEffect: <A, E>(

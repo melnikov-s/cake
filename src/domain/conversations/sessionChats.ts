@@ -23,6 +23,10 @@ import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorag
 import type { PiQueuedMessages } from "../../contracts/conversations/pending-message-data";
 import { encodeCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import {
+  addReferenceNotifications,
+  isReferenceNotification,
+} from "../../contracts/conversations/reference-notification";
+import {
   TurnId,
   type SessionChatPromptInput,
   SessionChatError,
@@ -89,46 +93,85 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
   delivery: "prompt" | "steer" | "follow-up",
 ) {
   const handle = yield* acquire(input.sessionId);
-  if (handle.profile !== "CakeChatSession" && input.crossSession)
-    yield* inheritTaskInputProtection(input.crossSession.sender.sessionId, input.sessionId).pipe(
-      asError("deliver"),
+  const primary = handle.profile === "CakeChatSession" || handle.profile === "ProjectSession";
+  const storage = primary ? yield* SessionFamilyStorage : undefined;
+  const admission = Effect.gen(function* () {
+    if (handle.profile !== "CakeChatSession" && input.crossSession)
+      yield* inheritTaskInputProtection(input.crossSession.sender.sessionId, input.sessionId).pipe(
+        asError("deliver"),
+      );
+    const message =
+      handle.profile === "CakeChatSession"
+        ? yield* prepareCoordinatorMessage(input).pipe(asError("deliver"))
+        : input;
+    // Only passive source notifications wait; explicit questions and deliberate steering still run.
+    if (
+      storage &&
+      input.crossSession &&
+      !input.attachments.length &&
+      delivery !== "steer" &&
+      isReferenceNotification(encodeCrossSessionMessage(input.text, input.crossSession))
+    ) {
+      yield* storage
+        .deferReferenceNotice({
+          id: input.crossSession.messageId,
+          recipientSessionId: input.sessionId,
+          text: encodeCrossSessionMessage(message.text, message.crossSession ?? input.crossSession),
+        })
+        .pipe(asError("deliver"));
+      return TurnId.make(input.crossSession.messageId);
+    }
+    const references =
+      storage &&
+      !message.crossSession &&
+      !(handle.profile === "ProjectSession" && /^[!/]/.test(message.text))
+        ? ((yield* storage.state().pipe(asError("deliver"))).deferredReferences?.filter(
+            (item) => item.recipientSessionId === input.sessionId,
+          ) ?? [])
+        : [];
+    // A user message to Cake Chat yields any report-triggered run and carries the quiet inbox.
+    const userMessage =
+      handle.profile === "CakeChatSession" && !message.crossSession
+        ? yield* cakeChatDigest.prepareUserMessage(handle, message.text).pipe(asError("deliver"))
+        : undefined;
+    const text = message.crossSession
+      ? encodeCrossSessionMessage(message.text, message.crossSession)
+      : addReferenceNotifications(
+          userMessage?.text ?? message.text,
+          references.map((item) => item.text),
+        );
+    const turnId = TurnId.make(
+      yield* deliverConversation(
+        Effect.succeed(handle),
+        // Steering into the run that just yielded would have nothing left to steer.
+        userMessage?.interruptedReport && delivery === "steer" ? "follow-up" : delivery,
+        text,
+        projectAttachments(
+          yield* prepareTaskInputs(
+            input.sessionId,
+            handle.profile === "CakeChatSession",
+            message.attachments,
+          ).pipe(asError("deliver")),
+        ),
+        input.renderUserMessageAsMarkdown,
+        input.presentationMode,
+        input.responseMode,
+      ).pipe(asError("deliver")),
     );
-  const message =
-    handle.profile === "CakeChatSession"
-      ? yield* prepareCoordinatorMessage(input).pipe(asError("deliver"))
-      : input;
-  // A user message to Cake Chat yields any report-triggered run and carries the quiet inbox.
-  const userMessage =
-    handle.profile === "CakeChatSession" && !message.crossSession
-      ? yield* cakeChatDigest.prepareUserMessage(handle, message.text).pipe(asError("deliver"))
-      : undefined;
-  const text = message.crossSession
-    ? encodeCrossSessionMessage(message.text, message.crossSession)
-    : (userMessage?.text ?? message.text);
-  const turnId = TurnId.make(
-    yield* deliverConversation(
-      Effect.succeed(handle),
-      // Steering into the run that just yielded would have nothing left to steer.
-      userMessage?.interruptedReport && delivery === "steer" ? "follow-up" : delivery,
-      text,
-      projectAttachments(
-        yield* prepareTaskInputs(
-          input.sessionId,
-          handle.profile === "CakeChatSession",
-          message.attachments,
-        ).pipe(asError("deliver")),
-      ),
-      input.renderUserMessageAsMarkdown,
-      input.presentationMode,
-      input.responseMode,
-    ).pipe(asError("deliver")),
+    if (userMessage?.digestIds.length)
+      yield* (yield* SessionFamilyStorage)
+        .removeDigest(userMessage.digestIds)
+        .pipe(asError("deliver"));
+    if (storage && references.length)
+      yield* storage
+        .removeReferenceNotices(references.map((item) => item.id))
+        .pipe(asError("deliver"));
+    yield* handle.publishSessionChanged().pipe(asError("deliver"));
+    return turnId;
+  });
+  return yield* (storage ? storage.withNoticeDelivery(admission) : admission).pipe(
+    asError("deliver"),
   );
-  if (userMessage?.digestIds.length)
-    yield* (yield* SessionFamilyStorage)
-      .removeDigest(userMessage.digestIds)
-      .pipe(asError("deliver"));
-  yield* handle.publishSessionChanged().pipe(asError("deliver"));
-  return turnId;
 });
 
 export const abort = Effect.fn("SessionChats.abort")(function* (

@@ -4,6 +4,7 @@ import { Cause, Deferred, Effect, Exit, Layer, Queue, Schema, Stream } from "eff
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
 import { SessionFamilyStorageError } from "../../../src/contracts/storage/session-family-storage-errors";
+import { SessionSendBatchReceipt } from "../../../src/contracts/conversations/session-send-batch";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import { route } from "../../../src/domain/session-families/sessionFamilyMessaging";
 import { ProjectSessionError } from "../../../src/contracts/project-sessions/project-session-data";
@@ -234,6 +235,63 @@ it.effect.each([
         Effect.provide(environment(pi, changes)),
       );
     }),
+);
+
+it.effect.each([
+  { streaming: false, mode: "reference" },
+  { streaming: true, mode: "reference" },
+  { streaming: false, mode: "question" },
+  { streaming: false, mode: "steer" },
+  { streaming: false, mode: "blocked" },
+  { streaming: false, mode: "substantive" },
+])("defers only passive family reference messages (%j)", (scenario) =>
+  Effect.gen(function* () {
+    const received = yield* Queue.unbounded<string>();
+    const pi = makeCakeSessionRuntimesLayer({
+      sessionIds: () => Stream.empty,
+      catalog: () => Stream.empty,
+      catalogEntry: () => Effect.succeed(undefined),
+      inspect: () => Effect.succeed(undefined),
+      changelog: () => Effect.succeed(""),
+      createRuntime: (options) =>
+        Effect.succeed({
+          ...fakeRuntime(options, () => undefined),
+          snapshot: async () => ({
+            ...snapshot,
+            sessionId: options.sessionId ?? "unknown",
+            streaming: scenario.streaming,
+          }),
+          prompt: async (text) => {
+            await Effect.runPromise(Queue.offer(received, text));
+          },
+        }),
+    });
+    yield* Effect.gen(function* () {
+      yield* addFamily;
+      const text =
+        scenario.mode === "substantive"
+          ? "Implemented the fix. [Result](cake://session/child?message=entry)"
+          : "[Result](cake://session/child?message=entry)";
+      const result = yield* route(caller, "sessions.send", {
+        sessionId: "child",
+        text,
+        ...(scenario.mode === "question" ? { expectsResponse: true } : null),
+        ...(scenario.mode === "steer" ? { delivery: "steer" as const } : null),
+        ...(scenario.mode === "blocked" ? { outcome: "blocked" as const } : null),
+      });
+      const state = yield* (yield* SessionFamilyStorage).state();
+      if (scenario.mode === "reference") {
+        const receipt = yield* Schema.decodeUnknownEffect(SessionSendBatchReceipt)(result);
+        assert.equal(receipt.status, "deferred");
+        assert.equal(state.deferredReferences?.length, 1);
+        assert.ok(state.deferredReferences?.[0]?.text.includes(text));
+        assert.equal(yield* Queue.size(received), 0);
+      } else {
+        assert.equal(state.deferredReferences?.length ?? 0, 0);
+        assert.ok((yield* Queue.take(received)).includes(text));
+      }
+    }).pipe(Effect.provide(environment(pi)));
+  }),
 );
 
 it.effect("records a substantive completion report without sending it before settlement", () =>

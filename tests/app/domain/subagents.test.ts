@@ -20,6 +20,8 @@ import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-ope
 import { configureCakeSessionRuntime } from "../../../src/layers/CakeOperations";
 import { makeSubagentControl } from "../../../src/domain/subagents/subagentControl";
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
+import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
+import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { TestClock } from "effect/testing";
 import * as subagents from "../../../src/domain/subagents/subagents";
 import {
@@ -110,7 +112,11 @@ const applicationLayer = Layer.effect(
 
 interface Fixture {
   readonly layer: Layer.Layer<
-    ApplicationState | CakeSessionRuntimes | SubagentCoordinator | SubagentEnvironment
+    | ApplicationState
+    | CakeSessionRuntimes
+    | SubagentCoordinator
+    | SubagentEnvironment
+    | SessionFamilyStorage
   >;
   readonly parentOptions: CakeSessionRuntimeAcquireOptions;
   readonly childStarted: Queue.Queue<string>;
@@ -127,6 +133,7 @@ interface Fixture {
 
 const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
   failStart = false,
+  finalAnswer?: string,
 ): Effect.fn.Return<Fixture> {
   const childStarted = yield* Queue.unbounded<string>();
   const childGates = yield* Ref.make<ReadonlyMap<string, Deferred.Deferred<void>>>(new Map());
@@ -173,12 +180,22 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
                     kind: "text" as const,
                     role: "assistant" as const,
                     status: "complete" as const,
-                    text: "Evidence: config.ts:12 defines the setting.",
+                    text: finalAnswer ?? "Evidence: config.ts:12 defines the setting.",
                   },
                 ]
               : []),
           ]
-        : [],
+        : answered && finalAnswer
+          ? [
+              {
+                id: "answer",
+                kind: "text",
+                role: "assistant",
+                status: "complete",
+                text: finalAnswer,
+              },
+            ]
+          : [],
       streaming,
     });
     return {
@@ -299,6 +316,7 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
     applicationLayer,
     makeCakeSessionRuntimesLayer(adapter),
     SubagentCoordinatorLive,
+    familyStorageHarness().layer,
     makeSubagentEnvironmentLayer({
       location: (workingDirectory) =>
         Effect.succeed({
@@ -498,6 +516,7 @@ describe("subagent exact message references", () => {
             | SubagentCoordinator
             | SubagentEnvironment
             | TaskInputStorage
+            | SessionFamilyStorage
           >();
           const caller = cakeChatParent(fixture);
           const options = {
@@ -604,6 +623,7 @@ describe("subagent attachment references", () => {
             | SubagentCoordinator
             | SubagentEnvironment
             | TaskInputStorage
+            | SessionFamilyStorage
           >();
           const caller = cakeChatParent(fixture);
           const control = makeSubagentControl({
@@ -1166,6 +1186,40 @@ describe("Cake Chat project investigators", () => {
 });
 
 describe("Subagents", () => {
+  it.effect.each([false, true])(
+    "retains a private worker's exact reference without waking its %s Cake Chat parent",
+    (chat) =>
+      Effect.gen(function* () {
+        const reference = "[Result](cake://session/worker?message=exact%3Aentry)";
+        const fixture = yield* makeFixture(false, reference);
+        yield* Effect.gen(function* () {
+          const caller = chat ? cakeChatParent(fixture) : parent(fixture);
+          const started = yield* subagents.start(
+            { task: "Investigate", model: { prefer: "current" } },
+            caller,
+          );
+          const childId = yield* Queue.take(fixture.childStarted);
+          yield* completeChild(fixture, childId);
+          const coordinator = yield* SubagentCoordinator;
+          while (
+            (yield* SubscriptionRef.get(coordinator.state)).handles.get(started.handleId)
+              ?.completionDisposition !== "notified"
+          )
+            yield* Effect.yieldNow;
+          assert.deepEqual(yield* Ref.get(fixture.completions), []);
+          assert.deepEqual(yield* Ref.get(fixture.parentMessages), []);
+          const storage = yield* SessionFamilyStorage;
+          assert.deepEqual(
+            (yield* storage.state()).deferredReferences?.map(({ recipientSessionId, text }) => ({
+              recipientSessionId,
+              text,
+            })),
+            [{ recipientSessionId: caller.parentSessionId, text: reference }],
+          );
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+  );
+
   it.effect("uses one stable public handle without exposing the private Pi Session ID", () =>
     Effect.gen(function* () {
       const fixture = yield* makeFixture();
@@ -1378,7 +1432,10 @@ describe("Subagents", () => {
     }),
   );
 
-  it.effect("gives the child one bounded tool for messaging its parent", () =>
+  it.effect.each([
+    "I found a blocker in the queue policy.",
+    "[Report](cake://session/worker?message=entry)",
+  ])("keeps deliberate message_parent communication immediate: %s", (text) =>
     Effect.gen(function* () {
       const fixture = yield* makeFixture();
       const program = Effect.gen(function* () {
@@ -1393,20 +1450,18 @@ describe("Subagents", () => {
         assert.ok(tool);
 
         yield* Effect.promise(() =>
-          tool.execute(
-            "message-call",
-            { text: "I found a blocker in the queue policy." } as never,
-            undefined,
-            undefined,
-            {} as never,
-          ),
+          tool.execute("message-call", { text } as never, undefined, undefined, {} as never),
         );
 
         while ((yield* Ref.get(fixture.parentMessages)).length === 0) yield* Effect.yieldNow;
         const messages = yield* Ref.get(fixture.parentMessages);
         assert.equal(messages.length, 1);
         assert.match(messages[0] ?? "", /Message from subagent/);
-        assert.match(messages[0] ?? "", /blocker in the queue policy/);
+        assert.ok(messages[0]?.includes(text));
+        assert.equal(
+          (yield* (yield* SessionFamilyStorage).state()).deferredReferences?.length ?? 0,
+          0,
+        );
         yield* completeChild(fixture, childId);
       });
       yield* program.pipe(Effect.provide(fixture.layer));

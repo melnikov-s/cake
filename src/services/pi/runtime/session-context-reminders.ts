@@ -4,18 +4,22 @@ import {
 } from "../../../contracts/conversations/response-mode-reminders";
 import { stripPresentationModeReminder } from "../../../contracts/conversations/presentation-mode-reminders";
 import { splitSessionDigestReminder } from "../../../contracts/cake-chats/session-digest-reminder";
+import { splitReferenceNotifications } from "../../../contracts/conversations/reference-notification";
 
 /** Only remove Cake-owned blocks at their injection boundaries, never user-authored tags. */
 export function splitContextReminders(text: string) {
   const withoutResponse = stripResponseModeReminder(text);
   const withoutPresentation = stripPresentationModeReminder(withoutResponse);
-  const digest = splitSessionDigestReminder(withoutPresentation);
+  const references = splitReferenceNotifications(withoutPresentation);
+  const digest = splitSessionDigestReminder(references.text);
   const body = digest.text;
   const reminders: { title: string; text: string }[] = [];
   if (withoutPresentation !== withoutResponse) {
     const block = withoutResponse.match(/^<system-reminder>[\s\S]*?<\/system-reminder>/)?.[0];
     if (block) reminders.push({ title: "Cake · presentation mode", text: block });
   }
+  if (references.reminder)
+    reminders.push({ title: "Cake · reference notifications", text: references.reminder });
   if (digest.reminder) reminders.push({ title: "Cake · session updates", text: digest.reminder });
   if (withoutResponse !== text) {
     const block = Object.values(responseModeReminders).find((reminder) => text.includes(reminder));

@@ -1,5 +1,6 @@
 import { messageRefsSchema } from "../../contracts/conversations/message-reference";
 import { appendMessageReferences } from "../../contracts/conversations/message-reference-forwarding";
+import { isReferenceNotification } from "../../contracts/conversations/reference-notification";
 import { inputRefsSchema } from "../../contracts/conversations/task-input";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 import { prepareTaskInputs } from "../conversations/taskInputs";
@@ -236,6 +237,38 @@ export const route: (
     false,
     refs.map((reference) => ({ kind: "forwarded-input" as const, name: "Attachment", reference })),
   );
+  if (
+    !expectsResponse &&
+    delivery !== "steer" &&
+    !attachments.length &&
+    input.outcome !== "blocked" &&
+    input.outcome !== "failed" &&
+    isReferenceNotification(encoded)
+  ) {
+    yield* families.withNoticeDelivery(
+      families.deferReferenceNotice(
+        {
+          id: messageId,
+          recipientSessionId: targetSessionId,
+          text: encoded,
+        },
+        preparedRequests.map((request) => request.turnId),
+      ),
+    );
+    return toJsonValue({
+      ok: true,
+      command,
+      status: "deferred",
+      targetTitle: destinationSummary?.title ?? "Project Session",
+      target: { sessionId: targetSessionId, workspacePath: destinationLocation.workingDirectory },
+      messageId,
+      threadId,
+      delivery,
+      expectsResponse: false,
+      ...(replyToMessageId ? { replyToMessageId } : null),
+      recipientContext: crossSessionContextSnapshot(destinationSnapshot.usage?.context),
+    });
+  }
   const turnId =
     delivery === "steer"
       ? yield* destination.steer(encoded, attachments, false)

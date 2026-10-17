@@ -21,6 +21,9 @@ import {
 import { getState } from "../application/application";
 import { TaskInputReference, inputRefsSchema } from "../../contracts/conversations/task-input";
 import { messageRefsSchema } from "../../contracts/conversations/message-reference";
+import { isReferenceNotification } from "../../contracts/conversations/reference-notification";
+import { subagentFinalAnswer } from "../../contracts/subagents/subagent-report";
+import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import type {
   SubagentMessageAccess,
   SubagentMessageFactory,
@@ -502,13 +505,27 @@ const deliverCompletion = Effect.fn("Subagents.deliverCompletion")(function* (
 ) {
   const handle = yield* requireHandleById(handleId);
   if (!handle.result || handle.completionDisposition !== "notifying") return;
-  const delivered = handle.parentPiHandle
-    ? handle.parentPiHandle.notifySubagentCompletion(parentResult(handle, handle.result)).pipe(
-        asError("completion"),
-        Effect.catchTag("SubagentError", () => Effect.void),
+  const answer = subagentFinalAnswer(handle.result);
+  if (handle.result.status === "complete" && answer && isReferenceNotification(answer)) {
+    const storage = yield* SessionFamilyStorage;
+    yield* storage
+      .withNoticeDelivery(
+        storage.deferReferenceNotice({
+          id: crypto.randomUUID(),
+          recipientSessionId: handle.parentSessionId,
+          text: answer,
+        }),
       )
-    : Effect.void;
-  yield* delivered;
+      .pipe(asError("completion"));
+  } else {
+    const delivered = handle.parentPiHandle
+      ? handle.parentPiHandle.notifySubagentCompletion(parentResult(handle, handle.result)).pipe(
+          asError("completion"),
+          Effect.catchTag("SubagentError", () => Effect.void),
+        )
+      : Effect.void;
+    yield* delivered;
+  }
   yield* mutateHandle(handleId, (current) =>
     current.completionDisposition === "notifying"
       ? { ...current, completionDisposition: "notified" }

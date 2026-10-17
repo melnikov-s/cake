@@ -31,7 +31,14 @@ export const SessionSendBatchReceipt = Schema.Struct({
   threadId: Schema.optionalKey(sessionId),
   turnId: Schema.optionalKey(sessionId),
   delivery,
-  status: Schema.Literals(["accepted", "queued", "delivered", "processing", "answered"]),
+  status: Schema.Literals([
+    "accepted",
+    "queued",
+    "delivered",
+    "processing",
+    "answered",
+    "deferred",
+  ]),
   expectsResponse: Schema.optionalKey(Schema.Boolean),
   report: Schema.optionalKey(CakeChatReportPolicy),
 });

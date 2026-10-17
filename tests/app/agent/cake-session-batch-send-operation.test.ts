@@ -60,6 +60,24 @@ describe("sessions.send-batch operation", () => {
     expect(result.text).not.toContain("recipientContext");
   });
 
+  it("accepts reference deferrals as successful admissions without inventing a parent turn", async () => {
+    const result = await invoke(
+      registry(async () => ({ ...receipt("a"), status: "deferred" })),
+      {
+        sessionIds: ["a"],
+        text: "[Result](cake://session/worker?message=entry)",
+      },
+    );
+    expect(result.structuredContent).toMatchObject({
+      result: {
+        status: "complete",
+        expectsResponse: false,
+        outcomes: [{ sessionId: "a", ok: true, status: "deferred", delivery: "prompt" }],
+      },
+    });
+    expect(result.structuredContent).not.toHaveProperty("result.outcomes.0.turnId");
+  });
+
   it.each([
     { sessionIds: [], text: "message" },
     { sessionIds: ["a", "a"], text: "message" },

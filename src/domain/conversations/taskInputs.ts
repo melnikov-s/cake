@@ -3,6 +3,7 @@ import {
   messageReferencesInText,
 } from "../../contracts/conversations/message-reference-forwarding";
 import { Effect } from "effect";
+import { protectedResponseNotice } from "../../contracts/conversations/reference-notification";
 import {
   encodeCrossSessionMessage,
   parseCrossSessionMessage,
@@ -28,10 +29,7 @@ export const prepareCoordinatorMessage = Effect.fn("Conversations.prepareCoordin
     if (!(yield* inputs.isRecipient(input.crossSession.sender.sessionId))) return input;
     return {
       ...input,
-      text: appendMessageReferences(
-        "The task session sent a response. Open the Project Session to read it.",
-        messageReferencesInText(input.text),
-      ),
+      text: appendMessageReferences(protectedResponseNotice, messageReferencesInText(input.text)),
       attachments: [],
       crossSession: {
         ...input.crossSession,
