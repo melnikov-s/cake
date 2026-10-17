@@ -1,3 +1,6 @@
+import { SessionActivityIndicator } from "./session-activity-indicator";
+import { StatusDot } from "./ui/status-dot";
+import type { CakeChatCollectionStore } from "../stores/CakeChatCollectionStore";
 import { useState } from "react";
 import { observer } from "r-state-tree/react";
 import { cn } from "../lib/utils";
@@ -32,6 +35,8 @@ export interface SidebarProjectGroupProps {
   sessionMetadata: SessionMetadataStore;
   projects: ProjectCatalogStore;
   chat: ProjectWorkbenchStore;
+  cakeChat: CakeChatCollectionStore;
+  onOpenCakeChat(sessionId: string): void;
   shell: AppShellStore;
   appearance: AppearanceSettingsStore;
   path: string;
@@ -53,6 +58,8 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
   sessionMetadata,
   projects,
   chat,
+  cakeChat,
+  onOpenCakeChat,
   shell,
   appearance,
   path,
@@ -78,6 +85,13 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
     (resolved
       ? sessionList.isResolvedGroupExpanded(path)
       : sessionList.isActiveGroupExpanded(path));
+  const projectChat = !resolved ? cakeChat.projectChat(path) : undefined;
+  const projectChatSelected = Boolean(
+    projectChat &&
+    shell.selection.kind === "cake-chat" &&
+    shell.selection.sessionId === projectChat.sessionId,
+  );
+  const projectChatActivity = projectChat ? cakeChat.activityFor(projectChat.sessionId) : undefined;
   const empty = sessions.length === 0;
   const hasMore = resolved
     ? sessionList.hasMoreResolvedProjectSessions(path)
@@ -90,6 +104,8 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
     >
       {!flattenSessions && (
         <div
+          data-slot="project-header"
+          data-session-id={projectChat?.sessionId}
           className={cn(
             "group/proj flex h-8 w-full items-center gap-1 px-1 select-none text-muted-foreground [@media(pointer:coarse)]:h-auto [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:flex-wrap [@media(pointer:coarse)]:[&_.icon-button]:opacity-100",
             focusMode &&
@@ -137,16 +153,19 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
               "h-7 min-w-0 flex-1 justify-start px-1 text-[13px] font-medium text-inherit hover:text-foreground",
               dragHandleProps && "cursor-grab active:cursor-grabbing",
               focusMode && "h-9 text-base font-semibold",
+              projectChatSelected && "bg-sidebar-active text-primary",
             )}
             type="button"
+            aria-current={projectChatSelected ? "page" : undefined}
             aria-label={
               resolved
                 ? `${expanded ? "Collapse" : "Expand"} ${projects.nameForPath(path)} resolved`
-                : `Start new chat in ${projects.nameFromPath(path)}`
+                : `Open Project Chat for ${projects.nameFromPath(path)}`
             }
-            onClick={() =>
-              resolved ? sessionList.toggleResolvedGroupExpanded(path) : onCreateSession(path)
-            }
+            onClick={() => {
+              if (resolved) sessionList.toggleResolvedGroupExpanded(path);
+              else if (projectChat) onOpenCakeChat(projectChat.sessionId);
+            }}
             onContextMenu={(event) => {
               event.preventDefault();
               void store
@@ -161,74 +180,106 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
             <span className="truncate">{projects.nameForPath(path)}</span>
           </Button>
           {!resolved && (
-            <div className="flex shrink-0 items-center gap-1 [@media(pointer:coarse)]:basis-full [@media(pointer:coarse)]:justify-end">
-              {!focusMode && (
-                <>
-                  <IconButton
-                    className="size-6 flex items-center justify-center rounded text-muted-foreground hover:bg-sidebar-hover hover:text-foreground opacity-0 transition-opacity group-hover/proj:opacity-100 focus-visible:opacity-100"
-                    tooltip="Focus on project"
-                    ariaLabel={`Focus on ${projects.nameFromPath(path)}`}
-                    onClick={() => onToggleFocus?.(path)}
-                  >
-                    <ExpandIcon />
-                  </IconButton>
-                  <Popover open={sortMenuOpen} onOpenChange={setSortMenuOpen}>
-                    <PopoverIconTrigger
-                      className="size-6 flex items-center justify-center rounded text-muted-foreground hover:bg-sidebar-hover hover:text-foreground opacity-0 transition-opacity group-hover/proj:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100"
-                      tooltip={`Sort sessions by ${sessionList.projectSessionSort(path)}`}
-                      ariaLabel={`Sort sessions in ${projects.nameFromPath(path)}`}
-                      aria-haspopup="menu"
-                    >
-                      <SortIcon />
-                    </PopoverIconTrigger>
-                    <PopoverContent
-                      side="bottom"
-                      align="end"
-                      role="menu"
-                      aria-label={`Sort sessions in ${projects.nameFromPath(path)}`}
-                      className="w-40 rounded-lg p-1"
-                    >
-                      {(["date", "label"] as const).map((sort) => {
-                        const selected = sessionList.projectSessionSort(path) === sort;
-                        return (
-                          <Button
-                            key={sort}
-                            variant="ghost"
-                            role="menuitemradio"
-                            aria-checked={selected}
-                            className="h-8 w-full justify-start gap-2 rounded-md px-2 text-xs font-normal"
-                            onClick={() => {
-                              sessionList.setProjectSessionSort(path, sort);
-                              setSortMenuOpen(false);
-                            }}
-                          >
-                            <span className="flex w-4 justify-center">
-                              {selected && <CheckIcon />}
-                            </span>
-                            By {sort === "date" ? "date" : "label"}
-                          </Button>
-                        );
-                      })}
-                    </PopoverContent>
-                  </Popover>
-                </>
+            <div className="grid shrink-0 items-center [@media(pointer:coarse)]:basis-full [@media(pointer:coarse)]:justify-end">
+              {projectChat && (
+                <div
+                  data-slot="project-chat-status"
+                  className={cn(
+                    "pointer-events-none col-start-1 row-start-1 justify-self-end pr-2 transition-opacity group-hover/proj:opacity-0 group-focus-within/proj:opacity-0 [@media(pointer:coarse)]:hidden",
+                    sortMenuOpen && "opacity-0",
+                  )}
+                >
+                  {projectChatActivity ? (
+                    <SessionActivityIndicator
+                      activity={projectChatActivity}
+                      selected={projectChatSelected}
+                    />
+                  ) : (
+                    <StatusDot
+                      className="size-2"
+                      role="img"
+                      aria-hidden={undefined}
+                      aria-label="Ready"
+                      title="Project Chat ready"
+                    />
+                  )}
+                </div>
               )}
-              <IconButton
-                className="size-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-sidebar-hover opacity-0 group-hover/proj:opacity-100 focus-visible:opacity-100 transition-opacity phone:opacity-100"
-                tooltip="Project settings"
-                ariaLabel={`Open settings for ${projects.nameFromPath(path)}`}
-                onClick={() => onOpenSettings(path)}
+              <div
+                data-slot="project-actions"
+                className={cn(
+                  "col-start-1 row-start-1 flex items-center gap-1 opacity-0 transition-opacity group-hover/proj:opacity-100 group-focus-within/proj:opacity-100 [@media(pointer:coarse)]:opacity-100",
+                  sortMenuOpen && "opacity-100",
+                )}
               >
-                <SettingsIcon />
-              </IconButton>
-              <IconButton
-                className="size-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-sidebar-hover opacity-0 group-hover/proj:opacity-100 focus-visible:opacity-100 transition-opacity phone:opacity-100"
-                tooltip="New chat"
-                ariaLabel={`New chat in ${projects.nameFromPath(path)}`}
-                onClick={() => onCreateSession(path)}
-              >
-                <PlusIcon />
-              </IconButton>
+                {!focusMode && (
+                  <>
+                    <IconButton
+                      className="size-6 flex items-center justify-center rounded text-muted-foreground hover:bg-sidebar-hover hover:text-foreground"
+                      tooltip="Focus on project"
+                      ariaLabel={`Focus on ${projects.nameFromPath(path)}`}
+                      onClick={() => onToggleFocus?.(path)}
+                    >
+                      <ExpandIcon />
+                    </IconButton>
+                    <Popover open={sortMenuOpen} onOpenChange={setSortMenuOpen}>
+                      <PopoverIconTrigger
+                        className="size-6 flex items-center justify-center rounded text-muted-foreground hover:bg-sidebar-hover hover:text-foreground"
+                        tooltip={`Sort sessions by ${sessionList.projectSessionSort(path)}`}
+                        ariaLabel={`Sort sessions in ${projects.nameFromPath(path)}`}
+                        aria-haspopup="menu"
+                      >
+                        <SortIcon />
+                      </PopoverIconTrigger>
+                      <PopoverContent
+                        side="bottom"
+                        align="end"
+                        role="menu"
+                        aria-label={`Sort sessions in ${projects.nameFromPath(path)}`}
+                        className="w-40 rounded-lg p-1"
+                      >
+                        {(["date", "label"] as const).map((sort) => {
+                          const selected = sessionList.projectSessionSort(path) === sort;
+                          return (
+                            <Button
+                              key={sort}
+                              variant="ghost"
+                              role="menuitemradio"
+                              aria-checked={selected}
+                              className="h-8 w-full justify-start gap-2 rounded-md px-2 text-xs font-normal"
+                              onClick={() => {
+                                sessionList.setProjectSessionSort(path, sort);
+                                setSortMenuOpen(false);
+                              }}
+                            >
+                              <span className="flex w-4 justify-center">
+                                {selected && <CheckIcon />}
+                              </span>
+                              By {sort === "date" ? "date" : "label"}
+                            </Button>
+                          );
+                        })}
+                      </PopoverContent>
+                    </Popover>
+                  </>
+                )}
+                <IconButton
+                  className="size-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-sidebar-hover"
+                  tooltip="Project settings"
+                  ariaLabel={`Open settings for ${projects.nameFromPath(path)}`}
+                  onClick={() => onOpenSettings(path)}
+                >
+                  <SettingsIcon />
+                </IconButton>
+                <IconButton
+                  className="size-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-sidebar-hover"
+                  tooltip="New chat"
+                  ariaLabel={`New chat in ${projects.nameFromPath(path)}`}
+                  onClick={() => onCreateSession(path)}
+                >
+                  <PlusIcon />
+                </IconButton>
+              </div>
             </div>
           )}
         </div>

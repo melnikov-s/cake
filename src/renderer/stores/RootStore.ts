@@ -389,6 +389,7 @@ export class RootStore extends Store<{
   @child
   get projectRemovalStore(): ProjectRemovalStore {
     return createStore(ProjectRemovalStore, {
+      cakeChat: () => this.cakeChatCollectionStore,
       catalog: this.sessionCatalogStore,
       registry: this.sessionRegistry,
       shell: this.appShellStore,
@@ -434,8 +435,32 @@ export class RootStore extends Store<{
     });
   }
 
+  get workspaceSession() {
+    const active = this.appShellStore.activeConversation;
+    return active?.kind === "cake-chat"
+      ? this.cakeChatCollectionStore.registry.find(active.sessionId)
+      : this.projectWorkbenchStore.activeSession;
+  }
+
+  get workspaceProjectPath() {
+    const active = this.appShellStore.activeConversation;
+    return active?.kind === "cake-chat"
+      ? this.cakeChatCollectionStore.summaries.find((chat) => chat.sessionId === active.sessionId)
+          ?.projectPath
+      : this.projectWorkbenchStore.projectOpenStore.projectPath;
+  }
+
   private activeTerminalTarget(): TerminalTarget | undefined {
     const selection = this.appShellStore.selection;
+    if (selection.kind === "cake-chat") {
+      const projectPath = this.workspaceProjectPath;
+      return projectPath
+        ? {
+            workingDirectory: projectPath,
+            label: this.projectCatalogStore.nameForPath(projectPath),
+          }
+        : undefined;
+    }
     if (selection.kind !== "project-session") return undefined;
     const summary = this.sessionCatalogStore.find(selection.sessionId);
     if (this.sessionMetadataStore.isResolved(selection.sessionId)) return undefined;
@@ -720,6 +745,8 @@ export class RootStore extends Store<{
       extensionUi: () => this.extensionUiStore,
       catalog: this.sessionCatalogStore,
       startCakeChat: (prompt) => this.navigationStore.startCakeChat(prompt),
+      presentationSession: () => this.workspaceSession,
+      presentationProjectPath: () => this.workspaceProjectPath,
       browserHost: this.props.browserHost,
       onBrowserUnavailable: () =>
         this.toastStore.show({

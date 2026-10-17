@@ -195,9 +195,11 @@ test("forks sessions across working directories", async () => {
     });
     await writeFile(setupRelease, "continue\n");
     await expect(page.getByText("Here is the plan.")).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByRole("button", { name: "Start new chat in project" })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Open Project Chat for project" })).toHaveCount(
+      1,
+    );
     await expect(
-      page.getByRole("button", { name: /^Start new chat in focused-fix-[a-f0-9]{6}$/ }),
+      page.getByRole("button", { name: /^Open Project Chat for focused-fix-[a-f0-9]{6}$/ }),
     ).toHaveCount(0);
 
     // Preview hydration happens before the workspace runtime finishes opening. Wait

@@ -1,4 +1,8 @@
 import { Effect, Option, Schema, type Scope } from "effect";
+import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
+import { CakeChatConfiguration } from "../../services/pi-durable/CakeChatConfiguration";
+import * as chatMetadata from "../cake-chats/cakeChatMetadata";
+import * as chatTargets from "../cake-chats/cakeChatTargets";
 import { isBackendAgentSetting } from "../../contracts/application/agent-settings-tools";
 import {
   AgentSettingsInvocation,
@@ -368,17 +372,42 @@ export const invoke: (
         }
         case "sessions.list": {
           const summaries = yield* Effect.forEach(
-            yield* sessionReferences.catalog(),
+            (yield* sessionReferences.catalog()).filter(
+              ({ sessionId }) => !isCakeChatSessionId(sessionId),
+            ),
             ({ sessionId }) =>
               lookupSession(sessionId).pipe(Effect.catch(() => Effect.succeed(undefined))),
           );
           const ordered = summaries
             .filter((item): item is AgentSessionSummary => item !== undefined)
             .sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
-          const sessions = (yield* Effect.forEach(ordered, controlSession)).filter(
+          const projectEntries = (yield* Effect.forEach(
+            ordered.filter(
+              (session) =>
+                !invocation.arguments.launchedByCakeChat ||
+                caller.kind !== "cake-chat" ||
+                session.cakeChatLaunch?.requesterSessionId === caller.sessionId,
+            ),
+            controlSession,
+          )).filter(
             (session) =>
               !invocation.arguments.launchedByCakeChat || (session.launch && !session.resolved),
           );
+          const chatConfiguration = yield* Effect.serviceOption(CakeChatConfiguration);
+          const chatEntries =
+            Option.isSome(chatConfiguration) && !invocation.arguments.launchedByCakeChat
+              ? (yield* chatMetadata.catalog(chatConfiguration.value.location)).map((chat) => ({
+                  sessionId: chat.sessionId,
+                  title: chat.projectPath ? `${chat.title} / Project Chat` : chat.title,
+                  kind: "cake-chat",
+                  projectPath: chat.projectPath,
+                  modifiedAt: chat.modifiedAt,
+                  resolved: false,
+                  launch: undefined,
+                  activity: chat.unread ? "unread" : undefined,
+                }))
+              : [];
+          const sessions = [...projectEntries, ...chatEntries];
           return toJsonValue({
             ok: true,
             command,
@@ -399,6 +428,44 @@ export const invoke: (
           );
         default: {
           const sessionId = yield* sessionReferences.resolve(invocation.arguments.sessionId);
+          if (isCakeChatSessionId(sessionId)) {
+            const handle = yield* chatTargets.acquireAvailable(sessionId);
+            const snapshot = yield* handle.snapshot();
+            if (invocation.name !== "sessions.info") {
+              const target = { sessionId, workspacePath: snapshot.workspacePath };
+              const result =
+                invocation.name === "sessions.cake"
+                  ? yield* handle.callCakeOperation(
+                      invocation.arguments.command,
+                      invocation.arguments.input ?? {},
+                    )
+                  : yield* handle.inspectSession({
+                      ...invocation.arguments,
+                      kind: yield* Schema.decodeUnknownEffect(
+                        Schema.Literals([
+                          "history",
+                          "compactions",
+                          "tree",
+                          "context",
+                          "usage",
+                          "commands",
+                        ]),
+                      )(invocation.name.slice("sessions.".length)),
+                    });
+              return toJsonValue({ ok: true, command, target, result });
+            }
+            return toJsonValue({
+              ok: true,
+              command,
+              session: {
+                sessionId,
+                kind: "cake-chat",
+                workingDirectory: snapshot.workspacePath,
+                sessionFile: snapshot.sessionFile,
+              },
+              status: snapshot.streaming ? "running" : "idle",
+            });
+          }
           const known = yield* lookupSession(sessionId);
           const target = { workspacePath: known.workingDirectory, sessionId };
           if (invocation.name === "sessions.info") {

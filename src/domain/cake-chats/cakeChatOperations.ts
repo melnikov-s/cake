@@ -3,7 +3,7 @@ import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
 import * as cakeChatRuntime from "./cakeChatRuntime";
-import type { CakeChatRuntimeConfiguration } from "./cakeChatRuntime";
+import type { CakeChatRuntimeConfiguration } from "../../services/pi-durable/CakeChatConfiguration";
 import {
   acquire as acquireConversation,
   deliverWhenAvailable,
@@ -16,23 +16,19 @@ import {
   type CakeChatStartInput,
   type CakeChatTarget,
 } from "../../contracts/cake-chats/cake-chat-data";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
+import * as cakeChatLocations from "./cakeChatLocations";
 import { asError, publishCatalogChange, sessionNamespace } from "./cakeChatMetadata";
 import { prepareTaskInputs } from "../conversations/taskInputs";
 
-const acquireTarget = Effect.fn("CakeChats.acquireTarget")(function* (
+export const acquireTarget = Effect.fn("CakeChats.acquireTarget")(function* (
   target: CakeChatTarget,
   newSession: boolean,
   configuration: CakeChatRuntimeConfiguration,
 ) {
-  if (target.sessionId !== CAKE_CHAT_SESSION_ID)
-    return yield* new CakeChatError({
-      operation: "acquire",
-      message: "Cake Chat has one permanent conversation",
-    });
+  const location = yield* cakeChatLocations.resolve(configuration.location, target.sessionId);
   const sessions = yield* CakeSessionRuntimes;
   const options = yield* cakeChatRuntime
-    .acquireOptions({ configuration, target, newSession })
+    .acquireOptions({ configuration: { ...configuration, location }, target, newSession })
     .pipe(asError("acquire"));
   return yield* acquireConversation(sessions, options).pipe(asError("acquire"));
 });
@@ -84,7 +80,10 @@ export const start = Effect.fn("CakeChats.start")(function* (
   configuration: CakeChatRuntimeConfiguration,
 ) {
   const target: CakeChatTarget = { sessionId: input.sessionId, tools: input.tools };
-  const exists = yield* sessionNamespace(target.sessionId, configuration.location);
+  const exists = yield* sessionNamespace(
+    target.sessionId,
+    yield* cakeChatLocations.resolve(configuration.location, target.sessionId),
+  );
   const handle = yield* acquireTarget(target, !exists, configuration);
   if (input.newSession.configuration)
     yield* handle.applyConfiguration(input.newSession.configuration).pipe(asError("start"));

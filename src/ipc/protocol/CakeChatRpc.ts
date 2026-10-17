@@ -62,7 +62,7 @@ export const CakeChatRpc = RpcGroup.make(
    * and `sessionChats` operations once they exist.
    */
   Rpc.make("cakeChats.observeSideChats", {
-    payload: {},
+    payload: { sessionId: Schema.optionalKey(Schema.String) },
     success: DiscussionCatalogUpdate,
     error: CakeChatError,
     stream: true,
@@ -73,12 +73,12 @@ export const CakeChatRpc = RpcGroup.make(
     error: CakeChatError,
   }),
   Rpc.make("cakeChats.setUnread", {
-    payload: { unread: Schema.Boolean },
+    payload: { unread: Schema.Boolean, sessionId: Schema.optionalKey(Schema.String) },
     error: CakeChatError,
   }),
   /** Advisory: while the composer holds unsent text, interrupt-policy session results wait. */
   Rpc.make("cakeChats.setComposing", {
-    payload: { composing: Schema.Boolean },
+    payload: { composing: Schema.Boolean, sessionId: Schema.optionalKey(Schema.String) },
   }),
   Rpc.make("cakeChats.respondControl", {
     payload: {

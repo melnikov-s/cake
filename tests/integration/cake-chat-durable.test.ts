@@ -28,6 +28,7 @@ import {
   CakeChatDurable,
   makeCakeChatDurableLive,
 } from "../../src/services/pi-durable/CakeChatDurable";
+import { projectChatSessionId } from "../../src/domain/cake-chats/cakeChatLocations";
 import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-identity";
 import type { CakeSessionRuntime } from "../../src/services/pi/runtime/cake-session-runtime";
 import type { ConversationSnapshot } from "../../src/contracts/conversations/session-contract";
@@ -136,6 +137,7 @@ async function fixture() {
   const open = async (
     globalControl?: CakeSessionRuntimeSetup["globalControl"],
     attachmentReferenceControl?: CakeSessionRuntimeSetup["attachmentReferenceControl"],
+    scope?: Pick<CakeSessionRuntimeSetup, "sessionId" | "sessionDir" | "additionalSystemPrompt">,
   ) => {
     const runtime = await serviceRuntime.runPromise(
       service.createRuntime({
@@ -144,6 +146,7 @@ async function fixture() {
         agentDir,
         sessionDir,
         sessionId: CAKE_CHAT_SESSION_ID,
+        ...scope,
         requestUi: async () => undefined,
         globalControl: globalControl ?? { tools: [], invoke: async () => ({}) },
         attachmentReferenceControl,
@@ -239,6 +242,64 @@ async function fixture() {
     },
   };
 }
+
+it("isolates global and project originals, OptMem, requests and side-chat Harnesses across reopen", async () => {
+  const f = await fixture();
+  const scopes = [
+    { sessionId: CAKE_CHAT_SESSION_ID, sessionDir: f.sessionDir },
+    {
+      sessionId: projectChatSessionId("/zombies"),
+      sessionDir: join(f.directory, "project-chats", "zombies"),
+    },
+    {
+      sessionId: projectChatSessionId("/finances"),
+      sessionDir: join(f.directory, "project-chats", "finances"),
+    },
+  ];
+  const originals = ["GLOBAL_PRIVATE", "ZOMBIES_PRIVATE", "FINANCES_PRIVATE"];
+  const opened = [];
+  const forks = [];
+  for (const [index, scope] of scopes.entries()) {
+    const chat = await f.open(undefined, undefined, scope);
+    opened.push(chat);
+    await chat.runtime.prompt(originals[index]!, "prompt", [], false, ids.first);
+    const before = await chat.runtime.snapshot();
+    const fork = await chat.runtime.fork(entryOf(before, originals[index]!), "Side chat");
+    expect(fork.sessionId.startsWith(scope.sessionId + ":side-chat:")).toBe(true);
+    forks.push(fork);
+  }
+  expect(new Set(forks.map((fork) => fork.sessionId)).size).toBe(3);
+  for (const [index, scope] of scopes.entries()) {
+    const chat = opened[index]!;
+    const preview = await f.serviceRuntime.runPromise(
+      f.service.inspectSideChat(forks[index]!.sessionId),
+    );
+    expect(preview?.sessionId).toBe(forks[index]!.sessionId);
+    expect(preview?.parts).toEqual([]);
+    const history = await f.serviceRuntime.runPromise(f.service.requestHistory(scope.sessionId));
+    expect(history.entries).toHaveLength(1);
+    await chat.close();
+    const reopened = await f.open(undefined, undefined, scope);
+    await reopened.runtime.prompt("Recall our earlier discussion", "prompt", [], false, ids.second);
+    const request = JSON.stringify(f.requests.at(-1));
+    expect(request).toContain(originals[index]);
+    for (const other of originals.filter((_, i) => i !== index))
+      expect(request).not.toContain(other);
+    const summary = await f.serviceRuntime.runPromise(
+      f.service.catalogEntry(scope.sessionDir, scope.sessionId),
+    );
+    expect(summary?.id).toBe(scope.sessionId);
+    expect(summary?.messageCount).toBe(4);
+    const side = await f.openSideChat(forks[index]!.sessionId);
+    await side.runtime.prompt("Continue only this side discussion", "prompt", [], false, ids.third);
+    const sideRequest = JSON.stringify(f.requests.at(-1));
+    expect(sideRequest).toContain(originals[index]);
+    for (const other of originals.filter((_, i) => i !== index))
+      expect(sideRequest).not.toContain(other);
+    await side.close();
+    await reopened.close();
+  }
+});
 
 it("saves and reloads global Pi settings while permanent Cake Chat is busy without losing its turn, queue or history", async () => {
   const f = await fixture();

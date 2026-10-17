@@ -169,6 +169,8 @@ const Version6FamilyTurn = Schema.Struct({
 });
 /** One quiet status line waiting for the user's next Cake Chat message. */
 const CoordinatorDigestItem = Schema.Struct({
+  /** Absent denotes the global chat, including existing persisted inbox items. */
+  coordinatorSessionId: Schema.optionalKey(BoundedId),
   /** The settled obligation's turn ID; digesting is idempotent per turn. */
   id: BoundedId,
   sessionId: BoundedId,

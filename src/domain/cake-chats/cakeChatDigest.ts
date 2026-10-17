@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import type { UiPart } from "../../contracts/conversations/session-contract";
 import {
   addSessionDigestReminder,
@@ -36,7 +37,9 @@ export const prepareUserMessage = Effect.fn("CakeChatDigest.prepareUserMessage")
   if (interruptedReport) yield* handle.abort();
   const storage = yield* SessionFamilyStorage;
   const state = yield* storage.state();
-  const items = state.coordinatorDigest ?? [];
+  const items = (state.coordinatorDigest ?? []).filter(
+    (item) => (item.coordinatorSessionId ?? CAKE_CHAT_SESSION_ID) === snapshot.sessionId,
+  );
   const knownIds = [
     ...new Set([
       ...items.map((item) => item.sessionId),
@@ -48,7 +51,9 @@ export const prepareUserMessage = Effect.fn("CakeChatDigest.prepareUserMessage")
     const sessions = yield* CakeSessionRuntimes;
     const configuration = yield* Effect.serviceOption(ProjectSessionConfiguration);
     if (configuration._tag === "Some")
-      for (const spawn of state.spawnedSessions) {
+      for (const spawn of state.spawnedSessions.filter(
+        (item) => item.requester.sessionId === snapshot.sessionId,
+      )) {
         const status = yield* sessions.currentStatus({
           sessionId: spawn.sessionId,
           workingDirectory: spawn.workingDirectory,

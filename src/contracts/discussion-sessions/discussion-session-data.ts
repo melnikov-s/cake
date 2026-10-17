@@ -137,6 +137,7 @@ export interface DiscussionSessionStartInput extends Schema.Schema.Type<
  * message anchor and first prompt.
  */
 export const CakeChatSideChatStartInput = Schema.Struct({
+  parentSessionId: Schema.optionalKey(Schema.String),
   anchor: DiscussionAnchor,
   text: DiscussionSessionStartInput.fields.text,
   annotations: DiscussionSessionStartInput.fields.annotations,

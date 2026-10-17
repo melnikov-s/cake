@@ -2,7 +2,10 @@ import { describeTurnStop, type TurnStop } from "../../contracts/conversations/t
 import { appendMessageReferences } from "../../contracts/conversations/message-reference-forwarding";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 import { ensureBoard } from "../artifacts/messageBoards";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
+import {
+  CAKE_CHAT_SESSION_ID,
+  isCakeChatSessionId,
+} from "../../contracts/cake-chats/cake-chat-identity";
 import { inheritTaskInputProtection, prepareCoordinatorNotice } from "../conversations/taskInputs";
 import type {
   CakeChatLaunchStatus,
@@ -37,6 +40,7 @@ import {
   type FamilyTurn,
   type SpawnedSession,
 } from "../../services/storage/SessionFamilyStorage";
+import * as chatTargets from "../cake-chats/cakeChatTargets";
 import { SessionFamilyStorageError } from "../../contracts/storage/session-family-storage-errors";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
 import {
@@ -84,7 +88,9 @@ export const admitTurn = Effect.fn("SessionFamilies.admitTurn")(function* (
         familyMember(family, senderSessionId) !== undefined;
       // Cake Chat may ask any Project Session for a result, whether or not it launched it.
       const coordinatorRequest =
-        senderSessionId === CAKE_CHAT_SESSION_ID && request?.metadata.sender.kind === "cake-chat";
+        senderSessionId !== undefined &&
+        isCakeChatSessionId(senderSessionId) &&
+        request?.metadata.sender.kind === "cake-chat";
       // A reply obligation belongs to this one message, never to the session
       // relationship: user-started turns and messages that asked for no
       // response are not journaled and therefore never produce notices.
@@ -407,7 +413,7 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
     const spawn = (yield* storage.state()).spawnedSessions.find(
       (item) => item.sessionId === turn.sessionId,
     );
-    if (turn.senderSessionId === CAKE_CHAT_SESSION_ID && spawn)
+    if (isCakeChatSessionId(turn.senderSessionId) && spawn)
       yield* storage.recordLaunchReport(spawn.sessionId, {
         status: "stopped",
         summary: stoppedSummary(turn.stop),
@@ -424,7 +430,7 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
       });
     return;
   }
-  if (turn.senderSessionId === CAKE_CHAT_SESSION_ID)
+  if (isCakeChatSessionId(turn.senderSessionId))
     return yield* deliverCoordinatorNotice(
       turn,
       (yield* storage.state()).spawnedSessions.find((item) => item.sessionId === turn.sessionId),
@@ -547,7 +553,7 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
   yield* deliverOutcome(turn, sender, text);
 });
 
-/** One receipt/retry policy for family parents and the global coordinator. */
+/** One receipt/retry policy for family parents and permanent chats. */
 const deliverOutcome = Effect.fn("SessionFamilies.deliverOutcome")(function* (
   turn: FamilyTurn,
   sender: CakeSessionHandle,
@@ -562,7 +568,7 @@ const deliverOutcome = Effect.fn("SessionFamilies.deliverOutcome")(function* (
       );
       if (!current) return;
       turn = current;
-      if (turn.senderSessionId === CAKE_CHAT_SESSION_ID)
+      if (isCakeChatSessionId(turn.senderSessionId))
         text = yield* prepareCoordinatorNotice(turn.senderSessionId, text).pipe(
           Effect.mapError((error) => failure(error.message)),
         );
@@ -635,21 +641,22 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
     const state = yield* storage.state();
     const spawn = state.spawnedSessions.find((item) => item.sessionId === sessionId);
     // A session Cake Chat did not launch still answers Cake Chat's own requests to it.
-    const owesCoordinator =
-      !spawn &&
-      state.turns.some(
-        (turn) =>
-          turn.sessionId === sessionId &&
-          turn.senderSessionId === CAKE_CHAT_SESSION_ID &&
-          !turn.reported,
-      ) &&
-      !(yield* storage.familyForMember(sessionId));
-    const requesterId =
-      spawn?.requester.sessionId ?? (owesCoordinator ? CAKE_CHAT_SESSION_ID : undefined);
-    // Cake Chat has no session address of its own: a send without sessionId reaches it.
+    const owedCoordinator =
+      !spawn && !(yield* storage.familyForMember(sessionId))
+        ? state.turns.find(
+            (turn) =>
+              turn.sessionId === sessionId &&
+              isCakeChatSessionId(turn.senderSessionId) &&
+              !turn.reported &&
+              (!input.threadId || input.threadId === turn.threadId) &&
+              (!input.replyToMessageId || input.replyToMessageId === turn.requestMessageId),
+          )
+        : undefined;
+    const requesterId = spawn?.requester.sessionId ?? owedCoordinator?.senderSessionId;
+    // Omitted send targets mean global Cake Chat; replies follow their originating chat.
     const targetId =
       command === "sessions.reply" ? requesterId : (input.sessionId ?? CAKE_CHAT_SESSION_ID);
-    if (targetId !== CAKE_CHAT_SESSION_ID) return undefined;
+    if (!targetId || !isCakeChatSessionId(targetId)) return undefined;
     const sessions = yield* CakeSessionRuntimes;
     const executingIds = yield* sessions.executingTurnIds({
       sessionId,
@@ -694,7 +701,7 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
           expectsResponse: false,
         });
     }
-    const destination = yield* sessions.acquireSession(targetId);
+    const destination = yield* chatTargets.acquireAvailable(targetId);
     const snapshot = yield* destination.snapshot();
     const messageId = crypto.randomUUID();
     const replyToMessageId = pending?.requestMessageId ?? input.replyToMessageId;
@@ -750,9 +757,11 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
     return toJsonValue({
       ok: true,
       command,
-      // No sessionId: Cake Chat is addressed by omitting it, never by a session reference.
-      target: { kind: "cake-chat" },
-      targetTitle: "Cake Chat",
+      target: {
+        kind: "cake-chat",
+        ...(targetId === CAKE_CHAT_SESSION_ID ? null : { sessionId: targetId }),
+      },
+      targetTitle: targetId === CAKE_CHAT_SESSION_ID ? "Cake Chat" : "Project Chat",
       status: delivery === "queue" ? "queued" : "accepted",
       delivery,
       turnId,
@@ -840,7 +849,6 @@ const deliverCoordinatorNotice = Effect.fn("SessionFamilies.deliverCoordinatorNo
   spawn: SpawnedSession | undefined,
 ) {
   const storage = yield* SessionFamilyStorage;
-  const sessions = yield* CakeSessionRuntimes;
   const catalogs = yield* SessionCatalogChanges;
   const report =
     turn.outcome === "complete" || (turn.outcome === "failed" && turn.report?.outcome === "failed")
@@ -868,6 +876,7 @@ const deliverCoordinatorNotice = Effect.fn("SessionFamilies.deliverCoordinatorNo
     yield* storage.withNoticeDelivery(
       storage.digestNotice(turn.turnId, {
         id: turn.turnId,
+        coordinatorSessionId: turn.senderSessionId,
         sessionId: turn.sessionId,
         title: (title ?? `Session ${turn.sessionId}`).slice(0, 500),
         ...launchReport,
@@ -877,11 +886,15 @@ const deliverCoordinatorNotice = Effect.fn("SessionFamilies.deliverCoordinatorNo
     return;
   }
   const presence = yield* Effect.serviceOption(CakeChatComposerPresence);
-  if (!turn.deliveryTurnId && Option.isSome(presence) && (yield* presence.value.holdsInterrupts))
+  if (
+    !turn.deliveryTurnId &&
+    Option.isSome(presence) &&
+    (yield* presence.value.holdsInterrupts(turn.senderSessionId))
+  )
     return;
   // Cake Chat is a primary runtime destination, never a Project catalog lookup.
-  // Until its owning surface assembles the runtime after startup, leave the outbox durable.
-  const sender = yield* sessions.acquireSession(CAKE_CHAT_SESSION_ID);
+  // Cold permanent chats use the same composition as UI and direct messaging.
+  const sender = yield* chatTargets.acquireAvailable(turn.senderSessionId);
   const text = encodeCrossSessionMessage(
     report
       ? formatCrossSessionReportText(turn.sessionId, report.outcome, report.text)
@@ -909,7 +922,7 @@ const deliverCoordinatorNotice = Effect.fn("SessionFamilies.deliverCoordinatorNo
       sender: {
         sessionId: turn.sessionId,
         title: `Session ${turn.sessionId}`,
-        kind: "project-session",
+        kind: isCakeChatSessionId(turn.sessionId) ? "cake-chat" : "project-session",
         ...(spawn ? { workingDirectory: spawn.workingDirectory } : null),
       },
     },

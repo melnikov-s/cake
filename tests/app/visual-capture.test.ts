@@ -72,7 +72,10 @@ describe("visual capture arguments", () => {
 describe("browser visual scenarios", () => {
   it("advertises browser proof surfaces as named deterministic scenarios", () => {
     expect(browserVisualScenarios.map(({ name, states }) => [name, states])).toEqual([
-      ["browser-sidebar-defaults", ["default", "restored-open", "restored-closed"]],
+      [
+        "browser-sidebar-defaults",
+        ["default", "restored-open", "restored-closed", "restored-settings"],
+      ],
       [
         "browser-responsive",
         [

@@ -2,7 +2,7 @@ import { Effect, FileSystem, Layer, Path } from "effect";
 import { projectReviewThread, type ReviewThreadRecord } from "../contracts/reviews/review-contract";
 import { ReviewStorage } from "../services/storage/ReviewStorage";
 import { ApplicationState } from "../services/storage/ApplicationState";
-import { CAKE_CHAT_SESSION_ID } from "../contracts/cake-chats/cake-chat-identity";
+import { isCakeChatSessionId } from "../contracts/cake-chats/cake-chat-identity";
 import {
   cakeChatSideChatSystemPrompt,
   reviewSidecarSystemPrompt,
@@ -140,7 +140,7 @@ export const makeDiscussionSessionEnvironmentLive = (
               record.parentSessionId,
               record.id,
             );
-            if (record.parentSessionId !== CAKE_CHAT_SESSION_ID)
+            if (!isCakeChatSessionId(record.parentSessionId))
               return reviewSidecarSystemPrompt(stored, contextPath);
             const branchContext = (yield* fileSystem
               .exists(contextPath)

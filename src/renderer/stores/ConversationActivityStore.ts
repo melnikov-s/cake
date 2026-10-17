@@ -1,5 +1,5 @@
 import { Store } from "r-state-tree";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
+import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import {
   launchedSessions,
   launchedSessionStatus,
@@ -17,8 +17,8 @@ export class ConversationActivityStore extends Store<{
 }> {
   sessionsFor(sessionId: string): LaunchedSession[] {
     const activity = (id: string) => this.props.metadata().sessionActivity(id);
-    if (sessionId === CAKE_CHAT_SESSION_ID)
-      return launchedSessions(this.props.catalog.sessions, activity);
+    if (isCakeChatSessionId(sessionId))
+      return launchedSessions(this.props.catalog.sessions, activity, sessionId);
     return this.props.catalog.sessions
       .filter(
         (session) =>

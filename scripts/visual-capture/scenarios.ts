@@ -1609,7 +1609,15 @@ const cakeChatScenario: VisualCaptureScenario = {
   name: "cake-chat",
   description:
     "Permanent coordinator with original history, memory settings and outbound request inspection",
-  states: ["default", "settings", "inspector"],
+  states: [
+    "default",
+    "settings",
+    "inspector",
+    "project",
+    "project-terminal",
+    "project-hover",
+    "browser",
+  ],
   async seed(paths, theme) {
     await assistantMarkdownCode.seed(paths, theme);
     const directory = join(paths.cakeHome, "pi", "global-chat");
@@ -1675,6 +1683,30 @@ const cakeChatScenario: VisualCaptureScenario = {
       await page.getByRole("button", { name: "Inspect context", exact: true }).click();
       await expect(page.getByText("No captured context yet.", { exact: true })).toBeVisible();
     }
+    if (state.startsWith("project")) {
+      await page
+        .getByRole("button", { name: /^Open Project Chat for / })
+        .first()
+        .click();
+      await expect(page.getByRole("combobox", { name: "Message Project Chat" })).toBeVisible();
+      await page.getByRole("combobox", { name: "Message Project Chat" }).click();
+    }
+    if (state === "project-terminal") {
+      await page.getByRole("button", { name: "Terminal", exact: true }).click();
+      const terminal = page.locator('section[aria-label="Terminal"]');
+      await expect(terminal).toHaveAttribute("aria-hidden", "false");
+      await terminal.locator(".xterm-screen:visible").click();
+      await page.keyboard.type("pwd");
+      await page.keyboard.press("Enter");
+      await expect(terminal.locator(".xterm-rows:visible")).toContainText("/project");
+    }
+    if (state === "browser") {
+      await page.getByRole("button", { name: "Open Browser Mode", exact: true }).click();
+      await expect(page.getByRole("textbox", { name: "Browser address" })).toBeVisible();
+      await expect(
+        page.getByText("Will I still see my original conversation history?", { exact: true }),
+      ).toBeVisible();
+    }
     if (state === "settings") {
       await page.getByRole("button", { name: "Open settings", exact: true }).click();
       await page
@@ -1686,7 +1718,12 @@ const cakeChatScenario: VisualCaptureScenario = {
       ).toBeVisible();
     }
     await page.waitForFunction(() => document.fonts.status === "loaded");
-    await page.mouse.move(1, 1);
+    if (state === "project-hover")
+      await page
+        .getByRole("button", { name: /^Open Project Chat for / })
+        .first()
+        .hover();
+    else await page.mouse.move(1, 1);
   },
   region: (page) => page.locator("body"),
 };
@@ -2795,7 +2832,8 @@ const serverClientSettingsScenario: VisualCaptureScenario = {
       await page.waitForFunction(() =>
         document
           .querySelector("#setting-browser-sharing [role=status]")
-          ?.textContent?.includes("serving"),
+          ?.textContent?.toLowerCase()
+          .includes("serving"),
       );
     }
     await page.waitForFunction(() => document.fonts.status === "loaded");

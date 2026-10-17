@@ -4,7 +4,7 @@ import {
   messageNavigationTarget,
   messageRefsSchema,
 } from "../../contracts/conversations/message-reference";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
+import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { SessionChatError } from "../../contracts/conversations/conversation-data";
 import { acquireTarget } from "../project-sessions/projectSessionOperations";
@@ -17,14 +17,13 @@ export const describeMessageReferences = Effect.fn("MessageReferences.describeFo
     return yield* Effect.forEach(refs, (ref) =>
       Effect.gen(function* () {
         const target = messageNavigationTarget(ref);
-        const handle =
-          target.sessionId === CAKE_CHAT_SESSION_ID
-            ? yield* (yield* CakeSessionRuntimes).acquireSession(target.sessionId)
-            : yield* acquireTarget(
-                yield* findLocation({ sessionId: target.sessionId }),
-                target.sessionId,
-                false,
-              );
+        const handle = isCakeChatSessionId(target.sessionId)
+          ? yield* (yield* CakeSessionRuntimes).acquireSession(target.sessionId)
+          : yield* acquireTarget(
+              yield* findLocation({ sessionId: target.sessionId }),
+              target.sessionId,
+              false,
+            );
         const page = yield* Schema.decodeUnknownEffect(MessageListResult)(
           yield* handle.inspectSession({
             kind: "messages-list",

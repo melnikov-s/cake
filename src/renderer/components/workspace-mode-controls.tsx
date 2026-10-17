@@ -13,6 +13,7 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
   terminalOpen,
   browserHost = false,
   onToggleTree,
+  ideAvailable = true,
   onBackToAgent,
   onOpenBrowser,
   onOpenIde,
@@ -24,7 +25,8 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
   terminalAvailable: boolean;
   terminalOpen: boolean;
   browserHost?: boolean;
-  onToggleTree(): void;
+  onToggleTree?(): void;
+  ideAvailable?: boolean;
   onBackToAgent(): void;
   onOpenBrowser(): void;
   onOpenIde(): void;
@@ -45,6 +47,7 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
         </IconButton>
       );
 
+    if (!ideAvailable) return null;
     return (
       <IconButton
         key={target}
@@ -61,15 +64,17 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
 
   return (
     <>
-      <IconButton
-        data-cake-hint-key="r"
-        tooltip="Session tree"
-        hotkey="toggle-session-tree"
-        aria-pressed={treeOpen}
-        onClick={onToggleTree}
-      >
-        <TreeIcon />
-      </IconButton>
+      {onToggleTree && (
+        <IconButton
+          data-cake-hint-key="r"
+          tooltip="Session tree"
+          hotkey="toggle-session-tree"
+          aria-pressed={treeOpen}
+          onClick={onToggleTree}
+        >
+          <TreeIcon />
+        </IconButton>
+      )}
       <div className="mx-0.5 h-4 w-px shrink-0 bg-border/60" aria-hidden="true" />
       <WorkLogControls store={chat} />
       <div className="mx-0.5 h-4 w-px shrink-0 bg-border/60" aria-hidden="true" />

@@ -1,10 +1,12 @@
 import { Effect, Stream } from "effect";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
+import * as locations from "../../domain/cake-chats/cakeChatLocations";
 import * as cakeChatMetadata from "../../domain/cake-chats/cakeChatMetadata";
 import * as cakeChatOperations from "../../domain/cake-chats/cakeChatOperations";
 import * as cakeChatSideChats from "../../domain/cake-chats/cakeChatSideChats";
 import * as requestInspection from "../../domain/cake-chats/requestInspection";
 import { CakeChatError } from "../../contracts/cake-chats/cake-chat-data";
-import type { CakeChatRuntimeConfiguration } from "../../domain/cake-chats/cakeChatRuntime";
+import type { CakeChatRuntimeConfiguration } from "../../services/pi-durable/CakeChatConfiguration";
 import { CakeChatComposerPresence } from "../../services/session-catalogs/CakeChatComposerPresence";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { CakeChatRpc } from "../protocol/CakeChatRpc";
@@ -54,15 +56,28 @@ export const makeCakeChatHandlers = (configuration: CakeChatRuntimeConfiguration
           ),
         ),
       ),
-    "cakeChats.observeSideChats": () =>
-      Stream.unwrap(cakeChatSideChats.observeCatalog(configuration.location)),
-    "cakeChats.startSideChat": (input) => cakeChatSideChats.start(input, configuration.location),
-    "cakeChats.setUnread": ({ unread }) => cakeChatMetadata.setUnread(unread),
+    "cakeChats.observeSideChats": ({ sessionId = CAKE_CHAT_SESSION_ID }) =>
+      Stream.unwrap(
+        Effect.flatMap(locations.resolve(configuration.location, sessionId), (location) =>
+          cakeChatSideChats.observeCatalog(location, sessionId),
+        ),
+      ),
+    "cakeChats.startSideChat": (input) =>
+      Effect.flatMap(
+        locations.resolve(configuration.location, input.parentSessionId ?? CAKE_CHAT_SESSION_ID),
+        (location) => cakeChatSideChats.start(input, location),
+      ),
+    "cakeChats.setUnread": ({ unread, sessionId = CAKE_CHAT_SESSION_ID }) =>
+      locations
+        .resolve(configuration.location, sessionId)
+        .pipe(Effect.andThen(cakeChatMetadata.setUnread(unread, sessionId))),
     // Advisory presence: hosts without the service simply never hold deliveries.
-    "cakeChats.setComposing": ({ composing }) =>
+    "cakeChats.setComposing": ({ composing, sessionId }) =>
       Effect.serviceOption(CakeChatComposerPresence).pipe(
         Effect.flatMap((presence) =>
-          presence._tag === "Some" ? presence.value.setComposing(composing) : Effect.void,
+          presence._tag === "Some"
+            ? presence.value.setComposing(composing, sessionId)
+            : Effect.void,
         ),
       ),
     "cakeChats.respondControl": ({ controlRequestId, result }) =>

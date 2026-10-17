@@ -4,6 +4,7 @@ import { Model, id } from "r-state-tree";
 export class CakeChatSummary extends Model {
   @id sessionId = "";
   title = "";
+  projectPath: string | undefined;
   createdAt = "";
   modifiedAt = "";
   messageCount = 0;

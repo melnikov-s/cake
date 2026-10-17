@@ -8,6 +8,7 @@ import { useAppHotkeys } from "../hooks/use-app-hotkeys";
 import { AppOverlayHost } from "./app-overlay-host";
 import { AppShellLayout } from "./app-shell-layout";
 import { AppSurface } from "./app-surface";
+import { CakeChatWorkspaceSurface } from "./cake-chat-workspace-surface";
 import { ProjectWorkspaceSurface } from "./project-workspace-surface";
 
 export const App = observer(function App({ browserMode = false }: { browserMode?: boolean }) {
@@ -20,11 +21,11 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
 
   const phone = usePhoneLayout();
   const workbench = root.projectWorkbenchStore;
-  const session = workbench.activeSession;
+  const session = root.workspaceSession;
   const presentation = workbench.presentationStore;
   const mode =
     !phone &&
-    root.appShellStore.surface === "workbench" &&
+    (root.appShellStore.surface === "workbench" || root.appShellStore.surface === "cake-chat") &&
     session &&
     !workbench.activeSessionResolved
       ? session.presentationMode === "browser" && presentation.browserStore.visible
@@ -37,7 +38,19 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
 
   return mode && session ? (
     <>
-      <ProjectWorkspaceSurface session={session} mode={mode} browserMode={browserMode} />
+      {root.appShellStore.activeConversation?.kind === "cake-chat" ? (
+        <CakeChatWorkspaceSurface
+          session={root.cakeChatCollectionStore.registry.find(session.sessionId)!}
+          mode={mode}
+          browserMode={browserMode}
+        />
+      ) : (
+        <ProjectWorkspaceSurface
+          session={workbench.activeSession!}
+          mode={mode}
+          browserMode={browserMode}
+        />
+      )}
       {overlays}
     </>
   ) : (

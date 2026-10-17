@@ -1,4 +1,6 @@
 import { Effect } from "effect";
+import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
+import * as cakeChatTargets from "../cake-chats/cakeChatTargets";
 import type { AgentControlCaller } from "./agentControl";
 import type { BackendAgentInvocation } from "../../contracts/application/backend-agent-control";
 import {
@@ -172,13 +174,19 @@ export const invoke = Effect.fn("AgentSessionMessaging.invoke")(function* (
     yield* coordination.close(thread);
     return fail("That session thread reached its message limit.");
   }
-  const target = yield* metadata.lookup({ sessionId: targetSessionId });
-  yield* projectSessions.prepareAgentCommand({ sessionId: targetSessionId });
-  const targetLocation = yield* metadata.findLocation({ sessionId: targetSessionId });
-  const status = yield* (yield* CakeSessionRuntimes).currentStatus({
-    ...targetLocation,
-    sessionId: targetSessionId,
-  });
+  const chatTarget = isCakeChatSessionId(targetSessionId)
+    ? yield* (yield* cakeChatTargets.acquire(targetSessionId)).snapshot()
+    : undefined;
+  const target = chatTarget
+    ? { workingDirectory: chatTarget.workspacePath, title: "Project Chat" }
+    : yield* metadata.lookup({ sessionId: targetSessionId });
+  if (!chatTarget) yield* projectSessions.prepareAgentCommand({ sessionId: targetSessionId });
+  const status =
+    chatTarget ??
+    (yield* (yield* CakeSessionRuntimes).currentStatus({
+      ...(yield* metadata.findLocation({ sessionId: targetSessionId })),
+      sessionId: targetSessionId,
+    }));
   const delivery = args.delivery ?? (status?.streaming ? "queue" : "prompt");
   const policy =
     caller.kind === "cake-chat" && invocation.name === "sessions.send"

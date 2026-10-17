@@ -5,6 +5,7 @@ import type { McpSettings } from "../../services/pi/McpSettings";
 import type { WidgetPackages } from "../../services/widgets/WidgetPackages";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import { SessionCoordination } from "../../services/session-catalogs/SessionCoordination";
+import { CakeChatConfiguration } from "../../services/pi-durable/CakeChatConfiguration";
 import { implicitTurnResultFor } from "../../contracts/pi/turn-result-data";
 import * as sessionFamilyMessaging from "../session-families/sessionFamilyMessaging";
 import * as projectSessionAgentPolicy from "./projectSessionAgentPolicy";
@@ -79,14 +80,9 @@ import { Browser } from "../../services/browser/Browser";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 import type { Terminal } from "../../services/terminal/Terminal";
 import { toJsonValue } from "../../utils/to-json-value";
-import { agentEditorLocation } from "../../utils/agent-editor-location";
-import { jsonObjectSchema, type JsonObject } from "../../contracts/serialization/json-contract";
+import { makeVscodeControl } from "../../services/pi/VscodeControlAdapter";
+import { jsonObjectSchema } from "../../contracts/serialization/json-contract";
 import { sessionReference } from "../../contracts/project-sessions/session-reference";
-import {
-  EditorSelectionOpenResult,
-  EditorSelectionState,
-  EditorSelectionUpdate,
-} from "../../contracts/editor/editor-selection";
 
 class ProjectSessionRuntimeCompositionError extends Schema.TaggedError<ProjectSessionRuntimeCompositionError>()(
   "ProjectSessionRuntimeCompositionError",
@@ -170,10 +166,14 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
     | SessionCoordination
     | Effect.Services<ReturnType<typeof workflowControl.invoke>>
   >();
+  const chatConfiguration = yield* Effect.serviceOption(CakeChatConfiguration);
+  const configuredContext = Option.isSome(chatConfiguration)
+    ? Context.add(context, CakeChatConfiguration, chatConfiguration.value)
+    : context;
   const run = makePiCallbackExecutor(
     Option.isSome(savedDraftStorage)
-      ? Context.add(context, SavedDraftStorage, savedDraftStorage.value)
-      : context,
+      ? Context.add(configuredContext, SavedDraftStorage, savedDraftStorage.value)
+      : configuredContext,
   );
   const agentControl = makeSubagentControl({
     runEffect: (effect, signal) => run(effect, { signal }),
@@ -292,22 +292,6 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
     return { sessionId: targetId, location: targetLocation };
   });
   const getRuntimeOptions = () => runtimeOptions;
-  const requestEditorControl = async (command: string, input: JsonObject, signal: AbortSignal) => {
-    if (Option.isNone(vscode)) throw new Error("VS Code is unavailable in this host");
-    const response = await runtimeIntegrations.requestApplicationControl(
-      { _tag: "InvokeAppControl", command, input },
-      signal,
-    );
-    const status = await run(
-      Schema.decodeUnknownEffect(
-        Schema.Struct({ ok: Schema.Boolean, error: Schema.optionalKey(Schema.String) }),
-      )(response),
-      { signal },
-    );
-    if (!status.ok)
-      throw new Error(status.error ?? "The owning renderer's VS Code controls are unavailable");
-    return response;
-  };
   const publishActivity = catalogs.publish({
     _tag: "ProjectSessionActivityChanged",
     sessionId,
@@ -928,60 +912,13 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
               ),
           }
         : undefined,
-      vscodeControl: {
-        enter: async (signal) => {
-          await requestEditorControl("vscode.enter", {}, signal);
-        },
-        open: async (sourceLocation, signal) => {
-          try {
-            const response = await requestEditorControl(
-              "vscode.open",
-              agentEditorLocation(sourceLocation),
-              signal,
-            );
-            const { selection } = await run(
-              Schema.decodeUnknownEffect(Schema.Struct({ selection: EditorSelectionOpenResult }))(
-                response,
-              ),
-              { signal },
-            );
-            return { status: "completed" as const, value: selection };
-          } catch (error) {
-            if (error instanceof Error && error.message.startsWith("VSCODE_MODE_REQUIRED:"))
-              return { status: "mode-required" as const };
-            throw error;
-          }
-        },
-        listSelections: async (signal) => {
-          const response = await requestEditorControl("vscode.selections.list", {}, signal);
-          return (
-            await run(
-              Schema.decodeUnknownEffect(Schema.Struct({ state: EditorSelectionState }))(response),
-              { signal },
-            )
-          ).state;
-        },
-        removeSelection: async (id, signal) => {
-          const response = await requestEditorControl("vscode.selections.remove", { id }, signal);
-          return (
-            await run(
-              Schema.decodeUnknownEffect(Schema.Struct({ update: EditorSelectionUpdate }))(
-                response,
-              ),
-              { signal },
-            )
-          ).update;
-        },
-        clearSelections: async (signal) => {
-          const response = await requestEditorControl("vscode.selections.clear", {}, signal);
-          return (
-            await run(
-              Schema.decodeUnknownEffect(Schema.Struct({ update: EditorSelectionUpdate }))(
-                response,
-              ),
-              { signal },
-            )
-          ).update;
+      vscodeControl: makeVscodeControl({
+        request: async (command, input, signal) => {
+          if (Option.isNone(vscode)) throw new Error("VS Code is unavailable in this host");
+          return runtimeIntegrations.requestApplicationControl(
+            { _tag: "InvokeAppControl", command, input },
+            signal,
+          );
         },
         runScript: async (source, input, signal) => {
           if (Option.isNone(vscode)) throw new Error("VS Code is unavailable in this host");
@@ -989,7 +926,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
             signal,
           });
         },
-      },
+      }),
     },
   };
   return runtimeOptions;

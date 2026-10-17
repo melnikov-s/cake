@@ -39,7 +39,10 @@ async function read<A>(
   }
 }
 
-export function readDurableChatSummary(directory: string): Promise<PiSessionSummary | undefined> {
+export function readDurableChatSummary(
+  directory: string,
+  sessionId = CAKE_CHAT_SESSION_ID,
+): Promise<PiSessionSummary | undefined> {
   return read(directory, async (session) => {
     const metadata = await session.snapshot(
       ChatMetadataDoc,
@@ -47,7 +50,7 @@ export function readDurableChatSummary(directory: string): Promise<PiSessionSumm
       BACKGROUND_CONTEXT,
     );
     return {
-      id: CAKE_CHAT_SESSION_ID,
+      id: sessionId,
       resolved: false,
       title: "Cake Chat",
       created: metadata?.createdAt ?? new Date().toISOString(),
@@ -57,10 +60,13 @@ export function readDurableChatSummary(directory: string): Promise<PiSessionSumm
   });
 }
 
-export function readDurableChatPreview(directory: string): Promise<PiSessionPreview | undefined> {
+export function readDurableChatPreview(
+  directory: string,
+  sessionId = CAKE_CHAT_SESSION_ID,
+): Promise<PiSessionPreview | undefined> {
   return read(directory, async (_session, storage) => ({
     workspacePath: directory,
-    sessionId: CAKE_CHAT_SESSION_ID,
+    sessionId,
     sessionFile: durableChatDatabase(directory),
     parts: (
       await readDurableOriginalPage({

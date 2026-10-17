@@ -49,7 +49,9 @@ export function createRootApplicationControlHost(
   capabilities: RootApplicationControlCapabilities,
 ): AppControlHost {
   const selectionStore = (sessionId: string) => {
-    const session = capabilities.sessionRegistry.findSession(sessionId);
+    const session =
+      capabilities.sessionRegistry.findSession(sessionId) ??
+      capabilities.cakeChatCollectionStore.registry.find(sessionId);
     if (!session)
       throw new Error("The owning session's selection Store is unavailable in this renderer");
     return session.editorSelectionsStore;
@@ -147,10 +149,21 @@ export function createRootApplicationControlHost(
       },
     },
     vscode: {
-      enter: (source) => capabilities.projectWorkbenchStore.showSessionEditor(source.sessionId),
+      enter: async (source) => {
+        if (source.kind !== "cake-chat")
+          return capabilities.projectWorkbenchStore.showSessionEditor(source.sessionId);
+        const session = capabilities.cakeChatCollectionStore.registry.find(source.sessionId);
+        if (!session || !source.projectPath)
+          throw new Error("Cake could not open VS Code for that Project Chat");
+        if (capabilities.appShellStore.activeConversation?.sessionId === source.sessionId)
+          await capabilities.projectWorkbenchStore.presentationStore.openIde();
+        else session.showPresentation("vscode");
+      },
       open: (source, location) => {
         const store = selectionStore(source.sessionId);
-        const session = capabilities.sessionRegistry.findSession(source.sessionId)!;
+        const session =
+          capabilities.sessionRegistry.findSession(source.sessionId) ??
+          capabilities.cakeChatCollectionStore.registry.find(source.sessionId)!;
         if (session.presentationMode !== "vscode")
           throw new Error("VSCODE_MODE_REQUIRED: Call vscode.enter before opening code.");
         return store.open(location);
@@ -160,7 +173,8 @@ export function createRootApplicationControlHost(
       clearSelections: (source) => selectionStore(source.sessionId).clear(),
       performEditorAction: (source, action) =>
         capabilities.client.vscode.performEditorAction(
-          capabilities.requireProjectSessionWorkingDirectory(source.sessionId),
+          source.workingDirectory ??
+            capabilities.requireProjectSessionWorkingDirectory(source.sessionId),
           action,
           { signal: capabilities.signal },
         ),

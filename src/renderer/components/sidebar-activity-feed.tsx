@@ -9,6 +9,7 @@ import type { SidebarStore } from "../stores/SidebarStore";
 import type { SidebarSessionListStore } from "../stores/SidebarSessionListStore";
 import type { SessionMetadataStore } from "../stores/SessionMetadataStore";
 import { AnimatedList } from "./ui/animated-list";
+import { SidebarProjectChatItem } from "./sidebar-project-chat-item";
 import { SidebarSessionItem } from "./sidebar-session-item";
 
 function dayKey(iso: string) {
@@ -37,6 +38,8 @@ export const SidebarActivityFeed = observer(function SidebarActivityFeed({
   shell,
   appearance,
   onOpenSession,
+  onOpenCakeChat,
+  cakeChat,
 }: {
   store: SidebarStore;
   sessionList: SidebarSessionListStore;
@@ -49,12 +52,18 @@ export const SidebarActivityFeed = observer(function SidebarActivityFeed({
   onOpenSession(sessionId: string): void;
   onOpenCakeChat(sessionId?: string): void;
 }) {
-  const entries = sessionList.activeProjectSessionFamilies
-    .map((family) => ({
+  const entries = [
+    ...sessionList.activeProjectSessionFamilies.map((family) => ({
+      kind: "family" as const,
       modifiedAt: family.latestModifiedAt,
       family,
-    }))
-    .sort(compareSessionSummariesByActivity);
+    })),
+    ...sessionList.activeCakeChatSessions.map((summary) => ({
+      kind: "project-chat" as const,
+      modifiedAt: summary.modifiedAt,
+      summary,
+    })),
+  ].sort(compareSessionSummariesByActivity);
   const groups = new Map<string, typeof entries>();
   for (const entry of entries) {
     // Activity mode is purely chronological: drafts share day groups with
@@ -77,6 +86,17 @@ export const SidebarActivityFeed = observer(function SidebarActivityFeed({
           </h2>
           <AnimatedList className="flex flex-col space-y-0.5 pl-2">
             {group.map((entry) => {
+              if (entry.kind === "project-chat")
+                return (
+                  <SidebarProjectChatItem
+                    key={entry.summary.sessionId}
+                    summary={entry.summary}
+                    cakeChat={cakeChat}
+                    shell={shell}
+                    now={store.now}
+                    onOpen={onOpenCakeChat}
+                  />
+                );
               return (
                 <div
                   key={`project-family:${entry.family.rootSessionId}`}

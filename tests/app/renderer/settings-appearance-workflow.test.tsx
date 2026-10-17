@@ -34,6 +34,8 @@ function renderAppearanceSettings(snapshot?: StoreSnapshot, customIcon = false) 
     <>
       <SettingsAppearanceSection appearance={root.settingsStore.appearance} />
       <SidebarProjectGroup
+        cakeChat={root.cakeChatCollectionStore}
+        onOpenCakeChat={(sessionId) => void root.navigationStore.openCakeChat(sessionId)}
         store={root.sidebarStore}
         sessionList={root.sidebarStore.sessionListStore}
         sessionMetadata={root.sessionMetadataStore}

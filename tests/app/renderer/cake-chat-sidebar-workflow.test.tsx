@@ -320,7 +320,7 @@ it("acknowledges completion seen while open rather than making it unread on depa
 it("uses the permanent menu target, restores manual unread and clears it on opening or Mark as Read", async () => {
   let action: "mark-read" | "mark-unread" = "mark-read";
   const menu = vi.fn<Client["electron"]["showSessionContextMenu"]>(async () => ({ action }));
-  const setUnread = vi.fn<Client["cakeChats"]["setUnread"]>(async (unread) => {
+  const setUnread = vi.fn<Client["cakeChats"]["setUnread"]>(async ({ unread }) => {
     act(() =>
       applySnapshot(fixture.models.cakeChatCatalog, { loaded: true, sessions: [summary(unread)] }),
     );
@@ -339,10 +339,18 @@ it("uses the permanent menu target, restores manual unread and clears it on open
     expect(screen.getByRole("img", { name: "Ready, unread" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: /^Cake Chat/ }));
     await waitFor(() => expect(screen.queryByRole("img")).toBeNull());
-    expect(setUnread).toHaveBeenCalledWith(false, expect.anything());
+    expect(setUnread).toHaveBeenCalledWith(
+      { unread: false, sessionId: CAKE_CHAT_SESSION_ID },
+      expect.anything(),
+    );
     action = "mark-unread";
     fireEvent.contextMenu(screen.getByRole("button", { name: /^Cake Chat/ }));
-    await waitFor(() => expect(setUnread).toHaveBeenCalledWith(true, expect.anything()));
+    await waitFor(() =>
+      expect(setUnread).toHaveBeenCalledWith(
+        { unread: true, sessionId: CAKE_CHAT_SESSION_ID },
+        expect.anything(),
+      ),
+    );
     expect(menu).toHaveBeenLastCalledWith(
       expect.objectContaining({ sessionId: CAKE_CHAT_SESSION_ID, permanent: true, unread: false }),
       expect.anything(),

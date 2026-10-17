@@ -41,7 +41,7 @@ const order = (container: HTMLElement = document.body) =>
   );
 const projectGroup = (name: string) =>
   screen
-    .getByRole("button", { name: `Start new chat in ${name}` })
+    .getByRole("button", { name: `Open Project Chat for ${name}` })
     .closest<HTMLElement>('[data-slot="project-group"]')!;
 const resolvedGroup = (name: string) =>
   screen
@@ -86,7 +86,7 @@ describe("Sidebar navigation workflow", () => {
     expect(screen.getByRole("button", { name: "Exit focus mode for cake" })).toBeDefined();
     expect(order()).toEqual(["root", "standalone"]);
     await fixture.user.pointer({
-      target: screen.getByRole("button", { name: "Start new chat in cake" }),
+      target: screen.getByRole("button", { name: "Open Project Chat for cake" }),
       keys: "[MouseRight]",
     });
     expect(menu).toHaveBeenCalledWith(

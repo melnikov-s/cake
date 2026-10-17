@@ -73,6 +73,8 @@ function renderOrdering() {
   };
   const view = render(
     <SidebarProjectGroup
+      cakeChat={root.cakeChatCollectionStore}
+      onOpenCakeChat={(sessionId) => void root.navigationStore.openCakeChat(sessionId)}
       {...common}
       sessionMetadata={root.sessionMetadataStore}
       projects={root.projectCatalogStore}

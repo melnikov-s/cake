@@ -98,6 +98,7 @@ export class CakeChatSideChatsStore
     this.clearError();
     const parent = this.props.parent();
     const input: CakeChatSideChatStartInput = {
+      parentSessionId: parent.sessionId,
       anchor,
       text: body.trim(),
       annotations: [...annotations],

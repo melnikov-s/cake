@@ -1,4 +1,7 @@
-import { Store, child, createStore } from "r-state-tree";
+import { Store, child, createStore, snapshot } from "r-state-tree";
+import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
+import { EditorSelectionsStore } from "./EditorSelectionsStore";
+import { SessionPresentationContext } from "./context/SessionPresentationContext";
 import type { Conversation } from "../models/Conversation";
 import type { ModelPreset } from "../../contracts/conversations/session-contract";
 import { ClientContext } from "./context/ClientContext";
@@ -47,6 +50,37 @@ export interface CakeChatSessionStoreProps {
 
 /** Owns the configuration and shared conversation input workflow for one Cake Chat session. */
 export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
+  @snapshot presentationMode: ProjectSessionPresentationMode = "normal";
+  @snapshot workspaceChatSidebarVisible = true;
+  @snapshot workspaceChatSidebarWidth = 420;
+
+  showPresentation(mode: ProjectSessionPresentationMode) {
+    this.presentationMode = mode;
+  }
+  toggleWorkspaceChatSidebar() {
+    this.workspaceChatSidebarVisible = !this.workspaceChatSidebarVisible;
+  }
+  showWorkspaceChatSidebar() {
+    this.workspaceChatSidebarVisible = true;
+  }
+  setWorkspaceChatSidebarWidth(width: number) {
+    this.workspaceChatSidebarWidth = width;
+  }
+
+  @child
+  get editorSelectionsStore(): EditorSelectionsStore {
+    return createStore(EditorSelectionsStore, {
+      sessionId: this.sessionId,
+      openLocation: (location, signal) =>
+        SessionPresentationContext.consume(this)!.openSelectionLocation(
+          this.sessionId,
+          location,
+          signal,
+        ),
+      refreshHighlights: () => SessionPresentationContext.consume(this)!.refreshEditorHighlights(),
+    });
+  }
+
   private pendingSideChatThreadId: string | undefined;
 
   constructor(props: CakeChatSessionStore["props"]) {
@@ -69,7 +103,12 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       () => this.conversationSessionStore.chatStore.draft.trim().length > 0,
       (composing) => {
         void Promise.resolve()
-          .then(() => this.client.cakeChats.setComposing({ composing }, { signal: this.signal }))
+          .then(() =>
+            this.client.cakeChats.setComposing(
+              { composing, sessionId: this.sessionId },
+              { signal: this.signal },
+            ),
+          )
           .catch(() => undefined);
       },
     );
@@ -207,6 +246,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       startSession: (input) => this.startSession(input),
       ensureSessionActive: () => true,
       composer: {
+        presentationMode: () => this.presentationMode,
         draftSessionPrompt: (sessionId) =>
           this.props.pendingSessions.conversation(sessionId)?.draftPrompt,
         isDeferredSession: (sessionId) => this.props.pendingSessions.isPending(sessionId),
@@ -237,8 +277,12 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       chat: {
         history: this.history,
         commands: () => this.model.commands.filter((command) => command.name !== "sidechat"),
-        placeholder: () => "Ask Cake to find or control a task…",
-        inputLabel: () => "Message Cake Chat",
+        placeholder: () =>
+          this.sessionId.startsWith("project-chat:")
+            ? "Talk about this project…"
+            : "Ask Cake to find or control a task…",
+        inputLabel: () =>
+          this.sessionId.startsWith("project-chat:") ? "Message Project Chat" : "Message Cake Chat",
         conversationMode: this.conversationMode,
         isDraftSession: () =>
           this.props.pendingSessions.conversation(this.sessionId)?.isDraft ?? false,

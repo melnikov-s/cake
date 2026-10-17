@@ -180,6 +180,8 @@ export function coordinatorCakeOperations(
           )
         : []),
       ...createCoordinatorOperations(bridge),
+      ...(options.browserControl ? createCakeBrowserOperations(options.browserControl) : []),
+      ...(options.vscodeControl ? createCakeVscodeOperations(options.vscodeControl) : []),
       ...(options.cakeChatInstructions
         ? createCakeChatInstructionOperations(options.cakeChatInstructions)
         : []),

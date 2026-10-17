@@ -17,7 +17,7 @@ import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
 import { SessionContinuationStore } from "./SessionContinuationStore";
 import { ProjectOpenStore, type ProjectOpenResult } from "./ProjectOpenStore";
 import type { WorkingDirectoryRetirementWorkflow } from "./WorkingDirectoryRetirementStore";
-import { SessionPresentationStore } from "./SessionPresentationStore";
+import { SessionPresentationStore, type PresentationSession } from "./SessionPresentationStore";
 
 export interface ProjectWorkbenchStoreProps {
   retirement: WorkingDirectoryRetirementWorkflow;
@@ -26,6 +26,8 @@ export interface ProjectWorkbenchStoreProps {
   extensionUi(): ExtensionUiStore;
   catalog: SessionCatalogStore;
   startCakeChat(prompt?: string): Promise<void>;
+  presentationSession(): PresentationSession | undefined;
+  presentationProjectPath(): string | undefined;
   browserHost?: boolean;
   onBrowserUnavailable?(): void;
   /** Removes resolved worktree sessions from history and chooses the next conversation. */
@@ -106,10 +108,10 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     return createStore(SessionPresentationStore, {
       browserHost: this.props.browserHost,
       onBrowserUnavailable: this.props.onBrowserUnavailable,
-      activeSession: () => this.activeSession,
-      activeSessionId: () => this.activeSessionId,
+      activeSession: this.props.presentationSession,
+      activeSessionId: () => this.props.presentationSession()?.sessionId,
       activeSessionResolved: () => this.activeSessionResolved,
-      projectPath: () => this.projectOpenStore.projectPath,
+      projectPath: this.props.presentationProjectPath,
       reviews: this.props.reviews,
       dismissCommandPane: () => this.commandPaneStore.dismiss(),
       startCakeChat: this.props.startCakeChat,

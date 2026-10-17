@@ -146,7 +146,7 @@ describe("Workbench workflow", () => {
       },
       true,
     );
-    fireEvent.contextMenu(screen.getByRole("button", { name: "Start new chat in project" }));
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Open Project Chat for project" }));
     const dialog = await screen.findByRole("alertdialog", { name: "Delete resolved worktrees?" });
     expect(within(dialog).getByText(/1 landed worktree/)).toBeDefined();
     await fixture.user.click(within(dialog).getByRole("button", { name: "Delete worktrees" }));

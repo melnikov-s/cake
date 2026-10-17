@@ -5,7 +5,10 @@ import { ProjectSessionConfiguration } from "../../services/project-sessions/Pro
 import { ArtifactStorage } from "../../services/storage/ArtifactStorage";
 import { SessionFamilyStorage, familyMemberIds } from "../../services/storage/SessionFamilyStorage";
 import { ArtifactLineageId } from "../../contracts/artifacts/artifact-lineage";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
+import {
+  CAKE_CHAT_SESSION_ID,
+  isCakeChatSessionId,
+} from "../../contracts/cake-chats/cake-chat-identity";
 
 interface ArtifactGarbageCollectionStats {
   readonly skipped: boolean;
@@ -43,7 +46,15 @@ export const collectGarbage = Effect.fn("Artifacts.collectGarbage")(function* ()
     Schema.decodeUnknownEffect(ArtifactLineageId)(lineageId),
   );
   // The permanent coordinator survives independently of regular Pi session files.
-  const survivingSessions = new Set([...references.sessionIds, CAKE_CHAT_SESSION_ID]);
+  const survivingSessions = new Set([
+    ...references.sessionIds,
+    CAKE_CHAT_SESSION_ID,
+    ...snapshot.catalog.links.flatMap((link) =>
+      link.target.type === "session" && isCakeChatSessionId(link.target.sessionId)
+        ? [link.target.sessionId]
+        : [],
+    ),
+  ]);
   const collected = yield* storage.collectUnreachable({
     expectedCatalogToken: snapshot.token,
     survivingSessionIds: [...survivingSessions],

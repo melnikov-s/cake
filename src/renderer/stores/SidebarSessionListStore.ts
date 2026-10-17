@@ -117,7 +117,10 @@ export class SidebarSessionListStore extends Store<{
   get activeCakeChatSessions() {
     return this.props
       .cakeChat()
-      .summaries.filter((session) => !session.resolved)
+      .summaries.filter(
+        (session) =>
+          !session.resolved && session.projectPath !== undefined && session.messageCount > 0,
+      )
       .sort((left, right) => right.modifiedAt.localeCompare(left.modifiedAt));
   }
 

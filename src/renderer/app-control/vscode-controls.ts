@@ -85,11 +85,11 @@ export const vscodeControls = [
       ],
     },
     run: async (_input, { host, source }, command): Promise<AppControlResult> => {
-      if (source?.kind !== "project-session" || !source.workingDirectory)
+      if (!source?.workingDirectory)
         return {
           ok: false,
           command,
-          error: "Embedded VS Code requires a parent Project Session Working Directory.",
+          error: "Embedded VS Code requires a Project Chat or Project Session Working Directory.",
         };
       return {
         ok: true,
@@ -111,11 +111,11 @@ export const vscodeControls = [
       ],
     },
     run: async (input, { host, source }, command): Promise<AppControlResult> => {
-      if (source?.kind !== "project-session" || !source.workingDirectory)
+      if (!source?.workingDirectory)
         return {
           ok: false,
           command,
-          error: "Embedded VS Code requires a parent Project Session Working Directory.",
+          error: "Embedded VS Code requires a Project Chat or Project Session Working Directory.",
         };
       return {
         ok: true,
@@ -137,11 +137,11 @@ export const vscodeControls = [
       ],
     },
     run: async (_input, { host, source }, command): Promise<AppControlResult> => {
-      if (source?.kind !== "project-session" || !source.workingDirectory)
+      if (!source?.workingDirectory)
         return {
           ok: false,
           command,
-          error: "Embedded VS Code requires a parent Project Session Working Directory.",
+          error: "Embedded VS Code requires a Project Chat or Project Session Working Directory.",
         };
       return {
         ok: true,
@@ -165,11 +165,11 @@ export const vscodeControls = [
         "Confirmation that Cake entered embedded VS Code mode for the parent Project Session.",
     },
     run: async (_input, { host, source }, command): Promise<AppControlResult> => {
-      if (source?.kind !== "project-session" || !source.workingDirectory)
+      if (!source?.workingDirectory)
         return {
           ok: false,
           command,
-          error: "Embedded VS Code requires a parent Project Session Working Directory.",
+          error: "Embedded VS Code requires a Project Chat or Project Session Working Directory.",
         };
       await host.vscode.enter(source);
       return { ok: true, command, entered: true };
@@ -209,11 +209,11 @@ export const vscodeControls = [
         "The opened location, resolved ranges and selection IDs. Selections accumulate until removed or cleared.",
     },
     run: async (input, { host, source }, command): Promise<AppControlResult> => {
-      if (source?.kind !== "project-session" || !source.workingDirectory)
+      if (!source?.workingDirectory)
         return {
           ok: false,
           command,
-          error: "Embedded VS Code requires a parent Project Session Working Directory.",
+          error: "Embedded VS Code requires a Project Chat or Project Session Working Directory.",
         };
       const location = {
         ...editorLocationFromPath(sourceLocation(input)),
@@ -244,11 +244,11 @@ export const vscodeControls = [
       result: "The applied editor layout.",
     },
     run: async (input, { host, source }, command): Promise<AppControlResult> => {
-      if (source?.kind !== "project-session" || !source.workingDirectory)
+      if (!source?.workingDirectory)
         return {
           ok: false,
           command,
-          error: "Embedded VS Code requires a parent Project Session Working Directory.",
+          error: "Embedded VS Code requires a Project Chat or Project Session Working Directory.",
         };
       const action: VscodeEditorAction = { type: "layout.set", ...input };
       const result = await host.vscode.performEditorAction(source, action);
@@ -281,11 +281,11 @@ export const vscodeControls = [
       ],
     },
     run: async (input, { host, source }, command): Promise<AppControlResult> => {
-      if (source?.kind !== "project-session" || !source.workingDirectory)
+      if (!source?.workingDirectory)
         return {
           ok: false,
           command,
-          error: "Embedded VS Code requires a parent Project Session Working Directory.",
+          error: "Embedded VS Code requires a Project Chat or Project Session Working Directory.",
         };
       const action: VscodeEditorAction = { type: "diff.open", ...input };
       const result = await host.vscode.performEditorAction(source, action);
@@ -302,11 +302,11 @@ export const vscodeControls = [
       result: "The active editor position and up to 32 visible editors.",
     },
     run: async (_input, { host, source }, command): Promise<AppControlResult> => {
-      if (source?.kind !== "project-session" || !source.workingDirectory)
+      if (!source?.workingDirectory)
         return {
           ok: false,
           command,
-          error: "Embedded VS Code requires a parent Project Session Working Directory.",
+          error: "Embedded VS Code requires a Project Chat or Project Session Working Directory.",
         };
       const action: VscodeEditorAction = { type: "editor.status" };
       const result = await host.vscode.performEditorAction(source, action);
@@ -331,11 +331,11 @@ export const vscodeControls = [
       result: "Up to 500 diagnostics with source ranges and a truncation flag.",
     },
     run: async (input, { host, source }, command): Promise<AppControlResult> => {
-      if (source?.kind !== "project-session" || !source.workingDirectory)
+      if (!source?.workingDirectory)
         return {
           ok: false,
           command,
-          error: "Embedded VS Code requires a parent Project Session Working Directory.",
+          error: "Embedded VS Code requires a Project Chat or Project Session Working Directory.",
         };
       const action: VscodeEditorAction = { type: "diagnostics.list", ...input };
       const result = await host.vscode.performEditorAction(source, action);
@@ -369,11 +369,11 @@ export const vscodeControls = [
       result: "The panel or view shown in embedded VS Code.",
     },
     run: async (input, { host, source }, command): Promise<AppControlResult> => {
-      if (source?.kind !== "project-session" || !source.workingDirectory)
+      if (!source?.workingDirectory)
         return {
           ok: false,
           command,
-          error: "Embedded VS Code requires a parent Project Session Working Directory.",
+          error: "Embedded VS Code requires a Project Chat or Project Session Working Directory.",
         };
       const action: VscodeEditorAction = { type: "panel.show", ...input };
       const result = await host.vscode.performEditorAction(source, action);

@@ -28,6 +28,7 @@ export interface CakeControlTool extends Schema.Schema.Type<typeof CakeControlTo
 
 export const CakeChatSummary = Schema.Struct({
   sessionId: boundedId,
+  projectPath: Schema.optionalKey(Schema.String),
   title: Schema.String.check(Schema.isMaxLength(SESSION_TITLE_MAX_LENGTH)),
   createdAt: Schema.String,
   modifiedAt: Schema.String,

@@ -8,6 +8,7 @@ import {
   Stream,
   SubscriptionRef,
 } from "effect";
+import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import type { AgentActionNotice } from "../../contracts/application/agent-action-notice";
 import type { CakeChatControlRequest } from "../../contracts/cake-chats/cake-chat-data";
 import type { ProjectSessionControlInvocation } from "../../contracts/project-sessions/project-session-data";
@@ -501,7 +502,15 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
     )((sessionId: string, connectionId: number) =>
       Effect.try({
         try: () => {
-          if (requireBinding({ _tag: "ProjectSession", sessionId }, true) !== connectionId)
+          if (
+            requireBinding(
+              {
+                _tag: isCakeChatSessionId(sessionId) ? "CakeChatSession" : "ProjectSession",
+                sessionId,
+              },
+              true,
+            ) !== connectionId
+          )
             throw coordinatorError(
               "requireDesktopConnection",
               "Desktop renderer does not own this Project Session",
@@ -519,7 +528,14 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
         if (signal.aborted)
           return yield* coordinatorError("requestBrowserNative", "Browser request cancelled");
         const connectionId = yield* Effect.try({
-          try: () => requireBinding({ _tag: "ProjectSession", sessionId }, true),
+          try: () =>
+            requireBinding(
+              {
+                _tag: isCakeChatSessionId(sessionId) ? "CakeChatSession" : "ProjectSession",
+                sessionId,
+              },
+              true,
+            ),
           catch: (cause) =>
             cause instanceof RendererRequestCoordinatorError
               ? cause

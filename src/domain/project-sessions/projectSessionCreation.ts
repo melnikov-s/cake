@@ -1,5 +1,5 @@
 import { Cause, DateTime, Effect, Exit } from "effect";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
+import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import {
   cakeChatReportPolicy,
   type CakeChatReportPolicy,
@@ -62,7 +62,7 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
       ),
     );
   const requester =
-    input.requester?.kind === "cake-chat" && input.requester.sessionId === CAKE_CHAT_SESSION_ID
+    input.requester?.kind === "cake-chat" && isCakeChatSessionId(input.requester.sessionId)
       ? input.requester
       : undefined;
   const { report, expectsResponse } = cakeChatReportPolicy({ report: input.report });

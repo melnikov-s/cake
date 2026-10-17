@@ -1,3 +1,4 @@
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import type { CakeChatLaunchReport } from "../../contracts/project-sessions/session-reporting";
 import type { SessionActivity } from "./session-activity";
 
@@ -18,7 +19,11 @@ export interface LaunchedSessionSource {
   readonly resolved: boolean;
   readonly running: boolean;
   readonly cakeChatLaunch?:
-    | { readonly launchedAt?: string; readonly lastReport?: CakeChatLaunchReport }
+    | {
+        readonly requesterSessionId: string;
+        readonly launchedAt?: string;
+        readonly lastReport?: CakeChatLaunchReport;
+      }
     | undefined;
 }
 
@@ -50,9 +55,13 @@ export function launchedSessionStatus(
 export function launchedSessions(
   sessions: readonly LaunchedSessionSource[],
   activity: (sessionId: string) => SessionActivity | undefined,
+  requesterSessionId = CAKE_CHAT_SESSION_ID,
 ): LaunchedSession[] {
   return sessions
-    .filter((session) => session.cakeChatLaunch && !session.resolved)
+    .filter(
+      (session) =>
+        session.cakeChatLaunch?.requesterSessionId === requesterSessionId && !session.resolved,
+    )
     .toSorted((left, right) =>
       (right.cakeChatLaunch?.launchedAt ?? right.modifiedAt).localeCompare(
         left.cakeChatLaunch?.launchedAt ?? left.modifiedAt,

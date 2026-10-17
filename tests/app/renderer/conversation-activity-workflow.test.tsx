@@ -221,6 +221,7 @@ it("Cake Chat combines launched sessions and workers, prioritizes attention, and
     familyParentSessionId: undefined,
     running: false,
     cakeChatLaunch: {
+      requesterSessionId: CAKE_CHAT_SESSION_ID,
       launchedAt: "2026-01-01T00:00:00Z",
       lastReport: {
         status: "blocked",
@@ -240,7 +241,15 @@ it("Cake Chat combines launched sessions and workers, prioritizes attention, and
   expect(within(menu).getByRole("region", { name: "Subagents for this chat" })).toBeTruthy();
   expect(within(menu).getByText(/Choose the activity placement/)).toBeTruthy();
   expect(within(menu).queryByText("Not launched by Cake Chat")).toBeNull();
-  view.publishSessions([{ ...launched, cakeChatLaunch: { launchedAt: "2026-01-01T00:00:00Z" } }]);
+  view.publishSessions([
+    {
+      ...launched,
+      cakeChatLaunch: {
+        requesterSessionId: CAKE_CHAT_SESSION_ID,
+        launchedAt: "2026-01-01T00:00:00Z",
+      },
+    },
+  ]);
   expect(screen.getByRole("button", { name: "Activity · 1 running" })).toBeTruthy();
   view.publishWorker("complete");
   expect(screen.queryByRole("button", { name: /^Activity ·/ })).toBeNull();
@@ -303,6 +312,7 @@ it("a deliberate stop reads as neutral Stopped, while interruptions and failures
       familyParentSessionId: undefined,
       running: false,
       cakeChatLaunch: {
+        requesterSessionId: CAKE_CHAT_SESSION_ID,
         launchedAt: "2026-01-01T00:00:00Z",
         lastReport: {
           status,

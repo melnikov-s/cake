@@ -174,10 +174,16 @@ export class ApplicationControlStore extends Store<{
   }
 
   private async handleCakeChatRequest(request: CakeChatControlRequest) {
+    const chat = this.props.host.state
+      .cakeChatSessions()
+      .find((session) => session.sessionId === request.sessionId);
     const result = await this.bridge
       .invoke(request.invocation, {
         kind: "cake-chat",
         sessionId: request.sessionId,
+        ...(chat?.projectPath
+          ? { projectPath: chat.projectPath, workingDirectory: chat.projectPath }
+          : null),
         title:
           this.props.host.state
             .cakeChatSessions()

@@ -1,4 +1,5 @@
 import { Store } from "r-state-tree";
+import type { CakeChatCollectionStore } from "./CakeChatCollectionStore";
 import type { AppShellStore, SessionHistoryEntry } from "./AppShellStore";
 import { ClientContext } from "./context/ClientContext";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
@@ -8,6 +9,7 @@ import { ProjectOpenContext } from "./context/ProjectOpenContext";
 
 export interface ProjectRemovalStoreProps {
   catalog: SessionCatalogStore;
+  cakeChat(): CakeChatCollectionStore;
   registry: SessionRegistryStore;
   shell: AppShellStore;
   focusedProjectPath(): string | undefined;
@@ -27,7 +29,14 @@ export class ProjectRemovalStore extends Store<ProjectRemovalStoreProps> {
   }
 
   async remove(path: string, deleteSessions: boolean) {
-    const sessionIds = this.props.catalog.projectSessions(path).map((session) => session.sessionId);
+    const chat = this.props.cakeChat();
+    const chatIds = chat.summaries
+      .filter((session) => session.projectPath === path)
+      .map((session) => session.sessionId);
+    const sessionIds = [
+      ...this.props.catalog.projectSessions(path).map((session) => session.sessionId),
+      ...chatIds,
+    ];
     try {
       await this.client.workspaces.removeProject(path, deleteSessions, { signal: this.signal });
       if (this.signal.aborted) return false;
@@ -39,11 +48,15 @@ export class ProjectRemovalStore extends Store<ProjectRemovalStoreProps> {
     ProjectOpenContext.consume(this)!.clear(path);
     if (this.props.focusedProjectPath() === path) this.props.leaveProjectFocus();
     const target = this.props.shell.removeSessionsFromHistory(sessionIds);
+    chat.sessionLayoutStore.removeSessions(chatIds);
+    for (const sessionId of chatIds) chat.registry.remove(sessionId);
     if (deleteSessions)
       for (const sessionId of sessionIds) this.props.registry.removeSession(sessionId);
     if (target) await this.props.navigate(target);
     else if (
-      this.props.shell.selection.kind === "project-session" &&
+      (this.props.shell.selection.kind === "project-session" ||
+        this.props.shell.selection.kind === "cake-chat") &&
+      this.props.shell.selection.sessionId !== undefined &&
       sessionIds.includes(this.props.shell.selection.sessionId)
     )
       this.props.showEmptyWorkbench();

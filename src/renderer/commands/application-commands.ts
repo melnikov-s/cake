@@ -37,6 +37,14 @@ export function createApplicationCommandRegistry(owners: {
     );
   };
   const editableProject = () => projectSelected() && !projectResolved();
+  const editableWorkspace = () =>
+    editableProject() ||
+    (owners.shell().selection.kind === "cake-chat" &&
+      owners
+        .cakeChat()
+        .summaries.some(
+          (chat) => chat.sessionId === owners.cakeChat().sessionId && chat.projectPath,
+        ));
   const activeChat = () => {
     const selection = owners.shell().selection;
     if (selection.kind === "cake-chat")
@@ -48,7 +56,7 @@ export function createApplicationCommandRegistry(owners: {
       : undefined;
   };
   const toggleEditor: ApplicationCommand = {
-    enabled: editableProject,
+    enabled: editableWorkspace,
     run: () => {
       void owners.workbench().presentationStore.toggleIde();
     },
@@ -58,13 +66,13 @@ export function createApplicationCommandRegistry(owners: {
     "toggle-agent-editor": toggleEditor,
     "open-editor": toggleEditor,
     "open-changes": {
-      enabled: editableProject,
+      enabled: editableWorkspace,
       run: () => {
         void owners.workbench().presentationStore.toggleWorkspaceChanges();
       },
     },
     "toggle-browser": {
-      enabled: editableProject,
+      enabled: () => editableProject() || owners.shell().selection.kind === "cake-chat",
       run: () => {
         void owners.workbench().presentationStore.toggleBrowser();
       },

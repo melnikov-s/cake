@@ -2,6 +2,7 @@ import { it } from "@effect/vitest";
 import { Context, Effect, Exit, Fiber, Layer, Queue, Stream } from "effect";
 import { TestClock } from "effect/testing";
 import { describe, expect } from "vitest";
+import { CAKE_CHAT_SESSION_ID } from "../../../../src/contracts/cake-chats/cake-chat-identity";
 import type { CakeEvent } from "../../../../src/contracts/application/cake-rpc-contract";
 import { ClientConnectionsLive } from "../../../../src/services/clients/ClientConnections";
 import { ClientEvents } from "../../../../src/services/clients/ClientEvents";
@@ -32,6 +33,40 @@ const fixture = Effect.gen(function* () {
 const widget = { token: "token", url: "cake-widget://token" };
 
 describe("native request correlation and deadlines", () => {
+  it.effect.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
+    "routes Browser control for permanent chat %s through its own desktop binding",
+    (sessionId) =>
+      Effect.gen(function* () {
+        const { coordinator, events } = yield* fixture;
+        yield* coordinator.bind({ _tag: "CakeChatSession", sessionId }, 11);
+        yield* coordinator.requireDesktopConnection(sessionId, 11);
+        const pending = yield* coordinator
+          .requestBrowserNative(
+            sessionId,
+            { operation: "enter", workspacePath: "/project" },
+            new AbortController().signal,
+          )
+          .pipe(Effect.forkChild({ startImmediately: true }));
+        const event = yield* Queue.take(events);
+        if (event.type !== "browser-native-requested") throw new Error("Expected Browser request");
+        expect(event.sessionId).toBe(sessionId);
+        expect(
+          Exit.isFailure(
+            yield* coordinator
+              .respondBrowserNative(11, "other-chat", event.requestId, {
+                status: "completed",
+                value: null,
+              })
+              .pipe(Effect.exit),
+          ),
+        ).toBe(true);
+        yield* coordinator.respondBrowserNative(11, sessionId, event.requestId, {
+          status: "completed",
+          value: null,
+        });
+        expect(yield* Fiber.join(pending)).toEqual({ status: "completed", value: null });
+      }),
+  );
   it.effect(
     "rejects widget replies from the wrong recipient/session and duplicate or cancelled replies",
     () =>

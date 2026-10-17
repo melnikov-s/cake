@@ -2,6 +2,7 @@ import { observer, useStore } from "r-state-tree/react";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ConversationSplitLayout } from "@/components/conversation-split-layout";
 import { cn } from "@/lib/utils";
+import { cakeChatTranscriptBehaviorFor } from "../lib/cake-chat-transcript-behavior";
 import { RootStore } from "../stores/RootStore";
 import type { CakeChatSessionStore } from "../stores/CakeChatSessionStore";
 import { CakeChatPaneHeader, type CakeChatOverlayChrome } from "./cake-chat-pane-header";
@@ -29,18 +30,7 @@ export const CakeChatSurface = observer(function CakeChatSurface({
         Boolean(paneSession.model.sessionFile) ||
         root.cakeChatCollectionStore.pendingSessions.isPending(paneSession.sessionId),
     },
-    transcriptBehavior: {
-      messageReferenceSessionId: paneSession.sessionId,
-      messageComments: paneSession.messageCommentsStore,
-      // One shared selection menu serves both workflows: canChat opens a side
-      // chat draft about the selection; canAnnotate turns it into a composer
-      // annotation sent with the next message.
-      showSelectionContextMenu: (input: { canChat: boolean; canAnnotate: boolean }) =>
-        root.showTranscriptSelectionContextMenu(input),
-      subagents: paneSession.subagentActivityStore,
-      inlineWidgets: root.inlineWidgetStore,
-      inlineArtifactPreviews: root.inlineArtifactPreviewStore,
-    },
+    transcriptBehavior: cakeChatTranscriptBehaviorFor(root, paneSession),
     empty: (
       <div className="grid min-h-[calc(100vh-330px)] place-items-center content-center p-10 text-center">
         <span className="grid size-14 rotate-3 place-items-center rounded-bl-[14px] rounded-br-[20px] rounded-tl-[20px] rounded-tr-[14px] border border-border bg-card/75 shadow-[0_20px_70px_-30px_hsl(var(--shadow)/0.5)]">
@@ -49,10 +39,14 @@ export const CakeChatSurface = observer(function CakeChatSurface({
           </span>
         </span>
         <h1 className="mt-5 font-display text-2xl font-semibold tracking-tight">
-          What can I help you find or do?
+          {paneSession.sessionId.startsWith("project-chat:")
+            ? "Let’s talk about this project"
+            : "What can I help you find or do?"}
         </h1>
         <p className="mt-3 max-w-[470px] text-sm leading-relaxed text-muted-foreground">
-          Ask about your tasks, open one, or delegate work to it.
+          {paneSession.sessionId.startsWith("project-chat:")
+            ? "Explore ideas, remember decisions, or delegate work—all in one ongoing project conversation."
+            : "Ask about your tasks, open one, or delegate work to it."}
         </p>
       </div>
     ),

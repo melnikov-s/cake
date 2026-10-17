@@ -12,7 +12,7 @@ import { interviewHandlers } from "./InterviewHandlers";
 import { attachmentUploadHandlers } from "./AttachmentUploadHandlers";
 import { browserHandlers } from "./BrowserHandlers";
 import { browserResponseHandlers } from "./BrowserResponseHandlers";
-import type { CakeChatRuntimeConfiguration } from "../../domain/cake-chats/cakeChatRuntime";
+import type { CakeChatRuntimeConfiguration } from "../../services/pi-durable/CakeChatConfiguration";
 import { makeCakeChatHandlers } from "./CakeChatHandlers";
 import { makeConversationHandlers } from "./ConversationHandlers";
 import { discussionHandlers } from "./DiscussionHandlers";

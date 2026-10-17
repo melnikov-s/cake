@@ -1,44 +1,24 @@
-import { Effect, Schema } from "effect";
+import { windowControlDefinitions } from "../../contracts/application/window-control-definitions";
+import { Schema } from "effect";
 import type { AppControlResult } from "./app-control-data";
 import { getAppState } from "./control-projections";
-import { trimmed, emptyArgumentsSchema } from "./control-arguments";
+import { trimmed } from "./control-arguments";
 import { defineControl } from "./control-definition";
 export const applicationControls = [
   defineControl({
-    command: "app.state",
-    args: emptyArgumentsSchema,
-    scope: "global",
-    discovery: {
-      topic: "app",
-      summary:
-        "Inspect Cake's current selection, split-pane layout, directional neighbors, and project and session summaries.",
-    },
+    ...windowControlDefinitions["app.state"],
     run: async (_input, { host, source }, command): Promise<AppControlResult> => {
       return { ok: true, command, state: getAppState(host, source) };
     },
   }),
   defineControl({
-    command: "app.user-selection",
-    args: emptyArgumentsSchema,
-    scope: "global",
-    discovery: {
-      topic: "app",
-      summary: "Read the text currently highlighted by the user in the Cake window.",
-      result: "The currently selected text, or no text if nothing is highlighted in Cake.",
-    },
+    ...windowControlDefinitions["app.user-selection"],
     run: async (_input, { host }, command): Promise<AppControlResult> => {
       return { ok: true, command, text: host.state.userSelection() };
     },
   }),
   defineControl({
-    command: "app.split",
-    args: Schema.Struct({ direction: Schema.Literals(["right", "down"]) }),
-    scope: "global",
-    discovery: {
-      topic: "app",
-      summary:
-        "Split the calling conversation pane to the right or down and open a new chat in it.",
-    },
+    ...windowControlDefinitions["app.split"],
     run: async (input, { host, source }, command): Promise<AppControlResult> => {
       if (!source)
         return {
@@ -58,19 +38,7 @@ export const applicationControls = [
     },
   }),
   defineControl({
-    command: "notifications.send",
-    args: Schema.Struct({
-      title: trimmed(1, 256),
-      body: trimmed(1, 2000),
-      level: Schema.Literals(["info", "success", "warning", "error"]).pipe(
-        Schema.withDecodingDefaultKey(Effect.succeed("info" as const)),
-      ),
-    }),
-    scope: "global",
-    discovery: {
-      topic: "notifications",
-      summary: "Send a bounded native system notification without adding user input.",
-    },
+    ...windowControlDefinitions["notifications.send"],
     run: async (input, { host, source }, command): Promise<AppControlResult> => {
       await host.presentation.showNotification({
         title: input.title,

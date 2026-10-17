@@ -11,6 +11,7 @@ import { ApplicationState } from "../../services/storage/ApplicationState";
 import { SavedDraftStorage } from "../../services/storage/SavedDraftStorage";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage, familyMemberIds } from "../../services/storage/SessionFamilyStorage";
+import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
 import * as projectSessionLocations from "./projectSessionLocations";
 
 export interface SessionReferenceEntry {
@@ -63,6 +64,10 @@ export const catalog = Effect.fn("SessionReferences.catalog")(
     const application = yield* ApplicationState;
     const locations = yield* projectSessionLocations.locations({ includeInactive: true });
     const roster = new Map<string, SessionReferenceEntry>();
+    for (const project of application.snapshot().projects) {
+      const sessionId = projectChatSessionId(project.path);
+      roster.set(sessionId, { sessionId, title: `${project.name} / Project Chat` });
+    }
     for (const family of yield* families.list())
       for (const sessionId of familyMemberIds(family)) roster.set(sessionId, { sessionId });
     for (const project of application.snapshot().projects)

@@ -400,7 +400,7 @@ export const createModelObserver = (
       observe(
         `cake-chat-side-chats:${target.sessionId}`,
         sideChats,
-        (client) => client.cakeChats.observeSideChats({}),
+        (client) => client.cakeChats.observeSideChats({ sessionId: target.sessionId }),
         (update: DiscussionCatalogUpdate) =>
           applyDiscussionCatalogUpdate(sideChats, target.sessionId, update),
       );

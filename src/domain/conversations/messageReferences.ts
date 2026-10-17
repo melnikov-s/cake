@@ -10,7 +10,7 @@ import { SessionChatError } from "../../contracts/conversations/conversation-dat
 import { acquireTarget } from "../project-sessions/projectSessionOperations";
 import { findLocation } from "../project-sessions/projectSessionMetadata";
 import * as sessionReferences from "../project-sessions/sessionReferences";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
+import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 
 const asError =
@@ -30,7 +30,7 @@ const asError =
 const acquireMessageTarget = Effect.fn("MessageReferences.acquireTarget")(function* (
   sessionId: string,
 ) {
-  if (sessionId === CAKE_CHAT_SESSION_ID)
+  if (isCakeChatSessionId(sessionId))
     return yield* (yield* CakeSessionRuntimes).acquireSession(sessionId);
   return yield* acquireTarget(yield* findLocation({ sessionId }), sessionId, false);
 });
@@ -39,10 +39,9 @@ const acquireMessageTarget = Effect.fn("MessageReferences.acquireTarget")(functi
 export const list = Effect.fn("MessageReferences.list")(
   function* (input: MessageListInput) {
     const decoded = yield* Schema.decodeUnknownEffect(MessageListInput)(input);
-    const sessionId =
-      decoded.sessionId === CAKE_CHAT_SESSION_ID
-        ? CAKE_CHAT_SESSION_ID
-        : yield* sessionReferences.resolve(decoded.sessionId);
+    const sessionId = isCakeChatSessionId(decoded.sessionId)
+      ? decoded.sessionId
+      : yield* sessionReferences.resolve(decoded.sessionId);
     const handle = yield* acquireMessageTarget(sessionId);
     const value = yield* handle.inspectSession({ ...decoded, kind: "messages-list" });
     return yield* Schema.decodeUnknownEffect(MessageListResult)(value);

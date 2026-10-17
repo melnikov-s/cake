@@ -8,7 +8,11 @@ import * as families from "../../../src/domain/session-families/sessionFamilies"
 import { acquireOptions as projectOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import { acquireOptions as chatOptions } from "../../../src/domain/cake-chats/cakeChatRuntime";
 import { createPrompted } from "../../../src/domain/project-sessions/projectSessionCreation";
-import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
+import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
+import {
+  CAKE_CHAT_SESSION_ID,
+  isCakeChatSessionId,
+} from "../../../src/contracts/cake-chats/cake-chat-identity";
 import type { CakeChatReportPolicy } from "../../../src/contracts/project-sessions/session-reporting";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
@@ -32,6 +36,7 @@ import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktre
 import { makeHeadlessProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
 import { messageBoardHarness } from "../helpers/messageBoardHarness";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
+import type { SessionInspectionQuery } from "../../../src/contracts/conversations/session-query-data";
 import { fakeRuntime, snapshot } from "../helpers/piRuntimeFixture";
 import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
 import { TurnCanceledError } from "../../../src/services/pi/runtime/RuntimeTurnCompletion";
@@ -78,6 +83,8 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
   const materialized = new Set<string>([parentId, CAKE_CHAT_SESSION_ID]);
   const consumeQueued = yield* Deferred.make<void>();
   const transcript: string[] = [];
+  const chatTranscripts = new Map<string, string[]>([[CAKE_CHAT_SESSION_ID, transcript]]);
+  const recipients: string[] = [];
   const deliveries: string[] = [];
   const submittedAttachments = new Map<string, readonly Attachment[]>();
   const queue: string[] = [];
@@ -139,6 +146,11 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
           ? Effect.fail(new Error("Provider unavailable during session startup"))
           : Effect.sync(() => {
               materialized.add(options.sessionId ?? "unexpected");
+              const ownTranscript = isCakeChatSessionId(options.sessionId ?? "")
+                ? (chatTranscripts.get(options.sessionId!) ?? [])
+                : transcript;
+              if (isCakeChatSessionId(options.sessionId ?? ""))
+                chatTranscripts.set(options.sessionId!, ownTranscript);
               return {
                 ...fakeRuntime(options, () => undefined),
                 sessionId: options.sessionId ?? "unexpected",
@@ -149,7 +161,7 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
                   sessionId: options.sessionId ?? "unexpected",
                   streaming: busy,
                   parts: projectSessionEntries(
-                    transcript.map((content, index) => ({
+                    ownTranscript.map((content, index) => ({
                       type: "message",
                       id: String(index),
                       parentId: null,
@@ -157,6 +169,10 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
                       message: { role: "user", content, timestamp: index },
                     })),
                   ),
+                }),
+                inspectSession: async (query: SessionInspectionQuery) => ({
+                  kind: query.kind,
+                  sessionId: options.sessionId ?? "unexpected",
                 }),
                 listQueuedMessages: async () => listQueue(),
                 pendingMessages: async () => ({
@@ -194,10 +210,11 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
                     Effect.gen(function* () {
                       assert.ok(turnId);
                       if (
-                        options.sessionId === CAKE_CHAT_SESSION_ID ||
+                        isCakeChatSessionId(options.sessionId ?? "") ||
                         options.sessionId === parentId
                       ) {
                         deliveries.push(delivery);
+                        recipients.push(options.sessionId!);
                         if (delivery === "follow-up") {
                           queue.push(text);
                           const canceled = yield* Deferred.make<void, TurnCanceledError>();
@@ -210,7 +227,7 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
                           queued.delete(turnId);
                           queue.splice(queue.indexOf(text), 1);
                         }
-                        transcript.push(text);
+                        ownTranscript.push(text);
                         yield* Deferred.succeed(persisted, undefined);
                         yield* Deferred.succeed(received, undefined);
                       } else {
@@ -265,6 +282,8 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
     persisted,
     consumeQueued,
     transcript,
+    chatTranscripts,
+    recipients,
     deliveries,
     submittedAttachments,
     beforeRemove: (callback: () => Promise<void>) => {
@@ -278,17 +297,19 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
   };
 });
 
-const assembleCoordinator = Effect.fn("SpawnedReportingTest.assembleCoordinator")(function* () {
+const assembleCoordinator = Effect.fn("SpawnedReportingTest.assembleCoordinator")(function* (
+  sessionId = CAKE_CHAT_SESSION_ID,
+) {
   const sessions = yield* CakeSessionRuntimes;
   const options = yield* chatOptions({
     configuration: {
       location: {
-        workingDirectory: "/home",
-        sessionDirectory: "/chat",
+        workingDirectory: sessionId === CAKE_CHAT_SESSION_ID ? "/home" : "/project",
+        sessionDirectory: sessionId === CAKE_CHAT_SESSION_ID ? "/chat" : "/project-chat",
       },
       agentDirectory: "/cake",
     },
-    target: { sessionId: CAKE_CHAT_SESSION_ID, tools: [] },
+    target: { sessionId, tools: [] },
     newSession: false,
   });
   yield* sessions.acquire(options);
@@ -330,6 +351,106 @@ const onlyTurn = Effect.fn("SpawnedReportingTest.onlyTurn")(function* () {
 });
 
 describe("automatic spawned-session reporting", () => {
+  it.effect.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/project")])(
+    "inspects permanent chat history at its own address: %s",
+    (sessionId) =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        yield* f.run(
+          Effect.gen(function* () {
+            const options = yield* assembleCoordinator(sessionId);
+            const result = yield* Effect.promise(() =>
+              options.runtime.globalControl!.invoke(
+                { name: "sessions.history", arguments: { sessionId } },
+                new AbortController().signal,
+              ),
+            );
+            assert.deepEqual(
+              Schema.decodeUnknownSync(Schema.Struct({ result: Schema.Json }))(result).result,
+              { kind: "history", sessionId },
+            );
+          }),
+        );
+      }),
+  );
+  it.effect("isolates Project Chat digests and immediate reports from global Cake Chat", () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      yield* f.run(
+        Effect.gen(function* () {
+          const projectId = projectChatSessionId("/project");
+          yield* assembleCoordinator();
+          yield* assembleCoordinator(projectId);
+          for (const [index, senderSessionId] of [CAKE_CHAT_SESSION_ID, projectId].entries()) {
+            yield* f.storage.recordTurn({
+              turnId: "digest-" + index,
+              sessionId: "task-" + index,
+              senderSessionId,
+              requestMessageId: "request-" + index,
+              threadId: "thread-" + index,
+              reported: false,
+              outcome: "complete",
+              reportPolicy: "digest",
+              report: {
+                outcome: "completed",
+                text: index === 0 ? "GLOBAL_RESULT" : "PROJECT_RESULT",
+              },
+            });
+          }
+          for (const turn of (yield* f.storage.state()).turns) yield* families.deliver(turn);
+          assert.equal(f.deliveries.length, 0);
+          const send = (sessionId: string) =>
+            sessionChats
+              .deliver(
+                {
+                  sessionId,
+                  text: "Continue",
+                  attachments: [],
+                  renderUserMessageAsMarkdown: false,
+                },
+                "prompt",
+              )
+              .pipe(Effect.provide(Layer.mock(TaskInputStorage, {})));
+          yield* send(CAKE_CHAT_SESSION_ID);
+          while (!f.transcript.length) yield* Effect.yieldNow;
+          assert.ok(f.transcript[0]?.includes("GLOBAL_RESULT"));
+          assert.ok(!f.transcript[0]?.includes("PROJECT_RESULT"));
+          assert.equal((yield* f.storage.state()).coordinatorDigest?.length, 1);
+          yield* send(projectId);
+          while (!f.chatTranscripts.get(projectId)?.length) yield* Effect.yieldNow;
+          const projectMessage = f.chatTranscripts.get(projectId)![0]!;
+          assert.ok(projectMessage.includes("PROJECT_RESULT"));
+          assert.ok(!projectMessage.includes("GLOBAL_RESULT"));
+          assert.deepEqual((yield* f.storage.state()).coordinatorDigest, []);
+
+          yield* f.storage.recordTurn({
+            turnId: "10000000-0000-4000-8000-000000000001",
+            sessionId: "task-project",
+            senderSessionId: projectId,
+            requestMessageId: "10000000-0000-4000-8000-000000000002",
+            threadId: "10000000-0000-4000-8000-000000000003",
+            reported: false,
+            outcome: "complete",
+            reportPolicy: "interrupt",
+            report: { outcome: "blocked", text: "PROJECT_NEEDS_DECISION" },
+          });
+          const [turn] = (yield* f.storage.state()).turns;
+          assert.ok(turn);
+          yield* families.deliver(turn).pipe(
+            Effect.provide(
+              Layer.mock(CakeChatComposerPresence, {
+                holdsInterrupts: (sessionId) => Effect.succeed(sessionId === CAKE_CHAT_SESSION_ID),
+              }),
+            ),
+          );
+          while (f.chatTranscripts.get(projectId)!.length < 2) yield* Effect.yieldNow;
+          assert.equal(f.recipients.at(-1), projectId);
+          assert.ok(f.chatTranscripts.get(projectId)!.at(-1)!.includes("PROJECT_NEEDS_DECISION"));
+          assert.equal(f.transcript.length, 1);
+        }),
+      );
+    }),
+  );
   it.effect.each(["completion", "explicit"] as const)(
     "forwards selected inputs through backend creation and isolates %s reports without losing correlation",
     (mode) =>
@@ -1588,7 +1709,7 @@ describe("automatic spawned-session reporting", () => {
             assert.equal((yield* onlyTurn()).reported, false);
             // Unsent text holds the report only for a bounded time.
             yield* TestClock.adjust(CAKE_CHAT_COMPOSING_HOLD_MS);
-            assert.equal(yield* presence.holdsInterrupts, false);
+            assert.equal(yield* presence.holdsInterrupts(), false);
             yield* presence.setComposing(true);
             yield* families.deliver(yield* onlyTurn());
             assert.deepEqual(f.deliveries, []);

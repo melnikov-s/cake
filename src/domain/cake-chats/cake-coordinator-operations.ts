@@ -11,7 +11,7 @@ export function createCoordinatorOperations(
       {
         command: "session.info",
         topic: "sessions",
-        summary: "Inspect the permanent global coordinator.",
+        summary: "Inspect this permanent chat.",
         execute: bridge.info,
       },
       {

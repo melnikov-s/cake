@@ -86,6 +86,8 @@ async function renderDrafts(drafts = fakeSavedDrafts(), client: TestClientOverri
         <aside>
           {[false, true].map((resolved) => (
             <SidebarProjectGroup
+              cakeChat={root.cakeChatCollectionStore}
+              onOpenCakeChat={(sessionId) => void root.navigationStore.openCakeChat(sessionId)}
               key={String(resolved)}
               store={root.sidebarStore}
               sessionList={root.sidebarStore.sessionListStore}

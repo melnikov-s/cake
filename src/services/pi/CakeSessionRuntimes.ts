@@ -76,6 +76,7 @@ export const PiSessionQuery = Schema.Struct({
   resolvedSessionDirectory: Schema.optionalKey(Schema.String),
   direct: Schema.optionalKey(Schema.Boolean),
   excludedSessionIds: Schema.optionalKey(Schema.Array(Schema.String)),
+  cakeChatSessionId: Schema.optionalKey(Schema.String),
 });
 export interface PiSessionQuery extends Schema.Schema.Type<typeof PiSessionQuery> {}
 
@@ -85,6 +86,7 @@ export const PiSessionTarget = Schema.Struct({
   sessionDirectory: Schema.String,
   resolvedSessionDirectory: Schema.optionalKey(Schema.String),
   direct: Schema.optionalKey(Schema.Boolean),
+  cakeChatSessionId: Schema.optionalKey(Schema.String),
 });
 export interface PiSessionTarget extends Schema.Schema.Type<typeof PiSessionTarget> {}
 
@@ -1275,8 +1277,6 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
     }),
   );
 
-const coordinatorDirectory = (directory: string) => /(?:^|[/\\])global-chat$/.test(directory);
-
 export const makeCakeSessionRuntimesLive = (
   createRuntime: (options: CakeSessionRuntimeSetup) => Promise<CakeSessionRuntime>,
 ): Layer.Layer<CakeSessionRuntimes, never, CakeChatDurable> =>
@@ -1286,8 +1286,10 @@ export const makeCakeSessionRuntimesLive = (
       const coordinatorCatalog = durable.catalogEntry;
       return makeCakeSessionRuntimesLayer({
         sessionIds: (query) =>
-          coordinatorDirectory(query.sessionDirectory)
-            ? Stream.fromEffect(coordinatorCatalog(query.sessionDirectory)).pipe(
+          query.cakeChatSessionId
+            ? Stream.fromEffect(
+                coordinatorCatalog(query.sessionDirectory, query.cakeChatSessionId),
+              ).pipe(
                 Stream.filter((item) => item !== undefined),
                 Stream.map((item) => item.id),
               )
@@ -1296,17 +1298,17 @@ export const makeCakeSessionRuntimesLive = (
                 excludedSessionIds: query.excludedSessionIds,
               }),
         catalog: (query) =>
-          coordinatorDirectory(query.sessionDirectory)
-            ? Stream.fromEffect(coordinatorCatalog(query.sessionDirectory)).pipe(
-                Stream.filter((item) => item !== undefined),
-              )
+          query.cakeChatSessionId
+            ? Stream.fromEffect(
+                coordinatorCatalog(query.sessionDirectory, query.cakeChatSessionId),
+              ).pipe(Stream.filter((item) => item !== undefined))
             : streamWorkspaceSessions(query.workingDirectory, query.sessionDirectory, {
                 direct: query.direct,
                 excludedSessionIds: query.excludedSessionIds,
               }),
         catalogEntry: (query, sessionId) =>
-          coordinatorDirectory(query.sessionDirectory)
-            ? coordinatorCatalog(query.sessionDirectory).pipe(
+          query.cakeChatSessionId
+            ? coordinatorCatalog(query.sessionDirectory, query.cakeChatSessionId).pipe(
                 Effect.map((item) => (item?.id === sessionId ? item : undefined)),
               )
             : Effect.tryPromise({
@@ -1322,7 +1324,7 @@ export const makeCakeSessionRuntimesLive = (
                 catch: (cause) => cause,
               }),
         inspect: (target) =>
-          coordinatorDirectory(target.sessionDirectory)
+          target.cakeChatSessionId
             ? durable.inspect(target.sessionDirectory, target.sessionId)
             : cakeChatSideChatConversationId(target.sessionId) !== undefined
               ? durable.inspectSideChat(target.sessionId)

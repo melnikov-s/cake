@@ -138,19 +138,29 @@ define Project Session ownership.
 
 ### Cake Chat Session
 
-The one permanent application-level coordinator, with one independently observed Conversation,
-a bounded OptChat summary view and a curated coordination-control projection.
-Pi Durable owns its originals, persisted inbox, checkpoints, and recovery through
-its SQLite adapter; this is intentionally different from regular Project Sessions.
-It creates and manages independent Project task sessions, but cannot execute
-shell/file/browser work itself. It is not a collection of global chats and has
-no resolve/delete/rename/split lifecycle. Its renderer Store does not use a
-Project Session-shaped snapshot and carries no Project, Working
-Directory, review, artifact, Session Family, or schedule state. Project-aware
-investigators use the existing focused Subagent activity authority and shared
-Chat interface, not a new visible Project Session or parallel worker UI. Cake
-Chat remains separate from Project Session catalogs. Side chats branched from its
-messages are Discussion Sessions, not additional Cake Chat Sessions.
+A permanent conversational assistant, either the global Cake Chat or a Project Chat
+bound to one registered Project. Both use the same runtime, tools, conversation UI,
+and independently observed Conversation. Each scope owns separate Pi Durable
+originals, persisted inbox, checkpoints, OptMem tree, request inspection and side-chat
+Harness. Project Chat is not an ordinary task Project Session or a Session Family.
+
+Global Cake Chat retains its stable identity. A Project Chat's stable address derives
+from the registered project path and is discoverable through sessions.list/app.state.
+Chats may message each other or delegate directly to independent Project Sessions;
+there is no mandatory routing hierarchy. Quiet digests, composing holds, read status,
+and delegated-task activity target the requesting chat, never a shared global inbox.
+
+The project header opens Project Chat. Its own status sits at the right, replaced by
+project actions on hover or keyboard focus. The plus action creates task sessions. In Activity view,
+started Project Chats sort alongside sessions by their own conversation activity;
+activity in delegated tasks does not bump the chat. Global Cake Chat remains global.
+Project Chats offer VS Code and Terminal at the registered project root; Browser Mode
+is available to both scopes. Shared presentation Stores and workspace components own
+these surfaces. Ordinary project execution still belongs in task sessions or workers.
+
+Permanent chats have no resolve/delete/rename/split lifecycle. They remain separate
+from Project Session catalogs. Side chats branched from their messages are Discussion
+Sessions, not additional Cake Chat Sessions.
 
 ### Discussion Session
 

@@ -470,12 +470,12 @@ test("permanent Cake Chat retains its input, history and settings across restart
         const storage = await openNodeSqliteStorage(database);
         try {
           const page = await storage.scanEntries(
-            { conversationId: ROOT_CONVERSATION_ID, kind: "pi.reset", order: "descending" },
-            1,
+            { conversationId: ROOT_CONVERSATION_ID, order: "descending" },
+            16,
             undefined,
             BACKGROUND_CONTEXT,
           );
-          return JSON.stringify(page.items[0]?.model);
+          return JSON.stringify(page.items.find((entry) => entry.kind === "pi.reset")?.model);
         } finally {
           await storage.close(BACKGROUND_CONTEXT);
         }

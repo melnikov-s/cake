@@ -3,7 +3,7 @@ import { CakeChatError } from "../../contracts/cake-chats/cake-chat-data";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import type { CakeChatSideChatStartInput } from "../../contracts/discussion-sessions/discussion-session-data";
 import * as discussionSessions from "../discussion-sessions/discussionSessions";
-import type { CakeChatLocation } from "./cakeChatLocations";
+import type { CakeChatLocation } from "../../services/pi-durable/CakeChatConfiguration";
 
 /**
  * Cake Chat side chats are Discussion Sessions whose parent is the permanent
@@ -16,11 +16,12 @@ const asCakeChatError = (operation: string) => (error: { readonly message: strin
 /** Current-first catalog of the side chats branched from Cake Chat. */
 export const observeCatalog = Effect.fn("CakeChatSideChats.observeCatalog")(function* (
   location: CakeChatLocation,
+  parentSessionId = CAKE_CHAT_SESSION_ID,
 ) {
   const catalog = yield* discussionSessions
     .observeCatalog({
       workingDirectory: location.workingDirectory,
-      parentSessionId: CAKE_CHAT_SESSION_ID,
+      parentSessionId,
     })
     .pipe(Effect.mapError(asCakeChatError("observeSideChats")));
   return catalog.pipe(Stream.mapError(asCakeChatError("observeSideChats")));

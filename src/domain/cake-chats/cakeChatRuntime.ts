@@ -1,3 +1,8 @@
+import { makeVscodeControl } from "../../services/pi/VscodeControlAdapter";
+import { VsCodeServer } from "../../services/vscode/VsCodeServer";
+import { cakeRpcPayloadSchemas } from "../../contracts/application/cake-rpc-contract";
+import type { JsonObject } from "../../contracts/serialization/json-contract";
+import type { BrowserControl } from "../../contracts/browser/browser-agent-control";
 import { Context, Effect, Option, Schema } from "effect";
 import * as backendAgentControl from "../application/agentControl";
 import { validateMessageReferenceControl } from "../conversations/messageReferenceForwarding";
@@ -31,7 +36,15 @@ import {
 } from "../../contracts/cake-chats/cake-chat-preferences";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import type { CakeChatTarget } from "../../contracts/cake-chats/cake-chat-data";
-import type { CakeChatLocation } from "./cakeChatLocations";
+import {
+  CakeChatConfiguration,
+  type CakeChatRuntimeConfiguration,
+} from "../../services/pi-durable/CakeChatConfiguration";
+import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
+import { SessionCoordination } from "../../services/session-catalogs/SessionCoordination";
+import * as sessionFamilies from "../session-families/sessionFamilies";
+import { implicitTurnResultFor } from "../../contracts/pi/turn-result-data";
+import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import { makeSubagentControl } from "../subagents/subagentControl";
 import * as workflowControl from "../workflows/workflow-control";
 import { jsonObjectSchema } from "../../contracts/serialization/json-contract";
@@ -42,7 +55,7 @@ import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCa
 import type { SubagentCoordinator } from "../../services/subagents/SubagentCoordinator";
 import type { SubagentEnvironment } from "../../services/subagents/SubagentEnvironment";
 import { ApplicationState } from "../../services/storage/ApplicationState";
-import type { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
+import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
 import type { CakeSessionRuntimeAcquireOptions } from "../../services/pi/CakeSessionRuntimes";
 import { makePiCallbackExecutor } from "../../services/pi/PiCallbackAdapter";
 import * as worktreeMerges from "../worktrees/worktreeMerges";
@@ -51,6 +64,15 @@ import { WorktreeLandingAgent } from "../../services/worktrees/WorktreeLandingAg
 import { WorktreeLandingCompletion } from "../../services/worktrees/WorktreeLandingCompletion";
 
 const CAKE_CHAT_OPERATIONS = [
+  "browser.enter",
+  "browser.cdp",
+  "browser.events",
+  "vscode.enter",
+  "vscode.open",
+  "vscode.script.run",
+  "vscode.selections.list",
+  "vscode.selections.remove",
+  "vscode.selections.clear",
   "attachments.list",
   "attachments.read",
   "messages.list",
@@ -115,12 +137,28 @@ const CAKE_CHAT_OPERATIONS = [
   "workflows.authoring",
 ] as const;
 
-export interface CakeChatRuntimeConfiguration {
-  readonly location: CakeChatLocation;
-  readonly agentDirectory: string;
-}
+export type CakeChatRuntimeServices =
+  | ApplicationState
+  | PiModels
+  | CakeSessionRuntimes
+  | RendererRequestCoordinator
+  | SessionArchiveStorage
+  | SessionCatalogChanges
+  | SubagentCoordinator
+  | SubagentEnvironment
+  | Effect.Services<ReturnType<typeof projectSessionCreation.createPrompted>>
+  | TaskInputStorage
+  | Effect.Services<ReturnType<typeof workflowControl.invoke>>
+  | Effect.Services<ReturnType<typeof sessionReferences.catalog>>
+  | Effect.Services<ReturnType<typeof projects.addForAgent>>
+  | Effect.Services<ReturnType<typeof projects.renameForAgent>>
+  | Effect.Services<ReturnType<typeof worktreeMerges.resolveSessionWorktree>>
+  | Exclude<
+      Effect.Services<ReturnType<typeof worktreeMerges.merge>>,
+      WorktreeLandingCoordinator | WorktreeLandingAgent | WorktreeLandingCompletion
+    >;
 
-/** The single Cake-owned composition point for Cake Chat Pi acquisition. */
+/** Shared composition for global and project-scoped permanent chats. */
 export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
   configuration,
   target,
@@ -129,46 +167,122 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
   readonly configuration: CakeChatRuntimeConfiguration;
   readonly target: CakeChatTarget;
   readonly newSession: boolean;
-}) {
+}): Effect.fn.Return<CakeSessionRuntimeAcquireOptions, never, CakeChatRuntimeServices> {
   const application = yield* ApplicationState;
   const models = yield* PiModels;
   const catalogs = yield* SessionCatalogChanges;
   const rendererRequests = yield* RendererRequests;
-  const context = yield* Effect.context<
-    | ApplicationState
-    | PiModels
-    | CakeSessionRuntimes
-    | RendererRequestCoordinator
-    | SessionArchiveStorage
-    | SessionCatalogChanges
-    | SubagentCoordinator
-    | SubagentEnvironment
-    | Effect.Services<ReturnType<typeof projectSessionCreation.createPrompted>>
-    | TaskInputStorage
-    | Effect.Services<ReturnType<typeof workflowControl.invoke>>
-    | Effect.Services<ReturnType<typeof sessionReferences.catalog>>
-    | Effect.Services<ReturnType<typeof projects.addForAgent>>
-    | Effect.Services<ReturnType<typeof projects.renameForAgent>>
-    | Effect.Services<ReturnType<typeof worktreeMerges.resolveSessionWorktree>>
-    | Exclude<
-        Effect.Services<ReturnType<typeof worktreeMerges.merge>>,
-        WorktreeLandingCoordinator | WorktreeLandingAgent | WorktreeLandingCompletion
-      >
-  >();
+  const context = yield* Effect.context<CakeChatRuntimeServices>();
   const landingCoordinator = yield* Effect.serviceOption(WorktreeLandingCoordinator);
   const landingAgent = yield* Effect.serviceOption(WorktreeLandingAgent);
   const landingCompletion = yield* Effect.serviceOption(WorktreeLandingCompletion);
   const drafts = yield* Effect.serviceOption(SavedDraftStorage);
+  const chatConfiguration = yield* Effect.serviceOption(CakeChatConfiguration);
+  const configuredContext = Option.isSome(chatConfiguration)
+    ? Context.add(context, CakeChatConfiguration, chatConfiguration.value)
+    : context;
   const run = makePiCallbackExecutor(
-    Option.isSome(drafts) ? Context.add(context, SavedDraftStorage, drafts.value) : context,
+    Option.isSome(drafts)
+      ? Context.add(configuredContext, SavedDraftStorage, drafts.value)
+      : configuredContext,
   );
   const agentControl = makeSubagentControl({
     runEffect: (effect, signal) => run(effect, { signal }),
   });
+  const vscode = yield* Effect.serviceOption(VsCodeServer);
+  const families = yield* SessionFamilyStorage;
+  const archive = yield* SessionArchiveStorage;
+  const coordination = yield* SessionCoordination;
+  const project = application
+    .snapshot()
+    .projects.find(
+      (item) =>
+        item.path === configuration.location.workingDirectory &&
+        target.sessionId !== CAKE_CHAT_SESSION_ID,
+    );
+  const title = project ? `${project.name} / Project Chat` : "Cake Chat";
   const modelPresets = () => cakeModelCatalog(application.snapshot());
   const getRuntimeOptions = () => runtimeOptions;
+  const browserRequest = async (
+    operation: "enter" | "cdp" | "events",
+    fields: {
+      method?: string;
+      params?: JsonObject;
+      methods?: readonly string[];
+      limit?: number;
+      clear?: boolean;
+    },
+    signal: AbortSignal,
+  ) => {
+    const result = await run(
+      rendererRequests.requestBrowserNative(
+        target.sessionId,
+        {
+          operation,
+          workspacePath: configuration.location.workingDirectory,
+          ...fields,
+        },
+        signal,
+      ),
+      { signal },
+    );
+    const decoded = await Schema.decodeUnknownPromise(
+      cakeRpcPayloadSchemas["respond-browser-native"].fields.result,
+    )(result);
+    if (decoded.status === "failed") throw new Error(decoded.message);
+    return decoded;
+  };
+  const browserControl: BrowserControl = {
+    enter: async (signal) => {
+      const result = await browserRequest("enter", {}, signal);
+      if (result.status !== "completed") throw new Error("Browser Mode is unavailable");
+    },
+    cdp: (method, params, signal) => browserRequest("cdp", { method, params }, signal),
+    events: (methods, limit, clear, signal) =>
+      browserRequest("events", { methods, limit, clear }, signal),
+  };
   const runtimeOptions: CakeSessionRuntimeAcquireOptions = {
     profile: { _tag: "CakeChatSession" },
+    admitTurn: (input, accept) => {
+      const message = parseCrossSessionMessage(input.text);
+      return sessionFamilies
+        .admitTurn(
+          target.sessionId,
+          {
+            cwd: configuration.location.workingDirectory,
+            activeRoot: configuration.location.sessionDirectory,
+            resolvedRoot: configuration.location.sessionDirectory,
+          },
+          input,
+          message
+            ? coordination
+                .bindTurn(target.sessionId, message.metadata.messageId, input.turnId)
+                .pipe(Effect.andThen(accept))
+            : accept,
+        )
+        .pipe(
+          Effect.provideService(SessionFamilyStorage, families),
+          Effect.provideService(SessionArchiveStorage, archive),
+        );
+    },
+    onTurnSettled: (event) =>
+      Effect.gen(function* () {
+        yield* coordination.settleTurn(event.turnId, event.outcome);
+        const turn = (yield* families.state()).turns.find((item) => item.turnId === event.turnId);
+        const text = turn ? implicitTurnResultFor(event.result, turn.senderSessionId) : undefined;
+        if (turn)
+          yield* families.settleTurn(
+            event.turnId,
+            event.outcome,
+            text ? { outcome: "result", text } : undefined,
+            event.stop,
+          );
+        yield* catalogs.publish({
+          _tag: "CakeChatSessionChanged",
+          sessionId: target.sessionId,
+          resolved: false,
+        });
+      }),
     onSessionChanged: catalogs.publish({
       _tag: "CakeChatSessionChanged",
       sessionId: target.sessionId,
@@ -180,6 +294,19 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
     }),
     runtime: {
       cwd: configuration.location.workingDirectory,
+      additionalSystemPrompt: project
+        ? [
+            "## Project Chat scope",
+            `You are the permanent Project Chat for ${JSON.stringify(project.name)} at ${JSON.stringify(project.path)}.`,
+            `Your messaging address is ${target.sessionId}. Your history and memory belong only to this project; global Cake Chat is a separate conversation at cake-chat.`,
+            "Keep this conversation focused on the project. You can discuss ideas and decisions without creating tasks. Delegate only when useful, using this project's root as the default.",
+            "VS Code and the interactive Terminal open at this project root; Browser Mode belongs to this conversation. Use these shared tools for visual exploration while keeping discussion primary.",
+            "Other chats have independent memories. Exchange a focused request and relevant references, not entire histories. Do not repeatedly relay or delegate the same request.",
+            project.settings?.customInstructions,
+          ]
+            .filter(Boolean)
+            .join("\n\n")
+        : undefined,
       sessionReferences: {
         resolve: (reference, signal) => run(sessionReferences.resolve(reference), { signal }),
         project: (value, signal) => run(sessionReferences.project(value), { signal }),
@@ -279,6 +406,25 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
           );
         },
       },
+      browserControl,
+      vscodeControl: project
+        ? makeVscodeControl({
+            request: (name, input, signal) =>
+              run(
+                rendererRequests.requestCakeChatControl(
+                  target.sessionId,
+                  { name, arguments: input },
+                  signal,
+                ),
+                { signal },
+              ),
+            runScript: (source, input, signal) => {
+              if (Option.isNone(vscode))
+                return Promise.reject(new Error("VS Code is unavailable in this host"));
+              return run(vscode.value.runProjectScript(project.path, source, input), { signal });
+            },
+          })
+        : undefined,
       slashCommands: ["compact", "model"],
       requestUi: async () => undefined,
       modelPresets,
@@ -371,7 +517,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
               // Project Sessions reach Cake Chat by omitting sessionId; Cake Chat cannot message itself.
               if (
                 invocation.name === "sessions.send" &&
-                (args.sessionId === undefined || args.sessionId === CAKE_CHAT_SESSION_ID)
+                (args.sessionId === undefined || args.sessionId === target.sessionId)
               )
                 return {
                   ok: false,
@@ -424,7 +570,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
                             requester: {
                               sessionId: target.sessionId,
                               kind: "cake-chat",
-                              title: "Cake Chat",
+                              title,
                             },
                           }),
                         );
@@ -434,7 +580,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
                       backendAgentControl.invoke(forwarded.name, forwarded.arguments, {
                         kind: "cake-chat",
                         sessionId: target.sessionId,
-                        title: "Cake Chat",
+                        title,
                       }),
                     )) ??
                     (yield* rendererRequests.requestCakeChatControl(

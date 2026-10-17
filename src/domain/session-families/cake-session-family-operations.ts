@@ -170,7 +170,7 @@ export function createSessionFamilyOperations(
       guidance: [
         "Replies default to expectsResponse=false because substantive results and informational responses do not request acknowledgment.",
         "Provide replyToMessageId when more than one request may be pending. Cake otherwise selects the latest matching request in the thread.",
-        "A Project Session answering Cake Chat (including one Cake Chat launched) replies to its originating global coordinator without needing a synthetic session ID. Optional outcome declares completed, blocked, or failed; a terminal report is delivered after the executing turn settles.",
+        "A Project Session answering Cake Chat (including one Cake Chat launched) replies to its originating Cake Chat or Project Chat without needing to repeat its address. Optional outcome declares completed, blocked, or failed; a terminal report is delivered after the executing turn settles.",
         'Cake Chat usually asked for a quiet digest result: it is shown to the user with their next message and never interrupts them. outcome: "blocked" always reaches Cake Chat immediately; use it only when you cannot continue without a user decision.',
         "Do not reply merely to acknowledge a result, notice, confirmation, lifecycle event, or delivery receipt.",
       ],

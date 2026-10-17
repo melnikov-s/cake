@@ -68,6 +68,8 @@ import { WorkflowWorkersLive } from "../services/pi/live/WorkflowWorkersLive";
 import { makeWorkflowRunStorageLive } from "../services/storage/WorkflowRunStorageLive";
 import { WorkflowSupervisorLive } from "../services/workflows/WorkflowSupervisorLive";
 
+import { CakeChatConfiguration } from "../services/pi-durable/CakeChatConfiguration";
+
 export interface BackendLiveOptions {
   readonly paths: CakePaths;
   readonly homeDirectory?: string;
@@ -78,6 +80,13 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
   const paths = options.paths;
   const PlatformLive = Layer.mergeAll(
     BootstrapLive,
+    Layer.succeed(CakeChatConfiguration, {
+      agentDirectory: paths.piAgent,
+      location: {
+        workingDirectory: options.homeDirectory ?? paths.home,
+        sessionDirectory: paths.cakeChat,
+      },
+    }),
     Layer.succeed(ProjectConfiguration, { agentDirectory: paths.piAgent }),
     Layer.succeed(ProjectSessionConfiguration, {
       agentDirectory: paths.piAgent,

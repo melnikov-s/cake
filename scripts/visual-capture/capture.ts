@@ -126,7 +126,10 @@ export async function captureVisual(
             await application.evaluate(async ({ BrowserWindow, WebContentsView, nativeImage }) => {
               const window = BrowserWindow.getAllWindows()[0];
               if (!window) throw new Error("Cake capture window is missing");
-              const image = await window.capturePage();
+              const image = await window.webContents.capturePage(undefined, {
+                stayHidden: true,
+                stayAwake: true,
+              });
               const size = image.getSize();
               const bitmap = image.toBitmap();
               // Chromium's page capture omits sibling native WebContentsViews.
@@ -141,7 +144,10 @@ export async function captureVisual(
                   continue;
                 const bounds = view.getBounds();
                 if (bounds.width <= 0 || bounds.height <= 0) continue;
-                const child = await view.webContents.capturePage();
+                const child = await view.webContents.capturePage(undefined, {
+                  stayHidden: true,
+                  stayAwake: true,
+                });
                 const childSize = child.getSize();
                 if (childSize.width !== bounds.width || childSize.height !== bounds.height)
                   throw new Error("Native view capture dimensions do not match its bounds");

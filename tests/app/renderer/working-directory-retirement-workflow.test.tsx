@@ -93,6 +93,8 @@ function renderRetirement(
   const view = render(
     <>
       <SidebarProjectGroup
+        cakeChat={root.cakeChatCollectionStore}
+        onOpenCakeChat={(sessionId) => void root.navigationStore.openCakeChat(sessionId)}
         store={root.sidebarStore}
         sessionList={root.sidebarStore.sessionListStore}
         sessionMetadata={root.sessionMetadataStore}

@@ -73,7 +73,7 @@ import {
   createCakeChatReadTool,
 } from "./cake-chat-local-tools";
 import { CakeChatMcp, createCakeChatMcpTool, loadCakeChatMcpServers } from "./cake-chat-mcp";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
+import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import { SubagentResult, SubagentReportOrigin } from "../../contracts/subagents/subagent-data";
 import { Option } from "effect";
 import {
@@ -100,12 +100,23 @@ export async function createDurableCakeChatRuntime(
   options: CakeSessionRuntimeOptions,
   inspection?: RequestInspection,
 ): Promise<DurableCakeChatRuntime> {
-  if (!options.coordinator || !options.cakeChatMemory || options.sessionId !== CAKE_CHAT_SESSION_ID)
+  if (
+    !options.coordinator ||
+    !options.cakeChatMemory ||
+    !options.sessionId ||
+    !isCakeChatSessionId(options.sessionId)
+  )
     throw new Error("Durable Cake Chat requires the coordinator capability profile");
   const preferences = options.cakeChatMemory;
   const sessionId = options.sessionId;
   const sessionFile = durableChatDatabase(options.sessionDir);
-  const instructions = () => coordinatorSystemPrompt(preferences.preferences().instructions);
+  const instructions = () =>
+    [
+      coordinatorSystemPrompt(preferences.preferences().instructions),
+      options.additionalSystemPrompt,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
   const settings = SettingsManager.create(options.cwd, options.agentDir, { projectTrusted: true });
   const catalogRuntime = await ModelRuntime.create({
     authPath: join(options.agentDir, "auth.json"),
@@ -126,6 +137,7 @@ export async function createDurableCakeChatRuntime(
     () => fastMode,
     inspection,
     options.sessionReferences,
+    sessionId,
   );
   const available = await catalogRuntime.getAvailable();
   const presets = options.coordinator.modelPresets?.();
@@ -439,6 +451,7 @@ export async function createDurableCakeChatRuntime(
     );
   };
   const sideChats = createDurableSideChats({
+    parentSessionId: sessionId,
     harness: engine.harness,
     root: engine.root,
     storage,
@@ -457,7 +470,7 @@ export async function createDurableCakeChatRuntime(
     },
     executingTurnIds: () => activeTurnIds,
     recordReviewRun() {
-      throw new Error("Project review runs do not belong to the global coordinator");
+      throw new Error("Project review runs do not belong to permanent chats");
     },
     history,
     async queueCommand() {
@@ -599,6 +612,23 @@ export async function createDurableCakeChatRuntime(
         responseMode,
       );
       const settled = await submission.wait(BACKGROUND_CONTEXT);
+      if (turnId && settled.status !== "unanswered") {
+        // Attribute the final answer to the latest consumed conversational input,
+        // not necessarily the request that initially started a steered run.
+        const snapshot = await runtime.snapshot();
+        const latestInput = snapshot.parts.findLast(
+          (part) => part.kind === "text" && part.role === "user" && !part.deliveryState,
+        );
+        const answer = snapshot.parts.findLast(
+          (part) => part.kind === "text" && part.role === "assistant",
+        );
+        options.onTurnResult?.(turnId, {
+          stopReason: "stop",
+          text: answer?.kind === "text" ? answer.text : "",
+          respondsToSessionId:
+            latestInput?.kind === "text" ? latestInput.crossSession?.sender.sessionId : undefined,
+        });
+      }
       if (settled.status === "unanswered") {
         if (settled.reason === "aborted") throw new TurnCanceledError();
         throw new Error(

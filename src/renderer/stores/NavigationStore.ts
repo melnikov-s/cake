@@ -2,7 +2,10 @@ import { Store, child, createStore } from "r-state-tree";
 import { linkedMessageTarget } from "../lib/message-navigation";
 import { MessageReferencePreviewStore } from "./MessageReferencePreviewStore";
 import { AttachmentReferencePreviewStore } from "./AttachmentReferencePreviewStore";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
+import {
+  CAKE_CHAT_SESSION_ID,
+  isCakeChatSessionId,
+} from "../../contracts/cake-chats/cake-chat-identity";
 import { resolveSessionLinkReference } from "../../contracts/project-sessions/session-reference";
 import {
   decodeArtifactLineageId,
@@ -66,8 +69,9 @@ export class NavigationStore extends Store<{
   async openSession(sessionId: string, messageId?: string) {
     this.messageReferencePreview.close();
     this.attachmentReferencePreview.close();
-    if (sessionId === CAKE_CHAT_SESSION_ID && messageId) {
+    if (isCakeChatSessionId(sessionId)) {
       await this.openCakeChat(sessionId);
+      if (!messageId) return true;
       const chat = this.props.cakeChat().registry.find(sessionId)
         ?.conversationSessionStore.chatStore;
       const part = chat && linkedMessageTarget(chat.parts, messageId);
@@ -135,7 +139,7 @@ export class NavigationStore extends Store<{
     if (!resolved.ok) throw new Error(resolved.error);
     const { sessionId } = resolved;
     if (attachmentId) {
-      if (sessionId === CAKE_CHAT_SESSION_ID) await this.openCakeChat(sessionId);
+      if (isCakeChatSessionId(sessionId)) await this.openCakeChat(sessionId);
       else if (!(await this.openSession(sessionId)))
         throw new Error("Cake could not open the linked session");
       this.messageReferencePreview.close();
@@ -182,6 +186,11 @@ export class NavigationStore extends Store<{
   sessionInNavigationScope(entry: SessionHistoryEntry) {
     const projectPath = this.props.sidebar().focusModeProjectPath;
     if (projectPath === undefined) return true;
+    if (entry.kind === "cake-chat")
+      return (
+        this.props.cakeChat().summaries.find((chat) => chat.sessionId === entry.sessionId)
+          ?.projectPath === projectPath
+      );
     if (entry.kind !== "project-session") return false;
     const summary = this.props.catalog.find(entry.sessionId);
     const workingDirectory = this.props.metadata().workingDirectory(entry.sessionId);
@@ -352,13 +361,15 @@ export class NavigationStore extends Store<{
     this.workbench.dismissSecondarySurfaces();
     this.props.shell.selectCakeChat(sessionId);
     await this.props.cakeChat().openSession(sessionId);
+    this.presentation.restore();
   }
 
   async startCakeChat(prompt?: string) {
     this.workbench.dismissSecondarySurfaces();
-    this.props.shell.selectCakeChat();
+    this.props.shell.selectCakeChat(CAKE_CHAT_SESSION_ID);
     await this.props.cakeChat().activate(prompt);
     this.props.shell.selectCakeChat(this.props.cakeChat().sessionId);
+    this.presentation.restore();
   }
 
   openArtifact(sessionId: string, lineageId: string, revision?: number) {

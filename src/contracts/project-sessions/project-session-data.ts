@@ -45,6 +45,7 @@ export const ProjectSessionSummary = Schema.Struct({
   /** Present when Cake Chat launched this session; drives its header activity. */
   cakeChatLaunch: Schema.optionalKey(
     Schema.Struct({
+      requesterSessionId: boundedId,
       launchedAt: Schema.optionalKey(Schema.String),
       lastReport: Schema.optionalKey(CakeChatLaunchReport),
     }),

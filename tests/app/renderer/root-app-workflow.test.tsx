@@ -17,8 +17,7 @@ function deferred<Value>() {
   return { promise, resolve };
 }
 const input = () => screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message" });
-const newChat = (project: string) =>
-  screen.getByRole("button", { name: `Start new chat in ${project}` });
+const newChat = (project: string) => screen.getByRole("button", { name: `New chat in ${project}` });
 
 beforeEach(() => {
   Object.defineProperty(SVGElement.prototype, "getBBox", {
@@ -110,7 +109,10 @@ describe("Root App workflow", () => {
       electron: { showProjectContextMenu },
       workspaces: { removeProject },
     });
-    await fixture.user.pointer({ target: newChat("alpha"), keys: "[MouseRight]" });
+    await fixture.user.pointer({
+      target: screen.getByRole("button", { name: "Open Project Chat for alpha" }),
+      keys: "[MouseRight]",
+    });
     const dialog = await screen.findByRole("alertdialog", { name: "Remove Alpha?" });
     await fixture.user.click(
       within(dialog).getByRole("button", { name: "Remove and delete sessions" }),
@@ -135,6 +137,6 @@ describe("Root App workflow", () => {
     fixture.publishSessions([]);
     expect(await screen.findByRole("heading", { name: "What should we build?" })).toBeDefined();
     expect(screen.queryByRole("combobox", { name: "Message" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Start new chat in alpha" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open Project Chat for alpha" })).toBeNull();
   });
 });

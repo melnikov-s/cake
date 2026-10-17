@@ -1,9 +1,6 @@
+import { windowControlDefinitions } from "../../contracts/application/window-control-definitions";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import { resolveSessionReference } from "../../contracts/project-sessions/session-reference";
-import {
-  SessionNavigationInput,
-  sessionNavigationHelp,
-} from "../../contracts/application/session-navigation";
 import type { AppControlResult } from "./app-control-data";
 import { knownSession } from "./control-projections";
 
@@ -11,10 +8,7 @@ import { defineControl } from "./control-definition";
 
 export const sessionInspectionControls = [
   defineControl({
-    command: "sessions.open",
-    args: SessionNavigationInput,
-    scope: "global",
-    discovery: sessionNavigationHelp,
+    ...windowControlDefinitions["sessions.open"],
     run: async (input, { host }, command): Promise<AppControlResult> => {
       const chatMessage =
         input.sessionId === CAKE_CHAT_SESSION_ID &&

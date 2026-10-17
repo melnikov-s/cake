@@ -629,8 +629,8 @@ describe("Project navigation workflow", () => {
 
   it("reorders projects through drag and drop and retains that order when activity changes", async () => {
     using fixture = renderNavigation();
-    const source = screen.getByRole("button", { name: "Start new chat in alpha" });
-    const target = screen.getByRole("button", { name: "Start new chat in gamma" });
+    const source = screen.getByRole("button", { name: "Open Project Chat for alpha" });
+    const target = screen.getByRole("button", { name: "Open Project Chat for gamma" });
     const payload = new Map<string, string>();
     const dataTransfer = {
       types: ["application/x-cake-item"],

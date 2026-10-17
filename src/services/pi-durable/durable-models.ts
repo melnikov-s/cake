@@ -35,6 +35,7 @@ export function durableModels(
   fastMode: () => boolean = () => false,
   inspection?: RequestInspection,
   sessionReferences?: SessionReferenceControl,
+  sessionId = CAKE_CHAT_SESSION_ID,
 ): Models & { synchronizeProviders(): void } {
   const catalog = createModels();
   const relay = (
@@ -108,7 +109,7 @@ export function durableModels(
     });
   };
   const streamSimple: Models["streamSimple"] = (model, context, options) => {
-    const capture = inspection?.begin(CAKE_CHAT_SESSION_ID, model, options, fastMode());
+    const capture = inspection?.begin(sessionId, model, options, fastMode());
     let observeResponse: ReturnType<typeof observeFastModeResponse> | undefined;
     return relay(
       async () =>
@@ -138,7 +139,7 @@ export function durableModels(
     );
   };
   const stream: Models["stream"] = (model, context, options) => {
-    const capture = inspection?.begin(CAKE_CHAT_SESSION_ID, model, options);
+    const capture = inspection?.begin(sessionId, model, options);
     return relay(
       async () =>
         runtime.stream<Api>(model, await projectContext(context, options?.signal), {
@@ -155,7 +156,7 @@ export function durableModels(
     );
   };
   const streamDeferred: Models["streamDeferred"] = (model, handle, options) => {
-    const capture = inspection?.begin(CAKE_CHAT_SESSION_ID, model, options);
+    const capture = inspection?.begin(sessionId, model, options);
     return relay(
       () =>
         runtime.streamDeferred(model, handle, {

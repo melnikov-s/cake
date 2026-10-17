@@ -177,6 +177,8 @@ function sidebarProps(store: ProjectWorkbenchStore) {
     } as any,
     chat: store,
     cakeChat: {
+      projectChat: () => undefined,
+      activityFor: () => undefined,
       summaries: fixture.cakeChatSummaries ?? [],
       sessionId: undefined,
       registry: { find: vi.fn() },
@@ -259,7 +261,7 @@ describe("Sidebar projects", () => {
     expect(container.textContent).toContain("Add project collapsing");
 
     act(() =>
-      container.querySelector<HTMLButtonElement>('[aria-label="Start new chat in cake"]')!.click(),
+      container.querySelector<HTMLButtonElement>('[aria-label="New chat in cake"]')!.click(),
     );
     expect(startNewSession).toHaveBeenCalledWith("/work/cake");
   });
@@ -681,28 +683,6 @@ describe("Sidebar projects", () => {
     expect(switchProject).not.toHaveBeenCalled();
   });
 
-  it("starts the same new session flow from the project folder", () => {
-    const startNewSession = vi.fn();
-    const store = {
-      recentProjectPaths: ["/work/cake"],
-      projects: [{ path: "/work/cake", name: "Cake" }],
-      projectSessions: () => [],
-      sessionLimit: () => 8,
-      sessionActivity: vi.fn(),
-      nameFromPath: () => "cake",
-      startNewSession,
-      showMoreSessions: vi.fn(),
-    } as unknown as ProjectWorkbenchStore;
-    const props = sidebarProps(store);
-    act(() => root.render(<Sidebar {...props} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
-
-    act(() =>
-      container.querySelector<HTMLButtonElement>('[aria-label="Start new chat in cake"]')!.click(),
-    );
-
-    expect(startNewSession).toHaveBeenCalledWith("/work/cake");
-  });
-
   it("changes project session sorting from the header action", () => {
     const setProjectSessionSort = vi.fn();
     const store = {
@@ -757,7 +737,7 @@ describe("Sidebar projects", () => {
 
     await act(async () => {
       container
-        .querySelector<HTMLButtonElement>('[aria-label="Start new chat in cake"]')!
+        .querySelector<HTMLButtonElement>('[aria-label="Open Project Chat for cake"]')!
         .dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 12, clientY: 34 }));
       await Promise.resolve();
     });
@@ -784,7 +764,7 @@ describe("Sidebar projects", () => {
 
     await act(async () => {
       container
-        .querySelector<HTMLButtonElement>('[aria-label="Start new chat in cake"]')!
+        .querySelector<HTMLButtonElement>('[aria-label="Open Project Chat for cake"]')!
         .dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 12, clientY: 34 }));
       await Promise.resolve();
     });
@@ -825,7 +805,7 @@ describe("Sidebar projects", () => {
 
     await act(async () => {
       container
-        .querySelector<HTMLButtonElement>('[aria-label="Start new chat in cake"]')!
+        .querySelector<HTMLButtonElement>('[aria-label="Open Project Chat for cake"]')!
         .dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 12, clientY: 34 }));
       await Promise.resolve();
     });
@@ -1020,7 +1000,7 @@ describe("Sidebar projects", () => {
       renameSession: vi.fn(),
       cakeChatSummaries: [
         {
-          sessionId: "cake-session",
+          sessionId: "ca4ec4a7-0000-4000-8000-000000000001",
           title: "Meta work",
           modifiedAt: new Date(0).toISOString(),
           resolved: false,
@@ -1029,8 +1009,9 @@ describe("Sidebar projects", () => {
     } as unknown as ProjectWorkbenchStore;
     const props = sidebarProps(store);
     props.cakeChat = {
-      summaries: [{ sessionId: "cake-session", title: "Meta work" }],
-      sessionId: "cake-session",
+      projectChat: () => undefined,
+      summaries: [{ sessionId: "ca4ec4a7-0000-4000-8000-000000000001", title: "Meta work" }],
+      sessionId: "ca4ec4a7-0000-4000-8000-000000000001",
       registry: { find: vi.fn() },
       management: { renameSession: vi.fn() },
     } as any;
@@ -1039,7 +1020,11 @@ describe("Sidebar projects", () => {
       root.render(
         <Sidebar
           {...props}
-          shell={{ selection: { kind: "cake-chat", sessionId: "cake-session" } } as any}
+          shell={
+            {
+              selection: { kind: "cake-chat", sessionId: "ca4ec4a7-0000-4000-8000-000000000001" },
+            } as any
+          }
           onOpenSettings={vi.fn()}
           onToggle={vi.fn()}
         />,

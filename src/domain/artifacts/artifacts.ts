@@ -1,4 +1,4 @@
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
+import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import { Effect } from "effect";
 import type { cakeRpcPayloadSchemas } from "../../contracts/application/cake-rpc-contract";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
@@ -74,7 +74,7 @@ export const listCatalog = Effect.fn("Artifacts.listCatalog")(function* (input: 
 export const listEffective = Effect.fn("Artifacts.listEffective")(function* (sessionId: string) {
   // The permanent coordinator has no Project Working Directory. Its linked-artifact
   // query is catalog-only; ordinary Project Session reads still require project access.
-  if (sessionId !== CAKE_CHAT_SESSION_ID) yield* authorizedWorkingDirectory(sessionId);
+  if (!isCakeChatSessionId(sessionId)) yield* authorizedWorkingDirectory(sessionId);
   const values = yield* artifactWorkflows.listEffectiveSessionArtifacts(sessionId);
   return yield* Effect.forEach(
     values,
@@ -198,7 +198,7 @@ export const materialize = Effect.fn("Artifacts.materialize")(function* (input: 
   readonly lineageId: ArtifactLineageId;
   readonly revision: ArtifactRevisionNumber;
 }) {
-  if (input.sessionId !== CAKE_CHAT_SESSION_ID) yield* authorizedWorkingDirectory(input.sessionId);
+  if (!isCakeChatSessionId(input.sessionId)) yield* authorizedWorkingDirectory(input.sessionId);
   const effective = yield* artifactWorkflows.resolveEffectiveReference(
     input.sessionId,
     `cake://artifact/${input.lineageId}@r${input.revision}`,

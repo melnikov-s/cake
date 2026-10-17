@@ -13,7 +13,7 @@ import { editorProxyTarget, proxyEditorHttp, proxyEditorSocket } from "./editorP
 import { EditorBrowserPort } from "../services/vscode/EditorBrowserPort";
 import type { VsCodeServer as VsCodeServerType } from "../services/vscode/VsCodeServer";
 import { previewProxyTarget, proxyPreviewHttp, proxyPreviewSocket } from "./previewProxy";
-import type { CakeChatRuntimeConfiguration } from "../domain/cake-chats/cakeChatRuntime";
+import type { CakeChatRuntimeConfiguration } from "../services/pi-durable/CakeChatConfiguration";
 import { makeBackendRpcServerLive } from "../ipc/server/BackendRpcServer";
 import { StandaloneSocketProtocolLive } from "../ipc/transport/StandaloneSocketProtocol";
 import { parseRendererRpcMessage } from "../ipc/transport/ElectronRpcTransport";

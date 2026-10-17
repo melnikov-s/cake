@@ -2,6 +2,7 @@ import { it } from "@effect/vitest";
 import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { Effect, Layer, Stream } from "effect";
 import { describe, expect } from "vitest";
+import * as chatLocations from "../../../src/domain/cake-chats/cakeChatLocations";
 import * as metadata from "../../../src/domain/cake-chats/cakeChatMetadata";
 import { acquireOptions } from "../../../src/domain/cake-chats/cakeChatRuntime";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
@@ -53,6 +54,7 @@ function fixture() {
     Layer.mock(ApplicationState, {
       snapshot: () => state,
       current: () => Effect.succeed(state),
+      changes: () => Stream.empty,
       transact: (transition) =>
         transition(state).pipe(
           Effect.tap((next) =>
@@ -78,7 +80,8 @@ function fixture() {
       initialThenChanges: (initial) => initial.pipe(Stream.concat(Stream.fromIterable(changes))),
     }),
     Layer.mock(CakeSessionRuntimes, {
-      catalogEntry: (_, id) => Effect.succeed(summary(id)),
+      catalogEntry: (_, id) =>
+        Effect.succeed(id === CAKE_CHAT_SESSION_ID ? summary(id) : undefined),
       catalog: () =>
         Stream.fromIterable(
           [summary(CAKE_CHAT_SESSION_ID)].filter((item) => !removed.includes(item.id)),
@@ -102,6 +105,56 @@ function fixture() {
 
 describe("permanent Cake Chat", () => {
   it.effect(
+    "catalogs registered Project Chats without starting Harnesses and validates scope locations",
+    () => {
+      const f = fixture();
+      f.setState({
+        ...defaultApplicationState(),
+        projects: ["/zombies", "/finances"].map((path) => ({
+          path,
+          name: path.slice(1),
+          addedAt: "2026-01-01T00:00:00.000Z",
+          lastOpenedAt: "2026-01-01T00:00:00.000Z",
+        })),
+      });
+      return Effect.gen(function* () {
+        const entries = yield* metadata.catalog(location);
+        const zombieId = chatLocations.projectChatSessionId("/zombies");
+        const financeId = chatLocations.projectChatSessionId("/finances");
+        expect(zombieId).not.toBe(financeId);
+        expect(entries.map((entry) => entry.sessionId)).toEqual([
+          CAKE_CHAT_SESSION_ID,
+          zombieId,
+          financeId,
+        ]);
+        expect(entries[1]).toMatchObject({
+          projectPath: "/zombies",
+          title: "zombies",
+          messageCount: 0,
+        });
+        const zombie = yield* chatLocations.resolve(location, zombieId);
+        const finance = yield* chatLocations.resolve(location, financeId);
+        expect(zombie.workingDirectory).toBe("/zombies");
+        expect(zombie.sessionDirectory).not.toBe(finance.sessionDirectory);
+        expect(zombie.sessionDirectory).not.toBe(location.sessionDirectory);
+        expect(yield* chatLocations.resolve(location, CAKE_CHAT_SESSION_ID)).toEqual(location);
+        expect(
+          yield* Effect.flip(
+            chatLocations.resolve(location, chatLocations.projectChatSessionId("/unregistered")),
+          ),
+        ).toMatchObject({
+          operation: "locate",
+          message: expect.stringContaining("no registered project"),
+        });
+        yield* metadata.setUnread(true, zombieId);
+        const after = yield* metadata.catalog(location);
+        expect(after.find((entry) => entry.sessionId === zombieId)?.unread).toBe(true);
+        expect(after.find((entry) => entry.sessionId === CAKE_CHAT_SESSION_ID)?.unread).toBe(false);
+        expect(after.find((entry) => entry.sessionId === financeId)?.unread).toBe(false);
+      }).pipe(Effect.provide(f.layer));
+    },
+  );
+  it.effect(
     "persists manual reminders under the coordinator identity and projects them in fresh catalogs and live updates",
     () => {
       const f = fixture();
@@ -118,8 +171,8 @@ describe("permanent Cake Chat", () => {
           sessions: [{ sessionId: CAKE_CHAT_SESSION_ID, unread: true }],
         });
         expect(updates[1]).toMatchObject({
-          _tag: "Event",
-          event: { _tag: "Upserted", session: { sessionId: CAKE_CHAT_SESSION_ID, unread: true } },
+          _tag: "Snapshot",
+          sessions: [{ sessionId: CAKE_CHAT_SESSION_ID, unread: true }],
         });
         yield* metadata.setUnread(false);
         expect(f.state().unreadSessionIds).toEqual([]);

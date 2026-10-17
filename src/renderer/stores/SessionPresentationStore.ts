@@ -14,10 +14,25 @@ import { EmbeddedEditorStore } from "./EmbeddedEditorStore";
 import type { ProjectSessionStore } from "./ProjectSessionStore";
 import type { ReviewsStore } from "./ReviewsStore";
 
+/** Presentation is shared by ordinary sessions and permanent chats. */
+export type PresentationSession = Pick<
+  ProjectSessionStore,
+  | "sessionId"
+  | "presentationMode"
+  | "showPresentation"
+  | "workspaceChatSidebarVisible"
+  | "workspaceChatSidebarWidth"
+  | "toggleWorkspaceChatSidebar"
+  | "showWorkspaceChatSidebar"
+  | "setWorkspaceChatSidebarWidth"
+  | "editorSelectionsStore"
+  | "conversationSessionStore"
+>;
+
 export interface SessionPresentationStoreProps {
   browserHost?: boolean;
   onBrowserUnavailable?(): void;
-  activeSession(): ProjectSessionStore | undefined;
+  activeSession(): PresentationSession | undefined;
   activeSessionId(): string | undefined;
   activeSessionResolved(): boolean;
   projectPath(): string | undefined;
@@ -167,7 +182,7 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
   }
 
   async openBrowser() {
-    if (!this.canOpen()) return;
+    if (this.props.activeSessionResolved() || !this.session) return;
     if (this.props.browserHost) {
       await this.browserStore.show();
       return;
@@ -268,10 +283,7 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
       return;
     }
     if (event.type === "browser-entered") {
-      if (
-        event.workspacePath === this.props.projectPath() &&
-        event.sessionId === this.props.activeSessionId()
-      ) {
+      if (event.sessionId === this.props.activeSessionId()) {
         this.embeddedEditorStore.suspend();
         this.browserStore.showAgentBrowser();
       }

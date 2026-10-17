@@ -1,6 +1,13 @@
 import { observer, useStore } from "r-state-tree/react";
 import { IconButton } from "@/components/ui/icon-button";
-import { CloseIcon, CropIcon, SidebarIcon, TerminalIcon } from "@/components/ui/icons";
+import {
+  BrowserIcon,
+  VsCodeIcon,
+  CloseIcon,
+  CropIcon,
+  SidebarIcon,
+  TerminalIcon,
+} from "@/components/ui/icons";
 import { RequestInspector } from "@/components/request-inspector";
 import { WorkLogControls } from "@/components/work-log-controls";
 import { cn } from "@/lib/utils";
@@ -69,6 +76,31 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
       />
       {!overlay && (
         <>
+          <IconButton
+            tooltip="Open Browser Mode"
+            hotkey="toggle-browser"
+            onClick={() => {
+              root.navigationStore.focusCakeChatPane(pane.paneId);
+              void root.projectWorkbenchStore.presentationStore.openBrowser();
+            }}
+          >
+            <BrowserIcon />
+          </IconButton>
+          {cakeChatCollection.summaries.some(
+            (chat) => chat.sessionId === paneSession.sessionId && chat.projectPath,
+          ) && (
+            <IconButton
+              tooltip="Open VS Code"
+              hotkey="open-editor"
+              className="phone:hidden"
+              onClick={() => {
+                root.navigationStore.focusCakeChatPane(pane.paneId);
+                void root.projectWorkbenchStore.presentationStore.openIde();
+              }}
+            >
+              <VsCodeIcon />
+            </IconButton>
+          )}
           <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />
           <RequestInspector store={paneSession.requestInspectorStore} />
         </>

@@ -10,7 +10,7 @@ import { terminalHandlers } from "./TerminalHandlers";
 import { backendConnectionHandlers } from "./BackendConnectionHandlers";
 import { Layer } from "effect";
 import { RpcServer } from "effect/unstable/rpc";
-import type { CakeChatRuntimeConfiguration } from "../../domain/cake-chats/cakeChatRuntime";
+import type { CakeChatRuntimeConfiguration } from "../../services/pi-durable/CakeChatConfiguration";
 import { BackendRpc } from "../protocol/BackendRpc";
 import { RendererConnectionMiddlewareLive } from "../protocol/RendererConnectionMiddleware";
 import { applicationStateHandlers } from "./ApplicationStateHandlers";

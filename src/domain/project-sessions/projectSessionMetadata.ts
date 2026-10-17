@@ -92,6 +92,7 @@ const summary = (
   if (spawn?.requester.kind === "cake-chat")
     Object.assign(projected, {
       cakeChatLaunch: {
+        requesterSessionId: spawn.requester.sessionId,
         ...(spawn.launchedAt ? { launchedAt: spawn.launchedAt } : null),
         ...(spawn.lastReport ? { lastReport: spawn.lastReport } : null),
       },

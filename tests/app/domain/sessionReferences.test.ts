@@ -2,6 +2,7 @@ import { it } from "@effect/vitest";
 import { Effect, Layer, Stream } from "effect";
 import { expect, vi } from "vitest";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
 import { catalog, project, resolve } from "../../../src/domain/project-sessions/sessionReferences";
 import { CakeSessionRuntimes, PiSessionError } from "../../../src/services/pi/CakeSessionRuntimes";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
@@ -122,12 +123,21 @@ it.effect("resolves and projects identities without title catalogs or runtime ac
   return Effect.gen(function* () {
     const entries = yield* catalog();
     expect(new Set(entries.map((entry) => entry.sessionId))).toEqual(
-      new Set([active, resolvedInPlace, inactive, retired, parent, draft]),
+      new Set([
+        active,
+        resolvedInPlace,
+        inactive,
+        retired,
+        parent,
+        draft,
+        projectChatSessionId("/project"),
+      ]),
     );
     expect(f.sessionIds.mock.calls.map(([query]) => query.workingDirectory)).toEqual([
       "/project",
       "/inactive-worktree",
     ]);
+    expect(yield* resolve(projectChatSessionId("/project"))).toBe(projectChatSessionId("/project"));
     expect(yield* resolve("s:112345678")).toBe(active);
     expect(yield* resolve("s:87654321")).toBe(retired);
     expect(yield* resolve("s:deadbeef")).toBe(resolvedInPlace);

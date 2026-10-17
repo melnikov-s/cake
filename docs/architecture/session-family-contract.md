@@ -146,7 +146,11 @@ is aborted first and the reminder tells Cake Chat to answer the user and fold in
 the report. Cake Chat may request results from sessions it did not launch; those
 obligations follow the same policy. Each launch record keeps `launchedAt` and the
 latest report so catalog summaries can project `cakeChatLaunch` for Cake Chat's
-header Activity menu and `sessions.list { launchedByCakeChat: true }`. The shared
+header Activity menu and `sessions.list { launchedByCakeChat: true }`. Launch projections
+include the requester chat identity; both surfaces filter by that identity. Global and
+Project Chats use the same delivery mechanism, but digest items, composing holds and
+reply destinations are scoped to the requesting chat. Persisted digest records without
+an explicit coordinator identity belong to global Cake Chat. The shared
 Activity menu also presents a regular Project Session's direct family children and
 either kind of conversation's own temporary subagents in separate groups. It is
 hidden unless delegated work is running, queued, or needs attention; idle sessions

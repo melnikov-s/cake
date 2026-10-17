@@ -18,6 +18,8 @@ import {
 } from "@earendil-works/pi-durable";
 import { randomUUID } from "node:crypto";
 import {
+  CAKE_CHAT_SESSION_ID,
+  cakeChatSideChatParentId,
   cakeChatSideChatConversationId,
   cakeChatSideChatSessionId,
 } from "../../contracts/cake-chats/cake-chat-identity";
@@ -53,6 +55,7 @@ const NO_REPLY = "That Cake Chat message has no completed reply to branch from y
 
 /** What a side chat shares with the live Cake Chat coordinator that owns the database. */
 export interface DurableSideChatHost {
+  readonly parentSessionId?: string;
   readonly harness: Harness;
   readonly root: Conversation;
   readonly storage: Storage;
@@ -118,7 +121,10 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
   const { harness, root, storage } = host;
   /** Fork conversation and its inclusive fork point, for an ID this Cake Chat owns. */
   const resolve = async (sessionId: string | undefined) => {
-    const id = cakeChatSideChatConversationId(sessionId);
+    const id =
+      cakeChatSideChatParentId(sessionId) === (host.parentSessionId ?? CAKE_CHAT_SESSION_ID)
+        ? cakeChatSideChatConversationId(sessionId)
+        : undefined;
     // SAFETY: Durable conversation IDs are nonnegative integers; the parser accepts only those.
     const record =
       id === undefined
@@ -155,7 +161,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
 
   const open = async (options: CakeSessionRuntimeOptions): Promise<CakeSessionRuntime> => {
     const { conversation, after } = await resolve(options.sessionId);
-    const sessionId = cakeChatSideChatSessionId(conversation.id);
+    const sessionId = cakeChatSideChatSessionId(conversation.id, host.parentSessionId);
     let disposed = false;
     let streaming = false;
     let activeTurnIds: string[] = [];
@@ -518,7 +524,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
         },
         BACKGROUND_CONTEXT,
       );
-      return cakeChatSideChatSessionId(fork.id);
+      return cakeChatSideChatSessionId(fork.id, host.parentSessionId);
     },
     open,
     async preview(sessionId) {
@@ -531,7 +537,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
       );
       return {
         workspacePath: "",
-        sessionId: cakeChatSideChatSessionId(conversation.id),
+        sessionId: cakeChatSideChatSessionId(conversation.id, host.parentSessionId),
         sessionFile: host.sessionFile,
         parts: page.parts,
       };

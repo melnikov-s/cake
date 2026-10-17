@@ -1,4 +1,4 @@
-import { Store, child, createStore } from "r-state-tree";
+import { Store, child, createStore, observable } from "r-state-tree";
 import type { SessionActivity } from "../lib/session-activity";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import type {
@@ -57,7 +57,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
   private hydrationPaneId: string | undefined;
   private selectionRevision = 0;
   /** Same window-local completion acknowledgement as Project Sessions, not transcript storage. */
-  private readSettledTurnRevision = 0;
+  private readonly readSettledTurnRevisions: Map<string, number> = observable(new Map());
   /** Read/reminder writes are serialized; authoritative catalog updates supply their projection. */
   private unreadUpdates: Promise<void> = Promise.resolve();
 
@@ -127,8 +127,12 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
   }
 
   get activity(): SessionActivity | undefined {
-    const model = this.props.sessionModel(CAKE_CHAT_SESSION_ID);
-    const subagents = this.props.subagentCatalog(CAKE_CHAT_SESSION_ID);
+    return this.activityFor(CAKE_CHAT_SESSION_ID);
+  }
+
+  activityFor(sessionId: string): SessionActivity | undefined {
+    const model = this.props.sessionModel(sessionId);
+    const subagents = this.props.subagentCatalog(sessionId);
     if (
       model.streaming ||
       model.activeTurnIds.length > 0 ||
@@ -139,60 +143,70 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
       )
     )
       return "running";
-    if (!this.props.isSelected() && model.settledTurnRevision > this.readSettledTurnRevision)
+    if (
+      !(this.props.isSelected() && this.sessionId === sessionId) &&
+      model.settledTurnRevision > (this.readSettledTurnRevisions.get(sessionId) ?? 0)
+    )
       return model.settledTurns.at(-1)?.outcome === "failed" ? "error" : "unread";
-    return this.summaries.some((session) => session.unread) ? "unread" : undefined;
+    return this.summaries.find((session) => session.sessionId === sessionId)?.unread
+      ? "unread"
+      : undefined;
   }
 
-  private markRead() {
-    this.readSettledTurnRevision =
-      this.props.sessionModel(CAKE_CHAT_SESSION_ID).settledTurnRevision;
-    if (this.summaries.some((session) => session.unread)) void this.setUnread(false);
+  private markRead(sessionId = this.sessionId ?? CAKE_CHAT_SESSION_ID) {
+    this.readSettledTurnRevisions.set(
+      sessionId,
+      this.props.sessionModel(sessionId).settledTurnRevision,
+    );
+    if (this.summaries.find((session) => session.sessionId === sessionId)?.unread)
+      void this.setUnread(false, sessionId);
   }
 
-  setUnread(unread: boolean) {
+  setUnread(unread: boolean, sessionId = CAKE_CHAT_SESSION_ID) {
     if (
       unread &&
-      (this.activity === "running" || this.pendingSessions.isPending(CAKE_CHAT_SESSION_ID))
+      (this.activityFor(sessionId) === "running" || this.pendingSessions.isPending(sessionId))
     )
       return Promise.resolve();
     if (!unread)
-      this.readSettledTurnRevision =
-        this.props.sessionModel(CAKE_CHAT_SESSION_ID).settledTurnRevision;
+      this.readSettledTurnRevisions.set(
+        sessionId,
+        this.props.sessionModel(sessionId).settledTurnRevision,
+      );
     this.unreadUpdates = this.unreadUpdates.then(async () => {
       if (this.signal.aborted) return;
       try {
-        await this.client.cakeChats.setUnread(unread, { signal: this.signal });
+        await this.client.cakeChats.setUnread({ unread, sessionId }, { signal: this.signal });
       } catch (error) {
-        if (!this.signal.aborted) this.reportError(error, "Cake Chat could not update read status");
+        if (!this.signal.aborted) this.reportError(error, "Chat could not update read status");
       }
     });
     return this.unreadUpdates;
   }
 
-  async showContextMenu(x: number, y: number) {
-    const activity = this.activity;
+  async showContextMenu(x: number, y: number, sessionId = CAKE_CHAT_SESSION_ID) {
+    const activity = this.activityFor(sessionId);
     try {
       const action = await this.client.electron.showSessionContextMenu(
         {
-          sessionId: CAKE_CHAT_SESSION_ID,
+          sessionId,
           x,
           y,
           resolved: false,
           draft: false,
           permanent: true,
           unread:
-            activity === "running" || this.pendingSessions.isPending(CAKE_CHAT_SESSION_ID)
+            activity === "running" || this.pendingSessions.isPending(sessionId)
               ? undefined
               : activity === "unread" || activity === "error",
         },
         { signal: this.signal },
       );
       if (this.signal.aborted) return;
-      if (action?.action === "mark-unread") await this.setUnread(true);
-      else if (action?.action === "mark-read") await this.setUnread(false);
+      if (action?.action === "mark-unread") await this.setUnread(true, sessionId);
+      else if (action?.action === "mark-read") await this.setUnread(false, sessionId);
     } catch (error) {
-      if (!this.signal.aborted) this.reportError(error, "Cake Chat could not open its actions");
+      if (!this.signal.aborted) this.reportError(error, "Chat could not open its actions");
     }
   }
 
@@ -214,12 +228,13 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
       this.hydrated = true;
       // Hydration rebuilds one pane, reusing the visible pane's identity so a composer
       // already on screen (the drop-down focuses it at once) is not remounted mid-typing.
+      const restoredSessionId = this.sessionId;
       this.hydrationPaneId = this.sessionLayoutStore.focusedPaneId;
       this.sessionLayoutStore.layout = undefined;
       this.sessionLayoutStore.focusedPaneId = undefined;
-      const restored = this.sessionId
+      const restored = restoredSessionId
         ? this.summaries.find(
-            (summary) => summary.sessionId === this.sessionId && !summary.resolved,
+            (summary) => summary.sessionId === restoredSessionId && !summary.resolved,
           )
         : undefined;
       if (restored) {
@@ -230,7 +245,9 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
         const pendingSessionId = this.pendingSessions.firstUnstartedSessionId();
         if (pendingSessionId) this.selectSession(pendingSessionId);
         else {
-          const recent = this.summaries.find((summary) => !summary.resolved);
+          const recent = this.summaries.find(
+            (summary) => summary.sessionId === CAKE_CHAT_SESSION_ID,
+          );
           if (recent) await this.open(recent.sessionId);
           else this.prepareNewSession();
         }
@@ -260,7 +277,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
 
   async openSession(sessionId: string) {
     if (!this.hydrated) await this.initialize();
-    this.markRead();
+    this.markRead(sessionId);
     if (this.pendingSessions.isPending(sessionId) || sessionId === this.sessionId) {
       this.selectSession(sessionId);
       return;
@@ -272,9 +289,13 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
     await this.initialize();
     if (this.signal.aborted) return;
     this.markRead();
-    const pendingSessionId = this.pendingSessions.firstUnstartedSessionId();
-    const pending = pendingSessionId ? this.registry.find(pendingSessionId) : undefined;
-    const session = this.activeSession ?? pending ?? this.prepareNewSession();
+    const existing = this.summaries.find(
+      (item) =>
+        item.sessionId === CAKE_CHAT_SESSION_ID && !this.pendingSessions.isPending(item.sessionId),
+    );
+    if (existing && !this.registry.find(CAKE_CHAT_SESSION_ID))
+      await this.open(CAKE_CHAT_SESSION_ID);
+    const session = this.registry.find(CAKE_CHAT_SESSION_ID) ?? this.prepareNewSession();
     this.selectSession(session.sessionId);
     if (prompt?.trim()) await session.conversationSessionStore.chatStore.submit(prompt);
   }
@@ -307,6 +328,10 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
     }
   }
 
+  projectChat(projectPath: string) {
+    return this.summaries.find((item) => item.projectPath === projectPath);
+  }
+
   private prepareNewSession(sessionId: string = CAKE_CHAT_SESSION_ID, name = "Cake Chat") {
     const pendingSessionId = this.pendingSessions.firstUnstartedSessionId();
     if (pendingSessionId) return this.registry.find(pendingSessionId)!;
@@ -336,12 +361,20 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
   constructor(props: CakeChatCollectionStore["props"]) {
     super(props);
     this.reaction(
-      () => this.props.isSelected(),
-      (selected) => {
-        if (selected) this.markRead();
-        else
-          this.readSettledTurnRevision =
-            this.props.sessionModel(CAKE_CHAT_SESSION_ID).settledTurnRevision;
+      () => {
+        const selected = this.props.isSelected() ? this.sessionId : undefined;
+        return [
+          selected,
+          selected ? this.props.sessionModel(selected).settledTurnRevision : 0,
+        ] as const;
+      },
+      ([selected], [previous]) => {
+        if (previous)
+          this.readSettledTurnRevisions.set(
+            previous,
+            this.props.sessionModel(previous).settledTurnRevision,
+          );
+        if (selected) this.markRead(selected);
       },
     );
     this.effect(() => {

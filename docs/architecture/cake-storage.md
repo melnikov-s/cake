@@ -287,7 +287,10 @@ never stores provider secrets or utility-completion transcripts.
 ### Permanent Cake Chat
 
 The coordinator's sole transcript authority is Pi Durable's supplied SQLite
-adapter at `<CAKE_HOME>/pi/global-chat/coordinator.sqlite`. It owns originals,
+adapter at `<CAKE_HOME>/pi/global-chat/coordinator.sqlite`. Project Chats use the same
+adapter at `<CAKE_HOME>/pi/project-chats/<sha256-of-registered-path>/coordinator.sqlite`.
+Each database has its own root, memory tree, inbox, request identity and native forks.
+Catalog discovery does not open unstarted project databases. It owns originals,
 inbox, execution checkpoints, and recovery. Cake does not implement a second SQL
 store, mirror JSONL, or archive the coordinator through Project Session storage.
 Its direct `read`/`bash` tools start in the disposable sibling `scratch/`

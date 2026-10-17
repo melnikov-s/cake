@@ -10,6 +10,7 @@ import type { DiscussionCatalogUpdate } from "../../contracts/application/catalo
 import { type CakeControlTool } from "../../contracts/cake-chats/cake-chat-data";
 import {
   CAKE_CHAT_SESSION_ID,
+  isCakeChatSessionId,
   cakeChatSideChatConversationId,
 } from "../../contracts/cake-chats/cake-chat-identity";
 import { jsonObjectSchema } from "../../contracts/serialization/json-contract";
@@ -100,7 +101,7 @@ const projectThread = (
 
 /** A Cake Chat side chat branches from the permanent coordinator, not a Project Session. */
 const isCakeChatSideChat = (record: { readonly parentSessionId: string }) =>
-  record.parentSessionId === CAKE_CHAT_SESSION_ID;
+  isCakeChatSessionId(record.parentSessionId);
 
 const parentHandle = Effect.fn("DiscussionSessions.parentHandle")(function* (
   target: DiscussionSessionTarget,
@@ -589,6 +590,7 @@ export const start = Effect.fn("DiscussionSessions.start")(function* (
  */
 export const startCakeChatSideChat = Effect.fn("DiscussionSessions.startCakeChatSideChat")(
   function* (input: CakeChatSideChatStartInput, workingDirectory: string) {
+    const parentSessionId = input.parentSessionId ?? CAKE_CHAT_SESSION_ID;
     yield* requirePrompt(input);
     const messageId = input.anchor.messageId;
     if (input.anchor.view !== "message" || !messageId)
@@ -602,7 +604,7 @@ export const startCakeChatSideChat = Effect.fn("DiscussionSessions.startCakeChat
     const forked = entryId
       ? yield* Effect.scoped(
           sessions
-            .acquireSession(CAKE_CHAT_SESSION_ID)
+            .acquireSession(parentSessionId)
             .pipe(Effect.flatMap((handle) => handle.fork(entryId, "Side chat"))),
         ).pipe(
           Effect.map((fork) => fork.sessionId),
@@ -616,7 +618,7 @@ export const startCakeChatSideChat = Effect.fn("DiscussionSessions.startCakeChat
       : undefined;
     if (forked && cakeChatSideChatConversationId(forked) !== undefined) {
       const record = yield* environment
-        .create(workingDirectory, CAKE_CHAT_SESSION_ID, input.anchor)
+        .create(workingDirectory, parentSessionId, input.anchor)
         .pipe(asError("start"));
       const linked = yield* environment
         .linkSidecar(record, { sessionId: forked })
@@ -624,9 +626,7 @@ export const startCakeChatSideChat = Effect.fn("DiscussionSessions.startCakeChat
       return yield* deliverFirstPrompt(linked, input);
     }
     const snapshot = yield* Effect.scoped(
-      sessions
-        .acquireSession(CAKE_CHAT_SESSION_ID)
-        .pipe(Effect.flatMap((handle) => handle.snapshot())),
+      sessions.acquireSession(parentSessionId).pipe(Effect.flatMap((handle) => handle.snapshot())),
     ).pipe(asError("start"));
     const messages = cakeChatBranchMessages(snapshot.parts, input.anchor);
     if (!messages)
@@ -635,7 +635,7 @@ export const startCakeChatSideChat = Effect.fn("DiscussionSessions.startCakeChat
         message: "That Cake Chat message is no longer available",
       });
     const record = yield* environment
-      .create(workingDirectory, CAKE_CHAT_SESSION_ID, input.anchor)
+      .create(workingDirectory, parentSessionId, input.anchor)
       .pipe(asError("start"));
     yield* environment.prepareCakeChatBranchContext(record, messages).pipe(asError("start"));
     return yield* deliverFirstPrompt(record, input);
