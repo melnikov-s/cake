@@ -8,6 +8,8 @@ import type { SavedDraft } from "../../../src/contracts/project-sessions/saved-d
 import type { SessionCatalogUpdate } from "../../../src/contracts/application/catalog-data";
 import { applySessionCatalogGroupUpdate } from "../../../src/renderer/reducers/CatalogReducer";
 import type { Client } from "../../../src/renderer/client/Client";
+import type { SessionCatalogUpdate } from "../../../src/contracts/application/catalog-data";
+import { applySessionCatalogGroupUpdate } from "../../../src/renderer/reducers/CatalogReducer";
 import { Chat } from "../../../src/renderer/components/chat";
 import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-project-group";
 import { fakeSavedDrafts } from "./fakes/saved-drafts";
@@ -63,26 +65,33 @@ async function renderCatalog(
   const view = render(
     <>
       <aside aria-label="Project sessions">
-        <SidebarProjectGroup
-          cakeChat={root.cakeChatCollectionStore}
-          onOpenCakeChat={(sessionId) => void root.navigationStore.openCakeChat(sessionId)}
-          store={root.sidebarStore}
-          sessionList={root.sidebarStore.sessionListStore}
-          sessionMetadata={root.sessionMetadataStore}
-          projects={root.projectCatalogStore}
-          chat={root.projectWorkbenchStore}
-          shell={root.appShellStore}
-          appearance={root.settingsStore.appearance}
-          path={projectPath}
-          resolved={false}
-          flattenSessions
-          onCreateSession={(path) => void root.navigationStore.createSession(path)}
-          onOpenSession={(id) => void root.navigationStore.openSession(id)}
-          onRemoveProject={(path, deleteSessions) =>
-            root.projectRemovalStore.remove(path, deleteSessions)
-          }
-          onOpenSettings={(path) => root.projectSettingsStore.open(path)}
-        />
+        {[false, true].map((resolved) => (
+          <section
+            key={String(resolved)}
+            aria-label={resolved ? "Resolved sessions" : "Active sessions"}
+          >
+            <SidebarProjectGroup
+              cakeChat={root.cakeChatCollectionStore}
+              onOpenCakeChat={(sessionId) => void root.navigationStore.openCakeChat(sessionId)}
+              store={root.sidebarStore}
+              sessionList={root.sidebarStore.sessionListStore}
+              sessionMetadata={root.sessionMetadataStore}
+              projects={root.projectCatalogStore}
+              chat={root.projectWorkbenchStore}
+              shell={root.appShellStore}
+              appearance={root.settingsStore.appearance}
+              path={projectPath}
+              resolved={resolved}
+              flattenSessions
+              onCreateSession={(path) => void root.navigationStore.createSession(path)}
+              onOpenSession={(id) => void root.navigationStore.openSession(id)}
+              onRemoveProject={(path, deleteSessions) =>
+                root.projectRemovalStore.remove(path, deleteSessions)
+              }
+              onOpenSettings={(path) => root.projectSettingsStore.open(path)}
+            />
+          </section>
+        ))}
       </aside>
       <Chat store={staged.conversationSessionStore.chatStore} composerFocusEnabled={false} />
     </>,
@@ -93,6 +102,15 @@ async function renderCatalog(
     async publish(sessions: SessionSummaryFixture[]) {
       await act(async () =>
         applySnapshot(fixture.models.sessionCatalog, { sessions, resolvedHasMoreByProject: {} }),
+      );
+    },
+    async publishLane(resolved: boolean, update: SessionCatalogUpdate) {
+      await act(async () =>
+        applySessionCatalogGroupUpdate(
+          fixture.models.sessionCatalog,
+          { projectPath, resolved },
+          update,
+        ),
       );
     },
     async publishUpdate(update: SessionCatalogUpdate) {
@@ -356,6 +374,86 @@ describe("Session catalog lifecycle workflows", () => {
       },
     });
     expect(within(row()).getByRole("img", { name: "Running" })).toBeTruthy();
+  });
+
+  it("keeps one resolved row when independently observed lanes overlap and ignores late active events", async () => {
+    using fixture = await renderCatalog();
+    const active = within(screen.getByRole("region", { name: "Active sessions" }));
+    const resolved = within(screen.getByRole("region", { name: "Resolved sessions" }));
+    const moving = summary("moving", { title: "Moving conversation" });
+    await fixture.publishLane(false, { _tag: "Snapshot", revision: 1, sessions: [moving] });
+    expect(active.getByRole("button", { name: /^Moving conversation / })).toBeDefined();
+    await fixture.publishLane(true, {
+      _tag: "Snapshot",
+      revision: 1,
+      sessions: [{ ...moving, resolved: true, workingDirectory: "/resolved/project" }],
+    });
+    expect(active.queryByRole("button", { name: /^Moving conversation / })).toBeNull();
+    expect(resolved.getAllByRole("button", { name: /^Moving conversation / })).toHaveLength(1);
+    for (const event of [
+      { _tag: "StatusChanged", sessionId: "moving", resolved: false, unread: false },
+      { _tag: "TitleChanged", sessionId: "moving", title: "Stale active title" },
+      { _tag: "Removed", sessionId: "moving" },
+      { _tag: "RemovedBatch", sessionIds: ["moving"] },
+    ] as const) {
+      await fixture.publishLane(false, { _tag: "Event", revision: 2, event });
+    }
+    expect(resolved.getAllByRole("button", { name: /^Moving conversation / })).toHaveLength(1);
+    expect(active.queryByRole("button", { name: /^Moving conversation / })).toBeNull();
+    await fixture.publishLane(true, {
+      _tag: "Event",
+      revision: 3,
+      event: { _tag: "Removed", sessionId: "moving" },
+    });
+    expect(resolved.queryByRole("button", { name: /^Moving conversation / })).toBeNull();
+  });
+
+  it("updates a persisted row's live title but waits for catalog authority before adding an early title", async () => {
+    using fixture = await renderCatalog({
+      sessions: [summary("existing", { title: "Old title" })],
+    });
+    await fixture.publishLane(false, {
+      _tag: "Event",
+      revision: 2,
+      event: { _tag: "TitleChanged", sessionId: "existing", title: "Live title" },
+    });
+    await fixture.publishLane(false, {
+      _tag: "Event",
+      revision: 3,
+      event: { _tag: "TitleChanged", sessionId: "unpersisted", title: "Early title" },
+    });
+    expect(sidebar().getAllByRole("button", { name: /^Live title / })).toHaveLength(1);
+    expect(sidebar().queryByRole("button", { name: /^Old title / })).toBeNull();
+    expect(sidebar().queryByRole("button", { name: /^Early title / })).toBeNull();
+    await fixture.publishLane(false, {
+      _tag: "Event",
+      revision: 4,
+      event: { _tag: "Upserted", session: summary("unpersisted", { title: "Persisted title" }) },
+    });
+    expect(sidebar().getByRole("button", { name: /^Persisted title / })).toBeDefined();
+  });
+
+  it("keeps resolved pagination available until the observed catalog reports its final page", async () => {
+    using fixture = await renderCatalog();
+    const resolved = within(screen.getByRole("region", { name: "Resolved sessions" }));
+    const first = summary("archive-one", { title: "First archive", resolved: true });
+    await fixture.publishLane(true, {
+      _tag: "Snapshot",
+      revision: 1,
+      sessions: [first],
+      hasMore: true,
+    });
+    await fixture.user.click(resolved.getByRole("button", { name: "Show more" }));
+    expect(resolved.getByRole("button", { name: "Show more" })).toBeDefined();
+    await fixture.publishLane(true, {
+      _tag: "Snapshot",
+      revision: 2,
+      sessions: [first, summary("archive-two", { title: "Final archive", resolved: true })],
+      hasMore: false,
+    });
+    expect(resolved.getByRole("button", { name: /^First archive / })).toBeDefined();
+    expect(resolved.getByRole("button", { name: /^Final archive / })).toBeDefined();
+    expect(resolved.queryByRole("button", { name: "Show more" })).toBeNull();
   });
 
   it.each(["before", "after"] as const)(
