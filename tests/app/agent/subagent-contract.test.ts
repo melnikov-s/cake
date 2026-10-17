@@ -10,6 +10,68 @@ import { createAgentControlOperations } from "../../../src/domain/subagents/cake
 import { subagentTaskSchema } from "../../../src/contracts/subagents/subagent-tool-input";
 
 describe("subagent contract", () => {
+  it.each([false, true])(
+    "preserves continuation choices across projectAware=%s launch and follow-up contracts",
+    async (projectAware) => {
+      const control = {
+        run: vi.fn(async () => ({ status: "complete" })),
+        start: vi.fn(async () => ({ status: "queued" })),
+        parallel: vi.fn(async () => ({ status: "complete" })),
+        prompt: vi.fn(async () => ({ status: "queued" })),
+        wait: vi.fn(async () => ({ status: "complete" })),
+        abort: vi.fn(async () => ({ status: "aborted" })),
+        close: vi.fn(async () => ({ status: "closed" })),
+      };
+      const registry = new CakeOperationRegistry(
+        createAgentControlOperations(
+          control,
+          () => "parent",
+          () => ({ provider: "test", modelId: "model", thinkingLevel: "off", fastMode: false }),
+          projectAware,
+        ),
+      );
+      const context = { signal: new AbortController().signal, toolCallId: "intent", runtime: {} };
+      for (const continuation of ["none", "resume"]) {
+        for (const command of ["subagents.start", "subagents.run"]) {
+          await registry.invoke({ command, input: { task: "Delegate", continuation } }, context);
+          const fn = command === "subagents.start" ? control.start : control.run;
+          expect(fn.mock.lastCall).toEqual(
+            expect.arrayContaining([expect.objectContaining({ continuation })]),
+          );
+        }
+        await registry.invoke(
+          { command: "subagents.parallel", input: { tasks: [{ task: "Delegate", continuation }] } },
+          context,
+        );
+        expect(control.parallel.mock.lastCall).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ tasks: [expect.objectContaining({ continuation })] }),
+          ]),
+        );
+        for (const command of ["subagents.prompt", "subagents.follow-up"]) {
+          await registry.invoke(
+            {
+              command,
+              input: {
+                handleId: "00000000-0000-4000-8000-000000000001",
+                text: "Again",
+                continuation,
+              },
+            },
+            context,
+          );
+          expect(control.prompt.mock.lastCall).toEqual(
+            expect.arrayContaining([expect.objectContaining({ continuation })]),
+          );
+        }
+      }
+      const help = await registry.invoke({ command: "subagents.start.help" }, context);
+      expect(help.text).toContain("continuation");
+      expect(help.text).toContain("dependent work");
+      expect(help.text).toContain("resume");
+    },
+  );
+
   it("accepts one general-purpose subagent task shape", () => {
     expect(Schema.decodeUnknownSync(subagentTaskSchema)({ task: "Inspect the adapter" })).toEqual({
       task: "Inspect the adapter",

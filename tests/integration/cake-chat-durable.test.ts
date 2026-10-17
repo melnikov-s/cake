@@ -726,7 +726,7 @@ it("permanent chat recovery retains a stopped run and its queued input without w
   expect(f.requests).toHaveLength(before);
 });
 
-it("restart resumes a placed run and a queued worker report without resubmission or duplicate originals", async () => {
+it("restart resumes a placed run and a linked worker continuation without resubmission or duplicate originals", async () => {
   const f = await fixture();
   f.hold(true);
   const first = await f.open();
@@ -734,7 +734,7 @@ it("restart resumes a placed run and a queued worker report without resubmission
     .prompt("Continue after restart", "prompt", [], false, ids.first)
     .catch((error: unknown) => error);
   await Effect.runPromise(Deferred.await(f.started));
-  const report = first.runtime.notifySubagentCompletion!({
+  const workerReport = {
     handleId: ids.third,
     task: "Review project",
     status: "complete",
@@ -754,11 +754,15 @@ it("restart resumes a placed run and a queued worker report without resubmission
         kind: "text",
         role: "assistant",
         status: "complete",
-        text: "WORKER_RESULT",
+        text: "[WORKER_RESULT](cake://session/worker?message=commit)",
       },
     ],
     usage: { cost: 0.25 },
-  }).catch((error: unknown) => error);
+  };
+  const completionId = "4372db14-b078-4fa3-9ffb-92483aca180b";
+  const report = first.runtime.notifySubagentCompletion!(workerReport, completionId).catch(
+    (error: unknown) => error,
+  );
   await f.waitSnapshot(first.runtime, (snapshot) =>
     snapshot.parts.some(
       (part) => part.kind === "text" && part.queuedInput && part.text.includes("WORKER_RESULT"),
@@ -811,6 +815,15 @@ it("restart resumes a placed run and a queued worker report without resubmission
     )
     .join("\n");
   expect(reportText).toContain('"cost":0.25');
+  const requestCount = f.requests.length;
+  await second.runtime.notifySubagentCompletion!(workerReport, completionId);
+  expect(f.requests).toHaveLength(requestCount);
+  const retried = await second.runtime.snapshot();
+  expect(
+    retried.parts.filter(
+      (part) => part.kind === "text" && part.subagentReport?.handleId === ids.third,
+    ),
+  ).toHaveLength(1);
 });
 
 it("cancels only queued inputs and steering continues the existing run without a fresh memory reset", async () => {

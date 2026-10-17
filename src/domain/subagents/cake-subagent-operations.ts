@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { ParentContinuation } from "../../contracts/conversations/parent-continuation";
 import { inputRefsSchema } from "../../contracts/conversations/task-input";
 import { messageRefsSchema } from "../../contracts/conversations/message-reference";
 import type {
@@ -26,6 +27,7 @@ export function createAgentControlOperations(
   projectAware = false,
 ): CakeOperationDefinition[] {
   const promptSchema = Schema.Struct({
+    continuation: Schema.optionalKey(ParentContinuation),
     handleId: Schema.String.check(Schema.isUUID()),
     text: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(262_144)),
     inputRefs: Schema.optionalKey(inputRefsSchema),
@@ -39,7 +41,7 @@ export function createAgentControlOperations(
     projectAware
       ? "Use a project investigator when broader research, project-loaded resources or context isolation helps. Discover exact registered roots with projects.list, supply projectPath, and clarify ambiguous project identity before starting. Omit projectPath for general research unrelated to a registered repository; never choose an arbitrary project for external research. No separate delegation permission is needed for Cake Chat investigations."
       : "Use subagents only when the user explicitly requested delegation, subagents, or parallel agent work.",
-    "Use subagents.start for ordinary delegation so the parent turn remains independent and the user can continue messaging it. Start multiple handles for parallel work; Cake automatically queues each compact final report to the parent, so do not poll.",
+    'Use subagents.start for ordinary delegation. Choose continuation: "none" for a report-only result without a parent LLM turn; choose "resume" (default) when you must inspect the result and continue dependent work or explain failure. Both owe a result, including linked results. Resume queues behind active parent work, never steers it. Do not poll. Blocking run/parallel/wait return the result directly instead of adding a continuation. Follow-ups inherit the choice unless overridden; immediate message_parent blockers/questions are unchanged.',
     "Use subagents.run, subagents.parallel, or subagents.wait only when the user explicitly requires the parent turn to block on delegated work.",
     projectAware
       ? "Project investigators use the registered project root and normal applicable instructions, skills, extensions and MCP. They omit edit/write tools. Without projectPath, general researchers receive only read, bash and message_parent, no repository instructions, skills, extensions or MCP. Public web retrieval through read-only shell requests is possible only if network access works; no browser/search tool is guaranteed. Disclose access limits and never invent retrieved evidence. By default both modes are investigation-only and refuse all mutations, including shell/MCP writes. Set allowMutations: true on subagents.start only when the user's request needs bounded operational changes such as running scripts, killing processes or installing packages; the worker then stays within the assignment, reports exactly what it changed and avoids shared-branch Git mutations unless explicitly instructed. Name the exact targets and limits in the task. The flag cannot be added to an existing handle. These are prompt policies, not a sandbox. Code implementation that needs review still belongs in a normal Project Session."
@@ -88,7 +90,10 @@ export function createAgentControlOperations(
     )
       ? guidance
       : definition.command === "subagents.prompt" || definition.command === "subagents.follow-up"
-        ? guidance.slice(5, 8)
+        ? [
+            'Follow-ups inherit the handle continuation choice. Override continuation with "none" for report-only or "resume" for dependent parent work; background completion uses that choice, while a blocking prompt returns the result directly.',
+            ...guidance.slice(5, 8),
+          ]
         : guidance.slice(5, 6),
     inputSchema: definition.schema,
     examples: [{ input: definition.example }],
@@ -132,7 +137,7 @@ export function createAgentControlOperations(
             task: "Explain the authentication flow with file/line evidence",
             projectPath: "/registered/project",
           }
-        : { task: "Monitor the test run" },
+        : { task: "Monitor the test run", continuation: "none" },
       run: (input, parent, signal, _onUpdate, anchor) =>
         control.start(resolveTask(input), parent, signal, anchor),
     }),

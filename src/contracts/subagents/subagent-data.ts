@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { ParentContinuation } from "../conversations/parent-continuation";
 import { ThinkingLevel } from "../pi/model-data";
 import { inputRefsSchema } from "../conversations/task-input";
 import { messageRefsSchema } from "../conversations/message-reference";
@@ -51,6 +52,7 @@ export const ResolvedAgentModel = Schema.Struct({
 export interface ResolvedAgentModel extends Schema.Schema.Type<typeof ResolvedAgentModel> {}
 
 export const SubagentTaskInput = Schema.Struct({
+  continuation: Schema.optionalKey(ParentContinuation),
   task: nonEmptyBoundedString(262_144),
   projectPath: Schema.optionalKey(nonEmptyBoundedString(4_096)),
   inputRefs: Schema.optionalKey(inputRefsSchema),
@@ -63,6 +65,7 @@ export const SubagentTaskInput = Schema.Struct({
 export interface SubagentTaskInput extends Schema.Schema.Type<typeof SubagentTaskInput> {}
 
 export const SubagentTask = Schema.Struct({
+  continuation: ParentContinuation,
   task: SubagentTaskInput.fields.task,
   projectPath: SubagentTaskInput.fields.projectPath,
   inputRefs: SubagentTaskInput.fields.inputRefs,
@@ -131,6 +134,7 @@ export const SubagentReportOrigin = Schema.Struct({
 export interface SubagentReportOrigin extends Schema.Schema.Type<typeof SubagentReportOrigin> {}
 
 export const SubagentStartReceipt = Schema.Struct({
+  continuation: ParentContinuation,
   handleId: SubagentHandleId,
   task: SubagentTask.fields.task,
   projectPath: SubagentTask.fields.projectPath,

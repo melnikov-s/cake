@@ -1,4 +1,5 @@
 import { Effect, Option, Schema } from "effect";
+import { ParentContinuation } from "./parent-continuation";
 import { sessionReference } from "../project-sessions/session-reference";
 
 const boundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
@@ -46,6 +47,7 @@ export const CrossSessionMessageMetadata = Schema.Struct({
   replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
   /** Cake Chat requests only: how the owed result is delivered back (see CakeChatReportPolicy). */
   report: Schema.optionalKey(Schema.Literals(["digest", "interrupt"])),
+  continuation: Schema.optionalKey(ParentContinuation),
   generatedNotice: Schema.optionalKey(Schema.Boolean),
   context: Schema.optionalKey(CrossSessionContextSnapshot),
   sender: Schema.Struct({

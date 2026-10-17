@@ -1,3 +1,7 @@
+import {
+  ParentContinuation,
+  parentContinuationGuidance,
+} from "../../contracts/conversations/parent-continuation";
 import { AgentListInput } from "../../contracts/agent/agent-list-data";
 import { messageRefsSchema } from "../../contracts/conversations/message-reference";
 import { inputRefsSchema } from "../../contracts/conversations/task-input";
@@ -32,7 +36,7 @@ export function createSessionFamilyOperations(
         "Omit worktreeName to share the caller's exact Working Directory. Supply worktreeName to create a Cake-managed worktree branched from the caller's current checkout.",
         "This operation returns after the initial child turn is accepted; do not wait or poll for the child, and finish the parent turn normally.",
         "Set expectsResponse: false for family children and request their result on the shared Workboard. The runtime default true creates a private automatic creator-report obligation; board posts do not clear existing obligations. Prompt policy cannot reroute those notices. Later user-started turns never report back.",
-        "Creation automatically establishes/extends the family and joins its shared Workboard. Board posts do not wake idle members; do not use private messages/steering as a workaround. Explain to the user when a member needs resuming.",
+        "Creation automatically establishes/extends the family and joins its shared Workboard. Board posts do not wake idle members; do not use private messages/steering as a workaround. Explain to the user when a member needs resuming. Omit continuation on board-only children: an explicit choice creates a private result obligation even with expectsResponse: false.",
         "Pane placement defaults to none. Set placement to right or down only when the child should be opened beside the parent.",
         "Omit model unless the user explicitly asks for a specific model. When omitted, the child uses the configured default model preset's complete settings (provider, model, thinking level, and Fast mode; see models.list), not the calling session's current model. Only when no default preset is configured does it use the calling session's current settings.",
       ],
@@ -43,6 +47,7 @@ export function createSessionFamilyOperations(
         ),
         model: Schema.optionalKey(CakeModelSelection),
         expectsResponse: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
+        continuation: Schema.optionalKey(ParentContinuation),
         placement: Schema.Literals(["none", "right", "down"]).pipe(
           Schema.withDecodingDefaultKey(Effect.succeed("none" as const)),
         ),
@@ -75,6 +80,7 @@ export function createSessionFamilyOperations(
             initialPrompt: string;
             model?: CakeModelSelection;
             expectsResponse: boolean;
+            continuation?: ParentContinuation;
             placement: "none" | "right" | "down";
             worktreeName?: string;
           },
@@ -113,6 +119,7 @@ export function createSessionFamilyOperations(
         "Do not use sessions.send (including send-batch or steering) for intra-family communication. Parents, children, siblings and recursive descendants communicate exclusively through their shared Workboard. This does not restrict user-facing replies, Cake Chat or unrelated independent sessions.",
         "Outside the family, set delivery to steer to interrupt and redirect a running target. Omit delivery for normal behavior: start an idle target or queue behind an active target.",
         "expectsResponse defaults to false. Set true only when you need an answer (an assignment, question, or blocker); the recipient then owes exactly one result, or one failure/stopped notice if the turn handling this message ends without one. With false, the recipient never reports back automatically.",
+        parentContinuationGuidance,
         "Set replyToMessageId when this message answers a specific request. A different or unrelated message never clears that request's response obligation.",
         "Send one substantive completion report. Never send acknowledgment-only messages or duplicate lifecycle reports; receiving a report or notification does not require a response.",
         "Delivery receipts are informational tool results. Never acknowledge a receipt; send another message only for substantive coordination.",
@@ -133,6 +140,7 @@ export function createSessionFamilyOperations(
           Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(1_000)),
         ),
         expectsResponse: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
+        continuation: Schema.optionalKey(ParentContinuation),
         replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
       }),
       examples: [
@@ -188,6 +196,7 @@ export function createSessionFamilyOperations(
         delivery: Schema.optionalKey(Schema.Literals(["prompt", "queue", "steer"])),
         threadId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
         expectsResponse: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
+        continuation: Schema.optionalKey(ParentContinuation),
         replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
         outcome: Schema.optionalKey(Schema.Literals(["completed", "blocked", "failed"])),
       }),

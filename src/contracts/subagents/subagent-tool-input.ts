@@ -1,8 +1,10 @@
 import { Schema } from "effect";
+import { ParentContinuation } from "../conversations/parent-continuation";
 import { CakeModelSelection } from "../model-presets/cake-model-selection";
 import { inputRefsSchema } from "../conversations/task-input";
 import { messageRefsSchema } from "../conversations/message-reference";
 export const subagentTaskSchema = Schema.Struct({
+  continuation: Schema.optionalKey(ParentContinuation),
   task: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(262_144)),
   projectPath: Schema.optionalKey(
     Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096)).annotate({

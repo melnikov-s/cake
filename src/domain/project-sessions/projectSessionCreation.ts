@@ -1,4 +1,5 @@
 import { Cause, DateTime, Effect, Exit } from "effect";
+import type { ParentContinuation } from "../../contracts/conversations/parent-continuation";
 import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import {
   cakeChatReportPolicy,
@@ -33,6 +34,7 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
    * silent means the assignment owes no result. Only meaningful with a Cake Chat requester.
    */
   readonly report?: CakeChatReportPolicy;
+  readonly continuation?: ParentContinuation;
   readonly markdown?: boolean;
 }) {
   const locations = yield* projectSessionLocations.locations();
@@ -65,7 +67,7 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
     input.requester?.kind === "cake-chat" && isCakeChatSessionId(input.requester.sessionId)
       ? input.requester
       : undefined;
-  const { report, expectsResponse } = cakeChatReportPolicy({ report: input.report });
+  const { report, expectsResponse, continuation } = cakeChatReportPolicy(input);
   const storage = yield* SessionFamilyStorage;
   if (requester)
     yield* storage.registerSpawn({
@@ -74,6 +76,7 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
       workingDirectory,
       requester,
       reportDelivered: false,
+      continuation,
       launchedAt: DateTime.formatIso(yield* DateTime.now),
       ...(report === "silent" ? null : { reportPolicy: report }),
       // Without an initial obligation there is no handoff to wait for or recover.
@@ -86,6 +89,7 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
         threadId: sessionId,
         sequence: 1,
         expectsResponse,
+        continuation,
         ...(report === "silent" ? null : { report }),
         sender: { sessionId: requester.sessionId, title: requester.title, kind: requester.kind },
       })
@@ -115,6 +119,7 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
                 requestMessageId: sessionId,
                 threadId: sessionId,
                 reported: false,
+                continuation,
                 ...(report === "silent" ? null : { reportPolicy: report }),
                 outcome: Cause.hasInterrupts(exit.cause) ? "aborted" : "failed",
                 ...(!Cause.hasInterrupts(exit.cause)

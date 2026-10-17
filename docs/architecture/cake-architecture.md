@@ -186,12 +186,19 @@ projections needed by a surface. References do not transfer ownership.
   parent reports. Completion status is distinct from resource disposal.
   Reports retain Cake-authored structured provenance for Markdown response
   presentation, without changing model-facing input roles.
-- Passive worker/result message-reference notifications never start or queue a parent turn.
-  Cake retains their exact links as pending delivery intents and attaches them, without reading
-  the referenced bodies, to the parent's next accepted conversational user input. This applies
-  to Project Sessions, global Cake Chat, and Project Chat. Explicit substantive messages,
-  questions/blockers, `message_parent`, deliberate steering, and requested `interrupt` reports
-  retain their immediate-delivery semantics. Commands and shell escapes do not drain references.
+- Delegated results carry launch-time `continuation: "none" | "resume"`, separate from
+  report obligation and presentation. Both choices owe a result. None keeps the report in the
+  quiet inbox for the next conversational user input; resume admits one normal follow-up turn
+  so the parent can inspect the result and continue dependent work or explain failure.
+  Links never select or suppress continuation. Subagents default to resume and follow-ups inherit
+  unless overridden; blocking waits consume the result directly instead of adding another turn.
+  Cake Chat session requests default to none for digest and resume for interrupt; an explicit
+  choice overrides those defaults and requests a result even with silent/false. Intent is saved
+  with the existing outbox ID; normal Pi receipts and Durable request IDs deduplicate recovery.
+  This applies to Project Sessions, global Cake Chat, and Project Chat. Unsolicited passive
+  reference notifications still wait, while explicit questions/blockers, `message_parent` and
+  deliberate steering remain immediate. Commands and shell escapes do not drain quiet reports.
+  Family Workboard posts remain non-waking; board-only children omit continuation and response obligations.
 - Automatic Project Session result handoff belongs to actual family parent-child assignments
   and independent sessions spawned by permanent Cake Chat, not arbitrary independent creators.
   Without an explicit report, a run's final answer becomes the result only when it answers the

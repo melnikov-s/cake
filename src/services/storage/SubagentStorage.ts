@@ -1,4 +1,5 @@
 import { Context, Effect, Layer, Path, Schema } from "effect";
+import { ParentContinuation } from "../../contracts/conversations/parent-continuation";
 import {
   ResolvedAgentModel,
   SubagentError,
@@ -28,6 +29,8 @@ export const SubagentRecord = Schema.Struct({
   tools: Schema.Array(Schema.String),
   inputReferences: Schema.Array(TaskInputReference),
   messageReferences: Schema.Array(Schema.String),
+  /** Absent in pre-intent recovery records. New admissions always persist the choice. */
+  continuation: Schema.optionalKey(ParentContinuation),
   notifyOnCompletion: Schema.Boolean,
   completionId: Schema.String,
   completionDisposition: Schema.Literals(["pending", "waited", "notifying", "notified"]),

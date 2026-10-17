@@ -6,10 +6,15 @@ const forwardingHeading =
 export const protectedResponseNotice =
   "The task session sent a response. Open the Project Session to read it.";
 
-/** Conservative: links and Cake's reference-only wrappers, never arbitrary prose containing a link. */
+/** Unsolicited passive notifications only. Owed results use their launch continuation intent. */
 export function isReferenceNotification(text: string): boolean {
   const message = parseCrossSessionMessage(text);
-  if (message?.metadata.expectsResponse || message?.metadata.report === "interrupt") return false;
+  if (
+    message?.metadata.expectsResponse ||
+    message?.metadata.report === "interrupt" ||
+    message?.metadata.continuation === "resume"
+  )
+    return false;
   const description = message && describeCrossSessionMessage(message.text, message.metadata);
   if (description?.outcome === "blocked" || description?.outcome === "failed") return false;
   const body = description?.body ?? text;
@@ -37,7 +42,7 @@ const block =
 
 export function addReferenceNotifications(text: string, notifications: readonly string[]): string {
   if (!notifications.length) return text;
-  return `${header}Deferred status references, not new requests. Answer the user's input first. Bodies have not been read; inspect exact originals with messages.read only when useful.\n${notifications.join("\n\n")}\n</system-reminder>\n\n${text}`;
+  return `${header}Deferred reports and status references, not new requests. Answer the user's input first. Bodies have not been read; inspect exact originals with messages.read only when useful.\n${notifications.join("\n\n")}\n</system-reminder>\n\n${text}`;
 }
 
 export function splitReferenceNotifications(text: string) {

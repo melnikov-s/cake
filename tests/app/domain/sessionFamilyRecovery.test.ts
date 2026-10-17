@@ -31,6 +31,38 @@ const turn = (turnId: string, overrides: Partial<FamilyTurn> = {}): FamilyTurn =
 });
 const archive = Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed(undefined) });
 
+it.effect.each(["none", "resume"] as const)(
+  "retains %s continuation through pre-admission family and chat-launch crash recovery",
+  (continuation) =>
+    Effect.gen(function* () {
+      const files = new Map<string, string>();
+      const layer = () => Layer.merge(familyStorageHarness(files).layer, archive);
+      yield* Effect.gen(function* () {
+        const storage = yield* SessionFamilyStorage;
+        yield* storage.addChild({ ...child, continuation });
+        yield* storage.registerSpawn({
+          sessionId: "spawn",
+          projectPath: "/project",
+          workingDirectory: "/project",
+          requester: { sessionId: "cake-chat", kind: "cake-chat", title: "Cake Chat" },
+          reportDelivered: false,
+          handoffSettled: false,
+          reportPolicy: "digest",
+          continuation,
+        });
+      }).pipe(Effect.provide(layer()));
+      for (let pass = 0; pass < 2; pass++)
+        yield* Effect.gen(function* () {
+          yield* initialize("/sessions", "/resolved", () => Effect.succeed(false));
+          const turns = (yield* (yield* SessionFamilyStorage).state()).turns;
+          assert.equal(turns.length, 2);
+          assert.ok(turns.every((turn) => turn.continuation === continuation));
+          assert.equal(turns.find((turn) => turn.sessionId === "child")?.outcome, "failed");
+          assert.equal(turns.find((turn) => turn.sessionId === "spawn")?.outcome, "aborted");
+        }).pipe(Effect.provide(layer()));
+    }),
+);
+
 it.effect(
   "initialization twice across recreation preserves blocked recovery obligations and settled report journals",
   () => {

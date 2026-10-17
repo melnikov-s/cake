@@ -186,7 +186,7 @@ describe("response retry and recovery", () => {
     const completionId = "c3c0aba9-e0ba-496a-96a5-60be562db027";
     const report = {
       handleId: "1490b261-4ce9-4744-b0fb-f2d013787ff1",
-      task: "Worker task",
+      task: "Linked prerequisite",
       status: "complete",
       resolvedModel: {
         requested: "current",
@@ -198,7 +198,15 @@ describe("response retry and recovery", () => {
       },
       fastMode: false,
       streaming: false,
-      parts: [],
+      parts: [
+        {
+          id: "result",
+          kind: "text",
+          role: "assistant",
+          status: "complete",
+          text: "[Commit](cake://session/worker?message=commit)",
+        },
+      ],
     };
     let acknowledged = false;
     const delivery = runtime.notifySubagentCompletion?.(report, completionId).then(() => {

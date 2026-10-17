@@ -1,3 +1,4 @@
+import type { ParentContinuation } from "../conversations/parent-continuation";
 import type { CakeArtifactOperationOptions } from "../artifacts/artifact-agent-control";
 import type { MessageBoardControl } from "../artifacts/message-board-control";
 import type { BrowserControl } from "../browser/browser-agent-control";
@@ -63,6 +64,7 @@ export interface CurrentSessionControl extends ProjectSessionLivePolicyControl {
       title: string;
       initialPrompt: string;
       model: ChatConfiguration;
+      continuation?: ParentContinuation;
       /** Whether the initial assignment owes the parent one report; defaults to true. */
       expectsResponse?: boolean;
       placement: "none" | "right" | "down";
@@ -131,6 +133,7 @@ export interface AgentOperationControl {
       handleId: string;
       text: string;
       delivery: "prompt" | "follow-up";
+      continuation?: ParentContinuation;
       inputRefs?: readonly string[];
       messageRefs?: readonly string[];
     },

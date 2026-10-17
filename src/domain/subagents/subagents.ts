@@ -22,7 +22,7 @@ import {
 import { getState } from "../application/application";
 import { TaskInputReference, inputRefsSchema } from "../../contracts/conversations/task-input";
 import { messageRefsSchema } from "../../contracts/conversations/message-reference";
-import { isReferenceNotification } from "../../contracts/conversations/reference-notification";
+import type { ParentContinuation } from "../../contracts/conversations/parent-continuation";
 import { subagentFinalAnswer } from "../../contracts/subagents/subagent-report";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import type {
@@ -136,6 +136,7 @@ const normalizeTask = Effect.fn("Subagents.normalizeTask")(function* (input: Sub
   );
   const task: SubagentTask = {
     task: decoded.task,
+    continuation: decoded.continuation ?? "resume",
     model: decoded.model ?? { prefer: "current" },
     fastMode: decoded.fastMode ?? false,
     allowMutations: decoded.allowMutations ?? false,
@@ -549,14 +550,17 @@ const deliverCompletion = Effect.fn("Subagents.deliverCompletion")(function* (
   const handle = yield* requireHandleById(handleId);
   if (!handle.result || handle.completionDisposition !== "notifying") return;
   const answer = subagentFinalAnswer(handle.result);
-  if (handle.result.status === "complete" && answer && isReferenceNotification(answer)) {
+  if (handle.recovery.continuation === "none") {
     const storage = yield* SessionFamilyStorage;
     yield* storage
       .withNoticeDelivery(
         storage.deferReferenceNotice({
           id: handle.recovery.completionId,
           recipientSessionId: handle.parentSessionId,
-          text: answer,
+          text:
+            handle.result.status === "complete"
+              ? answer || "Subagent completed without a final report."
+              : `Subagent ${handle.result.status}: ${handle.result.error || answer || "No final report was produced."}`,
         }),
       )
       .pipe(asError("completion"));
@@ -1059,6 +1063,7 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
         tools,
         inputReferences,
         messageReferences,
+        continuation: prepared.input.continuation,
         notifyOnCompletion,
         completionId: crypto.randomUUID(),
         completionDisposition: notifyOnCompletion ? "pending" : "waited",
@@ -1171,6 +1176,7 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
       );
     }
     const receipt: SubagentStartReceipt = {
+      continuation: prepared.input.continuation,
       handleId,
       task: prepared.input.task,
       status: "queued",
@@ -1203,6 +1209,7 @@ export const restore = Effect.fn("Subagents.restore")(function* (
   if ((yield* SubscriptionRef.get(coordinator.state)).handles.has(record.handleId)) return;
   const input: SubagentTask = {
     task: record.task,
+    continuation: record.continuation ?? "resume",
     model: {
       prefer: "exact",
       provider: record.resolvedModel.provider,
@@ -1395,6 +1402,7 @@ export const prompt = Effect.fn("Subagents.prompt")(function* (
   background = false,
   inputRefs?: readonly string[],
   messageRefs?: readonly string[],
+  continuation?: ParentContinuation,
 ) {
   const handle = yield* requireHandle(parentSessionId, rawHandleId);
   const normalized = text.trim();
@@ -1447,6 +1455,7 @@ export const prompt = Effect.fn("Subagents.prompt")(function* (
           completionId: crypto.randomUUID(),
           pendingInputs: [input],
           notifyOnCompletion: background ? true : value.recovery.notifyOnCompletion,
+          continuation: continuation ?? value.recovery.continuation ?? "resume",
         },
         completionDisposition: background ? "pending" : "waited",
         activityRevision: value.activityRevision + 1,
@@ -1498,6 +1507,7 @@ export const prompt = Effect.fn("Subagents.prompt")(function* (
       ),
     );
     return jsonValue({
+      continuation: continuation ?? handle.recovery.continuation ?? "resume",
       handleId: handle.handleId,
       task: handle.task,
       projectPath: handle.projectPath,

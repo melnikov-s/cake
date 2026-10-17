@@ -4,6 +4,7 @@ import {
   appendMessageReferences,
   messageReferencesInText,
 } from "../../contracts/conversations/message-reference-forwarding";
+import type { ParentContinuation } from "../../contracts/conversations/parent-continuation";
 import { isReferenceNotification } from "../../contracts/conversations/reference-notification";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 import { ensureBoard } from "../artifacts/messageBoards";
@@ -113,6 +114,9 @@ export const admitTurn = Effect.fn("SessionFamilies.admitTurn")(function* <E, R>
           requestMessageId: request.metadata.messageId,
           threadId: request.metadata.threadId,
           reported: false,
+          ...(request.metadata.continuation
+            ? { continuation: request.metadata.continuation }
+            : null),
           ...(coordinatorRequest ? { reportPolicy: request.metadata.report ?? "interrupt" } : null),
         });
       yield* accept.pipe(
@@ -143,6 +147,7 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(function* <
     model: ChatConfiguration;
     /** Whether the initial assignment owes the parent one result report; defaults to true. */
     expectsResponse?: boolean;
+    continuation?: ParentContinuation;
     worktreeName?: string;
     senderContext: CrossSessionContextSnapshot;
   },
@@ -206,6 +211,7 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(function* <
         parentWorkingDirectory: location.workingDirectory,
         childSessionId: crypto.randomUUID(),
         childWorkingDirectory: childLocation.workingDirectory,
+        ...(input.continuation ? { continuation: input.continuation } : null),
         requestId: input.requestId,
         projectPath: location.projectPath,
         createdAt: DateTime.formatIso(yield* DateTime.now),
@@ -310,7 +316,8 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(function* <
     messageId: prepared.child.sessionId,
     threadId: prepared.family.familyId,
     sequence: 1,
-    expectsResponse: input.expectsResponse ?? true,
+    expectsResponse: input.continuation !== undefined || (input.expectsResponse ?? true),
+    ...(input.continuation ? { continuation: input.continuation } : null),
     context: input.senderContext,
     sender: {
       sessionId: parentSessionId,
@@ -379,6 +386,7 @@ export const initialize = Effect.fn("SessionFamilies.initialize")(function* <E, 
         requestMessageId: child.sessionId,
         threadId: family.familyId,
         reported: false,
+        ...(child.continuation ? { continuation: child.continuation } : null),
         outcome: "failed",
       });
       yield* storage.removeUnmaterializedChild(child.sessionId);
@@ -400,6 +408,7 @@ export const initialize = Effect.fn("SessionFamilies.initialize")(function* <E, 
       reported: false,
       outcome: "aborted",
       ...(spawn.reportPolicy ? { reportPolicy: spawn.reportPolicy } : null),
+      ...(spawn.continuation ? { continuation: spawn.continuation } : null),
     });
   }
   for (const turn of (yield* storage.state()).turns) {
@@ -610,9 +619,7 @@ const deliverOutcome = Effect.fn("SessionFamilies.deliverOutcome")(function* (
         );
       if (
         turn.report?.outcome !== "blocked" &&
-        turn.report?.outcome !== "failed" &&
-        turn.reportPolicy !== "interrupt" &&
-        isReferenceNotification(text)
+        (turn.continuation ?? (turn.reportPolicy === "digest" ? "none" : "resume")) === "none"
       ) {
         yield* storage.deferReferenceNotice(
           { id: turn.turnId, recipientSessionId: turn.senderSessionId, text },
@@ -674,6 +681,7 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
       threadId?: string;
       replyToMessageId?: string;
       expectsResponse?: boolean;
+      continuation?: ParentContinuation;
       inputRefs?: readonly string[];
       messageRefs?: readonly string[];
       outcome?: SessionCompletionReport["outcome"];
@@ -683,6 +691,7 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
   ) {
     const storage = yield* SessionFamilyStorage;
     const state = yield* storage.state();
+    const expectsResponse = input.continuation !== undefined || (input.expectsResponse ?? false);
     const spawn = state.spawnedSessions.find((item) => item.sessionId === sessionId);
     // A session Cake Chat did not launch still answers Cake Chat's own requests to it.
     const owedCoordinator =
@@ -710,7 +719,7 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
     const pending =
       command === "sessions.reply" ||
       input.replyToMessageId ||
-      (requesterId !== undefined && !input.expectsResponse)
+      (requesterId !== undefined && !expectsResponse)
         ? yield* storage.pendingResponseRequest(
             sessionId,
             executingIds,
@@ -722,12 +731,12 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
       !pending &&
       command === "sessions.reply" &&
       spawn?.reportDelivered &&
-      !input.expectsResponse &&
+      !expectsResponse &&
       (input.threadId === undefined || input.threadId === spawn.sessionId) &&
       (input.replyToMessageId === undefined || input.replyToMessageId === spawn.sessionId)
     )
       return toJsonValue({ ok: true, command, status: "already-reported", expectsResponse: false });
-    if (pending && pending.outcome === undefined && !input.expectsResponse) {
+    if (pending && pending.outcome === undefined && !expectsResponse) {
       if (!substantiveTurnResult({ stopReason: "stop", text: input.text }))
         return yield* failure(
           "A result report must contain substantive findings, changes, or a blocker—not an acknowledgment",
@@ -754,7 +763,8 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
       messageId,
       threadId: pending?.threadId ?? input.threadId ?? spawn?.sessionId ?? crypto.randomUUID(),
       sequence: 1,
-      expectsResponse: input.expectsResponse ?? false,
+      expectsResponse,
+      ...(input.continuation ? { continuation: input.continuation } : null),
       ...(replyToMessageId ? { replyToMessageId } : null),
       ...(senderContext ? { context: senderContext } : null),
       sender: {
@@ -788,7 +798,10 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
         })
       : [];
     if (
-      !input.expectsResponse &&
+      !expectsResponse &&
+      (!pending ||
+        (pending.continuation ?? (pending.reportPolicy === "digest" ? "none" : "resume")) ===
+          "none") &&
       input.delivery !== "steer" &&
       !attachments.length &&
       input.outcome !== "blocked" &&
@@ -954,11 +967,10 @@ const deliverCoordinatorNotice = Effect.fn("SessionFamilies.deliverCoordinatorNo
         resolved: false,
       })
     : Effect.void;
-  // A passive reference is not a digest summary: retain its exact identity and never
-  // truncate it into the one-line status. Explicit interrupt policy still means immediate.
+  // Preserve exact links for quiet reports, but never let presentation suppress a required continuation.
   const referenceText =
     report &&
-    turn.reportPolicy !== "interrupt" &&
+    (turn.continuation ?? (turn.reportPolicy === "digest" ? "none" : "resume")) === "none" &&
     status !== "blocked" &&
     status !== "failed" &&
     (isReferenceNotification(report.text) || messageReferencesInText(report.text).length > 0)
@@ -993,7 +1005,11 @@ const deliverCoordinatorNotice = Effect.fn("SessionFamilies.deliverCoordinatorNo
     yield* publishLaunch;
     return;
   }
-  if ((turn.reportPolicy ?? "interrupt") === "digest" && status !== "blocked") {
+  if (
+    (turn.continuation ?? (turn.reportPolicy === "digest" ? "none" : "resume")) === "none" &&
+    (turn.reportPolicy ?? "interrupt") === "digest" &&
+    status !== "blocked"
+  ) {
     const title = yield* sessionTitle(turn.sessionId, spawn?.workingDirectory).pipe(
       Effect.catch(() => Effect.succeed(undefined)),
     );

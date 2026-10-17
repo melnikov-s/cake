@@ -1,3 +1,4 @@
+import { ParentContinuation } from "../../contracts/conversations/parent-continuation";
 import { TurnStop } from "../../contracts/conversations/turn-stop";
 import {
   Context,
@@ -38,6 +39,7 @@ const SessionFamilyChild = Schema.Struct({
   requestId: BoundedId,
   workingDirectory: BoundedPath,
   managedWorktreePath: Schema.optionalKey(BoundedPath),
+  continuation: Schema.optionalKey(ParentContinuation),
   createdAt: Schema.String,
 });
 interface SessionFamilyChild extends Schema.Schema.Type<typeof SessionFamilyChild> {}
@@ -131,6 +133,7 @@ const SpawnedSession = Schema.Struct({
   launchedAt: Schema.optionalKey(Schema.String),
   /** The initial assignment's report policy, reused by crash-recovery notices. */
   reportPolicy: Schema.optionalKey(CakeChatReportDelivery),
+  continuation: Schema.optionalKey(ParentContinuation),
   /** Latest result Cake Chat received (immediately or by digest), for status surfaces. */
   lastReport: Schema.optionalKey(CakeChatLaunchReport),
 });
@@ -157,6 +160,7 @@ const FamilyTurn = Schema.Struct({
   outcome: Schema.optionalKey(Schema.Literals(["complete", "failed", "aborted"])),
   /** Cake Chat requests only. Absent means immediate delivery, as for family parents. */
   reportPolicy: Schema.optionalKey(CakeChatReportDelivery),
+  continuation: Schema.optionalKey(ParentContinuation),
   /** Who deliberately stopped an aborted turn. Absent on an unexpected interruption. */
   stop: Schema.optionalKey(TurnStop),
 });
@@ -167,7 +171,7 @@ const Version6FamilyTurn = Schema.Struct({
   completionContract: Schema.optionalKey(Schema.Boolean),
   expectsResponse: Schema.Boolean,
 });
-/** Pending reference-only delivery intent, not a second transcript or an executable Pi queue. */
+/** Quiet result/notification delivery intent, not a second transcript or executable Pi queue. */
 const DeferredReferenceNotice = Schema.Struct({
   id: BoundedId,
   recipientSessionId: BoundedId,
@@ -287,6 +291,7 @@ export class SessionFamilyStorage extends Context.Service<
       readonly parentManagedWorktreePath?: string;
       readonly childSessionId: string;
       readonly childWorkingDirectory: string;
+      readonly continuation?: ParentContinuation;
       readonly childManagedWorktreePath?: string;
       readonly requestId: string;
       readonly projectPath: string;
@@ -538,6 +543,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
               parentSessionId: input.parentSessionId,
               requestId: input.requestId,
               workingDirectory: input.childWorkingDirectory,
+              ...(input.continuation ? { continuation: input.continuation } : null),
               createdAt: input.createdAt,
             };
             if (input.childManagedWorktreePath !== undefined)

@@ -1,3 +1,4 @@
+import { ParentContinuation } from "./parent-continuation";
 import { Schema } from "effect";
 import { CakeChatReportPolicy } from "../project-sessions/session-reporting";
 
@@ -17,6 +18,7 @@ export const SessionSendBatchInput = Schema.Struct({
   expectsResponse: Schema.optionalKey(Schema.Boolean),
   /** Cake Chat senders only; defaults to digest. */
   report: Schema.optionalKey(CakeChatReportPolicy),
+  continuation: Schema.optionalKey(ParentContinuation),
   maxMessages: Schema.optionalKey(
     Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(1_000)),
   ),
@@ -41,6 +43,7 @@ export const SessionSendBatchReceipt = Schema.Struct({
   ]),
   expectsResponse: Schema.optionalKey(Schema.Boolean),
   report: Schema.optionalKey(CakeChatReportPolicy),
+  continuation: Schema.optionalKey(ParentContinuation),
 });
 export interface SessionSendBatchReceipt extends Schema.Schema.Type<
   typeof SessionSendBatchReceipt
@@ -71,6 +74,7 @@ export const SessionSendBatchResult = Schema.Struct({
   status: Schema.Literals(["complete", "partial", "failed"]),
   expectsResponse: Schema.Boolean,
   report: Schema.optionalKey(CakeChatReportPolicy),
+  continuation: Schema.optionalKey(ParentContinuation),
   outcomes: Schema.Array(SessionSendBatchOutcome).check(
     Schema.isMinLength(1),
     Schema.isMaxLength(100),

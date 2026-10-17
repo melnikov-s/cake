@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { ParentContinuation } from "../conversations/parent-continuation";
 import { ExplicitCakeModelSelection } from "../model-presets/cake-model-selection";
 
 /** Explicit task outcomes are never inferred from idle or successful model generation. */
@@ -14,7 +15,8 @@ export interface SessionCompletionReport extends Schema.Schema.Type<
 > {}
 
 /**
- * How a result Cake Chat asked for reaches Cake Chat.
+ * Default delivery of a result Cake Chat asked for. An explicit continuation choice controls
+ * whether dependent parent work runs; it overrides report-triggered turn defaults.
  * - digest (default): never starts a Cake Chat turn; a compact status line is attached to the
  *   user's next Cake Chat message. A `blocked` report escalates to immediate delivery.
  * - interrupt: delivered immediately and starts a Cake Chat turn (held while the user is composing).
@@ -28,14 +30,19 @@ export type CakeChatReportDelivery = typeof CakeChatReportDelivery.Type;
 
 /**
  * One mapping from Cake Chat's request fields to the per-message obligation.
- * `report` wins; an explicit `expectsResponse: false` means silent; otherwise digest.
+ * Without explicit continuation, `report` wins; expectsResponse: false means silent; otherwise digest.
+ * Explicit continuation always asks for a result, and resume bypasses quiet delivery.
  */
 export function cakeChatReportPolicy(input: {
   readonly report?: CakeChatReportPolicy;
   readonly expectsResponse?: boolean;
+  readonly continuation?: ParentContinuation;
 }) {
-  const report = input.report ?? (input.expectsResponse === false ? "silent" : "digest");
-  return { report, expectsResponse: report !== "silent" };
+  const requested = input.report ?? (input.expectsResponse === false ? "silent" : "digest");
+  // An explicit continuation choice always requests a result, even with silent/false.
+  const report = input.continuation !== undefined && requested === "silent" ? "digest" : requested;
+  const continuation = input.continuation ?? (report === "interrupt" ? "resume" : "none");
+  return { report, expectsResponse: report !== "silent", continuation };
 }
 
 /** Latest outcome of a session Cake Chat launched, projected for status surfaces. */
@@ -70,6 +77,7 @@ export const AgentProjectSessionCreate = Schema.Struct({
   model: ExplicitCakeModelSelection,
   markdown: Schema.optionalKey(Schema.Boolean),
   report: Schema.optionalKey(CakeChatReportPolicy),
+  continuation: Schema.optionalKey(ParentContinuation),
   worktreeName: Schema.optionalKey(
     Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9-]{0,62}$/)),
   ),

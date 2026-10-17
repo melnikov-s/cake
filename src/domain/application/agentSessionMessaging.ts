@@ -192,7 +192,8 @@ export const invoke = Effect.fn("AgentSessionMessaging.invoke")(function* (
     caller.kind === "cake-chat" && invocation.name === "sessions.send"
       ? cakeChatReportPolicy(invocation.arguments)
       : undefined;
-  const expectsResponse = policy?.expectsResponse ?? args.expectsResponse ?? false;
+  const expectsResponse =
+    policy?.expectsResponse ?? (args.continuation !== undefined || (args.expectsResponse ?? false));
   const messageId = crypto.randomUUID();
   const sequence = thread.messages.length + 1;
   const metadataValue: CrossSessionMessageMetadata = {
@@ -201,6 +202,11 @@ export const invoke = Effect.fn("AgentSessionMessaging.invoke")(function* (
     threadId: thread.threadId,
     sequence,
     expectsResponse,
+    ...(policy
+      ? { continuation: policy.continuation }
+      : args.continuation
+        ? { continuation: args.continuation }
+        : null),
     ...(policy && policy.report !== "silent" ? { report: policy.report } : null),
     ...(replyToMessageId ? { replyToMessageId } : null),
     context: yield* context(caller.sessionId),
@@ -278,7 +284,11 @@ export const invoke = Effect.fn("AgentSessionMessaging.invoke")(function* (
     maxMessages: thread.maxMessages,
     delivery,
     expectsResponse,
-    ...(policy ? { report: policy.report } : null),
+    ...(policy
+      ? { report: policy.report, continuation: policy.continuation }
+      : args.continuation
+        ? { continuation: args.continuation }
+        : null),
     ...(replyToMessageId ? { replyToMessageId } : null),
     recipientContext: yield* context(targetSessionId),
     ...(queue ? { queue } : null),

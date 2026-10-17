@@ -147,6 +147,7 @@ export const makeSubagentControl =
             options().profile._tag === "CakeChatSession",
             input.inputRefs,
             input.messageRefs,
+            input.continuation,
           ),
           signal,
         ).then((value) => Schema.decodeUnknownSync(jsonValueSchema)(value)),

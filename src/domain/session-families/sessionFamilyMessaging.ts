@@ -1,3 +1,4 @@
+import { ParentContinuation } from "../../contracts/conversations/parent-continuation";
 import { messageRefsSchema } from "../../contracts/conversations/message-reference";
 import { appendMessageReferences } from "../../contracts/conversations/message-reference-forwarding";
 import { isReferenceNotification } from "../../contracts/conversations/reference-notification";
@@ -42,6 +43,7 @@ export const FamilyMessageInput = Schema.Struct({
     Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(1_000)),
   ),
   expectsResponse: Schema.optionalKey(Schema.Boolean),
+  continuation: Schema.optionalKey(ParentContinuation),
   replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
   outcome: Schema.optionalKey(SessionTaskOutcome),
 });
@@ -182,13 +184,14 @@ export const route: (
   const threadId = pending?.threadId ?? input.threadId ?? crypto.randomUUID();
   const replyToMessageId = pending?.requestMessageId ?? input.replyToMessageId;
   // Neither sends nor replies create a reply obligation unless the caller asks for one.
-  const expectsResponse = input.expectsResponse ?? false;
+  const expectsResponse = input.continuation !== undefined || (input.expectsResponse ?? false);
   const messageMetadata = {
     version: 1 as const,
     messageId,
     threadId,
     sequence: 1,
     expectsResponse,
+    ...(input.continuation ? { continuation: input.continuation } : null),
     ...(replyToMessageId ? { replyToMessageId } : null),
     ...(senderContext ? { context: senderContext } : null),
     sender: {
@@ -242,8 +245,8 @@ export const route: (
     delivery !== "steer" &&
     !attachments.length &&
     input.outcome !== "blocked" &&
-    input.outcome !== "failed" &&
-    isReferenceNotification(encoded)
+    (preparedRequests.some((request) => request.continuation === "none") ||
+      (input.outcome !== "failed" && !preparedRequests.length && isReferenceNotification(encoded)))
   ) {
     yield* families.withNoticeDelivery(
       families.deferReferenceNotice(

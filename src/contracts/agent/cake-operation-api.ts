@@ -1,3 +1,4 @@
+import type { ParentContinuation } from "../conversations/parent-continuation";
 import type {
   CakeModelSelection,
   ExplicitCakeModelSelection,
@@ -30,6 +31,7 @@ export interface RuntimeOperationApi {
       initialPrompt: string;
       model?: CakeModelSelection;
       expectsResponse: boolean;
+      continuation?: ParentContinuation;
       placement: "none" | "right" | "down";
       worktreeName?: string;
     },

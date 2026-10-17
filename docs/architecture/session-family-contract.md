@@ -119,11 +119,35 @@ queue insertion alone never triggers a stopped-child notice. Explicit abort uses
 the same outcome callback once, even if the original prompt subsequently
 returns. Only consumed input IDs count when correlating a child's reply.
 
+### Parent continuation intent
+
+Launches and result-requesting messages may explicitly choose `continuation: "none" | "resume"`.
+Both choices request one result, even if silent/false was also supplied; omit continuation
+and choose silent/false to request no result. None retains the report without a parent LLM
+turn. Resume admits a normal follow-up so the parent inspects the result and continues
+dependent work or explains failure. It bypasses digest/link-only deferral, but not
+active-parent queueing, composer holds, user-priority cancellation or queue withdrawal.
+A link neither authorizes nor suppresses a continuation.
+
+Private subagents default to resume; follow-ups inherit unless overridden. Foreground
+run/parallel/wait consume the result without an additional turn. Cake Chat session requests
+default to none for digest and resume for interrupt; family automatic reports default to
+resume. New requests persist intent on the obligation, launch recovery record or private
+worker record. Existing documents without intent retain their policy-derived default
+(subagents/family: resume; digest: none), without inferring it from result text. Stable
+completion/request IDs and existing Pi consumption receipts deduplicate retries. These
+are delivery guarantees, not permission to replay uncertain worker tool effects.
+
+Workboard-only children must still use expectsResponse:false and omit continuation.
+This API does not add automatic board wake-up. Independent Project Session `session.create`
+still has no automatic creator-report relationship. Explicit `message_parent` and questions
+remain immediate; an explicitly blocked session report still escalates even under none.
+
 ### Cake Chat report policy
 
 Results that Cake Chat requested (from `sessions.create`, `sessions.send` or
 `sessions.send-batch`) carry a `report` policy in the message envelope and on the
-journaled obligation. Only the user starts Cake Chat turns by default:
+journaled obligation. Without an explicit continuation override, only the user starts Cake Chat turns by default:
 
 - `digest` (default): when the obligation settles, the worker moves it into
   Cake Chat's durable digest inbox (`coordinatorDigest` in the family document)

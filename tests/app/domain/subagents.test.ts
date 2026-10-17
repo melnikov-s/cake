@@ -154,7 +154,9 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
     const sessionId = options.sessionId ?? "parent";
     const isParent = sessionId.startsWith("parent");
     let streaming = false;
-    let answered = false;
+    let answered = initialWorkers.some(
+      (worker) => worker.privateSessionId === sessionId && worker.status === "complete",
+    );
     let activeTurnIds: string[] = [];
     const snapshot = (): ConversationSnapshot => ({
       ...parentSnapshot,
@@ -1194,15 +1196,120 @@ describe("Cake Chat project investigators", () => {
 
 describe("Subagents", () => {
   it.effect.each([false, true])(
-    "retains a private worker's exact reference without waking its %s Cake Chat parent",
+    "resumes a %s Cake Chat parent once for a linked prerequisite, including recovery",
     (chat) =>
       Effect.gen(function* () {
-        const reference = "[Result](cake://session/worker?message=exact%3Aentry)";
+        const reference = "[Commit](cake://session/worker?message=commit)";
+        const original = yield* makeFixture(false, [], reference);
+        const record = yield* Effect.gen(function* () {
+          const caller = chat ? cakeChatParent(original) : parent(original);
+          const started = yield* subagents.start(
+            { task: "Commit prerequisite", continuation: "resume" },
+            caller,
+          );
+          const child = yield* Queue.take(original.childStarted);
+          yield* completeChild(original, child);
+          const result = Schema.decodeUnknownSync(subagents.SubagentResult)(
+            yield* Queue.take(original.reports),
+          );
+          assert.equal(result.handleId, started.handleId);
+          assert.equal(result.status, "complete");
+          assert.equal(subagents.SubagentResult.make(result).parts.length, 1);
+          const coordinator = yield* SubagentCoordinator;
+          while (
+            (yield* SubscriptionRef.get(coordinator.state)).handles.get(started.handleId)
+              ?.completionDisposition !== "notified"
+          )
+            yield* Effect.yieldNow;
+          const saved = (yield* coordinator.storage.list())[0];
+          assert.ok(saved);
+          assert.equal(saved.continuation, "resume");
+          assert.equal(
+            (yield* (yield* SessionFamilyStorage).state()).deferredReferences?.length ?? 0,
+            0,
+          );
+          return saved;
+        }).pipe(Effect.provide(original.layer));
+        // Crash before parent receipt: retry the same outbox ID from Pi-owned saved output.
+        const pending = { ...record, completionDisposition: "notifying" as const };
+        const recovered = yield* makeFixture(false, [pending], reference);
+        yield* Effect.gen(function* () {
+          const caller = chat ? cakeChatParent(recovered) : parent(recovered);
+          yield* subagents.restore(pending, caller, true);
+          yield* subagents.restore(pending, caller, true);
+          const result = Schema.decodeUnknownSync(subagents.SubagentResult)(
+            yield* Queue.take(recovered.reports),
+          );
+          assert.equal(
+            result.parts[0] && JSON.stringify(result.parts[0]).includes(reference),
+            true,
+          );
+          const coordinator = yield* SubagentCoordinator;
+          while (
+            (yield* coordinator.storage.get(record.handleId))?.completionDisposition !== "notified"
+          )
+            yield* Effect.yieldNow;
+          assert.equal((yield* Ref.get(recovered.completions)).length, 1);
+          assert.equal(
+            (yield* coordinator.storage.get(record.handleId))?.completionId,
+            record.completionId,
+          );
+        }).pipe(Effect.provide(recovered.layer));
+        // A settled receipt must not produce another continuation after restart.
+        const settled = yield* makeFixture(false, [record], reference);
+        yield* Effect.gen(function* () {
+          yield* subagents.restore(record, chat ? cakeChatParent(settled) : parent(settled), true);
+          assert.equal((yield* Ref.get(settled.completions)).length, 0);
+        }).pipe(Effect.provide(settled.layer));
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect.each(["none", "resume"] as const)(
+    "delivers startup failure according to %s continuation, without losing the failure",
+    (continuation) =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture(true);
+        yield* Effect.gen(function* () {
+          const receipt = yield* subagents.start(
+            { task: "Prerequisite that cannot start", continuation },
+            cakeChatParent(fixture),
+          );
+          const coordinator = yield* SubagentCoordinator;
+          while (
+            (yield* coordinator.storage.get(receipt.handleId))?.completionDisposition !== "notified"
+          )
+            yield* Effect.yieldNow;
+          if (continuation === "resume") {
+            const result = Schema.decodeUnknownSync(subagents.SubagentResult)(
+              yield* Queue.take(fixture.reports),
+            );
+            assert.equal(result.status, "error");
+            assert.equal(result.failurePhase, "start");
+          } else {
+            assert.equal(yield* Queue.size(fixture.reports), 0);
+            assert.match(
+              (yield* (yield* SessionFamilyStorage).state()).deferredReferences?.[0]?.text ?? "",
+              /failed to load/i,
+            );
+          }
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+  );
+
+  it.effect.each(
+    [false, true].flatMap((chat) => [
+      { chat, reference: "[Result](cake://session/worker?message=exact%3Aentry)" },
+      { chat, reference: "Research complete: the existing queue already serializes parent work." },
+    ]),
+  )(
+    "retains a report-only result without waking its $chat Cake Chat parent: $reference",
+    ({ chat, reference }) =>
+      Effect.gen(function* () {
         const fixture = yield* makeFixture(false, [], reference);
         yield* Effect.gen(function* () {
           const caller = chat ? cakeChatParent(fixture) : parent(fixture);
           const started = yield* subagents.start(
-            { task: "Investigate", model: { prefer: "current" } },
+            { task: "Investigate", model: { prefer: "current" }, continuation: "none" },
             caller,
           );
           const childId = yield* Queue.take(fixture.childStarted);
@@ -1218,6 +1325,7 @@ describe("Subagents", () => {
           const storage = yield* SessionFamilyStorage;
           const worker = (yield* coordinator.storage.list())[0];
           assert.ok(worker);
+          assert.equal(worker.continuation, "none");
           assert.deepEqual(
             (yield* storage.state()).deferredReferences?.map(
               ({ id, recipientSessionId, text }) => ({
@@ -1295,7 +1403,7 @@ describe("Subagents", () => {
         const fixture = yield* makeFixture();
         yield* Effect.gen(function* () {
           const running = yield* subagents
-            .run({ task: "Foreground" }, parent(fixture))
+            .run({ task: "Foreground", continuation: "none" }, parent(fixture))
             .pipe(Effect.forkChild);
           const child = yield* Queue.take(fixture.childStarted);
           yield* completeChild(fixture, child);
@@ -1309,6 +1417,9 @@ describe("Subagents", () => {
             "Background follow-up",
             "follow-up",
             true,
+            undefined,
+            undefined,
+            "resume",
           );
           yield* Queue.take(fixture.childStarted);
           const handle = (yield* SubscriptionRef.get(coordinator.state)).handles.get(
@@ -1316,6 +1427,7 @@ describe("Subagents", () => {
           );
           assert.equal(handle?.recovery.notifyOnCompletion, true);
           assert.equal((yield* coordinator.storage.list())[0]?.notifyOnCompletion, true);
+          assert.equal((yield* coordinator.storage.list())[0]?.continuation, "resume");
           yield* completeChild(fixture, child);
           yield* Queue.take(fixture.reports);
         }).pipe(Effect.provide(fixture.layer));
@@ -1540,7 +1652,7 @@ describe("Subagents", () => {
     Effect.gen(function* () {
       const fixture = yield* makeFixture();
       const program = Effect.gen(function* () {
-        yield* subagents.start({ task: "Audit messaging" }, parent(fixture));
+        yield* subagents.start({ task: "Audit messaging", continuation: "none" }, parent(fixture));
         const childId = yield* Queue.take(fixture.childStarted);
         const childOptions = (yield* Ref.get(fixture.constructedOptions)).find(
           (options) => options.sessionId === childId,

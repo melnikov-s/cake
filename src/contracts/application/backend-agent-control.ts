@@ -1,3 +1,4 @@
+import { ParentContinuation } from "../conversations/parent-continuation";
 import { Schema } from "effect";
 import { SessionLabelColor } from "./application-data";
 import {
@@ -22,6 +23,7 @@ const trimmed = (min: number, max: number) =>
 const id = Schema.String.check(Schema.isUUID(4));
 const target = { sessionId: bounded(1, 256) };
 const message = {
+  continuation: Schema.optionalKey(ParentContinuation),
   text: trimmed(1, 100_000),
   delivery: Schema.optionalKey(Schema.Literals(["prompt", "queue", "steer"])),
   threadId: Schema.optionalKey(id),

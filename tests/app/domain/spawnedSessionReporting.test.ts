@@ -13,6 +13,7 @@ import {
   CAKE_CHAT_SESSION_ID,
   isCakeChatSessionId,
 } from "../../../src/contracts/cake-chats/cake-chat-identity";
+import type { ParentContinuation } from "../../../src/contracts/conversations/parent-continuation";
 import type { CakeChatReportPolicy } from "../../../src/contracts/project-sessions/session-reporting";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
@@ -329,8 +330,10 @@ const createFromChat = Effect.fn("SpawnedReportingTest.createFromChat")(function
   inputRefs: readonly string[] = [],
   /** null omits the field to exercise Cake Chat's default. */
   report: CakeChatReportPolicy | null = "interrupt",
+  continuation?: ParentContinuation,
+  coordinator = CAKE_CHAT_SESSION_ID,
 ) {
-  const options = yield* assembleCoordinator();
+  const options = yield* assembleCoordinator(coordinator);
   assert.ok(options.runtime.globalControl);
   const result = yield* Effect.promise(() =>
     options.runtime.globalControl!.invoke(
@@ -341,6 +344,7 @@ const createFromChat = Effect.fn("SpawnedReportingTest.createFromChat")(function
           ...createArgs,
           inputRefs: [...inputRefs],
           ...(report ? { report } : null),
+          ...(continuation ? { continuation } : null),
         },
       },
       new AbortController().signal,
@@ -359,6 +363,55 @@ const onlyTurn = Effect.fn("SpawnedReportingTest.onlyTurn")(function* () {
 });
 
 describe("automatic spawned-session reporting", () => {
+  for (const coordinator of [CAKE_CHAT_SESSION_ID, projectChatSessionId("/project")]) {
+    it.effect.each([false, true])(
+      `launch intent resumes a linked prerequisite for ${coordinator}, busy=%s, despite digest presentation`,
+      (busy) =>
+        Effect.gen(function* () {
+          const f = yield* fixture(busy);
+          yield* f.run(
+            Effect.gen(function* () {
+              yield* createFromChat([], "digest", "resume", coordinator);
+              const admitted = yield* Deferred.await(f.entered);
+              assert.equal(
+                parseCrossSessionMessage(admitted.text)?.metadata.continuation,
+                "resume",
+              );
+              assert.equal((yield* onlyTurn()).continuation, "resume");
+              // Verify the launch fact survives decoding, so pre-admission recovery also knows to resume.
+              const reloaded = yield* Effect.gen(function* () {
+                return yield* (yield* SessionFamilyStorage).state();
+              }).pipe(Effect.provide(familyStorageHarness(f.harness.files).layer));
+              assert.equal(reloaded.spawnedSessions[0]?.continuation, "resume");
+              const link = "[Commit](cake://session/worker?message=prerequisite)";
+              yield* Deferred.succeed(f.finish, { stopReason: "stop", text: link });
+              yield* Deferred.await(f.settled);
+              const turn = yield* onlyTurn();
+              yield* families.deliver(turn);
+              yield* Deferred.await(f.received);
+              yield* families.deliver(turn); // Retry while active/queued must not add a second input.
+              assert.deepEqual(f.deliveries, [busy ? "follow-up" : "prompt"]);
+              assert.deepEqual(f.recipients, [coordinator]);
+              assert.equal((yield* f.storage.state()).deferredReferences?.length ?? 0, 0);
+              assert.equal((yield* f.storage.state()).coordinatorDigest?.length ?? 0, 0);
+              yield* Deferred.succeed(f.consumeQueued, undefined);
+              yield* Deferred.await(f.persisted);
+              yield* families.deliver(turn);
+              assert.equal(f.deliveries.length, 1);
+            }).pipe(
+              Effect.provide(
+                Layer.mock(TaskInputStorage, {
+                  isRecipient: () => Effect.succeed(false),
+                  authorizeForward: () => Effect.succeed([]),
+                  grant: () => Effect.succeed([]),
+                }),
+              ),
+            ),
+          );
+        }),
+    );
+  }
+
   it.effect(
     "keeps explicit questions, substantive messages and deliberate steering immediate without draining passive references",
     () =>
@@ -476,7 +529,7 @@ describe("automatic spawned-session reporting", () => {
       }),
   );
 
-  it.effect.each(["interrupt", "blocked"] as const)(
+  it.effect.each(["interrupt", "blocked", "resume-failed"] as const)(
     "preserves intentional immediate %s result delivery even when the report is only a reference",
     (mode) =>
       Effect.gen(function* () {
@@ -493,8 +546,14 @@ describe("automatic spawned-session reporting", () => {
               reported: false,
               outcome: "complete" as const,
               reportPolicy: mode === "interrupt" ? ("interrupt" as const) : ("digest" as const),
+              continuation: mode === "blocked" ? ("none" as const) : ("resume" as const),
               report: {
-                outcome: mode === "blocked" ? ("blocked" as const) : ("completed" as const),
+                outcome:
+                  mode === "blocked"
+                    ? ("blocked" as const)
+                    : mode === "resume-failed"
+                      ? ("failed" as const)
+                      : ("completed" as const),
                 text: "[Result](cake://session/worker?message=entry)",
               },
             };
@@ -583,6 +642,7 @@ describe("automatic spawned-session reporting", () => {
                   threadId: childId,
                   reported: false,
                   outcome: "complete" as const,
+                  continuation: "none" as const,
                   ...(isChat ? { reportPolicy: "digest" as const } : null),
                   report: { outcome: "completed" as const, text: `[Result](${ref})` },
                 };
@@ -838,7 +898,7 @@ describe("automatic spawned-session reporting", () => {
         yield* f.run(
           Effect.gen(function* () {
             const sessionId = destination === "cake-chat" ? CAKE_CHAT_SESSION_ID : parentId;
-            if (destination === "cake-chat") yield* createFromChat();
+            if (destination === "cake-chat") yield* createFromChat([], "digest", "resume");
             else {
               const root = yield* projectOptions({ location, sessionId, newSession: false });
               yield* (yield* CakeSessionRuntimes).acquire(root);
@@ -846,6 +906,7 @@ describe("automatic spawned-session reporting", () => {
                 root.runtime.currentSessionControl!.createChildSession!(
                   {
                     requestId: "cancel-child",
+                    continuation: "resume",
                     title: "Child",
                     initialPrompt: createArgs.initialPrompt,
                     model: configuration,
