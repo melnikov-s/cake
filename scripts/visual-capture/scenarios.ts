@@ -3158,6 +3158,28 @@ const dictationSettingsScenario: VisualCaptureScenario = {
   region: cakePromptsSettingsScenario.region,
 };
 
+const speechInputSettingsScenario: VisualCaptureScenario = {
+  name: "speech-input-settings",
+  description: "Speech input sensitivity and cohesive advanced controls at resizable pane widths",
+  states: ["default", "collapsed", "lower"],
+  seed: assistantMarkdownCode.seed,
+  async prepare(page, state) {
+    await dictationSettingsScenario.prepare(page, "default");
+    const disclosure = page.getByRole("button", { name: "Advanced speech input", exact: true });
+    if (state !== "collapsed") await disclosure.click();
+    await page
+      .locator("#speech-input-settings-title")
+      .evaluate((element) => element.scrollIntoView({ block: "start" }));
+    if (state === "lower") {
+      await page
+        .getByRole("switch", { name: "Allow short interruption commands" })
+        .scrollIntoViewIfNeeded();
+    }
+    await page.mouse.move(1, 1);
+  },
+  region: cakePromptsSettingsScenario.region,
+};
+
 const serverClientSettingsScenario: VisualCaptureScenario = {
   name: "server-client-settings",
   description: "Real local backend selection and browser sharing controls in Network & privacy",
@@ -3659,6 +3681,7 @@ export const visualCaptureScenarios = [
   conversationEntryScenario,
   conversationCountdownScenario,
   speechOutputSettingsScenario,
+  speechInputSettingsScenario,
   screenCaptureSettingsScenario,
   experimentalSettingsScenario,
   agentNavigationSettingsScenario,
