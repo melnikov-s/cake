@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { applyConversationUpdate } from "../../../../src/renderer/reducers/ConversationReducer";
 import { createRendererStoreFixture } from "../renderer-store-fixture";
 
 // Renderer transport infrastructure contracts: Root supplies observation targets to Model
 // synchronization. React rendering cannot prove lookup complexity or subscription demand,
 // and a fabricated observer would not test the real transport. Keep real Root/Models/Stores.
-// SessionRegistryStore.test.ts already covers startup warm-demand reset, selected/archive
-// demand, and running sessions surviving the four-idle LRU; retain only the distinct gaps here.
+// session-observation-workflow.test.tsx drives startup warm-demand reset, selected/archive
+// demand, and visible/running sessions surviving the four-idle LRU through the real App.
+// Retain only the materialized-lookup complexity regression that UI text cannot expose.
 describe("Session observation-demand integration", () => {
   it("looks up only materialized identities while trimming a much larger restored collection", () => {
     using fixture = createRendererStoreFixture({
@@ -40,49 +40,5 @@ describe("Session observation-demand integration", () => {
       workingDirectory: "/project",
       allowCreate: false,
     });
-  });
-
-  it("pins a visible nonselected pane outside the idle LRU alongside selected and running sessions", () => {
-    using fixture = createRendererStoreFixture();
-    const { root, models } = fixture;
-    const registry = root.sessionRegistry;
-    for (const sessionId of ["selected", "visible", "running"])
-      registry.load(sessionId, "/project");
-    // Establish a real two-pane surface: one session is selected, the other is merely visible.
-    root.sessionLayoutStore.ensureSession("selected");
-    root.sessionLayoutStore.splitFocused("visible", "x");
-    root.appShellStore.selectProjectSession("selected");
-    applyConversationUpdate(models.projectConversation("running", "/project"), {
-      _tag: "Snapshot",
-      revision: 1,
-      snapshot: {
-        sessionId: "running",
-        sessionFile: "/project/running.jsonl",
-        parts: [],
-        models: [],
-        thinkingLevel: "off",
-        availableThinkingLevels: ["off"],
-        streaming: true,
-        diagnostics: [],
-        commands: [],
-        compatibility: { resources: [], diagnostics: [] },
-        extensionUi: { statuses: [] },
-        tree: [],
-      },
-    });
-
-    for (let index = 0; index < 5; index += 1) registry.load(`idle-${index}`, "/project");
-
-    const demand = root.projectSessionObservationTargets;
-    expect(demand).toHaveLength(7);
-    expect(demand.map(({ sessionId }) => sessionId)).toEqual(
-      expect.arrayContaining(["selected", "visible", "running", "idle-4"]),
-    );
-    expect(demand.map(({ sessionId }) => sessionId)).not.toContain("idle-0");
-    expect(
-      demand.every(
-        ({ workingDirectory, allowCreate }) => workingDirectory === "/project" && !allowCreate,
-      ),
-    ).toBe(true);
   });
 });

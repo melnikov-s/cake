@@ -3,12 +3,13 @@ import { describe, expect, it, vi } from "vitest";
 import { piBuiltinSlashCommands } from "../../../../src/contracts/conversations/session-contract";
 import { applySessionCatalogGroupUpdate } from "../../../../src/renderer/reducers/CatalogReducer";
 import { applyConversationUpdate } from "../../../../src/renderer/reducers/ConversationReducer";
-import { sessionSummary } from "../fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "../renderer-store-fixture";
+import type { TestClientOverrides } from "../test-client";
 
-function registryFixture(snapshot?: StoreSnapshot) {
+function registryFixture(snapshot?: StoreSnapshot, client?: TestClientOverrides) {
   return createRendererStoreFixture({
     snapshot: snapshot ? { state: {}, children: { sessionRegistry: snapshot } } : undefined,
+    client,
   });
 }
 function observe(
@@ -40,9 +41,9 @@ function observe(
 // Narrow unavailable contracts: valid UI cannot request a conflicting directory for one ID;
 // React text assertions cannot detect keyed-collection or catalog scan complexity. Main-created
 // family registration enters through agent control, not a user-facing creation control.
-// Observation demand is the real Root output consumed by Model synchronization. Do not invent
-// an observer/transport to claim that manual snapshots prove subscription acquisition/eviction.
-// Visible identity persistence is in session-identity-workflow; navigation/layout, saved-draft,
+// Startup/selected/archive demand and visible/running LRU transitions now enter through real
+// App navigation in session-observation-workflow. Visible identity persistence and authority
+// precedence/removal are in session-identity-workflow; navigation/layout, saved-draft,
 // staged-command, session-management, assistant, and catalog workflows own the replaced journeys.
 describe("Session Registry identity and observation integration", () => {
   it("preserves keyed identity and rejects a conflicting Working Directory", () => {
@@ -87,16 +88,19 @@ describe("Session Registry identity and observation integration", () => {
     expect(sessionsGetter).not.toHaveBeenCalled();
   });
 
-  it("registers a main-created family child without quadratic scans or unsafe continuation capabilities", () => {
-    using fixture = registryFixture({
-      state: {
-        targets: Array.from({ length: 100 }, (_, index) => ({
-          sessionId: `session-${index}`,
-          workspacePath: "/project",
-        })),
+  it("registers a main-created family child through agent control without quadratic scans or unsafe continuation capabilities", async () => {
+    using fixture = registryFixture(
+      {
+        state: {
+          targets: Array.from({ length: 100 }, (_, index) => ({
+            sessionId: `session-${index}`,
+            workspacePath: "/project",
+          })),
+        },
+        children: {},
       },
-      children: {},
-    });
+      { projectSessions: { open: async () => undefined, respondControl: async () => undefined } },
+    );
     const { models, root } = fixture;
     const registry = root.sessionRegistry;
     const parent = registry.findSession("session-0")!;
@@ -106,12 +110,21 @@ describe("Session Registry identity and observation integration", () => {
       vi.spyOn(models.subagentCatalogs, "find"),
       vi.spyOn(models.scheduledMessageCatalogs, "find"),
     ];
-    const child = registry.loadUnlistedFamilySession("child", "/project", "Child task", {
-      familyId: "family",
-      parentSessionId: parent.sessionId,
-      childOrder: 1,
-      depth: 1,
+    await root.applicationControlStore.handleProjectSessionRequest({
+      sessionId: parent.sessionId,
+      controlRequestId: "00000000-0000-4000-8000-000000000001",
+      invocation: {
+        _tag: "ProjectChildSession",
+        childSessionId: "child",
+        workingDirectory: "/project",
+        title: "Child task",
+        familyId: "family",
+        familyChildOrder: 1,
+        familyDepth: 1,
+        placement: "none",
+      },
     });
+    const child = registry.findSession("child")!;
     expect(registry.findSession(parent.sessionId)).toBe(parent);
     expect(registry.findSession(other.sessionId)).toBe(other);
     expect(registry.findSession("child")).toBe(child);
@@ -141,69 +154,5 @@ describe("Session Registry identity and observation integration", () => {
     expect(root.projectSessionObservationTargets).toEqual([
       { sessionId: "child", workingDirectory: "/project", allowCreate: true },
     ]);
-  });
-
-  it("does not restore warm observation demand, but pins selection and observes opened archives", () => {
-    using fixture = registryFixture({
-      state: {
-        targets: [
-          { sessionId: "session-1", workspacePath: "/project" },
-          { sessionId: "session-2", workspacePath: "/project" },
-        ],
-      },
-      children: {
-        observationRetention: {
-          state: { materializedSessionIds: ["session-1", "session-2"] },
-          children: {},
-        },
-      },
-    });
-    const { root, models } = fixture;
-    expect(root.projectSessionObservationTargets).toEqual([]);
-    root.appShellStore.selectProjectSession("session-1");
-    expect(root.projectSessionObservationTargets).toEqual([
-      { sessionId: "session-1", workingDirectory: "/project", allowCreate: false },
-    ]);
-    root.sessionRegistry.observationRetention.retain("session-2");
-    expect(root.projectSessionObservationTargets.map(({ sessionId }) => sessionId)).toEqual([
-      "session-1",
-      "session-2",
-    ]);
-
-    applySessionCatalogGroupUpdate(
-      models.sessionCatalog,
-      { projectPath: "/project", resolved: true },
-      {
-        _tag: "Snapshot",
-        revision: 1,
-        sessions: [
-          sessionSummary({ sessionId: "archive", projectPath: "/project", resolved: true }),
-        ],
-      },
-    );
-    root.sessionRegistry.load("archive", "/project");
-    expect(root.projectSessionObservationTargets).toContainEqual({
-      sessionId: "archive",
-      workingDirectory: "/project",
-      allowCreate: false,
-    });
-  });
-
-  it("keeps a running session outside the four idle observations and trims again when it settles", () => {
-    using fixture = registryFixture();
-    const { root } = fixture;
-    root.sessionRegistry.load("running", "/project");
-    observe(fixture, "running", true);
-    for (let index = 0; index < 5; index += 1)
-      root.sessionRegistry.load(`idle-${index}`, "/project");
-    const demand = () => root.projectSessionObservationTargets.map(({ sessionId }) => sessionId);
-    expect(demand()).toHaveLength(5);
-    expect(demand()).toContain("running");
-    expect(demand()).not.toContain("idle-0");
-
-    observe(fixture, "running", false, 2);
-    expect(demand()).toHaveLength(4);
-    expect(demand()).toContain("running");
-    expect(demand()).not.toContain("idle-1");
   });
 });
