@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import type { Client } from "../../../src/renderer/client/Client";
@@ -12,7 +12,137 @@ import {
 
 afterEach(cleanup);
 
+// Keyboard-driven cases below prove form-to-service routing only, not native
+// focus, typing, or keyboard capture. Electron owns those browser contracts.
 describe.each(["project", "cake-chat"] as const)("%s shared conversation lifecycle", (profile) => {
+  it("routes a selected reword request with its workspace context, blocks overlapping requests, and permits retry after a visible failure", async () => {
+    let reject!: (error: Error) => void;
+    const pending = new Promise<string>((_resolve, fail) => {
+      reject = fail;
+    });
+    const showComposerContextMenu = vi.fn<Client["electron"]["showComposerContextMenu"]>(
+      async () => "reword",
+    );
+    const rewordComposerSelection = vi
+      .fn<Client["workspaces"]["rewordComposerSelection"]>()
+      .mockReturnValueOnce(pending)
+      .mockRejectedValueOnce(new Error("Reword retry unavailable"));
+    using fixture = renderConversationSession(profile, {
+      electron: { showComposerContextMenu },
+      workspaces: { rewordComposerSelection },
+    });
+    const input = screen.getByRole<HTMLTextAreaElement>("combobox", { name: fixture.inputLabel });
+    await fixture.user.type(input, "Rough wording");
+    // Drive the textarea through the event driver; only Electron's native menu
+    // is replaced at the Client boundary. This is service routing/availability,
+    // not proof of Chromium selection retention, native undo or replacement.
+    await fixture.user.pointer([
+      { target: input, offset: 0, keys: "[MouseLeft>]" },
+      { target: input, offset: 13 },
+      { target: input, offset: 13, keys: "[/MouseLeft]" },
+    ]);
+    // user-event resets textarea selection on right-mousedown, unlike Chromium.
+    // Dispatch the context-menu event itself without faking selection internals.
+    fireEvent.contextMenu(input);
+    await waitFor(() => expect(rewordComposerSelection).toHaveBeenCalledOnce());
+    expect(showComposerContextMenu).toHaveBeenCalledWith(
+      { selection: "Rough wording", x: 0, y: 0 },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(rewordComposerSelection).toHaveBeenCalledWith(
+      profile === "project"
+        ? { selection: "Rough wording", prompt: undefined, workingDirectory: "/project" }
+        : { selection: "Rough wording", prompt: undefined },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(input.getAttribute("aria-busy")).toBe("true");
+    expect(screen.getByText("Rewording selection…")).toBeDefined();
+    fireEvent.contextMenu(input);
+    expect(showComposerContextMenu).toHaveBeenCalledOnce();
+    expect(rewordComposerSelection).toHaveBeenCalledOnce();
+    await act(async () => {
+      reject(new Error("Reword service unavailable"));
+      await pending.catch(() => undefined);
+    });
+    expect(await screen.findByText("Reword service unavailable")).toBeDefined();
+    expect(screen.getByText("Reword failed")).toBeDefined();
+    expect(input.getAttribute("aria-busy")).toBe("false");
+    expect(input.value).toBe("Rough wording");
+    // Reselect through the input before retrying. Native restoration is not a
+    // precondition for this availability test and is not asserted in jsdom.
+    await fixture.user.pointer([
+      { target: input, offset: 0, keys: "[MouseLeft>]" },
+      { target: input, offset: 13 },
+      { target: input, offset: 13, keys: "[/MouseLeft]" },
+    ]);
+    fireEvent.contextMenu(input);
+    expect(await screen.findByText("Reword retry unavailable")).toBeDefined();
+    expect(rewordComposerSelection).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText("Reword service unavailable")).toBeNull();
+    expect(input.getAttribute("aria-busy")).toBe("false");
+    expect(input.value).toBe("Rough wording");
+  });
+
+  it("steers the first queued prompt from the empty Chat input, then stops and sends that steering head without sending a fresh prompt", async () => {
+    const first = queuedUserPart("First queued prompt");
+    const later = {
+      ...queuedUserPart("Later queued prompt"),
+      id: "later-part",
+      queuedInput: {
+        itemId: "20000000-0000-4000-8000-000000000002",
+        text: "Later queued prompt",
+        attachments: [],
+        renderUserMessageAsMarkdown: false,
+      },
+    };
+    const steerQueuedMessage = vi.fn<Client["sessionChats"]["steerQueuedMessage"]>(async () => {
+      fixture.publish({
+        parts: [workingAssistantPart, { ...first, deliveryState: "steering" }, later],
+      });
+      return { steering: [], followUp: [] };
+    });
+    const sendQueuedMessageNow = vi.fn<Client["sessionChats"]["sendQueuedMessageNow"]>(async () => {
+      fixture.publish({ parts: [workingAssistantPart, later] });
+      return { steering: [], followUp: [] };
+    });
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>();
+    using fixture = renderConversationSession(
+      profile,
+      { sessionChats: { prompt, steerQueuedMessage, sendQueuedMessageNow } },
+      [workingAssistantPart, first, later],
+    );
+    const input = screen.getByRole<HTMLTextAreaElement>("combobox", { name: fixture.inputLabel });
+    expect(input.value).toBe("");
+    await fixture.user.click(input);
+    await fixture.user.keyboard("{Enter}");
+    await waitFor(() =>
+      expect(steerQueuedMessage).toHaveBeenCalledExactlyOnceWith(
+        { sessionId: fixture.sessionId, partId: "queued-part" },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      ),
+    );
+    expect(
+      screen.getByRole("button", { name: "Cancel steering: First queued prompt" }),
+    ).toBeDefined();
+    expect(sendQueuedMessageNow).not.toHaveBeenCalled();
+    await fixture.user.keyboard("{Enter}");
+    await waitFor(() =>
+      expect(sendQueuedMessageNow).toHaveBeenCalledExactlyOnceWith(
+        { sessionId: fixture.sessionId, partId: "queued-part" },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      ),
+    );
+    expect(
+      screen.queryByRole("button", { name: "View queued message: First queued prompt" }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "View queued message: Later queued prompt" }),
+    ).toBeDefined();
+    expect(steerQueuedMessage).toHaveBeenCalledOnce();
+    expect(prompt).not.toHaveBeenCalled();
+    expect(input.value).toBe("");
+  });
+
   it("recovers from a failed stop, applies a live model command and retries an edited prompt", async () => {
     const stoppedAssistant = { ...workingAssistantPart, status: "complete" as const };
     const abort = vi
