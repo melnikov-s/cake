@@ -40,8 +40,14 @@ function setup(saveFailure = false) {
     CakeIpcClientService["application"],
     "observeState"
   >;
-  // The observation adapter uses only this typed external boundary in this fixture.
-  const client = { application } as unknown as CakeIpcClientService;
+  // Only the external application observation capability is provided. Other RPC
+  // groups fail loudly; the configured operation is checked against its generated type.
+  const client = new Proxy<CakeIpcClientService>(Object.create(null), {
+    get(_target, group) {
+      if (group === "application") return application;
+      throw new Error(`Unexpected experimental-settings RPC group: ${String(group)}`);
+    },
+  });
   const execute: Runtime["execute"] = (effect, signal) =>
     Effect.runPromise(
       Effect.provideService(effect, CakeIpcClient, client),
