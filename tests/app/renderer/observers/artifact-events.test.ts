@@ -1,30 +1,33 @@
+import { it } from "@effect/vitest";
 import { Effect, Queue, Schema, Stream } from "effect";
-import { createStore } from "r-state-tree";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, vi } from "vitest";
 import { EffectiveArtifactProjection } from "../../../../src/contracts/artifacts/artifact-lineage";
 import type { ArtifactRecord } from "../../../../src/contracts/artifacts/artifact-contract";
-import { CakeIpcClient, type CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
-import type { Client } from "../../../../src/renderer/client/Client";
-import { ArtifactCatalog } from "../../../../src/renderer/models/ArtifactCatalog";
+import type { CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
+import type { CakeEvent } from "../../../../src/contracts/application/cake-rpc-contract";
+import { createStore } from "r-state-tree";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
-import { observeArtifactEvents, observeStream } from "../../../../src/renderer/observers";
-import type { Runtime } from "../../../../src/renderer/runtime";
 import type { RootStore } from "../../../../src/renderer/stores/RootStore";
 import { SessionArtifactsStore } from "../../../../src/renderer/stores/SessionArtifactsStore";
 import { mountWithClient } from "../mount-with-client";
+import type { Client } from "../../../../src/renderer/client/Client";
+import { observeArtifactEvents } from "../../../../src/renderer/observers/artifact-events";
+import { projectRecord, sessionSummary } from "../fixtures/catalog-fixtures";
+import { createRendererStoreFixture } from "../renderer-store-fixture";
+import { observerClient, observerRuntime } from "./observer-test-runtime";
 
 const record: ArtifactRecord = {
   artifact: {
     protocol: "cake.artifact/v1",
-    id: "artifact",
-    sessionId: "session",
+    id: "shared",
+    sessionId: "author",
     revision: 1,
     kind: "markdown",
-    payload: { markdown: "# Artifact" },
-    fallback: { markdown: "Artifact" },
+    payload: { markdown: "Shared" },
+    fallback: { markdown: "Shared" },
   },
   workspacePath: "/project",
-  digest: "a".repeat(64),
+  digest: "b".repeat(64),
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
@@ -37,7 +40,7 @@ const effective = (revision = 1, latestRevision = revision) =>
         revision,
         digest: "b".repeat(64),
         kind: "markdown",
-        publishedAt: "2026-01-01T00:00:00.000Z",
+        publishedAt: record.createdAt,
         publishedBySessionId: "author",
         workingDirectory: "/project",
       },
@@ -55,26 +58,20 @@ const effective = (revision = 1, latestRevision = revision) =>
       lineageId: "shared",
       target: { type: "family", familyId: "family-1" },
       selection: { mode: "follow-latest" },
-      createdAt: "2026-01-01T00:00:00.000Z",
+      createdAt: record.createdAt,
     },
     latestRevision,
     stableRef: "cake://artifact/shared",
     exactRef: `cake://artifact/shared@r${revision}`,
   });
 
-const runtimeFor = (client: CakeIpcClientService): Runtime => {
-  const execute: Runtime["execute"] = (effect, signal) =>
-    Effect.runPromise(
-      Effect.provideService(effect, CakeIpcClient, client),
-      signal ? { signal } : undefined,
-    );
-  return {
-    execute,
-    observe: (source, consume, options) => observeStream(execute, source, consume, options),
-    dispose: async () => undefined,
-  };
-};
+type ArtifactInvalidation = Extract<
+  CakeEvent,
+  { type: "artifact-updated" | "artifact-catalog-invalidated" }
+>;
 
+// Native events are invalidations, not artifact authority. Integrate the real
+// observer with the actual loaded Registry, per-session panels and shared Model.
 describe("observeArtifactEvents", () => {
   it("invalidates catalog demand while keeping board and live-state channels independent", async () => {
     const projection = RootProjection.create();
@@ -101,7 +98,7 @@ describe("observeArtifactEvents", () => {
       artifactPaneStore: { receiveBoardChange: vi.fn() },
       projectWorkbenchStore: { setError: vi.fn() },
     } as unknown as RootStore;
-    const cancel = observeArtifactEvents(runtimeFor(client), root);
+    const cancel = observeArtifactEvents(observerRuntime(client), root);
 
     await vi.waitFor(() => expect(projection.artifacts.invalidationVersion).toBe(3));
     await vi.waitFor(() =>
@@ -112,7 +109,10 @@ describe("observeArtifactEvents", () => {
     expect(root.inlineWidgetStore.refreshArtifactState).toHaveBeenNthCalledWith(1, "shared");
     expect(root.inlineWidgetStore.refreshArtifactState).toHaveBeenNthCalledWith(2);
     expect(root.artifactPaneStore.receiveBoardChange).toHaveBeenCalledTimes(4);
-    expect(root.artifactPaneStore.receiveBoardChange).toHaveBeenNthCalledWith(1, "artifact");
+    expect(root.artifactPaneStore.receiveBoardChange).toHaveBeenNthCalledWith(
+      1,
+      record.artifact.id,
+    );
     expect(root.artifactPaneStore.receiveBoardChange).toHaveBeenNthCalledWith(2, "shared");
     expect(root.artifactPaneStore.receiveBoardChange).toHaveBeenNthCalledWith(3, "shared");
     expect(root.artifactPaneStore.receiveBoardChange).toHaveBeenNthCalledWith(4);
@@ -148,7 +148,7 @@ describe("observeArtifactEvents", () => {
       artifactPaneStore: { receiveBoardChange: vi.fn() },
       projectWorkbenchStore: { setError: vi.fn() },
     } as unknown as RootStore;
-    const stop = observeArtifactEvents(runtimeFor(client), root);
+    const stop = observeArtifactEvents(observerRuntime(client), root);
     Queue.offerUnsafe(events, { type: "renderer-events-ready", channel: "artifacts" });
     await vi.waitFor(() => expect(pending).toHaveLength(1));
     pending.shift()!([effective()]);
@@ -174,102 +174,134 @@ describe("observeArtifactEvents", () => {
     projection[Symbol.dispose]();
   });
 
-  it("refreshes every loaded panel so family links appear and disappear without affecting unrelated sessions", async () => {
-    const events = Effect.runSync(
-      Queue.unbounded<{ type: "artifact-catalog-invalidated"; lineageId: string }>(),
-    );
-    let linked = false;
-    let direct = false;
-    const effectiveRequest = vi.fn(async (sessionId: string) => {
-      if (sessionId === "child" && direct) {
-        const value = effective(1, 2);
-        return [
-          {
-            ...value,
-            link: {
-              ...value.link,
-              target: { type: "session" as const, sessionId },
-              selection: { mode: "pinned" as const, revision: value.revision.metadata.revision },
-            },
-          },
-        ];
-      }
-      return linked && (sessionId === "parent" || sessionId === "child") ? [effective(2)] : [];
-    });
-    const client = {
-      artifacts: { effective: effectiveRequest },
-      events: { artifacts: () => Stream.fromQueue(events) },
-    } as unknown as Client & CakeIpcClientService;
-    const catalog = ArtifactCatalog.create();
-    const parent = mountWithClient(
-      createStore(SessionArtifactsStore, {
-        sessionId: "parent",
-        model: catalog,
+  it.effect(
+    "refetches authority for both event kinds so family links appear and disappear without opening panels or changing unrelated sessions",
+    () =>
+      Effect.gen(function* () {
+        const events = yield* Queue.unbounded<ArtifactInvalidation>();
+        let linked = false;
+        let direct = false;
+        const effectiveRequest = vi.fn<Client["artifacts"]["effective"]>(async (sessionId) => {
+          if (sessionId === "child" && direct) {
+            const value = effective(1, 2);
+            return [
+              {
+                ...value,
+                link: {
+                  ...value.link,
+                  target: { type: "session", sessionId },
+                  selection: { mode: "pinned", revision: value.revision.metadata.revision },
+                },
+              },
+            ];
+          }
+          return linked && (sessionId === "parent" || sessionId === "child") ? [effective(2)] : [];
+        });
+        const catalogRequest = vi.fn<Client["artifacts"]["catalog"]>(async () => ({
+          items: [],
+          total: 0,
+          offset: 0,
+          limit: 50,
+        }));
+        using fixture = createRendererStoreFixture({
+          projects: [projectRecord({ path: "/project", name: "Project" })],
+          sessions: [
+            sessionSummary({
+              sessionId: "parent",
+              projectPath: "/project",
+              familyId: "family-1",
+              familyChildSessionIds: ["child"],
+              familyDepth: 0,
+            }),
+            sessionSummary({
+              sessionId: "child",
+              projectPath: "/project",
+              familyId: "family-1",
+              familyParentSessionId: "parent",
+              familyChildOrder: 1,
+              familyDepth: 1,
+            }),
+            sessionSummary({ sessionId: "unrelated", projectPath: "/project" }),
+          ],
+          client: { artifacts: { effective: effectiveRequest, catalog: catalogRequest } },
+        });
+        const panels = ["parent", "child", "unrelated"].map(
+          (id) => fixture.root.sessionRegistry.load(id, "/project").sessionArtifactsStore,
+        );
+        // Real panel mount queries initial authority; do not replace panel receive()
+        // with a spy or seed their shared Model independently of that authority.
+        yield* Effect.promise(() =>
+          vi.waitFor(() => {
+            expect(effectiveRequest).toHaveBeenCalledTimes(3);
+            expect(panels.every((panel) => !panel.loading)).toBe(true);
+          }),
+        );
+        const runtime = observerRuntime(
+          observerClient({
+            events: { artifacts: () => Stream.fromQueue(events) },
+          }),
+        );
+        const cancel = observeArtifactEvents(runtime, fixture.root);
+        try {
+          linked = true;
+          yield* Queue.offer(events, { type: "artifact-updated", record });
+          yield* Queue.take(runtime.consumed);
+          yield* Effect.promise(() =>
+            vi.waitFor(() => {
+              expect(
+                panels.map((panel) => panel.records.map((value) => value.artifact.id)),
+              ).toEqual([["shared"], ["shared"], []]);
+            }),
+          );
+          expect(panels.map((panel) => panel.open)).toEqual([false, false, false]);
+          expect(panels.map((panel) => panel.error)).toEqual([undefined, undefined, undefined]);
+          expect(fixture.models.artifacts.find("shared")).toBeDefined();
+          const immutablePayload = fixture.models.artifacts.find("shared")!.revision(2)!.snapshot;
+          direct = true;
+          yield* Queue.offer(events, { type: "artifact-catalog-invalidated", lineageId: "shared" });
+          yield* Queue.take(runtime.consumed);
+          yield* Effect.promise(() =>
+            vi.waitFor(() => expect(panels[1]!.records[0]?.artifact.revision).toBe(1)),
+          );
+          expect(panels[0]!.records[0]?.artifact.revision).toBe(2);
+          expect(fixture.models.artifacts.find("shared")!.revision(2)!.snapshot).toBe(
+            immutablePayload,
+          );
+          direct = false;
+          yield* Queue.offer(events, { type: "artifact-catalog-invalidated", lineageId: "shared" });
+          yield* Queue.take(runtime.consumed);
+          yield* Effect.promise(() =>
+            vi.waitFor(() => expect(panels[1]!.records[0]?.artifact.revision).toBe(2)),
+          );
+          expect(fixture.models.artifacts.find("shared")!.revision(2)!.snapshot).toBe(
+            immutablePayload,
+          );
+          linked = false;
+          yield* Queue.offer(events, { type: "artifact-catalog-invalidated", lineageId: "shared" });
+          yield* Queue.take(runtime.consumed);
+          yield* Effect.promise(() =>
+            vi.waitFor(() => {
+              expect(panels.map((panel) => panel.records)).toEqual([[], [], []]);
+            }),
+          );
+          for (const id of ["parent", "child", "unrelated"]) {
+            expect(
+              effectiveRequest.mock.calls.filter(([sessionId]) => sessionId === id),
+            ).toHaveLength(5);
+          }
+          expect(catalogRequest).toHaveBeenCalled();
+          expect(fixture.root.artifactLibraryStore.error).toBeUndefined();
+          cancel();
+          yield* Effect.promise(() => runtime.dispose());
+          const refreshes = effectiveRequest.mock.calls.length;
+          linked = true;
+          yield* Queue.offer(events, { type: "artifact-catalog-invalidated", lineageId: "shared" });
+          expect(effectiveRequest).toHaveBeenCalledTimes(refreshes);
+          expect(panels.map((panel) => panel.records)).toEqual([[], [], []]);
+        } finally {
+          cancel();
+          yield* Effect.promise(() => runtime.dispose());
+        }
       }),
-      client,
-    );
-    const child = mountWithClient(
-      createStore(SessionArtifactsStore, {
-        sessionId: "child",
-        model: catalog,
-      }),
-      client,
-    );
-    const unrelated = mountWithClient(
-      createStore(SessionArtifactsStore, {
-        sessionId: "unrelated",
-        model: catalog,
-      }),
-      client,
-    );
-    await vi.waitFor(() => expect(effectiveRequest).toHaveBeenCalledTimes(3));
-
-    const projection = RootProjection.create();
-    const root = {
-      inlineWidgetStore: { refreshArtifactState: vi.fn() },
-      props: { projection: { artifacts: catalog } },
-      artifactLibraryStore: { load: vi.fn(async () => undefined), receiveBoardChange: vi.fn() },
-      artifactPaneStore: { receiveBoardChange: vi.fn() },
-      projectWorkbenchStore: { setError: vi.fn() },
-    } as unknown as RootStore;
-    const cancel = observeArtifactEvents(runtimeFor(client), root);
-
-    linked = true;
-    Queue.offerUnsafe(events, { type: "artifact-catalog-invalidated", lineageId: "shared" });
-    await vi.waitFor(() => {
-      expect(parent.subject.records.map((value) => value.artifact.id)).toEqual(["shared"]);
-      expect(child.subject.records.map((value) => value.artifact.id)).toEqual(["shared"]);
-      expect(unrelated.subject.records).toEqual([]);
-    });
-
-    const immutablePayload = catalog.find("shared")!.revision(2)!.snapshot;
-    direct = true;
-    Queue.offerUnsafe(events, { type: "artifact-catalog-invalidated", lineageId: "shared" });
-    await vi.waitFor(() => {
-      expect(parent.subject.records[0]?.artifact.revision).toBe(2);
-      expect(child.subject.records[0]?.artifact.revision).toBe(1);
-      expect(unrelated.subject.records).toEqual([]);
-    });
-    expect(catalog.find("shared")!.revision(2)!.snapshot).toBe(immutablePayload);
-    direct = false;
-    Queue.offerUnsafe(events, { type: "artifact-catalog-invalidated", lineageId: "shared" });
-    await vi.waitFor(() => expect(child.subject.records[0]?.artifact.revision).toBe(2));
-    expect(catalog.find("shared")!.revision(2)!.snapshot).toBe(immutablePayload);
-
-    linked = false;
-    Queue.offerUnsafe(events, { type: "artifact-catalog-invalidated", lineageId: "shared" });
-    await vi.waitFor(() => {
-      expect(parent.subject.records).toEqual([]);
-      expect(child.subject.records).toEqual([]);
-      expect(unrelated.subject.records).toEqual([]);
-    });
-
-    for (const sessionId of ["parent", "child", "unrelated"])
-      expect(effectiveRequest.mock.calls.filter(([id]) => id === sessionId)).toHaveLength(5);
-    cancel();
-    projection[Symbol.dispose]();
-    parent.root[Symbol.dispose]();
-    child.root[Symbol.dispose]();
-    unrelated.root[Symbol.dispose]();
-  });
+  );
 });
