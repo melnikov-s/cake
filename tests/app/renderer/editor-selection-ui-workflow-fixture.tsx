@@ -19,7 +19,10 @@ export const selectionWorkspace = "/project";
 export const selectionSessionId = "tour-session";
 
 /** The command driver is Cake's public application-control API, not a Store mock. */
-export async function createSelectionCommandFixture(client: TestClientOverrides = {}) {
+export async function createSelectionCommandFixture(
+  client: TestClientOverrides = {},
+  options: { secondary?: boolean } = {},
+) {
   const reveal = vi.fn<Client["vscode"]["reveal"]>(async (_workspace, location) => ({
     outcome: { view: "file" },
     locations: (location.ranges ?? (location.range ? [location.range] : [])).map((range) => ({
@@ -32,7 +35,9 @@ export async function createSelectionCommandFixture(client: TestClientOverrides 
   const highlights = vi.fn<Client["vscode"]["updateSelectionHighlights"]>(async () => undefined);
   const fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: selectionWorkspace, name: "Project" })],
-    sessions: [sessionSummary({ sessionId: selectionSessionId, projectPath: selectionWorkspace })],
+    sessions: [selectionSessionId, ...(options.secondary ? ["other-tour"] : [])].map((sessionId) =>
+      sessionSummary({ sessionId, projectPath: selectionWorkspace, title: sessionId }),
+    ),
     client: {
       ...client,
       workspaces: { loadStagedSlashCommands: async () => [], ...client.workspaces },
@@ -46,34 +51,36 @@ export async function createSelectionCommandFixture(client: TestClientOverrides 
       },
     },
   });
-  const session = fixture.root.sessionRegistry.load(selectionSessionId, selectionWorkspace);
-  applyConversationSnapshot(session.model, {
-    sessionId: selectionSessionId,
-    sessionFile: "/sessions/tour-session.jsonl",
-    parts: [],
-    models: [],
-    thinkingLevel: "off",
-    availableThinkingLevels: ["off"],
-    streaming: false,
-    diagnostics: [],
-    commands: [],
-    compatibility: { resources: [], diagnostics: [] },
-    extensionUi: { statuses: [] },
-    tree: [],
-  });
+  for (const sessionId of [selectionSessionId, ...(options.secondary ? ["other-tour"] : [])]) {
+    const session = fixture.root.sessionRegistry.load(sessionId, selectionWorkspace);
+    applyConversationSnapshot(session.model, {
+      sessionId,
+      sessionFile: `/sessions/${sessionId}.jsonl`,
+      parts: [],
+      models: [],
+      thinkingLevel: "off",
+      availableThinkingLevels: ["off"],
+      streaming: false,
+      diagnostics: [],
+      commands: [],
+      compatibility: { resources: [], diagnostics: [] },
+      extensionUi: { statuses: [] },
+      tree: [],
+    });
+  }
   fixture.root.appShellStore.selectProjectSession(selectionSessionId);
   fixture.root.projectWorkbenchStore.showLoadedSession(selectionSessionId);
   fixture.root.sessionLayoutStore.ensureSession(selectionSessionId);
   fixture.root.projectWorkbenchStore.presentationStore.embeddedEditorStore.applyState({
     status: "ready",
   });
-  const invoke = (name: string, args: JsonObject = {}) =>
+  const invoke = (name: string, args: JsonObject = {}, sessionId = selectionSessionId) =>
     fixture.root.applicationControlStore.invoke(
       { name, arguments: args },
       {
         kind: "project-session",
-        sessionId: selectionSessionId,
-        title: "Tour",
+        sessionId,
+        title: sessionId,
         projectName: "Project",
         projectPath: selectionWorkspace,
         workingDirectory: selectionWorkspace,
@@ -119,8 +126,11 @@ export async function createSelectionCommandFixture(client: TestClientOverrides 
   };
 }
 
-export async function renderSelectionUi(client: TestClientOverrides = {}) {
-  const fixture = await createSelectionCommandFixture(client);
+export async function renderSelectionUi(
+  client: TestClientOverrides = {},
+  options: { secondary?: boolean } = {},
+) {
+  const fixture = await createSelectionCommandFixture(client, options);
   try {
     // Establish a completed agent tour through the authoritative command boundary.
     // No native editor, iframe contents, geometry or manual selection is simulated.
@@ -135,6 +145,8 @@ export async function renderSelectionUi(client: TestClientOverrides = {}) {
       user: userEvent.setup(),
       reveal: fixture.reveal,
       highlights: fixture.highlights,
+      // Agent commands have no UI control: this is the public application boundary.
+      invoke: fixture.invoke,
       [Symbol.dispose]() {
         view.unmount();
         fixture[Symbol.dispose]();

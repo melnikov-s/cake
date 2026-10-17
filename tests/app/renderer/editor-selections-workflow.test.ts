@@ -1,4 +1,4 @@
-import { applySnapshot } from "r-state-tree";
+import { toSnapshot } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EditorLocation } from "../../../src/contracts/editor/editor-location";
 import type {
@@ -6,9 +6,9 @@ import type {
   EditorSelectionReveal,
 } from "../../../src/contracts/editor/editor-selection";
 import type { JsonObject } from "../../../src/contracts/serialization/json-contract";
-import { createTestClient } from "./test-client";
-import { mountRootStore } from "../../../src/renderer/bootstrap/mount-root-store";
-import { RootProjection } from "../../../src/renderer/models/RootProjection";
+import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
+import { createSelectionCommandFixture } from "./editor-selection-ui-workflow-fixture";
 
 const workspace = "/projects/example";
 const cleanups: (() => void)[] = [];
@@ -17,24 +17,6 @@ afterEach(() => {
 });
 
 function harness() {
-  const models = RootProjection.create();
-  applySnapshot(models.sessionCatalog, {
-    sessions: ["a", "b"].map((sessionId) => ({
-      sessionId,
-      title: sessionId,
-      createdAt: "2026-01-01T00:00:00.000Z",
-      modifiedAt: "2026-01-01T00:00:00.000Z",
-      messageCount: 0,
-      resolved: false,
-      unread: false,
-      projectPath: workspace,
-      projectName: "Example",
-      workingDirectory: workspace,
-      pending: false,
-      draft: false,
-    })),
-    resolvedHasMoreByProject: {},
-  });
   const reveal = vi.fn(
     async (_workspace: string, location: EditorLocation): Promise<EditorSelectionReveal> => ({
       outcome: { view: "file" },
@@ -51,17 +33,20 @@ function harness() {
       void [_workspace, _highlights];
     },
   );
-  const client = createTestClient({
-    savedDrafts: { list: async () => [] },
-    vscode: {
-      open: vi.fn(async () => undefined),
-      reveal,
-      updateSelectionHighlights,
-      updateBounds: vi.fn(async () => undefined),
-      updateAnnotations: vi.fn(async () => undefined),
+  const fixture = createRendererStoreFixture({
+    projects: [projectRecord({ path: workspace, name: "Example" })],
+    sessions: ["a", "b"].map((sessionId) => sessionSummary({ sessionId, projectPath: workspace })),
+    client: {
+      vscode: {
+        open: vi.fn(async () => undefined),
+        reveal,
+        updateSelectionHighlights,
+        updateBounds: vi.fn(async () => undefined),
+        updateAnnotations: vi.fn(async () => undefined),
+      },
     },
   });
-  const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
+  const { root } = fixture;
   const a = root.sessionRegistry.load("a", workspace);
   const b = root.sessionRegistry.load("b", workspace);
   const editor = root.projectWorkbenchStore.presentationStore.embeddedEditorStore;
@@ -90,25 +75,210 @@ function harness() {
     expect(result).toMatchObject({ ok: true });
     return result;
   };
-  cleanups.push(() => {
-    root[Symbol.dispose]();
-    models[Symbol.dispose]();
-  });
+  cleanups.push(() => fixture[Symbol.dispose]());
   return { root, a, b, editor, select, invoke, enter, open, reveal, updateSelectionHighlights };
 }
 
 // Real Root composition, application-control bridge, source routing and Stores;
 // only the native Client boundary is replaced.
-describe("session-owned VS Code selection workflow", () => {
-  it("routes agent ranged opens through the source session's Store into the pill collection", async () => {
-    const h = harness();
-    await h.enter();
-    const reply = await h.open();
-    expect(h.a.editorSelectionsStore.selections).toHaveLength(1);
-    expect(reply).toMatchObject({
-      selection: { selectionIds: [h.a.editorSelectionsStore.selections[0]!.id] },
+function gate<Value>() {
+  let resolve!: (value: Value) => void;
+  const promise = new Promise<Value>((complete) => (resolve = complete));
+  return { promise, resolve };
+}
+
+// Consolidated command/native exceptions, not claimed as React migrations:
+// normalized native replies, caller-owned results, queued commands, disposal
+// and persistence. The Root and public application-control operations are real;
+// only external Clients are faked. Visible reveal/dismiss/retry, cross-session
+// pills and hidden-editor removal/reopen are covered by editor-selection-ui-workflow.
+// Actual native selection/navigation remains Electron coverage, not this suite.
+describe("Editor selection command-boundary integration", () => {
+  it("reuses an ID when native ranges differ only by omitted zero columns", async () => {
+    using fixture = await createSelectionCommandFixture();
+    const first = await fixture.open();
+    fixture.reveal.mockResolvedValueOnce({
+      outcome: { view: "file" },
+      locations: [
+        {
+          kind: "working-directory",
+          path: "src/tour.ts",
+          view: "file",
+          range: { start: { line: 1, column: 0 }, end: { line: 2, column: 0 } },
+        },
+      ],
     });
+    const second = await fixture.open();
+    expect(second.selectionIds).toEqual(first.selectionIds);
+    expect(first.selectionIds).toHaveLength(1);
+    expect((await fixture.list()).selections).toHaveLength(1);
   });
+
+  it("keeps overlapping ranges and distinct diff sides or bases in insertion order", async () => {
+    using fixture = await createSelectionCommandFixture();
+    await fixture.open({ path: "src/tour.ts", line: 2 });
+    await fixture.open({ path: "src/tour.ts", line: 2, endLine: 5 });
+    for (const [side, base] of [
+      ["before", "HEAD"],
+      ["after", "HEAD"],
+      ["before", "main"],
+    ] as const) {
+      fixture.reveal.mockResolvedValueOnce({
+        outcome: { view: "changes" },
+        locations: [
+          {
+            kind: "working-directory",
+            view: "changes",
+            path: "src/tour.ts",
+            side,
+            base,
+            range: { start: { line: 1 } },
+          },
+        ],
+      });
+      await fixture.open({ path: "src/tour.ts", line: 2, view: "changes", side, base });
+    }
+    const { selections } = await fixture.list();
+    expect(new Set(selections.map((selection) => selection.id)).size).toBe(5);
+    expect(selections.map(({ location }) => location)).toEqual([
+      expect.objectContaining({ view: "file", range: { start: { line: 1 }, end: { line: 1 } } }),
+      expect.objectContaining({ view: "file", range: { start: { line: 1 }, end: { line: 4 } } }),
+      expect.objectContaining({ view: "changes", side: "before", base: "HEAD" }),
+      expect.objectContaining({ view: "changes", side: "after", base: "HEAD" }),
+      expect.objectContaining({ view: "changes", side: "before", base: "main" }),
+    ]);
+  });
+
+  it("treats removal of an unknown ID and clearing an empty collection as idempotent commands", async () => {
+    using fixture = await createSelectionCommandFixture();
+    expect(await fixture.invoke("vscode.selections.remove", { id: "unknown" })).toMatchObject({
+      ok: true,
+      update: { state: { selections: [] } },
+    });
+    expect(await fixture.invoke("vscode.selections.clear")).toMatchObject({
+      ok: true,
+      update: { state: { selections: [] } },
+    });
+    expect((await fixture.list()).selections).toEqual([]);
+  });
+
+  it("returns detached command replies that callers cannot use to mutate authoritative selections", async () => {
+    using fixture = await createSelectionCommandFixture();
+    await fixture.open();
+    const copy = await fixture.list();
+    Reflect.set(copy.selections[0]!.location.range.start, "line", 99);
+    Array.prototype.pop.call(copy.selections);
+    expect((await fixture.list()).selections).toEqual([
+      expect.objectContaining({
+        location: expect.objectContaining({ range: { start: { line: 1 }, end: { line: 2 } } }),
+      }),
+    ]);
+  });
+
+  // A stale ID has no remaining React control and no public reveal-by-ID tool.
+  // Retain this narrow native-boundary regression with the real Root session;
+  // do not fabricate a stale click/callback to claim an honest UI replacement.
+  it("rejects a stale reveal ID after clearing and reopening the same location", async () => {
+    using fixture = await createSelectionCommandFixture();
+    const first = await fixture.open();
+    await fixture.invoke("vscode.selections.clear");
+    const replacement = await fixture.open();
+    expect(replacement.selectionIds[0]).not.toBe(first.selectionIds[0]);
+    const reveals = fixture.reveal.mock.calls.length;
+    const session = fixture.root.sessionRegistry.findSession("tour-session");
+    if (!session) throw new Error("Missing Root session");
+    await expect(session.editorSelectionsStore.reveal(first.selectionIds[0]!)).rejects.toThrow(
+      "Unknown selection",
+    );
+    expect(fixture.reveal).toHaveBeenCalledTimes(reveals);
+    expect((await fixture.list()).selections.map(({ id }) => id)).toEqual(replacement.selectionIds);
+  });
+
+  it("rejects failed native opening before registration and permits a fresh open", async () => {
+    using fixture = await createSelectionCommandFixture();
+    fixture.reveal.mockRejectedValueOnce(new Error("Native unavailable"));
+    await expect(fixture.open()).rejects.toThrow("Native unavailable");
+    expect((await fixture.list()).selections).toEqual([]);
+    await fixture.open();
+    expect((await fixture.list()).selections).toHaveLength(1);
+  });
+
+  it("serializes open, remove and clear so pending native completion cannot undo a later clear", async () => {
+    using fixture = await createSelectionCommandFixture();
+    const entered = gate<void>();
+    const native = gate<EditorSelectionReveal>();
+    fixture.reveal.mockImplementationOnce(() => {
+      entered.resolve();
+      return native.promise;
+    });
+    const opening = fixture.open();
+    await entered.promise;
+    const removing = fixture.invoke("vscode.selections.remove", { id: "missing" });
+    const clearing = fixture.invoke("vscode.selections.clear");
+    native.resolve({
+      outcome: { view: "file" },
+      locations: [
+        {
+          kind: "working-directory",
+          view: "file",
+          path: "src/tour.ts",
+          range: { start: { line: 1 } },
+        },
+      ],
+    });
+    expect((await opening).selectionIds).toHaveLength(1);
+    expect(await removing).toMatchObject({
+      update: { state: { selections: [expect.any(Object)] } },
+    });
+    expect(await clearing).toMatchObject({ update: { state: { selections: [] } } });
+    expect((await fixture.list()).selections).toEqual([]);
+    expect(fixture.highlights).toHaveBeenLastCalledWith(
+      "/project",
+      { locations: [] },
+      expect.any(Object),
+    );
+  });
+
+  it("rejects late native completion after renderer disposal and recreates empty selection authority", async () => {
+    const fixture = await createSelectionCommandFixture();
+    const entered = gate<void>();
+    const native = gate<EditorSelectionReveal>();
+    fixture.reveal.mockImplementationOnce(() => {
+      entered.resolve();
+      return native.promise;
+    });
+    const pending = fixture.open();
+    await entered.promise;
+    fixture[Symbol.dispose]();
+    expect(fixture.reveal.mock.calls[0]?.[2]?.signal?.aborted).toBe(true);
+    native.resolve({
+      outcome: { view: "file" },
+      locations: [
+        {
+          kind: "working-directory",
+          view: "file",
+          path: "src/tour.ts",
+          range: { start: { line: 1 } },
+        },
+      ],
+    });
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    using next = await createSelectionCommandFixture();
+    expect((await next.list()).selections).toEqual([]);
+  });
+
+  it("keeps selection locations out of persisted window snapshots", async () => {
+    using fixture = await createSelectionCommandFixture();
+    await fixture.open({ path: "src/ephemeral-tour-only.ts", line: 2 });
+    expect((await fixture.list()).selections).toHaveLength(1);
+    expect(JSON.stringify(toSnapshot(fixture.root))).not.toContain("ephemeral-tour-only.ts");
+  });
+});
+
+// These source-routing and active-session races enter through real renderer
+// operations over native Clients. Visible reveal/dismiss/session restoration
+// behavior is consolidated in editor-selection-ui-workflow.test.tsx.
+describe("session-owned VS Code selection workflow", () => {
   it("does not create a tour selection for a file-only open or a manual text selection", async () => {
     const h = harness();
     await h.enter();
@@ -135,6 +305,7 @@ describe("session-owned VS Code selection workflow", () => {
     await h.a.editorSelectionsStore.remove(first!.id);
     expect(h.a.editorSelectionsStore.selections).toEqual([second]);
   });
+
   it("does not register a stale selection when native reveal finishes after a session switch", async () => {
     const h = harness();
     await h.enter();
@@ -180,17 +351,7 @@ describe("session-owned VS Code selection workflow", () => {
     await h.invoke("vscode.open", { path: "src/a.ts", line: 999, view: "changes" });
     expect(h.a.editorSelectionsStore.selections[0]?.location).toEqual(resolved);
   });
-  it("isolates two session Stores even when their sessions share a Working Directory", async () => {
-    const h = harness();
-    await h.enter();
-    await h.open();
-    h.select("b");
-    await h.enter("b");
-    await h.open("src/b.ts", 7, "b");
-    expect(h.a.editorSelectionsStore).not.toBe(h.b.editorSelectionsStore);
-    expect(h.a.editorSelectionsStore.selections[0]?.location.path).toBe("src/a.ts");
-    expect(h.b.editorSelectionsStore.selections[0]?.location.path).toBe("src/b.ts");
-  });
+
   it("routes list, remove, and clear to the calling session rather than the focused session", async () => {
     const h = harness();
     await h.enter();
@@ -219,39 +380,7 @@ describe("session-owned VS Code selection workflow", () => {
     expect(h.reveal).not.toHaveBeenCalled();
     expect(h.root.sessionRegistry.findSession("missing")).toBeUndefined();
   });
-  it("navigates a pill by ID without duplicating it or clearing another selection", async () => {
-    const h = harness();
-    await h.enter();
-    await h.open();
-    await h.open("src/b.ts", 6);
-    const before = h.a.editorSelectionsStore.list();
-    await h.a.editorSelectionsStore.reveal(before.selections[0]!.id);
-    expect(h.reveal).toHaveBeenLastCalledWith(
-      workspace,
-      {
-        kind: "working-directory",
-        path: "src/a.ts",
-        range: { start: { line: 1 }, end: { line: 2 } },
-      },
-      expect.any(Object),
-    );
-    expect(h.a.editorSelectionsStore.list()).toEqual(before);
-  });
-  it("uses the same Store mutation for user dismissal and agent removal", async () => {
-    const h = harness();
-    await h.enter();
-    await h.open();
-    await h.open("src/b.ts", 6);
-    const ids = h.a.editorSelectionsStore.selections.map((s) => s.id);
-    await h.a.editorSelectionsStore.remove(ids[0]!);
-    await h.invoke("vscode.selections.remove", { id: ids[1]! });
-    expect(h.a.editorSelectionsStore.selections).toEqual([]);
-    expect(h.updateSelectionHighlights).toHaveBeenLastCalledWith(
-      workspace,
-      { locations: [] },
-      expect.any(Object),
-    );
-  });
+
   it("sends only highlight locations to the native bridge while keeping IDs in Store and agent replies", async () => {
     const h = harness();
     await h.enter();
@@ -265,63 +394,7 @@ describe("session-owned VS Code selection workflow", () => {
     expect(reply).toMatchObject({ selection: { selectionIds: [selection.id] } });
     expect(JSON.stringify(h.updateSelectionHighlights.mock.calls)).not.toContain(selection.id);
   });
-  it("allows list, removal, and clear while VS Code is hidden", async () => {
-    const h = harness();
-    await h.enter();
-    await h.open();
-    await h.open("src/b.ts", 8);
-    h.editor.hide();
-    const sends = h.updateSelectionHighlights.mock.calls.length;
-    const id = h.a.editorSelectionsStore.selections[0]!.id;
-    expect(await h.invoke("vscode.selections.list")).toMatchObject({ ok: true });
-    await h.invoke("vscode.selections.remove", { id });
-    await h.invoke("vscode.selections.clear");
-    expect(h.a.editorSelectionsStore.selections).toEqual([]);
-    expect(h.updateSelectionHighlights).toHaveBeenCalledTimes(sends);
-  });
-  it("restores a retained session's pills and highlights after switching away and back", async () => {
-    const h = harness();
-    await h.enter();
-    await h.open();
-    const selections = h.a.editorSelectionsStore.list();
-    h.select("b");
-    await h.enter("b");
-    await h.open("src/b.ts", 8, "b");
-    h.select("a");
-    await h.editor.open();
-    await h.editor.syncSelectionHighlights();
-    expect(h.a.editorSelectionsStore.list()).toEqual(selections);
-    expect(h.updateSelectionHighlights).toHaveBeenLastCalledWith(
-      workspace,
-      { locations: selections.selections.map((s) => s.location) },
-      expect.any(Object),
-    );
-  });
-  it("renders an empty session's selection list when switching from a populated session", async () => {
-    const h = harness();
-    await h.enter();
-    await h.open();
-    h.select("b");
-    await h.enter("b");
-    expect(h.updateSelectionHighlights).toHaveBeenLastCalledWith(
-      workspace,
-      { locations: [] },
-      expect.any(Object),
-    );
-  });
-  it("resends current highlight locations on editor reopen including removals made while hidden", async () => {
-    const h = harness();
-    await h.enter();
-    await h.open();
-    h.editor.hide();
-    await h.invoke("vscode.selections.clear");
-    await h.enter();
-    expect(h.updateSelectionHighlights).toHaveBeenLastCalledWith(
-      workspace,
-      { locations: [] },
-      expect.any(Object),
-    );
-  });
+
   it("prevents an old session's delayed rendering from overwriting the active session's highlights", async () => {
     const h = harness();
     await h.enter();

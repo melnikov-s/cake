@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { cleanup, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import type { Client } from "../../../src/renderer/client/Client";
@@ -50,6 +50,77 @@ const removeNext = () => screen.getByRole("button", { name: /^Remove src\/next\.
 // about native editor navigation, manual text selection, focus or geometry.
 // Manual editor-context events and annotation payloads have composer coverage.
 describe("Editor selection pills workflow", () => {
+  it("keeps each session's pills and native highlights isolated across sidebar navigation", async () => {
+    using fixture = await renderSelectionUi({}, { secondary: true });
+    await fixture.user.click(screen.getByRole("button", { name: /^other-tour / }));
+    expect(screen.queryByRole("button", { name: /^Reveal src\// })).toBeNull();
+    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await waitFor(() =>
+      expect(fixture.highlights).toHaveBeenLastCalledWith(
+        selectionWorkspace,
+        { locations: [] },
+        expect.any(Object),
+      ),
+    );
+    await act(async () => {
+      await fixture.invoke("vscode.open", { path: "src/other.ts", line: 4 }, "other-tour");
+    });
+    expect(screen.getByRole("button", { name: /^Reveal src\/other.ts/ })).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: /^tour-session / }));
+    await waitFor(() => expect(revealTour()).toBeDefined());
+    expect(revealNext()).toBeDefined();
+    expect(screen.queryByRole("button", { name: /^Reveal src\/other.ts/ })).toBeNull();
+    await waitFor(() =>
+      expect(fixture.highlights).toHaveBeenLastCalledWith(
+        selectionWorkspace,
+        {
+          locations: [
+            expect.objectContaining({ path: "src/tour.ts" }),
+            expect.objectContaining({ path: "src/next.ts" }),
+          ],
+        },
+        expect.any(Object),
+      ),
+    );
+  });
+
+  it("honors agent removal and clear while hidden, then resends only retained highlights on reopen", async () => {
+    using fixture = await renderSelectionUi();
+    const listed = await fixture.invoke("vscode.selections.list");
+    if (!listed.ok || listed.command !== "vscode.selections.list")
+      throw new Error("Missing selection reply");
+    const tour = listed.state.selections.find(({ location }) => location.path === "src/tour.ts")!;
+    await fixture.user.click(screen.getByRole("button", { name: "Back to agent" }));
+    const sends = fixture.highlights.mock.calls.length;
+    await act(async () => {
+      await fixture.invoke("vscode.selections.remove", { id: tour.id });
+    });
+    expect(fixture.highlights).toHaveBeenCalledTimes(sends);
+    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    expect(screen.queryByRole("button", { name: /^Reveal src\/tour.ts/ })).toBeNull();
+    expect(revealNext()).toBeDefined();
+    await waitFor(() =>
+      expect(fixture.highlights).toHaveBeenLastCalledWith(
+        selectionWorkspace,
+        { locations: [expect.objectContaining({ path: "src/next.ts" })] },
+        expect.any(Object),
+      ),
+    );
+    await fixture.user.click(screen.getByRole("button", { name: "Back to agent" }));
+    await act(async () => {
+      await fixture.invoke("vscode.selections.clear");
+    });
+    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    expect(screen.queryByLabelText("Editor selections")).toBeNull();
+    await waitFor(() =>
+      expect(fixture.highlights).toHaveBeenLastCalledWith(
+        selectionWorkspace,
+        { locations: [] },
+        expect.any(Object),
+      ),
+    );
+  });
+
   it("retains tour selections when the user removes attachments and sends a message", async () => {
     const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
       TurnId.make("10000000-0000-4000-8000-000000000001"),
