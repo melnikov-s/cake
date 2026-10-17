@@ -34,7 +34,7 @@ afterEach(async () => {
 });
 
 describe("artifact branches through the real Pi runtime", () => {
-  it("preserves ancestor messages/instructions, removes executable tools, and applies the parent cache key", async () => {
+  it("preserves ancestor context, loads bundled skills with scoped candidate tools, and applies the parent cache key", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "cake-widget-runtime-"));
     directories.push(cwd);
     const agentDir = join(cwd, "agent");
@@ -161,6 +161,7 @@ describe("artifact branches through the real Pi runtime", () => {
       conversation: { type: "parent", origin },
       brief: "Make the chart",
       fallback: "Quarterly revenue",
+      candidate: { source: "", state: null },
     });
     expect(generated.response).toContain("Verified facts");
     expect(requests[0]!.messages.slice(0, inherited.length)).toEqual(inherited);
@@ -171,7 +172,12 @@ describe("artifact branches through the real Pi runtime", () => {
     expect(getCurrentSystemPrompt(requests[0]!.messages)).toContain(
       "self-contained interactive Cake widget",
     );
-    expect(getCurrentTools(requests[0]!.messages)).toEqual([]);
+    expect(getCurrentTools(requests[0]!.messages).map((tool) => tool.name)).toEqual([
+      "widget_read",
+      "widget_edit",
+      "read",
+    ]);
+    expect(getCurrentSystemPrompt(requests[0]!.messages)).toContain("cake:prototype-ui");
     expect(requests[0]!.payload).toMatchObject({ prompt_cache_key: parent.getSessionId() });
     expect(requests[0]!.sessionId).toBe(generated.sessionId);
     expect(generated.sessionId).not.toBe(parent.getSessionId());

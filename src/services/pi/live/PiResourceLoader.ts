@@ -1,5 +1,6 @@
 import { DefaultResourceLoader, SettingsManager } from "@earendil-works/pi-coding-agent";
 import type { PiAgentResourceContext } from "../agent-resource-data";
+import { cakeBuiltinSkillsOverride } from "../runtime/cake-builtin-skills";
 
 export async function loadPiResources(
   agentDirectory: string,
@@ -16,6 +17,7 @@ export async function loadPiResources(
     agentDir: agentDirectory,
     settingsManager,
     additionalSkillPaths: context.additionalSkillPaths ? [...context.additionalSkillPaths] : [],
+    skillsOverride: await cakeBuiltinSkillsOverride(agentDirectory),
     additionalPromptTemplatePaths: context.additionalPromptTemplatePaths
       ? [...context.additionalPromptTemplatePaths]
       : [],

@@ -31,6 +31,9 @@ function expectUnifiedWidgetGuidance(prompt: string) {
   expect(prompt).toContain("there is no separate diagram artifact to create");
   expect(prompt).toContain("Outside a diagram canvas");
   expect(prompt).toContain("must not request remote resources");
+  expect(prompt).toContain(
+    "reproduce the supplied reference app's design tokens inside its prototype frames",
+  );
 }
 
 describe("widget specialist guidance", () => {

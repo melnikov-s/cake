@@ -53,12 +53,17 @@ export function retainRelocatedForkContext(
     const old = previous[name];
     const current = section(event.systemPrompt, name);
     if (!old || !current) continue;
+    const currentLocations = new Set(
+      Array.from(current.matchAll(/<location>([^<]+)<\/location>/g), (match) => match[1]!),
+    );
     // Relocate source metadata only, never instruction prose or arbitrary absolute paths.
     const relocated = old.replace(
       name === "project_context"
         ? /<project_instructions path="([^"]+)">/g
         : /<location>([^<]+)<\/location>/g,
       (match, path: string) => {
+        // Shared resources can live under the old cwd without moving with its checkout.
+        if (name === "skills" && currentLocations.has(path)) return match;
         const source = sourceCwds.find((cwd) => path.startsWith(`${cwd}/`));
         return source ? match.replace(path, `${options.cwd}${path.slice(source.length)}`) : match;
       },

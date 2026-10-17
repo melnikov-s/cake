@@ -11,6 +11,7 @@ import {
   slashCommandSchema,
 } from "../../contracts/conversations/session-contract";
 import { compatibilityCatalog } from "../pi/live/PiCompatibilityProjection";
+import { cakeBuiltinSkillsOverride } from "../pi/runtime/cake-builtin-skills";
 import {
   addSessionDigestReminder,
   splitSessionDigestReminder,
@@ -27,6 +28,7 @@ export async function createDurableChatCommands(
     cwd,
     agentDir,
     settingsManager,
+    skillsOverride: await cakeBuiltinSkillsOverride(agentDir),
     noExtensions: true,
     noPromptTemplates: true,
     noThemes: true,

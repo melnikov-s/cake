@@ -31,6 +31,7 @@ import type { RuntimeOperationApi } from "../../../contracts/agent/cake-operatio
 import { loadCakeSessionRuntimeResourceLoader } from "./cake-session-runtime-resources";
 import { detectGitWorktree, worktreeSystemPrompt } from "./worktree-system-prompt";
 import { cakeAgentDocumentationDirectory } from "./cake-agent-documentation";
+import { cakeBuiltinSkillsOverride } from "./cake-builtin-skills";
 import { createCakeSystemPromptExtension } from "./cake-system-prompt-extension";
 import projectPromptTemplate from "./prompts/project.md?raw";
 import { projectInvestigationSystemPrompt } from "../subagent-system-prompt";
@@ -219,6 +220,10 @@ export async function createCakeSessionRuntimeCapabilities(input: {
     captureOperationRegistry,
     options.sessionReferences?.project,
   );
+  const skillsOverride =
+    !options.auxiliary || options.auxiliaryProjectResources || options.projectInvestigation
+      ? await cakeBuiltinSkillsOverride(agentDir)
+      : undefined;
   const resourceLoader = await loadCakeSessionRuntimeResourceLoader({
     trusted: options.trusted,
     makeResourceLoader: () =>
@@ -251,6 +256,7 @@ export async function createCakeSessionRuntimeCapabilities(input: {
                   : []),
               ],
         additionalSkillPaths: [],
+        skillsOverride,
         additionalPromptTemplatePaths: [],
         additionalExtensionPaths: [],
         noExtensions: options.auxiliary && !options.projectInvestigation,

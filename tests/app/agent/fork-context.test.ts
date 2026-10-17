@@ -89,6 +89,18 @@ describe("relocated fork context", () => {
     expect(JSON.stringify(delta)).not.toContain("Shared Cake guidance");
   });
 
+  it("retains shared built-in skill paths while relocating project skills", () => {
+    const builtin =
+      "<skill>\n<name>cake:prototype-ui</name>\n<location>/source/agent/cake-skills/revision/prototype-ui/SKILL.md</location>\n</skill>";
+    const base = sources("/source");
+    base.skills = base.skills.replace("</skills>", `${builtin}\n</skills>`);
+    const current = sources("/destination");
+    current.skills = current.skills.replace("</skills>", `${builtin}\n</skills>`);
+    const run = event("/destination", current);
+    retainRelocatedForkContext(run, inherited(base));
+    expect(wrap("skills", run.systemPromptOptions.sections.skills!)).toBe(base.skills);
+  });
+
   it("keeps the same baseline on subsequent turns and reopen", () => {
     const first = event();
     const base = inherited();

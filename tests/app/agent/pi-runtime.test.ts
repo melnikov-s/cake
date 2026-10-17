@@ -3747,6 +3747,11 @@ export default function (pi) {
         expect.objectContaining({ name: "cake-compat", source: "extension" }),
         expect.objectContaining({ name: "fixture-prompt", source: "prompt" }),
         expect.objectContaining({ name: "skill:fixture-skill", source: "skill" }),
+        expect.objectContaining({
+          name: "skill:cake:prototype-ui",
+          source: "skill",
+          sourceInfo: expect.objectContaining({ source: "builtin" }),
+        }),
       ]),
     );
     expect(firstSnapshot.commands.slice(0, 3).map((command) => command.name)).toEqual([
@@ -3758,6 +3763,7 @@ export default function (pi) {
       expect.arrayContaining([
         expect.objectContaining({ kind: "package", name: packageDir }),
         expect.objectContaining({ kind: "skill", name: "fixture-skill" }),
+        expect.objectContaining({ kind: "skill", name: "cake:prototype-ui", source: "builtin" }),
         expect.objectContaining({ kind: "prompt", name: "fixture-prompt" }),
         expect.objectContaining({
           kind: "extension",

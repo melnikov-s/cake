@@ -22,6 +22,32 @@ No compatibility catalog, companion state, or extension UI state is written
 into Pi JSONL or Cake application metadata. Reopening a Pi Session Runtime
 reconstructs it through Pi.
 
+## Built-in Cake skills
+
+Cake ships bundled skill instructions and resources under the reserved
+`cake:` namespace, invoked through Pi as `/skill:cake:<name>`.
+Portable `SKILL.md` names remain unprefixed; Cake applies the namespace with
+Pi's public `skillsOverride` hook after Pi validates the frontmatter.
+The bundles are materialized under the agent directory's content-addressed
+`cake-skills/` directory so ordinary Pi skill reads and command expansion work
+in packaged and remote backends. No separate skill-command parser is added to
+regular Project Sessions.
+
+Resource discovery, Project Sessions, the permanent Cake Chat command catalog,
+and skill-enabled widget specialists use the same bundles. Auxiliary sessions
+that exclude skills remain excluded, and scoped resource roots still restrict
+specialist reads. The short description is advertised lazily; bundled skills
+can use Pi's `disable-model-invocation` frontmatter for explicit-only use.
+User and project skills outside the reserved namespace retain their normal names.
+
+The first built-in, `cake:prototype-ui`, gathers the target app's design references
+in the parent, then delegates one widget containing five alternatives. Revisions
+reuse the artifact's generation lineage. Its artifact-scoped choice contract is
+`{ schema: "cake.prototype-ui/v1", selectedOptionId: string | null }`; IDs remain
+stable through refinement. "Choose this" persists the ID, while preview navigation
+does not select an option. The parent reads the saved value with
+`artifacts.state.read` on its next turn; saving state does not wake the parent.
+
 ## Session-bound extensions
 
 There is no public `PiExtensions` Service. When `CakeSessionRuntimes.acquire`

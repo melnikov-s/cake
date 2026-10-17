@@ -11,6 +11,7 @@ import { registerAgentDirectoryExtensionProviders } from "./extension-providers"
 import { createPromptCacheLineage } from "./prompt-cache-lineage";
 import { createWidgetContextExtension } from "./widget-context-extension";
 import { createWidgetCandidateTools } from "./widget-candidate-tools";
+import { cakeBuiltinSkillsOverride } from "./cake-builtin-skills";
 import type { WidgetCandidate } from "../../../contracts/widgets/widget-candidate";
 import { createNestedToolActivityProjection } from "./nested-tool-activity-projection";
 import { canonicalPathIsInsideRoot } from "./workspace-paths";
@@ -136,6 +137,9 @@ export async function runIsolatedSession(
   // apply, as do explicit Cake-owned context/cache hooks for widget branches.
   await registerAgentDirectoryExtensionProviders(options.agentDir, modelRuntime);
   const resourceRoot = options.resourceRoot;
+  const builtinSkills = options.includeSkills
+    ? await cakeBuiltinSkillsOverride(options.agentDir)
+    : undefined;
   const promptCacheLineage = options.promptCacheSessionRoots
     ? createPromptCacheLineage()
     : undefined;
@@ -156,14 +160,17 @@ export async function runIsolatedSession(
         ? [createWidgetContextExtension(options.sessionManager, options.systemPrompt)]
         : []),
     ],
-    skillsOverride: resourceRoot
-      ? (current) => ({
-          ...current,
-          skills: current.skills.filter((skill) =>
-            resourcePathIsInside(resourceRoot, skill.filePath),
-          ),
-        })
-      : undefined,
+    skillsOverride: (base) => {
+      const current = builtinSkills ? builtinSkills(base) : base;
+      return resourceRoot
+        ? {
+            ...current,
+            skills: current.skills.filter((skill) =>
+              resourcePathIsInside(resourceRoot, skill.filePath),
+            ),
+          }
+        : current;
+    },
     agentsFilesOverride: resourceRoot
       ? (current) => ({
           agentsFiles: current.agentsFiles.filter((file) =>

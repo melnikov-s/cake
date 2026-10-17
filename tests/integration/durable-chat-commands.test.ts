@@ -67,6 +67,7 @@ it("discovers Pi project and global skills without loading project executable ex
         sourceInfo: expect.objectContaining({ path: f.skillFile, scope: "project" }),
       }),
       expect.objectContaining({ name: "skill:global-fixture", source: "skill" }),
+      expect.objectContaining({ name: "skill:cake:prototype-ui", source: "skill" }),
     ]),
   );
   expect(
@@ -82,6 +83,20 @@ it("discovers Pi project and global skills without loading project executable ex
   const other = await f.open(join(f.root, "other-project"));
   expect(other.catalog().some((item) => item.name === "skill:local-fixture")).toBe(false);
   expect(other.catalog().some((item) => item.name === "skill:global-fixture")).toBe(true);
+});
+
+it("expands built-in namespaced skills with the same Pi envelope and arguments", async () => {
+  const f = await fixture();
+  const commands = await f.open();
+  const expanded = await commands.expand("/skill:cake:prototype-ui prototype the settings screen");
+  expect(expanded).toContain('<skill name="cake:prototype-ui"');
+  expect(expanded).toContain("Build one interactive widget containing five distinct prototypes");
+  expect(expanded).toContain("</skill>\n\nprototype the settings screen");
+  expect(commands.instructions()).toContain("cake:prototype-ui");
+  await commands.reload();
+  expect(
+    commands.catalog().filter((command) => command.name === "skill:cake:prototype-ui"),
+  ).toHaveLength(1);
 });
 
 it("expands current skill content with arguments and projects it through Durable originals", async () => {
