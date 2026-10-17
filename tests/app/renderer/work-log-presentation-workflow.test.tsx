@@ -88,6 +88,89 @@ describe("Work-log presentation workflow", () => {
     expect(workLog().group.open).toBe(false);
     expect(screen.getAllByRole("img")).toHaveLength(2);
   });
+
+  it("discloses compacted history separately from current work without treating that history as running", async () => {
+    const historical = { ...readFile("historical"), origin: "compacted" as const };
+    using fixture = renderWorkLog([historical, readFile("current", "running")], {
+      streaming: true,
+    });
+    const compacted = screen.getByText("Compacted work log", { exact: true }).closest("details");
+    if (!compacted) throw new Error("Missing compacted work log");
+    expect(compacted.open).toBe(false);
+    expect(compacted.dataset.origin).toBe("compacted");
+    expect(compacted.className).toContain("opacity-75");
+    const compactedSummary = within(compacted).getByText("Compacted work log");
+    await fixture.user.click(compactedSummary);
+    const historicalTool = within(compacted).getByRole("button", { name: /^read historical/ });
+    await fixture.user.click(historicalTool);
+    expect(await within(compacted).findByText("Contents of historical")).toBeDefined();
+    expect(workLog().group.open).toBe(false);
+    fixture.publish([historical, readFile("current")]);
+    expect(compacted.open).toBe(true);
+    expect(historicalTool.getAttribute("aria-expanded")).toBe("true");
+    expect(workLog().summary.textContent).not.toContain("read current");
+  });
+
+  it("keeps the last tool active between streamed parts, then settles the group even when an individual call failed", async () => {
+    const tool = readFile("current");
+    using fixture = renderWorkLog([tool], { streaming: true });
+    const { summary, group } = workLog();
+    expect(summary.textContent).toContain("1 tool call · read current.ts");
+    expect(summary.querySelector('span[aria-hidden="true"]')?.className).toContain("animate-pulse");
+    fixture.publish(
+      [
+        { ...tool, state: "error", output: "Permission denied" },
+        {
+          id: "answer",
+          kind: "text",
+          role: "assistant",
+          text: "Could not read it",
+          status: "streaming",
+        },
+      ],
+      true,
+    );
+    expect(summary.textContent).toContain("1 tool call");
+    expect(summary.textContent).not.toContain("read current.ts");
+    await fixture.user.click(summary);
+    const failed = within(group).getByRole("button", { name: /^read current/ });
+    await fixture.user.click(failed);
+    expect(await within(group).findByText("Permission denied")).toBeDefined();
+    fixture.publish([
+      { ...tool, state: "error", output: "Permission denied" },
+      {
+        id: "answer",
+        kind: "text",
+        role: "assistant",
+        text: "Could not read it",
+        status: "complete",
+      },
+    ]);
+    expect(group.open).toBe(true);
+    expect(failed.getAttribute("aria-expanded")).toBe("true");
+    expect(summary.querySelector('span[aria-hidden="true"]')?.className).toContain("bg-success");
+  });
+
+  it("retains the real streaming diff and expanded activity while the elapsed clock advances", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    vi.setSystemTime(1_000_000);
+    using fixture = renderWorkLog([addedFile("running")], { streaming: true });
+    await fixture.user.click(workLog().summary);
+    const diff = screen.getByRole("region", { name: "File changes to src/added.ts" });
+    const steps = screen.getByRole("button", { name: "1 tool call · 0.0s Activity View steps" });
+    await fixture.user.click(steps);
+    const tool = screen.getByRole("button", { name: /^write/ });
+    await fixture.user.click(tool);
+    act(() => vi.advanceTimersByTime(500));
+    expect(screen.getByRole("region", { name: "File changes to src/added.ts" })).toBe(diff);
+    expect(diff.textContent).toContain("one");
+    expect(diff.textContent).toContain("three");
+    expect(screen.getByRole("button", { name: "1 tool call · 0.5s Activity Hide steps" })).toBe(
+      steps,
+    );
+    expect(tool.getAttribute("aria-expanded")).toBe("true");
+  });
+
   it("summarizes added and removed files without counting reads or inventing elapsed history", async () => {
     using fixture = renderWorkLog([addedFile(), readFile("read-only"), removedFile()]);
     const { summary, group } = workLog();
@@ -166,6 +249,76 @@ describe("Work-log presentation workflow", () => {
     expect(screen.getByRole("button", { name: /^read first/ }).getAttribute("aria-expanded")).toBe(
       "false",
     );
+  });
+
+  it("keeps each Chat's elapsed history independent when another Chat is torn down", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    vi.setSystemTime(1_000_000);
+    {
+      using first = renderWorkLog([readFile("shared-tool", "running")], { streaming: true });
+      const firstChat = within(first.container);
+      await first.user.click(firstChat.getByText("Work log", { exact: true }));
+      act(() => vi.advanceTimersByTime(500));
+      {
+        using second = renderWorkLog([readFile("shared-tool", "running")], { streaming: true });
+        const secondChat = within(second.container);
+        await second.user.click(secondChat.getByText("Work log", { exact: true }));
+        act(() => vi.advanceTimersByTime(1_000));
+        expect(firstChat.getByLabelText("elapsed time").textContent).toBe("1.5s");
+        expect(secondChat.getByLabelText("elapsed time").textContent).toBe("1.0s");
+      }
+      act(() => vi.advanceTimersByTime(500));
+      expect(firstChat.getByLabelText("elapsed time").textContent).toBe("2.0s");
+    }
+  });
+
+  it("prunes a removed tool's elapsed history and disclosure while retaining the surviving tool", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    vi.setSystemTime(1_000_000);
+    using fixture = renderWorkLog([readFile("first", "running"), readFile("second", "running")], {
+      streaming: true,
+    });
+    await fixture.user.click(workLog().summary);
+    await fixture.user.click(screen.getByRole("button", { name: /^read first/ }));
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(screen.getAllByLabelText("elapsed time").map((chip) => chip.textContent)).toEqual([
+      "1.0s",
+      "1.0s",
+    ]);
+
+    fixture.publish([readFile("second")]);
+    expect(screen.queryByRole("button", { name: /^read first/ })).toBeNull();
+    fixture.publish([readFile("first", "running"), readFile("second")], true);
+    expect(screen.getByRole("button", { name: /^read first/ }).getAttribute("aria-expanded")).toBe(
+      "false",
+    );
+    expect(screen.getAllByLabelText("elapsed time").map((chip) => chip.textContent)).toEqual([
+      "0.0s",
+      "1.0s",
+    ]);
+  });
+
+  it("keeps elapsed history while assistant tokens stream and freezes it when authority completes the tool", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    vi.setSystemTime(1_000_000);
+    using fixture = renderWorkLog([readFile("first", "running")], { streaming: true });
+    await fixture.user.click(workLog().summary);
+    act(() => vi.advanceTimersByTime(500));
+    for (const text of ["Inspecting", "Inspecting the results"]) {
+      fixture.publish(
+        [
+          readFile("first", "running"),
+          { id: "assistant", kind: "text", role: "assistant", text, status: "streaming" },
+        ],
+        true,
+      );
+      act(() => vi.advanceTimersByTime(500));
+    }
+    expect(screen.getByLabelText("elapsed time").textContent).toBe("1.5s");
+    expect(screen.getByText("Inspecting the results")).toBeDefined();
+    fixture.publish([readFile("first")]);
+    act(() => vi.advanceTimersByTime(2_000));
+    expect(screen.getByLabelText("elapsed time").textContent).toBe("1.5s");
   });
 
   it("preserves the user's open group as live reasoning is replaced by its settled transcript identity", async () => {

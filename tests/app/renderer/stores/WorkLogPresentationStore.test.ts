@@ -1,90 +1,77 @@
-import { createStore, mount, observable } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { UiPart } from "../../../../src/contracts/conversations/session-contract";
-import { ChatStore } from "../../../../src/renderer/stores/ChatStore";
+import type { ConversationSnapshot } from "../../../../src/contracts/conversations/conversation-data";
+import { applyConversationUpdate } from "../../../../src/renderer/reducers/ConversationReducer";
+import { projectRecord, sessionSummary } from "../fixtures/catalog-fixtures";
+import { createRendererStoreFixture } from "../renderer-store-fixture";
 
-type ToolState = Extract<UiPart, { kind: "tool" }>["state"];
+// Resource-only integration exception. Visible elapsed history, disclosure pruning,
+// assistant streaming and independent Chat presentation live in the React workflow.
+// A frozen/removed label cannot prove an interval was released. Observe the timer
+// boundary with real Root/Registry/Conversation/Chat/WorkLog Stores, not a synthetic
+// Chat props object, manual syncTimers call, or spy on a collaborating Store.
+describe("Work-log resources through the real session lifecycle", () => {
+  afterEach(() => vi.useRealTimers());
 
-function createChatStore(parts: () => UiPart[]) {
-  const store = mount(
-    createStore(ChatStore, {
-      id: () => "chat",
-      parts,
-      streaming: () => false,
-      submitting: () => false,
-      configuration: () => undefined,
-      commands: () => [],
-      placeholder: () => "Message Cake",
-      inputLabel: () => "Message",
-      canSubmit: () => true,
-      submit: () => Promise.resolve(true),
-    }),
-  );
-  void store.workLogPresentation;
-  return store;
-}
-
-function toolPart(id: string, state: ToolState): UiPart {
-  return { id, kind: "tool", name: "bash", input: "echo hi", state };
-}
-
-describe("WorkLogPresentationStore", () => {
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  // Retained performance regression: identical visible UI cannot establish that
-  // assistant token updates avoid resynchronizing every tool timer.
-  it("does not resynchronize tool timers for assistant text tokens", () => {
-    const assistant: Extract<UiPart, { kind: "text" }> = {
-      id: "assistant-1",
-      kind: "text",
-      role: "assistant",
-      text: "First",
-      status: "streaming",
-    };
-    const parts: UiPart[] = observable([assistant]);
-    const store = createChatStore(() => parts);
-    const sync = vi.spyOn(store.workLogPresentation, "syncTimers");
-
-    parts[0] = { ...assistant, text: "Second" };
-
-    expect(sync).not.toHaveBeenCalled();
-    store[Symbol.dispose]();
-  });
-
-  // Retained resource regression: rendering a vanished tool cannot prove its
-  // timer/override entries were released or the idle interval was stopped.
-  // Visible group retention/reset is covered by work-log-presentation-workflow.
-  it("prunes removed timer and item-override resources and stops the idle clock", () => {
-    vi.useFakeTimers();
+  it("stops idle clocks, restarts for new work and releases only the removed session's interval", () => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
     vi.setSystemTime(1_000_000);
-    let parts: UiPart[] = [toolPart("tool-1", "running"), toolPart("tool-2", "running")];
-    const store = createChatStore(() => parts);
-    store.workLogPresentation.setItemOpen("tool-1", true);
+    const idleTimers = vi.getTimerCount();
+    {
+      using fixture = createRendererStoreFixture({
+        projects: [projectRecord({ path: "/project" })],
+        sessions: ["first", "second"].map((sessionId) =>
+          sessionSummary({ sessionId, projectPath: "/project" }),
+        ),
+      });
+      const first = fixture.root.sessionRegistry.load("first", "/project");
+      const second = fixture.root.sessionRegistry.load("second", "/project");
+      // Materialize the same lazy Chat children that the product Chat consumes.
+      void first.conversationSessionStore.chatStore.workLogPresentation;
+      void second.conversationSessionStore.chatStore.workLogPresentation;
+      let revision = 0;
+      function publish(
+        sessionId: string,
+        state: "running" | "success" | "removed",
+        toolId = "shared-tool",
+      ) {
+        const snapshot: ConversationSnapshot = {
+          sessionId,
+          sessionFile: `/project/${sessionId}.jsonl`,
+          parts:
+            state === "removed"
+              ? []
+              : [{ id: toolId, kind: "tool", name: "bash", input: "echo hi", state }],
+          models: [],
+          thinkingLevel: "off",
+          availableThinkingLevels: ["off"],
+          streaming: state === "running",
+          diagnostics: [],
+          commands: [],
+          compatibility: { resources: [], diagnostics: [] },
+          extensionUi: { statuses: [] },
+          tree: [],
+        };
+        applyConversationUpdate(fixture.models.projectConversation(sessionId, "/project"), {
+          _tag: "Snapshot",
+          revision: ++revision,
+          snapshot,
+        });
+      }
 
-    parts = [toolPart("tool-2", "success")];
-    store.workLogPresentation.syncTimers();
-
-    expect(store.workLogPresentation.elapsedMs("tool-1")).toBeUndefined();
-    expect(store.workLogPresentation.timers.has("tool-1")).toBe(false);
-    expect(store.workLogPresentation.itemOverrides.has("tool-1")).toBe(false);
-    expect(vi.getTimerCount()).toBe(0);
-    store[Symbol.dispose]();
-  });
-
-  // Retained lifecycle regression: no user-facing control exposes per-instance
-  // interval ownership or disposal; a frozen label alone does not prove cleanup.
-  it("owns one timer per Chat instance and clears each timer on disposal", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(1_000_000);
-    const first = createChatStore(() => [toolPart("first", "running")]);
-    const second = createChatStore(() => [toolPart("second", "running")]);
-
-    expect(vi.getTimerCount()).toBe(2);
-    first[Symbol.dispose]();
-    expect(vi.getTimerCount()).toBe(1);
-    second[Symbol.dispose]();
-    expect(vi.getTimerCount()).toBe(0);
+      publish("first", "running");
+      publish("second", "running");
+      expect(vi.getTimerCount()).toBe(idleTimers + 2);
+      fixture.root.sessionRegistry.removeSession("first");
+      expect(vi.getTimerCount()).toBe(idleTimers + 1);
+      publish("second", "success");
+      expect(vi.getTimerCount()).toBe(idleTimers);
+      publish("second", "running", "next-tool");
+      expect(vi.getTimerCount()).toBe(idleTimers + 1);
+      publish("second", "removed");
+      expect(vi.getTimerCount()).toBe(idleTimers);
+      publish("second", "running", "third-tool");
+      expect(vi.getTimerCount()).toBe(idleTimers + 1);
+    }
+    expect(vi.getTimerCount()).toBe(idleTimers);
   });
 });

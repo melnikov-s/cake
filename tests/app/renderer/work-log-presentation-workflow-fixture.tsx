@@ -80,6 +80,7 @@ export function renderWorkLog(parts: UiPart[], options: { streaming?: boolean } 
   );
   return {
     user: userEvent.setup(),
+    container: view.container,
     publish(nextParts: UiPart[], streaming = false) {
       act(() => {
         applyConversationUpdate(session.model, {
