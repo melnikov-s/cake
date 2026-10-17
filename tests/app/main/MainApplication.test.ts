@@ -17,11 +17,7 @@ import { VsCodeViews } from "../../../src/services/vscode/VsCodeViews";
 
 class TestApplication extends EventEmitter {
   readonly quit = vi.fn(() => this.emit("before-quit", { preventDefault: vi.fn() }));
-  readonly requestSingleInstanceLock = vi.fn(() => this.primaryInstance);
-  constructor(
-    private readonly ready: Promise<void> = Promise.resolve(),
-    private readonly primaryInstance = true,
-  ) {
+  constructor(private readonly ready: Promise<void> = Promise.resolve()) {
     super();
   }
   override on(eventName: "before-quit", listener: (event: Event) => void): this;
@@ -158,20 +154,6 @@ describe("MainApplication", () => {
       yield* Fiber.join(fiber);
       expect(event.preventDefault).toHaveBeenCalledOnce();
       expect(stop).toHaveBeenCalledOnce();
-      expect(application.listenerCount("before-quit")).toBe(0);
-    }),
-  );
-
-  it.effect("exits before touching Electron when another instance owns the profile", () =>
-    Effect.gen(function* () {
-      // Electron never becomes ready here: the secondary instance must not wait for it.
-      const application = new TestApplication(new Promise(() => {}), false);
-      const start = vi.fn();
-      const stop = vi.fn();
-      yield* program(application, testLayer({ start, stop }));
-      expect(application.requestSingleInstanceLock).toHaveBeenCalledOnce();
-      expect(start).not.toHaveBeenCalled();
-      expect(stop).not.toHaveBeenCalled();
       expect(application.listenerCount("before-quit")).toBe(0);
     }),
   );

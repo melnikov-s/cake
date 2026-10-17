@@ -19,8 +19,6 @@ interface MainApplicationElectron {
   on(event: "window-all-closed" | "second-instance", listener: () => void): void;
   removeListener(event: "before-quit", listener: (event: Event) => void): void;
   removeListener(event: "window-all-closed" | "second-instance", listener: () => void): void;
-  /** Electron's per-`userData` lock; one Chromium profile must never be shared by two processes. */
-  requestSingleInstanceLock(): boolean;
   quit(): void;
   whenReady(): Promise<void>;
 }
@@ -33,7 +31,7 @@ export interface MainApplicationOptions {
   readonly initializeDeveloperTools?: () => Promise<void>;
 }
 
-/** Owns Electron startup, native callbacks, and process-lifetime shutdown. */
+/** Owns native startup and shutdown after main.ts has synchronously claimed the profile lock. */
 export const MainApplication = Effect.fn("MainApplication")(function* ({
   application,
   platform = process.platform,
@@ -51,11 +49,6 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
 
   const program = Effect.scoped(
     Effect.gen(function* () {
-      if (!application.requestSingleInstanceLock()) {
-        // The primary instance receives `second-instance` and brings its window forward.
-        yield* Effect.logInfo("Cake is already running with this profile; exiting");
-        return;
-      }
       const applicationState = yield* Effect.serviceOption(ApplicationState);
       const sharing = yield* Effect.serviceOption(DesktopSharing);
       const browser = yield* Effect.serviceOption(Browser);

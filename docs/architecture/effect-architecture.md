@@ -183,7 +183,10 @@ construct RPC requests or subscribe directly to main-process event sources.
 
 ### Main runtime
 
-Electron main creates one production `ManagedRuntime` from the saved host selection.
+Electron main selects `userData` and synchronously claims its single-instance lock
+before constructing the production graph or awaiting Electron readiness. A denied
+secondary launch exits without acquiring backend or native runtime resources.
+The primary creates one production `ManagedRuntime` from the saved host selection.
 Local mode uses `MainLive`; remote mode uses `RemoteMainLive`, acquiring only actual
 native capabilities and device-local presentation storage, with no Pi/backend workers.
 Host changes require confirmed relaunch. The remote renderer's single runtime composes
