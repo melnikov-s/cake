@@ -20,7 +20,7 @@ export const DialogBackdrop = forwardRef<HTMLDivElement, DialogBackdropProps>(
           if (e.target === e.currentTarget) onClose?.();
         }}
         className={cn(
-          "fixed inset-0 z-50 grid place-items-center bg-foreground/28 p-6 backdrop-blur-md phone:p-2",
+          "fixed inset-0 z-50 grid place-items-center bg-foreground/10 p-6 backdrop-blur-xs phone:p-2",
           className,
         )}
         {...props}
