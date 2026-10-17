@@ -7,6 +7,7 @@ import { RootStore } from "../stores/RootStore";
 import type { CakeChatSessionStore } from "../stores/CakeChatSessionStore";
 import { CakeChatPaneHeader, type CakeChatOverlayChrome } from "./cake-chat-pane-header";
 import { SessionArtifactPane } from "./session-artifact-pane";
+import { ConversationActivity } from "./conversation-activity";
 
 export const CakeChatSurface = observer(function CakeChatSurface({
   overlay,
@@ -23,6 +24,14 @@ export const CakeChatSurface = observer(function CakeChatSurface({
       : undefined;
   const sidebarCollapsed = !root.sidebarStore.visible;
   const cakeChatProps = (paneSession: CakeChatSessionStore) => ({
+    composerHeader: (
+      <ConversationActivity
+        placement="composer"
+        sessionId={paneSession.sessionId}
+        subagents={paneSession.subagentActivityStore}
+        sideChat={paneSession.conversationSessionStore.sideChatStore}
+      />
+    ),
     showContextUsage: false,
     parkComposerFocusWhileDictating: !overlay,
     transcriptTransition: {

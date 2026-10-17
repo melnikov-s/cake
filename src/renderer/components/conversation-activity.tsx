@@ -9,6 +9,7 @@ import type { SubagentActivityStore } from "../stores/SubagentActivityStore";
 import type { SideChatStore } from "../stores/SideChatStore";
 import { ActivityMenu } from "./ui/activity-menu";
 import type { StatusDotProps } from "./ui/status-dot";
+import { ComposerCap } from "./ui/composer-cap";
 
 const dotStatus = {
   running: "running",
@@ -26,11 +27,13 @@ export const ConversationActivity = observer(function ConversationActivity({
   subagents,
   sideChat,
   onOpen,
+  placement = "header",
 }: {
   sessionId: string;
   subagents: SubagentActivityStore;
   sideChat: SideChatStore;
   onOpen?(): void;
+  placement?: "header" | "composer" | "strip";
 }) {
   const activity = useStore(RootStore).conversationActivityStore;
   const sessions = activity.sessionsFor(sessionId);
@@ -44,8 +47,10 @@ export const ConversationActivity = observer(function ConversationActivity({
     attention > 0
       ? `${attention} ${attention === 1 ? "needs" : "need"} attention`
       : `${running} running`;
-  return (
+  const menu = (
     <ActivityMenu
+      side={placement === "header" ? "bottom" : "top"}
+      presentation={placement === "header" ? "pill" : "strip"}
       summary={summary}
       status={attention > 0 ? "attention" : "running"}
       onOpen={onOpen}
@@ -97,4 +102,5 @@ export const ConversationActivity = observer(function ConversationActivity({
       ]}
     />
   );
+  return placement === "composer" ? <ComposerCap>{menu}</ComposerCap> : menu;
 });

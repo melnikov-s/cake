@@ -194,9 +194,31 @@ test("background family children show running activity and only offer Mark as Un
     );
 
     const activity = page
-      .locator('[data-slot="workspace-header"]')
+      .locator('[data-slot="composer-dock"]')
       .getByRole("button", { name: "Activity · 2 running" });
     await expect(activity).toBeVisible();
+    for (const width of [1280, 900]) {
+      await application.evaluate(({ BrowserWindow }, width) => {
+        BrowserWindow.getAllWindows()[0]!.setContentSize(width, 800);
+      }, width);
+      await expect
+        .poll(() =>
+          activity.evaluate((element) => {
+            const strip = element.getBoundingClientRect();
+            const dock = element.closest('[data-slot="composer-dock"]')!;
+            const input = dock.querySelector("form")!.getBoundingClientRect();
+            const chat = element.closest('[data-slot="chat"]')!;
+            return (
+              strip.bottom <= input.top &&
+              Math.abs(strip.left - input.left - 16) < 2 &&
+              Math.abs(input.right - strip.right - 16) < 2 &&
+              parseFloat((chat as HTMLElement).style.getPropertyValue("--composer-dock-height")) >=
+                chat.getBoundingClientRect().bottom - strip.top - 2
+            );
+          }),
+        )
+        .toBe(true);
+    }
     await activity.click();
     const activityMenu = page.getByRole("dialog", { name: "Conversation activity" });
     await expect(
@@ -213,9 +235,10 @@ test("background family children show running activity and only offer Mark as Un
     await expect(subagentPanel).toContainText("Inspecting shared UI components.");
     await expect.poll(() => Boolean(subagentResponse)).toBe(true);
     subagentResponse!.end(chunk({}, "stop") + "data: [DONE]\n\n");
-    await expect(page.getByRole("button", { name: "Activity · 1 running" })).toBeVisible();
     await expect(subagentPanel).toContainText("Inspecting shared UI components.");
+    // A narrow pane shows the inspected chat in place of the parent conversation.
     await subagentPanel.getByRole("button", { name: "Close Subagent" }).click();
+    await expect(page.getByRole("button", { name: "Activity · 1 running" })).toBeVisible();
 
     // Inspect the real native menu without opening an OS popup in the hidden test window.
     await application.evaluate(({ Menu }) => {

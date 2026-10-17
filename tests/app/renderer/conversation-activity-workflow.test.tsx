@@ -166,13 +166,17 @@ function renderActivity(
 }
 
 it.each(["project", "cake-chat"] as const)(
-  "%s header tracks queued/running subagents, inspects their chat, and disappears on release",
+  "%s composer cap tracks queued/running subagents, inspects their chat, and disappears on release",
   async (kind) => {
     using view = renderActivity(kind);
     expect(screen.queryByRole("button", { name: /^Activity ·/ })).toBeNull();
     view.publishWorker("queued");
     const trigger = screen.getByRole("button", { name: "Activity · 1 running" });
-    expect(trigger.closest('[data-slot="workspace-header"]')).not.toBeNull();
+    expect(trigger.closest(".workbench-composer")).not.toBeNull();
+    expect(trigger.getAttribute("data-slot")).toBe("composer-activity");
+    const dock = trigger.closest('[data-slot="composer-dock"]')!;
+    const input = dock.querySelector('[data-slot="composer-input"]')!;
+    expect(trigger.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await view.user.click(trigger);
     const menu = screen.getByRole("dialog", { name: "Conversation activity" });
     expect(within(menu).queryByRole("region", { name: "Sessions" })).toBeNull();
@@ -189,6 +193,37 @@ it.each(["project", "cake-chat"] as const)(
     expect(within(panel).getByText("Inspecting now")).toBeTruthy();
   },
 );
+
+it("keeps worktree tools beneath the activity band when workers appear and finish", async () => {
+  using view = renderActivity("project");
+  act(() =>
+    applySnapshot(view.fixture.models.worktrees, {
+      worktrees: [
+        {
+          projectPath: "/project",
+          worktreePath: "/project",
+          branch: "agent/activity-bar-above-input",
+          baseBranch: "main",
+          createdAt: "2026-01-01T00:00:00Z",
+          state: "active",
+        },
+      ],
+    }),
+  );
+  const worktree = screen.getByTestId("worktree-pill");
+  expect(within(worktree).getByText("activity-bar-above-input")).toBeTruthy();
+  expect(within(worktree).getByRole("button", { name: "Merge" })).toBeTruthy();
+  view.publishWorker("running");
+  const trigger = within(worktree).getByRole("button", { name: "Activity · 1 running" });
+  const tools = screen.getByTestId("worktree-pill-toolbar");
+  expect(trigger.compareDocumentPosition(tools) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  await view.user.click(trigger);
+  expect(screen.getByRole("dialog", { name: "Conversation activity" })).toBeTruthy();
+  view.publishWorker("complete");
+  expect(within(worktree).queryByRole("button", { name: /^Activity ·/ })).toBeNull();
+  expect(within(worktree).getByRole("button", { name: "Merge" })).toBeTruthy();
+  expect(screen.queryByRole("dialog", { name: "Conversation activity" })).toBeNull();
+});
 
 it("regular sessions show only direct children, keep idle children discoverable while busy, and open the selected session", async () => {
   using view = renderActivity("project", [

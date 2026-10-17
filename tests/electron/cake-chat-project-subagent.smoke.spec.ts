@@ -190,9 +190,31 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
       .getByRole("img", { name: "Running", exact: true });
     await expect(sidebarRunning).toBeVisible();
     const activity = page
-      .locator('[data-slot="workspace-header"]')
+      .locator('[data-slot="composer-dock"]')
       .getByRole("button", { name: "Activity · 1 running" });
     await expect(activity).toBeVisible();
+    for (const width of [1280, 900]) {
+      await app.evaluate(({ BrowserWindow }, width) => {
+        BrowserWindow.getAllWindows()[0]!.setContentSize(width, 800);
+      }, width);
+      await expect
+        .poll(() =>
+          activity.evaluate((element) => {
+            const strip = element.getBoundingClientRect();
+            const dock = element.closest('[data-slot="composer-dock"]')!;
+            const input = dock.querySelector("form")!.getBoundingClientRect();
+            const chat = element.closest('[data-slot="chat"]')!;
+            return (
+              strip.bottom <= input.top &&
+              Math.abs(strip.left - input.left - 16) < 2 &&
+              Math.abs(input.right - strip.right - 16) < 2 &&
+              parseFloat((chat as HTMLElement).style.getPropertyValue("--composer-dock-height")) >=
+                chat.getBoundingClientRect().bottom - strip.top - 2
+            );
+          }),
+        )
+        .toBe(true);
+    }
     await activity.focus();
     await activity.press("Enter");
     const activityMenu = page.getByRole("dialog", { name: "Conversation activity" });

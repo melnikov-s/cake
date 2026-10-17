@@ -84,7 +84,9 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
     await expect(currentCheckout).toBeVisible();
     await expect(page.getByRole("button", { name: "Choose existing worktree" })).toBeDisabled();
 
-    await page.setViewportSize({ width: 520, height: 800 });
+    await application.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]!.setContentSize(520, 800);
+    });
     const configurationPill = page.getByTestId("worktree-pill");
     await expect
       .poll(() =>

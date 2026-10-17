@@ -5,6 +5,7 @@ import { ExtensionCompanionSlot } from "@/components/extension-companion-slot";
 import { SessionPluginSlot } from "@/components/session-plugin-slot";
 import { RootStore } from "../stores/RootStore";
 import type { ProjectSessionStore } from "../stores/ProjectSessionStore";
+import { ConversationActivity } from "./conversation-activity";
 
 export const ProjectComposerHeader = observer(function ProjectComposerHeader({
   session,
@@ -64,6 +65,14 @@ export const ProjectComposerHeader = observer(function ProjectComposerHeader({
           />
         )}
       <WorktreePill
+        header={
+          <ConversationActivity
+            placement="strip"
+            sessionId={session.sessionId}
+            subagents={session.subagentActivityStore}
+            sideChat={session.conversationSessionStore.sideChatStore}
+          />
+        }
         creation={root.projectSessionCreationStore.worktrees}
         actions={session.worktreeStore}
         record={root.sessionCatalogStore.managedWorktree(session.workspacePath)}

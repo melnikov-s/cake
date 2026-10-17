@@ -1,4 +1,4 @@
-import { useContext, useRef, useState } from "react";
+import { useContext, useRef, useState, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import type { WorktreeCreationStore } from "../stores/WorktreeCreationStore";
 import type { WorktreeStore } from "../stores/WorktreeStore";
@@ -36,6 +36,7 @@ import { TooltipBubble, useTooltip } from "./ui/tooltip";
 import { WorktreePillAction } from "./worktree-pill-action";
 import { WorktreeStatusIcon } from "./worktree-status-icon";
 import { cn } from "@/lib/utils";
+import { ComposerCap } from "./ui/composer-cap";
 
 export interface WorktreePillProps {
   creation: WorktreeCreationStore;
@@ -47,6 +48,7 @@ export interface WorktreePillProps {
   isFamilyChild?: boolean;
   configurationMode?: "new-session" | "activate-draft" | "edit-draft";
   onConfigured(): void;
+  header?: ReactNode;
 }
 
 type ConfirmationKind = "dirty-target" | "dirty-target-resolve" | "discard-resolve";
@@ -62,6 +64,7 @@ export const WorktreePill = observer(function WorktreePill({
   isFamilyChild = false,
   configurationMode,
   onConfigured,
+  header,
 }: WorktreePillProps) {
   const [existingOpen, setExistingOpen] = useState(false);
   const [confirmation, setConfirmation] = useState<ConfirmationKind>();
@@ -88,17 +91,18 @@ export const WorktreePill = observer(function WorktreePill({
 
   if (resolved)
     return (
-      <div
+      <ComposerCap
         data-testid="resolved-session-notice"
         data-slot="worktree-pill"
-        className="mx-4 -mb-5 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-t-[1.75rem] border border-b-0 border-border/85 bg-card px-7 pt-3 pb-8 text-xs"
+        className="flex-row flex-wrap items-center gap-x-2 gap-y-1 text-xs"
         role="status"
       >
+        {header}
         <strong className="font-semibold text-foreground">Resolved session</strong>
         <span className="text-muted-foreground">
           Send a message to restore this session and continue working.
         </span>
-      </div>
+      </ComposerCap>
     );
 
   if (configurationMode) {
@@ -107,11 +111,12 @@ export const WorktreePill = observer(function WorktreePill({
         ? candidates.find((record) => record.worktreePath === choice.worktreePath)
         : undefined;
     return (
-      <div
+      <ComposerCap
         data-testid="worktree-pill"
         data-slot="worktree-pill"
-        className="@container/worktree mx-4 -mb-5 flex min-w-0 flex-wrap items-center gap-1 rounded-t-[1.75rem] border border-b-0 border-border/85 bg-card px-5 pt-3 pb-8 text-xs"
+        className="flex-row flex-wrap items-center gap-1 text-xs"
       >
+        {header}
         {creation.isPreparing(sessionId) && (
           <div className="mb-1 w-full" data-testid="worktree-creation-progress">
             <LoadingState
@@ -219,14 +224,14 @@ export const WorktreePill = observer(function WorktreePill({
             Draft
           </Button>
         )}
-      </div>
+      </ComposerCap>
     );
   }
 
   // The catalog Model receives authoritative worktree lifecycle events. Do not let an
   // older status request temporarily mask its landed state.
   const record = knownRecord ?? status?.record;
-  if (!record) return null;
+  if (!record) return header ? <ComposerCap>{header}</ComposerCap> : null;
 
   const branch = record.branch.replace(/^agent\//, "");
   const landed = record.state === "landed";
@@ -291,12 +296,13 @@ export const WorktreePill = observer(function WorktreePill({
 
   return (
     <>
-      <div
+      <ComposerCap
         ref={pillRef}
         data-testid="worktree-pill"
         data-slot="worktree-pill"
-        className="@container/worktree mx-4 -mb-5 flex flex-col gap-1 rounded-t-[1.75rem] border border-b-0 border-border/85 bg-card px-5 pt-3 pb-8"
+        className="gap-1"
       >
+        {header}
         <div
           className="flex min-w-0 flex-nowrap items-center gap-2 text-xs"
           data-testid="worktree-pill-toolbar"
@@ -520,7 +526,7 @@ export const WorktreePill = observer(function WorktreePill({
           </p>
         )}
         {actions.error && <p className="px-2 text-xs text-destructive">{actions.error}</p>}
-      </div>
+      </ComposerCap>
       {(confirmation === "dirty-target" || confirmation === "dirty-target-resolve") && (
         <DialogBackdrop
           className="absolute"

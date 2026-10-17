@@ -19,12 +19,14 @@ export const ProjectWorkspaceControls = observer(function ProjectWorkspaceContro
   const terminal = root.terminalStore;
   return (
     <>
-      <ConversationActivity
-        sessionId={session.sessionId}
-        subagents={session.subagentActivityStore}
-        sideChat={session.conversationSessionStore.sideChatStore}
-        onOpen={() => session.showWorkspaceChatSidebar()}
-      />
+      {!session.conversationSessionStore.chatStore.composerVisible && (
+        <ConversationActivity
+          sessionId={session.sessionId}
+          subagents={session.subagentActivityStore}
+          sideChat={session.conversationSessionStore.sideChatStore}
+          onOpen={() => session.showWorkspaceChatSidebar()}
+        />
+      )}
       <SessionArtifactMenu session={session} />
       <WorkspaceModeControls
         mode={mode}

@@ -58,12 +58,14 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
           <SidebarIcon />
         </IconButton>
       )}
-      <ConversationActivity
-        sessionId={paneSession.sessionId}
-        subagents={paneSession.subagentActivityStore}
-        sideChat={paneSession.conversationSessionStore.sideChatStore}
-        onOpen={() => root.navigationStore.focusCakeChatPane(pane.paneId)}
-      />
+      {!paneSession.conversationSessionStore.chatStore.composerVisible && (
+        <ConversationActivity
+          sessionId={paneSession.sessionId}
+          subagents={paneSession.subagentActivityStore}
+          sideChat={paneSession.conversationSessionStore.sideChatStore}
+          onOpen={() => root.navigationStore.focusCakeChatPane(pane.paneId)}
+        />
+      )}
       {!overlay && (
         <SessionArtifactMenu
           session={paneSession}

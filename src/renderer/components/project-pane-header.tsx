@@ -52,12 +52,14 @@ export const ProjectPaneHeader = observer(function ProjectPaneHeader({
             <SidebarIcon />
           </IconButton>
         )}
-        <ConversationActivity
-          sessionId={paneSession.sessionId}
-          subagents={paneSession.subagentActivityStore}
-          sideChat={paneSession.conversationSessionStore.sideChatStore}
-          onOpen={focusPane}
-        />
+        {!paneSession.conversationSessionStore.chatStore.composerVisible && (
+          <ConversationActivity
+            sessionId={paneSession.sessionId}
+            subagents={paneSession.subagentActivityStore}
+            sideChat={paneSession.conversationSessionStore.sideChatStore}
+            onOpen={focusPane}
+          />
+        )}
         <SideChatsMenu store={paneSession} onOpen={focusPane} />
         <SessionArtifactMenu session={paneSession} onOpen={focusPane} />
       </>
@@ -79,12 +81,14 @@ export const ProjectPaneHeader = observer(function ProjectPaneHeader({
           <SidebarIcon />
         </IconButton>
       )}
-      <ConversationActivity
-        sessionId={paneSession.sessionId}
-        subagents={paneSession.subagentActivityStore}
-        sideChat={paneSession.conversationSessionStore.sideChatStore}
-        onOpen={focusPane}
-      />
+      {!paneSession.conversationSessionStore.chatStore.composerVisible && (
+        <ConversationActivity
+          sessionId={paneSession.sessionId}
+          subagents={paneSession.subagentActivityStore}
+          sideChat={paneSession.conversationSessionStore.sideChatStore}
+          onOpen={focusPane}
+        />
+      )}
       <IconButton
         data-cake-hint-key="r"
         tooltip="Session tree"

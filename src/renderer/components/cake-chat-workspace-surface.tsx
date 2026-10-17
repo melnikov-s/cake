@@ -8,6 +8,7 @@ import { IdeWorkspace } from "./ide-workspace";
 import { QuakeTerminal } from "./quake-terminal";
 import { SessionArtifactPane } from "./session-artifact-pane";
 import { CakeChatWorkspaceControls } from "./cake-chat-workspace-controls";
+import { ConversationActivity } from "./conversation-activity";
 
 export const CakeChatWorkspaceSurface = observer(function CakeChatWorkspaceSurface({
   session,
@@ -29,6 +30,14 @@ export const CakeChatWorkspaceSurface = observer(function CakeChatWorkspaceSurfa
       ? Math.max(sidebar.width, 360)
       : sidebar.width,
     onProjectSidebarWidthChange: (width: number) => sidebar.setWidth(width),
+    projectComposerHeader: (
+      <ConversationActivity
+        placement="composer"
+        sessionId={session.sessionId}
+        subagents={session.subagentActivityStore}
+        sideChat={session.conversationSessionStore.sideChatStore}
+      />
+    ),
     projectChat: session.conversationSessionStore.chatStore,
     sideChat: session.conversationSessionStore.sideChatStore,
     headerActions: (

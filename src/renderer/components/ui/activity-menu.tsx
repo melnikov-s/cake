@@ -3,6 +3,7 @@ import { Button } from "./button";
 import { ChevronIcon } from "./icons";
 import { Popover, PopoverContent, PopoverTrigger } from "./popover";
 import { StatusDot, type StatusDotProps } from "./status-dot";
+import { cn } from "@/lib/utils";
 
 interface ActivityMenuItem {
   id: string;
@@ -19,36 +20,48 @@ export interface ActivityMenuGroup {
   items: readonly ActivityMenuItem[];
 }
 
-/** Compact header entry and grouped disclosure for a conversation's delegated work. */
+/** Compact entry and grouped disclosure for a conversation's delegated work. */
 export function ActivityMenu({
   summary,
   status,
   groups,
   onOpen,
+  side = "bottom",
+  presentation = "pill",
 }: {
   summary: string;
   status: StatusDotProps["status"];
   groups: readonly ActivityMenuGroup[];
   onOpen?(): void;
+  side?: "top" | "bottom";
+  presentation?: "pill" | "strip";
 }) {
   const [open, setOpen] = useState(false);
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        variant="outline"
+        variant={presentation === "strip" ? "ghost" : "outline"}
         size="sm"
-        className="h-7 gap-1.5 rounded-full bg-card/95 px-2.5 font-mono text-[10px] shadow-sm"
+        data-slot={presentation === "strip" ? "composer-activity" : undefined}
+        className={cn(
+          "gap-1.5 font-mono text-[10px]",
+          presentation === "strip"
+            ? "-mx-5 -mt-3 mb-1 h-9 w-[calc(100%+2.5rem)] shrink-0 justify-start rounded-none rounded-t-[1.75rem] border-b border-border/65 bg-muted/20 px-5 shadow-none"
+            : "h-7 rounded-full bg-card/95 px-2.5 shadow-sm",
+        )}
         aria-label={`Activity · ${summary}`}
         onClick={onOpen}
       >
         <StatusDot status={status} />
-        <span className="@max-[640px]/session-pane:hidden">Activity ·</span>
+        <span className={presentation === "pill" ? "@max-[640px]/session-pane:hidden" : undefined}>
+          Activity ·
+        </span>
         <span>{summary}</span>
-        <ChevronIcon />
+        <ChevronIcon className={presentation === "strip" ? "ml-auto" : undefined} />
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        side="bottom"
+        side={side}
         className="w-[min(24rem,calc(100vw-24px))] p-2"
         aria-label="Conversation activity"
       >

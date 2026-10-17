@@ -20,6 +20,8 @@ import { addPresentationModeReminder } from "../../src/contracts/conversations/p
 import { nestedAssistant, nestedEntries } from "../../tests/fixtures/nested-tool-activity.ts";
 import { seedWorkflowCheckpoint } from "../../tests/fixtures/workflow-checkpoint.ts";
 import { createHash, randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -2429,7 +2431,7 @@ const sessionMessageVariantsScenario: VisualCaptureScenario = {
 const cakeChatSessionUpdatesScenario: VisualCaptureScenario = {
   name: "cake-chat-session-updates",
   description:
-    "Header activity for sessions Cake Chat launched and a digest reminder on the next user message",
+    "Attached composer activity for sessions Cake Chat launched and a digest reminder on the next user message",
   states: ["default", "open"],
   async seed(paths, theme) {
     await cakeChatScenario.seed(paths, theme);
@@ -2557,6 +2559,90 @@ const cakeChatSessionUpdatesScenario: VisualCaptureScenario = {
     await page.mouse.move(1, 1);
   },
   region: (page) => page.locator("body"),
+};
+
+const activityWorktreeScenario: VisualCaptureScenario = {
+  name: "activity-worktree-cap",
+  description: "Attached activity band above real worktree tools and the shared composer",
+  states: ["default", "open"],
+  async seed(paths, theme) {
+    await cakeChatSessionUpdatesScenario.seed(paths, theme);
+    const worktreePath = resolve(paths.project, "../worktree");
+    const git = (args: string[]) => promisify(execFile)("git", args, { cwd: paths.project });
+    await git(["init", "-b", "main"]);
+    await git(["config", "user.email", "cake@example.test"]);
+    await git(["config", "user.name", "Cake Visual Fixture"]);
+    await writeFile(join(paths.project, "README.md"), "Visual capture fixture\n");
+    await git(["add", "-A"]);
+    await git(["commit", "-m", "fixture"]);
+    await git(["worktree", "add", "-b", "agent/activity-bar-above-input", worktreePath]);
+    await writeFile(join(paths.project, "target.txt"), "Advance the target branch\n");
+    await git(["add", "-A"]);
+    await git(["commit", "-m", "advance target"]);
+    await assistantMarkdownCode.seed({ ...paths, project: worktreePath }, theme);
+    const timestamp = new Date(0).toISOString();
+    await writeFile(
+      join(paths.cakeHome, "state", "application.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        projects: [
+          { path: paths.project, name: "Cake", addedAt: timestamp, lastOpenedAt: timestamp },
+        ],
+        trustedProjectPaths: [paths.project],
+      }),
+    );
+    await writeFile(
+      join(paths.cakeHome, "state", "worktrees.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        records: [
+          {
+            projectPath: paths.project,
+            worktreePath,
+            branch: "agent/activity-bar-above-input",
+            baseBranch: "main",
+            state: "active",
+            createdAt: timestamp,
+          },
+        ],
+      }),
+    );
+    const familyPath = join(paths.cakeHome, "state", "session-families.json");
+    const families = JSON.parse(await readFile(familyPath, "utf8"));
+    families.data.families = [
+      {
+        familyId: "visual-activity-family",
+        parentSessionId: "visual-assistant-markdown-code",
+        projectPath: paths.project,
+        workingDirectory: worktreePath,
+        managedWorktreePath: worktreePath,
+        createdAt: timestamp,
+        children: [
+          {
+            sessionId: "6a7b8c9d-0e1f-4a2b-9c3d-4e5f6a7b8c92",
+            parentSessionId: "visual-assistant-markdown-code",
+            requestId: "visual-activity-request",
+            workingDirectory: paths.project,
+            createdAt: timestamp,
+          },
+        ],
+      },
+    ];
+    await writeFile(familyPath, JSON.stringify(families));
+  },
+  async prepare(page, state) {
+    await assistantMarkdownCode.prepare(page, "default");
+    const cap = page.getByTestId("worktree-pill");
+    await expect(cap.getByRole("button", { name: "Rebase", exact: true })).toBeVisible();
+    const activity = cap.getByRole("button", { name: "Activity · 1 needs attention" });
+    await expect(activity).toBeVisible();
+    if (state === "open") {
+      await activity.click();
+      await expect(page.getByRole("dialog", { name: "Conversation activity" })).toBeVisible();
+    }
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator('[data-slot="composer-dock"]'),
 };
 
 const cakeChatInspectorScenario: VisualCaptureScenario = {
@@ -3448,6 +3534,7 @@ export const visualCaptureScenarios = [
   sessionMessagesScenario,
   sessionMessageVariantsScenario,
   cakeChatSessionUpdatesScenario,
+  activityWorktreeScenario,
   conversationEntryScenario,
   conversationCountdownScenario,
   speechOutputSettingsScenario,
