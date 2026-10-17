@@ -2,6 +2,8 @@
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
+import { observer } from "r-state-tree/react";
+import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ResolutionCleanupFailed } from "../../../src/contracts/project-sessions/project-session-resolution";
 import { applyWorktreeOperationCatalogUpdate } from "../../../src/renderer/reducers/WorktreeOperationReducer";
@@ -9,6 +11,10 @@ import type { WorktreeLandingOperation } from "../../../src/contracts/worktrees/
 import type { WorktreeStatus } from "../../../src/contracts/worktrees/worktree-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { QuakeTerminal } from "../../../src/renderer/components/quake-terminal";
+import {
+  ChatTranscriptControlsContext,
+  type ChatTranscriptControls,
+} from "../../../src/renderer/components/chat-transcript-controls-context";
 import { ToastHost } from "../../../src/renderer/components/toast-host";
 import { WorktreePill } from "../../../src/renderer/components/worktree-pill";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
@@ -62,6 +68,10 @@ function renderWorktree(
     status?: WorktreeStatus;
     operation?: WorktreeLandingOperation;
     streaming?: boolean;
+    resolved?: boolean;
+    child?: boolean;
+    record?: WorktreeRecord;
+    transcriptControls?: ChatTranscriptControls;
     client?: TestClientOverrides;
   } = {},
 ) {
@@ -76,7 +86,23 @@ function renderWorktree(
         sessionId: "session-1",
         projectPath: "/project",
         workingDirectory: "/worktree",
+        resolved: options.resolved,
+        familyId: options.child ? "parent" : undefined,
+        familyParentSessionId: options.child ? "parent" : undefined,
+        familyDepth: options.child ? 1 : undefined,
       }),
+      ...(options.child
+        ? [
+            sessionSummary({
+              sessionId: "parent",
+              projectPath: "/project",
+              familyId: "parent",
+              familyParentSessionId: "parent",
+              familyChildSessionIds: ["session-1"],
+              familyDepth: 0,
+            }),
+          ]
+        : []),
     ],
     client: {
       ...options.client,
@@ -88,7 +114,7 @@ function renderWorktree(
       },
     },
   });
-  applySnapshot(fixture.models.worktrees, { worktrees: [currentStatus.record] });
+  applySnapshot(fixture.models.worktrees, { worktrees: [options.record ?? currentStatus.record] });
   applyWorktreeOperationCatalogUpdate(fixture.models.worktreeOperations, {
     operations: options.operation ? [options.operation] : [],
   });
@@ -117,23 +143,36 @@ function renderWorktree(
   fixture.root.appShellStore.selectProjectSession("session-1");
   fixture.root.projectWorkbenchStore.showLoadedSession("session-1");
   fixture.root.sessionLayoutStore.ensureSession("session-1");
+  const Surface = observer(function Surface() {
+    const summary = fixture.root.sessionCatalogStore.find("session-1");
+    return (
+      <section data-slot="session-pane">
+        <WorktreePill
+          creation={fixture.root.projectSessionCreationStore.worktrees}
+          actions={session.worktreeStore}
+          record={fixture.root.sessionCatalogStore.managedWorktree("/worktree")}
+          resolved={summary?.resolved}
+          isFamilyChild={Boolean(
+            summary?.familyParentSessionId && summary.familyParentSessionId !== summary.sessionId,
+          )}
+          sessionId="session-1"
+          projectPath="/project"
+          onConfigured={() =>
+            session.conversationSessionStore.composerStore.draftStore.requestFocus()
+          }
+        />
+        <QuakeTerminal
+          store={fixture.root.terminalStore}
+          retirement={fixture.root.workingDirectoryRetirementStore}
+        />
+        <ToastHost store={fixture.root.toastStore} />
+      </section>
+    );
+  });
   const view = render(
-    <>
-      <WorktreePill
-        creation={fixture.root.projectSessionCreationStore.worktrees}
-        actions={session.worktreeStore}
-        sessionId="session-1"
-        projectPath="/project"
-        onConfigured={() =>
-          session.conversationSessionStore.composerStore.draftStore.requestFocus()
-        }
-      />
-      <QuakeTerminal
-        store={fixture.root.terminalStore}
-        retirement={fixture.root.workingDirectoryRetirementStore}
-      />
-      <ToastHost store={fixture.root.toastStore} />
-    </>,
+    <ChatTranscriptControlsContext.Provider value={options.transcriptControls}>
+      <Surface />
+    </ChatTranscriptControlsContext.Provider>,
   );
   return {
     user: userEvent.setup(),
@@ -148,6 +187,9 @@ function renderWorktree(
           operations: next ? [next] : [],
         });
       });
+    },
+    async publishRecord(record: WorktreeRecord) {
+      await act(async () => applySnapshot(fixture.models.worktrees, { worktrees: [record] }));
     },
     async finishTurn(nextStatus: WorktreeStatus) {
       await act(async () => {
@@ -202,6 +244,94 @@ describe("Worktree operation workflows", () => {
     });
   });
 
+  // Narrow retained native-presentation seam: this proves a command requests
+  // transcript following, not actual layout/scrolling. The latter needs Electron.
+  // Unlike the old component test, the command runs through the real Root/Stores.
+  it("requests transcript following while submitting a worktree command", async () => {
+    const scrollToBottom = vi.fn<ChatTranscriptControls["scrollToBottom"]>();
+    const startLanding = vi.fn<Client["managedWorktrees"]["startLanding"]>(async () =>
+      operation("waiting"),
+    );
+    using fixture = renderWorktree({
+      transcriptControls: { scrollToBottom },
+      client: { managedWorktrees: { startLanding } },
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Merge" })).toHaveProperty("disabled", false),
+    );
+    await fixture.user.click(screen.getByRole("button", { name: "Merge" }));
+    expect(startLanding).toHaveBeenCalledWith(
+      expect.objectContaining({ workspacePath: "/worktree", sessionId: "session-1" }),
+    );
+    expect(scrollToBottom).toHaveBeenCalledOnce();
+  });
+  it("retains catalog controls during continuation loading and prefers a newly landed catalog record over stale live status", async () => {
+    const response = gate<Awaited<ReturnType<Client["managedWorktrees"]["landing"]>>>();
+    const landing = vi.fn<Client["managedWorktrees"]["landing"]>(() => response.promise);
+    using fixture = renderWorktree({ client: { managedWorktrees: { landing } } });
+    expect(screen.getByText("feature")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Merge" })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Merge & resolve" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    expect(screen.getByRole("button", { name: "Discard & resolve" })).toHaveProperty(
+      "disabled",
+      false,
+    );
+    await fixture.publishRecord({ ...status().record, state: "landed" });
+    expect(screen.getByRole("button", { name: "Resolve" })).toHaveProperty("disabled", false);
+    await act(async () => response.resolve({ status: status() }));
+    await waitFor(() => expect(landing).toHaveBeenCalled());
+    expect(screen.getByRole("button", { name: "Resolve" })).toHaveProperty("disabled", false);
+    expect(screen.queryByRole("button", { name: "Merge" })).toBeNull();
+  });
+
+  it("keeps merge disabled without changes and offers rebase only after the target advances", async () => {
+    using fixture = renderWorktree({ status: status({ aheadCount: 0 }), streaming: true });
+    await waitFor(() => expect(fixture.landing).toHaveBeenCalled());
+    expect(screen.getByRole("button", { name: "Merge" })).toHaveProperty("disabled", true);
+    expect(screen.queryByRole("button", { name: "Rebase" })).toBeNull();
+    await fixture.finishTurn(status({ behindCount: 1 }));
+    expect(await screen.findByRole("button", { name: "Rebase" })).toHaveProperty("disabled", false);
+    expect(screen.getByRole("button", { name: "Merge" })).toHaveProperty("disabled", false);
+  });
+
+  it("replaces actions with restoration guidance for an archived conversation", async () => {
+    using fixture = renderWorktree({ resolved: true });
+    await waitFor(() => expect(fixture.landing).toHaveBeenCalled());
+    expect(screen.getByRole("status").textContent).toContain(
+      "Send a message to restore this session",
+    );
+    expect(screen.queryByRole("button", { name: "Merge" })).toBeNull();
+  });
+
+  it.each(["active", "landed"] as const)(
+    "discards a %s child checkout without resolving its family",
+    async (state) => {
+      const discard = vi.fn<Client["managedWorktrees"]["discard"]>(async () => undefined);
+      const resolveWorkingDirectory = vi.fn<Client["projectSessions"]["resolveWorkingDirectory"]>();
+      using fixture = renderWorktree({
+        child: true,
+        status: status({ record: { ...status().record, state }, aheadCount: 0 }),
+        client: { managedWorktrees: { discard }, projectSessions: { resolveWorkingDirectory } },
+      });
+      await waitFor(() => expect(fixture.landing).toHaveBeenCalled());
+      expect(screen.queryByRole("button", { name: "Merge & resolve" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Resolve" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Discard & resolve" })).toBeNull();
+      await fixture.user.click(screen.getByRole("button", { name: "Discard" }));
+      await fixture.user.click(
+        within(screen.getByRole("dialog")).getByRole("button", { name: "Discard" }),
+      );
+      await waitFor(() =>
+        expect(discard).toHaveBeenCalledWith(
+          expect.objectContaining({ workspacePath: "/worktree", keepBranch: false }),
+        ),
+      );
+      expect(resolveWorkingDirectory).not.toHaveBeenCalled();
+    },
+  );
   it("refreshes status when a turn ends and immediately submits commit-and-merge for a dirty target", async () => {
     const startLanding = vi.fn<Client["managedWorktrees"]["startLanding"]>(async () =>
       operation("waiting"),
@@ -213,12 +343,23 @@ describe("Worktree operation workflows", () => {
     });
     const merge = await screen.findByRole("button", { name: "Merge" });
     expect(merge).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Merge & resolve" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    expect(screen.getByRole("button", { name: "Discard & resolve" })).toHaveProperty(
+      "disabled",
+      true,
+    );
     expect(screen.getByText("feature")).toBeDefined();
     await fixture.finishTurn(status({ dirtyCount: 2, targetDirty: true }));
     await fixture.user.click(await screen.findByRole("button", { name: "Commit & merge" }));
     expect(startLanding).toHaveBeenCalledOnce();
     expect(screen.getByTestId("worktree-target-warning").getAttribute("aria-label")).toBe(
       "The merge target has uncommitted changes.",
+    );
+    expect(screen.getByTestId("worktree-target-warning").classList.contains("text-warning")).toBe(
+      true,
     );
     expect(startLanding).toHaveBeenCalledWith(
       expect.objectContaining({
