@@ -1,4 +1,7 @@
 import { Effect } from "effect";
+import type { ApplicationState } from "../../contracts/application/application-data";
+import { ProjectError } from "../../contracts/projects/project-error";
+import * as application from "../../domain/application/application";
 import { postProcessDictation } from "../../domain/dictation/post-process";
 import * as projects from "../../domain/projects/projects";
 import { WorkspaceRpc } from "../protocol/WorkspaceRpc";
@@ -7,20 +10,36 @@ import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
 const withConnection = <A, E, R>(operation: (connectionId: number) => Effect.Effect<A, E, R>) =>
   Effect.flatMap(RendererConnection, ({ connectionId }) => operation(connectionId));
 
+// Preserve the workspace wire contract while calling the owning application operations directly.
+const settingsResult = <E, R>(operation: string, effect: Effect.Effect<ApplicationState, E, R>) =>
+  effect.pipe(
+    Effect.map((state) => ({ state })),
+    Effect.mapError(
+      (cause) =>
+        new ProjectError({
+          operation,
+          message: cause instanceof Error ? cause.message : String(cause),
+        }),
+    ),
+  );
+
 export const workspaceHandlers = WorkspaceRpc.of({
   "workspaces.post-process-dictation": ({ text }) => postProcessDictation(text),
   "workspaces.reword-composer-selection": (request) =>
     withConnection((connectionId) => projects.rewordComposerSelection(connectionId, request)),
   "workspaces.generate-session-title": (request) =>
     withConnection((connectionId) => projects.generateSessionTitle(connectionId, request)),
-  "workspaces.set-utility-model": (request) =>
-    withConnection((connectionId) => projects.setUtilityModel(connectionId, request)),
-  "workspaces.set-cake-chat-preferences": (request) =>
-    withConnection((connectionId) => projects.setCakeChatPreferences(connectionId, request)),
-  "workspaces.set-cake-prompts": (request) =>
-    withConnection((connectionId) => projects.setCakePrompts(connectionId, request)),
-  "workspaces.set-global-custom-instructions": (request) =>
-    withConnection((connectionId) => projects.setGlobalCustomInstructions(connectionId, request)),
+  "workspaces.set-utility-model": ({ model }) =>
+    settingsResult("setUtilityModel", application.setUtilityModel(model)),
+  "workspaces.set-cake-chat-preferences": ({ preferences }) =>
+    settingsResult("setCakeChatPreferences", application.setCakeChatPreferences(preferences)),
+  "workspaces.set-cake-prompts": ({ prompts }) =>
+    settingsResult("setCakePrompts", application.setCakePrompts(prompts)),
+  "workspaces.set-global-custom-instructions": ({ instructions }) =>
+    settingsResult(
+      "setGlobalCustomInstructions",
+      application.setGlobalCustomInstructions(instructions),
+    ),
   "workspaces.load-staged-slash-commands": (request) =>
     withConnection((connectionId) => projects.loadStagedSlashCommands(connectionId, request)),
   "workspaces.register-project": (request) =>

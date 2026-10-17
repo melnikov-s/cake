@@ -51,10 +51,6 @@ import {
   setProjectWorkflowSessionDetails,
   setProjectSettings as setApplicationProjectSettings,
   setSessionUnread as setApplicationSessionUnread,
-  setCakePrompts as setApplicationCakePrompts,
-  setCakeChatPreferences as setApplicationCakeChatPreferences,
-  setGlobalCustomInstructions as setApplicationGlobalCustomInstructions,
-  setUtilityModel as setApplicationUtilityModel,
   trustProject,
   upsertProject,
 } from "../application/application";
@@ -192,47 +188,6 @@ export const generateSessionTitle = Effect.fn("Projects.generateSessionTitle")(f
     }),
   );
   return title === undefined ? {} : { title };
-});
-
-export const setGlobalCustomInstructions = Effect.fn("Projects.setGlobalCustomInstructions")(
-  function* (_connectionId: number, request: Payload<"set-global-custom-instructions">) {
-    return {
-      state: yield* mapProjectError(
-        "setGlobalCustomInstructions",
-        setApplicationGlobalCustomInstructions(request.instructions),
-      ),
-    };
-  },
-);
-
-export const setCakeChatPreferences = Effect.fn("Projects.setCakeChatPreferences")(function* (
-  _connectionId: number,
-  request: Payload<"set-cake-chat-preferences">,
-) {
-  return {
-    state: yield* mapProjectError(
-      "setCakeChatPreferences",
-      setApplicationCakeChatPreferences(request.preferences),
-    ),
-  };
-});
-
-export const setCakePrompts = Effect.fn("Projects.setCakePrompts")(function* (
-  _connectionId: number,
-  request: Payload<"set-cake-prompts">,
-) {
-  return {
-    state: yield* mapProjectError("setCakePrompts", setApplicationCakePrompts(request.prompts)),
-  };
-});
-
-export const setUtilityModel = Effect.fn("Projects.setUtilityModel")(function* (
-  _connectionId: number,
-  request: Payload<"set-utility-model">,
-) {
-  return {
-    state: yield* mapProjectError("setUtilityModel", setApplicationUtilityModel(request.model)),
-  };
 });
 
 export const loadStagedSlashCommands = Effect.fn("Projects.loadStagedSlashCommands")(function* (

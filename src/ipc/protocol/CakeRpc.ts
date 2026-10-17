@@ -1,80 +1,29 @@
+import { BackendRpc } from "./BackendRpc";
 import { DictationRpc } from "./DictationRpc";
 import { SpeechOutputRpc } from "./SpeechOutputRpc";
 import { DesktopHostRpc } from "./DesktopHostRpc";
-import { BackendConnectionRpc } from "./BackendConnectionRpc";
-import { ApplicationRpc } from "./ApplicationRpc";
-import { AttachmentUploadRpc } from "./AttachmentUploadRpc";
-import { ArtifactRpc } from "./ArtifactRpc";
-import { InterviewRpc } from "./InterviewRpc";
-import { BrowserRpc, BrowserResponseRpc } from "./BrowserRpc";
-import { CakeChatRpc } from "./CakeChatRpc";
-import { DiscussionRpc } from "./DiscussionRpc";
-import { ConversationRpc } from "./ConversationRpc";
+import { BrowserRpc } from "./BrowserRpc";
 import { DesktopSharingRpc } from "./DesktopSharingRpc";
 import { ElectronRpc } from "./ElectronRpc";
-import { FoundationRpc } from "./FoundationRpc";
-import { FilesystemRpc } from "./FilesystemRpc";
 import { NativeAttachmentsRpc } from "./NativeAttachmentsRpc";
 import { WindowStateRpc } from "./WindowStateRpc";
-import { ProviderAuthRpc } from "./ProviderAuthRpc";
-import { InlineWidgetRpc } from "./InlineWidgetRpc";
-import { NativeWidgetCaptureRpc, WidgetCaptureResponseRpc } from "./WidgetCaptureRpc";
-import { ManagedWorktreeRpc } from "./ManagedWorktreeRpc";
-import { ModelRpc } from "./ModelRpc";
-import { McpSettingsRpc } from "./McpSettingsRpc";
-import { WidgetPackageRpc } from "./WidgetPackageRpc";
-import { PiSettingsRpc } from "./PiSettingsRpc";
-import { ProjectSessionRpc } from "./ProjectSessionRpc";
-import { ProjectWorkflowRpc } from "./ProjectWorkflowRpc";
+import { NativeWidgetCaptureRpc } from "./WidgetCaptureRpc";
 import { RendererConnectionMiddleware } from "./RendererConnectionMiddleware";
-import { ScheduledMessageRpc } from "./ScheduledMessageRpc";
-import { SavedDraftRpc } from "./SavedDraftRpc";
-import { SessionChatRpc } from "./SessionChatRpc";
-import { SubagentRpc } from "./SubagentRpc";
-import { DynamicWorkflowRpc } from "./DynamicWorkflowRpc";
-import { TerminalRpc } from "./TerminalRpc";
-import { VsCodeRpc, VsCodeViewRpc } from "./VsCodeRpc";
-import { WorkspaceRpc } from "./WorkspaceRpc";
+import { VsCodeViewRpc } from "./VsCodeRpc";
 
 export { FoundationFailure } from "./FoundationRpc";
 
-export const CakeRpc = ApplicationRpc.merge(
-  DictationRpc,
+/** Native capabilities extend the shared backend; they are never exposed remotely. */
+export const DesktopRpc = DictationRpc.merge(
   SpeechOutputRpc,
   DesktopHostRpc,
-  BackendConnectionRpc,
-  ArtifactRpc,
-  InterviewRpc,
-  AttachmentUploadRpc,
   BrowserRpc,
-  BrowserResponseRpc,
-  CakeChatRpc,
-  ConversationRpc,
-  DiscussionRpc,
   ElectronRpc,
   DesktopSharingRpc,
-  FoundationRpc,
-  FilesystemRpc,
   NativeAttachmentsRpc,
   WindowStateRpc,
-  ProviderAuthRpc,
-  InlineWidgetRpc,
   NativeWidgetCaptureRpc,
-  WidgetCaptureResponseRpc,
-  ManagedWorktreeRpc,
-  ModelRpc,
-  PiSettingsRpc,
-  McpSettingsRpc,
-  WidgetPackageRpc,
-  ProjectSessionRpc,
-  ProjectWorkflowRpc,
-  ScheduledMessageRpc,
-  SavedDraftRpc,
-  SessionChatRpc,
-  SubagentRpc,
-  DynamicWorkflowRpc,
-  TerminalRpc,
-  VsCodeRpc,
   VsCodeViewRpc,
-  WorkspaceRpc,
 ).middleware(RendererConnectionMiddleware);
+
+export const CakeRpc = BackendRpc.merge(DesktopRpc);

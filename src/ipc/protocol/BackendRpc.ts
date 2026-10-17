@@ -29,7 +29,7 @@ import { SavedDraftRpc } from "./SavedDraftRpc";
 import { SessionChatRpc } from "./SessionChatRpc";
 import { WorkspaceRpc } from "./WorkspaceRpc";
 
-/** Headless chat/catalog surface. Desktop-local actions are deliberately not merged here. */
+/** Shared backend membership for local and network endpoints, excluding desktop-only actions. */
 export const BackendRpc = ApplicationRpc.merge(
   BackendConnectionRpc,
   VsCodeRpc,
@@ -43,7 +43,6 @@ export const BackendRpc = ApplicationRpc.merge(
   DiscussionRpc,
   SubagentRpc,
   DynamicWorkflowRpc,
-
   ArtifactRpc,
   InterviewRpc,
   CakeChatRpc,

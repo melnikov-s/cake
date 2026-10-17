@@ -33,12 +33,12 @@ import { workspaceHandlers } from "./WorkspaceHandlers";
 import { filesystemHandlers } from "./FilesystemHandlers";
 import { attachmentUploadHandlers } from "./AttachmentUploadHandlers";
 
-/** Acquires only the endpoint: the host supplies an already acquired backend and Protocol. */
-export const makeBackendRpcServerLive = (
+/** Shared backend handler coverage, independent of the host transport and backend acquisition. */
+export const makeBackendRpcHandlersLive = (
   homeDirectory: string,
   cakeChatConfiguration: CakeChatRuntimeConfiguration,
-) => {
-  const handlers = BackendRpc.toLayer({
+) =>
+  BackendRpc.toLayer({
     ...backendConnectionHandlers,
     ...vscodeHandlers,
     ...inlineWidgetHandlers,
@@ -51,7 +51,6 @@ export const makeBackendRpcServerLive = (
     ...discussionHandlers,
     ...subagentHandlers,
     ...dynamicWorkflowHandlers,
-
     ...applicationStateHandlers,
     ...artifactHandlers,
     ...interviewHandlers,
@@ -70,6 +69,13 @@ export const makeBackendRpcServerLive = (
     ...sessionChatHandlers,
     ...workspaceHandlers,
   });
+
+/** Acquires only the endpoint: the host supplies an already acquired backend and Protocol. */
+export const makeBackendRpcServerLive = (
+  homeDirectory: string,
+  cakeChatConfiguration: CakeChatRuntimeConfiguration,
+) => {
+  const handlers = makeBackendRpcHandlersLive(homeDirectory, cakeChatConfiguration);
   return RpcServer.layer(BackendRpc, {
     spanPrefix: "BackendRpcServer",
     disableFatalDefects: true,

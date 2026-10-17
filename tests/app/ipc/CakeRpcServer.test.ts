@@ -4,9 +4,18 @@ import { Context, Deferred, Effect, Exit, Layer, Option, Queue, Scope, Stream } 
 import { RpcServer } from "effect/unstable/rpc";
 import type { FromClientEncoded, FromServerEncoded } from "effect/unstable/rpc/RpcMessage";
 import { describe, expect } from "vitest";
-import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import {
+  defaultApplicationState,
+  defaultProjectSettings,
+} from "../../../src/contracts/application/application-data";
 import * as cakeChatLocations from "../../../src/domain/cake-chats/cakeChatLocations";
 import { makeCakeRpcServerLive } from "../../../src/ipc/server/CakeRpcServer";
+import { makeBackendRpcServerLive } from "../../../src/ipc/server/BackendRpcServer";
+import { BackendRpc } from "../../../src/ipc/protocol/BackendRpc";
+import { CakeRpc, DesktopRpc } from "../../../src/ipc/protocol/CakeRpc";
+import { ApplicationWriteError } from "../../../src/contracts/storage/application-storage-errors";
+import { workspaceHandlers } from "../../../src/ipc/server/WorkspaceHandlers";
+import { defaultCakeChatPreferences } from "../../../src/contracts/cake-chats/cake-chat-preferences";
 import {
   correlationIdHeader,
   rendererConnectionHeader,
@@ -23,15 +32,20 @@ import { PocketTts } from "../../../src/services/speech/PocketTts";
 import { pocketTtsState } from "../../helpers/speech-output";
 import { WidgetPackages } from "../../../src/services/widgets/WidgetPackages";
 
-const endpoint = makeCakeRpcServerLive("/home/test", {
+const configuration = {
   agentDirectory: "/agent",
   location: cakeChatLocations.make({
     homeDirectory: "/home/test",
     sessionDirectory: "/chat",
   }),
-});
+};
+const endpoint = makeCakeRpcServerLive("/home/test", configuration);
+const backendEndpoint = makeBackendRpcServerLive("/home/test", configuration);
 
-const makeBackend = Effect.fn("RpcEndpoint.test.makeBackend")(function* (failHome = false) {
+const makeBackend = Effect.fn("RpcEndpoint.test.makeBackend")(function* (
+  failHome = false,
+  failSave = false,
+) {
   const stats = { acquisitions: 0, releases: 0, saves: 0, allowed: [] as string[] };
   const storage = Layer.effect(
     ApplicationStorage,
@@ -45,9 +59,11 @@ const makeBackend = Effect.fn("RpcEndpoint.test.makeBackend")(function* (failHom
       return ApplicationStorage.of({
         load: () => Effect.succeed({ state: defaultApplicationState(), source: "missing" }),
         save: () =>
-          Effect.sync(() => {
-            stats.saves += 1;
-          }),
+          failSave
+            ? Effect.fail(new ApplicationWriteError({ stage: "write", message: "save failed" }))
+            : Effect.sync(() => {
+                stats.saves += 1;
+              }),
       });
     }),
   );
@@ -103,6 +119,7 @@ const makeBackend = Effect.fn("RpcEndpoint.test.makeBackend")(function* (failHom
         }),
       ),
       Layer.mock(ProjectAccess, {
+        isAllowed: () => Effect.succeed(false),
         allow: (path) =>
           failHome
             ? Effect.die("controlled request defect")
@@ -122,6 +139,7 @@ type Backend = Effect.Success<ReturnType<typeof makeBackend>>;
 const openEndpoint = Effect.fn("RpcEndpoint.test.openEndpoint")(function* (
   backend: Backend,
   connectionId: number,
+  server: typeof endpoint | typeof backendEndpoint = endpoint,
 ) {
   const incoming = yield* Queue.unbounded<FromClientEncoded>();
   const responses = yield* Queue.unbounded<FromServerEncoded>();
@@ -166,7 +184,7 @@ const openEndpoint = Effect.fn("RpcEndpoint.test.openEndpoint")(function* (
   );
   // Supply values acquired in the backend Scope, never the backend Layer. Independent endpoint
   // builds therefore cannot acquire or finalize application/runtime/storage authorities.
-  yield* Layer.buildWithScope(endpoint.pipe(Layer.provide(protocol)), scope).pipe(
+  yield* Layer.buildWithScope(server.pipe(Layer.provide(protocol)), scope).pipe(
     Effect.provideContext(backend.context),
   );
   yield* Deferred.await(ready);
@@ -220,6 +238,204 @@ const observeEvents = Effect.fn("RpcEndpoint.test.observeEvents")(function* (
 });
 
 describe("Cake RPC endpoint", () => {
+  it("local and network backend operation parity; desktop-only groups absent remotely", () => {
+    expect([...CakeRpc.requests.keys()].sort()).toEqual(
+      [...BackendRpc.requests.keys(), ...DesktopRpc.requests.keys()].sort(),
+    );
+    for (const [tag, rpc] of BackendRpc.requests) {
+      // Both hosts use the same schemas and middleware, not reconstructed copies.
+      expect(CakeRpc.requests.get(tag)).toBe(rpc);
+    }
+    for (const tag of DesktopRpc.requests.keys()) {
+      expect(BackendRpc.requests.has(tag)).toBe(false);
+    }
+  });
+
+  it.effect(
+    "local and network endpoints share the acquired backend without extra acquisition",
+    () =>
+      Effect.gen(function* () {
+        const backend = yield* makeBackend();
+        const local = yield* openEndpoint(backend, 11);
+        const network = yield* openEndpoint(backend, 22, backendEndpoint);
+        const id = yield* local.request("workspaces.set-global-custom-instructions", {
+          instructions: "  Shared settings  ",
+        });
+        expect(yield* Queue.take(local.responses)).toMatchObject({
+          requestId: id,
+          exit: {
+            _tag: "Success",
+            value: { state: { globalCustomInstructions: "Shared settings" } },
+          },
+        });
+        const readId = yield* network.request("application.getState");
+        expect(yield* Queue.take(network.responses)).toMatchObject({
+          requestId: readId,
+          exit: { _tag: "Success", value: { globalCustomInstructions: "Shared settings" } },
+        });
+        yield* local.close();
+        yield* network.close();
+        expect(backend.stats).toMatchObject({ acquisitions: 1, releases: 0, saves: 1 });
+        yield* backend.close();
+        expect(backend.stats.releases).toBe(1);
+      }),
+  );
+
+  it.effect("direct settings handlers need only their application owner, not a connection", () =>
+    Effect.gen(function* () {
+      const backend = yield* makeBackend();
+      // Providing only this tag makes the lack of a connection dependency a compile-time check.
+      const result = yield* workspaceHandlers["workspaces.set-global-custom-instructions"]({
+        instructions: "  Direct  ",
+      }).pipe(
+        Effect.provideService(ApplicationState, Context.get(backend.context, ApplicationState)),
+      );
+      expect(result.state.globalCustomInstructions).toBe("Direct");
+    }),
+  );
+
+  for (const [hostName, server] of [
+    ["local", endpoint],
+    ["network", backendEndpoint],
+  ] as const) {
+    it.effect(
+      `${hostName} direct settings routes preserve payloads and project authorization`,
+      () =>
+        Effect.gen(function* () {
+          const backend = yield* makeBackend();
+          const host = yield* openEndpoint(backend, 7, server);
+          const preferences = { ...defaultCakeChatPreferences(), instructions: "Chat guidance" };
+          const model = {
+            provider: "fixture",
+            modelId: "utility",
+            thinkingLevel: "high",
+          };
+          const cases = [
+            { tag: "set-utility-model", payload: { model }, expected: { utilityModel: model } },
+            {
+              tag: "set-cake-chat-preferences",
+              payload: { preferences },
+              expected: { cakeChatPreferences: preferences },
+            },
+            {
+              tag: "set-cake-prompts",
+              payload: { prompts: { worktreeCommit: "Custom commit" } },
+              expected: { cakePrompts: { worktreeCommit: "Custom commit" } },
+            },
+            {
+              tag: "set-global-custom-instructions",
+              payload: { instructions: "  Personal guidance  " },
+              expected: { globalCustomInstructions: "Personal guidance" },
+            },
+          ];
+          for (const { tag, payload, expected } of cases) {
+            const id = yield* host.request(`workspaces.${tag}`, payload);
+            expect(yield* Queue.take(host.responses)).toMatchObject({
+              requestId: id,
+              exit: { _tag: "Success", value: { state: expected } },
+            });
+          }
+          const cleared = yield* host.request("workspaces.set-utility-model", {});
+          expect(yield* Queue.take(host.responses)).toMatchObject({
+            requestId: cleared,
+            exit: { _tag: "Success" },
+          });
+          expect(Context.get(backend.context, ApplicationState).snapshot()).not.toHaveProperty(
+            "utilityModel",
+          );
+          const denied = yield* host.request("workspaces.set-project-settings", {
+            path: "/unapproved",
+            settings: defaultProjectSettings(),
+          });
+          expect(yield* Queue.take(host.responses)).toMatchObject({
+            requestId: denied,
+            exit: {
+              _tag: "Failure",
+              cause: [
+                {
+                  _tag: "Fail",
+                  error: {
+                    _tag: "ProjectError",
+                    operation: "authorizeWorkingDirectory",
+                    message: "Project path was not selected by the user",
+                  },
+                },
+              ],
+            },
+          });
+          expect(backend.stats).toMatchObject({ acquisitions: 1, saves: 5 });
+        }),
+    );
+
+    it.effect(`${hostName} settings routes retain middleware identity and payload validation`, () =>
+      Effect.gen(function* () {
+        const backend = yield* makeBackend();
+        const host = yield* openEndpoint(backend, 7, server);
+        yield* host.write({
+          _tag: "Request",
+          id: "untrusted",
+          tag: "workspaces.set-global-custom-instructions",
+          payload: { instructions: "Not authorized by the transport" },
+          headers: [],
+        });
+        expect(yield* Queue.take(host.responses)).toMatchObject({
+          requestId: "untrusted",
+          exit: { _tag: "Failure" },
+        });
+        const malformed = yield* host.request("workspaces.set-global-custom-instructions", {
+          instructions: 42,
+        });
+        expect(yield* Queue.take(host.responses)).toMatchObject({
+          requestId: malformed,
+          exit: { _tag: "Failure" },
+        });
+        expect(backend.stats.saves).toBe(0);
+        expect(Context.get(backend.context, ApplicationState).snapshot()).toEqual(
+          defaultApplicationState(),
+        );
+      }),
+    );
+
+    it.effect(`${hostName} direct settings routes preserve typed persistence failures`, () =>
+      Effect.gen(function* () {
+        const backend = yield* makeBackend(false, true);
+        const host = yield* openEndpoint(backend, 7, server);
+        const cases = [
+          { tag: "set-utility-model", operation: "setUtilityModel", payload: {} },
+          {
+            tag: "set-cake-chat-preferences",
+            operation: "setCakeChatPreferences",
+            payload: { preferences: defaultCakeChatPreferences() },
+          },
+          { tag: "set-cake-prompts", operation: "setCakePrompts", payload: { prompts: {} } },
+          {
+            tag: "set-global-custom-instructions",
+            operation: "setGlobalCustomInstructions",
+            payload: { instructions: "Never saved" },
+          },
+        ];
+        for (const { tag, operation, payload } of cases) {
+          const id = yield* host.request(`workspaces.${tag}`, payload);
+          expect(yield* Queue.take(host.responses)).toMatchObject({
+            requestId: id,
+            exit: {
+              _tag: "Failure",
+              cause: [
+                {
+                  _tag: "Fail",
+                  error: { _tag: "ProjectError", operation, message: "save failed" },
+                },
+              ],
+            },
+          });
+          expect(Context.get(backend.context, ApplicationState).snapshot()).toEqual(
+            defaultApplicationState(),
+          );
+        }
+      }),
+    );
+  }
+
   it.effect("widget package RPCs validate approval and invoke the backend package authority", () =>
     Effect.gen(function* () {
       const backend = yield* makeBackend();

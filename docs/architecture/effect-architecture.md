@@ -366,9 +366,12 @@ The endpoint acquires no backend Layers: additional endpoint Scopes can consume
 an already-acquired backend Context without owning its lifetime. Closing an
 endpoint interrupts its requests and observations, not the backend's owning Scope.
 The standalone Node host now supplies an opt-in WebSocket listener using the pinned
-Node socket server and Effect RPC socket protocol. `BackendRpcServer` composes the
-backend-capable shared handlers; it requires no Electron or WindowStateStorage.
-Desktop-only groups remain in the complete local `CakeRpc`. The network protocol
+Node socket server and Effect RPC socket protocol. `BackendRpc` defines backend
+membership once, and `makeBackendRpcHandlersLive` supplies its typed handlers to both
+endpoints without acquiring backend Services. `CakeRpc` extends that protocol with
+`DesktopRpc`; the local endpoint adds only those desktop handlers. Keeping those
+handler Layers separate bounds inference without operation-name omit/re-add lists.
+The network endpoint requires no Electron or WindowStateStorage. The network protocol
 replaces untrusted connection/correlation headers case-insensitively and cleans up
 connection-owned state on socket loss. `ClientConnections` allocates process-wide logical
 IDs across sockets and IPC, independently of native WebContents IDs. Native adapters
@@ -396,7 +399,11 @@ envelope or second dispatcher protocol inside Effect RPC. Focused application, a
 carry renderer-connection-scoped native events to their window-owned consumers.
 
 Main RPC handlers are thin adapters to domain operations. They do not own
-business logic. Effect Schema decodes requests, results, failures, and Stream
+business logic. Application settings routes call their owning application operations
+directly, adapting payloads, results, and wire errors at the RPC boundary rather
+than forwarding through the projects domain. Project authorization and lifecycle
+policy remain in the project operations. Effect Schema decodes requests, results,
+failures, and Stream
 elements once at the process boundary; already-decoded values use ordinary
 TypeScript types internally and are not reparsed at each function call. A
 process-scoped renderer-request coordinator owns transient reverse-request
