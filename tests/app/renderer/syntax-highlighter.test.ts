@@ -5,23 +5,18 @@ import type {
   SyntaxHighlightResponse,
 } from "../../../src/renderer/lib/syntax-highlighter-contract";
 
-class FakeWorker {
+// Focused transport integration: request coalescing, cache capacity and worker
+// failure cannot be inferred reliably from visible code text. The production
+// renderer highlighter is real; only the browser Worker boundary is controlled.
+class FakeWorker extends EventTarget {
   static instances: FakeWorker[] = [];
 
   readonly messages: SyntaxHighlightRequest[] = [];
-  private readonly listeners = new Map<string, Set<(event: MessageEvent) => void>>();
+  terminated = false;
 
   constructor() {
+    super();
     FakeWorker.instances.push(this);
-  }
-
-  addEventListener(type: string, listener: (event: MessageEvent) => void) {
-    let listeners = this.listeners.get(type);
-    if (!listeners) {
-      listeners = new Set();
-      this.listeners.set(type, listeners);
-    }
-    listeners.add(listener);
   }
 
   postMessage(message: SyntaxHighlightRequest) {
@@ -29,11 +24,12 @@ class FakeWorker {
   }
 
   respond(message: SyntaxHighlightResponse) {
-    for (const listener of this.listeners.get("message") ?? [])
-      listener({ data: message } as MessageEvent);
+    this.dispatchEvent(new MessageEvent("message", { data: message }));
   }
 
-  terminate() {}
+  terminate() {
+    this.terminated = true;
+  }
 }
 
 describe("syntaxHighlighter", () => {
@@ -52,7 +48,7 @@ describe("syntaxHighlighter", () => {
     const options = {
       code: "const value = true;",
       language: "typescript" as const,
-      themes: ["github-light-high-contrast", "github-dark"] as [
+      themes: ["github-light-high-contrast", "github-dark"] satisfies [
         "github-light-high-contrast",
         "github-dark",
       ],
@@ -81,7 +77,7 @@ describe("syntaxHighlighter", () => {
     const workerOptions = Array.from({ length: 256 }, (_, index) => ({
       code: `const value${index} = true;`,
       language: "typescript" as const,
-      themes: ["github-light-high-contrast", "github-dark"] as [
+      themes: ["github-light-high-contrast", "github-dark"] satisfies [
         "github-light-high-contrast",
         "github-dark",
       ],
@@ -101,6 +97,67 @@ describe("syntaxHighlighter", () => {
     const first = syntaxHighlighter.highlight(workerOptions[0]!);
     expect(first?.tokens[0]?.[0]?.content).toBe(workerOptions[0]!.code);
     expect(worker.messages).toHaveLength(workerOptions.length);
+  });
+
+  it("drains pending requests on worker failure and preserves readable future code", async () => {
+    const { syntaxHighlighter } = await import("../../../src/renderer/lib/syntax-highlighter");
+    const callback = vi.fn();
+    const options = {
+      code: "const first = 1;\n\nconst last = 2;",
+      language: "typescript" as const,
+      themes: ["github-light-high-contrast", "github-dark"] satisfies [
+        "github-light-high-contrast",
+        "github-dark",
+      ],
+    };
+    expect(syntaxHighlighter.highlight(options, callback)).toBeNull();
+    const worker = FakeWorker.instances[0]!;
+    worker.dispatchEvent(new Event("messageerror"));
+    const plain = {
+      tokens: [
+        [{ content: "const first = 1;", offset: 0 }],
+        [],
+        [{ content: "const last = 2;", offset: 18 }],
+      ],
+    };
+    expect(callback).toHaveBeenCalledExactlyOnceWith(plain);
+    expect(worker.terminated).toBe(true);
+    expect(syntaxHighlighter.highlight(options)).toEqual(plain);
+    expect(syntaxHighlighter.highlight({ ...options, code: "next source" })?.tokens).toEqual([
+      [{ content: "next source", offset: 0 }],
+    ]);
+    expect(worker.messages).toHaveLength(1);
+    expect(FakeWorker.instances).toHaveLength(1);
+  });
+
+  it("uses readable fallback for a failed request without breaking subsequent requests", async () => {
+    const { syntaxHighlighter } = await import("../../../src/renderer/lib/syntax-highlighter");
+    const options = {
+      code: "const failed = true;",
+      language: "typescript" as const,
+      themes: ["github-light-high-contrast", "github-dark"] satisfies [
+        "github-light-high-contrast",
+        "github-dark",
+      ],
+    };
+    const callback = vi.fn();
+    syntaxHighlighter.highlight(options, callback);
+    const worker = FakeWorker.instances[0]!;
+    worker.respond({ id: worker.messages[0]!.id, error: "Unable to tokenize" });
+    expect(callback).toHaveBeenCalledExactlyOnceWith({
+      tokens: [[{ content: options.code, offset: 0 }]],
+    });
+    expect(worker.terminated).toBe(false);
+    expect(syntaxHighlighter.highlight({ ...options, code: "const recovered = true;" })).toBeNull();
+    expect(worker.messages).toHaveLength(2);
+    worker.respond({
+      id: worker.messages[1]!.id,
+      result: { tokens: [[{ content: "const recovered = true;", offset: 0 }]] },
+    });
+    expect(
+      syntaxHighlighter.highlight({ ...options, code: "const recovered = true;" })?.tokens[0]?.[0]
+        ?.content,
+    ).toBe("const recovered = true;");
   });
 
   it("renders oversized input as plain tokens without sending it to Shiki", async () => {

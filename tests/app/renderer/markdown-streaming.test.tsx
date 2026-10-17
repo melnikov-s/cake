@@ -1,221 +1,129 @@
-/**
- * @vitest-environment jsdom
- */
-import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fencedCode, Markdown } from "../../../src/renderer/components/ai-elements/markdown";
-import { syntaxHighlighter } from "../../../src/renderer/lib/syntax-highlighter";
+/** @vitest-environment jsdom */
+import { cleanup, waitFor } from "@testing-library/react";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { fencedCode } from "../../../src/renderer/components/ai-elements/markdown";
+import {
+  codeBodies,
+  highlighted,
+  installMarkdownWorker,
+  renderMarkdown,
+} from "./markdown-rendering-fixture";
 
-describe("streaming Markdown code", () => {
-  let container: HTMLDivElement;
-  let root: Root;
+let worker: Awaited<ReturnType<typeof installMarkdownWorker>>;
+beforeAll(async () => {
+  worker = await installMarkdownWorker();
+});
+afterAll(() => worker[Symbol.dispose]());
+afterEach(cleanup);
 
-  beforeEach(() => {
-    Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-  });
-
-  afterEach(() => {
-    act(() => root.unmount());
-    vi.restoreAllMocks();
-    container.remove();
-  });
-
-  async function render(source: string, streaming = true) {
-    await act(async () => {
-      root.render(<Markdown streaming={streaming}>{source}</Markdown>);
-      await new Promise((resolve) => setTimeout(resolve, 20));
+describe("streaming Markdown with real highlighting", () => {
+  it("keeps settled fences highlighted while an identical fence grows and settles", async () => {
+    const settled = "```ts\nconst repeated = true;\n```\n\n```ts\nconst second = 2;\n```\n\n";
+    using fixture = renderMarkdown(`${settled}\`\`\`ts\nconst repeated = true;`, {
+      props: { streaming: true },
     });
-  }
-
-  function mockSynchronousHighlighting() {
-    return vi.spyOn(syntaxHighlighter, "highlight").mockImplementation((options) => ({
-      tokens: options.code.split("\n").map((content) => [
-        {
-          content,
-          htmlAttrs: { "data-syntax-highlighted": "true" },
-        },
-      ]),
-    }));
-  }
-
-  function codeBodies() {
-    return Array.from(
-      container.querySelectorAll<HTMLElement>('[data-streamdown="code-block-body"]'),
-    );
-  }
-
-  it("keeps distinct settled fences highlighted while an identical fence grows", async () => {
-    const highlight = mockSynchronousHighlighting();
-    const settled = [
-      "```ts",
-      "const repeated = true;",
-      "```",
-      "",
-      "```ts",
-      "const second = 2;",
-      "```",
-      "",
-    ].join("\n");
-
-    await render(`${settled}\`\`\`ts\nconst repeated = true;`);
-
-    expect(codeBodies()).toHaveLength(3);
-    expect(codeBodies()[0]!.querySelector("[data-syntax-highlighted]")).not.toBeNull();
-    expect(codeBodies()[1]!.querySelector("[data-syntax-highlighted]")).not.toBeNull();
-    expect(codeBodies()[2]!.querySelector("[data-syntax-highlighted]")).toBeNull();
-    const firstSettledBody = codeBodies()[0];
-    const secondSettledBody = codeBodies()[1];
-    expect(highlight).toHaveBeenCalledTimes(2);
-
-    await render(`${settled}\`\`\`ts\nconst repeated = true;\nconst growing = 1;`);
-
-    expect(codeBodies()[0]).toBe(firstSettledBody);
-    expect(codeBodies()[1]).toBe(secondSettledBody);
-    expect(codeBodies()[0]!.querySelector("[data-syntax-highlighted]")).not.toBeNull();
-    expect(codeBodies()[1]!.querySelector("[data-syntax-highlighted]")).not.toBeNull();
-    expect(codeBodies()[2]!.querySelector("[data-syntax-highlighted]")).toBeNull();
-    expect(highlight).toHaveBeenCalledTimes(2);
+    const bodies = () => codeBodies(fixture.container);
+    await waitFor(() => expect(bodies().map(highlighted)).toEqual([true, true, false]));
+    const first = bodies()[0];
+    const second = bodies()[1];
+    await fixture.update(`${settled}\`\`\`ts\nconst repeated = true;\nconst growing = 1;`);
+    expect(bodies()[0]).toBe(first);
+    expect(bodies()[1]).toBe(second);
+    expect(bodies().map(highlighted)).toEqual([true, true, false]);
+    expect(bodies()[2]!.textContent).toContain("const growing = 1;");
 
     const closed = `${settled}\`\`\`ts\nconst repeated = true;\nconst growing = 1;\n\`\`\`\nMore prose.`;
-    await render(closed);
-
-    expect(codeBodies()[0]).toBe(firstSettledBody);
-    expect(codeBodies()[1]).toBe(secondSettledBody);
-    expect(codeBodies()[2]!.querySelector("[data-syntax-highlighted]")).not.toBeNull();
-    expect(highlight).toHaveBeenCalledTimes(3);
-
-    await render(`${closed}\n\n\`\`\`ts\nconst next =`);
-    expect(codeBodies()).toHaveLength(4);
-    expect(codeBodies()[0]).toBe(firstSettledBody);
-    expect(codeBodies()[1]).toBe(secondSettledBody);
-    expect(codeBodies()[3]!.querySelector("[data-syntax-highlighted]")).toBeNull();
-    expect(highlight).toHaveBeenCalledTimes(3);
-
-    await render(`${closed}\n\n\`\`\`ts\nconst next = 3;`, false);
-    expect(codeBodies()[0]).toBe(firstSettledBody);
-    expect(codeBodies()[1]).toBe(secondSettledBody);
-    expect(codeBodies()[3]!.querySelector("[data-syntax-highlighted]")).not.toBeNull();
-    expect(highlight).toHaveBeenCalledTimes(4);
+    await fixture.update(closed);
+    await waitFor(() => expect(bodies().map(highlighted)).toEqual([true, true, true]));
+    await fixture.update(`${closed}\n\n\`\`\`ts\nconst next =`);
+    expect(bodies().map(highlighted)).toEqual([true, true, true, false]);
+    expect(bodies()[0]).toBe(first);
+    expect(bodies()[1]).toBe(second);
+    await fixture.update(`${closed}\n\n\`\`\`ts\nconst next = 3;`, { streaming: false });
+    await waitFor(() => expect(bodies().map(highlighted)).toEqual([true, true, true, true]));
+    expect(bodies()[0]).toBe(first);
+    expect(fixture.container.textContent).not.toContain("__cake_streaming_code__");
   });
 
-  it("isolates growing fences nested in blockquotes and deeper lists", async () => {
-    const highlight = mockSynchronousHighlighting();
-    const sources = [
-      {
-        active: "> ```ts\n> const quoted = true;",
-        closed: "> ```ts\n> const quoted = true;\n> ```",
-      },
-      {
-        active: "1. Example\n\n    ```ts\n    const nested = true;",
-        closed: "1. Example\n\n    ```ts\n    const nested = true;\n    ```",
-      },
-      {
-        active: "- ```ts\n  const direct = true;",
-        closed: "- ```ts\n  const direct = true;\n  ```",
-      },
-    ];
-
-    for (const source of sources) {
-      await render(source.active);
-      expect(codeBodies()).toHaveLength(1);
-      expect(codeBodies()[0]!.textContent).toContain("true;");
-      expect(codeBodies()[0]!.textContent).not.toContain("__cake_streaming_code__");
-      expect(codeBodies()[0]!.querySelector("[data-syntax-highlighted]")).toBeNull();
-
-      await render(source.closed);
-      expect(codeBodies()[0]!.querySelector("[data-syntax-highlighted]")).not.toBeNull();
-    }
-    expect(highlight).toHaveBeenCalledTimes(3);
+  it.each([
+    ["> ```ts\n> const quoted = true;", "> ```ts\n> const quoted = true;\n> ```"],
+    [
+      "1. Example\n\n    ```ts\n    const nested = true;",
+      "1. Example\n\n    ```ts\n    const nested = true;\n    ```",
+    ],
+    ["- ```ts\n  const direct = true;", "- ```ts\n  const direct = true;\n  ```"],
+    ["```TS\nconst upper = true;", "```TS\nconst upper = true;\n```"],
+  ])("isolates the active fence in %s", async (active, closed) => {
+    using fixture = renderMarkdown(active, { props: { streaming: true } });
+    const body = () => codeBodies(fixture.container)[0]!;
+    expect(codeBodies(fixture.container)).toHaveLength(1);
+    expect(body().textContent).toContain("true;");
+    expect(body().textContent).not.toContain("__cake_streaming_code__");
+    expect(highlighted(body())).toBe(false);
+    await fixture.update(closed);
+    await waitFor(() => expect(highlighted(body())).toBe(true));
   });
 
-  it("uses the actual final code node after a container boundary", async () => {
-    mockSynchronousHighlighting();
-    const source = [
-      "> ```ts",
-      "> const old = 1;",
-      "",
-      "Outside.",
-      "",
-      "```ts",
-      "const active = 2;",
-    ].join("\n");
-
-    await render(source);
-
-    expect(codeBodies()).toHaveLength(2);
-    expect(codeBodies()[0]!.querySelector("[data-syntax-highlighted]")).not.toBeNull();
-    expect(codeBodies()[1]!.querySelector("[data-syntax-highlighted]")).toBeNull();
-    expect(codeBodies()[1]!.textContent).toContain("const active = 2;");
+  it("settles the old container's code while keeping the actual final fence plain", async () => {
+    using fixture = renderMarkdown(
+      "> ```ts\n> const old = 1;\n\nOutside.\n\n```ts\nconst active = 2;",
+      { props: { streaming: true } },
+    );
+    await waitFor(() =>
+      expect(codeBodies(fixture.container).map(highlighted)).toEqual([true, false]),
+    );
+    expect(codeBodies(fixture.container)[1]!.textContent).toContain("const active = 2;");
+    expect(fixture.container.textContent).toContain("Outside.");
   });
 
-  it("settles a fence when its blockquote container ends", async () => {
-    mockSynchronousHighlighting();
-
-    await render("> ```ts\n> const quoted = true;\n\nOutside.");
-
-    expect(codeBodies()).toHaveLength(1);
-    expect(codeBodies()[0]!.querySelector("[data-syntax-highlighted]")).not.toBeNull();
+  it("settles a fence when its blockquote container ends without a closing fence", async () => {
+    using fixture = renderMarkdown("> ```ts\n> const ended = true;\n\nOutside.", {
+      props: { streaming: true },
+    });
+    await waitFor(() => expect(codeBodies(fixture.container).map(highlighted)).toEqual([true]));
+    expect(fixture.container.textContent).toContain("Outside.");
   });
 
-  it("routes uppercase active languages without leaking markers", async () => {
-    mockSynchronousHighlighting();
-
-    await render("```TS\nconst upper = true;");
-    expect(codeBodies()).toHaveLength(1);
-    expect(codeBodies()[0]!.textContent).toContain("const upper = true;");
-    expect(codeBodies()[0]!.textContent).not.toContain("__cake_streaming_code__");
-    expect(codeBodies()[0]!.querySelector("[data-syntax-highlighted]")).toBeNull();
-
-    await render("```TS\nconst upper = true;\n```");
-    expect(codeBodies()[0]!.querySelector("[data-syntax-highlighted]")).not.toBeNull();
+  it("preserves fence-shaped indented literal code without leaking streaming markers", () => {
+    using fixture = renderMarkdown("- item\n\n      ```ts\n      const literal = true;", {
+      props: { streaming: true },
+    });
+    expect(fixture.container.textContent).toContain("```ts");
+    expect(fixture.container.textContent).toContain("const literal = true;");
+    expect(fixture.container.textContent).not.toContain("__cake_streaming_code__");
   });
 
-  it("preserves fence-shaped indented literal code byte-for-byte", async () => {
-    mockSynchronousHighlighting();
-    const source = "- item\n\n      ```ts\n      const literal = true;";
+  it.each(["text", "", "made-up-language"])(
+    "preserves unsupported or unlabeled %s code during streaming",
+    (language) => {
+      using fixture = renderMarkdown(`\`\`\`${language}\nplain source`, {
+        props: { streaming: true },
+      });
+      expect(fixture.container.textContent).toContain("plain source");
+      expect(fixture.container.textContent).not.toContain("__cake_streaming_code__");
+    },
+  );
 
-    await render(source);
-
-    expect(container.textContent).toContain("```ts");
-    expect(container.textContent).toContain("const literal = true;");
-    expect(container.textContent).not.toContain("__cake_streaming_code__");
-  });
-
-  it("keeps noLineNumbers source on separate visual lines while it grows", async () => {
-    mockSynchronousHighlighting();
-
-    await render("```ts noLineNumbers\nconst first = 1;\nconst second = 2;");
-
-    const lines = codeBodies()[0]!.querySelectorAll("code > span");
-    expect(lines).toHaveLength(2);
+  it("keeps noLineNumbers source on separate lines while it grows", () => {
+    using fixture = renderMarkdown("```ts noLineNumbers\nconst first = 1;\nconst second = 2;", {
+      props: { streaming: true },
+    });
+    const lines = codeBodies(fixture.container)[0]!.querySelectorAll("code > span");
+    expect(Array.from(lines, (line) => line.textContent)).toEqual([
+      "const first = 1;",
+      "const second = 2;",
+    ]);
     expect(Array.from(lines, (line) => line.classList.contains("block"))).toEqual([true, true]);
-    expect(codeBodies()[0]!.querySelector("[data-syntax-highlighted]")).toBeNull();
+    expect(highlighted(codeBodies(fixture.container)[0]!)).toBe(false);
   });
 
   it("keeps a synthetically closed mutable tool fence plain until it settles", async () => {
-    const highlight = mockSynchronousHighlighting();
     const initial = fencedCode('{"path":', "json");
-
-    await act(async () => {
-      root.render(
-        <Markdown streaming mutableCode>
-          {initial}
-        </Markdown>,
-      );
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    });
-    expect(codeBodies()[0]!.querySelector("[data-syntax-highlighted]")).toBeNull();
-
-    await render(initial, false);
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    });
-    expect(container.querySelector("[data-incomplete]")).toBeNull();
-    expect(highlight).toHaveBeenCalledOnce();
-    expect(codeBodies()[0]!.querySelector("[data-syntax-highlighted]")).not.toBeNull();
+    using fixture = renderMarkdown(initial, { props: { streaming: true, mutableCode: true } });
+    expect(highlighted(codeBodies(fixture.container)[0]!)).toBe(false);
+    expect(codeBodies(fixture.container)[0]!.textContent).toContain('{"path":');
+    await fixture.update(initial, { streaming: false });
+    await waitFor(() => expect(highlighted(codeBodies(fixture.container)[0]!)).toBe(true));
+    expect(fixture.container.querySelector("[data-incomplete]")).toBeNull();
   });
 });

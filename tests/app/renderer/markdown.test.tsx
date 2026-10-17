@@ -1,653 +1,340 @@
-/**
- * @vitest-environment jsdom
- */
-import { act, createElement } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Streamdown } from "streamdown";
+/** @vitest-environment jsdom */
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import type { ComponentProps } from "react";
+import { fencedCode, type Markdown } from "../../../src/renderer/components/ai-elements/markdown";
+import type { Client } from "../../../src/renderer/client/Client";
 import {
-  fencedCode,
-  Markdown,
-  MarkdownLinkProvider,
-} from "../../../src/renderer/components/ai-elements/markdown";
-import { syntaxHighlighter } from "../../../src/renderer/lib/syntax-highlighter";
-import { FullscreenSurfaceFixture } from "./fullscreen-surface-fixture";
+  codeBodies,
+  highlighted,
+  installMarkdownWorker,
+  renderMarkdown,
+} from "./markdown-rendering-fixture";
 
-vi.mock("streamdown", () => ({
-  defaultRehypePlugins: {},
-  parseMarkdownIntoBlocks: (markdown: string) => [markdown],
-  Streamdown: vi.fn(({ children }: { children: string }) => <div>{children}</div>),
-  TableCopyDropdown: () => <span>Copy table</span>,
-}));
+let worker: Awaited<ReturnType<typeof installMarkdownWorker>>;
+beforeAll(async () => {
+  worker = await installMarkdownWorker();
+});
+afterAll(() => worker[Symbol.dispose]());
+afterEach(() => {
+  cleanup();
+  delete document.documentElement.dataset.theme;
+  vi.restoreAllMocks();
+});
 
-describe("Markdown", () => {
-  let container: HTMLDivElement;
-  let root: Root;
-
-  beforeEach(() => {
-    Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-    vi.mocked(Streamdown).mockClear();
+describe("Markdown rendering integration", () => {
+  it("renders prose, a highlighted fence and an escaped fence containing backticks", async () => {
+    const code = "const sample = `nested`; // ```";
+    using fixture = renderMarkdown(
+      `# Result\n\nA **formatted** paragraph with \`inline code\`.\n\n${fencedCode(code, "ts")}`,
+    );
+    expect(screen.getByRole("heading", { name: "Result" })).toBeDefined();
+    expect(screen.getByText("formatted").getAttribute("data-streamdown")).toBe("strong");
+    expect(screen.getByText("inline code").tagName).toBe("CODE");
+    await waitFor(() => expect(highlighted(codeBodies(fixture.container)[0]!)).toBe(true));
+    expect(codeBodies(fixture.container)[0]!.textContent).toContain(code);
+    expect(screen.getByRole("button", { name: "Copy Code" })).toBeDefined();
   });
 
-  afterEach(() => {
-    act(() => root.unmount());
-    vi.restoreAllMocks();
-    delete document.documentElement.dataset.theme;
-    container.remove();
-  });
-
-  it("keeps Streamdown's block parser stable across transcript updates", () => {
-    act(() => root.render(<Markdown>First</Markdown>));
-    const firstProps = vi.mocked(Streamdown).mock.calls.at(-1)![0];
-
-    act(() => root.render(<Markdown>Second</Markdown>));
-    const secondProps = vi.mocked(Streamdown).mock.calls.at(-1)![0];
-
-    expect(secondProps).toMatchObject({ isAnimating: false, mode: "streaming", skipHtml: true });
-    expect(secondProps.parseMarkdownIntoBlocksFn).toBe(firstProps.parseMarkdownIntoBlocksFn);
-    expect(secondProps.parseMarkdownIntoBlocksFn?.("first")).toEqual(["first"]);
-    expect(secondProps.parseMarkdownIntoBlocksFn?.("changing content")).toEqual([
-      "changing content",
-    ]);
-  });
-
-  it("uses the borderless hover-action presentation for every fenced code block", () => {
-    act(() => root.render(<Markdown>```text\nA very long line\n```</Markdown>));
-
-    const className = vi.mocked(Streamdown).mock.calls.at(-1)![0].className;
-    expect(className).toContain("[&_[data-streamdown=code-block]]:border-0");
-    expect(className).toContain("[&_[data-streamdown=code-block-header]]:hidden");
-    expect(className).toContain("[&_[data-streamdown=code-block-actions]]:!absolute");
-    expect(className).toContain("[&_[data-streamdown=code-block-actions]]:opacity-0");
-    expect(className).toContain(
-      "[&_[data-streamdown=code-block]:hover_[data-streamdown=code-block-actions]]:opacity-100",
-    );
-    expect(className).toContain("[&_[data-streamdown=code-block-body]]:overflow-x-hidden");
-    expect(className).toContain("[&_[data-streamdown=code-block-body]_pre]:whitespace-pre-wrap");
-    expect(className).toContain(
-      "[&_[data-streamdown=code-block-body]_pre]:[overflow-wrap:anywhere]",
-    );
-  });
-
-  it("uses Cake's table presentation and borderless Mermaid frames with copy and fullscreen actions", () => {
-    act(() => root.render(<Markdown>{"| A | B |\n| - | - |\n| 1 | 2 |"}</Markdown>));
-
-    const props = vi.mocked(Streamdown).mock.calls.at(-1)![0];
-    expect(props.controls).toEqual({
-      code: { copy: true, download: false },
-      mermaid: {
-        copy: true,
-        download: false,
-        fullscreen: true,
-        panZoom: false,
-      },
-    });
-    expect(props.components?.table).toBeTypeOf("function");
-    expect(props.className).toContain("[&_[data-streamdown=mermaid-block]]:border-0");
-    expect(props.className).toContain(
-      "[&_[data-streamdown=mermaid-block-actions]>button:last-child]:opacity-0",
-    );
-  });
-
-  it("keeps parsed fullscreen table cells and their actions when streaming settles", () => {
-    const onClick = vi.fn();
-    vi.mocked(Streamdown).mockImplementation(({ components }) => {
-      const Table = components?.table;
-      if (!Table || typeof Table !== "function") throw new Error("Expected Cake's table renderer");
-      return createElement(Table, {
-        children: (
-          <tbody>
-            <tr>
-              <td>
-                <strong>Formatted</strong>
-                <a href="#source" onClick={onClick}>
-                  Source
-                </a>
-              </td>
-            </tr>
-          </tbody>
-        ),
-      });
-    });
-    act(() =>
-      root.render(
-        <FullscreenSurfaceFixture>
-          <Markdown streaming>table</Markdown>
-        </FullscreenSurfaceFixture>,
-      ),
-    );
-    act(() =>
-      container.querySelector<HTMLButtonElement>('[aria-label="View table fullscreen"]')!.click(),
-    );
-    const fullscreen = document.body.querySelector<HTMLElement>('[role="dialog"]');
-    expect(fullscreen?.querySelector("strong")?.textContent).toBe("Formatted");
-    act(() => fullscreen?.querySelector<HTMLAnchorElement>("a")?.click());
-    expect(onClick).toHaveBeenCalledOnce();
-    act(() =>
-      root.render(
-        <FullscreenSurfaceFixture>
-          <Markdown>settled</Markdown>
-        </FullscreenSurfaceFixture>,
-      ),
-    );
-    expect(document.body.querySelector('[role="dialog"]')).toBe(fullscreen);
-    act(() =>
-      fullscreen?.querySelector<HTMLButtonElement>('[aria-label="Exit fullscreen Table"]')?.click(),
-    );
-    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
-  });
-
-  it("keeps a fullscreen Mermaid diagram open when streaming settles", async () => {
-    vi.mocked(Streamdown).mockImplementation(({ children }: { children?: string }) => (
-      <div>
-        {children}
-        <div data-streamdown="mermaid-block">
-          <div data-streamdown="mermaid-block-actions">
-            <button title="Copy Code" type="button">
-              <svg aria-label="Copy icon" viewBox="0 0 24 24" />
-            </button>
-            <button title="View fullscreen" type="button">
-              <svg aria-label="Fullscreen icon" viewBox="0 0 24 24" />
-            </button>
-          </div>
-          <div data-streamdown="mermaid">
-            <div role="img" aria-label="Mermaid chart">
-              <svg aria-label="Rendered diagram" viewBox="0 0 10 10">
-                <circle cx="5" cy="5" r="4" />
-              </svg>
-            </div>
-          </div>
-        </div>
-      </div>
-    ));
-    const source = "```mermaid\ngraph LR\nA --> B\n```";
-
-    await act(async () => {
-      root.render(
-        <FullscreenSurfaceFixture>
-          <Markdown streaming>{source}</Markdown>
-        </FullscreenSurfaceFixture>,
-      );
-      await import("@streamdown/mermaid");
-    });
-    act(() =>
-      container.querySelector<HTMLButtonElement>('button[title="View fullscreen"]')!.click(),
-    );
-
-    const fullscreen = document.body.querySelector<HTMLElement>('[role="dialog"]');
-    expect(fullscreen?.textContent).toContain("Mermaid");
-    expect(fullscreen?.querySelector('svg[aria-label="Rendered diagram"]')).not.toBeNull();
-
-    await act(async () => {
-      root.render(
-        <FullscreenSurfaceFixture>
-          <Markdown>{source}</Markdown>
-        </FullscreenSurfaceFixture>,
-      );
-    });
-    expect(document.body.querySelector('[role="dialog"]')).toBe(fullscreen);
-
-    act(() =>
-      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })),
-    );
-    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
-  });
-
-  it("marks only the incomplete fence for block-local plain rendering", () => {
-    const source = ["```ts", "const settled = true;", "```", "", "```ts", "const changing ="].join(
-      "\n",
-    );
-    act(() => root.render(<Markdown streaming>{source}</Markdown>));
-
-    const streamdownProps = vi.mocked(Streamdown).mock.calls.at(-1)![0];
-    expect(streamdownProps.children).toBe(
+  it("renders safe content without executing authored HTML or unsafe links", () => {
+    using fixture = renderMarkdown(
       [
-        "```ts",
-        "const settled = true;",
-        "```",
-        "",
-        "```ts __cake_streaming_code__",
-        "__cake_streaming_code__",
-        "const changing =",
-      ].join("\n"),
+        "Visible **safe** text.",
+        "<script>window.compromised = true</script>",
+        '<img src="x" onerror="window.compromised = true">',
+        "[Danger](javascript:alert%281%29)",
+        "[Website](https://example.com)",
+      ].join("\n\n"),
     );
-    expect(streamdownProps.plugins?.code).toBe(syntaxHighlighter);
-    expect(streamdownProps.plugins?.renderers).toHaveLength(1);
-  });
-
-  it("does not inject markers into unsupported, unlabelled, Mermaid, or indented literal code", async () => {
-    for (const source of [
-      "```text\nhello",
-      "```\nhello",
-      "```mermaid\ngraph TD",
-      "- item\n\n      ```ts\n      const literal = true;",
-    ]) {
-      await act(async () => {
-        root.render(<Markdown streaming>{source}</Markdown>);
-        if (source.includes("mermaid")) await import("@streamdown/mermaid");
-      });
-      expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(source);
-    }
-  });
-
-  it("normalizes a marked language so custom-renderer routing agrees", () => {
-    act(() => root.render(<Markdown streaming>{"```TS\nconst value = 1;"}</Markdown>));
-
-    expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(
-      "```ts __cake_streaming_code__\n__cake_streaming_code__\nconst value = 1;",
+    expect(screen.getByText("safe").getAttribute("data-streamdown")).toBe("strong");
+    expect(fixture.container.querySelector("script, [onerror]")).toBeNull();
+    expect(fixture.container.querySelector('a[href^="javascript:"]')).toBeNull();
+    expect(screen.getByRole("link", { name: "Website" }).getAttribute("href")).toBe(
+      "https://example.com/",
     );
   });
 
-  it("keeps the streaming highlighter stable across source updates", () => {
-    act(() => root.render(<Markdown streaming>{"```ts\nconst value ="}</Markdown>));
-    const firstPlugin = vi.mocked(Streamdown).mock.calls.at(-1)![0].plugins?.code;
-
-    act(() => root.render(<Markdown streaming>{"```ts\nconst value = 1"}</Markdown>));
-    const secondPlugin = vi.mocked(Streamdown).mock.calls.at(-1)![0].plugins?.code;
-
-    expect(secondPlugin).toBe(firstPlugin);
-  });
-
-  it("uses Mermaid's high-contrast theme in dark mode", async () => {
-    document.documentElement.dataset.theme = "light";
-    act(() => root.render(<Markdown>```mermaid\ngraph LR\nA --&gt; B\n```</Markdown>));
-    expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].mermaid?.config?.theme).toBe("neutral");
-
-    await act(async () => {
-      document.documentElement.dataset.theme = "dark";
-      await import("@streamdown/mermaid");
+  it("routes actual website links through the typed desktop boundary", async () => {
+    const openExternalUrl = vi.fn<Client["electron"]["openExternalUrl"]>(async () => undefined);
+    using fixture = renderMarkdown('[Example](https://example.com "Authored title")', {
+      client: { electron: { openExternalUrl } },
     });
-
-    const plugins = vi.mocked(Streamdown).mock.calls.at(-1)![0].plugins;
-    expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].mermaid?.config?.theme).toBe("dark");
-    expect(plugins?.mermaid).toBeDefined();
-    expect(plugins?.math).toBeUndefined();
-  });
-
-  it("loads math without loading the Mermaid plugin", async () => {
-    await act(async () => {
-      root.render(<Markdown>{"$$\nE = mc^2\n$$"}</Markdown>);
-      await Promise.all([import("@streamdown/math"), import("katex/dist/katex.min.css")]);
+    const link = screen.getByRole("link", { name: "Example" });
+    expect(link.getAttribute("aria-description")).toBe("https://example.com/");
+    expect(link.getAttribute("target")).toBe("_blank");
+    await fixture.user.click(link);
+    expect(openExternalUrl).toHaveBeenCalledWith("https://example.com/", {
+      signal: expect.any(AbortSignal),
     });
-
-    const plugins = vi.mocked(Streamdown).mock.calls.at(-1)![0].plugins;
-    expect(plugins?.math).toBeDefined();
-    expect(plugins?.mermaid).toBeUndefined();
   });
 
-  it("creates a safe highlighted fence even when source contains backticks", () => {
-    expect(fencedCode("const sample = ```nested```;", "tsx")).toBe(
-      "````tsx\nconst sample = ```nested```;\n````",
-    );
-  });
-
-  it("normalizes LaTeX math delimiters without changing code", async () => {
-    const source = [
-      "Inline \\(x + y\\).",
-      "",
-      "\\[",
-      "E = mc^2",
-      "\\]",
-      "",
-      "`\\(inline code\\)`",
-      "",
-      "````tex",
-      "\\[fenced code\\]",
-      "````",
-    ].join("\n");
-
-    await act(async () => {
-      root.render(<Markdown>{source}</Markdown>);
-      await import("@streamdown/math");
-    });
-
-    expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(
+  it("routes source ranges, changes and heading citations from real parsed anchors", async () => {
+    // Source navigation is Markdown's typed public output boundary; no Store is replaced.
+    const open = vi.fn<NonNullable<ComponentProps<typeof Markdown>["onOpenSourceLocation"]>>();
+    using fixture = renderMarkdown(
       [
-        "Inline $x + y$.",
-        "",
-        "$$",
-        "E = mc^2",
-        "$$",
-        "",
-        "`\\(inline code\\)`",
-        "",
-        "````tex",
-        "\\[fenced code\\]",
-        "````",
-      ].join("\n"),
+        '[file](src/modelMeta.ts#L8-L12 "Authored title")',
+        "[before](src/modelMeta.ts?view=changes&side=before#L8-L12)",
+        "[functions](src/modelMeta.ts#L153-L170,L182-L192)",
+        "[protocol](docs/architecture/s4-artifact-protocol.md#authority-and-durability)",
+        "src/main.ts:880:12 and `src/not-a-link.ts:3`",
+      ].join(" · "),
+      { props: { onOpenSourceLocation: open } },
     );
-  });
-
-  it("defers LaTeX delimiter normalization while content is streaming", () => {
-    const source = "Streaming \\(x + y\\) and \\[E = mc^2\\]";
-
-    act(() => root.render(<Markdown normalizeLatexDelimiters={false}>{source}</Markdown>));
-
-    expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(source);
-  });
-
-  it("recognizes bare source references without changing inline code", () => {
-    act(() =>
-      root.render(
-        <Markdown onOpenSourceLocation={() => undefined}>
-          See src/main.ts:880:12, src/main.ts#L153-L170,L182-L192, and `src/not-a-link.ts:3`.
-        </Markdown>,
-      ),
-    );
-
-    expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(
-      "See [src/main.ts:880:12](/__cake_workspace__/src/main.ts:880:12), [src/main.ts#L153-L170,L182-L192](/__cake_workspace__/src/main.ts#L153-L170,L182-L192), and `src/not-a-link.ts:3`.",
-    );
-  });
-
-  it("rewrites session links to a sanitizer-safe internal target", () => {
-    act(() =>
-      root.render(<Markdown>[Authentication refactor](cake://session/session-123)</Markdown>),
-    );
-
-    expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(
-      "[Authentication refactor](/__cake_session__/session-123)",
-    );
-  });
-
-  it.each([
-    ["cake://session/session-123", "/__cake_session__/session-123"],
-    [
-      "cake://session/session-123?attachment=00000000-0000-4000-8000-000000000001",
-      "/__cake_session__/session-123?attachment=00000000-0000-4000-8000-000000000001",
-    ],
-    [
-      "cake://session/session-123?message=entry-42",
-      "/__cake_session__/session-123?message=entry-42",
-    ],
-    ["cake://artifact/report", "/__cake_artifact__/cake%3A%2F%2Fartifact%2Freport"],
-    ["src/main.ts#L3", "/__cake_workspace__/src/main.ts#L3"],
-  ])("prepares %s links even with an authored title", (href, target) => {
-    act(() =>
-      root.render(
-        <Markdown onOpenSourceLocation={vi.fn()}>{`[Label](${href} "Authored title")`}</Markdown>,
-      ),
-    );
-    expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(`[Label](${target})`);
-  });
-
-  it("routes Markdown heading citations through the safe workspace link target", () => {
-    const onOpenSourceLocation = vi.fn();
-    const reference = "docs/architecture/s4-artifact-protocol.md#authority-and-durability";
-    act(() =>
-      root.render(
-        <Markdown onOpenSourceLocation={onOpenSourceLocation}>
-          {`The [artifact protocol](${reference}) describes artifact updates.`}
-        </Markdown>,
-      ),
-    );
-    expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(
-      `The [artifact protocol](/__cake_workspace__/${reference}) describes artifact updates.`,
-    );
-    const anchor = vi.mocked(Streamdown).mock.calls.at(-1)![0].components!.a!;
-    act(() =>
-      root.render(
-        createElement(anchor, {
-          href: `/__cake_workspace__/${reference}`,
-          children: "artifact protocol",
-        }),
-      ),
-    );
-    const link = container.querySelector("a")!;
-    expect(link.getAttribute("href")).toBe(reference);
-    expect(link.getAttribute("aria-description")).toBe(reference);
-    act(() => link.click());
-    expect(onOpenSourceLocation).toHaveBeenCalledWith({
-      path: "docs/architecture/s4-artifact-protocol.md",
-    });
-  });
-
-  it("loads workspace-relative Markdown images through the authorized workspace boundary", async () => {
-    const loadWorkspaceImage = vi.fn(async () => ({ data: "cG5n", mimeType: "image/png" }));
-    act(() =>
-      root.render(
-        <MarkdownLinkProvider
-          actions={{ openExternalUrl: vi.fn(), openSession: vi.fn(), loadWorkspaceImage }}
-        >
-          <Markdown onOpenSourceLocation={vi.fn()}>
-            ![Visual capture](.visual-captures/example.png)
-          </Markdown>
-        </MarkdownLinkProvider>,
-      ),
-    );
-
-    expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(
-      "![Visual capture](/__cake_workspace__/.visual-captures/example.png)",
-    );
-    const imageComponent = vi.mocked(Streamdown).mock.calls.at(-1)![0].components!.img!;
-    await act(async () => {
-      root.render(
-        createElement(imageComponent, {
-          src: "/__cake_workspace__/.visual-captures/example.png",
-          alt: "Visual capture",
-        }),
-      );
-      await Promise.resolve();
-    });
-
-    expect(loadWorkspaceImage).toHaveBeenCalledWith(
-      ".visual-captures/example.png",
-      expect.any(AbortSignal),
-    );
-    expect(container.querySelector("img")?.src).toBe("data:image/png;base64,cG5n");
-  });
-
-  it("turns a bare artifact URI into an application link", () => {
-    const renderArtifactReference = vi.fn((reference: string) => (
-      <span data-testid="artifact-reference">{reference}</span>
-    ));
-    act(() =>
-      root.render(
-        <MarkdownLinkProvider
-          actions={{ openExternalUrl: vi.fn(), openSession: vi.fn(), renderArtifactReference }}
-        >
-          <Markdown>Review cake://artifact/report-1@r2 before publishing.</Markdown>
-        </MarkdownLinkProvider>,
-      ),
-    );
-
-    expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(
-      "Review [cake://artifact/report-1@r2](/__cake_artifact__/cake%3A%2F%2Fartifact%2Freport-1%40r2) before publishing.",
-    );
-    const anchorComponent = vi.mocked(Streamdown).mock.calls.at(-1)![0].components!.a!;
-    act(() => {
-      root.render(
-        createElement(anchorComponent, {
-          href: "/__cake_artifact__/cake%3A%2F%2Fartifact%2Freport-1%40r2",
-          children: "cake://artifact/report-1@r2",
-        }),
-      );
-    });
-    expect(renderArtifactReference).toHaveBeenCalledWith("cake://artifact/report-1@r2", undefined);
-    expect(container.querySelector("[data-testid=artifact-reference]")?.textContent).toBe(
-      "cake://artifact/report-1@r2",
-    );
-  });
-
-  it("preserves the label of an explicit artifact link", () => {
-    const renderArtifactReference = vi.fn((reference: string) => (
-      <span data-testid="artifact-reference">{reference}</span>
-    ));
-    act(() =>
-      root.render(
-        <MarkdownLinkProvider
-          actions={{ openExternalUrl: vi.fn(), openSession: vi.fn(), renderArtifactReference }}
-        >
-          <Markdown>[Narrow layout](cake://artifact/session-assistant-narrow)</Markdown>
-        </MarkdownLinkProvider>,
-      ),
-    );
-
-    expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(
-      "[Narrow layout](/__cake_artifact__/cake%3A%2F%2Fartifact%2Fsession-assistant-narrow)",
-    );
-    const anchorComponent = vi.mocked(Streamdown).mock.calls.at(-1)![0].components!.a!;
-    act(() => {
-      root.render(
-        createElement(anchorComponent, {
-          href: "/__cake_artifact__/cake%3A%2F%2Fartifact%2Fsession-assistant-narrow",
-          children: "Narrow layout",
-        }),
-      );
-    });
-    expect(renderArtifactReference).toHaveBeenCalledWith(
-      "cake://artifact/session-assistant-narrow",
-      "Narrow layout",
-    );
-  });
-
-  it("opens source, website, and session links with their owning application actions", () => {
-    const onOpenSourceLocation = vi.fn();
-    const openExternalUrl = vi.fn();
-    const openSession = vi.fn();
-    act(() =>
-      root.render(
-        <MarkdownLinkProvider actions={{ openExternalUrl, openSession }}>
-          <Markdown onOpenSourceLocation={onOpenSourceLocation}>
-            {
-              "[file](src/modelMeta.ts#L8-L12) · [before](src/modelMeta.ts?view=changes&side=before#L8-L12) · [functions](src/modelMeta.ts#L153-L170,L182-L192)"
-            }
-          </Markdown>
-        </MarkdownLinkProvider>,
-      ),
-    );
-    expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(
-      "[file](/__cake_workspace__/src/modelMeta.ts#L8-L12) · [before](/__cake_workspace__/src/modelMeta.ts?view=changes&side=before#L8-L12) · [functions](/__cake_workspace__/src/modelMeta.ts#L153-L170,L182-L192)",
-    );
-    const anchorComponent = () => vi.mocked(Streamdown).mock.calls.at(-1)![0].components!.a!;
-
-    const renderAnchor = (props: Record<string, unknown>) => {
-      act(() => {
-        root.render(createElement(anchorComponent(), props));
-      });
-      return container.querySelector("a")!;
-    };
-
-    const fileLink = renderAnchor({
-      href: "/__cake_workspace__/src/modelMeta.ts#L8-L12",
-      children: "src/modelMeta.ts#L8-L12",
-    });
-    expect([...fileLink.classList]).toEqual(
-      expect.arrayContaining([
-        "underline",
-        "text-inherit",
-        "font-semibold",
-        "decoration-solid",
-        "decoration-current",
-        "underline-offset-4",
-      ]),
-    );
-    expect(fileLink.getAttribute("aria-description")).toBe("src/modelMeta.ts#L8-L12");
-    act(() => {
-      fileLink.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-    });
-    expect(onOpenSourceLocation).toHaveBeenCalledWith({
+    await fixture.user.click(screen.getByRole("link", { name: "file" }));
+    expect(open).toHaveBeenLastCalledWith({
       path: "src/modelMeta.ts",
       range: { start: { line: 7 }, end: { line: 11 } },
     });
-
-    const beforeLink = renderAnchor({
-      href: "/__cake_workspace__/src/modelMeta.ts?view=changes&side=before#L8-L12",
-      children: "before",
-    });
-    expect(beforeLink.getAttribute("aria-description")).toBe(
-      "src/modelMeta.ts?view=changes&side=before#L8-L12",
-    );
-    act(() => {
-      beforeLink.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-    });
-    expect(onOpenSourceLocation).toHaveBeenLastCalledWith({
+    await fixture.user.click(screen.getByRole("link", { name: "before" }));
+    expect(open).toHaveBeenLastCalledWith({
       path: "src/modelMeta.ts",
       view: "changes",
       side: "before",
       range: { start: { line: 7 }, end: { line: 11 } },
     });
-
-    const multiRangeLink = renderAnchor({
-      href: "/__cake_workspace__/src/modelMeta.ts#L153-L170,L182-L192",
-      children: "functions",
-    });
-    expect(multiRangeLink.getAttribute("aria-description")).toBe(
-      "src/modelMeta.ts#L153-L170,L182-L192",
-    );
-    act(() => {
-      multiRangeLink.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-    });
-    expect(onOpenSourceLocation).toHaveBeenLastCalledWith({
+    await fixture.user.click(screen.getByRole("link", { name: "functions" }));
+    expect(open).toHaveBeenLastCalledWith({
       path: "src/modelMeta.ts",
       ranges: [
         { start: { line: 152 }, end: { line: 169 } },
         { start: { line: 181 }, end: { line: 191 } },
       ],
     });
+    await fixture.user.click(screen.getByRole("link", { name: "protocol" }));
+    expect(open).toHaveBeenLastCalledWith({ path: "docs/architecture/s4-artifact-protocol.md" });
+    await fixture.user.click(screen.getByRole("link", { name: "src/main.ts:880:12" }));
+    expect(open).toHaveBeenLastCalledWith({
+      path: "src/main.ts",
+      range: { start: { line: 879, column: 11 } },
+    });
+    expect(screen.queryByRole("link", { name: "src/not-a-link.ts:3" })).toBeNull();
+    expect(screen.getByText("src/not-a-link.ts:3").tagName).toBe("CODE");
+  });
 
-    const webLink = renderAnchor({
-      href: "https://example.com",
-      title: "Custom title",
-      children: "example",
-    });
-    expect(webLink.getAttribute("aria-description")).toBe("https://example.com");
-    expect(webLink.className).toContain("text-inherit");
-    expect(webLink.target).toBe("_blank");
-    act(() => {
-      webLink.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-    });
-    expect(openExternalUrl).toHaveBeenCalledWith("https://example.com");
-    expect(onOpenSourceLocation).toHaveBeenCalledTimes(3);
-
-    const sessionLink = renderAnchor({
-      href: "/__cake_session__/session-123",
-      title: "Authored title",
-      children: "Authentication refactor",
-    });
-    expect(sessionLink.getAttribute("aria-description")).toBe("cake://session/session-123");
-    expect(sessionLink.className).toContain("text-inherit");
-    expect(sessionLink.textContent).toBe("Authentication refactor");
-    expect(sessionLink.className).toContain("max-w-[80ch]");
-    act(() => {
-      sessionLink.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-    });
-    expect(openSession).toHaveBeenCalledWith("session-123");
-
-    const messageLink = renderAnchor({
-      href: "/__cake_session__/session-123?message=entry-42",
-      children: "Exact source message",
-    });
-    expect(messageLink.getAttribute("href")).toBe("cake://session/session-123?message=entry-42");
-    act(() => {
-      messageLink.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-    });
-    expect(openSession).toHaveBeenLastCalledWith("session-123", "entry-42");
-
-    const attachmentLink = renderAnchor({
-      href: "/__cake_session__/session-123?attachment=00000000-0000-4000-8000-000000000001",
-      children: "Source attachment",
-    });
-    expect(attachmentLink.getAttribute("href")).toBe(
-      "cake://session/session-123?attachment=00000000-0000-4000-8000-000000000001",
+  it("preserves session and artifact targets and authored labels through sanitization", async () => {
+    const openSession = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);
+    using fixture = renderMarkdown(
+      [
+        '[Authentication refactor](cake://session/session-123 "Authored title")',
+        '[Narrow layout](cake://artifact/session-assistant-narrow "Authored title")',
+        "Review cake://artifact/report-1@r2 before publishing.",
+      ].join("\n\n"),
+      { sessionLinkTarget: "session-123", client: { projectSessions: { open: openSession } } },
     );
-    act(() => {
-      attachmentLink.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-    });
-    expect(openSession).toHaveBeenLastCalledWith(
-      "session-123",
+    const session = screen.getByRole("link", { name: "Authentication refactor" });
+    expect(session.getAttribute("href")).toBe("cake://session/session-123");
+    expect(session.getAttribute("aria-description")).toBe("cake://session/session-123");
+    await fixture.user.click(session);
+    expect(openSession).toHaveBeenCalledWith(
+      { sessionId: "session-123", workingDirectory: "/work/cake" },
+      { signal: expect.any(AbortSignal) },
+    );
+    expect(screen.getByRole("link", { name: "Narrow layout" }).getAttribute("href")).toBe(
+      "cake://artifact/session-assistant-narrow",
+    );
+    expect(
+      screen.getByRole("link", { name: "cake://artifact/report-1@r2" }).getAttribute("href"),
+    ).toBe("cake://artifact/report-1@r2");
+  });
+
+  it.each([
+    ["message=entry-42", "entry-42", undefined],
+    [
+      "attachment=00000000-0000-4000-8000-000000000001",
       undefined,
       "00000000-0000-4000-8000-000000000001",
-    );
+    ],
+  ])(
+    "preserves titled session links with %s through parsing and navigation",
+    async (query, messageId, attachmentId) => {
+      const openSession = vi.fn();
+      const target = `cake://session/session-123?${query}`;
+      using fixture = renderMarkdown(`[Exact source](${target} "Authored title")`, {
+        actions: { openSession },
+      });
+      const link = screen.getByRole("link", { name: "Exact source" });
+      expect(link.getAttribute("href")).toBe(target);
+      await fixture.user.click(link);
+      expect(openSession).toHaveBeenCalledWith("session-123", messageId, attachmentId);
+    },
+  );
 
-    act(() => root.render(<Markdown>text</Markdown>));
-    const defaultLink = renderAnchor({ href: "docs/readme.md", children: "readme" });
-    expect(defaultLink.getAttribute("aria-description")).toBe("docs/readme.md");
-    expect(defaultLink.className).toContain("text-inherit");
-    expect(defaultLink.target).toBe("_blank");
-    expect(onOpenSourceLocation).toHaveBeenCalledTimes(3);
+  it("loads workspace images only through the authorized image service", async () => {
+    const readImage = vi.fn<Client["filesystem"]["readImage"]>(async () => ({
+      data: "cG5n",
+      mimeType: "image/png",
+    }));
+    using fixture = renderMarkdown("![Visual capture](.visual-captures/example.png)", {
+      props: { onOpenSourceLocation: () => undefined },
+      actions: { loadWorkspaceImage: (path, signal) => readImage("/work/cake", path, { signal }) },
+      client: { filesystem: { readImage } },
+    });
+    expect(
+      (await within(fixture.container).findByRole("img", { name: "Visual capture" })).getAttribute(
+        "src",
+      ),
+    ).toBe("data:image/png;base64,cG5n");
+    expect(readImage).toHaveBeenCalledWith("/work/cake", ".visual-captures/example.png", {
+      signal: expect.any(AbortSignal),
+    });
+  });
+
+  it("shows image failures and cancels obsolete workspace reads", async () => {
+    let signal: AbortSignal | undefined;
+    const readImage = vi.fn<Client["filesystem"]["readImage"]>(
+      async (_directory, path, options) => {
+        if (path === "missing.png") throw new Error("Not authorized");
+        signal = options?.signal;
+        return new Promise(() => undefined);
+      },
+    );
+    using fixture = renderMarkdown("![Missing](missing.png)", {
+      props: { onOpenSourceLocation: () => undefined },
+      actions: {
+        loadWorkspaceImage: (path, abort) => readImage("/work/cake", path, { signal: abort }),
+      },
+      client: { filesystem: { readImage } },
+    });
+    expect(await screen.findByText("Image not available: Missing")).toBeDefined();
+    await fixture.update("![Pending](pending.png)");
+    expect(await screen.findByText("Loading image…")).toBeDefined();
+    await fixture.update("Replacement prose.");
+    expect(signal?.aborted).toBe(true);
+  });
+
+  it("keeps parsed fullscreen table cells and link actions when streaming settles", async () => {
+    const openExternalUrl = vi.fn<Client["electron"]["openExternalUrl"]>(async () => undefined);
+    const source = "| Content |\n| --- |\n| **Formatted** [Source](https://example.com/source) |";
+    using fixture = renderMarkdown(source, {
+      props: { streaming: true },
+      client: { electron: { openExternalUrl } },
+    });
+    await fixture.user.click(screen.getByRole("button", { name: "View table fullscreen" }));
+    const fullscreen = screen.getByRole("dialog", { name: "Table" });
+    expect(within(fullscreen).getByText("Formatted").getAttribute("data-streamdown")).toBe(
+      "strong",
+    );
+    await fixture.user.click(within(fullscreen).getByRole("link", { name: "Source" }));
+    expect(openExternalUrl).toHaveBeenCalledWith("https://example.com/source", {
+      signal: expect.any(AbortSignal),
+    });
+    await fixture.update(source, { streaming: false });
+    expect(screen.getByRole("dialog", { name: "Table" })).toBe(fullscreen);
+    await fixture.user.click(
+      within(fullscreen).getByRole("button", { name: "Exit fullscreen Table" }),
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("renders LaTeX delimiters as math without changing inline and fenced code", async () => {
+    using fixture = renderMarkdown(
+      "Inline \\(x + y\\).\n\n\\[\nE = mc^2\n\\]\n\n`\\(inline code\\)`\n\n````tex\n\\[fenced code\\]\n````",
+    );
+    await waitFor(() => expect(fixture.container.querySelectorAll(".katex")).toHaveLength(1));
+    // The installed math plugin disables single-dollar inline math by default.
+    expect(screen.getByText("Inline $x + y$.")).toBeDefined();
+    expect(fixture.container.querySelector(".katex-display")).not.toBeNull();
+    expect(screen.getByText("\\(inline code\\)").tagName).toBe("CODE");
+    expect(codeBodies(fixture.container)[0]!.textContent).toContain("\\[fenced code\\]");
+    expect(fixture.container.querySelector('[data-streamdown="mermaid"]')).toBeNull();
+  });
+
+  it("can defer math normalization for an incomplete streaming response", () => {
+    using fixture = renderMarkdown("Streaming \\(x + y\\) and \\[E = mc^2\\]", {
+      props: { normalizeLatexDelimiters: false },
+    });
+    expect(fixture.container.textContent).toContain("Streaming (x + y) and [E = mc^2]");
+    expect(fixture.container.querySelector(".katex")).toBeNull();
+  });
+
+  it("keeps an actual Mermaid diagram fullscreen when streaming settles", async () => {
+    // jsdom has no SVG layout; this supplies only browser measurement, not a
+    // diagram renderer. Real Mermaid parsing, sanitization and SVG run here.
+    const original = Object.getOwnPropertyDescriptor(SVGElement.prototype, "getBBox");
+    const originalObserver = Object.getOwnPropertyDescriptor(globalThis, "IntersectionObserver");
+    class VisibleIntersectionObserver implements IntersectionObserver {
+      readonly root = null;
+      readonly rootMargin = "0px";
+      readonly thresholds = [0];
+      constructor(private callback: IntersectionObserverCallback) {}
+      takeRecords(): IntersectionObserverEntry[] {
+        return [];
+      }
+      observe(target: Element) {
+        queueMicrotask(() =>
+          this.callback(
+            [
+              {
+                target,
+                isIntersecting: true,
+                intersectionRatio: 1,
+                time: 0,
+                boundingClientRect: new DOMRect(),
+                intersectionRect: new DOMRect(),
+                rootBounds: null,
+              },
+            ],
+            this,
+          ),
+        );
+      }
+      unobserve() {}
+      disconnect() {}
+    }
+    Object.defineProperty(globalThis, "IntersectionObserver", {
+      configurable: true,
+      value: VisibleIntersectionObserver,
+    });
+    Object.defineProperty(SVGElement.prototype, "getBBox", {
+      configurable: true,
+      value: () => new DOMRect(0, 0, 100, 30),
+    });
+    try {
+      document.documentElement.dataset.theme = "dark";
+      const source = "```mermaid\ngraph LR\nA[Start] --> B[Finish]\n```";
+      using fixture = renderMarkdown(source, { props: { streaming: true } });
+      await waitFor(
+        () =>
+          expect(
+            fixture.container.querySelector('[data-streamdown="mermaid"] [role="img"] > svg'),
+          ).not.toBeNull(),
+        { timeout: 5000 },
+      );
+      expect(
+        fixture.container.querySelector('[data-streamdown="mermaid"] svg style')?.textContent,
+      ).toContain("fill:#1f2020");
+      await fixture.user.click(screen.getByRole("button", { name: "View fullscreen" }));
+      const fullscreen = screen.getByRole("dialog", { name: "Mermaid" });
+      expect(fullscreen.querySelector("svg")).not.toBeNull();
+      expect(fullscreen.textContent).toContain("Start");
+      expect(fullscreen.textContent).toContain("Finish");
+      await fixture.update(source, { streaming: false });
+      expect(screen.getByRole("dialog", { name: "Mermaid" })).toBe(fullscreen);
+      await fixture.user.click(
+        within(fullscreen).getByRole("button", { name: "Exit fullscreen Mermaid" }),
+      );
+      expect(screen.queryByRole("dialog")).toBeNull();
+    } finally {
+      if (originalObserver)
+        Object.defineProperty(globalThis, "IntersectionObserver", originalObserver);
+      else Reflect.deleteProperty(globalThis, "IntersectionObserver");
+      if (original) Object.defineProperty(SVGElement.prototype, "getBBox", original);
+      else Reflect.deleteProperty(SVGElement.prototype, "getBBox");
+    }
+  });
+
+  it("retains dual-theme highlighted tokens across a live color theme change", async () => {
+    document.documentElement.dataset.theme = "light";
+    using fixture = renderMarkdown("```ts\nconst themed = true;\n```");
+    await waitFor(() => expect(highlighted(codeBodies(fixture.container)[0]!)).toBe(true));
+    const code = codeBodies(fixture.container)[0]!;
+    expect(code.querySelector('span[style*="--sdm-c"]')).not.toBeNull();
+    await act(async () => {
+      document.documentElement.dataset.theme = "dark";
+    });
+    expect(codeBodies(fixture.container)[0]).toBe(code);
+    expect(highlighted(code)).toBe(true);
+    expect(code.textContent).toContain("const themed = true;");
   });
 });
