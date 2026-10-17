@@ -1,6 +1,7 @@
 import { act, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { VirtuosoMockContext } from "react-virtuoso";
+import { StoreProvider } from "r-state-tree/react";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import { Chat } from "../../../src/renderer/components/chat";
@@ -23,6 +24,7 @@ export const changedFile: UiPart = {
 export function renderChatSurface(
   options: {
     parts?: UiPart[];
+    snapshot?: Partial<ConversationSnapshot>;
     client?: TestClientOverrides;
   } = {},
 ) {
@@ -34,7 +36,7 @@ export function renderChatSurface(
   const session = fixture.root.sessionRegistry.load(chatSessionId, "/project");
   fixture.root.appShellStore.selectProjectSession(chatSessionId);
   fixture.root.projectWorkbenchStore.showLoadedSession(chatSessionId);
-  const snapshot: ConversationSnapshot = {
+  let snapshot: ConversationSnapshot = {
     sessionId: chatSessionId,
     sessionFile: "/project/chat-surface.jsonl",
     parts: options.parts ?? [],
@@ -47,24 +49,28 @@ export function renderChatSurface(
     compatibility: { resources: [], diagnostics: [] },
     extensionUi: { statuses: [] },
     tree: [],
+    ...options.snapshot,
   };
   let revision = 1;
   applyConversationUpdate(session.model, { _tag: "Snapshot", revision, snapshot });
   const chat = session.conversationSessionStore.chatStore;
   const view = render(
-    <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
-      <WorkLogControls store={chat} />
-      <Chat store={chat} compact composerFocusEnabled={false} />
-    </VirtuosoMockContext.Provider>,
+    <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
+        <WorkLogControls store={chat} />
+        <Chat store={chat} compact composerFocusEnabled={false} />
+      </VirtuosoMockContext.Provider>
+    </StoreProvider>,
   );
   return {
     user: userEvent.setup(),
     publish(parts: UiPart[], streaming = false) {
       act(() => {
+        snapshot = { ...snapshot, parts, streaming };
         applyConversationUpdate(session.model, {
           _tag: "Snapshot",
           revision: ++revision,
-          snapshot: { ...snapshot, parts, streaming },
+          snapshot,
         });
       });
     },

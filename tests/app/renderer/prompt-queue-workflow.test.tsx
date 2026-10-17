@@ -1,250 +1,141 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, render, screen, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  TurnId,
-  type ConversationSnapshot,
-  type SessionChatPromptInput,
-} from "../../../src/contracts/conversations/conversation-data";
-import { encodeCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
-import { createCakeSessionRuntimeTurnController } from "../../../src/services/pi/runtime/cake-session-runtime-turn-controller";
-import { Chat } from "../../../src/renderer/components/chat";
-import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
-import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
-import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { TurnId } from "../../../src/contracts/conversations/conversation-data";
+import type { Client } from "../../../src/renderer/client/Client";
+import { queuePart, queueSessionId, renderQueue } from "./prompt-queue-workflow-fixture";
 
-const sessionId = "session-one";
-const metadata = {
-  version: 1 as const,
-  messageId: "f6debbbd-ced1-4a12-b0f7-fb60c292c623",
-  threadId: "8358c2b7-bd3c-42ee-9fec-fcb726b66c18",
-  sequence: 1,
-  expectsResponse: false,
-  sender: { kind: "project-session" as const, sessionId: "source-session", title: "API review" },
-};
-
-/** Real Pi queue policy and projection; only the Pi SDK and transport are faked. */
-function renderQueue(
-  initial: { steering: string[]; followUp: string[] } = { steering: [], followUp: [] },
-) {
-  let steering = [...initial.steering];
-  let followUp = [...initial.followUp];
-  let publish = () => {};
-  const immediate: string[] = [];
-  const pi = {
-    isStreaming: true,
-    isCompacting: false,
-    isBashRunning: false,
-    sessionManager: { getBranch: () => [] },
-    prompt: vi.fn(async (text: string, options?: { streamingBehavior?: string }) => {
-      if (options?.streamingBehavior === "steer") steering.push(text);
-      else if (options?.streamingBehavior === "followUp") followUp.push(text);
-      else immediate.push(text);
-    }),
-    steer: async (text: string) => {
-      steering.push(text);
-      return "queued";
-    },
-    followUp: async (text: string) => {
-      followUp.push(text);
-      return "queued";
-    },
-    getSteeringMessages: () => steering,
-    getFollowUpMessages: () => followUp,
-    clearQueue: () => {
-      const queue = { steering, followUp };
-      steering = [];
-      followUp = [];
-      return queue;
-    },
-    abort: vi.fn(async () => {}),
-  } as unknown as AgentSession;
-  const controller = createCakeSessionRuntimeTurnController({
-    session: pi,
-    isDisposed: () => false,
-    allowUserBash: true,
-    beforeIdleTurn: async () => {},
-    withResponseRetries: (operation) => operation(),
-    cancelResponseRetries: () => {},
-    recovery: { onUserInput: () => {}, onAbort: () => {} },
-    deliverTrackedUserMessage: (_text, _markdown, deliver) => deliver(),
-    syncQueuedParts: () => publish(),
-    emitPart: () => {},
-    emitSnapshot: async () => publish(),
-    emitSnapshotInBackground: () => publish(),
-  });
-  const reorder = vi.fn(async (input: { itemId: string; position: number }) => {
-    await controller.reorderPendingMessage(input);
-    return controller.listQueuedMessages();
-  });
-  const prompt = vi.fn(async (input: SessionChatPromptInput) => {
-    await controller.prompt(
-      input.text,
-      "follow-up",
-      [...input.attachments],
-      input.renderUserMessageAsMarkdown,
-    );
-    return TurnId.make("10000000-0000-4000-8000-000000000001");
-  });
-  const fixture = createRendererStoreFixture({
-    client: {
-      sessionChats: {
-        prompt,
-        reorderQueuedMessage: reorder,
-        removeQueuedMessage: ({ partId }) => controller.removeQueuedMessage(partId),
-        steerQueuedMessage: ({ partId }) => controller.steerQueuedMessage(partId),
-        sendQueuedMessageNow: async ({ partId }) =>
-          (await controller.sendQueuedMessageNow(partId)).queued,
-      },
-    },
-    projects: [projectRecord({ path: "/project", name: "Project" })],
-    sessions: [sessionSummary({ sessionId, projectPath: "/project" })],
-  });
-  const session = fixture.root.sessionRegistry.load(sessionId, "/project");
-  fixture.root.appShellStore.selectProjectSession(sessionId);
-  fixture.root.projectWorkbenchStore.showLoadedSession(sessionId);
-  const model = fixture.models.projectConversation(sessionId, "/project");
-  let revision = 0;
-  publish = () => {
-    const snapshot: ConversationSnapshot = {
-      sessionId,
-      sessionFile: "/project/session-one.jsonl",
-      parts: [
-        {
-          id: "assistant-1",
-          kind: "text",
-          role: "assistant",
-          text: "Working",
-          status: "streaming",
-        },
-        ...controller.queuedParts(),
-      ],
-      models: [],
-      thinkingLevel: "off",
-      availableThinkingLevels: ["off"],
-      streaming: true,
-      diagnostics: [],
-      commands: [],
-      compatibility: { resources: [], diagnostics: [] },
-      extensionUi: { statuses: [] },
-      tree: [],
-    };
-    applyConversationUpdate(model, { _tag: "Snapshot", revision: ++revision, snapshot });
-  };
-  publish();
-  const view = render(
-    <Chat
-      store={session.conversationSessionStore.chatStore}
-      embedded
-      composerFocusEnabled={false}
-    />,
-  );
-  return {
-    user: userEvent.setup(),
-    controller,
-    prompt,
-    reorder,
-    pi,
-    immediate,
-    async enqueue(text: string) {
-      const user = userEvent.setup();
-      await user.type(screen.getByRole("combobox"), text);
-      await user.click(screen.getByRole("button", { name: "Send" }));
-    },
-    [Symbol.dispose]() {
-      view.unmount();
-      fixture[Symbol.dispose]();
-      controller.dispose();
-    },
-  };
-}
+const turnId = TurnId.make("10000000-0000-4000-8000-000000000001");
+const commandOptions = expect.objectContaining({ signal: expect.any(AbortSignal) });
 function queuedTexts() {
   return within(screen.getByRole("list", { name: "Queued prompts" }))
     .getAllByRole("listitem")
     .map((item) => within(item).getByRole("button", { name: /^View queued message:/ }).textContent);
 }
+async function enqueue(fixture: ReturnType<typeof renderQueue>, text: string) {
+  await fixture.user.type(screen.getByRole("combobox"), text);
+  await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+}
 afterEach(cleanup);
 
+// Real Root/Models/Chat and delivery policy, with typed SessionChats authority
+// snapshots. Pi queue execution/abort/command semantics stay in service tests.
 describe("Prompt queue workflow", () => {
-  it("projects commands in the shared queue with reordering and cancellation, without message-only edit or steering actions", async () => {
-    using fixture = renderQueue({ followUp: ["Next task"], steering: [] });
-    expect(screen.queryByRole("button", { name: /^Move (up|down):/ })).toBeNull();
-    await act(async () => {
-      await fixture.controller.queueCommand("/toolcompact");
+  it("reorders and cancels authority-projected commands without offering message-only actions", async () => {
+    const next = queuePart(1, "Next task");
+    const command = queuePart(2, "/toolcompact", { command: "/toolcompact" });
+    const reorder = vi.fn<Client["sessionChats"]["reorderQueuedMessage"]>(async () =>
+      fixture.publish([command, next]),
+    );
+    const remove = vi.fn<Client["sessionChats"]["removeQueuedMessage"]>(async () =>
+      fixture.publish([next]),
+    );
+    using fixture = renderQueue([next, command], {
+      sessionChats: { reorderQueuedMessage: reorder, removeQueuedMessage: remove },
     });
-    expect(queuedTexts()).toEqual(["Next task", "/toolcompact"]);
-    expect(screen.getAllByRole("button", { name: /^Move (up|down):/ })).toHaveLength(4);
     expect(screen.getByRole("button", { name: "Send now as steering: Next task" })).toBeDefined();
     expect(screen.getByRole("button", { name: "Edit queued prompt: Next task" })).toBeDefined();
     expect(screen.queryByRole("button", { name: "Send now as steering: /toolcompact" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Edit queued prompt: /toolcompact" })).toBeNull();
     await fixture.user.click(screen.getByRole("button", { name: "Move up: /toolcompact" }));
     expect(queuedTexts()).toEqual(["/toolcompact", "Next task"]);
+    expect(reorder).toHaveBeenCalledExactlyOnceWith(
+      { sessionId: queueSessionId, itemId: command.queuedInput!.itemId, position: 1 },
+      commandOptions,
+    );
     await fixture.user.click(
       screen.getByRole("button", { name: "Cancel queued message: /toolcompact" }),
     );
     expect(queuedTexts()).toEqual(["Next task"]);
-    expect(screen.queryByRole("button", { name: /^Move (up|down):/ })).toBeNull();
-    expect(fixture.pi.abort).not.toHaveBeenCalled();
+    expect(remove).toHaveBeenCalledExactlyOnceWith(
+      { sessionId: queueSessionId, partId: command.id },
+      commandOptions,
+    );
   });
 
-  it("interleaves user and agent inputs in both lanes and reorders through authoritative positions", async () => {
-    using fixture = renderQueue({
-      steering: ["First steer", encodeCrossSessionMessage("Agent steer", metadata)],
-      followUp: [encodeCrossSessionMessage("Agent queued", metadata)],
+  it("keeps agent/user ordering lane-local and follows promotion and individual cancellation", async () => {
+    const first = queuePart(1, "First steer", { lane: "steering" });
+    const agentSteer = queuePart(2, "Agent steer", { lane: "steering", agent: true });
+    const agent = queuePart(3, "Agent queued", { agent: true });
+    const user = queuePart(4, "User queued");
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () => {
+      fixture.publish([first, agentSteer, agent, user]);
+      return turnId;
     });
-    await fixture.enqueue("User queued");
-    expect(fixture.prompt).toHaveBeenCalledOnce();
+    const reorder = vi
+      .fn<Client["sessionChats"]["reorderQueuedMessage"]>()
+      .mockImplementationOnce(async () => fixture.publish([first, agentSteer, user, agent]))
+      .mockImplementationOnce(async () => fixture.publish([agentSteer, first, user, agent]));
+    const promoted = { ...agent, deliveryState: "steering" as const };
+    const steer = vi.fn<Client["sessionChats"]["steerQueuedMessage"]>(async () =>
+      fixture.publish([agentSteer, first, promoted, user]),
+    );
+    const remove = vi.fn<Client["sessionChats"]["removeQueuedMessage"]>(async () =>
+      fixture.publish([agentSteer, first, user]),
+    );
+    using fixture = renderQueue([first, agentSteer, agent], {
+      sessionChats: {
+        prompt,
+        reorderQueuedMessage: reorder,
+        steerQueuedMessage: steer,
+        removeQueuedMessage: remove,
+      },
+    });
+    await enqueue(fixture, "User queued");
     expect(queuedTexts()).toEqual(["First steer", "Agent steer", "Agent queued", "User queued"]);
     await fixture.user.click(screen.getByRole("button", { name: "Move up: User queued" }));
-    expect(queuedTexts()).toEqual(["First steer", "Agent steer", "User queued", "Agent queued"]);
     await fixture.user.click(screen.getByRole("button", { name: "Move up: Agent steer" }));
     expect(queuedTexts()).toEqual(["Agent steer", "First steer", "User queued", "Agent queued"]);
-    expect(fixture.reorder.mock.calls.map(([input]) => input.position)).toEqual([1, 1]);
-    expect(screen.getByRole("group", { name: "Steering" })).toBeDefined();
-    expect(screen.getByRole("group", { name: "Queued" })).toBeDefined();
-    expect(
-      screen.getByRole<HTMLButtonElement>("button", { name: "Move up: User queued" }).disabled,
-    ).toBe(true);
-    expect(
-      screen.getByRole<HTMLButtonElement>("button", { name: "Move down: First steer" }).disabled,
-    ).toBe(true);
-  });
-
-  it("appends promotion to steering and cancels individual agent or user items without demoting survivors", async () => {
-    using fixture = renderQueue({
-      steering: ["Existing steer"],
-      followUp: [encodeCrossSessionMessage("Agent queued", metadata), "User queued"],
-    });
+    expect(reorder.mock.calls.map(([input]) => input)).toEqual([
+      { sessionId: queueSessionId, itemId: user.queuedInput!.itemId, position: 1 },
+      { sessionId: queueSessionId, itemId: agentSteer.queuedInput!.itemId, position: 1 },
+    ]);
+    expect(screen.getByRole("button", { name: "Move up: User queued" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    expect(screen.getByRole("button", { name: "Move down: First steer" })).toHaveProperty(
+      "disabled",
+      true,
+    );
     await fixture.user.click(
       screen.getByRole("button", { name: "Send now as steering: Agent queued" }),
     );
-    expect(queuedTexts()).toEqual(["Existing steer", "Agent queued", "User queued"]);
-    expect(screen.getAllByRole("button", { name: /^Move (up|down):/ })).toHaveLength(4);
-    expect(screen.queryByRole("button", { name: "Move up: User queued" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Move down: User queued" })).toBeNull();
-    await fixture.user.click(screen.getByRole("button", { name: "Cancel steering: Agent queued" }));
-    expect(queuedTexts()).toEqual(["Existing steer", "User queued"]);
-    expect(screen.queryByRole("button", { name: /^Move (up|down):/ })).toBeNull();
-    await fixture.user.click(
-      screen.getByRole("button", { name: "Cancel queued message: User queued" }),
+    expect(steer).toHaveBeenCalledExactlyOnceWith(
+      { sessionId: queueSessionId, partId: agent.id },
+      commandOptions,
     );
-    expect(queuedTexts()).toEqual(["Existing steer"]);
+    expect(
+      within(screen.getByRole("group", { name: "Steering" })).getAllByRole("listitem"),
+    ).toHaveLength(3);
+    expect(queuedTexts()).toEqual(["Agent steer", "First steer", "Agent queued", "User queued"]);
+    await fixture.user.click(screen.getByRole("button", { name: "Cancel steering: Agent queued" }));
+    expect(remove).toHaveBeenCalledExactlyOnceWith(
+      { sessionId: queueSessionId, partId: agent.id },
+      commandOptions,
+    );
+    expect(queuedTexts()).toEqual(["Agent steer", "First steer", "User queued"]);
   });
 
-  it("reveals stop-and-send only after steering and aborts without dropping the other messages", async () => {
-    using fixture = renderQueue({
-      steering: ["Keep steering"],
-      followUp: ["Keep queued", encodeCrossSessionMessage("Send agent now", metadata)],
+  it("sends the chosen queued agent item now while retaining the other authority records", async () => {
+    const steering = queuePart(1, "Keep steering", { lane: "steering" });
+    const queued = queuePart(2, "Keep queued");
+    const agent = queuePart(3, "Send agent now", { agent: true });
+    const steer = vi.fn<Client["sessionChats"]["steerQueuedMessage"]>(async () =>
+      fixture.publish([steering, { ...agent, deliveryState: "steering" }, queued]),
+    );
+    const sendNow = vi.fn<Client["sessionChats"]["sendQueuedMessageNow"]>(async () =>
+      fixture.publish([steering, queued]),
+    );
+    using fixture = renderQueue([steering, queued, agent], {
+      sessionChats: { steerQueuedMessage: steer, sendQueuedMessageNow: sendNow },
     });
     expect(screen.queryByRole("button", { name: "Stop and send now: Send agent now" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Stop and send now: Keep queued" })).toBeNull();
     await fixture.user.click(
       screen.getByRole("button", { name: "Send now as steering: Send agent now" }),
     );
-    expect(fixture.pi.abort).not.toHaveBeenCalled();
+    expect(sendNow).not.toHaveBeenCalled();
     expect(queuedTexts()).toEqual(["Keep steering", "Send agent now", "Keep queued"]);
     expect(
       within(screen.getByRole("group", { name: "Steering" }))
@@ -258,39 +149,84 @@ describe("Prompt queue workflow", () => {
     await fixture.user.click(
       screen.getByRole("button", { name: "Stop and send now: Send agent now" }),
     );
-    expect(fixture.pi.abort).toHaveBeenCalledOnce();
-    expect(fixture.immediate).toEqual([encodeCrossSessionMessage("Send agent now", metadata)]);
+    expect(sendNow).toHaveBeenCalledExactlyOnceWith(
+      { sessionId: queueSessionId, partId: agent.id },
+      commandOptions,
+    );
     expect(queuedTexts()).toEqual(["Keep steering", "Keep queued"]);
   });
 
-  it("restores an admitted user payload for editing and resubmits at the queue tail", async () => {
-    using fixture = renderQueue();
-    await fixture.enqueue("First");
-    await fixture.enqueue("Second");
-    await fixture.user.click(screen.getByRole("button", { name: "Edit queued prompt: First" }));
-    expect(screen.getByRole<HTMLTextAreaElement>("combobox").value).toBe("First");
+  it("restores an admitted payload for editing and resubmits at the authoritative queue tail", async () => {
+    const first = queuePart(1, "# First", {
+      markdown: true,
+      attachments: [
+        { kind: "image", name: "diagram.png", mimeType: "image/png", data: "aW1hZ2U=" },
+      ],
+    });
+    const second = queuePart(2, "Second");
+    const revised = queuePart(3, "# First revised", {
+      markdown: true,
+      attachments: first.queuedInput!.attachments,
+    });
+    const remove = vi.fn<Client["sessionChats"]["removeQueuedMessage"]>(async () =>
+      fixture.publish([second]),
+    );
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () => {
+      fixture.publish([second, revised]);
+      return turnId;
+    });
+    using fixture = renderQueue([first, second], {
+      sessionChats: { removeQueuedMessage: remove, prompt },
+    });
+    await fixture.user.click(screen.getByRole("button", { name: "Edit queued prompt: # First" }));
+    expect(screen.getByRole<HTMLTextAreaElement>("combobox").value).toBe("# First");
+    expect(screen.getByAltText("diagram.png")).toBeDefined();
     expect(queuedTexts()).toEqual(["Second"]);
     await fixture.user.type(screen.getByRole("combobox"), " revised");
     await fixture.user.click(screen.getByRole("button", { name: "Send" }));
-    expect(queuedTexts()).toEqual(["Second", "First revised"]);
+    await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
+    expect(prompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "# First revised",
+        attachments: first.queuedInput!.attachments,
+        renderUserMessageAsMarkdown: true,
+      }),
+      commandOptions,
+    );
+    expect(queuedTexts()).toEqual(["Second", "# First revised"]);
   });
 
-  it("does not expose invalid queue positions while another input is still being admitted", async () => {
-    using fixture = renderQueue({ steering: [], followUp: ["First"] });
-    let release = () => {};
+  it("withholds mutation positions for optimistic admissions until the canonical item arrives", async () => {
+    const first = queuePart(1, "First");
+    const admitted = queuePart(2, "Pending");
+    let release!: () => void;
     const admission = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const deliver = fixture.prompt.getMockImplementation()!;
-    fixture.prompt.mockImplementationOnce(async (input) => {
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () => {
       await admission;
-      return deliver(input);
+      fixture.publish([first, admitted]);
+      return turnId;
     });
-    await fixture.enqueue("Pending");
+    const reorder = vi.fn<Client["sessionChats"]["reorderQueuedMessage"]>(async () =>
+      fixture.publish([admitted, first]),
+    );
+    using fixture = renderQueue([first], {
+      sessionChats: { prompt, reorderQueuedMessage: reorder },
+    });
+    await enqueue(fixture, "Pending");
+    expect(queuedTexts()).toEqual(["First", "Pending"]);
+    expect(screen.getByRole("button", { name: "Move down: First" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    const cancel = screen.getByRole("button", { name: "Cancel queued message: Pending" });
+    expect(cancel).toHaveProperty("disabled", true);
+    await fixture.user.click(cancel);
     expect(queuedTexts()).toEqual(["First", "Pending"]);
     const pendingRow = screen
       .getByRole("button", { name: "View queued message: Pending" })
-      .closest('[role="listitem"]')! as HTMLElement;
+      .closest<HTMLElement>('[role="listitem"]')!;
     expect(within(pendingRow).getByRole("status").textContent).toBe("Sending…");
     for (const button of within(pendingRow).getAllByRole<HTMLButtonElement>("button")) {
       if (button.getAttribute("aria-label") !== "View queued message: Pending") {
@@ -308,9 +244,13 @@ describe("Prompt queue workflow", () => {
       release();
       await admission;
     });
-    expect(
-      screen.getByRole<HTMLButtonElement>("button", { name: "Move down: First" }).disabled,
-    ).toBe(false);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Move down: First" })).toHaveProperty(
+        "disabled",
+        false,
+      ),
+    );
+
     expect(
       within(screen.getByRole("group", { name: "Queued" }))
         .getAllByRole("status")
@@ -318,24 +258,41 @@ describe("Prompt queue workflow", () => {
     ).toEqual(["After this response", "After this response"]);
     await fixture.user.click(screen.getByRole("button", { name: "Move up: Pending" }));
     expect(queuedTexts()).toEqual(["Pending", "First"]);
+    expect(reorder).toHaveBeenCalledExactlyOnceWith(
+      { sessionId: queueSessionId, itemId: admitted.queuedInput!.itemId, position: 1 },
+      commandOptions,
+    );
   });
 
-  it("restores a failed admission to the draft and queues it on retry", async () => {
-    using fixture = renderQueue();
-    fixture.prompt.mockRejectedValueOnce(new Error("Runtime unavailable"));
-    await fixture.enqueue("Retry this");
+  it("restores failed admissions for retry and preserves queue order through mutation failure and retry", async () => {
+    const first = queuePart(1, "First");
+    const retry = queuePart(2, "Retry this");
+    const prompt = vi
+      .fn<Client["sessionChats"]["prompt"]>()
+      .mockRejectedValueOnce(new Error("Runtime unavailable"))
+      .mockImplementationOnce(async () => {
+        fixture.publish([first, retry]);
+        return turnId;
+      });
+    const reorder = vi
+      .fn<Client["sessionChats"]["reorderQueuedMessage"]>()
+      .mockRejectedValueOnce(new Error("Queue unavailable"))
+      .mockImplementationOnce(async () => fixture.publish([retry, first]));
+    using fixture = renderQueue([first], {
+      sessionChats: { prompt, reorderQueuedMessage: reorder },
+    });
+    await enqueue(fixture, "Retry this");
     expect(await screen.findByText("Runtime unavailable")).toBeDefined();
     expect(screen.getByRole<HTMLTextAreaElement>("combobox").value).toBe("Retry this");
+    expect(queuedTexts()).toEqual(["First"]);
     await fixture.user.click(screen.getByRole("button", { name: "Send" }));
-    expect(queuedTexts()).toEqual(["Retry this"]);
-    expect(fixture.prompt).toHaveBeenCalledTimes(2);
-  });
-
-  it("keeps queue order and displays a recoverable error when a mutation fails", async () => {
-    using fixture = renderQueue({ steering: [], followUp: ["First", "Second"] });
-    fixture.reorder.mockRejectedValueOnce(new Error("Queue unavailable"));
-    await fixture.user.click(screen.getByRole("button", { name: "Move up: Second" }));
+    await waitFor(() => expect(queuedTexts()).toEqual(["First", "Retry this"]));
+    expect(prompt).toHaveBeenCalledTimes(2);
+    await fixture.user.click(screen.getByRole("button", { name: "Move up: Retry this" }));
     expect(await screen.findByText("Queue unavailable")).toBeDefined();
-    expect(queuedTexts()).toEqual(["First", "Second"]);
+    expect(queuedTexts()).toEqual(["First", "Retry this"]);
+    await fixture.user.click(screen.getByRole("button", { name: "Move up: Retry this" }));
+    expect(queuedTexts()).toEqual(["Retry this", "First"]);
+    expect(reorder).toHaveBeenCalledTimes(2);
   });
 });
