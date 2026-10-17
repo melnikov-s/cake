@@ -24,7 +24,7 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
   return (
     <>
       <div
-        className="flex flex-col gap-2 border-b border-border px-1.5 py-1"
+        className="flex max-h-[min(15rem,25dvh)] flex-col gap-2 overflow-y-auto overscroll-contain border-b border-border px-1.5 py-1"
         role="list"
         aria-label="Queued prompts"
       >
@@ -37,7 +37,7 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
               key={state}
               role="group"
               aria-label={state === "steering" ? "Steering" : "Queued"}
-              className="flex flex-col gap-1"
+              className="flex shrink-0 flex-col gap-1"
             >
               {entries.map((entry, index) => {
                 const label =

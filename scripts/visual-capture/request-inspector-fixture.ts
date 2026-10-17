@@ -5,7 +5,10 @@ import { defaultApplicationState } from "../../src/contracts/application/applica
 
 /** A real provider HTTP boundary for the compiled app, not a renderer payload injection.
  * No credentials or billed model are used. Capture owns the returned cleanup after Electron closes. */
-export async function openRequestInspectorFixture(paths: { cakeHome: string; project: string }) {
+export async function openRequestInspectorFixture(
+  paths: { cakeHome: string; project: string },
+  { holdResponse = false }: { holdResponse?: boolean } = {},
+) {
   const server = createServer((request, response) => {
     if (request.method !== "POST" || request.url !== "/v1/chat/completions") {
       response.writeHead(404).end();
@@ -16,6 +19,10 @@ export async function openRequestInspectorFixture(paths: { cakeHome: string; pro
       const chunk = (delta: object, finish_reason: string | null) =>
         `data: ${JSON.stringify({ id: "inspection-fixture", object: "chat.completion.chunk", model: "inspection-fixture", choices: [{ index: 0, delta, finish_reason }] })}\n\n`;
       response.writeHead(200, { "content-type": "text/event-stream" });
+      if (holdResponse) {
+        response.flushHeaders();
+        return;
+      }
       response.end(
         chunk(
           { role: "assistant", content: "Request captured by the local inspection fixture." },
@@ -31,9 +38,10 @@ export async function openRequestInspectorFixture(paths: { cakeHome: string; pro
     server.listen(0, "127.0.0.1", resolve);
   });
   const close = () =>
-    new Promise<void>((resolve, reject) =>
-      server.close((error) => (error ? reject(error) : resolve())),
-    );
+    new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+      server.closeAllConnections();
+    });
   try {
     const address = server.address();
     if (!address || typeof address === "string") throw new Error("No inspection fixture address");

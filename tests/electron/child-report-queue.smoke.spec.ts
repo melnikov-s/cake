@@ -17,7 +17,10 @@ test("canceling child reports retires their outbox entries and Stop stays stoppe
   const sessions = cakeWorkspaceSessionDirectory(project, join(cakeHome, "pi", "sessions"));
   const journal = join(cakeHome, "state", "session-families.json");
   const parentId = "00000000-0000-4000-8000-000000000001";
-  const children = [2, 3, 4].map((n) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`);
+  const children = Array.from(
+    { length: 21 },
+    (_, index) => `00000000-0000-4000-8000-${String(index + 2).padStart(12, "0")}`,
+  );
   const timestamp = "2026-01-01T00:00:00.000Z";
   const responses: ServerResponse[] = [];
   const server = createServer((_request, response) => {
@@ -152,11 +155,33 @@ test("canceling child reports retires their outbox entries and Stop stays stoppe
     const page = await app.firstWindow();
     await expect.poll(() => responses.length).toBe(1);
     const queue = page.getByRole("list", { name: "Queued prompts" });
-    await expect(queue.getByRole("listitem")).toHaveCount(2);
-    await page.getByRole("button", { name: /Cancel queued message:.*Child report 2/s }).click();
-    await expect(queue.getByRole("listitem")).toHaveCount(1);
-    await page.getByRole("button", { name: /Cancel queued message:.*Child report 3/s }).click();
-    await expect(queue.getByRole("listitem")).toHaveCount(0);
+    await expect(queue.getByRole("listitem")).toHaveCount(20);
+    // Reports must scroll inside the queue rather than crowding out the conversation.
+    for (const viewport of [
+      { width: 1100, height: 900 },
+      { width: 800, height: 600 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await expect
+        .poll(() => queue.evaluate((element) => element.getBoundingClientRect().height))
+        .toBeLessThanOrEqual(Math.min(240, viewport.height * 0.25));
+      expect(await queue.evaluate((element) => element.scrollHeight)).toBeGreaterThan(
+        await queue.evaluate((element) => element.clientHeight),
+      );
+      await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeInViewport();
+    }
+    await queue.hover();
+    await page.mouse.wheel(0, 2000);
+    await expect.poll(() => queue.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    await expect(queue.getByRole("listitem").last()).toBeInViewport();
+    for (let report = 21; report >= 2; report--) {
+      await page
+        .getByRole("button", {
+          name: new RegExp(`Cancel queued message:.*Child report ${report}\\b`, "s"),
+        })
+        .click();
+      await expect(queue.getByRole("listitem")).toHaveCount(report - 2);
+    }
     await page.getByRole("button", { name: "Stop", exact: true }).click();
     await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
     // A queue-only assertion would miss the retry. Check the persistent authority

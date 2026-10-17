@@ -2527,6 +2527,37 @@ const cakeChatInspectorScenario: VisualCaptureScenario = {
     state === "icon" ? page.locator('[data-slot="workspace-header"]') : page.locator("body"),
 };
 
+const queuedPromptsScenario: VisualCaptureScenario = {
+  name: "queued-prompts",
+  description: "Bounded, scrollable message queue above the shared chat composer",
+  states: ["default", "bottom"],
+  async seed(paths, theme) {
+    await cakeChatScenario.seed(paths, theme);
+    return openRequestInspectorFixture(paths, { holdResponse: true });
+  },
+  async prepare(page, state) {
+    await cakeChatScenario.prepare(page, "default");
+    const input = page.getByRole("combobox", { name: "Message Cake Chat", exact: true });
+    await input.fill("Review the implementation while I queue follow-up instructions.");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
+    const queue = page.getByRole("list", { name: "Queued prompts" });
+    for (let index = 1; index <= 20; index++) {
+      await input.fill(`Follow-up ${index}: verify the implementation and report the results.`);
+      await page.getByRole("button", { name: "Send", exact: true }).click();
+      await expect(queue.getByRole("listitem")).toHaveCount(index);
+    }
+    if (state === "bottom") {
+      await queue.hover();
+      await page.mouse.wheel(0, 2000);
+      await expect(queue.getByRole("listitem").last()).toBeInViewport();
+    }
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator("body"),
+};
+
 const taskInputAttachmentsScenario: VisualCaptureScenario = {
   name: "task-input-attachments",
   description: "Shared screenshot and large-paste attachments with a private text preview",
@@ -3373,6 +3404,7 @@ export const visualCaptureScenarios = [
   subagentReportsScenario,
   cakeChatArtifactScenario,
   cakeChatInspectorScenario,
+  queuedPromptsScenario,
   taskInputAttachmentsScenario,
   cakeChatSidebarUnread,
   projectChatSidebar,
