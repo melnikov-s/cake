@@ -27,6 +27,7 @@ import { RenderedWidgetCapture } from "../../src/services/widgets/RenderedWidget
 import {
   publishInlineWidget,
   revokeInlineWidget,
+  inlineWidgetResource,
 } from "../../src/services/widgets/inline-widget-document-registry";
 import { publishExtensionCompanionModule } from "../../src/services/pi/runtime/extension-companion-module-registry";
 import { makeNetworkTestBackend } from "./fixtures/network-backend";
@@ -84,7 +85,8 @@ it.live("network compiler publishes only live, capability-addressed rich content
     );
     // Node fetch normalizes Host; the raw HTTP authority case is covered below.
     expect((yield* get(source, { method: "POST" })).status).toBe(405);
-    revokeInlineWidget(compiled.widget.token);
+    yield* client["widgets.release"]({ token: compiled.widget.token });
+    yield* client["widgets.release"]({ token: compiled.widget.token });
     module.release();
     expect((yield* get(document)).status).toBe(404);
     expect((yield* get(source)).status).toBe(404);
@@ -643,12 +645,24 @@ it.live(
 );
 
 it.live(
-  "partial and finished uploads are connection-owned and cannot be admitted after disconnect",
+  "disconnect releases owned widget tokens and partial/finished uploads without affecting other mounts",
   () =>
     Effect.gen(function* () {
       const { backend, url } = yield* start();
       const a = yield* connectClient(url);
       const b = yield* connectClient(url);
+      const ownedWidget = (yield* a.client["widgets.compile-inline-widget"]({
+        language: "html",
+        source: "<h1>Owner A</h1>",
+        capability: "display",
+      })).widget;
+      const otherWidget = (yield* b.client["widgets.compile-inline-widget"]({
+        language: "html",
+        source: "<h1>Owner B</h1>",
+        capability: "display",
+      })).widget;
+      yield* b.client["widgets.release"]({ token: ownedWidget.token });
+      expect(inlineWidgetResource(ownedWidget.token, "")).toBeDefined();
       const partial = yield* a.client["attachmentUploads.open"]({
         kind: "file",
         name: "partial.txt",
@@ -667,6 +681,12 @@ it.live(
       ).toBe("Failure");
       yield* a.close();
       yield* Queue.take(backend.cleaned);
+      // A real RPC round trip also lets the independent connection cleanup inventory complete.
+      yield* b.client["application.getState"]();
+      expect(inlineWidgetResource(ownedWidget.token, "")).toBeUndefined();
+      expect(inlineWidgetResource(otherWidget.token, "")).toBeDefined();
+      yield* b.client["widgets.release"]({ token: otherWidget.token });
+      expect(inlineWidgetResource(otherWidget.token, "")).toBeUndefined();
       const c = yield* connectClient(url);
       expect(
         (yield* Effect.result(c.client["attachmentUploads.finish"]({ id: finished.id })))._tag,

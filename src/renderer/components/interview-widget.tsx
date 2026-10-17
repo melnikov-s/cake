@@ -1,5 +1,5 @@
 import { Option, Schema } from "effect";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Markdown } from "@/components/ai-elements/markdown";
 import { observer } from "r-state-tree/react";
 import type { InterviewStore } from "../stores/InterviewStore";
@@ -15,12 +15,14 @@ export const InterviewWidget = observer(function InterviewWidget({
   store: InlineWidgetStore;
 }) {
   const view = interview.record.request.view;
-  const id = `${interview.record.sessionId}:interview:${interview.record.id}`;
+  const instance = useId();
+  const id = `${interview.record.sessionId}:interview:${interview.record.id}:${instance}`;
   const state = store.state(id);
   const iframe = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(220);
   useEffect(() => {
     if (view.type === "widget") store.prepare(id, view.language, view.source, "request");
+    return () => store.release(id);
   }, [id, store, view]);
   useEffect(() => {
     const receive = (event: MessageEvent) => {

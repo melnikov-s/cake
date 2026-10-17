@@ -1,13 +1,8 @@
-import { Effect, Layer, Option, Queue, Result } from "effect";
-import { VsCodeServer } from "../../services/vscode/VsCodeServer";
-import { AttachmentUploads } from "../../services/filesystem/AttachmentUploads";
-import * as workingDirectoryTerminals from "../../domain/terminals/workingDirectoryTerminals";
+import { Effect, Layer, Queue, Result } from "effect";
+import { releaseConnectionResources } from "../../domain/clients/clientConnectionResources";
 import { RpcServer } from "effect/unstable/rpc";
 import { ClientConnections } from "../../services/clients/ClientConnections";
 import { ClientWorkspaces } from "../../services/clients/ClientWorkspaces";
-import { ProjectAccess } from "../../services/projects/ProjectAccess";
-import { RewordingRequests } from "../../services/projects/RewordingRequests";
-import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import {
   correlationIdHeader,
   rendererConnectionHeader,
@@ -20,13 +15,8 @@ export const StandaloneSocketProtocolLive = Layer.effect(
   Effect.gen(function* () {
     const backing = yield* RpcServer.makeProtocolSocketServer;
     const workspaces = yield* ClientWorkspaces;
-    const access = yield* ProjectAccess;
-    const rewording = yield* RewordingRequests;
-    const requests = yield* RendererRequestCoordinator;
     const disconnects = yield* Queue.unbounded<number>();
     const connections = yield* ClientConnections;
-    const vscode = yield* Effect.serviceOption(VsCodeServer);
-    const uploads = yield* Effect.serviceOption(AttachmentUploads);
     const active = new Map<number, number>();
     const release = Effect.fn("StandaloneSocketProtocol.release")(function* (socketId: number) {
       const connectionId = active.get(socketId);
@@ -34,23 +24,7 @@ export const StandaloneSocketProtocolLive = Layer.effect(
       active.delete(socketId);
       connections.release(connectionId);
       workspaces.releaseConnection(connectionId);
-      yield* Effect.all(
-        [
-          workingDirectoryTerminals
-            .closeOwner(connectionId)
-            .pipe(
-              Effect.catch((error) =>
-                Effect.logWarning("Terminal disconnect cleanup failed", error),
-              ),
-            ),
-          access.clearOwner(connectionId),
-          Option.isSome(uploads) ? uploads.value.releaseConnection(connectionId) : Effect.void,
-          rewording.disposeOwner(connectionId),
-          requests.releaseConnection(connectionId),
-          Option.isSome(vscode) ? vscode.value.releaseConnection(connectionId) : Effect.void,
-        ],
-        { concurrency: "unbounded", discard: true },
-      );
+      yield* releaseConnectionResources(connectionId);
     }, Effect.uninterruptible);
 
     // This finalizer also covers listener shutdown, when the queue consumer itself is interrupted.

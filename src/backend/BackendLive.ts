@@ -67,7 +67,10 @@ import { RemoteBrowserLive } from "../services/browser/RemoteBrowserLive";
 import { PreviewLeases, PreviewLeasesLive } from "../services/browser/PreviewLeases";
 import { RendererRequestCoordinator } from "../services/renderer-requests/RendererRequestCoordinator";
 import { SessionCoordination } from "../services/session-catalogs/SessionCoordination";
-import { publishInlineWidget } from "../services/widgets/inline-widget-document-registry";
+import {
+  publishInlineWidget,
+  revokeInlineWidget,
+} from "../services/widgets/inline-widget-document-registry";
 import { ManagedWorktreesLive } from "../services/worktrees/ManagedWorktreesLive";
 import { WorktreeLandingCoordinatorLive } from "../services/worktrees/WorktreeLandingCoordinator";
 import { loadReviewSessionProjection } from "../services/pi/runtime/sidecar-runtime";
@@ -239,7 +242,7 @@ export const makeBackendLive = <HostServices, HostError>(
           ),
         ]
       : []),
-    makeInlineWidgetsLive({ publish: publishInlineWidget }),
+    makeInlineWidgetsLive({ publish: publishInlineWidget, revoke: revokeInlineWidget }),
     SubagentEnvironmentLive,
     WorkflowWorkersLive.pipe(
       Layer.provide(Layer.merge(ApplicationCapabilitiesLive, SubagentEnvironmentLive)),

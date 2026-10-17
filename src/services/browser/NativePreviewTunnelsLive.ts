@@ -7,7 +7,10 @@ import { NativePreviewTunnels } from "./NativePreviewTunnels";
 
 /** Native-only registration: trusted renderer calls this after backend lease admission.
  * No auxiliary socket is ever used as a backend RPC client or session control identity. */
-export const makeNativePreviewTunnelsLive = (backendRpcUrl: string) =>
+export const makeNativePreviewTunnelsLive = (
+  backendRpcUrl: string,
+  openTunnel: typeof openNativePreviewTunnel = openNativePreviewTunnel,
+) =>
   Layer.effect(
     NativePreviewTunnels,
     Effect.gen(function* () {
@@ -42,10 +45,21 @@ export const makeNativePreviewTunnelsLive = (backendRpcUrl: string) =>
                 return previous.endpoint;
               previous?.close();
               active.delete(connectionId);
-              const tunnel = yield* Effect.tryPromise({
-                try: () => openNativePreviewTunnel(backendRpcUrl, lease),
-                catch: () => new NativePreviewError({ message: "Cannot open desktop preview" }),
-              });
+              let registered = false;
+              // Acquisition is masked by acquireRelease. If cancellation wins before transfer,
+              // the operation scope closes the listener instead of dropping its Promise result.
+              const tunnel = yield* Effect.acquireRelease(
+                Effect.tryPromise({
+                  try: () => openTunnel(backendRpcUrl, lease),
+                  catch: () => new NativePreviewError({ message: "Cannot open desktop preview" }),
+                }),
+                (tunnel) =>
+                  Effect.sync(() => {
+                    if (!registered) tunnel.close();
+                  }),
+              );
+              if (sender.isDestroyed())
+                return yield* new NativePreviewError({ message: "Desktop window is unavailable" });
               const close = () => {
                 sender.off("destroyed", close);
                 tunnel.close();
@@ -59,8 +73,9 @@ export const makeNativePreviewTunnelsLive = (backendRpcUrl: string) =>
                 secret: lease.secret,
                 close,
               });
+              registered = true;
               return tunnel.endpoint;
-            }),
+            }).pipe(Effect.scoped),
           ),
         ),
       });

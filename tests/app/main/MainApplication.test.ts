@@ -13,6 +13,8 @@ import { RewordingRequests } from "../../../src/services/projects/RewordingReque
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { Terminal } from "../../../src/services/terminal/Terminal";
 import { VsCodeServer } from "../../../src/services/vscode/VsCodeServer";
+import { AttachmentUploads } from "../../../src/services/filesystem/AttachmentUploads";
+import { InlineWidgets } from "../../../src/services/widgets/InlineWidgets";
 import { VsCodeViews } from "../../../src/services/vscode/VsCodeViews";
 
 class TestApplication extends EventEmitter {
@@ -54,6 +56,8 @@ const testLayer = (input?: {
   readonly clearOwner?: (ownerId: number) => void;
   readonly disposeRewordingOwner?: (ownerId: number) => void;
   readonly releaseRendererConnection?: (ownerId: number) => void;
+  readonly releaseUploads?: (ownerId: number) => void;
+  readonly releaseWidgets?: (ownerId: number) => void;
 }) => {
   const state = defaultApplicationState();
   return Layer.mergeAll(
@@ -84,6 +88,12 @@ const testLayer = (input?: {
     Layer.mock(RendererRequestCoordinator, {
       releaseConnection: (ownerId) =>
         Effect.sync(() => input?.releaseRendererConnection?.(ownerId)),
+    }),
+    Layer.mock(AttachmentUploads, {
+      releaseConnection: (owner) => Effect.sync(() => input?.releaseUploads?.(owner)),
+    }),
+    Layer.mock(InlineWidgets, {
+      releaseConnection: (owner) => Effect.sync(() => input?.releaseWidgets?.(owner)),
     }),
     Layer.mock(Terminal, {
       closeOwner: (ownerId) => Effect.sync(() => input?.closeTerminalOwner?.(ownerId)),
@@ -214,7 +224,7 @@ describe("MainApplication", () => {
       const cleaned = yield* Deferred.make<void>();
       const record = (operation: string) => {
         operations.push(operation);
-        if (operations.length === 5) Deferred.doneUnsafe(cleaned, Effect.void);
+        if (operations.length === 7) Deferred.doneUnsafe(cleaned, Effect.void);
       };
       const fiber = yield* Effect.forkChild(
         program(
@@ -229,6 +239,8 @@ describe("MainApplication", () => {
             clearOwner: (ownerId) => record(`access:${ownerId}`),
             disposeRewordingOwner: (ownerId) => record(`rewording:${ownerId}`),
             releaseRendererConnection: (ownerId) => record(`requests:${ownerId}`),
+            releaseUploads: (ownerId) => record(`uploads:${ownerId}`),
+            releaseWidgets: (ownerId) => record(`widgets:${ownerId}`),
           }),
         ),
       );
@@ -236,7 +248,15 @@ describe("MainApplication", () => {
       lifecycle?.onWindowClosed(17, "/projects/cake", 42);
       yield* Deferred.await(cleaned);
       expect(operations.toSorted()).toEqual(
-        ["terminal:17", "editor:42", "access:17", "rewording:17", "requests:17"].toSorted(),
+        [
+          "terminal:17",
+          "editor:42",
+          "access:17",
+          "rewording:17",
+          "requests:17",
+          "uploads:17",
+          "widgets:17",
+        ].toSorted(),
       );
       application.emit("window-all-closed");
       yield* Fiber.join(fiber);

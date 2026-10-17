@@ -9,10 +9,16 @@ type CompilePayload = (typeof cakeRpcPayloadSchemas)["compile-inline-widget"]["T
 type CompileSuccess = (typeof cakeRpcSuccessSchemas)["compile-inline-widget"]["Type"];
 
 export interface InlineWidgetsService {
-  readonly compile: (request: CompilePayload) => Effect.Effect<CompileSuccess, InlineWidgetError>;
+  readonly compile: (
+    owner: number,
+    request: CompilePayload,
+  ) => Effect.Effect<CompileSuccess, InlineWidgetError>;
   readonly open: (
+    owner: number,
     request: (typeof cakeRpcPayloadSchemas)["open-widget-browser"]["Type"],
   ) => Effect.Effect<CompileSuccess, InlineWidgetError>;
+  readonly release: (owner: number, token: string) => Effect.Effect<void>;
+  readonly releaseConnection: (owner: number) => Effect.Effect<void>;
 }
 
 export class InlineWidgets extends Context.Service<InlineWidgets, InlineWidgetsService>()(

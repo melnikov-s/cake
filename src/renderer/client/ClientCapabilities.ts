@@ -766,6 +766,8 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
         ),
     },
     inlineWidgets: {
+      release: (token, options) =>
+        execute("widgets.release", (client) => client.widgets.release({ token }), options),
       open: (browser, options) =>
         execute(
           "widgets.open-widget-browser",

@@ -1,5 +1,5 @@
 import { Option, Schema } from "effect";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { observer } from "r-state-tree/react";
 import type { SessionPlugin } from "../../contracts/application/application-data";
 import type { JsonObject, JsonValue } from "../../contracts/serialization/json-contract";
@@ -23,13 +23,15 @@ export const GeneratedSessionPlugin = observer(function GeneratedSessionPlugin({
   readonly call: (command: string, input: JsonObject) => Promise<JsonValue>;
 }) {
   const colorScheme = useResolvedColorTheme();
-  const compileId = `${plugin.sessionId}:session-plugin:${plugin.id}`;
+  const instance = useId();
+  const compileId = `${plugin.sessionId}:session-plugin:${plugin.id}:${instance}`;
   const compiledState = inlineWidgets.state(compileId);
   const iframe = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(72);
 
   useEffect(() => {
     inlineWidgets.prepare(compileId, "react", plugin.source, "session-plugin");
+    return () => inlineWidgets.release(compileId);
   }, [compileId, inlineWidgets, plugin.source]);
 
   useEffect(() => {

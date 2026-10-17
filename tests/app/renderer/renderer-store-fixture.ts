@@ -37,6 +37,8 @@ export function createRendererStoreFixture(options: RendererStoreFixtureOptions 
       },
       ...options.client?.projectSessions,
     },
+    // Resource disposal is incidental in workflows that do not inspect publication lifetimes.
+    inlineWidgets: { release: async () => {}, ...options.client?.inlineWidgets },
     nonChatModels: { list: async () => [], ...options.client?.nonChatModels },
     piSettings: { extensions: async () => [], ...options.client?.piSettings },
     // The real Session Registry refreshes its main-owned Saved Draft snapshot when mounted.

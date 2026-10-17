@@ -23,6 +23,31 @@ export interface InlineWidgetState {
 
 /** Owns compilation state for sandboxed inline transcript widgets. */
 export class InlineWidgetStore extends Store {
+  constructor(props: InlineWidgetStore["props"]) {
+    super(props);
+    this.effect(() => {
+      const widgets = this.inlineWidgets;
+      return () => {
+        for (const [id, state] of Object.entries(this.states)) {
+          if (state.compiled) void widgets.release(state.compiled.token).catch(() => undefined);
+          delete this.states[id];
+        }
+        this.revisions.clear();
+      };
+    });
+  }
+
+  private releaseCompiled(compiled: CompiledInlineWidget | undefined) {
+    if (compiled) void this.inlineWidgets.release(compiled.token).catch(() => undefined);
+  }
+
+  /** Each mounted surface owns its compilation, including any still-pending result. */
+  release(id: string) {
+    this.releaseCompiled(this.states[id]?.compiled);
+    delete this.states[id];
+    this.revisions.delete(id);
+  }
+
   evidenceBusy = false;
   evidenceViewId: string | undefined;
   evidenceMessage: string | undefined;
@@ -137,6 +162,7 @@ export class InlineWidgetStore extends Store {
     for (const [id, state] of Object.entries(this.states)) {
       const revision = (this.revisions.get(id) ?? 0) + 1;
       this.revisions.set(id, revision);
+      this.releaseCompiled(state.compiled);
       state.compiled = undefined;
       state.diagnostic = undefined;
       state.status = "building";
@@ -157,6 +183,7 @@ export class InlineWidgetStore extends Store {
       current.capability === capability
     )
       return;
+    this.release(id);
     const state = observable<InlineWidgetState>({
       language,
       capability,
@@ -170,6 +197,7 @@ export class InlineWidgetStore extends Store {
   /** Accepted browser output is immutable; neither reopen nor reconnect recompiles source. */
   prepareBrowser(id: string, browser: WidgetBrowserOutput) {
     if (this.states[id]?.browser?.digest === browser.digest) return;
+    this.release(id);
     const state = observable<InlineWidgetState>({
       language: "react",
       capability: "display",
@@ -196,12 +224,16 @@ export class InlineWidgetStore extends Store {
   ) {
     const revision = expectedRevision ?? (this.revisions.get(id) ?? 0) + 1;
     this.revisions.set(id, revision);
+    // Capture the capability before awaiting: disposed Stores no longer have mounted Context.
+    const widgets = this.inlineWidgets;
     try {
       const compiled = state.browser
-        ? await this.inlineWidgets.open(state.browser)
-        : await this.inlineWidgets.compile(state.language, source, state.capability);
-      if (this.signal.aborted || this.revisions.get(id) !== revision || this.states[id] !== state)
+        ? await widgets.open(state.browser)
+        : await widgets.compile(state.language, source, state.capability);
+      if (this.signal.aborted || this.revisions.get(id) !== revision || this.states[id] !== state) {
+        void widgets.release(compiled.token).catch(() => undefined);
         return;
+      }
       state.compiled = compiled;
       state.status = "ready";
       state.diagnostic = undefined;

@@ -551,6 +551,7 @@ interface ArtifactCommands {
 }
 
 interface InlineWidgetCommands {
+  release(token: string, options?: ClientCommandOptions): Promise<void>;
   open(browser: WidgetBrowserOutput, options?: ClientCommandOptions): Promise<CompiledInlineWidget>;
   compile(
     language: InlineWidgetLanguage,

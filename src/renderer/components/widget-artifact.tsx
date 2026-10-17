@@ -33,17 +33,21 @@ export const WidgetArtifact = observer(function WidgetArtifact({
 }) {
   const instance = useId();
   const id = `${stateSessionId ?? "catalog"}:widget:${artifact.id}:${artifact.revision}:${instance}`;
+  const browserDigest = artifact.payload.browser.digest;
   const state = inlineWidgets?.state(id);
   const liveState = inlineWidgets?.artifactStates[id];
   const iframe = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(220);
   const [readyToken, setReadyToken] = useState<string>();
   useEffect(() => {
-    if (inlineWidgets) inlineWidgets.prepareBrowser(id, artifact.payload.browser);
+    if (inlineWidgets) inlineWidgets.prepareBrowser(id, { digest: browserDigest });
     if (inlineWidgets && stateSessionId)
       inlineWidgets.bindArtifactState(id, stateSessionId, decodeArtifactLineageId(artifact.id));
-    return () => inlineWidgets?.releaseArtifactState(id);
-  }, [artifact.id, artifact.payload.browser, id, inlineWidgets, stateSessionId]);
+    return () => {
+      inlineWidgets?.release(id);
+      inlineWidgets?.releaseArtifactState(id);
+    };
+  }, [artifact.id, browserDigest, id, inlineWidgets, stateSessionId]);
   useEffect(() => {
     if (!state?.compiled) return;
     if (liveState?.error)

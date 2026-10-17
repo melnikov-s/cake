@@ -13,13 +13,17 @@ import * as cakeChatLocations from "../../src/domain/cake-chats/cakeChatLocation
 import { openNetworkListener } from "../../src/server/NetworkListener";
 import { ArtifactStorage } from "../../src/services/storage/ArtifactStorage";
 import { makeArtifactStorageLive } from "../../src/services/storage/ArtifactStorageLive";
+import { ClientConnections } from "../../src/services/clients/ClientConnections";
 import { InlineWidgets } from "../../src/services/widgets/InlineWidgets";
 import { makeInlineWidgetsLive } from "../../src/services/widgets/InlineWidgetsLive";
 import { WidgetBrowserOutputs } from "../../src/services/widgets/WidgetBrowserOutputs";
 import { makeWidgetBrowserOutputsLive } from "../../src/services/widgets/WidgetBrowserOutputsLive";
 import { WidgetPackages } from "../../src/services/widgets/WidgetPackages";
 import { compileInlineWidget } from "../../src/services/widgets/inline-widget-service";
-import { publishInlineWidget } from "../../src/services/widgets/inline-widget-document-registry";
+import {
+  publishInlineWidget,
+  revokeInlineWidget,
+} from "../../src/services/widgets/inline-widget-document-registry";
 import { browserBackendAdapter, browserTestModel } from "./fixtures/browser-backend";
 import { makeNetworkTestBackend } from "./fixtures/network-backend";
 
@@ -45,12 +49,18 @@ it("selects published widget and HTML artifacts through the real library project
       );
       const storage = Context.get(storageContext, ArtifactStorage);
       const browserOutputsLayer = makeWidgetBrowserOutputsLive(join(directory, "browser-outputs"));
+      const controlled = browserBackendAdapter();
+      const backend = yield* makeNetworkTestBackend({
+        adapter: controlled.adapter,
+        models: [browserTestModel],
+      });
       const widgetContext = yield* Layer.build(
-        makeInlineWidgetsLive({ publish: publishInlineWidget }).pipe(
+        makeInlineWidgetsLive({ publish: publishInlineWidget, revoke: revokeInlineWidget }).pipe(
           Layer.provide(
-            Layer.merge(
+            Layer.mergeAll(
               browserOutputsLayer,
               Layer.mock(WidgetPackages, { directory: join(directory, "packages") }),
+              Layer.succeed(ClientConnections, Context.get(backend.context, ClientConnections)),
             ),
           ),
         ),
@@ -60,11 +70,6 @@ it("selects published widget and HTML artifacts through the real library project
       const browser = yield* Effect.flatMap(WidgetBrowserOutputs, (outputs) =>
         outputs.retain(compiled),
       ).pipe(Effect.provide(browserOutputsLayer));
-      const controlled = browserBackendAdapter();
-      const backend = yield* makeNetworkTestBackend({
-        adapter: controlled.adapter,
-        models: [browserTestModel],
-      });
       const date = new Date(0).toISOString();
       const publish = (id: string, snapshot: Parameters<typeof storage.publish>[0]["snapshot"]) =>
         storage.publishWithLink(
