@@ -19,7 +19,11 @@ export const SettingsMcpSection = observer(function SettingsMcpSection({
   }, [settings]);
   const target = settings.projectScope ? "project" : "backend";
   return (
-    <section id="mcp-settings-title" className="grid gap-1.5" aria-label="MCP configuration">
+    <section
+      id="mcp-settings-title"
+      className="grid min-w-0 gap-1.5"
+      aria-label="MCP configuration"
+    >
       <header className="flex flex-wrap items-center justify-between gap-2 px-0.5">
         <h2 className="text-xs font-semibold text-foreground">MCP servers</h2>
         <div className="flex flex-wrap items-center gap-1.5">
@@ -52,8 +56,8 @@ export const SettingsMcpSection = observer(function SettingsMcpSection({
         </div>
       </header>
       <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
-        <div className="flex items-center justify-between gap-4 px-3.5 py-2.5">
-          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-2.5">
+          <div className="flex min-w-0 flex-1 basis-64 flex-col gap-0.5">
             <strong className="text-xs font-medium text-foreground">Configuration scope</strong>
             <small className="truncate text-[11px] text-muted-foreground">
               {settings.projectScope && settings.projectPath
@@ -63,7 +67,7 @@ export const SettingsMcpSection = observer(function SettingsMcpSection({
           </div>
           <Select
             aria-label="MCP configuration scope"
-            className="h-8 w-56 rounded-sm text-xs"
+            className="h-8 w-56 max-w-full rounded-sm text-xs"
             value={settings.projectScope ? "project" : "backend"}
             disabled={settings.busy || settings.authenticating}
             onChange={(event) => void settings.selectScope(event.target.value === "project")}
@@ -80,9 +84,11 @@ export const SettingsMcpSection = observer(function SettingsMcpSection({
         {settings.entries.map((entry) => (
           <div
             key={`${entry.scope}:${entry.name}`}
-            className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-2.5"
+            role="group"
+            aria-label={`MCP server ${entry.name} (${entry.scope})`}
+            className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 px-3.5 py-2.5"
           >
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <div className="flex min-w-0 flex-col gap-0.5 [overflow-wrap:anywhere]">
               <div className="flex flex-wrap items-center gap-2">
                 <strong className="text-xs font-medium text-foreground">{entry.name}</strong>
                 <span className="text-[11px] text-muted-foreground">
@@ -104,11 +110,15 @@ export const SettingsMcpSection = observer(function SettingsMcpSection({
                 </small>
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div
+              role="group"
+              aria-label={`Actions for ${entry.name}`}
+              className="flex min-w-0 flex-wrap items-center gap-1.5"
+            >
               <Button
                 variant="outline"
                 size="sm"
-                className="rounded-sm"
+                className="h-auto min-h-8 min-w-0 max-w-full whitespace-normal rounded-sm py-1.5 [overflow-wrap:anywhere]"
                 disabled={settings.busy || settings.authenticating}
                 onClick={() => settings.edit(entry)}
               >
@@ -121,7 +131,7 @@ export const SettingsMcpSection = observer(function SettingsMcpSection({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="rounded-sm"
+                    className="h-auto min-h-8 min-w-0 max-w-full whitespace-normal rounded-sm py-1.5 [overflow-wrap:anywhere]"
                     disabled={settings.busy || settings.authenticating}
                     onClick={() =>
                       void settings.mutate(
@@ -135,7 +145,7 @@ export const SettingsMcpSection = observer(function SettingsMcpSection({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="rounded-sm"
+                    className="h-auto min-h-8 min-w-0 max-w-full whitespace-normal rounded-sm py-1.5 [overflow-wrap:anywhere]"
                     disabled={settings.busy || settings.authenticating}
                     onClick={() => void settings.mutate(entry.name, "remove")}
                   >
@@ -149,7 +159,7 @@ export const SettingsMcpSection = observer(function SettingsMcpSection({
                     key={action}
                     variant="outline"
                     size="sm"
-                    className="rounded-sm"
+                    className="h-auto min-h-8 min-w-0 max-w-full whitespace-normal rounded-sm py-1.5 [overflow-wrap:anywhere]"
                     disabled={
                       !settings.nativeActionsAvailable || settings.busy || settings.authenticating
                     }

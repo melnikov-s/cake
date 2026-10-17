@@ -1649,6 +1649,43 @@ const mcpSettingsScenario: VisualCaptureScenario = {
   region: cakePromptsSettingsScenario.region,
 };
 
+const mcpSettingsLayoutScenario: VisualCaptureScenario = {
+  name: "mcp-settings-layout",
+  description: "Long MCP descriptions and six actions in a resizable settings pane",
+  states: ["default"],
+  async seed(paths, theme) {
+    await mcpSettingsScenario.seed(paths, theme);
+    await writeFile(
+      join(paths.cakeHome, "pi", "mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          "godot-ai": {
+            command: "never-launch-this-layout-fixture",
+            enabled: false,
+            exposure: "codemode",
+            description:
+              "Unofficial Godot AI v4.3.0 authenticated local editor bridge. Inspect scenes, editor/game logs and screenshots; editing tools can mutate the open Godot project.",
+          },
+          ["long-server-name-".repeat(6)]: {
+            command: "never-launch-this-layout-fixture",
+            enabled: false,
+            description: `Documentation and scene inspection bridge with a long reference: https://docs.example.com/${"reference".repeat(24)}`,
+          },
+        },
+      }),
+    );
+  },
+  async prepare(page) {
+    await assistantMarkdownCode.prepare(page, "default");
+    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: /^MCP servers/ }).click();
+    await page.getByRole("button", { name: "Edit godot-ai", exact: true }).waitFor();
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.getByRole("region", { name: "MCP configuration", exact: true }),
+};
+
 const appearanceSettingsScenario: VisualCaptureScenario = {
   name: "appearance-settings",
   description: "Session-only sidebar character preference in Cake Appearance settings",
@@ -3633,6 +3670,7 @@ export const visualCaptureScenarios = [
   widgetViewEvidenceScenario,
   cakePromptsSettingsScenario,
   mcpSettingsScenario,
+  mcpSettingsLayoutScenario,
   appearanceSettingsScenario,
   projectCustomInstructionsScenario,
   newSessionScenario,
