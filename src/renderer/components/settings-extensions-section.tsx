@@ -14,20 +14,15 @@ export const SettingsExtensionsSection = observer(function SettingsExtensionsSec
     void providers.loadExtensions();
   }, [providers]);
   return (
-    <section className="border-t border-border py-5" aria-labelledby="extensions-title">
-      <header className="mb-4 flex items-start justify-between gap-4">
-        <div>
-          <h2 id="extensions-title" className="text-[15px] font-semibold text-foreground">
-            Automatic extensions
-          </h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Enable or disable discovered global extensions. These are Pi settings, shared with
-            terminal Pi. Running sessions reload when idle.
-          </p>
-        </div>
+    <section className="grid gap-1.5" aria-labelledby="extensions-title">
+      <header className="flex items-center justify-between gap-3 px-0.5">
+        <h2 id="extensions-title" className="text-xs font-semibold text-foreground">
+          Automatic extensions
+        </h2>
         <Button
           variant="outline"
           size="sm"
+          className="rounded-sm"
           disabled={providers.extensionsLoading || Boolean(providers.extensionUpdateId)}
           onClick={() => void providers.loadExtensions()}
         >
@@ -35,21 +30,25 @@ export const SettingsExtensionsSection = observer(function SettingsExtensionsSec
         </Button>
       </header>
       {providers.extensionsLoading && <LoadingSpinner label="Loading extensions" />}
-      <div className="grid gap-4">
-        {providers.extensionSources.map((extension) => (
-          <SettingsToggle
-            key={extension.id}
-            label={extension.name}
-            description={
-              extension.source === "builtin"
-                ? "Pi built-in extension"
-                : `${extension.source} · ${extension.path}`
-            }
-            checked={extension.enabled}
-            disabled={providers.extensionsLoading || Boolean(providers.extensionUpdateId)}
-            onChange={(enabled) => void providers.setExtensionEnabled(extension.id, enabled)}
-          />
-        ))}
+      <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
+        {providers.extensionSources.length === 0 && !providers.extensionsLoading ? (
+          <p className="px-3.5 py-2.5 text-xs text-muted-foreground">No discovered extensions.</p>
+        ) : (
+          providers.extensionSources.map((extension) => (
+            <SettingsToggle
+              key={extension.id}
+              label={extension.name}
+              description={
+                extension.source === "builtin"
+                  ? "Pi built-in extension"
+                  : `${extension.source} · ${extension.path}`
+              }
+              checked={extension.enabled}
+              disabled={providers.extensionsLoading || Boolean(providers.extensionUpdateId)}
+              onChange={(enabled) => void providers.setExtensionEnabled(extension.id, enabled)}
+            />
+          ))
+        )}
       </div>
     </section>
   );

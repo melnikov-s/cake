@@ -11,33 +11,29 @@ export const SettingsProvidersSection = observer(function SettingsProvidersSecti
   providerGroups: ProviderSettingsStore["allModelsByProvider"];
 }) {
   return (
-    <section className="border-t border-border py-5" aria-labelledby="providers-title">
-      <header className="mb-4 flex items-start justify-between gap-4">
-        <div>
-          <h2 id="providers-title" className="text-[15px] font-semibold text-foreground">
-            Providers
-          </h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Connect the accounts and API keys that make models available to Pi.
-          </p>
-        </div>
+    <section className="grid gap-1.5" aria-labelledby="providers-title">
+      <header className="flex items-center justify-between gap-3 px-0.5">
+        <h2 id="providers-title" className="text-xs font-semibold text-foreground">
+          Providers
+        </h2>
         <Button
           variant="outline"
           size="sm"
           type="button"
+          className="rounded-sm"
           disabled={providers.refreshingModels}
           onClick={() => void providers.refreshModels()}
         >
           {providers.refreshingModels ? "Refreshing…" : "Refresh models"}
         </Button>
       </header>
-      {providerGroups.length === 0 ? (
-        <p className="text-xs text-muted-foreground">
-          {providers.loadingModels ? "Loading providers…" : "No providers are available."}
-        </p>
-      ) : (
-        <div className="grid gap-3">
-          {providerGroups.map((provider) => {
+      <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
+        {providerGroups.length === 0 ? (
+          <p className="px-3.5 py-2.5 text-xs text-muted-foreground">
+            {providers.loadingModels ? "Loading providers…" : "No providers are available."}
+          </p>
+        ) : (
+          providerGroups.map((provider) => {
             const authenticated = provider.models.some((model) => model.authenticated);
             const authenticatedModel = provider.models.find((model) => model.authenticated);
             const authSource = authenticatedModel?.authSource;
@@ -48,15 +44,15 @@ export const SettingsProvidersSection = observer(function SettingsProvidersSecti
             const operation = providers.providerOperation(provider.id);
             return (
               <article
-                className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-muted/50 p-3"
+                className="flex flex-wrap items-center justify-between gap-4 px-3.5 py-2.5"
                 key={provider.id}
               >
                 <div className="flex min-w-0 flex-1 items-center gap-3">
-                  <span className="grid size-8 shrink-0 place-items-center rounded-lg border border-border bg-card font-mono text-xs font-bold text-accent">
+                  <span className="grid size-7 shrink-0 place-items-center rounded-sm border border-border bg-card font-mono text-xs font-bold text-accent">
                     {provider.name.slice(0, 1).toUpperCase()}
                   </span>
                   <span className="min-w-0">
-                    <strong className="block truncate text-xs font-semibold text-foreground">
+                    <strong className="block truncate text-xs font-medium text-foreground">
                       {provider.name}
                     </strong>
                     <small className="block truncate text-[11px] text-muted-foreground">
@@ -85,6 +81,7 @@ export const SettingsProvidersSection = observer(function SettingsProvidersSecti
                         variant="outline"
                         size="sm"
                         type="button"
+                        className="rounded-sm"
                         disabled={Boolean(operation)}
                         onClick={() => void providers.logout(provider.id)}
                       >
@@ -105,6 +102,7 @@ export const SettingsProvidersSection = observer(function SettingsProvidersSecti
                         variant={authType === "oauth" ? "default" : "outline"}
                         size="sm"
                         type="button"
+                        className="rounded-sm"
                         disabled={Boolean(operation)}
                         onClick={() => void providers.authenticate(provider.id, authType)}
                       >
@@ -118,7 +116,7 @@ export const SettingsProvidersSection = observer(function SettingsProvidersSecti
                   )}
                 </div>
                 {providers.authNotices[provider.id] && (
-                  <div className="w-full basis-full break-all rounded-lg border border-border bg-card p-3 text-xs text-foreground">
+                  <div className="w-full basis-full break-all rounded-sm border border-border bg-card p-3 text-xs text-foreground">
                     {providers.authNotices[provider.id]?.type === "auth_url" ? (
                       <>
                         <p className="mb-2 break-normal">
@@ -132,7 +130,7 @@ export const SettingsProvidersSection = observer(function SettingsProvidersSecti
                           variant="outline"
                           size="sm"
                           type="button"
-                          className="mt-2"
+                          className="mt-2 rounded-sm"
                           onClick={() =>
                             void providers.openAuthUrl(
                               providers.authNotices[provider.id]?.url ?? "",
@@ -157,7 +155,7 @@ export const SettingsProvidersSection = observer(function SettingsProvidersSecti
                           variant="outline"
                           size="sm"
                           type="button"
-                          className="mt-2"
+                          className="mt-2 rounded-sm"
                           onClick={() =>
                             void providers.openAuthUrl(
                               providers.authNotices[provider.id]?.verificationUri ?? "",
@@ -174,9 +172,9 @@ export const SettingsProvidersSection = observer(function SettingsProvidersSecti
                 )}
               </article>
             );
-          })}
-        </div>
-      )}
+          })
+        )}
+      </div>
     </section>
   );
 });

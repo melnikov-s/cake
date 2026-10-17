@@ -17,7 +17,10 @@ export function SettingsToggle({
   onChange(checked: boolean): void;
 }) {
   return (
-    <div id={id} className="scroll-mt-8 flex items-center justify-between gap-6 text-sm">
+    <div
+      id={id}
+      className="scroll-mt-8 flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm"
+    >
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <strong className="text-xs font-medium text-foreground">{label}</strong>
         <small className="text-[11px] text-muted-foreground">{description}</small>

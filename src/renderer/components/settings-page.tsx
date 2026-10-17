@@ -11,7 +11,6 @@ import { SettingsDesktopHostSection } from "./settings-desktop-host-section";
 import { useEffect, useState } from "react";
 import { observer } from "r-state-tree/react";
 import { Button } from "./ui/button";
-import { Badge } from "./ui/badge";
 import { Callout } from "./ui/callout";
 import { NavItem } from "./ui/nav-item";
 import { Select } from "./ui/select";
@@ -257,293 +256,297 @@ export const SettingsPage = observer(function SettingsPage({
           )}
 
           {activePage === "models" && (
-            <>
-              <section className="border-t border-border py-5" aria-labelledby="pi-settings-title">
-                <header className="mb-4 flex items-start justify-between gap-4">
-                  <div>
-                    <h2
-                      id="pi-settings-title"
-                      className="text-[15px] font-semibold text-foreground"
-                    >
-                      Current chat
-                    </h2>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      Model and reasoning changes apply to this chat and become Pi’s defaults.
+            <div className="grid gap-5">
+              <section className="grid gap-1.5" aria-labelledby="pi-settings-title">
+                <h2 id="pi-settings-title" className="px-0.5 text-xs font-semibold text-foreground">
+                  Current chat
+                </h2>
+                <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
+                  {session && configuration ? (
+                    <div className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm">
+                      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <strong className="text-xs font-medium text-foreground">
+                          Model configuration
+                        </strong>
+                        <small className="text-[11px] text-muted-foreground">
+                          Model, reasoning effort, and priority mode for this chat.
+                        </small>
+                      </span>
+                      <ChatConfigurationSelector configuration={configuration} />
+                    </div>
+                  ) : (
+                    <p className="px-3.5 py-2.5 text-xs text-muted-foreground">
+                      Open a project or start a one-off chat to choose a model and reasoning level.
                     </p>
-                  </div>
-                </header>
-                {session && configuration ? (
-                  <div className="flex items-center justify-between gap-6 text-sm">
-                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                      <strong className="text-xs font-medium text-foreground">
-                        Model configuration
-                      </strong>
-                      <small className="text-[11px] text-muted-foreground">
-                        The model, reasoning effort, and priority mode for this chat.
-                      </small>
-                    </span>
-                    <ChatConfigurationSelector configuration={configuration} />
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    Open a project or start a one-off chat to choose a model and reasoning level.
-                  </p>
-                )}
+                  )}
+                </div>
               </section>
 
               <ModelPresetSettings settings={settings.modelPresets} />
 
-              <section
-                className="border-t border-border py-5"
-                aria-labelledby="default-model-title"
-              >
-                <header className="mb-4 flex items-start justify-between gap-4">
-                  <div>
-                    <h2
-                      id="default-model-title"
-                      className="text-[15px] font-semibold text-foreground"
-                    >
-                      Default agent model
-                    </h2>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      Pi’s own default profile for new project chats.
-                    </p>
-                  </div>
-                  <Badge variant="outline" size="xs" className="text-muted-foreground">
-                    Pi global
-                  </Badge>
-                </header>
+              <section className="grid gap-1.5" aria-labelledby="default-model-title">
+                <h2
+                  id="default-model-title"
+                  className="px-0.5 text-xs font-semibold text-foreground"
+                >
+                  Default agent model
+                </h2>
                 {pi ? (
-                  <div className="flex items-center justify-between gap-6 text-sm">
-                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                      <strong className="text-xs font-medium text-foreground">
-                        Model & reasoning
-                      </strong>
-                      <small className="text-[11px] text-muted-foreground">
-                        The default model and reasoning profile for new project chats.
-                      </small>
-                    </span>
-                    <ModelPicker
-                      ariaLabel="Default agent model"
-                      placeholder="Choose default model"
-                      groups={() => providerGroups}
-                      currentModelName={
-                        providerGroups
-                          .find((group) => group.id === pi.defaultProvider)
-                          ?.models.find((model) => model.id === pi.defaultModel)?.name
-                      }
-                      value={
-                        pi.defaultProvider && pi.defaultModel
-                          ? {
-                              provider: pi.defaultProvider,
-                              modelId: pi.defaultModel,
-                              thinkingLevel: pi.defaultThinkingLevel,
-                            }
-                          : undefined
-                      }
-                      showFastMode={false}
-                      onSelect={({ provider, modelId, thinkingLevel }) => {
-                        void providers.setPiSetting({
-                          key: "defaultModel",
-                          provider,
-                          modelId,
-                        });
-                        void providers.setPiSetting({
-                          key: "defaultThinkingLevel",
-                          value: thinkingLevel,
-                        });
-                      }}
-                    />
+                  <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
+                    <div className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm">
+                      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <strong className="text-xs font-medium text-foreground">
+                          Model & reasoning
+                        </strong>
+                        <small className="text-[11px] text-muted-foreground">
+                          Default model and reasoning profile for new project chats.
+                        </small>
+                      </span>
+                      <ModelPicker
+                        ariaLabel="Default agent model"
+                        placeholder="Choose default model"
+                        groups={() => providerGroups}
+                        currentModelName={
+                          providerGroups
+                            .find((group) => group.id === pi.defaultProvider)
+                            ?.models.find((model) => model.id === pi.defaultModel)?.name
+                        }
+                        value={
+                          pi.defaultProvider && pi.defaultModel
+                            ? {
+                                provider: pi.defaultProvider,
+                                modelId: pi.defaultModel,
+                                thinkingLevel: pi.defaultThinkingLevel,
+                              }
+                            : undefined
+                        }
+                        showFastMode={false}
+                        onSelect={({ provider, modelId, thinkingLevel }) => {
+                          void providers.setPiSetting({
+                            key: "defaultModel",
+                            provider,
+                            modelId,
+                          });
+                          void providers.setPiSetting({
+                            key: "defaultThinkingLevel",
+                            value: thinkingLevel,
+                          });
+                        }}
+                      />
+                    </div>
                   </div>
                 ) : (
                   <p className="text-xs text-muted-foreground">{piSettingsStatus}</p>
                 )}
               </section>
 
-              <section
-                className="border-t border-border py-5"
-                aria-labelledby="utility-model-title"
-              >
-                <header className="mb-4 flex items-start justify-between gap-4">
-                  <div>
-                    <h2
-                      id="utility-model-title"
-                      className="text-[15px] font-semibold text-foreground"
-                    >
-                      Utility model
-                    </h2>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      Runs user-configured, lightweight background tasks such as naming sessions.
-                    </p>
-                  </div>
-                  <Badge variant="outline" size="xs" className="text-muted-foreground">
-                    Cake
-                  </Badge>
-                </header>
-                <div className="flex items-center justify-between gap-6 text-sm">
-                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <strong className="text-xs font-medium text-foreground">
-                      Model & reasoning
-                    </strong>
-                    <small className="text-[11px] text-muted-foreground">
-                      When unset, Cake makes no utility calls and session lists use the truncated
-                      first message.
-                    </small>
-                  </span>
-                  <ModelPicker
-                    ariaLabel="Utility model"
-                    placeholder="No utility model"
-                    allowClear
-                    showFastMode={false}
-                    groups={() => providerGroups}
-                    currentModelName={
-                      providerGroups
-                        .find((group) => group.id === utilityModel?.provider)
-                        ?.models.find((model) => model.id === utilityModel?.modelId)?.name
-                    }
-                    value={
-                      utilityModel
-                        ? {
-                            provider: utilityModel.provider,
-                            modelId: utilityModel.modelId,
-                            thinkingLevel: utilityModel.thinkingLevel,
-                          }
-                        : undefined
-                    }
-                    onClear={() => void utility.clear()}
-                    onSelect={({ provider, modelId, thinkingLevel }) => {
-                      void utility.select(`${provider}/${modelId}`, thinkingLevel);
-                    }}
-                  />
-                </div>
-              </section>
-            </>
-          )}
-
-          {activePage === "agent" && (
-            <SettingsAgentNavigationSection navigation={settings.agentNavigation} />
-          )}
-
-          {activePage === "agent" && (
-            <section className="border-t border-border py-5" aria-labelledby="behavior-title">
-              <header className="mb-4 flex items-start justify-between gap-4">
-                <div>
-                  <h2 id="behavior-title" className="text-[15px] font-semibold text-foreground">
-                    Agent behavior
-                  </h2>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    Context, reasoning display, and queued message delivery.
-                  </p>
-                </div>
-                <Badge variant="outline" size="xs" className="text-muted-foreground">
-                  Pi global
-                </Badge>
-              </header>
-              {pi ? (
-                <div className="grid gap-4">
-                  <SettingsToggle
-                    id="setting-auto-compact"
-                    label="Auto-compact"
-                    description="Compact context automatically when it gets too large."
-                    checked={pi.autoCompact}
-                    onChange={(value) => void providers.setPiSetting({ key: "autoCompact", value })}
-                  />
-                  <SettingsToggle
-                    id="setting-automatic-retry"
-                    label="Automatic retry"
-                    description="Retry transient provider failures automatically."
-                    checked={pi.retryEnabled}
-                    onChange={(value) =>
-                      void providers.setPiSetting({ key: "retryEnabled", value })
-                    }
-                  />
-                  <SettingsToggle
-                    id="setting-hide-thinking"
-                    label="Hide thinking"
-                    description="Hide reasoning blocks in assistant responses."
-                    checked={pi.hideThinkingBlock}
-                    onChange={(value) =>
-                      void providers.setPiSetting({ key: "hideThinkingBlock", value })
-                    }
-                  />
-                  <label
-                    id="setting-steering-mode"
-                    className="scroll-mt-8 flex items-center justify-between gap-6 text-sm max-[620px]:flex-col max-[620px]:items-stretch max-[620px]:gap-2"
-                  >
-                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                      <strong className="text-xs font-medium text-foreground">Steering mode</strong>
-                      <small className="text-[11px] text-muted-foreground">
-                        How steering messages are delivered while Pi is working.
-                      </small>
-                    </span>
-                    <Select
-                      aria-label="Steering mode"
-                      className="h-8 max-w-xs text-xs"
-                      value={pi.steeringMode}
-                      onChange={(event) =>
-                        void providers.setPiSetting({
-                          key: "steeringMode",
-                          value: queueMode(event.target.value),
-                        })
-                      }
-                    >
-                      <option value="one-at-a-time">One at a time</option>
-                      <option value="all">All at once</option>
-                    </Select>
-                  </label>
-                  <label
-                    id="setting-follow-up-mode"
-                    className="scroll-mt-8 flex items-center justify-between gap-6 text-sm max-[620px]:flex-col max-[620px]:items-stretch max-[620px]:gap-2"
-                  >
+              <section className="grid gap-1.5" aria-labelledby="utility-model-title">
+                <h2
+                  id="utility-model-title"
+                  className="px-0.5 text-xs font-semibold text-foreground"
+                >
+                  Utility model
+                </h2>
+                <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
+                  <div className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm">
                     <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                       <strong className="text-xs font-medium text-foreground">
-                        Follow-up mode
+                        Model & reasoning
                       </strong>
                       <small className="text-[11px] text-muted-foreground">
-                        How queued follow-ups are delivered after Pi stops.
+                        Runs lightweight background tasks such as naming sessions.
                       </small>
                     </span>
-                    <Select
-                      aria-label="Follow-up mode"
-                      className="h-8 max-w-xs text-xs"
-                      value={pi.followUpMode}
-                      onChange={(event) =>
-                        void providers.setPiSetting({
-                          key: "followUpMode",
-                          value: queueMode(event.target.value),
-                        })
+                    <ModelPicker
+                      ariaLabel="Utility model"
+                      placeholder="No utility model"
+                      allowClear
+                      showFastMode={false}
+                      groups={() => providerGroups}
+                      currentModelName={
+                        providerGroups
+                          .find((group) => group.id === utilityModel?.provider)
+                          ?.models.find((model) => model.id === utilityModel?.modelId)?.name
                       }
-                    >
-                      <option value="one-at-a-time">One at a time</option>
-                      <option value="all">All at once</option>
-                    </Select>
-                  </label>
+                      value={
+                        utilityModel
+                          ? {
+                              provider: utilityModel.provider,
+                              modelId: utilityModel.modelId,
+                              thinkingLevel: utilityModel.thinkingLevel,
+                            }
+                          : undefined
+                      }
+                      onClear={() => void utility.clear()}
+                      onSelect={({ provider, modelId, thinkingLevel }) => {
+                        void utility.select(`${provider}/${modelId}`, thinkingLevel);
+                      }}
+                    />
+                  </div>
                 </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">{piSettingsStatus}</p>
-              )}
-            </section>
+              </section>
+            </div>
+          )}
+
+          {activePage === "agent" && (
+            <div className="grid gap-5">
+              <SettingsAgentNavigationSection navigation={settings.agentNavigation} />
+
+              <section className="grid gap-1.5" aria-labelledby="behavior-title">
+                <h2 id="behavior-title" className="px-0.5 text-xs font-semibold text-foreground">
+                  Agent behavior
+                </h2>
+                {pi ? (
+                  <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
+                    <SettingsToggle
+                      id="setting-auto-compact"
+                      label="Auto-compact"
+                      description="Compact context automatically when it gets too large."
+                      checked={pi.autoCompact}
+                      onChange={(value) =>
+                        void providers.setPiSetting({ key: "autoCompact", value })
+                      }
+                    />
+                    <SettingsToggle
+                      id="setting-automatic-retry"
+                      label="Automatic retry"
+                      description="Retry transient provider failures automatically."
+                      checked={pi.retryEnabled}
+                      onChange={(value) =>
+                        void providers.setPiSetting({ key: "retryEnabled", value })
+                      }
+                    />
+                    <SettingsToggle
+                      id="setting-hide-thinking"
+                      label="Hide thinking"
+                      description="Hide reasoning blocks in assistant responses."
+                      checked={pi.hideThinkingBlock}
+                      onChange={(value) =>
+                        void providers.setPiSetting({ key: "hideThinkingBlock", value })
+                      }
+                    />
+                    <label
+                      id="setting-steering-mode"
+                      className="scroll-mt-8 flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm max-[620px]:flex-col max-[620px]:items-stretch max-[620px]:gap-2"
+                    >
+                      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <strong className="text-xs font-medium text-foreground">
+                          Steering mode
+                        </strong>
+                        <small className="text-[11px] text-muted-foreground">
+                          How steering messages are delivered while Pi is working.
+                        </small>
+                      </span>
+                      <Select
+                        aria-label="Steering mode"
+                        className="h-8 w-44 rounded-sm text-xs max-[620px]:w-full"
+                        value={pi.steeringMode}
+                        onChange={(event) =>
+                          void providers.setPiSetting({
+                            key: "steeringMode",
+                            value: queueMode(event.target.value),
+                          })
+                        }
+                      >
+                        <option value="one-at-a-time">One at a time</option>
+                        <option value="all">All at once</option>
+                      </Select>
+                    </label>
+                    <label
+                      id="setting-follow-up-mode"
+                      className="scroll-mt-8 flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm max-[620px]:flex-col max-[620px]:items-stretch max-[620px]:gap-2"
+                    >
+                      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <strong className="text-xs font-medium text-foreground">
+                          Follow-up mode
+                        </strong>
+                        <small className="text-[11px] text-muted-foreground">
+                          How queued follow-ups are delivered after Pi stops.
+                        </small>
+                      </span>
+                      <Select
+                        aria-label="Follow-up mode"
+                        className="h-8 w-44 rounded-sm text-xs max-[620px]:w-full"
+                        value={pi.followUpMode}
+                        onChange={(event) =>
+                          void providers.setPiSetting({
+                            key: "followUpMode",
+                            value: queueMode(event.target.value),
+                          })
+                        }
+                      >
+                        <option value="one-at-a-time">One at a time</option>
+                        <option value="all">All at once</option>
+                      </Select>
+                    </label>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">{piSettingsStatus}</p>
+                )}
+              </section>
+
+              <section className="grid gap-1.5" aria-labelledby="content-title">
+                <h2 id="content-title" className="px-0.5 text-xs font-semibold text-foreground">
+                  Content
+                </h2>
+                {pi ? (
+                  <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
+                    <SettingsToggle
+                      id="setting-auto-resize-images"
+                      label="Auto-resize images"
+                      description="Resize large images for better model compatibility."
+                      checked={pi.autoResizeImages}
+                      onChange={(value) =>
+                        void providers.setPiSetting({ key: "autoResizeImages", value })
+                      }
+                    />
+                    <SettingsToggle
+                      id="setting-block-images"
+                      label="Block images"
+                      description="Prevent images from being sent to model providers."
+                      checked={pi.blockImages}
+                      onChange={(value) =>
+                        void providers.setPiSetting({ key: "blockImages", value })
+                      }
+                    />
+                    <SettingsToggle
+                      id="setting-skill-commands"
+                      label="Skill commands"
+                      description="Register discovered skills as /skill:name commands."
+                      checked={pi.enableSkillCommands}
+                      onChange={(value) =>
+                        void providers.setPiSetting({ key: "enableSkillCommands", value })
+                      }
+                    />
+                    <SettingsToggle
+                      id="setting-cache-miss-notices"
+                      label="Cache miss notices"
+                      description="Show notices for significant prompt-cache misses."
+                      checked={pi.showCacheMissNotices}
+                      onChange={(value) =>
+                        void providers.setPiSetting({ key: "showCacheMissNotices", value })
+                      }
+                    />
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">{piSettingsStatus}</p>
+                )}
+              </section>
+            </div>
           )}
 
           {activePage === "runtime" && (
-            <>
-              <section className="border-t border-border py-5" aria-labelledby="execution-title">
-                <header className="mb-4">
-                  <div>
-                    <h2 id="execution-title" className="text-[15px] font-semibold text-foreground">
-                      Execution
-                    </h2>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      Configure the shell and package command used by Pi.
-                    </p>
-                  </div>
-                </header>
+            <div className="grid gap-5">
+              <section className="grid gap-1.5" aria-labelledby="execution-title">
+                <h2 id="execution-title" className="px-0.5 text-xs font-semibold text-foreground">
+                  Execution
+                </h2>
                 {pi ? (
-                  <div className="grid gap-4">
+                  <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
                     <SettingsTextField
                       id="setting-shell-path"
                       label="Shell path"
-                      description="Custom shell executable. Leave empty to use Pi’s platform default."
+                      description="Custom shell executable. Leave empty for platform default."
                       value={pi.shellPath}
                       placeholder="/bin/zsh"
                       onApply={(value) => void providers.setPiSetting({ key: "shellPath", value })}
@@ -561,7 +564,7 @@ export const SettingsPage = observer(function SettingsPage({
                     <SettingsLinesField
                       id="setting-npm-command"
                       label="npm command"
-                      description="Command and arguments used for package operations, one argument per line."
+                      description="Command and arguments used for package operations, one per line."
                       value={pi.npmCommand}
                       onApply={(value) => void providers.setPiSetting({ key: "npmCommand", value })}
                     />
@@ -574,28 +577,23 @@ export const SettingsPage = observer(function SettingsPage({
               <SettingsNativeToolsSection providers={providers} />
               <SettingsExtensionsSection providers={providers} />
 
-              <section className="border-t border-border py-5" aria-labelledby="resources-title">
-                <header className="mb-4 flex items-start justify-between gap-4">
-                  <div>
-                    <h2 id="resources-title" className="text-[15px] font-semibold text-foreground">
-                      Resources
-                    </h2>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      Configure global Pi packages, extensions, skills, and prompt paths. Changes
-                      reload automatically.
-                    </p>
-                  </div>
+              <section className="grid gap-1.5" aria-labelledby="resources-title">
+                <header className="flex items-center justify-between gap-3 px-0.5">
+                  <h2 id="resources-title" className="text-xs font-semibold text-foreground">
+                    Resources
+                  </h2>
                   <Button
                     variant="outline"
                     size="sm"
                     type="button"
+                    className="rounded-sm"
                     onClick={() => void providers.reloadPi()}
                   >
                     {pi?.reloadPending ? "Reload queued" : "Reload Pi"}
                   </Button>
                 </header>
                 {pi ? (
-                  <div className="grid gap-4">
+                  <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
                     <SettingsPackagesField
                       id="setting-packages"
                       value={pi.packages}
@@ -627,62 +625,7 @@ export const SettingsPage = observer(function SettingsPage({
                   <p className="text-xs text-muted-foreground">{piSettingsStatus}</p>
                 )}
               </section>
-            </>
-          )}
-
-          {activePage === "agent" && (
-            <section className="border-t border-border py-5" aria-labelledby="content-title">
-              <header className="mb-4">
-                <div>
-                  <h2 id="content-title" className="text-[15px] font-semibold text-foreground">
-                    Content
-                  </h2>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    Control images, skills, and transcript diagnostics.
-                  </p>
-                </div>
-              </header>
-              {pi ? (
-                <div className="grid gap-4">
-                  <SettingsToggle
-                    id="setting-auto-resize-images"
-                    label="Auto-resize images"
-                    description="Resize large images for better model compatibility."
-                    checked={pi.autoResizeImages}
-                    onChange={(value) =>
-                      void providers.setPiSetting({ key: "autoResizeImages", value })
-                    }
-                  />
-                  <SettingsToggle
-                    id="setting-block-images"
-                    label="Block images"
-                    description="Prevent images from being sent to model providers."
-                    checked={pi.blockImages}
-                    onChange={(value) => void providers.setPiSetting({ key: "blockImages", value })}
-                  />
-                  <SettingsToggle
-                    id="setting-skill-commands"
-                    label="Skill commands"
-                    description="Register discovered skills as /skill:name commands."
-                    checked={pi.enableSkillCommands}
-                    onChange={(value) =>
-                      void providers.setPiSetting({ key: "enableSkillCommands", value })
-                    }
-                  />
-                  <SettingsToggle
-                    id="setting-cache-miss-notices"
-                    label="Cache miss notices"
-                    description="Show notices for significant prompt-cache misses."
-                    checked={pi.showCacheMissNotices}
-                    onChange={(value) =>
-                      void providers.setPiSetting({ key: "showCacheMissNotices", value })
-                    }
-                  />
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">{piSettingsStatus}</p>
-              )}
-            </section>
+            </div>
           )}
 
           {activePage === "network" && (
@@ -801,28 +744,24 @@ export const SettingsPage = observer(function SettingsPage({
                         <option value="never">Never trust</option>
                       </Select>
                     </label>
-                    <div className="px-3.5 py-2.5">
-                      <SettingsToggle
-                        id="setting-anthropic-extra-usage-warning"
-                        label="Anthropic extra usage warning"
-                        description="Warn when subscription authentication may use paid extra usage."
-                        checked={pi.anthropicExtraUsageWarning}
-                        onChange={(value) =>
-                          void providers.setPiSetting({ key: "anthropicExtraUsageWarning", value })
-                        }
-                      />
-                    </div>
-                    <div className="px-3.5 py-2.5">
-                      <SettingsToggle
-                        id="setting-install-telemetry"
-                        label="Install telemetry"
-                        description="Send Pi’s anonymous version/update ping after detected updates."
-                        checked={pi.enableInstallTelemetry}
-                        onChange={(value) =>
-                          void providers.setPiSetting({ key: "enableInstallTelemetry", value })
-                        }
-                      />
-                    </div>
+                    <SettingsToggle
+                      id="setting-anthropic-extra-usage-warning"
+                      label="Anthropic extra usage warning"
+                      description="Warn when subscription authentication may use paid extra usage."
+                      checked={pi.anthropicExtraUsageWarning}
+                      onChange={(value) =>
+                        void providers.setPiSetting({ key: "anthropicExtraUsageWarning", value })
+                      }
+                    />
+                    <SettingsToggle
+                      id="setting-install-telemetry"
+                      label="Install telemetry"
+                      description="Send Pi’s anonymous version/update ping after detected updates."
+                      checked={pi.enableInstallTelemetry}
+                      onChange={(value) =>
+                        void providers.setPiSetting({ key: "enableInstallTelemetry", value })
+                      }
+                    />
                   </div>
                 ) : (
                   <p className="text-xs text-muted-foreground">{piSettingsStatus}</p>
@@ -832,112 +771,99 @@ export const SettingsPage = observer(function SettingsPage({
           )}
 
           {activePage === "cake-chat" && (
-            <>
+            <div className="grid gap-5">
               <SettingsCakeChatSection settings={settings} />
               {!browserMode && <SettingsCakeChatOverlaySection store={settings.cakeChatOverlay} />}
-            </>
+            </div>
           )}
 
           {activePage === "prompts" && (
-            <section
-              className="border-t border-border py-5"
-              aria-labelledby="global-instructions-title"
-            >
-              <h2
-                id="global-instructions-title"
-                className="text-[15px] font-semibold text-foreground"
-              >
-                Global custom instructions
-              </h2>
-              <p className="mt-1 mb-4 text-xs text-muted-foreground">
-                Personal guidance for every Project Session on this Cake installation. Added to the
-                system prompt alongside project instructions and AGENTS.md when a session runtime
-                starts or restarts. Not written to any repository. Cake Chat is unaffected.
-              </p>
-              <SettingsPromptField
-                id="setting-global-custom-instructions"
-                label="Global instructions"
-                description="Saved when you leave the field. Clear it to remove these instructions."
-                value={settings.globalInstructions.instructions}
-                defaultValue=""
-                onApply={(value) => void settings.globalInstructions.update(value)}
-              />
-            </section>
-          )}
+            <div className="grid gap-5">
+              <section className="grid gap-1.5" aria-labelledby="global-instructions-title">
+                <h2
+                  id="global-instructions-title"
+                  className="px-0.5 text-xs font-semibold text-foreground"
+                >
+                  Global custom instructions
+                </h2>
+                <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
+                  <SettingsPromptField
+                    id="setting-global-custom-instructions"
+                    label="Global instructions"
+                    description="Personal guidance added to every Project Session system prompt. Saved when you leave the field."
+                    value={settings.globalInstructions.instructions}
+                    defaultValue=""
+                    onApply={(value) => void settings.globalInstructions.update(value)}
+                  />
+                </div>
+              </section>
 
-          {activePage === "prompts" && settings.cakePrompts.prompts && (
-            <section className="border-t border-border py-5" aria-labelledby="cake-prompts-title">
-              <header className="mb-4 flex items-start justify-between gap-4">
-                <div>
-                  <h2 id="cake-prompts-title" className="text-[15px] font-semibold text-foreground">
+              {settings.cakePrompts.prompts && (
+                <section className="grid gap-1.5" aria-labelledby="cake-prompts-title">
+                  <h2
+                    id="cake-prompts-title"
+                    className="px-0.5 text-xs font-semibold text-foreground"
+                  >
                     Worktree automation
                   </h2>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    These prompts appear as user messages when Cake needs an agent to finish a merge
-                    or rebase step. Leave a field empty to use the current default shown as its
-                    placeholder. Template variables are replaced when the message is sent.
-                  </p>
-                </div>
-                <Badge variant="outline" size="xs" className="text-muted-foreground">
-                  Cake global
-                </Badge>
-              </header>
-              <div className="grid gap-4">
-                <SettingsPromptField
-                  id="setting-prompt-worktree-commit"
-                  label="Commit before merge"
-                  description="Sent when a worktree has uncommitted changes before landing."
-                  variables="{{target}}"
-                  value={settings.cakePrompts.prompts.worktreeCommit ?? ""}
-                  defaultValue={cakePromptDefaults.worktreeCommit}
-                  onApply={(value) => void settings.cakePrompts.update("worktreeCommit", value)}
-                />
-                <SettingsPromptField
-                  id="setting-prompt-worktree-rebase-conflict"
-                  label="Rebase conflict"
-                  description="Sent when a standalone worktree rebase stops on conflicts."
-                  variables="{{target}}, {{files}}"
-                  value={settings.cakePrompts.prompts.worktreeRebaseConflict ?? ""}
-                  defaultValue={cakePromptDefaults.worktreeRebaseConflict}
-                  onApply={(value) =>
-                    void settings.cakePrompts.update("worktreeRebaseConflict", value)
-                  }
-                />
-                <SettingsPromptField
-                  id="setting-prompt-worktree-preserve-conflict"
-                  label="Merge conflict"
-                  description="Sent when preserving commits requires conflict resolution."
-                  variables="{{target}}, {{files}}"
-                  value={settings.cakePrompts.prompts.worktreePreserveConflict ?? ""}
-                  defaultValue={cakePromptDefaults.worktreePreserveConflict}
-                  onApply={(value) =>
-                    void settings.cakePrompts.update("worktreePreserveConflict", value)
-                  }
-                />
-                <SettingsPromptField
-                  id="setting-prompt-worktree-squash-conflict"
-                  label="Squash conflict"
-                  description="Sent when a squash landing requires conflict resolution."
-                  variables="{{target}}, {{files}}"
-                  value={settings.cakePrompts.prompts.worktreeSquashConflict ?? ""}
-                  defaultValue={cakePromptDefaults.worktreeSquashConflict}
-                  onApply={(value) =>
-                    void settings.cakePrompts.update("worktreeSquashConflict", value)
-                  }
-                />
-                <SettingsPromptField
-                  id="setting-prompt-worktree-squash-message"
-                  label="Squash commit message"
-                  description="Sent when Cake needs the agent to propose the squash commit message."
-                  variables="{{target}}"
-                  value={settings.cakePrompts.prompts.worktreeSquashMessage ?? ""}
-                  defaultValue={cakePromptDefaults.worktreeSquashMessage}
-                  onApply={(value) =>
-                    void settings.cakePrompts.update("worktreeSquashMessage", value)
-                  }
-                />
-              </div>
-            </section>
+                  <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
+                    <SettingsPromptField
+                      id="setting-prompt-worktree-commit"
+                      label="Commit before merge"
+                      description="Sent when a worktree has uncommitted changes before landing."
+                      variables="{{target}}"
+                      value={settings.cakePrompts.prompts.worktreeCommit ?? ""}
+                      defaultValue={cakePromptDefaults.worktreeCommit}
+                      onApply={(value) => void settings.cakePrompts.update("worktreeCommit", value)}
+                    />
+                    <SettingsPromptField
+                      id="setting-prompt-worktree-rebase-conflict"
+                      label="Rebase conflict"
+                      description="Sent when a standalone worktree rebase stops on conflicts."
+                      variables="{{target}}, {{files}}"
+                      value={settings.cakePrompts.prompts.worktreeRebaseConflict ?? ""}
+                      defaultValue={cakePromptDefaults.worktreeRebaseConflict}
+                      onApply={(value) =>
+                        void settings.cakePrompts.update("worktreeRebaseConflict", value)
+                      }
+                    />
+                    <SettingsPromptField
+                      id="setting-prompt-worktree-preserve-conflict"
+                      label="Merge conflict"
+                      description="Sent when preserving commits requires conflict resolution."
+                      variables="{{target}}, {{files}}"
+                      value={settings.cakePrompts.prompts.worktreePreserveConflict ?? ""}
+                      defaultValue={cakePromptDefaults.worktreePreserveConflict}
+                      onApply={(value) =>
+                        void settings.cakePrompts.update("worktreePreserveConflict", value)
+                      }
+                    />
+                    <SettingsPromptField
+                      id="setting-prompt-worktree-squash-conflict"
+                      label="Squash conflict"
+                      description="Sent when a squash landing requires conflict resolution."
+                      variables="{{target}}, {{files}}"
+                      value={settings.cakePrompts.prompts.worktreeSquashConflict ?? ""}
+                      defaultValue={cakePromptDefaults.worktreeSquashConflict}
+                      onApply={(value) =>
+                        void settings.cakePrompts.update("worktreeSquashConflict", value)
+                      }
+                    />
+                    <SettingsPromptField
+                      id="setting-prompt-worktree-squash-message"
+                      label="Squash commit message"
+                      description="Sent when Cake needs the agent to propose the squash commit message."
+                      variables="{{target}}"
+                      value={settings.cakePrompts.prompts.worktreeSquashMessage ?? ""}
+                      defaultValue={cakePromptDefaults.worktreeSquashMessage}
+                      onApply={(value) =>
+                        void settings.cakePrompts.update("worktreeSquashMessage", value)
+                      }
+                    />
+                  </div>
+                </section>
+              )}
+            </div>
           )}
 
           {activePage === "labels" && (
@@ -961,14 +887,14 @@ export const SettingsPage = observer(function SettingsPage({
                 Native voice and dictation controls are available only in the Cake desktop app.
               </Callout>
             ) : (
-              <>
+              <div className="grid gap-5">
                 <SettingsDictationSection
                   store={settings.dictation}
                   prompts={settings.cakePrompts}
                 />
                 <SettingsSpeechSection speech={settings.speech} />
                 <SettingsSpeechInputSection store={settings.speechInput} />
-              </>
+              </div>
             ))}
           {activePage === "experimental" && (
             <SettingsExperimentalSection experimental={settings.experimental} />

@@ -29,33 +29,37 @@ export function SettingSlider({
   onValueChange(value: number): void;
 }) {
   return (
-    <div className="grid gap-2">
-      <div className="flex items-center justify-between gap-3 text-xs">
-        <label htmlFor={id} className="font-medium">
+    <div className="flex items-center justify-between gap-4 px-3.5 py-2.5">
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <label htmlFor={id} className="text-xs font-medium text-foreground">
           {label}
         </label>
-        <span className="shrink-0 tabular-nums text-muted-foreground">{valueText}</span>
+        <p id={`${id}-description`} className="text-[11px] text-muted-foreground">
+          {scopeLabel && <span className="sr-only">{scopeLabel}. </span>}
+          {description}
+        </p>
       </div>
-      <Slider
-        id={id}
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        aria-describedby={`${id}-description`}
-        aria-valuetext={valueText}
-        onValueChange={onValueChange}
-      />
-      {(minLabel || maxLabel) && (
-        <div className="flex justify-between text-xs text-muted-foreground">
-          <span>{minLabel}</span>
-          <span>{maxLabel}</span>
+      <div className="grid w-48 shrink-0 gap-1">
+        <div className="flex items-center justify-end text-[11px]">
+          <span className="tabular-nums font-medium text-foreground">{valueText}</span>
         </div>
-      )}
-      <p id={`${id}-description`} className="text-xs text-muted-foreground">
-        {scopeLabel && <span className="font-medium">{scopeLabel}. </span>}
-        {description}
-      </p>
+        <Slider
+          id={id}
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          aria-describedby={`${id}-description`}
+          aria-valuetext={valueText}
+          onValueChange={onValueChange}
+        />
+        {(minLabel || maxLabel) && (
+          <div className="flex justify-between text-[10px] text-muted-foreground">
+            <span>{minLabel}</span>
+            <span>{maxLabel}</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

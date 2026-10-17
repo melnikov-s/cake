@@ -18,15 +18,15 @@ export function SettingsLinesField({
   const [draft, setDraft] = useState(serialized);
   useEffect(() => setDraft(serialized), [serialized]);
   return (
-    <label id={id} className="scroll-mt-8 flex flex-col gap-2 text-sm">
+    <label id={id} className="scroll-mt-8 flex flex-col gap-2 px-3.5 py-2.5 text-sm">
       <span className="flex flex-col gap-0.5">
         <strong className="text-xs font-medium text-foreground">{label}</strong>
         <small className="text-[11px] text-muted-foreground">{description}</small>
       </span>
       <Textarea
-        className="w-full font-mono text-xs"
+        className="min-h-16 w-full rounded-sm font-mono text-xs"
         value={draft}
-        rows={4}
+        rows={3}
         onChange={(event) => setDraft(event.target.value)}
         onBlur={() => {
           const next = draft

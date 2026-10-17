@@ -15,72 +15,65 @@ export const SettingsWidgetPackagesSection = observer(function SettingsWidgetPac
     void settings.load();
   }, [settings]);
   return (
-    <section
-      id="widget-packages-title"
-      aria-label="Widget packages"
-      className="grid gap-4 border-t border-border py-5"
-    >
-      <p className="text-xs text-muted-foreground">
-        Install npm registry packages for interactive widgets. Dependencies are shared across all
-        Projects on the connected backend, outside Cake’s application dependencies. New widgets can
-        use them immediately without restarting Cake.
-      </p>
-      <Callout>
-        Install only packages you trust. React and ReactDOM are provided by Cake. Removing a package
-        affects future widget compilation, not previously accepted artifact browser output.
-      </Callout>
-      {settings.snapshot && (
-        <p className="break-all text-xs text-muted-foreground">
-          Backend package directory: {settings.snapshot.directory}
-        </p>
-      )}
-      <label className="grid gap-1 text-xs">
-        Package name or version
-        <Input
-          aria-label="Widget package specifier"
-          placeholder="@scope/package@version"
-          value={settings.specifier}
-          disabled={settings.busy}
-          onChange={(event) => {
-            settings.specifier = event.target.value;
-          }}
-        />
-      </label>
-      <div className="flex flex-wrap gap-2">
+    <section id="widget-packages-title" aria-label="Widget packages" className="grid gap-1.5">
+      <header className="flex items-center justify-between gap-3 px-0.5">
+        <h2 className="text-xs font-semibold text-foreground">Widget packages</h2>
         <Button
-          disabled={settings.busy || !settings.specifier.trim()}
-          onClick={() => void settings.install()}
+          variant="outline"
+          size="sm"
+          className="rounded-sm"
+          disabled={settings.busy}
+          onClick={() => void settings.load()}
         >
-          Install widget package
-        </Button>
-        <Button variant="outline" disabled={settings.busy} onClick={() => void settings.load()}>
           Refresh packages
         </Button>
-      </div>
-      {settings.busy && (
-        <p role="status" className="text-xs text-muted-foreground">
-          Updating widget packages…
-        </p>
-      )}
-      {settings.error && <Callout variant="error">{settings.error}</Callout>}
-      {settings.notice && <Callout variant="info">{settings.notice}</Callout>}
-      {!settings.busy && settings.snapshot?.packages.length === 0 && (
-        <p className="text-sm text-muted-foreground">No widget packages installed.</p>
-      )}
-      <div className="grid gap-2">
+      </header>
+      <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
+        <div className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm max-[620px]:flex-col max-[620px]:items-stretch">
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <strong className="text-xs font-medium text-foreground">Package name or version</strong>
+            <small className="text-[11px] text-muted-foreground">
+              Install npm packages for interactive widgets. React and ReactDOM are built in.
+            </small>
+          </span>
+          <div className="flex shrink-0 items-center gap-2">
+            <Input
+              aria-label="Widget package specifier"
+              placeholder="@scope/package@version"
+              className="h-8 w-56 rounded-sm font-mono text-xs"
+              value={settings.specifier}
+              disabled={settings.busy}
+              onChange={(event) => {
+                settings.specifier = event.target.value;
+              }}
+            />
+            <Button
+              size="sm"
+              className="rounded-sm"
+              disabled={settings.busy || !settings.specifier.trim()}
+              onClick={() => void settings.install()}
+            >
+              Install widget package
+            </Button>
+          </div>
+        </div>
+        {!settings.busy && settings.snapshot?.packages.length === 0 && (
+          <p className="px-3.5 py-2.5 text-xs text-muted-foreground">
+            No widget packages installed.
+          </p>
+        )}
         {settings.snapshot?.packages.map((pkg) => (
-          <div
-            key={pkg.name}
-            className="flex flex-wrap items-center gap-2 rounded-md border border-border p-3"
-          >
-            <strong className="min-w-0 break-all text-sm">{pkg.name}</strong>
+          <div key={pkg.name} className="flex flex-wrap items-center gap-2 px-3.5 py-2.5 text-xs">
+            <strong className="min-w-0 break-all font-mono font-medium text-foreground">
+              {pkg.name}
+            </strong>
             <Badge variant="outline" size="xs">
               {pkg.version}
             </Badge>
             <Button
               variant="outline"
               size="sm"
-              className="ml-auto"
+              className="ml-auto rounded-sm"
               disabled={settings.busy}
               onClick={() => void settings.remove(pkg.name)}
             >
@@ -89,6 +82,18 @@ export const SettingsWidgetPackagesSection = observer(function SettingsWidgetPac
           </div>
         ))}
       </div>
+      {settings.snapshot && (
+        <p className="break-all px-0.5 text-[11px] text-muted-foreground">
+          Backend package directory: {settings.snapshot.directory}
+        </p>
+      )}
+      {settings.busy && (
+        <p role="status" className="px-0.5 text-xs text-muted-foreground">
+          Updating widget packages…
+        </p>
+      )}
+      {settings.error && <Callout variant="error">{settings.error}</Callout>}
+      {settings.notice && <Callout variant="info">{settings.notice}</Callout>}
     </section>
   );
 });

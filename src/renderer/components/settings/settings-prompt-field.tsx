@@ -23,8 +23,8 @@ export function SettingsPromptField({
   useEffect(() => setDraft(value), [value]);
   const changed = draft !== value;
   return (
-    <section id={id} className="scroll-mt-8 rounded-md border border-border/70 p-4">
-      <div className="mb-2 flex items-start justify-between gap-4">
+    <section id={id} className="scroll-mt-8 grid gap-2 px-3.5 py-2.5">
+      <div className="flex items-start justify-between gap-4">
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <strong className="text-xs font-medium text-foreground">{label}</strong>
           <small className="text-[11px] text-muted-foreground">{description}</small>
@@ -36,8 +36,9 @@ export function SettingsPromptField({
         </span>
         <Button
           type="button"
-          variant="ghost"
+          variant="outline"
           size="sm"
+          className="rounded-sm"
           disabled={!draft}
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => {
@@ -51,7 +52,7 @@ export function SettingsPromptField({
       <Textarea
         dictation
         aria-label={label}
-        className="min-h-36 w-full font-mono text-xs"
+        className="min-h-28 w-full rounded-sm font-mono text-xs"
         value={draft}
         placeholder={defaultValue}
         onChange={(event) => setDraft(event.target.value)}

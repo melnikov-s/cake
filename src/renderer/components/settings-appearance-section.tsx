@@ -9,21 +9,14 @@ export const SettingsAppearanceSection = observer(function SettingsAppearanceSec
   appearance: AppearanceSettingsStore;
 }) {
   return (
-    <section className="border-t border-border py-5" aria-labelledby="appearance-title">
-      <header className="mb-4">
-        <div>
-          <h2 id="appearance-title" className="text-[15px] font-semibold text-foreground">
-            Appearance
-          </h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Choose how Cake looks on this device.
-          </p>
-        </div>
-      </header>
-      <div className="grid gap-4">
+    <section className="grid gap-1.5" aria-labelledby="appearance-title">
+      <h2 id="appearance-title" className="px-0.5 text-xs font-semibold text-foreground">
+        Appearance
+      </h2>
+      <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
         <label
           id="setting-theme"
-          className="scroll-mt-8 flex items-center justify-between gap-6 text-sm"
+          className="scroll-mt-8 flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm"
         >
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <strong className="text-xs font-medium text-foreground">Theme</strong>
@@ -33,7 +26,7 @@ export const SettingsAppearanceSection = observer(function SettingsAppearanceSec
           </span>
           <Select
             aria-label="Color theme"
-            className="h-8 max-w-xs text-xs"
+            className="h-8 w-44 rounded-sm text-xs"
             value={appearance.theme}
             onChange={(event) => {
               const theme = (["system", "light", "dark"] as const).find(
@@ -50,21 +43,21 @@ export const SettingsAppearanceSection = observer(function SettingsAppearanceSec
         <SettingsToggle
           id="setting-project-avatars"
           label="Project avatars"
-          description="Show project icons in the sidebar. Projects without a custom icon use a deterministic Slice avatar."
+          description="Show project icons in the sidebar."
           checked={appearance.projectAvatarsEnabled}
           onChange={(enabled) => appearance.setProjectAvatarsEnabled(enabled)}
         />
         <SettingsToggle
           id="setting-session-avatars"
           label="Session avatars"
-          description="Show sidebar icons colored by session labels, and character avatars in chat."
+          description="Show label-colored sidebar icons and character avatars in chat."
           checked={appearance.sessionAvatarsEnabled}
           onChange={(enabled) => appearance.setSessionAvatarsEnabled(enabled)}
         />
         <SettingsToggle
           id="setting-sidebar-characters"
           label="Show session characters"
-          description="Use characters instead of small squares for sidebar sessions. Project icons stay unchanged. Off by default."
+          description="Use characters instead of small squares for sidebar sessions."
           checked={appearance.sidebarCharactersEnabled}
           onChange={(enabled) => appearance.setSidebarCharactersEnabled(enabled)}
         />

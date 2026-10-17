@@ -758,10 +758,15 @@ const speechOutputSettingsScenario: VisualCaptureScenario = {
   async prepare(page, state, application) {
     await conversationEntryScenario.prepare(page, "default", application);
     if (!application) throw new Error("Speech settings capture requires Electron");
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
-    // The hidden smoke window never paints, so this animated nav row never reports as stable.
-    await page.getByRole("button", { name: /Voice & Dictation/ }).dispatchEvent("click");
-    await expect(page.locator("#speech-output-title")).toBeVisible();
+    await expect(async () => {
+      const section = page.getByRole("button", { name: /Voice & Dictation/ });
+      if (!(await section.isVisible()))
+        await page.getByRole("button", { name: "Open settings", exact: true }).click();
+      await section.dispatchEvent("click");
+      await expect(page.locator("#speech-output-title")).toBeVisible({ timeout: 1_000 });
+      await page.waitForTimeout(500);
+      await expect(page.locator("#speech-output-title")).toBeVisible({ timeout: 100 });
+    }).toPass({ timeout: 20_000 });
     const key = page.getByLabel("ElevenLabs API key", { exact: true });
     await expect(key).toBeVisible();
     await expect(key).toHaveAttribute("type", "password");

@@ -12,16 +12,59 @@ export const SettingsLocalSpeechSection = observer(function SettingsLocalSpeechS
   const size = model ? `${Math.round(model.totalBytes / 1_000_000)} MB` : "model data";
   const downloaded = ((model?.downloadedBytes ?? 0) / 1_000_000).toFixed(1);
   return (
-    <div className="grid gap-3">
-      <p className="text-xs text-muted-foreground">
-        Pocket TTS Core ML · English · Alba voice. One-time download of {size} from Hugging Face.
-        The native engine is included with Cake; no Python or API key is needed.
-      </p>
-      <Callout>
-        Microphone recognition and speech output stay on this Mac. After installation, local speech
-        output needs no network connection or ElevenLabs credits. Your chat model still follows its
-        own provider settings.
-      </Callout>
+    <div className="grid gap-2 px-3.5 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <strong className="text-xs font-medium text-foreground">
+            Pocket TTS Core ML · English · Alba voice
+          </strong>
+          <small className="text-[11px] text-muted-foreground">
+            {size} local model; no Python or API key is needed. Speaking speed is adjusted locally
+            without changing pitch.
+          </small>
+        </div>
+        {speech.installing ? (
+          <div className="flex items-center gap-2">
+            <p role="status" className="text-xs tabular-nums text-muted-foreground">
+              Downloading Pocket TTS… {downloaded} / {size}
+            </p>
+            {speech.canCancelDownload && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-sm"
+                onClick={() => speech.cancelDownload()}
+              >
+                Cancel download
+              </Button>
+            )}
+          </div>
+        ) : model?.installed ? (
+          <div className="flex items-center gap-2">
+            <p role="status" className="text-xs text-muted-foreground">
+              Pocket TTS is installed and ready for voice mode.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-sm"
+              disabled={speech.busy}
+              onClick={() => void speech.removeLocalModel()}
+            >
+              Remove local model
+            </Button>
+          </div>
+        ) : (
+          <Button
+            size="sm"
+            className="rounded-sm"
+            disabled={speech.busy || !model?.supported || !model.engineAvailable}
+            onClick={() => void speech.downloadLocalModel()}
+          >
+            Download Pocket TTS · {size}
+          </Button>
+        )}
+      </div>
       {!model?.supported && (
         <Callout>Local Pocket TTS requires Apple Silicon and macOS 14 or later.</Callout>
       )}
@@ -30,44 +73,7 @@ export const SettingsLocalSpeechSection = observer(function SettingsLocalSpeechS
           Cake's bundled local speech engine is missing. Rebuild, update or reinstall Cake.
         </Callout>
       )}
-      {speech.installing ? (
-        <div className="grid gap-2">
-          <p role="status" className="text-xs tabular-nums text-muted-foreground">
-            Downloading Pocket TTS… {downloaded} / {size}
-          </p>
-          {speech.canCancelDownload && (
-            <Button variant="outline" onClick={() => speech.cancelDownload()}>
-              Cancel download
-            </Button>
-          )}
-        </div>
-      ) : model?.installed ? (
-        <div className="flex items-center gap-3">
-          <p role="status" className="text-xs text-muted-foreground">
-            Pocket TTS is installed and ready for voice mode.
-          </p>
-          <Button
-            variant="outline"
-            disabled={speech.busy}
-            onClick={() => void speech.removeLocalModel()}
-          >
-            Remove local model
-          </Button>
-        </div>
-      ) : (
-        <Button
-          disabled={speech.busy || !model?.supported || !model.engineAvailable}
-          onClick={() => void speech.downloadLocalModel()}
-        >
-          Download Pocket TTS · {size}
-        </Button>
-      )}
       {model?.message && <Callout variant="error">{model.message}</Callout>}
-      <p className="text-xs text-muted-foreground">
-        Pocket TTS by Kyutai; Core ML conversion by FluidInference; Alba voice by Alba MacKenna.
-        Model and voice licensed CC BY 4.0. Speaking speed is adjusted locally without changing
-        pitch.
-      </p>
     </div>
   );
 });

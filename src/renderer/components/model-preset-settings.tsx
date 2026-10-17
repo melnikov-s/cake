@@ -64,24 +64,36 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
   const modelValue = draft.provider && draft.modelId ? `${draft.provider}/${draft.modelId}` : "";
 
   return (
-    <section className="border-t border-border py-5" aria-labelledby="model-presets-title">
-      <header className="mb-4 flex items-start justify-between gap-4">
-        <div>
-          <h2 id="model-presets-title" className="text-[15px] font-semibold text-foreground">
-            Model Presets
-          </h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Save a model, thinking level, and Fast mode as one reusable configuration. New sessions
-            use the default preset, or your last selected model when no default is set.
-          </p>
+    <section className="grid gap-1.5" aria-labelledby="model-presets-title">
+      <header className="flex items-center justify-between gap-3 px-0.5">
+        <h2 id="model-presets-title" className="text-xs font-semibold text-foreground">
+          Model Presets
+        </h2>
+        <div className="flex items-center gap-1.5">
+          {settings.defaultPresetId && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="rounded-sm"
+              onClick={() => void settings.setDefaultPreset(undefined)}
+            >
+              Clear default
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            type="button"
+            className="rounded-sm"
+            onClick={() => begin()}
+          >
+            New preset
+          </Button>
         </div>
-        <Button size="sm" type="button" onClick={() => begin()}>
-          New preset
-        </Button>
       </header>
-      <div className="grid gap-3">
+      <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
         {settings.presets.length === 0 && !editingId && (
-          <p className="text-xs text-muted-foreground">
+          <p className="px-3.5 py-2.5 text-xs text-muted-foreground">
             No presets yet. Create one for your preferred setup.
           </p>
         )}
@@ -94,10 +106,9 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
               key={preset.id}
               data-preset-id={preset.id}
               className={cn(
-                "flex items-center justify-between gap-4 rounded-xl border border-border bg-muted/50 p-3 transition-[opacity,box-shadow,border-color]",
+                "flex items-center justify-between gap-4 px-3.5 py-2.5 transition-[opacity,background-color]",
                 draggedId === preset.id && "opacity-45",
-                dropTargetId === preset.id &&
-                  "border-accent ring-2 ring-accent/35 ring-offset-2 ring-offset-background",
+                dropTargetId === preset.id && "bg-accent/10",
               )}
               onDragEnter={(event) => {
                 if (
@@ -119,7 +130,7 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
                 setDropTargetId(undefined);
               }}
             >
-              <div className="flex min-w-0 items-center gap-3">
+              <div className="flex min-w-0 items-center gap-2.5">
                 <IconButton
                   draggable
                   className="size-7 shrink-0 cursor-grab text-muted-foreground active:cursor-grabbing"
@@ -138,7 +149,7 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
                   <GripIcon />
                 </IconButton>
                 <div className="min-w-0">
-                  <strong className="block truncate text-xs font-semibold text-foreground">
+                  <strong className="block truncate text-xs font-medium text-foreground">
                     {preset.name}
                   </strong>
                   <small className="block truncate font-mono text-[10px] text-muted-foreground">
@@ -152,22 +163,29 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
                   )}
                 </div>
               </div>
-              <div className="flex shrink-0 items-center gap-2 text-xs">
+              <div className="flex shrink-0 items-center gap-1.5 text-xs">
                 <Button
                   variant={isDefault ? "outline" : "ghost"}
                   size="sm"
+                  className="rounded-sm"
                   aria-pressed={isDefault}
                   title="Use for new conversations"
                   onClick={() => void settings.setDefaultPreset(preset.id)}
                 >
                   {isDefault ? "Default" : "Set default"}
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => begin(preset)}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="rounded-sm"
+                  onClick={() => begin(preset)}
+                >
                   Edit
                 </Button>
                 <Button
                   variant="ghost"
                   size="sm"
+                  className="rounded-sm"
                   onClick={() => void settings.duplicatePreset(preset.id)}
                 >
                   Duplicate
@@ -175,6 +193,7 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
                 <Button
                   variant="ghost"
                   size="sm"
+                  className="rounded-sm"
                   onClick={() => void settings.deletePreset(preset.id)}
                 >
                   Delete
@@ -183,34 +202,24 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
             </article>
           );
         })}
-        {settings.defaultPresetId && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-fit"
-            onClick={() => void settings.setDefaultPreset(undefined)}
-          >
-            Clear default
-          </Button>
-        )}
       </div>
       {editingId && (
         <form
-          className="mt-4 grid gap-4 rounded-xl border border-border bg-card p-4 shadow-sm"
+          className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50"
           onSubmit={submit}
         >
-          <label className="flex items-center justify-between gap-6 text-sm">
+          <label className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm">
             <span className="text-xs font-medium text-foreground">Name</span>
             <Input
               autoFocus
-              className="h-8 max-w-md text-xs"
+              className="h-8 w-64 rounded-sm text-xs"
               value={draft.name}
               maxLength={80}
               placeholder="e.g. Deep review"
               onChange={(event) => setDraft({ ...draft, name: event.target.value })}
             />
           </label>
-          <div className="flex items-center justify-between gap-6 text-sm">
+          <div className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm">
             <span className="text-xs font-medium text-foreground">Model & thinking</span>
             <ModelPicker
               ariaLabel="Preset model"
@@ -243,13 +252,19 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
               }}
             />
           </div>
-          <div className="flex justify-end gap-2 border-t border-border pt-3">
-            <Button variant="ghost" size="sm" onClick={() => setEditingId(undefined)}>
+          <div className="flex justify-end gap-2 px-3.5 py-2.5">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="rounded-sm"
+              onClick={() => setEditingId(undefined)}
+            >
               Cancel
             </Button>
             <Button
               size="sm"
               type="submit"
+              className="rounded-sm"
               disabled={!draft.name.trim() || !modelValue || settings.saving}
             >
               Save preset

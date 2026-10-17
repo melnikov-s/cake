@@ -67,15 +67,15 @@ export const SettingsModelChoiceField = observer(function SettingsModelChoiceFie
   };
 
   return (
-    <div className="flex items-center justify-between gap-6 text-sm">
-      <span className="flex flex-col gap-1">
-        <strong className="text-xs font-medium">{label}</strong>
+    <div className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm max-[620px]:flex-col max-[620px]:items-stretch">
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <strong className="text-xs font-medium text-foreground">{label}</strong>
         <small className="text-[11px] text-muted-foreground">{description}</small>
       </span>
       <span className="flex shrink-0 flex-col items-end gap-2">
         <Select
           aria-label={label}
-          className="w-64"
+          className="h-8 w-64 rounded-sm text-xs max-[620px]:w-full"
           value={value}
           onChange={(event) => choose(event.target.value)}
         >

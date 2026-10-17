@@ -16,31 +16,26 @@ export const SettingsEmbeddedEditorSection = observer(function SettingsEmbeddedE
   settings: EmbeddedEditorSettingsStore;
 }) {
   return (
-    <section className="border-t border-border py-5" aria-labelledby="embedded-editor-title">
-      <header className="mb-4">
-        <h2 id="embedded-editor-title" className="text-[15px] font-semibold text-foreground">
-          VS Code
-        </h2>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          Control how the project sidebar behaves while the embedded editor is open.
-        </p>
-      </header>
-      <div className="grid gap-4">
+    <section className="grid gap-1.5" aria-labelledby="embedded-editor-title">
+      <h2 id="embedded-editor-title" className="px-0.5 text-xs font-semibold text-foreground">
+        VS Code
+      </h2>
+      <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
         <label
           id="setting-editor-sidebar-auto-hide"
-          className="scroll-mt-8 flex items-center justify-between gap-6 text-sm"
+          className="scroll-mt-8 flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm"
         >
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <strong className="text-xs font-medium text-foreground">
               Auto-hide project sidebar
             </strong>
             <small className="text-[11px] text-muted-foreground">
-              Hiding the sidebar in VS Code is temporary; its previous state returns in the agent.
+              Temporary while VS Code is open; restores when returning to the agent.
             </small>
           </span>
           <Select
             aria-label="Auto-hide project sidebar in VS Code"
-            className="h-8 max-w-xs text-xs"
+            className="h-8 w-52 rounded-sm text-xs"
             value={settings.sidebarAutoHide}
             onChange={(event) => {
               const mode = autoHideModes.find((candidate) => candidate === event.target.value);
@@ -55,7 +50,7 @@ export const SettingsEmbeddedEditorSection = observer(function SettingsEmbeddedE
         {settings.sidebarAutoHide === "below-width" ? (
           <label
             id="setting-editor-sidebar-auto-hide-width"
-            className="scroll-mt-8 flex items-center justify-between gap-6 text-sm"
+            className="scroll-mt-8 flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm"
           >
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
               <strong className="text-xs font-medium text-foreground">Window width</strong>
@@ -65,7 +60,7 @@ export const SettingsEmbeddedEditorSection = observer(function SettingsEmbeddedE
             </span>
             <Select
               aria-label="VS Code sidebar auto-hide window width"
-              className="h-8 max-w-xs text-xs"
+              className="h-8 w-52 rounded-sm text-xs"
               value={String(settings.sidebarAutoHideWidth)}
               onChange={(event) => {
                 const width = widthOptions.find(

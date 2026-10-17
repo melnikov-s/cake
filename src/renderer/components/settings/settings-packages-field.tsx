@@ -32,30 +32,30 @@ export function SettingsPackagesField({
     }
   };
   return (
-    <label id={id} className="scroll-mt-8 flex flex-col gap-2 text-sm">
-      <span className="flex flex-col gap-0.5">
-        <strong className="text-xs font-medium text-foreground">Packages</strong>
-        <small className="text-[11px] text-muted-foreground">
-          Pi package sources as JSON. Saving reloads every open Pi session.
-        </small>
-        {error && (
-          <small className="mt-1 text-xs text-destructive" role="alert">
-            {error}
+    <label id={id} className="scroll-mt-8 flex flex-col gap-2 px-3.5 py-2.5 text-sm">
+      <div className="flex items-center justify-between gap-4">
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <strong className="text-xs font-medium text-foreground">Packages</strong>
+          <small className="text-[11px] text-muted-foreground">
+            Pi package sources as JSON. Saving reloads open sessions.
           </small>
-        )}
-      </span>
-      <div className="flex flex-col items-end gap-2">
-        <Textarea
-          aria-label="Pi packages"
-          className="w-full font-mono text-xs"
-          value={draft}
-          rows={6}
-          onChange={(event) => setDraft(event.target.value)}
-        />
-        <Button variant="outline" size="sm" type="button" onClick={apply}>
+          {error && (
+            <small className="mt-1 text-xs text-destructive" role="alert">
+              {error}
+            </small>
+          )}
+        </span>
+        <Button variant="outline" size="sm" type="button" className="rounded-sm" onClick={apply}>
           Apply
         </Button>
       </div>
+      <Textarea
+        aria-label="Pi packages"
+        className="min-h-20 w-full rounded-sm font-mono text-xs"
+        value={draft}
+        rows={4}
+        onChange={(event) => setDraft(event.target.value)}
+      />
     </label>
   );
 }

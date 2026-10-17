@@ -26,16 +26,10 @@ export const SettingsDictationSection = observer(function SettingsDictationSecti
   }, [store]);
   const installing = store.busy || state?.status === "installing";
   return (
-    <section className="grid gap-5 py-5" aria-labelledby="dictation-title">
-      <header>
-        <h2 id="dictation-title" className="text-[15px] font-semibold">
-          Voice input
-        </h2>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Speak into focused Cake writing fields. Speech recognition is local, with no saved
-          recordings or ready sounds. VS Code, terminals, and embedded pages are excluded.
-        </p>
-      </header>
+    <section className="grid gap-1.5" aria-labelledby="dictation-title">
+      <h2 id="dictation-title" className="px-0.5 text-xs font-semibold text-foreground">
+        Voice input
+      </h2>
       {state && !state.supported && (
         <Callout variant="warning">Parakeet requires Apple Silicon and macOS 14 or later.</Callout>
       )}
@@ -44,169 +38,184 @@ export const SettingsDictationSection = observer(function SettingsDictationSecti
           Cake's bundled speech engine is missing. Reinstall or update Cake.
         </Callout>
       )}
-      <SettingsToggle
-        label="Dictation mode"
-        description="Focus a writing field, wait for the voice bars, then speak. Enter finishes your last words and submits where supported. Your choice is remembered when Cake opens; temporary pauses do not turn it off."
-        checked={store.enabled}
-        disabled={
-          installing ||
-          (!store.enabled && (!state?.supported || !state.engineAvailable || !state.modelPath))
-        }
-        onChange={(enabled) => void store.setEnabled(enabled)}
-      />
-      <div id="setting-text-processing" className="grid gap-2">
-        <label htmlFor="text-processing-mode" className="text-xs font-medium">
-          Text processing
-        </label>
-        <Select
-          id="text-processing-mode"
-          value={store.textProcessingMode}
-          onChange={(event) => {
-            const mode = event.target.value;
-            if (mode === "raw" || mode === "utility") store.setTextProcessingMode(mode);
-          }}
-        >
-          <option value="raw">Recognition · local live revisions</option>
-          <option value="utility">Utility model · customizable cleanup</option>
-        </Select>
-        <p className="text-xs text-muted-foreground">
-          Shared by dictation and voice mode. Recognition revises recent speech as more context
-          arrives, including across thinking pauses, entirely offline. Optional utility cleanup runs
-          after three seconds of silence or on submission and can remove fillers or follow your
-          custom prompt. Only utility mode sends dictated text to your configured utility provider
-          and may incur costs. Failures keep recognition unchanged.
-        </p>
-      </div>
-      {store.textProcessingMode === "utility" && prompts.prompts && (
-        <SettingsPromptField
-          id="setting-prompt-dictation-cleanup"
-          label="Utility cleanup prompt"
-          description="Shared by dictation and voice mode. Customize cleanup or ask for concise wording. Reset restores meaning-preserving cleanup. Only the dictated passage is supplied; Cake handles the JSON response format."
-          value={prompts.prompts.dictationCleanup ?? ""}
-          defaultValue={defaultCakePrompts().dictationCleanup}
-          onApply={(value) => void prompts.update("dictationCleanup", value)}
+      <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
+        <SettingsToggle
+          label="Dictation mode"
+          description="Speak into focused writing fields. Enter finishes and submits where supported."
+          checked={store.enabled}
+          disabled={
+            installing ||
+            (!store.enabled && (!state?.supported || !state.engineAvailable || !state.modelPath))
+          }
+          onChange={(enabled) => void store.setEnabled(enabled)}
         />
-      )}
-      {prompts.error && <Callout variant="error">{prompts.error}</Callout>}
-      <div className="grid gap-3 rounded-lg border border-border p-4">
-        <h3 className="text-sm font-medium">Parakeet TDT 0.6B v2 · English · Core ML</h3>
-        <p className="text-xs text-muted-foreground">
-          NVIDIA Parakeet · Core ML conversion by FluidInference · CC BY 4.0
-        </p>
-        <p className="text-xs text-muted-foreground">
-          One-time model download: 464 MB from Hugging Face. The native speech engine is included
-          with Cake, and Core ML comes with macOS. No separate runtime or developer tools to
-          install.
-        </p>
-        {state?.modelPath && (
-          <p className="break-all font-mono text-xs text-muted-foreground">
-            Model: {state.modelPath}
-          </p>
-        )}
-        {state?.managedModelPath && (
-          <p className="break-all text-xs text-muted-foreground">
-            Cake storage: {state.managedModelPath}
-          </p>
-        )}
-        <div className="flex flex-wrap gap-2">
-          <Button
-            disabled={
-              !state?.supported ||
-              !state.engineAvailable ||
-              installing ||
-              (state.modelPath === state.managedModelPath && state.status !== "error")
-            }
-            onClick={() => void store.install()}
+        <div
+          id="setting-text-processing"
+          className="flex items-center justify-between gap-4 px-3.5 py-2.5"
+        >
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <label htmlFor="text-processing-mode" className="text-xs font-medium text-foreground">
+              Text processing
+            </label>
+            <small className="text-[11px] text-muted-foreground">
+              Shared by dictation and voice mode. Utility mode cleans up pauses and fillers.
+            </small>
+          </div>
+          <Select
+            id="text-processing-mode"
+            className="h-8 w-64 rounded-sm text-xs"
+            value={store.textProcessingMode}
+            onChange={(event) => {
+              const mode = event.target.value;
+              if (mode === "raw" || mode === "utility") store.setTextProcessingMode(mode);
+            }}
           >
-            Download Parakeet model
-          </Button>
-          {store.installing && (
-            <Button variant="outline" onClick={() => store.cancelInstall()}>
-              Cancel download
+            <option value="raw">Recognition · local live revisions</option>
+            <option value="utility">Utility model · customizable cleanup</option>
+          </Select>
+        </div>
+        {store.textProcessingMode === "utility" && prompts.prompts && (
+          <SettingsPromptField
+            id="setting-prompt-dictation-cleanup"
+            label="Utility cleanup prompt"
+            description="Shared by dictation and voice mode. Reset restores default meaning-preserving cleanup."
+            value={prompts.prompts.dictationCleanup ?? ""}
+            defaultValue={defaultCakePrompts().dictationCleanup}
+            onApply={(value) => void prompts.update("dictationCleanup", value)}
+          />
+        )}
+        <div className="flex items-center justify-between gap-4 px-3.5 py-2.5">
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <label htmlFor="dictation-microphone" className="text-xs font-medium text-foreground">
+              Microphone
+            </label>
+            <small className="text-[11px] text-muted-foreground">
+              Audio input device for dictation and voice mode.
+            </small>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Select
+              id="dictation-microphone"
+              className="h-8 w-48 rounded-sm text-xs"
+              value={store.deviceId}
+              onChange={(event) => store.setDevice(event.target.value)}
+            >
+              <option value="">System default</option>
+              {store.devices
+                .filter((device) => device.id && device.id !== "default")
+                .map((device) => (
+                  <option key={device.id} value={device.id}>
+                    {device.label}
+                  </option>
+                ))}
+            </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-sm"
+              onClick={() => void store.refreshDevices()}
+            >
+              Refresh microphones
             </Button>
-          )}
-          {state?.modelPath && (
-            <Button variant="outline" disabled={installing} onClick={() => void store.remove()}>
-              Remove Cake model data
+          </div>
+        </div>
+        <div className="grid gap-1.5 px-3.5 py-2.5">
+          <Textarea
+            dictation
+            aria-label="Try dictation"
+            className="min-h-16 rounded-sm text-xs"
+            placeholder="Enable dictation, focus here, wait for the voice bars, then speak…"
+            value={testDraft}
+            onChange={(event) => setTestDraft(event.target.value)}
+            rows={2}
+          />
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-2.5">
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <strong className="text-xs font-medium text-foreground">
+              Parakeet TDT 0.6B v2 · Core ML
+            </strong>
+            <small className="truncate text-[11px] text-muted-foreground">
+              {state?.modelPath ? `Installed: ${state.modelPath}` : "464 MB local English model"}
+            </small>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Button
+              size="sm"
+              className="rounded-sm"
+              disabled={
+                !state?.supported ||
+                !state.engineAvailable ||
+                installing ||
+                (state.modelPath === state.managedModelPath && state.status !== "error")
+              }
+              onClick={() => void store.install()}
+            >
+              Download Parakeet model
             </Button>
-          )}
+            {store.installing && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-sm"
+                onClick={() => store.cancelInstall()}
+              >
+                Cancel download
+              </Button>
+            )}
+            {state?.modelPath && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-sm"
+                disabled={installing}
+                onClick={() => void store.remove()}
+              >
+                Remove Cake model data
+              </Button>
+            )}
+          </div>
         </div>
         {state?.status === "installing" && (
-          <div className="flex items-center gap-2 text-xs" role="status">
+          <div className="flex items-center gap-2 px-3.5 py-2 text-xs" role="status">
             <LoadingSpinner label="Installing dictation" />
             {state.message}
             {state.totalBytes > 0 &&
               ` ${Math.min(100, Math.floor((state.downloadedBytes / state.totalBytes) * 100))}%`}
           </div>
         )}
-        <p className="text-xs text-muted-foreground">
-          Removal clears the selection and Cake's downloaded weights. External model folders and the
-          bundled speech engine are left alone.
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-2.5">
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <label htmlFor="dictation-model-path" className="text-xs font-medium text-foreground">
+              Use an existing Core ML Parakeet model folder
+            </label>
+            <small className="text-[11px] text-muted-foreground">
+              Directory containing v2 .mlmodelc bundles and parakeet_vocab.json.
+            </small>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Input
+              id="dictation-model-path"
+              className="h-8 w-52 rounded-sm font-mono text-xs"
+              placeholder="/absolute/path/to/model"
+              value={store.modelPathDraft}
+              onChange={(event) => {
+                store.modelPathDraft = event.target.value;
+              }}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-sm"
+              disabled={!state?.supported || installing || !store.modelPathDraft.trim()}
+              onClick={() => void store.useModelPath(store.modelPathDraft)}
+            >
+              Use model folder
+            </Button>
+          </div>
+        </div>
       </div>
-      <div className="grid gap-2">
-        <label htmlFor="dictation-model-path" className="text-xs font-medium">
-          Use an existing Core ML Parakeet model folder
-        </label>
-        <Input
-          id="dictation-model-path"
-          placeholder="/absolute/path/to/model"
-          value={store.modelPathDraft}
-          onChange={(event) => {
-            store.modelPathDraft = event.target.value;
-          }}
-        />
-        <p className="text-xs text-muted-foreground">
-          Must contain the v2 Preprocessor, Encoder, Decoder, and JointDecision .mlmodelc bundles
-          plus parakeet_vocab.json. MLX, Whisper, and ONNX weights aren’t compatible.
-        </p>
-        <Button
-          className="justify-self-start"
-          variant="outline"
-          disabled={!state?.supported || installing || !store.modelPathDraft.trim()}
-          onClick={() => void store.useModelPath(store.modelPathDraft)}
-        >
-          Use model folder
-        </Button>
-      </div>
-      <div className="grid gap-2">
-        <label htmlFor="dictation-microphone" className="text-xs font-medium">
-          Microphone
-        </label>
-        <Select
-          id="dictation-microphone"
-          value={store.deviceId}
-          onChange={(event) => store.setDevice(event.target.value)}
-        >
-          <option value="">System default</option>
-          {store.devices
-            .filter((device) => device.id && device.id !== "default")
-            .map((device) => (
-              <option key={device.id} value={device.id}>
-                {device.label}
-              </option>
-            ))}
-        </Select>
-        <Button
-          className="justify-self-start"
-          variant="outline"
-          onClick={() => void store.refreshDevices()}
-        >
-          Refresh microphones
-        </Button>
-        <p className="text-xs text-muted-foreground">
-          macOS will request microphone access when you first focus a dictation field. If denied,
-          allow Cake in System Settings → Privacy & Security → Microphone.
-        </p>
-        <Textarea
-          dictation
-          aria-label="Try dictation"
-          placeholder="Enable dictation, focus here, wait for the voice bars, then speak…"
-          value={testDraft}
-          onChange={(event) => setTestDraft(event.target.value)}
-          rows={3}
-        />
-      </div>
+      {prompts.error && <Callout variant="error">{prompts.error}</Callout>}
       {(store.error || state?.status === "error") && (
         <Callout variant="error">{store.error ?? state?.message}</Callout>
       )}
