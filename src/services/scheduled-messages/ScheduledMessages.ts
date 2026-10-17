@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, SubscriptionRef, type Stream } from "effect";
+import { Context, Effect, Layer, Semaphore, SubscriptionRef, type Stream } from "effect";
 import type {
   ScheduledMessage,
   ScheduledMessageSnapshot,
@@ -33,27 +33,40 @@ export class ScheduledMessages extends Context.Service<
         messages: [],
       });
 
+      const mutations = yield* Semaphore.make(1);
+
       const initialize = Effect.fn("ScheduledMessages.initialize")(function* () {
         const messages = yield* storage.load();
         return yield* SubscriptionRef.updateAndGet(projection, (current) => ({
           revision: current.revision + 1,
           messages: [...messages].sort((left, right) => left.sendAt.localeCompare(right.sendAt)),
         }));
-      });
+      }, mutations.withPermits(1));
       const transact = Effect.fn("ScheduledMessages.transact")(
         <E>(
           transition: (
             messages: ReadonlyArray<ScheduledMessage>,
           ) => Effect.Effect<ReadonlyArray<ScheduledMessage>, E>,
         ) =>
-          SubscriptionRef.updateAndGetEffect(projection, (current) =>
-            transition(current.messages).pipe(
-              Effect.map((messages) =>
-                [...messages].sort((left, right) => left.sendAt.localeCompare(right.sendAt)),
-              ),
-              Effect.flatMap((messages) => storage.save(messages).pipe(Effect.as(messages))),
-              Effect.map((messages) => ({ revision: current.revision + 1, messages })),
-            ),
+          mutations.withPermits(1)(
+            Effect.gen(function* () {
+              const current = yield* SubscriptionRef.get(projection);
+              const next = yield* transition(current.messages);
+              const messages = [...next].sort((left, right) =>
+                left.sendAt.localeCompare(right.sendAt),
+              );
+              // Protect only local persistence and publication, not the callback
+              // or lock wait: cancellation must not strand a disk-only mutation.
+              return yield* storage.save(messages).pipe(
+                Effect.andThen(
+                  SubscriptionRef.setAndGet(projection, {
+                    revision: current.revision + 1,
+                    messages,
+                  }),
+                ),
+                Effect.uninterruptible,
+              );
+            }),
           ),
       );
 

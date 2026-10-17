@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, SubscriptionRef, type Stream } from "effect";
+import { Context, Effect, Layer, Semaphore, SubscriptionRef, type Stream } from "effect";
 import {
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
@@ -35,8 +35,10 @@ export class ApplicationState extends Context.Service<
         state: defaultApplicationState(),
       });
 
+      const mutations = yield* Semaphore.make(1);
+
       // Main owns this process-lifetime projection. ApplicationStorage is the persistence
-      // authority; SubscriptionRef serializes publication after successful writes and provides
+      // authority; mutations serialize read/transition/commit, and SubscriptionRef provides
       // current-first observation without introducing another persisted application copy.
       const initialize = Effect.fn("ApplicationState.initialize")(function* () {
         const loaded = yield* storage.load();
@@ -45,7 +47,7 @@ export class ApplicationState extends Context.Service<
           state: loaded.state,
         }));
         return next.state;
-      });
+      }, mutations.withPermits(1));
       const current = Effect.fn("ApplicationState.current")(() =>
         SubscriptionRef.get(projection).pipe(Effect.map((current) => current.state)),
       );
@@ -53,12 +55,24 @@ export class ApplicationState extends Context.Service<
         <E>(
           transition: (current: ApplicationStateValue) => Effect.Effect<ApplicationStateValue, E>,
         ) =>
-          SubscriptionRef.updateAndGetEffect(projection, (current) =>
-            transition(current.state).pipe(
-              Effect.flatMap((next) => storage.save(next).pipe(Effect.as(next))),
-              Effect.map((next) => ({ revision: current.revision + 1, state: next })),
-            ),
-          ).pipe(Effect.map((current) => current.state)),
+          mutations.withPermits(1)(
+            Effect.gen(function* () {
+              const current = yield* SubscriptionRef.get(projection);
+              const next = yield* transition(current.state);
+              // The callback and lock wait remain interruptible. Once saving starts,
+              // finish disk commit (including cleanup) and publication together.
+              yield* storage.save(next).pipe(
+                Effect.andThen(
+                  SubscriptionRef.set(projection, {
+                    revision: current.revision + 1,
+                    state: next,
+                  }),
+                ),
+                Effect.uninterruptible,
+              );
+              return next;
+            }),
+          ),
       );
 
       return ApplicationState.of({
