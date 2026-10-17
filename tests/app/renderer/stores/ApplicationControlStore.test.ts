@@ -284,6 +284,43 @@ describe("Application control transport integration", () => {
     expect(fixture.root.sessionCatalogStore.find("failed-child")).toBeUndefined();
   });
 
+  it("does not reopen a pending child or repeat its mutation when Project response delivery fails", async () => {
+    const opening = deferred<void>();
+    const started = deferred<void>();
+    const open = vi.fn(async () => {
+      started.resolve();
+      await opening.promise;
+    });
+    const respondControl = vi.fn(async () => {
+      throw new Error("Project response expired");
+    });
+    using fixture = createControlFixture({ projectSessions: { open, respondControl } });
+    const store = fixture.root.applicationControlStore;
+    const request = childRequest(8, "pending-child");
+
+    const pending = store.handleProjectSessionRequest(request);
+    await started.promise;
+    await store.handleProjectSessionRequest(request);
+    expect(open).toHaveBeenCalledOnce();
+    expect(respondControl).not.toHaveBeenCalled();
+    opening.resolve();
+    await pending;
+    await store.handleProjectSessionRequest(request);
+
+    expect(open).toHaveBeenCalledOnce();
+    expect(respondControl).toHaveBeenCalledExactlyOnceWith(
+      "parent",
+      requestId(8),
+      { ok: true, childSessionId: "pending-child", placement: "none" },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(fixture.root.projectWorkbenchStore.error).toBe("Project response expired");
+    expect(fixture.root.sessionCatalogStore.find("pending-child")).toMatchObject({
+      familyParentSessionId: "parent",
+      pending: true,
+    });
+  });
+
   it("consumes replayed Cake Chat control snapshots once and reports a failed response through the real error owner", async () => {
     const replayConsumed = deferred<void>();
     const replies: { controlRequestId: string; result: JsonValue }[] = [];
