@@ -41,6 +41,12 @@ export const cakeToolEnvelopeSchema = Schema.Struct({
   ),
 });
 
+/** Model-facing envelope only; exact result schemas are validated in invoke and disclosed by help. */
+export const cakeToolOutputSchema = Schema.Union([
+  Schema.String,
+  Schema.Struct({ command: Schema.String, result: Schema.Unknown }),
+]);
+
 const cakeOperationImageSchema = Schema.Struct({
   type: Schema.Literal("image"),
   data: Schema.String.check(
@@ -213,23 +219,6 @@ export class CakeOperationRegistry {
         return help ? [help] : [];
       })
       .join("\n\n");
-  }
-
-  /** One tool-wide union: text for ordinary commands, command-tagged data for opted-in results. */
-  outputSchema() {
-    return Schema.Union([
-      Schema.String,
-      ...this.definitions().flatMap((operation) =>
-        operation.outputSchema
-          ? [
-              Schema.Struct({
-                command: Schema.Literal(operation.command),
-                result: operation.outputSchema,
-              }),
-            ]
-          : [],
-      ),
-    ]);
   }
 
   operationHelp(command: string) {

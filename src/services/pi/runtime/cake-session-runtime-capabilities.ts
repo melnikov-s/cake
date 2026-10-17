@@ -24,6 +24,7 @@ import {
   CakeOperationRegistry,
   cakeToolDescription,
   cakeToolEnvelopeSchema,
+  cakeToolOutputSchema,
 } from "./cake-operation-registry";
 import type { CakeOperationDefinition } from "../../../contracts/agent/cake-operation";
 import type { RuntimeOperationApi } from "../../../contracts/agent/cake-operation-api";
@@ -54,8 +55,8 @@ export function createCakeToolDefinition(
     parameters: Schema.toStandardJSONSchemaV1(cakeToolEnvelopeSchema)["~standard"].jsonSchema.input(
       { target: "draft-07" },
     ) as TSchema,
-    // SAFETY: Like parameters, this is the registry's Effect-derived draft-07 JSON Schema.
-    outputSchema: Schema.toStandardJSONSchemaV1(registry.outputSchema())[
+    // SAFETY: Like parameters, this is an Effect-derived draft-07 JSON Schema.
+    outputSchema: Schema.toStandardJSONSchemaV1(cakeToolOutputSchema)[
       "~standard"
     ].jsonSchema.output({ target: "draft-07" }) as TSchema,
     async execute(toolCallId, params, signal, onUpdate, runtime) {

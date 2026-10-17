@@ -1,7 +1,10 @@
 import { Schema } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import { createCakeArtifactOperations } from "../../../src/domain/artifacts/cake-artifact-operations";
-import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
+import {
+  CakeOperationRegistry,
+  cakeToolOutputSchema,
+} from "../../../src/services/pi/runtime/cake-operation-registry";
 import {
   cakeOperationImageResult,
   type CakeOperationDefinition,
@@ -69,11 +72,6 @@ describe("Cake structured output", () => {
       expect(gateway.content).toEqual([{ type: "text", text: JSON.stringify(result, null, 2) }]);
       expect(gateway.details).toEqual({ protocol: "cake.operation/v1", command, result });
       expect(JSON.stringify(gateway)).not.toContain("Content never returned");
-      expect(
-        Schema.decodeUnknownSync(new CakeOperationRegistry(definitions).outputSchema())(
-          gateway.structuredContent,
-        ),
-      ).toEqual(gateway.structuredContent);
     },
   );
 
@@ -109,27 +107,34 @@ describe("Cake structured output", () => {
     ).toEqual({ command: "artifacts.list", result: { total: 0, truncated: false, artifacts: [] } });
   });
 
-  it("generates the native tool-wide union only from registered opted-in definitions", () => {
-    const definitions = operations().filter((o) => o.command === "artifacts.search");
-    const schema = createCakeToolDefinition(definitions).outputSchema;
-    const encoded = JSON.stringify(schema);
-    expect(encoded).toContain('"anyOf"');
-    expect(encoded).toContain('"type":"string"');
-    expect(encoded).toContain('"enum":["artifacts.search"]');
-    expect(encoded).toContain('"selectedRevision"');
-    expect(encoded).not.toContain('"artifacts.list"');
-    expect(encoded).not.toContain('"artifacts.resolve-reference"');
-    const decode = Schema.decodeUnknownSync(new CakeOperationRegistry(definitions).outputSchema(), {
-      onExcessProperty: "error",
+  it("advertises a small fixed output envelope regardless of registered result schemas", () => {
+    const definitions = operations();
+    const expanded = Array.from({ length: 50 }, (_, index) =>
+      definitions.map((definition) => ({
+        ...definition,
+        command: `${definition.command}${index}`,
+      })),
+    ).flat();
+    const schema = createCakeToolDefinition([]).outputSchema;
+    expect(createCakeToolDefinition(definitions).outputSchema).toEqual(schema);
+    expect(createCakeToolDefinition(expanded).outputSchema).toEqual(schema);
+    expect(schema).toMatchObject({
+      anyOf: [
+        { type: "string" },
+        {
+          type: "object",
+          properties: { command: { type: "string" }, result: {} },
+          required: ["command", "result"],
+        },
+      ],
     });
-    expect(() => decode({ command: "artifacts.list", result: {} })).toThrow();
-    expect(() =>
-      decode({
-        command: "artifacts.search",
-        result: { total: "wrong", truncated: false, artifacts: [] },
-      }),
-    ).toThrow();
+    expect(JSON.stringify(schema).length).toBeLessThan(1_024);
+    const decode = Schema.decodeUnknownSync(cakeToolOutputSchema);
     expect(decode("help")).toBe("help");
+    for (const result of [null, 42, "value", [], { nested: true }]) {
+      const envelope = { command: "artifacts.search", result };
+      expect(decode(envelope)).toEqual(envelope);
+    }
   });
 
   it.each([

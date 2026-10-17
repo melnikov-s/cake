@@ -144,7 +144,7 @@ function textOf(result: { content: ({ type: "text"; text: string } | { type: "im
 }
 
 describe("Cake structured output through real Pi codemode", () => {
-  it("uses native structuredContent for fields, retains readable direct results, and describes the honest union", async () => {
+  it("retains structured results while advertising only the envelope and discovering exact schemas through help", async () => {
     const h = await harness();
     const direct = await h.invoke("cake", { command: "artifacts.list" });
     expect(direct.isError).toBe(false);
@@ -168,8 +168,14 @@ describe("Cake structured output through real Pi codemode", () => {
     const described = await h.script(`return await describeTool("cake");`);
     expect(described.isError).toBe(false);
     expect(textOf(described)).toContain("Promise<string |");
-    expect(textOf(described)).toContain("artifacts.search");
-    expect(textOf(described)).toContain("selectedRevision: number");
+    expect(textOf(described)).toContain("command: string");
+    expect(textOf(described)).toContain("result: unknown");
+    expect(textOf(described).length).toBeLessThan(4_000);
+    const help = await h.script(`return await tools.cake({command: "artifacts.search.help"});`);
+    expect(help.isError).toBe(false);
+    expect(textOf(help)).toContain("Output schema (result):");
+    expect(textOf(help)).toContain("selectedRevision");
+    expect(textOf(help)).toContain("validated output");
   });
 
   it("keeps help, unknown commands, and nonselected operations as the original strings", async () => {
