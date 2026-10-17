@@ -140,6 +140,7 @@ export function SlashCommandCombobox({
   focusRequestRevision,
   focusRef,
   autoFocus = false,
+  dictation: dictationEnabled = true,
   value,
   suggestFiles,
   onValueChange,
@@ -440,6 +441,8 @@ export function SlashCommandCombobox({
       )}
       <ComposerInput
         {...inputProps}
+        // Use actual visibility, not a slash prefix: Escape and completion restore dictation.
+        dictation={dictationEnabled && menuKind !== "commands"}
         focusAnchorRef={focusAnchorRef}
         ref={(node) => {
           inputRef.current = node;

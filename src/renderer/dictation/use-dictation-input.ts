@@ -1,5 +1,5 @@
 import {
-  useEffect,
+  useLayoutEffect,
   useId,
   useRef,
   type FocusEvent,
@@ -14,6 +14,10 @@ import { DictationStore, type DictationTarget } from "../stores/DictationStore";
 export function useDictationInput(enabled: boolean, input: RefObject<HTMLTextAreaElement | null>) {
   const store = useOptionalStore(DictationStore);
   const id = useId();
+  // Targets outlive renders. Revoke their DOM access immediately when the field opts out,
+  // including results already queued before the capture generation is cancelled.
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
   const inserting = useRef(false);
   const replaying = useRef(false);
   const insertion = useRef({ before: "", after: "", value: "", caret: -1 });
@@ -21,7 +25,7 @@ export function useDictationInput(enabled: boolean, input: RefObject<HTMLTextAre
     id,
     begin() {
       const element = input.current;
-      if (!element) return;
+      if (!enabledRef.current || !element) return;
       insertion.current = {
         before: element.value.slice(0, element.selectionStart),
         after: element.value.slice(element.selectionEnd),
@@ -31,7 +35,13 @@ export function useDictationInput(enabled: boolean, input: RefObject<HTMLTextAre
     },
     replace(text) {
       const element = input.current;
-      if (!element || document.activeElement !== element || element.disabled || element.readOnly)
+      if (
+        !enabledRef.current ||
+        !element ||
+        document.activeElement !== element ||
+        element.disabled ||
+        element.readOnly
+      )
         return;
       const range = insertion.current;
       if (element.value !== range.value) {
@@ -63,12 +73,14 @@ export function useDictationInput(enabled: boolean, input: RefObject<HTMLTextAre
     },
   });
 
-  useEffect(() => {
+  // Cancel before paint, not in a passive effect: final/late results must not race the menu.
+  useLayoutEffect(() => {
     if (!enabled || !store) return;
     const field = target.current;
     const focused = () => {
       const element = input.current;
       if (
+        enabledRef.current &&
         document.hasFocus() &&
         document.activeElement === element &&
         !element?.disabled &&
@@ -155,7 +167,13 @@ export function useDictationInput(enabled: boolean, input: RefObject<HTMLTextAre
       event.stopPropagation();
       const element = event.currentTarget;
       void store.finish(id).then((finished) => {
-        if (!finished || !element.isConnected || document.activeElement !== element) return;
+        if (
+          !enabledRef.current ||
+          !finished ||
+          !element.isConnected ||
+          document.activeElement !== element
+        )
+          return;
         replaying.current = true;
         try {
           element.dispatchEvent(

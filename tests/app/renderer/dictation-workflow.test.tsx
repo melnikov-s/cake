@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { toSnapshot, type StoreSnapshot } from "r-state-tree";
+import { applySnapshot, toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -12,6 +12,7 @@ import type {
   DictationAudio,
   DictationState,
 } from "../../../src/contracts/dictation/dictation-data";
+import { piBuiltinSlashCommands } from "../../../src/contracts/conversations/session-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
 import { SettingsDictationSection } from "../../../src/renderer/components/settings-dictation-section";
@@ -132,6 +133,8 @@ function browserAudio(options: {
 function renderDictation(
   options: {
     modelReady?: Promise<void>;
+    surface?: "project-session" | "project-chat" | "cake-chat";
+    slashCommands?: boolean;
     submissionReady?: Promise<void>;
     composerFocusEnabled?: boolean;
     parkComposerFocusWhileDictating?: boolean;
@@ -164,7 +167,12 @@ function renderDictation(
     await options.submissionReady;
     return TurnId.make("10000000-0000-4000-8000-000000000001");
   });
-  const sessionId = "dictation-session";
+  const sessionId =
+    options.surface === "project-chat"
+      ? "project-chat:dictation"
+      : options.surface === "cake-chat"
+        ? "cake-chat:dictation"
+        : "dictation-session";
   const fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: "/project" })],
     sessions: [sessionSummary({ sessionId, projectPath: "/project" })],
@@ -182,15 +190,26 @@ function renderDictation(
       sessionChats: { prompt, ...options.client?.sessionChats },
     },
   });
-  const session = fixture.root.sessionRegistry.load(sessionId, "/project");
-  fixture.root.appShellStore.selectProjectSession(sessionId);
-  fixture.root.projectWorkbenchStore.showLoadedSession(sessionId);
+  const isCakeChat = options.surface === "project-chat" || options.surface === "cake-chat";
+  if (isCakeChat)
+    applySnapshot(fixture.models.cakeChatCatalog, {
+      loaded: true,
+      sessions: [{ sessionId, title: "Dictation chat" }],
+    });
+  const session = isCakeChat
+    ? fixture.root.cakeChatCollectionStore.registry.load(sessionId)
+    : fixture.root.sessionRegistry.load(sessionId, "/project");
+  if (isCakeChat) fixture.root.appShellStore.selectCakeChat(sessionId);
+  else {
+    fixture.root.appShellStore.selectProjectSession(sessionId);
+    fixture.root.projectWorkbenchStore.showLoadedSession(sessionId);
+  }
   fixture.root.dictationStore.applyState({
     ...installedDictationState,
     status: options.modelReady ? "loading" : "ready",
     ...options.state,
   });
-  applyConversationUpdate(fixture.models.projectConversation(sessionId, "/project"), {
+  applyConversationUpdate(session.model, {
     _tag: "Snapshot",
     revision: 1,
     snapshot: {
@@ -202,7 +221,7 @@ function renderDictation(
       availableThinkingLevels: ["off"],
       streaming: false,
       diagnostics: [],
-      commands: [],
+      commands: options.slashCommands ? piBuiltinSlashCommands : [],
       compatibility: { resources: [], diagnostics: [] },
       extensionUi: { statuses: [] },
       tree: [],
@@ -270,6 +289,127 @@ afterEach(() => {
 });
 
 describe("Dictation writing-field workflow", () => {
+  describe.each(["project-session", "project-chat", "cake-chat"] as const)(
+    "%s slash-menu dictation boundary",
+    (surface) => {
+      const composer = () =>
+        screen.getByRole<HTMLTextAreaElement>("combobox", { name: /^Message/ });
+      const menu = () => screen.queryByRole("listbox", { name: "Slash commands" });
+
+      it.each(["while open", "after dismissal"])(
+        "drops pending recognition delivered %s and resumes only a fresh capture",
+        async (delivery) => {
+          using f = renderDictation({ surface, slashCommands: true });
+          await f.user.click(mode());
+          await f.user.click(composer());
+          await waitFor(listening);
+          await f.audio.push(new Float32Array(12_800));
+          expect(f.requests).toHaveLength(1);
+
+          fireEvent.change(composer(), { target: { value: "/" } });
+          expect(menu()).not.toBeNull();
+          expect(document.activeElement).toBe(composer());
+          expect(f.root.dictationStore.phase).toBe("paused");
+          expect(f.root.dictationStore.activeTargetId).toBeUndefined();
+          expect(screen.queryByRole("button", { name: "Mute dictation" })).toBeNull();
+          if (delivery === "while open") await f.recognize(0, "Discard this pending speech");
+          expect(composer().value).toBe("/");
+
+          // Neither field focus, window focus nor re-enabling the global preference may
+          // activate a composer whose menu is open.
+          await f.user.click(mode());
+          await f.user.click(mode());
+          const captures = f.audio.getUserMedia.mock.calls.length;
+          await f.user.click(composer());
+          fireEvent(window, new Event("focus"));
+          expect(f.root.dictationStore.activeTargetId).toBeUndefined();
+          expect(f.audio.getUserMedia).toHaveBeenCalledTimes(captures);
+          expect(menu()).not.toBeNull();
+          expect(composer().value).toBe("/");
+
+          // Escape dismisses the menu rather than muting the user's global preference.
+          await f.user.keyboard("{Escape}");
+          expect(menu()).toBeNull();
+          expect(f.root.dictationStore.enabled).toBe(true);
+          expect(f.root.dictationStore.muted).toBe(false);
+          await waitFor(listening);
+          if (delivery === "after dismissal") await f.recognize(0, "Discard the old generation");
+          expect(composer().value).toBe("/");
+          await f.audio.push(new Float32Array(12_800));
+          await f.recognize(1, "Fresh words");
+          expect(composer().value).toBe("/ Fresh words");
+          await f.user.type(composer(), " typed too");
+          expect(composer().value).toBe("/ Fresh words typed too");
+          expect(screen.getByRole<HTMLButtonElement>("button", { name: "Send" }).disabled).toBe(
+            false,
+          );
+        },
+      );
+
+      it.each(["recognition", "cleanup"])(
+        "cancels finishing %s when the menu opens, ignoring its late result and deferred send",
+        async (stage) => {
+          const result = deferred<string>();
+          const postProcessDictation = vi.fn<Client["workspaces"]["postProcessDictation"]>(
+            () => result.promise,
+          );
+          using f = renderDictation({
+            surface,
+            slashCommands: true,
+            client: { workspaces: { postProcessDictation } },
+          });
+          if (stage === "cleanup")
+            await f.user.selectOptions(
+              screen.getByRole("combobox", { name: "Text processing" }),
+              "utility",
+            );
+          await f.user.type(composer(), "Original request");
+          await f.user.click(mode());
+          await f.user.click(composer());
+          await waitFor(listening);
+          await f.audio.push(new Float32Array(4096).fill(0.1));
+          await f.user.keyboard("{Enter}");
+          await waitFor(() => expect(f.requests).toHaveLength(1));
+          expect(f.requests[0]!.audio.final).toBe(true);
+          if (stage === "cleanup") {
+            await f.recognize(0, "Raw words");
+            expect(postProcessDictation).toHaveBeenCalledOnce();
+          }
+
+          fireEvent.change(composer(), { target: { value: "/" } });
+          expect(menu()).not.toBeNull();
+          if (stage === "recognition") await f.recognize(0, "Late final words");
+          else await act(async () => result.resolve("Late cleaned words"));
+          expect(composer().value).toBe("/");
+          expect(f.prompt).not.toHaveBeenCalled();
+          expect(f.root.dictationStore.activeTargetId).toBeUndefined();
+          // Completing the command restores normal typing and dictation without a mode toggle.
+          await f.user.keyboard("{Tab}");
+          expect(menu()).toBeNull();
+          expect(composer().value).toBe("/compact ");
+          await waitFor(listening);
+          await f.user.type(composer(), "arguments");
+          expect(composer().value).toBe("/compact arguments");
+        },
+      );
+
+      it("cancels microphone preparation if the menu opens before capture is ready", async () => {
+        const ready = deferred<void>();
+        using f = renderDictation({ surface, slashCommands: true, microphoneReady: ready.promise });
+        await f.user.click(mode());
+        await f.user.click(composer());
+        await waitFor(() => expect(f.audio.getUserMedia).toHaveBeenCalledOnce());
+        fireEvent.change(composer(), { target: { value: "/" } });
+        expect(menu()).not.toBeNull();
+        await act(async () => ready.resolve());
+        expect(f.root.dictationStore.phase).toBe("paused");
+        expect(f.root.dictationStore.activeTargetId).toBeUndefined();
+        expect(f.requests).toHaveLength(0);
+        expect(composer().value).toBe("/");
+      });
+    },
+  );
+
   it("parks convenience focus only while dictation is enabled and unmuted, leaving capture to explicit Tab", async () => {
     using f = renderDictation({ composerFocusEnabled: true });
     expect(document.activeElement).toBe(message());

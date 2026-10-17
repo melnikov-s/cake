@@ -189,13 +189,29 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
       await page.keyboard.press("Tab");
       await expect(composer).toBeFocused();
       await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
+      // The visible menu revokes this focused field's dictation target, not the global
+      // preference. Refocusing cannot start capture until the menu is dismissed.
+      await composer.fill("/");
+      await expect(page.getByRole("listbox", { name: "Slash commands" })).toBeVisible();
+      await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveCount(0);
+      await composer.focus();
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveCount(0);
+      await composer.press("Escape");
+      await expect(page.getByRole("listbox", { name: "Slash commands" })).toHaveCount(0);
+      await expect(composer).toHaveValue("/");
+      await expect(composer).toBeFocused();
+      await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
+
       // Slash completion is an explicit writing action, not convenience autofocus.
       for (const key of ["Tab", "ArrowLeft", "ArrowRight"]) {
         await composer.fill("/skill:desktop");
         await expect(page.getByRole("listbox", { name: "Slash commands" })).toBeVisible();
+        await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveCount(0);
         await page.keyboard.press(key);
         await expect(composer).toHaveValue("/skill:desktop-fixture ");
         await expect(composer).toBeFocused();
+        await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
         await page.keyboard.type("command argument");
         await expect(composer).toHaveValue("/skill:desktop-fixture command argument");
         await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
