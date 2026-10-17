@@ -1,7 +1,7 @@
 import { ReviewThread } from "../../../../src/renderer/models/ReviewThread";
 import { DiscussionSessionError } from "../../../../src/contracts/discussion-sessions/discussion-session-data";
 import { Effect, Queue, Stream } from "effect";
-import { batch, createStore, mount, observable } from "r-state-tree";
+import { batch, observable } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import type {
   DiscussionCatalogUpdate,
@@ -14,32 +14,18 @@ import {
 } from "../../../../src/contracts/conversations/conversation-data";
 import type { CakeChatControlUpdate } from "../../../../src/contracts/cake-chats/cake-chat-data";
 import type { CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
-import { CakeIpcClient } from "../../../../src/ipc/client/CakeIpcClient";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
-import {
-  createModelObserver,
-  observeModels,
-  observeStream,
-} from "../../../../src/renderer/observers";
+import { createModelObserver, observeModels } from "../../../../src/renderer/observers";
 import { mountRootStore } from "../../../../src/renderer/bootstrap/mount-root-store";
 import { createTestClient } from "../test-client";
 import type { Runtime } from "../../../../src/renderer/runtime";
-import { ReviewsStore } from "../../../../src/renderer/stores/ReviewsStore";
-import { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
-import type { SessionRegistryStore } from "../../../../src/renderer/stores/SessionRegistryStore";
-
-function runtimeFor(client: CakeIpcClientService): Runtime {
-  const execute: Runtime["execute"] = (effect, signal) =>
-    Effect.runPromise(
-      Effect.provideService(effect, CakeIpcClient, client),
-      signal ? { signal } : undefined,
-    );
-  return {
-    execute,
-    observe: (source, consume, options) => observeStream(execute, source, consume, options),
-    dispose: async () => undefined,
-  };
-}
+import { createRendererStoreFixture } from "../renderer-store-fixture";
+import { projectRecord } from "../fixtures/catalog-fixtures";
+import {
+  observerClient,
+  observerRuntime as runtimeFor,
+  type ObserverClientOverrides,
+} from "./observer-test-runtime";
 
 function recordingRuntime(client: CakeIpcClientService) {
   const realRuntime = runtimeFor(client);
@@ -122,8 +108,8 @@ function baseInput(projection: RootProjection, sessionId = "project-1") {
   };
 }
 
-function baseClient(overrides: object = {}) {
-  return {
+function baseClient(overrides: ObserverClientOverrides = {}) {
+  return observerClient({
     projects: { observeCatalog: () => Stream.never },
     cakeChats: { observeCatalog: () => Stream.never },
     conversations: { observe: () => Stream.never },
@@ -132,7 +118,7 @@ function baseClient(overrides: object = {}) {
     workflows: { observe: () => Stream.never },
     scheduledMessages: { observe: () => Stream.never },
     ...overrides,
-  } as unknown as CakeIpcClientService;
+  });
 }
 
 describe("Project Session composition observer", () => {
@@ -200,19 +186,23 @@ describe("Project Session composition observer", () => {
 
   it("delivers a title event to the pending projection before a file-backed catalog entry exists", async () => {
     const updates = await Effect.runPromise(Queue.unbounded<SessionCatalogUpdate>());
-    const changed = vi.fn();
-    const projection = RootProjection.create();
-    const client = baseClient({
-      projectSessions: { observeCatalog: () => Stream.fromQueue(updates) },
+    using fixture = createRendererStoreFixture({
+      projects: [projectRecord({ path: "/project", name: "Project" })],
     });
-    const observer = createModelObserver(runtimeFor(client));
+    const { root, models: projection } = fixture;
+    root.sessionRegistry.pendingSessions.prepare("/project", "new-session");
+    root.sessionRegistry.pendingSessions.materialize("new-session", "/project");
+    const client = baseClient({
+      managedWorktrees: {
+        observeCatalog: () => Stream.never,
+        observeOperations: () => Stream.never,
+      },
+      projectSessions: {
+        observeCatalog: (query) => (query.resolved ? Stream.never : Stream.fromQueue(updates)),
+      },
+    });
+    const stop = observeModels(runtimeFor(client), projection, root);
     try {
-      observer.sync({
-        ...baseInput(projection),
-        projectSessions: [],
-        projectSessionCatalogQueries: [{ projectPath: "/project", resolved: false }],
-        onProjectSessionTitleChanged: changed,
-      });
       await Effect.runPromise(
         Queue.offer(updates, { _tag: "Snapshot", revision: 1, sessions: [] }),
       );
@@ -224,12 +214,17 @@ describe("Project Session composition observer", () => {
         }),
       );
       await vi.waitFor(() =>
-        expect(changed).toHaveBeenCalledWith("new-session", "Generated title"),
+        expect(root.sessionRegistry.pendingSessions.summaries).toEqual([
+          expect.objectContaining({
+            sessionId: "new-session",
+            title: "Generated title",
+            pending: true,
+          }),
+        ]),
       );
       expect(projection.sessionCatalog.sessions).toHaveLength(0);
     } finally {
-      observer.stop();
-      projection[Symbol.dispose]();
+      stop();
     }
   });
   it("starts the Conversation from the known target without waiting for aggregate side authorities", async () => {
@@ -624,31 +619,13 @@ describe("Discussion sidecar retention", () => {
   it("unloads sidecar payload with parent observation demand and rehydrates without a reactive cycle", async () => {
     const parentId = "project-1";
     const sidecarId = "sidecar-1";
-    const loadedIds: string[] = observable([parentId]);
-    const observedIds: string[] = observable([parentId]);
     const catalogUpdates = await Effect.runPromise(Queue.unbounded<DiscussionCatalogUpdate>());
     const sidecarObservations: Queue.Queue<DiscussionSessionUpdate>[] = [];
-    const projection = RootProjection.create();
+    using fixture = createRendererStoreFixture();
+    const { root, models: projection } = fixture;
+    root.sessionRegistry.load(parentId, "/project");
     const catalog = projection.discussionCatalog(parentId);
-    const retainedSessions: Array<{ props: { discussionCatalog: typeof catalog } }> = observable([
-      { props: { discussionCatalog: catalog } },
-    ]);
-    const registry = {
-      sessions: retainedSessions,
-      observationRetention: { sessions: retainedSessions },
-      discussionSessionDemand: retainedSessions,
-    } as unknown as SessionRegistryStore;
-    const operations = mount(createStore(SessionOperationCoordinatorStore));
-    const reviews = mount(
-      createStore(ReviewsStore, {
-        sessionRegistry: registry,
-        discussionSessionModel: (sessionId, workingDirectory) =>
-          projection.discussionConversation(sessionId, workingDirectory),
-        operations,
-        modelPresets: () => [],
-        openModelPresetSettings: () => undefined,
-      }),
-    );
+    const reviews = root.reviewsStore;
     const client = baseClient({
       managedWorktrees: {
         observeCatalog: () => Stream.never,
@@ -666,16 +643,7 @@ describe("Discussion sidecar retention", () => {
           ),
       },
     });
-    const observer = createModelObserver(runtimeFor(client));
-    observer.observe({
-      projection,
-      projectSessionCatalogQueries: () => [],
-      loadedProjectSessions: () =>
-        loadedIds.map((sessionId) => ({ sessionId, workingDirectory: "/project" })),
-      projectSessionTargets: () =>
-        observedIds.map((sessionId) => ({ sessionId, workingDirectory: "/project" })),
-      cakeChatTargets: () => [],
-    });
+    const stop = observeModels(runtimeFor(client), projection, root);
 
     try {
       await Effect.runPromise(
@@ -717,16 +685,14 @@ describe("Discussion sidecar retention", () => {
       );
       const sidecarModel = projection.findDiscussionConversation(sidecarId);
 
-      // The parent identity remains loaded, but both Stores and observer leave retention together.
-      retainedSessions.splice(0, 1);
-      observedIds.splice(0, 1);
+      // The real Registry keeps identity loaded while both consumers lose retention.
+      root.sessionRegistry.observationRetention.remove(parentId);
       await vi.waitFor(() => expect(reviews.discussionSessions).toHaveLength(0));
       await vi.waitFor(() => expect(sidecarModel?.parts).toEqual([]));
       expect(projection.findDiscussionConversation(sidecarId)).toBe(sidecarModel);
       expect(projection.discussionCatalog(parentId).threads).toHaveLength(1);
 
-      retainedSessions.push({ props: { discussionCatalog: catalog } });
-      observedIds.push(parentId);
+      root.sessionRegistry.load(parentId, "/project");
       await vi.waitFor(() => expect(sidecarObservations).toHaveLength(2));
       expect(reviews.discussionSessions).toHaveLength(1);
       expect(projection.findDiscussionConversation(sidecarId)).toBe(sidecarModel);
@@ -742,21 +708,17 @@ describe("Discussion sidecar retention", () => {
 
       // A true unload first removes Store/observation demand, then releases the
       // parent's focused Models, including sidecar identity.
-      retainedSessions.splice(0, 1);
-      observedIds.splice(0, 1);
+      root.sessionRegistry.removeSession(parentId);
       await vi.waitFor(() => expect(reviews.discussionSessions).toHaveLength(0));
-      loadedIds.splice(0, 1);
       await vi.waitFor(() =>
         expect(projection.findDiscussionConversation(sidecarId)).toBeUndefined(),
       );
       expect(projection.discussionCatalogs).toHaveLength(0);
 
-      loadedIds.push(parentId);
-      observedIds.push(parentId);
+      root.sessionRegistry.load(parentId, "/project");
       await vi.waitFor(() => expect(projection.discussionCatalogs).toHaveLength(1));
       const reloadedCatalog = projection.discussionCatalog(parentId);
       expect(reloadedCatalog).not.toBe(catalog);
-      retainedSessions.push({ props: { discussionCatalog: reloadedCatalog } });
       await Effect.runPromise(
         Queue.offer(catalogUpdates, {
           _tag: "Snapshot",
@@ -791,10 +753,7 @@ describe("Discussion sidecar retention", () => {
       expect(reloadedSidecar).not.toBe(sidecarModel);
       expect(reloadedSidecar?.parts).toEqual([]);
     } finally {
-      observer.stop();
-      reviews[Symbol.dispose]();
-      operations[Symbol.dispose]();
-      projection[Symbol.dispose]();
+      stop();
     }
   });
 });
