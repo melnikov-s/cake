@@ -13,6 +13,7 @@ export class NonChatModelSettingsStore extends Store {
   preferences: NonChatModelPreferences = {};
   saving = false;
   error: string | undefined;
+  errorSection: "images" | "classifiers" = "images";
   private persisted: NonChatModelPreferences = {};
   private applicationRevision = -1;
   private saveRevision = 0;
@@ -51,6 +52,7 @@ export class NonChatModelSettingsStore extends Store {
       .catch((error) => {
         if (this.signal.aborted || revision !== this.saveRevision) return;
         this.preferences = this.persisted;
+        this.errorSection = type === "image" ? "images" : "classifiers";
         this.error = describeError(error).message;
       })
       .finally(() => {

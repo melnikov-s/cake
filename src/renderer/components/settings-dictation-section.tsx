@@ -215,7 +215,6 @@ export const SettingsDictationSection = observer(function SettingsDictationSecti
           </div>
         </div>
       </div>
-      {prompts.error && <Callout variant="error">{prompts.error}</Callout>}
       {(store.error || state?.status === "error") && (
         <Callout variant="error">{store.error ?? state?.message}</Callout>
       )}

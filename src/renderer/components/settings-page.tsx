@@ -12,6 +12,8 @@ import { useEffect, useState } from "react";
 import { observer } from "r-state-tree/react";
 import { Button } from "./ui/button";
 import { Callout } from "./ui/callout";
+import { Badge } from "./ui/badge";
+import { CopyErrorDetailsButton } from "./copy-error-details-button";
 import { NavItem } from "./ui/nav-item";
 import { Select } from "./ui/select";
 import { ChatConfigurationSelector } from "./chat-configuration-selector";
@@ -81,7 +83,9 @@ export const SettingsPage = observer(function SettingsPage({
     (page) => page.page === activePage,
   );
   if (!pageMetadata) throw new Error(`Settings page is not registered: ${activePage}`);
-  const error = settings.error;
+  const error = settings.errorForPage(activePage);
+  const globalError = settings.globalError;
+  const failedPages = new Set(settings.sectionErrors.map((failure) => failure.section));
   const providerGroups = providers.catalog.modelsByProvider;
   const utilityModel = utility.model;
   const piSettingsStatus = providers.loadingSettings
@@ -132,6 +136,7 @@ export const SettingsPage = observer(function SettingsPage({
               {group.items.map((item) => (
                 <option key={item.page} value={item.page}>
                   {item.label}
+                  {failedPages.has(item.page) ? " — Error" : ""}
                 </option>
               ))}
             </optgroup>
@@ -175,6 +180,9 @@ export const SettingsPage = observer(function SettingsPage({
                       <NavItem
                         key={item.targetId}
                         label={item.label}
+                        badge={
+                          failedPages.has(item.page) && <Badge variant="destructive">Error</Badge>
+                        }
                         active={
                           activePage === item.page && scrollRequest?.targetId === item.targetId
                         }
@@ -195,6 +203,9 @@ export const SettingsPage = observer(function SettingsPage({
                         key={item.page}
                         label={item.label}
                         description={item.description}
+                        badge={
+                          failedPages.has(item.page) && <Badge variant="destructive">Error</Badge>
+                        }
                         active={activePage === item.page}
                         onClick={() => settings.selectPage(item.page)}
                       />
@@ -221,10 +232,40 @@ export const SettingsPage = observer(function SettingsPage({
                 "Configure the same Pi runtime used by the CLI. Pi preferences follow you across projects."}
             </p>
           </div>
+          {globalError && (
+            <Callout
+              variant="error"
+              role="alert"
+              aria-label="Settings unavailable"
+              className="mb-4"
+            >
+              <strong>Settings unavailable</strong>
+              <span className="text-xs">{globalError.message}</span>
+              {globalError.details && (
+                <CopyErrorDetailsButton key={globalError.details} details={globalError.details} />
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-fit"
+                onClick={() => void providers.loadSettings()}
+              >
+                Retry loading settings
+              </Button>
+            </Callout>
+          )}
           {error && (
-            <Callout variant="error" className="mb-4">
+            <Callout
+              variant="error"
+              role="alert"
+              aria-label={`${pageMetadata.label} operation failed`}
+              className="mb-4"
+            >
               <strong>Operation failed</strong>
-              <span className="text-xs">{error}</span>
+              <span className="text-xs">{error.message}</span>
+              {error.details && (
+                <CopyErrorDetailsButton key={error.details} details={error.details} />
+              )}
             </Callout>
           )}
           {authNotice?.kind === "notice" && (

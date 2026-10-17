@@ -32,6 +32,7 @@ import { GlobalInstructionsStore } from "./GlobalInstructionsStore";
 import { NonChatModelSettingsStore } from "./NonChatModelSettingsStore";
 import { ExperimentalSettingsStore } from "./ExperimentalSettingsStore";
 import type { ExperimentalFeatures } from "../models/ExperimentalFeatures";
+import { settingsSectionError, type SettingsError } from "../lib/settings-error";
 
 export type SettingsPageId =
   | "cake-chat"
@@ -125,6 +126,10 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   @child get providers(): ProviderSettingsStore {
     return createStore(ProviderSettingsStore, {
       operations: this.props.operations,
+      providerPage: () =>
+        this.activePage === "images" || this.activePage === "classifiers"
+          ? this.activePage
+          : "providers",
     });
   }
 
@@ -159,29 +164,28 @@ export class SettingsStore extends Store<SettingsStoreProps> {
     );
   }
 
-  get error() {
-    return (
-      this.experimental.error ??
-      this.cakeChat.error ??
-      this.providers.error ??
-      this.nonChatModels.error ??
-      this.utilityModel.error ??
-      this.modelPresets.error ??
-      this.cakePrompts.error ??
-      this.globalInstructions.error ??
-      this.globalLabels.error ??
-      this.configuration?.error
-    );
+  /** Keep each message attached to its own details and recovery destination. */
+  get sectionErrors(): SettingsError[] {
+    return [
+      ...settingsSectionError("experimental", this.experimental),
+      ...settingsSectionError("cake-chat", this.cakeChat),
+      ...(this.providers.error ? [this.providers.error] : []),
+      ...settingsSectionError(this.nonChatModels.errorSection, this.nonChatModels),
+      ...settingsSectionError("models", this.utilityModel),
+      ...settingsSectionError("models", this.modelPresets),
+      ...settingsSectionError(this.cakePrompts.errorSection, this.cakePrompts),
+      ...settingsSectionError("prompts", this.globalInstructions),
+      ...settingsSectionError("labels", this.globalLabels),
+      ...settingsSectionError("models", this.configuration),
+    ];
   }
-  get errorDetails() {
-    return (
-      this.experimental.errorDetails ??
-      this.cakeChat.errorDetails ??
-      this.providers.errorDetails ??
-      this.utilityModel.errorDetails ??
-      this.modelPresets.errorDetails ??
-      this.cakePrompts.errorDetails
-    );
+
+  get globalError(): SettingsError | undefined {
+    return this.providers.settingsLoadError;
+  }
+
+  errorForPage(page: SettingsPageId): SettingsError | undefined {
+    return this.sectionErrors.find((error) => error.section === page);
   }
 
   selectPage(page: SettingsPageId) {

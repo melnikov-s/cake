@@ -2,6 +2,7 @@ import { Store, observable } from "r-state-tree";
 import type { PiSettingUpdate, PiSettings } from "../../contracts/conversations/session-contract";
 import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../lib/error-details";
+import { piSettingSections, type SettingsError } from "../lib/settings-error";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import { ModelCatalogContext } from "./context/ModelCatalogContext";
 import type { PiExtensionSetting } from "../../contracts/pi/extension-settings-data";
@@ -17,6 +18,7 @@ export interface ProviderAuthNotice {
 
 export interface ProviderSettingsStoreProps {
   operations: SessionOperationCoordinatorStore;
+  providerPage(): "providers" | "images" | "classifiers";
 }
 
 /** Owns Pi settings requests and initiating-device provider authentication. */
@@ -33,8 +35,9 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
   private extensionsLoaded = false;
   private extensionLoadRevision = 0;
   piSettings: PiSettings | undefined;
-  error: string | undefined;
-  errorDetails: string | undefined;
+  error: SettingsError | undefined;
+  /** Initial Pi settings loading affects controls across Settings, not just Providers. */
+  settingsLoadError: SettingsError | undefined;
   private hydration: Promise<void> | undefined;
 
   get client() {
@@ -61,7 +64,7 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
       if (!this.signal.aborted) this.piSettings = value;
       if (this.extensionsLoaded && (update.key === "extensions" || update.key === "packages"))
         await this.loadExtensions();
-    });
+    }, piSettingSections[update.key]);
   }
 
   async loadExtensions() {
@@ -99,7 +102,10 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
   setCodemodeInlineBudget(value: string) {
     const budget = Number(value);
     if (value.trim() === "" || !Number.isSafeInteger(budget) || budget < 0 || budget > 100_000) {
-      this.reportError(new Error("Codemode inline budget must be an integer from 0 to 100000."));
+      this.reportError(
+        new Error("Codemode inline budget must be an integer from 0 to 100000."),
+        "runtime",
+      );
       return Promise.resolve();
     }
     return this.setPiSetting({ key: "codemodeInlineBudget", value: budget });
@@ -108,6 +114,7 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
   async reloadPi() {
     await this.run(async () => {
       this.piSettings = await this.client.piSettings.reload({ signal: this.signal });
+      this.settingsLoadError = undefined;
       if (this.extensionsLoaded) await this.loadExtensions();
     });
   }
@@ -129,6 +136,7 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
 
   async openAuthUrl(url: string) {
     if (this.signal.aborted) return;
+    const section = this.props.providerPage();
     try {
       const parsed = new URL(url);
       if (!["https:", "http:"].includes(parsed.protocol))
@@ -145,7 +153,7 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
         );
       await this.client.electron.openExternalUrl(url, { signal: this.signal });
     } catch (error) {
-      if (!this.signal.aborted) this.reportError(error);
+      if (!this.signal.aborted) this.reportError(error, section);
     }
   }
 
@@ -153,12 +161,13 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
     if (this.providerOperation(provider) || this.signal.aborted) return;
     delete this.authNotices[provider];
     const operationId = this.startOperation();
+    const section = this.props.providerPage();
     this.providerOperations[operationId] = { provider, kind: "login" };
     try {
       await this.client.models.login({ provider, authType }, { signal: this.signal });
       if (!this.signal.aborted) await this.catalog.reload();
     } catch (error) {
-      if (!this.signal.aborted) this.reportError(error);
+      if (!this.signal.aborted) this.reportError(error, section);
     } finally {
       delete this.providerOperations[operationId];
       this.finish(operationId);
@@ -169,12 +178,13 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
     if (this.providerOperation(provider) || this.signal.aborted) return;
     delete this.authNotices[provider];
     const operationId = this.startOperation();
+    const section = this.props.providerPage();
     this.providerOperations[operationId] = { provider, kind: "logout" };
     try {
       await this.client.models.logout({ provider }, { signal: this.signal });
       if (!this.signal.aborted) await this.catalog.reload();
     } catch (error) {
-      if (!this.signal.aborted) this.reportError(error);
+      if (!this.signal.aborted) this.reportError(error, section);
     } finally {
       delete this.providerOperations[operationId];
       this.finish(operationId);
@@ -187,25 +197,31 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
     )?.kind;
   }
 
-  private async loadSettings() {
+  async loadSettings() {
+    if (this.signal.aborted) return;
+    this.loadingSettings = true;
+    this.settingsLoadError = undefined;
     try {
       const settings = await this.client.piSettings.get({ signal: this.signal });
-      if (!this.signal.aborted) this.piSettings = settings;
+      if (!this.signal.aborted) {
+        this.piSettings = settings;
+        this.settingsLoadError = undefined;
+      }
     } catch (error) {
-      if (!this.signal.aborted) this.reportError(error);
+      if (!this.signal.aborted)
+        this.settingsLoadError = { section: "global", ...describeError(error) };
     } finally {
       if (!this.signal.aborted) this.loadingSettings = false;
     }
   }
 
-  private async run(command: () => Promise<void>) {
+  private async run(command: () => Promise<void>, section: SettingsError["section"] = "runtime") {
     if (this.signal.aborted) return;
-    this.clearError();
     const operationId = this.startOperation();
     try {
       await command();
     } catch (error) {
-      if (!this.signal.aborted) this.reportError(error);
+      if (!this.signal.aborted) this.reportError(error, section);
     } finally {
       this.finish(operationId);
     }
@@ -213,14 +229,12 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
 
   private clearError() {
     this.error = undefined;
-    this.errorDetails = undefined;
   }
-  private reportError(error: unknown) {
-    const described = describeError(error);
-    this.error = described.message;
-    this.errorDetails = described.details;
+  private reportError(error: unknown, section: SettingsError["section"] = "providers") {
+    this.error = { section, ...describeError(error) };
   }
   private startOperation() {
+    this.clearError();
     return this.props.operations.start("settings");
   }
   private finish(operationId: string) {

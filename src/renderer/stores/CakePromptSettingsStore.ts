@@ -14,6 +14,7 @@ export class CakePromptSettingsStore extends Store {
   saving = false;
   error: string | undefined;
   errorDetails: string | undefined;
+  errorSection: "voice" | "prompts" = "prompts";
   private saveRevision = 0;
   private saveQueue: Promise<unknown> = Promise.resolve();
   private persistedPrompts: CakePromptOverrides | undefined;
@@ -31,10 +32,10 @@ export class CakePromptSettingsStore extends Store {
     const prompts = { ...this.prompts };
     if (value.trim()) prompts[key] = value;
     else delete prompts[key];
-    return this.save(prompts);
+    return this.save(prompts, key === "dictationCleanup" ? "voice" : "prompts");
   }
 
-  private save(prompts: CakePromptOverrides) {
+  private save(prompts: CakePromptOverrides, section: "voice" | "prompts") {
     const revision = ++this.saveRevision;
     this.prompts = prompts;
     this.saving = true;
@@ -56,6 +57,7 @@ export class CakePromptSettingsStore extends Store {
         if (this.signal.aborted || revision !== this.saveRevision) return;
         this.prompts = this.persistedPrompts;
         const described = describeError(error);
+        this.errorSection = section;
         this.error = described.message;
         this.errorDetails = described.details;
       })
