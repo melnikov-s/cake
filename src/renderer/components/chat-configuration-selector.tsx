@@ -33,11 +33,16 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
           ? selectedModel?.name
           : configuration.deferredModelName
       }
-      onOpen={() => configuration.ensureCatalog()}
+      onOpen={() => {
+        if (configuration.deferred) void configuration.catalog.ensureLoaded();
+      }}
       presets={configuration.presets}
       activePreset={configuration.activePreset}
       value={effectiveConfiguration}
-      error={configuration.error}
+      error={
+        configuration.error ??
+        (configuration.deferred ? configuration.catalog.error?.message : undefined)
+      }
       openPresetSettings={
         configuration.canOpenPresetSettings ? () => configuration.openPresetSettings() : undefined
       }

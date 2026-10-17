@@ -223,7 +223,7 @@ async function mountDesktop(
         message: error instanceof Error ? error.message : String(error),
       }),
   );
-  void rootStore.settingsStore.modelPresets.hydrate();
+  void rootStore.modelCatalogStore.ensureLoaded();
   void rootStore.settingsStore.providers.hydrate();
   void rootStore.sessionRegistry.pendingSessions
     .refreshSavedDrafts()

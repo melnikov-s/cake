@@ -9,6 +9,7 @@ import { Button } from "./ui/button";
 import { IconButton } from "./ui/icon-button";
 import { GripIcon } from "./ui/icons";
 import { Input } from "./ui/input";
+import { ErrorNotice } from "./error-notice";
 import type {
   ModelPresetResolutionStatus,
   ModelPresetSettingsStore,
@@ -36,7 +37,7 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
 }: {
   settings: ModelPresetSettingsStore;
 }) {
-  const groups = settings.modelsByProvider;
+  const groups = settings.catalog.modelsByProvider;
   const [editingId, setEditingId] = useState<string | "new" | undefined>();
   const [draft, setDraft] = useState(emptyDraft);
   const [draggedId, setDraggedId] = useState<string>();
@@ -91,6 +92,9 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
           </Button>
         </div>
       </header>
+      {settings.catalog.error && (
+        <ErrorNotice title="Could not load models" {...settings.catalog.error} />
+      )}
       <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
         {settings.presets.length === 0 && !editingId && (
           <p className="px-3.5 py-2.5 text-xs text-muted-foreground">

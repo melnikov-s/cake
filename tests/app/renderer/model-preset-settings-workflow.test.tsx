@@ -43,7 +43,7 @@ async function renderSettings(client: TestClientOverrides = {}, presets: ModelPr
     ...defaultApplicationState(),
     modelPresets: presets,
   });
-  await fixture.root.settingsStore.modelPresets.hydrate();
+  await fixture.root.modelCatalogStore.ensureLoaded();
   const view = render(<SettingsPage settings={fixture.root.settingsStore} />);
   let applicationRevision = 0;
   return {
@@ -223,7 +223,7 @@ describe("Model preset settings workflow", () => {
       },
       [unavailable],
     );
-    expect(screen.getByText(/Catalog offline/)).toBeDefined();
+    expect(screen.getByText("Catalog offline", { exact: true })).toBeDefined();
     expect(row(preset.name).getByText("Model unavailable")).toBeDefined();
     await rename(fixture.user, preset.name, "Local edit");
     expect(screen.getByText("Local edit")).toBeDefined();

@@ -68,6 +68,8 @@ import { ProjectSessionPlacementStore } from "./ProjectSessionPlacementStore";
 import { SessionRetirementStore } from "./SessionRetirementStore";
 import { ProjectRemovalStore } from "./ProjectRemovalStore";
 import { NewSessionStore } from "./NewSessionStore";
+import { ModelCatalogStore } from "./ModelCatalogStore";
+import { ModelCatalogContext } from "./context/ModelCatalogContext";
 
 export class RootStore extends Store<{
   client: Client;
@@ -147,6 +149,15 @@ export class RootStore extends Store<{
 
   [ClientContext.provide]() {
     return this.client;
+  }
+
+  [ModelCatalogContext.provide]() {
+    return this.modelCatalogStore;
+  }
+
+  @child
+  get modelCatalogStore(): ModelCatalogStore {
+    return createStore(ModelCatalogStore);
   }
 
   [SessionMetadataContext.provide]() {

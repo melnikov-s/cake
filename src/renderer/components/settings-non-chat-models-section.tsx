@@ -16,13 +16,13 @@ export const SettingsNonChatModelsSection = observer(function SettingsNonChatMod
   preferences: NonChatModelSettingsStore;
   providers: ProviderSettingsStore;
 }) {
-  const models = providers.nonChatCatalog.filter((model) => model.type === type);
+  const models = providers.catalog.nonChatModels.filter((model) => model.type === type);
   const preference = preferences.preferences[type];
   const value = preference ? nonChatModelChoiceValue(preference) : "";
   const modelValue = (model: (typeof models)[number]) =>
     nonChatModelChoiceValue({ provider: model.provider, modelId: model.id });
   const selected = models.find((model) => modelValue(model) === value);
-  const groups = providers.allModelsByProvider.flatMap((group) => {
+  const groups = providers.catalog.allModelsByProvider.flatMap((group) => {
     const entries = group.models.filter((model) => "type" in model && model.type === type);
     return entries.length ? [{ ...group, models: entries }] : [];
   });
@@ -50,7 +50,7 @@ export const SettingsNonChatModelsSection = observer(function SettingsNonChatMod
               aria-label={`Preferred ${label} model`}
               className="h-8 w-64 rounded-sm text-xs max-[620px]:w-full"
               value={value}
-              disabled={providers.loadingModels}
+              disabled={providers.catalog.loading}
               onChange={(event) => {
                 if (event.target.value === "") void preferences.select(type, null);
                 else {

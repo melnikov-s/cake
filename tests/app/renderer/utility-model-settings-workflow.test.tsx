@@ -50,7 +50,7 @@ async function renderSettings(
     },
   });
   fixture.root.settingsStore.applyApplicationState(0, applicationState(initial));
-  await fixture.root.settingsStore.providers.refreshModels();
+  await fixture.root.modelCatalogStore.ensureLoaded();
   const view = render(<SettingsPage settings={fixture.root.settingsStore} />);
   return {
     user: userEvent.setup(),

@@ -231,42 +231,30 @@ describe("Chat configuration workflow", () => {
     expect(list).not.toHaveBeenCalled();
   });
 
-  it("loads deferred catalogs only when opened, ignores stale responses, and removes old fallback labels", async () => {
-    const older = deferred<readonly ModelOption[]>();
-    const newer = deferred<readonly ModelOption[]>();
-    const list = vi
-      .fn<Client["models"]["list"]>()
-      .mockImplementationOnce(() => older.promise)
-      .mockImplementationOnce(() => newer.promise)
-      .mockResolvedValueOnce([]);
+  it("shares deferred catalog loading across repeated picker opens", async () => {
+    const loading = deferred<readonly ModelOption[]>();
+    const list = vi.fn<Client["models"]["list"]>(() => loading.promise);
     using fixture = renderChatConfiguration({ deferred: true, client: { models: { list } } });
 
     await submit(fixture.user, "/model openai/gpt-5");
     expect(picker().textContent).toContain("gpt-5");
     expect(list).not.toHaveBeenCalled();
     await fixture.user.click(picker());
-    await waitFor(() => expect(list).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(list).toHaveBeenCalledOnce());
     await fixture.user.click(picker());
     await fixture.user.click(picker());
-    await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
-    await act(async () => newer.resolve([{ ...gpt, name: "Newest name" }, locked]));
-    expect(picker().textContent).toContain("Newest name");
-    await act(async () => older.resolve([{ ...gpt, name: "Stale name" }]));
-    expect(picker().textContent).toContain("Newest name");
+    expect(list).toHaveBeenCalledOnce();
+    await act(async () => loading.resolve([gpt, locked]));
+    expect(picker().textContent).toContain("GPT-5");
     await fixture.user.click(screen.getByRole("button", { name: "Change model" }));
-    expect(screen.getByRole("button", { name: "Newest name gpt-5" })).toBeDefined();
-    expect(screen.queryByRole("button", { name: /Stale name|Disconnected model/ })).toBeNull();
-
+    expect(screen.getByRole("button", { name: "GPT-5 gpt-5" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: /Disconnected model/ })).toBeNull();
     await fixture.user.click(picker());
     await fixture.user.click(picker());
-    await waitFor(() => expect(list).toHaveBeenCalledTimes(3));
-    await waitFor(() => expect(picker().textContent).not.toContain("Newest name"));
-    expect(picker().textContent).toContain("gpt-5");
-    await fixture.user.click(screen.getByRole("button", { name: "Change model" }));
-    expect(screen.getByText("No matching models")).toBeDefined();
+    expect(list).toHaveBeenCalledOnce();
   });
 
-  it("carries edited preset choices through a local model command and catalog removal into the first prompt", async () => {
+  it("carries edited preset choices through a local model command into the first prompt", async () => {
     const list = vi.fn<Client["models"]["list"]>(async () => [gpt, opus, locked]);
     const start = vi.fn<Client["projectSessions"]["start"]>(async () =>
       TurnId.make("10000000-0000-4000-8000-000000000001"),
@@ -294,25 +282,20 @@ describe("Chat configuration workflow", () => {
     expect(list).toHaveBeenCalledOnce();
     await fixture.user.click(picker());
     await fixture.user.click(await screen.findByRole("button", { name: "High" }));
-    expect(list).toHaveBeenCalledTimes(2);
+    expect(list).toHaveBeenCalledOnce();
     await fixture.user.click(picker());
     await fixture.user.click(screen.getByRole("switch", { name: "Fast mode" }));
     expect(screen.getByRole("switch", { name: "Fast mode" }).getAttribute("aria-checked")).toBe(
       "false",
     );
     await fixture.user.click(picker());
-    expect(list).toHaveBeenCalledTimes(3);
+    expect(list).toHaveBeenCalledOnce();
     await submit(fixture.user, "/model openai/gpt-5");
     expect(picker().textContent).toContain("GPT-5");
     expect(picker().textContent).toContain("High");
     expect(start).not.toHaveBeenCalled();
     expect(applyConfiguration).not.toHaveBeenCalled();
 
-    list.mockResolvedValueOnce([]);
-    await fixture.user.click(picker());
-    await waitFor(() => expect(picker().textContent).toContain("gpt-5"));
-    expect(picker().textContent).toContain("High");
-    await fixture.user.click(picker());
     await submit(fixture.user, "Implement the API");
     await waitFor(() => expect(start).toHaveBeenCalledOnce());
     expect(start).toHaveBeenCalledWith(

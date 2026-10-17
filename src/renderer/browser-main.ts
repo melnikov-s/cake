@@ -171,7 +171,7 @@ const stopSavedDrafts = observeSavedDrafts(
   },
 );
 async function initialize(rootStore: ReturnType<typeof mountRootStore>) {
-  void rootStore.settingsStore.modelPresets.hydrate();
+  void rootStore.modelCatalogStore.ensureLoaded();
   void rootStore.settingsStore.providers.hydrate();
   try {
     await rootStore.sessionRegistry.pendingSessions.refreshSavedDrafts();

@@ -153,9 +153,6 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   get piSettings() {
     return this.providers.piSettings;
   }
-  get providerGroups() {
-    return this.providers.modelsByProvider;
-  }
   get authNotice() {
     return this.activeSession?.model.uiParts.find(
       (part) => part.kind === "notice" && part.id === "auth-status",

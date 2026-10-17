@@ -82,7 +82,7 @@ export const SettingsPage = observer(function SettingsPage({
   );
   if (!pageMetadata) throw new Error(`Settings page is not registered: ${activePage}`);
   const error = settings.error;
-  const providerGroups = settings.providerGroups;
+  const providerGroups = providers.catalog.modelsByProvider;
   const utilityModel = utility.model;
   const piSettingsStatus = providers.loadingSettings
     ? "Loading Pi’s settings…"
@@ -878,7 +878,7 @@ export const SettingsPage = observer(function SettingsPage({
           {activePage === "providers" && (
             <SettingsProvidersSection
               providers={providers}
-              providerGroups={providers.allModelsByProvider}
+              providerGroups={providers.catalog.allModelsByProvider}
             />
           )}
           {activePage === "voice" &&

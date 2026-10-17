@@ -152,8 +152,8 @@ test("deferred model picker opens by keyboard and mouse with catalog, search, pr
     await expect(dialog).toBeHidden();
     await expect(configuration).toBeFocused();
 
-    // A mouse reopen refreshes the catalog; selecting and applying a
-    // model does not cause another open/load or lose the deferred local choice.
+    // A mouse reopen uses the current catalog; selecting and applying a
+    // model does not cause another load or lose the deferred local choice.
     await configuration.click();
     if (await change.isVisible()) await change.click();
     await search.fill("Fixture model");

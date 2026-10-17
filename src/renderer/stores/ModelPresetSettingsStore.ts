@@ -2,10 +2,10 @@ import { Store, batch, observable, snapshot } from "r-state-tree";
 import type {
   ApplicationState,
   ChatConfiguration,
-  ModelOption,
   ModelPreset,
 } from "../../contracts/conversations/session-contract";
 import { ClientContext } from "./context/ClientContext";
+import { ModelCatalogContext } from "./context/ModelCatalogContext";
 import { describeError } from "../lib/error-details";
 
 interface ModelPresetProjection {
@@ -45,17 +45,14 @@ export type ModelPresetResolutionStatus =
  */
 export class ModelPresetSettingsStore extends Store {
   readonly presets: ModelPreset[] = observable([]);
-  readonly catalogModels: ModelOption[] = observable([]);
   defaultPresetId: string | undefined;
   @snapshot lastUsedConfiguration: ChatConfiguration | undefined;
-  loading = true;
   saving = false;
   sectionRequestRevision = 0;
   error: string | undefined;
   errorDetails: string | undefined;
   private commandRevision = 0;
   private commandQueue: Promise<unknown> = Promise.resolve();
-  private hydration: Promise<void> | undefined;
   private persistedPresets: ModelPreset[] = [];
   private persistedDefaultPresetId: string | undefined;
   private applicationRevision = -1;
@@ -66,9 +63,8 @@ export class ModelPresetSettingsStore extends Store {
     return ClientContext.consume(this)!;
   }
 
-  hydrate() {
-    this.hydration ??= this.performHydration();
-    return this.hydration;
+  get catalog() {
+    return ModelCatalogContext.consume(this)!;
   }
 
   applyApplicationState(revision: number, state: ApplicationState) {
@@ -89,18 +85,8 @@ export class ModelPresetSettingsStore extends Store {
     if (!this.saving) this.restorePersisted();
   }
 
-  get modelsByProvider() {
-    const groups = new Map<string, { name: string; models: ModelOption[] }>();
-    for (const model of this.catalogModels) {
-      const group = groups.get(model.provider) ?? { name: model.providerName, models: [] };
-      group.models.push(model);
-      groups.set(model.provider, group);
-    }
-    return [...groups.entries()].map(([id, group]) => ({ id, ...group }));
-  }
-
   resolutionStatus(preset: ModelPreset): ModelPresetResolutionStatus {
-    const model = this.catalogModels.find(
+    const model = this.catalog.models.find(
       (candidate) => candidate.provider === preset.provider && candidate.id === preset.modelId,
     );
     if (!model) return "unknown";
@@ -221,18 +207,6 @@ export class ModelPresetSettingsStore extends Store {
         { signal: this.signal },
       ),
     );
-  }
-
-  private async performHydration() {
-    try {
-      const models = await this.client.models.list({ signal: this.signal });
-      if (this.signal.aborted) return;
-      this.catalogModels.splice(0, this.catalogModels.length, ...models);
-    } catch (error) {
-      if (!this.signal.aborted) this.setError(error);
-    } finally {
-      if (!this.signal.aborted) this.loading = false;
-    }
   }
 
   private beginOptimistic(presets: readonly ModelPreset[], defaultPresetId: string | undefined) {

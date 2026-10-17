@@ -1,13 +1,9 @@
 import { Store, observable } from "r-state-tree";
-import type {
-  ModelOption,
-  PiSettingUpdate,
-  PiSettings,
-} from "../../contracts/conversations/session-contract";
+import type { PiSettingUpdate, PiSettings } from "../../contracts/conversations/session-contract";
 import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../lib/error-details";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
-import type { PiNonChatModel } from "../../contracts/pi/model-data";
+import { ModelCatalogContext } from "./context/ModelCatalogContext";
 import type { PiExtensionSetting } from "../../contracts/pi/extension-settings-data";
 
 export interface ProviderAuthNotice {
@@ -23,15 +19,12 @@ export interface ProviderSettingsStoreProps {
   operations: SessionOperationCoordinatorStore;
 }
 
-/** Owns current-session Pi settings, model refresh, and provider authentication. */
+/** Owns Pi settings requests and initiating-device provider authentication. */
 export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
   readonly providerOperations: Record<string, { provider: string; kind: "login" | "logout" }> =
     observable({});
-  readonly catalogModels: ModelOption[] = observable([]);
-  readonly nonChatCatalog: PiNonChatModel[] = observable([]);
   /** Ephemeral, initiating-device presentation only; never persisted with Pi credentials. */
   readonly authNotices: Record<string, ProviderAuthNotice> = observable({});
-  loadingModels = true;
   loadingSettings = true;
   /** Pi is authority; this Store owns ephemeral settings-panel requests only. */
   readonly extensionSources: PiExtensionSetting[] = observable([]);
@@ -42,9 +35,7 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
   piSettings: PiSettings | undefined;
   error: string | undefined;
   errorDetails: string | undefined;
-  private catalogLoadRevision = 0;
   private hydration: Promise<void> | undefined;
-  private refreshOperationId: string | undefined;
 
   get client() {
     return ClientContext.consume(this)!;
@@ -53,32 +44,14 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
   get activeOperations() {
     return this.props.operations.active("settings");
   }
-  get modelsByProvider() {
-    const groups = new Map<string, { name: string; models: ModelOption[] }>();
-    for (const model of this.catalogModels) {
-      const group = groups.get(model.provider) ?? { name: model.providerName, models: [] };
-      group.models.push(model);
-      groups.set(model.provider, group);
-    }
-    return [...groups.entries()].map(([id, group]) => ({ id, ...group }));
-  }
-  get allModelsByProvider() {
-    const groups = new Map<string, { name: string; models: (ModelOption | PiNonChatModel)[] }>();
-    for (const model of [...this.catalogModels, ...this.nonChatCatalog]) {
-      const group = groups.get(model.provider) ?? { name: model.providerName, models: [] };
-      group.models.push(model);
-      groups.set(model.provider, group);
-    }
-    return [...groups.entries()].map(([id, group]) => ({ id, ...group }));
-  }
-  get refreshingModels() {
-    return Boolean(
-      this.refreshOperationId && this.activeOperations.includes(this.refreshOperationId),
-    );
+  get catalog() {
+    return ModelCatalogContext.consume(this)!;
   }
 
   hydrate() {
-    this.hydration ??= Promise.all([this.loadCatalog(), this.loadSettings()]).then(() => undefined);
+    this.hydration ??= Promise.all([this.catalog.ensureLoaded(), this.loadSettings()]).then(
+      () => undefined,
+    );
     return this.hydration;
   }
 
@@ -139,22 +112,6 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
     });
   }
 
-  async refreshModels() {
-    if (this.refreshingModels || this.signal.aborted) return;
-    this.clearError();
-    const operationId = this.startOperation();
-    this.refreshOperationId = operationId;
-    try {
-      await this.client.models.refresh({ signal: this.signal });
-      await this.loadCatalog();
-    } catch (error) {
-      if (!this.signal.aborted) this.reportError(error);
-    } finally {
-      this.refreshOperationId = undefined;
-      this.finish(operationId);
-    }
-  }
-
   receiveAuthNotice(event: { readonly provider: string; readonly notice: ProviderAuthNotice }) {
     if (!this.signal.aborted) this.authNotices[event.provider] = event.notice;
   }
@@ -199,7 +156,7 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
     this.providerOperations[operationId] = { provider, kind: "login" };
     try {
       await this.client.models.login({ provider, authType }, { signal: this.signal });
-      await this.loadCatalog();
+      if (!this.signal.aborted) await this.catalog.reload();
     } catch (error) {
       if (!this.signal.aborted) this.reportError(error);
     } finally {
@@ -215,7 +172,7 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
     this.providerOperations[operationId] = { provider, kind: "logout" };
     try {
       await this.client.models.logout({ provider }, { signal: this.signal });
-      await this.loadCatalog();
+      if (!this.signal.aborted) await this.catalog.reload();
     } catch (error) {
       if (!this.signal.aborted) this.reportError(error);
     } finally {
@@ -228,28 +185,6 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
     return Object.values(this.providerOperations).find(
       (operation) => operation.provider === provider,
     )?.kind;
-  }
-
-  private async loadCatalog() {
-    const revision = ++this.catalogLoadRevision;
-    try {
-      const [models, nonChat] = await Promise.allSettled([
-        this.client.models.list({ signal: this.signal }),
-        this.client.nonChatModels.list({ signal: this.signal }),
-      ]);
-      if (!this.signal.aborted && revision === this.catalogLoadRevision) {
-        if (models.status === "fulfilled")
-          this.catalogModels.splice(0, this.catalogModels.length, ...models.value);
-        else this.reportError(models.reason);
-        if (nonChat.status === "fulfilled")
-          this.nonChatCatalog.splice(0, this.nonChatCatalog.length, ...nonChat.value);
-        else this.reportError(nonChat.reason);
-      }
-    } catch (error) {
-      if (!this.signal.aborted && revision === this.catalogLoadRevision) this.reportError(error);
-    } finally {
-      if (!this.signal.aborted && revision === this.catalogLoadRevision) this.loadingModels = false;
-    }
   }
 
   private async loadSettings() {

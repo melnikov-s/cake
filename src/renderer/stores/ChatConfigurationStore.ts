@@ -1,4 +1,4 @@
-import { Store, batch, computed, observable } from "r-state-tree";
+import { Store, computed } from "r-state-tree";
 import type {
   ChatConfiguration,
   ModelOption,
@@ -7,7 +7,7 @@ import type {
 } from "../../contracts/conversations/session-contract";
 import type { Conversation } from "../models/Conversation";
 import { describeError } from "../lib/error-details";
-import { ClientContext } from "./context/ClientContext";
+import { ModelCatalogContext } from "./context/ModelCatalogContext";
 
 export interface ChatConfigurationStoreProps {
   session(): Conversation | undefined;
@@ -32,18 +32,14 @@ export interface ChatConfigurationStoreProps {
   setFastMode(enabled: boolean): Promise<void>;
 }
 
-/** Reusable model-catalog and reasoning configuration for one Pi chat session. */
+/** Reasoning configuration using runtime capabilities or the shared deferred catalog. */
 export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
   error: string | undefined;
   errorDetails: string | undefined;
-  readonly catalogModels: ModelOption[] = observable([]);
-  // Session-less catalog presentation index; populated only by explicit opens.
-  private readonly catalogNames = observable(new Map<string, string>());
-  private catalogLoadRevision = 0;
   private fastModeOverride: boolean | undefined;
 
-  get client() {
-    return ClientContext.consume(this)!;
+  get catalog() {
+    return ModelCatalogContext.consume(this)!;
   }
   get session() {
     return this.props.session();
@@ -106,7 +102,7 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
         if (!connectedOnly || option.authenticated) add(option.value);
       }
     } else {
-      for (const model of this.catalogModels) {
+      for (const model of this.catalog.models) {
         if (!connectedOnly || model.authenticated) add(model);
       }
     }
@@ -116,32 +112,10 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
   get deferredModelName() {
     const selected = this.effectiveConfiguration;
     return this.deferred && selected
-      ? this.catalogNames.get(`${selected.provider}/${selected.modelId}`)
+      ? this.catalog.models.find(
+          (model) => model.provider === selected.provider && model.id === selected.modelId,
+        )?.name
       : undefined;
-  }
-
-  /**
-   * Loads the session-less catalog for deferred chats with no runtime. Refetches
-   * on every picker open so a model refresh surfaces immediately; the shared
-   * agent-directory catalog is held in memory by the main process and costs no
-   * network round trip.
-   */
-  ensureCatalog() {
-    if (!this.deferred) return;
-    const revision = ++this.catalogLoadRevision;
-    void this.client.models
-      .list({ signal: this.signal })
-      .then((models) => {
-        if (!this.signal.aborted && revision === this.catalogLoadRevision) {
-          batch(() => {
-            this.catalogModels.splice(0, this.catalogModels.length, ...models);
-            this.catalogNames.clear();
-            for (const model of models)
-              this.catalogNames.set(`${model.provider}/${model.id}`, model.name);
-          });
-        }
-      })
-      .catch(() => undefined);
   }
 
   get deferred() {

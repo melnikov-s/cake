@@ -104,7 +104,7 @@ export const SettingsModelChoiceField = observer(function SettingsModelChoiceFie
           <ModelPicker
             ariaLabel={`${label} configuration`}
             placeholder="Choose model"
-            groups={() => settings.providerGroups}
+            groups={() => settings.providers.catalog.modelsByProvider}
             value={stored.source === "model" ? stored.model : undefined}
             currentModelName={stored.source === "model" ? stored.model.modelId : undefined}
             onSelect={(model) => {
