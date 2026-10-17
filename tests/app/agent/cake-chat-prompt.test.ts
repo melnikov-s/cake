@@ -6,16 +6,15 @@ import commonPromptTemplate from "../../../src/services/pi/runtime/prompts/commo
 
 const prompt = coordinatorSystemPrompt("");
 
-it("describes Cake Chat's direct tools and delegates project work by policy", () => {
-  expect(prompt).not.toContain("You cannot read arbitrary local files");
+it("allows direct read-only inspection in the shared Cake Chat and Project Chat prompt", () => {
   expect(prompt).toContain("You have read, bash and mcp tools plus the cake gateway");
   expect(prompt).toContain("There is no edit or write tool.");
-  // Delegation is framed around context hygiene, not permissions.
   expect(prompt).toContain(
-    "Delegation is an implementation detail that keeps the permanent conversation's context clean",
+    "Use available tools directly for straightforward read-only checks, including reading project files, grep searches, git status, git diff, git log, and viewing PRs.",
   );
-  expect(prompt).toContain("Never mutate a project root checkout from bash");
-  expect(prompt).not.toContain("you MUST delegate to a project investigator");
+  expect(prompt).toContain(
+    "Delegation is optional for investigation: use a project investigator when broader research, project-loaded resources or context isolation would help, not merely because a request concerns a repository.",
+  );
 });
 
 it("names each delegation operation's assignment field", () => {
@@ -24,32 +23,39 @@ it("names each delegation operation's assignment field", () => {
   );
 });
 
-it("routes by whether the request is known to be about a project", () => {
+it("keeps project instructions and checkout identity relevant to direct checks and workers", () => {
   expect(prompt).toContain(
-    "Route every request by one question: do you know it is about a registered project? Not how many tool calls it would take.",
+    "Before inspecting a project, identify the intended project and checkout, read its applicable AGENTS.md instructions, and follow relevant project guidance.",
   );
   expect(prompt).toContain(
-    "- Research or a question: start a project investigator with subagents.start and that project's exact registered projectPath.",
+    "Project instructions, skills, extensions and context are loaded automatically for project workers, not for you.",
   );
   expect(prompt).toContain(
-    "- A clear task to do: start a Project Session with sessions.create, in its own Cake-managed worktree (worktreeName) when it may modify code.",
+    "Do not answer project-dependent questions from memory when current evidence is needed.",
   );
   expect(prompt).toContain(
-    "As soon as a lookup shows which project it is about, stop and delegate to that project.",
+    "When delegating a project investigation, use subagents.start rather than a normal Project Session.",
   );
   expect(prompt).toContain(
-    "Never look at a project yourself: no bash, read, grep, git or gh against a project directory or its PRs, not even a single quick check.",
+    "Discover registered projects with app.state, supply the exact registered root as projectPath to subagents.start, and clarify project identity when ambiguous.",
+  );
+  expect(prompt).toContain("An active worktree or session selection is not the project root.");
+});
+
+it("keeps mutations delegated and implementation in managed worktrees", () => {
+  expect(prompt).toContain(
+    "For implementation, start a Project Session with sessions.create, in its own Cake-managed worktree (worktreeName) when it may modify code.",
+  );
+  expect(prompt).toContain("Never perform project mutations yourself.");
+  expect(prompt).toContain(
+    "Never mutate a project root checkout from bash: no git commit, checkout, reset, stash, merge, rebase, pull or push there, and no file edits, installs or generated files in a project directory.",
   );
   expect(prompt).toContain(
-    "Harmless conveniences stay allowed: copying to the clipboard, opening a URL, or reading a file the user explicitly hands you.",
+    "Workers are investigation-only by default: without `allowMutations: true`, do not assign edits, installs or other mutations.",
   );
   expect(prompt).toContain(
-    "Never tell the user you can't answer or can't look; say in one line what is happening",
+    "When the user asks for bounded operational changes, such as running a script, killing orphaned processes or installing a package, start a worker (project or general) with `allowMutations: true` instead of creating a Project Session",
   );
-  // The retired tier-4 examples invited Cake Chat to run git/gh in project checkouts.
-  expect(prompt).not.toContain("gh pr view");
-  expect(prompt).not.toContain("git log to check whether a commit landed");
-  expect(prompt).not.toContain("four-tier rule");
 });
 
 it("lands session work through the native worktree merge, never by hand", () => {
