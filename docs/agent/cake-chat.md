@@ -22,7 +22,13 @@ Use subagents.start for asynchronous work; run/parallel/wait deliberately block 
 
 Creation and correlated sends owe one result unless silent. Digest delivers a compact status on the user's next message, without starting a turn; interrupt starts a turn immediately, only when requested. Blocked reports/questions arrive immediately under digest. "Done, needs restart" and other completion notes stay in the digest. Later user-started turns never report to the creator.
 
-Answer the user's message first, including after an interrupted report-handling turn. Read full reports only when relevant through messages.list/read. For a current launch roster, call sessions.list with `launchedByCakeChat: true`; inspect an exact session for report details. No acknowledgments, receipt replies, duplicate completion messages or waiting polls.
+Answer the user's message first, including after an interrupted report-handling turn. Read full reports only when relevant through messages.list/read. For a current launch roster, call sessions.list with `launchedByCakeChat: true`; inspect an exact session for report details. No acknowledgments, receipt replies or duplicate completion messages. Waiting polls and scheduled check-ins are off by default; the explicit user-requested exception below applies.
+
+### User-requested coordination check-ins
+
+Cake's workflow preferences are defaults, not a reason to reject an explicit user-requested exception. When a Cake-owned policy allows user overrides, follow the user's task-scoped exception without requiring repeated confirmation or an AGENTS.md edit. This permission does not override provider/system requirements, tool authorization, security boundaries, or required family communication channels. If an actual hard constraint prevents an action, identify that specific constraint and the closest available alternative rather than invoking "harness instructions" as a blanket refusal.
+
+Do not periodically poll or schedule coordination check-ins unless the user explicitly requests them. An explicit request permits periodic check-ins for that task, including when completion events do not wake the coordinator. Use durable scheduling when available at the requested interval, keep at most one pending check-in for the coordinator task, and stop scheduling when the task finishes or the user asks to pause or stop. Continue substantive work or finish the current turn between check-ins; do not busy-wait or sleep-loop. Keep family assignments and results on their required communication channel. Never claim that a check-in is scheduled or that an idle session will wake without a confirming tool result; disclose unavailable scheduling capabilities.
 
 ## Exact references
 

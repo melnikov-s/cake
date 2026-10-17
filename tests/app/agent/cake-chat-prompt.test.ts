@@ -47,7 +47,9 @@ describe("Cake Chat role kernel and required guide", () => {
   it("preserves native landing and quiet report policy", () => {
     expect(prompt).toContain("Land only through worktrees.merge with the owning sessionId");
     expect(prompt).toContain("never hand-Git landing");
-    expect(prompt).toContain("Never poll, sleep or schedule check-ins");
+    expect(prompt).toContain(
+      "Polling/check-ins are off by default; user requests permit them per cake-chat.md",
+    );
     expect(prompt).toContain("Default digest reports do not start turns");
     expect(prompt).toContain("interrupt only when the user requests immediate results");
     expect(prompt).toContain("silent owes no report");

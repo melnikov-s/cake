@@ -35,7 +35,8 @@ describe("Project Session family communication policy", () => {
     expect(project).toContain(
       "Board posts neither wake idle members nor clear runtime-managed report obligations",
     );
-    expect(project).toContain("no private workaround, polling or extra report");
+    expect(project).toContain("no private workaround or extra report");
+    expect(project).toContain("Polling requires explicit user request");
     expect(project).toContain("let the user resume members");
     expect(project).toContain("No board: disclose, never invent/fallback");
   });

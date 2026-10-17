@@ -4,6 +4,8 @@
 
 The user owns this repository and may explicitly override any rule in this file for a task. Follow the user's stated exception without requiring them to edit this file first. This does not override system or harness-level instructions outside this repository.
 
+Cake-owned workflow policies should distinguish defaults from hard constraints and explicitly allow task-scoped user exceptions where appropriate. In particular, periodic coordination polling/check-ins are off by default but permitted when the user explicitly requests them. Use supported durable scheduling at the requested interval, keep one pending check-in per coordinator task, and stop on completion or a user pause/stop. Preserve required family communication channels. Do not claim a timer or wake-up exists without a successful tool result. When a genuine non-overridable constraint applies, explain that specific limit instead of using "harness instructions" as a blanket refusal.
+
 ## Product and required guidance
 
 Cake is Pi expressed as a desktop GUI. Pi owns the coding-agent engine and transcript history; Cake owns desktop application workflows and presentation. Keep conversation primary. Never persist a second Cake-owned transcript.
