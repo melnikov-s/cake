@@ -27,11 +27,12 @@ export function createSessionFamilyOperations(
       summary: "Create and start a full child Project Session in the calling session's family.",
       guidance: [
         "Use this operation—not cake subagents—when the user asks for a child session, full child Project Session, related session, or Session Family member.",
-        "Call it with input containing the required title and initialPrompt fields; the assignment field is initialPrompt, not prompt.",
+        "Call it with input containing the required title and initialPrompt fields, not prompt. For family children, use initialPrompt only to bootstrap shared Workboard discovery; publish the substantive assignment on the board addressed to the returned child reference.",
         "The calling session becomes the child's immediate parent. Children may recursively create their own children.",
         "Omit worktreeName to share the caller's exact Working Directory. Supply worktreeName to create a Cake-managed worktree branched from the caller's current checkout.",
         "This operation returns after the initial child turn is accepted; do not wait or poll for the child, and finish the parent turn normally.",
-        "expectsResponse defaults to true for the initial assignment: the child reports back exactly once when the turn handling it finishes (a result, or one failure/stopped notice). Later turns started directly in the child never report back. Set false when no report is wanted.",
+        "Set expectsResponse: false for family children and request their result on the shared Workboard. The runtime default true creates a private automatic creator-report obligation; board posts do not clear existing obligations. Prompt policy cannot reroute those notices. Later user-started turns never report back.",
+        "Creation automatically establishes/extends the family and joins its shared Workboard. Board posts do not wake idle members; do not use private messages/steering as a workaround. Explain to the user when a member needs resuming.",
         "Pane placement defaults to none. Set placement to right or down only when the child should be opened beside the parent.",
         "Omit model unless the user explicitly asks for a specific model. When omitted, the child uses the configured default model preset's complete settings (provider, model, thinking level, and Fast mode; see models.list), not the calling session's current model. Only when no default preset is configured does it use the calling session's current settings.",
       ],
@@ -53,7 +54,9 @@ export function createSessionFamilyOperations(
         {
           input: {
             title: "Storage implementation",
-            initialPrompt: "Implement the storage slice and message me when it is ready.",
+            initialPrompt:
+              "Read workgroups.md, discover the family Workboard, and read your assignment there. Communicate with family members only on the board.",
+            expectsResponse: false,
             placement: "right",
           },
           description: "Open beside the parent with the configured default model.",
@@ -103,7 +106,8 @@ export function createSessionFamilyOperations(
         "Send a message to an explicitly targeted Project Session in any Cake project, or omit sessionId to message Cake Chat.",
       guidance: [
         'Omit sessionId to reach Cake Chat. Cake Chat has no session ID; never pass the sender ID shown on Cake Chat\'s messages (it is labelled "cake-chat"). delivery, expectsResponse, threadId, and replyToMessageId mean the same as in sessions.reply to Cake Chat. To ask the user a question through Cake Chat, set expectsResponse: true; to report a blocker on assigned work, prefer sessions.reply with outcome: "blocked".',
-        "Set delivery to steer to interrupt and redirect a running target. Omit delivery for normal behavior: start an idle target or queue behind an active target.",
+        "Do not use sessions.send (including send-batch or steering) for intra-family communication. Parents, children, siblings and recursive descendants communicate exclusively through their shared Workboard. This does not restrict user-facing replies, Cake Chat or unrelated independent sessions.",
+        "Outside the family, set delivery to steer to interrupt and redirect a running target. Omit delivery for normal behavior: start an idle target or queue behind an active target.",
         "expectsResponse defaults to false. Set true only when you need an answer (an assignment, question, or blocker); the recipient then owes exactly one result, or one failure/stopped notice if the turn handling this message ends without one. With false, the recipient never reports back automatically.",
         "Set replyToMessageId when this message answers a specific request. A different or unrelated message never clears that request's response obligation.",
         "Send one substantive completion report. Never send acknowledgment-only messages or duplicate lifecycle reports; receiving a report or notification does not require a response.",
@@ -168,6 +172,7 @@ export function createSessionFamilyOperations(
       summary:
         "Reply to the originating session in the current open exchange without carrying its session ID.",
       guidance: [
+        "Do not use sessions.reply for intra-family communication; publish results, questions and blockers exclusively on the shared Workboard. User-facing replies, Cake Chat and unrelated independent sessions retain their ordinary reporting rules.",
         "Replies default to expectsResponse=false because substantive results and informational responses do not request acknowledgment.",
         "Provide replyToMessageId when more than one request may be pending. Cake otherwise selects the latest matching request in the thread.",
         "A Project Session answering Cake Chat (including one Cake Chat launched) replies to its originating Cake Chat or Project Chat without needing to repeat its address. Optional outcome declares completed, blocked, or failed; a terminal report is delivered after the executing turn settles.",

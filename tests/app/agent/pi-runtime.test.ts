@@ -118,6 +118,10 @@ describe("Pi 1.0.0 foundation contract", () => {
     expect(systemPrompt).toContain("<rules>");
     expect(systemPrompt).toContain("Use read to examine files instead of cat or sed");
     expect(systemPrompt).toContain("<cake_system_prompt>");
+    expect(systemPrompt).toContain("exclusively through the family\u0027s shared message board");
+    expect(systemPrompt).toContain("parents, children, siblings, and descendants recursively");
+    expect(systemPrompt).toContain("Set `expectsResponse: false` for family child creation");
+    expect(systemPrompt).toContain("Board entries/reminders do not wake idle sessions");
     const docsDirectory = systemPrompt?.match(/Cake documentation directory: `([^`]+)`/)?.[1];
     if (!docsDirectory) throw new Error("Expected readable Cake documentation references");
     const modelDocs = await readFile(join(docsDirectory, "models.md"), "utf8");
@@ -129,6 +133,13 @@ describe("Pi 1.0.0 foundation contract", () => {
     const sessionDocs = await readFile(join(docsDirectory, "sessions.md"), "utf8");
     expect(sessionDocs).toContain('"command":"sessions.create-child"');
     expect(sessionDocs).toContain("never send acknowledgment-only or duplicate messages");
+    expect(sessionDocs).toContain("family members communicate exclusively through that board");
+    const workgroupDocs = await readFile(join(docsDirectory, "workgroups.md"), "utf8");
+    expect(workgroupDocs).toContain("All Session Family members");
+    expect(workgroupDocs).toContain(
+      "There are no separate agent board-create or board-join operations",
+    );
+    expect(workgroupDocs).toContain("prompt text cannot disable or reroute them");
   });
 
   it("returns current family information from session.info without recreating the runtime", async () => {
