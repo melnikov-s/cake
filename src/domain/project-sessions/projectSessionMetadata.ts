@@ -398,7 +398,11 @@ const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
   }
   const sessions = yield* CakeSessionRuntimes;
   const spawns = yield* spawnedSessions();
-  const locations = yield* projectSessionLocations.locations().pipe(asError("list"));
+  // Checkout retirement does not retire Pi history. Include inactive routes so
+  // active transcripts left by an interrupted/older restore survive reconnect.
+  const locations = yield* projectSessionLocations
+    .locations({ includeInactive: true })
+    .pipe(asError("list"));
   const locationCatalogs = Stream.fromIterable(
     locations.filter((location) => location.projectPath === query.projectPath),
   ).pipe(
@@ -508,16 +512,16 @@ const discoverSessionAt = Effect.fn("ProjectSessions.discoverSessionAt")(functio
 
 /** Explicit lookup never relies on the renderer's disposable catalog or loads a runtime. */
 export const lookup = Effect.fn("ProjectSessions.lookup")(function* (target: ProjectSessionTarget) {
-  let location = yield* findLocation(target, { includeInactive: true }).pipe(
+  let location = yield* findLocation(target).pipe(
     Effect.catchTag("ProjectSessionError", (error) =>
       target.workingDirectory !== undefined && error.operation === "resolve"
-        ? findLocation({ sessionId: target.sessionId }, { includeInactive: true })
+        ? findLocation({ sessionId: target.sessionId })
         : Effect.fail(error),
     ),
   );
   let session = yield* discoverSessionAt(location, target.sessionId);
   if (!session && target.workingDirectory !== undefined) {
-    location = yield* findLocation({ sessionId: target.sessionId }, { includeInactive: true });
+    location = yield* findLocation({ sessionId: target.sessionId });
     session = yield* discoverSessionAt(location, target.sessionId);
   }
   if (!session)
@@ -725,7 +729,6 @@ export const observeCatalog = Effect.fn("ProjectSessions.observeCatalog")(functi
 
 export const findLocation = Effect.fn("ProjectSessions.findLocation")(function* (
   target: ProjectSessionTarget,
-  options?: { readonly includeInactive?: boolean },
 ) {
   const archive = yield* SessionArchiveStorage;
   const archived = yield* archive
@@ -765,7 +768,10 @@ export const findLocation = Effect.fn("ProjectSessions.findLocation")(function* 
       resolvedSessionDirectory: configuration.resolvedSessionDirectory,
     } satisfies ProjectSessionLocation;
   }
-  const locations = yield* projectSessionLocations.locations(options).pipe(asError("resolve"));
+  // A retired checkout remains a valid history route, not a new session binding.
+  const locations = yield* projectSessionLocations
+    .locations({ includeInactive: true })
+    .pipe(asError("resolve"));
   const candidates = target.workingDirectory
     ? locations.filter((item) => item.workingDirectory === target.workingDirectory)
     : locations;

@@ -1,7 +1,9 @@
 import { Effect, Schedule, Stream } from "effect";
 import type { JsonObject } from "../../contracts/serialization/json-contract";
 import { SESSION_TITLE_MAX_LENGTH } from "../../contracts/conversations/session-contract";
-import { setProjectSessionLabels, trustProject } from "../application/application";
+import { setProjectSessionLabels } from "../application/application";
+import * as managedWorktrees from "../worktrees/managedWorktrees";
+import * as projectSessionLifecycle from "./projectSessionLifecycle";
 import {
   TurnId,
   acquire as acquireConversation,
@@ -33,7 +35,6 @@ import {
   findLocation,
   inspect,
   publishCatalogChange,
-  publishCatalogStatus,
   publishTargetCatalogChange,
 } from "./projectSessionMetadata";
 
@@ -43,6 +44,10 @@ export const acquireTarget = Effect.fn("ProjectSessions.acquireTarget")(function
   newSession: boolean,
 ) {
   const sessions = yield* CakeSessionRuntimes;
+  // Older implicit restores could reactivate the transcript without recreating
+  // its retired checkout. Preserve the binding and repair only that known state.
+  if (!newSession && location.managedWorktree?.state === "resolved")
+    yield* managedWorktrees.restoreResolved(location.workingDirectory).pipe(asError("acquire"));
   yield* (yield* ManagedWorktrees).awaitSetup(location.workingDirectory).pipe(asError("acquire"));
   const options = yield* acquireOptions({ location, sessionId, newSession }).pipe(
     asError("acquire"),
@@ -117,12 +122,8 @@ const restoreIfResolved = Effect.fn("ProjectSessions.restoreIfResolved")(functio
       operation: "restore",
       message: `Session Family ${family.familyId} is resolved; restore it explicitly from parent ${family.parentSessionId} before messaging`,
     });
-  const restored = yield* projectSessionLocations
-    .restore(target.sessionId, location)
-    .pipe(asError("restore"));
-  yield* trustProject(restored.workingDirectory).pipe(asError("restore"));
-  yield* publishCatalogStatus(target.sessionId, restored, false).pipe(asError("restore"));
-  yield* publishCatalogChange(target.sessionId, restored, false).pipe(asError("restore"));
+  // Use the same locked checkout-before-transcript transition as explicit Restore.
+  yield* projectSessionLifecycle.restore(target).pipe(asError("restore"));
 });
 
 const isSessionResolvedAt = Effect.fn("ProjectSessions.isSessionResolvedAt")(function* (

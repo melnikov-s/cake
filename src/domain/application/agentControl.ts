@@ -113,7 +113,7 @@ const controlSession = Effect.fn("AgentControl.controlSession")(function* (
   const available = yield* labels();
   const location = session.savedDraft
     ? undefined
-    : yield* metadata.findLocation({ sessionId: session.sessionId }, { includeInactive: true });
+    : yield* metadata.findLocation({ sessionId: session.sessionId });
   const status = location
     ? yield* (yield* CakeSessionRuntimes).currentStatus({
         sessionId: session.sessionId,

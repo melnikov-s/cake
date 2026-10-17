@@ -1,6 +1,7 @@
 import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
 import { makeRuntimeRecoveryStorageTestLayer } from "../helpers/piRuntimeFixture";
 import assert from "node:assert/strict";
+import { toJsonValue } from "../../../src/utils/to-json-value";
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { coordinationStorageHarness } from "../helpers/coordinationStorageHarness";
@@ -3417,6 +3418,210 @@ describe("Project Sessions domain", () => {
           worktreeRecords: [worktree],
           onRestoreResolved: () => events.push("worktree"),
           onRestore: () => events.push("session"),
+        }),
+      ),
+    );
+  });
+
+  for (const legacyActiveTranscript of [false, true]) {
+    it.effect(
+      `reopens and sends after landed checkout cleanup${legacyActiveTranscript ? " with an already-reactivated transcript" : ""}`,
+      () => {
+        const events: string[] = [];
+        const prompted = Deferred.makeUnsafe<void>();
+        const records: WorktreeRecord[] = [
+          {
+            projectPath: "/project",
+            worktreePath: "/worktree",
+            branch: "agent/finished",
+            baseBranch: "main",
+            state: "landed",
+            createdAt: "2026-01-01T00:00:00.000Z",
+          },
+        ];
+        let resolved = false;
+        const target = { sessionId: "session-1", workingDirectory: "/worktree" };
+        return Effect.gen(function* () {
+          yield* projectSessionLifecycle.resolve(target);
+          assert.equal(records[0]?.state, "resolved");
+          assert.deepEqual(events, ["archive", "cleanup"]);
+          if (legacyActiveTranscript) {
+            // Reproduce the old send path: transcript restored, checkout still retired.
+            yield* projectSessionLocations.restore(
+              target.sessionId,
+              yield* projectSessionMetadata.findLocation(target),
+            );
+          }
+          events.length = 0;
+
+          // Exact-ID routing and a fresh catalog must work without an existing
+          // runtime or renderer cache, including the older partial-restore state.
+          const lookup = yield* projectSessionMetadata.lookup({ sessionId: target.sessionId });
+          assert.equal(lookup.workingDirectory, "/worktree");
+          assert.equal(lookup.resolved, !legacyActiveTranscript);
+          yield* projectSessionMetadata.open({ sessionId: target.sessionId });
+          const updates = yield* projectSessionMetadata.observeCatalog({
+            projectPath: "/project",
+            resolved: !legacyActiveTranscript,
+          });
+          const [initial] = yield* updates.pipe(Stream.take(1), Stream.runCollect);
+          assert.equal(initial?._tag, "Snapshot");
+          if (initial?._tag === "Snapshot")
+            assert.deepEqual(
+              initial.sessions.map((item) => item.sessionId),
+              [target.sessionId],
+            );
+          assert.equal(events.length, 0); // Merely opening never recreates a checkout.
+
+          if (legacyActiveTranscript) {
+            const observation = yield* projectSessionOperations.observeConversation(target);
+            yield* observation.pipe(Stream.take(1), Stream.runDrain, Effect.scoped);
+            assert.deepEqual(events.slice(0, 2), ["checkout", "runtime"]);
+            events.length = 0;
+          }
+          yield* projectSessionOperations
+            .sendAutomatically({
+              ...target,
+              text: "Continue",
+              attachments: [],
+              renderUserMessageAsMarkdown: false,
+            })
+            .pipe(Effect.scoped);
+          if (!legacyActiveTranscript)
+            assert.deepEqual(events.slice(0, 3), ["checkout", "transcript", "runtime"]);
+          yield* Deferred.await(prompted);
+          assert.equal(records[0]?.state, "landed");
+          assert.equal(resolved, false);
+          assert.ok(events.includes("prompt"));
+          // A subsequent cold open/observation uses the same ID, cwd and history.
+          yield* projectSessionMetadata.open({ sessionId: target.sessionId });
+          const observation = yield* projectSessionOperations.observeConversation(target);
+          const [reopened] = yield* observation.pipe(Stream.take(1), Stream.runCollect);
+          assert.equal(reopened?._tag, "Snapshot");
+          if (reopened?._tag === "Snapshot") {
+            assert.equal(reopened.snapshot.sessionId, target.sessionId);
+            assert.deepEqual(reopened.snapshot.parts, snapshot.parts.map(toJsonValue));
+          }
+          const missing = yield* projectSessionMetadata
+            .lookup({ sessionId: "missing" })
+            .pipe(Effect.flip);
+          assert.match(missing.message, /could not find Project Session missing/);
+        }).pipe(
+          Effect.provide(
+            makeLayer(undefined, {
+              worktreeRecords: records,
+              locations: [
+                {
+                  projectPath: "/project",
+                  projectName: "Project",
+                  workingDirectory: "/worktree",
+                  sessionDirectory: "/sessions",
+                  resolvedSessionDirectory: "/resolved-sessions",
+                },
+              ],
+              locate: (id, location) =>
+                Effect.succeed(
+                  id === target.sessionId && location.cwd === "/worktree"
+                    ? resolved
+                      ? "resolved"
+                      : "active"
+                    : undefined,
+                ),
+              catalog: (cwd) =>
+                cwd === "/worktree" ? Stream.make(sessionSummary(target.sessionId)) : Stream.empty,
+              onArchive: () => {
+                resolved = true;
+                events.push("archive");
+              },
+              onCleanupResolved: () => {
+                const record = records[0];
+                assert.ok(record);
+                records.splice(0, 1, { ...record, state: "resolved", resolvedFrom: "landed" });
+                events.push("cleanup");
+              },
+              onRestoreResolved: () => {
+                const record = records[0];
+                assert.ok(record);
+                records.splice(0, 1, { ...record, state: "landed" });
+                events.push("checkout");
+              },
+              onRestore: () => {
+                resolved = false;
+                events.push("transcript");
+              },
+              onRuntimeOptions: (newSession) => {
+                assert.equal(newSession, false);
+                assert.equal(records[0]?.state, "landed");
+                events.push("runtime");
+              },
+              onOperation: (operation) => events.push(operation),
+              prompt: () =>
+                Effect.runPromise(Deferred.succeed(prompted, undefined)).then(() => undefined),
+            }),
+          ),
+        );
+      },
+    );
+  }
+
+  it.effect("keeps a cleaned-up session resolved when implicit checkout restoration fails", () => {
+    let transcriptRestores = 0;
+    let runtimes = 0;
+    return Effect.gen(function* () {
+      const worktrees = yield* ManagedWorktrees;
+      const failure = yield* projectSessionOperations
+        .sendAutomatically({
+          sessionId: "session-1",
+          workingDirectory: "/worktree",
+          text: "Continue",
+          attachments: [],
+          renderUserMessageAsMarkdown: false,
+        })
+        .pipe(
+          Effect.provideService(ManagedWorktrees, {
+            ...worktrees,
+            restoreResolved: () =>
+              Effect.fail(
+                new ManagedWorktreeError({
+                  operation: "restoreResolved",
+                  message: "Cannot restore checkout",
+                }),
+              ),
+          }),
+          Effect.flip,
+        );
+      assert.match(failure.message, /Cannot restore checkout/);
+      assert.equal(
+        (yield* projectSessionMetadata.lookup({ sessionId: "session-1" })).resolved,
+        true,
+      );
+      assert.equal(transcriptRestores, 0);
+      assert.equal(runtimes, 0);
+    }).pipe(
+      Effect.provide(
+        makeLayer(undefined, {
+          resolvedOnDisk: true,
+          worktreeRecords: [
+            {
+              projectPath: "/project",
+              worktreePath: "/worktree",
+              branch: "agent/finished",
+              baseBranch: "main",
+              state: "resolved",
+              createdAt: "2026-01-01T00:00:00.000Z",
+            },
+          ],
+          locations: [
+            {
+              projectPath: "/project",
+              projectName: "Project",
+              workingDirectory: "/worktree",
+              sessionDirectory: "/sessions",
+              resolvedSessionDirectory: "/resolved-sessions",
+            },
+          ],
+          onRestore: () => transcriptRestores++,
+          onCreateRuntime: () => runtimes++,
         }),
       ),
     );

@@ -91,10 +91,9 @@ const familyMemberLocation = Effect.fn("ProjectSessions.familyMemberLocation")(f
 ) {
   const member = familyMember(family, sessionId);
   if (!member) return yield* error(operation, `Session ${sessionId} is not in that family`);
-  return yield* findLocation(
-    { sessionId, workingDirectory: member.workingDirectory },
-    { includeInactive: true },
-  ).pipe(asError(operation));
+  return yield* findLocation({ sessionId, workingDirectory: member.workingDirectory }).pipe(
+    asError(operation),
+  );
 });
 
 const assertResolvable = Effect.fn("ProjectSessions.assertResolvable")(function* (
@@ -284,9 +283,7 @@ const transitionStandalone = Effect.fn("ProjectSessions.transitionStandalone")(f
             ? rejected(operation, [target.sessionId], message)
             : error(operation, "The session became a family parent; retry the family operation");
         }
-        const location = yield* findLocation(target, { includeInactive: true }).pipe(
-          asError(operation),
-        );
+        const location = yield* findLocation(target).pipe(asError(operation));
         const archive = yield* SessionArchiveStorage;
         const namespace = yield* archive
           .locate(target.sessionId, archiveLocation(location))
@@ -598,9 +595,7 @@ export const setWorkflowSessionLabels = Effect.fn("ProjectSessions.setWorkflowSe
     if (input.labelIds.some((labelId) => !availableIds.has(labelId)))
       return yield* error("setWorkflowSessionLabels", "A selected label no longer exists");
     const target = { sessionId: input.sessionId, workingDirectory: input.workingDirectory };
-    const location = yield* findLocation(target, { includeInactive: true }).pipe(
-      asError("setWorkflowSessionLabels"),
-    );
+    const location = yield* findLocation(target).pipe(asError("setWorkflowSessionLabels"));
     if (location.projectPath !== input.projectPath)
       return yield* error(
         "setWorkflowSessionLabels",
