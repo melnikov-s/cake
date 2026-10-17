@@ -209,6 +209,7 @@ async function expectRestoredAnchor(
 }
 
 for (const scenario of [
+  "opens a restored transcript without renderer errors",
   "keeps every streaming frame at the bottom",
   "keeps every resize frame at the bottom",
   "preserves the reading anchor during row resize",
@@ -299,6 +300,33 @@ for (const scenario of [
           ),
         )
         .toBeLessThanOrEqual(1);
+
+      if (scenario === "opens a restored transcript without renderer errors") {
+        // Reload the real restored window after attaching the listener so it
+        // covers renderer startup, including the virtualizer's probe/measurement
+        // commits. Do not intercept or suppress the browser's error events.
+        await page.addInitScript(() => {
+          const errors: string[] = [];
+          Reflect.set(window, "startupRendererErrors", errors);
+          window.addEventListener("error", (event) => errors.push(event.message));
+        });
+        for (let launch = 0; launch < 2; launch++) {
+          await page.reload();
+          await expect(transcript.locator('[data-slot="transcript-item"]').last()).toContainText(
+            "transcript item 47",
+          );
+          await paintFrames(page, 30);
+          expect(await page.evaluate(() => Reflect.get(window, "startupRendererErrors"))).toEqual(
+            [],
+          );
+          expect(
+            await transcript.evaluate(
+              (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+            ),
+          ).toBeLessThanOrEqual(1);
+        }
+        return;
+      }
 
       if (scenario === "keeps every streaming frame at the bottom" && stream) {
         await expect(transcript.locator('[data-slot="transcript-item"]').last()).toContainText(

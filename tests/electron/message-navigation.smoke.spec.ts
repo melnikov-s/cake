@@ -152,8 +152,12 @@ for (const surface of ["Project Session", "Cake Chat"] as const) {
       await expect(pane.getByText("Answer 12.", { exact: true })).toBeVisible({ timeout: 20_000 });
       await composer.click();
       await expect(composer).toBeFocused();
-      // Record native scroll requests, retaining the real Chromium implementation.
+      // Record native scroll requests and resize errors without replacing the
+      // browser's measurements or suppressing its error events.
       await page.evaluate(() => {
+        const errors: string[] = [];
+        Reflect.set(window, "navigationRendererErrors", errors);
+        window.addEventListener("error", (event) => errors.push(event.message));
         const original = Element.prototype.scrollTo;
         const behaviors: string[] = [];
         Object.assign(window, { messageNavigationBehaviors: behaviors });
@@ -264,6 +268,9 @@ for (const surface of ["Project Session", "Cake Chat"] as const) {
       await expect(selected).toHaveCount(0);
       await expect(composer).toHaveValue("x");
       await expect(pane.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+      expect(await page.evaluate(() => Reflect.get(window, "navigationRendererErrors"))).toEqual(
+        [],
+      );
     } finally {
       await application.close();
       await rm(temporaryRoot, { recursive: true, force: true });

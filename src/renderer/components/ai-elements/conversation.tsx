@@ -87,9 +87,6 @@ function VirtualizedConversationInner<Item, Context>(
       computeItemKey={computeItemKey}
       itemContent={itemContent}
       increaseViewportBy={{ top: 320, bottom: 480 }}
-      // Measurements and scroll reconciliation must finish in this rendering
-      // update, not after an intervening paint at an obsolete position.
-      skipAnimationFrameInResizeObserver
       {...(components === undefined ? {} : { components })}
       {...(customScrollParent === undefined ? {} : { customScrollParent })}
       {...(atBottomStateChange === undefined ? {} : { atBottomStateChange })}

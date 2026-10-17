@@ -668,21 +668,7 @@ describe("Transcript scrolling", () => {
     ]);
   });
 
-  it("reconciles an estimated offscreen jump after range rendering and cancels stale revisions", () => {
-    const frames = new Map<number, FrameRequestCallback>();
-    let frameId = 0;
-    const request = vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((callback) => {
-      frames.set(++frameId, callback);
-      return frameId;
-    });
-    const cancel = vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation((id) => {
-      frames.delete(id);
-    });
-    const flush = () => {
-      const pending = [...frames.values()];
-      frames.clear();
-      act(() => pending.forEach((callback) => callback(0)));
-    };
+  it("reconciles offscreen selection geometry through measurement commits until user scroll intent", () => {
     const parts: UiPart[] = [1, 2].map((turn) => ({
       id: `assistant-${turn}`,
       kind: "text",
@@ -699,39 +685,59 @@ describe("Transcript scrolling", () => {
           messageSelection={messageSelection}
         />,
       );
-    try {
-      act(() => render());
-      const scroller = container.querySelector<HTMLElement>(".transcript")!;
-      const query = scroller.querySelector.bind(scroller);
-      let rendered = false;
-      vi.spyOn(scroller, "querySelector").mockImplementation((selector) =>
-        rendered ? query(selector) : null,
-      );
-      act(() => render({ messageId: "assistant-1", origin: "keyboard", revision: 1 }));
-      flush(); // The first estimated jump has not rendered its target yet.
-      expect(scrollToIndex).toHaveBeenLastCalledWith({
-        index: 0,
-        align: "start",
-        behavior: "auto",
-        offset: -16,
+    act(() => render());
+    const scroller = container.querySelector<HTMLElement>(".transcript")!;
+    scroller.getBoundingClientRect = () => ({ top: 0, bottom: 600, height: 600 }) as DOMRect;
+    const itemTops = [1200, 2400];
+    container
+      .querySelectorAll<HTMLElement>('[data-slot="transcript-item"]')
+      .forEach((item, index) => {
+        item.getBoundingClientRect = () => {
+          const top = itemTops[index]! - scroller.scrollTop;
+          return { top, bottom: top + 900, height: 900 } as DOMRect;
+        };
       });
-      act(() => (virtualizedProps.current?.rangeChanged as () => void)());
-      // Supersede the queued correction before the previous row's frame commits.
-      act(() => render({ messageId: "assistant-2", origin: "keyboard", revision: 2 }));
-      scrollToIndex.mockClear();
-      rendered = true;
-      flush();
-      expect(scrollToIndex.mock.calls).toEqual([
-        [{ index: 1, align: "start", behavior: "auto", offset: -16 }],
-      ]);
-      scrollToIndex.mockClear();
-      act(() => (virtualizedProps.current?.rangeChanged as () => void)());
-      flush();
-      expect(scrollToIndex).not.toHaveBeenCalled(); // A measured reveal is finished, not scroll-following.
-    } finally {
-      request.mockRestore();
-      cancel.mockRestore();
-    }
+    scroller.scrollTo = vi.fn((options?: ScrollToOptions | number) => {
+      if (typeof options === "object") scroller.scrollTop = options.top!;
+    });
+    const query = scroller.querySelector.bind(scroller);
+    let rendered = false;
+    vi.spyOn(scroller, "querySelector").mockImplementation((selector) =>
+      rendered ? query(selector) : null,
+    );
+    const rangeChanged = () => act(() => (virtualizedProps.current?.rangeChanged as () => void)());
+    act(() => render({ messageId: "assistant-1", origin: "keyboard", revision: 1 }));
+    rangeChanged(); // The estimated jump has not rendered its target yet.
+    expect(scrollToIndex).toHaveBeenLastCalledWith({
+      index: 0,
+      align: "start",
+      behavior: "auto",
+      offset: -16,
+    });
+    expect(scroller.scrollTo).not.toHaveBeenCalled();
+    // A new revision supersedes the previous unrendered target.
+    act(() => render({ messageId: "assistant-2", origin: "keyboard", revision: 2 }));
+    expect(scrollToIndex).toHaveBeenLastCalledWith({
+      index: 1,
+      align: "start",
+      behavior: "auto",
+      offset: -16,
+    });
+    scrollToIndex.mockClear();
+    rendered = true;
+    rangeChanged();
+    expect(scroller.scrollTop).toBe(2384);
+    itemTops[1]! += 280;
+    act(() => (virtualizedProps.current?.totalListHeightChanged as () => void)());
+    expect(scroller.scrollTop).toBe(2664);
+    expect(scrollToIndex).not.toHaveBeenCalled(); // No competing logical jump or retry.
+
+    // Explicit scroll intent cancels measurement-driven selection correction.
+    scroller.scrollTo = vi.fn();
+    act(() => scroller.dispatchEvent(new WheelEvent("wheel", { deltaY: 100, bubbles: true })));
+    itemTops[1]! += 100;
+    rangeChanged();
+    expect(scroller.scrollTo).not.toHaveBeenCalled();
   });
 
   it("immediately reveals a compact selection above the composer without animating", () => {

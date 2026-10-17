@@ -5,9 +5,8 @@ export const TranscriptList = forwardRef<
   HTMLDivElement,
   ComponentProps<"div"> & { context?: { onLayout?: () => void } }
 >(function TranscriptList({ className, context, ...props }, ref) {
-  // A measured row can resize the virtualizer's shallower container. Its
-  // ResizeObserver notification may be deferred by the browser's depth limit;
-  // reconcile this commit in a layout effect instead of painting that gap.
+  // Virtual padding can change in this commit. Reconcile the committed native
+  // scroll geometry before paint, alongside the observer for row/footer resizes.
   useLayoutEffect(() => context?.onLayout?.());
   return (
     <div

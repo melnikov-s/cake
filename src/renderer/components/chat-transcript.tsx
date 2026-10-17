@@ -20,6 +20,7 @@ import {
 } from "@/components/ai-elements/conversation";
 import { AnnotationDraftPopover } from "@/components/annotation-draft-popover";
 import { ChatTranscriptFooter } from "./chat-transcript-footer";
+import { TranscriptScroller } from "./transcript-scroller";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { LoadingState } from "@/components/ui/loading-state";
@@ -335,23 +336,17 @@ export const ChatTranscript = observer(function ChatTranscript({
     // its new range/measurements, rather than declaring an unrendered row revealed.
     // This callback belongs only to this selection revision; rapid keys or clear
     // cancel it before it can move the viewport to an obsolete target.
-    let frame: number | undefined;
-    const scheduleReveal = () => {
-      if (frame !== undefined) return;
-      frame = requestAnimationFrame(() => {
-        frame = undefined;
-        if (pendingSelectionReveal.current !== scheduleReveal) return;
-        const rendered = scroller.querySelector<HTMLElement>(
-          `[data-transcript-item-index="${selectedItemIndex}"]`,
-        );
-        reveal(rendered);
-        if (rendered) pendingSelectionReveal.current = undefined;
-      });
+    const reconcileSelection = () => {
+      const rendered = scroller.querySelector<HTMLElement>(
+        `[data-transcript-item-index="${selectedItemIndex}"]`,
+      );
+      // Keep the native target visible through deferred measurement commits,
+      // not just the first estimated range. Virtuoso owns the logical jump and
+      // its retries; this correction only reconciles committed DOM geometry.
+      if (rendered) revealSelectedItem(scroller, rendered, () => {}, false);
     };
-    pendingSelectionReveal.current = scheduleReveal;
-    scheduleReveal();
+    pendingSelectionReveal.current = reconcileSelection;
     return () => {
-      if (frame !== undefined) cancelAnimationFrame(frame);
       pendingSelectionReveal.current = undefined;
     };
   }, [messageSelection, scroller, selectedItemIndex, stopScroll, virtualized]);
@@ -379,6 +374,7 @@ export const ChatTranscript = observer(function ChatTranscript({
     let draggingScrollbar = false;
     let previousTop = scroller.scrollTop;
     const pauseFollowing = () => {
+      pendingSelectionReveal.current = undefined;
       readingAnchor.current = undefined;
       allowFollowing.current = false;
       atBottom.current = false;
@@ -431,6 +427,7 @@ export const ChatTranscript = observer(function ChatTranscript({
         }
         ancestor = ancestor.parentElement;
       }
+      pendingSelectionReveal.current = undefined;
       readingAnchor.current = undefined;
       if (direction < 0) pauseFollowing();
       else {
@@ -618,7 +615,11 @@ export const ChatTranscript = observer(function ChatTranscript({
                 followOutput={false}
                 totalListHeightChanged={handleTotalHeightChange}
                 rangeChanged={handleRangeChanged}
-                components={{ List: TranscriptList, Footer: ChatTranscriptFooter }}
+                components={{
+                  List: TranscriptList,
+                  Footer: ChatTranscriptFooter,
+                  Scroller: TranscriptScroller,
+                }}
                 itemContent={(index, item) => renderItem(item, index)}
               />
             )
