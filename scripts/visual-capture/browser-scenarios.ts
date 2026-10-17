@@ -13,6 +13,12 @@ const sessionId = "00000000-0000-4000-8000-000000000001";
 
 export const browserVisualScenarios = [
   {
+    name: "browser-sidebar-defaults",
+    description:
+      "Initial sidebar defaults, restoration, toggling and navigation on phone and desktop",
+    states: ["default", "restored-open", "restored-closed"],
+  },
+  {
     name: "browser-responsive",
     description: "Responsive shared shell, composer, header tools and overlays",
     states: [
@@ -216,6 +222,12 @@ function workspaceSessionDirectory(workingDirectory: string, root: string) {
 
 export async function prepareBrowserVisual(page: Page, scenario: string, state = "default") {
   page.setDefaultTimeout(20_000);
+  if (scenario === "browser-sidebar-defaults") {
+    await prepareSidebarDefaults(page, state);
+    return;
+  }
+  if (!(await page.locator('[data-slot="sidebar"]').isVisible()))
+    await page.locator('[data-slot="header-sidebar-toggle"]').first().click();
   await page.locator(`[data-slot="sidebar"] [data-session-id="${sessionId}"]`).last().click();
   await expect(
     page.getByText("Can I use the same Cake workspace in my browser?", { exact: true }).last(),
@@ -335,6 +347,69 @@ export async function prepareBrowserVisual(page: Page, scenario: string, state =
       await expect(page.getByRole("dialog")).toBeVisible();
     }
   }
+  await page.waitForFunction(() => document.fonts.status === "loaded");
+  await page.mouse.move(1, 1);
+}
+
+async function prepareSidebarDefaults(page: Page, state: string) {
+  const phone = await page.evaluate(() => matchMedia("(pointer: coarse)").matches);
+  const sidebar = page.locator('[data-slot="sidebar"]');
+  const headerToggle = page.locator('[data-slot="header-sidebar-toggle"]').first();
+  await expect(headerToggle).toBeAttached();
+  if (phone) await expect(sidebar).toBeHidden();
+  else await expect(sidebar).toBeVisible();
+
+  if (state !== "default") {
+    // Model a previously open desktop tab (or an explicitly closed tab) entering
+    // this viewport, retaining all other tab-local presentation state.
+    // Seed after the outgoing page has flushed its snapshot on pagehide.
+    await page.addInitScript((hidden) => {
+      const key = "cake.browser.presentation.v1";
+      const saved = JSON.parse(sessionStorage.getItem(key) ?? '{"state":{},"children":{}}');
+      const sidebar = saved.children.sidebarStore ?? { state: {}, children: {} };
+      saved.children.sidebarStore = { ...sidebar, state: { ...sidebar.state, hidden } };
+      sessionStorage.setItem(key, JSON.stringify(saved));
+    }, state === "restored-closed");
+    await page.reload();
+    await expect(headerToggle).toBeAttached();
+    if (phone || state === "restored-closed") await expect(sidebar).toBeHidden();
+    else await expect(sidebar).toBeVisible();
+  }
+
+  if (!(await sidebar.isVisible())) await headerToggle.click();
+  await expect(sidebar).toBeVisible();
+  await expect(sidebar.getByRole("button", { name: "Open settings", exact: true })).toBeVisible();
+  // Ordinary reactive changes must not reapply the initial phone default.
+  await sidebar.getByRole("button", { name: "Show activity", exact: true }).click();
+  await expect(sidebar).toBeVisible();
+  await sidebar.getByRole("button", { name: "Show projects", exact: true }).click();
+  await expect(sidebar).toBeVisible();
+  await sidebar.getByRole("button", { name: "Toggle sidebar", exact: true }).click();
+  await expect(sidebar).toBeHidden();
+  await headerToggle.click();
+  await expect(sidebar).toBeVisible();
+  await sidebar.locator(`[data-session-id="${sessionId}"]`).last().click();
+  const input = page.locator('[data-slot="workspace"] textarea').first();
+  await expect(input).toBeVisible();
+  // Selecting a conversation retains the existing narrow-drawer close behavior.
+  if (phone) await expect(sidebar).toBeHidden();
+  else await expect(sidebar).toBeVisible();
+  const editor = page.getByRole("button", { name: "Open VS Code", exact: true });
+  const terminal = page.getByRole("button", { name: "Terminal", exact: true });
+  if (phone) {
+    await expect(editor).toBeHidden();
+    await expect(terminal).toBeHidden();
+    await headerToggle.click();
+  } else {
+    await expect(editor).toBeVisible();
+    await expect(terminal).toBeVisible();
+  }
+  await sidebar.getByRole("button", { name: "Open settings", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Back to chat", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Back to chat", exact: true }).click();
+  await expect(input).toBeVisible();
+  if (phone) await expect(sidebar).toBeHidden();
+  else await expect(sidebar).toBeVisible();
   await page.waitForFunction(() => document.fonts.status === "loaded");
   await page.mouse.move(1, 1);
 }

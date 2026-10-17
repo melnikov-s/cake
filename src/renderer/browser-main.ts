@@ -12,6 +12,8 @@ import { ContextActionMenu } from "./components/ui/context-action-menu";
 import { RootProjection } from "./models/RootProjection";
 import { RendererRoot } from "./components/renderer-root";
 import { mountRootStore } from "./bootstrap/mount-root-store";
+import { browserInitialSnapshot } from "./bootstrap/browser-initial-snapshot";
+import { isPhoneLayout } from "./lib/phone-layout";
 import { observeModels, observeAgentAvailability, observeApplicationState } from "./observers";
 import { observeApplicationEvents } from "./observers/application-events";
 import { observeArtifactEvents } from "./observers/artifact-events";
@@ -120,7 +122,7 @@ const client = makeClient(runtime, {
 });
 const rootStore = mountRootStore(
   client,
-  snapshot ?? { state: {}, children: {} },
+  browserInitialSnapshot(snapshot, isPhoneLayout()),
   async () => persist(),
   projection,
   undefined,

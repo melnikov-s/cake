@@ -6,6 +6,39 @@ import { expect, test } from "@playwright/test";
 import { parseVisualCaptureArguments } from "../../scripts/visual-capture/arguments";
 import { captureVisual } from "../../scripts/visual-capture/capture";
 
+// Galaxy S22 Ultra CSS viewport probes use the harness's maintained Android
+// profile; desktop uses an ordinary non-touch Chromium context.
+for (const [width, height] of [
+  [412, 915],
+  [915, 412],
+  [1440, 900],
+] as const) {
+  for (const state of ["default", "restored-open", "restored-closed"]) {
+    test(`browser sidebar ${state} at ${width}x${height}`, async () => {
+      const outputRoot = await mkdtemp(join(tmpdir(), "cake-sidebar-defaults-"));
+      try {
+        const result = await captureVisual(
+          parseVisualCaptureArguments([
+            "browser-sidebar-defaults",
+            "--state",
+            state,
+            "--width",
+            String(width),
+            "--height",
+            String(height),
+            "--output",
+            join(outputRoot, "sidebar.png"),
+            "--no-build",
+          ]),
+        );
+        expect(result.dimensions).toEqual({ width, height });
+      } finally {
+        await rm(outputRoot, { recursive: true, force: true });
+      }
+    });
+  }
+}
+
 for (const [width, height] of [
   [384, 824],
   [824, 384],
