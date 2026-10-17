@@ -43,7 +43,7 @@ on another key, pointer/wheel interaction, selection, focus departure, window bl
 or pane/session departure. Arrival focus and automatic voice sends do not arm it.
 Admission identity, not text or queue position, links the receipt to the runtime queue.
 
-[`ReadableData`](../../src/renderer/components/ui/readable-data.tsx) renders complete literal values as readable documents, ordered arrays and definition lists, with optional section disclosure and embedded raster-image previews. It never fetches remote image references or interprets strings as Markdown. Use it for reading captured context; copy operations retain the original serialized body, and syntax-highlighted source remains owned by AI Elements.
+[`ReadableData`](../../src/renderer/components/ui/readable-data.tsx) renders complete literal values as readable documents, ordered arrays and definition lists, with optional section disclosure and embedded raster-image previews. It never fetches remote image references or interprets strings as Markdown. Use it for literal attachment previews; syntax-highlighted source remains owned by AI Elements.
 
 [`ActivityMenu`](../../src/renderer/components/ui/activity-menu.tsx) composes the shared
 Popover, Button and StatusDot into a compact pill or attached composer strip with

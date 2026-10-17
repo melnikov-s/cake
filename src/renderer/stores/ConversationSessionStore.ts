@@ -198,7 +198,10 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
 
   @child
   get contextInspectorStore(): ContextInspectorStore {
-    return createStore(ContextInspectorStore, { sessionId: this.sessionId });
+    return createStore(ContextInspectorStore, {
+      sessionId: this.sessionId,
+      isPending: () => this.props.configuration.deferredNewSession?.() ?? false,
+    });
   }
 
   @child

@@ -55,7 +55,6 @@ test("permanent Cake Chat retains its input, history and settings across restart
     mkdir(userData),
   ]);
   const requests: unknown[] = [];
-  const requestBodies: string[] = [];
   const summaryBodies: string[] = [];
   let releaseFirstReply: (() => void) | undefined;
   const firstReplyGate = new Promise<void>((resolve) => {
@@ -71,7 +70,6 @@ test("permanent Cake Chat retains its input, history and settings across restart
     if (summary) summaryBodies.push(body);
     if (!summary) {
       requests.push(parsed);
-      requestBodies.push(body);
       if (requests.length <= 2) await firstReplyGate;
     } else if (requests.length >= 3) {
       stalledSummaries += 1;
@@ -157,15 +155,15 @@ test("permanent Cake Chat retains its input, history and settings across restart
     await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
     let input = page.getByRole("combobox", { name: "Message Cake Chat" });
     await expect(input).toBeVisible();
-    const inspectButton = page.getByRole("button", { name: "Inspect context", exact: true });
+    const inspectButton = page.getByRole("button", { name: "Browse context", exact: true });
     await expect(inspectButton).toBeVisible();
     const inspectBounds = await inspectButton.boundingBox();
     expect(inspectBounds!.x).toBeGreaterThan(900);
     expect(inspectBounds!.y).toBeLessThan(70);
     await inspectButton.click();
-    await expect(page.getByText("No captured context yet.", { exact: true })).toBeVisible();
+    await expect(page.getByText("No assembled context yet.", { exact: true })).toBeVisible();
     expect(requests).toHaveLength(0);
-    await expect(page.getByRole("button", { name: "Close", exact: true })).toBeFocused();
+    await expect(page.getByRole("button", { name: "Close context", exact: true })).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(inspectButton).toBeFocused();
     // An empty composer starts at the frame's normal inset, without a reserved header row.
@@ -309,31 +307,13 @@ test("permanent Cake Chat retains its input, history and settings across restart
       CAKE_CHAT_SESSION_ID,
     );
     await expect(input).toBeVisible();
-    // Inspect the in-flight coordinator call before its reply starts background summaries.
+    // Browse the committed Pi context even while the provider response is in flight.
+    const requestCount = requests.length;
     await inspectButton.click();
     const contextDialog = page.getByRole("dialog", { name: "Context", exact: true });
+    await expect(page.getByRole("button", { name: "Close context", exact: true })).toBeFocused();
+    await contextDialog.getByRole("button", { name: "Messages", exact: true }).click();
     await expect(contextDialog).toContainText("Discuss my priorities again");
-    await expect(page.getByRole("button", { name: "Close", exact: true })).toBeFocused();
-    await page.evaluate(() => {
-      Object.defineProperty(navigator, "clipboard", {
-        configurable: true,
-        value: {
-          writeText: async (text: string) => {
-            Reflect.set(window, "capturedContextRaw", text);
-          },
-        },
-      });
-    });
-    const copyContext = page.getByRole("button", { name: "Copy raw context", exact: true });
-    await expect(copyContext.locator("svg")).toHaveCount(1);
-    await copyContext.focus();
-    await expect(copyContext).toBeFocused();
-    const requestCount = requests.length;
-    await page.keyboard.press("Enter");
-    await expect(contextDialog.getByRole("status")).toHaveText("Raw context copied");
-    expect(await page.evaluate(() => Reflect.get(window, "capturedContextRaw"))).toBe(
-      requestBodies.at(-1),
-    );
     expect(requests).toHaveLength(requestCount);
     await page.keyboard.press("Escape");
     await expect(inspectButton).toBeFocused();
@@ -383,14 +363,10 @@ test("permanent Cake Chat retains its input, history and settings across restart
       .toBe(1);
     expect(summaryBodies.length).toBeGreaterThan(0);
     await inspectButton.click();
-    // The newest call is now the memory summary: there is no selection step.
-    await expect(contextDialog).toContainText("You write the memory of Cake Chat");
-    await copyContext.click();
-    await expect(contextDialog.getByRole("status")).toHaveText("Raw context copied");
-    expect(await page.evaluate(() => Reflect.get(window, "capturedContextRaw"))).toBe(
-      summaryBodies.at(-1),
-    );
-    await page.getByRole("button", { name: "Close", exact: true }).click();
+    // Background summaries do not replace the selected conversation with a summarizer request.
+    await contextDialog.getByRole("button", { name: "Messages", exact: true }).click();
+    await expect(contextDialog).toContainText("Discuss my priorities again");
+    await page.getByRole("button", { name: "Close context", exact: true }).click();
 
     // A manual unread reminder uses the same application storage as Project Sessions.
     await interceptMenu(app, "Mark as Unread");

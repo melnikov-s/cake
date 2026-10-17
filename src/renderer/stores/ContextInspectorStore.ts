@@ -7,7 +7,7 @@ import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../lib/error-details";
 
 /** A window-local reader. Closing releases all content; browsing never calls prompt/compact/zoom tools. */
-export class ContextInspectorStore extends Store<{ sessionId: string }> {
+export class ContextInspectorStore extends Store<{ sessionId: string; isPending(): boolean }> {
   open = false;
   loading = false;
   error: string | undefined;
@@ -66,6 +66,9 @@ export class ContextInspectorStore extends Store<{ sessionId: string }> {
       this.expanded = ["memory"];
     });
     try {
+      // An unsent conversation has no Pi runtime or assembled context to inspect.
+      // Do not materialize one merely to browse, or confuse acquisition failure with emptiness.
+      if (this.props.isPending()) return;
       const value = await ClientContext.consume(this)!.sessionChats.inspect(
         { sessionId: this.props.sessionId, kind: "context-outline" },
         { signal },

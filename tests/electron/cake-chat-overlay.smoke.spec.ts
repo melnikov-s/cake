@@ -134,7 +134,7 @@ readline.createInterface({input:process.stdin}).on('line', line => {
         timeout: 20_000,
       });
 
-      for (const name of [/^\d+ artifacts$/, "Work log display options", "Inspect context"]) {
+      for (const name of [/^\d+ artifacts$/, "Work log display options", "Browse context"]) {
         await expect(main.getByRole("button", { name, exact: true })).toBeVisible();
       }
 
@@ -167,7 +167,7 @@ readline.createInterface({input:process.stdin}).on('line', line => {
       await expect(overlay.getByRole("button", { name: "Toggle sidebar" })).toHaveCount(0);
       await expect(overlay.getByRole("button", { name: "Terminal" })).toHaveCount(0);
 
-      for (const name of [/^\d+ artifacts$/, "Work log display options", "Inspect context"]) {
+      for (const name of [/^\d+ artifacts$/, "Work log display options", "Browse context"]) {
         await expect(overlay.getByRole("button", { name, exact: true })).toHaveCount(0);
       }
       await expect(input).toBeFocused();

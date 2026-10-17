@@ -1,17 +1,6 @@
 import { Predicate, Schema } from "effect";
-import {
-  jsonObjectSchema,
-  jsonValueSchema,
-  type JsonValue,
-} from "../../contracts/serialization/json-contract";
+import { jsonObjectSchema, type JsonValue } from "../../contracts/serialization/json-contract";
 
-export function parseStructuredData(raw: string): JsonValue {
-  try {
-    return Schema.decodeUnknownSync(jsonValueSchema)(JSON.parse(raw));
-  } catch {
-    return raw;
-  }
-}
 export function structuredDataFields(
   value: JsonValue,
 ): ReadonlyArray<readonly [string, JsonValue]> | undefined {

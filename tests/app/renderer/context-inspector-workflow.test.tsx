@@ -2,6 +2,10 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
+import { StoreProvider } from "r-state-tree/react";
+import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
+import { CakeChatPaneHeader } from "../../../src/renderer/components/cake-chat-pane-header";
+import { ProjectPaneHeader } from "../../../src/renderer/components/project-pane-header";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import type { ContextInspection } from "../../../src/contracts/conversations/context-inspection";
 import type { JsonValue } from "../../../src/contracts/serialization/json-contract";
@@ -12,6 +16,96 @@ import { createRendererStoreFixture } from "./renderer-store-fixture";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 
 afterEach(cleanup);
+
+it("does not acquire an unsent chat and reads its Pi context once materialized", async () => {
+  const inspect = vi
+    .fn<Client["sessionChats"]["inspect"]>()
+    .mockResolvedValue(toJsonValue(context));
+  using fixture = createRendererStoreFixture({ client: { sessionChats: { inspect } } });
+  const pending = fixture.root.cakeChatCollectionStore.pendingSessions;
+  pending.create(CAKE_CHAT_SESSION_ID);
+  const store =
+    fixture.root.cakeChatCollectionStore.registry.load(CAKE_CHAT_SESSION_ID)
+      .conversationSessionStore.contextInspectorStore;
+  const user = userEvent.setup();
+  const view = render(<ContextInspector store={store} />);
+  try {
+    await user.click(screen.getByRole("button", { name: "Browse context" }));
+    await screen.findByText("No assembled context yet.");
+    expect(inspect).not.toHaveBeenCalled();
+    pending.markMaterialized(CAKE_CHAT_SESSION_ID);
+    await user.click(screen.getByRole("button", { name: "Refresh context" }));
+    await screen.findByRole("button", { name: "The current compressed summary" });
+    expect(inspect).toHaveBeenCalledExactlyOnceWith(
+      { sessionId: CAKE_CHAT_SESSION_ID, kind: "context-outline" },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  } finally {
+    view.unmount();
+  }
+});
+
+it("distinguishes loading, failed reads and true emptiness, then refreshes real context", async () => {
+  const pending = Promise.withResolvers<JsonValue>();
+  const inspect = vi
+    .fn<Client["sessionChats"]["inspect"]>()
+    .mockReturnValueOnce(pending.promise)
+    .mockResolvedValueOnce({ sources: [] })
+    .mockResolvedValue(toJsonValue(context));
+  using fixture = createRendererStoreFixture({ client: { sessionChats: { inspect } } });
+  const store =
+    fixture.root.cakeChatCollectionStore.registry.load(CAKE_CHAT_SESSION_ID)
+      .conversationSessionStore.contextInspectorStore;
+  const user = userEvent.setup();
+  const view = render(<ContextInspector store={store} />);
+  try {
+    await user.click(screen.getByRole("button", { name: "Browse context" }));
+    expect(screen.getByRole("status", { name: "Loading context" })).toBeTruthy();
+    expect(screen.queryByText("No assembled context yet.")).toBeNull();
+    await act(async () => pending.reject(new Error("Pi context read failed")));
+    expect((await screen.findByRole("alert")).textContent).toContain("Pi context read failed");
+    expect(screen.queryByText("No assembled context yet.")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    await screen.findByText("No assembled context yet.");
+    await user.click(screen.getByRole("button", { name: "Refresh context" }));
+    await screen.findByRole("button", { name: "The current compressed summary" });
+  } finally {
+    view.unmount();
+  }
+});
+
+it("routes selection changes to the new conversation and ignores the previous late response", async () => {
+  const pending = Promise.withResolvers<JsonValue>();
+  const nextId = projectChatSessionId("/project");
+  const inspect = vi.fn<Client["sessionChats"]["inspect"]>(async ({ sessionId }) =>
+    sessionId === CAKE_CHAT_SESSION_ID ? pending.promise : toJsonValue(context),
+  );
+  using fixture = createRendererStoreFixture({
+    projects: [projectRecord({ path: "/project" })],
+    client: { sessionChats: { inspect } },
+  });
+  const global =
+    fixture.root.cakeChatCollectionStore.registry.load(CAKE_CHAT_SESSION_ID)
+      .conversationSessionStore.contextInspectorStore;
+  const project =
+    fixture.root.cakeChatCollectionStore.registry.load(nextId).conversationSessionStore
+      .contextInspectorStore;
+  const user = userEvent.setup();
+  const view = render(<ContextInspector store={global} />);
+  try {
+    await user.click(screen.getByRole("button", { name: "Browse context" }));
+    view.rerender(<ContextInspector store={project} />);
+    expect(inspect.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+    await user.click(screen.getByRole("button", { name: "Browse context" }));
+    await screen.findByRole("button", { name: "The current compressed summary" });
+    expect(inspect.mock.calls[1]?.[0]).toEqual({ sessionId: nextId, kind: "context-outline" });
+    await act(async () => pending.resolve({ sources: [] }));
+    expect(screen.getByRole("button", { name: "The current compressed summary" })).toBeTruthy();
+    expect(screen.queryByText("No assembled context yet.")).toBeNull();
+  } finally {
+    view.unmount();
+  }
+});
 
 const context: ContextInspection = {
   sources: [
@@ -65,7 +159,7 @@ const originals: ContextInspection = {
   ],
 };
 
-it.each(["project", "global"])(
+it.each(["project", "project-chat", "global"])(
   "browses %s sources and nested memory as literal, read-only detail",
   async (scope) => {
     const currentDetail =
@@ -109,14 +203,40 @@ it.each(["project", "global"])(
       sessions: [sessionSummary({ sessionId: "project-session", projectPath: "/project" })],
       client: { sessionChats: { inspect } },
     });
-    const sessionId = scope === "global" ? CAKE_CHAT_SESSION_ID : "project-session";
-    const owner =
+    const sessionId =
       scope === "global"
-        ? fixture.root.cakeChatCollectionStore.registry.load(sessionId)
-        : fixture.root.sessionRegistry.load(sessionId, "/project");
+        ? CAKE_CHAT_SESSION_ID
+        : scope === "project-chat"
+          ? projectChatSessionId("/project")
+          : "project-session";
+    const owner =
+      scope === "project"
+        ? fixture.root.sessionRegistry.load(sessionId, "/project")
+        : fixture.root.cakeChatCollectionStore.registry.load(sessionId);
     const store = owner.conversationSessionStore.contextInspectorStore;
+    const pane = {
+      kind: "pane" as const,
+      paneId: "context-pane",
+      history: [sessionId],
+      historyCursor: 0,
+    };
     const user = userEvent.setup();
-    const view = render(<ContextInspector store={store} />);
+    const view = render(
+      <StoreProvider store={fixture.root}>
+        {scope === "project" ? (
+          <ProjectPaneHeader
+            pane={pane}
+            session={fixture.root.sessionRegistry.load(sessionId, "/project")}
+            browserMode={false}
+          />
+        ) : (
+          <CakeChatPaneHeader
+            pane={pane}
+            session={fixture.root.cakeChatCollectionStore.registry.load(sessionId)}
+          />
+        )}
+      </StoreProvider>,
+    );
     try {
       await user.click(screen.getByRole("button", { name: "Browse context" }));
       await screen.findByRole("button", { name: "The current compressed summary" });

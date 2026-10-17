@@ -360,7 +360,7 @@ export async function prepareBrowserVisual(page: Page, scenario: string, state =
         page.getByRole("heading", { name: "What can I help you find or do?" }),
       ).toBeVisible();
       if (state === "inspector") {
-        await page.getByRole("button", { name: "Inspect context", exact: true }).click();
+        await page.getByRole("button", { name: "Browse context", exact: true }).click();
         await expect(page.getByRole("dialog")).toBeVisible();
       }
     } else if (state === "new-session" || state === "project-settings") {

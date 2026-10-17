@@ -224,7 +224,7 @@ it.each([320, 360, 384, 390, 412])(
             await browserExpect(
               page.getByRole("heading", { name: "What can I help you find or do?" }),
             ).toBeVisible();
-            await page.getByRole("button", { name: "Inspect context", exact: true }).tap();
+            await page.getByRole("button", { name: "Browse context", exact: true }).tap();
             await page.setViewportSize({ width, height: 360 });
             const inspector = page.getByRole("dialog");
             await browserExpect(inspector).toBeVisible();
@@ -234,7 +234,7 @@ it.each([320, 360, 384, 390, 412])(
             expect((inspectorBounds?.y ?? 0) + (inspectorBounds?.height ?? 0)).toBeLessThanOrEqual(
               360,
             );
-            await inspector.getByRole("button", { name: "Close", exact: true }).tap();
+            await inspector.getByRole("button", { name: "Close context", exact: true }).tap();
             await page.setViewportSize({ width, height: 844 });
             await page.locator('[data-slot="header-sidebar-toggle"]').first().tap();
             await sidebar.getByRole("button", { name: /^Open settings for / }).tap();

@@ -1852,7 +1852,7 @@ const cakeChatSidebarUnread: VisualCaptureScenario = {
 const cakeChatScenario: VisualCaptureScenario = {
   name: "cake-chat",
   description:
-    "Permanent coordinator with original history, memory settings and outbound request inspection",
+    "Permanent coordinator with original history, memory settings and Pi context browsing",
   states: [
     "default",
     "settings",
@@ -1924,8 +1924,10 @@ const cakeChatScenario: VisualCaptureScenario = {
       page.getByText("Will I still see my original conversation history?", { exact: true }),
     ).toBeVisible();
     if (state === "inspector") {
-      await page.getByRole("button", { name: "Inspect context", exact: true }).click();
-      await expect(page.getByText("No captured context yet.", { exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Browse context", exact: true }).click();
+      const context = page.getByRole("dialog", { name: "Context", exact: true });
+      await context.getByRole("button", { name: "Messages", exact: true }).click();
+      await expect(context).toContainText("Will I still see my original conversation history?");
     }
     if (state.startsWith("project")) {
       await page
@@ -2764,41 +2766,6 @@ const activityWorktreeScenario: VisualCaptureScenario = {
     await page.mouse.move(1, 1);
   },
   region: (page) => page.locator('[data-slot="composer-dock"]'),
-};
-
-const cakeChatInspectorScenario: VisualCaptureScenario = {
-  name: "cake-chat-inspector",
-  description:
-    "Permanent Cake Chat request inspector showing an actual outbound request to a local deterministic provider",
-  states: ["icon", "default", "memory"],
-  async seed(paths, theme) {
-    await cakeChatScenario.seed(paths, theme);
-    return openRequestInspectorFixture(paths);
-  },
-  async prepare(page, state) {
-    await cakeChatScenario.prepare(page, "default");
-    if (state === "icon") return;
-    const composer = page.getByRole("combobox", { name: "Message Cake Chat", exact: true });
-    await composer.fill("What context will you use to coordinate my next task?");
-    await page.getByRole("button", { name: "Send", exact: true }).click();
-    await expect(
-      page.getByText("Request captured by the local inspection fixture.", { exact: true }),
-    ).toBeVisible();
-    await page.getByRole("button", { name: "Inspect context", exact: true }).click();
-    const context = page.getByRole("dialog", { name: "Context", exact: true });
-    await expect(
-      context.getByRole("button", { name: "Copy raw context", exact: true }),
-    ).toBeEnabled();
-    await expect(context).toContainText("What context will you use to coordinate my next task?");
-    if (state === "memory") {
-      await context.getByRole("button", { name: "Instructions", exact: true }).click();
-      await expect(context).toContainText("<current-time>");
-    }
-    await page.waitForFunction(() => document.fonts.status === "loaded");
-    await page.mouse.move(1, 1);
-  },
-  region: (page, state) =>
-    state === "icon" ? page.locator('[data-slot="workspace-header"]') : page.locator("body"),
 };
 
 const contextOutlineScenario: VisualCaptureScenario = {
@@ -3767,7 +3734,6 @@ export const visualCaptureScenarios = [
   cakeChatOverlayScenario,
   subagentReportsScenario,
   cakeChatArtifactScenario,
-  cakeChatInspectorScenario,
   contextOutlineScenario,
   queuedPromptsScenario,
   taskInputAttachmentsScenario,
