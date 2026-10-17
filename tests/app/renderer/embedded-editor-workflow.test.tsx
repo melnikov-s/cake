@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../src/renderer/client/Client";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { sessionSummary } from "./fixtures/catalog-fixtures";
+import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import {
   deferredEditorOpen,
   editorLease,
@@ -290,6 +291,162 @@ describe("Embedded editor workflow", () => {
       ).toBeDefined();
     },
   );
+  it.each([false, true])(
+    "asks Cake Chat to set up the backend and reports delivery failure=%s",
+    async (fails) => {
+      const start = vi.fn<Client["cakeChats"]["start"]>(async () => {
+        if (fails) throw new Error("Setup chat unavailable");
+        return TurnId.make("setup-turn");
+      });
+      using fixture = renderEmbeddedEditor({
+        vscode: { open: async () => undefined },
+        cakeChats: { start },
+      });
+      fixture.state({ status: "missing" });
+      await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+      await fixture.user.click(screen.getByRole("button", { name: "Ask Cake to set this up" }));
+      await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
+      const request = start.mock.calls[0]![0];
+      expect(request.text).toContain("backend's actual operating system");
+      expect(request.text).toContain("Remote desktops require code-server");
+      expect(request.text).toContain(`Project: ${editorWorkingDirectory}`);
+      expect(screen.getByRole("combobox", { name: "Message Cake Chat" })).toBeDefined();
+      if (fails) expect(await screen.findByText("Setup chat unavailable")).toBeDefined();
+      else expect(screen.queryByText("Setup chat unavailable")).toBeNull();
+    },
+  );
+
+  it("keeps native companion context scoped to the active workspace and clears it without closing the IDE", async () => {
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () => TurnId.make("context-turn"));
+    const open = vi.fn<Client["vscode"]["open"]>(async () => editorLease("a"));
+    using fixture = renderEmbeddedEditor({
+      vscode: { open },
+      sessionChats: { prompt },
+    });
+    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await waitFor(() => expect(workspaceFrame()).not.toBeNull());
+    fixture.nativeEvent({
+      type: "embedded-editor-selection",
+      workspacePath: editorWorkingDirectory,
+      path: "src/active.ts",
+      startLine: 2,
+      endLine: 4,
+    });
+    expect(screen.getByRole("button", { name: /Remove.*active.ts/ })).toBeDefined();
+    fixture.nativeEvent({
+      type: "embedded-editor-selection",
+      workspacePath: "/other-project",
+      path: "other.ts",
+      startLine: 0,
+      endLine: 0,
+    });
+    fixture.nativeEvent({
+      type: "embedded-editor-selection-cleared",
+      workspacePath: "/other-project",
+    });
+    expect(screen.getByRole("button", { name: /Remove.*active.ts/ })).toBeDefined();
+    expect(screen.queryByRole("button", { name: /Remove.*other.ts/ })).toBeNull();
+    fixture.nativeEvent({
+      type: "embedded-editor-toggle-chat",
+      workspacePath: editorWorkingDirectory,
+    });
+    expect(screen.queryByRole("combobox", { name: "Message" })).toBeNull();
+    expect(workspaceFrame()).not.toBeNull();
+    fixture.nativeEvent({
+      type: "embedded-editor-toggle-chat",
+      workspacePath: editorWorkingDirectory,
+    });
+    expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
+    expect(open).toHaveBeenCalledTimes(1);
+    fixture.nativeEvent({
+      type: "embedded-editor-selection-cleared",
+      workspacePath: editorWorkingDirectory,
+    });
+    expect(screen.queryByRole("button", { name: /Remove.*active.ts/ })).toBeNull();
+    await fixture.user.type(screen.getByRole("combobox", { name: "Message" }), "No stale source");
+    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() =>
+      expect(prompt).toHaveBeenCalledWith(
+        expect.objectContaining({ text: "No stale source", attachments: [] }),
+        expect.any(Object),
+      ),
+    );
+    await fixture.user.click(backToAgentButton());
+    expect(workspaceFrame()).toBeNull();
+    expect(screen.getByRole("button", { name: "Open VS Code" })).toBeDefined();
+  });
+
+  it("projects an active session's discussion annotations into the opened editor", async () => {
+    const updateAnnotations = vi.fn<Client["vscode"]["updateAnnotations"]>(async () => undefined);
+    using fixture = renderEmbeddedEditor(
+      { vscode: { open: async () => editorLease("a"), updateAnnotations } },
+      {
+        threads: [
+          {
+            id: "thread-a",
+            parentSessionId: editorSessionId,
+            workingDirectory: editorWorkingDirectory,
+            anchor: {
+              view: "file",
+              path: "src/app.ts",
+              start: { diffLine: 3, newLine: 4 },
+              end: { diffLine: 5, newLine: 6 },
+              selectedText: "return value;",
+              contextBefore: "",
+              contextAfter: "",
+              diff: "",
+            },
+            parts: [
+              {
+                id: "question",
+                kind: "text",
+                role: "user",
+                text: "Why is this needed?",
+                status: "complete",
+              },
+              {
+                id: "answer",
+                kind: "text",
+                role: "assistant",
+                text: "It preserves state.",
+                status: "complete",
+              },
+            ],
+            status: "open",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+      },
+    );
+    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await waitFor(() => expect(workspaceFrame()).not.toBeNull());
+    await waitFor(() =>
+      expect(updateAnnotations).toHaveBeenCalledWith(
+        editorWorkingDirectory,
+        {
+          sessionId: editorSessionId,
+          annotations: [
+            {
+              id: "thread-a",
+              location: {
+                path: "src/app.ts",
+                range: {
+                  start: { line: 3, column: undefined },
+                  end: { line: 5, column: undefined },
+                },
+              },
+              status: "answered",
+              replyCount: 1,
+              preview: "Why is this needed?",
+            },
+          ],
+        },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      ),
+    );
+  });
+
   it("offers backend setup when missing, displays a failed download and retries before explicitly reopening", async () => {
     // Only the viewing-device capability is controlled; no editor implementation is mocked.
     vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Linux");

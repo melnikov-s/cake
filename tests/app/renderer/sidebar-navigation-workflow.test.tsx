@@ -334,7 +334,7 @@ describe("Sidebar navigation workflow", () => {
         sidebarSummary("newest", 31, {
           projectPath: "/pi",
           modifiedAt: new Date(
-            Date.parse(drafts.records.get("draft")!.updatedAt) + 60_000,
+            Date.parse(drafts.records.get("draft")!.modifiedAt) + 60_000,
           ).toISOString(),
         }),
       ],
