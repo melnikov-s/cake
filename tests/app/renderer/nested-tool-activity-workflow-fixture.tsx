@@ -1,4 +1,4 @@
-import type { UiPart } from "../../../src/ipc/session-contract";
+import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
 import { nestedEntries, nestedScript } from "../../fixtures/nested-tool-activity";
 

@@ -3,8 +3,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import userEvent from "@testing-library/user-event";
 import { createStore, mount } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TurnId } from "../../../src/ipc/conversation-data";
-import type { UiPart } from "../../../src/ipc/session-contract";
+import { TurnId } from "../../../src/contracts/conversations/conversation-data";
+import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
 import { ChatStore } from "../../../src/renderer/stores/ChatStore";
@@ -44,7 +44,7 @@ describe("Chat composition", () => {
     await fixture.user.click(await screen.findByRole("button", { name: "Stop" }));
     await waitFor(() =>
       expect(abort).toHaveBeenCalledWith(
-        { sessionId: chatSessionId },
+        { sessionId: chatSessionId, stop: { by: "user" } },
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       ),
     );

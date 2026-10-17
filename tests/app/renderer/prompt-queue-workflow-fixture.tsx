@@ -1,6 +1,6 @@
 import { act } from "@testing-library/react";
-import type { Attachment, UiPart } from "../../../src/ipc/session-contract";
-import type { QueuedConversationMessages } from "../../../src/ipc/conversation-data";
+import type { Attachment, UiPart } from "../../../src/contracts/conversations/session-contract";
+import type { QueuedConversationMessages } from "../../../src/contracts/conversations/conversation-data";
 import { chatSessionId, renderChatSurface } from "./chat-surface-workflow-fixture";
 import type { TestClientOverrides } from "./test-client";
 
