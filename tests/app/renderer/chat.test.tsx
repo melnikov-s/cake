@@ -1,551 +1,139 @@
-/**
- * @vitest-environment jsdom
- */
-import React, { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
+/** @vitest-environment jsdom */
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { createStore, mount } from "r-state-tree";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { TurnId } from "../../../src/ipc/conversation-data";
+import type { UiPart } from "../../../src/ipc/session-contract";
+import type { Client } from "../../../src/renderer/client/Client";
+import { Chat } from "../../../src/renderer/components/chat";
+import { ChatStore } from "../../../src/renderer/stores/ChatStore";
+import { chatSessionId, renderChatSurface } from "./chat-surface-workflow-fixture";
+import { queuePart } from "./prompt-queue-workflow-fixture";
+import { assistantThread, renderSessionAssistant } from "./session-assistant-workflow-fixture";
 
-vi.mock("@/components/ai-elements/conversation", async () => {
-  const actual = await vi.importActual<Record<string, unknown>>(
-    "@/components/ai-elements/conversation",
-  );
-  const ReactModule = await import("react");
-  return {
-    ...actual,
-    VirtualizedConversation: ReactModule.forwardRef(function TestVirtualizedConversation(
-      {
-        data,
-        itemContent,
-      }: {
-        data: Array<{ id: string }>;
-        itemContent(index: number, item: { id: string }): React.ReactNode;
-      },
-      ref,
-    ) {
-      ReactModule.useImperativeHandle(ref, () => ({ scrollToIndex: vi.fn() }));
-      return (
-        <div className="transcript">
-          {data.map((item, index) => (
-            <React.Fragment key={item.id}>{itemContent(index, item)}</React.Fragment>
-          ))}
-        </div>
-      );
-    }),
-  };
+const turnId = TurnId.make("10000000-0000-4000-8000-000000000001");
+afterEach(() => {
+  cleanup();
+  Reflect.deleteProperty(document, "execCommand");
 });
 
-import { Chat } from "../../../src/renderer/components/chat";
-import type { ChatConfigurationStore } from "../../../src/renderer/stores/ChatConfigurationStore";
-import { ChatStore } from "../../../src/renderer/stores/ChatStore";
-import { ScheduledMessage } from "../../../src/renderer/models/ScheduledMessage";
-import { FullscreenSurfaceFixture } from "./fullscreen-surface-fixture";
-
-describe("Chat", () => {
-  let container: HTMLDivElement;
-  let root: Root;
-  let store: ChatStore | undefined;
-
-  beforeEach(() => {
-    Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-    document.execCommand = vi.fn(() => false);
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
-  });
-
-  afterEach(() => {
-    act(() => root.unmount());
-    store?.[Symbol.dispose]();
-    container.remove();
-    vi.useRealTimers();
-  });
-
-  it("renders the shared transcript, loading state, configuration, and composer actions", async () => {
-    const submit = vi.fn(async () => true);
-    const abort = vi.fn(async () => undefined);
-    const setUserMessageMarkdown = vi.fn(async () => undefined);
-    const configuration = {
-      session: {
-        model: { provider: "openai", id: '["openai","gpt"]', modelId: "gpt", name: "GPT" },
-        thinkingLevel: "medium",
-        availableThinkingLevels: ["off", "medium"],
-      },
-      activeOperations: [],
-      activePreset: undefined,
-      presets: [],
-      fastMode: false,
-      connectedModelsByProvider: [
-        {
-          id: "openai",
-          name: "OpenAI",
-          models: [{ provider: "openai", id: "gpt", name: "GPT", authenticated: true }],
-        },
-      ],
-      selectThinkingLevel: vi.fn(),
-    } as unknown as ChatConfigurationStore;
-    store = mount(
-      createStore(ChatStore, {
-        id: () => "shared-chat",
-        parts: () => [
-          {
-            id: "question",
-            entryId: "user-entry",
-            kind: "text",
-            role: "user",
-            text: "# Can you check this?",
-            status: "complete",
-          },
-        ],
-        streaming: () => true,
-        submitting: () => false,
-        configuration: () => configuration,
-        commands: () => [],
-        placeholder: () => "Ask a follow-up…",
-        inputLabel: () => "Reply to chat",
-        canSubmit: (draft) => Boolean(draft.trim()),
-        submit,
-        userMessagePresentation: { setMarkdown: setUserMessageMarkdown },
-        abort,
-      }),
-    );
-
-    act(() => root.render(<Chat store={store!} />));
-
-    expect(container.textContent).toContain("# Can you check this?");
-    expect(container.querySelector('[data-slot="message-content"]')).not.toBeNull();
-    expect(container.querySelector('[data-slot="message-content"] h1')).toBeNull();
-    expect(container.querySelector('[aria-label="Churning in progress"]')).not.toBeNull();
-    expect(container.querySelector('[aria-label="Model configuration"]')?.textContent).toContain(
-      "GPT",
-    );
-    expect(container.textContent).toContain("Medium");
-    expect(container.querySelector('[aria-label="Markdown formatting"]')).toBeNull();
-    const renderMarkdown = container.querySelector<HTMLButtonElement>(
-      '[aria-label="Render as Markdown"]',
-    );
-    expect(renderMarkdown?.className).toContain("group-hover/msg:opacity-100");
-    await act(async () => renderMarkdown?.click());
-    expect(setUserMessageMarkdown).toHaveBeenCalledWith("user-entry", true);
-    const renderPlain = container.querySelector<HTMLButtonElement>(
-      '[aria-label="Render as plain text"]',
-    );
-    expect(renderPlain?.getAttribute("aria-pressed")).toBe("true");
-    expect(container.querySelector('[data-slot="message-content"] h1')?.textContent).toBe(
-      "Can you check this?",
-    );
-
-    await act(async () => renderPlain?.click());
-    expect(setUserMessageMarkdown).toHaveBeenLastCalledWith("user-entry", false);
-    expect(
-      container
-        .querySelector<HTMLButtonElement>('[aria-label="Render as Markdown"]')
-        ?.getAttribute("aria-pressed"),
-    ).toBe("false");
-    expect(container.querySelector('[data-slot="message-content"] h1')).toBeNull();
-
-    // While streaming, the send icon becomes a stop icon and submits are hidden.
-    expect(container.querySelector<HTMLButtonElement>('[aria-label="Send"]')).toBeNull();
-    const stop = container.querySelector<HTMLButtonElement>('[aria-label="Stop"]')!;
-    expect(stop).not.toBeNull();
-    await act(async () => stop.click());
-    expect(abort).toHaveBeenCalled();
-    expect(submit).not.toHaveBeenCalled();
-  });
-
-  it("hides the model picker when the surface pins its model", () => {
-    const configuration = {
-      session: {
-        model: { provider: "openai", id: '["openai","gpt"]', modelId: "gpt", name: "GPT" },
-        thinkingLevel: "medium",
-        availableThinkingLevels: ["off", "medium"],
-      },
-      activeOperations: [],
-      activePreset: undefined,
-      presets: [],
-      fastMode: false,
-      connectedModelsByProvider: [
-        {
-          id: "openai",
-          name: "OpenAI",
-          models: [{ provider: "openai", id: "gpt", name: "GPT", authenticated: true }],
-        },
-      ],
-      selectThinkingLevel: vi.fn(),
-    } as unknown as ChatConfigurationStore;
-    let modelPickerVisible = false;
-    store = mount(
-      createStore(ChatStore, {
-        id: () => "pinned-model-chat",
-        parts: () => [],
-        streaming: () => false,
-        submitting: () => false,
-        configuration: () => configuration,
-        commands: () => [],
-        placeholder: () => "Ask the session assistant…",
-        inputLabel: () => "Message session assistant",
-        canSubmit: (draft) => Boolean(draft.trim()),
-        submit: async () => true,
-        modelPickerVisible: () => modelPickerVisible,
-      }),
-    );
-
-    act(() => root.render(<Chat store={store!} />));
-
-    // The configuration Store stays attached, but the toolbar offers no picker.
-    expect(store.configuration).toBe(configuration);
-    expect(container.querySelector('[aria-label="Model configuration"]')).toBeNull();
-
-    // A surface that allows choosing the model shows the same picker as any other chat.
-    modelPickerVisible = true;
-    act(() => root.render(<Chat store={store!} key="visible" />));
-    expect(container.querySelector('[aria-label="Model configuration"]')?.textContent).toContain(
-      "GPT",
-    );
-  });
-
-  it("presents sender and schedule provenance alongside per-item queue controls", async () => {
-    const steerQueuedPrompt = vi.fn();
-    const editQueuedPrompt = vi.fn();
-    const removeQueuedPrompt = vi.fn();
-    const stopAndSendQueuedPrompt = vi.fn(async () => undefined);
-    store = mount(
-      createStore(ChatStore, {
-        id: () => "queued-chat",
-        parts: () => [],
-        streaming: () => true,
-        submitting: () => false,
-        configuration: () => undefined,
-        commands: () => [],
-        placeholder: () => "Message",
-        inputLabel: () => "Message",
-        canSubmit: () => false,
-        submit: async () => false,
-        queuedPrompts: () => [
-          {
-            id: "queued",
-            text: "Do this next",
-            attachments: [],
-            renderUserMessageAsMarkdown: false,
-            state: "queued",
-          },
-          {
-            id: "family-message",
-            text: "Child work is complete",
-            attachments: [],
-            renderUserMessageAsMarkdown: false,
-            state: "queued",
-            editable: false,
-            source: {
-              version: 1,
-              messageId: "f6debbbd-ced1-4a12-b0f7-fb60c292c623",
-              threadId: "8358c2b7-bd3c-42ee-9fec-fcb726b66c18",
-              sequence: 1,
-              expectsResponse: false,
-              sender: {
-                sessionId: "child-session",
-                title: "Storage implementation",
-                kind: "project-session",
-              },
-            },
-          },
-          {
-            id: "scheduled-message",
-            text: "Check the build",
-            attachments: [],
-            renderUserMessageAsMarkdown: false,
-            state: "queued",
-            editable: false,
-            scheduled: {
-              version: 1,
-              id: "8de1a807-dc99-49ee-8d35-7a3ed20bef06",
-              createdAt: "2026-09-04T11:59:00.000Z",
-              sendAt: "2026-09-04T12:02:00.000Z",
-            },
-          },
-          {
-            id: "steering",
-            text: "Change direction",
-            attachments: [],
-            renderUserMessageAsMarkdown: false,
-            state: "steering",
-          },
-        ],
-        steerQueuedPrompt,
-        editQueuedPrompt,
-        removeQueuedPrompt,
-        stopAndSendQueuedPrompt,
-      }),
-    );
-
-    act(() => root.render(<Chat store={store!} />));
-
-    const steerButton = container.querySelector<HTMLButtonElement>(
-      '[aria-label="Send now as steering: Do this next"]',
-    );
-    expect(steerButton).not.toBeNull();
-    expect(container.querySelector('[aria-label="Stop and send now: Do this next"]')).toBeNull();
-    expect(
-      container.querySelector('[aria-label="Edit queued prompt: Do this next"]'),
-    ).not.toBeNull();
-    expect(
-      container.querySelector('[aria-label="Cancel queued message: Do this next"]'),
-    ).not.toBeNull();
-    expect(container.querySelector('[aria-label="Steering"] [role="status"]')?.textContent).toBe(
-      "Waiting for agent",
-    );
-    expect(container.querySelector('[aria-label="Queued"] [role="status"]')?.textContent).toBe(
-      "After this response",
-    );
-    const stopAndSendButton = container.querySelector<HTMLButtonElement>(
-      '[aria-label="Stop and send now: Change direction"]',
-    );
-    expect(stopAndSendButton?.textContent).toBe("Send now");
-    expect(stopAndSendButton?.title).toBe("Stop current response and send now");
-    expect(
-      container.querySelector('[aria-label="Message from Storage implementation"]'),
-    ).not.toBeNull();
-    expect(
-      container.querySelector('[aria-label="Edit queued prompt: Child work is complete"]'),
-    ).toBeNull();
-    expect(container.querySelector('[aria-label^="Scheduled message: scheduled"]')).not.toBeNull();
-    expect(
-      container.querySelector('[aria-label="Edit queued prompt: Check the build"]'),
-    ).toBeNull();
-
-    // Prompts Pi already holds cannot be pulled back into the composer, but can
-    // still be dropped or promoted through the runtime queue.
-    await act(async () => {
-      container
-        .querySelector<HTMLButtonElement>('[aria-label="Cancel queued message: Check the build"]')!
-        .click();
+// Complements chat-surface/configuration, conversation-delivery/session, saved-draft,
+// scheduled-message and embedded-editor workflows rather than repeating their cases.
+// These prove real renderer policy, payloads and content. Native Escape, selection,
+// image paste and fullscreen/focus remain covered by the existing Electron suites.
+describe("Chat composition", () => {
+  it("queues a new draft instead of stopping the active response, then restores Stop", async () => {
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () => turnId);
+    const abort = vi.fn<Client["sessionChats"]["abort"]>(async () => undefined);
+    using fixture = renderChatSurface({
+      snapshot: { streaming: true },
+      client: { sessionChats: { prompt, abort } },
     });
-    expect(removeQueuedPrompt).toHaveBeenLastCalledWith("scheduled-message");
-    await act(async () => {
-      container
-        .querySelector<HTMLButtonElement>(
-          '[aria-label="Send now as steering: Child work is complete"]',
-        )!
-        .click();
-    });
-    expect(steerQueuedPrompt).toHaveBeenLastCalledWith("family-message");
-
-    await act(async () => {
-      container
-        .querySelector<HTMLButtonElement>('[aria-label="Stop and send now: Change direction"]')!
-        .click();
-    });
-    expect(stopAndSendQueuedPrompt).toHaveBeenCalledWith("steering");
-
-    await act(async () => {
-      container
-        .querySelector<HTMLButtonElement>('[aria-label="Cancel steering: Change direction"]')!
-        .click();
-    });
-    expect(removeQueuedPrompt).toHaveBeenLastCalledWith("steering");
-  });
-
-  it("opens queued message content fullscreen without invoking its actions", () => {
-    const steerQueuedPrompt = vi.fn();
-    const removeQueuedPrompt = vi.fn();
-    store = mount(
-      createStore(ChatStore, {
-        id: () => "queued-fullscreen-chat",
-        parts: () => [],
-        streaming: () => true,
-        submitting: () => false,
-        configuration: () => undefined,
-        commands: () => [],
-        placeholder: () => "Message",
-        inputLabel: () => "Message",
-        canSubmit: () => false,
-        submit: async () => false,
-        queuedPrompts: () => [
-          {
-            id: "child-report",
-            text: "# Child report\n\n- Built the feature\n- Ran the tests",
-            attachments: [],
-            renderUserMessageAsMarkdown: true,
-            state: "queued" as const,
-            editable: false,
-            source: {
-              version: 1 as const,
-              messageId: "f6debbbd-ced1-4a12-b0f7-fb60c292c623",
-              threadId: "8358c2b7-bd3c-42ee-9fec-fcb726b66c18",
-              sequence: 1,
-              expectsResponse: false,
-              sender: {
-                sessionId: "child-session",
-                title: "Feature child",
-                kind: "project-session" as const,
-              },
-            },
-          },
-        ],
-        steerQueuedPrompt,
-        removeQueuedPrompt,
-      }),
+    expect(screen.getByRole("button", { name: "Stop" })).toBeDefined();
+    expect(screen.getByLabelText("Churning in progress")).toBeDefined();
+    await fixture.user.type(screen.getByRole("combobox", { name: "Message" }), "One more thing");
+    expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
+    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
+    expect(prompt).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: chatSessionId, text: "One more thing" }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
-
-    act(() =>
-      root.render(
-        <FullscreenSurfaceFixture>
-          <Chat store={store!} />
-        </FullscreenSurfaceFixture>,
+    expect(abort).not.toHaveBeenCalled();
+    await fixture.user.click(await screen.findByRole("button", { name: "Stop" }));
+    await waitFor(() =>
+      expect(abort).toHaveBeenCalledWith(
+        { sessionId: chatSessionId },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
       ),
     );
-    act(() =>
-      container
-        .querySelector<HTMLButtonElement>('[aria-label^="View queued message: # Child report"]')!
-        .click(),
-    );
-
-    const fullscreen = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
-    expect(fullscreen.textContent).toContain("Feature child");
-    expect(fullscreen.querySelector("h1")?.textContent).toBe("Child report");
-    expect(fullscreen.querySelectorAll("li")).toHaveLength(2);
-    expect(steerQueuedPrompt).not.toHaveBeenCalled();
-    expect(removeQueuedPrompt).not.toHaveBeenCalled();
   });
 
-  it("shows a scheduled message countdown and allows cancellation", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime("2026-09-04T12:00:00.000Z");
-    const cancelScheduledMessage = vi.fn(async () => undefined);
-    const message = ScheduledMessage.create({
-      id: "8de1a807-dc99-49ee-8d35-7a3ed20bef06",
-      targetSessionId: "shared-chat",
-      text: "Check the build",
-      sendAt: "2026-09-04T12:02:00.000Z",
-      createdAt: "2026-09-04T11:59:00.000Z",
+  it("retains the next draft while the previous delivery is pending and after it completes", async () => {
+    let finish!: (id: TurnId) => void;
+    const pending = new Promise<TurnId>((resolve) => {
+      finish = resolve;
     });
-    store = mount(
-      createStore(ChatStore, {
-        id: () => "shared-chat",
-        parts: () => [],
-        streaming: () => false,
-        submitting: () => false,
-        configuration: () => undefined,
-        commands: () => [],
-        placeholder: () => "Message",
-        inputLabel: () => "Message",
-        canSubmit: () => false,
-        submit: async () => false,
-        scheduledMessages: { messages: () => [message], cancel: cancelScheduledMessage },
-      }),
-    );
-
-    act(() => root.render(<Chat store={store!} />));
-
-    expect(container.textContent).toContain("Check the build");
-    expect(container.textContent).toContain("sends in 2m");
-    const cancel = container.querySelector<HTMLButtonElement>(
-      '[aria-label="Cancel scheduled message: Check the build"]',
-    );
-    await act(async () => cancel?.click());
-    expect(cancelScheduledMessage).toHaveBeenCalledWith(message.id);
-    message[Symbol.dispose]();
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(() => pending);
+    using fixture = renderChatSurface({ client: { sessionChats: { prompt } } });
+    const input = screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message" });
+    await fixture.user.type(input, "First instruction");
+    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
+    expect(input.disabled).toBe(false);
+    await fixture.user.type(input, "Next instruction");
+    await act(async () => {
+      finish(turnId);
+      await pending;
+    });
+    expect(input.value).toBe("Next instruction");
+    expect(screen.getByRole("button", { name: "Send" })).toHaveProperty("disabled", false);
+    expect(prompt).toHaveBeenCalledOnce();
   });
 
-  it("shows source references as removable VS Code context", async () => {
-    const openSourceLocation = vi.fn();
-    const removeAttachment = vi.fn();
-    const source = {
-      kind: "source" as const,
-      name: "src/main.ts",
-      location: {
-        path: "src/main.ts",
-        range: {
-          start: { line: 2 },
-          end: { line: 3 },
-        },
+  it("keeps sender and schedule provenance read-only and opens queued Markdown without sending it", async () => {
+    const remove = vi.fn<Client["sessionChats"]["removeQueuedMessage"]>();
+    const steer = vi.fn<Client["sessionChats"]["steerQueuedMessage"]>();
+    const setFullscreen = vi.fn<Client["electron"]["setFullscreenSurfaceOpen"]>(
+      async () => undefined,
+    );
+    const report: UiPart = {
+      id: "child-report",
+      kind: "text",
+      role: "user",
+      text: "# Child report\n\n- Built the feature\n- Ran the tests",
+      status: "complete",
+      deliveryState: "queued",
+      renderAs: "markdown",
+      crossSession: {
+        version: 1,
+        messageId: "f6debbbd-ced1-4a12-b0f7-fb60c292c623",
+        threadId: "8358c2b7-bd3c-42ee-9fec-fcb726b66c18",
+        sequence: 1,
+        expectsResponse: false,
+        sender: { sessionId: "child-session", title: "Feature child", kind: "project-session" },
       },
     };
-    store = mount(
-      createStore(ChatStore, {
-        id: () => "source-chat",
-        parts: () => [],
-        streaming: () => false,
-        submitting: () => false,
-        configuration: () => undefined,
-        commands: () => [],
-        placeholder: () => "Message Cake",
-        inputLabel: () => "Message",
-        canSubmit: () => true,
-        submit: async () => true,
-        attachments: () => [source],
-        removeAttachment,
-      }),
+    const scheduled: UiPart = {
+      ...queuePart(1, "Check the build"),
+      id: "scheduled",
+      scheduled: {
+        version: 1,
+        id: "8de1a807-dc99-49ee-8d35-7a3ed20bef06",
+        createdAt: "2026-09-04T11:59:00.000Z",
+        sendAt: "2026-09-04T12:02:00.000Z",
+      },
+    };
+    using fixture = renderChatSurface({
+      parts: [report, scheduled, { ...queuePart(2, "Editable prompt"), id: "editable" }],
+      snapshot: { streaming: true },
+      client: {
+        sessionChats: { removeQueuedMessage: remove, steerQueuedMessage: steer },
+        electron: { setFullscreenSurfaceOpen: setFullscreen },
+      },
+    });
+    expect(screen.getByLabelText("Message from Feature child")).toBeDefined();
+    expect(screen.getByLabelText(/^Scheduled message: scheduled/)).toBeDefined();
+    expect(screen.queryByRole("button", { name: /Edit queued prompt: # Child report/ })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Edit queued prompt: Check the build" }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Edit queued prompt: Editable prompt" }),
+    ).toBeDefined();
+    await fixture.user.click(
+      screen.getByRole("button", { name: /^View queued message: # Child report/ }),
     );
-
-    act(() => root.render(<Chat store={store!} transcriptBehavior={{ openSourceLocation }} />));
-    expect(container.textContent).toContain("src/main.ts#L3-L4");
-
-    await act(async () => {
-      container
-        .querySelector<HTMLButtonElement>(
-          '[data-slot="attachment-tile"] button[aria-haspopup="dialog"]',
-        )!
-        .click();
-    });
-    await act(async () => {
-      document
-        .querySelector<HTMLButtonElement>('[aria-label="Open src/main.ts#L3-L4 in VS Code"]')!
-        .click();
-    });
-    expect(openSourceLocation).toHaveBeenCalledWith(source.location);
-    await act(async () => {
-      container
-        .querySelector<HTMLButtonElement>('[aria-label="Remove src/main.ts#L3-L4"]')!
-        .click();
-    });
-    expect(removeAttachment).toHaveBeenCalledWith(0);
-  });
-
-  it("shows compact context token usage when the gauge is hovered", () => {
-    vi.useFakeTimers();
-    store = mount(
-      createStore(ChatStore, {
-        id: () => "usage-chat",
-        parts: () => [],
-        streaming: () => false,
-        submitting: () => false,
-        configuration: () => undefined,
-        commands: () => [],
-        placeholder: () => "Message Cake",
-        inputLabel: () => "Message",
-        canSubmit: () => false,
-        submit: async () => false,
-        usage: () => ({
-          tokens: { input: 20_000, output: 0, cacheRead: 0, cacheWrite: 0, total: 20_000 },
-          cost: 0,
-          context: { tokens: 20_000, contextWindow: 270_000, percent: 7.4 },
-        }),
-      }),
-    );
-
-    vi.useFakeTimers();
-    act(() => root.render(<Chat store={store!} />));
-
-    const gauge = container.querySelector<HTMLElement>('[aria-label*="context used"]')!;
-    act(() => {
-      gauge.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
-    });
-    act(() => {
-      vi.runAllTimers();
-    });
-
-    expect(gauge.dataset.contextState).toBe("normal");
-    expect(document.body.querySelector<HTMLElement>('[role="tooltip"]')?.textContent).toBe(
-      "20k / 270k tokens · Cache unknown",
-    );
-
-    act(() => root.render(<Chat store={store!} showContextUsage={false} />));
-    expect(container.querySelector("[data-context-state]")).toBeNull();
-    expect(document.body.querySelector('[role="tooltip"]')).toBeNull();
-
-    act(() => root.render(<Chat store={store!} />));
-    expect(container.querySelector("[data-context-state]")).not.toBeNull();
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("heading", { name: "Child report" })).toBeDefined();
+    expect(within(dialog).getAllByRole("listitem")).toHaveLength(2);
+    expect(dialog.textContent).toContain("Feature child");
+    expect(remove).not.toHaveBeenCalled();
+    expect(steer).not.toHaveBeenCalled();
+    await fixture.user.click(within(dialog).getByRole("button", { name: /Exit fullscreen/ }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(setFullscreen.mock.calls.map((call) => call[1])).toEqual([true, false]);
   });
 
   it.each([
@@ -553,526 +141,120 @@ describe("Chat", () => {
     [40, "moderate"],
     [70, "high"],
     [90, "critical"],
-  ])("marks %i%% context usage as %s", (percent, expectedState) => {
-    store = mount(
-      createStore(ChatStore, {
-        id: () => "usage-threshold-chat",
-        parts: () => [],
-        streaming: () => false,
-        submitting: () => false,
-        configuration: () => undefined,
-        commands: () => [],
-        placeholder: () => "Message Cake",
-        inputLabel: () => "Message",
-        canSubmit: () => false,
-        submit: async () => false,
-        usage: () => ({
-          tokens: { input: percent, output: 0, cacheRead: 0, cacheWrite: 0, total: percent },
+  ] as const)("projects %i%% runtime context usage into the %s gauge", async (percent, state) => {
+    using fixture = renderChatSurface({
+      snapshot: {
+        usage: {
+          tokens: {
+            input: percent * 1000,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            total: percent * 1000,
+          },
           cost: 0,
-          context: { tokens: percent, contextWindow: 100, percent },
-        }),
-      }),
+          context: { tokens: percent * 1000, contextWindow: 100000, percent },
+        },
+      },
+    });
+    const gauge = screen.getByLabelText(/context used/);
+    expect(gauge.getAttribute("data-context-state")).toBe(state);
+    await fixture.user.hover(gauge);
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      `${percent}k / 100k tokens · Cache unknown`,
     );
-
-    act(() => root.render(<Chat store={store!} />));
-
-    expect(
-      container.querySelector<HTMLElement>('[aria-label*="context used"]')?.dataset.contextState,
-    ).toBe(expectedState);
   });
 
-  it("keeps stop available while idle foreground work has a running subagent", async () => {
+  it("asks for reword guidance and sends only the chosen text and prompt to the workspace service", async () => {
+    // jsdom has no native undo API; exercise Chat's ordinary non-undo fallback.
+    Object.defineProperty(document, "execCommand", { configurable: true, value: () => false });
+    const showMenu = vi.fn<Client["electron"]["showComposerContextMenu"]>(
+      async () => "reword-with-prompt",
+    );
+    const reword = vi.fn<Client["workspaces"]["rewordComposerSelection"]>(
+      async () => "concise request",
+    );
+    using fixture = renderChatSurface({
+      client: {
+        electron: { showComposerContextMenu: showMenu },
+        workspaces: { rewordComposerSelection: reword },
+      },
+    });
+    const input = screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message" });
+    await fixture.user.type(input, "Before rough ramble after");
+    fireEvent.contextMenu(input);
+    expect(showMenu).not.toHaveBeenCalled();
+    await fixture.user.pointer([
+      { target: input, offset: 7, keys: "[MouseLeft>]" },
+      { target: input, offset: 19 },
+      { target: input, offset: 19, keys: "[/MouseLeft]" },
+    ]);
+    // user-event right-mousedown collapses selection; dispatch only the menu
+    // event after selecting through the driver, as in conversation-session-workflow.
+    fireEvent.contextMenu(input);
+    const prompt = await screen.findByRole("textbox", { name: "Reword prompt" });
+    await fixture.user.type(prompt, "Make concise");
+    await fixture.user.click(
+      within(prompt.closest('[role="dialog"]')!).getByRole("button", { name: "Reword" }),
+    );
+    await waitFor(() =>
+      expect(reword).toHaveBeenCalledWith(
+        { selection: "rough ramble", prompt: "Make concise", workingDirectory: "/project" },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      ),
+    );
+    expect(input.value).toBe("Before concise request after");
+    expect(screen.queryByRole("textbox", { name: "Reword prompt" })).toBeNull();
+  });
+
+  it("keeps the parent configurable while pinning a live session assistant model", async () => {
+    using fixture = renderSessionAssistant(
+      {
+        discussionSessions: {
+          ensureSessionAssistant: async () => ({ thread: assistantThread, turnId }),
+        },
+      },
+      { parentComposer: true },
+    );
+    expect(screen.getByRole("button", { name: "Model configuration" })).toBeDefined();
+    await fixture.user.pointer({
+      target: screen.getByRole("button", { name: "Ask session assistant" }),
+      keys: "[MouseRight]",
+    });
+    const assistant = within(screen.getByRole("dialog", { name: "Session assistant chat" }));
+    expect(assistant.getByRole("combobox", { name: "Message session assistant" })).toBeDefined();
+    expect(assistant.queryByRole("button", { name: "Model configuration" })).toBeNull();
+  });
+});
+
+// Honest presentation-only exception: ProjectSession's ConversationSessionStore does
+// not currently wire ChatStore.stoppable for idle subagents. Keep the public optional
+// Chat capability contract without fake peer Stores or pretending it is a workflow.
+describe("Chat optional presentation capability", () => {
+  it("offers Stop for stoppable idle work", async () => {
     const abort = vi.fn(async () => undefined);
-    store = mount(
+    using store = mount(
       createStore(ChatStore, {
-        id: () => "background-work-chat",
+        id: () => "stoppable-idle",
         parts: () => [],
         streaming: () => false,
         submitting: () => false,
         stoppable: () => true,
         configuration: () => undefined,
         commands: () => [],
-        placeholder: () => "Message Cake",
+        placeholder: () => "Message",
         inputLabel: () => "Message",
         canSubmit: () => false,
         submit: async () => false,
         abort,
       }),
     );
-
-    act(() => root.render(<Chat store={store!} />));
-
-    const stop = container.querySelector<HTMLButtonElement>('[aria-label="Stop"]')!;
-    expect(stop).not.toBeNull();
-    await act(async () => stop.click());
-    expect(abort).toHaveBeenCalledOnce();
-  });
-
-  it("replaces stop with submit while streaming when the composer has content", async () => {
-    const submit = vi.fn(async () => true);
-    const abort = vi.fn(async () => undefined);
-    store = mount(
-      createStore(ChatStore, {
-        id: () => "queue-while-streaming-chat",
-        parts: () => [],
-        streaming: () => true,
-        submitting: () => false,
-        configuration: () => undefined,
-        commands: () => [],
-        placeholder: () => "Ask a follow-up…",
-        inputLabel: () => "Reply to chat",
-        canSubmit: (draft) => Boolean(draft.trim()),
-        submit,
-        abort,
-      }),
-    );
-
-    act(() => root.render(<Chat store={store!} />));
-
-    // An empty composer keeps the stop button while streaming.
-    expect(container.querySelector<HTMLButtonElement>('[aria-label="Send"]')).toBeNull();
-    expect(container.querySelector<HTMLButtonElement>('[aria-label="Stop"]')).not.toBeNull();
-
-    act(() => store!.setDraft("One more thing"));
-
-    // Typing a queued message replaces Stop with Send so both actions never appear together.
-    const send = container.querySelector<HTMLButtonElement>('[aria-label="Send"]')!;
-    expect(send).not.toBeNull();
-    expect(container.querySelector<HTMLButtonElement>('[aria-label="Stop"]')).toBeNull();
-
-    await act(async () => send.click());
-    expect(submit).toHaveBeenCalledWith("One more thing", {
-      renderUserMessageAsMarkdown: false,
-    });
-    expect(abort).not.toHaveBeenCalled();
-
-    // Once the submitted draft clears, Stop is available again for the active turn.
-    const stop = container.querySelector<HTMLButtonElement>('[aria-label="Stop"]')!;
-    expect(stop).not.toBeNull();
-    await act(async () => stop.click());
-    expect(abort).toHaveBeenCalledOnce();
-  });
-
-  it("keeps draft typing from rendering the surrounding chat", () => {
-    const composerVisible = vi.fn(() => true);
-    store = mount(
-      createStore(ChatStore, {
-        id: () => "isolated-draft-chat",
-        parts: () => [],
-        streaming: () => false,
-        submitting: () => false,
-        configuration: () => undefined,
-        commands: () => [],
-        placeholder: () => "Message Cake",
-        inputLabel: () => "Message",
-        canSubmit: (draft) => Boolean(draft.trim()),
-        submit: async () => true,
-        composerVisible,
-      }),
-    );
-
-    act(() => root.render(<Chat store={store!} />));
-    const surroundingRenderReads = composerVisible.mock.calls.length;
-    const input = container.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')!;
-
-    act(() => {
-      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(
-        input,
-        "Only update the draft controls",
-      );
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-
-    expect(input.value).toBe("Only update the draft controls");
-    expect(store.draft).toBe("Only update the draft controls");
-    expect(composerVisible).toHaveBeenCalledTimes(surroundingRenderReads);
-    expect(container.querySelector<HTMLButtonElement>('[aria-label="Send"]')?.disabled).toBe(false);
-  });
-
-  it("keeps the composer input editable while a submission is pending", async () => {
-    let finishSubmit!: () => void;
-    const submitted = new Promise<void>((resolve) => {
-      finishSubmit = resolve;
-    });
-    store = mount(
-      createStore(ChatStore, {
-        id: () => "pending-submit-chat",
-        parts: () => [],
-        streaming: () => false,
-        submitting: () => false,
-        configuration: () => undefined,
-        commands: () => [],
-        placeholder: () => "Message Cake",
-        inputLabel: () => "Message",
-        canSubmit: (draft) => Boolean(draft.trim()),
-        submit: async () => {
-          await submitted;
-          return true;
-        },
-      }),
-    );
-
-    act(() => root.render(<Chat store={store!} />));
-    const input = container.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')!;
-    act(() => {
-      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(
-        input,
-        "First instruction",
-      );
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    await act(async () => {
-      container.querySelector<HTMLButtonElement>('[aria-label="Send"]')!.click();
-      await Promise.resolve();
-    });
-
-    expect(input.disabled).toBe(false);
-    act(() => {
-      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(
-        input,
-        "Next instruction",
-      );
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    expect(store.draft).toBe("Next instruction");
-
-    await act(async () => {
-      finishSubmit();
-      await submitted;
-    });
-    expect(store.draft).toBe("Next instruction");
-  });
-
-  it("submits the draft from the send icon when idle", async () => {
-    const submit = vi.fn(async () => true);
-    store = mount(
-      createStore(ChatStore, {
-        id: () => "idle-chat",
-        parts: () => [],
-        streaming: () => false,
-        submitting: () => false,
-        configuration: () => undefined,
-        commands: () => [],
-        placeholder: () => "Message Cake",
-        inputLabel: () => "Message",
-        canSubmit: (draft) => Boolean(draft.trim()),
-        submit,
-      }),
-    );
-
-    act(() => root.render(<Chat store={store!} />));
-
-    const input = container.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')!;
-    act(() => {
-      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(
-        input,
-        "Please continue",
-      );
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    await act(async () =>
-      container.querySelector<HTMLButtonElement>('[aria-label="Send"]')!.click(),
-    );
-
-    expect(submit).toHaveBeenCalledWith("Please continue", {
-      renderUserMessageAsMarkdown: false,
-    });
-    expect(store.draft).toBe("");
-  });
-
-  it("replaces the input with an activation action for a saved draft", async () => {
-    const submit = vi.fn(async () => true);
-    const activateDraft = vi.fn(async () => true);
-    store = mount(
-      createStore(ChatStore, {
-        id: () => "draft-chat",
-        parts: () => [],
-        streaming: () => false,
-        submitting: () => false,
-        configuration: () => undefined,
-        commands: () => [],
-        placeholder: () => "Message Cake",
-        inputLabel: () => "Message",
-        canSubmit: (draft) => Boolean(draft.trim()),
-        submit,
-        activateDraft,
-        isDraftSession: () => true,
-      }),
-    );
-    act(() => root.render(<Chat store={store!} />));
-
-    expect(container.querySelector('[aria-label="Message"]')).toBeNull();
-    const activate = container.querySelector<HTMLButtonElement>('[aria-label="Activate draft"]')!;
-    await act(async () => activate.click());
-
-    expect(activateDraft).toHaveBeenCalledOnce();
-    expect(submit).not.toHaveBeenCalled();
-  });
-
-  it("stops active work when Escape is pressed in the focused composer", () => {
-    const abort = vi.fn(async () => undefined);
-    store = mount(
-      createStore(ChatStore, {
-        id: () => "escape-stop-chat",
-        parts: () => [],
-        streaming: () => true,
-        submitting: () => false,
-        configuration: () => undefined,
-        commands: () => [],
-        placeholder: () => "Message Cake",
-        inputLabel: () => "Message",
-        canSubmit: () => false,
-        submit: async () => false,
-        abort,
-      }),
-    );
-
-    act(() => root.render(<Chat store={store!} />));
-
-    const input = container.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')!;
-    input.focus();
-    const escape = new KeyboardEvent("keydown", {
-      key: "Escape",
-      bubbles: true,
-      cancelable: true,
-    });
-    act(() => input.dispatchEvent(escape));
-
-    expect(input).toBe(document.activeElement);
-    expect(escape.defaultPrevented).toBe(true);
-    expect(abort).toHaveBeenCalledOnce();
-  });
-
-  it("uses Escape to dismiss composer menus and image previews without stopping", () => {
-    const abort = vi.fn(async () => undefined);
-    store = mount(
-      createStore(ChatStore, {
-        id: () => "escape-dismiss-chat",
-        parts: () => [],
-        streaming: () => true,
-        submitting: () => false,
-        configuration: () => undefined,
-        commands: () => [
-          {
-            name: "model",
-            description: "Choose a model",
-            source: "builtin" as const,
-            sourceInfo: {
-              path: "builtin:model",
-              source: "Pi",
-              scope: "temporary" as const,
-              origin: "top-level" as const,
-            },
-          },
-        ],
-        placeholder: () => "Message Cake",
-        inputLabel: () => "Message",
-        canSubmit: () => false,
-        submit: async () => false,
-        abort,
-        attachments: () => [
-          { kind: "image", name: "preview.png", mimeType: "image/png", data: "aW1hZ2U=" },
-        ],
-      }),
-    );
-
-    act(() =>
-      root.render(
-        <FullscreenSurfaceFixture>
-          <Chat store={store!} />
-        </FullscreenSurfaceFixture>,
-      ),
-    );
-
-    const input = container.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')!;
-    act(() => {
-      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(
-        input,
-        "/",
-      );
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    expect(container.querySelector('[role="listbox"]')).not.toBeNull();
-    act(() =>
-      input.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
-      ),
-    );
-    expect(container.querySelector('[role="listbox"]')).toBeNull();
-    expect(abort).not.toHaveBeenCalled();
-
-    act(() =>
-      container
-        .querySelector<HTMLButtonElement>('[aria-label="View preview.png enlarged"]')!
-        .click(),
-    );
-    const dialog = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
-    expect(dialog).not.toBeNull();
-    act(() =>
-      dialog.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
-      ),
-    );
-    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
-    expect(abort).not.toHaveBeenCalled();
-  });
-
-  it("rewords only the selected composer text from its context menu", async () => {
-    const showComposerContextMenu = vi.fn(async () => "reword" as const);
-    const rewordComposerSelection = vi.fn(async () => "clear request");
-    store = mount(
-      createStore(ChatStore, {
-        id: () => "reword-chat",
-        parts: () => [],
-        streaming: () => false,
-        submitting: () => false,
-        configuration: () => undefined,
-        commands: () => [],
-        placeholder: () => "Message Cake",
-        inputLabel: () => "Message",
-        canSubmit: () => true,
-        submit: async () => true,
-        composerReword: {
-          showContextMenu: showComposerContextMenu,
-          rewordSelection: rewordComposerSelection,
-        },
-      }),
-    );
-    store.setDraft("Before rough ramble after");
-    act(() => root.render(<Chat store={store!} />));
-
-    const input = container.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')!;
-    input.setSelectionRange(7, 19);
-    await act(async () => {
-      input.dispatchEvent(
-        new MouseEvent("contextmenu", {
-          bubbles: true,
-          cancelable: true,
-          clientX: 12,
-          clientY: 34,
-        }),
-      );
-    });
-
-    expect(showComposerContextMenu).toHaveBeenCalledWith("rough ramble", 12, 34);
-    expect(rewordComposerSelection).toHaveBeenCalledWith("rough ramble", undefined);
-    expect(store.draft).toBe("Before clear request after");
-  });
-
-  it("uses the ordinary editing menu when no composer text is selected", async () => {
-    const showComposerContextMenu = vi.fn(async () => "reword" as const);
-    store = mount(
-      createStore(ChatStore, {
-        id: () => "unselected-reword-chat",
-        parts: () => [],
-        streaming: () => false,
-        submitting: () => false,
-        configuration: () => undefined,
-        commands: () => [],
-        placeholder: () => "Message Cake",
-        inputLabel: () => "Message",
-        canSubmit: () => true,
-        submit: async () => true,
-        composerReword: {
-          showContextMenu: showComposerContextMenu,
-          rewordSelection: async (selection) => selection,
-        },
-      }),
-    );
-    store.setDraft("Nothing selected");
-    act(() => root.render(<Chat store={store!} />));
-
-    const input = container.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')!;
-    input.setSelectionRange(7, 7);
-    const contextMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
-    act(() => input.dispatchEvent(contextMenu));
-
-    expect(contextMenu.defaultPrevented).toBe(false);
-    expect(showComposerContextMenu).not.toHaveBeenCalled();
-  });
-
-  it("asks for guidance before rewording with a prompt", async () => {
-    const showComposerContextMenu = vi.fn(async () => "reword-with-prompt" as const);
-    const rewordComposerSelection = vi.fn(async () => "concise text");
-    store = mount(
-      createStore(ChatStore, {
-        id: () => "prompted-reword-chat",
-        parts: () => [],
-        streaming: () => false,
-        submitting: () => false,
-        configuration: () => undefined,
-        commands: () => [],
-        placeholder: () => "Message Cake",
-        inputLabel: () => "Message",
-        canSubmit: () => true,
-        submit: async () => true,
-        composerReword: {
-          showContextMenu: showComposerContextMenu,
-          rewordSelection: rewordComposerSelection,
-        },
-      }),
-    );
-    store.setDraft("rambling text");
-    act(() => root.render(<Chat store={store!} />));
-
-    const input = container.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')!;
-    input.setSelectionRange(0, input.value.length);
-    await act(async () => {
-      input.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
-    });
-    const prompt = document.body.querySelector<HTMLTextAreaElement>(
-      '[aria-label="Reword prompt"]',
-    )!;
-    act(() => {
-      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(
-        prompt,
-        "Make concise",
-      );
-      prompt.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    await act(async () => {
-      prompt
-        .closest<HTMLElement>('[role="dialog"]')!
-        .querySelector<HTMLButtonElement>('button[type="submit"]')!
-        .click();
-    });
-
-    expect(rewordComposerSelection).toHaveBeenCalledWith("rambling text", "Make concise");
-    expect(store.draft).toBe("concise text");
-    expect(document.body.querySelector('[aria-label="Reword prompt"]')).toBeNull();
-  });
-
-  it("attaches clipboard images pasted into the composer", async () => {
-    const addPastedImages = vi.fn(async () => undefined);
-    store = mount(
-      createStore(ChatStore, {
-        id: () => "image-paste-chat",
-        parts: () => [],
-        streaming: () => false,
-        submitting: () => false,
-        configuration: () => undefined,
-        commands: () => [],
-        placeholder: () => "Message Cake",
-        inputLabel: () => "Message",
-        canSubmit: () => false,
-        submit: async () => false,
-        addPastedImages,
-      }),
-    );
-
-    act(() => root.render(<Chat store={store!} />));
-
-    const image = new File(["image bytes"], "clipboard.png", { type: "image/png" });
-    const paste = new Event("paste", { bubbles: true, cancelable: true });
-    Object.defineProperty(paste, "clipboardData", {
-      value: { files: [], items: [{ type: "image/png", getAsFile: () => image }] },
-    });
-
-    await act(async () => {
-      container.querySelector<HTMLTextAreaElement>('[aria-label="Message"]')!.dispatchEvent(paste);
-    });
-
-    expect(paste.defaultPrevented).toBe(true);
-    expect(addPastedImages).toHaveBeenCalledWith([image]);
+    const view = render(<Chat store={store} composerFocusEnabled={false} />);
+    try {
+      await userEvent.setup().click(screen.getByRole("button", { name: "Stop" }));
+      expect(abort).toHaveBeenCalledOnce();
+    } finally {
+      view.unmount();
+    }
   });
 });
