@@ -183,6 +183,9 @@ function renderWorktree(
     ) {
       await act(async () => {
         currentStatus = nextStatus ?? undefined;
+        applySnapshot(fixture.models.worktrees, {
+          worktrees: nextStatus ? [nextStatus.record] : [],
+        });
         applyWorktreeOperationCatalogUpdate(fixture.models.worktreeOperations, {
           operations: next ? [next] : [],
         });
@@ -502,7 +505,14 @@ describe("Worktree operation workflows", () => {
     await screen.findByRole("button", { name: "Merge" });
     await fixture.publish(operation("queued"));
     await waitFor(() => expect(landing).toHaveBeenCalledTimes(2));
-    await fixture.publish(operation("landed"));
+    await fixture.publish(
+      operation("landed"),
+      status({
+        record: { ...status().record, state: "landed" },
+        aheadCount: 0,
+        merged: true,
+      }),
+    );
     await act(async () => response.resolve({ status: status() }));
     await waitFor(() => expect(landing).toHaveBeenCalledTimes(3));
     await waitFor(() => expect(screen.getByRole("button", { name: "Resolve" })).toBeDefined());
