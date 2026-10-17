@@ -9,25 +9,22 @@ import { afterEach, describe, expect, vi } from "vitest";
 import { detectFixtureSpeech } from "../../../helpers/speech-detection";
 import { TurnId } from "../../../../src/contracts/conversations/conversation-data";
 import type { CakeEvent } from "../../../../src/contracts/application/cake-rpc-contract";
-import { CakeIpcClient, type CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
 import type { UiPart } from "../../../../src/contracts/conversations/session-contract";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { Chat } from "../../../../src/renderer/components/chat";
 import type { Microphone } from "../../../../src/renderer/dictation/microphone";
 import { observeApplicationEvents } from "../../../../src/renderer/observers/application-events";
-import { observeStream } from "../../../../src/renderer/observers/observe-stream";
 import { applyConversationUpdate } from "../../../../src/renderer/reducers/ConversationReducer";
-import type { Runtime } from "../../../../src/renderer/runtime";
 import type { SpeechPlayback } from "../../../../src/renderer/speech/playback";
 import { ClientEvents } from "../../../../src/services/clients/ClientEvents";
 import { ClientEventsLive } from "../../../../src/services/clients/ClientEventsLive";
 import { projectRecord, sessionSummary } from "../fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "../renderer-store-fixture";
+import { observerClient, observerRuntime } from "./observer-test-runtime";
 
 /** Only the transport and audio/provider boundaries are replaced. Event routing,
  * application observer, shared Chat and the entire Root/Model/Store tree are real. */
 async function workflow(events: ClientEvents["Service"], initialDraft = "") {
-  const consumed = Effect.runSync(Queue.unbounded<unknown>());
   const released = Effect.runSync(Queue.unbounded<void>());
   const recognitionStarted = Effect.runSync(Queue.unbounded<AbortSignal | undefined>());
   const synthesisStarted = Effect.runSync(Queue.unbounded<AbortSignal | undefined>());
@@ -129,43 +126,12 @@ async function workflow(events: ClientEvents["Service"], initialDraft = "") {
     }),
   );
   const user = userEvent.setup();
-  // The typed transport fixture exposes all event channels; only application is used.
-  // Unused RPC groups are deliberately absent at this external test boundary.
-  const rpc = {
-    events: {
-      application: () => events.application(1),
-      artifacts: () => events.artifacts(1),
-      terminals: () => events.terminals(1),
-      vscode: () => events.vscode(1),
-      surfaces: () => events.surfaces(1),
-    },
-  } satisfies Pick<CakeIpcClientService, "events">;
-  let finished: Promise<unknown> = Promise.resolve();
-  const execute: Runtime["execute"] = (effect, signal) => {
-    const result = Effect.runPromise(
-      Effect.provideService(effect, CakeIpcClient, rpc as unknown as CakeIpcClientService),
-      signal ? { signal } : undefined,
-    );
-    finished = result.then(
-      () => undefined,
-      () => undefined,
-    );
-    return result;
-  };
-  const runtime: Runtime = {
-    execute,
-    observe: (source, consume, options) =>
-      observeStream(
-        execute,
-        source,
-        (event) => {
-          consume(event);
-          Queue.offerUnsafe(consumed, event);
-        },
-        options,
-      ),
-    dispose: async () => {},
-  };
+  const runtime = observerRuntime(
+    observerClient({
+      events: { application: () => events.application(1) },
+    }),
+  );
+  const consumed = runtime.consumed;
   const cancel = observeApplicationEvents(runtime, root);
   expect(await Effect.runPromise(Queue.take(consumed))).toEqual({
     type: "renderer-events-ready",
@@ -223,7 +189,7 @@ async function workflow(events: ClientEvents["Service"], initialDraft = "") {
     },
     async stopObservation() {
       cancel();
-      await finished;
+      await runtime.dispose();
     },
     dispose,
     [Symbol.dispose]: dispose,
@@ -295,6 +261,8 @@ describe("conversation-mode native application events", () => {
           expect(f.prompt).not.toHaveBeenCalled();
           expect(f.abort).not.toHaveBeenCalled();
           expect(f.root.conversationModeStore.phase).toBe("off");
+          f.dispose();
+          expect(recognition?.aborted).toBe(true);
         });
       }).pipe(Effect.provide(ClientEventsLive)),
   );
