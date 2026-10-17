@@ -1,6 +1,9 @@
 import { act, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
+import type {
+  ConversationEvent,
+  ConversationSnapshot,
+} from "../../../src/contracts/conversations/conversation-data";
 import { Chat } from "../../../src/renderer/components/chat";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
@@ -81,6 +84,16 @@ export function renderConversationDelivery(
   );
   return {
     user: userEvent.setup(),
+    event(event: ConversationEvent) {
+      act(() => {
+        applyConversationUpdate(session.model, {
+          _tag: "Event",
+          revision: ++revision,
+          sessionId: deliverySessionId,
+          event,
+        });
+      });
+    },
     publish(parts: ConversationSnapshot["parts"], streaming = false) {
       act(() => publish(parts, streaming));
     },

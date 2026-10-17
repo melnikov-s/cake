@@ -12,7 +12,10 @@ import {
 
 const turnId = TurnId.make("10000000-0000-4000-8000-000000000001");
 const input = () => screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message" });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 // Follow-up admission/retry, steering and per-item cancellation already run
 // through shared Chat in prompt-queue-workflow.test.tsx. Composer failure/retry
@@ -20,6 +23,57 @@ afterEach(cleanup);
 // These cases cover the remaining delivery projection and transcript-edit path,
 // not native input/focus correctness.
 describe("Conversation delivery workflow", () => {
+  it("keeps one elapsed loading clock from admission through the accepted turn and streaming, then resets for new work", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    vi.setSystemTime(new Date("2026-08-18T12:00:00Z"));
+    const admission = deliveryGate<TurnId>();
+    const prompt = vi
+      .fn<Client["sessionChats"]["prompt"]>()
+      .mockReturnValueOnce(admission.promise)
+      .mockResolvedValue(turnId);
+    using fixture = renderConversationDelivery({ sessionChats: { prompt } });
+    await fixture.user.type(input(), "Keep working");
+    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+    expect(prompt).toHaveBeenCalledOnce();
+    const loading = () => screen.getByRole("status", { name: "Churning in progress" });
+    expect(within(loading()).getByText("0.0s")).toBeDefined();
+    act(() => vi.advanceTimersByTime(2_000));
+    expect(within(loading()).getByText("2.0s")).toBeDefined();
+
+    fixture.event({
+      _tag: "TurnAccepted",
+      sessionId: deliverySessionId,
+      turnId,
+      delivery: "prompt",
+    });
+    await act(async () => {
+      admission.resolve(turnId);
+      await admission.promise;
+    });
+    expect(within(loading()).getByText("2.0s")).toBeDefined();
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(within(loading()).getByText("3.0s")).toBeDefined();
+
+    fixture.event({ _tag: "StreamingChanged", sessionId: deliverySessionId, streaming: true });
+    fixture.event({
+      _tag: "TurnSettled",
+      sessionId: deliverySessionId,
+      turnId,
+      outcome: "complete",
+    });
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(within(loading()).getByText("4.0s")).toBeDefined();
+    fixture.event({ _tag: "StreamingChanged", sessionId: deliverySessionId, streaming: false });
+    expect(screen.queryByRole("status", { name: "Churning in progress" })).toBeNull();
+
+    await fixture.user.type(input(), "Another task");
+    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+    fixture.event({ _tag: "StreamingChanged", sessionId: deliverySessionId, streaming: true });
+    act(() => vi.advanceTimersByTime(100));
+    expect(within(loading()).getByText("0.1s")).toBeDefined();
+    expect(prompt).toHaveBeenCalledTimes(2);
+  });
+
   it("shows an idle send immediately and reconciles it with the authoritative transcript", async () => {
     const admission = deliveryGate<TurnId>();
     const prompt = vi.fn<Client["sessionChats"]["prompt"]>(() => admission.promise);
