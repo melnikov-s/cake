@@ -1,8 +1,8 @@
 /** @vitest-environment jsdom */
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DiscussionThread } from "../../../src/ipc/discussion-session-data";
-import { TurnId } from "../../../src/ipc/conversation-data";
+import type { DiscussionThread } from "../../../src/contracts/discussion-sessions/discussion-session-data";
+import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import {
   editorLease,
@@ -70,9 +70,12 @@ afterEach(() => {
 // Native text-marker geometry requires Electron; do not fabricate Range rectangles here.
 describe("IDE conversation workflows", () => {
   it("keeps an opened selection side chat available when entering and leaving the IDE", async () => {
-    using fixture = renderEmbeddedEditor({ vscode: { open: async () => editorLease("a") } }, [
-      discussion("message"),
-    ]);
+    using fixture = renderEmbeddedEditor(
+      { vscode: { open: async () => editorLease("a") } },
+      {
+        threads: [discussion("message")],
+      },
+    );
     // App exposes SideChatsMenu in Agent mode, not in its IDE header.
     await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
     await fixture.user.click(screen.getByRole("button", { name: /important detail/ }));
@@ -140,9 +143,12 @@ describe("IDE conversation workflows", () => {
   });
 
   it("scopes native review navigation to the active session and restores project chat explicitly", async () => {
-    using fixture = renderEmbeddedEditor({ vscode: { open: async () => editorLease("a") } }, [
-      discussion("file"),
-    ]);
+    using fixture = renderEmbeddedEditor(
+      { vscode: { open: async () => editorLease("a") } },
+      {
+        threads: [discussion("file")],
+      },
+    );
     await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
     await waitFor(() => expect(screen.getByTitle("VS Code workspace")).toBeDefined());
     const opened = {
