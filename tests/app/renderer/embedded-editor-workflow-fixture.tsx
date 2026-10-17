@@ -4,7 +4,7 @@ import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { VirtuosoMockContext } from "react-virtuoso";
 import type { EmbeddedEditorStateSnapshot } from "../../../src/renderer/client/Client";
-import type { DiscussionThread } from "../../../src/contracts/discussions/discussion-session-data";
+import type { DiscussionThread } from "../../../src/contracts/discussion-sessions/discussion-session-data";
 import type { StoreEvent } from "../../../src/renderer/events/StoreEvent";
 import { applyDiscussionCatalogUpdate } from "../../../src/renderer/reducers/DiscussionReducer";
 import { App } from "../../../src/renderer/components/app";

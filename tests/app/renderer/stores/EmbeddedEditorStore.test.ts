@@ -1,7 +1,6 @@
 import { batch } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import { defaultApplicationState } from "../../../../src/contracts/application/application-data";
->>>>>>> 78ca1de9 (test(renderer): consolidate embedded editor workflows with real Root composition)
 import type { Client } from "../../../../src/renderer/client/Client";
 import { projectRecord, sessionSummary } from "../fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "../renderer-store-fixture";
