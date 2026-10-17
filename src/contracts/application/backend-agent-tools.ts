@@ -252,6 +252,7 @@ const definitions = [
       summary:
         "Send, queue, or steer a correlated message to one explicitly targeted session. The result is a visible delivery receipt; optional maxMessages bounds the exchange.",
       guidance: [
+        "sessionId is required from Cake Chat; Cake Chat cannot message itself. Project Sessions reach Cake Chat by omitting sessionId.",
         "From a Project Session: expectsResponse defaults to false. Set true only when you need an answer (an assignment, question, or blocker); the recipient then owes exactly one result, or one failure/stopped notice if the turn handling this message ends without one. With false, the recipient never reports back automatically.",
         'From Cake Chat: report replaces expectsResponse. "digest" (default) owes one result that arrives quietly as a status line on the user\'s next message (a blocked report arrives right away); "interrupt" delivers it immediately and starts a turn, only when the user asked to hear back right away; "silent" owes nothing. expectsResponse: false means silent.',
       ],

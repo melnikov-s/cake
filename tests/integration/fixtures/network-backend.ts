@@ -142,6 +142,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
                   stats.turns++;
                   onPrompt?.(text, attachments);
                   current = { ...current, streaming: true };
+                  options.onInitialTranscriptPersisted?.();
                   yield* Queue.offer(started, text);
                   yield* Deferred.await(finish);
                   current = {
