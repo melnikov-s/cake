@@ -161,23 +161,33 @@ describe("cross-session message presentation", () => {
     expect(screen.getByText("Original historical content")).toBeTruthy();
   });
 
-  it("shows a request's direction and metadata as badges, never envelope markup", async () => {
-    const content = encodeCrossSessionMessage("Please **fix** the flaky test.", {
-      ...metadata,
-      expectsResponse: true,
-      report: "digest",
-      sender: { kind: "cake-chat", sessionId: "cake-chat-id", title: "Cake Chat" },
-    });
-    renderPersisted(content);
-    const region = screen.getByRole("region", { name: "Message from another session" });
-    expect(region.querySelector("header")?.textContent).toBe(
-      "FromCake ChatReply expectedReport · digest",
+  describe.each(["digest", "interrupt", undefined] as const)("request report mode %s", (report) => {
+    it.each([true, false])(
+      "shows sender and reply obligation (%s), preserving delivery metadata only in diagnostics",
+      async (expectsResponse) => {
+        const content = encodeCrossSessionMessage("Please **fix** the flaky test.", {
+          ...metadata,
+          expectsResponse,
+          ...(report ? { report } : null),
+          sender: { kind: "cake-chat", sessionId: "cake-chat-id", title: "Cake Chat" },
+        });
+        const part = renderPersisted(content);
+        expect(part.crossSession).toMatchObject({ expectsResponse });
+        expect(part.crossSession?.report).toBe(report);
+        const region = screen.getByRole("region", { name: "Message from another session" });
+        expect(region.querySelector("header")?.textContent).toBe(
+          expectsResponse ? "FromCake ChatReply expected" : "FromCake Chat",
+        );
+        expect(screen.getByRole("link", { name: "Cake Chat" }).getAttribute("href")).toBe(
+          "cake://session/cake-chat-id",
+        );
+        expect(screen.getByText("fix").getAttribute("data-streamdown")).toBe("strong");
+        expect(region.textContent).not.toContain("cake-session-message");
+        await userEvent.setup().click(screen.getByRole("button", { name: "Raw envelope" }));
+        // The disclosure shows exactly the text the receiving agent was given.
+        expect(region.querySelector("pre")?.textContent).toBe(content);
+      },
     );
-    expect(screen.getByText("fix").getAttribute("data-streamdown")).toBe("strong");
-    expect(region.textContent).not.toContain("cake-session-message");
-    await userEvent.setup().click(screen.getByRole("button", { name: "Raw envelope" }));
-    // The disclosure shows exactly the text the receiving agent was given.
-    expect(region.querySelector("pre")?.textContent).toBe(content);
   });
 
   it("turns a report lead line into a reply status badge and keeps the findings", async () => {

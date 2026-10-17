@@ -80,7 +80,7 @@ for (const state of ["default", "project"]) {
         await expect(fallback).toContainText("Historical report from a now-unavailable session.");
         await fallback.getByRole("link", { name: "Untitled session", exact: true }).click();
         await expect(
-          page.getByText("Cake could not find the linked session", { exact: true }),
+          page.getByText("Cake could not find Project Session missing-session", { exact: true }),
         ).toBeVisible();
         await expect(card).toBeVisible();
       }

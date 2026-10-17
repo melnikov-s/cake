@@ -121,18 +121,6 @@ export function crossSessionPresentation(
       tone: "accent",
       description: "The sender is waiting for a reply to this message.",
     });
-  if (described.report === "digest")
-    badges.push({
-      label: "Report · digest",
-      tone: "default",
-      description: "The result goes back quietly with the user's next Cake Chat message.",
-    });
-  if (described.report === "interrupt")
-    badges.push({
-      label: "Report · immediate",
-      tone: "default",
-      description: "The result goes back to Cake Chat as soon as it is ready.",
-    });
   const raw = rawEnvelope(text, metadata);
   return { relation: described.relation, badges, body, ...(raw ? { raw } : null) };
 }
