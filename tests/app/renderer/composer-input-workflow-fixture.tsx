@@ -1,6 +1,6 @@
 import { act, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { UiPart } from "../../../src/contracts/conversations/session-contract";
+import type { Annotation, UiPart } from "../../../src/contracts/conversations/session-contract";
 import { Chat } from "../../../src/renderer/components/chat";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
@@ -9,7 +9,11 @@ import type { TestClientOverrides } from "./test-client";
 
 export const composerInputSessionId = "composer-input-session";
 
-export function createComposerInputFixture(client: TestClientOverrides, parts: UiPart[] = []) {
+export function createComposerInputFixture(
+  client: TestClientOverrides,
+  parts: UiPart[] = [],
+  annotations: Omit<Annotation, "id">[] = [],
+) {
   const fixture = createRendererStoreFixture({
     client,
     projects: [projectRecord({ path: "/project", name: "Project" })],
@@ -37,6 +41,9 @@ export function createComposerInputFixture(client: TestClientOverrides, parts: U
       tree: [],
     },
   });
+  // Prepared context is initial surface state, not a simulation of native selection.
+  for (const annotation of annotations)
+    session.conversationSessionStore.composerStore.draftStore.annotationDraft.add(annotation);
   return {
     conversation: session.conversationSessionStore,
     publishPart(part: UiPart) {
@@ -54,8 +61,11 @@ export function createComposerInputFixture(client: TestClientOverrides, parts: U
   };
 }
 
-export function renderComposerInput(client: TestClientOverrides) {
-  const fixture = createComposerInputFixture(client);
+export function renderComposerInput(
+  client: TestClientOverrides,
+  options: { parts?: UiPart[]; annotations?: Omit<Annotation, "id">[] } = {},
+) {
+  const fixture = createComposerInputFixture(client, options.parts, options.annotations);
   const view = render(
     <Chat store={fixture.conversation.chatStore} compact embedded composerFocusEnabled={false} />,
   );
