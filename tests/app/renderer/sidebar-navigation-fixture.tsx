@@ -4,6 +4,7 @@ import { applySnapshot, toSnapshot } from "r-state-tree";
 import type { CakeChatSummary } from "../../../src/contracts/cake-chats/cake-chat-data";
 import { StoreProvider } from "r-state-tree/react";
 import type { ProjectRecord } from "../../../src/contracts/application/application-data";
+import type { CakeEditorSettings } from "../../../src/contracts/application/cake-settings-data";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 import type { WorktreeLandingOperation } from "../../../src/contracts/worktrees/worktree-landing-data";
 import type {
@@ -80,7 +81,10 @@ export function renderSidebarNavigation(
   options: RendererStoreFixtureOptions & {
     loadedIds?: readonly string[];
     worktrees?: readonly WorktreeRecord[];
-    ide?: { sidebarAutoHide: "always" | "below-width"; width?: number };
+    ide?: {
+      sidebarAutoHide: "always" | "below-width";
+      width?: CakeEditorSettings["sidebarAutoHideWidth"];
+    };
   },
 ) {
   const fixture = createRendererStoreFixture({
@@ -97,6 +101,7 @@ export function renderSidebarNavigation(
       },
     },
   });
+  void fixture.root.sessionRegistry.pendingSessions.refreshSavedDrafts();
   applySnapshot(fixture.models.worktrees, { worktrees: [...(options.worktrees ?? [])] });
   let revision = 1;
   for (const sessionId of options.loadedIds ?? []) {

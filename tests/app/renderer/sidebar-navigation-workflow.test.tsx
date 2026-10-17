@@ -3,7 +3,7 @@ import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../src/renderer/client/Client";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
-import { TurnId } from "../../../src/ipc/conversation-data";
+import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 import { projectRecord } from "./fixtures/catalog-fixtures";
 import { fakeSavedDrafts } from "./fakes/saved-drafts";
@@ -148,8 +148,12 @@ describe("Sidebar navigation workflow", () => {
       .mockResolvedValueOnce(undefined)
       .mockResolvedValueOnce({ action: "delete" });
     const rename = vi.fn<Client["projectSessions"]["rename"]>(async () => undefined);
-    const setSessionUnread = vi.fn<Client["workspaces"]["setSessionUnread"]>(async () => undefined);
-    const deleteSession = vi.fn<Client["workspaces"]["deleteSession"]>(async () => undefined);
+    const setSessionUnread = vi.fn<Client["workspaces"]["setSessionUnread"]>(async () =>
+      defaultApplicationState(),
+    );
+    const deleteSession = vi.fn<Client["workspaces"]["deleteSession"]>(async () =>
+      defaultApplicationState(),
+    );
     const initial = [sidebarSummary("original"), sidebarSummary("archive", 2, { resolved: true })];
     using fixture = renderSidebarNavigation({
       projects: [project],
@@ -217,7 +221,7 @@ describe("Sidebar navigation workflow", () => {
       .fn<Client["electron"]["showProjectContextMenu"]>()
       .mockResolvedValueOnce("settings")
       .mockResolvedValueOnce("remove-project");
-    const pending = deferred<void>();
+    const pending = deferred<Awaited<ReturnType<Client["workspaces"]["removeProject"]>>>();
     const removeProject = vi.fn<Client["workspaces"]["removeProject"]>(() => pending.promise);
     using fixture = renderSidebarNavigation({
       projects: [project],
@@ -251,7 +255,7 @@ describe("Sidebar navigation workflow", () => {
     expect(within(dialog).getByText("Removing project")).toBeDefined();
     await fixture.user.keyboard("{Escape}");
     expect(screen.getByRole("alertdialog")).toBe(dialog);
-    await act(async () => pending.resolve());
+    await act(async () => pending.resolve(defaultApplicationState()));
     await fixture.publishProjects([]);
     expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(screen.getByText("Add a folder to start a project.")).toBeDefined();
@@ -323,6 +327,7 @@ describe("Sidebar navigation workflow", () => {
       sessionId: "draft",
       projectPath: "/cake",
       title: "Saved plan",
+      modifiedAt: "2026-01-31T00:00:00.000Z",
       text: "Later",
       attachments: [],
     });
@@ -427,9 +432,11 @@ describe("Sidebar navigation workflow", () => {
     expect(within(row("failed")).getByRole("img", { name: "Error" })).toBeDefined();
     for (const id of ["waiting", "running", "failed"]) {
       expect(within(row(id)).queryByRole("button", { name: `Resolve ${id}` })).toBeNull();
-      expect(row(id).querySelector("time")?.dateTime).toBe(
-        sessions.find((session) => session.sessionId === id)!.modifiedAt,
-      );
+      if (id === "failed") {
+        expect(row(id).querySelector("time")?.dateTime).toBe(
+          sessions.find((session) => session.sessionId === id)!.modifiedAt,
+        );
+      } else expect(row(id).querySelector("time")).toBeNull();
     }
   });
 
