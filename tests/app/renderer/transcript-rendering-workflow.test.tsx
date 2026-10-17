@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import { cleanup, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { UiPart } from "../../../src/ipc/session-contract";
+import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { renderTranscriptRendering } from "./transcript-rendering-workflow-fixture";
 
