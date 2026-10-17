@@ -107,9 +107,10 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
           data-slot="project-header"
           data-session-id={projectChat?.sessionId}
           className={cn(
-            "group/proj flex h-8 w-full items-center gap-1 px-1 select-none text-muted-foreground [@media(pointer:coarse)]:h-auto [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:flex-wrap [@media(pointer:coarse)]:[&_.icon-button]:opacity-100",
+            "group/proj flex h-8 w-full items-center gap-1 rounded-md pl-1 pr-2 select-none text-muted-foreground transition-colors [@media(pointer:coarse)]:h-auto [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:flex-wrap [@media(pointer:coarse)]:[&_.icon-button]:opacity-100",
             focusMode &&
-              "h-11 gap-2 px-1.5 text-foreground [&_[data-slot=avatar]]:size-7 [&_svg]:size-5",
+              "h-11 gap-2 pl-1.5 text-foreground [&_[data-slot=avatar]]:size-7 [&_svg]:size-5",
+            projectChatSelected && "bg-sidebar-active text-primary",
           )}
           title={path}
         >
@@ -153,7 +154,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
               "h-7 min-w-0 flex-1 justify-start px-1 text-[13px] font-medium text-inherit hover:text-foreground",
               dragHandleProps && "cursor-grab active:cursor-grabbing",
               focusMode && "h-9 text-base font-semibold",
-              projectChatSelected && "bg-sidebar-active text-primary",
+              projectChatSelected && "hover:bg-transparent",
             )}
             type="button"
             aria-current={projectChatSelected ? "page" : undefined}
@@ -179,13 +180,14 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
           >
             <span className="truncate">{projects.nameForPath(path)}</span>
           </Button>
+          {/* Match session rows' px-2 inset and centered w-8 status column. */}
           {!resolved && (
             <div className="grid shrink-0 items-center [@media(pointer:coarse)]:basis-full [@media(pointer:coarse)]:justify-end">
               {projectChat && (
                 <div
                   data-slot="project-chat-status"
                   className={cn(
-                    "pointer-events-none col-start-1 row-start-1 justify-self-end pr-2 transition-opacity group-hover/proj:opacity-0 group-focus-within/proj:opacity-0 [@media(pointer:coarse)]:hidden",
+                    "pointer-events-none col-start-1 row-start-1 flex w-8 items-center justify-center justify-self-end transition-opacity group-hover/proj:opacity-0 group-focus-within/proj:opacity-0 [@media(pointer:coarse)]:hidden",
                     sortMenuOpen && "opacity-0",
                   )}
                 >

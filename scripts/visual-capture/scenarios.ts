@@ -1580,6 +1580,60 @@ const appearanceSettingsScenario: VisualCaptureScenario = {
   region: cakePromptsSettingsScenario.region,
 };
 
+const projectChatSidebar: VisualCaptureScenario = {
+  name: "project-chat-sidebar",
+  description: "Full-width Project Chat selection and status alignment with Project Sessions",
+  states: ["selected", "unselected", "focus", "hover"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    const file = join(paths.cakeHome, "state", "application.json");
+    const state = JSON.parse(await readFile(file, "utf8"));
+    await writeFile(
+      file,
+      JSON.stringify({
+        ...state,
+        projects: state.projects.map((project: { path: string }) => ({ ...project, name: "cake" })),
+        unreadSessionIds: ["visual-sidebar-unread"],
+      }),
+    );
+    const sessions = workspaceSessionDirectory(
+      paths.project,
+      join(paths.cakeHome, "pi", "sessions"),
+    );
+    const original = await readFile(
+      join(sessions, "1970-01-01T00-00-00-000Z_visual-assistant-markdown-code.jsonl"),
+      "utf8",
+    );
+    await writeFile(
+      join(sessions, "1970-01-01T00-00-00-000Z_visual-sidebar-unread.jsonl"),
+      original
+        .replaceAll("visual-assistant-markdown-code", "visual-sidebar-unread")
+        .replaceAll("How should agents capture Cake UI changes?", "Check sidebar dot alignment"),
+    );
+  },
+  async prepare(page, state) {
+    await assistantMarkdownCode.prepare(page, "default");
+    if (state !== "unselected") {
+      await page
+        .getByRole("button", { name: /^Open Project Chat for / })
+        .first()
+        .click();
+      await expect(page.getByRole("combobox", { name: "Message Project Chat" })).toBeVisible();
+      if (state === "focus") await page.getByRole("button", { name: /^Focus on / }).click();
+      await page.getByRole("combobox", { name: "Message Project Chat" }).click();
+    }
+    await expect(
+      page
+        .locator('.session-item[data-session-id="visual-sidebar-unread"]')
+        .getByRole("img", { name: "Ready, unread" }),
+    ).toBeVisible();
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    if (state === "hover") await page.locator('[data-slot="project-header"]').hover();
+    else await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator('[data-slot="sidebar"]'),
+};
+
 const cakeChatSidebarUnread: VisualCaptureScenario = {
   name: "cake-chat-sidebar-unread",
   description:
@@ -3321,6 +3375,7 @@ export const visualCaptureScenarios = [
   cakeChatInspectorScenario,
   taskInputAttachmentsScenario,
   cakeChatSidebarUnread,
+  projectChatSidebar,
   dictationInputScenario,
   dictationSettingsScenario,
   serverClientSettingsScenario,

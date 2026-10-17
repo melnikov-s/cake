@@ -69,6 +69,7 @@ async function fixture() {
     ],
     client: {
       cakeChats: { open: async () => undefined, setUnread: async () => undefined },
+      projectSessions: { open: async () => undefined },
       browser: {
         open: browserOpen,
         updateBounds: async ({ sessionId }) => browserState(sessionId),
@@ -91,13 +92,18 @@ async function fixture() {
       chatSummary(otherId, "/finance"),
     ],
   });
-  for (const id of [CAKE_CHAT_SESSION_ID, projectId, otherId]) {
-    applyConversationUpdate(f.models.cakeChatConversation(id), {
+  f.root.sessionRegistry.load("task", "/zombies");
+  for (const id of [CAKE_CHAT_SESSION_ID, projectId, otherId, "task"]) {
+    const model =
+      id === "task"
+        ? f.models.projectConversation(id, "/zombies")
+        : f.models.cakeChatConversation(id);
+    applyConversationUpdate(model, {
       _tag: "Snapshot",
       revision: 1,
       snapshot: {
         sessionId: id,
-        sessionFile: `/chats/${id}/coordinator.sqlite`,
+        sessionFile: id === "task" ? "/sessions/task.jsonl" : `/chats/${id}/coordinator.sqlite`,
         parts: [],
         models: [],
         thinkingLevel: "off",
@@ -162,6 +168,8 @@ it("shows each chat's own status and selection on its project header", async () 
     .getByRole("button", { name: "Open Project Chat for finance" })
     .closest<HTMLElement>('[data-slot="project-header"]')!;
   expect(within(projectHeader).getByRole("img", { name: "Ready" })).toBeTruthy();
+  expect(projectHeader.classList.contains("bg-sidebar-active")).toBe(false);
+  expect(financeHeader.classList.contains("bg-sidebar-active")).toBe(false);
   act(() =>
     applyConversationUpdate(f.models.cakeChatConversation(projectId), {
       _tag: "Event",
@@ -179,6 +187,26 @@ it("shows each chat's own status and selection on its project header", async () 
       .getByRole("button", { name: "Open Project Chat for zombies" })
       .getAttribute("aria-current"),
   ).toBe("page");
+  expect(projectHeader.classList.contains("bg-sidebar-active")).toBe(true);
+  expect(financeHeader.classList.contains("bg-sidebar-active")).toBe(false);
+
+  // Expansion is independent of selection, including when opening a collapsed chat.
+  await f.user.click(screen.getByRole("button", { name: "Collapse zombies" }));
+  expect(projectHeader.classList.contains("bg-sidebar-active")).toBe(true);
+  await f.user.click(screen.getByRole("button", { name: "Expand zombies" }));
+  const task = document.querySelector<HTMLElement>('[data-session-id="task"]')!;
+  await f.user.click(within(task).getByRole("button", { name: /^task / }));
+  await waitFor(() => expect(task.getAttribute("data-navigation-active")).toBe("true"));
+  expect(projectHeader.classList.contains("bg-sidebar-active")).toBe(false);
+
+  await f.user.click(
+    within(financeHeader).getByRole("button", { name: "Open Project Chat for finance" }),
+  );
+  expect(financeHeader.classList.contains("bg-sidebar-active")).toBe(true);
+  expect(projectHeader.classList.contains("bg-sidebar-active")).toBe(false);
+  await f.user.click(screen.getByRole("button", { name: "Cake Chat" }));
+  expect(financeHeader.classList.contains("bg-sidebar-active")).toBe(false);
+  expect(projectHeader.classList.contains("bg-sidebar-active")).toBe(false);
 });
 
 it("gives global and project chats their own Browser destinations and returns to the same composer", async () => {

@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
+import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 
 const repository = resolve(import.meta.dirname, "../..");
 const codeServerPath = "/opt/homebrew/bin/code-server";
@@ -72,6 +73,21 @@ test("Project Chat isolates history and restores its root workspace, while globa
     );
     const presetId = "00000000-0000-4000-8000-000000000001";
     const timestamp = new Date(0).toISOString();
+    const sessionId = "sidebar-task";
+    const sessionDirectory = cakeWorkspaceSessionDirectory(
+      project,
+      join(cakeHome, "pi", "sessions"),
+    );
+    await mkdir(sessionDirectory, { recursive: true });
+    await writeFile(
+      join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
+      [
+        { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
+        { type: "session_info", id: "name", parentId: null, timestamp, name: "Sidebar task" },
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n") + "\n",
+    );
     await writeFile(
       join(cakeHome, "state", "application.json"),
       JSON.stringify({
@@ -82,6 +98,7 @@ test("Project Chat isolates history and restores its root workspace, while globa
             { path: project, name: "Zombies", addedAt: timestamp, lastOpenedAt: timestamp },
           ],
           trustedProjectPaths: [project],
+          unreadSessionIds: [sessionId],
           ...(existsSync(codeServerPath) ? { vscodeServerPath: codeServerPath } : null),
           modelPresets: [
             {
@@ -183,9 +200,52 @@ test("Project Chat isolates history and restores its root workspace, while globa
     await input.click();
     await expect(status).toHaveCSS("opacity", "1");
     await expect(actions).toHaveCSS("opacity", "0");
+    const task = page.locator(`.session-item[data-session-id="${sessionId}"]`);
+    const taskDot = task.getByRole("img", { name: "Ready, unread" });
+    const projectDot = status.getByRole("img");
+    const assertDotAlignment = async () => {
+      const projectBounds = await projectDot.boundingBox();
+      const taskBounds = await taskDot.boundingBox();
+      expect(projectBounds).not.toBeNull();
+      expect(taskBounds).not.toBeNull();
+      expect(
+        Math.abs(
+          projectBounds!.x + projectBounds!.width / 2 - taskBounds!.x - taskBounds!.width / 2,
+        ),
+      ).toBeLessThan(1);
+    };
+    for (const theme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: theme });
+      await expect(header).toHaveClass(/bg-sidebar-active/);
+      await expect(header.locator('[data-slot="project-label"]')).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+      await assertDotAlignment();
+      // The status is a descendant of the selected full-width surface, not the label button.
+      expect(
+        await header.evaluate((element) => getComputedStyle(element).backgroundColor),
+      ).not.toBe("rgba(0, 0, 0, 0)");
+    }
+    await header.getByRole("button", { name: "Focus on zombies", exact: true }).click();
+    await input.click();
+    await assertDotAlignment();
+    await page.getByRole("button", { name: "Exit focus mode for zombies", exact: true }).click();
+    await input.click();
+    await assertDotAlignment();
+    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+    await expect(header).not.toHaveClass(/bg-sidebar-active/);
+    await assertDotAlignment();
+    await openProject();
+    await input.click();
     await header.hover();
     await expect(status).toHaveCSS("opacity", "0");
     await expect(actions).toHaveCSS("opacity", "1");
+    await header.locator('[data-slot="project-label"]').hover();
+    await expect(header.locator('[data-slot="project-label"]')).toHaveCSS(
+      "background-color",
+      "rgba(0, 0, 0, 0)",
+    );
     await header.getByRole("button", { name: "Sort sessions in zombies", exact: true }).click();
     await page.getByRole("menuitemradio", { name: "By date", exact: true }).click();
     await input.click();
