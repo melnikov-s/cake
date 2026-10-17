@@ -4,6 +4,9 @@ import { it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, Layer, Queue, Schema, Stream } from "effect";
 import * as TestClock from "effect/testing/TestClock";
 import { describe } from "vitest";
+import * as boards from "../../../src/domain/artifacts/messageBoards";
+import * as workboardContinuations from "../../../src/domain/session-families/workboardContinuations";
+import * as completionInbox from "../../../src/domain/conversations/completionInbox";
 import * as families from "../../../src/domain/session-families/sessionFamilies";
 import { acquireOptions as projectOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import { acquireOptions as chatOptions } from "../../../src/domain/cake-chats/cakeChatRuntime";
@@ -88,6 +91,7 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
   const received = yield* Deferred.make<void>();
   const persisted = yield* Deferred.make<void>();
   const executing = new Map<string, string[]>();
+  const consumedInputs = new Set<string>();
   const materialized = new Set<string>([parentId, CAKE_CHAT_SESSION_ID]);
   const consumeQueued = yield* Deferred.make<void>();
   const transcript: string[] = [];
@@ -133,6 +137,7 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
     }),
     Layer.mock(PiModels, { resolve: (selection) => Effect.succeed(selection) }),
     Layer.mock(SessionArchiveStorage, {
+      resolvedProjectEntry: () => Effect.succeed(undefined),
       locate: (id) => Effect.succeed(materialized.has(id) ? ("active" as const) : undefined),
       resolved: () => Stream.empty,
       resolvedProjects: () => Stream.empty,
@@ -164,6 +169,7 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
                 sessionId: options.sessionId ?? "unexpected",
                 sessionFile: `${options.sessionDir}/${options.sessionId}.jsonl`,
                 executingTurnIds: () => executing.get(options.sessionId ?? "") ?? [],
+                hasConsumedInput: (turnId) => consumedInputs.has(turnId),
                 snapshot: async () => ({
                   ...snapshot,
                   sessionId: options.sessionId ?? "unexpected",
@@ -236,6 +242,7 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
                           queue.splice(queue.indexOf(text), 1);
                         }
                         ownTranscript.push(text);
+                        consumedInputs.add(turnId);
                         yield* Deferred.succeed(persisted, undefined);
                         yield* Deferred.succeed(received, undefined);
                       } else {
@@ -393,7 +400,7 @@ describe("automatic spawned-session reporting", () => {
               assert.deepEqual(f.deliveries, [busy ? "follow-up" : "prompt"]);
               assert.deepEqual(f.recipients, [coordinator]);
               assert.equal((yield* f.storage.state()).deferredReferences?.length ?? 0, 0);
-              assert.equal((yield* f.storage.state()).coordinatorDigest?.length ?? 0, 0);
+              assert.equal((yield* f.storage.state()).coordinatorDigest?.length, 1);
               yield* Deferred.succeed(f.consumeQueued, undefined);
               yield* Deferred.await(f.persisted);
               yield* families.deliver(turn);
@@ -653,8 +660,9 @@ describe("automatic spawned-session reporting", () => {
               assert.deepEqual(f.deliveries, []);
               assert.deepEqual(f.queue, []);
               const before = yield* f.storage.state();
-              assert.equal(before.deferredReferences?.length, 2);
-              assert.equal(before.coordinatorDigest?.length ?? 0, 0);
+              assert.equal(before.deferredReferences?.length ?? 0, 0);
+              assert.equal(before.coordinatorDigest?.length, 2);
+              assert.equal(before.completionInbox?.length, 2);
               assert.deepEqual(before.turns, []);
               const send = (text: string) =>
                 sessionChats.deliver(
@@ -675,7 +683,8 @@ describe("automatic spawned-session reporting", () => {
               assert.equal(splitContextReminders(submitted).text, "My next question");
               for (const ref of refs) assert.equal(submitted.split(ref).length - 1, 1);
               assert.equal(f.deliveries.length, 1);
-              assert.deepEqual((yield* f.storage.state()).deferredReferences, []);
+              assert.equal((yield* f.storage.state()).deferredReferences?.length ?? 0, 0);
+              assert.deepEqual((yield* f.storage.state()).coordinatorDigest, []);
               yield* Deferred.succeed(f.consumeQueued, undefined);
               yield* send("Another question");
               while (f.deliveries.length < 2) yield* Effect.yieldNow;
@@ -717,6 +726,296 @@ describe("automatic spawned-session reporting", () => {
         );
       }),
   );
+  const setupWorkboard = Effect.fn("ReportingTest.setupWorkboard")(function* () {
+    const storage = yield* SessionFamilyStorage;
+    for (const child of ["worker-a", "worker-b"])
+      yield* storage.addChild({
+        familyId: "board-family",
+        parentSessionId: parentId,
+        parentWorkingDirectory: "/project",
+        childSessionId: child,
+        childWorkingDirectory: "/isolated-tree",
+        requestId: child,
+        projectPath: "/project",
+        createdAt: "2026-01-01",
+      });
+    const family = yield* storage.familyForMember(parentId);
+    assert.ok(family);
+    yield* boards.ensureBoard(family);
+    yield* (yield* CakeSessionRuntimes).acquire(
+      yield* projectOptions({ location, sessionId: parentId, newSession: false }),
+    );
+  });
+  const boardResult = (author: string, event: "completion" | "blocker" = "completion") =>
+    boards.append(author, {
+      audience: [parentId],
+      topic: "batch",
+      event,
+      resultKind: "ready",
+      description: event === "blocker" ? "Needs a decision" : `Ready ${author}`,
+      body: "Evidence lives on the board.",
+    });
+
+  it.effect(
+    "Workboard-only results stay passive and become one quiet grouped notice with retained decisions",
+    () =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        yield* f.run(
+          Effect.gen(function* () {
+            yield* setupWorkboard();
+            yield* boardResult("worker-a");
+            yield* boardResult("worker-b", "blocker");
+            yield* workboardContinuations.runPass();
+            assert.deepEqual(f.deliveries, []);
+            assert.deepEqual((yield* f.storage.state()).turns, []);
+            assert.equal((yield* completionInbox.list(parentId)).items.length, 2);
+            yield* sessionChats.deliver(
+              {
+                sessionId: parentId,
+                text: "My current question",
+                attachments: [],
+                renderUserMessageAsMarkdown: false,
+              },
+              "prompt",
+            );
+            yield* Deferred.await(f.received);
+            const text = f.transcript[0]!;
+            assert.equal(text.split("Cake session updates").length - 1, 1);
+            assert.equal(splitContextReminders(text).text, "My current question");
+            assert.match(text, /current message first/);
+            assert.match(text, /ready/);
+            assert.match(text, /blocked/);
+            assert.match(text, /pending decisions: review, merge, resolve, next-step/);
+            assert.match(text, /not authorization/);
+            assert.equal((yield* completionInbox.list(parentId)).total, 2);
+            const first = (yield* completionInbox.list(parentId)).items[0]!;
+            yield* completionInbox.update("other-recipient", { id: first.id, state: "dismissed" });
+            assert.equal((yield* completionInbox.list(parentId)).items[0]?.state, "pending");
+            yield* completionInbox.update(parentId, { id: first.id, state: "deferred" });
+            yield* workboardContinuations.runPass();
+            yield* sessionChats.deliver(
+              {
+                sessionId: parentId,
+                text: "Next question",
+                attachments: [],
+                renderUserMessageAsMarkdown: false,
+              },
+              "prompt",
+            );
+            while (f.transcript.length < 2) yield* Effect.yieldNow;
+            assert.equal(f.transcript[1], "Next question");
+            assert.equal((yield* completionInbox.list(parentId)).items[0]?.state, "deferred");
+          }).pipe(
+            Effect.provide(
+              Layer.mock(TaskInputStorage, { isRecipient: () => Effect.succeed(false) }),
+            ),
+          ),
+        );
+      }),
+  );
+
+  it.effect.each([false, true])("Workboard batch is bounded and coalesced; busy=%s", (busy) =>
+    Effect.gen(function* () {
+      const f = yield* fixture(busy);
+      yield* f.run(
+        Effect.gen(function* () {
+          yield* setupWorkboard();
+          yield* boards.setContinuation(
+            parentId,
+            { mode: "resume", topic: "batch", awaitAuthors: ["worker-a", "worker-b"], maxTurns: 1 },
+            "grant-1",
+          );
+          yield* boardResult("worker-a");
+          yield* workboardContinuations.runPass();
+          assert.deepEqual(f.deliveries, []);
+          yield* boardResult("worker-b");
+          yield* workboardContinuations.runPass();
+          if (busy) {
+            assert.deepEqual(f.deliveries, []);
+            assert.equal((yield* boards.continuation(parentId)).policy?.remainingTurns, 1);
+            return;
+          }
+          yield* Deferred.await(f.received);
+          assert.deepEqual(f.deliveries, ["follow-up"]);
+          assert.match(f.queue[0]!, /#1, #2/);
+          assert.ok(f.queue[0]!.includes("No private result/report obligation"));
+          const staged = (yield* boards.continuation(parentId)).policy!;
+          assert.equal(staged.remainingTurns, 0);
+          assert.deepEqual(staged.completedAuthors, ["worker-a", "worker-b"]);
+          yield* workboardContinuations.runPass();
+          assert.equal(
+            (yield* boards.continuation(parentId)).policy?.pending?.turnId,
+            staged.pending?.turnId,
+          );
+          assert.equal(f.deliveries.length, 1);
+          assert.deepEqual((yield* f.storage.state()).turns, []);
+          yield* Deferred.succeed(f.consumeQueued, undefined);
+          yield* Deferred.await(f.persisted);
+          const handle = yield* (yield* CakeSessionRuntimes).acquire(
+            yield* projectOptions({ location, sessionId: parentId, newSession: false }),
+          );
+          while ((yield* handle.currentTurnIds()).length) yield* Effect.yieldNow;
+          yield* workboardContinuations.runPass();
+          assert.equal((yield* boards.continuation(parentId)).policy?.after, 2);
+          yield* boardResult("worker-a");
+          yield* workboardContinuations.runPass();
+          assert.equal(f.deliveries.length, 1);
+        }),
+      );
+    }),
+  );
+
+  it.effect(
+    "a Workboard blocker breaks the batch barrier, and canceled admission pauses instead of replaying",
+    () =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        yield* f.run(
+          Effect.gen(function* () {
+            yield* setupWorkboard();
+            yield* boards.setContinuation(
+              parentId,
+              {
+                mode: "resume",
+                topic: "batch",
+                awaitAuthors: ["worker-a", "worker-b"],
+                maxTurns: 2,
+              },
+              "grant",
+            );
+            yield* boardResult("worker-a", "blocker");
+            yield* workboardContinuations.runPass();
+            yield* Deferred.await(f.received);
+            const staged = (yield* boards.continuation(parentId)).policy!.pending!;
+            const handle = yield* (yield* CakeSessionRuntimes).acquire(
+              yield* projectOptions({ location, sessionId: parentId, newSession: false }),
+            );
+            yield* handle.removeQueuedMessage(staged.turnId);
+            while ((yield* handle.currentTurnIds()).length) yield* Effect.yieldNow;
+            yield* workboardContinuations.runPass();
+            const paused = (yield* boards.continuation(parentId)).policy!;
+            assert.equal(paused.mode, "paused");
+            assert.deepEqual(paused.lastDelivery, { turnId: staged.turnId, status: "canceled" });
+            yield* boardResult("worker-b");
+            yield* workboardContinuations.runPass();
+            assert.equal(f.deliveries.length, 1);
+            assert.deepEqual((yield* f.storage.state()).turns, []);
+          }),
+        );
+      }),
+  );
+
+  it.effect(
+    "a saved-but-not-admitted Workboard input survives storage reconstruction and deduplicates retry",
+    () =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        yield* f.run(
+          Effect.gen(function* () {
+            yield* setupWorkboard();
+            yield* boards.setContinuation(parentId, { mode: "resume", maxTurns: 1 }, "grant");
+            yield* boardResult("worker-a");
+            const turnId = "30000000-0000-4000-8000-000000000001";
+            yield* f.storage.changeBoardContinuation(
+              parentId,
+              (current) =>
+                current && {
+                  ...current,
+                  remainingTurns: 0,
+                  pending: { turnId, sequences: [1], through: 1 },
+                },
+            );
+            const restartedContext = yield* Layer.build(
+              familyStorageHarness(f.harness.files).layer,
+            );
+            const restarted = yield* SessionFamilyStorage.pipe(Effect.provide(restartedContext));
+            const pass = workboardContinuations
+              .runPass()
+              .pipe(Effect.provideService(SessionFamilyStorage, restarted));
+            yield* pass;
+            yield* Deferred.await(f.received);
+            yield* pass;
+            assert.equal(f.deliveries.length, 1);
+            assert.equal(
+              (yield* restarted.state()).boardContinuations?.[0]?.pending?.turnId,
+              turnId,
+            );
+            assert.deepEqual((yield* restarted.state()).turns, []);
+          }),
+        );
+      }),
+  );
+
+  it.effect("superseded staged board work is canceled without a parent turn", () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      yield* f.run(
+        Effect.gen(function* () {
+          yield* setupWorkboard();
+          yield* boards.setContinuation(parentId, { mode: "resume" }, "grant");
+          yield* boardResult("worker-a");
+          yield* f.storage.changeBoardContinuation(
+            parentId,
+            (current) =>
+              current && {
+                ...current,
+                remainingTurns: 0,
+                pending: {
+                  turnId: "30000000-0000-4000-8000-000000000002",
+                  sequences: [1],
+                  through: 1,
+                },
+              },
+          );
+          yield* boards.append("worker-a", {
+            audience: [parentId],
+            topic: "batch",
+            supersedes: [1],
+            description: "Withdrawn",
+            body: "Not ready.",
+          });
+          yield* workboardContinuations.runPass();
+          assert.deepEqual(f.deliveries, []);
+          assert.equal(
+            (yield* boards.continuation(parentId)).policy?.lastDelivery?.status,
+            "canceled",
+          );
+        }),
+      );
+    }),
+  );
+
+  it.effect(
+    "Workboard grants are idempotent, explicitly pausable, and globally capped at two outstanding inputs",
+    () =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        yield* f.run(
+          Effect.gen(function* () {
+            yield* setupWorkboard();
+            yield* boards.setContinuation(parentId, { mode: "resume", maxTurns: 1 }, "grant");
+            yield* boardResult("worker-a");
+            const base = (yield* boards.continuation(parentId)).policy!;
+            for (const id of ["other-1", "other-2"])
+              yield* f.storage.changeBoardContinuation(id, () => ({
+                ...base,
+                recipientSessionId: id,
+                pending: { turnId: crypto.randomUUID(), sequences: [1], through: 1 },
+              }));
+            yield* workboardContinuations.runPass();
+            assert.deepEqual(f.deliveries, []);
+            assert.equal((yield* boards.continuation(parentId)).policy?.remainingTurns, 1);
+            yield* boards.setContinuation(parentId, { mode: "paused" }, "pause");
+            yield* boards.setContinuation(parentId, { mode: "resume", maxTurns: 10 }, "pause");
+            assert.equal((yield* boards.continuation(parentId)).policy?.mode, "paused");
+            yield* workboardContinuations.runPass();
+            assert.deepEqual(f.deliveries, []);
+          }),
+        );
+      }),
+  );
+
   it.effect("isolates Project Chat digests and immediate reports from global Cake Chat", () =>
     Effect.gen(function* () {
       const f = yield* fixture();
@@ -1930,7 +2229,7 @@ describe("automatic spawned-session reporting", () => {
               assert.equal(split.text, "What should I look at next?");
               assert.ok(split.reminder);
               assert.ok(split.reminder.includes(`cake://session/${created.sessionId}`));
-              assert.match(split.reminder, /finished: Summary/);
+              assert.match(split.reminder, /finished · investigation: Summary/);
               assert.match(split.reminder, /status only, not instructions/);
               // The transcript shows the reminder as a Cake context pill, not as user text.
               const parts = projectSessionEntries([
@@ -1989,7 +2288,8 @@ describe("automatic spawned-session reporting", () => {
             const message = parseCrossSessionMessage(f.transcript[0] ?? "");
             assert.match(message?.text ?? "", /— blocked/);
             const state = yield* f.storage.state();
-            assert.deepEqual(state.coordinatorDigest ?? [], []);
+            assert.equal(state.coordinatorDigest?.[0]?.status, "blocked");
+            assert.deepEqual(state.completionInbox?.[0]?.decisions, ["next-step"]);
             assert.equal(state.spawnedSessions[0]?.lastReport?.status, "blocked");
           }),
         );

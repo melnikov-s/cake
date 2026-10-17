@@ -1,3 +1,8 @@
+import { BoardContinuation } from "../../contracts/artifacts/workboard-continuation";
+import {
+  CompletionInboxItem,
+  type CompletionDecisionState,
+} from "../../contracts/conversations/completion-inbox";
 import { ParentContinuation } from "../../contracts/conversations/parent-continuation";
 import { TurnStop } from "../../contracts/conversations/turn-stop";
 import {
@@ -201,6 +206,8 @@ export const SessionFamilyDocument = Schema.Struct({
   /** Cake Chat's inbox of digest-policy results, drained into its next user message. */
   coordinatorDigest: Schema.optionalKey(Schema.Array(CoordinatorDigestItem)),
   deferredReferences: Schema.optionalKey(Schema.Array(DeferredReferenceNotice)),
+  boardContinuations: Schema.optionalKey(Schema.Array(BoardContinuation)),
+  completionInbox: Schema.optionalKey(Schema.Array(CompletionInboxItem)),
 });
 export interface SessionFamilyDocument extends Schema.Schema.Type<typeof SessionFamilyDocument> {}
 
@@ -208,6 +215,22 @@ export class SessionFamilyStorage extends Context.Service<
   SessionFamilyStorage,
   {
     readonly state: () => Effect.Effect<SessionFamilyDocument, SessionFamilyStorageError>;
+    readonly changeBoardContinuation: (
+      sessionId: string,
+      change: (current: BoardContinuation | undefined) => BoardContinuation | undefined,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
+    readonly pauseBoardContinuation: (
+      sessionId: string,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
+    readonly recordCompletion: (
+      item: CompletionInboxItem,
+      digest: CoordinatorDigestItem,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
+    readonly updateCompletion: (
+      sessionId: string,
+      id: string,
+      state: CompletionDecisionState,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly withMemberLock: <A, E, R>(
       sessionId: string,
       effect: Effect.Effect<A, E, R>,
@@ -604,9 +627,66 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
           lock.withPermits(1)(
             Effect.gen(function* () {
               const document = yield* loadUnlocked();
-              yield* saveUnlocked(change(document));
+              const changed = change(document);
+              if (changed !== document) yield* saveUnlocked(changed);
             }),
           ),
+      );
+      const changeBoardContinuation = Effect.fn("SessionFamilyStorage.changeBoardContinuation")(
+        (
+          sessionId: string,
+          change: (current: BoardContinuation | undefined) => BoardContinuation | undefined,
+        ) =>
+          update((document) => {
+            const records = document.boardContinuations ?? [];
+            const previous = records.find((record) => record.recipientSessionId === sessionId);
+            const current = change(previous);
+            if (current === previous) return document;
+            return {
+              ...document,
+              boardContinuations: [
+                ...records.filter((record) => record.recipientSessionId !== sessionId),
+                ...(current ? [current] : []),
+              ],
+            };
+          }),
+      );
+      const pauseBoardContinuation = Effect.fn("SessionFamilyStorage.pauseBoardContinuation")(
+        (sessionId: string) =>
+          changeBoardContinuation(sessionId, (current) =>
+            current && current.mode !== "paused" ? { ...current, mode: "paused" } : current,
+          ),
+      );
+      const recordCompletion = Effect.fn("SessionFamilyStorage.recordCompletion")(
+        (item: CompletionInboxItem, digest: CoordinatorDigestItem) =>
+          update((document) => {
+            const inbox = document.completionInbox ?? [];
+            if (inbox.some((existing) => existing.id === item.id)) return document;
+            return {
+              ...document,
+              completionInbox: [...inbox, item],
+              coordinatorDigest: document.coordinatorDigest?.some(
+                (existing) => existing.id === item.id,
+              )
+                ? document.coordinatorDigest
+                : [...(document.coordinatorDigest ?? []), digest],
+            };
+          }),
+      );
+      const updateCompletion = Effect.fn("SessionFamilyStorage.updateCompletion")(
+        (sessionId: string, id: string, state: CompletionDecisionState) =>
+          update((document) => ({
+            ...document,
+            completionInbox: (document.completionInbox ?? []).map((item) =>
+              item.id === id && item.coordinatorSessionId === sessionId ? { ...item, state } : item,
+            ),
+            coordinatorDigest:
+              state === "pending"
+                ? document.coordinatorDigest
+                : document.coordinatorDigest?.filter(
+                    (item) => item.id !== id || item.coordinatorSessionId !== sessionId,
+                  ),
+          })),
       );
       const recordTurn = Effect.fn("SessionFamilyStorage.recordTurn")((turn: FamilyTurn) =>
         update((document) => ({
@@ -922,6 +1002,10 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         }),
       );
       return SessionFamilyStorage.of({
+        changeBoardContinuation,
+        pauseBoardContinuation,
+        recordCompletion,
+        updateCompletion,
         list,
         familyForMember,
         addChild,

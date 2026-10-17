@@ -439,6 +439,10 @@ const makeLayer = (
     application,
     catalogChanges,
     Layer.succeed(SessionFamilyStorage, {
+      changeBoardContinuation: () => Effect.void,
+      pauseBoardContinuation: () => Effect.void,
+      recordCompletion: () => Effect.void,
+      updateCompletion: () => Effect.void,
       list: () => Effect.succeed(family ? [family] : []),
       familyForMember: (sessionId) =>
         Effect.succeed(

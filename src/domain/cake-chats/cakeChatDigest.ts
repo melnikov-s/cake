@@ -33,15 +33,18 @@ export const prepareUserMessage = Effect.fn("CakeChatDigest.prepareUserMessage")
   text: string,
 ) {
   const snapshot = yield* handle.snapshot();
-  const interruptedReport = snapshot.streaming && runStartedByReport(snapshot.parts);
+  const interruptedReport =
+    handle.profile === "CakeChatSession" &&
+    snapshot.streaming &&
+    runStartedByReport(snapshot.parts);
   if (interruptedReport) yield* handle.abort();
   const storage = yield* SessionFamilyStorage;
   const admitted = handle.admittedDigestIds ? yield* handle.admittedDigestIds() : [];
   if (admitted.length) yield* storage.removeDigest(admitted);
   const state = yield* storage.state();
-  const items = (state.coordinatorDigest ?? []).filter(
-    (item) => (item.coordinatorSessionId ?? CAKE_CHAT_SESSION_ID) === snapshot.sessionId,
-  );
+  const items = (state.coordinatorDigest ?? [])
+    .filter((item) => (item.coordinatorSessionId ?? CAKE_CHAT_SESSION_ID) === snapshot.sessionId)
+    .slice(0, 20);
   const knownIds = [
     ...new Set([
       ...items.map((item) => item.sessionId),
@@ -71,6 +74,9 @@ export const prepareUserMessage = Effect.fn("CakeChatDigest.prepareUserMessage")
       title: item.title,
       status: item.status,
       summary: item.summary,
+      references: state.completionInbox?.find((entry) => entry.id === item.id)?.references,
+      kind: state.completionInbox?.find((entry) => entry.id === item.id)?.kind,
+      decisions: state.completionInbox?.find((entry) => entry.id === item.id)?.decisions,
     })),
     running,
     interruptedReport,

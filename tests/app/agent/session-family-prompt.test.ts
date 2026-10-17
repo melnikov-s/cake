@@ -32,11 +32,11 @@ describe("Project Session family communication policy", () => {
     );
     expect(project).toContain("Create children with expectsResponse: false");
     expect(project).toContain("bootstrap board discovery only");
-    expect(project).toContain(
-      "Board posts neither wake idle members nor clear runtime-managed report obligations",
-    );
+    expect(project).toContain("Posts never clear runtime-managed report obligations");
     expect(project).toContain("no private workaround or extra report");
     expect(project).toContain("Polling requires explicit user request");
+    expect(project).toContain("only authorized boards.continuation.set grants");
+    expect(project).toContain("Launch asynchronously; block only at the user");
     expect(project).toContain("let the user resume members");
     expect(project).toContain("No board: disclose, never invent/fallback");
   });

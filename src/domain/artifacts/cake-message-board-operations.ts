@@ -1,5 +1,9 @@
 import { Schema } from "effect";
 import {
+  BoardContinuation,
+  BoardContinuationInput,
+} from "../../contracts/artifacts/workboard-continuation";
+import {
   BoardAppendInput,
   BoardCurrentInput,
   BoardDescription,
@@ -15,14 +19,69 @@ import {
 import type { MessageBoardControl } from "../../contracts/artifacts/message-board-control";
 import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
 
+const continuationOperations = (
+  control: NonNullable<MessageBoardControl["continuation"]>,
+): CakeOperationDefinition[] => [
+  {
+    command: "boards.continuation.get",
+    topic: "boards",
+    summary:
+      "Inspect your own saved Workboard continuation grant, budget, cursor and execution receipt.",
+    examples: [{ input: {} }],
+    result: "The saved grant and independent execution receipt, or null when passive.",
+    inputSchema: Schema.Struct({}),
+    outputSchema: Schema.Struct({
+      boardId: Schema.String,
+      policy: Schema.NullOr(BoardContinuation),
+    }),
+    execute: () => control.get(),
+  },
+  {
+    command: "boards.continuation.set",
+    topic: "boards",
+    summary:
+      "Opt your coordinator into bounded continuation for future addressed completion/blocker events, or pause/disable it.",
+    examples: [
+      {
+        input: {
+          mode: "resume",
+          topic: "implementation",
+          awaitAuthors: ["s:236e7b8b"],
+          maxTurns: 1,
+        },
+      },
+    ],
+    result: "The saved bounded grant; configuration returns without waiting for results.",
+    inputSchema: BoardContinuationInput,
+    outputSchema: Schema.Struct({
+      boardId: Schema.String,
+      policy: Schema.NullOr(BoardContinuation),
+    }),
+    guidance: [
+      "Only configure resume when the user authorized dependent continuation. Default is passive. This is asynchronous: return immediately; never wait/poll. It preserves expectsResponse:false and creates no private reports.",
+      "New grants begin after the latest existing entry; set after explicitly to include older results. Set topic and awaitAuthors for an explicit completion batch. All named authors must post event:completion on that topic; an addressed event:blocker can break the barrier. Links, prose, read receipts, self posts and workgroup broadcasts do not request turns.",
+      "maxTurns defaults to one, at most ten per explicit grant. At most two Workboard continuations are outstanding process-wide and one per recipient. Active/queued parent work finishes first. Never rearm an exhausted grant without user authorization.",
+      "Pause/off prevents future admission; it does not abort an already-running turn. Explicit abort pauses the grant. Resume is explicit and preserves pending delivery receipts; restart never clears the budget or cancellation history.",
+      "This grant only schedules inspection and already-authorized dependent work. Completion does not grant review/merge/resolve mutations. Quiet completion notices are separate and surface after answering the next user message.",
+    ],
+    execute: (input, context) =>
+      control.set(Schema.decodeUnknownSync(BoardContinuationInput)(input), context.toolCallId),
+  },
+];
+
 export const createMessageBoardOperations = (
   control: MessageBoardControl,
 ): CakeOperationDefinition[] => [
+  ...(control.continuation ? continuationOperations(control.continuation) : []),
+
   {
     command: "boards.append",
     topic: "boards",
     summary:
       "Append a substantive finding, decision, question, blocker, or result to the workgroup's Workboard.",
+    guidance: [
+      "Declare event: completion or blocker for an addressed result, and resultKind: ready or investigation. These typed facts may satisfy an explicitly authorized recipient continuation grant or quiet result notice; prose/links and read receipts never imply intent. Never duplicate a board result with a private report.",
+    ],
     inputSchema: BoardAppendInput,
     outputSchema: Schema.Struct({ boardId: Schema.String, entry: BoardDescription }),
     examples: [

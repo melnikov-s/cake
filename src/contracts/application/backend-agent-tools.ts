@@ -250,6 +250,30 @@ const definitions = [
     },
   },
   {
+    command: "sessions.completions",
+    scope: "global",
+    discovery: {
+      topic: "sessions",
+      summary:
+        "Inspect your quiet completion inbox and outstanding review/merge/resolve/next-step decisions, without waking work.",
+      guidance: [
+        "Returns at most fifty pending/deferred items scoped to this requesting conversation. New results are grouped after answering the user's next message; delivered notices do not repeat. Completion is never permission to mutate or merge.",
+      ],
+    },
+  },
+  {
+    command: "sessions.completions.update",
+    scope: "global",
+    discovery: {
+      topic: "sessions",
+      summary:
+        "Record a user's completion decision as deferred, handled or dismissed; this never performs review, merge or resolution.",
+      guidance: [
+        "Use after the user makes or defers a decision. Do not mark handled merely because a session finished or its notice was shown. This changes only inbox metadata and never rearms a notification.",
+      ],
+    },
+  },
+  {
     command: "sessions.send",
     scope: "global",
     discovery: {

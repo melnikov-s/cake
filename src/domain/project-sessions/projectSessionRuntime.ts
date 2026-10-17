@@ -357,6 +357,8 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
     },
     onTurnSettled: (event) =>
       Effect.gen(function* () {
+        if (event.outcome === "aborted" || event.outcome === "failed")
+          yield* families.pauseBoardContinuation(sessionId);
         yield* coordination.settleTurn(event.turnId, event.outcome);
         if (event.outcome !== "aborted") yield* markFinishedTurnUnread;
         const workflowOwnsCompletion = yield* workflowLifecycle

@@ -16,7 +16,10 @@ const BoardRelations = {
     Schema.Array(BoardSequence).check(Schema.isMinLength(1), Schema.isMaxLength(10)),
   ),
 };
+const BoardEvent = Schema.Literals(["completion", "blocker"]);
 export const BoardAppendInput = Schema.Struct({
+  event: Schema.optionalKey(BoardEvent),
+  resultKind: Schema.optionalKey(Schema.Literals(["ready", "investigation"])),
   description: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
   body: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(32_768)),
   audience: BoardAudience,
@@ -29,6 +32,8 @@ export const BoardEntry = Schema.Struct({
   createdAt: Schema.String,
   description: BoardAppendInput.fields.description,
   body: BoardAppendInput.fields.body,
+  event: BoardAppendInput.fields.event,
+  resultKind: BoardAppendInput.fields.resultKind,
   audience: BoardAudience,
   ...BoardRelations,
 });
@@ -38,6 +43,8 @@ export const BoardDescription = Schema.Struct({
   authorSessionId: BoardSessionId,
   createdAt: Schema.String,
   description: BoardAppendInput.fields.description,
+  event: BoardAppendInput.fields.event,
+  resultKind: BoardAppendInput.fields.resultKind,
   audience: BoardAudience,
   ...BoardRelations,
 });
@@ -113,6 +120,8 @@ export const boardDescription = (entry: BoardEntry): BoardDescription => {
     description: entry.description,
     audience: entry.audience,
   };
+  if (entry.event !== undefined) Object.assign(description, { event: entry.event });
+  if (entry.resultKind !== undefined) Object.assign(description, { resultKind: entry.resultKind });
   if (entry.topic !== undefined) Object.assign(description, { topic: entry.topic });
   if (entry.supersedes !== undefined) Object.assign(description, { supersedes: entry.supersedes });
   return description;

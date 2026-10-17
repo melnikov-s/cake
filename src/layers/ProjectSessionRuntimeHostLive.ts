@@ -399,6 +399,13 @@ export const makeProjectSessionRuntimeHostLive = (
                     ({
                       ...acquire(workingDirectory, sessionId).host.runtimeIntegrations(sessionId),
                       messageBoardControl: {
+                        continuation: {
+                          get: () => runAdapter(messageBoards.continuation(sessionId)),
+                          set: (input, authorizationId) =>
+                            runAdapter(
+                              messageBoards.setContinuation(sessionId, input, authorizationId),
+                            ),
+                        },
                         append: (input) =>
                           runAdapter(
                             messageBoards.append(sessionId, input).pipe(

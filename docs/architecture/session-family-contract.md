@@ -139,9 +139,47 @@ completion/request IDs and existing Pi consumption receipts deduplicate retries.
 are delivery guarantees, not permission to replay uncertain worker tool effects.
 
 Workboard-only children must still use expectsResponse:false and omit continuation.
-This API does not add automatic board wake-up. Independent Project Session `session.create`
+The private continuation API does not authorize board wake-up; the independent explicit Workboard grant below does. Independent Project Session `session.create`
 still has no automatic creator-report relationship. Explicit `message_parent` and questions
 remain immediate; an explicitly blocked session report still escalates even under none.
+
+### Workboard continuation and quiet decisions
+
+Workboards remain passive unless a recipient explicitly grants `boards.continuation.set`.
+The grant persists an authorization ID, topic/expected authors, finite remaining parent-input
+budget (one by default, at most ten), cursor, completed-author credit and a stable pending input ID.
+New grants start after existing entries unless an explicit `after` cursor opts older results in.
+Only current typed completion/blocker entries explicitly addressed to the recipient qualify;
+self, broadcast, wrong-author/topic, untyped and superseded posts never do. Expected-author
+batches coalesce into one inspection; a blocker may break the barrier without losing
+previous completion credit.
+
+The existing family notice worker admits at most two outstanding Workboard inputs globally
+and one per recipient, behind active/queued user work, using normal durable runtime admission.
+It persists the ID/budget before submission and consults Pi consumption and durable cancellation
+receipts on retry. Failed/aborted execution or explicit session abort pauses future admission;
+paused/off grants do not abort an already-admitted turn. Resolved/missing members relinquish
+pending capacity. Runtime recovery gates remain authoritative. This limits automatic input
+count/concurrency, not monetary cost or tokens within an individual model turn.
+Board intake/read receipts are not execution receipts. No private report obligation is created,
+and completion never expands mutation/delegation authorization.
+
+Separately, `completionInbox` retains ready/blocked/investigation results and pending
+review/merge/resolve/next-step decisions, scoped to the requesting conversation. Typed board
+results addressed to their parent participate even with no execution grant; broadcasts do not.
+Implicit unclassified answers are investigations; explicit completed reports or resultKind classify
+ready work, with merge suggestions only for ready isolated sessions. `sessions.completions`
+pages pending/deferred records; update changes only decision metadata, never executes actions
+or rearms notices.
+
+`recordCompletion` atomically deduplicates the retained decision and its one-time coordinator
+digest. Both ordinary Project Sessions and permanent chats attach at most twenty new result
+notices to the next real user input. Linked reports retain exact references in the same group,
+not duplicate private reminders. The reminder instructs the agent to answer first, then offer a
+single quiet group at a natural boundary (or defer if disruptive); this is conversational guidance,
+not a renderer-enforced post-answer widget. Decisions survive delivery without repeated nags.
+Admission receipts prevent replay when accepted input outlives digest removal. No transcript
+is copied: full reports remain Pi-owned. Execution continuation is independent of this inbox.
 
 ### Cake Chat report policy
 

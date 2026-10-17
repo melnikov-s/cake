@@ -1,4 +1,6 @@
 import { DateTime, Effect, Option, Schema } from "effect";
+import type { BoardContinuationInput } from "../../contracts/artifacts/workboard-continuation";
+import { queueBoardResult } from "../conversations/completionInbox";
 import { resolveSessionReference } from "../../contracts/project-sessions/session-reference";
 import type { BoardNoticeEntry } from "../../contracts/artifacts/message-board-control";
 import { ClientEvents } from "../../services/clients/ClientEvents";
@@ -23,7 +25,7 @@ import {
 
 const failure = (operation: string, message: string) =>
   new MessageBoardError({ operation, message });
-const boardIdFor = (familyId: string) =>
+export const boardIdFor = (familyId: string) =>
   Schema.decodeUnknownSync(ArtifactLineageId)(`family-board-${familyId}`);
 
 const publishInvalidation = Effect.fn("MessageBoards.publishInvalidation")(function* (
@@ -113,8 +115,76 @@ export const append = Effect.fn("MessageBoards.append")(function* (
     audience = [...new Set(resolved)];
   }
   const entry = yield* (yield* MessageBoardStorage).append(id, sessionId, { ...input, audience });
+  yield* queueBoardResult(family, id, entry);
   yield* publishInvalidation(id);
   return { boardId: id, entry: boardDescription(entry) };
+});
+
+export const continuation = Effect.fn("MessageBoards.continuation")(function* (sessionId: string) {
+  const { id } = yield* callerBoard(sessionId);
+  return {
+    boardId: id,
+    policy:
+      (yield* (yield* SessionFamilyStorage).state()).boardContinuations?.find(
+        (item) => item.recipientSessionId === sessionId,
+      ) ?? null,
+  };
+});
+
+export const setContinuation = Effect.fn("MessageBoards.setContinuation")(function* (
+  sessionId: string,
+  input: BoardContinuationInput,
+  authorizationId: string,
+) {
+  const { id, family } = yield* callerBoard(sessionId);
+  const authors: string[] = [];
+  for (const reference of input.awaitAuthors ?? []) {
+    const resolved = resolveSessionReference(reference, familyMemberIds(family));
+    if (!resolved.ok) return yield* failure("continuation", resolved.error);
+    if (resolved.sessionId === sessionId)
+      return yield* failure("continuation", "A batch cannot await the coordinator's own result");
+    authors.push(resolved.sessionId);
+  }
+  if (authors.length && !input.topic)
+    return yield* failure("continuation", "An expected-author batch requires a stable topic");
+  const latest = (yield* (yield* MessageBoardStorage).entries(id)).at(-1)?.sequence ?? 0;
+  const storage = yield* SessionFamilyStorage;
+  yield* storage.withNoticeDelivery(
+    storage.changeBoardContinuation(sessionId, (current) => {
+      if (current?.authorizationId === authorizationId) return current;
+      if (input.mode !== "resume")
+        return current
+          ? { ...current, mode: input.mode, authorizationId }
+          : {
+              recipientSessionId: sessionId,
+              boardId: id,
+              authorizationId,
+              mode: input.mode,
+              after: latest,
+              awaitAuthors: [],
+              completedAuthors: [],
+              remainingTurns: 0,
+            };
+      return {
+        ...current,
+        recipientSessionId: sessionId,
+        boardId: id,
+        authorizationId,
+        mode: "resume",
+        after: input.after ?? current?.after ?? latest,
+        completedAuthors:
+          input.after !== undefined ||
+          (input.topic !== undefined && input.topic !== current?.topic) ||
+          input.awaitAuthors !== undefined
+            ? []
+            : (current?.completedAuthors ?? []),
+        awaitAuthors: input.awaitAuthors ? [...new Set(authors)] : (current?.awaitAuthors ?? []),
+        remainingTurns: input.maxTurns ?? 1,
+        ...(input.topic ? { topic: input.topic } : null),
+      };
+    }),
+  );
+  return yield* continuation(sessionId);
 });
 
 const page = <T extends { readonly sequence: number }>(

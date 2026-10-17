@@ -24,6 +24,7 @@ import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import * as application from "./application";
 import { defaultProjectSettings } from "../../contracts/application/application-data";
 import * as agentSettings from "./agentSettings";
+import * as completionInbox from "../conversations/completionInbox";
 import * as agentSessionMessaging from "./agentSessionMessaging";
 import * as agentActionNotices from "./agentActionNotices";
 import { AgentControlError } from "./agentSettings";
@@ -493,6 +494,18 @@ export const invoke: (
             })),
           });
         }
+        case "sessions.completions":
+          return toJsonValue({
+            ok: true,
+            command,
+            ...(yield* completionInbox.list(caller.sessionId, invocation.arguments)),
+          });
+        case "sessions.completions.update":
+          return toJsonValue({
+            ok: true,
+            command,
+            ...(yield* completionInbox.update(caller.sessionId, invocation.arguments)),
+          });
         case "sessions.send":
         case "sessions.reply":
         case "sessions.thread":

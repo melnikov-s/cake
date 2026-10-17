@@ -109,6 +109,8 @@ const CAKE_CHAT_OPERATIONS = [
   "sessions.reply",
   "sessions.thread",
   "sessions.close-thread",
+  "sessions.completions",
+  "sessions.completions.update",
   "sessions.abort",
   "sessions.rename",
   "sessions.resolve",

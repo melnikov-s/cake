@@ -2,6 +2,7 @@ import {
   ParentContinuation,
   parentContinuationGuidance,
 } from "../../contracts/conversations/parent-continuation";
+import { CompletionInboxUpdate } from "../../contracts/conversations/completion-inbox";
 import { AgentListInput } from "../../contracts/agent/agent-list-data";
 import { messageRefsSchema } from "../../contracts/conversations/message-reference";
 import { inputRefsSchema } from "../../contracts/conversations/task-input";
@@ -25,6 +26,30 @@ export function createSessionFamilyOperations(
     };
   return [
     {
+      command: "sessions.completions",
+      requires: "invokeAppControl",
+      topic: "sessions",
+      summary:
+        "Page pending/deferred completion decisions in your quiet inbox; nextOffset retrieves older pages.",
+      inputSchema: AgentListInput,
+      examples: [{ input: {} }],
+      result:
+        "At most fifty own ready, blocked or investigation results with pending decisions; listing starts no work.",
+      execute: invokeAppControl("sessions.completions"),
+    },
+    {
+      command: "sessions.completions.update",
+      requires: "invokeAppControl",
+      topic: "sessions",
+      summary:
+        "Record a user decision as deferred, handled or dismissed; never performs review/merge/resolve.",
+      inputSchema: CompletionInboxUpdate,
+      examples: [{ input: { id: "completion-id", state: "deferred" } }],
+      result:
+        "Updated own inbox metadata. Completion and notice delivery are not action authorization.",
+      execute: invokeAppControl("sessions.completions.update"),
+    },
+    {
       command: "sessions.create-child",
       requires: "createChildSession",
       topic: "sessions",
@@ -36,7 +61,7 @@ export function createSessionFamilyOperations(
         "Omit worktreeName to share the caller's exact Working Directory. Supply worktreeName to create a Cake-managed worktree branched from the caller's current checkout.",
         "This operation returns after the initial child turn is accepted; do not wait or poll for the child, and finish the parent turn normally.",
         "Set expectsResponse: false for family children and request their result on the shared Workboard. The runtime default true creates a private automatic creator-report obligation; board posts do not clear existing obligations. Prompt policy cannot reroute those notices. Later user-started turns never report back.",
-        "Creation automatically establishes/extends the family and joins its shared Workboard. Board posts do not wake idle members; do not use private messages/steering as a workaround. Explain to the user when a member needs resuming. Omit continuation on board-only children: an explicit choice creates a private result obligation even with expectsResponse: false.",
+        "Creation automatically establishes/extends the family and joins its shared Workboard. Board posts are passive unless the recipient explicitly granted bounded boards.continuation.set for addressed completion/blocker events. Ordinary assignments still do not wake idle members; disclose that limit, without private messages/steering workarounds. Omit continuation on board-only children: an explicit choice creates a private result obligation even with expectsResponse: false.",
         "Pane placement defaults to none. Set placement to right or down only when the child should be opened beside the parent.",
         "Omit model unless the user explicitly asks for a specific model. When omitted, the child uses the configured default model preset's complete settings (provider, model, thinking level, and Fast mode; see models.list), not the calling session's current model. Only when no default preset is configured does it use the calling session's current settings.",
       ],
@@ -199,6 +224,7 @@ export function createSessionFamilyOperations(
         continuation: Schema.optionalKey(ParentContinuation),
         replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
         outcome: Schema.optionalKey(Schema.Literals(["completed", "blocked", "failed"])),
+        resultKind: Schema.optionalKey(Schema.Literals(["ready", "investigation"])),
       }),
       examples: [{ input: { text: "Completed the review; focused tests pass." } }],
       result:

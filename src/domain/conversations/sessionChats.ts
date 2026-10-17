@@ -131,7 +131,9 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
         : [];
     // A user message to Cake Chat yields any report-triggered run and carries the quiet inbox.
     const userMessage =
-      handle.profile === "CakeChatSession" && !message.crossSession
+      primary &&
+      !message.crossSession &&
+      !(handle.profile === "ProjectSession" && /^[!/]/.test(message.text))
         ? yield* cakeChatDigest.prepareUserMessage(handle, message.text).pipe(asError("deliver"))
         : undefined;
     const text = message.crossSession
@@ -178,6 +180,9 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
 export const abort = Effect.fn("SessionChats.abort")(function* (
   target: SessionChatTarget & { readonly stop: TurnStop },
 ) {
+  yield* (yield* SessionFamilyStorage)
+    .pauseBoardContinuation(target.sessionId)
+    .pipe(asError("abort"));
   yield* abortConversation(acquire(target.sessionId), target.stop).pipe(asError("abort"));
 });
 

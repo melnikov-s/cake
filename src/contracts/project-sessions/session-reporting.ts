@@ -7,6 +7,7 @@ export const SessionTaskOutcome = Schema.Literals(["completed", "blocked", "fail
 
 /** "result" is a substantive final answer whose task outcome was not explicitly declared. */
 export const SessionCompletionReport = Schema.Struct({
+  resultKind: Schema.optionalKey(Schema.Literals(["ready", "investigation"])),
   outcome: Schema.Literals(["result", "completed", "blocked", "failed"]),
   text: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100_000))),
 });

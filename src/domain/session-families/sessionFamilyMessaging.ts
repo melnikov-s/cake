@@ -46,6 +46,7 @@ export const FamilyMessageInput = Schema.Struct({
   continuation: Schema.optionalKey(ParentContinuation),
   replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
   outcome: Schema.optionalKey(SessionTaskOutcome),
+  resultKind: Schema.optionalKey(Schema.Literals(["ready", "investigation"])),
 });
 export interface FamilyMessageInput extends Schema.Schema.Type<typeof FamilyMessageInput> {}
 
@@ -119,6 +120,7 @@ export const route: (
       );
     yield* families.recordReport(pending.turnId, {
       outcome: input.outcome,
+      ...(input.resultKind ? { resultKind: input.resultKind } : null),
       text: input.text,
     });
     return toJsonValue({
@@ -228,6 +230,7 @@ export const route: (
     for (const request of preparedRequests)
       yield* families.recordReport(request.turnId, {
         outcome: input.outcome ?? "result",
+        ...(input.resultKind ? { resultKind: input.resultKind } : null),
         text: input.text,
       });
   // Ordinary delivery starts an idle recipient or queues behind active work.

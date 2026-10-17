@@ -21,6 +21,7 @@ import type { MessageOperationControl } from "../../../src/contracts/conversatio
 import type { SubagentAttachmentFactory } from "../../../src/contracts/subagents/subagent-attachments";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { configureCakeSessionRuntime } from "../../../src/layers/CakeOperations";
+import type { SubagentControlRequirements } from "../../../src/domain/subagents/subagentControl";
 import { makeSubagentControl } from "../../../src/domain/subagents/subagentControl";
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
@@ -1679,6 +1680,41 @@ describe("Subagents", () => {
       });
       yield* program.pipe(Effect.provide(fixture.layer));
     }),
+  );
+
+  it.effect.each(["project", "cake-chat"])(
+    "public %s launch and follow-up return before worker completion",
+    (profile) =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture();
+        yield* Effect.gen(function* () {
+          const context = yield* Effect.context<SubagentControlRequirements>();
+          const caller = profile === "project" ? parent(fixture) : cakeChatParent(fixture);
+          const control = makeSubagentControl({
+            runEffect: (effect, signal) =>
+              Effect.runPromise(Effect.provide(effect, context), { signal }),
+          })(() => caller.options, caller.workingDirectory);
+          const signal = new AbortController().signal;
+          const receipt = Schema.decodeUnknownSync(subagents.SubagentStartReceipt)(
+            yield* Effect.promise(() =>
+              control.start({ task: "Investigate" }, caller.parentSessionId, signal),
+            ),
+          );
+          const child = yield* Queue.take(fixture.childStarted);
+          yield* completeChild(fixture, child);
+          yield* Queue.take(fixture.reports);
+          yield* Effect.promise(() =>
+            control.prompt(
+              { handleId: receipt.handleId, text: "Continue investigation", delivery: "prompt" },
+              caller.parentSessionId,
+              signal,
+            ),
+          );
+          assert.equal(yield* Queue.take(fixture.childStarted), child);
+          yield* completeChild(fixture, child);
+          yield* Queue.take(fixture.reports);
+        }).pipe(Effect.provide(Layer.merge(fixture.layer, Layer.mock(TaskInputStorage, {}))));
+      }),
   );
 
   it.effect("serializes follow-up turns on the stable handle without another runtime", () =>

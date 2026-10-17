@@ -144,7 +144,7 @@ export const makeSubagentControl =
             input.handleId,
             input.text,
             input.delivery,
-            options().profile._tag === "CakeChatSession",
+            true,
             input.inputRefs,
             input.messageRefs,
             input.continuation,

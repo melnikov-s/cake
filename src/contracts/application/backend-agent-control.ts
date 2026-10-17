@@ -1,3 +1,4 @@
+import { CompletionInboxUpdate } from "../conversations/completion-inbox";
 import { ParentContinuation } from "../conversations/parent-continuation";
 import { Schema } from "effect";
 import { SessionLabelColor } from "./application-data";
@@ -112,6 +113,8 @@ export const BackendAgentInvocation = Schema.Union([
     }),
   ),
   operation("sessions.reply", Schema.Struct(message)),
+  operation("sessions.completions", AgentListInput),
+  operation("sessions.completions.update", CompletionInboxUpdate),
   operation("sessions.thread", Schema.Struct({ threadId: Schema.optionalKey(id) })),
   operation("sessions.close-thread", Schema.Struct({ threadId: Schema.optionalKey(id) })),
 ]);
@@ -145,4 +148,6 @@ export const backendAgentCommands: ReadonlySet<string> = new Set([
   "sessions.reply",
   "sessions.thread",
   "sessions.close-thread",
+  "sessions.completions",
+  "sessions.completions.update",
 ]);

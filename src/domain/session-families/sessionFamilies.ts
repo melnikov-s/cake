@@ -7,6 +7,8 @@ import {
 import type { ParentContinuation } from "../../contracts/conversations/parent-continuation";
 import { isReferenceNotification } from "../../contracts/conversations/reference-notification";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
+import * as workboardContinuations from "./workboardContinuations";
+import * as completionInbox from "../conversations/completionInbox";
 import { ensureBoard } from "../artifacts/messageBoards";
 import {
   CAKE_CHAT_SESSION_ID,
@@ -551,6 +553,20 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
       turn.sessionId,
     )
     .pipe(Effect.catch(() => Effect.succeed(undefined)));
+  yield* queueTurnCompletion(
+    turn,
+    undefined,
+    childSummary?.title,
+    childMember.workingDirectory !== senderMember.workingDirectory,
+  );
+  if (
+    (turn.continuation ?? "resume") === "none" &&
+    turn.report &&
+    isReferenceNotification(turn.report.text)
+  ) {
+    yield* storage.completeNotice(turn.turnId);
+    return;
+  }
   const missingResponse = turn.outcome === "complete";
   const text = encodeCrossSessionMessage(
     report
@@ -621,10 +637,7 @@ const deliverOutcome = Effect.fn("SessionFamilies.deliverOutcome")(function* (
         turn.report?.outcome !== "blocked" &&
         (turn.continuation ?? (turn.reportPolicy === "digest" ? "none" : "resume")) === "none"
       ) {
-        yield* storage.deferReferenceNotice(
-          { id: turn.turnId, recipientSessionId: turn.senderSessionId, text },
-          [turn.turnId],
-        );
+        yield* storage.completeNotice(turn.turnId);
         return;
       }
       const snapshot = yield* sender.snapshot();
@@ -685,6 +698,7 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
       inputRefs?: readonly string[];
       messageRefs?: readonly string[];
       outcome?: SessionCompletionReport["outcome"];
+      resultKind?: "ready" | "investigation";
     },
     location: ProjectSessionLocation,
     senderContext?: CrossSessionContextSnapshot,
@@ -743,6 +757,7 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
         );
       yield* storage.recordReport(pending.turnId, {
         outcome: input.outcome ?? "result",
+        ...(input.resultKind ? { resultKind: input.resultKind } : null),
         text: appendMessageReferences(input.text, input.messageRefs ?? []),
       });
       // Explicit input forwarding is delivered below rather than silently discarded.
@@ -936,6 +951,39 @@ const sessionTitle = Effect.fn("SessionFamilies.sessionTitle")(function* (
   return undefined;
 });
 
+const queueTurnCompletion = Effect.fn("SessionFamilies.queueTurnCompletion")(function* (
+  turn: FamilyTurn,
+  spawn?: SpawnedSession,
+  title?: string,
+  isolated = false,
+) {
+  const report = turn.report;
+  const status = launchStatus(turn, report);
+  yield* completionInbox.queue({
+    id: turn.turnId,
+    coordinatorSessionId: turn.senderSessionId,
+    sessionId: turn.sessionId,
+    title: (
+      title ??
+      (yield* sessionTitle(turn.sessionId, spawn?.workingDirectory).pipe(
+        Effect.catch(() => Effect.succeed(undefined)),
+      )) ??
+      `Session ${turn.sessionId}`
+    ).slice(0, 500),
+    summary: digestSummary(turn, report).slice(0, 500),
+    ...(report && isReferenceNotification(report.text)
+      ? { references: report.text.replace(/\s+/g, " ").slice(0, 6000) }
+      : null),
+    reportedAt: DateTime.formatIso(yield* DateTime.now),
+    status,
+    kind:
+      status !== "completed"
+        ? "blocked"
+        : (report?.resultKind ?? (report?.outcome === "completed" ? "ready" : "investigation")),
+    isolated: isolated || (spawn !== undefined && spawn.workingDirectory !== spawn.projectPath),
+  });
+});
+
 /**
  * Cake Chat results follow the request's report policy. Digest settles the obligation into the
  * quiet inbox without starting a turn; a blocked report escalates to immediate delivery.
@@ -958,6 +1006,7 @@ const deliverCoordinatorNotice = Effect.fn("SessionFamilies.deliverCoordinatorNo
     summary: digestSummary(turn, report),
     reportedAt: DateTime.formatIso(yield* DateTime.now),
   };
+  yield* queueTurnCompletion(turn, spawn);
   const publishLaunch = spawn
     ? catalogs.publish({
         _tag: "ProjectSessionChanged",
@@ -995,12 +1044,7 @@ const deliverCoordinatorNotice = Effect.fn("SessionFamilies.deliverCoordinatorNo
         ).pipe(Effect.mapError((error) => failure(error.message)))
       : undefined;
   if (referenceText && isReferenceNotification(referenceText)) {
-    yield* storage.withNoticeDelivery(
-      storage.deferReferenceNotice(
-        { id: turn.turnId, recipientSessionId: turn.senderSessionId, text: referenceText },
-        [turn.turnId],
-      ),
-    );
+    yield* storage.completeNotice(turn.turnId);
     if (spawn) yield* storage.recordLaunchReport(spawn.sessionId, launchReport);
     yield* publishLaunch;
     return;
@@ -1074,6 +1118,7 @@ const deliverCoordinatorNotice = Effect.fn("SessionFamilies.deliverCoordinatorNo
 });
 
 const runPass = Effect.fn("SessionFamilies.deliverPendingNotices")(function* () {
+  yield* workboardContinuations.runPass();
   const storage = yield* SessionFamilyStorage;
   for (const turn of (yield* storage.state()).turns) {
     if (!turn.outcome || turn.reported) continue;

@@ -91,7 +91,7 @@ export function createAgentControlOperations(
       ? guidance
       : definition.command === "subagents.prompt" || definition.command === "subagents.follow-up"
         ? [
-            'Follow-ups inherit the handle continuation choice. Override continuation with "none" for report-only or "resume" for dependent parent work; background completion uses that choice, while a blocking prompt returns the result directly.',
+            'Follow-ups are asynchronous on every caller surface and inherit the handle continuation choice. Override continuation with "none" for report-only or "resume" for dependent parent work; waiting requires an explicit user request and subagents.wait.',
             ...guidance.slice(5, 8),
           ]
         : guidance.slice(5, 6),
@@ -158,7 +158,7 @@ export function createAgentControlOperations(
     }),
     operation({
       command: "subagents.prompt",
-      summary: "Send a normal prompt to an idle subagent and wait for its turn.",
+      summary: "Start an asynchronous prompt on an idle subagent and return after acceptance.",
       schema: promptSchema,
       example: { handleId: "00000000-0000-4000-8000-000000000000", text: "Continue" },
       run: (input, parent, signal) =>

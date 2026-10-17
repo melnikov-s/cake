@@ -1266,7 +1266,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
               return undefined;
             }),
           admittedDigestIds:
-            shared.profile === "CakeChatSession"
+            shared.profile === "CakeChatSession" || shared.profile === "ProjectSession"
               ? () =>
                   recoveryStorage.get(shared.runtime.sessionId).pipe(
                     Effect.map((record) => record?.deliveredDigestIds ?? []),
