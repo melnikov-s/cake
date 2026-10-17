@@ -84,6 +84,17 @@ export function launchedSessionNeedsAttention(status: LaunchedSessionStatus) {
   return status === "needs-you" || status === "failed" || status === "interrupted";
 }
 
+/** Reuse chat dot semantics in delegated-session menus, including idle and stopped absence. */
+export const launchedSessionActivity = {
+  running: "running",
+  "needs-you": "waiting",
+  failed: "error",
+  stopped: "stopped",
+  interrupted: "error",
+  done: "unread",
+  idle: undefined,
+} as const satisfies Record<LaunchedSessionStatus, SessionActivity | undefined>;
+
 export const launchedSessionStatusLabel = {
   running: "Running",
   "needs-you": "Needs you",

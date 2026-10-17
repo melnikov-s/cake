@@ -39,7 +39,7 @@ export const SidebarProjectChatItem = observer(function SidebarProjectChatItem({
       icon={<CakeIcon aria-hidden />}
       active={selected}
       className="text-[13px] [&_[data-slot=icon]]:size-4"
-      trailing={activity && <SessionActivityIndicator activity={activity} selected={selected} />}
+      trailing={activity && <SessionActivityIndicator activity={activity} />}
       onClick={() => onOpen(summary.sessionId)}
       onContextMenu={(event) => {
         event.preventDefault();

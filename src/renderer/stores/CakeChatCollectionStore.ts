@@ -1,5 +1,5 @@
 import { Store, child, createStore, observable } from "r-state-tree";
-import type { SessionActivity } from "../lib/session-activity";
+import { settledSessionActivity, type SessionActivity } from "../lib/session-activity";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import type {
   ChatConfiguration,
@@ -147,7 +147,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
       !(this.props.isSelected() && this.sessionId === sessionId) &&
       model.settledTurnRevision > (this.readSettledTurnRevisions.get(sessionId) ?? 0)
     )
-      return model.settledTurns.at(-1)?.outcome === "failed" ? "error" : "unread";
+      return settledSessionActivity(model.settledTurns.at(-1)?.outcome, model.parts);
     return this.summaries.find((session) => session.sessionId === sessionId)?.unread
       ? "unread"
       : undefined;

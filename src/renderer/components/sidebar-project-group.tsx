@@ -1,5 +1,4 @@
 import { SessionActivityIndicator } from "./session-activity-indicator";
-import { StatusDot } from "./ui/status-dot";
 import type { CakeChatCollectionStore } from "../stores/CakeChatCollectionStore";
 import { useState } from "react";
 import { observer } from "r-state-tree/react";
@@ -191,20 +190,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
                     sortMenuOpen && "opacity-0",
                   )}
                 >
-                  {projectChatActivity ? (
-                    <SessionActivityIndicator
-                      activity={projectChatActivity}
-                      selected={projectChatSelected}
-                    />
-                  ) : (
-                    <StatusDot
-                      className="size-2"
-                      role="img"
-                      aria-hidden={undefined}
-                      aria-label="Ready"
-                      title="Project Chat ready"
-                    />
-                  )}
+                  <SessionActivityIndicator activity={projectChatActivity} />
                 </div>
               )}
               <div

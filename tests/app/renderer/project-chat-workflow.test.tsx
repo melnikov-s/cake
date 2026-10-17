@@ -5,6 +5,7 @@ import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
+import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import { App } from "../../../src/renderer/components/app";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import type { Client } from "../../../src/renderer/client/Client";
@@ -167,7 +168,7 @@ it("shows each chat's own status and selection on its project header", async () 
   const financeHeader = screen
     .getByRole("button", { name: "Open Project Chat for finance" })
     .closest<HTMLElement>('[data-slot="project-header"]')!;
-  expect(within(projectHeader).getByRole("img", { name: "Ready" })).toBeTruthy();
+  expect(within(projectHeader).queryByRole("img")).toBeNull();
   expect(projectHeader.classList.contains("bg-sidebar-active")).toBe(false);
   expect(financeHeader.classList.contains("bg-sidebar-active")).toBe(false);
   act(() =>
@@ -178,7 +179,7 @@ it("shows each chat's own status and selection on its project header", async () 
     }),
   );
   expect(within(projectHeader).getByRole("img", { name: "Running" })).toBeTruthy();
-  expect(within(financeHeader).getByRole("img", { name: "Ready" })).toBeTruthy();
+  expect(within(financeHeader).queryByRole("img")).toBeNull();
   await f.user.click(
     within(projectHeader).getByRole("button", { name: "Open Project Chat for zombies" }),
   );
@@ -208,6 +209,112 @@ it("shows each chat's own status and selection on its project header", async () 
   expect(financeHeader.classList.contains("bg-sidebar-active")).toBe(false);
   expect(projectHeader.classList.contains("bg-sidebar-active")).toBe(false);
 });
+
+it.each(
+  (["projects", "activity"] as const).flatMap((surface) =>
+    (["complete", "failed", "aborted", "stopped"] as const).map((ending) => ({ surface, ending })),
+  ),
+)(
+  "matches Project Chat and Session dots through $ending transitions in $surface",
+  async ({ surface, ending }) => {
+    using f = await fixture();
+    if (surface === "activity")
+      await f.user.click(screen.getByRole("button", { name: "Show activity" }));
+    const entries = () => [
+      document.querySelector<HTMLElement>(
+        surface === "projects"
+          ? `[data-slot="project-header"][data-session-id="${projectId}"]`
+          : `[data-slot="project-chat-item"][data-session-id="${projectId}"]`,
+      )!,
+      document.querySelector<HTMLElement>('.session-item[data-session-id="task"]')!,
+    ];
+    const openEntry = (entry: HTMLElement, index: number) =>
+      f.user.click(
+        within(entry).getByRole("button", {
+          name:
+            index === 1
+              ? /^task(?: |$)/
+              : surface === "projects"
+                ? "Open Project Chat for zombies"
+                : /^zombies /,
+        }),
+      );
+    const models = [
+      f.models.cakeChatConversation(projectId),
+      f.models.projectConversation("task", "/zombies"),
+    ];
+    let revision = 1;
+    const turnId = TurnId.make("00000000-0000-4000-8000-000000000001");
+    const assertDots = (label?: string, color?: string) => {
+      for (const entry of entries()) {
+        if (!label) expect(within(entry).queryByRole("img")).toBeNull();
+        else {
+          const dot = within(entry).getByRole("img", { name: label });
+          expect(dot.classList).toContain(color);
+          expect(dot.classList).toContain("size-2");
+          expect(dot.classList).not.toContain("bg-muted-foreground");
+          expect(dot.classList).not.toContain("bg-primary");
+        }
+      }
+    };
+    assertDots();
+    act(() => {
+      for (const model of models)
+        applyConversationUpdate(model, {
+          _tag: "Event",
+          revision: ++revision,
+          event: { _tag: "TurnAccepted", sessionId: model.sessionId, turnId, delivery: "prompt" },
+        });
+    });
+    assertDots("Running", "bg-accent");
+    // Selection must not turn either running dot neutral, or hide it.
+    for (const [index, entry] of entries().entries()) {
+      await openEntry(entry, index);
+      assertDots("Running", "bg-accent");
+    }
+    await f.user.click(screen.getByRole("button", { name: "Cake Chat" }));
+    act(() => {
+      for (const model of models) {
+        if (ending === "stopped")
+          applyConversationUpdate(model, {
+            _tag: "Event",
+            revision: ++revision,
+            event: {
+              _tag: "PartUpdated",
+              sessionId: model.sessionId,
+              part: {
+                id: "deliberate-stop",
+                kind: "notice",
+                tone: "info",
+                title: "Stopped",
+                detail: "Stopped by you",
+              },
+            },
+          });
+        applyConversationUpdate(model, {
+          _tag: "Event",
+          revision: ++revision,
+          event: {
+            _tag: "TurnSettled",
+            sessionId: model.sessionId,
+            turnId,
+            outcome: ending === "stopped" ? "aborted" : ending,
+          },
+        });
+      }
+    });
+    if (ending === "stopped") assertDots();
+    else
+      assertDots(
+        ending === "complete" ? "Ready, unread" : "Error",
+        ending === "complete" ? "bg-success" : "bg-destructive",
+      );
+    // Opening acknowledges completion/failure equally; leaving cannot resurrect a dot.
+    for (const [index, entry] of entries().entries()) await openEntry(entry, index);
+    await f.user.click(screen.getByRole("button", { name: "Cake Chat" }));
+    assertDots();
+  },
+);
 
 it("gives global and project chats their own Browser destinations and returns to the same composer", async () => {
   using f = await fixture();

@@ -27,13 +27,7 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
       trailing={
         cakeChat.activity && (
           <span className="flex w-8 shrink-0 items-center justify-center">
-            <SessionActivityIndicator
-              activity={cakeChat.activity}
-              selected={
-                shell.selection.kind === "cake-chat" &&
-                shell.selection.sessionId === CAKE_CHAT_SESSION_ID
-              }
-            />
+            <SessionActivityIndicator activity={cakeChat.activity} />
           </span>
         )
       }

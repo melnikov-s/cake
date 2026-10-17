@@ -181,6 +181,11 @@ it.each(["project", "cake-chat"] as const)(
     const menu = screen.getByRole("dialog", { name: "Conversation activity" });
     expect(within(menu).queryByRole("region", { name: "Sessions" })).toBeNull();
     expect(within(menu).getByText("Queued · Temporary subagent")).toBeTruthy();
+    expect(
+      within(menu)
+        .getByRole("button", { name: "Inspect subagent: Inspect the boundary" })
+        .querySelector(".bg-accent"),
+    ).not.toBeNull();
     view.publishWorker("running");
     expect(within(menu).getByText("Running · Temporary subagent")).toBeTruthy();
     await view.user.click(
@@ -239,6 +244,11 @@ it("regular sessions show only direct children, keep idle children discoverable 
       .getAllByRole("button")
       .map((button) => button.getAttribute("aria-label")),
   ).toEqual(["Open session: Activity UI review", "Open session: Idle child"]);
+  expect(
+    within(menu)
+      .getByRole("button", { name: "Open session: Idle child" })
+      .querySelector(".rounded-full"),
+  ).toBeNull();
   await view.user.click(
     within(menu).getByRole("button", { name: "Open session: Activity UI review" }),
   );
@@ -380,6 +390,11 @@ it("a deliberate stop reads as neutral Stopped, while interruptions and failures
   await view.user.click(screen.getByRole("button", { name: "Activity · 1 running" }));
   const menu = screen.getByRole("dialog", { name: "Conversation activity" });
   expect(within(menu).getByText(/^Stopped · project · Stopped by Cake Chat$/)).toBeTruthy();
+  expect(
+    within(menu)
+      .getByRole("button", { name: "Open session: Activity UI review" })
+      .querySelector(".rounded-full"),
+  ).toBeNull();
 
   view.publishSessions([launched("interrupted")]);
   expect(screen.getByRole("button", { name: "Activity · 1 needs attention" })).toBeTruthy();

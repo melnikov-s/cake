@@ -1,15 +1,11 @@
-import type { SessionActivity } from "../lib/session-activity";
+import { sessionActivityDotStatus, type SessionActivity } from "../lib/session-activity";
 import { cn } from "../lib/utils";
 import { StatusDot } from "./ui/status-dot";
 
 /** Established session activity language, shared by Project Sessions and the coordinator. */
-export function SessionActivityIndicator({
-  activity,
-  selected,
-}: {
-  activity: SessionActivity;
-  selected: boolean;
-}) {
+export function SessionActivityIndicator({ activity }: { activity: SessionActivity | undefined }) {
+  const status = activity && sessionActivityDotStatus[activity];
+  if (!status) return null;
   const label =
     activity === "waiting"
       ? "Waiting for your answer"
@@ -17,19 +13,16 @@ export function SessionActivityIndicator({
         ? "Running"
         : activity === "error"
           ? "Error"
-          : activity === "stopped"
-            ? "Stopped"
-            : "Ready, unread";
+          : "Ready, unread";
   return (
     <StatusDot
-      status={activity === "waiting" ? "attention" : activity === "unread" ? "success" : activity}
+      status={status}
       className={cn(
         "session-status size-2",
         activity === "waiting" && "session-status-waiting ring-2 ring-attention/20",
-        activity === "running" && cn("session-status-running", selected && "bg-primary"),
+        activity === "running" && "session-status-running",
         activity === "unread" && "session-status-unread ring-2 ring-success/20",
         activity === "error" && "session-status-error ring-2 ring-destructive/20",
-        activity === "stopped" && "session-status-stopped",
       )}
       role="img"
       aria-hidden={undefined}

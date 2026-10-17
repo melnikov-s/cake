@@ -38,8 +38,7 @@ import { SessionPresentationContext } from "./context/SessionPresentationContext
 import { CommandPaneContext } from "./context/CommandPaneContext";
 import { SessionContinuationContext } from "./context/SessionContinuationContext";
 import { ToastContext } from "./context/ToastContext";
-import type { SessionActivity } from "../lib/session-activity";
-import { TURN_STOPPED_NOTICE_TITLE } from "../../contracts/conversations/turn-stop";
+import { settledSessionActivity, type SessionActivity } from "../lib/session-activity";
 import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
 
 export type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
@@ -241,8 +240,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     if (this.isStreaming || this.model.activeTurnIds.length > 0) return "running";
     if (this.props.isActive() || this.model.settledTurnRevision <= this.readSettledTurnRevision)
       return undefined;
-    const ending = this.latestTurnEnding;
-    return ending === "error" ? "error" : ending === "stopped" ? "stopped" : "unread";
+    return settledSessionActivity(this.model.settledTurns.at(-1)?.outcome, this.model.parts);
   }
 
   markRead() {
@@ -252,25 +250,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   depart() {
     this.markRead();
     this.conversationSessionStore.composerStore.cancelDraftEdit();
-  }
-
-  /** How the latest turn ended, when that differs from a plain finished response. */
-  private get latestTurnEnding(): "error" | "stopped" | undefined {
-    for (let index = this.model.parts.length - 1; index >= 0; index -= 1) {
-      const part = this.model.parts[index]!;
-      if ((part.kind === "text" && part.role === "user") || part.kind === "skill") return undefined;
-      if (part.kind === "text" && part.role === "assistant" && part.status === "error")
-        return "error";
-      if (part.kind === "notice" && part.tone === "error" && part.title === "Model request failed")
-        return "error";
-      if (
-        part.kind === "notice" &&
-        part.tone === "info" &&
-        part.title === TURN_STOPPED_NOTICE_TITLE
-      )
-        return "stopped";
-    }
-    return undefined;
   }
 
   @child

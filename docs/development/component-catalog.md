@@ -45,7 +45,7 @@ Admission identity, not text or queue position, links the receipt to the runtime
 Popover, Button and StatusDot into a compact pill or attached composer strip with
 labeled groups and inspect/open rows. Conversation owners supply the summary and
 actions, and omit the menu when no work is running or needs attention. The strip
-opens upward above the composer.
+opens upward above the composer. Rows without activity omit the dot but retain its alignment slot.
 
 [`ComposerCap`](../../src/renderer/components/ui/composer-cap.tsx) frames supporting
 controls attached above the shared composer. Activity occupies its top band, with
@@ -68,6 +68,10 @@ worktree tools beneath it when present. Empty caps collapse without reserved spa
 [`SessionListItem`](../../src/renderer/components/ui/session-list-item.tsx) is the authoritative
 session row shared by the sidebar, screenshot destination picker, and session search: identity, labels,
 family depth, worktree context, relative time and activity. Callers own ordering and actions.
+Its shared [`SessionActivityIndicator`](../../src/renderer/components/session-activity-indicator.tsx)
+is also used by Project Chat entries: blue while running (including when selected), green for
+unread completion, amber while waiting, red for errors, and no dot for idle/read or deliberately
+stopped work. Selection and read acknowledgement do not introduce a neutral/gray dot.
 [`FloatingToolbar`](../../src/renderer/components/ui/floating-toolbar.tsx) provides a
 content-sized, draggable toolbar with viewport-clamped transient geometry and keyboard movement.
 Only its actual footprint intercepts input on the underlying canvas.

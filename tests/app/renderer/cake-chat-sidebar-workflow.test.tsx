@@ -247,7 +247,7 @@ it.each(["complete", "failed", "aborted"] as const)(
       );
       expect(screen.queryByRole("img", { name: "Running" })).toBeNull();
       expect(
-        screen.getByRole("img", { name: outcome === "failed" ? "Error" : "Ready, unread" }),
+        screen.getByRole("img", { name: outcome === "complete" ? "Ready, unread" : "Error" }),
       ).toBeTruthy();
       await user.click(screen.getByRole("button", { name: /^Cake Chat/ }));
       expect(screen.queryByRole("img")).toBeNull();

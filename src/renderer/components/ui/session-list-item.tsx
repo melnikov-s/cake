@@ -293,7 +293,7 @@ export const SessionListItem = observer(function SessionListItem({
           trailing={
             <div className="session-meta relative flex h-full w-8 shrink-0 items-center justify-center">
               {activity ? (
-                <SessionActivityIndicator activity={activity} selected={selected} />
+                <SessionActivityIndicator activity={activity} />
               ) : (
                 canResolve && (
                   <IconButton

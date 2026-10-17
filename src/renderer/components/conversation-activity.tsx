@@ -1,25 +1,15 @@
 import { observer, useStore } from "r-state-tree/react";
 import {
+  launchedSessionActivity,
   launchedSessionNeedsAttention,
   launchedSessionStatusLabel,
-  type LaunchedSessionStatus,
 } from "../lib/cake-chat-launches";
 import { RootStore } from "../stores/RootStore";
 import type { SubagentActivityStore } from "../stores/SubagentActivityStore";
 import type { SideChatStore } from "../stores/SideChatStore";
 import { ActivityMenu } from "./ui/activity-menu";
-import type { StatusDotProps } from "./ui/status-dot";
+import { sessionActivityDotStatus } from "../lib/session-activity";
 import { ComposerCap } from "./ui/composer-cap";
-
-const dotStatus = {
-  running: "running",
-  "needs-you": "attention",
-  failed: "failed",
-  stopped: "stopped",
-  interrupted: "interrupted",
-  done: "complete",
-  idle: "pending",
-} satisfies Record<LaunchedSessionStatus, StatusDotProps["status"]>;
 
 /** Activity belongs to the pane's conversation, not the window's current selection. */
 export const ConversationActivity = observer(function ConversationActivity({
@@ -35,8 +25,8 @@ export const ConversationActivity = observer(function ConversationActivity({
   onOpen?(): void;
   placement?: "header" | "composer" | "strip";
 }) {
-  const activity = useStore(RootStore).conversationActivityStore;
-  const sessions = activity.sessionsFor(sessionId);
+  const conversationActivity = useStore(RootStore).conversationActivityStore;
+  const sessions = conversationActivity.sessionsFor(sessionId);
   const runs = subagents.activeRuns;
   const attention = sessions.filter((session) =>
     launchedSessionNeedsAttention(session.status),
@@ -57,20 +47,23 @@ export const ConversationActivity = observer(function ConversationActivity({
       groups={[
         {
           label: "Sessions",
-          items: sessions.map((session) => ({
-            id: session.sessionId,
-            title: session.title,
-            description: [
-              launchedSessionStatusLabel[session.status],
-              session.projectName,
-              session.summary,
-            ]
-              .filter(Boolean)
-              .join(" · "),
-            status: dotStatus[session.status],
-            accessibleLabel: `Open session: ${session.title}`,
-            onSelect: () => void activity.openSession(session.sessionId),
-          })),
+          items: sessions.map((session) => {
+            const activity = launchedSessionActivity[session.status];
+            return {
+              id: session.sessionId,
+              title: session.title,
+              description: [
+                launchedSessionStatusLabel[session.status],
+                session.projectName,
+                session.summary,
+              ]
+                .filter(Boolean)
+                .join(" · "),
+              status: activity && sessionActivityDotStatus[activity],
+              accessibleLabel: `Open session: ${session.title}`,
+              onSelect: () => void conversationActivity.openSession(session.sessionId),
+            };
+          }),
         },
         {
           label: "Subagents for this chat",
@@ -81,7 +74,7 @@ export const ConversationActivity = observer(function ConversationActivity({
               run.status === "running"
                 ? "Running · Temporary subagent"
                 : "Queued · Temporary subagent",
-            status: run.status === "running" ? "running" : "pending",
+            status: sessionActivityDotStatus.running,
             action: "Inspect",
             accessibleLabel: `Inspect subagent: ${run.task}`,
             onSelect: () => {
