@@ -7,7 +7,9 @@ import { createRendererStoreFixture } from "../renderer-store-fixture";
 // Narrow internal performance contracts: React text assertions cannot detect reference-cache
 // churn or unnecessary derivations. Keep real Root composition, Models, and authority reducers.
 // Visible ordering/title handoff lives in session-catalog-workflow.test.tsx; pending-worktree
-// authority takeover/removal now lives in session-identity-workflow.test.tsx.
+// authority takeover/removal lives in session-identity-workflow.test.tsx. The former catalog/
+// sidebar synchronization test is consolidated into the real UI activation journey in
+// saved-draft-workflow.test.tsx, including selected-row visibility in a full session list.
 describe("Session catalog derivation integration", () => {
   it("uses the same authority-first identity for lookup, global order, and Project groups", () => {
     using fixture = createRendererStoreFixture({
