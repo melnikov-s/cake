@@ -71,6 +71,7 @@ function renderSideChats(
     threads?: DiscussionThread[];
     selection?: MessageSelectionAnchor;
     withoutModel?: boolean;
+    streamingThreads?: readonly string[];
   } = {},
 ) {
   const fixture = createRendererStoreFixture({
@@ -104,7 +105,11 @@ function renderSideChats(
             sessionId: item.sidecarSessionId,
             parentSessionId: "parent-1",
           },
-          conversation: conversation(item.sidecarSessionId),
+          conversation: {
+            ...conversation(item.sidecarSessionId),
+            parts: item.parts,
+            streaming: options.streamingThreads?.includes(item.id) ?? false,
+          },
         },
       });
     }
@@ -168,6 +173,7 @@ describe("Secondary conversation workflows", () => {
       });
       using fixture = renderSideChats(start, { withoutModel });
       const input = screen.getByRole<HTMLTextAreaElement>("combobox");
+      expect(screen.queryByRole("button", { name: /^Side chats,/ })).toBeNull();
       await fixture.user.type(input, "/sidechat Compare approaches");
       await fixture.user.click(screen.getByRole("button", { name: "Send" }));
       const expectedInput: DiscussionSessionStartInput = {
@@ -225,6 +231,47 @@ describe("Secondary conversation workflows", () => {
     await fixture.user.click(screen.getByRole("button", { name: "Side chats, 2 open" }));
     await fixture.user.click(screen.getByRole("button", { name: /First discussion/ }));
     expect(screen.getByRole("combobox", { name: "Reply to side chat" })).toBeDefined();
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it("lists only open user side chats, projects live activity, and follows catalog removal", async () => {
+    const start = vi.fn<Client["discussionSessions"]["start"]>();
+    const selection = {
+      ...thread("selection", "Explain this"),
+      anchor: {
+        ...thread("selection", "").anchor,
+        view: "message" as const,
+        path: "session:parent-1/message/answer",
+        messageId: "answer",
+        selectedText: "The important selection",
+      },
+    };
+    const resolved = { ...thread("resolved", "Resolved discussion"), status: "resolved" as const };
+    const code = {
+      ...thread("code", "Code discussion"),
+      anchor: { ...thread("code", "").anchor, view: "file" as const, path: "src/app.ts" },
+    };
+    const assistant = {
+      ...thread("assistant", "Assistant discussion"),
+      anchor: { ...thread("assistant", "").anchor, path: "session:parent-1/assistant" },
+    };
+    using fixture = renderSideChats(start, {
+      threads: [resolved, code, assistant, selection],
+      streamingThreads: [selection.id],
+    });
+    await fixture.user.click(screen.getByRole("button", { name: "Side chats, 1 open" }));
+    const menu = within(screen.getByLabelText("Open side chats"));
+    expect(menu.getByText("Working…")).toBeDefined();
+    expect(menu.queryByText(/Resolved discussion|Code discussion|Assistant discussion/)).toBeNull();
+    await fixture.user.click(menu.getByRole("button", { name: /The important selection/ }));
+    expect(screen.queryByLabelText("Open side chats")).toBeNull();
+    const panel = within(screen.getByRole("complementary", { name: "Side chat" }));
+    expect(panel.getByRole("combobox", { name: "Reply to selection side chat" })).toBeDefined();
+    expect(panel.getByRole("button", { name: "Stop" })).toBeDefined();
+    await fixture.user.click(panel.getByRole("button", { name: "Close Side chat" }));
+    fixture.publish([resolved, code, assistant, { ...selection, status: "resolved" }]);
+    expect(screen.queryByRole("button", { name: /^Side chats,/ })).toBeNull();
+    expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
     expect(start).not.toHaveBeenCalled();
   });
 
