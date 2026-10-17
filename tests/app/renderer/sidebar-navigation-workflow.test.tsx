@@ -1,8 +1,12 @@
 /** @vitest-environment jsdom */
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../src/renderer/client/Client";
+import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import { TurnId } from "../../../src/ipc/conversation-data";
+import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 import { projectRecord } from "./fixtures/catalog-fixtures";
+import { fakeSavedDrafts } from "./fakes/saved-drafts";
 import {
   renderSidebarNavigation,
   sidebarFamily,
@@ -11,6 +15,14 @@ import {
 
 beforeEach(() => {
   vi.stubGlobal("PointerEvent", MouseEvent);
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
   Object.defineProperty(SVGElement.prototype, "getBBox", {
     configurable: true,
     value: () => ({ x: 0, y: 0, width: 24, height: 24 }),
@@ -48,7 +60,379 @@ const resolvedGroup = (name: string) =>
     .getAllByRole("button", { name: `Collapse ${name} resolved` })[0]!
     .closest<HTMLElement>('[data-slot="project-group"]')!;
 
+function deferred<Value>() {
+  let resolve!: (value: Value) => void;
+  const promise = new Promise<Value>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
+}
+
 describe("Sidebar navigation workflow", () => {
+  it.each(["New chat in pi"])(
+    "starts an unsent conversation in the inactive project through %s",
+    async (control) => {
+      const inspect = vi.fn<Client["workspaces"]["inspect"]>(async (request) => ({
+        ...request,
+        trustRequired: false,
+      }));
+      const start = vi.fn<Client["projectSessions"]["start"]>();
+      using fixture = renderSidebarNavigation({
+        projects: [project, projectRecord({ path: "/pi" })],
+        sessions: [sidebarSummary("current")],
+        loadedIds: ["current"],
+        client: {
+          workspaces: {
+            inspect,
+            registerProject: async () => defaultApplicationState(),
+            loadStagedSlashCommands: async () => [],
+          },
+          projectSessions: { start },
+          managedWorktrees: { landing: async () => ({}) },
+        },
+      });
+      await fixture.user.click(screen.getByRole("button", { name: control }));
+      expect(await screen.findByRole("combobox", { name: "Message" })).toBeDefined();
+      expect(inspect).toHaveBeenCalledWith(
+        expect.objectContaining({ path: "/pi" }),
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+      expect(start).not.toHaveBeenCalled();
+    },
+  );
+
+  it("changes visible order by label and date without changing the stable project order", async () => {
+    const labelled = projectRecord({
+      path: "/cake",
+      workflow: {
+        labels: [{ id: "10000000-0000-4000-8000-000000000001", name: "Feature", color: "blue" }],
+        assignments: [{ sessionId: "older", labelIds: ["10000000-0000-4000-8000-000000000001"] }],
+        sessionDetails: [],
+      },
+    });
+    using fixture = renderSidebarNavigation({
+      projects: [labelled, projectRecord({ path: "/pi" })],
+      sessions: [sidebarSummary("newer", 3), sidebarSummary("older", 1)],
+      snapshot: {
+        state: {},
+        children: {
+          projectCatalogStore: { state: { projectOrder: ["/pi", "/cake"] }, children: {} },
+        },
+      },
+    });
+    const projectOrder = () =>
+      screen
+        .getAllByRole("button", { name: /^Open Project Chat for/ })
+        .map((button) => button.textContent);
+    expect(projectOrder()).toEqual(["pi", "cake"]);
+    expect(order()).toEqual(["newer", "older"]);
+    await fixture.user.click(screen.getByRole("button", { name: "Sort sessions in cake" }));
+    await fixture.user.click(screen.getByRole("menuitemradio", { name: "By label" }));
+    expect(order()).toEqual(["older", "newer"]);
+    await fixture.user.click(screen.getByRole("button", { name: "Sort sessions in cake" }));
+    expect(
+      screen.getByRole("menuitemradio", { name: "By label" }).getAttribute("aria-checked"),
+    ).toBe("true");
+    await fixture.user.click(screen.getByRole("menuitemradio", { name: "By date" }));
+    expect(order()).toEqual(["newer", "older"]);
+    await fixture.publishSessions([sidebarSummary("newer", 3), sidebarSummary("older", 5)]);
+    expect(order()).toEqual(["older", "newer"]);
+    expect(projectOrder()).toEqual(["pi", "cake"]);
+  });
+
+  it("routes rename, unread and resolved deletion from native menu responses into services and authoritative rows", async () => {
+    const menu = vi
+      .fn<Client["electron"]["showSessionContextMenu"]>()
+      .mockResolvedValueOnce({ action: "rename" })
+      .mockResolvedValueOnce({ action: "mark-unread" })
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ action: "delete" });
+    const rename = vi.fn<Client["projectSessions"]["rename"]>(async () => undefined);
+    const setSessionUnread = vi.fn<Client["workspaces"]["setSessionUnread"]>(async () => undefined);
+    const deleteSession = vi.fn<Client["workspaces"]["deleteSession"]>(async () => undefined);
+    const initial = [sidebarSummary("original"), sidebarSummary("archive", 2, { resolved: true })];
+    using fixture = renderSidebarNavigation({
+      projects: [project],
+      sessions: initial,
+      client: {
+        electron: { showSessionContextMenu: menu },
+        projectSessions: { rename },
+        workspaces: { setSessionUnread, deleteSession },
+      },
+    });
+    const context = (target: HTMLElement) => fixture.user.pointer({ target, keys: "[MouseRight]" });
+    await context(rowButton("original"));
+    const input = await screen.findByRole("textbox", { name: "Session name" });
+    expect(input).toHaveProperty("value", "original");
+    await fixture.user.clear(input);
+    await fixture.user.type(input, "Renamed work{Enter}");
+    await waitFor(() =>
+      expect(rename).toHaveBeenCalledWith(
+        { sessionId: "original", name: "Renamed work" },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      ),
+    );
+    const renamed = { ...initial[0]!, title: "Renamed work" };
+    await fixture.publishSessions([renamed, initial[1]!]);
+    await context(screen.getByRole("button", { name: /^Renamed work / }));
+    await waitFor(() =>
+      expect(setSessionUnread).toHaveBeenCalledWith(
+        "original",
+        true,
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      ),
+    );
+    await fixture.publishSessions([{ ...renamed, unread: true }, initial[1]!]);
+    const unreadRow = screen
+      .getByRole("button", { name: /^Renamed work / })
+      .closest<HTMLElement>(".session-item")!;
+    expect(within(unreadRow).getByRole("img", { name: "Ready, unread" })).toBeDefined();
+    expect(within(unreadRow).queryByRole("button", { name: "Resolve Renamed work" })).toBeNull();
+    expect(unreadRow.querySelector("time")?.dateTime).toBe(renamed.modifiedAt);
+    await context(screen.getByRole("button", { name: /^Renamed work / }));
+    await waitFor(() =>
+      expect(menu).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sessionId: "original", unread: true, resolved: false }),
+      ),
+    );
+    expect(setSessionUnread).toHaveBeenCalledTimes(1);
+    await fixture.user.click(screen.getByRole("button", { name: "Expand Resolved" }));
+    await fixture.user.click(screen.getAllByRole("button", { name: "Expand cake resolved" })[0]!);
+    await context(rowButton("archive"));
+    await waitFor(() =>
+      expect(deleteSession).toHaveBeenCalledWith(
+        "archive",
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      ),
+    );
+    expect(menu).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sessionId: "archive", resolved: true, draft: false }),
+    );
+    await fixture.publishSessions([{ ...renamed, unread: true }]);
+    expect(screen.queryByRole("button", { name: /^archive / })).toBeNull();
+  });
+
+  it("opens project settings from both actions and blocks project removal until the service completes", async () => {
+    const menu = vi
+      .fn<Client["electron"]["showProjectContextMenu"]>()
+      .mockResolvedValueOnce("settings")
+      .mockResolvedValueOnce("remove-project");
+    const pending = deferred<void>();
+    const removeProject = vi.fn<Client["workspaces"]["removeProject"]>(() => pending.promise);
+    using fixture = renderSidebarNavigation({
+      projects: [project],
+      sessions: [sidebarSummary("kept")],
+      client: { electron: { showProjectContextMenu: menu }, workspaces: { removeProject } },
+    });
+    await fixture.user.click(screen.getByRole("button", { name: "Open settings for cake" }));
+    expect(screen.getByRole("dialog", { name: "cake settings" })).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "Cancel" }));
+    await fixture.user.pointer({
+      target: screen.getByRole("button", { name: "Open Project Chat for cake" }),
+      keys: "[MouseRight]",
+    });
+    expect(await screen.findByRole("dialog", { name: "cake settings" })).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "Cancel" }));
+    await fixture.user.pointer({
+      target: screen.getByRole("button", { name: "Open Project Chat for cake" }),
+      keys: "[MouseRight]",
+    });
+    const dialog = await screen.findByRole("alertdialog", { name: "Remove cake?" });
+    expect(within(dialog).getByText(/its 1 session/)).toBeDefined();
+    await fixture.user.click(
+      within(dialog).getByRole("button", { name: "Remove and delete sessions" }),
+    );
+    expect(removeProject).toHaveBeenCalledWith(
+      "/cake",
+      true,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toHaveProperty("disabled", true);
+    expect(within(dialog).getByText("Removing project")).toBeDefined();
+    await fixture.user.keyboard("{Escape}");
+    expect(screen.getByRole("alertdialog")).toBe(dialog);
+    await act(async () => pending.resolve());
+    await fixture.publishProjects([]);
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(screen.getByText("Add a folder to start a project.")).toBeDefined();
+  });
+
+  it("keeps cleanup confirmation blocking while main deletes resolved worktrees", async () => {
+    const pending =
+      deferred<Awaited<ReturnType<Client["managedWorktrees"]["discardResolvedForProject"]>>>();
+    const discard = vi.fn<Client["managedWorktrees"]["discardResolvedForProject"]>(
+      () => pending.promise,
+    );
+    using fixture = renderSidebarNavigation({
+      projects: [project],
+      sessions: [sidebarSummary("archive", 1, { resolved: true, workingDirectory: "/worktree" })],
+      worktrees: [
+        {
+          projectPath: "/cake",
+          worktreePath: "/worktree",
+          branch: "agent/done",
+          baseBranch: "main",
+          state: "landed",
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+      client: {
+        electron: { showProjectContextMenu: async () => "delete-resolved-worktrees" },
+        managedWorktrees: {
+          inspectResolvedForProject: async () => ({
+            projectPath: "/cake",
+            workingDirectories: ["/worktree"],
+          }),
+          discardResolvedForProject: discard,
+        },
+        terminals: {
+          workingDirectoryStatus: async () => ({ runningProgramCount: 0 }),
+          closeWorkingDirectory: async () => undefined,
+        },
+      },
+    });
+    await fixture.user.pointer({
+      target: screen.getByRole("button", { name: "Open Project Chat for cake" }),
+      keys: "[MouseRight]",
+    });
+    const dialog = await screen.findByRole("alertdialog", { name: "Delete resolved worktrees?" });
+    expect(within(dialog).getByText(/1 landed worktree/)).toBeDefined();
+    await fixture.user.click(within(dialog).getByRole("button", { name: "Delete worktrees" }));
+    await waitFor(() => expect(discard).toHaveBeenCalled());
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toHaveProperty("disabled", true);
+    expect(within(dialog).getByRole("button", { name: "Delete worktrees" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    expect(within(dialog).getByText("Deleting worktrees")).toBeDefined();
+    await fixture.user.keyboard("{Escape}");
+    expect(screen.getByRole("alertdialog")).toBe(dialog);
+    await act(async () =>
+      pending.resolve({
+        projectPath: "/cake",
+        discardedWorkingDirectories: ["/worktree"],
+        failures: [],
+      }),
+    );
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  });
+
+  it("interleaves saved Drafts by activity and archives them without opening a conversation", async () => {
+    const drafts = fakeSavedDrafts();
+    await drafts.client.create({
+      sessionId: "draft",
+      projectPath: "/cake",
+      title: "Saved plan",
+      text: "Later",
+      attachments: [],
+    });
+    const open = vi.fn<Client["projectSessions"]["open"]>();
+    using fixture = renderSidebarNavigation({
+      projects: [project, projectRecord({ path: "/pi" })],
+      sessions: [
+        ...sidebarFamily,
+        sidebarSummary("newest", 31, {
+          projectPath: "/pi",
+          modifiedAt: new Date(
+            Date.parse(drafts.records.get("draft")!.updatedAt) + 60_000,
+          ).toISOString(),
+        }),
+      ],
+      client: { savedDrafts: drafts.client, projectSessions: { open } },
+    });
+    await screen.findByRole("button", { name: /^Saved plan / });
+    await fixture.user.click(screen.getByRole("button", { name: "Show activity" }));
+    expect(order()).toEqual(["newest", "draft", "root", "planner", "worker", "sibling"]);
+    expect(screen.getByRole("button", { name: "Cake Chat" })).toBeDefined();
+    expect(within(row("newest")).getByText("pi")).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "Resolve Saved plan" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: /^Saved plan / })).toBeNull());
+    expect(open).not.toHaveBeenCalled();
+    expect(drafts.records.get("draft")?.resolved).toBe(true);
+    await fixture.user.click(screen.getByRole("button", { name: "Show projects" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Expand Resolved" }));
+    await fixture.user.click(screen.getAllByRole("button", { name: "Expand cake resolved" })[0]!);
+    expect(screen.getByRole("button", { name: /^Saved plan / })).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "Restore Saved plan" }));
+    await waitFor(() =>
+      expect(
+        within(projectGroup("cake")).getByRole("button", { name: /^Saved plan / }),
+      ).toBeDefined(),
+    );
+  });
+  it("renders live waiting/running/failure facts and worktree lifecycle metadata without truncating titles", async () => {
+    const title =
+      "A very long title that stays intact in the accessible navigation label instead of being shortened by test Store stubs";
+    const sessions = [
+      sidebarSummary("waiting"),
+      sidebarSummary("running", 2),
+      sidebarSummary("failed", 3, { workingDirectory: "/worktree" }),
+      sidebarSummary("main", 4, { title }),
+    ];
+    const worktree: WorktreeRecord = {
+      projectPath: "/cake",
+      worktreePath: "/worktree",
+      branch: "agent/fix",
+      baseBranch: "agent/base",
+      state: "active",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+    using fixture = renderSidebarNavigation({
+      projects: [project],
+      sessions,
+      loadedIds: ["waiting", "running", "failed"],
+      worktrees: [worktree],
+    });
+    expect(screen.getByRole("button", { name: new RegExp(`^${title} `) })).toBeDefined();
+    expect(within(row("failed")).getByRole("img", { name: "Open worktree" })).toBeDefined();
+    await fixture.publishWorktrees([{ ...worktree, state: "landed" }]);
+    expect(within(row("failed")).getByRole("img", { name: "Merged worktree" })).toBeDefined();
+    expect(within(row("failed")).getByText("fix")).toBeDefined();
+    expect(within(row("failed")).getByText("base")).toBeDefined();
+    expect(screen.getAllByRole("img", { name: /worktree$/ })).toHaveLength(1);
+    await fixture.publishInterview({
+      id: "interview-1",
+      sessionId: "waiting",
+      request: {
+        protocol: "cake.request/v1",
+        id: "question",
+        title: "Choose",
+        responseSchema: { type: "object" },
+        view: { type: "form", fields: [{ id: "name", label: "Name", type: "text" }] },
+        fallback: { markdown: "What next?" },
+      },
+    });
+    await fixture.publishStreaming(["running"], true);
+    await fixture.publishConversation("failed", {
+      parts: [
+        {
+          id: "failure",
+          kind: "notice",
+          tone: "error",
+          title: "Model request failed",
+          message: "Provider unavailable",
+        },
+      ],
+    });
+    await fixture.publishEvent({
+      _tag: "TurnSettled",
+      sessionId: "failed",
+      turnId: TurnId.make("10000000-0000-4000-8000-000000000001"),
+      outcome: "failed",
+    });
+    expect(
+      within(row("waiting")).getByRole("img", { name: "Waiting for your answer" }),
+    ).toBeDefined();
+    expect(within(row("running")).getByRole("img", { name: "Running" })).toBeDefined();
+    expect(within(row("failed")).getByRole("img", { name: "Error" })).toBeDefined();
+    for (const id of ["waiting", "running", "failed"]) {
+      expect(within(row(id)).queryByRole("button", { name: `Resolve ${id}` })).toBeNull();
+      expect(row(id).querySelector("time")?.dateTime).toBe(
+        sessions.find((session) => session.sessionId === id)!.modifiedAt,
+      );
+    }
+  });
+
   it("restores window/list preferences and expands a collapsed project when entering focus", async () => {
     const menu = vi.fn<Client["electron"]["showProjectContextMenu"]>(async () => "sort-by-date");
     using fixture = renderSidebarNavigation({
@@ -98,6 +482,42 @@ describe("Sidebar navigation workflow", () => {
     await fixture.user.click(screen.getByRole("button", { name: "Expand children of root" }));
     expect(order()).toEqual(["root", "planner", "worker", "sibling", "standalone"]);
   });
+
+  it.each([false, true])(
+    "treats IDE sidebar visibility as an override, preserving the ordinary preference (hidden: %s)",
+    async (hidden) => {
+      const open = vi.fn<Client["vscode"]["open"]>(async () => undefined);
+      using fixture = renderSidebarNavigation({
+        projects: [project],
+        sessions: [sidebarSummary("editor")],
+        loadedIds: ["editor"],
+        ide: { sidebarAutoHide: "always" },
+        snapshot: { state: {}, children: { sidebarStore: { state: { hidden }, children: {} } } },
+        client: { vscode: { open } },
+      });
+      const sidebar = () => document.querySelector('[data-slot="sidebar"]');
+      expect(!!sidebar()).toBe(!hidden);
+      await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+      expect(open).toHaveBeenCalledWith(
+        "/cake",
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+      expect(sidebar()).toBeNull();
+      fixture.hostToggleSidebar();
+      expect(sidebar()).not.toBeNull();
+      // Once shown, Cake's sidebar provides its own real toggle control.
+      await fixture.user.click(screen.getByRole("button", { name: "Toggle sidebar" }));
+      expect(sidebar()).toBeNull();
+      await fixture.user.click(screen.getAllByRole("button", { name: "Back to agent" })[0]!);
+      expect(!!sidebar()).toBe(!hidden);
+      // Each new IDE entry resets only its temporary visibility override.
+      await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+      fixture.hostToggleSidebar();
+      expect(sidebar()).not.toBeNull();
+      await fixture.user.click(screen.getAllByRole("button", { name: "Back to agent" })[0]!);
+      expect(!!sidebar()).toBe(!hidden);
+    },
+  );
 
   it("freezes only active recency through interleaved writes, selection, refresh and mode changes", async () => {
     const sessions = [
@@ -475,6 +895,32 @@ describe("Sidebar navigation workflow", () => {
     expect(order(projectGroup("cake"))).toHaveLength(24);
     expect(within(projectGroup("cake")).queryByRole("button", { name: "Show more" })).toBeNull();
     expect(order(resolvedGroup("cake"))).toHaveLength(20);
+  }, 15_000);
+
+  it("shows every active session on project focus while keeping archives paginated and returning to the ordinary limit on exit", async () => {
+    const sessions = [false, true].flatMap((resolved) =>
+      Array.from({ length: 11 }, (_, index) =>
+        sidebarSummary(`${resolved ? "archive" : "active"}-${index}`, index + 1, { resolved }),
+      ),
+    );
+    using fixture = renderSidebarNavigation({
+      projects: [project, projectRecord({ path: "/pi" })],
+      sessions,
+    });
+    expect(order(projectGroup("cake"))).toHaveLength(10);
+    await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
+    expect(order(projectGroup("cake"))).toHaveLength(0);
+    await fixture.user.click(screen.getByRole("button", { name: "Focus on cake" }));
+    expect(order(projectGroup("cake"))).toHaveLength(11);
+    expect(within(projectGroup("cake")).queryByRole("button", { name: "Show more" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open Project Chat for pi" })).toBeNull();
+    await fixture.user.click(screen.getByRole("button", { name: "Expand Resolved" }));
+    const archives = screen.getByRole("region", { name: "Resolved sessions" });
+    expect(order(archives)).toHaveLength(10);
+    expect(within(archives).getByRole("button", { name: "Show more" })).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "Exit focus mode for cake" }));
+    expect(order(projectGroup("cake"))).toHaveLength(10);
+    expect(screen.getByRole("button", { name: "Open Project Chat for pi" })).toBeDefined();
   });
 
   it("shows queued landing as running only while it waits, not when landing work starts", async () => {

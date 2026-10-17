@@ -3,12 +3,14 @@ import userEvent from "@testing-library/user-event";
 import { applySnapshot, toSnapshot } from "r-state-tree";
 import type { CakeChatSummary } from "../../../src/contracts/cake-chats/cake-chat-data";
 import { StoreProvider } from "r-state-tree/react";
+import type { ProjectRecord } from "../../../src/contracts/application/application-data";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 import type { WorktreeLandingOperation } from "../../../src/contracts/worktrees/worktree-landing-data";
 import type {
   ConversationEvent,
   ConversationSnapshot,
 } from "../../../src/contracts/conversations/conversation-data";
+import type { InterviewRecord } from "../../../src/contracts/interviews/interview";
 import { App } from "../../../src/renderer/components/app";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import {
@@ -75,9 +77,27 @@ function snapshot(sessionId: string): ConversationSnapshot {
 }
 
 export function renderSidebarNavigation(
-  options: RendererStoreFixtureOptions & { loadedIds?: readonly string[] },
+  options: RendererStoreFixtureOptions & {
+    loadedIds?: readonly string[];
+    worktrees?: readonly WorktreeRecord[];
+    ide?: { sidebarAutoHide: "always" | "below-width"; width?: number };
+  },
 ) {
-  const fixture = createRendererStoreFixture(options);
+  const fixture = createRendererStoreFixture({
+    ...options,
+    client: {
+      ...options.client,
+      vscode: {
+        open: async () => undefined,
+        updateBounds: async () => undefined,
+        updateAnnotations: async () => undefined,
+        updateSelectionHighlights: async () => undefined,
+        setTheme: async () => undefined,
+        ...options.client?.vscode,
+      },
+    },
+  });
+  applySnapshot(fixture.models.worktrees, { worktrees: [...(options.worktrees ?? [])] });
   let revision = 1;
   for (const sessionId of options.loadedIds ?? []) {
     const summary = options.sessions!.find((session) => session.sessionId === sessionId)!;
@@ -91,6 +111,17 @@ export function renderSidebarNavigation(
       },
     );
   }
+  if (options.ide) {
+    const id = options.loadedIds![0]!;
+    fixture.root.settingsStore.embeddedEditor.sidebarAutoHide = options.ide.sidebarAutoHide;
+    fixture.root.settingsStore.embeddedEditor.sidebarAutoHideWidth = options.ide.width ?? 1440;
+    fixture.root.appShellStore.selectProjectSession(id);
+    fixture.root.projectWorkbenchStore.showLoadedSession(id);
+    fixture.root.sessionLayoutStore.ensureSession(id);
+    fixture.root.projectWorkbenchStore.presentationStore.embeddedEditorStore.applyState({
+      status: "ready",
+    });
+  }
   const view = render(
     <StoreProvider store={fixture.root}>
       <App />
@@ -99,18 +130,6 @@ export function renderSidebarNavigation(
   return {
     user: userEvent.setup(),
     snapshot: () => toSnapshot(fixture.root),
-    async publishEvent(event: Exclude<ConversationEvent, { _tag: "SnapshotUpdated" }>) {
-      await act(async () =>
-        applyConversationUpdate(
-          fixture.models.projectConversation(
-            event.sessionId,
-            options.sessions!.find((session) => session.sessionId === event.sessionId)!
-              .workingDirectory,
-          ),
-          { _tag: "Event", revision: ++revision, event },
-        ),
-      );
-    },
     async publishProjectChats(sessions: readonly CakeChatSummary[]) {
       await act(async () =>
         applySnapshot(fixture.models.cakeChatCatalog, {
@@ -129,6 +148,16 @@ export function renderSidebarNavigation(
         }),
       );
     },
+    hostToggleSidebar() {
+      // VS Code owns this toolbar control. Deliver its documented host event;
+      // this is not proof of Electron/native-toolbar event delivery.
+      act(() =>
+        fixture.root.projectWorkbenchStore.receive({
+          type: "embedded-editor-toggle-sidebar",
+          workspacePath: "/cake",
+        }),
+      );
+    },
     async publishStreaming(sessionIds: readonly string[], streaming: boolean) {
       await act(async () => {
         for (const sessionId of sessionIds) {
@@ -143,6 +172,41 @@ export function renderSidebarNavigation(
           );
         }
       });
+    },
+    async publishInterview(record: InterviewRecord) {
+      await act(async () =>
+        fixture.root.sessionRegistry.findSession(record.sessionId)!.receive({
+          type: "interview-requested",
+          operationId: "interview-operation",
+          interviewRequestId: "request",
+          record,
+        }),
+      );
+    },
+    async publishEvent(event: Exclude<ConversationEvent, { _tag: "SnapshotUpdated" }>) {
+      const summary = options.sessions!.find((session) => session.sessionId === event.sessionId)!;
+      await act(async () =>
+        applyConversationUpdate(
+          fixture.models.projectConversation(event.sessionId, summary.workingDirectory),
+          { _tag: "Event", revision: ++revision, event },
+        ),
+      );
+    },
+    async publishProjects(projects: readonly ProjectRecord[]) {
+      await act(async () => applySnapshot(fixture.models.projects, { projects: [...projects] }));
+    },
+    async publishConversation(sessionId: string, changes: Partial<ConversationSnapshot>) {
+      const summary = options.sessions!.find((session) => session.sessionId === sessionId)!;
+      await act(async () =>
+        applyConversationUpdate(
+          fixture.models.projectConversation(sessionId, summary.workingDirectory),
+          {
+            _tag: "Snapshot",
+            revision: ++revision,
+            snapshot: { ...snapshot(sessionId), ...changes },
+          },
+        ),
+      );
     },
     async publishSessions(sessions: readonly SessionSummaryFixture[]) {
       await act(async () =>

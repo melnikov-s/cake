@@ -5,35 +5,7 @@ import { createRendererStoreFixture } from "../renderer-store-fixture";
 // Sidebar UI workflows live in sidebar-navigation-workflow.test.tsx; Draft menu identity
 // is covered by session-management-workflow. Keep only contracts those journeys cannot prove.
 describe("Sidebar uncovered boundary regressions", () => {
-  // Invalid project identities cannot be selected through production sidebar controls.
-  it("ignores Project focus requests for missing catalog identities", () => {
-    using fixture = createRendererStoreFixture({ projects: [projectRecord({ path: "/cake" })] });
-    fixture.root.sidebarStore.focusProject("/missing");
-    expect(fixture.root.sidebarStore.focusModeProjectPath).toBeUndefined();
-  });
-
-  // Native IDE entry/exit and viewport geometry are not honestly verified by jsdom navigation.
-  it("treats IDE sidebar visibility as a temporary override", () => {
-    using fixture = createRendererStoreFixture();
-    fixture.root.settingsStore.embeddedEditor.sidebarAutoHide = "always";
-    const store = fixture.root.sidebarStore;
-    expect(store.visible).toBe(true);
-    store.enterIdeMode(1920);
-    expect(store.visible).toBe(false);
-    store.toggle();
-    expect(store.visible).toBe(true);
-    store.toggle();
-    expect(store.visible).toBe(false);
-    store.leaveIdeMode();
-    expect(store.visible).toBe(true);
-    store.toggle();
-    store.enterIdeMode(1920);
-    store.toggle();
-    expect(store.visible).toBe(true);
-    store.leaveIdeMode();
-    expect(store.visible).toBe(false);
-  });
-
+  // IDE entry/exit is covered through real App controls; retain native viewport policy.
   it("auto-hides below the configured window width", () => {
     using fixture = createRendererStoreFixture();
     const settings = fixture.root.settingsStore.embeddedEditor;
