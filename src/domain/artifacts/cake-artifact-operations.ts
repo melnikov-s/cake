@@ -181,7 +181,8 @@ const linkedArtifactSystemGuidance =
   "This session has linked artifacts. Use artifacts.list to inspect them when relevant.";
 
 export function createCakeArtifactOperations(
-  pi: CakeOperationHost,
+  // Regular Pi persists custom pointers; Durable persists the successful tool result itself.
+  pi: CakeOperationHost | undefined,
   options: CakeArtifactOperationOptions,
 ): CakeOperationDefinition[] {
   const persist = async (
@@ -201,6 +202,7 @@ export function createCakeArtifactOperations(
     origin: { assistantEntryId: string; toolCallId: string },
     presentation?: "selected-revision",
   ) => {
+    if (!pi) throw new Error("Artifact publication requires a transcript host");
     pi.appendEntry(
       "cake.artifact/v1",
       Schema.decodeUnknownSync(artifactPointerSchema)({
@@ -229,7 +231,7 @@ export function createCakeArtifactOperations(
     return options.resolveArtifact(stableReference(reference));
   };
 
-  if (pi.on && options.hasLinkedArtifacts)
+  if (pi?.on && options.hasLinkedArtifacts)
     pi.on("before_agent_start", async (event) => {
       if (!(await options.hasLinkedArtifacts!())) return;
       return { systemPrompt: `${event.systemPrompt}\n\n${linkedArtifactSystemGuidance}` };
@@ -314,11 +316,12 @@ export function createCakeArtifactOperations(
     {
       command: "artifacts.present",
       topic: "artifacts",
-      summary: "Show an existing linked artifact again inline at this tool call.",
+      summary: "Show an existing artifact inline in this conversation without recreating it.",
       guidance: [
         "Use this when the user wants to see an existing artifact again, including after state-only edits. Do not regenerate it with widgets.present, replace it, or repeat a Markdown embed.",
         "Stable references resolve the current source; exact @rN references select that immutable source revision. Widgets hydrate current lineage state in either case.",
-        "Each successful call adds a new inline surface, even if the same revision was already published or presented. No artifact revision, link, or mutable state is changed. All artifact kinds use their existing renderer and sandbox.",
+        "Each successful call adds a fresh inline surface in the requesting conversation, even for a non-owned artifact or a closed producing session. No source revision, ownership, provenance, or mutable state is changed. All artifact kinds use their existing renderer and sandbox.",
+        "Permanent Project Chat and global Cake Chat explicitly link an accessible unlinked reference as part of presentation, preserving existing links. Project Sessions require an effective link first (artifacts.link). Missing or inaccessible references fail explicitly.",
         "This presents to the user, not a new model-visible screenshot. Use artifacts.preview for the retained initial-state image—not the current interactive view. Ask the user to Attach current view for live pixels.",
       ],
       inputSchema: artifactResolveSchema,
@@ -328,10 +331,12 @@ export function createCakeArtifactOperations(
       async execute(input, context) {
         // SAFETY: CakeOperationRegistry parsed input with artifactResolveSchema.
         const { reference } = input as typeof artifactResolveSchema.Type;
-        const origin = pointerOrigin(context);
-        const resolved = await resolveArtifact(reference);
+        const origin = pi ? pointerOrigin(context) : undefined;
+        const resolved = options.resolveArtifactForPresentation
+          ? await options.resolveArtifactForPresentation(stableReference(reference))
+          : await resolveArtifact(reference);
         if (context.signal.aborted) throw new Error("Artifact presentation was cancelled");
-        appendPointer(resolved.record, origin, "selected-revision");
+        if (origin) appendPointer(resolved.record, origin, "selected-revision");
         return resolved.metadata;
       },
     },

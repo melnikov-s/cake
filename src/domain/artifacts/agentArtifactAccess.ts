@@ -23,6 +23,18 @@ export const resolve = Effect.fn("AgentArtifacts.resolve")(function* (
   return { record: artifactRevisionToRecord(effective.revision), metadata };
 });
 
+/** A present request is an explicit link intent, but existing link selection is preserved. */
+export const resolveForPresentation = Effect.fn("AgentArtifacts.resolveForPresentation")(function* (
+  sessionId: string,
+  reference: string,
+) {
+  return yield* resolve(sessionId, reference).pipe(
+    Effect.catchTag("ArtifactNotLinked", () =>
+      link(sessionId, reference).pipe(Effect.andThen(resolve(sessionId, reference))),
+    ),
+  );
+});
+
 export const link = Effect.fn("AgentArtifacts.link")(function* (
   sessionId: string,
   reference: string,

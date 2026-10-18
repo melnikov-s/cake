@@ -72,6 +72,7 @@ import { ArtifactLineageId } from "../../contracts/artifacts/artifact-lineage";
 
 const CAKE_CHAT_OPERATIONS = [
   "artifacts.link",
+  "artifacts.present",
   "artifacts.state.read",
   "artifacts.selection.capture",
   "artifacts.source",
@@ -379,6 +380,8 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
       allowedCakeOperations: CAKE_CHAT_OPERATIONS,
       resolveArtifact: (reference) =>
         runArtifact(agentArtifactAccess.resolve(target.sessionId, reference)),
+      resolveArtifactForPresentation: (reference) =>
+        runArtifact(agentArtifactAccess.resolveForPresentation(target.sessionId, reference)),
       linkArtifact: (reference) =>
         runArtifact(agentArtifactAccess.link(target.sessionId, reference)),
       readArtifactState: (lineageId) =>

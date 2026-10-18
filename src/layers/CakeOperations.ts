@@ -180,17 +180,15 @@ export function coordinatorCakeOperations(
           )
         : []),
       ...createCoordinatorOperations(bridge),
-      ...createCakeArtifactOperations(
-        { appendEntry: () => undefined },
-        {
-          ...options,
-          persistArtifact: async () => {
-            throw new Error("Artifact publication is unavailable in Cake Chat");
-          },
+      ...createCakeArtifactOperations(undefined, {
+        ...options,
+        persistArtifact: async () => {
+          throw new Error("Artifact publication is unavailable in Cake Chat");
         },
-      ).filter((operation) =>
+      }).filter((operation) =>
         [
           "artifacts.link",
+          "artifacts.present",
           "artifacts.state.read",
           "artifacts.selection.capture",
           "artifacts.source",
@@ -247,6 +245,7 @@ export function configureCakeSessionRuntime(
     generateInlineWidget,
     reviseInlineWidget,
     resolveArtifact,
+    resolveArtifactForPresentation,
     hasLinkedArtifacts,
     listArtifactMetadata,
     historyArtifact,
@@ -286,6 +285,7 @@ export function configureCakeSessionRuntime(
     generateInlineWidget,
     reviseInlineWidget,
     resolveArtifact,
+    resolveArtifactForPresentation,
     hasLinkedArtifacts,
     listArtifactMetadata,
     historyArtifact,

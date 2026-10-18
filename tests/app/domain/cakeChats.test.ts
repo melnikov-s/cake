@@ -186,6 +186,7 @@ describe("permanent Cake Chat", () => {
       expect(trusted.runtime.allowedCakeOperations).toEqual(
         expect.arrayContaining([
           "artifacts.link",
+          "artifacts.present",
           "artifacts.state.read",
           "artifacts.selection.capture",
           "artifacts.source",

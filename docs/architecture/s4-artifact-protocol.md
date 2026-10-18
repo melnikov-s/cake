@@ -177,15 +177,25 @@ rather than moving latest. Link and unlink append no transcript pointers.
 Create, update, replace, and restore each append one bounded exact-revision pointer without
 payload or fallback content.
 
-`artifacts.present({ reference })` shows an existing effectively linked artifact
-at the current assistant tool call. It resolves through the same linked-reference
-validation as agent reads and appends a metadata-only `cake.artifact/v1` Pi
-pointer with `presentation: "selected-revision"`. Each call is an independent
+`artifacts.present({ reference })` shows an existing artifact in the requesting
+conversation, including permanent Project Chat and global Cake Chat. It does not
+require ownership or an open producing session. Permanent chats treat presentation
+as an explicit link intent: resolve through existing effective-link authorization,
+and only on `ArtifactNotLinked` establish a link through the existing global-link
+policy. Other failures propagate; an existing link's selection is never changed.
+Project Sessions continue to require an effective link before presentation.
+Regular Pi appends a metadata-only `cake.artifact/v1` pointer with
+`presentation: "selected-revision"`. Permanent chats retain exact metadata (including
+digest) in their successful `artifacts.present` Pi Durable tool-result original;
+the shared transcript projection recognizes only validated successful presentation
+results, including when the originating call is on another history page. There is
+no second transcript or renderer-only presentation event. Each call is an independent
 inline surface, including repeated calls for an already-published exact revision.
 The renderer pins that surface to the resolved exact source; stable input resolves
 current source and exact input respects `@rN`. Widget instances still hydrate
 current mutable lineage state, never a historical state snapshot. No generation,
-publication, link mutation, or state write occurs. All kinds reuse `ArtifactHost`
+publication, ownership transfer, provenance change, or state write occurs. After
+any necessary first link, repeated presentation does not mutate links either. All kinds reuse `ArtifactHost`
 and existing sandbox boundaries. This is user presentation, not a new screenshot
 for the model; retained review images remain `artifacts.preview`'s responsibility.
 Use this operation rather than regeneration or duplicate Markdown embeds when
@@ -480,7 +490,7 @@ and advisory: stale versions/revisions, digest/evidence mismatches, unknown choi
 missing manifests/source/dependencies and unauthorized reads fail explicitly.
 Recapture after drift; never silently return latest or all alternatives. Historical
 widgets remain viewable but need an explicit revision adopting the manifest before
-selected-source retrieval. Project Chat exposes only link, saved-state read,
+selected-source retrieval. Permanent chats expose link, inline presentation, saved-state read,
 selection capture and selected-source retrieval for this workflow, not generation,
 publication, state writes, preview or whole-widget source tools.
 

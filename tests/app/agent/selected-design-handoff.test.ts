@@ -231,6 +231,7 @@ describe("selected prototype handoff through real artifact permissions/state/rev
         .sort(),
     ).toEqual([
       "artifacts.link",
+      "artifacts.present",
       "artifacts.selection.capture",
       "artifacts.source",
       "artifacts.state.read",

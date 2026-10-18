@@ -11,6 +11,7 @@ import {
   decodeArtifactPointer,
   type ArtifactPointer,
 } from "../../../contracts/artifacts/artifact-contract";
+import { ArtifactProjectionMetadata } from "../../../contracts/artifacts/artifact-projection-data";
 import {
   InterviewEntry,
   InterviewResult,
@@ -633,6 +634,17 @@ function partsFromMessage(
   if (role === "toolResult") {
     const name = String(Reflect.get(message, "toolName") ?? "tool");
     const details = Reflect.get(message, "details");
+    // Durable has no regular-Pi custom entries. Its original tool result is the
+    // presentation authority, including on a page without the assistant tool call.
+    const presentation =
+      name === "cake" && !Reflect.get(message, "isError")
+        ? Schema.decodeUnknownOption(
+            Schema.Struct({
+              command: Schema.Literal("artifacts.present"),
+              result: ArtifactProjectionMetadata,
+            }),
+          )(details)
+        : Option.none();
     return [
       {
         id: boundedProjectionKey(`tool-${String(Reflect.get(message, "toolCallId"))}`),
@@ -643,8 +655,15 @@ function partsFromMessage(
         output: textFromContent(content) || formatUnknown(details),
         outputContent: projectToolOutputContent(content),
         nestedCalls: projectNestedToolCalls(Reflect.get(message, "nestedCalls")),
-        artifactId: toolArtifactId({ details }),
-        artifactRevision: toolArtifactRevision({ details }),
+        artifactId: Option.isSome(presentation)
+          ? presentation.value.result.lineageId
+          : toolArtifactId({ details }),
+        artifactRevision: Option.isSome(presentation)
+          ? presentation.value.result.selectedRevision
+          : toolArtifactRevision({ details }),
+        ...(Option.isSome(presentation)
+          ? { artifactReference: presentation.value.result.exactRef }
+          : null),
         diff: toolResultDiff(name, { details }),
         state: Reflect.get(message, "isError") ? "error" : "success",
       },

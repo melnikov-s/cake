@@ -31,6 +31,8 @@ export interface CakeArtifactOperationOptions {
   ): Promise<InlineWidgetGenerationResult>;
   reviseInlineWidget?(input: InlineWidgetRevisionRequest): Promise<InlineWidgetGenerationResult>;
   resolveArtifact?(reference: string): Promise<ResolvedAgentArtifact>;
+  /** Permanent chats may establish an effective link when explicitly presenting a reference. */
+  resolveArtifactForPresentation?(reference: string): Promise<ResolvedAgentArtifact>;
   hasLinkedArtifacts?(): Promise<boolean>;
   listArtifactMetadata?(): Promise<ReadonlyArray<ArtifactProjectionMetadata>>;
   historyArtifact?(reference: string): Promise<ReadonlyArray<ArtifactProjectionMetadata>>;
