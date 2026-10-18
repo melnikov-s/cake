@@ -1245,7 +1245,7 @@ describe("AppControlBridge", () => {
     discovered = [];
     const count = lookup.mock.calls.length;
     await expect(
-      bridge.invoke({ name: "sessions.open", arguments: { sessionId: "s:00000011" } }),
+      bridge.invoke({ name: "sessions.open", arguments: { sessionId: "00000011" } }),
     ).resolves.toMatchObject({ ok: false });
     expect(lookup).toHaveBeenCalledTimes(count);
   });

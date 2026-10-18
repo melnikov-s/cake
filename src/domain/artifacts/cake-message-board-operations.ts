@@ -46,7 +46,7 @@ const continuationOperations = (
         input: {
           mode: "resume",
           topic: "implementation",
-          awaitAuthors: ["s:236e7b8b"],
+          awaitAuthors: ["236e7b8b"],
           maxTurns: 1,
         },
       },
@@ -89,7 +89,7 @@ export const createMessageBoardOperations = (
         input: {
           description: "Renderer and backend must use a distinct editor origin",
           body: "The iframe currently shares Cake's origin. Both owners need isolation before integration.",
-          audience: ["s:236e7b8b", "s:7d87c268"],
+          audience: ["236e7b8b", "7d87c268"],
           topic: "editor-origin",
         },
       },

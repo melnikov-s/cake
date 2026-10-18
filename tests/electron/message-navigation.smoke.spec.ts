@@ -77,7 +77,7 @@ for (const surface of ["Project Session", "Cake Chat"] as const) {
           users.set(turn, surface === "Cake Chat" ? String(userEntry.id) : `user-${turn}`);
           const links =
             turn === 12
-              ? `\n\n[${surface === "Cake Chat" ? "Linked answer" : "s:f80c961e"}](cake://session/${sessionId}?message=${assistants.get(6)}) · [Linked request](cake://session/${sessionId}?message=${users.get(6)})`
+              ? `\n\n[${surface === "Cake Chat" ? "Linked answer" : "f80c961e"}](cake://session/${sessionId}?message=${assistants.get(6)}) · [Linked request](cake://session/${sessionId}?message=${users.get(6)})`
               : "";
           const text = [
             `Answer ${turn}.${links}`,

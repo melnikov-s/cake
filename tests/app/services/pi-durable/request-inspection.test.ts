@@ -79,7 +79,7 @@ it("shortens coordination envelopes in provider context without changing canonic
       },
     },
   );
-  expect(sent[0]).toContain("s:112345678");
+  expect(sent[0]).toContain("112345678");
   expect(sent[0]).toContain("Review worker");
   expect(sent[0]).not.toContain(sender);
   expect(parseCrossSessionMessage(envelope)?.metadata.sender.sessionId).toBe(sender);

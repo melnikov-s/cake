@@ -1,5 +1,9 @@
 import { Schema } from "effect";
-import { AgentSessionListInput } from "../../contracts/project-sessions/agent-session-list";
+import {
+  sessionListGuidance,
+  sessionListResult,
+  AgentSessionListInput,
+} from "../../contracts/project-sessions/agent-session-list";
 import {
   AgentPendingListInput,
   AgentPendingReadInput,
@@ -74,13 +78,12 @@ export function createConversationOperations(
       summary:
         "List a bounded session roster with status and advisory context size/cache freshness.",
       guidance: [
-        "Filter by projectPath, title query, status or attentionOnly before paging with offset/limit. Use sessions.info for details and user-facing deep links.",
+        ...sessionListGuidance,
         "Use sessions.list-family when only the calling Project Session's family is needed.",
       ],
       inputSchema: AgentSessionListInput,
       examples: [{}],
-      result:
-        "Session references, titles, kind, project name, status and advisory context (estimatedTokens when known, lastModelActivityAt, cache warm/potentially-expired/unknown, evidenced estimatedExpiresAt); total and nextOffset bound discovery.",
+      result: sessionListResult,
       execute: invokeAppControl("sessions.list"),
     },
     {

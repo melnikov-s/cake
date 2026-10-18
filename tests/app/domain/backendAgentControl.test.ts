@@ -387,7 +387,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
     saveRelease,
     call: (command: string, input: JsonObject = {}) =>
       Effect.promise(() => invoke(command, input, signal())),
-    direct: (command: string, input: JsonValue, sender = caller) =>
+    direct: (command: string, input: JsonValue, sender: agentControl.AgentControlCaller = caller) =>
       agentControl.invoke(command, input, sender).pipe(Effect.provide(context)),
     state: () => Context.get(context, ApplicationState).snapshot(),
     pause: () => {
@@ -663,15 +663,11 @@ it.effect("executes settings, label lifecycle, and authoritative inspection with
     });
     yield* f.call("session-labels.remove", { labelId });
     expect(f.state().projects[0]?.workflow?.assignments[0]?.labelIds ?? []).toEqual([]);
-    expect(yield* f.call("sessions.list")).toMatchObject({
-      sessions: [
-        { sessionId: target, title: "Same title" },
-        { sessionId: source },
-        { sessionId: third, title: "Same title" },
-      ],
-    });
+    expect(yield* f.call("sessions.list")).toBe(
+      "3 sessions\nid status tokens cache age ttl | title\n00000022 idle ? ? ? ? | Same title\n00000011 idle ? ? ? ? | Source\n00000033 idle ? ? ? ? | Same title",
+    );
     for (const command of ["history", "compactions", "tree", "context", "usage", "commands"])
-      expect(yield* f.call(`sessions.${command}`, { sessionId: "s:00000022" })).toMatchObject({
+      expect(yield* f.call(`sessions.${command}`, { sessionId: "00000022" })).toMatchObject({
         ok: true,
         target: { sessionId: target },
         result: { total: 0 },
@@ -714,7 +710,7 @@ it.effect(
       f.resolve();
       const selectedMessage = messageReference(source, "entry");
       const sent = yield* f.call("sessions.send", {
-        sessionId: "s:00000022",
+        sessionId: "00000022",
         text: "Review this",
         inputRefs: ["allowed"],
         messageRefs: [selectedMessage],
@@ -908,9 +904,7 @@ it.effect(
         revision: 1,
         status: "saved",
       });
-      expect(yield* f.call("sessions.list")).toMatchObject({
-        sessions: [{ sessionId: draftId, status: "draft" }, {}, {}, {}],
-      });
+      expect(yield* f.call("sessions.list")).toContain("draft ? ? ? ? | Unsent");
       expect(yield* f.call("sessions.info", { sessionId: draftId })).toMatchObject({
         ok: true,
         session: { sessionId: draftId, draft: true, title: "Unsent", messageCount: 0 },
@@ -955,28 +949,9 @@ it.effect(
           write1hTokens: 0,
         },
       });
-      expect(yield* f.call("sessions.list", { limit: 1 })).toEqual({
-        ok: true,
-        command: "sessions.list",
-        total: 3,
-        offset: 0,
-        nextOffset: 1,
-        sessions: [
-          {
-            sessionId: target,
-            title: "Same title",
-            kind: "project-session",
-            projectName: "Project",
-            status: "idle",
-            context: {
-              estimatedTokens: 120_000,
-              lastModelActivityAt: "2000-01-01T00:00:00.000Z",
-              cache: "potentially-expired",
-              estimatedExpiresAt: "2000-01-01T00:05:00.000Z",
-            },
-          },
-        ],
-      });
+      expect(yield* f.call("sessions.list", { limit: 1 })).toBe(
+        "3 sessions; next=1\nid status tokens cache age ttl | title\n00000022 idle 120K expired? 1h -55m | Same title",
+      );
       expect(f.inspections).toEqual([target]);
       expect(f.runtimeCreates).toEqual([source]);
       expect(yield* Queue.size(f.prompts)).toBe(0);
@@ -997,23 +972,114 @@ it.effect(
       const projectChat = projectChatSessionId("/project");
       for (const id of [CAKE_CHAT_SESSION_ID, projectChat])
         f.contextBySession.set(id, { estimatedTokens: 1234 });
-      const listing = yield* f.call("sessions.list", { query: "Chat" });
-      expect(listing).toMatchObject({
-        total: 2,
-        sessions: expect.arrayContaining([
-          expect.objectContaining({
-            sessionId: CAKE_CHAT_SESSION_ID,
-            context: { estimatedTokens: 1234, cache: "unknown" },
-          }),
-          expect.objectContaining({
-            sessionId: projectChat,
-            context: { estimatedTokens: 1234, cache: "unknown" },
-          }),
-        ]),
-      });
+      const listing = yield* f.direct(
+        "sessions.list",
+        { query: "Chat" },
+        { kind: "cake-chat", sessionId: CAKE_CHAT_SESSION_ID, title: "Cake Chat" },
+      );
+      expect(listing).toContain("2 sessions\nid status tokens cache age ttl | project | title");
+      expect(listing).toContain("cake-chat idle 1.2K ? ? ? | — | Cake Chat");
+      expect(listing).toContain("idle 1.2K ? ? ? | Project | Project Chat");
       expect(f.inspections).toEqual([]);
       expect(f.runtimeCreates).toEqual([source]);
     }),
+);
+
+it.effect(
+  "limits every non-global caller to its project, including worktree callers and explicit filters",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture(true);
+      const project = f.state().projects[0];
+      assert.ok(project);
+      yield* Context.get(f.context, ApplicationState).transact((state) =>
+        Effect.succeed({
+          ...state,
+          projects: [...state.projects, { ...project, path: "/other", name: "Other" }],
+        }),
+      );
+      f.drafts.push({
+        sessionId: "00000000-0000-4000-8000-00000000abcd",
+        projectPath: "/other",
+        workingDirectory: "/other-worktree",
+        title: "Foreign task",
+        text: "Private draft body",
+        attachments: [],
+        labelIds: [],
+        resolved: false,
+        createdAt: "2026-02-01",
+        modifiedAt: "2026-02-01",
+        revision: 1,
+        status: "saved",
+      });
+      const global = {
+        kind: "cake-chat" as const,
+        sessionId: CAKE_CHAT_SESSION_ID,
+        title: "Cake Chat",
+      };
+      expect(yield* f.direct("sessions.list", { query: "Foreign" }, global)).toContain(
+        "0000abcd draft ? ? ? ? | Other | Foreign task",
+      );
+      expect(
+        yield* f.direct("sessions.list", { query: "Foreign", projectPath: "/other" }, global),
+      ).toContain("0000abcd draft ? ? ? ? | Foreign task");
+      const projectChat = {
+        kind: "cake-chat" as const,
+        sessionId: projectChatSessionId("/project"),
+        title: "Project Chat",
+      };
+      for (const sender of [
+        caller,
+        { ...caller, workingDirectory: "/managed-worktree" },
+        { ...caller, projectPath: undefined },
+        projectChat,
+      ]) {
+        expect(yield* f.direct("sessions.list", { query: "Foreign" }, sender)).toBe("0 sessions");
+        expect(yield* f.direct("sessions.list", { projectPath: "/other" }, sender)).toBe(
+          "0 sessions",
+        );
+        expect(yield* f.direct("sessions.list", { query: "Same" }, sender)).toContain(
+          "00000022 idle ? ? ? ? | Same title",
+        );
+      }
+      expect(
+        yield* f.direct(
+          "sessions.list",
+          {},
+          { ...projectChat, sessionId: projectChatSessionId("/unregistered") },
+        ),
+      ).toMatchObject({
+        ok: false,
+        error: "The caller has no registered project scope.",
+      });
+      expect(f.runtimeCreates).toEqual([source]);
+    }),
+);
+
+it.effect("redacts task-input titles before formatting or filtering a Cake Chat text roster", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    f.protectedSessions.add(target);
+    const global = {
+      kind: "cake-chat" as const,
+      sessionId: CAKE_CHAT_SESSION_ID,
+      title: "Cake Chat",
+    };
+    expect(yield* f.direct("sessions.list", { query: "Task" }, global)).toBe(
+      "1 sessions\nid status tokens cache age ttl | project | title\n00000022 idle ? ? ? ? | Project | Task session",
+    );
+    const invoke = yield* batchRegistry(f);
+    const expected =
+      "1 sessions\nid status tokens cache age ttl | project | title\n00000022 idle ? ? ? ? | Project | Task session";
+    expect(yield* invoke("sessions.list", { query: "Task" })).toMatchObject({
+      text: expected,
+      structuredContent: expected,
+      details: { result: expected },
+    });
+    const unprotected = yield* f.direct("sessions.list", { query: "Same" }, global);
+    expect(unprotected).toContain("00000033");
+    expect(unprotected).not.toContain("00000022");
+  }),
 );
 
 it.effect("paginates a minimal session roster and filters before selecting a page", () =>
@@ -1034,54 +1100,25 @@ it.effect("paginates a minimal session roster and filters before selecting a pag
         revision: 1,
         status: "saved",
       });
-    const decode = Schema.decodeUnknownEffect(
-      Schema.Struct({
-        ok: Schema.Boolean,
-        command: Schema.String,
-        total: Schema.Int,
-        offset: Schema.Int,
-        nextOffset: Schema.NullOr(Schema.Int),
-        sessions: Schema.Array(
-          Schema.Struct({
-            sessionId: Schema.String,
-            title: Schema.String,
-            kind: Schema.String,
-            projectName: Schema.String,
-            status: Schema.String,
-            context: Schema.Struct({ cache: Schema.Literal("unknown") }),
-          }),
-        ),
-      }),
-      { onExcessProperty: "error" },
-    );
-    const first = yield* decode(yield* f.call("sessions.list"));
-    expect(first.total).toBe(64);
-    expect(first.sessions).toHaveLength(20);
-    expect(first.nextOffset).toBe(20);
-    const filtered = yield* decode(
-      yield* f.call("sessions.list", {
-        status: "draft",
-        query: "Paging 1",
-        offset: 9,
-        limit: 2,
-        projectPath: "/project",
-      }),
-    );
-    expect(filtered).toMatchObject({
-      total: 11,
-      nextOffset: null,
-      sessions: [{ title: "Paging 18" }, { title: "Paging 19" }],
+    const first = yield* f.call("sessions.list");
+    assert.ok(typeof first === "string");
+    expect(first).toContain("64 sessions; next=20\n");
+    expect(first.split("\n")).toHaveLength(22);
+    const filtered = yield* f.call("sessions.list", {
+      status: "draft",
+      query: "Paging 1",
+      offset: 9,
+      limit: 2,
+      projectPath: "/project",
     });
-    const last = yield* decode(
-      yield* f.call("sessions.list", { status: "draft", limit: 50, offset: 50 }),
+    expect(filtered).toBe(
+      "11 sessions\nid status tokens cache age ttl | title\n00000118 draft ? ? ? ? | Paging 18\n00000119 draft ? ? ? ? | Paging 19",
     );
-    expect(last.sessions).toHaveLength(11);
-    expect(last.nextOffset).toBeNull();
-    expect(yield* f.call("sessions.list", { projectPath: "/absent" })).toMatchObject({
-      total: 0,
-      nextOffset: null,
-      sessions: [],
-    });
+    const last = yield* f.call("sessions.list", { status: "draft", limit: 50, offset: 50 });
+    assert.ok(typeof last === "string");
+    expect(last.split("\n")).toHaveLength(13);
+    expect(last).toContain("61 sessions\n");
+    expect(yield* f.call("sessions.list", { projectPath: "/absent" })).toBe("0 sessions");
     expect(yield* f.call("sessions.info", { sessionId: target })).toMatchObject({
       session: { firstUserMessage: "First input", sessionFile: `/cake/sessions/${target}.jsonl` },
     });
@@ -1111,15 +1148,9 @@ it.effect(
           launchedAt: "2026-01-01",
           lastReport: { status, summary: summaryText, reportedAt: "2026-01-02" },
         });
-      expect(yield* f.call("sessions.list", { launchedByCakeChat: true })).toMatchObject({
-        sessions: [
-          {
-            sessionId: target,
-            status: "failed",
-          },
-          { sessionId: third, status: "done" },
-        ],
-      });
+      expect(yield* f.call("sessions.list", { launchedByCakeChat: true })).toBe(
+        "2 sessions\nid status tokens cache age ttl | title\n00000022 failed ? ? ? ? | Same title\n00000033 done ? ? ? ? | Same title",
+      );
       expect(yield* f.call("sessions.info", { sessionId: target })).toMatchObject({
         session: {
           launch: { status: "failed", summary: "Typecheck failed", reportedAt: "2026-01-02" },
@@ -1127,28 +1158,32 @@ it.effect(
       });
       expect(
         yield* f.call("sessions.list", { launchedByCakeChat: true, attentionOnly: true }),
-      ).toMatchObject({ total: 1, sessions: [{ sessionId: target, status: "failed" }] });
+      ).toBe(
+        "1 sessions\nid status tokens cache age ttl | title\n00000022 failed ? ? ? ? | Same title",
+      );
       for (const status of ["interrupted", "stopped"] as const) {
         yield* families.recordLaunchReport(target, {
           status,
           summary: status,
           reportedAt: "2026-01-03",
         });
-        expect(yield* f.call("sessions.list", { launchedByCakeChat: true })).toMatchObject({
-          sessions: [{ sessionId: target, status }, { sessionId: third }],
-        });
+        expect(yield* f.call("sessions.list", { launchedByCakeChat: true })).toContain(
+          `00000022 ${status} ? ? ? ? | Same title`,
+        );
         expect(
           yield* f.call("sessions.list", { launchedByCakeChat: true, attentionOnly: true }),
-        ).toMatchObject({
-          sessions: status === "interrupted" ? [{ sessionId: target }] : [],
-        });
+        ).toBe(
+          status === "interrupted"
+            ? "1 sessions\nid status tokens cache age ttl | title\n00000022 interrupted ? ? ? ? | Same title"
+            : "0 sessions",
+        );
       }
       f.pauseMessage();
       yield* f.call("sessions.send", { sessionId: third, text: "Run" });
       yield* Queue.take(f.prompts);
-      expect(yield* f.call("sessions.list", { launchedByCakeChat: true })).toMatchObject({
-        sessions: [{ sessionId: target }, { sessionId: third, status: "running" }],
-      });
+      expect(yield* f.call("sessions.list", { launchedByCakeChat: true })).toContain(
+        "00000033 running ? ? ? ? | Same title",
+      );
       yield* Deferred.succeed(f.messageRelease, undefined);
     }),
 );

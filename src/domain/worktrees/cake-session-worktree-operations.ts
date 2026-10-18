@@ -36,7 +36,7 @@ export function createSessionWorktreeOperations(
       inputSchema: Schema.Struct({ sessionId: Schema.optionalKey(sessionIdSchema) }),
       examples: [
         { description: "Merge the calling session's own worktree." },
-        { input: { sessionId: "s:1a2b3c4d" }, description: "Merge an immediate child's worktree." },
+        { input: { sessionId: "1a2b3c4d" }, description: "Merge an immediate child's worktree." },
       ],
       result: mergeResult,
       limitations: [
@@ -60,7 +60,7 @@ export function createSessionWorktreeOperations(
       }),
       examples: [
         { input: { keepBranch: false } },
-        { input: { sessionId: "s:1a2b3c4d", keepBranch: true } },
+        { input: { sessionId: "1a2b3c4d", keepBranch: true } },
       ],
       result: "A completed Managed Worktree discard receipt.",
       limitations: [
@@ -92,7 +92,7 @@ export function createCakeChatWorktreeOperations(
         "If the session has uncommitted work or conflicts, Cake prompts that session to handle them in its own worktree; report the outcome to the user instead of polling.",
       ],
       inputSchema: Schema.Struct({ sessionId: sessionIdSchema }),
-      examples: [{ input: { sessionId: "s:1a2b3c4d" } }],
+      examples: [{ input: { sessionId: "1a2b3c4d" } }],
       result: mergeResult,
       limitations: [
         "The target must be a Project Session with its own isolated Managed Worktree; family children that share their parent's Working Directory are merged through that parent.",

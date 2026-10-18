@@ -72,7 +72,7 @@ const cakeTopics = [
     name: "sessions",
     summary: "Create, inspect, message, steer, stop, and manage sessions.",
     guidance: [
-      "Target sessions by full UUID or s:<at least 8 trailing hex characters>. Emitted references use the shortest unique suffix (normally 8); unknown or ambiguous references fail before routing. Titles are labels, not routing identities.",
+      "Target sessions by canonical ID or bare trailing hex (at least 8 characters). Emitted references use the shortest unique suffix (normally 8); unknown or ambiguous references fail before routing. Titles are labels, not routing identities.",
     ],
   },
   {

@@ -6,7 +6,7 @@ import type { MessageBoardControl } from "../../../src/contracts/artifacts/messa
 const context = { signal: new AbortController().signal, toolCallId: "board", runtime: {} };
 const description = {
   sequence: 2,
-  authorSessionId: "s:12345678",
+  authorSessionId: "12345678",
   createdAt: "2026-01-01T00:00:00Z",
   audience: "workgroup" as const,
   topic: "output",
@@ -95,7 +95,7 @@ describe("Workboard agent protocol", () => {
     const input = {
       description: "Decision",
       body: "Evidence",
-      audience: ["s:12345678"],
+      audience: ["12345678"],
       topic: "output",
       supersedes: [1],
     };

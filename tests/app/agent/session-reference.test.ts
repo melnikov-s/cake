@@ -34,38 +34,35 @@ const context = { signal: new AbortController().signal, toolCallId: "call", runt
 
 describe("session references", () => {
   it("emits eight trailing hex characters, not shared UUIDv7 prefixes", () => {
-    expect(sessionReference(a, [a, c])).toBe("s:12345678");
-    expect(sessionReference(c, ids)).toBe("s:87654321");
+    expect(sessionReference(a, [a, c])).toBe("12345678");
+    expect(sessionReference(c, ids)).toBe("87654321");
   });
 
   it("extends suffixes on collision, ignoring duplicated catalog entries", () => {
-    expect(sessionReference(a, [...ids, a])).toBe("s:112345678");
-    expect(sessionReference(b, ids)).toBe("s:212345678");
-    expect(resolveSessionReference("s:112345678", ids)).toEqual({ ok: true, sessionId: a });
-    expect(resolveSessionReference("s:12345678", [a, a])).toEqual({ ok: true, sessionId: a });
+    expect(sessionReference(a, [...ids, a])).toBe("112345678");
+    expect(sessionReference(b, ids)).toBe("212345678");
+    expect(resolveSessionReference("112345678", ids)).toEqual({ ok: true, sessionId: a });
+    expect(resolveSessionReference("12345678", [a, a])).toEqual({ ok: true, sessionId: a });
   });
 
   it("extends across UUID hyphens up to all 32 hex characters", () => {
     const left = "01957936-0000-7000-8000-000112345678";
     const right = "11957936-0000-7000-8000-000112345678";
     const ref = sessionReference(left, [left, right]);
-    expect(ref).toBe(`s:${left.replaceAll("-", "")}`);
+    expect(ref).toBe(`${left.replaceAll("-", "")}`);
     expect(resolveSessionReference(ref, [left, right])).toEqual({ ok: true, sessionId: left });
   });
 
   it("resolves deep-link short references and bare suffixes, passing other targets through", () => {
-    expect(resolveSessionLinkReference("s:112345678", ids)).toEqual({ ok: true, sessionId: a });
+    expect(resolveSessionLinkReference("112345678", ids)).toEqual({ ok: true, sessionId: a });
     expect(resolveSessionLinkReference("212345678", ids)).toEqual({ ok: true, sessionId: b });
     expect(resolveSessionLinkReference("87654321", ids)).toEqual({ ok: true, sessionId: c });
     expect(resolveSessionLinkReference(a, ids)).toEqual({ ok: true, sessionId: a });
     expect(resolveSessionLinkReference("alpha", ids)).toEqual({ ok: true, sessionId: "alpha" });
     expect(resolveSessionLinkReference("12345678", ids)).toEqual({
       ok: false,
-      error: "Ambiguous session reference: 12345678; use a longer suffix or the full UUID",
-    });
-    expect(resolveSessionLinkReference("s:12345678", ids)).toMatchObject({
-      ok: false,
-      error: expect.stringContaining("Ambiguous"),
+      error:
+        "Ambiguous session reference: 12345678; use a longer suffix or the canonical session ID",
     });
     expect(resolveSessionLinkReference("ffffffff", ids)).toEqual({
       ok: false,
@@ -73,25 +70,39 @@ describe("session references", () => {
     });
   });
 
+  it("shortens Project Chat hashes and disambiguates across projects and UUID sessions", () => {
+    const chat = "project-chat:" + "a".repeat(56) + "12345678";
+    const other = "project-chat:" + "b".repeat(56) + "12345678";
+    const known = [...ids, chat, other];
+    const ref = sessionReference(chat, known);
+    expect(ref).toBe("a12345678");
+    expect(resolveSessionReference(ref, known)).toEqual({ ok: true, sessionId: chat });
+    expect(resolveSessionReference("12345678", known).ok).toBe(false);
+    expect(resolveSessionReference(sessionReference(a, known), known)).toEqual({
+      ok: true,
+      sessionId: a,
+    });
+  });
+
   it("never projects the full-UUID deepLink field to a short reference", () => {
     expect(projectSessionReferences({ sessionId: a, deepLink: sessionLink(a) }, ids)).toEqual({
-      sessionId: "s:112345678",
+      sessionId: "112345678",
       deepLink: `cake://session/${a}`,
     });
   });
 
   it("fails unknown and ambiguous references rather than selecting a recipient", () => {
-    expect(resolveSessionReference("s:12345678", ids)).toMatchObject({
+    expect(resolveSessionReference("12345678", ids)).toMatchObject({
       ok: false,
       error: expect.stringContaining("Ambiguous"),
     });
-    expect(resolveSessionReference("s:ffffffff", ids)).toMatchObject({
+    expect(resolveSessionReference("ffffffff", ids)).toMatchObject({
       ok: false,
       error: expect.stringContaining("Unknown"),
     });
   });
 
-  it.each(["s:1234567", "s:1234567z", "s:12345678-", "s:" + "f".repeat(33), a.slice(0, 8)])(
+  it.each(["1234567", "1234567z", "12345678-", "f".repeat(65), a.slice(0, 8)])(
     "rejects malformed reference %s",
     (ref) => {
       expect(resolveSessionReference(ref, ids).ok).toBe(false);
@@ -101,7 +112,7 @@ describe("session references", () => {
   it("passes exact canonical identities through and accepts uppercase suffix hex", () => {
     expect(resolveSessionReference(a, ids)).toEqual({ ok: true, sessionId: a });
     const uppercaseId = "01957936-0000-7000-8000-0000abcdefab";
-    expect(resolveSessionReference("S:ABCDEFAB", [uppercaseId])).toEqual({
+    expect(resolveSessionReference("ABCDEFAB", [uppercaseId])).toEqual({
       ok: true,
       sessionId: uppercaseId,
     });
@@ -112,24 +123,21 @@ describe("session references", () => {
     });
   });
 
-  it("labels Cake Chat as cake-chat, never as an s: Project Session reference", () => {
-    // Cake Chat's fixed UUID ends in 00000001; shortening it produced the unroutable s:00000001.
+  it("uses Cake Chat's distinct label and resolves project-owned suffixes independently", () => {
     expect(sessionReference(CAKE_CHAT_SESSION_ID, [...ids, CAKE_CHAT_SESSION_ID])).toBe(
       CAKE_CHAT_REFERENCE,
     );
     expect(projectSessionReferences({ sender: { sessionId: CAKE_CHAT_SESSION_ID } }, ids)).toEqual({
       sender: { sessionId: "cake-chat" },
     });
-    // Both the emitted label and the short form older transcripts showed route to Cake Chat.
-    for (const reference of ["cake-chat", "s:00000001", "S:000000000001"])
-      expect(resolveSessionReference(reference, ids)).toEqual({
-        ok: true,
-        sessionId: CAKE_CHAT_SESSION_ID,
-      });
+    expect(resolveSessionReference("cake-chat", ids)).toEqual({
+      ok: true,
+      sessionId: CAKE_CHAT_SESSION_ID,
+    });
     // A Project Session that genuinely owns the suffix still wins.
     const owner = "01957936-0000-7000-8000-000100000001";
-    expect(resolveSessionReference("s:00000001", [owner])).toEqual({ ok: true, sessionId: owner });
-    expect(resolveSessionReference("s:10000001", ids).ok).toBe(false);
+    expect(resolveSessionReference("00000001", [owner])).toEqual({ ok: true, sessionId: owner });
+    expect(resolveSessionReference("10000001", ids).ok).toBe(false);
     const projected = parseCrossSessionMessage(
       projectCrossSessionMessageForAgent(
         encodeCrossSessionMessage("Please review.", {
@@ -166,23 +174,23 @@ describe("session references", () => {
     };
     expect(projectSessionReferences(value, ids)).toEqual({
       ...value,
-      sessionId: "s:112345678",
-      rootSessionId: "s:212345678",
-      familyChildSessionIds: ["s:87654321"],
-      audience: ["s:112345678"],
-      authorSessionId: "s:212345678",
+      sessionId: "112345678",
+      rootSessionId: "212345678",
+      familyChildSessionIds: ["87654321"],
+      audience: ["112345678"],
+      authorSessionId: "212345678",
     });
     expect(value.sessionId).toBe(a);
   });
 
   it("offers scoped domain helpers for boards and reminders with readable labels", async () => {
-    await expect(Effect.runPromise(resolveIn("s:112345678", roster))).resolves.toBe(a);
-    await expect(Effect.runPromise(resolveIn("s:12345678", roster))).rejects.toThrow("Ambiguous");
+    await expect(Effect.runPromise(resolveIn("112345678", roster))).resolves.toBe(a);
+    await expect(Effect.runPromise(resolveIn("12345678", roster))).rejects.toThrow("Ambiguous");
     expect(projectIn({ audience: [b], sessionId: a }, roster)).toEqual({
-      audience: ["s:212345678"],
-      sessionId: "s:112345678",
+      audience: ["212345678"],
+      sessionId: "112345678",
     });
-    expect(labelIn(a, roster)).toBe("s:112345678 (Worker 0)");
+    expect(labelIn(a, roster)).toBe("112345678 (Worker 0)");
   });
 
   it("projects message envelopes and generated notice headers only in agent context", () => {
@@ -197,10 +205,10 @@ describe("session references", () => {
     });
     const projected = parseCrossSessionMessage(projectCrossSessionMessageForAgent(content, ids));
     expect(projected?.metadata.sender).toMatchObject({
-      sessionId: "s:112345678",
+      sessionId: "112345678",
       title: "Authentication review",
     });
-    expect(projected?.text).toBe("Session s:112345678 stopped without replying.");
+    expect(projected?.text).toBe("Session 112345678 stopped without replying.");
     expect(parseCrossSessionMessage(content)?.metadata.sender.sessionId).toBe(a);
     expect(projectCrossSessionMessageForAgent("Ordinary user text", ids)).toBe(
       "Ordinary user text",
@@ -226,17 +234,17 @@ describe("session references", () => {
       ],
       async (value) => projectSessionReferences(value, ids),
     );
-    expect(registry.topicHelp("sessions")).toContain("s:<at least 8 trailing hex characters>");
+    expect(registry.topicHelp("sessions")).toContain("bare trailing hex (at least 8 characters)");
     const result = await registry.invoke({ command: "sessions.list" }, context);
-    expect(result.text).toContain("s:112345678");
+    expect(result.text).toContain("112345678");
     expect(result.text).toContain("Worker 0");
     expect(result.structuredContent).toEqual({
       command: "sessions.list",
       result: {
         sessions: [
-          { sessionId: "s:112345678", title: "Worker 0" },
-          { sessionId: "s:212345678", title: "Worker 1" },
-          { sessionId: "s:87654321", title: "Worker 2" },
+          { sessionId: "112345678", title: "Worker 0" },
+          { sessionId: "212345678", title: "Worker 1" },
+          { sessionId: "87654321", title: "Worker 2" },
         ],
       },
     });
@@ -263,7 +271,7 @@ describe("session references", () => {
       {
         command: "sessions.send-batch",
         input: {
-          sessionIds: [a, "s:212345678", "s:ffffffff"],
+          sessionIds: [a, "212345678", "ffffffff"],
           text: "Review",
           resultDelivery: "ignore",
         },
@@ -276,9 +284,9 @@ describe("session references", () => {
     expect(routed).toEqual([a, b]);
     expect(output.status).toBe("partial");
     expect(output.outcomes.map((outcome) => outcome.sessionId)).toEqual([
-      "s:112345678",
-      "s:212345678",
-      "s:ffffffff",
+      "112345678",
+      "212345678",
+      "ffffffff",
     ]);
   });
 
@@ -301,7 +309,7 @@ describe("session references", () => {
       async (value) => projectSessionReferences(value, [id]),
     );
     const result = await registry.invoke({ command: "session.info" }, context);
-    expect(result.text).toContain("s:12345678");
+    expect(result.text).toContain("12345678");
     expect(result.structuredContent).toEqual({
       command: "session.info",
       result: { sessionId: id },

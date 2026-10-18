@@ -149,7 +149,7 @@ describe("cross-session message format", () => {
     const reminder = formatSessionDigestReminder({
       lines: [
         {
-          reference: "s:0c1d2e3f",
+          reference: "0c1d2e3f",
           sessionId: childId,
           title: "Fix the flaky test",
           status: "completed",

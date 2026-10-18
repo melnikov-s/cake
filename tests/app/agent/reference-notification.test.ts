@@ -91,7 +91,7 @@ describe("passive reference notifications", () => {
     const digest = formatSessionDigestReminder({
       lines: [
         {
-          reference: "s:12345678",
+          reference: "12345678",
           sessionId: "task",
           title: "Task",
           status: "completed",

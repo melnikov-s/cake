@@ -1,6 +1,12 @@
 import { Clock, Effect, Option, Schema, type Scope } from "effect";
 import { sessionContextCost } from "../../utils/session-context-cost";
-import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
+import {
+  CAKE_CHAT_SESSION_ID,
+  isCakeChatSessionId,
+} from "../../contracts/cake-chats/cake-chat-identity";
+import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
+import { sessionRoster } from "./sessionRoster";
+import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 import { CakeChatConfiguration } from "../../services/pi-durable/CakeChatConfiguration";
 import * as chatMetadata from "../cake-chats/cakeChatMetadata";
 import * as chatTargets from "../cake-chats/cakeChatTargets";
@@ -428,10 +434,20 @@ export const invoke: (
           });
         }
         case "sessions.list": {
+          const global = caller.kind === "cake-chat" && caller.sessionId === CAKE_CHAT_SESSION_ID;
+          const scope = global
+            ? undefined
+            : caller.kind === "cake-chat"
+              ? (yield* ApplicationState)
+                  .snapshot()
+                  .projects.find(
+                    (project) => projectChatSessionId(project.path) === caller.sessionId,
+                  )?.path
+              : (caller.projectPath ?? (yield* lookupSession(caller.sessionId)).projectPath);
+          if (!global && !scope) return fail("The caller has no registered project scope.");
+          const roster = yield* sessionReferences.catalog();
           const summaries = yield* Effect.forEach(
-            (yield* sessionReferences.catalog()).filter(
-              ({ sessionId }) => !isCakeChatSessionId(sessionId),
-            ),
+            roster.filter(({ sessionId }) => !isCakeChatSessionId(sessionId)),
             ({ sessionId }) =>
               lookupSession(sessionId).pipe(Effect.catch(() => Effect.succeed(undefined))),
           );
@@ -449,7 +465,7 @@ export const invoke: (
             .map((session) => ({
               sessionId: session.sessionId,
               title: session.title,
-              kind: "project-session",
+              contextMetadata: undefined,
               projectName: session.projectName,
               projectPath: session.projectPath,
               modifiedAt: session.modifiedAt,
@@ -460,19 +476,29 @@ export const invoke: (
             Option.isSome(chatConfiguration) && !input.launchedByCakeChat
               ? (yield* chatMetadata.catalog(chatConfiguration.value.location)).map((chat) => ({
                   sessionId: chat.sessionId,
-                  title: chat.projectPath ? `${chat.title} / Project Chat` : chat.title,
-                  kind: "cake-chat",
+                  title: chat.projectPath ? "Project Chat" : chat.title,
                   projectName: chat.projectPath ? chat.title : undefined,
                   projectPath: chat.projectPath,
                   modifiedAt: chat.modifiedAt,
-                  status: chat.unread ? "unread" : "idle",
+                  status: chat.unread ? ("unread" as const) : ("idle" as const),
                   contextMetadata: chat.contextMetadata,
                 }))
               : [];
+          const entries = yield* Effect.forEach([...projectEntries, ...chatEntries], (entry) =>
+            Effect.gen(function* () {
+              // Text rosters must retain the coordinator's task-input title redaction;
+              // the later JSON-only safeCoordinatorProjection cannot inspect these rows.
+              const protectedTitle =
+                caller.kind === "cake-chat" &&
+                (yield* (yield* TaskInputStorage).isRecipient(entry.sessionId));
+              return protectedTitle ? { ...entry, title: "Task session" } : entry;
+            }),
+          );
           const query = input.query?.toLowerCase();
-          const selected = [...projectEntries, ...chatEntries]
+          const selected = entries
             .filter(
               (session) =>
+                (!scope || session.projectPath === scope) &&
                 (!input.projectPath || session.projectPath === input.projectPath) &&
                 (!query || session.title.toLowerCase().includes(query)) &&
                 (!input.status || session.status === input.status) &&
@@ -487,29 +513,30 @@ export const invoke: (
           const now = yield* Clock.currentTimeMillis;
           const listed = yield* Effect.forEach(items, (item) =>
             Effect.gen(function* () {
-              const contextMetadata =
-                "contextMetadata" in item
-                  ? item.contextMetadata
-                  : item.status === "draft"
-                    ? undefined
-                    : yield* metadata
-                        .inspect({ sessionId: item.sessionId }, { includeParts: false })
-                        .pipe(
-                          Effect.map((preview) => preview.contextMetadata),
-                          // Advisory inspection failure must not hide an otherwise discoverable session.
-                          Effect.catch(() => Effect.succeed(undefined)),
-                        );
-              return {
-                sessionId: item.sessionId,
-                title: agentListLabel(item.title),
-                kind: item.kind,
-                status: item.status,
-                ...(item.projectName ? { projectName: agentListLabel(item.projectName) } : null),
-                context: sessionContextCost(contextMetadata, now),
-              };
+              const contextMetadata = isCakeChatSessionId(item.sessionId)
+                ? item.contextMetadata
+                : item.status === "draft"
+                  ? undefined
+                  : yield* metadata
+                      .inspect({ sessionId: item.sessionId }, { includeParts: false })
+                      .pipe(
+                        Effect.map((preview) => preview.contextMetadata),
+                        // Advisory inspection failure must not hide an otherwise discoverable session.
+                        Effect.catch(() => Effect.succeed(undefined)),
+                      );
+              return { ...item, contextMetadata };
             }),
           );
-          return toJsonValue({ ok: true, command, ...page, sessions: listed });
+          return sessionRoster(
+            listed,
+            page,
+            [
+              ...roster.map((entry) => entry.sessionId),
+              ...chatEntries.map((entry) => entry.sessionId),
+            ],
+            now,
+            global && !input.projectPath,
+          );
         }
         case "sessions.reports":
           return toJsonValue({

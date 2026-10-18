@@ -6,16 +6,17 @@ is an agent-boundary projection, not another stored identity or a name alias.
 
 ## Syntax and resolution
 
-Agents may target a session with its full UUID or `s:<suffix>`, where suffix is
-8–32 trailing hexadecimal characters of the UUID with hyphens removed. Matching
+Agents may target a session with its canonical identity or a bare hexadecimal suffix:
+8–32 trailing characters for UUIDs (hyphens removed), or 8–64 for Project Chat hashes.
+Global Cake Chat uses the distinct `cake-chat` label. Matching
 is case-insensitive for suffix hex. The default emitted suffix is eight characters;
 collisions extend it one character at a time until unique in the relevant live
 roster. UUIDv7 prefixes are intentionally not used because nearby creations share
 them. Titles are readable labels, never routing identities.
 
 For example, `01957936-0000-7000-8000-000112345678` normally projects to
-`s:12345678`. If another session ends in `000212345678`, the references become
-`s:112345678` and `s:212345678`. The eight-character reference is then ambiguous
+`12345678`. If another session ends in `000212345678`, the references become
+`112345678` and `212345678`. The eight-character reference is then ambiguous
 and must fail, not route to whichever session was listed first.
 
 Resolution uses current catalog facts, not a persisted reference registry. Exact
@@ -47,15 +48,14 @@ second transcript or modify Pi originals.
 
 ## Human-facing presentation
 
-Session-ID links display the collision-aware trailing suffix without `s:` when the
-surrounding UI already identifies a session. Markdown identity-only link labels
+Session-ID links display the same collision-aware bare trailing suffix used by agents. Markdown identity-only link labels
 (including inline-code labels) use this presentation; authored titles stay intact.
 Known short link targets resolve against the live roster before rendering so the
 link destination and tooltip retain the canonical Pi UUID. Unresolved or ambiguous
 short targets keep the existing navigation error behavior, never a guessed identity.
 Workboard author, audience and receipt metadata and missing-title fallbacks in the
 artifact's Linked sessions section use the same bare-suffix links.
-Agent-facing `s:` references, parsing, storage and routing contracts are unchanged.
+Storage and internal routing retain canonical identities; only agent/display references shorten them.
 
 ## Exact message references
 

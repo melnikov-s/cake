@@ -395,8 +395,8 @@ describe("message-board intake in real Pi", () => {
       await fixture.control.recordIntake("family-board-test", [1], "readAt");
       await fixture.session.prompt("Continue work");
       const request = JSON.stringify(fixture.requests[0]);
-      expect(request).toContain("s:012345678");
-      expect(request).toContain("s:112345678");
+      expect(request).toContain("012345678");
+      expect(request).toContain("112345678");
       expect(request).toContain("Topic output");
       expect(request).toContain("Supersedes #1");
       expect(request).not.toContain(author);

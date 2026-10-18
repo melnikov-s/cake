@@ -296,16 +296,16 @@ describe("Project navigation workflow", () => {
     using fixture = renderNavigation(open, [...sessions, left, right]);
     await fixture.hydrate(left.sessionId);
     await fixture.hydrate(right.sessionId);
-    for (const reference of ["s:12345678", "12345678"])
+    for (const reference of ["12345678"])
       await expect(fixture.root.navigationStore.openSessionLink(reference)).rejects.toThrow(
         `Ambiguous session reference: ${reference}`,
       );
-    await expect(fixture.root.navigationStore.openSessionLink("s:ffffffff")).rejects.toThrow(
-      "Unknown session reference: s:ffffffff",
+    await expect(fixture.root.navigationStore.openSessionLink("ffffffff")).rejects.toThrow(
+      "Unknown session reference: ffffffff",
     );
     expect(open).not.toHaveBeenCalled();
     await act(async () => {
-      await fixture.root.navigationStore.openSessionLink("s:112345678");
+      await fixture.root.navigationStore.openSessionLink("112345678");
     });
     expect(fixture.root.projectWorkbenchStore.activeSessionId).toBe(left.sessionId);
     await act(async () => {

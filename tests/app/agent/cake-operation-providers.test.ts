@@ -291,10 +291,10 @@ describe("Backend-owned Cake operation composition", () => {
     expect(help).toContain("prompts the owning session to resolve them inside its own worktree");
     expect(help).toContain("Never land Cake-managed worktree work by hand");
     const result = await registry.invoke(
-      { command: "worktrees.merge", input: { sessionId: "s:1a2b3c4d" } },
+      { command: "worktrees.merge", input: { sessionId: "1a2b3c4d" } },
       context,
     );
-    expect(merge).toHaveBeenCalledWith("s:1a2b3c4d", context.signal);
+    expect(merge).toHaveBeenCalledWith("1a2b3c4d", context.signal);
     expect(result.details).toMatchObject({ result: { outcome: "landed" } });
     await expect(
       registry.invoke({ command: "worktrees.merge", input: {} }, context),

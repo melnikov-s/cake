@@ -138,19 +138,19 @@ it.effect("resolves and projects identities without title catalogs or runtime ac
       "/inactive-worktree",
     ]);
     expect(yield* resolve(projectChatSessionId("/project"))).toBe(projectChatSessionId("/project"));
-    expect(yield* resolve("s:112345678")).toBe(active);
-    expect(yield* resolve("s:87654321")).toBe(retired);
-    expect(yield* resolve("s:deadbeef")).toBe(resolvedInPlace);
-    expect(yield* resolve("s:cccccccc")).toBe(draft);
+    expect(yield* resolve("112345678")).toBe(active);
+    expect(yield* resolve("87654321")).toBe(retired);
+    expect(yield* resolve("deadbeef")).toBe(resolvedInPlace);
+    expect(yield* resolve("cccccccc")).toBe(draft);
     expect(yield* project({ sessionId: active, childSessionId: inactive, text: active })).toEqual({
-      sessionId: "s:112345678",
-      childSessionId: "s:212345678",
+      sessionId: "112345678",
+      childSessionId: "212345678",
       text: active,
     });
-    expect(yield* Effect.flip(resolve("s:12345678"))).toMatchObject({
+    expect(yield* Effect.flip(resolve("12345678"))).toMatchObject({
       message: expect.stringContaining("Ambiguous"),
     });
-    expect(yield* Effect.flip(resolve("s:ffffffff"))).toMatchObject({
+    expect(yield* Effect.flip(resolve("ffffffff"))).toMatchObject({
       message: expect.stringContaining("Unknown"),
     });
   }).pipe(Effect.provide(f.layer));
@@ -161,15 +161,15 @@ it.effect(
   () => {
     const f = fixture();
     return Effect.gen(function* () {
-      expect(yield* resolve("s:112345678")).toBe(active);
+      expect(yield* resolve("112345678")).toBe(active);
       f.setActiveIds([]);
       // Full UUIDs pass through for authoritative lookup; only short references need the roster.
       expect(yield* resolve(active)).toBe(active);
-      expect(yield* Effect.flip(resolve("s:112345678"))).toMatchObject({
+      expect(yield* Effect.flip(resolve("112345678"))).toMatchObject({
         message: expect.stringContaining("Unknown"),
       });
       f.setActiveIds([active, active]);
-      expect(yield* resolve("s:112345678")).toBe(active);
+      expect(yield* resolve("112345678")).toBe(active);
       f.fail();
       expect(yield* Effect.flip(resolve(active))).toMatchObject({
         operation: "sessionReferenceCatalog",

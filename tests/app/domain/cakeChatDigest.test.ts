@@ -177,7 +177,7 @@ describe("Cake Chat user priority and digest reminders", () => {
         formatSessionDigestReminder({
           lines: [
             {
-              reference: `s:${reportId.replaceAll("-", "").slice(-8)}`,
+              reference: `${reportId.replaceAll("-", "").slice(-8)}`,
               sessionId: reportId,
               title: "fix-x",
               status: "failed",

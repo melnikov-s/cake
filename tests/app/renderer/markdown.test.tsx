@@ -138,7 +138,7 @@ describe("Markdown rendering integration", () => {
     ).toBe("cake://artifact/report-1@r2");
   });
 
-  it.each(["s:f80c961e", "f80c961e", "01957936-0000-7000-8000-0001f80c961e", "`s:f80c961e`"])(
+  it.each(["f80c961e", "01957936-0000-7000-8000-0001f80c961e", "`f80c961e`"])(
     "displays the identity label %s without a prefix and navigates with its full Pi UUID",
     async (label) => {
       const sessionId = "01957936-0000-7000-8000-0001f80c961e";
@@ -158,7 +158,7 @@ describe("Markdown rendering integration", () => {
     },
   );
 
-  it.each(["s:f80c961e", "f80c961e"])(
+  it.each(["f80c961e"])(
     "canonicalizes the existing short target %s without changing reference parsing",
     async (reference) => {
       const sessionId = "01957936-0000-7000-8000-0001f80c961e";
@@ -182,7 +182,7 @@ describe("Markdown rendering integration", () => {
     const otherId = "01957936-0000-7000-8000-0002f80c961e";
     const openSession = vi.fn();
     using fixture = renderMarkdown(
-      `[s:1f80c961e](cake://session/${sessionId}?message=entry-42) · [Review worker](cake://session/${otherId})`,
+      `[1f80c961e](cake://session/${sessionId}?message=entry-42) · [Review worker](cake://session/${otherId})`,
       { actions: { sessionIds: () => [sessionId, otherId], openSession } },
     );
     const link = screen.getByRole("link", { name: "1f80c961e" });
@@ -194,7 +194,7 @@ describe("Markdown rendering integration", () => {
     );
   });
 
-  it.each(["s:f80c961e", "f80c961e"])(
+  it.each(["f80c961e"])(
     "does not guess a canonical destination for an ambiguous target %s",
     async (reference) => {
       const ids = ["01957936-0000-7000-8000-0001f80c961e", "01957936-0000-7000-8000-0002f80c961e"];
@@ -211,11 +211,11 @@ describe("Markdown rendering integration", () => {
 
   it("leaves literal reference text and code outside session links unchanged", () => {
     using fixture = renderMarkdown(
-      "Reference s:f80c961e and `s:f80c961e`. [s:f80c961e](https://example.com) · [s:f80c961e **worker**](cake://session/01957936-0000-7000-8000-0001f80c961e)",
+      "Reference f80c961e and `f80c961e`. [f80c961e](https://example.com) · [f80c961e **worker**](cake://session/01957936-0000-7000-8000-0001f80c961e)",
     );
-    expect(fixture.container.textContent).toContain("Reference s:f80c961e and s:f80c961e.");
-    expect(screen.getByRole("link", { name: "s:f80c961e worker" })).toBeDefined();
-    expect(screen.getByRole("link", { name: "s:f80c961e" }).getAttribute("href")).toBe(
+    expect(fixture.container.textContent).toContain("Reference f80c961e and f80c961e.");
+    expect(screen.getByRole("link", { name: "f80c961e worker" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "f80c961e" }).getAttribute("href")).toBe(
       "https://example.com/",
     );
   });

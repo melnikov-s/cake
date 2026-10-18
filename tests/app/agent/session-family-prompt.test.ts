@@ -14,7 +14,7 @@ const project = renderPromptTemplate(projectTemplate, {
 });
 const child = renderPromptTemplate(childTemplate, {
   familyId: "family-1",
-  parentSessionId: "s:12345678",
+  parentSessionId: "12345678",
   workingDirectory: "/worktrees/child",
 });
 
@@ -44,7 +44,7 @@ describe("Project Session family communication policy", () => {
   it("uses identity/lifecycle overlays without repeating the full common policy", () => {
     expect(parentTemplate).toContain("main prompt's recursive Workboard-only");
     expect(parentTemplate).toContain("Only the family root resolves/restores");
-    expect(child).toContain("family family-1; immediate parent: s:12345678");
+    expect(child).toContain("family family-1; immediate parent: 12345678");
     expect(child).toContain("Working Directory is fixed at /worktrees/child");
     expect(child).toContain("cannot resolve/restore independently");
     expect(child).toContain("every member inactive");

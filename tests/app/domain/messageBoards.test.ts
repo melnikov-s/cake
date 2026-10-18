@@ -259,7 +259,7 @@ describe("Workboard policy", () => {
       };
       return Effect.gen(function* () {
         const board = yield* boards.ensureBoard(referenceFamily);
-        for (const audience of [["s:12345678"], ["s:ffffffff"], ["outsider"]]) {
+        for (const audience of [["12345678"], ["ffffffff"], ["outsider"]]) {
           expect(
             (yield* Effect.result(
               boards.append(parent, { audience, description: "Invalid target", body: "Evidence" }),
@@ -267,7 +267,7 @@ describe("Workboard policy", () => {
           ).toBe("Failure");
         }
         const post = yield* boards.append(parent, {
-          audience: ["s:012345678", child],
+          audience: ["012345678", child],
           description: "Targeted contract",
           body: "Evidence",
         });
@@ -277,11 +277,11 @@ describe("Workboard policy", () => {
         );
         expect((yield* boards.readNew(child)).entries).toHaveLength(1);
         expect((yield* boards.readNew(sibling)).entries).toHaveLength(0);
-        expect((yield* boards.sessionReceipts(parent, "s:012345678")).sessionId).toBe(child);
-        expect((yield* Effect.result(boards.sessionReceipts(parent, "s:12345678")))._tag).toBe(
+        expect((yield* boards.sessionReceipts(parent, "012345678")).sessionId).toBe(child);
+        expect((yield* Effect.result(boards.sessionReceipts(parent, "12345678")))._tag).toBe(
           "Failure",
         );
-        expect((yield* Effect.result(boards.sessionReceipts(parent, "s:ffffffff")))._tag).toBe(
+        expect((yield* Effect.result(boards.sessionReceipts(parent, "ffffffff")))._tag).toBe(
           "Failure",
         );
       }).pipe(
