@@ -1,6 +1,6 @@
 import { PendingReportAcknowledge, PendingReportRead } from "../conversations/pending-report";
 import { CompletionInboxUpdate } from "../conversations/completion-inbox";
-import { ParentContinuation } from "../conversations/parent-continuation";
+import { ResultDelivery } from "../conversations/result-delivery";
 import { Schema } from "effect";
 import { SessionLabelColor } from "./application-data";
 import {
@@ -12,7 +12,6 @@ import {
 import { SessionHistoryQuery } from "../conversations/session-query-data";
 import { inputRefsSchema } from "../conversations/task-input";
 import { messageRefsSchema } from "../conversations/message-reference";
-import { CakeChatReportPolicy } from "../project-sessions/session-reporting";
 import { jsonObjectSchema } from "../serialization/json-contract";
 import { AgentListInput } from "../agent/agent-list-data";
 import { AgentSessionListInput } from "../project-sessions/agent-session-list";
@@ -25,11 +24,10 @@ const trimmed = (min: number, max: number) =>
 const id = Schema.String.check(Schema.isUUID(4));
 const target = { sessionId: bounded(1, 256) };
 const message = {
-  continuation: Schema.optionalKey(ParentContinuation),
+  resultDelivery: Schema.optionalKey(ResultDelivery),
   text: trimmed(1, 100_000),
   delivery: Schema.optionalKey(Schema.Literals(["prompt", "queue", "steer"])),
   threadId: Schema.optionalKey(id),
-  expectsResponse: Schema.optionalKey(Schema.Boolean),
   replyToMessageId: Schema.optionalKey(id),
 };
 const operation = <const Name extends string, Input extends Schema.Constraint>(
@@ -107,7 +105,6 @@ export const BackendAgentInvocation = Schema.Union([
       ...message,
       inputRefs: Schema.optionalKey(inputRefsSchema),
       messageRefs: Schema.optionalKey(messageRefsSchema),
-      report: Schema.optionalKey(CakeChatReportPolicy),
       maxMessages: Schema.optionalKey(
         Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(1000)),
       ),

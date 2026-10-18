@@ -30,7 +30,7 @@ describe("Project Session family communication policy", () => {
     expect(project).toContain(
       "User-facing replies, Cake Chat and unrelated sessions are outside this rule",
     );
-    expect(project).toContain("Create children with expectsResponse: false");
+    expect(project).toContain("Create children with resultDelivery: ignore");
     expect(project).toContain("bootstrap board discovery only");
     expect(project).toContain("Posts never clear runtime-managed report obligations");
     expect(project).toContain("no private workaround or extra report");
@@ -91,9 +91,9 @@ describe("Project Session family communication policy", () => {
     });
     const guidance = (command: string) =>
       operations.find((operation) => operation.command === command)?.guidance?.join("\n");
-    expect(guidance("sessions.create-child")).toContain("Set expectsResponse: false");
+    expect(guidance("sessions.create-child")).toContain('Set resultDelivery: "ignore"');
     expect(guidance("sessions.create-child")).toContain(
-      "board posts do not clear existing obligations",
+      "Board posts do not settle private obligations",
     );
     for (const command of ["sessions.send", "sessions.reply", "sessions.send-batch"]) {
       expect(guidance(command)).toContain("exclusively");
@@ -101,7 +101,7 @@ describe("Project Session family communication policy", () => {
     }
     const example = operations.find((operation) => operation.command === "sessions.create-child")
       ?.examples?.[0]?.input;
-    expect(example).toMatchObject({ expectsResponse: false });
+    expect(example).toMatchObject({ resultDelivery: "ignore" });
     expect(example?.initialPrompt).toContain("read your assignment there");
   });
 });

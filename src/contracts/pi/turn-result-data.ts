@@ -3,6 +3,8 @@ import { Schema } from "effect";
 /** Evidence from the final assistant message of the Pi run that consumed an input. */
 export const PiTurnResult = Schema.Struct({
   stopReason: Schema.String,
+  /** Exact authoritative Pi assistant entry, captured by the application. */
+  entryId: Schema.optionalKey(Schema.String),
   text: Schema.String,
   errorMessage: Schema.optionalKey(Schema.String),
   /**

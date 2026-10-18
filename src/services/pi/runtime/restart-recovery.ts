@@ -73,6 +73,8 @@ export function restartDecision(entries: readonly SessionEntry[], turnId: string
     return {
       kind: "settled",
       result: {
+        entryId: entries.findLast((entry) => entry.type === "message" && entry.message === tail)
+          ?.id,
         stopReason: tail.stopReason,
         text: textFromContent(tail.content),
         ...(tail.errorMessage ? { errorMessage: tail.errorMessage } : null),

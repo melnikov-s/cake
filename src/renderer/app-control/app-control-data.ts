@@ -36,7 +36,7 @@ import type {
 import type { QueuedConversationMessages } from "../../contracts/conversations/conversation-data";
 import { type SessionActivity } from "../lib/session-activity";
 import type { LaunchedSessionStatus } from "../lib/cake-chat-launches";
-import type { CakeChatReportPolicy } from "../../contracts/project-sessions/session-reporting";
+import type { ResultDelivery } from "../../contracts/conversations/result-delivery";
 import {
   type CakeSettingsSectionId,
   type CakeSettingsSectionView,
@@ -391,7 +391,7 @@ type AppControlSuccess =
       delivery: "prompt" | "queue" | "steer";
       expectsResponse: boolean;
       /** Cake Chat senders only: how the requested result comes back. */
-      report?: CakeChatReportPolicy;
+      resultDelivery?: ResultDelivery;
       replyToMessageId?: string;
       recipientContext?: CrossSessionContextSnapshot;
       queue?: CrossSessionQueueSnapshot;

@@ -1,3 +1,5 @@
+import type { PiTurnResult } from "../../src/contracts/pi/turn-result-data";
+import { encodeCrossSessionMessage } from "../../src/contracts/conversations/cross-session-message";
 import type { AttachmentReferenceControl } from "../../src/contracts/conversations/attachment-reference-control";
 import { cakeOperationImageResult } from "../../src/contracts/agent/cake-operation";
 import { createProjectSessionRuntime as createCakeSessionRuntime } from "../../src/layers/CakeOperations";
@@ -117,6 +119,7 @@ async function createFixtureRuntime(
     projectInvestigation?: boolean;
     allowMutations?: boolean;
     onInitialTranscriptPersisted?(): void;
+    onTurnResult?(turnId: string, result: PiTurnResult): void;
     attachmentReferenceControl?: AttachmentReferenceControl;
   } = {},
 ) {
@@ -142,6 +145,7 @@ async function createFixtureRuntime(
       : undefined,
     requestUi: async () => undefined,
     onInitialTranscriptPersisted: options.onInitialTranscriptPersisted,
+    onTurnResult: options.onTurnResult,
     onEvent: (event) => events.push(event),
   });
   runtimes.push(runtime);
@@ -162,6 +166,40 @@ afterEach(async () => {
 });
 
 describe("CakeSessionRuntime characterization", () => {
+  it("captures the exact persisted Pi result entry for an artifact-only correlated answer", async () => {
+    const directory = await createTemporaryDirectory();
+    const text = "[Drawing](cake://artifact/result)";
+    await registerFixtureProvider(directory, (_index, response) =>
+      finishTextResponse(response, text),
+    );
+    const results: PiTurnResult[] = [];
+    const runtime = await createFixtureRuntime(directory, [], {
+      onTurnResult: (_turnId, result) => results.push(result),
+    });
+    await runtime.prompt(
+      encodeCrossSessionMessage("Produce the drawing", {
+        version: 1,
+        messageId: "00000000-0000-4000-8000-000000000001",
+        threadId: "00000000-0000-4000-8000-000000000001",
+        sequence: 1,
+        expectsResponse: true,
+        resultDelivery: "reply",
+        sender: { kind: "cake-chat", sessionId: "creator", title: "Creator" },
+      }),
+      "prompt",
+      [],
+      false,
+      "result-turn",
+    );
+    const entry = SessionManager.open(runtime.sessionFile)
+      .getBranch()
+      .findLast((entry) => entry.type === "message" && entry.message.role === "assistant");
+    expect(entry?.id).toEqual(expect.any(String));
+    expect(results).toEqual([
+      expect.objectContaining({ text, entryId: entry?.id, respondsToSessionId: "creator" }),
+    ]);
+  });
+
   it("signals initial durability after Pi writes the user message, without waiting for the provider", async () => {
     const directory = await createTemporaryDirectory();
     const persisted = deferred();

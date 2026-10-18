@@ -17,8 +17,7 @@ import {
   CAKE_CHAT_SESSION_ID,
   isCakeChatSessionId,
 } from "../../../src/contracts/cake-chats/cake-chat-identity";
-import type { ParentContinuation } from "../../../src/contracts/conversations/parent-continuation";
-import type { CakeChatReportPolicy } from "../../../src/contracts/project-sessions/session-reporting";
+import type { ResultDelivery } from "../../../src/contracts/conversations/result-delivery";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import type { Attachment } from "../../../src/contracts/conversations/session-contract";
@@ -353,8 +352,8 @@ const assembleCoordinator = Effect.fn("SpawnedReportingTest.assembleCoordinator"
 const createFromChat = Effect.fn("SpawnedReportingTest.createFromChat")(function* (
   inputRefs: readonly string[] = [],
   /** null omits the field to exercise Cake Chat's default. */
-  report: CakeChatReportPolicy | null = "interrupt",
-  continuation?: ParentContinuation,
+  resultDelivery: ResultDelivery | null = "reply",
+
   coordinator = CAKE_CHAT_SESSION_ID,
 ) {
   const options = yield* assembleCoordinator(coordinator);
@@ -367,8 +366,7 @@ const createFromChat = Effect.fn("SpawnedReportingTest.createFromChat")(function
           workspacePath: "/project",
           ...createArgs,
           inputRefs: [...inputRefs],
-          ...(report ? { report } : null),
-          ...(continuation ? { continuation } : null),
+          ...(resultDelivery ? { resultDelivery } : null),
         },
       },
       new AbortController().signal,
@@ -389,26 +387,30 @@ const onlyTurn = Effect.fn("SpawnedReportingTest.onlyTurn")(function* () {
 describe("automatic spawned-session reporting", () => {
   for (const coordinator of [CAKE_CHAT_SESSION_ID, projectChatSessionId("/project")]) {
     it.effect.each([false, true])(
-      `launch intent resumes a linked prerequisite for ${coordinator}, busy=%s, despite digest presentation`,
+      `Expect reply wakes or serially queues linked completion for ${coordinator}, busy=%s`,
       (busy) =>
         Effect.gen(function* () {
           const f = yield* fixture(busy);
           yield* f.run(
             Effect.gen(function* () {
-              yield* createFromChat([], "digest", "resume", coordinator);
+              yield* createFromChat([], "reply", coordinator);
               const admitted = yield* Deferred.await(f.entered);
               assert.equal(
-                parseCrossSessionMessage(admitted.text)?.metadata.continuation,
-                "resume",
+                parseCrossSessionMessage(admitted.text)?.metadata.resultDelivery,
+                "reply",
               );
-              assert.equal((yield* onlyTurn()).continuation, "resume");
+              assert.equal((yield* onlyTurn()).resultDelivery, "reply");
               // Verify the launch fact survives decoding, so pre-admission recovery also knows to resume.
               const reloaded = yield* Effect.gen(function* () {
                 return yield* (yield* SessionFamilyStorage).state();
               }).pipe(Effect.provide(familyStorageHarness(f.harness.files).layer));
-              assert.equal(reloaded.spawnedSessions[0]?.continuation, "resume");
+              assert.equal(reloaded.spawnedSessions[0]?.resultDelivery, "reply");
               const link = "[Commit](cake://session/worker?message=prerequisite)";
-              yield* Deferred.succeed(f.finish, { stopReason: "stop", text: link });
+              yield* Deferred.succeed(f.finish, {
+                stopReason: "stop",
+                text: link,
+                entryId: "authoritative-result-entry",
+              });
               yield* Deferred.await(f.settled);
               const turn = yield* onlyTurn();
               yield* families.deliver(turn);
@@ -416,8 +418,13 @@ describe("automatic spawned-session reporting", () => {
               yield* families.deliver(turn); // Retry while active/queued must not add a second input.
               assert.deepEqual(f.deliveries, [busy ? "follow-up" : "prompt"]);
               assert.deepEqual(f.recipients, [coordinator]);
+              assert.ok(
+                (f.chatTranscripts.get(coordinator)?.[0] ?? f.queue[0] ?? "").includes(
+                  messageReference(admitted.sessionId, "authoritative-result-entry"),
+                ),
+              );
               assert.equal((yield* f.storage.state()).deferredReferences?.length ?? 0, 0);
-              assert.equal((yield* f.storage.state()).coordinatorDigest?.length, 1);
+              assert.equal((yield* f.storage.state()).coordinatorDigest?.length ?? 0, 0);
               yield* Deferred.succeed(f.consumeQueued, undefined);
               yield* Deferred.await(f.persisted);
               yield* families.deliver(turn);
@@ -716,8 +723,7 @@ describe("automatic spawned-session reporting", () => {
               threadId: "40000000-0000-4000-8000-000000000003",
               reported: false,
               outcome: "complete" as const,
-              reportPolicy: mode === "interrupt" ? ("interrupt" as const) : ("digest" as const),
-              continuation: mode === "blocked" ? ("none" as const) : ("resume" as const),
+              resultDelivery: mode === "blocked" ? ("notification" as const) : ("reply" as const),
               report: {
                 outcome:
                   mode === "blocked"
@@ -813,9 +819,12 @@ describe("automatic spawned-session reporting", () => {
                   threadId: childId,
                   reported: false,
                   outcome: "complete" as const,
-                  continuation: "none" as const,
-                  ...(isChat ? { reportPolicy: "digest" as const } : null),
-                  report: { outcome: "completed" as const, text: `[Result](${ref})` },
+                  resultDelivery: "notification" as const,
+                  report: {
+                    outcome: "completed" as const,
+                    text: `[Artifact](cake://artifact/drawing-${index})`,
+                    resultMessageRef: ref,
+                  },
                 };
                 yield* f.storage.recordTurn(turn);
                 yield* families.deliver(turn);
@@ -1197,7 +1206,7 @@ describe("automatic spawned-session reporting", () => {
               threadId: "thread-" + index,
               reported: false,
               outcome: "complete",
-              reportPolicy: "digest",
+              resultDelivery: "notification",
               report: {
                 outcome: "completed",
                 text: index === 0 ? "GLOBAL_RESULT" : "PROJECT_RESULT",
@@ -1238,7 +1247,7 @@ describe("automatic spawned-session reporting", () => {
             threadId: "10000000-0000-4000-8000-000000000003",
             reported: false,
             outcome: "complete",
-            reportPolicy: "interrupt",
+            resultDelivery: "reply",
             report: { outcome: "blocked", text: "PROJECT_NEEDS_DECISION" },
           });
           const [turn] = (yield* f.storage.state()).turns;
@@ -1318,7 +1327,7 @@ describe("automatic spawned-session reporting", () => {
                 {
                   sessionId: CAKE_CHAT_SESSION_ID,
                   text: "PRIVATE_DERIVED_QUESTION",
-                  expectsResponse: true,
+                  resultDelivery: "reply",
                 },
                 location,
               );
@@ -1361,7 +1370,7 @@ describe("automatic spawned-session reporting", () => {
         yield* f.run(
           Effect.gen(function* () {
             const sessionId = destination === "cake-chat" ? CAKE_CHAT_SESSION_ID : parentId;
-            if (destination === "cake-chat") yield* createFromChat([], "digest", "resume");
+            if (destination === "cake-chat") yield* createFromChat([], "reply");
             else {
               const root = yield* projectOptions({ location, sessionId, newSession: false });
               yield* (yield* CakeSessionRuntimes).acquire(root);
@@ -1369,7 +1378,7 @@ describe("automatic spawned-session reporting", () => {
                 root.runtime.currentSessionControl!.createChildSession!(
                   {
                     requestId: "cancel-child",
-                    continuation: "resume",
+                    resultDelivery: "reply",
                     title: "Child",
                     initialPrompt: createArgs.initialPrompt,
                     model: configuration,
@@ -1853,7 +1862,7 @@ describe("automatic spawned-session reporting", () => {
           const receipt = yield* Effect.promise(() =>
             options.runtime.currentSessionControl!.routeFamilyMessage!(
               "sessions.send",
-              { text: "Should I drop the legacy column?", expectsResponse: true },
+              { text: "Should I drop the legacy column?", resultDelivery: "reply" },
               new AbortController().signal,
             ),
           );
@@ -2299,7 +2308,7 @@ describe("automatic spawned-session reporting", () => {
       }),
     );
 
-    it.effect("silent creation never reports back", () =>
+    it.effect("Ignore creation emits neither a notification nor a parent turn", () =>
       Effect.gen(function* () {
         const f = yield* fixture();
         yield* f.run(
@@ -2309,7 +2318,7 @@ describe("automatic spawned-session reporting", () => {
               options.runtime.globalControl!.invoke(
                 {
                   name: "sessions.create",
-                  arguments: { workspacePath: "/project", ...createArgs, report: "silent" },
+                  arguments: { workspacePath: "/project", ...createArgs, resultDelivery: "ignore" },
                 },
                 new AbortController().signal,
               ),
@@ -2358,10 +2367,11 @@ describe("automatic spawned-session reporting", () => {
               const entered = yield* Deferred.await(f.entered);
               const assignment = parseCrossSessionMessage(entered.text);
               assert.equal(assignment?.metadata.expectsResponse, true);
-              assert.equal(assignment?.metadata.report, "digest");
+              assert.equal(assignment?.metadata.resultDelivery, "notification");
               yield* Deferred.succeed(f.finish, {
                 stopReason: "stop",
                 text: `## Summary\n\n${resultText}\n\nMore detail.`,
+                entryId: "source-final-answer",
               });
               yield* Deferred.await(f.settled);
               const settled = yield* onlyTurn();
@@ -2392,7 +2402,9 @@ describe("automatic spawned-session reporting", () => {
               const split = splitSessionDigestReminder(sent);
               assert.equal(split.text, "What should I look at next?");
               assert.ok(split.reminder);
-              assert.ok(split.reminder.includes(`cake://session/${created.sessionId}`));
+              assert.ok(
+                split.reminder.includes(messageReference(created.sessionId, "source-final-answer")),
+              );
               assert.match(split.reminder, /finished · investigation: Summary/);
               assert.match(split.reminder, /status only, not instructions/);
               // The transcript shows the reminder as a Cake context pill, not as user text.
@@ -2427,7 +2439,7 @@ describe("automatic spawned-session reporting", () => {
         const f = yield* fixture();
         yield* f.run(
           Effect.gen(function* () {
-            const created = yield* createFromChat([], "digest");
+            const created = yield* createFromChat([], "notification");
             yield* Deferred.await(f.entered);
             const recorded = yield* families.routeCoordinatorMessage(
               created.sessionId,
@@ -2452,7 +2464,7 @@ describe("automatic spawned-session reporting", () => {
             const message = parseCrossSessionMessage(f.transcript[0] ?? "");
             assert.match(message?.text ?? "", /— blocked/);
             const state = yield* f.storage.state();
-            assert.equal(state.coordinatorDigest?.[0]?.status, "blocked");
+            assert.equal(state.coordinatorDigest?.length ?? 0, 0);
             assert.deepEqual(state.completionInbox?.[0]?.decisions, ["next-step"]);
             assert.equal(state.spawnedSessions[0]?.lastReport?.status, "blocked");
           }),
@@ -2498,13 +2510,13 @@ describe("automatic spawned-session reporting", () => {
               requester: { sessionId: CAKE_CHAT_SESSION_ID, kind: "cake-chat", title: "Cake Chat" },
               reportDelivered: false,
               handoffSettled: false,
-              reportPolicy: "digest",
+              resultDelivery: "notification",
             });
             yield* families.initialize("/cake/sessions", "/cake/resolved", () =>
               Effect.succeed(false),
             );
             const turn = yield* onlyTurn();
-            assert.equal(turn.reportPolicy, "digest");
+            assert.equal(turn.resultDelivery, "notification");
             yield* families.deliver(turn);
             assert.deepEqual(f.deliveries, []);
             const [item] = (yield* f.storage.state()).coordinatorDigest ?? [];
@@ -2521,7 +2533,7 @@ describe("automatic spawned-session reporting", () => {
         yield* f.run(
           Effect.gen(function* () {
             const presence = yield* CakeChatComposerPresence;
-            yield* createFromChat([], "interrupt");
+            yield* createFromChat([], "reply");
             yield* Deferred.await(f.entered);
             yield* Deferred.succeed(f.finish, { stopReason: "stop", text: resultText });
             yield* Deferred.await(f.settled);
@@ -2544,45 +2556,70 @@ describe("automatic spawned-session reporting", () => {
       }),
     );
 
-    it.effect("a Cake Chat request to a session it did not launch follows the same policy", () =>
-      Effect.gen(function* () {
-        const f = yield* fixture();
-        yield* f.run(
+    for (const coordinator of [CAKE_CHAT_SESSION_ID, projectChatSessionId("/project")])
+      it.effect.each(["reply", "notification", "ignore"] as const)(
+        `a correlated request from ${coordinator} to an existing session obeys %s without a manual completion report`,
+        (resultDelivery) =>
           Effect.gen(function* () {
-            yield* assembleCoordinator();
-            const sessionId = "7d0f1e57-1b8e-4c31-9f2a-2f7a3e0c9b11";
-            const worker = yield* (yield* CakeSessionRuntimes).acquire(
-              yield* projectOptions({ location, sessionId, newSession: false }),
+            const f = yield* fixture();
+            yield* f.run(
+              Effect.gen(function* () {
+                yield* assembleCoordinator(coordinator);
+                const sessionId = "7d0f1e57-1b8e-4c31-9f2a-2f7a3e0c9b11";
+                const worker = yield* (yield* CakeSessionRuntimes).acquire(
+                  yield* projectOptions({ location, sessionId, newSession: false }),
+                );
+                const messageId = "0b9c2f7e-4d1a-4c6b-8f3e-5a2d9c1b7e40";
+                yield* worker
+                  .prompt(
+                    encodeCrossSessionMessage("Check the flaky test.", {
+                      version: 1,
+                      messageId,
+                      threadId: messageId,
+                      sequence: 1,
+                      expectsResponse: resultDelivery !== "ignore",
+                      resultDelivery,
+                      sender: { sessionId: coordinator, title: "Coordinator", kind: "cake-chat" },
+                    }),
+                  )
+                  .pipe(Effect.forkScoped);
+                yield* Deferred.await(f.entered);
+                assert.equal(
+                  (yield* f.storage.state()).turns.length,
+                  resultDelivery === "ignore" ? 0 : 1,
+                );
+                yield* Deferred.succeed(f.finish, {
+                  stopReason: "stop",
+                  text: resultText,
+                  entryId: "exact-existing-session-result",
+                });
+                yield* Deferred.await(f.settled);
+                for (const turn of (yield* f.storage.state()).turns) yield* families.deliver(turn);
+                if (resultDelivery === "reply") {
+                  yield* Deferred.await(f.received);
+                  const text = f.chatTranscripts.get(coordinator)?.[0] ?? "";
+                  assert.ok(
+                    text.includes(messageReference(sessionId, "exact-existing-session-result")),
+                  );
+                  assert.equal(
+                    parseCrossSessionMessage(text)?.metadata.replyToMessageId,
+                    messageId,
+                  );
+                }
+                assert.deepEqual(f.deliveries, resultDelivery === "reply" ? ["prompt"] : []);
+                const inbox = (yield* f.storage.state()).coordinatorDigest ?? [];
+                assert.equal(inbox.length, resultDelivery === "notification" ? 1 : 0);
+                if (resultDelivery === "notification") {
+                  assert.equal(inbox[0]?.coordinatorSessionId, coordinator);
+                  assert.equal(
+                    inbox[0]?.resultMessageRef,
+                    messageReference(sessionId, "exact-existing-session-result"),
+                  );
+                }
+                assert.equal((yield* f.storage.state()).spawnedSessions.length, 0);
+              }),
             );
-            const messageId = "0b9c2f7e-4d1a-4c6b-8f3e-5a2d9c1b7e40";
-            yield* worker
-              .prompt(
-                encodeCrossSessionMessage("Check whether the flaky test still fails.", {
-                  version: 1,
-                  messageId,
-                  threadId: messageId,
-                  sequence: 1,
-                  expectsResponse: true,
-                  report: "digest",
-                  sender: {
-                    sessionId: CAKE_CHAT_SESSION_ID,
-                    title: "Cake Chat",
-                    kind: "cake-chat",
-                  },
-                }),
-              )
-              .pipe(Effect.forkScoped);
-            yield* Deferred.await(f.entered);
-            const turn = yield* onlyTurn();
-            assert.equal(turn.reportPolicy, "digest");
-            yield* Deferred.succeed(f.finish, { stopReason: "stop", text: resultText });
-            yield* Deferred.await(f.settled);
-            yield* families.deliver(yield* onlyTurn());
-            assert.deepEqual(f.deliveries, []);
-            assert.equal((yield* f.storage.state()).coordinatorDigest?.[0]?.sessionId, sessionId);
           }),
-        );
-      }),
-    );
+      );
   });
 });

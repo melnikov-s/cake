@@ -7,6 +7,10 @@ import { Chat } from "../../../src/renderer/components/chat";
 import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";
 import { projectConversationDisplay } from "../../../src/services/pi/runtime/conversation-display-projection";
 import { appendToolCompactedBranch } from "../../../src/services/pi/runtime/session-tool-compaction";
+import {
+  formatSessionDigestReminder,
+  addSessionDigestReminder,
+} from "../../../src/contracts/cake-chats/session-digest-reminder";
 import { addResponseModeReminder } from "../../../src/contracts/conversations/response-mode-reminders";
 import { encodeCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
 import { addPresentationModeReminder } from "../../../src/contracts/conversations/presentation-mode-reminders";
@@ -24,6 +28,72 @@ const usage = {
 afterEach(cleanup);
 
 describe("Context visibility through the authoritative projection and shared Chat", () => {
+  it("shows application-owned completion and exact result link with the next user message without any assistant relay", () => {
+    const pi = SessionManager.inMemory("/project");
+    const ref = "cake://session/worker?message=application-captured-result";
+    pi.appendMessage({
+      role: "user",
+      timestamp: 1,
+      content: addSessionDigestReminder(
+        "My next question",
+        formatSessionDigestReminder({
+          lines: [
+            {
+              reference: "s:12345678",
+              sessionId: "worker",
+              title: "Review result",
+              summary: "Finished",
+              status: "completed",
+              resultMessageRef: ref,
+            },
+          ],
+          running: 0,
+          interruptedReport: false,
+        }),
+      ),
+    });
+    using fixture = createRendererStoreFixture({
+      projects: [projectRecord({ path: "/project" })],
+      sessions: [
+        sessionSummary({
+          sessionId: "notifications",
+          projectPath: "/project",
+          workingDirectory: "/project",
+        }),
+      ],
+    });
+    const session = fixture.root.sessionRegistry.load("notifications", "/project");
+    applyConversationSnapshot(session.model, {
+      sessionId: "notifications",
+      sessionFile: "/sessions/notifications.jsonl",
+      parts: projectConversationDisplay(pi),
+      models: [],
+      thinkingLevel: "off",
+      availableThinkingLevels: ["off"],
+      streaming: false,
+      diagnostics: [],
+      commands: [],
+      compatibility: { resources: [], diagnostics: [] },
+      extensionUi: { statuses: [] },
+      tree: [],
+    });
+    const view = render(
+      <Chat
+        store={session.conversationSessionStore.chatStore}
+        compact
+        composerFocusEnabled={false}
+      />,
+    );
+    try {
+      expect(screen.getByText("My next question", { exact: true })).toBeTruthy();
+      expect(screen.getByRole("status", { name: "Session results" })).toBeTruthy();
+      expect(screen.getByRole("link", { name: "Review result" }).getAttribute("href")).toBe(ref);
+      expect(screen.queryByText(/Answer the user's current message first/)).toBeNull();
+    } finally {
+      view.unmount();
+    }
+  });
+
   it("discloses current context and hides it after Tool Compact while retaining dialogue", async () => {
     const pi = SessionManager.inMemory("/project");
     pi.appendMessage({

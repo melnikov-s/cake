@@ -55,6 +55,8 @@ opens upward above the composer. Rows without activity omit the dot but retain i
 controls attached above the shared composer. Activity occupies its top band, with
 worktree tools beneath it when present. Empty caps collapse without reserved space.
 
+[`SessionResultNotice`](../../src/renderer/components/ui/session-result-notice.tsx) renders application-delivered compact session completion lines and exact result links, independently of model prose. It composes Callout and Markdown rather than requiring an assistant to relay the notification.
+
 ## Navigation and layout
 
 | Component                                                                                                                                    | Use for                                                                                   |

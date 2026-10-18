@@ -1,4 +1,4 @@
-import { parentContinuationGuidance } from "../../contracts/conversations/parent-continuation";
+import { resultDeliveryGuidance } from "../../contracts/conversations/result-delivery";
 import { Option, Schema } from "effect";
 import {
   SessionSendBatchInput,
@@ -23,8 +23,8 @@ export function createSessionSendBatchOperation(
       "Do not target members of the calling Project Session's own Session Family: intra-family communication belongs exclusively on its shared Workboard, including assignments, questions, urgent redirection and results. Cake Chat and unrelated independent sessions retain ordinary messaging rules.",
       "Supply 1–100 unique sessionIds and one text. Invalid arguments or duplicate IDs reject the whole batch before sending.",
       "Recipients are attempted sequentially in input order. Unknown targets and individual delivery failures do not stop later recipients; inspect every outcome.",
-      "Omit delivery to start idle targets or queue behind active targets; steer redirects active work. From a Project Session, expectsResponse defaults to false; set true only when every recipient owes you one answer. From Cake Chat, report (digest by default, interrupt, or silent) applies to every recipient exactly as in sessions.send.",
-      parentContinuationGuidance,
+      "Omit delivery to start idle targets or queue behind active targets; steer redirects active work. Cake Chat defaults to notification; Project Session sends default to ignore.",
+      resultDeliveryGuidance,
       "Each recipient starts a separate exchange; maxMessages applies independently to each. Use sessions.send for an existing thread or a correlated reply.",
       "ok means the batch was processed, not that every delivery succeeded. status is complete, partial, or failed. Receipts are informational; no acknowledgment is needed.",
     ],
@@ -41,7 +41,7 @@ export function createSessionSendBatchOperation(
         input: {
           sessionIds: ["first-session-id", "second-session-id"],
           text: "The API review is complete; use the agreed contract.",
-          expectsResponse: false,
+          resultDelivery: "ignore",
         },
       },
     ],
@@ -104,11 +104,9 @@ export function createSessionSendBatchOperation(
         command: "sessions.send-batch",
         status: accepted === outcomes.length ? "complete" : accepted === 0 ? "failed" : "partial",
         // The single-send authority applies the sender's defaults; echo what it accepted.
-        expectsResponse: firstReceipt?.expectsResponse ?? input.expectsResponse ?? false,
-        ...(firstReceipt?.report ? { report: firstReceipt.report } : null),
-        ...((firstReceipt?.continuation ?? input.continuation)
-          ? { continuation: firstReceipt?.continuation ?? input.continuation }
-          : null),
+        expectsResponse:
+          (firstReceipt?.resultDelivery ?? input.resultDelivery ?? "ignore") !== "ignore",
+        resultDelivery: firstReceipt?.resultDelivery ?? input.resultDelivery ?? "ignore",
         outcomes,
       };
     },

@@ -1,10 +1,14 @@
+import { MessageReference } from "../../contracts/conversations/message-reference";
 import { PendingReport, ReportHandlingReceipt } from "../../contracts/conversations/pending-report";
 import { BoardContinuation } from "../../contracts/artifacts/workboard-continuation";
 import {
   CompletionInboxItem,
   type CompletionDecisionState,
 } from "../../contracts/conversations/completion-inbox";
-import { ParentContinuation } from "../../contracts/conversations/parent-continuation";
+import {
+  ResultDelivery,
+  migrateResultDelivery,
+} from "../../contracts/conversations/result-delivery";
 import { TurnStop } from "../../contracts/conversations/turn-stop";
 import {
   Context,
@@ -17,6 +21,7 @@ import {
   RcMap,
   Scope,
   Exit,
+  Struct,
 } from "effect";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
 import { SessionFamilyStorageError } from "../../contracts/storage/session-family-storage-errors";
@@ -24,13 +29,15 @@ import { SessionFamilyStorageError } from "../../contracts/storage/session-famil
 import {
   CakeChatLaunchReport,
   CakeChatLaunchStatus,
-  CakeChatReportDelivery,
   SessionCompletionReport,
   SessionRequester,
 } from "../../contracts/project-sessions/session-reporting";
 
-// Optional report fields extend v7; existing pending notices remain pending on load.
-const DOCUMENT_VERSION = 7;
+const DOCUMENT_VERSION = 8;
+const LegacyDelivery = {
+  continuation: Schema.optionalKey(Schema.Literals(["none", "resume"])),
+  reportPolicy: Schema.optionalKey(Schema.Literals(["digest", "interrupt"])),
+};
 const BoundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 const BoundedPath = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096));
 
@@ -46,7 +53,7 @@ const SessionFamilyChild = Schema.Struct({
   requestId: BoundedId,
   workingDirectory: BoundedPath,
   managedWorktreePath: Schema.optionalKey(BoundedPath),
-  continuation: Schema.optionalKey(ParentContinuation),
+  resultDelivery: Schema.optionalKey(ResultDelivery),
   createdAt: Schema.String,
 });
 interface SessionFamilyChild extends Schema.Schema.Type<typeof SessionFamilyChild> {}
@@ -138,9 +145,7 @@ const SpawnedSession = Schema.Struct({
   /** A factual stop notice is a settled handoff, but not a successful result report. */
   handoffSettled: Schema.Boolean,
   launchedAt: Schema.optionalKey(Schema.String),
-  /** The initial assignment's report policy, reused by crash-recovery notices. */
-  reportPolicy: Schema.optionalKey(CakeChatReportDelivery),
-  continuation: Schema.optionalKey(ParentContinuation),
+  resultDelivery: Schema.optionalKey(ResultDelivery),
   /** Latest result Cake Chat received (immediately or by digest), for status surfaces. */
   lastReport: Schema.optionalKey(CakeChatLaunchReport),
 });
@@ -148,7 +153,7 @@ export interface SpawnedSession extends Schema.Schema.Type<typeof SpawnedSession
 
 /**
  * One pending reply obligation. Cake records it only when an accepted incoming
- * message explicitly set `expectsResponse: true`; the turn that consumes that
+ * message selected reply or notification; the turn that consumes that
  * message owes exactly one result (or one factual failure notice), after which
  * the record is removed. Turns without a record never notify anyone.
  */
@@ -165,9 +170,7 @@ const FamilyTurn = Schema.Struct({
   deliveryTurnId: Schema.optionalKey(BoundedId),
   replyMessageIds: Schema.optionalKey(Schema.Array(BoundedId)),
   outcome: Schema.optionalKey(Schema.Literals(["complete", "failed", "aborted"])),
-  /** Cake Chat requests only. Absent means immediate delivery, as for family parents. */
-  reportPolicy: Schema.optionalKey(CakeChatReportDelivery),
-  continuation: Schema.optionalKey(ParentContinuation),
+  resultDelivery: Schema.optionalKey(ResultDelivery),
   /** Who deliberately stopped an aborted turn. Absent on an unexpected interruption. */
   stop: Schema.optionalKey(TurnStop),
 });
@@ -175,6 +178,7 @@ export interface FamilyTurn extends Schema.Schema.Type<typeof FamilyTurn> {}
 /** Version 6 recorded every correlated message, including ones that requested no response. */
 const Version6FamilyTurn = Schema.Struct({
   ...FamilyTurn.fields,
+  ...LegacyDelivery,
   completionContract: Schema.optionalKey(Schema.Boolean),
   expectsResponse: Schema.Boolean,
 });
@@ -186,6 +190,7 @@ const CoordinatorDigestItem = Schema.Struct({
   id: BoundedId,
   sessionId: BoundedId,
   title: Schema.String.check(Schema.isMaxLength(500)),
+  resultMessageRef: Schema.optionalKey(MessageReference),
   status: CakeChatLaunchStatus,
   summary: Schema.String.check(Schema.isMaxLength(500)),
   reportedAt: Schema.String,
@@ -217,7 +222,7 @@ export class SessionFamilyStorage extends Context.Service<
     ) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly recordCompletion: (
       item: CompletionInboxItem,
-      digest: CoordinatorDigestItem,
+      digest?: CoordinatorDigestItem,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly updateCompletion: (
       sessionId: string,
@@ -310,7 +315,7 @@ export class SessionFamilyStorage extends Context.Service<
       readonly parentManagedWorktreePath?: string;
       readonly childSessionId: string;
       readonly childWorkingDirectory: string;
-      readonly continuation?: ParentContinuation;
+      readonly resultDelivery?: ResultDelivery;
       readonly childManagedWorktreePath?: string;
       readonly requestId: string;
       readonly projectPath: string;
@@ -393,7 +398,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         const envelope = yield* Schema.decodeUnknownEffect(StoredEnvelope)(parsed).pipe(
           Effect.mapError((cause) => storageError("load", cause)),
         );
-        if (![1, 2, 3, 4, 5, 6, DOCUMENT_VERSION].includes(envelope.version))
+        if (![1, 2, 3, 4, 5, 6, 7, DOCUMENT_VERSION].includes(envelope.version))
           return yield* storageError(
             "load",
             `Unsupported session family document version ${envelope.version}`,
@@ -471,6 +476,52 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
           // for no response must not become notices after upgrade. Decoding the v7
           // document below drops the retired per-record flags.
           data = { ...previous, turns: previous.turns.filter((turn) => turn.expectsResponse) };
+        }
+        if (envelope.version < 8) {
+          const previous = yield* Schema.decodeUnknownEffect(
+            Schema.Struct({
+              ...SessionFamilyDocument.fields,
+              families: Schema.Array(
+                Schema.Struct({
+                  ...SessionFamily.fields,
+                  children: Schema.Array(
+                    Schema.Struct({ ...SessionFamilyChild.fields, ...LegacyDelivery }),
+                  ),
+                }),
+              ),
+              turns: Schema.Array(Schema.Struct({ ...FamilyTurn.fields, ...LegacyDelivery })),
+              spawnedSessions: Schema.Array(
+                Schema.Struct({ ...SpawnedSession.fields, ...LegacyDelivery }),
+              ),
+            }),
+          )(data).pipe(Effect.mapError((cause) => storageError("migrate", cause)));
+          const migrate = <
+            A extends {
+              readonly resultDelivery?: ResultDelivery;
+              readonly continuation?: "none" | "resume";
+              readonly reportPolicy?: "digest" | "interrupt";
+            },
+          >(
+            item: A,
+          ) => {
+            return {
+              ...Struct.omit(item, ["continuation", "reportPolicy"]),
+              resultDelivery: migrateResultDelivery({
+                resultDelivery: item.resultDelivery,
+                continuation: item.continuation,
+                reportPolicy: item.reportPolicy,
+              }),
+            };
+          };
+          data = {
+            ...previous,
+            families: previous.families.map((family) => ({
+              ...family,
+              children: family.children.map(migrate),
+            })),
+            turns: previous.turns.map(migrate),
+            spawnedSessions: previous.spawnedSessions.map(migrate),
+          };
         }
         // v5 drops member-synchronization journals. The root's actual namespace
         // is authoritative even when an older transition stopped halfway through.
@@ -562,7 +613,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
               parentSessionId: input.parentSessionId,
               requestId: input.requestId,
               workingDirectory: input.childWorkingDirectory,
-              ...(input.continuation ? { continuation: input.continuation } : null),
+              resultDelivery: input.resultDelivery ?? "reply",
               createdAt: input.createdAt,
             };
             if (input.childManagedWorktreePath !== undefined)
@@ -654,18 +705,17 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
           ),
       );
       const recordCompletion = Effect.fn("SessionFamilyStorage.recordCompletion")(
-        (item: CompletionInboxItem, digest: CoordinatorDigestItem) =>
+        (item: CompletionInboxItem, digest?: CoordinatorDigestItem) =>
           update((document) => {
             const inbox = document.completionInbox ?? [];
             if (inbox.some((existing) => existing.id === item.id)) return document;
             return {
               ...document,
               completionInbox: [...inbox, item],
-              coordinatorDigest: document.coordinatorDigest?.some(
-                (existing) => existing.id === item.id,
-              )
-                ? document.coordinatorDigest
-                : [...(document.coordinatorDigest ?? []), digest],
+              coordinatorDigest:
+                !digest || document.coordinatorDigest?.some((existing) => existing.id === item.id)
+                  ? (document.coordinatorDigest ?? [])
+                  : [...(document.coordinatorDigest ?? []), digest],
             };
           }),
       );
@@ -732,7 +782,18 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
                       {
                         ...turn,
                         outcome,
-                        ...(report && (!turn.report || outcome === "failed") ? { report } : null),
+                        ...(report || turn.report
+                          ? {
+                              report: {
+                                ...(outcome === "failed"
+                                  ? (report ?? turn.report!)
+                                  : (turn.report ?? report!)),
+                                ...(report?.resultMessageRef
+                                  ? { resultMessageRef: report.resultMessageRef }
+                                  : null),
+                              },
+                            }
+                          : null),
                         ...(stop && outcome === "aborted" ? { stop } : null),
                       },
                     ],
@@ -875,9 +936,13 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
                 summary: item.summary,
                 reportedAt: item.reportedAt,
               }),
-              coordinatorDigest: digest.some((existing) => existing.id === item.id)
-                ? digest
-                : [...digest, item],
+              // A retained completion proves this notification was already enqueued, even if a user
+              // consumed it before a crash/retry settled the original obligation.
+              coordinatorDigest:
+                digest.some((existing) => existing.id === item.id) ||
+                document.completionInbox?.some((existing) => existing.id === item.id)
+                  ? digest
+                  : [...digest, item],
             };
           }),
       );

@@ -161,22 +161,29 @@ describe("cross-session message presentation", () => {
     expect(screen.getByText("Original historical content")).toBeTruthy();
   });
 
-  describe.each(["digest", "interrupt", undefined] as const)("request report mode %s", (report) => {
-    it.each([true, false])(
-      "shows sender and reply obligation (%s), preserving delivery metadata only in diagnostics",
-      async (expectsResponse) => {
+  describe.each(["notification", "reply", "ignore"] as const)(
+    "request delivery mode %s",
+    (resultDelivery) => {
+      it("shows the selected delivery obligation in the UI and diagnostics", async () => {
+        const expectsResponse = resultDelivery !== "ignore";
         const content = encodeCrossSessionMessage("Please **fix** the flaky test.", {
           ...metadata,
           expectsResponse,
-          ...(report ? { report } : null),
+          ...(resultDelivery ? { resultDelivery } : null),
           sender: { kind: "cake-chat", sessionId: "cake-chat-id", title: "Cake Chat" },
         });
         const part = renderPersisted(content);
         expect(part.crossSession).toMatchObject({ expectsResponse });
-        expect(part.crossSession?.report).toBe(report);
+        expect(part.crossSession?.resultDelivery).toBe(
+          resultDelivery ?? (expectsResponse ? "reply" : "ignore"),
+        );
         const region = screen.getByRole("region", { name: "Message from another session" });
         expect(region.querySelector("header")?.textContent).toBe(
-          expectsResponse ? "FromCake ChatReply expected" : "FromCake Chat",
+          expectsResponse
+            ? resultDelivery === "notification"
+              ? "FromCake ChatNotification expected"
+              : "FromCake ChatReply expected"
+            : "FromCake Chat",
         );
         expect(screen.getByRole("link", { name: "Cake Chat" }).getAttribute("href")).toBe(
           "cake://session/cake-chat-id",
@@ -186,9 +193,9 @@ describe("cross-session message presentation", () => {
         await userEvent.setup().click(screen.getByRole("button", { name: "Raw envelope" }));
         // The disclosure shows exactly the text the receiving agent was given.
         expect(region.querySelector("pre")?.textContent).toBe(content);
-      },
-    );
-  });
+      });
+    },
+  );
 
   it("turns a report lead line into a reply status badge and keeps the findings", async () => {
     const content = encodeCrossSessionMessage(

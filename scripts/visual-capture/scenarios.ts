@@ -2478,7 +2478,7 @@ const sessionMessageVariantsScenario: VisualCaptureScenario = {
         threadId: "9c1e4b7a-2d5f-4e8b-a3c6-7f0d1e2b3c4a",
         sequence: 1,
         expectsResponse: true,
-        report: "digest",
+        resultDelivery: "notification",
         sender: { sessionId: CAKE_CHAT_SESSION_ID, title: "Cake Chat", kind: "cake-chat" },
       },
     );

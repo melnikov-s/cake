@@ -117,9 +117,13 @@ export function crossSessionPresentation(
   if (described.outcome) badges.push(outcomeBadges[described.outcome]);
   if (described.expectsResponse)
     badges.push({
-      label: "Reply expected",
+      label:
+        described.resultDelivery === "notification" ? "Notification expected" : "Reply expected",
       tone: "accent",
-      description: "The sender is waiting for a reply to this message.",
+      description:
+        described.resultDelivery === "notification"
+          ? "Completion is retained until the sender’s next user message; it does not start a turn."
+          : "Application-confirmed completion automatically starts or queues a normal sender turn.",
     });
   const raw = rawEnvelope(text, metadata);
   return { relation: described.relation, badges, body, ...(raw ? { raw } : null) };

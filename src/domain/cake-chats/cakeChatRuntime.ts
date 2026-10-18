@@ -1,3 +1,4 @@
+import { messageReference } from "../../contracts/conversations/message-reference";
 import { makeVscodeControl } from "../../services/pi/VscodeControlAdapter";
 import { VsCodeServer } from "../../services/vscode/VsCodeServer";
 import { cakeRpcPayloadSchemas } from "../../contracts/application/cake-rpc-contract";
@@ -325,7 +326,15 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
           yield* families.settleTurn(
             event.turnId,
             event.outcome,
-            text ? { outcome: "result", text } : undefined,
+            text
+              ? {
+                  outcome: "result",
+                  text,
+                  ...(event.result?.entryId
+                    ? { resultMessageRef: messageReference(target.sessionId, event.result.entryId) }
+                    : null),
+                }
+              : undefined,
             event.stop,
           );
         yield* catalogs.publish({

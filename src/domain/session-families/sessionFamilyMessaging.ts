@@ -1,4 +1,4 @@
-import { ParentContinuation } from "../../contracts/conversations/parent-continuation";
+import { ResultDelivery } from "../../contracts/conversations/result-delivery";
 import { messageRefsSchema } from "../../contracts/conversations/message-reference";
 import { appendMessageReferences } from "../../contracts/conversations/message-reference-forwarding";
 import { isReferenceNotification } from "../../contracts/conversations/reference-notification";
@@ -42,8 +42,7 @@ export const FamilyMessageInput = Schema.Struct({
   maxMessages: Schema.optionalKey(
     Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(1_000)),
   ),
-  expectsResponse: Schema.optionalKey(Schema.Boolean),
-  continuation: Schema.optionalKey(ParentContinuation),
+  resultDelivery: Schema.optionalKey(ResultDelivery),
   replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
   outcome: Schema.optionalKey(SessionTaskOutcome),
   resultKind: Schema.optionalKey(Schema.Literals(["ready", "investigation"])),
@@ -186,14 +185,15 @@ export const route: (
   const threadId = pending?.threadId ?? input.threadId ?? crypto.randomUUID();
   const replyToMessageId = pending?.requestMessageId ?? input.replyToMessageId;
   // Neither sends nor replies create a reply obligation unless the caller asks for one.
-  const expectsResponse = input.continuation !== undefined || (input.expectsResponse ?? false);
+  const resultDelivery = input.resultDelivery ?? "ignore";
+  const expectsResponse = resultDelivery !== "ignore";
   const messageMetadata = {
     version: 1 as const,
     messageId,
     threadId,
     sequence: 1,
     expectsResponse,
-    ...(input.continuation ? { continuation: input.continuation } : null),
+    resultDelivery,
     ...(replyToMessageId ? { replyToMessageId } : null),
     ...(senderContext ? { context: senderContext } : null),
     sender: {
@@ -248,7 +248,7 @@ export const route: (
     delivery !== "steer" &&
     !attachments.length &&
     input.outcome !== "blocked" &&
-    (preparedRequests.some((request) => request.continuation === "none") ||
+    (preparedRequests.some((request) => request.resultDelivery === "notification") ||
       (input.outcome !== "failed" && !preparedRequests.length && isReferenceNotification(encoded)))
   ) {
     yield* families.withNoticeDelivery(
@@ -317,6 +317,7 @@ export const route: (
     turnId,
     delivery,
     expectsResponse,
+    resultDelivery,
     ...(replyToMessageId ? { replyToMessageId } : null),
     status: delivery === "queue" ? "queued" : "accepted",
     recipientContext: crossSessionContextSnapshot(destinationSnapshot.usage?.context),

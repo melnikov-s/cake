@@ -1,3 +1,4 @@
+import type { ResultDelivery } from "../conversations/result-delivery";
 import type { ParentContinuation } from "../conversations/parent-continuation";
 import type { CakeArtifactOperationOptions } from "../artifacts/artifact-agent-control";
 import type { MessageBoardControl } from "../artifacts/message-board-control";
@@ -64,9 +65,7 @@ export interface CurrentSessionControl extends ProjectSessionLivePolicyControl {
       title: string;
       initialPrompt: string;
       model: ChatConfiguration;
-      continuation?: ParentContinuation;
-      /** Whether the initial assignment owes the parent one report; defaults to true. */
-      expectsResponse?: boolean;
+      resultDelivery?: ResultDelivery;
       placement: "none" | "right" | "down";
       worktreeName?: string;
       senderContext: CrossSessionContextSnapshot;

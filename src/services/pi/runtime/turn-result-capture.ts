@@ -20,6 +20,7 @@ const counterpart = (content: string, current: string | null | undefined) => {
 export function createTurnResultCapture(
   executingIds: () => ReadonlyArray<string>,
   emit: (turnId: string, result: PiTurnResult) => void,
+  resultEntryId?: () => string | undefined,
 ) {
   let finalAssistantResult: PiTurnResult | undefined;
   // undefined: no attributable input yet in this run; null: the local user.
@@ -37,7 +38,11 @@ export function createTurnResultCapture(
         ...(respondsTo ? { respondsToSessionId: respondsTo } : null),
       };
     if (event.type !== "agent_settled") return;
-    if (finalAssistantResult) for (const id of executingIds()) emit(id, finalAssistantResult);
+    if (finalAssistantResult) {
+      const entryId = resultEntryId?.();
+      for (const id of executingIds())
+        emit(id, { ...finalAssistantResult, ...(entryId ? { entryId } : null) });
+    }
     finalAssistantResult = undefined;
     respondsTo = undefined;
   };

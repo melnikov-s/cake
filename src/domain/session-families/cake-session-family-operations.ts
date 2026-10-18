@@ -1,7 +1,7 @@
 import {
-  ParentContinuation,
-  parentContinuationGuidance,
-} from "../../contracts/conversations/parent-continuation";
+  ResultDelivery,
+  resultDeliveryGuidance,
+} from "../../contracts/conversations/result-delivery";
 import {
   PendingReportAcknowledge,
   PendingReportRead,
@@ -108,8 +108,9 @@ export function createSessionFamilyOperations(
         "The calling session becomes the child's immediate parent. Children may recursively create their own children.",
         "Omit worktreeName to share the caller's exact Working Directory. Supply worktreeName to create a Cake-managed worktree branched from the caller's current checkout.",
         "This operation returns after the initial child turn is accepted; do not wait or poll for the child, and finish the parent turn normally.",
-        "Set expectsResponse: false for family children and request their result on the shared Workboard. The runtime default true creates a private automatic creator-report obligation; board posts do not clear existing obligations. Prompt policy cannot reroute those notices. Later user-started turns never report back.",
-        "Creation automatically establishes/extends the family and joins its shared Workboard. Board posts are passive unless the recipient explicitly granted bounded boards.continuation.set for addressed completion/blocker events. Ordinary assignments still do not wake idle members; disclose that limit, without private messages/steering workarounds. Omit continuation on board-only children: an explicit choice creates a private result obligation even with expectsResponse: false.",
+        'Set resultDelivery: "ignore" for Workboard-only family children. Board posts do not settle private obligations. Later local user turns never notify the creator.',
+        "Creation joins the shared Workboard. Ordinary board assignments are passive; only an authorized boards.continuation.set grants board-driven wakeups.",
+        resultDeliveryGuidance,
         "Pane placement defaults to none. Set placement to right or down only when the child should be opened beside the parent.",
         "Omit model unless the user explicitly asks for a specific model. When omitted, the child uses the configured default model preset's complete settings (provider, model, thinking level, and Fast mode; see models.list), not the calling session's current model. Only when no default preset is configured does it use the calling session's current settings.",
       ],
@@ -119,8 +120,7 @@ export function createSessionFamilyOperations(
           Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100_000)),
         ),
         model: Schema.optionalKey(CakeModelSelection),
-        expectsResponse: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
-        continuation: Schema.optionalKey(ParentContinuation),
+        resultDelivery: Schema.optionalKey(ResultDelivery),
         placement: Schema.Literals(["none", "right", "down"]).pipe(
           Schema.withDecodingDefaultKey(Effect.succeed("none" as const)),
         ),
@@ -134,7 +134,7 @@ export function createSessionFamilyOperations(
             title: "Storage implementation",
             initialPrompt:
               "Read workgroups.md, discover the family Workboard, and read your assignment there. Communicate with family members only on the board.",
-            expectsResponse: false,
+            resultDelivery: "ignore",
             placement: "right",
           },
           description: "Open beside the parent with the configured default model.",
@@ -152,8 +152,7 @@ export function createSessionFamilyOperations(
             title: string;
             initialPrompt: string;
             model?: CakeModelSelection;
-            expectsResponse: boolean;
-            continuation?: ParentContinuation;
+            resultDelivery?: ResultDelivery;
             placement: "none" | "right" | "down";
             worktreeName?: string;
           },
@@ -188,11 +187,11 @@ export function createSessionFamilyOperations(
       summary:
         "Send a message to an explicitly targeted Project Session in any Cake project, or omit sessionId to message Cake Chat.",
       guidance: [
-        'Omit sessionId to reach Cake Chat. Cake Chat has no session ID; never pass the sender ID shown on Cake Chat\'s messages (it is labelled "cake-chat"). delivery, expectsResponse, threadId, and replyToMessageId mean the same as in sessions.reply to Cake Chat. To ask the user a question through Cake Chat, set expectsResponse: true; to report a blocker on assigned work, prefer sessions.reply with outcome: "blocked".',
+        'Omit sessionId to reach Cake Chat. Cake Chat has no session ID; never pass the sender ID shown on Cake Chat\'s messages (it is labelled "cake-chat"). delivery, resultDelivery, threadId, and replyToMessageId mean the same as in sessions.reply to Cake Chat. To ask the user a question through Cake Chat, set resultDelivery: "reply"; to report a blocker on assigned work, prefer sessions.reply with outcome: "blocked".',
         "Do not use sessions.send (including send-batch or steering) for intra-family communication. Parents, children, siblings and recursive descendants communicate exclusively through their shared Workboard. This does not restrict user-facing replies, Cake Chat or unrelated independent sessions.",
         "Outside the family, set delivery to steer to interrupt and redirect a running target. Omit delivery for normal behavior: start an idle target or queue behind an active target.",
-        "expectsResponse defaults to false. Set true only when you need an answer (an assignment, question, or blocker); the recipient then owes exactly one result, or one failure/stopped notice if the turn handling this message ends without one. With false, the recipient never reports back automatically.",
-        parentContinuationGuidance,
+        resultDeliveryGuidance,
+        "Project Session sends default to ignore.",
         "Set replyToMessageId when this message answers a specific request. A different or unrelated message never clears that request's response obligation.",
         "Send one substantive completion report. Never send acknowledgment-only messages or duplicate lifecycle reports; receiving a report or notification does not require a response.",
         "Delivery receipts are informational tool results. Never acknowledge a receipt; send another message only for substantive coordination.",
@@ -212,8 +211,7 @@ export function createSessionFamilyOperations(
         maxMessages: Schema.optionalKey(
           Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(1_000)),
         ),
-        expectsResponse: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
-        continuation: Schema.optionalKey(ParentContinuation),
+        resultDelivery: Schema.optionalKey(ResultDelivery),
         replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
       }),
       examples: [
@@ -221,21 +219,21 @@ export function createSessionFamilyOperations(
           input: {
             sessionId: "target-session-id",
             text: "Review the API changes and report the result.",
-            expectsResponse: true,
+            resultDelivery: "reply",
           },
         },
         {
           input: {
             sessionId: "target-session-id",
             text: "The review is complete.",
-            expectsResponse: false,
+            resultDelivery: "ignore",
             replyToMessageId: "00000000-0000-4000-8000-000000000000",
           },
         },
         {
           input: {
             text: "Should I drop the legacy column or keep it behind a flag?",
-            expectsResponse: true,
+            resultDelivery: "reply",
           },
           description: "No sessionId: ask Cake Chat (and through it, the user) a question.",
         },
@@ -258,18 +256,17 @@ export function createSessionFamilyOperations(
         "Reply to the originating session in the current open exchange without carrying its session ID.",
       guidance: [
         "Do not use sessions.reply for intra-family communication; publish results, questions and blockers exclusively on the shared Workboard. User-facing replies, Cake Chat and unrelated independent sessions retain their ordinary reporting rules.",
-        "Replies default to expectsResponse=false because substantive results and informational responses do not request acknowledgment.",
+        "Replies default to resultDelivery: ignore because substantive results and informational responses do not request acknowledgment.",
         "Provide replyToMessageId when more than one request may be pending. Cake otherwise selects the latest matching request in the thread.",
         "A Project Session answering Cake Chat (including one Cake Chat launched) replies to its originating Cake Chat or Project Chat without needing to repeat its address. Optional outcome declares completed, blocked, or failed; a terminal report is delivered after the executing turn settles.",
-        'Cake Chat usually asked for a quiet digest result: it is shown to the user with their next message and never interrupts them. outcome: "blocked" always reaches Cake Chat immediately; use it only when you cannot continue without a user decision.',
+        'Expect notification keeps final results quiet: it is shown to the user with their next message and never interrupts them. outcome: "blocked" always reaches Cake Chat immediately; use it only when you cannot continue without a user decision.',
         "Do not reply merely to acknowledge a result, notice, confirmation, lifecycle event, or delivery receipt.",
       ],
       inputSchema: Schema.Struct({
         text: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100_000))),
         delivery: Schema.optionalKey(Schema.Literals(["prompt", "queue", "steer"])),
         threadId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
-        expectsResponse: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
-        continuation: Schema.optionalKey(ParentContinuation),
+        resultDelivery: Schema.optionalKey(ResultDelivery),
         replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
         outcome: Schema.optionalKey(Schema.Literals(["completed", "blocked", "failed"])),
         resultKind: Schema.optionalKey(Schema.Literals(["ready", "investigation"])),

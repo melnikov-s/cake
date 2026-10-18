@@ -23,6 +23,8 @@ import {
 import { ReviewRunMessage } from "./chat-transcript-elements";
 import { RetryNotice } from "./retry-notice";
 import { ContextPill } from "./ui/context-pill";
+import { SessionResultNotice } from "./ui/session-result-notice";
+import { sessionNotificationMarkdown } from "../../contracts/cake-chats/session-digest-reminder";
 import { SkillMessage } from "./skill-message";
 import { SourceAttachment } from "./source-attachment";
 
@@ -251,7 +253,15 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
       />
     );
   }
-  if (part.kind === "context")
+  if (part.kind === "context") {
+    const notification = sessionNotificationMarkdown(part.text);
+    if (notification)
+      return (
+        <SessionResultNotice
+          text={notification}
+          onOpenSourceLocation={behavior.openSourceLocation}
+        />
+      );
     return (
       <ContextPill
         title={part.title}
@@ -259,6 +269,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         onOpenSourceLocation={behavior.openSourceLocation}
       />
     );
+  }
   if (part.kind === "source") return <Source title={part.title} url={part.url} />;
   if (part.kind === "attachment")
     return part.attachmentKind === "source" && part.location ? (

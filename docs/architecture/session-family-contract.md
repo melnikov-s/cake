@@ -90,24 +90,19 @@ rendered as transcript history. Cancelling a pending steer demotes it to queued
 follow-up input instead of discarding the message. Routing is main-process policy
 and must not depend on renderer visibility.
 
-Each accepted family message carries an explicit `expectsResponse` value and
-stable request/message correlation. A reply obligation belongs to one message,
-never to a session relationship. `sessions.create-child` initial assignments
-default to `expectsResponse: true` and accept an explicit `false`; Project Session
-`sessions.send`, `sessions.send-batch` and replies default to `false`. Cake Chat
-requests use `report` instead (below), which defaults to a quiet `digest` result. A reply clears only the request identified by its reply correlation;
-an unrelated message in the same family or thread does not satisfy the
-obligation.
+Session launch/send chooses one `resultDelivery: "reply" | "notification" | "ignore"`.
+Cake Chat defaults to notification, Project Session sends/replies to ignore, and family
+creation to reply (Workboard-only children explicitly select ignore). Stable request/message
+correlation identifies the obligation; unrelated input never satisfies it. The envelope's
+expectsResponse flag is derived routing metadata, not another caller-selectable mode.
 
 Cake durably records an obligation at Pi input acceptance only when the message
-set `expectsResponse: true`. Turns the user starts directly, and messages that
+selected reply or notification. Turns the user starts directly, and messages that
 asked for no response, are never recorded and never produce completion,
 stopped, or failure notices. When the turn that consumed a recorded message
 stops, Cake delivers exactly one handoff and removes the record: the explicit
 or implicit result when one exists, otherwise one factual failure, canceled, or
-stopped notice. Automatic handoffs go to the immediate parent (or the Cake Chat
-requester of a spawned session); requests addressed to a parent or sibling are
-answered only through explicit `sessions.reply`. Generated notices carry no
+stopped notice. Automatic handoffs go to the correlated requester, whether a Project Session, Project Chat or global Cake Chat. Generated notices carry no
 response expectation and are never recorded as new obligations, so notification
 chains terminate. Stop-all suppresses this reactivation path. Delivery intent
 survives restart and is idempotent by request, recipient turn, and
@@ -119,29 +114,36 @@ queue insertion alone never triggers a stopped-child notice. Explicit abort uses
 the same outcome callback once, even if the original prompt subsequently
 returns. Only consumed input IDs count when correlating a child's reply.
 
-### Parent continuation intent
+### Result delivery
 
-Launches and result-requesting messages may explicitly choose `continuation: "none" | "resume"`.
-Both choices request one result, even if silent/false was also supplied; omit continuation
-and choose silent/false to request no result. None retains the report without a parent LLM
-turn. Resume admits a normal follow-up so the parent inspects the result and continues
-dependent work or explains failure. It bypasses digest/link-only deferral, but not
-active-parent queueing, composer holds, user-priority cancellation or queue withdrawal.
-A link neither authorizes nor suppresses a continuation.
+- **Expect reply** (`reply`): application-confirmed completion transports the correlated result
+  and automatically starts an idle parent or queues behind active work. No steering or concurrent
+  parent turns. The app does not wait for a new user message.
+- **Expect notification** (`notification`): retain a compact completion plus an application-generated
+  exact source-result message link in the durable inbox. Attach it only to the next real user
+  message; never start a completion-only parent turn.
+- **Ignore** (`ignore`): no obligation, result notification or parent turn.
 
-Private subagents default to resume; follow-ups inherit unless overridden. Foreground
-run/parallel/wait consume the result without an additional turn. Cake Chat session requests
-default to none for digest and resume for interrupt; family automatic reports default to
-resume. New requests persist intent on the obligation, launch recovery record or private
-worker record. Existing documents without intent retain their policy-derived default
-(subagents/family: resume; digest: none), without inferring it from result text. Stable
-completion/request IDs and existing Pi consumption receipts deduplicate retries. These
-are delivery guarantees, not permission to replay uncertain worker tool effects.
+Pi's settled final assistant entry supplies the source entry ID, including restart reconciliation.
+Cake generates the exact message reference and preserves it through privacy redaction, classification,
+decision retention and notification admission. Artifact/link-only output never selects delivery mode.
+Workers need not call sessions.reply to complete an obligation. A manual outcome can classify it;
+the application still supplies its final entry link. A legacy already-settled result with no captured
+entry identity retains its session link rather than inventing an exact message reference.
 
-Workboard-only children must still use expectsResponse:false and omit continuation.
-The private continuation API does not authorize board wake-up; the independent explicit Workboard grant below does. Independent Project Session `session.create`
-still has no automatic creator-report relationship. Explicit `message_parent` and questions
-remain immediate; an explicitly blocked session report still escalates even under none.
+Direct questions remain immediate inputs. An explicit blocked report escalates even in notification
+mode, after its executing turn settles; this is an actionable blocker, not an ordinary final completion.
+Failures, unexpected interruption and result-less stops retain factual handling under the selected mode.
+Requester stops, stop-all, queue withdrawal and bounded composer holds preserve existing behavior.
+Reply delivery does not also enqueue a later notification; retained review/merge/resolve decisions
+are independent metadata and never authorize action. Only correlated accepted inputs create obligations,
+so later local user turns never spuriously notify a creator.
+
+Stable request/result/admission IDs, Pi consumption receipts and durable inbox receipts deduplicate
+retry/restart transport. This guarantees durable delivery obligations, not exactly-once LLM prose
+or a guarantee that the model mentions every delivered notification. Quiet admission and explanation
+are distinct; explicit pending-report handling remains the separate private-worker contract below.
+Private subagents retain continuation:none/resume; Workboard grants remain independently authorized.
 
 ### Quiet worker report handling
 
@@ -201,52 +203,39 @@ ready work, with merge suggestions only for ready isolated sessions. `sessions.c
 pages pending/deferred records; update changes only decision metadata, never executes actions
 or rearms notices.
 
-`recordCompletion` atomically deduplicates the retained decision and its one-time coordinator
-digest. Both ordinary Project Sessions and permanent chats attach at most twenty new result
+`recordCompletion` atomically deduplicates the retained decision and, for notification mode or board results, its one-time coordinator
+digest. Reply mode retains decisions without a second quiet notice. Both ordinary Project Sessions and permanent chats attach at most twenty new result
 notices to the next real user input. Linked reports retain exact references in the same group,
-not duplicate private reminders. The reminder instructs the agent to answer first, then offer a
-single quiet group at a natural boundary (or defer if disruptive); this is conversational guidance,
-not a renderer-enforced post-answer widget. Decisions survive delivery without repeated nags.
+not duplicate private reminders. The shared renderer displays compact status and result links alongside that user input without
+requiring an agent relay. Model-facing orientation asks it to answer the user first and explain
+results only when useful. Decisions survive delivery without repeated nags.
 Admission receipts prevent replay when accepted input outlives digest removal. No transcript
 is copied: full reports remain Pi-owned. Execution continuation is independent of this inbox.
 
-### Cake Chat report policy
+### Permanent chat delivery
 
-Results that Cake Chat requested (from `sessions.create`, `sessions.send` or
-`sessions.send-batch`) carry a `report` policy in the message envelope and on the
-journaled obligation. Without an explicit continuation override, only the user starts Cake Chat turns by default:
+Global Cake Chat and permanent Project Chat share the result-delivery mechanism above, scoped
+to the requesting chat identity. Notification entries live in coordinatorDigest and are removed
+only after the next real user input is durably accepted; admission receipts prevent replay.
+They carry compact status, classification, pending decisions and the exact resultMessageRef.
+The shared transcript renders those lines as an application-owned Session results notice with
+clickable result links at user-input admission, even if the model produces no explanation.
+Only the model-facing orientation remains context; an agent relay is not required.
+Reply admissions use the normal parent queue and stable automatic-report ID. Consumption or
+cancellation receipts settle retries even after transcript compaction. Composer holds are bounded
+by the existing two-minute presence timeout. A user input retains priority over a report-started run.
 
-- `digest` (default): when the obligation settles, the worker moves it into
-  Cake Chat's durable digest inbox (`coordinatorDigest` in the family document)
-  instead of prompting Cake Chat. The next user message to Cake Chat carries one
-  Cake-owned `<system-reminder>` prefix listing each result as a status line
-  (title, deep link, finished/failed/blocked/stopped, first line of the report),
-  plus how many launched sessions are still running. Items are removed only after
-  that message is accepted. The transcript renders the block as a context pill.
-- `interrupt`: the existing immediate delivery that starts or queues a turn.
-- `silent`: no obligation is recorded (`expectsResponse: false`).
+Launch records retain launchedAt and lastReport for activity/status surfaces, independently of
+notification delivery. No initial obligation is recorded for ignore launches. Historical digest
+records without a requester identity still belong to global Cake Chat.
+Launch projections include requester identity; both sessions.list and the Activity menu filter
+by that identity. The shared Activity menu also presents a regular Project Session's direct
+family children and each conversation's own temporary subagents in separate groups. It is
+hidden unless delegated work is running, queued, or needs attention; idle sessions alone do
+not keep it visible. Sessions open through ordinary navigation; subagents use their owner's
+existing side-chat surface.
 
-A report whose outcome is `blocked` escalates to immediate delivery under
-`digest`; direct questions (`expectsResponse: true`) from a session to Cake Chat
-always deliver immediately. Completion notes such as "done, needs restart" stay
-in the digest. Immediate result deliveries wait while the Cake Chat composer has
-unsent text (advisory `CakeChatComposerPresence`, released after two minutes);
-direct session-initiated messages are not held. When the user sends a message
-while Cake Chat's active run was started by a report or worker result, that run
-is aborted first and the reminder tells Cake Chat to answer the user and fold in
-the report. Cake Chat may request results from sessions it did not launch; those
-obligations follow the same policy. Each launch record keeps `launchedAt` and the
-latest report so catalog summaries can project `cakeChatLaunch` for Cake Chat's
-header Activity menu and `sessions.list { launchedByCakeChat: true }`. Launch projections
-include the requester chat identity; both surfaces filter by that identity. Global and
-Project Chats use the same delivery mechanism, but digest items, composing holds and
-reply destinations are scoped to the requesting chat. Persisted digest records without
-an explicit coordinator identity belong to global Cake Chat. The shared
-Activity menu also presents a regular Project Session's direct family children and
-either kind of conversation's own temporary subagents in separate groups. It is
-hidden unless delegated work is running, queued, or needs attention; idle sessions
-alone do not keep it visible. Sessions open through ordinary navigation, while
-subagents open in their owner's existing side-chat surface.
+Family storage version 8 migrates persisted report/continuation combinations to resultDelivery without dropping pending obligations, inboxes, correlations, delivery attempts or handled receipts. Explicit resume maps to reply, none to notification, otherwise digest maps to notification and immediate/default obligations to reply. Versions 1–7 remain readable; new writes contain only canonical modes. Persisted Pi envelopes decode their historical fields at the transcript boundary.
 
 Family storage version 5 established recursive parentage, per-child Working
 Directory bindings, sender/recipient request and reply correlation, response

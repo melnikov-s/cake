@@ -626,6 +626,7 @@ export async function createDurableCakeChatRuntime(
         );
         options.onTurnResult?.(turnId, {
           stopReason: "stop",
+          entryId: answer?.kind === "text" ? answer.entryId : undefined,
           text: answer?.kind === "text" ? answer.text : "",
           respondsToSessionId:
             latestInput?.kind === "text" ? latestInput.crossSession?.sender.sessionId : undefined,

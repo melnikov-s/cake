@@ -74,7 +74,7 @@ describe("restart transcript reconciliation", () => {
     const branch = [marker(), user(), assistant()];
     expect(restartDecision(branch, "turn")).toEqual({
       kind: "settled",
-      result: { stopReason: "stop", text: "Done" },
+      result: { entryId: expect.any(String), stopReason: "stop", text: "Done" },
     });
     expect(restartDecision(branch, "turn")).toEqual(restartDecision(branch, "turn"));
   });
@@ -86,7 +86,12 @@ describe("restart transcript reconciliation", () => {
       ),
     ).toEqual({
       kind: "settled",
-      result: { stopReason: "error", text: "Done", errorMessage: "provider failed" },
+      result: {
+        entryId: expect.any(String),
+        stopReason: "error",
+        text: "Done",
+        errorMessage: "provider failed",
+      },
     });
   });
   it("never replays a tool whose side effect might have completed without a saved result", () => {
@@ -106,7 +111,7 @@ describe("restart transcript reconciliation", () => {
     ]) {
       expect(restartDecision([...first, marker("later"), user(), later], "turn")).toEqual({
         kind: "settled",
-        result: { stopReason: "stop", text: "Done" },
+        result: { entryId: expect.any(String), stopReason: "stop", text: "Done" },
       });
     }
   });
@@ -115,7 +120,7 @@ describe("restart transcript reconciliation", () => {
     for (const turnId of ["turn", "steer"])
       expect(restartDecision(branch, turnId)).toEqual({
         kind: "settled",
-        result: { stopReason: "stop", text: "Done" },
+        result: { entryId: expect.any(String), stopReason: "stop", text: "Done" },
       });
   });
   it("uses a successful retry in the same run rather than the preceding provider error", () => {
@@ -123,7 +128,7 @@ describe("restart transcript reconciliation", () => {
       restartDecision([marker(), user(), assistant({ stopReason: "error" }), assistant()], "turn"),
     ).toEqual({
       kind: "settled",
-      result: { stopReason: "stop", text: "Done" },
+      result: { entryId: expect.any(String), stopReason: "stop", text: "Done" },
     });
   });
   it("does not include an answer triggered by a subsequent custom worker report", () => {
@@ -138,7 +143,7 @@ describe("restart transcript reconciliation", () => {
     };
     expect(restartDecision([marker(), user(), assistant(), report, call()], "turn")).toEqual({
       kind: "settled",
-      result: { stopReason: "stop", text: "Done" },
+      result: { entryId: expect.any(String), stopReason: "stop", text: "Done" },
     });
   });
   it("does not use historical work before this accepted input's marker", () => {

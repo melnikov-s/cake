@@ -1,11 +1,7 @@
 import { Cause, DateTime, Effect, Exit } from "effect";
-import type { ParentContinuation } from "../../contracts/conversations/parent-continuation";
+import type { ResultDelivery } from "../../contracts/conversations/result-delivery";
 import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
-import {
-  cakeChatReportPolicy,
-  type CakeChatReportPolicy,
-  type SessionRequester,
-} from "../../contracts/project-sessions/session-reporting";
+import { type SessionRequester } from "../../contracts/project-sessions/session-reporting";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { encodeCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import { inheritTaskInputProtection } from "../conversations/taskInputs";
@@ -30,11 +26,10 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
   readonly worktreeName?: string;
   readonly requester?: SessionRequester;
   /**
-   * How the initial assignment's one result reaches a Cake Chat requester; defaults to digest.
-   * silent means the assignment owes no result. Only meaningful with a Cake Chat requester.
+   * How the initial result reaches a permanent-chat requester; defaults to notification.
+   * Ignore creates no obligation. Independent local creation has no requester relationship.
    */
-  readonly report?: CakeChatReportPolicy;
-  readonly continuation?: ParentContinuation;
+  readonly resultDelivery?: ResultDelivery;
   readonly markdown?: boolean;
 }) {
   const locations = yield* projectSessionLocations.locations();
@@ -67,7 +62,8 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
     input.requester?.kind === "cake-chat" && isCakeChatSessionId(input.requester.sessionId)
       ? input.requester
       : undefined;
-  const { report, expectsResponse, continuation } = cakeChatReportPolicy(input);
+  const resultDelivery = input.resultDelivery ?? "notification";
+  const expectsResponse = resultDelivery !== "ignore";
   const storage = yield* SessionFamilyStorage;
   if (requester)
     yield* storage.registerSpawn({
@@ -76,9 +72,8 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
       workingDirectory,
       requester,
       reportDelivered: false,
-      continuation,
+      resultDelivery,
       launchedAt: DateTime.formatIso(yield* DateTime.now),
-      ...(report === "silent" ? null : { reportPolicy: report }),
       // Without an initial obligation there is no handoff to wait for or recover.
       handoffSettled: !expectsResponse,
     });
@@ -89,8 +84,7 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
         threadId: sessionId,
         sequence: 1,
         expectsResponse,
-        continuation,
-        ...(report === "silent" ? null : { report }),
+        resultDelivery,
         sender: { sessionId: requester.sessionId, title: requester.title, kind: requester.kind },
       })
     : input.initialPrompt;
@@ -119,8 +113,7 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
                 requestMessageId: sessionId,
                 threadId: sessionId,
                 reported: false,
-                continuation,
-                ...(report === "silent" ? null : { reportPolicy: report }),
+                resultDelivery,
                 outcome: Cause.hasInterrupts(exit.cause) ? "aborted" : "failed",
                 ...(!Cause.hasInterrupts(exit.cause)
                   ? {

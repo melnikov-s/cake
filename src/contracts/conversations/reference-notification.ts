@@ -10,11 +10,7 @@ export const protectedResponseNotice =
 /** Unsolicited passive notifications only. Owed results use their launch continuation intent. */
 export function isReferenceNotification(text: string): boolean {
   const message = parseCrossSessionMessage(text);
-  if (
-    message?.metadata.expectsResponse ||
-    message?.metadata.report === "interrupt" ||
-    message?.metadata.continuation === "resume"
-  )
+  if (message?.metadata.expectsResponse || message?.metadata.resultDelivery === "reply")
     return false;
   const description = message && describeCrossSessionMessage(message.text, message.metadata);
   if (description?.outcome === "blocked" || description?.outcome === "failed") return false;

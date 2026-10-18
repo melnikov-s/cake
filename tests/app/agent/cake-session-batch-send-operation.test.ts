@@ -46,6 +46,7 @@ describe("sessions.send-batch operation", () => {
         command: "sessions.send-batch",
         status: "complete",
         expectsResponse: false,
+        resultDelivery: "ignore",
         outcomes: ["a", "b"].map((sessionId) => ({
           sessionId,
           ok: true,
@@ -103,7 +104,7 @@ describe("sessions.send-batch operation", () => {
       sessionIds: ["a", "missing", "broken", "malformed", "b"],
       text: "message",
       delivery: "steer",
-      expectsResponse: false,
+      resultDelivery: "ignore",
     });
     expect(result.structuredContent).toMatchObject({
       result: {
@@ -126,7 +127,7 @@ describe("sessions.send-batch operation", () => {
     });
     expect(send).toHaveBeenCalledTimes(5);
     for (const [input] of send.mock.calls)
-      expect(input).toMatchObject({ text: "message", delivery: "steer", expectsResponse: false });
+      expect(input).toMatchObject({ text: "message", delivery: "steer", resultDelivery: "ignore" });
   });
 
   it("reports every failure when no recipient succeeds", async () => {

@@ -1,3 +1,4 @@
+import { messageReference } from "../../contracts/conversations/message-reference";
 import * as sessionFamilies from "../session-families/sessionFamilies";
 import * as backendAgentControl from "../application/agentControl";
 import type { PiSettings } from "../../services/pi/PiSettings";
@@ -376,10 +377,22 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
             : text
               ? { outcome: "result" as const, text }
               : undefined;
-        yield* families.settleTurn(event.turnId, outcome, report, event.stop).pipe(
-          Effect.tapError((error) => Effect.logError("Retrying durable session settlement", error)),
-          Effect.retry(Schedule.spaced("1 second")),
-        );
+        const resultMessageRef = event.result?.entryId
+          ? messageReference(sessionId, event.result.entryId)
+          : undefined;
+        yield* families
+          .settleTurn(
+            event.turnId,
+            outcome,
+            report ? { ...report, ...(resultMessageRef ? { resultMessageRef } : null) } : undefined,
+            event.stop,
+          )
+          .pipe(
+            Effect.tapError((error) =>
+              Effect.logError("Retrying durable session settlement", error),
+            ),
+            Effect.retry(Schedule.spaced("1 second")),
+          );
       }),
     runtime: {
       ...runtimeIntegrations,

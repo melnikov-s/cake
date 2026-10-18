@@ -105,7 +105,7 @@ const seed = Effect.fn("CakeChatDigestTest.seed")(function* () {
     threadId: reportId,
     reported: false,
     outcome: "complete",
-    reportPolicy: "digest",
+    resultDelivery: "notification",
   });
   yield* storage.digestNotice("turn-1", {
     id: "turn-1",

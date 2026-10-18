@@ -1,7 +1,4 @@
-import {
-  ParentContinuation,
-  parentContinuationGuidance,
-} from "../conversations/parent-continuation";
+import { ResultDelivery, resultDeliveryGuidance } from "../conversations/result-delivery";
 import { Effect, Schema } from "effect";
 import { CakeControlTool } from "../cake-chats/cake-chat-data";
 import { backendAgentTools } from "./backend-agent-tools";
@@ -11,7 +8,6 @@ import { SESSION_TITLE_MAX_LENGTH, thinkingLevelSchema } from "../conversations/
 import { messageRefsSchema } from "../conversations/message-reference";
 import { inputRefsSchema } from "../conversations/task-input";
 import { CakeModelSelection } from "../model-presets/cake-model-selection";
-import { CakeChatReportPolicy } from "../project-sessions/session-reporting";
 import { SessionNavigationInput, sessionNavigationHelp } from "./session-navigation";
 import {
   AgentPendingListInput,
@@ -49,8 +45,7 @@ const createSessionArgs = Schema.Struct({
     Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9-]{0,62}$/)),
   ),
   markdown: Schema.optionalKey(Schema.Boolean),
-  report: Schema.optionalKey(CakeChatReportPolicy),
-  continuation: Schema.optionalKey(ParentContinuation),
+  resultDelivery: Schema.optionalKey(ResultDelivery),
 });
 const createDraftSessionArgs = Schema.Struct({
   workspacePath: bounded(1, 4096),
@@ -233,8 +228,8 @@ export const windowControlDefinitions = {
       guidance: [
         "Omit model unless the user explicitly asks for a specific model. When omitted, the new session uses the configured default model preset's complete settings (provider, model, thinking level, and Fast mode; see models.list), not the calling Cake Chat's current model. Only when no default preset is configured does it use the calling Cake Chat's current settings.",
         "Pass exact attachment IDs from input metadata or attachments.list in inputRefs to forward without reading. Use attachments.read only when you want to inspect the content yourself.",
-        'report decides how the initial assignment\'s one result comes back. "digest" (default) never starts a Cake Chat turn: a one-line status is attached to the user\'s next message, and a blocked report is delivered right away. "interrupt" delivers the result immediately and starts a turn; use it only when the user asked to hear back as soon as it finishes. "silent" owes no result; check on demand with sessions.list { launchedByCakeChat: true }. Later turns the user starts directly in that session never report back.',
-        parentContinuationGuidance,
+        resultDeliveryGuidance,
+        "Defaults to notification. Later unrelated local user turns never notify the creator.",
       ],
       examples: [
         {

@@ -594,6 +594,10 @@ export async function createCakeSessionRuntime(
   const captureTurnResult = createTurnResultCapture(
     () => turnController.executingTurnIds(),
     (turnId, result) => options.onTurnResult?.(turnId, result),
+    () =>
+      session.sessionManager
+        .getBranch()
+        .findLast((entry) => entry.type === "message" && entry.message.role === "assistant")?.id,
   );
   const unsubscribe = session.subscribe((event) => {
     if (disposed) return;
@@ -765,8 +769,7 @@ export async function createCakeSessionRuntime(
           requestId,
           title: input.title,
           initialPrompt: input.initialPrompt,
-          expectsResponse: input.expectsResponse,
-          continuation: input.continuation,
+          resultDelivery: input.resultDelivery,
           placement: input.placement,
           model: configuration.resolveModelSelection(input.model),
           ...(input.worktreeName === undefined ? null : { worktreeName: input.worktreeName }),

@@ -61,7 +61,7 @@ describe("Workboard agent protocol", () => {
       "assignments and their substantive results belong exclusively on this board",
     );
     expect(appendHelp).toContain("not in sessions.send/reply or private side channels");
-    expect(appendHelp).toContain("expectsResponse: false");
+    expect(appendHelp).toContain("resultDelivery: ignore");
     expect(appendHelp).toContain(
       "do not wake idle members or clear existing runtime-managed report obligations",
     );

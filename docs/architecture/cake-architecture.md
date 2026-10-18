@@ -190,21 +190,18 @@ projections needed by a surface. References do not transfer ownership.
   parent reports. Completion status is distinct from resource disposal.
   Reports retain Cake-authored structured provenance for Markdown response
   presentation, without changing model-facing input roles.
-- Delegated results carry launch-time `continuation: "none" | "resume"`, separate from
-  report obligation and presentation. Both choices owe a result. None keeps the report in the
-  quiet inbox for the next conversational user input; resume admits one normal follow-up turn
-  so the parent can inspect the result and continue dependent work or explain failure.
-  Links never select or suppress continuation. Subagents default to resume and follow-ups inherit
-  unless overridden; blocking waits consume the result directly instead of adding another turn.
-  Cake Chat session requests default to none for digest and resume for interrupt; an explicit
-  choice overrides those defaults and requests a result even with silent/false. Intent is saved
-  with the existing outbox ID; normal Pi receipts and Durable request IDs deduplicate recovery.
-  This applies to Project Sessions, global Cake Chat, and Project Chat. Unsolicited passive
-  reference notifications still wait, while explicit questions/blockers, `message_parent` and
-  deliberate steering remain immediate. Commands and shell escapes do not drain quiet reports.
-  Family Workboard posts remain non-waking; board-only children omit continuation and response obligations.
-- Automatic Project Session result handoff belongs to actual family parent-child assignments
-  and independent sessions spawned by permanent Cake Chat, not arbitrary independent creators.
+- Session launch/send uses one canonical `resultDelivery: "reply" | "notification" | "ignore"`.
+  Reply transports the correlated application-confirmed result and starts/queues a normal
+  parent turn; notification retains a compact exact result-message link for the next real user
+  input without a completion-only turn; ignore creates neither obligation nor notification.
+  The application owns correlation, settlement, entry links and retry/deduplication; no worker
+  manual completion call is required. Artifact/link-only presentation cannot suppress a reply
+  wakeup. Durable transport is not a guarantee of exactly-once LLM prose. Direct questions
+  are immediate; explicit blockers escalate after worker settlement. Private subagents retain
+  their separate continuation:none/resume contract. Family board-only children select ignore;
+  Workboard continuation remains separately authorized.
+- Automatic Project Session result handoff belongs to correlated result-requesting messages and permanent-chat launches,
+  not arbitrary session relationships or later unrelated local user turns.
   Without an explicit report, a run's final answer becomes the result only when it answers the
   requester: Pi can consume later local-user or third-party input into the same run, and an answer
   to that input yields a factual stop notice instead of forwarding its text. Requester provenance and the pending delivery journal are Cake metadata; Pi remains transcript

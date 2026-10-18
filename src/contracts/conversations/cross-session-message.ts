@@ -1,5 +1,5 @@
 import { Effect, Option, Schema } from "effect";
-import { ParentContinuation } from "./parent-continuation";
+import { ResultDelivery, migrateResultDelivery } from "./result-delivery";
 import { sessionReference } from "../project-sessions/session-reference";
 
 const boundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
@@ -45,9 +45,7 @@ export const CrossSessionMessageMetadata = Schema.Struct({
   sequence: Schema.Int.check(Schema.isGreaterThan(0)),
   expectsResponse: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
   replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
-  /** Cake Chat requests only: how the owed result is delivered back (see CakeChatReportPolicy). */
-  report: Schema.optionalKey(Schema.Literals(["digest", "interrupt"])),
-  continuation: Schema.optionalKey(ParentContinuation),
+  resultDelivery: Schema.optionalKey(ResultDelivery),
   generatedNotice: Schema.optionalKey(Schema.Boolean),
   context: Schema.optionalKey(CrossSessionContextSnapshot),
   sender: Schema.Struct({
@@ -65,11 +63,21 @@ export interface CrossSessionMessageMetadata extends Schema.Schema.Type<
   typeof CrossSessionMessageMetadata
 > {}
 
+// Persisted Pi envelopes can outlive the application version that accepted them.
+const StoredMessageMetadata = Schema.Struct({
+  ...CrossSessionMessageMetadata.fields,
+  report: Schema.optionalKey(Schema.Literals(["digest", "interrupt", "silent"])),
+  continuation: Schema.optionalKey(Schema.Literals(["none", "resume"])),
+});
 const prefix = "<cake-session-message>";
 const suffix = "</cake-session-message>";
 
 export function encodeCrossSessionMessage(text: string, metadata: CrossSessionMessageMetadata) {
-  const validated = Schema.decodeUnknownSync(CrossSessionMessageMetadata)(metadata);
+  const validated = Schema.decodeUnknownSync(CrossSessionMessageMetadata)({
+    ...metadata,
+    resultDelivery: migrateResultDelivery(metadata),
+    expectsResponse: migrateResultDelivery(metadata) !== "ignore",
+  });
   return `${prefix}${JSON.stringify(validated)}${suffix}\n\n${text}`;
 }
 
@@ -195,7 +203,7 @@ export interface CrossSessionMessageDescription {
   /** Present for recognized generated notices; the body is then empty. */
   readonly notice?: CrossSessionNotice;
   readonly expectsResponse: boolean;
-  readonly report?: "digest" | "interrupt";
+  readonly resultDelivery?: ResultDelivery;
   /** Body without Cake's own leading report or notice text. Unrecognized text is kept whole. */
   readonly body: string;
 }
@@ -207,7 +215,7 @@ export function describeCrossSessionMessage(
   const sessionId = metadata.sender.sessionId;
   const common = {
     expectsResponse: metadata.expectsResponse,
-    ...(metadata.report ? { report: metadata.report } : null),
+    resultDelivery: metadata.resultDelivery,
   };
   const notice = metadata.generatedNotice ? parseNoticeText(sessionId, text.trim()) : undefined;
   if (notice) return { ...common, relation: "notice", notice, body: "" };
@@ -238,12 +246,17 @@ export function parseCrossSessionMessage(
   const end = content.indexOf(suffix, prefix.length);
   if (end < 0) return undefined;
   try {
-    const decoded = Schema.decodeUnknownOption(CrossSessionMessageMetadata)(
+    const decoded = Schema.decodeUnknownOption(StoredMessageMetadata)(
       JSON.parse(content.slice(prefix.length, end)),
     );
     if (Option.isNone(decoded)) return undefined;
+    const resultDelivery = migrateResultDelivery(decoded.value);
     return {
-      metadata: decoded.value,
+      metadata: Schema.decodeUnknownSync(CrossSessionMessageMetadata)({
+        ...decoded.value,
+        resultDelivery,
+        expectsResponse: resultDelivery !== "ignore",
+      }),
       text: content
         .slice(end + suffix.length)
         .replace(/^\s*\n/, "")

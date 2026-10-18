@@ -75,6 +75,20 @@ const settledResult = (events: readonly AgentSessionEvent[]) => {
 };
 
 describe("Pi run final-answer addressee", () => {
+  it("captures the exact application-owned final entry for link/artifact-only results", () => {
+    const results: PiTurnResult[] = [];
+    const capture = createTurnResultCapture(
+      () => ["request"],
+      (_id, result) => results.push(result),
+      () => "pi-final-entry",
+    );
+    capture(fromSession(parent));
+    capture(assistant("[Drawing](cake://artifact/drawing)"));
+    capture({ type: "agent_settled" });
+    expect(results[0]).toMatchObject({ entryId: "pi-final-entry", respondsToSessionId: parent });
+    expect(implicitTurnResultFor(results[0], parent)).toBe("[Drawing](cake://artifact/drawing)");
+  });
+
   it("attributes a delegated run's answer to its requester", () => {
     const result = settledResult([fromSession(parent), assistant("Working", "toolUse")]);
     expect(result?.respondsToSessionId).toBe(parent);

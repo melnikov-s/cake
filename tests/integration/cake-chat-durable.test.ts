@@ -1,3 +1,5 @@
+import type { PiTurnResult } from "../../src/contracts/pi/turn-result-data";
+import { encodeCrossSessionMessage } from "../../src/contracts/conversations/cross-session-message";
 import { createCoordinatorRuntime } from "../../src/layers/CakeOperations";
 import type { CakeSessionRuntimeSetup } from "../../src/services/pi/CakeSessionRuntimes";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
@@ -117,6 +119,7 @@ async function fixture() {
     async () => "talk: exact original details remain available through zoom",
   );
   const snapshots: ConversationSnapshot[] = [];
+  const results: PiTurnResult[] = [];
   const watchers = new Set<(snapshot: ConversationSnapshot) => void>();
   const waitSnapshot = async (
     runtime: CakeSessionRuntime,
@@ -170,6 +173,7 @@ async function fixture() {
           }),
           summarize,
         },
+        onTurnResult: (_turnId, result) => results.push(result),
         onEvent(event) {
           if (event.type === "snapshot") {
             snapshots.push(event.snapshot);
@@ -230,6 +234,7 @@ async function fixture() {
     providerSessions,
     summarize,
     snapshots,
+    results,
     waitSnapshot,
     started,
     finishes,
@@ -242,6 +247,39 @@ async function fixture() {
     },
   };
 }
+
+it.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/project")])(
+  "captures and preserves the exact durable source-result entry for %s",
+  async (sessionId) => {
+    const f = await fixture();
+    const scope = { sessionId, sessionDir: join(f.directory, "source-result") };
+    const text = "[Drawing](cake://artifact/result)";
+    f.answer(() => durableAnswer(text));
+    const chat = await f.open(undefined, undefined, scope);
+    await chat.runtime.prompt(
+      encodeCrossSessionMessage("Produce the drawing", {
+        version: 1,
+        messageId: ids.first,
+        threadId: ids.first,
+        sequence: 1,
+        expectsResponse: true,
+        resultDelivery: "reply",
+        sender: { kind: "cake-chat", sessionId: "creator", title: "Creator" },
+      }),
+      "prompt",
+      [],
+      false,
+      ids.first,
+    );
+    const entryId = entryOf(await chat.runtime.snapshot(), text);
+    expect(f.results).toEqual([
+      expect.objectContaining({ text, entryId, respondsToSessionId: "creator" }),
+    ]);
+    await chat.close();
+    const reopened = await f.open(undefined, undefined, scope);
+    expect(entryOf(await reopened.runtime.snapshot(), text)).toBe(entryId);
+  },
+);
 
 it("isolates global and project originals, OptMem, requests and side-chat Harnesses across reopen", async () => {
   const f = await fixture();

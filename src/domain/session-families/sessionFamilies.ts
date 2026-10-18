@@ -1,10 +1,7 @@
 import { createHash } from "node:crypto";
 import { describeTurnStop, type TurnStop } from "../../contracts/conversations/turn-stop";
-import {
-  appendMessageReferences,
-  messageReferencesInText,
-} from "../../contracts/conversations/message-reference-forwarding";
-import type { ParentContinuation } from "../../contracts/conversations/parent-continuation";
+import { appendMessageReferences } from "../../contracts/conversations/message-reference-forwarding";
+import type { ResultDelivery } from "../../contracts/conversations/result-delivery";
 import { isReferenceNotification } from "../../contracts/conversations/reference-notification";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 import * as workboardContinuations from "./workboardContinuations";
@@ -24,6 +21,7 @@ import { crossSessionContextSnapshot } from "../../contracts/conversations/cross
 import { substantiveTurnResult } from "../../contracts/pi/turn-result-data";
 import { acquireOptions as acquireProjectSessionOptions } from "../project-sessions/projectSessionRuntime";
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
+import * as projectSessionMetadata from "../project-sessions/projectSessionMetadata";
 import * as workflowLifecycle from "../workflows/workflow-lifecycle";
 import { DateTime, Effect, Exit, Option, Schedule } from "effect";
 import { CakeChatComposerPresence } from "../../services/session-catalogs/CakeChatComposerPresence";
@@ -87,23 +85,14 @@ export const admitTurn = Effect.fn("SessionFamilies.admitTurn")(function* <E, R>
     sessionId,
     Effect.gen(function* () {
       yield* assertAdmission(sessionId, location);
-      const family = yield* storage.familyForMember(sessionId);
+
       const request = parseCrossSessionMessage(input.text);
       const senderSessionId = request?.metadata.sender.sessionId;
-      const familyRequest =
-        family &&
-        senderSessionId !== undefined &&
-        familyMember(family, senderSessionId) !== undefined;
-      // Cake Chat may ask any Project Session for a result, whether or not it launched it.
-      const coordinatorRequest =
-        senderSessionId !== undefined &&
-        isCakeChatSessionId(senderSessionId) &&
-        request?.metadata.sender.kind === "cake-chat";
+
       // A reply obligation belongs to this one message, never to the session
       // relationship: user-started turns and messages that asked for no
       // response are not journaled and therefore never produce notices.
       if (
-        (familyRequest || coordinatorRequest) &&
         request &&
         request.metadata.expectsResponse &&
         !request.metadata.generatedNotice &&
@@ -116,10 +105,7 @@ export const admitTurn = Effect.fn("SessionFamilies.admitTurn")(function* <E, R>
           requestMessageId: request.metadata.messageId,
           threadId: request.metadata.threadId,
           reported: false,
-          ...(request.metadata.continuation
-            ? { continuation: request.metadata.continuation }
-            : null),
-          ...(coordinatorRequest ? { reportPolicy: request.metadata.report ?? "interrupt" } : null),
+          resultDelivery: request.metadata.resultDelivery ?? "reply",
         });
       yield* accept.pipe(
         Effect.onExit((exit) =>
@@ -147,9 +133,8 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(function* <
     title: string;
     initialPrompt: string;
     model: ChatConfiguration;
-    /** Whether the initial assignment owes the parent one result report; defaults to true. */
-    expectsResponse?: boolean;
-    continuation?: ParentContinuation;
+    /** Delivery of the initial assignment result; defaults to reply. */
+    resultDelivery?: ResultDelivery;
     worktreeName?: string;
     senderContext: CrossSessionContextSnapshot;
   },
@@ -213,7 +198,7 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(function* <
         parentWorkingDirectory: location.workingDirectory,
         childSessionId: crypto.randomUUID(),
         childWorkingDirectory: childLocation.workingDirectory,
-        ...(input.continuation ? { continuation: input.continuation } : null),
+        resultDelivery: input.resultDelivery ?? "reply",
         requestId: input.requestId,
         projectPath: location.projectPath,
         createdAt: DateTime.formatIso(yield* DateTime.now),
@@ -305,6 +290,7 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(function* <
       (child) => child.sessionId === prepared.child.sessionId,
     ),
     familyDepth: familyDepth(prepared.family, prepared.child.sessionId) ?? 0,
+    resultDelivery: prepared.child.resultDelivery ?? "reply",
   };
   if (!prepared.handle)
     return {
@@ -318,8 +304,8 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(function* <
     messageId: prepared.child.sessionId,
     threadId: prepared.family.familyId,
     sequence: 1,
-    expectsResponse: input.continuation !== undefined || (input.expectsResponse ?? true),
-    ...(input.continuation ? { continuation: input.continuation } : null),
+    expectsResponse: identity.resultDelivery !== "ignore",
+    resultDelivery: identity.resultDelivery,
     context: input.senderContext,
     sender: {
       sessionId: parentSessionId,
@@ -380,6 +366,11 @@ export const initialize = Effect.fn("SessionFamilies.initialize")(function* <E, 
       // must retain its member routing and must not gain a second failure notice.
       if ((yield* storage.state()).turns.some((turn) => turn.sessionId === child.sessionId))
         continue;
+      if (child.resultDelivery === "ignore") {
+        yield* storage.removeUnmaterializedChild(child.sessionId);
+        continue;
+      }
+
       // No accepted input or report remains for this unmaterialized reservation.
       yield* storage.recordTurn({
         sessionId: child.sessionId,
@@ -388,7 +379,7 @@ export const initialize = Effect.fn("SessionFamilies.initialize")(function* <E, 
         requestMessageId: child.sessionId,
         threadId: family.familyId,
         reported: false,
-        ...(child.continuation ? { continuation: child.continuation } : null),
+        resultDelivery: child.resultDelivery ?? "reply",
         outcome: "failed",
       });
       yield* storage.removeUnmaterializedChild(child.sessionId);
@@ -396,7 +387,11 @@ export const initialize = Effect.fn("SessionFamilies.initialize")(function* <E, 
   }
   const state = yield* storage.state();
   for (const spawn of state.spawnedSessions) {
-    if (spawn.handoffSettled || state.turns.some((turn) => turn.sessionId === spawn.sessionId))
+    if (
+      spawn.resultDelivery === "ignore" ||
+      spawn.handoffSettled ||
+      state.turns.some((turn) => turn.sessionId === spawn.sessionId)
+    )
       continue;
     if (yield* isRecoverable(spawn.sessionId)) continue;
     // Covers a crash after recording the requester but before Pi accepted its initial input.
@@ -409,8 +404,7 @@ export const initialize = Effect.fn("SessionFamilies.initialize")(function* <E, 
       threadId: spawn.sessionId,
       reported: false,
       outcome: "aborted",
-      ...(spawn.reportPolicy ? { reportPolicy: spawn.reportPolicy } : null),
-      ...(spawn.continuation ? { continuation: spawn.continuation } : null),
+      resultDelivery: spawn.resultDelivery ?? "reply",
     });
   }
   for (const turn of (yield* storage.state()).turns) {
@@ -466,21 +460,14 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
     return;
   }
   if (isCakeChatSessionId(turn.senderSessionId))
-    return yield* deliverCoordinatorNotice(
+    return yield* deliverRequesterNotice(
       turn,
       (yield* storage.state()).spawnedSessions.find((item) => item.sessionId === turn.sessionId),
     );
-  if (!family) return;
+  if (!family) return yield* deliverRequesterNotice(turn, undefined);
   const senderMember = familyMember(family, turn.senderSessionId);
   const childMember = familyMember(family, turn.sessionId);
-  if (!senderMember || !childMember) return;
-  // Automatic outcome notices exist so a delegating parent learns when its child
-  // stops. Requests to a parent or sibling are answered only by explicit
-  // sessions.reply; a child is never told about its parent's turns.
-  if (childMember.parentSessionId !== turn.senderSessionId) {
-    yield* storage.completeNotice(turn.turnId);
-    return;
-  }
+  if (!senderMember || !childMember) return yield* deliverRequesterNotice(turn, undefined);
   const locations = yield* projectSessionLocations.locations({ includeInactive: true });
   const senderLocation = locations.find(
     (item) =>
@@ -559,18 +546,18 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
     childSummary?.title,
     childMember.workingDirectory !== senderMember.workingDirectory,
   );
-  if (
-    (turn.continuation ?? "resume") === "none" &&
-    turn.report &&
-    isReferenceNotification(turn.report.text)
-  ) {
-    yield* storage.completeNotice(turn.turnId);
-    return;
-  }
+
   const missingResponse = turn.outcome === "complete";
   const text = encodeCrossSessionMessage(
     report
-      ? formatCrossSessionReportText(turn.sessionId, report.outcome, report.text)
+      ? formatCrossSessionReportText(
+          turn.sessionId,
+          report.outcome,
+          appendMessageReferences(
+            report.text,
+            report.resultMessageRef ? [report.resultMessageRef] : [],
+          ),
+        )
       : formatCrossSessionNoticeText(
           turn.sessionId,
           missingResponse
@@ -617,14 +604,15 @@ const deliverOutcome = Effect.fn("SessionFamilies.deliverOutcome")(function* (
       );
       if (!current) return;
       turn = current;
-      if (
-        sender.inputReceipt &&
-        (yield* sender.inputReceipt(reportMessageId(turn.turnId))) === "canceled"
-      ) {
-        // The recipient withdrew this accepted report; a restart must not reinsert it.
+      const inputReceipt = sender.inputReceipt
+        ? yield* sender.inputReceipt(reportMessageId(turn.turnId))
+        : undefined;
+      if (inputReceipt === "canceled" || inputReceipt === "consumed") {
+        // Persisted admission receipts outlive queue edits and transcript compaction.
         yield* storage.completeNotice(turn.turnId);
         return;
       }
+      if (inputReceipt === "pending") return;
       if (isCakeChatSessionId(turn.senderSessionId))
         text = yield* prepareCoordinatorNotice(turn.senderSessionId, text).pipe(
           Effect.mapError((error) => failure(error.message)),
@@ -633,10 +621,7 @@ const deliverOutcome = Effect.fn("SessionFamilies.deliverOutcome")(function* (
         yield* inheritTaskInputProtection(turn.sessionId, turn.senderSessionId).pipe(
           Effect.mapError((error) => failure(error.message)),
         );
-      if (
-        turn.report?.outcome !== "blocked" &&
-        (turn.continuation ?? (turn.reportPolicy === "digest" ? "none" : "resume")) === "none"
-      ) {
+      if (turn.report?.outcome !== "blocked" && turn.resultDelivery === "notification") {
         yield* storage.completeNotice(turn.turnId);
         return;
       }
@@ -693,8 +678,7 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
       delivery?: "prompt" | "queue" | "steer";
       threadId?: string;
       replyToMessageId?: string;
-      expectsResponse?: boolean;
-      continuation?: ParentContinuation;
+      resultDelivery?: ResultDelivery;
       inputRefs?: readonly string[];
       messageRefs?: readonly string[];
       outcome?: SessionCompletionReport["outcome"];
@@ -705,7 +689,7 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
   ) {
     const storage = yield* SessionFamilyStorage;
     const state = yield* storage.state();
-    const expectsResponse = input.continuation !== undefined || (input.expectsResponse ?? false);
+    const expectsResponse = (input.resultDelivery ?? "ignore") !== "ignore";
     const spawn = state.spawnedSessions.find((item) => item.sessionId === sessionId);
     // A session Cake Chat did not launch still answers Cake Chat's own requests to it.
     const owedCoordinator =
@@ -779,7 +763,7 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
       threadId: pending?.threadId ?? input.threadId ?? spawn?.sessionId ?? crypto.randomUUID(),
       sequence: 1,
       expectsResponse,
-      ...(input.continuation ? { continuation: input.continuation } : null),
+      resultDelivery: input.resultDelivery ?? "ignore",
       ...(replyToMessageId ? { replyToMessageId } : null),
       ...(senderContext ? { context: senderContext } : null),
       sender: {
@@ -814,9 +798,7 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
       : [];
     if (
       !expectsResponse &&
-      (!pending ||
-        (pending.continuation ?? (pending.reportPolicy === "digest" ? "none" : "resume")) ===
-          "none") &&
+      (!pending || pending.resultDelivery === "notification") &&
       input.delivery !== "steer" &&
       !attachments.length &&
       input.outcome !== "blocked" &&
@@ -881,6 +863,7 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
       messageId,
       threadId: metadata.threadId,
       expectsResponse: metadata.expectsResponse,
+      resultDelivery: metadata.resultDelivery,
       recipientContext: crossSessionContextSnapshot(snapshot.usage?.context),
     });
   },
@@ -971,6 +954,8 @@ const queueTurnCompletion = Effect.fn("SessionFamilies.queueTurnCompletion")(fun
       `Session ${turn.sessionId}`
     ).slice(0, 500),
     summary: digestSummary(turn, report).slice(0, 500),
+    notify: turn.resultDelivery === "notification" && report?.outcome !== "blocked",
+    ...(report?.resultMessageRef ? { resultMessageRef: report.resultMessageRef } : null),
     ...(report && isReferenceNotification(report.text)
       ? { references: report.text.replace(/\s+/g, " ").slice(0, 6000) }
       : null),
@@ -985,12 +970,12 @@ const queueTurnCompletion = Effect.fn("SessionFamilies.queueTurnCompletion")(fun
 });
 
 /**
- * Cake Chat results follow the request's report policy. Digest settles the obligation into the
- * quiet inbox without starting a turn; a blocked report escalates to immediate delivery.
+ * Correlated results follow the chosen delivery mode. Notification settles into the quiet
+ * inbox without starting a turn; explicit blockers retain actionable escalation.
  * Immediate deliveries wait while the user has unsent Cake Chat text (bounded by the presence
  * timeout); the worker retries every pass.
  */
-const deliverCoordinatorNotice = Effect.fn("SessionFamilies.deliverCoordinatorNotice")(function* (
+const deliverRequesterNotice = Effect.fn("SessionFamilies.deliverRequesterNotice")(function* (
   turn: FamilyTurn,
   spawn: SpawnedSession | undefined,
 ) {
@@ -1016,44 +1001,8 @@ const deliverCoordinatorNotice = Effect.fn("SessionFamilies.deliverCoordinatorNo
         resolved: false,
       })
     : Effect.void;
-  // Preserve exact links for quiet reports, but never let presentation suppress a required continuation.
-  const referenceText =
-    report &&
-    (turn.continuation ?? (turn.reportPolicy === "digest" ? "none" : "resume")) === "none" &&
-    status !== "blocked" &&
-    status !== "failed" &&
-    (isReferenceNotification(report.text) || messageReferencesInText(report.text).length > 0)
-      ? yield* prepareCoordinatorNotice(
-          turn.senderSessionId,
-          encodeCrossSessionMessage(
-            formatCrossSessionReportText(turn.sessionId, report.outcome, report.text),
-            {
-              version: 1,
-              messageId: turn.turnId,
-              threadId: turn.threadId,
-              sequence: 1,
-              expectsResponse: false,
-              replyToMessageId: turn.requestMessageId,
-              sender: {
-                sessionId: turn.sessionId,
-                title: `Session ${turn.sessionId}`,
-                kind: isCakeChatSessionId(turn.sessionId) ? "cake-chat" : "project-session",
-              },
-            },
-          ),
-        ).pipe(Effect.mapError((error) => failure(error.message)))
-      : undefined;
-  if (referenceText && isReferenceNotification(referenceText)) {
-    yield* storage.completeNotice(turn.turnId);
-    if (spawn) yield* storage.recordLaunchReport(spawn.sessionId, launchReport);
-    yield* publishLaunch;
-    return;
-  }
-  if (
-    (turn.continuation ?? (turn.reportPolicy === "digest" ? "none" : "resume")) === "none" &&
-    (turn.reportPolicy ?? "interrupt") === "digest" &&
-    status !== "blocked"
-  ) {
+
+  if (turn.resultDelivery === "notification" && status !== "blocked") {
     const title = yield* sessionTitle(turn.sessionId, spawn?.workingDirectory).pipe(
       Effect.catch(() => Effect.succeed(undefined)),
     );
@@ -1064,6 +1013,7 @@ const deliverCoordinatorNotice = Effect.fn("SessionFamilies.deliverCoordinatorNo
         sessionId: turn.sessionId,
         title: (title ?? `Session ${turn.sessionId}`).slice(0, 500),
         ...launchReport,
+        ...(report?.resultMessageRef ? { resultMessageRef: report.resultMessageRef } : null),
       }),
     );
     yield* publishLaunch;
@@ -1076,12 +1026,35 @@ const deliverCoordinatorNotice = Effect.fn("SessionFamilies.deliverCoordinatorNo
     (yield* presence.value.holdsInterrupts(turn.senderSessionId))
   )
     return;
-  // Cake Chat is a primary runtime destination, never a Project catalog lookup.
-  // Cold permanent chats use the same composition as UI and direct messaging.
-  const sender = yield* chatTargets.acquireAvailable(turn.senderSessionId);
+  // Cold permanent chats use their primary runtime; independent Project requesters use normal acquisition.
+  const sender = isCakeChatSessionId(turn.senderSessionId)
+    ? yield* chatTargets.acquireAvailable(turn.senderSessionId)
+    : yield* Effect.gen(function* () {
+        const target = yield* projectSessionMetadata.findLocation({
+          sessionId: turn.senderSessionId,
+        });
+        const location = (yield* projectSessionLocations.locations({ includeInactive: true })).find(
+          (item) => item.workingDirectory === target.workingDirectory,
+        );
+        if (!location) return yield* failure("Requester Working Directory unavailable");
+        return yield* (yield* CakeSessionRuntimes).acquire(
+          yield* acquireProjectSessionOptions({
+            location,
+            sessionId: turn.senderSessionId,
+            newSession: false,
+          }),
+        );
+      });
   const text = encodeCrossSessionMessage(
     report
-      ? formatCrossSessionReportText(turn.sessionId, report.outcome, report.text)
+      ? formatCrossSessionReportText(
+          turn.sessionId,
+          report.outcome,
+          appendMessageReferences(
+            report.text,
+            report.resultMessageRef ? [report.resultMessageRef] : [],
+          ),
+        )
       : formatCrossSessionNoticeText(
           turn.sessionId,
           turn.outcome === "aborted" && turn.stop

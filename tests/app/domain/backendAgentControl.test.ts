@@ -690,7 +690,7 @@ it.effect(
         text: "Review this",
         inputRefs: ["allowed"],
         messageRefs: [selectedMessage],
-        expectsResponse: true,
+        resultDelivery: "reply",
         delivery: "steer",
       });
       expect(sent).toMatchObject({
@@ -1089,7 +1089,7 @@ it.effect(
         result: {
           status: "complete",
           expectsResponse: true,
-          report: "digest",
+          resultDelivery: "notification",
           outcomes: [
             { sessionId: target, status: "accepted" },
             { sessionId: third, status: "accepted" },
@@ -1101,7 +1101,7 @@ it.effect(
       for (const envelope of envelopes)
         expect(envelope).toMatchObject({
           expectsResponse: true,
-          report: "digest",
+          resultDelivery: "notification",
           maxMessages: 5,
           sender: { sessionId: CAKE_CHAT_SESSION_ID, kind: "cake-chat" },
         });
@@ -1111,34 +1111,37 @@ it.effect(
       yield* invoke("sessions.send", {
         sessionId: target,
         text: "Single follow-up",
-        expectsResponse: false,
+        resultDelivery: "ignore",
       });
       const single = parseCrossSessionMessage((yield* Queue.take(f.prompts)).text)?.metadata;
       expect(single).toMatchObject({ expectsResponse: false });
-      expect(single).not.toHaveProperty("report");
+      expect(single).toHaveProperty("resultDelivery", "ignore");
       expect(
         (yield* invoke("sessions.send-batch", {
           sessionIds: [target],
           text: "FYI",
-          report: "silent",
+          resultDelivery: "ignore",
         })).structuredContent,
       ).toMatchObject({
-        result: { expectsResponse: false, report: "silent" },
+        result: { expectsResponse: false, resultDelivery: "ignore" },
       });
       yield* Queue.take(f.prompts);
       expect(
         JSON.parse(
-          (yield* invoke("sessions.send", { sessionId: third, text: "Ping", report: "interrupt" }))
-            .text,
+          (yield* invoke("sessions.send", {
+            sessionId: third,
+            text: "Ping",
+            resultDelivery: "reply",
+          })).text,
         ),
       ).toMatchObject({
         expectsResponse: true,
-        report: "interrupt",
+        resultDelivery: "reply",
       });
       expect(parseCrossSessionMessage((yield* Queue.take(f.prompts)).text)?.metadata).toMatchObject(
         {
           expectsResponse: true,
-          report: "interrupt",
+          resultDelivery: "reply",
         },
       );
     }),
@@ -1187,7 +1190,7 @@ it.effect("backend batches retain failures alongside subsequent successes", () =
         sessionIds: ["missing", target, third],
         text: "New direction",
         delivery: "steer",
-        expectsResponse: false,
+        resultDelivery: "ignore",
       })).structuredContent,
     ).toMatchObject({
       result: {
@@ -1234,18 +1237,22 @@ it.effect("Cake Chat keeps report policy and protected-task redaction without a 
     const receipt = yield* call("sessions.send", {
       sessionId: target,
       text: "Status?",
-      report: "digest",
+      resultDelivery: "notification",
     });
-    expect(receipt).toMatchObject({ ok: true, report: "digest", expectsResponse: true });
+    expect(receipt).toMatchObject({
+      ok: true,
+      resultDelivery: "notification",
+      expectsResponse: true,
+    });
     expect(receipt).not.toHaveProperty("targetTitle");
     expect(parseCrossSessionMessage((yield* Queue.take(f.prompts)).text)?.metadata).toMatchObject({
       sender: { kind: "cake-chat", sessionId: CAKE_CHAT_SESSION_ID },
-      report: "digest",
+      resultDelivery: "notification",
       expectsResponse: true,
     });
     expect(
-      yield* call("sessions.send", { sessionId: target, text: "Quiet", report: "silent" }),
-    ).toMatchObject({ ok: true, report: "silent", expectsResponse: false });
+      yield* call("sessions.send", { sessionId: target, text: "Quiet", resultDelivery: "ignore" }),
+    ).toMatchObject({ ok: true, resultDelivery: "ignore", expectsResponse: false });
     expect(parseCrossSessionMessage((yield* Queue.take(f.prompts)).text)?.metadata).toMatchObject({
       expectsResponse: false,
     });

@@ -58,7 +58,7 @@ const continuationOperations = (
       policy: Schema.NullOr(BoardContinuation),
     }),
     guidance: [
-      "Only configure resume when the user authorized dependent continuation. Default is passive. This is asynchronous: return immediately; never wait/poll. It preserves expectsResponse:false and creates no private reports.",
+      "Only configure resume when the user authorized dependent continuation. Default is passive. This is asynchronous: return immediately; never wait/poll. It preserves resultDelivery:ignore and creates no private reports.",
       "New grants begin after the latest existing entry; set after explicitly to include older results. Set topic and awaitAuthors for an explicit completion batch. All named authors must post event:completion on that topic; an addressed event:blocker can break the barrier. Links, prose, read receipts, self posts and workgroup broadcasts do not request turns.",
       "maxTurns defaults to one, at most ten per explicit grant. At most two Workboard continuations are outstanding process-wide and one per recipient. Active/queued parent work finishes first. Never rearm an exhausted grant without user authorization.",
       "Pause/off prevents future admission; it does not abort an already-running turn. Explicit abort pauses the grant. Resume is explicit and preserves pending delivery receipts; restart never clears the budget or cancellation history.",
@@ -102,7 +102,7 @@ export const createMessageBoardOperations = (
       "Entries are immutable. Use topic plus supersedes: [sequence, ...] for corrections within the same topic (untagged originals may acquire a topic through a correction). Supersession is recipient-specific; include everyone affected by the old decision. Agent decisions are not user authorization.",
       "Establish types, signatures, file ownership, dependencies and acceptance criteria before dependent implementation. Post changes/discoveries, not repeated contract negotiation.",
       "Family assignments and their substantive results belong exclusively on this board, not in sessions.send/reply or private side channels. Include the assignment entry, outcome, commit, contract delta, integration action and verification limits; do not duplicate private completion notifications.",
-      "Discover members with sessions.list-family. sessions.create-child automatically creates/joins the family board; use expectsResponse: false and a board-discovery bootstrap, then post the substantive assignment here. No separate board-create/join operations exist.",
+      "Discover members with sessions.list-family. sessions.create-child automatically creates/joins the family board; use resultDelivery: ignore and a board-discovery bootstrap, then post the substantive assignment here. No separate board-create/join operations exist.",
       "Board posts do not wake idle members or clear existing runtime-managed report obligations. Do not use private messaging/steering as a workaround; disclose scheduling/reporting limits to the user. User-facing replies, Cake Chat and unrelated independent sessions are outside this intra-family policy.",
     ],
     execute: (input) => control.append(Schema.decodeUnknownSync(BoardAppendInput)(input)),

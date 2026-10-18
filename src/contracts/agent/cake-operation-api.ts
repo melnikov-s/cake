@@ -1,4 +1,4 @@
-import type { ParentContinuation } from "../conversations/parent-continuation";
+import type { ResultDelivery } from "../conversations/result-delivery";
 import type {
   CakeModelSelection,
   ExplicitCakeModelSelection,
@@ -30,8 +30,7 @@ export interface RuntimeOperationApi {
       title: string;
       initialPrompt: string;
       model?: CakeModelSelection;
-      expectsResponse: boolean;
-      continuation?: ParentContinuation;
+      resultDelivery?: ResultDelivery;
       placement: "none" | "right" | "down";
       worktreeName?: string;
     },

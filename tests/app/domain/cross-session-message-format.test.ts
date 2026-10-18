@@ -31,7 +31,7 @@ const fromChild: CrossSessionMessageMetadata = {
 const fromCakeChat: CrossSessionMessageMetadata = {
   ...base,
   expectsResponse: true,
-  report: "digest",
+  resultDelivery: "notification",
   sender: { sessionId: CAKE_CHAT_SESSION_ID, title: "Cake Chat", kind: "cake-chat" },
 };
 
@@ -45,7 +45,7 @@ const roundTrip = (text: string, metadata: CrossSessionMessageMetadata) => {
 describe("cross-session message format", () => {
   it("keeps the persisted agent-facing text byte-for-byte stable", () => {
     expect(encodeCrossSessionMessage("Please review.", fromCakeChat)).toBe(
-      `<cake-session-message>{"version":1,"messageId":"f6debbbd-ced1-4a12-b0f7-fb60c292c623","threadId":"${requestId}","sequence":1,"expectsResponse":true,"report":"digest","sender":{"sessionId":"${CAKE_CHAT_SESSION_ID}","title":"Cake Chat","kind":"cake-chat"}}</cake-session-message>\n\nPlease review.`,
+      `<cake-session-message>{"version":1,"messageId":"f6debbbd-ced1-4a12-b0f7-fb60c292c623","threadId":"${requestId}","sequence":1,"expectsResponse":true,"resultDelivery":"notification","sender":{"sessionId":"${CAKE_CHAT_SESSION_ID}","title":"Cake Chat","kind":"cake-chat"}}</cake-session-message>\n\nPlease review.`,
     );
     expect(formatCrossSessionReportText(childId, "blocked", "Need a decision.")).toBe(
       `Session ${childId} — blocked\n\nNeed a decision.`,
@@ -56,7 +56,7 @@ describe("cross-session message format", () => {
     expect(roundTrip("## Task\n\nFix it.", fromCakeChat)).toEqual({
       relation: "request",
       expectsResponse: true,
-      report: "digest",
+      resultDelivery: "notification",
       body: "## Task\n\nFix it.",
     });
   });
@@ -109,6 +109,7 @@ describe("cross-session message format", () => {
       expect(roundTrip(text, fromChild)).toEqual({
         relation: "request",
         expectsResponse: false,
+        resultDelivery: "ignore",
         body: text,
       });
     expect(

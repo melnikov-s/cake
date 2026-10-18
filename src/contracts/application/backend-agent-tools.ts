@@ -1,4 +1,4 @@
-import { parentContinuationGuidance } from "../conversations/parent-continuation";
+import { resultDeliveryGuidance } from "../conversations/result-delivery";
 import { Schema } from "effect";
 import { CakeControlTool } from "../cake-chats/cake-chat-data";
 import { BackendAgentInvocation } from "./backend-agent-control";
@@ -285,7 +285,7 @@ const definitions = [
       summary:
         "Inspect your quiet completion inbox and outstanding review/merge/resolve/next-step decisions, without waking work.",
       guidance: [
-        "Returns at most fifty pending/deferred items scoped to this requesting conversation. New results are grouped after answering the user's next message; delivered notices do not repeat. Completion is never permission to mutate or merge.",
+        "Returns at most fifty pending/deferred items scoped to this requesting conversation. The application displays notification-mode result links with the next user message; delivered notices do not repeat. Reply-mode results start/queue a turn without a second quiet notification. Completion is never permission to mutate or merge.",
       ],
     },
   },
@@ -310,9 +310,8 @@ const definitions = [
         "Send, queue, or steer a correlated message to one explicitly targeted session. The result is a visible delivery receipt; optional maxMessages bounds the exchange.",
       guidance: [
         "sessionId is required from Cake Chat; Cake Chat cannot message itself. Project Sessions reach Cake Chat by omitting sessionId.",
-        "From a Project Session: expectsResponse defaults to false. Set true only when you need an answer (an assignment, question, or blocker); the recipient then owes exactly one result, or one failure/stopped notice if the turn handling this message ends without one. With false, the recipient never reports back automatically.",
-        'From Cake Chat: report replaces expectsResponse. "digest" (default) owes one result that arrives quietly as a status line on the user\'s next message (a blocked report arrives right away); "interrupt" delivers it immediately and starts a turn, only when the user asked to hear back right away; "silent" owes nothing. expectsResponse: false means silent.',
-        parentContinuationGuidance,
+        "Cake Chat sends default to notification; Project Session sends and replies default to ignore.",
+        resultDeliveryGuidance,
       ],
     },
   },

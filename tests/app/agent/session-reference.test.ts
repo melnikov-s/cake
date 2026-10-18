@@ -265,7 +265,7 @@ describe("session references", () => {
         input: {
           sessionIds: [a, "s:212345678", "s:ffffffff"],
           text: "Review",
-          expectsResponse: false,
+          resultDelivery: "ignore",
         },
       },
       context,

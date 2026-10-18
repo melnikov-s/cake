@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { describe } from "vitest";
-import { Effect } from "effect";
+import { Effect, Struct } from "effect";
 import { familyStorageHarness } from "../../helpers/familyStorageHarness";
 import {
   SessionFamilyStorage,
@@ -17,6 +17,7 @@ const turn = (overrides: Partial<FamilyTurn> = {}): FamilyTurn => ({
   requestMessageId: "request-message",
   threadId: "thread",
   reported: false,
+  resultDelivery: "reply",
   ...overrides,
 });
 
@@ -33,6 +34,139 @@ const child = (requestId: string, childSessionId: string) => ({
 });
 
 describe("SessionFamilyStorage", () => {
+  it.effect(
+    "does not rearm a consumed notification when restart retries the still-pending settlement",
+    () => {
+      const harness = familyStorageHarness();
+      return Effect.gen(function* () {
+        const storage = yield* SessionFamilyStorage;
+        const result = turn({ outcome: "complete", resultDelivery: "notification" });
+        const digest = {
+          id: result.turnId,
+          coordinatorSessionId: "parent",
+          sessionId: "child",
+          title: "Worker",
+          summary: "Finished",
+          status: "completed" as const,
+          reportedAt: "2026-01-01",
+        };
+        yield* storage.recordTurn(result);
+        yield* storage.recordCompletion(
+          {
+            ...digest,
+            state: "pending",
+            kind: "ready",
+            decisions: ["review"],
+            resultMessageRef: "cake://session/child?message=exact",
+          },
+          digest,
+        );
+        yield* storage.removeDigest([digest.id]); // user admission wins before settlement is journaled
+        const reopened = yield* Effect.gen(function* () {
+          return yield* SessionFamilyStorage;
+        }).pipe(Effect.provide(familyStorageHarness(harness.files).layer));
+        yield* reopened.digestNotice(result.turnId, digest);
+        yield* reopened.digestNotice(result.turnId, digest);
+        assert.deepEqual((yield* reopened.state()).coordinatorDigest, []);
+        assert.deepEqual((yield* reopened.state()).turns, []);
+        assert.equal(
+          (yield* reopened.state()).completionInbox?.[0]?.resultMessageRef,
+          "cake://session/child?message=exact",
+        );
+      }).pipe(Effect.provide(harness.layer));
+    },
+  );
+
+  it.effect(
+    "migrates v7 delivery combinations and preserves obligations, links, retries and quiet inboxes across reopen",
+    () => {
+      const ref = "cake://session/child?message=exact-result";
+      const modes = [
+        { continuation: "resume", reportPolicy: "digest", expected: "reply" },
+        { continuation: "none", reportPolicy: "interrupt", expected: "notification" },
+        { reportPolicy: "digest", expected: "notification" },
+        { expected: "reply" },
+      ] as const;
+      const legacyTurns = modes.map((mode, index) => ({
+        ...turn({
+          turnId: `turn-${index}`,
+          outcome: "complete",
+          report: { outcome: "result", text: "Persisted result", resultMessageRef: ref },
+        }),
+        resultDelivery: undefined,
+        ...Struct.omit(mode, ["expected"]),
+      }));
+      const digest = {
+        id: "already-quiet",
+        sessionId: "child",
+        title: "Worker",
+        summary: "Ready",
+        status: "completed",
+        reportedAt: "2026-01-01",
+      };
+      const files = new Map([
+        [
+          "state/session-families.json",
+          JSON.stringify({
+            version: 7,
+            data: {
+              families: [],
+              turns: legacyTurns,
+              spawnedSessions: [],
+              coordinatorDigest: [digest],
+            },
+          }),
+        ],
+      ]);
+      return Effect.gen(function* () {
+        const storage = yield* SessionFamilyStorage;
+        const migrated = yield* storage.state();
+        assert.deepEqual(
+          migrated.turns.map((item) => item.resultDelivery),
+          modes.map((item) => item.expected),
+        );
+        assert.ok(migrated.turns.every((item) => item.report?.resultMessageRef === ref));
+        yield* storage.markNoticeAttempt("turn-0", "stable-admission");
+        yield* storage.recordTurn(migrated.turns[0]!); // retry must not overwrite the admission or create another obligation
+        const reopened = yield* Effect.gen(function* () {
+          return yield* (yield* SessionFamilyStorage).state();
+        }).pipe(Effect.provide(familyStorageHarness(files).layer));
+        assert.equal(reopened.turns.length, modes.length);
+        assert.equal(reopened.turns[0]?.deliveryTurnId, "stable-admission");
+        assert.deepEqual(reopened.coordinatorDigest, [digest]);
+        assert.equal(JSON.parse(files.get("state/session-families.json")!).version, 8);
+        assert.ok(
+          !JSON.stringify(
+            JSON.parse(files.get("state/session-families.json")!).data.turns,
+          ).includes("continuation"),
+        );
+      }).pipe(Effect.provide(familyStorageHarness(files).layer));
+    },
+  );
+
+  it.effect(
+    "preserves an application-captured result link when a worker explicitly classified the result",
+    () =>
+      Effect.gen(function* () {
+        const storage = yield* SessionFamilyStorage;
+        yield* storage.recordTurn(turn({ resultDelivery: "reply" }));
+        yield* storage.recordReport("turn", {
+          outcome: "completed",
+          text: "Worker-authored classification",
+        });
+        yield* storage.settleTurn("turn", "complete", {
+          outcome: "result",
+          text: "Final assistant explanation",
+          resultMessageRef: "cake://session/child?message=final",
+        });
+        assert.deepEqual((yield* storage.state()).turns[0]?.report, {
+          outcome: "completed",
+          text: "Worker-authored classification",
+          resultMessageRef: "cake://session/child?message=final",
+        });
+      }).pipe(Effect.provide(testLayer())),
+  );
+
   it.effect(
     "persists explicit handling separately from admission and deduplicates replay after reopening",
     () => {
@@ -121,7 +255,12 @@ describe("SessionFamilyStorage", () => {
           JSON.stringify({
             version: 4,
             data: {
-              families: [family],
+              families: [
+                {
+                  ...family,
+                  children: family.children.map((child) => ({ ...child, resultDelivery: "reply" })),
+                },
+              ],
               transitions: [{ parentSessionId: "parent", resolved: true }],
               turns: [{ ...turn(), expectsResponse: true }],
             },
@@ -131,15 +270,29 @@ describe("SessionFamilyStorage", () => {
       return Effect.gen(function* () {
         const storage = yield* SessionFamilyStorage;
         assert.deepEqual(yield* storage.state(), {
-          families: [family],
+          families: [
+            {
+              ...family,
+              children: family.children.map((child) => ({ ...child, resultDelivery: "reply" })),
+            },
+          ],
           turns: [turn()],
           spawnedSessions: [],
         });
         yield* storage.settleTurn("turn", "complete");
         const persisted = JSON.parse(files.get("state/session-families.json") ?? "{}");
         assert.deepEqual(persisted, {
-          version: 7,
-          data: { families: [family], turns: [turn({ outcome: "complete" })], spawnedSessions: [] },
+          version: 8,
+          data: {
+            families: [
+              {
+                ...family,
+                children: family.children.map((child) => ({ ...child, resultDelivery: "reply" })),
+              },
+            ],
+            turns: [turn({ outcome: "complete" })],
+            spawnedSessions: [],
+          },
         });
       }).pipe(Effect.provide(familyStorageHarness(files).layer));
     },
@@ -158,7 +311,7 @@ describe("SessionFamilyStorage", () => {
       yield* storage.settleTurn("turn", "complete");
       assert.deepEqual((yield* storage.state()).turns, []);
       assert.equal((yield* storage.list()).length, 1);
-      assert.equal(JSON.parse(files.get("state/session-families.json") ?? "{}").version, 7);
+      assert.equal(JSON.parse(files.get("state/session-families.json") ?? "{}").version, 8);
     }).pipe(Effect.provide(familyStorageHarness(files).layer));
   });
 
@@ -201,6 +354,7 @@ describe("SessionFamilyStorage", () => {
         workingDirectory: "/worktree",
         managedWorktreePath: "/worktree",
         createdAt: "2026-01-01T00:00:01.000Z",
+        resultDelivery: "reply",
       });
     }).pipe(Effect.provide(familyStorageHarness(files).layer));
   });
@@ -235,6 +389,7 @@ describe("SessionFamilyStorage", () => {
         turnId: "legacy-turn",
         requestMessageId: "legacy-turn",
         threadId: "legacy-turn",
+        resultDelivery: "reply",
         reported: false,
       });
     }).pipe(Effect.provide(familyStorageHarness(files).layer));
@@ -295,6 +450,7 @@ describe("SessionFamilyStorage", () => {
           sessionId: "child",
           senderSessionId: "parent",
           turnId: "requested",
+          resultDelivery: "reply",
           requestMessageId: "requested",
           threadId: "thread",
           reported: false,
@@ -482,6 +638,7 @@ describe("SessionFamilyStorage", () => {
           workingDirectory: "/project/.cake-worktrees/feature",
           managedWorktreePath: "/project/.cake-worktrees/feature",
           createdAt: "2026-01-01T00:00:00.000Z",
+          resultDelivery: "reply",
         },
         {
           sessionId: "grandchild",
@@ -490,6 +647,7 @@ describe("SessionFamilyStorage", () => {
           workingDirectory: "/project/.cake-worktrees/grandchild",
           managedWorktreePath: "/project/.cake-worktrees/grandchild",
           createdAt: "2026-01-01T00:00:00.000Z",
+          resultDelivery: "reply",
         },
       ]);
     }).pipe(Effect.provide(testLayer())),

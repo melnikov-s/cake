@@ -1,3 +1,4 @@
+import { MessageReference } from "./message-reference";
 import { Schema } from "effect";
 
 const CompletionKind = Schema.Literals(["ready", "blocked", "investigation"]);
@@ -14,6 +15,7 @@ export const CompletionInboxItem = Schema.Struct({
   coordinatorSessionId: Schema.String,
   sessionId: Schema.String,
   title: Schema.String.check(Schema.isMaxLength(500)),
+  resultMessageRef: Schema.optionalKey(MessageReference),
   references: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(6000))),
   summary: Schema.String.check(Schema.isMaxLength(500)),
   reportedAt: Schema.String,
