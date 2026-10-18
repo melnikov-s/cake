@@ -2,7 +2,7 @@ import type { UiPart } from "../contracts/conversations/session-contract";
 
 export function isWorkLogPart(part: UiPart): boolean {
   return (
-    (part.kind === "tool" && !part.artifactId && !part.interview) ||
+    (part.kind === "tool" && !part.artifactId && !part.interview && !part.messageReference) ||
     part.kind === "reasoning" ||
     (part.kind === "command" && part.origin === "compacted")
   );

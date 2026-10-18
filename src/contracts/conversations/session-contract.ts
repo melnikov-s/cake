@@ -1,6 +1,7 @@
 import { Effect, Schema } from "effect";
 import type { SessionContextMetadata } from "./session-context-metadata";
 import { CakeChatContextStatus } from "../cake-chats/context-policy";
+import { MessageReference } from "./message-reference";
 import { InterviewRecord, InterviewResult } from "../interviews/interview";
 import { ArtifactStableRef } from "../artifacts/artifact-lineage";
 import {
@@ -367,6 +368,7 @@ export const uiPartSchema = Schema.Union([
     ...toolActivityFields,
     interview: Schema.optional(InterviewRecord),
     interviewResult: Schema.optional(InterviewResult),
+    messageReference: Schema.optional(MessageReference),
     artifactId: Schema.optional(stringRange(1, 256)),
     artifactReference: Schema.optional(ArtifactStableRef),
     artifactRevision: Schema.optional(

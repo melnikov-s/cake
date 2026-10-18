@@ -1,3 +1,6 @@
+import * as messageReferences from "./messageReferences";
+import { messageReference } from "../../contracts/conversations/message-reference";
+import { toJsonValue } from "../../utils/to-json-value";
 import type { AttachmentReadInput } from "../../contracts/conversations/attachment-reference-control";
 import type { TurnStop } from "../../contracts/conversations/turn-stop";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
@@ -304,6 +307,16 @@ export const readAttachment = Effect.fn("SessionChats.readAttachment")(function*
 export const inspect = Effect.fn("SessionChats.inspect")(function* (
   input: SessionChatTarget & SessionInspectionQuery,
 ) {
+  // Exact source views must also work for a producer that has never been opened
+  // in this process. The message-reference domain owns catalog lookup/acquisition.
+  if (input.kind === "messages-read")
+    return toJsonValue(
+      yield* messageReferences.read({
+        ref: messageReference(input.sessionId, input.entryId ?? ""),
+        offset: input.offset,
+        maxChars: input.maxChars,
+      }),
+    );
   const handle = yield* acquire(input.sessionId);
   return yield* handle.inspectSession(input).pipe(asError("inspect"));
 });

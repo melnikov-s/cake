@@ -78,6 +78,19 @@ second transcript is persisted.
   defaults to 4,000 characters, permits at most 20,000, and returns `nextOffset`
   for continuation. It never returns inline image bytes. Missing/non-message
   entries fail; no text search, current-context, or summary fallback is used.
+- `messages.present({ ref })` checks the existing message-read access boundary and returns
+  only exact source metadata. Its successful Pi tool-result original projects a collapsed
+  **Full agent response** disclosure, including after reload in permanent Project/global
+  Chat. Reply and notification-mode completion disclosures are also application-owned
+  and require no assistant relay. Source title, canonical link, entry identity, role and timestamp
+  retain provenance. Expansion pages at most 20,000 characters through the existing
+  reader; pages stay transient and do not enter model context. Formatting uses shared
+  Markdown, with image loading disabled and attachment metadata explicitly uninspected.
+  Missing/inaccessible originals show an explicit error and retry, never latest/summary
+  substitution. Deleting the source removes evidence; this is not an archival copy.
+  Presentation never changes source history, ownership, artifacts or resultDelivery.
+  Regular producer originals are read directly through the stateless Pi disk adapter,
+  not by assembling an agent or restoring a resolved worktree.
 - `messages.open` delegates to `sessions.open` and its user-only, invoking-window
   navigation permission. The identical link remains manually usable when agents
   cannot navigate. Markdown preserves the `message` query through sanitization.

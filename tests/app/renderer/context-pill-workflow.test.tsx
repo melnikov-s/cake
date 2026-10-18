@@ -87,7 +87,11 @@ describe("Context visibility through the authoritative projection and shared Cha
     try {
       expect(screen.getByText("My next question", { exact: true })).toBeTruthy();
       expect(screen.getByRole("status", { name: "Session results" })).toBeTruthy();
-      expect(screen.getByRole("link", { name: "Review result" }).getAttribute("href")).toBe(ref);
+      expect(
+        screen
+          .getByRole("link", { name: "Full agent response — Review result" })
+          .getAttribute("href"),
+      ).toBe(ref);
       expect(screen.queryByText(/Answer the user's current message first/)).toBeNull();
     } finally {
       view.unmount();

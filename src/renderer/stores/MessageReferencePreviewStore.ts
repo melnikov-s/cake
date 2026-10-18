@@ -1,12 +1,29 @@
 import { Store } from "r-state-tree";
 import {
   decodeMessageReadResult,
+  messageNavigationTarget,
+  messageReference,
   type MessageReadResult,
 } from "../../contracts/conversations/message-reference";
 import { ClientContext } from "./context/ClientContext";
 
 /** A transient exact-source preview, never added to the Conversation or a window snapshot. */
-export class MessageReferencePreviewStore extends Store {
+export class MessageReferencePreviewStore extends Store<{
+  reference?: string;
+  sourceKey?: string;
+}> {
+  expanded = false;
+
+  toggle() {
+    this.expanded = !this.expanded;
+    if (this.expanded && !this.page && !this.loading) void this.load();
+  }
+
+  load() {
+    const target = messageNavigationTarget(this.props.reference!);
+    return this.open(target.sessionId, target.messageId);
+  }
+
   page: MessageReadResult | undefined;
   loading = false;
   error: string | undefined;
@@ -22,7 +39,10 @@ export class MessageReferencePreviewStore extends Store {
         { signal: this.signal },
       );
       if (revision !== this.revision || this.signal.aborted) return false;
-      this.page = decodeMessageReadResult(value);
+      const page = decodeMessageReadResult(value);
+      if (page.message.ref !== messageReference(sessionId, entryId) || page.offset !== offset)
+        throw new Error("The source reader returned a different message or page");
+      this.page = page;
       return true;
     } catch (error) {
       if (revision === this.revision && !this.signal.aborted)

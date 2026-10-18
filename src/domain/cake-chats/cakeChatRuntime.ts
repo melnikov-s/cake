@@ -91,6 +91,7 @@ const CAKE_CHAT_OPERATIONS = [
   "messages.list",
   "messages.read",
   "messages.open",
+  "messages.present",
   "app.state",
   "app.user-selection",
   "settings.cake-chat.get",

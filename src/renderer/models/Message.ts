@@ -51,6 +51,7 @@ export class Message extends Model {
   artifactId: string | undefined;
   artifactRevision: number | undefined;
   artifactReference: string | undefined;
+  messageReference: string | undefined;
   filePath: string | undefined;
   diff: string | undefined;
   inputStreaming: boolean | undefined;
@@ -135,6 +136,7 @@ export class Message extends Model {
         this.artifactId = part.artifactId;
         this.artifactRevision = part.artifactRevision;
         this.artifactReference = part.artifactReference;
+        this.messageReference = part.messageReference;
         this.filePath = part.filePath;
         this.diff = part.diff;
         this.inputStreaming = part.inputStreaming;
@@ -257,6 +259,7 @@ export class Message extends Model {
           artifactId: this.artifactId,
           artifactRevision: this.artifactRevision,
           artifactReference: this.artifactReference,
+          messageReference: this.messageReference,
           filePath: this.filePath,
           diff: this.diff,
           inputStreaming: this.inputStreaming,

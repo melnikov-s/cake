@@ -1,4 +1,7 @@
 import { child, computed, createStore, snapshot, Store } from "r-state-tree";
+import { MessageReferencePreviewStore } from "./MessageReferencePreviewStore";
+import { messageReferencesInText } from "../../contracts/conversations/message-reference-forwarding";
+import { sessionNotificationMarkdown } from "../../contracts/cake-chats/session-digest-reminder";
 import { shouldRenderMarkdown } from "../../utils/markdown";
 import type { ConversationModeStore, ConversationModeTarget } from "./ConversationModeStore";
 import type {
@@ -219,6 +222,26 @@ export class ChatStore extends Store<ChatStoreProps> {
   rewording = false;
   rewordError: string | undefined;
   private draftRevision = 0;
+
+  @child
+  get messageSources(): MessageReferencePreviewStore[] {
+    return this.parts.flatMap((part) => {
+      const references =
+        part.kind === "tool" && part.messageReference
+          ? [part.messageReference]
+          : (part.kind === "context" && sessionNotificationMarkdown(part.text)) ||
+              (part.kind === "text" && part.crossSession?.replyToMessageId)
+            ? messageReferencesInText(part.text)
+            : [];
+      return references.map((reference) =>
+        createStore(MessageReferencePreviewStore, {
+          key: part.id + reference,
+          sourceKey: part.id + reference,
+          reference,
+        }),
+      );
+    });
+  }
 
   @child
   get transcriptInteraction(): TranscriptInteractionStore {

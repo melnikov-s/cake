@@ -7,7 +7,7 @@ import {
   messageNavigationTarget,
 } from "../../contracts/conversations/message-reference";
 import { SessionChatError } from "../../contracts/conversations/conversation-data";
-import { acquireTarget } from "../project-sessions/projectSessionOperations";
+import * as PiMessageHistory from "../../services/pi/PiMessageHistory";
 import { findLocation } from "../project-sessions/projectSessionMetadata";
 import * as sessionReferences from "../project-sessions/sessionReferences";
 import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
@@ -26,13 +26,15 @@ const asError =
       ),
     );
 
-/** Permanent Cake Chat is already assembled by its owning coordinator. */
-const acquireMessageTarget = Effect.fn("MessageReferences.acquireTarget")(function* (
+const projectMessageTarget = Effect.fn("MessageReferences.projectTarget")(function* (
   sessionId: string,
 ) {
-  if (isCakeChatSessionId(sessionId))
-    return yield* (yield* CakeSessionRuntimes).acquireSession(sessionId);
-  return yield* acquireTarget(yield* findLocation({ sessionId }), sessionId, false);
+  const location = yield* findLocation({ sessionId });
+  return {
+    sessionId,
+    workingDirectory: location.workingDirectory,
+    sessionDirectory: location.sessionDirectory,
+  };
 });
 
 /** Resolve the target through the existing catalog; Pi remains the message authority. */
@@ -42,8 +44,12 @@ export const list = Effect.fn("MessageReferences.list")(
     const sessionId = isCakeChatSessionId(decoded.sessionId)
       ? decoded.sessionId
       : yield* sessionReferences.resolve(decoded.sessionId);
-    const handle = yield* acquireMessageTarget(sessionId);
-    const value = yield* handle.inspectSession({ ...decoded, kind: "messages-list" });
+    const value = isCakeChatSessionId(sessionId)
+      ? yield* (yield* (yield* CakeSessionRuntimes).acquireSession(sessionId)).inspectSession({
+          ...decoded,
+          kind: "messages-list",
+        })
+      : yield* PiMessageHistory.list(yield* projectMessageTarget(sessionId), decoded);
     return yield* Schema.decodeUnknownEffect(MessageListResult)(value);
   },
   Effect.scoped,
@@ -55,13 +61,16 @@ export const read = Effect.fn("MessageReferences.read")(
   function* (input: MessageReadInput) {
     const decoded = yield* Schema.decodeUnknownEffect(MessageReadInput)(input);
     const target = messageNavigationTarget(decoded.ref);
-    const handle = yield* acquireMessageTarget(target.sessionId);
-    const value = yield* handle.inspectSession({
+    const query = {
       offset: decoded.offset ?? 0,
       maxChars: decoded.maxChars ?? 4_000,
-      kind: "messages-read",
       entryId: target.messageId,
-    });
+    };
+    const value = isCakeChatSessionId(target.sessionId)
+      ? yield* (yield* (yield* CakeSessionRuntimes).acquireSession(
+          target.sessionId,
+        )).inspectSession({ ...query, kind: "messages-read" })
+      : yield* PiMessageHistory.read(yield* projectMessageTarget(target.sessionId), query);
     return yield* Schema.decodeUnknownEffect(MessageReadResult)(value);
   },
   Effect.scoped,

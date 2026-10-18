@@ -430,6 +430,8 @@ export type MarkdownProps = Omit<
   normalizeLatexDelimiters?: boolean;
   /** Exact references already rendered at their publication position in this conversation. */
   omitArtifactEmbeds?: readonly string[];
+  /** Exact-source evidence must not resolve image paths against the viewing conversation. */
+  renderImages?: boolean;
   /** Invoked when the reader selects a workspace source reference. */
   onOpenSourceLocation?(location: SourceLocation): void;
 };
@@ -508,6 +510,7 @@ function MarkdownRenderer({
   mutableCode = false,
   normalizeLatexDelimiters = true,
   omitArtifactEmbeds,
+  renderImages = true,
   onOpenSourceLocation,
   richPlugins,
   ...props
@@ -578,6 +581,7 @@ function MarkdownRenderer({
         // images mixed with text retain their ordinary inline link behavior.
         const image = node?.children.length === 1 ? node.children[0] : undefined;
         if (
+          renderImages &&
           image?.type === "element" &&
           image.tagName === "img" &&
           linkActions?.renderArtifactEmbed
@@ -621,6 +625,7 @@ function MarkdownRenderer({
         );
       },
       img(allProps: ImageProps) {
+        if (!renderImages) return <span>[Image: {allProps.alt || "unnamed"} — not loaded]</span>;
         const props = { ...allProps };
         delete props.node;
         const src = props.src;
@@ -638,7 +643,7 @@ function MarkdownRenderer({
         );
       },
     };
-  }, [linkActions, omitArtifactEmbeds, onOpenSourceLocation, phone]);
+  }, [linkActions, omitArtifactEmbeds, renderImages, onOpenSourceLocation, phone]);
   return (
     <>
       <div className="contents" onClickCapture={openMermaidFullscreen}>

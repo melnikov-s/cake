@@ -11,6 +11,7 @@ import {
   decodeArtifactPointer,
   type ArtifactPointer,
 } from "../../../contracts/artifacts/artifact-contract";
+import { MessageMetadata } from "../../../contracts/conversations/message-reference";
 import { ArtifactProjectionMetadata } from "../../../contracts/artifacts/artifact-projection-data";
 import {
   InterviewEntry,
@@ -645,6 +646,12 @@ function partsFromMessage(
             }),
           )(details)
         : Option.none();
+    const messagePresentation =
+      name === "cake" && !Reflect.get(message, "isError")
+        ? Schema.decodeUnknownOption(
+            Schema.Struct({ command: Schema.Literal("messages.present"), result: MessageMetadata }),
+          )(details)
+        : Option.none();
     return [
       {
         id: boundedProjectionKey(`tool-${String(Reflect.get(message, "toolCallId"))}`),
@@ -663,6 +670,9 @@ function partsFromMessage(
           : toolArtifactRevision({ details }),
         ...(Option.isSome(presentation)
           ? { artifactReference: presentation.value.result.exactRef }
+          : null),
+        ...(Option.isSome(messagePresentation)
+          ? { messageReference: messagePresentation.value.result.ref }
           : null),
         diff: toolResultDiff(name, { details }),
         state: Reflect.get(message, "isError") ? "error" : "success",

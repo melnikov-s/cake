@@ -4,6 +4,7 @@ import {
   type MessageOperationControl,
   MessageListInput,
   MessageListResult,
+  MessageMetadata,
   MessageOpenInput,
   MessageReadInput,
   MessageReadResult,
@@ -54,6 +55,32 @@ export function createMessageOperations(
       result: "Exact source metadata, bounded text, totalChars, offset, nextOffset and truncated.",
       execute: (input, context) =>
         control.read(Schema.decodeUnknownSync(MessageReadInput)(input), context.signal),
+    },
+    {
+      command: "messages.present",
+      topic: "messages",
+      summary: "Show an exact full agent response in a lazy expandable source surface here.",
+      guidance: [
+        "Use alongside a concise summary so the original detail remains accessible without visiting the producer session. Label source links Full agent response, not a vague topic title.",
+        "The persisted tool result retains exact Pi message metadata only, not a copy or generated summary. Expansion reads bounded original text lazily; it does not inject the report into future model context.",
+        "Missing or inaccessible sources fail explicitly. No branch fallback, history changes, ownership transfer or artifact copy. Attachments remain metadata, not inspected bytes.",
+        "Presentation does not send another completion notice or change reply/notification/ignore delivery.",
+      ],
+      inputSchema: MessageOpenInput,
+      outputSchema: MessageMetadata,
+      examples: [{ input: { ref: exampleRef } }],
+      result:
+        "Exact source metadata; a collapsed Full agent response surface in this conversation.",
+      async execute(input, context) {
+        const { ref } = Schema.decodeUnknownSync(MessageOpenInput)(input);
+        const page = Schema.decodeUnknownSync(MessageReadResult)(
+          await control.read({ ref, maxChars: 1 }, context.signal),
+        );
+        if (context.signal.aborted) throw new Error("Message presentation was cancelled");
+        if (page.message.ref !== ref)
+          throw new Error("The source reader returned a different message");
+        return page.message;
+      },
     },
     {
       command: "messages.open",

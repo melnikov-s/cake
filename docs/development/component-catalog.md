@@ -103,6 +103,11 @@ and [`ChatStore`](../../src/renderer/stores/ChatStore.ts).
 [`CopyReferenceButton`](../../src/renderer/components/ui/copy-reference-button.tsx) copies an
 exact attachment link with shared feedback. It never reads message bodies; the parent
 supplies the addressable session identity. Original-message previews reuse `FullscreenSurface` with bounded source pages.
+[`InlineMessageSource`](../../src/renderer/components/inline-message-source.tsx) composes
+`DisclosureTrigger`, shared Markdown and pagination for lazy **Full agent response**
+access within the parent conversation. It reuses `MessageReferencePreviewStore`;
+only the exact reference persists in Pi, never the retrieved body. Images stay unloaded
+and attachment metadata is explicitly uninspected.
 [`AttachmentReference`](../../src/renderer/components/ui/attachment-reference.tsx) presents
 a metadata-only file/input link with the same copy affordance; previews fetch the
 original through the session-authorized attachment boundary, never a backend path.

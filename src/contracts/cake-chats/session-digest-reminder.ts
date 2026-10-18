@@ -39,7 +39,7 @@ function sessionDigestLine(line: SessionDigestLine) {
     ? ` · pending decisions: ${line.decisions.join(", ")} (suggestions only)`
     : "";
   const kind = line.kind ? ` · ${line.kind}` : "";
-  return `- [${title}](${line.resultMessageRef ?? `cake://session/${line.sessionId}`}) (${line.reference}) ${statusText[line.status]}${kind}${summary}${decisions}${line.references ? ` · ${line.references}` : ""}`;
+  return `- [${line.resultMessageRef ? `Full agent response — ${title}` : title}](${line.resultMessageRef ?? `cake://session/${line.sessionId}`}) (${line.reference}) ${statusText[line.status]}${kind}${summary}${decisions}${line.references ? ` · ${line.references}` : ""}`;
 }
 
 /** Returns undefined when there is nothing to tell the model. */
