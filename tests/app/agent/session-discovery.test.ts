@@ -152,6 +152,16 @@ describe("loadWorkspacePiSessionPreview", () => {
     );
 
     expect(preview?.sessionFile).toBe(manager.getSessionFile());
+    expect(preview?.contextMetadata?.estimatedTokens).toBeGreaterThan(0);
+    const contextOnly = await loadWorkspacePiSessionPreview(
+      cwd,
+      manager.getSessionId(),
+      activeSessionRoot,
+      false,
+      { includeParts: false },
+    );
+    expect(contextOnly?.parts).toEqual([]);
+    expect(contextOnly?.contextMetadata).toEqual(preview?.contextMetadata);
     expect(preview?.currentModel).toEqual({ provider: "openai", modelId: "current-model" });
     expect(
       preview?.parts.find(

@@ -301,6 +301,7 @@ export interface CakeSessionRuntimesAdapter {
   ) => Effect.Effect<PiSessionSummary | undefined, unknown>;
   readonly inspect: (
     target: PiSessionTarget,
+    options?: { readonly includeParts?: boolean },
   ) => Effect.Effect<PiSessionPreview | undefined, unknown>;
   readonly createRuntime: (
     options: CakeSessionRuntimeSetup,
@@ -323,7 +324,10 @@ export class CakeSessionRuntimes extends Context.Service<
       query: PiSessionQuery,
       sessionId: string,
     ) => Effect.Effect<PiSessionSummary | undefined, PiSessionError>;
-    readonly inspect: (target: PiSessionTarget) => Effect.Effect<PiSessionPreview, PiSessionError>;
+    readonly inspect: (
+      target: PiSessionTarget,
+      options?: { readonly includeParts?: boolean },
+    ) => Effect.Effect<PiSessionPreview, PiSessionError>;
     readonly acquire: (
       options: CakeSessionRuntimeAcquireOptions,
     ) => Effect.Effect<CakeSessionHandle, PiSessionError, Scope.Scope>;
@@ -696,11 +700,14 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
           ),
         );
 
-      const inspect = Effect.fn("CakeSessionRuntimes.inspect")(function* (target: PiSessionTarget) {
+      const inspect = Effect.fn("CakeSessionRuntimes.inspect")(function* (
+        target: PiSessionTarget,
+        options?: { readonly includeParts?: boolean },
+      ) {
         const decoded = yield* Schema.decodeUnknownEffect(PiSessionTarget)(target).pipe(
           sessionError("inspect"),
         );
-        const preview = yield* adapter.inspect(decoded).pipe(sessionError("inspect"));
+        const preview = yield* adapter.inspect(decoded, options).pipe(sessionError("inspect"));
         if (preview) return preview;
         return yield* new PiSessionError({
           operation: "inspect",
@@ -1779,7 +1786,7 @@ export const makeCakeSessionRuntimesLive = (
                   ),
                 catch: (cause) => cause,
               }),
-        inspect: (target) =>
+        inspect: (target, options) =>
           target.cakeChatSessionId
             ? durable.inspect(target.sessionDirectory, target.sessionId)
             : cakeChatSideChatConversationId(target.sessionId) !== undefined
@@ -1791,6 +1798,7 @@ export const makeCakeSessionRuntimesLive = (
                       target.sessionId,
                       target.sessionDirectory,
                       target.direct,
+                      options,
                     ),
                   catch: (cause) => cause,
                 }),

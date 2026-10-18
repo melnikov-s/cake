@@ -89,6 +89,7 @@ export const catalog = Effect.fn("CakeChats.catalog")(function* (location: CakeC
       createdAt,
       modifiedAt: item?.modified ?? createdAt,
       messageCount: item?.messageCount ?? 0,
+      ...(item?.contextMetadata ? { contextMetadata: item.contextMetadata } : null),
       resolved: false,
       unread: state.unreadSessionIds.includes(scope.sessionId),
     });

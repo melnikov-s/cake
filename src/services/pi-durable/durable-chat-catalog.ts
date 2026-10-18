@@ -56,6 +56,7 @@ export function readDurableChatSummary(
       created: metadata?.createdAt ?? new Date().toISOString(),
       modified: metadata?.modifiedAt ?? new Date().toISOString(),
       messageCount: metadata?.messageCount ?? 0,
+      ...(metadata?.contextMetadata ? { contextMetadata: metadata.contextMetadata } : null),
     };
   });
 }

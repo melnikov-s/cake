@@ -71,7 +71,8 @@ export function createConversationOperations(
       command: "sessions.list",
       requires: "invokeAppControl",
       topic: "sessions",
-      summary: "List a bounded session roster with titles and selection metadata.",
+      summary:
+        "List a bounded session roster with status and advisory context size/cache freshness.",
       guidance: [
         "Filter by projectPath, title query, status or attentionOnly before paging with offset/limit. Use sessions.info for details and user-facing deep links.",
         "Use sessions.list-family when only the calling Project Session's family is needed.",
@@ -79,7 +80,7 @@ export function createConversationOperations(
       inputSchema: AgentSessionListInput,
       examples: [{}],
       result:
-        "Session references, titles, kind, project name and status; total and nextOffset bound discovery.",
+        "Session references, titles, kind, project name, status and advisory context (estimatedTokens when known, lastModelActivityAt, cache warm/potentially-expired/unknown, evidenced estimatedExpiresAt); total and nextOffset bound discovery.",
       execute: invokeAppControl("sessions.list"),
     },
     {

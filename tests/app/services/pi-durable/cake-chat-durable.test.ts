@@ -9,6 +9,7 @@ import {
   MemoryStorage,
   InboxDoc,
   LiveDoc,
+  ResetEntry,
   type Storage,
 } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
@@ -17,6 +18,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Type } from "@earendil-works/pi-durable-ai";
 import { afterEach, expect, it, vi } from "vitest";
+import { ChatMetadataDoc } from "../../../../src/services/pi-durable/durable-chat-metadata";
+import { durableContextMetadata } from "../../../../src/services/pi-durable/durable-context-metadata";
 import { openDurableChatEngine } from "../../../../src/services/pi-durable/durable-chat-engine";
 import { readDurableOriginalPage } from "../../../../src/services/pi-durable/durable-chat-history";
 import { abortDurableActiveTurn } from "../../../../src/services/pi-durable/durable-chat-queue";
@@ -110,6 +113,57 @@ async function fixture(
     },
   };
 }
+
+it("records only the active bounded head for listing, and inspection never starts another request", async () => {
+  const f = await fixture();
+  let record!: () => void;
+  const recorded = new Promise<void>((resolve) => {
+    record = resolve;
+  });
+  const unsubscribe = f.engine.harness.subscribeCommits((publication) => {
+    if (
+      publication.changes.some(
+        (change) => change.type === "document" && change.record.kind === "cake.chat-metadata",
+      )
+    )
+      void f.engine.harness
+        .snapshot(ChatMetadataDoc, f.engine.root.id, BACKGROUND_CONTEXT)
+        .then((metadata) => {
+          if (metadata?.contextMetadata) {
+            if (metadata.contextMetadata.estimatedTokens < 100) record();
+          }
+        });
+  });
+  try {
+    await f.send("original ".repeat(20_000), "large-original");
+    const before = f.requests.length;
+    // A reset is the same SDK boundary used by Cake's bounded memory runs.
+    await f.engine.root.commit(async (tx) => {
+      await tx.appendEntry(ResetEntry, f.engine.root.id, {
+        head: "self",
+        model: [
+          { role: "user", content: "Small summary of the old original", timestamp: Date.now() },
+        ],
+      });
+    }, BACKGROUND_CONTEXT);
+    const active = await f.engine.root.context(BACKGROUND_CONTEXT);
+    const context = durableContextMetadata(active);
+    expect(context.estimatedTokens).toBeLessThan(100);
+    expect(context).not.toHaveProperty("cacheObservation");
+    await recorded;
+    // Wait for the metadata commit for this exact reset, not wall-clock polling.
+    const stored = await f.engine.harness.snapshot(
+      ChatMetadataDoc,
+      f.engine.root.id,
+      BACKGROUND_CONTEXT,
+    );
+    expect(stored?.contextMetadata?.estimatedTokens).toBeLessThan(100);
+    expect(stored?.contextMetadata?.lastModelActivityAt).toBeDefined();
+    expect(f.requests).toHaveLength(before);
+  } finally {
+    unsubscribe();
+  }
+});
 
 it("anchors report acknowledgment to persisted user-visible Pi text before a tool runs", async () => {
   const item = {

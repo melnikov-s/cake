@@ -116,13 +116,14 @@ const definitions = [
     scope: "global",
     discovery: {
       topic: "sessions",
-      summary: "List a bounded session roster, newest first.",
+      summary:
+        "List a bounded session roster with advisory context size/cache freshness, newest first.",
       guidance: [
         "Use projectPath, title query, status or attentionOnly to narrow results before offset/limit pagination (default 20, maximum 50).",
         "launchedByCakeChat: true selects your unresolved launches. Status is selection metadata; sessions.info supplies full metadata, deep links and the latest report. Never poll to wait for completion.",
       ],
       result:
-        "Session references, titles, kind, project name and status, with total and nextOffset (null at the end).",
+        "Session references, titles, kind, project name, status and advisory context (estimatedTokens when known, lastModelActivityAt, cache warm/potentially-expired/unknown, evidenced estimatedExpiresAt), with total and nextOffset (null at the end).",
       examples: [
         {
           input: {},

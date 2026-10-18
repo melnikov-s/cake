@@ -23,6 +23,7 @@ import {
 } from "./fork-display-provenance";
 import { projectArtifactPointers, projectDurableArtifactLineageIds } from "./session-projection";
 import { sessionTitleFromFile } from "./session-title";
+import { projectSessionContextMetadata } from "./session-context-metadata";
 import {
   findSessionFileMetadataById,
   findSessionFileById,
@@ -262,6 +263,7 @@ export async function loadWorkspacePiSessionPreview(
   sessionId: string,
   sessionDir: string,
   direct = false,
+  options: { readonly includeParts?: boolean } = {},
 ): Promise<PiSessionPreview | undefined> {
   const activeDirectory = direct
     ? resolve(sessionDir)
@@ -284,7 +286,8 @@ export async function loadWorkspacePiSessionPreview(
     workspacePath: cwd,
     sessionId,
     sessionFile: target,
-    parts: projectConversationDisplay(manager),
+    parts: options.includeParts === false ? [] : projectConversationDisplay(manager),
+    contextMetadata: projectSessionContextMetadata(manager),
     ...(model ? { currentModel: model } : undefined),
   };
 }

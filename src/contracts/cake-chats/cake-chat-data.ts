@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { SessionContextMetadata } from "../conversations/session-context-metadata";
 import { SESSION_TITLE_MAX_LENGTH } from "../conversations/session-contract";
 import {
   SessionChatConfiguration,
@@ -27,6 +28,7 @@ export const CakeControlTool = Schema.Struct({
 export interface CakeControlTool extends Schema.Schema.Type<typeof CakeControlTool> {}
 
 export const CakeChatSummary = Schema.Struct({
+  contextMetadata: Schema.optionalKey(SessionContextMetadata),
   sessionId: boundedId,
   projectPath: Schema.optionalKey(Schema.String),
   title: Schema.String.check(Schema.isMaxLength(SESSION_TITLE_MAX_LENGTH)),

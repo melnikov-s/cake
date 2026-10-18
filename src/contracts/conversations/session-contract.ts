@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect";
+import type { SessionContextMetadata } from "./session-context-metadata";
 import { InterviewRecord, InterviewResult } from "../interviews/interview";
 import { ArtifactStableRef } from "../artifacts/artifact-lineage";
 import {
@@ -687,6 +688,7 @@ export interface PiSessionPreview {
   readonly sessionFile: string;
   readonly parts: ReadonlyArray<UiPart>;
   readonly currentModel?: { readonly provider: string; readonly modelId: string };
+  readonly contextMetadata?: SessionContextMetadata;
 }
 export interface PiSessionSummary {
   readonly id: string;
@@ -697,6 +699,7 @@ export interface PiSessionSummary {
   readonly parentSessionId?: string;
   readonly resolved: boolean;
   readonly draft?: boolean;
+  readonly contextMetadata?: SessionContextMetadata;
 }
 export type SessionTreeEntry = typeof sessionTreeEntrySchema.Type;
 export type CompatibilityResource = typeof compatibilityResourceSchema.Type;

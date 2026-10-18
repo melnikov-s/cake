@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { coordinatorSystemPrompt } from "../../../src/services/pi-durable/coordinator-system-prompt";
 import { worktreeSystemPrompt } from "../../../src/services/pi/runtime/worktree-system-prompt";
 import chatGuide from "../../../docs/agent/cake-chat.md?raw";
+import projectPrompt from "../../../src/services/pi/runtime/prompts/project.md?raw";
+import commonPrompt from "../../../src/services/pi/runtime/prompts/common.md?raw";
 
 const prompt = coordinatorSystemPrompt("", "/cake/docs");
 
@@ -70,6 +72,20 @@ describe("Cake Chat role kernel and required guide", () => {
     expect(coordinatorSystemPrompt(custom, "/cake/docs")).toContain(
       `<cake-chat-instructions>\n${custom}\n</cake-chat-instructions>`,
     );
+  });
+
+  it("ships context-aware judgment only in the shared Project Chat/global Cake Chat kernel and guide", () => {
+    expect(prompt).toContain("Weigh context size/cache freshness before follow-ups");
+    expect(chatGuide).toContain("Context-aware coordination (Project Chat and global Cake Chat)");
+    expect(chatGuide).toContain("Avoid trivial or redundant wakes");
+    expect(chatGuide).toContain("bundle related follow-ups");
+    expect(chatGuide).toContain("fresh, tightly scoped delegation");
+    expect(chatGuide).toContain("large contexts can be valuable");
+    expect(chatGuide).toContain("cache expiry does not prove a miss");
+    expect(chatGuide).toContain("useful follow-ups remain allowed");
+    expect(chatGuide).toContain("not originals hidden behind them");
+    expect(projectPrompt).not.toContain("Weigh context size/cache freshness");
+    expect(commonPrompt).not.toContain("Weigh context size/cache freshness");
   });
 
   it("bounds the assembled Cake Chat base without charging user-authored instructions", () => {

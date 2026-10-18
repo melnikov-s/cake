@@ -801,6 +801,7 @@ export const findLocation = Effect.fn("ProjectSessions.findLocation")(function* 
 
 export const inspect = Effect.fn("ProjectSessions.inspect")(function* (
   target: ProjectSessionTarget,
+  options?: { readonly includeParts?: boolean },
 ) {
   const location = yield* findLocation(target);
   const sessions = yield* CakeSessionRuntimes;
@@ -808,11 +809,14 @@ export const inspect = Effect.fn("ProjectSessions.inspect")(function* (
     asError("inspect"),
   );
   const preview = yield* sessions
-    .inspect({
-      workingDirectory: location.workingDirectory,
-      sessionId: target.sessionId,
-      sessionDirectory: location.sessionDirectory,
-    })
+    .inspect(
+      {
+        workingDirectory: location.workingDirectory,
+        sessionId: target.sessionId,
+        sessionDirectory: location.sessionDirectory,
+      },
+      options,
+    )
     .pipe(asError("inspect"));
   const projected: ProjectSessionPreview = {
     sessionId: preview.sessionId,
@@ -820,6 +824,7 @@ export const inspect = Effect.fn("ProjectSessions.inspect")(function* (
     workingDirectory: location.workingDirectory,
     sessionFile: preview.sessionFile,
     parts: preview.parts.map(toJsonValue),
+    ...(preview.contextMetadata ? { contextMetadata: preview.contextMetadata } : null),
     resolved: namespace === "resolved",
   };
   const firstUserMessage = preview.parts.find(

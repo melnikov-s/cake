@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
+import { TestClock } from "effect/testing";
 import { Context, Deferred, Effect, Fiber, Layer, Queue, Schema, Stream } from "effect";
 import { expect } from "vitest";
 import {
@@ -11,6 +12,9 @@ import {
   type JsonObject,
   type JsonValue,
 } from "../../../src/contracts/serialization/json-contract";
+import type { SessionContextMetadata } from "../../../src/contracts/conversations/session-context-metadata";
+import { CakeChatConfiguration } from "../../../src/services/pi-durable/CakeChatConfiguration";
+import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { messageReference } from "../../../src/contracts/conversations/message-reference";
 import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
@@ -82,7 +86,7 @@ const summary = (id: string) => ({
   resolved: false,
 });
 
-const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* () {
+const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChats = false) {
   const prompts = yield* Queue.unbounded<{
     sessionId: string;
     text: string;
@@ -112,6 +116,8 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* () {
   const received: Array<{ connectionId: number; event: CakeEvent }> = [];
   const deliveries = yield* Queue.unbounded<{ connectionId: number; event: CakeEvent }>();
   const runtimeCreates: string[] = [];
+  const inspections: string[] = [];
+  const contextBySession = new Map<string, SessionContextMetadata>();
   const requestCalls: unknown[] = [];
   const project = {
     path: "/project",
@@ -151,15 +157,29 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* () {
         ? Effect.fail(
             new PiSessionError({ operation: "catalogEntry", message: "Recipient unavailable" }),
           )
-        : Effect.succeed([source, target, third].includes(id) ? summary(id) : undefined),
+        : Effect.succeed(
+            [source, target, third].includes(id) || contextBySession.has(id)
+              ? { ...summary(id), contextMetadata: contextBySession.get(id) }
+              : undefined,
+          ),
     inspect: ({ sessionId }) =>
-      Effect.succeed({
-        workspacePath: "/project",
-        sessionId,
-        sessionFile: `/cake/sessions/${sessionId}.jsonl`,
-        parts: [
-          { id: "entry", kind: "text", role: "user", text: "First input", status: "complete" },
-        ],
+      Effect.sync(() => {
+        inspections.push(sessionId);
+        return {
+          workspacePath: "/project",
+          sessionId,
+          sessionFile: `/cake/sessions/${sessionId}.jsonl`,
+          contextMetadata: contextBySession.get(sessionId),
+          parts: [
+            {
+              id: "entry",
+              kind: "text" as const,
+              role: "user" as const,
+              text: "First input",
+              status: "complete" as const,
+            },
+          ],
+        };
       }),
     changelog: () => Effect.succeed(""),
     createRuntime: (options) =>
@@ -221,6 +241,12 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* () {
   }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
   const dependencies = Layer.mergeAll(
     WorkflowTestLive,
+    withChats
+      ? Layer.succeed(CakeChatConfiguration, {
+          location: { workingDirectory: "/chat", sessionDirectory: "/chats" },
+          agentDirectory: "/agent",
+        })
+      : Layer.empty,
     Layer.mock(SavedDraftStorage, {
       list: () => Effect.succeed(drafts),
       update: (record, revision) =>
@@ -355,6 +381,8 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* () {
     grants,
     queries,
     runtimeCreates,
+    inspections,
+    contextBySession,
     saves,
     saveRelease,
     call: (command: string, input: JsonObject = {}) =>
@@ -910,6 +938,84 @@ it.effect(
     }),
 );
 
+it.effect(
+  "lists compact size and freshness only for the selected page without waking sessions",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      yield* TestClock.setTime(Date.parse("2000-01-01T01:00:00.000Z"));
+      f.contextBySession.set(target, {
+        estimatedTokens: 120_000,
+        lastModelActivityAt: "2000-01-01T00:00:00.000Z",
+        cacheObservation: {
+          provider: "anthropic",
+          observedAt: "2000-01-01T00:00:00.000Z",
+          readTokens: 0,
+          writeTokens: 10_000,
+          write1hTokens: 0,
+        },
+      });
+      expect(yield* f.call("sessions.list", { limit: 1 })).toEqual({
+        ok: true,
+        command: "sessions.list",
+        total: 3,
+        offset: 0,
+        nextOffset: 1,
+        sessions: [
+          {
+            sessionId: target,
+            title: "Same title",
+            kind: "project-session",
+            projectName: "Project",
+            status: "idle",
+            context: {
+              estimatedTokens: 120_000,
+              lastModelActivityAt: "2000-01-01T00:00:00.000Z",
+              cache: "potentially-expired",
+              estimatedExpiresAt: "2000-01-01T00:05:00.000Z",
+            },
+          },
+        ],
+      });
+      expect(f.inspections).toEqual([target]);
+      expect(f.runtimeCreates).toEqual([source]);
+      expect(yield* Queue.size(f.prompts)).toBe(0);
+      expect(yield* f.call("sessions.info", { sessionId: target })).toMatchObject({
+        session: {
+          context: { estimatedTokens: 120_000, cache: "potentially-expired" },
+          cacheEvidence: { writeTokens: 10_000 },
+        },
+      });
+    }),
+);
+
+it.effect(
+  "exposes committed-head metadata for Project Chat and global Cake Chat without opening either",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture(true);
+      const projectChat = projectChatSessionId("/project");
+      for (const id of [CAKE_CHAT_SESSION_ID, projectChat])
+        f.contextBySession.set(id, { estimatedTokens: 1234 });
+      const listing = yield* f.call("sessions.list", { query: "Chat" });
+      expect(listing).toMatchObject({
+        total: 2,
+        sessions: expect.arrayContaining([
+          expect.objectContaining({
+            sessionId: CAKE_CHAT_SESSION_ID,
+            context: { estimatedTokens: 1234, cache: "unknown" },
+          }),
+          expect.objectContaining({
+            sessionId: projectChat,
+            context: { estimatedTokens: 1234, cache: "unknown" },
+          }),
+        ]),
+      });
+      expect(f.inspections).toEqual([]);
+      expect(f.runtimeCreates).toEqual([source]);
+    }),
+);
+
 it.effect("paginates a minimal session roster and filters before selecting a page", () =>
   Effect.gen(function* () {
     const f = yield* fixture();
@@ -942,6 +1048,7 @@ it.effect("paginates a minimal session roster and filters before selecting a pag
             kind: Schema.String,
             projectName: Schema.String,
             status: Schema.String,
+            context: Schema.Struct({ cache: Schema.Literal("unknown") }),
           }),
         ),
       }),

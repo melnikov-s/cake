@@ -1,4 +1,5 @@
-import { Effect, Option, Schema, type Scope } from "effect";
+import { Clock, Effect, Option, Schema, type Scope } from "effect";
+import { sessionContextCost } from "../../utils/session-context-cost";
 import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import { CakeChatConfiguration } from "../../services/pi-durable/CakeChatConfiguration";
 import * as chatMetadata from "../cake-chats/cakeChatMetadata";
@@ -465,6 +466,7 @@ export const invoke: (
                   projectPath: chat.projectPath,
                   modifiedAt: chat.modifiedAt,
                   status: chat.unread ? "unread" : "idle",
+                  contextMetadata: chat.contextMetadata,
                 }))
               : [];
           const query = input.query?.toLowerCase();
@@ -482,18 +484,32 @@ export const invoke: (
                 b.modifiedAt.localeCompare(a.modifiedAt) || a.sessionId.localeCompare(b.sessionId),
             );
           const { items, ...page } = agentListPage(selected, input);
-          return toJsonValue({
-            ok: true,
-            command,
-            ...page,
-            sessions: items.map(({ sessionId, title, kind, projectName, status }) => ({
-              sessionId,
-              title: agentListLabel(title),
-              kind,
-              status,
-              ...(projectName ? { projectName: agentListLabel(projectName) } : null),
-            })),
-          });
+          const now = yield* Clock.currentTimeMillis;
+          const listed = yield* Effect.forEach(items, (item) =>
+            Effect.gen(function* () {
+              const contextMetadata =
+                "contextMetadata" in item
+                  ? item.contextMetadata
+                  : item.status === "draft"
+                    ? undefined
+                    : yield* metadata
+                        .inspect({ sessionId: item.sessionId }, { includeParts: false })
+                        .pipe(
+                          Effect.map((preview) => preview.contextMetadata),
+                          // Advisory inspection failure must not hide an otherwise discoverable session.
+                          Effect.catch(() => Effect.succeed(undefined)),
+                        );
+              return {
+                sessionId: item.sessionId,
+                title: agentListLabel(item.title),
+                kind: item.kind,
+                status: item.status,
+                ...(item.projectName ? { projectName: agentListLabel(item.projectName) } : null),
+                context: sessionContextCost(contextMetadata, now),
+              };
+            }),
+          );
+          return toJsonValue({ ok: true, command, ...page, sessions: listed });
         }
         case "sessions.reports":
           return toJsonValue({
@@ -560,12 +576,22 @@ export const invoke: (
                     });
               return toJsonValue({ ok: true, command, target, result });
             }
+            const configuration = yield* Effect.serviceOption(CakeChatConfiguration);
+            const contextMetadata = Option.isSome(configuration)
+              ? (yield* chatMetadata.catalog(configuration.value.location)).find(
+                  (chat) => chat.sessionId === sessionId,
+                )?.contextMetadata
+              : undefined;
             return toJsonValue({
               ok: true,
               command,
               session: {
                 sessionId,
                 kind: "cake-chat",
+                context: sessionContextCost(contextMetadata, yield* Clock.currentTimeMillis),
+                ...(contextMetadata?.cacheObservation
+                  ? { cacheEvidence: contextMetadata.cacheObservation }
+                  : null),
                 workingDirectory: snapshot.workspacePath,
                 sessionFile: snapshot.sessionFile,
               },
@@ -590,6 +616,13 @@ export const invoke: (
               session: {
                 ...session,
                 sessionFile: preview.sessionFile,
+                context: sessionContextCost(
+                  preview.contextMetadata,
+                  yield* Clock.currentTimeMillis,
+                ),
+                ...(preview.contextMetadata?.cacheObservation
+                  ? { cacheEvidence: preview.contextMetadata.cacheObservation }
+                  : null),
                 ...(preview.firstUserMessage
                   ? { firstUserMessage: preview.firstUserMessage }
                   : null),

@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { SessionContextMetadata } from "../conversations/session-context-metadata";
 import { SESSION_TITLE_MAX_LENGTH } from "../conversations/session-contract";
 import { ThinkingLevel } from "../pi/model-data";
 import { ManagedWorktreeContext } from "../worktrees/managed-worktree-data";
@@ -63,6 +64,7 @@ export const ProjectSessionCatalogQuery = Schema.Struct({
 export type ProjectSessionCatalogQuery = Schema.Schema.Type<typeof ProjectSessionCatalogQuery>;
 
 export const ProjectSessionPreview = Schema.Struct({
+  contextMetadata: Schema.optionalKey(SessionContextMetadata),
   sessionId: boundedId,
   projectPath: boundedPath,
   workingDirectory: boundedPath,

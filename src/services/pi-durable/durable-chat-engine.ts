@@ -29,6 +29,7 @@ import {
 } from "@earendil-works/pi-durable";
 import { Schema } from "effect";
 import { ChatMetadataDoc } from "./durable-chat-metadata";
+import { durableContextMetadata } from "./durable-context-metadata";
 import { createDurableChatMemory, type DurableMemoryOptions } from "./durable-chat-memory";
 import {
   durableInputPresentation,
@@ -268,10 +269,18 @@ export async function openDurableChatEngine(options: {
       let cutoff: EntryId | undefined;
       let visible = false;
       let originals = 0;
+      let contextChanged = false;
       for (const change of publication.changes) {
         // Side-chat forks commit through this Harness too; only Cake Chat's own
         // changes count toward its metadata, memory index and snapshots.
         if (changeConversation(change) !== root.id) continue;
+        if (
+          change.type === "entry" &&
+          (change.value.model !== undefined ||
+            change.value.head !== undefined ||
+            change.value.edits !== undefined)
+        )
+          contextChanged = true;
         if (
           change.type === "entry" &&
           ["pi.user", "pi.assistant", "pi.tool-result"].includes(change.value.kind)
@@ -287,16 +296,26 @@ export async function openDurableChatEngine(options: {
         )
           visible = true;
       }
-      if (originals > 0)
+      if (contextChanged || originals > 0)
         queueMicrotask(() => {
           if (!closing.signal.aborted)
-            void root
-              .commit(async (tx) => {
+            void (async () => {
+              // Read the SDK-owned active head, not the lifetime originals. This
+              // never prepares a request, expands memory, or wakes the coordinator.
+              const active = await root.context(BACKGROUND_CONTEXT);
+              const contextMetadata = durableContextMetadata(active);
+              await root.commit(async (tx) => {
                 const metadata = await tx.doc(ChatMetadataDoc, root.id);
                 metadata.messageCount += originals;
-                metadata.modifiedAt = new Date().toISOString();
-              }, BACKGROUND_CONTEXT)
-              .catch(options.onReport);
+                if (originals > 0) metadata.modifiedAt = new Date().toISOString();
+                metadata.contextMetadata = {
+                  ...(metadata.contextMetadata?.lastModelActivityAt
+                    ? { lastModelActivityAt: metadata.contextMetadata.lastModelActivityAt }
+                    : null),
+                  ...contextMetadata,
+                };
+              }, BACKGROUND_CONTEXT);
+            })().catch(options.onReport);
         });
       if (visible) queueMicrotask(options.onChanged);
       if (cutoff !== undefined)
