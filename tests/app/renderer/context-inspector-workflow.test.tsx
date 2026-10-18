@@ -31,6 +31,7 @@ it("does not acquire an unsent chat and reads its Pi context once materialized",
   try {
     await user.click(screen.getByRole("button", { name: "Browse context" }));
     await screen.findByText("No assembled context yet.");
+    expect(screen.getByText("≈0 tokens · current text")).toBeTruthy();
     expect(inspect).not.toHaveBeenCalled();
     pending.markMaterialized(CAKE_CHAT_SESSION_ID);
     await user.click(screen.getByRole("button", { name: "Refresh context" }));
@@ -60,14 +61,18 @@ it("distinguishes loading, failed reads and true emptiness, then refreshes real 
   try {
     await user.click(screen.getByRole("button", { name: "Browse context" }));
     expect(screen.getByRole("status", { name: "Loading context" })).toBeTruthy();
+    expect(screen.queryByText(/tokens · current text/)).toBeNull();
     expect(screen.queryByText("No assembled context yet.")).toBeNull();
     await act(async () => pending.reject(new Error("Pi context read failed")));
     expect((await screen.findByRole("alert")).textContent).toContain("Pi context read failed");
+    expect(screen.queryByText(/tokens · current text/)).toBeNull();
     expect(screen.queryByText("No assembled context yet.")).toBeNull();
     await user.click(screen.getByRole("button", { name: "Try again" }));
     await screen.findByText("No assembled context yet.");
+    expect(screen.getByText("≈0 tokens · current text")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Refresh context" }));
     await screen.findByRole("button", { name: "The current compressed summary" });
+    expect(screen.getByText("≈27 tokens · current text")).toBeTruthy();
   } finally {
     view.unmount();
   }
@@ -214,6 +219,9 @@ it.each(["project-chat", "global"])(
       await user.click(screen.getByRole("button", { name: "Browse context" }));
       await screen.findByRole("button", { name: "The current compressed summary" });
       expect(screen.getByText("Depth 3")).toBeTruthy();
+      expect(screen.getByText("≈27 tokens · current text").getAttribute("title")).toContain(
+        "Includes active summaries; excludes earlier detail",
+      );
       expect(inspect).toHaveBeenCalledTimes(1);
       expect(inspect.mock.calls[0]?.[0]).toEqual({ sessionId, kind: "context-outline" });
       await user.click(screen.getByRole("button", { name: "System prompt" }));
@@ -260,7 +268,9 @@ it.each(["project-chat", "global"])(
         memoryCount: 1,
       });
       expect(inspect).toHaveBeenCalledTimes(4);
+      expect(screen.getByText("≈27 tokens · current text")).toBeTruthy();
       await user.click(screen.getByRole("button", { name: "Close context" }));
+      expect(screen.queryByText(/tokens · current text/)).toBeNull();
       expect(store.sources).toEqual([]);
       expect(store.details).toEqual({});
       expect(document.activeElement).toBe(screen.getByRole("button", { name: "Browse context" }));
@@ -298,6 +308,7 @@ it("offers retry for failed history without losing the current summary", async (
     await user.click(screen.getByRole("button", { name: "Try again" }));
     await screen.findByText("Keep it quiet and simple.");
     expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByText("≈27 tokens · current text")).toBeTruthy();
   } finally {
     view.unmount();
   }

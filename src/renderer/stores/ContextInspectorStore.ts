@@ -5,6 +5,7 @@ import {
 } from "../../contracts/conversations/context-inspection";
 import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../lib/error-details";
+import { estimateContextTokens } from "../lib/context-token-estimate";
 
 /** A window-local reader. Closing releases all content; browsing never calls prompt/compact/zoom tools. */
 export class ContextInspectorStore extends Store<{ sessionId: string; isPending(): boolean }> {
@@ -22,6 +23,11 @@ export class ContextInspectorStore extends Store<{ sessionId: string; isPending(
   constructor(props: ContextInspectorStore["props"]) {
     super(props);
     this.effect(() => () => this.close());
+  }
+
+  get estimatedTokens(): number | undefined {
+    if (!this.open || this.loading || this.error) return undefined;
+    return estimateContextTokens(this.sources);
   }
 
   show() {

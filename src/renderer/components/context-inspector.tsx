@@ -8,6 +8,7 @@ import { CloseIcon, ContextIcon, ReloadIcon } from "./ui/icons";
 import { Callout } from "./ui/callout";
 import { Button } from "./ui/button";
 import { LoadingSpinner } from "./ui/loading-state";
+import { formatEstimatedContextTokens } from "../lib/context-token-estimate";
 
 export const ContextInspector = observer(function ContextInspector({
   store,
@@ -42,7 +43,17 @@ export const ContextInspector = observer(function ContextInspector({
             data-cake-private-preview="true"
           >
             <header className="flex items-center justify-between gap-3 border-b border-border bg-background px-5 py-3">
-              <DialogTitle className="text-[15px] font-medium">Context</DialogTitle>
+              <div className="min-w-0">
+                <DialogTitle className="text-[15px] font-medium">Context</DialogTitle>
+                {store.estimatedTokens !== undefined && (
+                  <p
+                    className="mt-0.5 text-xs text-muted-foreground"
+                    title="Estimated total for current outline text at roughly 4 characters per token. Includes active summaries; excludes earlier detail and model-specific overhead. Serialized content is counted as text, not image token usage."
+                  >
+                    {formatEstimatedContextTokens(store.estimatedTokens)} · current text
+                  </p>
+                )}
+              </div>
               <div className="flex items-center gap-1">
                 <IconButton
                   tooltip="Refresh context"
