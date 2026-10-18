@@ -67,6 +67,11 @@ describe("Prompt queue workflow", () => {
       expect(conversation().queryByText(name, { exact: true })).toBeNull();
       expect(conversation().queryByText(text, { exact: true })).toBeNull();
       expect(queuedTexts()).toEqual([text]);
+      const composer = screen.getByRole<HTMLTextAreaElement>("combobox");
+      expect(composer.value).toBe("");
+      expect(screen.queryByRole("button", { name: /^Remove Pasted text/ })).toBeNull();
+      // Even an identical newly typed draft is not owned by the earlier admission.
+      await fixture.user.type(composer, text);
       const queue = within(screen.getByRole("list", { name: "Queued prompts" }));
       expect(queue.getByRole("status").textContent).toBe("Sending…");
       fixture.publish([queued], true);
@@ -74,6 +79,8 @@ describe("Prompt queue workflow", () => {
         release();
         await admission;
       });
+      expect(composer.value).toBe(text);
+      expect(screen.queryByRole("button", { name: /^Remove Pasted text/ })).toBeNull();
       expect(queuedTexts()).toEqual([text]);
       expect(conversation().queryByText(name, { exact: true })).toBeNull();
       if (promote) {

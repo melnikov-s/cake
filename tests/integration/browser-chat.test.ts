@@ -198,6 +198,215 @@ it("retains a lost-receipt draft but blocks resending until browser delivery is 
   );
 }, 60_000);
 
+it("mobile draft checkpoints cannot restore accepted prompts while persistence timers are suspended", async () => {
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const controlled = browserBackendAdapter("/project", true);
+      const backend = yield* makeNetworkTestBackend({
+        adapter: controlled.adapter,
+        models: [browserTestModel],
+      });
+      const listener = yield* openNetworkListener(
+        { port: 0, browserAssetsDirectory: resolve("out/browser") },
+        {
+          homeDirectory: "/home/test",
+          cakeChat: {
+            agentDirectory: "/agent",
+            location: cakeChatLocations.make({
+              homeDirectory: "/home/test",
+              sessionDirectory: "/chat",
+            }),
+          },
+        },
+      ).pipe(Effect.provideContext(backend.context));
+      assert.equal(listener.address._tag, "TcpAddress");
+      const url = `http://127.0.0.1:${listener.address.port}`;
+      yield* Effect.promise(async () => {
+        const browser = await chromium.launch({ channel: "chromium-headless-shell" });
+        try {
+          const page = await browser.newPage({
+            viewport: { width: 390, height: 844 },
+            hasTouch: true,
+            isMobile: true,
+          });
+          page.setDefaultTimeout(15_000);
+          // A mobile OS can freeze timers and discard a background page without
+          // pagehide. Hold only the old persistence debounce, not UI/network work.
+          await page.addInitScript(() => {
+            const schedule = window.setTimeout.bind(window);
+            Object.defineProperty(window, "setTimeout", {
+              value: (handler: TimerHandler, delay?: number, ...args: unknown[]) =>
+                schedule(handler, delay === 180 ? 2_147_000_000 : delay, ...args),
+            });
+          });
+          let holdReceipt = false;
+          let dropReceipt = false;
+          let releaseReceipt: (() => void) | undefined;
+          let promptId: string | undefined;
+          let promptRequests = 0;
+          await page.routeWebSocket("**/rpc", (socket) => {
+            const server = socket.connectToServer();
+            socket.onMessage((message) => {
+              const decoded = JSON.parse(String(message));
+              if (decoded.tag === "sessionChats.prompt") {
+                promptId = String(decoded.id);
+                promptRequests++;
+              }
+              server.send(message);
+            });
+            server.onMessage((message) => {
+              const decoded = JSON.parse(String(message));
+              if (
+                dropReceipt &&
+                String(decoded.requestId) === promptId &&
+                decoded._tag === "Exit"
+              ) {
+                dropReceipt = false;
+                server.close();
+                socket.close();
+              } else if (
+                holdReceipt &&
+                String(decoded.requestId) === promptId &&
+                decoded._tag === "Exit"
+              ) {
+                holdReceipt = false;
+                releaseReceipt = () => socket.send(message);
+              } else socket.send(message);
+            });
+          });
+          await page.goto(url);
+          await page.locator('[data-slot="header-sidebar-toggle"]').first().click();
+          await page
+            .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
+            .first()
+            .click();
+          await browserExpect(page.locator('[data-slot="workspace"]')).toHaveAttribute(
+            "data-session-id",
+            controlled.existingId,
+          );
+          const input = page.locator('[data-slot="workspace"] textarea').first();
+          const saved = () =>
+            page.evaluate(() => sessionStorage.getItem("cake.browser.presentation.v1"));
+          const checkpoint = () =>
+            page.evaluate(() =>
+              window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true })),
+            );
+          const pasteAttachment = (label: string) =>
+            input.evaluate((element, label) => {
+              const clipboardData = new DataTransfer();
+              clipboardData.setData("text/plain", label + "\n" + "details\n".repeat(50));
+              element.dispatchEvent(
+                new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }),
+              );
+            }, label);
+          await input.focus();
+          await input.pressSequentially("Accepted plain prompt");
+          await browserExpect(input).toBeFocused();
+          await browserExpect(input).toHaveValue("Accepted plain prompt");
+          await browserExpect(
+            page.getByRole("button", { name: "Send", exact: true }),
+          ).toBeEnabled();
+          await checkpoint();
+          expect(await saved()).toContain("Accepted plain prompt");
+          await browserExpect(input).toHaveValue("Accepted plain prompt");
+          await input.press("Enter");
+          await browserExpect(input).toHaveValue("");
+          await browserExpect.poll(() => controlled.stats.turns).toBe(1);
+          // The pre-send checkpoint must be replaced even with no timer or
+          // lifecycle event after admission. A discarded page would restore this.
+          await browserExpect.poll(saved).not.toContain("Accepted plain prompt");
+          controlled.finish(controlled.existingId);
+          await browserExpect(page.getByText("Completed answer 1", { exact: true })).toBeVisible();
+
+          await input.fill("Accepted attachment prompt");
+          await pasteAttachment("SUBMITTED_ATTACHMENT");
+          await browserExpect(
+            page.getByRole("button", { name: /^Remove Pasted text/ }),
+          ).toBeVisible();
+          await checkpoint();
+          expect(await saved()).toContain("SUBMITTED_ATTACHMENT");
+          holdReceipt = true;
+          await page.getByRole("button", { name: "Send", exact: true }).click();
+          await browserExpect.poll(() => Boolean(releaseReceipt)).toBe(true);
+          await browserExpect(input).toHaveValue("");
+          await browserExpect(
+            page.getByRole("button", { name: /^Remove Pasted text/ }),
+          ).toHaveCount(0);
+          expect(controlled.stats.turns).toBe(2);
+          // A new draft belongs to the user, not to the outstanding submission ack.
+          await input.fill("Genuinely unsent next draft");
+          await pasteAttachment("UNSENT_ATTACHMENT");
+          releaseReceipt?.();
+          await browserExpect(
+            page.getByRole("button", { name: "Send", exact: true }),
+          ).toBeEnabled();
+          await browserExpect(input).toHaveValue("Genuinely unsent next draft");
+          await browserExpect.poll(saved).toContain("Genuinely unsent next draft");
+          expect(await saved()).not.toContain("Accepted attachment prompt");
+          expect(await saved()).not.toContain("SUBMITTED_ATTACHMENT");
+          expect(await saved()).toContain("UNSENT_ATTACHMENT");
+          await browserExpect(
+            page.getByRole("button", { name: /^Remove Pasted text/ }),
+          ).toHaveCount(1);
+          expect(promptRequests).toBe(2);
+
+          // Resume the same document, then hydrate a fresh one. Neither may
+          // restore submitted input or turn it into another send.
+          await page.evaluate(() =>
+            window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })),
+          );
+          await browserExpect(input).toHaveValue("Genuinely unsent next draft");
+          await page.reload();
+          await page.locator('[data-slot="header-sidebar-toggle"]').first().click();
+          await page
+            .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
+            .first()
+            .click();
+          await browserExpect(input).toHaveValue("Genuinely unsent next draft");
+          await browserExpect(
+            page.getByRole("button", { name: /^Remove Pasted text/ }),
+          ).toHaveCount(1);
+          expect(await saved()).not.toContain("SUBMITTED_ATTACHMENT");
+          expect(await saved()).toContain("UNSENT_ATTACHMENT");
+          expect(controlled.stats.turns).toBe(2);
+          expect(promptRequests).toBe(2);
+
+          // A lost receipt is not confirmed rejection: retain recoverable input
+          // and the uncertainty gate, including across entry, without replay.
+          controlled.finish(controlled.existingId);
+          await browserExpect(page.getByText("Completed answer 2", { exact: true })).toBeVisible();
+          dropReceipt = true;
+          await page.getByRole("button", { name: "Send", exact: true }).click();
+          await browserExpect(page.getByText("Delivery uncertain", { exact: false })).toBeVisible();
+          await browserExpect(input).toHaveValue("Genuinely unsent next draft");
+          await browserExpect(
+            page.getByRole("button", { name: /^Remove Pasted text/ }),
+          ).toHaveCount(1);
+          expect(await saved()).toContain("UNSENT_ATTACHMENT");
+          expect(promptRequests).toBe(3);
+          expect(controlled.stats.turns).toBe(3);
+          await page.reload();
+          await browserExpect(page.getByText("Delivery uncertain", { exact: false })).toBeVisible();
+          await page.locator('[data-slot="header-sidebar-toggle"]').first().click();
+          await page
+            .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
+            .first()
+            .click();
+          await browserExpect(input).toHaveValue("Genuinely unsent next draft");
+          await browserExpect(
+            page.getByRole("button", { name: "Send", exact: true }),
+          ).toBeDisabled();
+          expect(promptRequests).toBe(3);
+          expect(controlled.stats.turns).toBe(3);
+        } finally {
+          controlled.finish(controlled.existingId);
+          await browser.close();
+        }
+      });
+    }).pipe(Effect.scoped),
+  );
+}, 60_000);
+
 it("real Chromium uses the shared sidebar, project chat and Cake Chat without replay on refresh or reconnect", async () => {
   await Effect.runPromise(
     Effect.gen(function* () {

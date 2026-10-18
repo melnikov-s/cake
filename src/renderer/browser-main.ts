@@ -130,7 +130,6 @@ const rootStore = mountRootStore(
   () => connection.connected && !connection.uncertainOperation,
   true,
 );
-let saveTimer: ReturnType<typeof setTimeout> | undefined;
 function persist() {
   try {
     // Browser navigation and drafts are tab-local; never write the desktop window record.
@@ -148,10 +147,10 @@ function persist() {
     });
   }
 }
-const stopPersistence = onSnapshot(rootStore, () => {
-  if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(persist, 180);
-});
+// sessionStorage is synchronous and tab-local. Checkpoint each draft mutation
+// immediately: mobile suspension can freeze a debounce and discard the document
+// without pagehide, resurrecting already-submitted text and attachments on entry.
+const stopPersistence = onSnapshot(rootStore, persist);
 const stopModels = observeModels(runtime, projection, rootStore);
 const stopApplicationState = observeApplicationState(runtime, rootStore);
 const stopAgentAvailability = observeAgentAvailability(runtime, rootStore);
@@ -220,7 +219,6 @@ const stopPageLifecycle = observeBrowserPageLifecycle(rootElement, {
   reconnect: () => runtime.reconnect(),
   dispose: () => {
     stopPageLifecycle();
-    if (saveTimer) clearTimeout(saveTimer);
     stopPersistence();
     stopConnectionPersistence();
     stopModels();
