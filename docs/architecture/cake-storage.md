@@ -413,6 +413,28 @@ fork whose branch point predates that marker gets one in its creating commit, so
 its first request repeats Cake Chat's prefix exactly. That relies on Durable 1.1.0 prompt planning, which
 is experimental.
 
+Permanent Chat retains its active prefix between warm turns. The existing conservative
+policy may reset on unknown/uncertain cache status, inferred coldness, or the effective
+input limit; restart alone is not expiry. Regular Project Sessions do not acquire a
+cache-expiry compaction trigger. The context-policy document stores request/completion
+times, requested retention separately from resolved provider-payload policy, reported
+reads/aggregate writes and available five-minute/one-hour creation counters. Missing
+provider callbacks and legacy fields remain absent, not invented. Anthropic's rolling
+partial-prefix estimates retain one-hour creation evidence across requests/restart;
+unallocated mixed-TTL reads do not refresh either estimated clock. These estimates are
+not whole-prefix hits or confirmed remote expiry/eviction. OpenAI retention options and
+Bedrock cache points are retained separately, without borrowing Anthropic semantics.
+
+SDK automatic threshold/background compaction remains disabled. At the root provider
+boundary, an actual context-overflow error can trigger one blocking reset through the
+same bounded memory path and one retry per admitted run input. The attempt marker is
+committed before recovery, so restart does not rearm it. Originals remain authoritative;
+current user input and tool call/results stay verbatim and ordered, without rerunning
+tools. Repeated overflow or an irreducible current input fails visibly. Admission reserves
+model output room (by default up to 16,384 tokens, capped by model output capacity), and
+the request output cap uses that same reserve. No idle/background summary is introduced.
+Side-chat requests retain their separate SDK behavior rather than mutating the root head.
+
 The Pi Durable SDK supplies process-crash recovery, not a newest-commit power-loss
 guarantee. Replay-unsafe Cake mutations require inspecting live state rather than
 blind repetition.

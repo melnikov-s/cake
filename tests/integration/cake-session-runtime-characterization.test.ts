@@ -166,6 +166,32 @@ afterEach(async () => {
 });
 
 describe("CakeSessionRuntime characterization", () => {
+  it("keeps a regular Project Session's prefix after elapsed cache lifetime without adding an expiry compaction trigger", async () => {
+    const directory = await createTemporaryDirectory();
+    const requests: Record<string, unknown>[] = [];
+    await registerFixtureProvider(
+      directory,
+      (_index, response) => finishTextResponse(response, "Continued"),
+      (body) => requests.push(body),
+    );
+    const runtime = await createFixtureRuntime(directory, []);
+    const identity = runtime.sessionId;
+    await runtime.prompt("REGULAR_EXPIRY_ORIGINAL", "prompt", []);
+    const later = Date.now() + 2 * 60 * 60_000;
+    const clock = vi.spyOn(Date, "now").mockReturnValue(later);
+    try {
+      await runtime.prompt("Continue after elapsed cache lifetime", "prompt", []);
+      expect(runtime.sessionId).toBe(identity);
+      expect(JSON.stringify(requests.at(-1))).toContain("REGULAR_EXPIRY_ORIGINAL");
+      expect(
+        SessionManager.open(runtime.sessionFile)
+          .getBranch()
+          .filter((entry) => entry.type === "compaction"),
+      ).toHaveLength(0);
+    } finally {
+      clock.mockRestore();
+    }
+  });
   it("captures the exact persisted Pi result entry for an artifact-only correlated answer", async () => {
     const directory = await createTemporaryDirectory();
     const text = "[Drawing](cake://artifact/result)";

@@ -20,7 +20,10 @@ import { Type } from "@earendil-works/pi-durable-ai";
 import { afterEach, expect, it, vi } from "vitest";
 import { ChatMetadataDoc } from "../../../../src/services/pi-durable/durable-chat-metadata";
 import { durableContextMetadata } from "../../../../src/services/pi-durable/durable-context-metadata";
-import { openDurableChatEngine } from "../../../../src/services/pi-durable/durable-chat-engine";
+import {
+  durableAdmission,
+  openDurableChatEngine,
+} from "../../../../src/services/pi-durable/durable-chat-engine";
 import { readDurableOriginalPage } from "../../../../src/services/pi-durable/durable-chat-history";
 import { abortDurableActiveTurn } from "../../../../src/services/pi-durable/durable-chat-queue";
 import {
@@ -60,6 +63,7 @@ async function fixture(
   storage: Storage = new MemoryStorage(),
   onZoom?: (parts: readonly UiPart[]) => Promise<void>,
   retainWarm = false,
+  sdkCompaction = false,
 ) {
   const f = durableModels(answer);
   const summarize = vi.fn(async () => "talk: exact details remain available through zoom");
@@ -95,7 +99,7 @@ async function fixture(
     memory: { budget: () => budget, summarize },
     contextLimitTokens: () => contextLimit,
     now: () => clock,
-    settings: { contextRetentionMs: 0, compaction: { enabled: false, keepRecentTokens } },
+    settings: { contextRetentionMs: 0, compaction: { enabled: sdkCompaction, keepRecentTokens } },
     onChanged: vi.fn(),
     onReport: vi.fn(),
   });
@@ -793,10 +797,15 @@ it.each(["settings", "model"] as const)(
       undefined,
       true,
     );
-    const model = { ...durableModel, contextWindow: which === "model" ? 600 : 200_000 };
+    const model = {
+      ...durableModel,
+      contextWindow: which === "model" ? 700 : 200_000,
+      maxTokens: 100,
+    };
     vi.mocked(f.models.getModel).mockReturnValue(model);
     f.limit(which === "settings" ? 600 : 1_000);
     await f.send("First small input", "first");
+    expect(vi.mocked(f.models.streamSimple).mock.calls[0]?.[2]?.maxTokens).toBe(100);
     const status = await f.engine.contextStatus(model);
     expect(status.limitTokens).toBe(600);
     expect(cakeChatCacheFreshness(status.cache, status.cache!.requestedAt).state).toBe(
@@ -870,6 +879,180 @@ it.each(["instructions", "tools"] as const)(
     expect((await f.engine.contextStatus(durableModel)).lastSummary?.reason).toBe("cache-unknown");
   },
 );
+
+it("keeps SDK threshold/background rewriting disabled even when supplied settings enable compaction", async () => {
+  const f = await fixture(undefined, 0, new MemoryStorage(), undefined, true, true);
+  vi.mocked(f.models.getModel).mockReturnValue({
+    ...durableModel,
+    contextWindow: 1000,
+    maxTokens: 100,
+  });
+  await f.send("NO_BACKGROUND_REWRITE", "first");
+  const head = (await f.engine.root.context(BACKGROUND_CONTEXT)).head?.id;
+  await f.send("Warm append", "second");
+  expect((await f.engine.root.context(BACKGROUND_CONTEXT)).head?.id).toBe(head);
+  expect(f.summarize).not.toHaveBeenCalled();
+  expect(f.requests).toHaveLength(2);
+  expect(JSON.stringify(f.requests[1])).toContain("NO_BACKGROUND_REWRITE");
+});
+
+const overflowAnswer = () => ({
+  ...durableAnswer(""),
+  stopReason: "error" as const,
+  errorMessage: "prompt is too long: 200001 tokens > 200000 maximum",
+});
+
+it("recovers an actual overflow below the estimated limit once, preserving originals and current input", async () => {
+  const f = await fixture(
+    (_request, index) => (index === 2 ? overflowAnswer() : durableAnswer("Delivered")),
+    20_000,
+    new MemoryStorage(),
+    undefined,
+    true,
+  );
+  const original = "OVERFLOW_ORIGINAL ".repeat(100);
+  await f.send(original, "history");
+  expect(f.summarize).not.toHaveBeenCalled();
+  const result = await f.send("CURRENT_INPUT must survive", "current");
+  expect(result.status).toBe("done");
+  expect(f.requests).toHaveLength(3);
+  expect(JSON.stringify(f.requests[1])).toContain(original);
+  expect(JSON.stringify(f.requests[2])).not.toContain(original);
+  expect(JSON.stringify(f.requests[2])).toContain("CURRENT_INPUT must survive");
+  expect((await f.engine.contextStatus(durableModel)).lastSummary?.reason).toBe("overflow");
+  const originals = JSON.stringify((await readDurableOriginalPage(f.engine.root)).parts);
+  expect(originals).toContain(original.trim());
+  expect(originals).toContain("CURRENT_INPUT must survive");
+  expect(originals).toContain("Delivered");
+});
+
+it("fails repeated overflow without a reset/retry loop and preserves the unanswered input", async () => {
+  const f = await fixture(
+    (_request, index) => (index >= 2 ? overflowAnswer() : durableAnswer("history")),
+    20_000,
+    new MemoryStorage(),
+    undefined,
+    true,
+  );
+  await f.send("HISTORY ".repeat(100), "history");
+  const result = await f.send("REPEATED_CURRENT", "current");
+  expect(result).toMatchObject({ status: "unanswered", reason: "model_error" });
+  expect(f.requests).toHaveLength(3);
+  expect(JSON.stringify((await readDurableOriginalPage(f.engine.root)).parts)).toContain(
+    "REPEATED_CURRENT",
+  );
+});
+
+it("does not retry an overflow with no reducible history", async () => {
+  const f = await fixture(() => overflowAnswer(), 20_000, new MemoryStorage(), undefined, true);
+  expect(await f.send("IRREDUCIBLE_CURRENT", "first")).toMatchObject({
+    status: "unanswered",
+    reason: "model_error",
+  });
+  expect(f.requests).toHaveLength(1);
+  expect(f.summarize).not.toHaveBeenCalled();
+});
+
+it("keeps the current user, tool call and result in order during overflow recovery without executing tools twice", async () => {
+  const onZoom = vi.fn(async () => undefined);
+  const f = await fixture(
+    (_request, index) => {
+      if (index === 2)
+        return durableAnswer("", [
+          { type: "toolCall", id: "call-1", name: "zoom", arguments: { id: 0, n: 1 } },
+        ]);
+      if (index === 3) return overflowAnswer();
+      return durableAnswer("Done");
+    },
+    20_000,
+    new MemoryStorage(),
+    onZoom,
+    true,
+  );
+  await f.send("TOOL_HISTORY ".repeat(100), "history");
+  expect((await f.send("TOOL_CURRENT", "current")).status).toBe("done");
+  expect(f.requests).toHaveLength(4);
+  const messages = f.requests[3]!.messages;
+  const user = messages.findIndex(
+    (m) => m.role === "user" && JSON.stringify(m).includes("TOOL_CURRENT"),
+  );
+  const call = messages.findIndex(
+    (m) =>
+      m.role === "assistant" && m.content.some((c) => c.type === "toolCall" && c.id === "call-1"),
+  );
+  const result = messages.findIndex((m) => m.role === "toolResult" && m.toolCallId === "call-1");
+  expect(user).toBeGreaterThanOrEqual(0);
+  expect(call).toBeGreaterThan(user);
+  expect(result).toBeGreaterThan(call);
+  expect(onZoom).toHaveBeenCalledOnce();
+});
+
+it("persists the overflow attempt bound across an interrupted reset and SQLite reopen", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "cake-overflow-reopen-"));
+  cleanup.unshift(() => rm(directory, { recursive: true, force: true }));
+  const database = join(directory, "chat.sqlite");
+  const first = await fixture(
+    (_request, index) => (index === 1 ? durableAnswer("History") : overflowAnswer()),
+    20_000,
+    await openNodeSqliteStorage(database),
+    undefined,
+    true,
+  );
+  await first.send("RESTART_OVERFLOW_HISTORY ".repeat(100), "history");
+  const started = Promise.withResolvers<void>();
+  const pending = Promise.withResolvers<string>();
+  first.summarize.mockImplementation(() => {
+    started.resolve();
+    return pending.promise;
+  });
+  await first.submit("RESTART_CURRENT", "current");
+  await started.promise;
+  const closing = first.engine.close();
+  pending.resolve("talk: history remains in originals");
+  await closing;
+  cleanup.pop();
+  const reopened = await fixture(
+    () => overflowAnswer(),
+    20_000,
+    await openNodeSqliteStorage(database),
+    undefined,
+    true,
+  );
+  const result = await reopened.send("RESTART_CURRENT", "current");
+  expect(result).toMatchObject({ status: "unanswered", reason: "model_error" });
+  expect(reopened.requests).toHaveLength(1);
+  expect(reopened.summarize).not.toHaveBeenCalled();
+  expect(JSON.stringify((await readDurableOriginalPage(reopened.engine.root)).parts)).toContain(
+    "RESTART_CURRENT",
+  );
+});
+
+it("rejects an input below the model window when it would consume the output reserve", async () => {
+  const f = await fixture(undefined, 20_000, new MemoryStorage(), undefined, true);
+  const model = { ...durableModel, contextWindow: 1000, maxTokens: 200 };
+  vi.mocked(f.models.getModel).mockReturnValue(model);
+  const result = await f.send("x".repeat(2700), "reserved");
+  const status = await f.engine.contextStatus(model);
+  expect(status.totalTokens).toBeLessThan(1000);
+  expect(status.totalTokens).toBeGreaterThanOrEqual(800);
+  expect(result).toMatchObject({ status: "unanswered", reason: "model_error" });
+  expect(f.requests).toHaveLength(0);
+});
+
+it("reserves model output room independently of the configured input cap", () => {
+  expect(durableAdmission({ contextWindow: 1000, maxTokens: 200 }, 2000)).toEqual({
+    limit: 800,
+    reserve: 200,
+  });
+  expect(durableAdmission({ contextWindow: 1000, maxTokens: 200 }, 600)).toEqual({
+    limit: 600,
+    reserve: 200,
+  });
+  expect(durableAdmission({ contextWindow: 1000, maxTokens: 200 }, 2000, 100)).toEqual({
+    limit: 900,
+    reserve: 100,
+  });
+});
 
 it("does not send an irreducibly oversized input or start summarization while a warm conversation is idle", async () => {
   const f = await fixture(undefined, 20_000, new MemoryStorage(), undefined, true);

@@ -332,9 +332,9 @@ export async function createDurableCakeChatRuntime(
       return settings.getRetrySettings();
     },
     get compaction() {
-      // Cake performs blocking memory preparation at its effective token limit;
-      // SDK background compaction would otherwise rewrite a warm prefix early.
-      return { ...settings.getCompactionSettings(selected), enabled: false };
+      // The engine disables SDK automatic compaction and owns both limit resets
+      // and bounded overflow recovery without background prefix rewriting.
+      return settings.getCompactionSettings(selected);
     },
   };
   const engine = await openDurableChatEngine({

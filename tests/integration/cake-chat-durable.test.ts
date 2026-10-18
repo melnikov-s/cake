@@ -82,12 +82,16 @@ async function fixture() {
     };
     if (cached)
       message.usage = { ...message.usage, input: 12_000, cacheRead: 8_000, totalTokens: 20_000 };
-    const finish = () =>
-      stream.push({
-        type: "done",
-        reason: message.stopReason === "toolUse" ? "toolUse" : "stop",
-        message,
-      });
+    const finish = () => {
+      if (message.stopReason === "error")
+        stream.push({ type: "error", reason: "error", error: message });
+      else
+        stream.push({
+          type: "done",
+          reason: message.stopReason === "toolUse" ? "toolUse" : "stop",
+          message,
+        });
+    };
     finishes.push(finish);
     stream.push({ type: "start", partial: message });
     Effect.runSync(Deferred.succeed(started, undefined));
@@ -284,6 +288,59 @@ it.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/project")])(
     await chat.close();
     const reopened = await f.open(undefined, undefined, scope);
     expect(entryOf(await reopened.runtime.snapshot(), text)).toBe(entryId);
+  },
+);
+
+it.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/overflow-project")])(
+  "recovers unexpected overflow and delivers one exact correlated result for permanent chat %s",
+  async (sessionId) => {
+    const f = await fixture();
+    f.warmCache();
+    f.answer((index) =>
+      index === 2
+        ? {
+            ...durableAnswer(""),
+            stopReason: "error",
+            errorMessage: "prompt is too long: 200001 tokens > 200000 maximum",
+          }
+        : durableAnswer("Recovered result"),
+    );
+    const scope = { sessionId, sessionDir: join(f.directory, "overflow-chat") };
+    const chat = await f.open(undefined, undefined, scope);
+    await chat.runtime.prompt(
+      "INTEGRATION_OVERFLOW_ORIGINAL ".repeat(100),
+      "prompt",
+      [],
+      false,
+      ids.first,
+    );
+    await chat.runtime.prompt(
+      encodeCrossSessionMessage("CURRENT_CORRELATED_INPUT", {
+        version: 1,
+        messageId: ids.second,
+        threadId: ids.second,
+        sequence: 1,
+        expectsResponse: true,
+        resultDelivery: "reply",
+        sender: { kind: "cake-chat", sessionId: "creator", title: "Creator" },
+      }),
+      "prompt",
+      [],
+      false,
+      ids.second,
+    );
+    expect(f.requests).toHaveLength(3);
+    expect(JSON.stringify(f.requests[2])).toContain("CURRENT_CORRELATED_INPUT");
+    expect(JSON.stringify(f.requests[2])).not.toContain("INTEGRATION_OVERFLOW_ORIGINAL");
+    const results = f.results.filter((result) => result.respondsToSessionId === "creator");
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({ text: "Recovered result", entryId: expect.any(String) });
+    await chat.close();
+    const reopened = await f.open(undefined, undefined, scope);
+    const originals = JSON.stringify((await reopened.runtime.snapshot()).parts);
+    expect(originals).toContain("INTEGRATION_OVERFLOW_ORIGINAL");
+    expect(originals).toContain("CURRENT_CORRELATED_INPUT");
+    expect(originals).toContain(results[0]!.entryId!);
   },
 );
 

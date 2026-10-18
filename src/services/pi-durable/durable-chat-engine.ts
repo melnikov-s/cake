@@ -29,6 +29,8 @@ import {
   type Tx,
 } from "@earendil-works/pi-durable";
 import { Schema } from "effect";
+import { isContextOverflow } from "@earendil-works/pi-durable-ai/utils/overflow";
+import { anthropicCacheEstimate, durableCacheEvidence } from "./durable-cache-evidence";
 import { ChatMetadataDoc } from "./durable-chat-metadata";
 import { durableContextMetadata } from "./durable-context-metadata";
 import { createDurableChatMemory, type DurableMemoryOptions } from "./durable-chat-memory";
@@ -47,7 +49,11 @@ import {
   durableSystemFingerprint,
 } from "./durable-context-policy";
 
-const Boundary = Schema.Struct({ input: Schema.Int, marker: Schema.Int });
+const Boundary = Schema.Struct({
+  input: Schema.Int,
+  marker: Schema.Int,
+  overflowInput: Schema.optionalKey(Schema.Int),
+});
 type Boundary = Schema.Schema.Type<typeof Boundary>;
 const BoundaryDoc = defineDoc<Boundary>({
   kind: "cake.chat-run-boundary",
@@ -57,6 +63,22 @@ const BoundaryDoc = defineDoc<Boundary>({
   fork: "initial",
   initial: () => ({ input: -1, marker: -1 }),
 });
+
+/** Reserve output room against the model window, not the user's lower input cap.
+ * Clamp the actual request output to the same reserve used for admission. */
+export function durableAdmission(
+  model: { contextWindow: number; maxTokens?: number },
+  configured: number,
+  requestedOutput?: number,
+) {
+  const reserve = Math.min(
+    requestedOutput ??
+      (model.maxTokens && model.maxTokens > 0 ? Math.min(model.maxTokens, 16_384) : 16_384),
+    model.maxTokens && model.maxTokens > 0 ? model.maxTokens : Number.POSITIVE_INFINITY,
+    Math.max(1, model.contextWindow - 1),
+  );
+  return { reserve, limit: Math.max(1, Math.min(configured, model.contextWindow - reserve)) };
+}
 
 /** The conversation one committed change belongs to; undefined for Session documents. */
 export const changeConversation = (change: CommitChange) =>
@@ -159,14 +181,20 @@ export async function openDurableChatEngine(options: {
           policy.request.modelId === model.id
             ? policy.request
             : undefined;
-        const limit = Math.min(options.contextLimitTokens?.() ?? 300_000, model.contextWindow);
+        const { limit, reserve } = durableAdmission(
+          model,
+          options.contextLimitTokens?.() ?? 300_000,
+          streamOptions?.maxTokens,
+        );
         const before = durableContextBreakdown(active.messages);
         const reason = cakeChatSummaryReason(
           { ...before, limitTokens: limit, cache: previousRequest },
           now(),
         );
         const newInput = input !== undefined && boundary.input !== input;
-        if (input !== undefined && (reason === "limit" || (newInput && reason))) {
+        const reset = async (reason: "limit" | "cache-cold" | "cache-unknown" | "overflow") => {
+          if (input === undefined)
+            throw new Error("Cannot recover context without a committed current input.");
           const submission = await options.storage.submission(input, context);
           if (!submission || submission.status !== "placed")
             throw new Error("Cake Chat input has no committed entry");
@@ -197,11 +225,16 @@ export async function openDurableChatEngine(options: {
                 )
               )
                 start = i;
-          const tail = entries.slice(start);
+          // Even when compacting older completed tool rounds, never summarize away
+          // the current user's input. Keep the latest call/results in original order.
+          const tail = [
+            ...entries.slice(0, start).filter((entry) => entry.kind === "pi.user"),
+            ...entries.slice(start),
+          ];
           const current = tail.flatMap((entry) => entry.model ?? []);
           // SAFETY: Durable entry ids are nonnegative integers. The inclusive
-          // cutoff excludes the still-verbatim tail, including pending tools.
-          const cutoff = ((tail[0]?.id ?? submission.entry) - 1) as EntryId;
+          // cutoff excludes the latest tool tail; earlier user inputs also stay verbatim.
+          const cutoff = ((entries[start]?.id ?? submission.entry) - 1) as EntryId;
           const system = getCurrentSystemMessage(active.messages);
           const base = [...(system ? [system] : []), ...current];
           const remaining =
@@ -221,6 +254,10 @@ export async function openDurableChatEngine(options: {
             );
             historyCursor = page.next;
           } while (!hasHistory && historyCursor !== undefined);
+          if (!hasHistory && reason === "overflow")
+            throw new Error(
+              "Provider context overflow: the current input, tools and instructions cannot be reduced safely. Shorten the input.",
+            );
           if (!hasHistory && reason !== "limit") {
             await root.commit(async (tx) => {
               (await tx.doc(BoundaryDoc, root.id)).input = input;
@@ -278,40 +315,94 @@ export async function openDurableChatEngine(options: {
               options.onChanged();
             }
           }
+        };
+        if (input !== undefined && (reason === "limit" || (newInput && reason))) {
+          await reset(reason);
         } else if (newInput) {
           await root.commit(async (tx) => {
             (await tx.doc(BoundaryDoc, root.id)).input = input;
           }, context);
         }
-        signal.throwIfAborted();
-        // Read the committed head even on recovery of a request whose old cutoff predates
-        // the reset. Tool rounds and emergency compactions remain ordinary active context.
-        active = await root.context(context);
-        const requestedAt = now();
-        const source = options.models.streamSimple(
-          model,
-          { messages: active.messages.map((message) => withoutDurableInputPresentation(message)) },
-          streamOptions,
-        );
-        for await (const event of source) {
-          if (event.type === "done") {
-            await root.commit(async (tx) => {
-              const policy = await tx.doc(ContextPolicyDoc, root.id);
-              policy.request = {
-                provider: model.provider,
-                modelId: model.id,
-                requestedAt,
-                inputTokens: event.message.usage.input,
-                cacheReadTokens: event.message.usage.cacheRead,
-                cacheWriteTokens: event.message.usage.cacheWrite,
-              };
-              if (streamOptions?.cacheRetention)
-                policy.request.retention = streamOptions.cacheRetention;
-              policy.requestHead = active.head?.id ?? null;
-              policy.requestSystem = durableSystemFingerprint(active.messages);
-            }, context);
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          signal.throwIfAborted();
+          // Read the committed head even on recovery of a request whose old cutoff predates
+          // the reset. Tool rounds and emergency compactions remain ordinary active context.
+          active = await root.context(context);
+          const requestedAt = now();
+          const evidence = durableCacheEvidence(model.api);
+          const source = options.models.streamSimple(
+            model,
+            {
+              messages: active.messages.map((message) => withoutDurableInputPresentation(message)),
+            },
+            {
+              ...streamOptions,
+              maxTokens: reserve,
+              onPayload: async (payload, selected) => {
+                const resolved = (await streamOptions?.onPayload?.(payload, selected)) ?? payload;
+                evidence.payload(resolved);
+                return resolved;
+              },
+              onProviderStreamEvent: async (event, selected) => {
+                evidence.event(event);
+                await streamOptions?.onProviderStreamEvent?.(event, selected);
+              },
+            },
+          );
+          let recover = false;
+          for await (const event of source) {
+            if (
+              event.type === "error" &&
+              event.error.stopReason === "error" &&
+              isContextOverflow(event.error) &&
+              input !== undefined
+            ) {
+              const boundary = await harness.snapshot(BoundaryDoc, root.id, context);
+              if (boundary?.overflowInput !== input) {
+                // Persist the bound before doing any recovery work. Reopen cannot
+                // repeat an overflowing reset indefinitely. SDK threshold/overflow
+                // compaction stays disabled: this boundary is the sole owner.
+                await root.commit(async (tx) => {
+                  (await tx.doc(BoundaryDoc, root.id)).overflowInput = input;
+                }, context);
+                await reset("overflow");
+                recover = true;
+                break;
+              }
+            }
+            if (event.type === "done") {
+              await root.commit(async (tx) => {
+                const policy = await tx.doc(ContextPolicyDoc, root.id);
+                policy.request = {
+                  provider: model.provider,
+                  modelId: model.id,
+                  api: model.api,
+                  requestedAt,
+                  inputTokens: event.message.usage.input,
+                  cacheReadTokens: event.message.usage.cacheRead,
+                  cacheWriteTokens: event.message.usage.cacheWrite,
+                  ...evidence.snapshot(),
+                  completedAt: now(),
+                };
+                if (
+                  policy.request.cacheWrite1hTokens === undefined &&
+                  event.message.usage.cacheWrite1h !== undefined
+                )
+                  policy.request.cacheWrite1hTokens = event.message.usage.cacheWrite1h;
+                const estimate = anthropicCacheEstimate(
+                  policy.request,
+                  policy.requestHead === (active.head?.id ?? null) ? previousRequest : undefined,
+                );
+                if (estimate) policy.request.anthropicEstimate = estimate;
+                if (streamOptions?.cacheRetention)
+                  policy.request.retention = streamOptions.cacheRetention;
+                policy.requestHead = active.head?.id ?? null;
+                policy.requestSystem = durableSystemFingerprint(active.messages);
+              }, context);
+            }
+            stream.push(event);
           }
-          stream.push(event);
+          if (!recover) break;
         }
       })().catch((error: unknown) => {
         const aborted = closing.signal.aborted || streamOptions?.signal?.aborted;
@@ -338,12 +429,22 @@ export async function openDurableChatEngine(options: {
       return stream;
     },
   });
+  // The SDK's single flag gates both threshold and overflow compaction. Cake's
+  // provider boundary owns both limit resets and emergency recovery instead.
+  // Preserve live settings getters without allowing a competing SDK owner.
+  const settings: HarnessSettings = options.settings ?? { contextRetentionMs: 0 };
+  const harnessSettings = new Proxy(settings, {
+    get(target, key, receiver) {
+      if (key === "compaction") return { ...target.compaction, enabled: false };
+      return Reflect.get(target, key, receiver);
+    },
+  });
   const harness = await Harness.open(
     options.storage,
     {
       models,
       registry: options.registry,
-      settings: options.settings ?? { contextRetentionMs: 0 },
+      settings: harnessSettings,
       ...(options.env ? { env: options.env } : null),
       onReport: options.onReport,
     },
@@ -427,6 +528,7 @@ export async function openDurableChatEngine(options: {
         provider: string;
         id: string;
         contextWindow: number;
+        maxTokens?: number;
       }): Promise<CakeChatContextStatus> {
         const active = await root.context(BACKGROUND_CONTEXT);
         const boundary = await harness.snapshot(BoundaryDoc, root.id, BACKGROUND_CONTEXT);
@@ -449,7 +551,7 @@ export async function openDurableChatEngine(options: {
             : undefined;
         const status: CakeChatContextStatus = {
           ...durableContextBreakdown(active.messages, handoff),
-          limitTokens: Math.min(configuredLimitTokens, model.contextWindow),
+          limitTokens: durableAdmission(model, configuredLimitTokens).limit,
           configuredLimitTokens,
           modelLimitTokens: model.contextWindow,
         };
