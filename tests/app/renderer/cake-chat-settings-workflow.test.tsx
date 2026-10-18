@@ -9,7 +9,7 @@ import { SettingsPage } from "../../../src/renderer/components/settings-page";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
 afterEach(cleanup);
-it("persists the memory budget and dedicated instructions through the real Settings workflow", async () => {
+it("persists the active context limit, memory budget and dedicated instructions through the real Settings workflow", async () => {
   let revision = 0;
   const save = vi.fn<Client["workspaces"]["setCakeChatPreferences"]>(async (preferences) => {
     const state = { ...defaultApplicationState(), cakeChatPreferences: preferences };
@@ -33,12 +33,25 @@ it("persists the memory budget and dedicated instructions through the real Setti
         expect.anything(),
       ),
     );
+    const limit = screen.getByRole("combobox", { name: "Cake Chat active context limit" });
+    expect(limit).toHaveProperty("value", "300000");
+    await user.selectOptions(limit, "64000");
+    await waitFor(() =>
+      expect(save).toHaveBeenLastCalledWith(
+        { ...defaultCakeChatPreferences(), memoryViewBytes: 10_000, contextLimitTokens: 64_000 },
+        expect.anything(),
+      ),
+    );
     const instructions = screen.getByRole("textbox", { name: "Cake Chat instructions" });
     await user.type(instructions, "Always create worktrees.");
     await user.tab();
     await waitFor(() =>
       expect(save).toHaveBeenLastCalledWith(
-        { instructions: "Always create worktrees.", memoryViewBytes: 10_000 },
+        {
+          instructions: "Always create worktrees.",
+          memoryViewBytes: 10_000,
+          contextLimitTokens: 64_000,
+        },
         expect.anything(),
       ),
     );

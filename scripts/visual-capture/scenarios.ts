@@ -2771,7 +2771,7 @@ const activityWorktreeScenario: VisualCaptureScenario = {
 const contextOutlineScenario: VisualCaptureScenario = {
   name: "context-outline",
   description: "Cake Chat and Project Chat context sources, memory depths and retained originals",
-  states: ["default", "system", "memory", "project-chat"],
+  states: ["default", "system", "memory", "project-chat", "composer", "composer-hover"],
   async seed(paths, theme) {
     await cakeChatScenario.seed(paths, theme);
     return openRequestInspectorFixture(paths);
@@ -2796,6 +2796,14 @@ const contextOutlineScenario: VisualCaptureScenario = {
       page.getByText("Request captured by the local inspection fixture.", { exact: true }),
     ).toBeVisible();
     const trigger = page.getByRole("button", { name: "Browse context", exact: true });
+    if (state === "composer" || state === "composer-hover") {
+      await expect(trigger).toHaveAttribute("data-cache-state", "likely-warm");
+      if (state === "composer-hover") {
+        await trigger.hover();
+        await expect(page.getByRole("tooltip")).toBeVisible();
+      } else await page.mouse.move(1, 1);
+      return;
+    }
     await trigger.click();
     const dialog = page.getByRole("dialog", { name: "Context", exact: true });
     await expect(dialog.getByRole("button", { name: "System prompt", exact: true })).toBeVisible();
@@ -2814,7 +2822,10 @@ const contextOutlineScenario: VisualCaptureScenario = {
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.mouse.move(1, 1);
   },
-  region: (page) => page.locator('[data-slot="context-inspector"]'),
+  region: (page, state) =>
+    state === "composer" || state === "composer-hover"
+      ? page.locator(".workbench-composer")
+      : page.locator('[data-slot="context-inspector"]'),
 };
 
 const queuedPromptsScenario: VisualCaptureScenario = {

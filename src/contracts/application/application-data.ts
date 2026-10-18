@@ -21,6 +21,10 @@ export const UtilityModel = Schema.Struct({
 });
 
 export const CakeChatPreferences = Schema.Struct({
+  /** Absent uses the 300k-token default, capped by the selected model window. */
+  contextLimitTokens: Schema.optionalKey(
+    Schema.Int.check(Schema.isBetween({ minimum: 2_048, maximum: 2_000_000 })),
+  ),
   memoryViewBytes: Schema.Int.check(Schema.isBetween({ minimum: 2_048, maximum: 128_000 })),
   /** Model for history summaries; absent means the utility model. */
   summarizationModel: Schema.optionalKey(CakeModelChoice),

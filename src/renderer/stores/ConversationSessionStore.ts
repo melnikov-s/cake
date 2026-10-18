@@ -50,6 +50,7 @@ type ConfigurationCapabilities = Omit<
 >;
 
 interface ConversationChatCapabilities {
+  contextUsage?: boolean;
   history?: ChatStoreProps["history"];
   commands(): ConversationSnapshot["commands"];
   placeholder(): string;
@@ -200,6 +201,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
   get contextInspectorStore(): ContextInspectorStore {
     return createStore(ContextInspectorStore, {
       sessionId: this.sessionId,
+      status: () => this.model.usage?.cakeChatContext,
       isPending: () => this.props.configuration.deferredNewSession?.() ?? false,
     });
   }
@@ -260,6 +262,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
       focusRequestRevision: () => this.composerStore.draftStore.focusRequestRevision,
       history: capabilities.history,
       usage: () => this.model.usage,
+      contextInspector: capabilities.contextUsage ? this.contextInspectorStore : undefined,
       promptCacheModel: () =>
         this.model.model
           ? { provider: this.model.model.provider, modelId: this.model.model.modelId }

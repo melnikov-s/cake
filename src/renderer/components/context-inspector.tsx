@@ -8,14 +8,19 @@ import { CloseIcon, ContextIcon, ReloadIcon } from "./ui/icons";
 import { Callout } from "./ui/callout";
 import { Button } from "./ui/button";
 import { LoadingSpinner } from "./ui/loading-state";
+import { ContextUsageButton } from "./ui/context-usage-button";
 import { formatEstimatedContextTokens } from "../lib/context-token-estimate";
 
 export const ContextInspector = observer(function ContextInspector({
   store,
+  usage = false,
 }: {
   store: ContextInspectorStore;
+  usage?: boolean;
 }) {
   const trigger = useRef<HTMLButtonElement>(null);
+  const activeTokens = usage ? store.status?.totalTokens : undefined;
+  const headerTokens = activeTokens ?? store.estimatedTokens;
   useEffect(() => () => store.close(), [store]);
   const close = () => {
     store.close();
@@ -23,9 +28,34 @@ export const ContextInspector = observer(function ContextInspector({
   };
   return (
     <>
-      <IconButton ref={trigger} tooltip="Browse context" onClick={() => store.show()}>
-        <ContextIcon />
-      </IconButton>
+      {usage ? (
+        <div className="flex min-w-0 flex-col items-end gap-1">
+          {store.activityLabel ? (
+            <span
+              className="flex items-center gap-1.5 text-[11px] text-muted-foreground"
+              role="status"
+            >
+              <LoadingSpinner label={store.activityLabel} />
+              {store.activityLabel}
+            </span>
+          ) : null}
+          <ContextUsageButton
+            ref={trigger}
+            system={store.status?.systemTokens}
+            memory={store.status?.memoryTokens}
+            messages={store.status?.messageTokens}
+            total={store.status?.totalTokens}
+            limit={store.status?.limitTokens}
+            cacheState={store.cache.state}
+            detail={store.usageTooltip}
+            onClick={() => store.show()}
+          />
+        </div>
+      ) : (
+        <IconButton ref={trigger} tooltip="Browse context" onClick={() => store.show()}>
+          <ContextIcon />
+        </IconButton>
+      )}
       {store.open && (
         <DialogBackdrop
           aria-label="Context"
@@ -45,12 +75,17 @@ export const ContextInspector = observer(function ContextInspector({
             <header className="flex items-center justify-between gap-3 border-b border-border bg-background px-5 py-3">
               <div className="min-w-0">
                 <DialogTitle className="text-[15px] font-medium">Context</DialogTitle>
-                {store.estimatedTokens !== undefined && (
+                {headerTokens !== undefined && (
                   <p
                     className="mt-0.5 text-xs text-muted-foreground"
-                    title="Estimated total for current outline text at roughly 4 characters per token. Includes active summaries; excludes earlier detail and model-specific overhead. Serialized content is counted as text, not image token usage."
+                    title={
+                      activeTokens !== undefined
+                        ? "Estimated active context, including instructions, tools, memory, messages and tool results. Browsing earlier originals does not add them."
+                        : "Estimated total for current outline text at roughly 4 characters per token. Includes active summaries; excludes earlier detail and model-specific overhead. Serialized content is counted as text, not image token usage."
+                    }
                   >
-                    {formatEstimatedContextTokens(store.estimatedTokens)} · current text
+                    {formatEstimatedContextTokens(headerTokens)} ·{" "}
+                    {activeTokens !== undefined ? "active context" : "current text"}
                   </p>
                 )}
               </div>
@@ -71,6 +106,44 @@ export const ContextInspector = observer(function ContextInspector({
               className="min-h-0 overflow-auto px-4 py-3"
               key={store.loading ? "loading" : "content"}
             >
+              {usage && store.status && (
+                <div className="mb-3 border-b border-border px-2 pb-3 text-xs leading-6 text-muted-foreground">
+                  <p className="text-foreground">{store.activityLabel ?? store.nextSend}</p>
+                  <p>
+                    Active ≈{store.status.totalTokens.toLocaleString()} /{" "}
+                    {store.status.limitTokens.toLocaleString()} tokens.
+                  </p>
+                  <p>
+                    Sys ≈{store.status.systemTokens.toLocaleString()} · Mem ≈
+                    {store.status.memoryTokens.toLocaleString()} · Msgs ≈
+                    {store.status.messageTokens.toLocaleString()}
+                  </p>
+                  <p>
+                    Baseline (system + memory): ≈
+                    {(store.status.systemTokens + store.status.memoryTokens).toLocaleString()}{" "}
+                    tokens.
+                  </p>
+                  <p>
+                    Limit: the smaller of Settings (
+                    {store.status.configuredLimitTokens.toLocaleString()}) and model window (
+                    {store.status.modelLimitTokens.toLocaleString()}).
+                  </p>
+                  <p>
+                    Cache {store.cache.state.replaceAll("-", " ")}. {store.cache.detail}
+                  </p>
+                  {store.status.lastSummary && (
+                    <p>
+                      Last memory update: ≈{store.status.lastSummary.beforeTokens.toLocaleString()}{" "}
+                      → ≈{store.status.lastSummary.afterTokens.toLocaleString()} tokens ·{" "}
+                      {store.status.lastSummary.reason.replaceAll("-", " ")}.
+                    </p>
+                  )}
+                  <p>
+                    Browsing earlier originals does not add them to the model context. Summaries can
+                    omit detail.
+                  </p>
+                </div>
+              )}
               {store.loading && <LoadingSpinner label="Loading context" />}
               {store.error && (
                 <Callout variant="error" role="alert">

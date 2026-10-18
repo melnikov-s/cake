@@ -28,6 +28,10 @@ export class CakeChatSettingsStore extends Store {
     if (!this.saving) this.preferences = this.persisted;
   }
 
+  setContextLimit(tokens: number) {
+    return this.save({ ...this.preferences, contextLimitTokens: tokens });
+  }
+
   setBudget(bytes: number) {
     return this.save({ ...this.preferences, memoryViewBytes: bytes });
   }

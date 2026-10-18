@@ -38,7 +38,8 @@ import {
   promptText,
 } from "../../../../src/services/pi/runtime/session-projection";
 import { subagentCompletionMessage } from "../../../../src/services/pi/runtime/cake-session-runtime";
-import { durableAnswer, durableModels } from "../../../fixtures/durable-chat";
+import { durableAnswer, durableModel, durableModels } from "../../../fixtures/durable-chat";
+import { cakeChatCacheFreshness } from "../../../../src/contracts/cake-chats/context-policy";
 import {
   durableInputResponse,
   previousDurableResponseMode,
@@ -58,10 +59,13 @@ async function fixture(
   keepRecentTokens = 20_000,
   storage: Storage = new MemoryStorage(),
   onZoom?: (parts: readonly UiPart[]) => Promise<void>,
+  retainWarm = false,
 ) {
   const f = durableModels(answer);
   const summarize = vi.fn(async () => "talk: exact details remain available through zoom");
   let budget = 4_000;
+  let clock = Date.now();
+  let contextLimit = 300_000;
   const registry = createRegistry();
   const zoom = defineTool({
     name: "zoom",
@@ -89,13 +93,19 @@ async function fixture(
       tools: [zoom],
     },
     memory: { budget: () => budget, summarize },
+    contextLimitTokens: () => contextLimit,
+    now: () => clock,
     settings: { contextRetentionMs: 0, compaction: { enabled: false, keepRecentTokens } },
     onChanged: vi.fn(),
     onReport: vi.fn(),
   });
   cleanup.push(() => engine.close());
-  const submit = (text: string, requestId: string) =>
-    engine.root.submit({ type: "input", content: text, requestId }, BACKGROUND_CONTEXT);
+  const submit = (text: string, requestId: string) => {
+    // Existing memory/provenance cases exercise cold-cache boundaries; warm
+    // retention cases below advance the injected request clock explicitly.
+    if (!retainWarm) clock += 6 * 60_000;
+    return engine.root.submit({ type: "input", content: text, requestId }, BACKGROUND_CONTEXT);
+  };
   const send = async (text: string, requestId: string) => {
     const input = await submit(text, requestId);
     return input.wait(BACKGROUND_CONTEXT);
@@ -106,6 +116,12 @@ async function fixture(
     summarize,
     submit,
     send,
+    advance: (ms: number) => {
+      clock += ms;
+    },
+    limit: (tokens: number) => {
+      contextLimit = tokens;
+    },
     view: () => engine.index(new AbortController().signal),
     zoom: (id: number, n: number) => engine.memory.zoom(id, n, new AbortController().signal),
     budget: (value: number) => {
@@ -402,7 +418,7 @@ it.each(["complete", "error", "aborted"] as const)(
   },
 );
 
-it("refreshes independent runs, retains zoom originals through tool rounds, and keeps instructions outside memory", async () => {
+it("refreshes expired-cache independent runs, retains zoom originals through tool rounds, and keeps instructions outside memory", async () => {
   const original = `ORIGINAL_DETAIL ${"verbatim words ".repeat(100)}`;
   const f = await fixture((_request, index) =>
     index === 1
@@ -499,7 +515,7 @@ it("keeps Cake Chat's canonical instructions across compaction and ordinary run 
   expect(await systemCount()).toBe(count + 1);
 });
 
-it("stops a turn waiting behind background memory indexing without withdrawing queued input", async () => {
+it("stops memory preparation without withdrawing queued input", async () => {
   const f = await fixture();
   await f.send("Hello", "first");
   const summary = Promise.withResolvers<string>();
@@ -507,10 +523,10 @@ it("stops a turn waiting behind background memory indexing without withdrawing q
   let stop: Promise<void> | undefined;
   try {
     await f.send("LONG_DETAIL ".repeat(100), "long");
-    await vi.waitFor(() => expect(f.summarize).toHaveBeenCalled());
     const active = await f.submit("Waiting for memory", "waiting");
-    // Request preparation has parked its fresh head but cannot reach the provider
-    // while the preceding background summary holds the serial indexing worker.
+    await vi.waitFor(() => expect(f.summarize).toHaveBeenCalled());
+    // Request preparation parks its fresh head before awaiting the summarizer.
+    // No background summary rewrites or indexes the preceding warm context.
     await vi.waitFor(async () => {
       const context = await f.engine.root.context(BACKGROUND_CONTEXT);
       expect(JSON.stringify(context.messages)).toContain("Waiting for memory");
@@ -742,4 +758,127 @@ it("reads the previous mode from queued input ahead of committed history", async
     ).responseMode,
   ).toBe("text");
   expect(durableInputPresentation("plain synthetic text").responseMode).toBeUndefined();
+});
+
+it("retains independent warm messages verbatim without even background summarization, then rebuilds at assumed five-minute expiry", async () => {
+  const f = await fixture(undefined, 20_000, new MemoryStorage(), undefined, true);
+  const original = "WARM_ORIGINAL ".repeat(150);
+  await f.send(original, "first");
+  await f.send("A warm independent follow-up", "second");
+  expect(f.summarize).not.toHaveBeenCalled();
+  expect(JSON.stringify(f.requests[1])).toContain(original);
+  const head = (await f.engine.root.context(BACKGROUND_CONTEXT)).head?.id;
+  const status = await f.engine.contextStatus(durableModel);
+  expect(status.totalTokens).toBe(status.systemTokens + status.memoryTokens + status.messageTokens);
+  expect(cakeChatCacheFreshness(status.cache, status.cache!.requestedAt)).toMatchObject({
+    state: "likely-warm",
+    detail: expect.stringContaining("Assumed 5-minute"),
+  });
+  f.advance(5 * 60_000);
+  await f.send("After expiry", "third");
+  expect(f.summarize).toHaveBeenCalled();
+  expect(JSON.stringify(f.requests[2])).not.toContain(original);
+  expect((await f.engine.root.context(BACKGROUND_CONTEXT)).head?.id).not.toBe(head);
+  expect((await f.engine.contextStatus(durableModel)).lastSummary?.reason).toBe("cache-cold");
+  expect((await f.zoom(0, 1)).text).toContain(original);
+});
+
+it.each(["settings", "model"] as const)(
+  "forces summarization at the smaller %s limit even while cache is warm",
+  async (which) => {
+    const f = await fixture(
+      () => durableAnswer("LONG_ANSWER ".repeat(400)),
+      20_000,
+      new MemoryStorage(),
+      undefined,
+      true,
+    );
+    const model = { ...durableModel, contextWindow: which === "model" ? 600 : 200_000 };
+    vi.mocked(f.models.getModel).mockReturnValue(model);
+    f.limit(which === "settings" ? 600 : 1_000);
+    await f.send("First small input", "first");
+    const status = await f.engine.contextStatus(model);
+    expect(status.limitTokens).toBe(600);
+    expect(cakeChatCacheFreshness(status.cache, status.cache!.requestedAt).state).toBe(
+      "likely-warm",
+    );
+    await f.send("Next", "second");
+    expect(f.summarize).toHaveBeenCalled();
+    expect((await f.engine.contextStatus(model)).lastSummary).toMatchObject({
+      reason: "limit",
+      afterTokens: expect.any(Number),
+    });
+    expect(JSON.stringify(f.requests[1])).not.toContain("LONG_ANSWER ".repeat(400));
+  },
+);
+
+it("persists relevant request time across reopen without resetting cache freshness or compacting just for a restart", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "cake-context-cache-"));
+  cleanup.unshift(() => rm(directory, { recursive: true, force: true }));
+  const database = join(directory, "cake-chat.sqlite");
+  const first = await fixture(
+    undefined,
+    20_000,
+    await openNodeSqliteStorage(database),
+    undefined,
+    true,
+  );
+  const original = "PERSISTED_ORIGINAL ".repeat(100);
+  await first.send(original, "original");
+  const request = (await first.engine.contextStatus(durableModel)).cache;
+  await first.engine.close();
+  cleanup.pop();
+  const reopened = await fixture(
+    undefined,
+    20_000,
+    await openNodeSqliteStorage(database),
+    undefined,
+    true,
+  );
+  expect((await reopened.engine.contextStatus(durableModel)).cache).toEqual(request);
+  await reopened.send("Still warm after reopen", "warm");
+  expect(reopened.summarize).not.toHaveBeenCalled();
+  expect(JSON.stringify(reopened.requests[0])).toContain(original);
+  reopened.advance(6 * 60_000);
+  await reopened.send("Now cold", "cold");
+  expect(reopened.summarize).toHaveBeenCalled();
+  expect(JSON.stringify(reopened.requests[1])).not.toContain(original);
+});
+
+it("treats a changed model as uncertain instead of reusing another model's freshness", async () => {
+  const f = await fixture(undefined, 20_000, new MemoryStorage(), undefined, true);
+  await f.send("MODEL_SPECIFIC_DETAIL ".repeat(80), "first");
+  const changed = { ...durableModel, id: "other-model" };
+  vi.mocked(f.models.getModel).mockReturnValue(changed);
+  await f.send("Continue with another model", "second");
+  expect(f.summarize).toHaveBeenCalled();
+  expect((await f.engine.contextStatus(changed)).lastSummary?.reason).toBe("cache-unknown");
+});
+
+it.each(["instructions", "tools"] as const)(
+  "invalidates warm-cache evidence after changing %s",
+  async (change) => {
+    const f = await fixture(undefined, 20_000, new MemoryStorage(), undefined, true);
+    await f.send("Original detail ".repeat(120), "first");
+    expect(f.summarize).not.toHaveBeenCalled();
+    await f.engine.root.configure(
+      change === "instructions" ? { instructions: "Changed system instructions" } : { tools: [] },
+      BACKGROUND_CONTEXT,
+    );
+    await f.send("After the prefix changed", "second");
+    expect(f.summarize).toHaveBeenCalled();
+    expect((await f.engine.contextStatus(durableModel)).lastSummary?.reason).toBe("cache-unknown");
+  },
+);
+
+it("does not send an irreducibly oversized input or start summarization while a warm conversation is idle", async () => {
+  const f = await fixture(undefined, 20_000, new MemoryStorage(), undefined, true);
+  f.limit(512);
+  const result = await f.send("OVERSIZED ".repeat(1000), "huge");
+  expect(result).toMatchObject({ status: "unanswered", reason: "model_error" });
+  expect(f.requests).toHaveLength(0);
+  expect(f.summarize).not.toHaveBeenCalled();
+  expect(JSON.stringify((await readDurableOriginalPage(f.engine.root)).parts)).toContain(
+    "OVERSIZED",
+  );
 });

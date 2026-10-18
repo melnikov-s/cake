@@ -65,6 +65,7 @@ async function fixture() {
   const providerSessions: Array<string | undefined> = [];
   const started = Deferred.makeUnsafe<void>();
   let hold = false;
+  let cached = false;
   const finishes: Array<() => void> = [];
   let answer: (index: number) => ReturnType<typeof durableAnswer> = () => durableAnswer("Done");
   const streamSimple: Provider["streamSimple"] = (selected, request, options) => {
@@ -79,6 +80,8 @@ async function fixture() {
       model: selected.id,
       timestamp: Date.now(),
     };
+    if (cached)
+      message.usage = { ...message.usage, input: 12_000, cacheRead: 8_000, totalTokens: 20_000 };
     const finish = () =>
       stream.push({
         type: "done",
@@ -239,6 +242,9 @@ async function fixture() {
     started,
     finishes,
     open,
+    warmCache: () => {
+      cached = true;
+    },
     hold: (value: boolean) => {
       hold = value;
     },
@@ -425,7 +431,6 @@ it("keeps attachment bytes out of provider input, originals, zoom and future mem
     ids.first,
   );
   await first.runtime.compact("Retain task references");
-  expect(f.summarize).toHaveBeenCalled();
   await first.close();
   const before = f.requests.length;
   f.answer((index) =>
@@ -437,6 +442,7 @@ it("keeps attachment bytes out of provider input, originals, zoom and future mem
   );
   const reopened = await f.open();
   await reopened.runtime.prompt("Continue coordination", "prompt", [], false, ids.second);
+  expect(f.summarize).toHaveBeenCalled();
   // zoom reads the exact original, not merely the currently compacted provider view.
   const history = await reopened.runtime.snapshot();
   expect(f.requests.length).toBeGreaterThanOrEqual(before + 2);
@@ -864,8 +870,9 @@ it("restart resumes a placed run and a linked worker continuation without resubm
   ).toHaveLength(1);
 });
 
-it("cancels only queued inputs and steering continues the existing run without a fresh memory reset", async () => {
+it("cancels only queued inputs and warm-cache steering continues without a fresh memory reset", async () => {
   const f = await fixture();
+  f.warmCache();
   f.hold(true);
   const { runtime } = await f.open();
   const active = runtime.prompt("Original question", "prompt", [], false, ids.first);
@@ -889,7 +896,6 @@ it("cancels only queued inputs and steering continues the existing run without a
   const text = JSON.stringify(f.requests[1]);
   expect(text).toContain("Original question");
   expect(text).toContain("Redirect this run");
-  expect(text).toContain("<chat>\\n\\n</chat>");
   expect(text).not.toContain("user: Original question");
   await expect(runtime.removeQueuedMessage(`queued-${ids.third}`)).rejects.toThrow();
 });
@@ -904,10 +910,10 @@ it("closing during slow summarization preserves the accepted request checkpoint 
   });
   const first = await f.open();
   await first.runtime.prompt("LARGE_ORIGINAL ".repeat(100), "prompt", [], false, ids.first);
-  await Effect.runPromise(Deferred.await(summaryStarted));
   const pending = first.runtime
     .prompt("Accepted before slow preparation", "prompt", [], false, ids.second)
     .catch((error: unknown) => error);
+  await Effect.runPromise(Deferred.await(summaryStarted));
   await f.waitSnapshot(first.runtime, (snapshot) =>
     snapshot.parts.some(
       (part) => part.kind === "text" && part.text === "Accepted before slow preparation",

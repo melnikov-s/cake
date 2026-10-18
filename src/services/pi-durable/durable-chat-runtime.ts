@@ -332,7 +332,9 @@ export async function createDurableCakeChatRuntime(
       return settings.getRetrySettings();
     },
     get compaction() {
-      return settings.getCompactionSettings(selected);
+      // Cake performs blocking memory preparation at its effective token limit;
+      // SDK background compaction would otherwise rewrite a warm prefix early.
+      return { ...settings.getCompactionSettings(selected), enabled: false };
     },
   };
   const engine = await openDurableChatEngine({
@@ -347,6 +349,7 @@ export async function createDurableCakeChatRuntime(
       tools,
       instructions: instructions(),
     },
+    contextLimitTokens: () => preferences.preferences().contextLimitTokens ?? 300_000,
     memory: {
       budget: () => preferences.preferences().memoryViewBytes,
       summarize: (input) =>
@@ -490,7 +493,7 @@ export async function createDurableCakeChatRuntime(
     async snapshot() {
       // One Session-line read prevents a completed original and its stale live
       // preview from appearing together, or model/inbox facts from different commits.
-      return engine.root.commit(async (tx) => {
+      const snapshot = await engine.root.commit(async (tx) => {
         const page = await readDurableOriginalPage({
           entries: (query, limit, cursor) =>
             tx.scanEntries({ ...query, conversationId: engine.root.id }, limit, cursor),
@@ -586,12 +589,21 @@ export async function createDurableCakeChatRuntime(
           piSettings: projectPiSettings(settings),
           diagnostics: [...diagnostics],
           commands: commands.catalog(),
-          usage: { tokens, cost: sums.reduce((sum, use) => sum + use.cost.total, 0) },
+          usage: {
+            tokens,
+            cost: sums.reduce((sum, use) => sum + use.cost.total, 0),
+          },
           compatibility: commands.compatibility(),
           extensionUi: { statuses: [] },
           tree: [],
         } satisfies ConversationSnapshot;
       }, BACKGROUND_CONTEXT);
+      // Context reads acquire the Session line themselves: never nest one in
+      // the transcript transaction. This accounting is an advisory projection.
+      return {
+        ...snapshot,
+        usage: { ...snapshot.usage, cakeChatContext: await engine.contextStatus(selected) },
+      };
     },
     async prompt(
       text,

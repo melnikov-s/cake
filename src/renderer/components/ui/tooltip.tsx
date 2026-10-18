@@ -29,11 +29,13 @@ export function TooltipBubble({
   anchor,
   placement = "below",
   wrap = false,
+  className,
 }: {
   label: string;
   anchor: HTMLElement;
   placement?: "above" | "below";
   wrap?: boolean;
+  className?: string;
 }) {
   const bubbleRef = useRef<HTMLSpanElement>(null);
   const [position, setPosition] = useState<{ top: number; left: number }>();
@@ -66,6 +68,7 @@ export function TooltipBubble({
       className={cn(
         "pointer-events-none fixed z-[1000] max-w-[280px] overflow-hidden rounded-md bg-primary px-2 py-1 text-[11px] font-medium leading-tight text-primary-foreground shadow-md select-none",
         wrap ? "whitespace-normal" : "truncate whitespace-nowrap",
+        className,
       )}
       style={position ? { top: position.top, left: position.left } : { visibility: "hidden" }}
     >

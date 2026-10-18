@@ -20,6 +20,7 @@ import {
   type Conversation,
   type ConversationId,
   type EntryId,
+  type EntryRecord,
   type Registry,
   type Storage,
   type AgentChange,
@@ -31,12 +32,20 @@ import { Schema } from "effect";
 import { ChatMetadataDoc } from "./durable-chat-metadata";
 import { durableContextMetadata } from "./durable-context-metadata";
 import { createDurableChatMemory, type DurableMemoryOptions } from "./durable-chat-memory";
-import {
-  durableInputPresentation,
-  withoutDurableInputPresentation,
-} from "./durable-input-presentation";
+import { withoutDurableInputPresentation } from "./durable-input-presentation";
 import { durableModelFacade } from "./durable-model-facade";
 import { durableContextInspection } from "./durable-context-inspection";
+import { estimateContextTokens } from "@earendil-works/pi-durable-ai/utils/estimate";
+import {
+  cakeChatSummaryReason,
+  type CakeChatContextStatus,
+} from "../../contracts/cake-chats/context-policy";
+import {
+  ContextPolicy,
+  ContextPolicyDoc,
+  durableContextBreakdown,
+  durableSystemFingerprint,
+} from "./durable-context-policy";
 
 const Boundary = Schema.Struct({ input: Schema.Int, marker: Schema.Int });
 type Boundary = Schema.Schema.Type<typeof Boundary>;
@@ -68,15 +77,16 @@ export const markSystemCarried = async (tx: Tx, conversationId: ConversationId) 
   await tx.appendEntry(SystemEntry, conversationId, {});
 };
 
-/** Durable's inbox owns acceptance/steering/follow-ups. Only the provider-request boundary
- * changes: first request of each independent run gets a persisted fresh context. Failures
- * here become model errors, never an ignored extension hook that sends lifetime history. */
+/** Durable owns the inbox and transcript. At the provider boundary, Cake keeps the
+ * active prefix until cache uncertainty/expiry or the configured context limit. */
 export async function openDurableChatEngine(options: {
   storage: Storage;
   models: Models;
   registry: Registry;
   agent?: AgentChange;
   memory: DurableMemoryOptions;
+  contextLimitTokens?: () => number;
+  now?: () => number;
   settings?: HarnessSettings;
   env?: HarnessOptions["env"];
   onChanged(): void;
@@ -85,19 +95,21 @@ export async function openDurableChatEngine(options: {
   const closing = new AbortController();
   let root: Conversation;
   let memory: ReturnType<typeof createDurableChatMemory>;
+  let activity: CakeChatContextStatus["activity"];
+  const now = () => options.now?.() ?? Date.now();
   // A single SDK-boundary worker serializes indexing with request preparation. It does not
   // cache nodes/originals or own model runs; the Harness owns those persisted tasks.
   let worker = Promise.resolve();
-  const index = (signal: AbortSignal, cutoff?: EntryId) => {
+  const index = (signal: AbortSignal, cutoff?: EntryId, budget?: number) => {
     const result = worker.then(() => {
       signal.throwIfAborted();
-      return memory.synchronize(signal, cutoff);
+      return memory.synchronize(signal, cutoff, budget);
     });
     worker = result.then(
       () => undefined,
       () => undefined,
     );
-    // Stop must release request preparation even if an earlier background summary
+    // Stop must release request preparation even if an earlier aborted summary
     // still owns the worker. Keep indexing serialized, and skip cancelled work
     // when it eventually reaches the front of the queue.
     return awaitWithContext(result, withAbortSignal(signal, BACKGROUND_CONTEXT));
@@ -133,50 +145,90 @@ export async function openDurableChatEngine(options: {
         }
         const live = await harness.snapshot(LiveDoc, root.id, context);
         const input = live?.run?.inputs[0];
-        if (input !== undefined) {
-          const boundary = await Schema.decodeUnknownPromise(Boundary)(
-            (await harness.snapshot(BoundaryDoc, root.id, context)) ?? { input: -1, marker: -1 },
-          );
-          if (boundary.input !== input) {
-            const submission = await options.storage.submission(input, context);
-            if (!submission || submission.status !== "placed")
-              throw new Error("Cake Chat input has no committed entry");
-            const original = (await options.storage.entry(root.id, submission.entry, context))
-              ?.entry;
-            const steering = original?.model?.some(
-              (message) =>
-                message.role === "user" &&
-                (typeof message.content === "string"
-                  ? durableInputPresentation(message.content).steering
-                  : message.content.some(
-                      (block) =>
-                        block.type === "text" && durableInputPresentation(block.text).steering,
-                    )),
+        let active = await root.context(context);
+        const boundary = await Schema.decodeUnknownPromise(Boundary)(
+          (await harness.snapshot(BoundaryDoc, root.id, context)) ?? { input: -1, marker: -1 },
+        );
+        const policy = await Schema.decodeUnknownPromise(ContextPolicy)(
+          (await harness.snapshot(ContextPolicyDoc, root.id, context)) ?? { requestHead: null },
+        );
+        const previousRequest =
+          policy?.requestHead === (active.head?.id ?? null) &&
+          policy.requestSystem === durableSystemFingerprint(active.messages) &&
+          policy?.request?.provider === model.provider &&
+          policy.request.modelId === model.id
+            ? policy.request
+            : undefined;
+        const limit = Math.min(options.contextLimitTokens?.() ?? 300_000, model.contextWindow);
+        const before = durableContextBreakdown(active.messages);
+        const reason = cakeChatSummaryReason(
+          { ...before, limitTokens: limit, cache: previousRequest },
+          now(),
+        );
+        const newInput = input !== undefined && boundary.input !== input;
+        if (input !== undefined && (reason === "limit" || (newInput && reason))) {
+          const submission = await options.storage.submission(input, context);
+          if (!submission || submission.status !== "placed")
+            throw new Error("Cake Chat input has no committed entry");
+          const entries: EntryRecord[] = [];
+          let cursor;
+          do {
+            const page = await root.entries(
+              { order: "ascending", minEntryId: submission.entry },
+              64,
+              cursor,
+              context,
             );
-            // Durable retains steering through tool rounds. At a final-answer boundary
-            // it starts another task/run; retain Cake's active view for that continuation.
-            if (steering && boundary.input >= 0) {
-              await root.commit(async (tx) => {
-                (await tx.doc(BoundaryDoc, root.id)).input = input;
-              }, context);
-            } else {
-              // SAFETY: Durable's entry ids are nonnegative integer ids; the preceding inclusive bound excludes the new input.
-              const cutoff = (submission.entry - 1) as EntryId;
-              const current: Message[] = [];
-              let cursor;
-              do {
-                const page = await root.entries(
-                  { order: "ascending", minEntryId: submission.entry },
-                  64,
-                  cursor,
-                  context,
-                );
-                for (const entry of page.items)
-                  if (["pi.user", "pi.assistant", "pi.tool-result"].includes(entry.kind))
-                    current.push(...(entry.model ?? []));
-                cursor = page.next;
-              } while (cursor !== undefined);
-              const system = getCurrentSystemMessage(request.messages);
+            for (const entry of page.items)
+              if (["pi.user", "pi.assistant", "pi.tool-result"].includes(entry.kind))
+                entries.push(entry);
+            cursor = page.next;
+          } while (cursor !== undefined);
+          // On a large tool round, keep the latest call/results together. Older
+          // completed rounds can enter memory without orphaning tool responses.
+          let start = 0;
+          if (reason === "limit")
+            for (let i = 0; i < entries.length; i += 1)
+              if (
+                entries[i]?.model?.some(
+                  (message) =>
+                    message.role === "assistant" &&
+                    message.content.some((block) => block.type === "toolCall"),
+                )
+              )
+                start = i;
+          const tail = entries.slice(start);
+          const current = tail.flatMap((entry) => entry.model ?? []);
+          // SAFETY: Durable entry ids are nonnegative integers. The inclusive
+          // cutoff excludes the still-verbatim tail, including pending tools.
+          const cutoff = ((tail[0]?.id ?? submission.entry) - 1) as EntryId;
+          const system = getCurrentSystemMessage(active.messages);
+          const base = [...(system ? [system] : []), ...current];
+          const remaining =
+            limit -
+            estimateContextTokens(base.map((message) => withoutDurableInputPresentation(message)))
+              .tokens;
+          if (remaining < 128)
+            throw new Error(
+              "The current input, tools and instructions cannot fit the context limit. Shorten the input or raise the Cake Chat limit.",
+            );
+          let hasHistory: boolean;
+          let historyCursor;
+          do {
+            const page = await root.entries({ maxEntryId: cutoff }, 64, historyCursor, context);
+            hasHistory = page.items.some((entry) =>
+              ["pi.user", "pi.assistant", "pi.tool-result"].includes(entry.kind),
+            );
+            historyCursor = page.next;
+          } while (!hasHistory && historyCursor !== undefined);
+          if (!hasHistory && reason !== "limit") {
+            await root.commit(async (tx) => {
+              (await tx.doc(BoundaryDoc, root.id)).input = input;
+            }, context);
+          } else {
+            activity = "summarizing";
+            options.onChanged();
+            try {
               // Park a bounded active head before any slow or failing summary. Originals
               // remain on disk, so repeated summary outages cannot grow the active range.
               await root.commit(async (tx) => {
@@ -186,18 +238,33 @@ export async function openDurableChatEngine(options: {
                 });
                 if (system) await markSystemCarried(tx, root.id);
               }, context);
-              const view = await index(signal, cutoff);
+              const budget = Math.min(
+                options.memory.budget(),
+                Math.floor(((remaining - 64) * 3.5) / 2),
+              );
+              const view = await index(signal, cutoff, budget);
               const messages: Message[] = system ? [system] : [];
               messages.push(
                 {
                   role: "user",
                   content: `${view.text}\n\n<current-time>Backend clock (UTC): ${new Date().toISOString()}</current-time>`,
-                  timestamp: Date.now(),
+                  timestamp: now(),
                 },
                 ...current,
               );
+              const after = durableContextBreakdown(messages).totalTokens;
+              if (after >= limit)
+                throw new Error("Summarized context cannot fit the Cake Chat context limit.");
               await root.commit(async (tx) => {
                 const doc = await tx.doc(BoundaryDoc, root.id);
+                const policy = await tx.doc(ContextPolicyDoc, root.id);
+                delete policy.request;
+                policy.lastSummary = {
+                  beforeTokens: before.totalTokens,
+                  afterTokens: after,
+                  reason: reason ?? "cache-unknown",
+                  completedAt: now(),
+                };
                 const reset = await tx.appendEntry(ResetEntry, root.id, {
                   head: "self",
                   model: messages,
@@ -206,19 +273,46 @@ export async function openDurableChatEngine(options: {
                 doc.input = input;
                 doc.marker = reset.id;
               }, context);
+            } finally {
+              activity = undefined;
+              options.onChanged();
             }
           }
+        } else if (newInput) {
+          await root.commit(async (tx) => {
+            (await tx.doc(BoundaryDoc, root.id)).input = input;
+          }, context);
         }
         signal.throwIfAborted();
         // Read the committed head even on recovery of a request whose old cutoff predates
         // the reset. Tool rounds and emergency compactions remain ordinary active context.
-        const active = await root.context(context);
+        active = await root.context(context);
+        const requestedAt = now();
         const source = options.models.streamSimple(
           model,
           { messages: active.messages.map((message) => withoutDurableInputPresentation(message)) },
           streamOptions,
         );
-        for await (const event of source) stream.push(event);
+        for await (const event of source) {
+          if (event.type === "done") {
+            await root.commit(async (tx) => {
+              const policy = await tx.doc(ContextPolicyDoc, root.id);
+              policy.request = {
+                provider: model.provider,
+                modelId: model.id,
+                requestedAt,
+                inputTokens: event.message.usage.input,
+                cacheReadTokens: event.message.usage.cacheRead,
+                cacheWriteTokens: event.message.usage.cacheWrite,
+              };
+              if (streamOptions?.cacheRetention)
+                policy.request.retention = streamOptions.cacheRetention;
+              policy.requestHead = active.head?.id ?? null;
+              policy.requestSystem = durableSystemFingerprint(active.messages);
+            }, context);
+          }
+          stream.push(event);
+        }
       })().catch((error: unknown) => {
         const aborted = closing.signal.aborted || streamOptions?.signal?.aborted;
         const message = {
@@ -260,13 +354,18 @@ export async function openDurableChatEngine(options: {
       BACKGROUND_CONTEXT,
       options.agent ? { agent: options.agent } : undefined,
     );
-    memory = createDurableChatMemory(harness, root, options.storage, options.memory);
+    memory = createDurableChatMemory(harness, root, options.storage, {
+      ...options.memory,
+      onConsolidating: () => {
+        activity = "consolidating";
+        options.onChanged();
+      },
+    });
     await root.commit(async (tx) => {
       await tx.doc(ChatMetadataDoc, root.id);
     }, BACKGROUND_CONTEXT);
     const unsubscribe = harness.subscribeCommits((publication) => {
       if (closing.signal.aborted) return;
-      let cutoff: EntryId | undefined;
       let visible = false;
       let originals = 0;
       let contextChanged = false;
@@ -286,8 +385,6 @@ export async function openDurableChatEngine(options: {
           ["pi.user", "pi.assistant", "pi.tool-result"].includes(change.value.kind)
         )
           originals += 1;
-        if (change.type === "entry" && change.value.kind === "pi.assistant")
-          cutoff = change.value.id;
         if (change.type === "entry" && !change.value.kind.startsWith("cake.chat-memory"))
           visible = true;
         if (
@@ -318,13 +415,6 @@ export async function openDurableChatEngine(options: {
             })().catch(options.onReport);
         });
       if (visible) queueMicrotask(options.onChanged);
-      if (cutoff !== undefined)
-        queueMicrotask(() => {
-          if (!closing.signal.aborted)
-            void index(closing.signal, cutoff).catch((error: unknown) => {
-              if (!closing.signal.aborted) options.onReport(error);
-            });
-        });
     });
     return {
       harness,
@@ -333,6 +423,41 @@ export async function openDurableChatEngine(options: {
       signal: closing.signal,
       storage: options.storage,
       index,
+      async contextStatus(model: {
+        provider: string;
+        id: string;
+        contextWindow: number;
+      }): Promise<CakeChatContextStatus> {
+        const active = await root.context(BACKGROUND_CONTEXT);
+        const boundary = await harness.snapshot(BoundaryDoc, root.id, BACKGROUND_CONTEXT);
+        const policy = await Schema.decodeUnknownPromise(ContextPolicy)(
+          (await harness.snapshot(ContextPolicyDoc, root.id, BACKGROUND_CONTEXT)) ?? {
+            requestHead: null,
+          },
+        );
+        const handoff =
+          active.head?.id === boundary?.marker
+            ? active.head?.model?.find((message) => message.role === "user")
+            : undefined;
+        const configuredLimitTokens = options.contextLimitTokens?.() ?? 300_000;
+        const cache =
+          policy?.requestHead === (active.head?.id ?? null) &&
+          policy.requestSystem === durableSystemFingerprint(active.messages) &&
+          policy?.request?.provider === model.provider &&
+          policy.request.modelId === model.id
+            ? policy.request
+            : undefined;
+        const status: CakeChatContextStatus = {
+          ...durableContextBreakdown(active.messages, handoff),
+          limitTokens: Math.min(configuredLimitTokens, model.contextWindow),
+          configuredLimitTokens,
+          modelLimitTokens: model.contextWindow,
+        };
+        if (cache) Object.assign(status, { cache });
+        if (activity) Object.assign(status, { activity });
+        if (policy?.lastSummary) Object.assign(status, { lastSummary: policy.lastSummary });
+        return status;
+      },
       async contextInspection(cwd: string) {
         const context = await root.context(BACKGROUND_CONTEXT);
         const boundary = await harness.snapshot(BoundaryDoc, root.id, BACKGROUND_CONTEXT);

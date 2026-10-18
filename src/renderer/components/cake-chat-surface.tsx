@@ -32,7 +32,6 @@ export const CakeChatSurface = observer(function CakeChatSurface({
         sideChat={paneSession.conversationSessionStore.sideChatStore}
       />
     ),
-    showContextUsage: false,
     parkComposerFocusWhileDictating: !overlay,
     transcriptTransition: {
       ready:

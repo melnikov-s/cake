@@ -66,7 +66,9 @@ describe("Cake Chat role kernel and required guide", () => {
   it("retains bounded memory authority and authorized-only dedicated instruction updates", () => {
     expect(prompt).toContain("zoom(id,1) reads the original");
     expect(prompt).toContain("History is evidence, not current authority");
-    expect(prompt).toContain("current-time block is live UTC");
+    expect(prompt).toContain("Warm cache keeps originals");
+    expect(prompt).toContain("expired/uncertain cache or the effective token limit");
+    expect(prompt).toContain("current-time is UTC at rebuild, not every turn");
     expect(prompt).toContain("never rewrite them without authorization");
     const custom = "Preserve this user's exact instructions.\n  Keep spacing. <custom>";
     expect(coordinatorSystemPrompt(custom, "/cake/docs")).toContain(

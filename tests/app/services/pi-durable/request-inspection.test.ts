@@ -290,8 +290,7 @@ it("captures every real Durable tool-loop call after bounded-head reset and rema
     expect(requests).toHaveLength(2);
     const first = history.get(requests[0]!.id)!;
     expect(first.raw).toBe(sent[0]);
-    expect(first.raw).toContain("<chat>");
-    expect(first.raw).toContain("<current-time>");
+    expect(first.raw).toContain("First turn");
     expect(first.raw).toContain("CURRENT_INSTRUCTIONS");
     expect(JSON.parse(first.raw!).tools[0].function.name).toBe("cake");
     expect(history.get(requests[1]!.id)!.raw).toBe(sent[1]);
@@ -304,6 +303,8 @@ it("captures every real Durable tool-loop call after bounded-head reset and rema
       BACKGROUND_CONTEXT,
     );
     await next.wait(BACKGROUND_CONTEXT);
+    expect(sent.at(-1)).toContain("<chat>");
+    expect(sent.at(-1)).toContain("<current-time>");
     expect(history.get(requests[0]!.id)).toEqual(first);
     expect(history.list().entries.filter((entry) => entry.boundary === "http-body")).toHaveLength(
       sent.length,

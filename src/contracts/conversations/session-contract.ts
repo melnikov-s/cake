@@ -1,5 +1,6 @@
 import { Effect, Schema } from "effect";
 import type { SessionContextMetadata } from "./session-context-metadata";
+import { CakeChatContextStatus } from "../cake-chats/context-policy";
 import { InterviewRecord, InterviewResult } from "../interviews/interview";
 import { ArtifactStableRef } from "../artifacts/artifact-lineage";
 import {
@@ -463,6 +464,7 @@ export const modelOptionSchema = Schema.Struct({
 });
 
 export const sessionUsageSchema = Schema.Struct({
+  cakeChatContext: Schema.optional(CakeChatContextStatus),
   tokens: Schema.Struct({
     input: nonNegativeInt,
     output: nonNegativeInt,

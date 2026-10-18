@@ -9,6 +9,7 @@ import {
 import { observer } from "r-state-tree/react";
 import { cn } from "@/lib/utils";
 import { AnnotationSummary } from "@/components/annotation-summary";
+import { ContextInspector } from "./context-inspector";
 import { ChatComposer } from "@/components/chat-composer";
 import { ChatComposerInput } from "@/components/chat-composer-input";
 import type { ComposerFocusHandle } from "./slash-command-combobox";
@@ -360,7 +361,13 @@ export const Chat = observer(function Chat({
         }
         toolbarActions={
           <>
-            {showContextUsage && !activatingDraft && <Usage store={store} />}
+            {showContextUsage &&
+              !activatingDraft &&
+              (store.contextInspector ? (
+                <ContextInspector store={store.contextInspector} usage />
+              ) : (
+                <Usage store={store} />
+              ))}
             {!activatingDraft && pluginActions}
             <ChatSubmitAction store={store} />
           </>

@@ -70,6 +70,7 @@ const entryId = (value: number) => value as EntryId;
 
 export interface DurableMemoryOptions {
   readonly budget: () => number;
+  readonly onConsolidating?: () => void;
   readonly summarize: (input: {
     instructions: string;
     context: string;
@@ -189,14 +190,13 @@ export function createDurableChatMemory(
     return attempts.reduce((a, b) => (memoryBytes(a) <= memoryBytes(b) ? a : b));
   };
 
-  const fit = async (current: State, signal: AbortSignal) => {
-    const budget = Schema.decodeUnknownSync(Schema.Int.check(Schema.isGreaterThan(0)))(
-      options.budget(),
-    );
+  const fit = async (current: State, signal: AbortSignal, budget: number) => {
+    Schema.decodeUnknownSync(Schema.Int.check(Schema.isGreaterThan(0)))(budget);
     current.budget = budget;
     const visible = await nodes(current.parts, signal);
     if (memoryBytes(render(visible)) > budget) current.shrinking = true;
     if (current.shrinking) {
+      options.onConsolidating?.();
       const target = Math.floor(budget / 2);
       while (memoryBytes(render(visible)) > target && visible.length > 1) {
         let best = -1;
@@ -239,6 +239,7 @@ export function createDurableChatMemory(
     original: EntryRecord,
     text: string,
     signal: AbortSignal,
+    budget: number,
   ) => {
     const prefix = render(await nodes(current.parts, signal));
     const planned: { id: number; n: number; text: string; left?: number }[] = [
@@ -291,13 +292,14 @@ export function createDurableChatMemory(
       current.through = original.id;
       Object.assign(await tx.doc(StateDoc, root.id), current);
     }, contextFor(signal));
-    await fit(current, signal);
+    await fit(current, signal, budget);
     await save(current, signal);
   };
 
   const synchronize = async (
     signal: AbortSignal,
     cutoff?: EntryId,
+    budget = options.budget(),
   ): Promise<DurableChatMemoryView> => {
     const current = await state(signal);
     const newest =
@@ -311,13 +313,13 @@ export function createDurableChatMemory(
         const page = await root.entries(query, 64, cursor, contextFor(signal));
         for (const original of page.items) {
           const text = sourceText(original);
-          if (text) await append(current, original, text, signal);
+          if (text) await append(current, original, text, signal, budget);
           else current.through = original.id;
         }
         cursor = page.next;
       } while (cursor !== undefined);
     }
-    const text = await fit(current, signal);
+    const text = await fit(current, signal, budget);
     await save(current, signal);
     if (memoryBytes(text) > current.budget)
       throw new Error("Cake Chat history cannot fit its memory budget");

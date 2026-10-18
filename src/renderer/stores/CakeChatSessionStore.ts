@@ -269,6 +269,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
           this.props.pendingSessions.conversation(this.sessionId)?.setConfiguration(configuration),
       },
       chat: {
+        contextUsage: true,
         history: this.history,
         commands: () => this.model.commands.filter((command) => command.name !== "sidechat"),
         placeholder: () =>

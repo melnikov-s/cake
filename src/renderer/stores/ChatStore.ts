@@ -15,6 +15,7 @@ import {
   type ScheduledMessageCapabilities,
 } from "./ScheduledMessageInteractionStore";
 import { PromptCacheStore } from "./PromptCacheStore";
+import type { ContextInspectorStore } from "./ContextInspectorStore";
 import {
   TranscriptInteractionStore,
   type TranscriptScrollPosition,
@@ -94,6 +95,7 @@ export interface ChatStoreProps {
   suggestFiles?(prefix: string): Promise<ReadonlyArray<FileSuggestion>>;
   focusRequestRevision?(): number;
   usage?(): ConversationSnapshot["usage"];
+  contextInspector?: ContextInspectorStore;
   promptCacheModel?(): { provider: string; modelId: string } | undefined;
   queuedPrompts?(): readonly QueuedPrompt[];
   steerQueuedPrompt?(id: string): void | Promise<void>;
@@ -385,6 +387,10 @@ export class ChatStore extends Store<ChatStoreProps> {
   get focusRequestRevision() {
     return this.props.focusRequestRevision?.();
   }
+  get contextInspector() {
+    return this.props.contextInspector;
+  }
+
   get usage() {
     return this.props.usage?.();
   }

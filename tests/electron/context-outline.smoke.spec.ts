@@ -20,7 +20,10 @@ for (const scope of ["global", "project-chat"] as const) {
       mkdir(project),
       mkdir(userData),
     ]);
-    const closeProvider = await openRequestInspectorFixture({ cakeHome, project });
+    const closeProvider = await openRequestInspectorFixture(
+      { cakeHome, project },
+      { contextLimitTokens: 8_000 },
+    );
     const launch = () =>
       electron.launch({
         args: [repositoryRoot],
@@ -64,18 +67,28 @@ for (const scope of ["global", "project-chat"] as const) {
       await input.click();
       await input.pressSequentially("Keep the interface quiet.");
       await expect(input).toHaveValue("Keep the interface quiet.");
+      // Two individually fitting inputs cross the configured limit together,
+      // forcing a real memory rebuild even though the cache is still warm.
+      await input.fill("Keep the interface quiet. " + "original-detail ".repeat(900));
       await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
       await page.getByRole("button", { name: "Send", exact: true }).click();
       await expect(
         page.getByText("Request captured by the local inspection fixture.", { exact: true }),
       ).toHaveCount(1);
       await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
-      await input.fill("Use familiar disclosure triangles.");
+      await input.fill("Use familiar disclosure triangles. " + "recent-detail ".repeat(900));
       await page.getByRole("button", { name: "Send", exact: true }).click();
       await expect(
-        page.getByText("Request captured by the local inspection fixture.", { exact: true }),
-      ).toHaveCount(2);
+        page.getByText("Request captured by the local inspection fixture.", { exact: true }).last(),
+      ).toBeVisible();
       await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
+      const warm = page.getByRole("button", { name: "Browse context", exact: true });
+      await expect(warm).toHaveAttribute("data-cache-state", "likely-warm");
+      await expect(warm).toContainText("Sys");
+      await warm.hover();
+      const hover = page.getByRole("tooltip");
+      await expect(hover).toHaveText("Cache: Likely warm\nExpires: ≈5 min\nNext: Continue");
+      await page.mouse.move(1, 1);
       await input.fill("Unsent draft stays here");
       const trigger = page.getByRole("button", { name: "Browse context", exact: true });
       await trigger.click();
@@ -121,6 +134,9 @@ for (const scope of ["global", "project-chat"] as const) {
       app = await launch();
       const reopened = await app.firstWindow();
       await openChat(reopened);
+      await expect(
+        reopened.getByRole("button", { name: "Browse context", exact: true }),
+      ).toHaveAttribute("data-cache-state", "likely-warm");
       await reopened.getByRole("button", { name: "Browse context", exact: true }).click();
       const restored = reopened.getByRole("dialog", { name: "Context", exact: true });
       await expect(

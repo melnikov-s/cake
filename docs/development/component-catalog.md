@@ -57,6 +57,8 @@ worktree tools beneath it when present. Empty caps collapse without reserved spa
 
 [`SessionResultNotice`](../../src/renderer/components/ui/session-result-notice.tsx) renders application-delivered compact session completion lines and exact result links, independently of model prose. It composes Callout and Markdown rather than requiring an assistant to relay the notification.
 
+`ContextUsageButton` presents estimated system, memory and message token accounting with a separate cache-freshness border. It opens the shared Context Browser; it does not infer context retention from cache color.
+
 ## Navigation and layout
 
 | Component                                                                                                                                    | Use for                                                                                   |

@@ -6,9 +6,89 @@ import {
 import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../lib/error-details";
 import { estimateContextTokens } from "../lib/context-token-estimate";
+import {
+  cakeChatCacheFreshness,
+  cakeChatSummaryReason,
+  type CakeChatContextStatus,
+} from "../../contracts/cake-chats/context-policy";
 
 /** A window-local reader. Closing releases all content; browsing never calls prompt/compact/zoom tools. */
-export class ContextInspectorStore extends Store<{ sessionId: string; isPending(): boolean }> {
+export class ContextInspectorStore extends Store<{
+  sessionId: string;
+  isPending(): boolean;
+  status?(): CakeChatContextStatus | undefined;
+}> {
+  private now = Date.now();
+
+  constructor(props: ContextInspectorStore["props"]) {
+    super(props);
+    this.effect(() => {
+      if (!this.props.status?.()?.cache) return;
+      this.now = Date.now();
+      const timer = setInterval(() => {
+        this.now = Date.now();
+      }, 1_000);
+      return () => clearInterval(timer);
+    });
+    this.effect(() => () => this.close());
+  }
+
+  get status() {
+    return this.props.status?.();
+  }
+  get cache() {
+    return cakeChatCacheFreshness(this.status?.cache, this.now);
+  }
+  get cacheExpiry() {
+    const cache = this.cache;
+    if (cache.expiresAt === undefined) return cache.state === "uncertain" ? "Uncertain" : "Unknown";
+    if (cache.expiresAt <= this.now) return "Expired";
+    return `≈${Math.ceil((cache.expiresAt - this.now) / 60_000)} min`;
+  }
+  get usageTooltip() {
+    const cache = {
+      "likely-warm": "Likely warm",
+      "likely-cold": "Likely cold",
+      uncertain: "Uncertain",
+      unknown: "Unknown",
+    }[this.cache.state];
+    const next = !this.status
+      ? "Unknown"
+      : this.status.activity === "summarizing"
+        ? "Summarizing"
+        : this.status.activity === "consolidating"
+          ? "Consolidating"
+          : this.summaryReason === "limit"
+            ? "Summarize (limit)"
+            : this.summaryReason
+              ? "Summarize"
+              : this.status.totalTokens === 0
+                ? "Start"
+                : "Continue";
+    return `Cache: ${cache}\nExpires: ${this.cacheExpiry}\nNext: ${next}`;
+  }
+  get nextSend() {
+    const status = this.status;
+    if (!status) return "Next message: context status unavailable";
+    if (status.totalTokens === 0) return "Next message starts the conversation";
+    if (status.activity) return "Preparing the next model context";
+    const reason = this.summaryReason;
+    return reason === "limit"
+      ? "Next message summarizes · context limit reached"
+      : reason
+        ? "Next message summarizes · cache expired or uncertain"
+        : "Next message continues the current context";
+  }
+  get summaryReason() {
+    return this.status ? cakeChatSummaryReason(this.status, this.now) : undefined;
+  }
+  get activityLabel() {
+    return this.status?.activity === "summarizing"
+      ? "Summarizing memory…"
+      : this.status?.activity === "consolidating"
+        ? "Consolidating memory…"
+        : undefined;
+  }
   open = false;
   loading = false;
   error: string | undefined;
@@ -19,11 +99,6 @@ export class ContextInspectorStore extends Store<{ sessionId: string; isPending(
   pending: readonly string[] = [];
   private generation = 0;
   private controller: AbortController | undefined;
-
-  constructor(props: ContextInspectorStore["props"]) {
-    super(props);
-    this.effect(() => () => this.close());
-  }
 
   get estimatedTokens(): number | undefined {
     if (!this.open || this.loading || this.error) return undefined;

@@ -7,7 +7,10 @@ import { defaultApplicationState } from "../../src/contracts/application/applica
  * No credentials or billed model are used. Capture owns the returned cleanup after Electron closes. */
 export async function openRequestInspectorFixture(
   paths: { cakeHome: string; project: string },
-  { holdResponse = false }: { holdResponse?: boolean } = {},
+  {
+    holdResponse = false,
+    contextLimitTokens = 300_000,
+  }: { holdResponse?: boolean; contextLimitTokens?: number } = {},
 ) {
   const server = createServer((request, response) => {
     if (request.method !== "POST" || request.url !== "/v1/chat/completions") {
@@ -99,6 +102,7 @@ export async function openRequestInspectorFixture(
           defaultModelPresetId: presetId,
           utilityModel: { provider, modelId, thinkingLevel: "off" },
           cakeChatPreferences: {
+            contextLimitTokens,
             memoryViewBytes: 4096,
             instructions: "Prefer independent worktrees. Ask before merging changes.",
           },

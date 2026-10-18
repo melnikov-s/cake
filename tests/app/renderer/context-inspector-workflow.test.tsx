@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { StoreProvider } from "r-state-tree/react";
 import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
-import { CakeChatPaneHeader } from "../../../src/renderer/components/cake-chat-pane-header";
+import { Chat } from "../../../src/renderer/components/chat";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import type { ContextInspection } from "../../../src/contracts/conversations/context-inspection";
 import type { JsonValue } from "../../../src/contracts/serialization/json-contract";
@@ -203,16 +203,10 @@ it.each(["project-chat", "global"])(
     const sessionId = scope === "global" ? CAKE_CHAT_SESSION_ID : projectChatSessionId("/project");
     const owner = fixture.root.cakeChatCollectionStore.registry.load(sessionId);
     const store = owner.conversationSessionStore.contextInspectorStore;
-    const pane = {
-      kind: "pane" as const,
-      paneId: "context-pane",
-      history: [sessionId],
-      historyCursor: 0,
-    };
     const user = userEvent.setup();
     const view = render(
       <StoreProvider store={fixture.root}>
-        <CakeChatPaneHeader pane={pane} session={owner} />
+        <Chat store={owner.conversationSessionStore.chatStore} />
       </StoreProvider>,
     );
     try {
