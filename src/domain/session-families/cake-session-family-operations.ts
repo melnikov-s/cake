@@ -7,6 +7,7 @@ import {
   PendingReportRead,
 } from "../../contracts/conversations/pending-report";
 import { CompletionInboxUpdate } from "../../contracts/conversations/completion-inbox";
+import { compactDiscoveryGuidance } from "../../contracts/agent/discovery-result-text";
 import { AgentListInput } from "../../contracts/agent/agent-list-data";
 import { messageRefsSchema } from "../../contracts/conversations/message-reference";
 import { inputRefsSchema } from "../../contracts/conversations/task-input";
@@ -34,9 +35,11 @@ export function createSessionFamilyOperations(
       requires: "invokeAppControl",
       topic: "sessions",
       summary: "Page outstanding user-facing report obligations; listing is not handling.",
+      guidance: [compactDiscoveryGuidance],
       inputSchema: AgentListInput,
       examples: [{ input: {} }],
-      result: "A bounded metadata-only page of outstanding report IDs and worker provenance.",
+      result:
+        "Compact rows of pending report IDs, admissions and available worker session/handle/status/task metadata; never report bodies.",
       execute: invokeAppControl("sessions.reports"),
     },
     {
@@ -168,11 +171,12 @@ export function createSessionFamilyOperations(
       guidance: [
         "The family is derived from the calling Project Session; this operation never accepts a sessionId.",
         "Use sessions.list when sessions outside the calling session's family are needed.",
+        compactDiscoveryGuidance,
       ],
       inputSchema: AgentListInput,
       examples: [{}],
       result:
-        "Family/root/caller identities and a bounded member roster in stable tree order; nextOffset continues, sessions.info inspects one member.",
+        "Family/root/caller identities, then compact id/parent/status/title rows in stable tree order; next=N continues, sessions.info inspects one member.",
       execute: (input, context) =>
         api().invokeAppControl(
           "sessions.list-family",
@@ -200,7 +204,7 @@ export function createSessionFamilyOperations(
         sessionId: Schema.optionalKey(
           Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)).annotate({
             description:
-              "Target Project Session ID or s: reference. Omit to message Cake Chat, which has no session ID.",
+              "Target Project Session ID or bare hexadecimal suffix. Omit to message Cake Chat, which has no session ID.",
           }),
         ),
         inputRefs: Schema.optionalKey(inputRefsSchema),

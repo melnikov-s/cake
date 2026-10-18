@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { compactDiscoveryGuidance } from "../../contracts/agent/discovery-result-text";
 import {
   type MessageOperationControl,
   MessageListInput,
@@ -25,13 +26,14 @@ export function createMessageOperations(
         "Each ref is an exact Pi entry reference and a clickable link. Forward it unchanged through messageRefs without reading it first.",
         "inputRefs contains only attachment identity, name, MIME type and byte length. It does not read attachment contents.",
         "Use branch: all to discover original messages on inactive or tool-compacted branches. References never follow a newer or summarized message.",
+        compactDiscoveryGuidance,
       ],
       inputSchema: MessageListInput,
       outputSchema: MessageListResult,
       truncateResultText: false,
       examples: [{ input: { sessionId: "target-session-id", limit: 25 } }],
       result:
-        "Metadata-only messages with ref/link, Pi entryId, role, timestamp, active-branch status and inputRefs; total and nextOffset bound discovery.",
+        "Compact role/active/images/timestamp/ref rows, plus input attachment rows belonging to the preceding message; total, branch and next=N. Structured data retains full message metadata.",
       execute: (input, context) =>
         control.list(Schema.decodeUnknownSync(MessageListInput)(input), context.signal),
     },

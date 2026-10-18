@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { compactDiscoveryGuidance } from "../../contracts/agent/discovery-result-text";
 import type { CakeModelPresetCatalog } from "../../contracts/model-presets/cake-model-selection";
 import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
 import { AgentListInput, agentListPage } from "../../contracts/agent/agent-list-data";
@@ -15,10 +16,13 @@ export function createCakeModelOperations(
       command: "models.list",
       topic: "models",
       summary: "List configured preset names and the current default, in bounded pages.",
-      guidance: ["Filter names with query; use models.info for one preset's execution settings."],
+      guidance: [
+        "Filter names with query; use models.info for one preset's execution settings.",
+        compactDiscoveryGuidance,
+      ],
       inputSchema: AgentListInput,
       examples: [{}],
-      result: "Preset names/default flags, total, offset and nextOffset (null at the end).",
+      result: "Compact default/name rows, total and next=N when another page exists.",
       execute: async (raw) => {
         const input = Schema.decodeUnknownSync(AgentListInput)(raw);
         const state = readPresets();

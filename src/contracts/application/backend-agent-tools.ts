@@ -1,4 +1,5 @@
 import { resultDeliveryGuidance } from "../conversations/result-delivery";
+import { compactDiscoveryGuidance } from "../agent/discovery-result-text";
 import { sessionListGuidance, sessionListResult } from "../project-sessions/agent-session-list";
 import { Schema } from "effect";
 import { CakeControlTool } from "../cake-chats/cake-chat-data";
@@ -253,6 +254,9 @@ const definitions = [
     discovery: {
       topic: "sessions",
       summary: "Page pending user-facing report obligations; admission is not communication.",
+      guidance: [compactDiscoveryGuidance],
+      result:
+        "Compact pending report ID/admissions/session/handle/status/task rows; report bodies require sessions.reports.read.",
     },
   },
   {

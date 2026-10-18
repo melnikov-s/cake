@@ -66,8 +66,11 @@ replacement. Forward this opaque string unchanged through `messageRefs`; resolvi
 or forwarding it does not require reading its body. No reference registry or
 second transcript is persisted.
 
-- `messages.list` returns bounded metadata only: exact `ref`/`link`, session and
-  entry identity, role, timestamp, active-branch status, and attachment `inputRefs`
+- `messages.list` returns bounded metadata only. Text uses compact role/active/images/
+  timestamp/ref rows; attachment input rows belong to the preceding message. The
+  exact opaque reference appears once rather than duplicating ref/link and embedded
+  session/entry identities. Declared typed data retains full `ref`/`link`, session and
+  entry identity, parent, role, timestamp, active-branch status, and attachment `inputRefs`
   (identity, name, MIME type, byte length). It defaults to 25 chronological active
   branch messages; `branch: all` includes original inactive branches. `nextOffset`
   continues discovery, including pages shortened to keep metadata bounded.

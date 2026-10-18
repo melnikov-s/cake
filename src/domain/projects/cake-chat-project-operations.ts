@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { compactDiscoveryGuidance } from "../../contracts/agent/discovery-result-text";
 import { AgentListInput } from "../../contracts/agent/agent-list-data";
 import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
 import {
@@ -21,10 +22,13 @@ export function createCakeChatProjectOperations(
       command: "projects.list",
       topic: "projects",
       summary: "List a bounded page of registered Project names and exact paths.",
-      guidance: ["Filter names/paths with query; use projects.info for trust and timestamps."],
+      guidance: [
+        "Filter names/paths with query; use projects.info for trust and timestamps.",
+        compactDiscoveryGuidance,
+      ],
       inputSchema: AgentListInput,
       examples: [{}],
-      result: "Project names/paths, total and nextOffset (null at the end).",
+      result: "Compact path/name rows, total and next=N when another page exists.",
       execute: (input, context) =>
         control.list(Schema.decodeUnknownSync(AgentListInput)(input), context.signal),
     },

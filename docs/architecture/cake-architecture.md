@@ -144,6 +144,15 @@ projections needed by a surface. References do not transfer ownership.
   `scheduled-info` read one exact input in text slices. Queue mutations return counts,
   not message bodies; edit via read plus cancel/send rather than bulk dequeue.
   `app.state` reports window orientation/counts, not duplicate rosters.
+  Model-facing text for project, family, report, model, attachment and message catalogs
+  uses compact tab-separated rows, formatted only after authorization/redaction and
+  identity projection. Exact routing cells are losslessly escaped. Opaque message and
+  attachment links remain intact. This is a disposable text view: underlying domain
+  results, tool details and declared typed output contracts do not become tables.
+  Details, body reads, errors and other operations keep their existing presentation.
+  Text uses `next=N`/`after=ID` only when more results exist; metadata retains its
+  existing pagination protocol. Oversized catalog pages retain the valid JSON
+  truncation envelope rather than cutting a routing cell into a partial row.
   Gateway topics list enabled operation summaries, `<operation>.help` supplies the
   selected input/behavior contract, and `<operation>.output-schema` opts into the
   complete result schema. Runtime validation remains authoritative at every layer.

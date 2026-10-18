@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect";
+import { compactDiscoveryGuidance } from "../../contracts/agent/discovery-result-text";
 
 import { type JsonObject } from "../../contracts/serialization/json-contract";
 import {
@@ -52,10 +53,11 @@ export function createSessionApplicationOperations(
       requires: "invokeAppControl",
       topic: "projects",
       summary: "List a bounded page of registered Project names and exact paths.",
+      guidance: [compactDiscoveryGuidance],
       inputSchema: AgentListInput,
       examples: [{}],
       result:
-        "Project names/paths, total and nextOffset; projects.info supplies trust and timestamps.",
+        "Compact path/name rows, total and next=N; projects.info supplies trust and timestamps.",
       execute: invokeAppControl("projects.list"),
     },
     {

@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { discoveryResultText } from "../../../contracts/agent/discovery-result-text";
 import {
   MAX_CAKE_OPERATION_IMAGE_BYTES,
   type CakeOperationContent,
@@ -328,6 +329,7 @@ export class CakeOperationRegistry {
     const text = formatCakeResult(
       presented,
       operation.truncateResultText === false ? MAX_CAKE_OPERATION_RESULT_BYTES : undefined,
+      discoveryResultText(command, presented),
     );
     return {
       text,
@@ -423,8 +425,9 @@ function base64ByteLength(value: string) {
   return (value.length / 4) * 3 - padding;
 }
 
-function formatCakeResult(value: JsonValue, limit = 24_000) {
-  const formatted = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+function formatCakeResult(value: JsonValue, limit = 24_000, presentation?: string) {
+  const formatted =
+    presentation ?? (typeof value === "string" ? value : JSON.stringify(value, null, 2));
   if (formatted.length <= limit) return formatted;
   if (typeof value === "string") return `${formatted.slice(0, limit)}\n… (truncated)`;
   const compact = JSON.stringify(value);

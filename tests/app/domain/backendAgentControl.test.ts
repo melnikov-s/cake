@@ -1056,7 +1056,7 @@ it.effect(
     }),
 );
 
-it.effect("redacts task-input titles before formatting or filtering a Cake Chat text roster", () =>
+it.effect("keeps task-input metadata redacted in session and report text catalogs", () =>
   Effect.gen(function* () {
     const f = yield* fixture();
     f.protectedSessions.add(target);
@@ -1079,6 +1079,26 @@ it.effect("redacts task-input titles before formatting or filtering a Cake Chat 
     const unprotected = yield* f.direct("sessions.list", { query: "Same" }, global);
     expect(unprotected).toContain("00000033");
     expect(unprotected).not.toContain("00000022");
+    const storage = Context.get(f.context, SessionFamilyStorage);
+    yield* storage.deferReferenceNotice({
+      id: "protected-report",
+      recipientSessionId: CAKE_CHAT_SESSION_ID,
+      text: "PRIVATE_REPORT_BODY",
+      source: {
+        kind: "subagent",
+        handleId: "PRIVATE_HANDLE",
+        sessionId: target,
+        task: "PRIVATE_TASK",
+        status: "done",
+      },
+    });
+    const report = yield* invoke("sessions.reports", {});
+    expect(report.text).toBe(
+      `1 pending reports\nid\tadmissions\tsession\thandle\tstatus\ttask\nprotected-report\t0\t${target}\t-\t-\tTask session`,
+    );
+    expect(JSON.stringify(report)).not.toContain("PRIVATE_");
+    expect((yield* storage.state()).deferredReferences).toHaveLength(1);
+    expect(f.runtimeCreates).toEqual([source]);
   }),
 );
 
