@@ -123,6 +123,7 @@ export function createDurableConversationQueue(options: {
         const queuedItem = doc.items.find((entry) => entry.id === item.id);
         if (!queuedItem || queuedItem.mode === "write")
           throw new Error("That message was already consumed");
+        if (queuedItem.mode === "steer") return;
         queuedItem.mode = "steer";
         if (typeof queuedItem.content === "string")
           queuedItem.content = markDurableInputSteering(queuedItem.content);
@@ -134,6 +135,11 @@ export function createDurableConversationQueue(options: {
             if (options.kind === "side-chat") break;
           }
         }
+        // Promotion inserts at the steering tail, not its old follow-up position.
+        // Finish draft edits before detaching the item from the transaction array.
+        const [promoted] = doc.items.splice(doc.items.indexOf(queuedItem), 1);
+        const tail = doc.items.findLastIndex((entry) => entry.mode === "steer");
+        if (promoted) doc.items.splice(tail + 1, 0, promoted);
       }, BACKGROUND_CONTEXT);
       return queued();
     },

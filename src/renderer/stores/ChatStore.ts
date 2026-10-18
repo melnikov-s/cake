@@ -222,6 +222,7 @@ export class ChatStore extends Store<ChatStoreProps> {
   rewording = false;
   rewordError: string | undefined;
   private draftRevision = 0;
+  private pendingImagePastes = 0;
 
   @child
   get messageSources(): MessageReferencePreviewStore[] {
@@ -320,10 +321,12 @@ export class ChatStore extends Store<ChatStoreProps> {
     return this.canSubmitValue();
   }
   canSubmitValue(value = this.draft) {
-    return !this.submittingLocally && this.props.canSubmit(value);
+    return !this.submittingLocally && this.pendingImagePastes === 0 && this.props.canSubmit(value);
   }
   get canActivateDraft() {
-    return Boolean(this.props.activateDraft) && !this.submittingLocally;
+    return (
+      Boolean(this.props.activateDraft) && !this.submittingLocally && this.pendingImagePastes === 0
+    );
   }
   get submitsAsDraft() {
     return this.props.sessionCreationChoice?.().kind === "draft";
@@ -433,7 +436,7 @@ export class ChatStore extends Store<ChatStoreProps> {
     return Boolean(this.props.composerReword);
   }
   canSubmitDraft(value: string) {
-    return !this.submittingLocally && this.props.canSubmit(value);
+    return this.canSubmitValue(value);
   }
 
   setDraft(value: string) {
@@ -475,6 +478,13 @@ export class ChatStore extends Store<ChatStoreProps> {
       enterContinuation?: number;
     },
   ) {
+    // A cleared in-flight draft or an unread image is not an intentional empty
+    // submission. Never let it fall through to steering an unrelated queue head.
+    if (this.submittingLocally || this.pendingImagePastes > 0) {
+      if (this.enterContinuation?.generation === options?.enterContinuation)
+        this.cancelEnterContinuation();
+      return false;
+    }
     if (value !== this.draft) this.setDraft(value);
     const empty = !value.trim() && this.attachments.length === 0 && this.annotations.length === 0;
     const steering = this.queuedPrompts.find(
@@ -491,7 +501,7 @@ export class ChatStore extends Store<ChatStoreProps> {
       await this.steerQueuedPrompt(queued.id);
       return true;
     }
-    if (!this.props.canSubmit(value) || this.submittingLocally) {
+    if (!this.props.canSubmit(value)) {
       if (this.enterContinuation?.generation === options?.enterContinuation)
         this.cancelEnterContinuation();
       return false;
@@ -549,8 +559,13 @@ export class ChatStore extends Store<ChatStoreProps> {
   abort() {
     return this.props.abort?.() ?? Promise.resolve();
   }
-  addPastedImages(files: readonly File[]) {
-    return this.props.addPastedImages?.(files) ?? Promise.resolve();
+  async addPastedImages(files: readonly File[]) {
+    this.pendingImagePastes += 1;
+    try {
+      await this.props.addPastedImages?.(files);
+    } finally {
+      this.pendingImagePastes -= 1;
+    }
   }
   removeAttachment(index: number) {
     this.props.removeAttachment?.(index);

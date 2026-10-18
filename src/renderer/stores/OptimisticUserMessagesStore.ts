@@ -175,7 +175,7 @@ export class OptimisticUserMessagesStore extends Store<OptimisticUserMessagesSto
       return [];
     });
     const parts: UiPart[] = [
-      ...(text
+      ...(text || deliveryState === "queued" || deliveryState === "steering"
         ? [
             {
               id: `optimistic-user-${id}`,
@@ -296,8 +296,15 @@ export class OptimisticUserMessagesStore extends Store<OptimisticUserMessagesSto
       const ids = annotation.annotations.map((item: Annotation) => item.id).join("\u0000");
       return canonical.filter(
         (part) =>
-          part.kind === "annotation" &&
-          part.annotations.map((item) => item.id).join("\u0000") === ids,
+          (part.kind === "annotation" &&
+            part.annotations.map((item) => item.id).join("\u0000") === ids) ||
+          (part.kind === "text" &&
+            part.queuedInput?.text === "" &&
+            part.queuedInput.attachments.some(
+              (item) =>
+                item.kind === "annotation" &&
+                item.annotations.map((annotation) => annotation.id).join("\u0000") === ids,
+            )),
       ).length;
     }
     const attachment = parts.find(
@@ -318,7 +325,7 @@ export class OptimisticUserMessagesStore extends Store<OptimisticUserMessagesSto
   }
 
   private sameNonTextIdentity(left: UiPart[], right: UiPart[]) {
-    if (left.some((part) => part.kind === "text")) return true;
+    if (left.some((part) => part.kind === "text" && part.text)) return true;
     const leftAnnotation = left.find(
       (part): part is Extract<UiPart, { kind: "annotation" }> => part.kind === "annotation",
     );
@@ -338,7 +345,8 @@ export class OptimisticUserMessagesStore extends Store<OptimisticUserMessagesSto
     );
     return (
       leftAttachment?.attachmentKind === rightAttachment?.attachmentKind &&
-      leftAttachment?.data === rightAttachment?.data
+      leftAttachment?.data === rightAttachment?.data &&
+      (leftAttachment?.data !== undefined || leftAttachment?.name === rightAttachment?.name)
     );
   }
 }
@@ -346,4 +354,7 @@ export class OptimisticUserMessagesStore extends Store<OptimisticUserMessagesSto
 /** Cake Chat admits images as opaque input references, so an image-only
  * message reappears canonically as a named reference, not its pixels. */
 const isInputReference = (part: UiPart, name: string) =>
-  part.kind === "attachment" && part.inputReference?.name === name;
+  (part.kind === "attachment" && part.inputReference?.name === name) ||
+  (part.kind === "text" &&
+    part.queuedInput?.text === "" &&
+    part.queuedInput.attachments.some((item) => "name" in item && item.name === name));

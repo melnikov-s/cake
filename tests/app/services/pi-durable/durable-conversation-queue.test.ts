@@ -9,7 +9,7 @@ import {
   createRegistry,
   type Conversation,
 } from "@earendil-works/pi-durable";
-import { createAssistantMessageEventStream } from "@earendil-works/pi-durable-ai";
+import { createAssistantMessageEventStream, type Context } from "@earendil-works/pi-durable-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   encodeCrossSessionMessage,
@@ -23,7 +23,6 @@ import {
   DURABLE_SIDE_CHAT_NOTE,
   durableInputPresentation,
   durableInputText,
-  markDurableInputSteering,
 } from "../../../../src/services/pi-durable/durable-input-presentation";
 import { durableAnswer, durableModel, durableModels } from "../../../fixtures/durable-chat";
 
@@ -39,6 +38,7 @@ async function fixture(kind: "root" | "side-chat") {
   const { models } = durableModels();
   type Call = { signal: AbortSignal | undefined; finish: () => void };
   const calls: Call[] = [];
+  const requests: Context[] = [];
   const waiting: Array<(call: Call) => void> = [];
   const ready: Call[] = [];
   const nextRequest = () => {
@@ -49,7 +49,8 @@ async function fixture(kind: "root" | "side-chat") {
     return deferred.promise;
   };
   let hold = false;
-  vi.spyOn(models, "streamSimple").mockImplementation((_model, _request, options) => {
+  vi.spyOn(models, "streamSimple").mockImplementation((_model, request, options) => {
+    requests.push(structuredClone(request));
     const stream = createAssistantMessageEventStream();
     const message = durableAnswer("Done");
     const call = {
@@ -126,6 +127,7 @@ async function fixture(kind: "root" | "side-chat") {
     active,
     activeCall,
     calls,
+    requests,
     nextRequest,
     live: () => harness.snapshot(LiveDoc, conversation.id, context),
     setExecuting: (ids: string[]) => {
@@ -199,6 +201,81 @@ describe.each(["root", "side-chat"] as const)("Durable %s queue", (kind) => {
     expect((await f.live())?.run?.inputs).toEqual([f.active.id]);
   });
 
+  it.each([false, true])(
+    "delivers A, B, then C once in FIFO order with attachment references: %s",
+    async (attached) => {
+      const f = await fixture(kind);
+      const b = await f.submit("B queued", "b");
+      const attachments = attached
+        ? [
+            {
+              kind: "input" as const,
+              id: "20000000-0000-4000-8000-000000000003",
+              name: "queued.png",
+              mimeType: "image/png",
+              byteLength: 100,
+            },
+          ]
+        : [];
+      const c = await f.conversation.submit(
+        {
+          type: "input",
+          requestId: "c",
+          whenBusy: "followUp",
+          content: durableInputText("C queued", attachments, false),
+        },
+        context,
+      );
+      expect((await f.queue.inbox()).map((item) => item.mode)).toEqual(["followUp", "followUp"]);
+      expect(await f.operations.listQueuedMessages()).toEqual({
+        steering: [],
+        followUp: ["B queued", "C queued"],
+      });
+      expect(f.requests).toHaveLength(2); // Seed and A; no early delivery of B or C.
+      f.activeCall.finish();
+      expect(await f.active.wait(context)).toMatchObject({ status: "done" });
+      const bCall = await f.nextRequest();
+      expect((await f.queue.inbox()).map((item) => item.id)).toEqual([c.id]);
+      expect(JSON.stringify(f.requests.at(-1))).toContain("B queued");
+      expect(JSON.stringify(f.requests.at(-1))).not.toContain("C queued");
+      bCall.finish();
+      expect(await b.wait(context)).toMatchObject({ status: "done" });
+      const cCall = await f.nextRequest();
+      const users = f.requests
+        .at(-1)!
+        .messages.filter((message) => message.role === "user")
+        .map((message) => JSON.stringify(message.content))
+        .join("\n");
+      expect(users.indexOf("B queued")).toBeLessThan(users.indexOf("C queued"));
+      expect(users.split("B queued")).toHaveLength(2);
+      expect(users.split("C queued")).toHaveLength(2);
+      if (attached) expect(users).toContain("queued.png");
+      expect(await f.queue.inbox()).toEqual([]);
+      cCall.finish();
+      expect(await c.wait(context)).toMatchObject({ status: "done" });
+    },
+  );
+
+  it("appends explicit promotions to the steering tail without reversing either lane", async () => {
+    const f = await fixture(kind);
+    await f.submit("B", "b");
+    await f.submit("C", "c");
+    await f.submit("First steer", "s1", "steer");
+    await f.submit("Second steer", "s2", "steer");
+    expect(await f.operations.steerQueuedMessage("queued-c")).toEqual({
+      steering: ["First steer", "Second steer", "C"],
+      followUp: ["B"],
+    });
+    // Repeating the same explicit action is not another insertion/reorder.
+    await f.operations.steerQueuedMessage("queued-s1");
+    expect(await f.operations.listQueuedMessages()).toEqual({
+      steering: ["First steer", "Second steer", "C"],
+      followUp: ["B"],
+    });
+    expect((await f.live())?.run?.inputs).toEqual([f.active.id]);
+    expect(f.activeCall.signal?.aborted).toBe(false);
+  });
+
   it("promotes and cancels queued inputs without canceling the active turn or writes", async () => {
     const f = await fixture(kind);
     const first = await f.submit("First", "first");
@@ -218,9 +295,7 @@ describe.each(["root", "side-chat"] as const)("Durable %s queue", (kind) => {
       context,
     );
     expect(await f.operations.steerQueuedMessage("queued-promoted")).toEqual({
-      steering: [
-        "Promote" + (kind === "root" ? `\n${markDurableInputSteering("Second block")}` : ""),
-      ],
+      steering: ["Promote"],
       followUp: ["First"],
     });
     const item = (await f.queue.inbox()).find((entry) => entry.id === promoted.id);

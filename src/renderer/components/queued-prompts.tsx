@@ -30,8 +30,16 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
               key={state}
               role="group"
               aria-label={state === "steering" ? "Steering" : "Queued"}
-              className="flex shrink-0 flex-col gap-1"
+              className={cn(
+                "flex shrink-0 flex-col gap-1",
+                state === "queued" &&
+                  store.queuedPrompts.some((entry) => entry.state === "steering") &&
+                  "border-t border-border pt-2",
+              )}
             >
+              <div className="px-2 text-xs font-medium text-muted-foreground">
+                {state === "steering" ? "Steering" : "Queued"}
+              </div>
               {entries.map((entry, index) => {
                 const label =
                   entry.text ||

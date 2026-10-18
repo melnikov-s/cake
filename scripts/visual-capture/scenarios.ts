@@ -2831,7 +2831,7 @@ const contextOutlineScenario: VisualCaptureScenario = {
 const queuedPromptsScenario: VisualCaptureScenario = {
   name: "queued-prompts",
   description: "Quiet pending-message status and bounded queue above the shared chat composer",
-  states: ["default", "bottom", "steering", "queued"],
+  states: ["default", "bottom", "steering", "queued", "mixed"],
   async seed(paths, theme) {
     await cakeChatScenario.seed(paths, theme);
     return openRequestInspectorFixture(paths, { holdResponse: true });
@@ -2843,19 +2843,24 @@ const queuedPromptsScenario: VisualCaptureScenario = {
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
     const queue = page.getByRole("list", { name: "Queued prompts" });
-    if (state === "steering" || state === "queued") {
+    if (state === "steering" || state === "queued" || state === "mixed") {
       const text =
         "oh! vscode should be available for project chats open in project folder. terminal also. and browser too but browser should open in the project workspace.";
       await input.fill(text);
       await page.getByRole("button", { name: "Send", exact: true }).click();
       await expect(queue.getByRole("listitem")).toHaveCount(1);
-      if (state === "steering") {
+      if (state === "steering" || state === "mixed") {
         await queue.getByRole("button", { name: `Send now as steering: ${text}` }).click();
       }
-      if (state === "steering") {
+      if (state === "steering" || state === "mixed") {
         await expect(queue.getByRole("status")).toHaveText("Waiting for agent");
       } else {
         await expect(queue.getByRole("status")).toHaveCount(0);
+      }
+      if (state === "mixed") {
+        await input.fill("Then verify queued follow-ups stay in FIFO order.");
+        await page.getByRole("button", { name: "Send", exact: true }).click();
+        await expect(queue.getByRole("listitem")).toHaveCount(2);
       }
     } else {
       for (let index = 1; index <= 20; index++) {
@@ -2873,7 +2878,7 @@ const queuedPromptsScenario: VisualCaptureScenario = {
     await page.mouse.move(1, 1);
   },
   region: (page, state) =>
-    state === "steering" || state === "queued"
+    state === "steering" || state === "queued" || state === "mixed"
       ? page.locator(".workbench-composer")
       : page.locator("body"),
 };

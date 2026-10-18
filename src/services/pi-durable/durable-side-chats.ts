@@ -28,7 +28,7 @@ import type {
   UiPart,
 } from "../../contracts/conversations/session-contract";
 import { applyPiSetting, projectPiSettings } from "../pi/runtime/settings-translation";
-import { projectSessionEntries, queuedUserMessageDisplay } from "../pi/runtime/session-projection";
+import { projectSessionEntries } from "../pi/runtime/session-projection";
 import { TurnCanceledError } from "../pi/runtime/RuntimeTurnCompletion";
 import type {
   CakeSessionRuntime,
@@ -41,8 +41,7 @@ import { abortDurableActiveTurn, createDurableConversationQueue } from "./durabl
 import {
   DURABLE_SIDE_CHAT_NOTE,
   durableInputText,
-  durableQueuedInput,
-  durableQueuedText,
+  durableQueuedPart,
   withoutDurableSideChatNote,
 } from "./durable-input-presentation";
 
@@ -270,18 +269,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
           for (const item of items)
             if (item.mode !== "write") {
               const id = await requestId(item);
-              const display = queuedUserMessageDisplay(durableQueuedText(item.content));
-              parts.push({
-                id: `queued-${id}`,
-                kind: "text",
-                role: "user",
-                text: display.text,
-                status: "complete",
-                deliveryState: item.mode === "steer" ? "steering" : "queued",
-                renderAs: display.renderAs,
-                crossSession: display.crossSession,
-                queuedInput: durableQueuedInput(item, id),
-              });
+              parts.push(durableQueuedPart(item, id));
             }
           const sums = Object.values(usage?.models ?? {}).concat(Object.values(usage?.tools ?? {}));
           const tokens = sums.reduce(

@@ -39,7 +39,7 @@ import {
   cakeToolEnvelopeSchema,
 } from "../pi/runtime/cake-operation-registry";
 import { applyPiSetting, projectPiSettings } from "../pi/runtime/settings-translation";
-import { projectSessionEntries, queuedUserMessageDisplay } from "../pi/runtime/session-projection";
+import { projectSessionEntries } from "../pi/runtime/session-projection";
 import { projectModelCatalog } from "../pi/live/PiModelsLive";
 import { supportsFastMode } from "../pi/fast-mode";
 import { TurnCanceledError } from "../pi/runtime/RuntimeTurnCompletion";
@@ -75,12 +75,7 @@ import { CakeChatMcp, createCakeChatMcpTool, loadCakeChatMcpServers } from "./ca
 import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import { SubagentResult, SubagentReportOrigin } from "../../contracts/subagents/subagent-data";
 import { Option } from "effect";
-import {
-  durableInputText,
-  durableQueuedInput,
-  durableQueuedPresentation,
-  durableQueuedText,
-} from "./durable-input-presentation";
+import { durableInputText, durableQueuedPart } from "./durable-input-presentation";
 import { durableInputResponse, previousDurableResponseMode } from "./durable-response-mode";
 import type { ConversationResponseMode } from "../../contracts/conversations/response-mode-reminders";
 const unsupported = async () => {
@@ -542,20 +537,7 @@ export async function createDurableCakeChatRuntime(
         for (const item of items)
           if (item.mode !== "write") {
             const id = await requestId(item);
-            // Queued rows show routing envelopes and reminders exactly as history does.
-            const display = queuedUserMessageDisplay(durableQueuedText(item.content));
-            parts.push({
-              id: `queued-${id}`,
-              kind: "text",
-              role: "user",
-              text: display.text,
-              status: "complete",
-              deliveryState: item.mode === "steer" ? "steering" : "queued",
-              renderAs: display.renderAs,
-              subagentReport: durableQueuedPresentation(item.content).subagentReport,
-              crossSession: display.crossSession,
-              queuedInput: durableQueuedInput(item, id),
-            });
+            parts.push(durableQueuedPart(item, id));
           }
         const sums = Object.values(usage?.models ?? {}).concat(Object.values(usage?.tools ?? {}));
         const tokens = sums.reduce(

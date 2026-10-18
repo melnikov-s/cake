@@ -10,7 +10,7 @@ import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import type { TestClientOverrides } from "./test-client";
 
-export type ConversationSessionProfile = "project" | "cake-chat";
+export type ConversationSessionProfile = "project" | "cake-chat" | "project-chat";
 export const originalUserPart: UiPart = {
   id: "user-part",
   entryId: "user-entry",
@@ -49,7 +49,12 @@ export function renderConversationSession(
   client: TestClientOverrides,
   parts: UiPart[] = [originalUserPart, workingAssistantPart],
 ) {
-  const sessionId = profile === "project" ? "conversation-session" : CAKE_CHAT_SESSION_ID;
+  const sessionId =
+    profile === "project"
+      ? "conversation-session"
+      : profile === "project-chat"
+        ? `project-chat:${"a".repeat(64)}`
+        : CAKE_CHAT_SESSION_ID;
   const fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: "/project", name: "Project" })],
     sessions: profile === "project" ? [sessionSummary({ sessionId, projectPath: "/project" })] : [],
@@ -103,7 +108,12 @@ export function renderConversationSession(
   );
   return {
     sessionId,
-    inputLabel: profile === "project" ? "Message" : "Message Cake Chat",
+    inputLabel:
+      profile === "project"
+        ? "Message"
+        : profile === "project-chat"
+          ? "Message Project Chat"
+          : "Message Cake Chat",
     user: userEvent.setup(),
     publish(changes: Partial<ConversationSnapshot>) {
       act(() => publish(changes));

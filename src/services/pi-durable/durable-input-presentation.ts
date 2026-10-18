@@ -1,8 +1,16 @@
 import { Option, Schema } from "effect";
 import type { Message } from "@earendil-works/pi-durable-ai";
-import { attachmentSchema, type Attachment } from "../../contracts/conversations/session-contract";
+import {
+  attachmentSchema,
+  type Attachment,
+  type UiPart,
+} from "../../contracts/conversations/session-contract";
 import type { InboxItem } from "@earendil-works/pi-durable";
-import { parseContextAttachmentBlocks, promptText } from "../pi/runtime/session-projection";
+import {
+  parseContextAttachmentBlocks,
+  promptText,
+  queuedUserMessageDisplay,
+} from "../pi/runtime/session-projection";
 import { splitContextReminders } from "../pi/runtime/session-context-reminders";
 
 import { SubagentReportOrigin } from "../../contracts/subagents/subagent-data";
@@ -142,7 +150,7 @@ export function withoutDurableSideChatNote(message: Message): Message {
   return { ...message, content: message.content.filter((block) => !isSideChatNote(block)) };
 }
 
-export const durableQueuedPresentation = (content: Blocks) =>
+const durableQueuedPresentation = (content: Blocks) =>
   durableInputPresentation(
     typeof content === "string"
       ? content
@@ -156,10 +164,29 @@ export const durableQueuedText = (content: Blocks) => durableQueuedPresentation(
 
 /** Queued rows show the user's words, not Cake-owned model guidance such as a voice reminder. */
 export const durableQueuedDisplayText = (content: Blocks) =>
-  splitContextReminders(durableQueuedText(content)).text;
+  splitContextReminders(durableQueuedPresentation(content).text).text;
+
+/** One queue card for the whole input, never its model-only attachment envelope. */
+export function durableQueuedPart(
+  item: Extract<InboxItem, { content: unknown }>,
+  id: string,
+): Extract<UiPart, { kind: "text" }> {
+  const display = queuedUserMessageDisplay(durableQueuedDisplayText(item.content));
+  const { subagentReport } = durableQueuedPresentation(item.content);
+  return {
+    id: `queued-${id}`,
+    kind: "text",
+    role: "user",
+    ...display,
+    status: "complete",
+    deliveryState: item.mode === "steer" ? "steering" : "queued",
+    ...(subagentReport ? { subagentReport } : null),
+    queuedInput: durableQueuedInput(item, id),
+  };
+}
 
 /** The editable queued-input projection of one durable inbox item. */
-export const durableQueuedInput = (item: Extract<InboxItem, { content: unknown }>, id: string) => {
+const durableQueuedInput = (item: Extract<InboxItem, { content: unknown }>, id: string) => {
   const input = durableQueuedPresentation(item.content);
   const images =
     typeof item.content === "string"

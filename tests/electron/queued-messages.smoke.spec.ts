@@ -340,6 +340,13 @@ test("queues text and attachments as one project submission and delivers them to
     await composer.pressSequentially("Hold the current response");
     await composer.press("Enter");
     await expect.poll(() => responses.length).toBe(1);
+    await composer.click();
+    await composer.pressSequentially("B queued before the attachments");
+    await composer.press("Enter");
+    await expect(composer).toHaveValue("");
+    await expect(
+      page.getByRole("button", { name: "Send now as steering: B queued before the attachments" }),
+    ).toBeEnabled();
     const text = "Review the queued screenshot and log together";
     const log = "QUEUED_LOG_START\n" + "details\n".repeat(50);
     const image = (await page.screenshot({ clip: { x: 0, y: 0, width: 32, height: 32 } })).toString(
@@ -379,7 +386,12 @@ test("queues text and attachments as one project submission and delivers them to
     await composer.press("Enter");
     await expect(composer).toHaveValue("");
     const queue = page.getByRole("list", { name: "Queued prompts" });
-    await expect(queue.getByRole("listitem")).toHaveCount(1);
+    await expect(queue.getByRole("listitem")).toHaveCount(2);
+    await expect(queue.getByRole("group", { name: "Steering" })).toHaveCount(0);
+    await expect(queue.getByRole("button", { name: /^View queued message:/ })).toHaveText([
+      "B queued before the attachments",
+      text,
+    ]);
     await expect(
       queue.getByRole("button", { name: `Send now as steering: ${text}` }),
     ).toBeEnabled();
@@ -404,6 +416,13 @@ test("queues text and attachments as one project submission and delivers them to
         "data: [DONE]\n\n",
     );
     await expect.poll(() => responses.length).toBe(2);
+    await expect(queue.getByRole("button", { name: /^View queued message:/ })).toHaveText([text]);
+    expect(requests[1]).toContain("B queued before the attachments");
+    expect(requests[1]).not.toContain(text);
+    responses[1]!.end(
+      chunk({ role: "assistant", content: "B complete." }) + chunk({}, "stop") + "data: [DONE]\n\n",
+    );
+    await expect.poll(() => responses.length).toBe(3);
     await expect(queue).toHaveCount(0);
     await expect(conversation.getByText(text, { exact: true })).toHaveCount(1);
     await expect(conversation.getByText("Pasted text · 52 lines", { exact: true })).toHaveCount(1);
@@ -413,9 +432,9 @@ test("queues text and attachments as one project submission and delivers them to
         role: string;
         content: string | Array<{ type: string; text?: string; image_url?: { url: string } }>;
       }>;
-    } = JSON.parse(requests[1]!);
+    } = JSON.parse(requests[2]!);
     const users = payload.messages.filter((message) => message.role === "user");
-    expect(users).toHaveLength(3); // Initial fixture, active request, then one queued submission.
+    expect(users).toHaveLength(4); // Initial fixture, A, B, then the single attached C submission.
     const content = users.at(-1)!.content;
     expect(Array.isArray(content)).toBe(true);
     if (!Array.isArray(content)) throw new Error("Expected multipart user content");
@@ -427,7 +446,7 @@ test("queues text and attachments as one project submission and delivers them to
     expect(deliveredText).toContain(text);
     expect(deliveredText).toContain("queued.png");
     expect(deliveredText).toContain("Pasted text · 52 lines");
-    expect(requests).toHaveLength(2);
+    expect(requests).toHaveLength(3);
   } finally {
     await fixture.dispose();
   }
