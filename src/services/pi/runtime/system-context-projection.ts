@@ -1,6 +1,7 @@
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { Tool } from "@earendil-works/pi-ai";
 import type { UiPart } from "../../../contracts/conversations/session-contract";
+import { withoutTerminalDocumentation } from "./pi-documentation";
 
 type ContextPart = Extract<UiPart, { kind: "context" }>;
 type SourceGroup = "system" | "tools" | "skills" | "worktree" | "instructions";
@@ -141,7 +142,48 @@ export function projectSystemContext(message: unknown, baseId: string, content: 
   return projectPromptSections(parsed.content, parsed.sections, baseId, declarations);
 }
 
-/** Suppress identical full instruction baselines, retaining tool changes and partial patches. */
+/** Compare only Cake's terminal-doc adaptation as equivalent; retain all other instruction changes. */
+function comparableInstructions(text: string): string {
+  return text.replace(/^<docs>\n[\s\S]*?^<\/docs>/gm, withoutTerminalDocumentation);
+}
+
+/** Disposable display state, seeded from Pi on reopen; it never changes model context. */
+export function createSystemContextProjector(messages: readonly unknown[] = []) {
+  const sections = new Map<string, string | null>();
+  const project = (message: unknown, baseId: string, content: string): UiPart[] => {
+    if (typeof message !== "object" || message === null) return [];
+    const rawSections = Reflect.get(message, "sections");
+    const changes: Record<string, string | null> = {};
+    if (typeof rawSections === "object" && rawSections !== null) {
+      for (const [name, value] of Object.entries(rawSections)) {
+        if (typeof value !== "string" && value !== null) continue;
+        const previous = sections.get(name);
+        if (
+          previous !== value &&
+          !(
+            name === "docs" &&
+            typeof previous === "string" &&
+            typeof value === "string" &&
+            comparableInstructions(previous) === comparableInstructions(value)
+          )
+        )
+          changes[name] = value;
+        sections.set(name, value);
+      }
+    }
+    return projectSystemContext({ ...message, sections: changes }, baseId, content);
+  };
+  for (const message of messages)
+    if (
+      typeof message === "object" &&
+      message !== null &&
+      Reflect.get(message, "role") === "system"
+    )
+      project(message, "seed", "");
+  return project;
+}
+
+/** Suppress equivalent full instruction baselines, retaining tool changes and partial patches. */
 export function withoutRuntimeSystemPrompt(
   parts: readonly UiPart[],
   prompt: string,
@@ -166,13 +208,21 @@ export function withoutRuntimeSystemPrompt(
       runtimeInstructions.length === 0 ||
       instructions.length !== runtimeInstructions.length ||
       !runtimeInstructions.every((runtime) =>
-        instructions.some((part) => runtime.title === part.title && runtime.text === part.text),
+        instructions.some(
+          (part) =>
+            runtime.title === part.title &&
+            comparableInstructions(runtime.text) === comparableInstructions(part.text),
+        ),
       )
     )
       continue;
     for (const part of group)
       if (
-        runtimeParts.some((runtime) => runtime.title === part.title && runtime.text === part.text)
+        runtimeParts.some(
+          (runtime) =>
+            runtime.title === part.title &&
+            comparableInstructions(runtime.text) === comparableInstructions(part.text),
+        )
       )
         redundantIds.add(part.id);
   }

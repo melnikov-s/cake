@@ -83,7 +83,11 @@ projections needed by a surface. References do not transfer ownership.
   `buildContextEntries()`. Permanent Cake Chat presents original-history pages
   and a live projection, not its derived summary nodes or context resets.
 - Never silently hide current model-facing system reminders or custom messages,
-  including Cake/extension messages, regardless of Pi's `display` flag. Disclose them as
+  including Cake/extension messages, regardless of Pi's `display` flag, except the
+  hidden `cake.restart-recovery` execution trigger. Keep that trigger in Pi and Browse
+  context, not ordinary conversation. Suppress repeated system sections and resets
+  differing only by Cake's terminal-documentation adaptation; retain genuine
+  instruction/tool changes. Disclose context as
   inspectable context pills; group consecutive pills horizontally with wrapping,
   not separate rows. Expose
   the live runtime's instructions in five source groups: **System** (Pi, Cake,

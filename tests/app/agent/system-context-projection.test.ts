@@ -1,4 +1,4 @@
-import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import { SessionManager, type AgentSession } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 import {
   createCakeSessionRuntimeEventProjection,
@@ -9,6 +9,12 @@ import {
   projectSystemContext,
   withoutRuntimeSystemPrompt,
 } from "../../../src/services/pi/runtime/system-context-projection";
+
+import {
+  createLiveMessageProjector,
+  projectSessionEntries,
+} from "../../../src/services/pi/runtime/session-projection";
+import { withoutTerminalDocumentation } from "../../../src/services/pi/runtime/pi-documentation";
 
 const tools = [
   {
@@ -116,6 +122,141 @@ describe("system instruction source projection", () => {
     expect(withoutRuntimeSystemPrompt(changedTools, prompt, tools)).toEqual([
       expect.objectContaining({ title: "Tools", text: expect.stringContaining('"name": "read"') }),
     ]);
+  });
+
+  it.each([false, true])(
+    "honors hidden recovery presentation without dropping visible messages (display=%s)",
+    (display) => {
+      const message = {
+        role: "custom" as const,
+        customType: "cake.restart-recovery",
+        content: "Resume interrupted work",
+        display,
+        timestamp: 0,
+      };
+      const session = SessionManager.inMemory("/project");
+      session.appendCustomMessageEntry(message.customType, message.content, message.display);
+      const expected =
+        display === false
+          ? []
+          : [
+              expect.objectContaining({
+                kind: "context",
+                title: message.customType,
+                text: message.content,
+              }),
+            ];
+      expect(createLiveMessageProjector()({ type: "message_start", message })).toEqual(expected);
+      expect(projectSessionEntries(session.getBranch())).toEqual(expected);
+      // Display filtering never removes the model-facing Pi entry.
+      expect(session.buildSessionContext().messages).toContainEqual(
+        expect.objectContaining({
+          customType: message.customType,
+          content: message.content,
+          display,
+        }),
+      );
+    },
+  );
+
+  it("suppresses repeated sections and terminal-doc resets, but keeps real instruction and tool deltas live and on reopen", () => {
+    const docs =
+      "<docs>\nPi documentation: extensions, themes, skills, or TUI\nWhen asked about: extensions, themes (docs/themes.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md)\n</docs>";
+    const initial = {
+      role: "system" as const,
+      content: "",
+      sections: { ...sections, docs: withoutTerminalDocumentation(docs) },
+      timestamp: 0,
+    };
+    const session = SessionManager.inMemory("/project");
+    session.appendMessage(initial);
+    const live = createLiveMessageProjector({ initialSystemMessages: [initial] });
+    const reset = { ...initial, sections: { docs }, timestamp: 1 };
+    session.appendMessage(reset);
+    expect(live({ type: "message_start", message: reset })).toEqual([]);
+    const baselineParts = projectSystemContext(initial, "baseline", "");
+    const currentPrompt = `${prompt}\n\n${docs}`;
+    expect(withoutRuntimeSystemPrompt(baselineParts, currentPrompt)).toEqual([]);
+    expect(
+      withoutRuntimeSystemPrompt(projectSessionEntries(session.getBranch()), currentPrompt),
+    ).toEqual([]);
+
+    const changed = {
+      ...initial,
+      sections: {
+        rules: "<rules>\nNew policy\n</rules>",
+        docs: `${docs}\nExtension documentation`,
+        skills: null,
+      },
+      toolsAdded: [tools[0]!],
+      toolsRemoved: [{ name: "write" }],
+      timestamp: 2,
+    };
+    session.appendMessage(changed);
+    const expected = [
+      expect.objectContaining({
+        kind: "context",
+        title: "System",
+        text: expect.stringContaining("New policy"),
+      }),
+      expect.objectContaining({
+        kind: "context",
+        title: "Tools",
+        text: expect.stringContaining("Tools removed"),
+      }),
+      expect.objectContaining({
+        kind: "context",
+        title: "Skills",
+        text: expect.stringContaining("Removed system prompt section"),
+      }),
+    ];
+    const liveChanges = live({ type: "message_start", message: changed });
+    expect(liveChanges).toEqual(expected);
+    expect(liveChanges).toContainEqual(
+      expect.objectContaining({
+        title: "System",
+        text: expect.stringContaining("Extension documentation"),
+      }),
+    );
+    expect(projectSessionEntries(session.getBranch()).slice(baselineParts.length)).toEqual(
+      expected,
+    );
+    const duplicate = { ...changed, toolsAdded: [], toolsRemoved: [], timestamp: 3 };
+    session.appendMessage(duplicate);
+    expect(live({ type: "message_start", message: duplicate })).toEqual([]);
+    expect(projectSessionEntries(session.getBranch()).slice(baselineParts.length)).toEqual(
+      expected,
+    );
+    const appended = {
+      role: "system" as const,
+      content: "An actual appended instruction",
+      timestamp: 4,
+    };
+    expect(live({ type: "message_start", message: appended })).toEqual([
+      expect.objectContaining({ title: "System", text: appended.content }),
+    ]);
+  });
+
+  it("retains a docs-only change to actual guidance or installation paths", () => {
+    const initial = {
+      role: "system" as const,
+      content: "",
+      sections: { docs: "<docs>\nRead /old/docs for SDK guidance\n</docs>" },
+      timestamp: 0,
+    };
+    const session = SessionManager.inMemory("/project");
+    session.appendMessage(initial);
+    const live = createLiveMessageProjector({ initialSystemMessages: [initial] });
+    for (const docs of [
+      "<docs>\nRead /new/docs for SDK guidance\n</docs>",
+      "<docs>\nRead /new/docs before every SDK change\n</docs>",
+    ]) {
+      const message = { ...initial, sections: { docs } };
+      session.appendMessage(message);
+      const expected = [expect.objectContaining({ title: "System", text: docs })];
+      expect(live({ type: "message_start", message })).toEqual(expected);
+      expect(projectSessionEntries(session.getBranch()).slice(-1)).toEqual(expected);
+    }
   });
 
   it("keeps opaque, unstructured and trailing instructions in System", () => {

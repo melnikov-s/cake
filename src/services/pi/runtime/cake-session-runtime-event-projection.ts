@@ -107,6 +107,7 @@ export function createCakeSessionRuntimeEventProjection(input: {
   const projectLiveMessage = createLiveMessageProjector({
     deferProviderErrors: true,
     abortPresentation: input.abortPresentation,
+    initialSystemMessages: session.messages,
     currentSystemPrompt: isFork ? undefined : () => session.systemPrompt,
     currentSystemTools: () => runtimeSystemTools(session),
     renderUserMessageAsMarkdown: (message) => {

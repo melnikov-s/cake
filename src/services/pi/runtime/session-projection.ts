@@ -20,7 +20,10 @@ import { parseCrossSessionMessage } from "../../../contracts/conversations/cross
 import { parseScheduledMessage } from "../../../contracts/conversations/scheduled-message-envelope";
 import { shouldRenderMarkdown } from "../../../utils/markdown";
 import { splitContextReminders } from "./session-context-reminders";
-import { projectSystemContext, withoutRuntimeSystemPrompt } from "./system-context-projection";
+import {
+  createSystemContextProjector,
+  withoutRuntimeSystemPrompt,
+} from "./system-context-projection";
 import {
   attachmentSchema,
   toolOutputContentArraySchema,
@@ -662,8 +665,13 @@ function partsFromMessage(
     ];
   }
 
-  if (role === "system") return projectSystemContext(message, baseId, textFromContent(content));
   if (role === "custom") {
+    // Recovery is an execution trigger, not a conversational context disclosure.
+    if (
+      Reflect.get(message, "customType") === "cake.restart-recovery" &&
+      Reflect.get(message, "display") === false
+    )
+      return [];
     return [
       {
         id: `${baseId}-custom`,
@@ -682,9 +690,11 @@ export function createLiveMessageProjector(
     abortPresentation?(): AbortPresentation;
     currentSystemPrompt?(): string;
     currentSystemTools?(): readonly Tool[];
+    initialSystemMessages?: readonly unknown[];
     renderUserMessageAsMarkdown?(message: unknown): boolean;
   } = {},
 ) {
+  const projectSystem = createSystemContextProjector(options.initialSystemMessages);
   let activeStreamId: string | undefined;
   let streamIndex = 0;
   let userIndex = 0;
@@ -706,7 +716,11 @@ export function createLiveMessageProjector(
       event.type === "message_start" &&
       (event.message.role === "custom" || event.message.role === "system")
     ) {
-      const parts = partsFromMessage(event.message, `live-context-${++userIndex}`);
+      const baseId = `live-context-${++userIndex}`;
+      const parts =
+        event.message.role === "system"
+          ? projectSystem(event.message, baseId, textFromContent(event.message.content))
+          : partsFromMessage(event.message, baseId);
       return event.message.role === "system" && options.currentSystemPrompt
         ? withoutRuntimeSystemPrompt(
             parts,
@@ -974,10 +988,19 @@ export function projectSessionEntries(
     else if (entry.type === "custom_message") nextContextRole = "custom";
   }
 
+  const projectSystem = createSystemContextProjector();
   for (const entry of entries) {
     if (entry.type === "message") {
       if (intermediateRetryErrors.has(entry.id)) continue;
-      if (entry.message.role === "system" && systemCheckpoints.has(entry.id)) continue;
+      if (entry.message.role === "system") {
+        const parts = projectSystem(
+          entry.message,
+          `entry-${entry.id}`,
+          textFromContent(entry.message.content),
+        );
+        if (!systemCheckpoints.has(entry.id)) for (const part of parts) append(part);
+        continue;
+      }
       for (const part of partsFromMessage(
         entry.message,
         `entry-${entry.id}`,
@@ -1037,12 +1060,8 @@ export function projectSessionEntries(
             state: "success",
           });
       }
-      append({
-        id: `entry-${entry.id}-custom`,
-        kind: "context",
-        title: entry.customType,
-        text: textFromContent(entry.content),
-      });
+      for (const part of partsFromMessage({ ...entry, role: "custom" }, `entry-${entry.id}`))
+        append(part);
       continue;
     }
     if (entry.type !== "custom") continue;

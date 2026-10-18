@@ -1,6 +1,7 @@
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { getCurrentSystemMessage } from "@earendil-works/pi-ai";
 import { retainRelocatedForkContext } from "./fork-context";
+import { withoutTerminalDocumentation } from "./pi-documentation";
 
 /** Retain Pi's generated prompt, trim terminal docs, and avoid relocation-only fork reinjection. */
 export function createCakeSystemPromptExtension(): ExtensionFactory {
@@ -21,12 +22,7 @@ export function createCakeSystemPromptExtension(): ExtensionFactory {
       if (options.customPrompt || options.sections.docs) return;
       const docs = event.systemPrompt.match(/^<docs>\n([\s\S]*?)\n<\/docs>/m)?.[1];
       if (!docs) return;
-      options.sections.docs = docs
-        .replace(", themes, skills, or TUI", ", or skills")
-        .replace(", themes (docs/themes.md)", "")
-        .replace(", TUI components (docs/tui.md)", "")
-        .replace(", keybindings (docs/keybindings.md)", "")
-        .replace(" (e.g., tui.md for TUI API details)", "");
+      options.sections.docs = withoutTerminalDocumentation(docs);
     });
   };
 }

@@ -6,7 +6,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TURN_RECOVERY_NOTICE_PART_ID } from "../../src/services/pi/runtime/turn-recovery";
-import { type CakeSessionRuntime } from "../../src/services/pi/runtime/cake-session-runtime";
+import {
+  type CakeSessionRuntime,
+  type CakeSessionRuntimeEvent,
+} from "../../src/services/pi/runtime/cake-session-runtime";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 
 const temporaryDirectories: string[] = [];
 const servers: Server[] = [];
@@ -27,7 +31,7 @@ async function createTemporaryDirectory() {
   return path;
 }
 
-function sseChunk(delta: { role?: string; content?: string }, finishReason: string | null = null) {
+function sseChunk(delta: object, finishReason: string | null = null) {
   return `data: ${JSON.stringify({
     id: "fixture-completion",
     object: "chat.completion.chunk",
@@ -112,10 +116,29 @@ describe("response retry and recovery", () => {
           signalStarted();
           return;
         }
+        if (index === 2) {
+          response.write(
+            sseChunk({
+              role: "assistant",
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "restart-read",
+                  type: "function",
+                  function: { name: "read", arguments: JSON.stringify({ path: "AGENTS.md" }) },
+                },
+              ],
+            }),
+          );
+          response.write(sseChunk({}, "tool_calls"));
+          response.end("data: [DONE]\n\n");
+          return;
+        }
         response.write(sseChunk({ role: "assistant", content: "Recovered after restart" }));
         response.write(sseChunk({}, "stop"));
         response.end("data: [DONE]\n\n");
       });
+      await writeFile(join(directory, "AGENTS.md"), "Keep real project instructions");
       const { runtime } = await createFixtureRuntime(directory);
       const input = {
         turnId: "restart-turn",
@@ -134,27 +157,70 @@ describe("response retry and recovery", () => {
       await running;
       // An abrupt process exit cannot append the graceful SDK abort message.
       if (shutdown === "crash") await writeFile(file, crashCheckpoint);
-      const reopened = await createCakeSessionRuntime({
+      const recoveryEvents: CakeSessionRuntimeEvent[] = [];
+      const reopenOptions = {
         cwd: directory,
         agentDir: join(directory, "agent"),
         sessionDir: join(directory, "sessions"),
         sessionId: runtime.sessionId,
         trusted: true,
         requestUi: async () => undefined,
-        onEvent: () => undefined,
-      });
+        onEvent: (event: CakeSessionRuntimeEvent) => recoveryEvents.push(event),
+      };
+      const reopened = await createCakeSessionRuntime(reopenOptions);
       runtimes.push(reopened);
       // Opening/observing a session does not admit a turn.
       expect((await reopened.snapshot()).streaming).toBe(false);
       expect(provider.requestCount()).toBe(1);
       await reopened.recoverInput?.(input);
-      expect(provider.requestCount()).toBe(2);
+      expect(provider.requestCount()).toBe(3);
       await reopened.recoverInput?.(input);
-      expect(provider.requestCount()).toBe(2);
+      expect(provider.requestCount()).toBe(3);
       const transcript = await readFile(file, "utf8");
+      // Pi's custom recovery turn bypasses before_agent_start. Its first tool
+      // round restores default docs, a real model delta equivalent for Cake display.
+      const branch = SessionManager.open(file).getBranch();
+      const systemMessages = branch.flatMap((entry) =>
+        entry.type === "message" && entry.message.role === "system" ? [entry.message] : [],
+      );
+      expect(systemMessages).toHaveLength(2);
+      expect(Object.keys(systemMessages[1]!.sections ?? {})).toEqual(["docs"]);
+      expect(systemMessages[0]!.sections?.docs).not.toContain("docs/tui.md");
+      expect(systemMessages[1]!.sections?.docs).toContain("docs/tui.md");
+      const recovery = branch.find(
+        (entry) => entry.type === "custom_message" && entry.customType === "cake.restart-recovery",
+      );
+      expect(recovery).toMatchObject({ display: false });
+      expect(
+        recoveryEvents.filter(
+          (event) =>
+            event.type === "part-updated" &&
+            event.part.kind === "context" &&
+            !event.part.id.startsWith("runtime-system-prompt-"),
+        ),
+      ).toEqual([]);
+      const snapshot = await reopened.snapshot();
+      expect(
+        snapshot.parts.filter(
+          (part) => part.kind === "context" && !part.id.startsWith("runtime-system-prompt-"),
+        ),
+      ).toEqual([]);
+      expect(snapshot.parts).toContainEqual(
+        expect.objectContaining({ kind: "tool", name: "read", state: "success" }),
+      );
+      const browse = JSON.stringify(await reopened.inspectSession({ kind: "context-outline" }));
+      expect(browse).toContain("docs/tui.md");
+      expect(browse).toContain("Keep real project instructions");
+      if (recovery?.type !== "custom_message") throw new Error("Missing Pi recovery message");
+      expect(browse).toContain(recovery.content as string);
+      await reopened.dispose();
+      const observedAgain = await createCakeSessionRuntime(reopenOptions);
+      runtimes.push(observedAgain);
+      expect((await observedAgain.snapshot()).parts).toEqual(snapshot.parts);
+      expect(provider.requestCount()).toBe(3);
       expect(transcript.match(/"role":"user"/g)).toHaveLength(1);
       expect(
-        (await reopened.snapshot()).parts.some(
+        snapshot.parts.some(
           (part) => part.kind === "text" && part.text === "Recovered after restart",
         ),
       ).toBe(true);
