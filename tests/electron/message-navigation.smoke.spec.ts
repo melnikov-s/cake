@@ -27,7 +27,8 @@ for (const surface of ["Project Session", "Cake Chat"] as const) {
     const project = join(temporaryRoot, "project");
     const cakeHome = join(temporaryRoot, "cake-home");
     const userData = join(temporaryRoot, "user-data");
-    const projectId = "instant-message-navigation";
+    const projectId = "01957936-0000-7000-8000-0001f80c961e";
+    const linkedAnswerLabel = surface === "Cake Chat" ? "Linked answer" : "f80c961e";
     const sessionId = surface === "Cake Chat" ? CAKE_CHAT_SESSION_ID : projectId;
     const timestamp = new Date(0).toISOString();
     const directory = cakeWorkspaceSessionDirectory(project, join(cakeHome, "pi", "sessions"));
@@ -76,7 +77,7 @@ for (const surface of ["Project Session", "Cake Chat"] as const) {
           users.set(turn, surface === "Cake Chat" ? String(userEntry.id) : `user-${turn}`);
           const links =
             turn === 12
-              ? `\n\n[Linked answer](cake://session/${sessionId}?message=${assistants.get(6)}) · [Linked request](cake://session/${sessionId}?message=${users.get(6)})`
+              ? `\n\n[${surface === "Cake Chat" ? "Linked answer" : "s:f80c961e"}](cake://session/${sessionId}?message=${assistants.get(6)}) · [Linked request](cake://session/${sessionId}?message=${users.get(6)})`
               : "";
           const text = [
             `Answer ${turn}.${links}`,
@@ -200,7 +201,12 @@ for (const surface of ["Project Session", "Cake Chat"] as const) {
           },
         });
       });
-      await selected.getByRole("link", { name: "Linked answer", exact: true }).click();
+      const identityLink = selected.getByRole("link", { name: linkedAnswerLabel, exact: true });
+      const destination = `cake://session/${sessionId}?message=${assistants.get(6)}`;
+      await expect(identityLink).toHaveAttribute("href", destination);
+      await identityLink.hover();
+      await expect(page.getByRole("tooltip", { name: destination, exact: true })).toBeVisible();
+      await identityLink.click();
       await expect(selected).toContainText("Answer 6.");
       await expectRevealed(transcript, selected);
       await transcript.evaluate(async () => {

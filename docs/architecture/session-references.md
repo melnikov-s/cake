@@ -45,6 +45,18 @@ provider context, both for regular Pi and Pi Durable. Persisted envelopes and
 renderer provenance retain canonical routing metadata. This does not create a
 second transcript or modify Pi originals.
 
+## Human-facing presentation
+
+Session-ID links display the collision-aware trailing suffix without `s:` when the
+surrounding UI already identifies a session. Markdown identity-only link labels
+(including inline-code labels) use this presentation; authored titles stay intact.
+Known short link targets resolve against the live roster before rendering so the
+link destination and tooltip retain the canonical Pi UUID. Unresolved or ambiguous
+short targets keep the existing navigation error behavior, never a guessed identity.
+Workboard author, audience and receipt metadata and missing-title fallbacks in the
+artifact's Linked sessions section use the same bare-suffix links.
+Agent-facing `s:` references, parsing, storage and routing contracts are unchanged.
+
 ## Exact message references
 
 An exact message reference is also its user-openable link:

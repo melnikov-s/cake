@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { DisclosureTrigger } from "@/components/ui/disclosure-trigger";
 import { LoadingState } from "@/components/ui/loading-state";
+import { SessionIdLink } from "@/components/ui/session-id-link";
+import { Fragment } from "react";
 import type { MessageBoardStore } from "../stores/MessageBoardStore";
 
 export const MessageBoardArtifact = observer(function MessageBoardArtifact({
@@ -11,6 +13,15 @@ export const MessageBoardArtifact = observer(function MessageBoardArtifact({
 }: {
   store: MessageBoardStore;
 }) {
+  const knownSessionIds = [
+    ...new Set(
+      store.entries.flatMap((entry) => [
+        entry.authorSessionId,
+        ...(entry.audience === "workgroup" ? [] : entry.audience),
+        ...(store.receipts[entry.sequence]?.receipts.map((receipt) => receipt.sessionId) ?? []),
+      ]),
+    ),
+  ];
   return (
     <section className="grid min-w-0 gap-3" aria-label="Workboard">
       <header className="flex min-w-0 flex-wrap items-center justify-between gap-3 pr-10">
@@ -42,7 +53,9 @@ export const MessageBoardArtifact = observer(function MessageBoardArtifact({
             onClick={() => void store.toggleBody(entry.sequence)}
           />
           <p className="mt-1 break-all text-[11px] text-muted-foreground">
-            From {entry.authorSessionId} · {new Date(entry.createdAt).toLocaleString()}
+            From{" "}
+            <SessionIdLink sessionId={entry.authorSessionId} knownSessionIds={knownSessionIds} /> ·{" "}
+            {new Date(entry.createdAt).toLocaleString()}
           </p>
           {entry.topic && (
             <p className="mt-1 break-all text-[11px] text-muted-foreground">
@@ -63,7 +76,15 @@ export const MessageBoardArtifact = observer(function MessageBoardArtifact({
           )}
           <div className="mt-2 flex min-w-0 flex-wrap items-center justify-between gap-2">
             <span className="min-w-0 break-all text-[11px] text-muted-foreground">
-              For {entry.audience === "workgroup" ? "the workgroup" : entry.audience.join(", ")}
+              For{" "}
+              {entry.audience === "workgroup"
+                ? "the workgroup"
+                : entry.audience.map((sessionId, index) => (
+                    <Fragment key={sessionId}>
+                      {index > 0 && ", "}
+                      <SessionIdLink sessionId={sessionId} knownSessionIds={knownSessionIds} />
+                    </Fragment>
+                  ))}
             </span>
             <Button
               size="sm"
@@ -83,7 +104,12 @@ export const MessageBoardArtifact = observer(function MessageBoardArtifact({
                     key={receipt.sessionId}
                     className="grid min-w-0 gap-1 break-all border-t border-border pt-2"
                   >
-                    <span className="font-mono">{receipt.sessionId}</span>
+                    <span className="font-mono">
+                      <SessionIdLink
+                        sessionId={receipt.sessionId}
+                        knownSessionIds={knownSessionIds}
+                      />
+                    </span>
                     <span>
                       Notified:{" "}
                       {receipt.notifiedAt

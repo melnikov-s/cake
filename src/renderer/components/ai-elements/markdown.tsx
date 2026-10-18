@@ -1,5 +1,8 @@
 import {
+  Children,
+  cloneElement,
   createContext,
+  isValidElement,
   lazy,
   Suspense,
   useCallback,
@@ -29,6 +32,8 @@ import { cn } from "@/lib/utils";
 import type { SourceLocation } from "../../../contracts/editor/source-location";
 import { parseSessionLink, sessionLink } from "../../../contracts/conversations/message-reference";
 import { parseSourceLocation } from "../../../utils/source-location";
+import { resolveSessionLinkReference } from "../../../contracts/project-sessions/session-reference";
+import { sessionDisplayId } from "../../lib/session-display-id";
 import { Link } from "../ui/link";
 import { MarkdownTable } from "../ui/markdown-table";
 import { FullscreenSurface } from "../fullscreen-surface";
@@ -54,6 +59,7 @@ type MarkdownLinkActions = {
   openExternalUrl(url: string): void;
   openSession(sessionId: string, messageId?: string, attachmentId?: string): void;
   sessionTitle?(sessionId: string): string | undefined;
+  sessionIds?(): readonly string[];
   loadWorkspaceImage?(
     path: string,
     signal: AbortSignal,
@@ -238,18 +244,40 @@ function linkAnchor(allProps: AnchorProps, actions?: MarkdownLinkActions) {
     );
   const session = href ? sessionTargetFromHref(href) : undefined;
   if (session) {
+    const ids = actions?.sessionIds?.() ?? [];
+    const resolved = resolveSessionLinkReference(session.sessionId, ids);
+    const sessionId = resolved.ok ? resolved.sessionId : session.sessionId;
+    // Only identity-only labels change. Authored titles and prose remain literal.
+    const displayLabel = (label: ReactNode): ReactNode => {
+      // oxlint-disable-next-line anti-slop/no-runtime-typeof -- ReactNode is an already-typed React union, not an unparsed input.
+      if (typeof label === "string") {
+        const target = resolveSessionLinkReference(label, [...ids, sessionId]);
+        return target.ok && target.sessionId === sessionId
+          ? sessionDisplayId(sessionId, ids)
+          : label;
+      }
+      if (
+        isValidElement<{ children?: ReactNode; node?: { tagName?: string } }>(label) &&
+        (label.type === "code" || label.props.node?.tagName === "code")
+      )
+        return cloneElement(label, {}, displayLabel(label.props.children));
+      return label;
+    };
+    const children = Children.toArray(props.children);
+    const label = children.length === 1 ? displayLabel(children[0]) : props.children;
     return (
       <Link
         {...props}
-        href={sessionLink(session.sessionId, session.messageId, session.attachmentId)}
-        title={sessionLink(session.sessionId, session.messageId, session.attachmentId)}
+        href={sessionLink(sessionId, session.messageId, session.attachmentId)}
+        title={sessionLink(sessionId, session.messageId, session.attachmentId)}
+        children={label}
         className={cn("inline-block max-w-[80ch] truncate align-bottom", props.className)}
         onClick={(event) => {
           event.preventDefault();
           if (session.attachmentId)
-            actions?.openSession(session.sessionId, undefined, session.attachmentId);
-          else if (session.messageId) actions?.openSession(session.sessionId, session.messageId);
-          else actions?.openSession(session.sessionId);
+            actions?.openSession(sessionId, undefined, session.attachmentId);
+          else if (session.messageId) actions?.openSession(sessionId, session.messageId);
+          else actions?.openSession(sessionId);
         }}
       />
     );

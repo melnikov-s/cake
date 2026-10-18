@@ -103,6 +103,10 @@ supplies the addressable session identity. Original-message previews reuse `Full
 a metadata-only file/input link with the same copy affordance; previews fetch the
 original through the session-authorized attachment boundary, never a backend path.
 
+[`SessionIdLink`](../../src/renderer/components/ui/session-id-link.tsx) displays a bare,
+collision-aware session suffix while retaining the canonical UUID in its link and
+destination tooltip. Use it for identity metadata where the session context is clear.
+
 [`SessionMessage`](../../src/renderer/components/ui/session-message.tsx) presents
 incoming session communication as an expanded card with a compact attribution
 header (direction, source-session link, status/metadata badges) and an on-demand

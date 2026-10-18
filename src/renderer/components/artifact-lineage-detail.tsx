@@ -24,6 +24,7 @@ import {
   type ArtifactLinkTarget,
 } from "../../contracts/artifacts/artifact-lineage";
 import type { SessionCatalogStore } from "../stores/SessionCatalogStore";
+import { SessionIdLink } from "./ui/session-id-link";
 import type { ArtifactDetailStore } from "../stores/ArtifactDetailStore";
 import type { ArtifactReferencePreviewStore } from "../stores/ArtifactReferencePreviewStore";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
@@ -282,7 +283,12 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
                       ? "Shared with workgroup"
                       : link.target.sessionId === CAKE_CHAT_SESSION_ID
                         ? "Cake Chat"
-                        : (sessions.find(link.target.sessionId)?.title ?? link.target.sessionId)}
+                        : (sessions.find(link.target.sessionId)?.title ?? (
+                            <SessionIdLink
+                              sessionId={link.target.sessionId}
+                              knownSessionIds={sessions.authoritativeSessionIds}
+                            />
+                          ))}
                   </strong>
                   <p className="mt-0.5 text-muted-foreground">
                     {link.mode === "follow-latest"

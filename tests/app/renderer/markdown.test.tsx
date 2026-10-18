@@ -138,6 +138,88 @@ describe("Markdown rendering integration", () => {
     ).toBe("cake://artifact/report-1@r2");
   });
 
+  it.each(["s:f80c961e", "f80c961e", "01957936-0000-7000-8000-0001f80c961e", "`s:f80c961e`"])(
+    "displays the identity label %s without a prefix and navigates with its full Pi UUID",
+    async (label) => {
+      const sessionId = "01957936-0000-7000-8000-0001f80c961e";
+      const open = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);
+      using fixture = renderMarkdown(`Session [${label}](cake://session/${sessionId})`, {
+        sessionLinkTarget: sessionId,
+        client: { projectSessions: { open } },
+      });
+      const link = screen.getByRole("link", { name: "f80c961e" });
+      expect(link.getAttribute("href")).toBe(`cake://session/${sessionId}`);
+      expect(link.getAttribute("aria-description")).toBe(`cake://session/${sessionId}`);
+      await fixture.user.click(link);
+      expect(open).toHaveBeenCalledWith(
+        { sessionId, workingDirectory: "/work/cake" },
+        { signal: expect.any(AbortSignal) },
+      );
+    },
+  );
+
+  it.each(["s:f80c961e", "f80c961e"])(
+    "canonicalizes the existing short target %s without changing reference parsing",
+    async (reference) => {
+      const sessionId = "01957936-0000-7000-8000-0001f80c961e";
+      const open = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);
+      using fixture = renderMarkdown(`[${reference}](cake://session/${reference})`, {
+        sessionLinkTarget: sessionId,
+        client: { projectSessions: { open } },
+      });
+      const link = screen.getByRole("link", { name: "f80c961e" });
+      expect(link.getAttribute("href")).toBe(`cake://session/${sessionId}`);
+      await fixture.user.click(link);
+      expect(open).toHaveBeenCalledWith(
+        { sessionId, workingDirectory: "/work/cake" },
+        { signal: expect.any(AbortSignal) },
+      );
+    },
+  );
+
+  it("extends colliding display suffixes while retaining exact message targets and authored titles", async () => {
+    const sessionId = "01957936-0000-7000-8000-0001f80c961e";
+    const otherId = "01957936-0000-7000-8000-0002f80c961e";
+    const openSession = vi.fn();
+    using fixture = renderMarkdown(
+      `[s:1f80c961e](cake://session/${sessionId}?message=entry-42) · [Review worker](cake://session/${otherId})`,
+      { actions: { sessionIds: () => [sessionId, otherId], openSession } },
+    );
+    const link = screen.getByRole("link", { name: "1f80c961e" });
+    expect(link.getAttribute("href")).toBe(`cake://session/${sessionId}?message=entry-42`);
+    await fixture.user.click(link);
+    expect(openSession).toHaveBeenCalledWith(sessionId, "entry-42");
+    expect(screen.getByRole("link", { name: "Review worker" }).getAttribute("href")).toBe(
+      `cake://session/${otherId}`,
+    );
+  });
+
+  it.each(["s:f80c961e", "f80c961e"])(
+    "does not guess a canonical destination for an ambiguous target %s",
+    async (reference) => {
+      const ids = ["01957936-0000-7000-8000-0001f80c961e", "01957936-0000-7000-8000-0002f80c961e"];
+      const openSession = vi.fn();
+      using fixture = renderMarkdown(`[Worker](cake://session/${reference})`, {
+        actions: { sessionIds: () => ids, openSession },
+      });
+      const link = screen.getByRole("link", { name: "Worker" });
+      expect(link.getAttribute("href")).toBe(`cake://session/${encodeURIComponent(reference)}`);
+      await fixture.user.click(link);
+      expect(openSession).toHaveBeenCalledWith(reference);
+    },
+  );
+
+  it("leaves literal reference text and code outside session links unchanged", () => {
+    using fixture = renderMarkdown(
+      "Reference s:f80c961e and `s:f80c961e`. [s:f80c961e](https://example.com) · [s:f80c961e **worker**](cake://session/01957936-0000-7000-8000-0001f80c961e)",
+    );
+    expect(fixture.container.textContent).toContain("Reference s:f80c961e and s:f80c961e.");
+    expect(screen.getByRole("link", { name: "s:f80c961e worker" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "s:f80c961e" }).getAttribute("href")).toBe(
+      "https://example.com/",
+    );
+  });
+
   it.each([
     ["message=entry-42", "entry-42", undefined],
     [

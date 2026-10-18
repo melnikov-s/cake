@@ -31,6 +31,7 @@ export const RendererRoot = observer(function RendererRoot({
   openSession,
 }: RendererRootProps) {
   const activeSessionId = rootStore.appShellStore.activeConversation?.sessionId;
+  const sessionIds = rootStore.sessionCatalogStore.authoritativeSessionIds;
   const activeWorkingDirectory = activeSessionId
     ? rootStore.sessionCatalogStore.find(activeSessionId)?.workingDirectory
     : undefined;
@@ -44,6 +45,7 @@ export const RendererRoot = observer(function RendererRoot({
                 actions={{
                   openExternalUrl,
                   openSession,
+                  sessionIds: () => sessionIds,
                   sessionTitle: (sessionId) =>
                     rootStore.sessionCatalogStore.find(sessionId)?.title ??
                     rootStore.cakeChatCollectionStore.summaries.find(

@@ -92,6 +92,7 @@ export function renderMarkdown(
     });
   }
   const actions: MarkdownActions = {
+    sessionIds: () => fixture.root.sessionCatalogStore.authoritativeSessionIds,
     openExternalUrl: (url) => void fixture.root.openExternalUrl(url),
     openSession: (sessionId, messageId, attachmentId) =>
       void fixture.root.navigationStore.openSessionLink(sessionId, messageId, attachmentId),
