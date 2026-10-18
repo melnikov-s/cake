@@ -1,3 +1,4 @@
+import { PendingReport, ReportHandlingReceipt } from "../../contracts/conversations/pending-report";
 import { BoardContinuation } from "../../contracts/artifacts/workboard-continuation";
 import {
   CompletionInboxItem,
@@ -28,6 +29,7 @@ import {
   SessionRequester,
 } from "../../contracts/project-sessions/session-reporting";
 
+// Optional report fields extend v7; existing pending notices remain pending on load.
 const DOCUMENT_VERSION = 7;
 const BoundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 const BoundedPath = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096));
@@ -176,16 +178,6 @@ const Version6FamilyTurn = Schema.Struct({
   completionContract: Schema.optionalKey(Schema.Boolean),
   expectsResponse: Schema.Boolean,
 });
-/** Quiet result/notification delivery intent, not a second transcript or executable Pi queue. */
-const DeferredReferenceNotice = Schema.Struct({
-  id: BoundedId,
-  recipientSessionId: BoundedId,
-  text: Schema.String,
-});
-export interface DeferredReferenceNotice extends Schema.Schema.Type<
-  typeof DeferredReferenceNotice
-> {}
-
 /** One quiet status line waiting for the user's next Cake Chat message. */
 const CoordinatorDigestItem = Schema.Struct({
   /** Absent denotes the global chat, including existing persisted inbox items. */
@@ -205,7 +197,8 @@ export const SessionFamilyDocument = Schema.Struct({
   spawnedSessions: Schema.Array(SpawnedSession),
   /** Cake Chat's inbox of digest-policy results, drained into its next user message. */
   coordinatorDigest: Schema.optionalKey(Schema.Array(CoordinatorDigestItem)),
-  deferredReferences: Schema.optionalKey(Schema.Array(DeferredReferenceNotice)),
+  deferredReferences: Schema.optionalKey(Schema.Array(PendingReport)),
+  handledReports: Schema.optionalKey(Schema.Array(ReportHandlingReceipt)),
   boardContinuations: Schema.optionalKey(Schema.Array(BoardContinuation)),
   completionInbox: Schema.optionalKey(Schema.Array(CompletionInboxItem)),
 });
@@ -277,11 +270,14 @@ export class SessionFamilyStorage extends Context.Service<
     ) => Effect.Effect<void, SessionFamilyStorageError>;
     /** Atomically retains an exact notification and settles its optional report obligation. */
     readonly deferReferenceNotice: (
-      item: DeferredReferenceNotice,
+      item: PendingReport,
       turnIds?: ReadonlyArray<string>,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
-    readonly removeReferenceNotices: (
+    readonly markReferenceAdmissions: (
       ids: ReadonlyArray<string>,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
+    readonly acknowledgeReports: (
+      receipts: ReadonlyArray<ReportHandlingReceipt>,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly recordLaunchReport: (
       sessionId: string,
@@ -886,13 +882,20 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
           }),
       );
       const deferReferenceNotice = Effect.fn("SessionFamilyStorage.deferReferenceNotice")(
-        (item: DeferredReferenceNotice, turnIds: ReadonlyArray<string> = []) =>
+        (item: PendingReport, turnIds: ReadonlyArray<string> = []) =>
           update((document) => {
             if (
               turnIds.length &&
               !document.turns.some((turn) => turnIds.includes(turn.turnId) && !turn.reported)
             )
               return document;
+            if (
+              document.handledReports?.some(
+                (receipt) =>
+                  receipt.id === item.id && receipt.recipientSessionId === item.recipientSessionId,
+              )
+            )
+              return turnIds.reduce(withoutNotice, document);
             const notices = document.deferredReferences ?? [];
             return {
               ...turnIds.reduce(withoutNotice, document),
@@ -902,18 +905,40 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             };
           }),
       );
-      const removeReferenceNotices = Effect.fn("SessionFamilyStorage.removeReferenceNotices")(
+      const markReferenceAdmissions = Effect.fn("SessionFamilyStorage.markReferenceAdmissions")(
         (ids: ReadonlyArray<string>) =>
-          update((document) =>
-            document.deferredReferences === undefined
-              ? document
-              : {
-                  ...document,
-                  deferredReferences: document.deferredReferences.filter(
-                    (item) => !ids.includes(item.id),
-                  ),
-                },
-          ),
+          update((document) => ({
+            ...document,
+            deferredReferences: document.deferredReferences?.map((item) =>
+              ids.includes(item.id) ? { ...item, admissions: (item.admissions ?? 0) + 1 } : item,
+            ),
+          })),
+      );
+      const acknowledgeReports = Effect.fn("SessionFamilyStorage.acknowledgeReports")(
+        (receipts: ReadonlyArray<ReportHandlingReceipt>) =>
+          update((document) => {
+            const matches = (item: { id: string; recipientSessionId: string }) =>
+              receipts.some(
+                (receipt) =>
+                  receipt.id === item.id && receipt.recipientSessionId === item.recipientSessionId,
+              );
+            const handled = document.handledReports ?? [];
+            return {
+              ...document,
+              deferredReferences: document.deferredReferences?.filter((item) => !matches(item)),
+              handledReports: [
+                ...handled,
+                ...receipts.filter(
+                  (receipt) =>
+                    !handled.some(
+                      (item) =>
+                        item.id === receipt.id &&
+                        item.recipientSessionId === receipt.recipientSessionId,
+                    ),
+                ),
+              ],
+            };
+          }),
       );
       const recordLaunchReport = Effect.fn("SessionFamilyStorage.recordLaunchReport")(
         (sessionId: string, report: CakeChatLaunchReport) =>
@@ -990,6 +1015,13 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
                   ),
                 }
               : null),
+            ...(document.handledReports
+              ? {
+                  handledReports: document.handledReports.filter(
+                    (item) => !removedMembers.has(item.recipientSessionId),
+                  ),
+                }
+              : null),
             spawnedSessions: document.spawnedSessions.filter(
               (spawn) => spawn.projectPath !== projectPath,
             ),
@@ -1022,7 +1054,8 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         completeNotice,
         digestNotice,
         deferReferenceNotice,
-        removeReferenceNotices,
+        markReferenceAdmissions,
+        acknowledgeReports,
         recordLaunchReport,
         removeDigest,
         withNoticeDelivery: (effect) => noticeDeliveryLock.withPermit(effect),

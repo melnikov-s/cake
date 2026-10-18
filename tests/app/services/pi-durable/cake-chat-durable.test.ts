@@ -1,3 +1,6 @@
+import type { UiPart } from "../../../../src/contracts/conversations/session-contract";
+import { addReferenceNotifications } from "../../../../src/contracts/conversations/reference-notification";
+import * as pendingReports from "../../../../src/domain/conversations/pendingReports";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
   createRegistry,
@@ -51,6 +54,7 @@ async function fixture(
   answer?: Parameters<typeof durableModels>[0],
   keepRecentTokens = 20_000,
   storage: Storage = new MemoryStorage(),
+  onZoom?: (parts: readonly UiPart[]) => Promise<void>,
 ) {
   const f = durableModels(answer);
   const summarize = vi.fn(async () => "talk: exact details remain available through zoom");
@@ -62,6 +66,7 @@ async function fixture(
     parameters: Type.Object({ id: Type.Integer(), n: Type.Integer() }),
     replay: "safe",
     async execute(input, _api, context) {
+      if (onZoom) await onZoom((await readDurableOriginalPage(engine.root)).parts);
       const found = await engine.memory.zoom(
         input.id,
         input.n,
@@ -105,6 +110,106 @@ async function fixture(
     },
   };
 }
+
+it("anchors report acknowledgment to persisted user-visible Pi text before a tool runs", async () => {
+  const item = {
+    id: "quiet-report",
+    recipientSessionId: "chat",
+    text: "Investigation found a lifecycle regression.",
+  };
+  const notice =
+    "The background investigation found a reporting lifecycle regression; no performance changes were made.";
+  let checked = false;
+  const f = await fixture(
+    (_context, index) =>
+      index === 1
+        ? durableAnswer("", [
+            { type: "text", text: notice },
+            { type: "toolCall", id: "ack", name: "zoom", arguments: { id: 0, n: 1 } },
+          ])
+        : durableAnswer("That answers your question."),
+    20_000,
+    new MemoryStorage(),
+    async (parts) => {
+      expect(parts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            kind: "text",
+            role: "assistant",
+            text: notice,
+            status: "complete",
+            entryId: expect.any(String),
+          }),
+        ]),
+      );
+      expect(pendingReports.communicationEvidence(parts, notice)).toEqual(expect.any(String));
+      expect(pendingReports.communicationEvidence(parts, "A future final answer")).toBeUndefined();
+      checked = true;
+    },
+  );
+  await f.send(
+    durableInputText(addReferenceNotifications("What does the s: prefix mean?", [item]), [], false),
+    "with-report",
+  );
+  expect(checked).toBe(true);
+  // This verifies evidence/lifecycle plumbing, not the semantic quality of an LLM-written notice.
+});
+
+it("keeps mixed worker evidence out of user-labelled memory through compression and retains exact originals", async () => {
+  const f = await fixture();
+  const item = {
+    id: "investigation-42",
+    recipientSessionId: "chat",
+    text: "Evidence: the report was received but omitted.",
+    source: {
+      kind: "subagent" as const,
+      handleId: "worker-42",
+      sessionId: "pi-worker-42",
+      task: "Investigate skipped results",
+      status: "complete",
+    },
+  };
+  const input = durableInputText(
+    addReferenceNotifications("Explain the prefix", [item]),
+    [],
+    false,
+  );
+  await f.send(input, "mixed");
+  await f.view();
+  const exact = (await f.zoom(0, 1)).text;
+  expect(exact).toContain(
+    "work: received workflow context; user-facing handling not established by intake",
+  );
+  expect(exact).toContain("worker-42");
+  expect(exact).toContain("Report investigation-42 · pending user-facing handling");
+  expect(exact).toContain("user: Explain the prefix");
+  expect(exact).not.toContain("user: <system-reminder>");
+  const summaryCalls = JSON.stringify(f.summarize.mock.calls);
+  expect(summaryCalls).toContain("work: received workflow context");
+  expect(summaryCalls).toContain("pending versus explicitly communicated/dismissed state");
+  for (let i = 0; i < 12; i++) await f.send(`Other user input ${i}`, `later-${i}`);
+  f.budget(2048);
+  await f.view();
+  expect((await f.zoom(0, 1)).text).toBe(exact);
+  // Active workflow state is reattached independently of potentially lossy summaries.
+  await f.send(
+    durableInputText(
+      addReferenceNotifications("My next question", [{ ...item, admissions: 1 }]),
+      [],
+      false,
+    ),
+    "pending-again",
+  );
+  expect(JSON.stringify(f.requests.at(-1))).toContain(
+    "Report investigation-42 · pending user-facing handling",
+  );
+  expect(JSON.stringify(f.requests.at(-1))).toContain("worker-42");
+  expect((await readDurableOriginalPage(f.engine.root)).parts).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ kind: "context", text: expect.stringContaining("worker-42") }),
+    ]),
+  );
+});
 
 it("reads paired memory sources and originals without recompressing or changing the active head", async () => {
   const f = await fixture();

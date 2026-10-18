@@ -322,6 +322,12 @@ appended its custom message; shutdown before that receipt leaves the worker's du
 pending for retry. Stable completion IDs suppress retries after consumption. Worker notification
 policy has one in-memory owner and is persisted with the current completion state. Missing transcripts or an
 unfinished tool produce a visible worker failure/review requirement rather than a replay.
+For continuation:none, `notified` means the reporting inbox durably owns the compact handoff,
+not that its content was communicated. Inbox admissions retain pending intent; explicit
+`sessions.reports.acknowledge` receipts reference already-visible Pi assistant parts and
+suppress further replay. Pending handoffs retain worker provenance independently of memory
+summaries. Handling drops the temporary payload, retaining only IDs/disposition/evidence;
+no second transcript is kept. See the quiet-worker contract in `session-family-contract.md`.
 Explicit close and idle expiry remove the durable handle; they do not erase Pi history.
 Workflow script workers retain their separately defined supervisor recovery policy.
 

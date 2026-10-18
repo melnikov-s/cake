@@ -250,6 +250,34 @@ const definitions = [
     },
   },
   {
+    command: "sessions.reports",
+    scope: "global",
+    discovery: {
+      topic: "sessions",
+      summary: "Page pending user-facing report obligations; admission is not communication.",
+    },
+  },
+  {
+    command: "sessions.reports.read",
+    scope: "global",
+    discovery: {
+      topic: "sessions",
+      summary: "Read a bounded pending report slice with provenance; reading does not handle it.",
+    },
+  },
+  {
+    command: "sessions.reports.acknowledge",
+    scope: "global",
+    discovery: {
+      topic: "sessions",
+      summary:
+        "Attest explicit report handling using exact assistant text already emitted to the user.",
+      guidance: [
+        "Emit a concise grouped notice first, then acknowledge its IDs with exact communicatedText. Never acknowledge a future final answer or an unrelated reply. Dismiss only on the user's explicit decision. Visible text evidence is checked, semantic communication is an agent attestation, not automatically inferred.",
+      ],
+    },
+  },
+  {
     command: "sessions.completions",
     scope: "global",
     discovery: {

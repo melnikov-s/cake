@@ -378,6 +378,48 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* () {
 });
 
 it.effect(
+  "routes scoped report discovery, bounded reads and explicit handling through real agent controls",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const storage = Context.get(f.context, SessionFamilyStorage);
+      yield* storage.deferReferenceNotice({
+        id: "report-1",
+        recipientSessionId: caller.sessionId,
+        text: "Exact worker handoff evidence",
+      });
+      yield* storage.deferReferenceNotice({
+        id: "other-report",
+        recipientSessionId: "other-chat",
+        text: "Private other handoff",
+      });
+      const listing = yield* f.call("sessions.reports");
+      assert.ok(listing && typeof listing === "object" && "total" in listing);
+      assert.equal(listing.total, 1);
+      assert.ok(!JSON.stringify(listing).includes("Exact worker handoff"));
+      const read = yield* f.call("sessions.reports.read", { id: "report-1", offset: 6, limit: 6 });
+      assert.ok(read && typeof read === "object" && "text" in read && "nextOffset" in read);
+      assert.equal(read.text, "worker");
+      assert.equal(read.nextOffset, 12);
+      assert.equal(
+        (yield* Effect.result(f.direct("sessions.reports.read", { id: "other-report" })))._tag,
+        "Failure",
+      );
+      assert.equal(
+        (yield* Effect.result(
+          f.direct("sessions.reports.acknowledge", {
+            ids: ["report-1"],
+            disposition: "communicated",
+            communicatedText: "A planned answer",
+          }),
+        ))._tag,
+        "Failure",
+      );
+      assert.equal((yield* storage.state()).deferredReferences?.length, 2);
+    }),
+);
+
+it.effect(
   "multiwindow presentation and device requests remain bound to the caller, not the message target",
   () =>
     Effect.gen(function* () {

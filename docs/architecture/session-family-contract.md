@@ -143,6 +143,35 @@ The private continuation API does not authorize board wake-up; the independent e
 still has no automatic creator-report relationship. Explicit `message_parent` and questions
 remain immediate; an explicitly blocked session report still escalates even under none.
 
+### Quiet worker report handling
+
+A private worker with continuation:none transfers a compact result handoff to the durable
+report inbox, not to a parent turn. Its worker `notified` disposition records that transfer,
+not model delivery or user communication. Input admission only increments an intake counter;
+it never drains the inbox. Five fairly rotated pending items are attached to each real user
+input (up to 4,000 characters each initially, 300 on replay). Commands and cross-session
+inputs do not drain or trigger the group. Overflow is discoverable via `sessions.reports`;
+`sessions.reports.read` retrieves one exact handoff in bounded slices. Inline evidence and
+unread linked originals are labelled separately; worker handle, Pi identity, task and status
+remain attached. No report-only wakeup, timer or poll is introduced. Resume delivery is unchanged.
+
+`sessions.reports.acknowledge` is an explicit agent attestation, not a semantic classifier.
+It requires exact assistant text already emitted in the requesting conversation after its
+latest consumed user input, with a persisted Pi entry and complete text status. Reasoning,
+context, tools, queued inputs and planned final answers are not evidence. The agent emits
+a grouped notice first, then acknowledges its IDs as communicated (or dismissed only on
+the user's decision). Backend validation proves the evidence exists, not that the words
+adequately summarize the report. Successful or unrelated answers never auto-acknowledge.
+Omission, failure, abort and restart leave the workflow obligation intact. Handling atomically
+removes pending payloads and retains small conversation-scoped ID/evidence receipts, so
+retries cannot duplicate handled results. Exact conversation history remains solely Pi-owned.
+
+Durable memory labels embedded handoffs as received work, separately from the real user
+input; provenance and pending-at-intake are supplied to compression. Historical intake is
+not current communication state: the durable workflow inbox/receipts remain authoritative
+even if a lossy summary drops details, and pending reminders are reattached on user turns.
+This does not reconstruct reports already removed by older admission-based delivery.
+
 ### Workboard continuation and quiet decisions
 
 Workboards remain passive unless a recipient explicitly grants `boards.continuation.set`.

@@ -2,6 +2,10 @@ import {
   ParentContinuation,
   parentContinuationGuidance,
 } from "../../contracts/conversations/parent-continuation";
+import {
+  PendingReportAcknowledge,
+  PendingReportRead,
+} from "../../contracts/conversations/pending-report";
 import { CompletionInboxUpdate } from "../../contracts/conversations/completion-inbox";
 import { AgentListInput } from "../../contracts/agent/agent-list-data";
 import { messageRefsSchema } from "../../contracts/conversations/message-reference";
@@ -25,6 +29,50 @@ export function createSessionFamilyOperations(
       return api().invokeAppControl(command, input as JsonObject, context.signal);
     };
   return [
+    {
+      command: "sessions.reports",
+      requires: "invokeAppControl",
+      topic: "sessions",
+      summary: "Page outstanding user-facing report obligations; listing is not handling.",
+      inputSchema: AgentListInput,
+      examples: [{ input: {} }],
+      result: "A bounded metadata-only page of outstanding report IDs and worker provenance.",
+      execute: invokeAppControl("sessions.reports"),
+    },
+    {
+      command: "sessions.reports.read",
+      requires: "invokeAppControl",
+      topic: "sessions",
+      summary: "Read a bounded slice of one pending handoff report with worker provenance.",
+      inputSchema: PendingReportRead,
+      examples: [{ input: { id: "report-id" } }],
+      result: "One pending handoff text slice with nextOffset; reading never acknowledges it.",
+      execute: invokeAppControl("sessions.reports.read"),
+    },
+    {
+      command: "sessions.reports.acknowledge",
+      requires: "invokeAppControl",
+      topic: "sessions",
+      summary:
+        "Explicitly attest a report was communicated or user-dismissed, using already-emitted assistant text.",
+      guidance: [
+        "First emit one concise grouped notice as assistant text, then supply its exact communicatedText and report IDs. Never acknowledge a planned final answer, intake or unrelated reply. The backend verifies visible text exists after the latest user input, not its semantic adequacy. Dismiss only when the user explicitly chose dismissal. An omitted or interrupted notice remains pending; no wakeup or mutation is authorized.",
+      ],
+      inputSchema: PendingReportAcknowledge,
+      examples: [
+        {
+          input: {
+            ids: ["report-id"],
+            disposition: "communicated",
+            communicatedText:
+              "The investigation is ready; it found the queue is already serialized.",
+          },
+        },
+      ],
+      result:
+        "Durable handling receipt anchored to existing assistant text; retries are idempotent.",
+      execute: invokeAppControl("sessions.reports.acknowledge"),
+    },
     {
       command: "sessions.completions",
       requires: "invokeAppControl",

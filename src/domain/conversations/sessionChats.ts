@@ -25,6 +25,7 @@ import { encodeCrossSessionMessage } from "../../contracts/conversations/cross-s
 import {
   addReferenceNotifications,
   isReferenceNotification,
+  pendingReportPage,
 } from "../../contracts/conversations/reference-notification";
 import {
   TurnId,
@@ -136,12 +137,10 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
       !(handle.profile === "ProjectSession" && /^[!/]/.test(message.text))
         ? yield* cakeChatDigest.prepareUserMessage(handle, message.text).pipe(asError("deliver"))
         : undefined;
+    const reportPage = pendingReportPage(references);
     const text = message.crossSession
       ? encodeCrossSessionMessage(message.text, message.crossSession)
-      : addReferenceNotifications(
-          userMessage?.text ?? message.text,
-          references.map((item) => item.text),
-        );
+      : addReferenceNotifications(userMessage?.text ?? message.text, reportPage, references.length);
     const turnId = TurnId.make(
       yield* deliverConversation(
         Effect.succeed(handle),
@@ -164,9 +163,10 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
       yield* (yield* SessionFamilyStorage)
         .removeDigest(userMessage.digestIds)
         .pipe(asError("deliver"));
-    if (storage && references.length)
+    // Admission is not user-facing handling. Keep the obligation across omission/abort/restart.
+    if (storage && reportPage.length)
       yield* storage
-        .removeReferenceNotices(references.map((item) => item.id))
+        .markReferenceAdmissions(reportPage.map((item) => item.id))
         .pipe(asError("deliver"));
     yield* handle.publishSessionChanged().pipe(asError("deliver"));
     return turnId;

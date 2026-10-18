@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { durableAnswer } from "../../fixtures/durable-chat";
 import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, Layer, Queue, Schema, Stream } from "effect";
@@ -49,6 +50,7 @@ import {
 } from "../helpers/piRuntimeFixture";
 import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
 import { TurnCanceledError } from "../../../src/services/pi/runtime/RuntimeTurnCompletion";
+import * as pendingReports from "../../../src/domain/conversations/pendingReports";
 import * as sessionChats from "../../../src/domain/conversations/sessionChats";
 import { splitSessionDigestReminder } from "../../../src/contracts/cake-chats/session-digest-reminder";
 import { messageReference } from "../../../src/contracts/conversations/message-reference";
@@ -95,6 +97,7 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
   const materialized = new Set<string>([parentId, CAKE_CHAT_SESSION_ID]);
   const consumeQueued = yield* Deferred.make<void>();
   const transcript: string[] = [];
+  const assistantReplies: { afterInput: number; text: string }[] = [];
   const chatTranscripts = new Map<string, string[]>([[CAKE_CHAT_SESSION_ID, transcript]]);
   const recipients: string[] = [];
   const deliveries: string[] = [];
@@ -175,13 +178,24 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
                   sessionId: options.sessionId ?? "unexpected",
                   streaming: busy,
                   parts: projectSessionEntries(
-                    ownTranscript.map((content, index) => ({
-                      type: "message",
-                      id: String(index),
-                      parentId: null,
-                      timestamp: "2026-01-01T00:00:00.000Z",
-                      message: { role: "user", content, timestamp: index },
-                    })),
+                    ownTranscript.flatMap((content, index) => [
+                      {
+                        type: "message" as const,
+                        id: String(index),
+                        parentId: null,
+                        timestamp: "2026-01-01T00:00:00.000Z",
+                        message: { role: "user" as const, content, timestamp: index },
+                      },
+                      ...assistantReplies
+                        .filter((reply) => reply.afterInput === index)
+                        .map((reply, replyIndex) => ({
+                          type: "message" as const,
+                          id: `reply-${index}-${replyIndex}`,
+                          parentId: null,
+                          timestamp: "2026-01-01T00:00:00.000Z",
+                          message: { ...durableAnswer(reply.text), timestamp: index },
+                        })),
+                    ]),
                   ),
                 }),
                 inspectSession: async (query: SessionInspectionQuery) => ({
@@ -299,6 +313,9 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
     queue,
     transcript,
     chatTranscripts,
+    reply: (text: string) => {
+      assistantReplies.push({ afterInput: transcript.length - 1, text });
+    },
     recipients,
     deliveries,
     submittedAttachments,
@@ -419,6 +436,152 @@ describe("automatic spawned-session reporting", () => {
     );
   }
 
+  it("accepts only persisted visible text after the latest consumed input as acknowledgment evidence", () => {
+    const input = {
+      id: "input",
+      kind: "text" as const,
+      role: "user" as const,
+      text: "Current question",
+      status: "complete" as const,
+    };
+    const reply = {
+      id: "notice",
+      kind: "text" as const,
+      role: "assistant" as const,
+      text: "The investigation is ready.",
+      status: "complete" as const,
+      entryId: "persisted-entry",
+    };
+    assert.equal(pendingReports.communicationEvidence([input, reply], reply.text), reply.id);
+    assert.equal(pendingReports.communicationEvidence([reply, input], reply.text), undefined);
+    assert.equal(
+      pendingReports.communicationEvidence([input, { ...reply, status: "streaming" }], reply.text),
+      undefined,
+    );
+    assert.equal(
+      pendingReports.communicationEvidence([input, { ...reply, status: "error" }], reply.text),
+      undefined,
+    );
+    assert.equal(
+      pendingReports.communicationEvidence([input, { ...reply, entryId: undefined }], reply.text),
+      undefined,
+    );
+    assert.equal(
+      pendingReports.communicationEvidence(
+        [input, { id: "reasoning", kind: "reasoning", text: reply.text, status: "complete" }],
+        reply.text,
+      ),
+      undefined,
+    );
+    assert.equal(
+      pendingReports.communicationEvidence(
+        [input, { id: "context", kind: "context", title: "Intake", text: reply.text }],
+        reply.text,
+      ),
+      undefined,
+    );
+    assert.equal(
+      pendingReports.communicationEvidence(
+        [input, { ...reply, role: "user", deliveryState: "queued" }],
+        reply.text,
+      ),
+      undefined,
+    );
+    assert.equal(pendingReports.communicationEvidence([input, reply], "   "), undefined);
+    // This is an explicit attestation anchor, not a test of semantic communication.
+  });
+
+  it.effect(
+    "replays an omitted substantive worker report after unrelated input, abort and storage reopen until explicit visible handling",
+    () =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        yield* f.run(
+          Effect.gen(function* () {
+            yield* assembleCoordinator();
+            const item = {
+              id: "investigation-result",
+              recipientSessionId: CAKE_CHAT_SESSION_ID,
+              text: "The investigation found the reporting lifecycle regression; no performance changes were made.",
+              source: {
+                kind: "subagent" as const,
+                handleId: "worker-handle",
+                sessionId: "worker-pi",
+                task: "Investigate missed reporting",
+                status: "complete",
+              },
+            };
+            yield* f.storage.deferReferenceNotice(item);
+            const send = (text: string) =>
+              sessionChats.deliver(
+                {
+                  sessionId: CAKE_CHAT_SESSION_ID,
+                  text,
+                  attachments: [],
+                  renderUserMessageAsMarkdown: false,
+                },
+                "prompt",
+              );
+            yield* send("What does the s: prefix mean?");
+            while (f.transcript.length < 1) yield* Effect.yieldNow;
+            const firstInput = f.transcript[0];
+            assert.ok(firstInput);
+            assert.equal(splitContextReminders(firstInput).text, "What does the s: prefix mean?");
+            assert.ok(f.transcript[0]?.includes(item.text));
+            f.reply("It is a short session reference."); // Omission: a completed unrelated answer is not handling.
+            assert.equal((yield* pendingReports.list(CAKE_CHAT_SESSION_ID, {})).total, 1);
+            const planned = {
+              ids: [item.id],
+              disposition: "communicated" as const,
+              communicatedText: "The investigation found a reporting regression.",
+            };
+            assert.equal(
+              (yield* Effect.result(pendingReports.acknowledge(CAKE_CHAT_SESSION_ID, planned)))
+                ._tag,
+              "Failure",
+            );
+            yield* sessionChats.abort({
+              sessionId: CAKE_CHAT_SESSION_ID,
+              stop: { by: "user", reason: "user-stop" },
+            });
+            const reloaded = yield* Effect.gen(function* () {
+              return yield* SessionFamilyStorage;
+            }).pipe(Effect.provide(familyStorageHarness(f.harness.files).layer));
+            assert.equal((yield* reloaded.state()).deferredReferences?.[0]?.admissions, 1);
+            yield* send("Continue with my next question").pipe(
+              Effect.provideService(SessionFamilyStorage, reloaded),
+            );
+            while (f.transcript.length < 2) yield* Effect.yieldNow;
+            assert.ok(f.transcript[1]?.includes(item.id));
+            assert.ok(f.transcript[1]?.includes("pending user-facing handling"));
+            // Reading supplies evidence to the model, but is not a user-facing acknowledgment.
+            assert.equal(
+              (yield* pendingReports.read(CAKE_CHAT_SESSION_ID, { id: item.id })).source?.handleId,
+              "worker-handle",
+            );
+            assert.equal((yield* f.storage.state()).deferredReferences?.length, 1);
+            f.reply(planned.communicatedText);
+            yield* pendingReports.acknowledge(CAKE_CHAT_SESSION_ID, planned);
+            yield* pendingReports.acknowledge(CAKE_CHAT_SESSION_ID, planned); // Idempotent tool retry.
+            assert.deepEqual((yield* f.storage.state()).deferredReferences, []);
+            assert.equal(
+              (yield* f.storage.state()).handledReports?.[0]?.disposition,
+              "communicated",
+            );
+            yield* f.storage.deferReferenceNotice(item); // Old worker checkpoint retry cannot resurrect it.
+            yield* send("Another question");
+            while (f.transcript.length < 3) yield* Effect.yieldNow;
+            assert.equal(f.transcript[2], "Another question");
+            assert.equal((yield* pendingReports.list(CAKE_CHAT_SESSION_ID, {})).total, 0);
+          }).pipe(
+            Effect.provide(
+              Layer.mock(TaskInputStorage, { isRecipient: () => Effect.succeed(false) }),
+            ),
+          ),
+        );
+      }),
+  );
+
   it.effect(
     "keeps explicit questions, substantive messages and deliberate steering immediate without draining passive references",
     () =>
@@ -472,7 +635,8 @@ describe("automatic spawned-session reporting", () => {
               "prompt",
             );
             while (f.deliveries.length < 4) yield* Effect.yieldNow;
-            assert.deepEqual((yield* f.storage.state()).deferredReferences, []);
+            assert.equal((yield* f.storage.state()).deferredReferences?.length, 1);
+            assert.equal((yield* f.storage.state()).deferredReferences?.[0]?.admissions, 1);
           }).pipe(
             Effect.provide(
               Layer.mock(TaskInputStorage, { isRecipient: () => Effect.succeed(false) }),

@@ -557,6 +557,13 @@ const deliverCompletion = Effect.fn("Subagents.deliverCompletion")(function* (
         storage.deferReferenceNotice({
           id: handle.recovery.completionId,
           recipientSessionId: handle.parentSessionId,
+          source: {
+            kind: "subagent",
+            handleId: handle.handleId,
+            sessionId: handle.recovery.privateSessionId,
+            task: handle.task,
+            status: handle.result.status,
+          },
           text:
             handle.result.status === "complete"
               ? answer || "Subagent completed without a final report."
@@ -575,6 +582,8 @@ const deliverCompletion = Effect.fn("Subagents.deliverCompletion")(function* (
       : Effect.void;
     yield* delivered;
   }
+  // For continuation:none, notified means the durable reporting inbox owns the handoff,
+  // not that the parent model (or the user) has received or handled it.
   yield* mutateHandle(handleId, (current) =>
     current.completionDisposition === "notifying" &&
     current.recovery.completionId === handle.recovery.completionId

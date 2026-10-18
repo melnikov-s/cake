@@ -3,7 +3,6 @@ import type { Message } from "@earendil-works/pi-durable-ai";
 import { attachmentSchema, type Attachment } from "../../contracts/conversations/session-contract";
 import type { InboxItem } from "@earendil-works/pi-durable";
 import { parseContextAttachmentBlocks, promptText } from "../pi/runtime/session-projection";
-import { splitSessionDigestReminder } from "../../contracts/cake-chats/session-digest-reminder";
 import { splitContextReminders } from "../pi/runtime/session-context-reminders";
 
 import { SubagentReportOrigin } from "../../contracts/subagents/subagent-data";
@@ -176,8 +175,8 @@ export const durableQueuedInput = (item: Extract<InboxItem, { content: unknown }
   return {
     itemId: id,
     turnId: id,
-    // The session digest prefix is Cake-owned model context, not editable user text.
-    text: splitSessionDigestReminder(input.text).text,
+    // Workflow reminders are model context, not editable user text.
+    text: splitContextReminders(input.text).text,
     renderUserMessageAsMarkdown: input.markdown,
     attachments: [
       ...input.files,

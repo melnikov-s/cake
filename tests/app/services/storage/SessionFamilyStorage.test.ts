@@ -34,6 +34,42 @@ const child = (requestId: string, childSessionId: string) => ({
 
 describe("SessionFamilyStorage", () => {
   it.effect(
+    "persists explicit handling separately from admission and deduplicates replay after reopening",
+    () => {
+      const harness = familyStorageHarness();
+      const report = {
+        id: "report",
+        recipientSessionId: "chat",
+        text: "Exact linked or inline handoff",
+      };
+      return Effect.gen(function* () {
+        const storage = yield* SessionFamilyStorage;
+        yield* storage.deferReferenceNotice(report);
+        yield* storage.markReferenceAdmissions([report.id]);
+        assert.deepEqual((yield* storage.state()).deferredReferences, [
+          { ...report, admissions: 1 },
+        ]);
+        yield* storage.acknowledgeReports([
+          {
+            id: report.id,
+            recipientSessionId: "chat",
+            assistantPartId: "entry-text-0",
+            disposition: "dismissed",
+          },
+        ]);
+        const reloaded = yield* Effect.gen(function* () {
+          return yield* SessionFamilyStorage;
+        }).pipe(Effect.provide(familyStorageHarness(harness.files).layer));
+        yield* reloaded.deferReferenceNotice(report);
+        assert.deepEqual((yield* reloaded.state()).deferredReferences, []);
+        assert.equal((yield* reloaded.state()).handledReports?.[0]?.disposition, "dismissed");
+        // Receipts are conversation-scoped, not blanket suppression of another inbox.
+        yield* reloaded.deferReferenceNotice({ ...report, recipientSessionId: "other-chat" });
+        assert.equal((yield* reloaded.state()).deferredReferences?.length, 1);
+      }).pipe(Effect.provide(harness.layer));
+    },
+  );
+  it.effect(
     "withdraws only selected recipient reports and does not revive canceled explicit replies on settlement",
     () =>
       Effect.gen(function* () {

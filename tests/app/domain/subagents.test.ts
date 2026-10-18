@@ -27,6 +27,8 @@ import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { TestClock } from "effect/testing";
+import * as sessionChats from "../../../src/domain/conversations/sessionChats";
+import { splitContextReminders } from "../../../src/services/pi/runtime/session-context-reminders";
 import * as subagents from "../../../src/domain/subagents/subagents";
 import {
   defaultApplicationState,
@@ -37,7 +39,7 @@ import {
   makeCakeSessionRuntimesLayer,
   PiSessionError,
   type CakeSessionRuntimeAcquireOptions,
-  type CakeSessionRuntimes,
+  CakeSessionRuntimes,
   type CakeSessionRuntimesAdapter,
 } from "../../../src/services/pi/CakeSessionRuntimes";
 import type { CakeSessionRuntimeSetup } from "../../../src/services/pi/CakeSessionRuntimes";
@@ -1343,6 +1345,33 @@ describe("Subagents", () => {
               },
             ],
           );
+          const notice = (yield* storage.state()).deferredReferences?.[0];
+          assert.equal(notice?.source?.handleId, started.handleId);
+          assert.equal(notice?.source?.sessionId, childId);
+          assert.equal(notice?.source?.task, "Investigate");
+          yield* (yield* CakeSessionRuntimes).acquire(caller.options);
+          yield* sessionChats
+            .deliver(
+              {
+                sessionId: caller.parentSessionId,
+                text: "What does the s: prefix mean?",
+                attachments: [],
+                renderUserMessageAsMarkdown: false,
+              },
+              "prompt",
+            )
+            .pipe(
+              Effect.provide(
+                Layer.mock(TaskInputStorage, { isRecipient: () => Effect.succeed(false) }),
+              ),
+            );
+          while (!(yield* Ref.get(fixture.parentMessages)).length) yield* Effect.yieldNow;
+          const delivered = (yield* Ref.get(fixture.parentMessages))[0];
+          assert.ok(delivered);
+          assert.equal(splitContextReminders(delivered).text, "What does the s: prefix mean?");
+          assert.ok(delivered.includes(reference));
+          assert.equal((yield* storage.state()).deferredReferences?.length, 1);
+          assert.equal((yield* storage.state()).deferredReferences?.[0]?.admissions, 1);
         }).pipe(Effect.provide(fixture.layer));
       }),
   );

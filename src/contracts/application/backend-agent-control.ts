@@ -1,3 +1,4 @@
+import { PendingReportAcknowledge, PendingReportRead } from "../conversations/pending-report";
 import { CompletionInboxUpdate } from "../conversations/completion-inbox";
 import { ParentContinuation } from "../conversations/parent-continuation";
 import { Schema } from "effect";
@@ -113,6 +114,9 @@ export const BackendAgentInvocation = Schema.Union([
     }),
   ),
   operation("sessions.reply", Schema.Struct(message)),
+  operation("sessions.reports", AgentListInput),
+  operation("sessions.reports.read", PendingReportRead),
+  operation("sessions.reports.acknowledge", PendingReportAcknowledge),
   operation("sessions.completions", AgentListInput),
   operation("sessions.completions.update", CompletionInboxUpdate),
   operation("sessions.thread", Schema.Struct({ threadId: Schema.optionalKey(id) })),
@@ -148,6 +152,9 @@ export const backendAgentCommands: ReadonlySet<string> = new Set([
   "sessions.reply",
   "sessions.thread",
   "sessions.close-thread",
+  "sessions.reports",
+  "sessions.reports.read",
+  "sessions.reports.acknowledge",
   "sessions.completions",
   "sessions.completions.update",
 ]);

@@ -24,6 +24,7 @@ import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import * as application from "./application";
 import { defaultProjectSettings } from "../../contracts/application/application-data";
 import * as agentSettings from "./agentSettings";
+import * as pendingReports from "../conversations/pendingReports";
 import * as completionInbox from "../conversations/completionInbox";
 import * as agentSessionMessaging from "./agentSessionMessaging";
 import * as agentActionNotices from "./agentActionNotices";
@@ -494,6 +495,24 @@ export const invoke: (
             })),
           });
         }
+        case "sessions.reports":
+          return toJsonValue({
+            ok: true,
+            command,
+            ...(yield* pendingReports.list(caller.sessionId, invocation.arguments)),
+          });
+        case "sessions.reports.read":
+          return toJsonValue({
+            ok: true,
+            command,
+            ...(yield* pendingReports.read(caller.sessionId, invocation.arguments)),
+          });
+        case "sessions.reports.acknowledge":
+          return toJsonValue({
+            ok: true,
+            command,
+            ...(yield* pendingReports.acknowledge(caller.sessionId, invocation.arguments)),
+          });
         case "sessions.completions":
           return toJsonValue({
             ok: true,

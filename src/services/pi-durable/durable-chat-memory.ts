@@ -21,6 +21,7 @@ import {
 } from "./durable-input-presentation";
 import type { ContextInspection } from "../../contracts/conversations/context-inspection";
 import { contextMessage } from "../pi/runtime/context-outline";
+import { splitContextReminders } from "../pi/runtime/session-context-reminders";
 
 const Id = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 const Range = Schema.Struct({ id: Id, n: Schema.Int.check(Schema.isGreaterThan(0)), entry: Id });
@@ -96,9 +97,27 @@ function durableMessageText(message: Message): string {
         )
         .join("\n")
     : message.content;
-  const text = message.role === "user" ? durableInputPresentation(rawText).body : rawText;
+  const input = message.role === "user" ? durableInputPresentation(rawText) : undefined;
+  const text = input?.body ?? rawText;
   if (message.role === "toolResult")
     return `echo: ${message.toolName}${message.isError ? " failed" : ""}: ${text}`;
+  if (input?.subagentReport)
+    return `work: received worker report ${JSON.stringify(input.subagentReport)}; receipt does not establish user-facing communication: ${text}`;
+  const context = splitContextReminders(text);
+  if (context.reminders.length) {
+    const work = context.reminders
+      .filter(
+        (item) =>
+          item.title === "Cake · reference notifications" ||
+          item.title === "Cake · session updates",
+      )
+      .map((item) =>
+        item.title === "Cake · reference notifications"
+          ? `work: received workflow context; user-facing handling not established by intake (current obligations live in sessions.reports): ${item.text}`
+          : `work: received session updates; receipt is not communication (decisions live in sessions.completions): ${item.text}`,
+      );
+    return [...work, `user: ${context.text}`].join("\n");
+  }
   const report = parseCrossSessionMessage(text);
   if (report) return `work: [${report.metadata.sender.title}] ${report.text}`;
   if (/^Background subagent\b/.test(text)) return `work: ${text}`;
