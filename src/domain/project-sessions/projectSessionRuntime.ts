@@ -82,7 +82,6 @@ import type { Terminal } from "../../services/terminal/Terminal";
 import { toJsonValue } from "../../utils/to-json-value";
 import { makeVscodeControl } from "../../services/pi/VscodeControlAdapter";
 import { jsonObjectSchema } from "../../contracts/serialization/json-contract";
-import { sessionReference } from "../../contracts/project-sessions/session-reference";
 
 class ProjectSessionRuntimeCompositionError extends Schema.TaggedError<ProjectSessionRuntimeCompositionError>()(
   "ProjectSessionRuntimeCompositionError",
@@ -222,14 +221,10 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
     family && member?.parentSessionId
       ? renderProjectSessionPrompt(childSessionFamilyPromptTemplate, {
           familyId: family.familyId,
-          parentSessionId: sessionReference(
-            member.parentSessionId,
-            (yield* sessionReferences
-              .catalog()
-              .pipe(Effect.mapError((cause) => compositionError("relationshipPrompt", cause)))).map(
-              (entry) => entry.sessionId,
-            ),
-          ),
+          // The binding already supplies the authoritative identity. A short ref
+          // would require global discovery to exclude suffix collisions, blocking
+          // cold opens on unrelated projects and archived sessions.
+          parentSessionId: member.parentSessionId,
           workingDirectory: member.workingDirectory,
         })
       : renderProjectSessionPrompt(parentSessionFamilyPromptTemplate);
