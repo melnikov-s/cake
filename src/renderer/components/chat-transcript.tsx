@@ -51,7 +51,10 @@ export {
 } from "./chat-transcript-parts";
 
 export interface ChatTranscriptHandle {
-  scrollToBottom(options?: { fromMessageNavigation?: boolean }): void;
+  scrollToBottom(options?: {
+    fromMessageNavigation?: boolean;
+    forMessageInsertion?: boolean;
+  }): void;
 }
 
 const defaultTranscriptBehavior: ChatTranscriptBehavior = {};
@@ -160,17 +163,18 @@ export const ChatTranscript = observer(function ChatTranscript({
     resize: "instant",
   });
   const atBottom = useRef(!restoredScrollPosition || restoredScrollPosition.kind === "bottom");
-  const allowFollowing = useRef(
-    !restoredScrollPosition || restoredScrollPosition.kind === "bottom",
-  );
-  const readingAnchor = useRef<Extract<TranscriptScrollPosition, { kind: "message" }> | undefined>(
-    undefined,
-  );
+  // Following is ownership, not a property to rediscover after remeasurement.
+  // Only a downward gesture against unchanged geometry can reacquire it.
+  const allowFollowing = useRef<{ height: number; viewport: number } | undefined>(undefined);
+  const userScrolling = useRef(false);
+  const readingAnchor = useRef<
+    (Extract<TranscriptScrollPosition, { kind: "message" }> & { scrollTop: number }) | undefined
+  >(undefined);
   const pendingSelectionReveal = useRef<(() => void) | undefined>(undefined);
   const handleRangeChanged = useCallback(() => pendingSelectionReveal.current?.(), []);
   const handleTotalHeightChange = useCallback(() => {
     pendingSelectionReveal.current?.();
-    if (!atBottom.current || !scroller) return;
+    if (!atBottom.current || userScrolling.current || !scroller) return;
     // Never defer a bottom correction to another frame. Virtuoso's logical
     // height can arrive before its DOM commit; the observer below also aligns
     // the committed geometry, including footer and viewport changes.
@@ -178,15 +182,22 @@ export const ChatTranscript = observer(function ChatTranscript({
   }, [scroller]);
   const reconcileScrollGeometry = useCallback(() => {
     handleTotalHeightChange();
-    if (!scroller || atBottom.current || !readingAnchor.current) return;
+    if (!scroller || userScrolling.current || atBottom.current || !readingAnchor.current) return;
     const saved = readingAnchor.current;
+    // Native/compositor scrolling and Virtuoso compensation can move scrollTop
+    // before their scroll event. The saved offset belongs ONLY to its captured
+    // scrollTop: treating that movement as a row resize undoes the user's scroll.
+    if (scroller.scrollTop !== saved.scrollTop) return;
     const anchor = Array.from(
       scroller.querySelectorAll<HTMLElement>("[data-transcript-anchor-id]"),
     ).find((item) => item.dataset.transcriptAnchorId === saved.messageId);
     if (!anchor || getComputedStyle(anchor).visibility === "hidden") return;
     const delta =
       anchor.getBoundingClientRect().top - scroller.getBoundingClientRect().top - saved.offset;
-    if (Math.abs(delta) >= 1) scroller.scrollTop += delta;
+    if (Math.abs(delta) >= 1) {
+      scroller.scrollTop += delta;
+      saved.scrollTop = scroller.scrollTop;
+    }
   }, [handleTotalHeightChange, scroller]);
   useLayoutEffect(() => {
     const content = virtualContentRef.current;
@@ -197,14 +208,19 @@ export const ChatTranscript = observer(function ChatTranscript({
     return () => observer.disconnect();
   }, [reconcileScrollGeometry, scroller, virtualized]);
   const scrollToBottom = useCallback(
-    (options?: { fromMessageNavigation?: boolean }) => {
+    (options?: { fromMessageNavigation?: boolean; forMessageInsertion?: boolean }) => {
+      // Sending is insertion permission, not permission to interrupt an active
+      // gesture. Explicit navigation/jump controls remain deliberate overrides.
+      if (options?.forMessageInsertion && userScrolling.current) return;
+      userScrolling.current = false;
       pendingSelectionReveal.current = undefined;
+      virtuosoRef.current?.cancelScrollToIndex();
       readingAnchor.current = undefined;
       // Returning to writing must also supersede an offscreen selection's pending
       // measurement retry, not just move the native scrollbar for one frame.
       if (virtualized && options?.fromMessageNavigation)
         virtuosoRef.current?.scrollToIndex({ index: "LAST", align: "end", behavior: "auto" });
-      allowFollowing.current = true;
+      allowFollowing.current = undefined;
       atBottom.current = true;
       if (virtualized) handleTotalHeightChange();
       else void scrollCompactToBottom("instant");
@@ -315,7 +331,7 @@ export const ChatTranscript = observer(function ChatTranscript({
     if (virtualized && !virtuosoRef.current) return;
     revealedSelectionRevision.current = messageSelection.revision;
     readingAnchor.current = undefined;
-    allowFollowing.current = false;
+    allowFollowing.current = undefined;
     atBottom.current = false;
     if (!virtualized) stopScroll();
     const item = scroller.querySelector<HTMLElement>(
@@ -331,19 +347,19 @@ export const ChatTranscript = observer(function ChatTranscript({
         virtualized,
       );
     reveal(item);
-    if (!virtualized || item) return;
-    // The first jump can use estimated sizes. Reconcile after Virtuoso commits
-    // its new range/measurements, rather than declaring an unrendered row revealed.
+    if (!virtualized) return;
+    // Even a rendered (overscanned) row can have unsettled sizes above it.
+    // Reconcile this explicit selection after range/measurement commits, not
+    // only when the target was absent at the start of the jump.
     // This callback belongs only to this selection revision; rapid keys or clear
     // cancel it before it can move the viewport to an obsolete target.
     const reconcileSelection = () => {
       const rendered = scroller.querySelector<HTMLElement>(
         `[data-transcript-item-index="${selectedItemIndex}"]`,
       );
-      // Keep the native target visible through deferred measurement commits,
-      // not just the first estimated range. Virtuoso owns the logical jump and
-      // its retries; this correction only reconciles committed DOM geometry.
-      if (rendered) revealSelectedItem(scroller, rendered, () => {}, false);
+      // Keep the existing navigation path for an initially unrendered target.
+      // Already-rendered targets need no competing native coordinate writer.
+      if (!item && rendered) revealSelectedItem(scroller, rendered, () => {}, false);
     };
     pendingSelectionReveal.current = reconcileSelection;
     return () => {
@@ -372,11 +388,17 @@ export const ChatTranscript = observer(function ChatTranscript({
     let pendingPosition = untracked(() => store.transcriptInteraction.transcriptScrollPosition);
     let saveTimer: ReturnType<typeof setTimeout> | undefined;
     let draggingScrollbar = false;
+    let dragGeometry: typeof allowFollowing.current;
+    let touchY: number | undefined;
     let previousTop = scroller.scrollTop;
-    const pauseFollowing = () => {
+    const cancelNavigation = () => {
       pendingSelectionReveal.current = undefined;
+      virtuosoRef.current?.cancelScrollToIndex();
+    };
+    const pauseFollowing = () => {
+      cancelNavigation();
       readingAnchor.current = undefined;
-      allowFollowing.current = false;
+      allowFollowing.current = undefined;
       atBottom.current = false;
       if (!virtualized) stopScroll();
     };
@@ -391,19 +413,27 @@ export const ChatTranscript = observer(function ChatTranscript({
       pendingPosition = captureScrollPosition(scroller);
       if (draggingScrollbar) {
         if (scroller.scrollTop < previousTop) pauseFollowing();
-        else if (scroller.scrollTop > previousTop) allowFollowing.current = true;
+        else if (scroller.scrollTop > previousTop) allowFollowing.current = dragGeometry;
+        // Downward dragging uses the geometry captured at pointerdown, not
+        // geometry newly clamped to the bottom by a measurement.
       }
       // A selected message has its own scrollToIndex measurement retries. Do
       // not give passive reading anchoring a competing target during navigation.
       readingAnchor.current =
         pendingPosition?.kind === "message" && !store.transcriptInteraction.selectedMessageId
-          ? pendingPosition
+          ? { ...pendingPosition, scrollTop: scroller.scrollTop }
           : undefined;
       previousTop = scroller.scrollTop;
       // A queued bottom event can arrive after upward input. Only a subsequent
       // downward gesture or an explicit request may enable following again.
       // Scroll events alone are ambiguous: Virtuoso also moves during measurement.
-      if (pendingPosition?.kind === "bottom" && allowFollowing.current) atBottom.current = true;
+      const permission = allowFollowing.current;
+      if (
+        pendingPosition?.kind === "bottom" &&
+        permission?.height === scroller.scrollHeight &&
+        permission.viewport === scroller.clientHeight
+      )
+        atBottom.current = true;
       if (!pendingPosition) return;
       if (saveTimer !== undefined) clearTimeout(saveTimer);
       saveTimer = setTimeout(commitScrollPosition, 100);
@@ -427,13 +457,14 @@ export const ChatTranscript = observer(function ChatTranscript({
         }
         ancestor = ancestor.parentElement;
       }
-      pendingSelectionReveal.current = undefined;
       readingAnchor.current = undefined;
+      const gap = scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop;
+      if (direction < 0 ? scroller.scrollTop > 0 : gap > 1) userScrolling.current = true;
       if (direction < 0) pauseFollowing();
       else {
-        allowFollowing.current = true;
-        if (scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop <= 1)
-          atBottom.current = true;
+        cancelNavigation();
+        allowFollowing.current = { height: scroller.scrollHeight, viewport: scroller.clientHeight };
+        if (gap <= 1) atBottom.current = true;
       }
     };
     const handleWheel = (event: WheelEvent) => handleScrollIntent(event.target, event.deltaY);
@@ -459,11 +490,40 @@ export const ChatTranscript = observer(function ChatTranscript({
       draggingScrollbar = true;
       previousTop = scroller.scrollTop;
       pauseFollowing();
+      userScrolling.current = true;
+      dragGeometry = { height: scroller.scrollHeight, viewport: scroller.clientHeight };
+    };
+    const handleScrollEnd = (event?: Event) => {
+      if (event && event.target !== scroller) return;
+      if (draggingScrollbar || touchY !== undefined) return;
+      userScrolling.current = false;
+      captureAndSchedule();
+      allowFollowing.current = undefined;
     };
     const handlePointerUp = () => {
+      if (!draggingScrollbar) return;
       draggingScrollbar = false;
+      handleScrollEnd();
+    };
+    const handleTouchStart = (event: TouchEvent) => {
+      touchY = event.touches[0]?.clientY;
+    };
+    const handleTouchMove = (event: TouchEvent) => {
+      const nextY = event.touches[0]?.clientY;
+      if (touchY !== undefined && nextY !== undefined)
+        handleScrollIntent(event.target, touchY - nextY);
+      touchY = nextY;
+    };
+    const handleTouchEnd = () => {
+      touchY = undefined;
+      // Do not end ownership here: touch inertia ends at native scrollend.
     };
     scroller.addEventListener("wheel", handleWheel, { passive: true });
+    scroller.addEventListener("scrollend", handleScrollEnd);
+    scroller.addEventListener("touchstart", handleTouchStart, { passive: true });
+    scroller.addEventListener("touchmove", handleTouchMove, { passive: true });
+    scroller.addEventListener("touchend", handleTouchEnd);
+    scroller.addEventListener("touchcancel", handleTouchEnd);
     scroller.addEventListener("keydown", handleKeyDown);
     scroller.addEventListener("pointerdown", handlePointerDown);
     window.addEventListener("pointerup", handlePointerUp);
@@ -471,6 +531,11 @@ export const ChatTranscript = observer(function ChatTranscript({
     scroller.addEventListener("scroll", captureAndSchedule, { passive: true });
     return () => {
       scroller.removeEventListener("wheel", handleWheel);
+      scroller.removeEventListener("scrollend", handleScrollEnd);
+      scroller.removeEventListener("touchstart", handleTouchStart);
+      scroller.removeEventListener("touchmove", handleTouchMove);
+      scroller.removeEventListener("touchend", handleTouchEnd);
+      scroller.removeEventListener("touchcancel", handleTouchEnd);
       scroller.removeEventListener("keydown", handleKeyDown);
       scroller.removeEventListener("pointerdown", handlePointerDown);
       window.removeEventListener("pointerup", handlePointerUp);
@@ -613,6 +678,10 @@ export const ChatTranscript = observer(function ChatTranscript({
                 computeItemKey={(index, item) => itemKeys[index] ?? item.id}
                 initialTopMostItemIndex={openingItemLocation}
                 followOutput={false}
+                // Reading belongs to this transcript. Only explicit navigation
+                // lends size compensation to Virtuoso; a gesture revokes that
+                // lease synchronously, without waiting for another React render.
+                skipUpwardScrollCompensation={() => !pendingSelectionReveal.current}
                 totalListHeightChanged={handleTotalHeightChange}
                 rangeChanged={handleRangeChanged}
                 components={{

@@ -12,11 +12,14 @@ import type { ConversationSnapshot } from "../../../src/contracts/conversations/
 import type { Annotation, UiPart } from "../../../src/contracts/conversations/session-contract";
 import { cakeHotkeyEventName } from "../../../src/renderer/lib/hotkeys";
 
-const { scrollToIndex, virtualizedLifecycle, virtualizedProps } = vi.hoisted(() => ({
-  scrollToIndex: vi.fn(),
-  virtualizedLifecycle: vi.fn(),
-  virtualizedProps: { current: undefined as undefined | Record<string, unknown> },
-}));
+const { scrollToIndex, cancelScrollToIndex, virtualizedLifecycle, virtualizedProps } = vi.hoisted(
+  () => ({
+    scrollToIndex: vi.fn(),
+    cancelScrollToIndex: vi.fn(),
+    virtualizedLifecycle: vi.fn(),
+    virtualizedProps: { current: undefined as undefined | Record<string, unknown> },
+  }),
+);
 
 // Control only the external virtualizer measurement/imperative boundary.
 // Cake's Conversation and VirtualizedConversation composition remains real.
@@ -40,6 +43,7 @@ vi.mock("react-virtuoso", () => ({
           scrollTop: props.customScrollParent?.scrollTop ?? 0,
         }),
       scrollToIndex,
+      cancelScrollToIndex,
     }));
     useEffect(() => {
       virtualizedLifecycle("mounted");
@@ -305,7 +309,8 @@ describe("Transcript rendering and virtualizer adapter contracts", () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
-    scrollToIndex.mockClear();
+    scrollToIndex.mockReset();
+    cancelScrollToIndex.mockClear();
     virtualizedLifecycle.mockClear();
   });
 
@@ -328,6 +333,7 @@ describe("Transcript rendering and virtualizer adapter contracts", () => {
       align: "end",
     });
     expect(virtualizedProps.current?.followOutput).toBe(false);
+    expect((virtualizedProps.current?.skipUpwardScrollCompensation as () => boolean)()).toBe(true);
   });
 
   it("aligns bottom synchronously and detaches on upward intent until moving back down", () => {
@@ -375,6 +381,7 @@ describe("Transcript rendering and virtualizer adapter contracts", () => {
       transcript.dispatchEvent(new WheelEvent("wheel", { deltaY: 500, bubbles: true }));
       transcript.scrollTop = height;
       transcript.dispatchEvent(new Event("scroll"));
+      transcript.dispatchEvent(new Event("scrollend"));
     });
     grow();
     expect(top).toBe(height - 200);
@@ -667,6 +674,9 @@ describe("Transcript rendering and virtualizer adapter contracts", () => {
     );
     const rangeChanged = () => act(() => (virtualizedProps.current?.rangeChanged as () => void)());
     act(() => render({ messageId: "assistant-1", origin: "keyboard", revision: 1 }));
+    const skipsCompensation = virtualizedProps.current
+      ?.skipUpwardScrollCompensation as () => boolean;
+    expect(skipsCompensation()).toBe(false); // Explicit navigation owns measurement corrections.
     rangeChanged(); // The estimated jump has not rendered its target yet.
     expect(scrollToIndex).toHaveBeenLastCalledWith({
       index: 0,
@@ -693,10 +703,14 @@ describe("Transcript rendering and virtualizer adapter contracts", () => {
     expect(scrollToIndex).not.toHaveBeenCalled(); // No competing logical jump or retry.
 
     // Explicit scroll intent cancels measurement-driven selection correction.
+    scrollToIndex.mockClear();
     scroller.scrollTo = vi.fn();
     act(() => scroller.dispatchEvent(new WheelEvent("wheel", { deltaY: 100, bubbles: true })));
+    expect(skipsCompensation()).toBe(true); // Revoked synchronously, without another render.
     itemTops[1]! += 100;
     rangeChanged();
+    expect(scroller.scrollTop).toBe(2664);
+    expect(scrollToIndex).not.toHaveBeenCalled();
     expect(scroller.scrollTo).not.toHaveBeenCalled();
   });
 

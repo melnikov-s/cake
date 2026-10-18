@@ -201,7 +201,7 @@ export const Chat = observer(function Chat({
   );
   const submitMessage = async (value?: string) => {
     const canSend = store.canSubmitValue(value) && !store.editingMessage;
-    if (canSend) void transcriptRef.current?.scrollToBottom();
+    if (canSend) transcriptRef.current?.scrollToBottom({ forMessageInsertion: true });
     const focusAtSubmit = document.activeElement;
     const continuation =
       canSend && composerFocusRef.current?.shouldParkFocus()

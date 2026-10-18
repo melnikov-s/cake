@@ -1,4 +1,5 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test, type Locator } from "@playwright/test";
@@ -20,7 +21,7 @@ const usage = {
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 
-for (const surface of ["Project Session", "Cake Chat"] as const) {
+for (const surface of ["Project Session", "Cake Chat", "Project Chat"] as const) {
   test(`${surface}: instant virtualized arrows continue from the correct linked message`, async () => {
     test.setTimeout(90_000);
     const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-instant-message-navigation-"));
@@ -28,8 +29,14 @@ for (const surface of ["Project Session", "Cake Chat"] as const) {
     const cakeHome = join(temporaryRoot, "cake-home");
     const userData = join(temporaryRoot, "user-data");
     const projectId = "01957936-0000-7000-8000-0001f80c961e";
-    const linkedAnswerLabel = surface === "Cake Chat" ? "Linked answer" : "f80c961e";
-    const sessionId = surface === "Cake Chat" ? CAKE_CHAT_SESSION_ID : projectId;
+    const coordinator = surface !== "Project Session";
+    const linkedAnswerLabel = coordinator ? "Linked answer" : "f80c961e";
+    const sessionId =
+      surface === "Project Chat"
+        ? `project-chat:${createHash("sha256").update(project).digest("hex")}`
+        : surface === "Cake Chat"
+          ? CAKE_CHAT_SESSION_ID
+          : projectId;
     const timestamp = new Date(0).toISOString();
     const directory = cakeWorkspaceSessionDirectory(project, join(cakeHome, "pi", "sessions"));
     await Promise.all([
@@ -56,7 +63,10 @@ for (const surface of ["Project Session", "Cake Chat"] as const) {
     let parentId: string | null = null;
     const users = new Map<number, string>();
     const assistants = new Map<number, string>();
-    const durableDirectory = join(cakeHome, "pi", "global-chat");
+    const durableDirectory =
+      surface === "Project Chat"
+        ? join(cakeHome, "pi", "project-chats", sessionId.slice("project-chat:".length))
+        : join(cakeHome, "pi", "global-chat");
     await mkdir(durableDirectory, { recursive: true });
     const storage = await openNodeSqliteStorage(join(durableDirectory, "coordinator.sqlite"));
     const harness = await Harness.open(
@@ -74,10 +84,10 @@ for (const surface of ["Project Session", "Cake Chat"] as const) {
             timestamp: turn * 2,
           };
           const userEntry = await tx.appendEntry(UserEntry, root.id, { model: [user] });
-          users.set(turn, surface === "Cake Chat" ? String(userEntry.id) : `user-${turn}`);
+          users.set(turn, coordinator ? String(userEntry.id) : `user-${turn}`);
           const links =
             turn === 12
-              ? `\n\n[${surface === "Cake Chat" ? "Linked answer" : "f80c961e"}](cake://session/${sessionId}?message=${assistants.get(6)}) · [Linked request](cake://session/${sessionId}?message=${users.get(6)})`
+              ? `\n\n[${linkedAnswerLabel}](cake://session/${sessionId}?message=${assistants.get(6)}) · [Linked request](cake://session/${sessionId}?message=${users.get(6)})`
               : "";
           const text = [
             `Answer ${turn}.${links}`,
@@ -99,10 +109,7 @@ for (const surface of ["Project Session", "Cake Chat"] as const) {
           const assistantEntry = await tx.appendEntry(AssistantEntry, root.id, {
             model: [assistant],
           });
-          assistants.set(
-            turn,
-            surface === "Cake Chat" ? String(assistantEntry.id) : `assistant-${turn}`,
-          );
+          assistants.set(turn, coordinator ? String(assistantEntry.id) : `assistant-${turn}`);
           entries.push(
             { type: "message", id: `user-${turn}`, parentId, timestamp, message: user },
             {
@@ -142,8 +149,12 @@ for (const surface of ["Project Session", "Cake Chat"] as const) {
       await expect(page.getByText("Answer 12.", { exact: true })).toBeVisible({ timeout: 20_000 });
       if (surface === "Cake Chat")
         await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+      if (surface === "Project Chat")
+        await page
+          .getByRole("button", { name: "Open Project Chat for project", exact: true })
+          .click();
       const composer = page.getByRole("combobox", {
-        name: surface === "Cake Chat" ? "Message Cake Chat" : "Message",
+        name: coordinator ? `Message ${surface}` : "Message",
         exact: true,
       });
       const pane = page.locator('[data-slot="chat"]').filter({ has: composer });
@@ -162,10 +173,12 @@ for (const surface of ["Project Session", "Cake Chat"] as const) {
         const original = Element.prototype.scrollTo;
         const behaviors: string[] = [];
         Object.assign(window, { messageNavigationBehaviors: behaviors });
-        Element.prototype.scrollTo = function (...args: Parameters<typeof original>) {
+        Element.prototype.scrollTo = function (options?: ScrollToOptions | number, y?: number) {
           if (this.matches(".transcript"))
-            behaviors.push(typeof args[0] === "object" ? (args[0].behavior ?? "auto") : "auto");
-          return original.apply(this, args);
+            behaviors.push(typeof options === "object" ? (options.behavior ?? "auto") : "auto");
+          const scrollTo = original.bind(this);
+          if (typeof options === "number") scrollTo(options, y!);
+          else scrollTo(options);
         };
       });
       await composer.press("ArrowUp");
@@ -202,7 +215,7 @@ for (const surface of ["Project Session", "Cake Chat"] as const) {
         });
       });
       const identityLink = selected.getByRole("link", { name: linkedAnswerLabel, exact: true });
-      const destination = `cake://session/${sessionId}?message=${assistants.get(6)}`;
+      const destination = `cake://session/${encodeURIComponent(sessionId)}?message=${assistants.get(6)}`;
       await expect(identityLink).toHaveAttribute("href", destination);
       await identityLink.hover();
       await expect(page.getByRole("tooltip", { name: destination, exact: true })).toBeVisible();
@@ -261,8 +274,7 @@ for (const surface of ["Project Session", "Cake Chat"] as const) {
         }),
       ).toBeLessThanOrEqual(1);
       const behaviors = await page.evaluate(
-        () =>
-          (window as Window & { messageNavigationBehaviors: string[] }).messageNavigationBehaviors,
+        () => Reflect.get(window, "messageNavigationBehaviors") as string[],
       );
       expect(behaviors.length).toBeGreaterThan(0);
       expect(behaviors).not.toContain("smooth");
@@ -274,6 +286,38 @@ for (const surface of ["Project Session", "Cake Chat"] as const) {
       await expect(selected).toHaveCount(0);
       await expect(composer).toHaveValue("x");
       await expect(pane.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+      // All three real product surfaces share the same reader ownership, not
+      // only explicit navigation. Dock/layout bursts must not reclaim it.
+      await transcript.hover({ position: { x: 20, y: 200 } });
+      await transcript.evaluate((element) => {
+        element.dataset.readingSettled = "false";
+        element.addEventListener(
+          "scrollend",
+          () => {
+            element.dataset.readingSettled = "true";
+          },
+          { once: true },
+        );
+      });
+      await page.mouse.wheel(0, -250);
+      await expect(transcript).toHaveAttribute("data-reading-settled", "true");
+      const readingAnchor = () =>
+        transcript.evaluate((element) => {
+          const top = element.getBoundingClientRect().top;
+          const row = [
+            ...element.querySelectorAll<HTMLElement>("[data-transcript-anchor-id]"),
+          ].find((row) => row.getBoundingClientRect().bottom > top + 1)!;
+          return {
+            id: row.dataset.transcriptAnchorId,
+            offset: row.getBoundingClientRect().top - top,
+            scrollTop: element.scrollTop,
+          };
+        });
+      const saved = await readingAnchor();
+      for (const lines of [4, 8, 1, 5]) {
+        await composer.fill(Array.from({ length: lines }, () => "Draft line").join("\n"));
+        await expect.poll(readingAnchor).toEqual(saved);
+      }
       expect(await page.evaluate(() => Reflect.get(window, "navigationRendererErrors"))).toEqual(
         [],
       );

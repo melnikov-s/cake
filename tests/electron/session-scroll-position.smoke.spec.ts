@@ -211,6 +211,7 @@ async function expectRestoredAnchor(
 for (const scenario of [
   "opens a restored transcript without renderer errors",
   "keeps every streaming frame at the bottom",
+  "keeps user ownership through repeated streaming gestures",
   "keeps every resize frame at the bottom",
   "preserves the reading anchor during row resize",
   "reopens a large loaded session",
@@ -267,7 +268,8 @@ for (const scenario of [
 
     const stream =
       scenario === "keeps reading position while another session streams" ||
-      scenario === "keeps every streaming frame at the bottom"
+      scenario === "keeps every streaming frame at the bottom" ||
+      scenario === "keeps user ownership through repeated streaming gestures"
         ? await streamingProvider(cakeHome)
         : undefined;
     const application = await electron.launch({
@@ -328,7 +330,11 @@ for (const scenario of [
         return;
       }
 
-      if (scenario === "keeps every streaming frame at the bottom" && stream) {
+      if (
+        (scenario === "keeps every streaming frame at the bottom" ||
+          scenario === "keeps user ownership through repeated streaming gestures") &&
+        stream
+      ) {
         await expect(transcript.locator('[data-slot="transcript-item"]').last()).toContainText(
           "transcript item 47",
         );
@@ -351,6 +357,27 @@ for (const scenario of [
         stream.send("Initial streaming paragraph.\n\n");
         await expect(transcript).toContainText("Initial streaming paragraph.");
         await paintFrames(page, 6);
+        if (scenario === "keeps user ownership through repeated streaming gestures") {
+          await transcript.hover({ position: { x: 20, y: 200 } });
+          for (let index = 0; index < 12; index++) {
+            const before = await transcript.evaluate((element) => element.scrollTop);
+            await page.mouse.wheel(0, -80);
+            stream.send(`Gesture ${index}. ${"Streaming height update. ".repeat(15)}\n\n`);
+            await paintFrames(page, 3);
+            const after = await transcript.evaluate((element) => element.scrollTop);
+            expect(after).toBeLessThan(before - 20);
+          }
+          const saved = await transcriptAnchor(transcript);
+          for (let index = 0; index < 4; index++) {
+            stream.send(`Passive update ${index}. ${"More streaming. ".repeat(30)}\n\n`);
+            await paintFrames(page, 6);
+            await expectRestoredAnchor(transcript, saved);
+          }
+          stream.finish();
+          await expect(firstSession.locator('[aria-label="Running"]')).toHaveCount(0);
+          await expectRestoredAnchor(transcript, saved);
+          return;
+        }
         await startTranscriptFrameSamples(transcript);
         for (let index = 0; index < 4; index++) {
           stream.send(
@@ -581,7 +608,7 @@ for (const scenario of [
             ),
           ).toBeGreaterThan(100);
         } finally {
-          await scrollbarStyle.evaluate((element) => element.remove());
+          await scrollbarStyle.evaluate((element) => element.parentNode?.removeChild(element));
         }
         return;
       }

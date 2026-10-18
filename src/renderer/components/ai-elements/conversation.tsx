@@ -48,6 +48,8 @@ export interface VirtualizedConversationProps<Item, Context = unknown> {
   customScrollParent?: HTMLElement;
   atBottomStateChange?: (atBottom: boolean) => void;
   followOutput?: FollowOutput;
+  /** The consumer owns reading anchors; do not also compensate total-height deltas. */
+  skipUpwardScrollCompensation?: boolean | (() => boolean);
   totalListHeightChanged?: (height: number) => void;
   initialTopMostItemIndex?: IndexLocationWithAlign | number;
   rangeChanged?: VirtuosoProps<Item, unknown>["rangeChanged"];
@@ -67,6 +69,7 @@ function VirtualizedConversationInner<Item, Context>(
     customScrollParent,
     atBottomStateChange,
     followOutput,
+    skipUpwardScrollCompensation,
     totalListHeightChanged,
     initialTopMostItemIndex,
     rangeChanged,
@@ -91,6 +94,7 @@ function VirtualizedConversationInner<Item, Context>(
       {...(customScrollParent === undefined ? {} : { customScrollParent })}
       {...(atBottomStateChange === undefined ? {} : { atBottomStateChange })}
       {...(followOutput === undefined ? {} : { followOutput })}
+      {...(skipUpwardScrollCompensation === undefined ? {} : { skipUpwardScrollCompensation })}
       {...(totalListHeightChanged === undefined ? {} : { totalListHeightChanged })}
       {...(initialLocation === undefined ? {} : { initialTopMostItemIndex: initialLocation })}
       {...(rangeChanged === undefined ? {} : { rangeChanged })}
