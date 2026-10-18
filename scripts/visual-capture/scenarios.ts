@@ -2841,9 +2841,11 @@ const queuedPromptsScenario: VisualCaptureScenario = {
       if (state === "steering") {
         await queue.getByRole("button", { name: `Send now as steering: ${text}` }).click();
       }
-      await expect(queue.getByRole("status")).toHaveText(
-        state === "steering" ? "Waiting for agent" : "After this response",
-      );
+      if (state === "steering") {
+        await expect(queue.getByRole("status")).toHaveText("Waiting for agent");
+      } else {
+        await expect(queue.getByRole("status")).toHaveCount(0);
+      }
     } else {
       for (let index = 1; index <= 20; index++) {
         await input.fill(`Follow-up ${index}: verify the implementation and report the results.`);

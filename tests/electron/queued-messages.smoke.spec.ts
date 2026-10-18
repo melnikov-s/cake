@@ -194,6 +194,27 @@ test("reorders both lanes, cancels one item, hands off without an error, and lin
     await send("Start current response");
     await expect.poll(() => responses.length).toBe(1);
     await send("First user");
+    const firstRow = page.getByRole("listitem").filter({
+      has: page.getByRole("button", { name: "View queued message: First user", exact: true }),
+    });
+    const expectCompactRow = async () => {
+      await expect(firstRow.getByRole("status")).toHaveCount(0);
+      await expect
+        .poll(() =>
+          firstRow.evaluate((row) => {
+            const buttons = Array.from(row.querySelectorAll("button"));
+            const centers = buttons.map((button) => {
+              const bounds = button.getBoundingClientRect();
+              return bounds.top + bounds.height / 2;
+            });
+            return (
+              Math.max(...centers) - Math.min(...centers) < 1 && row.scrollWidth <= row.clientWidth
+            );
+          }),
+        )
+        .toBe(true);
+    };
+    await expectCompactRow();
     await send("/fixture-agent");
     await expect(
       page.getByRole("button", { name: "View queued message: Agent follow-up" }),
@@ -203,6 +224,14 @@ test("reorders both lanes, cancels one item, hands off without an error, and lin
     const labels = () =>
       queue.getByRole("button", { name: /^View queued message:/ }).allTextContents();
     await expect.poll(labels).toEqual(["First user", "Agent follow-up", "Second user"]);
+    await expectCompactRow();
+    const initialViewport = await page.evaluate(() => ({
+      width: window.innerWidth,
+      height: window.innerHeight,
+    }));
+    await page.setViewportSize({ width: 640, height: 760 });
+    await expectCompactRow();
+    await page.setViewportSize(initialViewport);
     await page.getByRole("button", { name: "Move up: Agent follow-up" }).click();
     await expect.poll(labels).toEqual(["Agent follow-up", "First user", "Second user"]);
     await page.getByRole("button", { name: "View queued message: Agent follow-up" }).click();
@@ -213,6 +242,17 @@ test("reorders both lanes, cancels one item, hands off without an error, and lin
     );
     await dialog.getByRole("button", { name: "Exit fullscreen Origin session" }).click();
     await page.getByRole("button", { name: "Send now as steering: First user" }).click();
+    await expect(firstRow.getByRole("status")).toHaveText("Waiting for agent");
+    await expect
+      .poll(async () => {
+        const title = await firstRow
+          .getByRole("button", { name: "View queued message: First user", exact: true })
+          .boundingBox();
+        const status = await firstRow.getByRole("status").boundingBox();
+        return title !== null && status !== null && status.y >= title.y + title.height;
+      })
+      .toBe(true);
+    expect(responses.length).toBe(1);
     await page.getByRole("button", { name: "Send now as steering: Second user" }).click();
     await expect.poll(labels).toEqual(["First user", "Second user", "Agent follow-up"]);
     await page.getByRole("button", { name: "Move up: Second user" }).click();
@@ -234,9 +274,7 @@ test("reorders both lanes, cancels one item, hands off without an error, and lin
       "Waiting for agent",
       "Waiting for agent",
     ]);
-    await expect(queue.getByRole("group", { name: "Queued" }).getByRole("status")).toHaveText(
-      "After this response",
-    );
+    await expect(queue.getByRole("group", { name: "Queued" }).getByRole("status")).toHaveCount(0);
     for (const theme of ["light", "dark"]) {
       await page.mouse.move(1, 1);
       await page.evaluate((value) => {

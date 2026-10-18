@@ -117,7 +117,7 @@ describe("Prompt queue workflow", () => {
     expect(queuedTexts()).toEqual(["Agent steer", "First steer", "User queued"]);
   });
 
-  it("sends the chosen queued agent item now while retaining the other authority records", async () => {
+  it("expands status only on steering promotion and sends the chosen item while retaining the queue", async () => {
     const steering = queuePart(1, "Keep steering", { lane: "steering" });
     const queued = queuePart(2, "Keep queued");
     const agent = queuePart(3, "Send agent now", { agent: true });
@@ -130,6 +130,9 @@ describe("Prompt queue workflow", () => {
     using fixture = renderQueue([steering, queued, agent], {
       sessionChats: { steerQueuedMessage: steer, sendQueuedMessageNow: sendNow },
     });
+    const queuedGroup = screen.getByRole("group", { name: "Queued" });
+    expect(within(queuedGroup).queryByRole("status")).toBeNull();
+    expect(within(queuedGroup).getAllByRole("listitem")).toHaveLength(2);
     expect(screen.queryByRole("button", { name: "Stop and send now: Send agent now" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Stop and send now: Keep queued" })).toBeNull();
     await fixture.user.click(
@@ -142,9 +145,8 @@ describe("Prompt queue workflow", () => {
         .getAllByRole("status")
         .map((status) => status.textContent),
     ).toEqual(["Waiting for agent", "Waiting for agent"]);
-    expect(
-      within(screen.getByRole("group", { name: "Queued" })).getByRole("status").textContent,
-    ).toBe("After this response");
+    expect(within(queuedGroup).queryByRole("status")).toBeNull();
+    expect(within(queuedGroup).getAllByRole("listitem")).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Stop and send now: Keep queued" })).toBeNull();
     await fixture.user.click(
       screen.getByRole("button", { name: "Stop and send now: Send agent now" }),
@@ -252,10 +254,8 @@ describe("Prompt queue workflow", () => {
     );
 
     expect(
-      within(screen.getByRole("group", { name: "Queued" }))
-        .getAllByRole("status")
-        .map((status) => status.textContent),
-    ).toEqual(["After this response", "After this response"]);
+      within(screen.getByRole("group", { name: "Queued" })).queryAllByRole("status"),
+    ).toHaveLength(0);
     await fixture.user.click(screen.getByRole("button", { name: "Move up: Pending" }));
     expect(queuedTexts()).toEqual(["Pending", "First"]);
     expect(reorder).toHaveBeenCalledExactlyOnceWith(

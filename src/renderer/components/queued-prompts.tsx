@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ChatIcon, ClockIcon, EditIcon, RemoveIcon } from "@/components/ui/icons";
 import { IconButton } from "@/components/ui/icon-button";
 import { ReorderControls } from "@/components/ui/reorder-controls";
+import { cn } from "@/lib/utils";
 import type { ChatStore } from "../stores/ChatStore";
 import { describeScheduledOrigin } from "../../utils/scheduled-message-time";
 
@@ -40,13 +41,19 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
                   : undefined;
                 return (
                   <div
-                    className="flex flex-col gap-1 rounded-md bg-muted/40 px-2 py-1.5 text-xs"
+                    className={cn(
+                      "flex gap-1 rounded-md bg-muted/40 px-2 py-1.5 text-xs",
+                      entry.state === "steering" ? "flex-col" : "items-center",
+                    )}
                     role="listitem"
                     key={entry.id}
                   >
                     <Button
                       variant="ghost"
-                      className="h-auto min-w-0 w-full justify-start gap-1.5 rounded-sm p-0 text-left text-sm font-normal text-foreground hover:bg-transparent"
+                      className={cn(
+                        "h-auto min-w-0 justify-start gap-1.5 rounded-sm p-0 text-left text-sm font-normal text-foreground hover:bg-transparent",
+                        entry.state === "steering" ? "w-full" : "flex-1",
+                      )}
                       aria-label={`View queued message: ${label}`}
                       onClick={() => setFullscreenPromptId(entry.id)}
                     >
@@ -72,20 +79,23 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
                         {label}
                       </span>
                     </Button>
-                    <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-                      <span
-                        role="status"
-                        className="flex items-center gap-1.5 text-muted-foreground"
-                      >
-                        <span aria-hidden="true">
-                          <ClockIcon />
+                    <div
+                      className={cn(
+                        "flex items-center gap-x-2 gap-y-1",
+                        entry.state === "steering" ? "flex-wrap justify-between" : "shrink-0",
+                      )}
+                    >
+                      {(entry.pending || entry.state === "steering") && (
+                        <span
+                          role="status"
+                          className="flex items-center gap-1.5 whitespace-nowrap text-muted-foreground"
+                        >
+                          <span aria-hidden="true">
+                            <ClockIcon />
+                          </span>
+                          {entry.pending ? "Sending…" : "Waiting for agent"}
                         </span>
-                        {entry.pending
-                          ? "Sending…"
-                          : entry.state === "steering"
-                            ? "Waiting for agent"
-                            : "After this response"}
-                      </span>
+                      )}
                       <div className="ml-auto flex shrink-0 items-center gap-0.5">
                         {store.canReorderQueuedPrompt && entries.length > 1 && (
                           <ReorderControls
