@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { queuePart, queueSessionId, renderQueue } from "./prompt-queue-workflow-fixture";
+import { renderChatSurface } from "./chat-surface-workflow-fixture";
 
 const turnId = TurnId.make("10000000-0000-4000-8000-000000000001");
 const commandOptions = expect.objectContaining({ signal: expect.any(AbortSignal) });
@@ -21,6 +22,99 @@ afterEach(cleanup);
 // Real Root/Models/Chat and delivery policy, with typed SessionChats authority
 // snapshots. Pi queue execution/abort/command semantics stay in service tests.
 describe("Prompt queue workflow", () => {
+  it.each([false, true])(
+    "keeps text and an attachment together through pending admission, queueing, steering (%s), and delivery",
+    async (promote) => {
+      const text = "Review this attached log";
+      const log = "QUEUED_LOG\n" + "details\n".repeat(50);
+      const name = "Pasted text · 52 lines";
+      const reference = {
+        kind: "input" as const,
+        id: "20000000-0000-4000-8000-000000000001",
+        name,
+        mimeType: "text/plain",
+        byteLength: new TextEncoder().encode(log).byteLength,
+      };
+      const queued = queuePart(1, text, { attachments: [reference] });
+      let release!: () => void;
+      const admission = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () => {
+        await admission;
+        return turnId;
+      });
+      const steer = vi.fn<Client["sessionChats"]["steerQueuedMessage"]>(async () => {
+        fixture.publish([{ ...queued, deliveryState: "steering" }], true);
+        return { steering: [text], followUp: [] };
+      });
+      using fixture = renderChatSurface({
+        snapshot: { streaming: true },
+        client: { sessionChats: { prompt, steerQueuedMessage: steer } },
+      });
+      await fixture.user.click(screen.getByRole("combobox"));
+      await fixture.user.paste(log);
+      await fixture.user.type(screen.getByRole("combobox"), text);
+      await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+      expect(prompt).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          text,
+          attachments: [{ kind: "text", name, text: log }],
+        }),
+        commandOptions,
+      );
+      const conversation = () => within(screen.getByLabelText("Conversation"));
+      expect(conversation().queryByText(name, { exact: true })).toBeNull();
+      expect(conversation().queryByText(text, { exact: true })).toBeNull();
+      expect(queuedTexts()).toEqual([text]);
+      const queue = within(screen.getByRole("list", { name: "Queued prompts" }));
+      expect(queue.getByRole("status").textContent).toBe("Sending…");
+      fixture.publish([queued], true);
+      await act(async () => {
+        release();
+        await admission;
+      });
+      expect(queuedTexts()).toEqual([text]);
+      expect(conversation().queryByText(name, { exact: true })).toBeNull();
+      if (promote) {
+        await fixture.user.click(
+          screen.getByRole("button", { name: `Send now as steering: ${text}` }),
+        );
+        expect(steer).toHaveBeenCalledExactlyOnceWith(
+          { sessionId: queueSessionId, partId: queued.id },
+          commandOptions,
+        );
+        expect(queue.getByRole("status").textContent).toBe("Waiting for agent");
+        expect(conversation().queryByText(name, { exact: true })).toBeNull();
+      }
+      fixture.publish(
+        [
+          {
+            id: "delivered-text",
+            entryId: "delivered",
+            kind: "text",
+            role: "user",
+            text,
+            status: "complete",
+          },
+          {
+            id: "delivered-input",
+            kind: "attachment",
+            name,
+            mediaType: "text/plain",
+            attachmentKind: "file",
+            inputReference: reference,
+          },
+        ],
+        true,
+      );
+      expect(screen.queryByRole("list", { name: "Queued prompts" })).toBeNull();
+      expect(conversation().getAllByText(text, { exact: true })).toHaveLength(1);
+      expect(conversation().getAllByText(name, { exact: true })).toHaveLength(1);
+      expect(prompt).toHaveBeenCalledOnce();
+    },
+  );
+
   it("reorders and cancels authority-projected commands without offering message-only actions", async () => {
     const next = queuePart(1, "Next task");
     const command = queuePart(2, "/toolcompact", { command: "/toolcompact" });

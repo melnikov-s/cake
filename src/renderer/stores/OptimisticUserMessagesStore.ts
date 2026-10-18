@@ -48,7 +48,17 @@ export class OptimisticUserMessagesStore extends Store<OptimisticUserMessagesSto
     const parts = [...canonical];
     let offset = 0;
     for (const message of this.pending) {
-      if (this.isReconciled(message)) continue;
+      // Queue cards own the whole pending submission, not just its text. Emitting
+      // its attachments here would put them in the transcript before Pi consumes it.
+      if (
+        this.isReconciled(message) ||
+        message.parts.some(
+          (part) =>
+            part.kind === "text" &&
+            (part.deliveryState === "queued" || part.deliveryState === "steering"),
+        )
+      )
+        continue;
       const replacementRange = message.replacingEntryId
         ? this.replacementRange(parts, message.replacingEntryId)
         : undefined;

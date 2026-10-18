@@ -15,11 +15,16 @@ async function queuedMessagesFixture(dictation = false) {
   const userData = join(root, "user-data"),
     project = join(root, "project"),
     cakeHome = join(root, "cake-home");
-  const sessionId = "queue-destination",
-    sourceId = "queue-origin";
+  const sessionId = "10000000-0000-4000-8000-000000000001",
+    sourceId = "10000000-0000-4000-8000-000000000002";
   const sessions = cakeWorkspaceSessionDirectory(project, join(cakeHome, "pi", "sessions"));
   const responses: ServerResponse[] = [];
-  const server = createServer((_request, response) => {
+  const requests: string[] = [];
+  const server = createServer(async (request, response) => {
+    request.setEncoding("utf8");
+    let body = "";
+    for await (const chunk of request) body += chunk;
+    requests.push(body);
     response.writeHead(200, { "content-type": "text/event-stream" });
     response.flushHeaders();
     responses.push(response);
@@ -46,7 +51,7 @@ async function queuedMessagesFixture(dictation = false) {
               id: "fixture-model",
               name: "Queue fixture",
               reasoning: false,
-              input: ["text"],
+              input: ["text", "image"],
               cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
               contextWindow: 200_000,
               maxTokens: 1024,
@@ -163,6 +168,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
   return {
     app,
     responses,
+    requests,
     sessionId,
     sourceId,
     async dispose() {
@@ -316,6 +322,112 @@ test("reorders both lanes, cancels one item, hands off without an error, and lin
     const exit = page.getByRole("button", { name: "Exit fullscreen Origin session" });
     if (await exit.isVisible()) await exit.click();
     await expect(page.getByText("Origin transcript.")).toBeVisible({ timeout: 15_000 });
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+test("queues text and attachments as one project submission and delivers them together after the current response", async () => {
+  test.setTimeout(90_000);
+  const fixture = await queuedMessagesFixture();
+  const { app, responses, requests } = fixture;
+  try {
+    const page = await app.firstWindow();
+    await expect(page.getByText("Ready for queue testing.")).toBeVisible({ timeout: 20_000 });
+    const composer = page.getByRole("combobox", { name: "Message", exact: true });
+    await composer.click();
+    await expect(composer).toBeFocused();
+    await composer.pressSequentially("Hold the current response");
+    await composer.press("Enter");
+    await expect.poll(() => responses.length).toBe(1);
+    const text = "Review the queued screenshot and log together";
+    const log = "QUEUED_LOG_START\n" + "details\n".repeat(50);
+    const image = (await page.screenshot({ clip: { x: 0, y: 0, width: 32, height: 32 } })).toString(
+      "base64",
+    );
+    await composer.evaluate(
+      (element, { log, image }) => {
+        const clipboardData = new DataTransfer();
+        clipboardData.setData("text/plain", log);
+        element.dispatchEvent(
+          new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }),
+        );
+        const imageData = new DataTransfer();
+        imageData.items.add(
+          new File(
+            [Uint8Array.from(atob(image), (character) => character.charCodeAt(0))],
+            "queued.png",
+            { type: "image/png" },
+          ),
+        );
+        element.dispatchEvent(
+          new ClipboardEvent("paste", {
+            clipboardData: imageData,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      },
+      { log, image },
+    );
+    await expect(page.getByRole("button", { name: "View queued.png enlarged" })).toBeVisible();
+    await composer.click();
+    await expect(composer).toBeFocused();
+    await composer.pressSequentially(text);
+    await expect(composer).toHaveValue(text);
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await composer.press("Enter");
+    await expect(composer).toHaveValue("");
+    const queue = page.getByRole("list", { name: "Queued prompts" });
+    await expect(queue.getByRole("listitem")).toHaveCount(1);
+    await expect(
+      queue.getByRole("button", { name: `Send now as steering: ${text}` }),
+    ).toBeEnabled();
+    const conversation = page.getByLabel("Conversation", { exact: true });
+    await expect(conversation.getByText(text, { exact: true })).toHaveCount(0);
+    await expect(conversation.getByText("Pasted text · 52 lines", { exact: true })).toHaveCount(0);
+    await expect(conversation.getByRole("img")).toHaveCount(0);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).not.toContain(text);
+    expect(requests[0]).not.toContain("queued.png");
+    const chunk = (delta: object, finishReason: string | null = null) =>
+      `data: ${JSON.stringify({
+        id: "queue-fixture",
+        object: "chat.completion.chunk",
+        created: 0,
+        model: "fixture-model",
+        choices: [{ index: 0, delta, finish_reason: finishReason }],
+      })}\n\n`;
+    responses[0]!.end(
+      chunk({ role: "assistant", content: "Current response complete." }) +
+        chunk({}, "stop") +
+        "data: [DONE]\n\n",
+    );
+    await expect.poll(() => responses.length).toBe(2);
+    await expect(queue).toHaveCount(0);
+    await expect(conversation.getByText(text, { exact: true })).toHaveCount(1);
+    await expect(conversation.getByText("Pasted text · 52 lines", { exact: true })).toHaveCount(1);
+    await expect(conversation.getByRole("img")).toHaveCount(1);
+    const payload: {
+      messages: Array<{
+        role: string;
+        content: string | Array<{ type: string; text?: string; image_url?: { url: string } }>;
+      }>;
+    } = JSON.parse(requests[1]!);
+    const users = payload.messages.filter((message) => message.role === "user");
+    expect(users).toHaveLength(3); // Initial fixture, active request, then one queued submission.
+    const content = users.at(-1)!.content;
+    expect(Array.isArray(content)).toBe(true);
+    if (!Array.isArray(content)) throw new Error("Expected multipart user content");
+    expect(content.filter((part) => part.type === "image_url")).toHaveLength(1);
+    const deliveredText = content
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("\n");
+    expect(deliveredText).toContain(text);
+    expect(deliveredText).toContain("queued.png");
+    expect(deliveredText).toContain("Pasted text · 52 lines");
+    expect(requests).toHaveLength(2);
   } finally {
     await fixture.dispose();
   }
