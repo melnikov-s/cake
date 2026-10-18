@@ -432,8 +432,46 @@ committed before recovery, so restart does not rearm it. Originals remain author
 current user input and tool call/results stay verbatim and ordered, without rerunning
 tools. Repeated overflow or an irreducible current input fails visibly. Admission reserves
 model output room (by default up to 16,384 tokens, capped by model output capacity), and
-the request output cap uses that same reserve. No idle/background summary is introduced.
+the request output cap uses that same reserve.
 Side-chat requests retain their separate SDK behavior rather than mutating the root head.
+
+Incremental memory maintenance is separate from active-context replacement. Successful
+terminal assistant commits coalesce into one pending cutoff; once the run is idle,
+maintenance indexes newly committed originals through that cutoff without changing the
+active head or cache evidence. Reopen offers the same opportunity using the persisted
+cursor/tree. Error, aborted and tool-use responses do not independently rearm maintenance.
+There is no expiry timer, polling worker, or unbounded idle catch-up loop. Each opportunity
+allows at most 32 originals, 16 application completion calls and 30 seconds; unfinished
+work waits for another successful run, reopen, or foreground preparation. The serialized
+owner yields between originals, and a foreground provider request aborts an in-flight
+maintenance completion. Closure also cancels it and drains ownership. These bounds move
+work off the response path but do not remove its provider cost, and sustained large runs
+or slow models can still leave a backlog.
+
+Foreground preparation has one 60-second wall-clock allowance starting at its first
+reset (including storage/model resolution, worker wait, and any overflow recovery), and
+at most 32 application completion calls. Each completion has a 20-second ceiling within
+its enclosing allowance. Cancellation propagates to the provider; even a callback that
+ignores cancellation cannot retain the index owner or publish a late result. These are
+application-invocation bounds, not counts of hidden transport/provider attempts, nor a
+deadline for the coordinator response itself. The enclosing deadline also covers time
+between the first reset and overflow recovery. Storage operations rely on the SDK's
+context cancellation; these are not hard real-time guarantees for uninterruptible I/O.
+
+Each oversized leaf or summary-pair merge gets one full-input completion, targeting 384
+UTF-8 bytes with a hard 512-byte output maximum. Empty or oversized output fails the
+unfinished original atomically: no truncation, shortest-oversized fallback, placeholder,
+or five-attempt replay. Previously persisted oversized nodes are not rewritten; newly
+created nodes obey the limit, including merges that reuse those old summaries. Originals
+and zoom remain authoritative. A leaf and its carry-chain merges commit together with
+the cursor; an interrupted unfinished chain may repeat, but indexed raw originals do not.
+A replacement active head publishes only after its complete memory view is persisted;
+failed preparation retains the prior head and clears activity. Preparation errors use
+non-provider failure text so Durable's generic provider retry policy cannot replay them,
+and do not immediately rearm maintenance. A later explicit submission can continue from
+committed progress. Genuine coordinator-provider transient failures retain normal retries.
+Failure diagnostics include only fixed reason labels, application-call counts and elapsed
+time, never source bodies or raw summarizer diagnostics.
 
 The Pi Durable SDK supplies process-crash recovery, not a newest-commit power-loss
 guarantee. Replay-unsafe Cake mutations require inspecting live state rather than

@@ -191,8 +191,11 @@ it("roundtrips installed Anthropic TTL usage through ModelRuntime, Durable and S
   f.usage(0, 0, 2000);
   const second = await f.open();
   expect((await second.status()).cache).toEqual(cache);
+  const head = (await second.engine.root.context(BACKGROUND_CONTEXT)).head?.id;
   expect((await second.send("Still warm after restart", "second")).status).toBe("done");
-  expect(f.summarize).not.toHaveBeenCalled();
+  // Incremental maintenance may summarize, but must not replace the cached prefix.
+  expect((await second.engine.root.context(BACKGROUND_CONTEXT)).head?.id).toBe(head);
+  expect((await second.status()).lastSummary).toBeUndefined();
   expect(JSON.stringify(f.payloads[1])).toContain("ORIGINAL_ONE_HOUR");
   const read = (await second.status()).cache!;
   expect(read).toMatchObject({

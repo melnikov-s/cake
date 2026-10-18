@@ -11,6 +11,10 @@ import {
   LiveDoc,
   ResetEntry,
   type Storage,
+  type HarnessSettings,
+  type EntryId,
+  UserEntry,
+  AssistantEntry,
 } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -19,6 +23,7 @@ import { join } from "node:path";
 import { Type } from "@earendil-works/pi-durable-ai";
 import { afterEach, expect, it, vi } from "vitest";
 import { ChatMetadataDoc } from "../../../../src/services/pi-durable/durable-chat-metadata";
+import type { DurableMemoryOptions } from "../../../../src/services/pi-durable/durable-chat-memory";
 import { durableContextMetadata } from "../../../../src/services/pi-durable/durable-context-metadata";
 import {
   durableAdmission,
@@ -64,9 +69,13 @@ async function fixture(
   onZoom?: (parts: readonly UiPart[]) => Promise<void>,
   retainWarm = false,
   sdkCompaction = false,
+  setup: { summarize?: DurableMemoryOptions["summarize"]; retry?: HarnessSettings["retry"] } = {},
 ) {
   const f = durableModels(answer);
-  const summarize = vi.fn(async () => "talk: exact details remain available through zoom");
+  const summarize = vi.fn<DurableMemoryOptions["summarize"]>(
+    setup.summarize ?? (async () => "talk: exact details remain available through zoom"),
+  );
+  const onReport = vi.fn();
   let budget = 4_000;
   let clock = Date.now();
   let contextLimit = 300_000;
@@ -99,9 +108,13 @@ async function fixture(
     memory: { budget: () => budget, summarize },
     contextLimitTokens: () => contextLimit,
     now: () => clock,
-    settings: { contextRetentionMs: 0, compaction: { enabled: sdkCompaction, keepRecentTokens } },
+    settings: {
+      contextRetentionMs: 0,
+      compaction: { enabled: sdkCompaction, keepRecentTokens },
+      retry: setup.retry,
+    },
     onChanged: vi.fn(),
-    onReport: vi.fn(),
+    onReport,
   });
   cleanup.push(() => engine.close());
   const submit = (text: string, requestId: string) => {
@@ -118,6 +131,7 @@ async function fixture(
     ...f,
     engine,
     summarize,
+    onReport,
     submit,
     send,
     advance: (ms: number) => {
@@ -529,13 +543,14 @@ it("stops memory preparation without withdrawing queued input", async () => {
     await f.send("LONG_DETAIL ".repeat(100), "long");
     const active = await f.submit("Waiting for memory", "waiting");
     await vi.waitFor(() => expect(f.summarize).toHaveBeenCalled());
-    expect((await f.engine.contextStatus(durableModel)).activity).toBe("summarizing");
-    // Request preparation parks its fresh head before awaiting the summarizer.
-    // No background summary rewrites or indexes the preceding warm context.
+    await vi.waitFor(async () => {
+      expect((await f.engine.contextStatus(durableModel)).activity).toBe("summarizing");
+    });
+    // Preparation must not publish a partial replacement while the model is blocked.
     await vi.waitFor(async () => {
       const context = await f.engine.root.context(BACKGROUND_CONTEXT);
       expect(JSON.stringify(context.messages)).toContain("Waiting for memory");
-      expect(JSON.stringify(context.messages)).not.toContain("LONG_DETAIL");
+      expect(JSON.stringify(context.messages)).toContain("LONG_DETAIL");
     });
     const queued = await f.submit("Keep this queued", "queued");
     let stopped = false;
@@ -610,7 +625,7 @@ it("pages originals once without resets, clocks or summary nodes", async () => {
   expect(new Set(ids).size).toBe(90);
 });
 
-it("admits before failing summarization, parks a bounded head and recovers without losing originals", async () => {
+it("admits before failing summarization, retains its head and recovers without losing originals", async () => {
   const f = await fixture();
   await f.send("Hello", "first");
   const original = "USER_DETAIL ".repeat(100);
@@ -621,9 +636,10 @@ it("admits before failing summarization, parks a bounded head and recovers witho
   expect(failed).toMatchObject({ status: "unanswered", reason: "model_error" });
   expect((await f.engine.contextStatus(durableModel)).activity).toBeUndefined();
   expect(f.requests).toHaveLength(2);
-  expect(JSON.stringify((await f.engine.root.context(BACKGROUND_CONTEXT)).messages)).not.toContain(
+  expect(JSON.stringify((await f.engine.root.context(BACKGROUND_CONTEXT)).messages)).toContain(
     original,
   );
+  expect((await f.engine.contextStatus(durableModel)).activity).toBeUndefined();
   expect(JSON.stringify((await readDurableOriginalPage(f.engine.root)).parts)).toContain(
     "Continue",
   );
@@ -767,14 +783,20 @@ it("reads the previous mode from queued input ahead of committed history", async
   expect(durableInputPresentation("plain synthetic text").responseMode).toBeUndefined();
 });
 
-it("retains independent warm messages verbatim without even background summarization, then rebuilds at assumed five-minute expiry", async () => {
+it("indexes warm committed originals without replacing the active head, then rebuilds at assumed five-minute expiry", async () => {
   const f = await fixture(undefined, 20_000, new MemoryStorage(), undefined, true);
   const original = "WARM_ORIGINAL ".repeat(150);
   await f.send(original, "first");
   await f.send("A warm independent follow-up", "second");
-  expect(f.summarize).not.toHaveBeenCalled();
   expect(JSON.stringify(f.requests[1])).toContain(original);
   const head = (await f.engine.root.context(BACKGROUND_CONTEXT)).head?.id;
+  await vi.waitFor(async () => expect((await f.zoom(3, 1)).text).toContain("Done"));
+  expect(f.summarize).toHaveBeenCalled();
+  expect((await f.engine.root.context(BACKGROUND_CONTEXT)).head?.id).toBe(head);
+  expect(JSON.stringify((await f.engine.root.context(BACKGROUND_CONTEXT)).messages)).toContain(
+    original,
+  );
+  expect((await f.engine.contextStatus(durableModel)).activity).toBeUndefined();
   const status = await f.engine.contextStatus(durableModel);
   expect(status.totalTokens).toBe(status.systemTokens + status.memoryTokens + status.messageTokens);
   expect(cakeChatCacheFreshness(status.cache, status.cache!.requestedAt)).toMatchObject({
@@ -840,6 +862,7 @@ it("persists relevant request time across reopen without resetting cache freshne
   const original = "PERSISTED_ORIGINAL ".repeat(100);
   await first.send(original, "original");
   const request = (await first.engine.contextStatus(durableModel)).cache;
+  await first.view();
   await first.engine.close();
   cleanup.pop();
   const reopened = await fixture(
@@ -851,11 +874,14 @@ it("persists relevant request time across reopen without resetting cache freshne
   );
   expect((await reopened.engine.contextStatus(durableModel)).cache).toEqual(request);
   await reopened.send("Still warm after reopen", "warm");
-  expect(reopened.summarize).not.toHaveBeenCalled();
+  expect(
+    reopened.summarize.mock.calls.some(([input]) =>
+      input.context.split("<input>\n")[1]?.includes(original),
+    ),
+  ).toBe(false);
   expect(JSON.stringify(reopened.requests[0])).toContain(original);
   reopened.advance(6 * 60_000);
   await reopened.send("Now cold", "cold");
-  expect(reopened.summarize).toHaveBeenCalled();
   expect(JSON.stringify(reopened.requests[1])).not.toContain(original);
 });
 
@@ -1003,7 +1029,9 @@ it("persists the overflow attempt bound across an interrupted reset and SQLite r
     undefined,
     true,
   );
+  first.summarize.mockRejectedValue(new Error("fixture background paused"));
   await first.send("RESTART_OVERFLOW_HISTORY ".repeat(100), "history");
+  await vi.waitFor(() => expect(first.onReport).toHaveBeenCalled());
   const started = Promise.withResolvers<void>();
   const pending = Promise.withResolvers<string>();
   first.summarize.mockImplementation(() => {
@@ -1012,6 +1040,7 @@ it("persists the overflow attempt bound across an interrupted reset and SQLite r
   });
   await first.submit("RESTART_CURRENT", "current");
   await started.promise;
+  expect(first.requests).toHaveLength(2);
   const closing = first.engine.close();
   pending.resolve("talk: history remains in originals");
   await closing;
@@ -1042,6 +1071,148 @@ it("rejects an input below the model window when it would consume the output res
   expect(status.totalTokens).toBeGreaterThanOrEqual(800);
   expect(result).toMatchObject({ status: "unanswered", reason: "model_error" });
   expect(f.requests).toHaveLength(0);
+});
+
+it("coalesces an idle batch into one call-bounded maintenance allowance without replacing the head", async () => {
+  const f = await fixture(undefined, 20_000, new MemoryStorage(), undefined, true);
+  f.summarize.mockResolvedValue("user: preserved summary " + "s".repeat(280));
+  let firstOriginal: EntryId | undefined;
+  await f.engine.root.commit(async (tx) => {
+    for (let i = 0; i < 80; i += 1) {
+      const entry = await tx.appendEntry(UserEntry, f.engine.root.id, {
+        model: [{ role: "user", content: `original-${i} ` + "x".repeat(700), timestamp: i }],
+      });
+      firstOriginal ??= entry.id;
+    }
+    await tx.appendEntry(AssistantEntry, f.engine.root.id, { model: [durableAnswer("Completed")] });
+  }, BACKGROUND_CONTEXT);
+  const head = (await f.engine.root.context(BACKGROUND_CONTEXT)).head?.id;
+  await vi.waitFor(() => expect(f.onReport).toHaveBeenCalledOnce());
+  expect(String(f.onReport.mock.calls[0]?.[0])).toContain("work-allowance");
+  expect(String(f.onReport.mock.calls[0]?.[0])).toContain('"calls":16');
+  expect(f.summarize).toHaveBeenCalledTimes(16);
+  expect(f.requests).toHaveLength(0);
+  expect(firstOriginal).toBeDefined();
+  const view = await f.engine.index(new AbortController().signal, firstOriginal);
+  expect(view.sourceCount).toBeGreaterThan(0);
+  expect(view.sourceCount).toBeLessThan(32);
+  expect((await f.engine.root.context(BACKGROUND_CONTEXT)).head?.id).toBe(head);
+  expect((await f.engine.contextStatus(durableModel)).activity).toBeUndefined();
+  // A metadata-only publication must not rearm the exhausted allowance.
+  await f.engine.root.commit(async (tx) => {
+    await tx.doc(ChatMetadataDoc, f.engine.root.id);
+  }, BACKGROUND_CONTEXT);
+  expect(f.summarize).toHaveBeenCalledTimes(16);
+  expect(f.onReport).toHaveBeenCalledOnce();
+});
+
+it("bounds cheap background work to 32 originals and coalesces multiple completion publications", async () => {
+  const f = await fixture(undefined, 20_000, new MemoryStorage(), undefined, true);
+  let firstOriginal: EntryId | undefined;
+  await f.engine.root.commit(async (tx) => {
+    for (let i = 0; i < 80; i += 1) {
+      const entry = await tx.appendEntry(UserEntry, f.engine.root.id, {
+        model: [{ role: "user", content: `tiny-${i}`, timestamp: i }],
+      });
+      firstOriginal ??= entry.id;
+    }
+    for (let i = 0; i < 20; i += 1)
+      await tx.appendEntry(AssistantEntry, f.engine.root.id, { model: [durableAnswer("Done")] });
+  }, BACKGROUND_CONTEXT);
+  await vi.waitFor(async () => expect((await f.zoom(31, 1)).text).toContain("tiny-31"));
+  expect((await f.engine.index(new AbortController().signal, firstOriginal)).sourceCount).toBe(32);
+  expect(f.summarize).not.toHaveBeenCalled();
+  expect(f.onReport).not.toHaveBeenCalled();
+  await f.engine.root.commit(async (tx) => {
+    await tx.doc(ChatMetadataDoc, f.engine.root.id);
+  }, BACKGROUND_CONTEXT);
+  expect((await f.engine.index(new AbortController().signal, firstOriginal)).sourceCount).toBe(32);
+});
+
+it("preempts a non-cooperative background completion for a warm foreground request without publishing its late result", async () => {
+  const f = await fixture(undefined, 20_000, new MemoryStorage(), undefined, true);
+  const started = Promise.withResolvers<AbortSignal>();
+  const pending = Promise.withResolvers<string>();
+  f.summarize.mockImplementationOnce(({ signal }) => {
+    started.resolve(signal);
+    return pending.promise;
+  });
+  const original = "BACKGROUND_DETAIL ".repeat(100);
+  await f.send(original, "history");
+  const signal = await started.promise;
+  const head = (await f.engine.root.context(BACKGROUND_CONTEXT)).head?.id;
+  expect((await f.send("Foreground now", "foreground")).status).toBe("done");
+  expect(signal.aborted).toBe(true);
+  expect(JSON.stringify(f.requests[1])).toContain(original);
+  expect((await f.engine.root.context(BACKGROUND_CONTEXT)).head?.id).toBe(head);
+  await f.view();
+  pending.resolve("LATE_RESULT_MUST_NOT_PUBLISH");
+  expect((await f.view()).text).not.toContain("LATE_RESULT_MUST_NOT_PUBLISH");
+  expect(f.onReport).not.toHaveBeenCalled();
+});
+
+it("closes blocked background maintenance even when the completion ignores cancellation", async () => {
+  const f = await fixture(undefined, 20_000, new MemoryStorage(), undefined, true);
+  const started = Promise.withResolvers<AbortSignal>();
+  f.summarize.mockImplementation(({ signal }) => {
+    started.resolve(signal);
+    return new Promise<string>(() => undefined);
+  });
+  await f.send("CLOSE_BACKGROUND ".repeat(100), "history");
+  const signal = await started.promise;
+  await f.engine.close();
+  cleanup.pop();
+  expect(signal.aborted).toBe(true);
+  expect(f.onReport).not.toHaveBeenCalled();
+});
+
+it("does not route preparation failures through generic provider retries or immediately replay them as maintenance", async () => {
+  const f = await fixture(undefined, 20_000, new MemoryStorage(), undefined, true, false, {
+    summarize: async () => {
+      throw new Error(
+        "Bounded model completion timed out; 429 provider returned error; secret fixture body",
+      );
+    },
+    retry: { enabled: true, maxRetries: 3, baseDelayMs: 1 },
+  });
+  await f.send("PREPARATION_DETAIL ".repeat(100), "history");
+  await vi.waitFor(() => expect(f.onReport).toHaveBeenCalledOnce());
+  const before = f.summarize.mock.calls.length;
+  f.advance(6 * 60_000);
+  const failed = await f.send("Continue", "failure");
+  expect(failed).toMatchObject({ status: "unanswered", reason: "model_error" });
+  expect(f.summarize).toHaveBeenCalledTimes(before + 1);
+  expect(f.requests).toHaveLength(1);
+  const live = await f.engine.harness.snapshot(LiveDoc, f.engine.root.id, BACKGROUND_CONTEXT);
+  expect(live?.generation).toBeUndefined();
+  expect((await f.engine.contextStatus(durableModel)).activity).toBeUndefined();
+  const originals = JSON.stringify((await readDurableOriginalPage(f.engine.root)).parts);
+  expect(originals).toContain("context preparation failed");
+  expect(originals).not.toContain("secret fixture body");
+  expect(f.onReport.mock.calls.map(([error]) => String(error)).join(" ")).not.toContain(
+    "secret fixture body",
+  );
+  f.summarize.mockResolvedValue("user: details remain available through zoom");
+  expect((await f.send("Explicit continuation", "continue")).status).toBe("done");
+});
+
+it("still retries a genuine coordinator-provider transient failure", async () => {
+  const f = await fixture(
+    (_request, index) =>
+      index === 1
+        ? { ...durableAnswer(""), stopReason: "error", errorMessage: "429 rate limit" }
+        : durableAnswer("Recovered"),
+    20_000,
+    new MemoryStorage(),
+    undefined,
+    true,
+    false,
+    {
+      retry: { enabled: true, maxRetries: 3, baseDelayMs: 1 },
+    },
+  );
+  expect((await f.send("Hello", "retry-provider")).status).toBe("done");
+  expect(f.requests).toHaveLength(2);
 });
 
 it("reserves model output room independently of the configured input cap", () => {

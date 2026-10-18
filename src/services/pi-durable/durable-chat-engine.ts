@@ -35,6 +35,11 @@ import { ChatMetadataDoc } from "./durable-chat-metadata";
 import { durableContextMetadata } from "./durable-context-metadata";
 import { createDurableChatMemory, type DurableMemoryOptions } from "./durable-chat-memory";
 import { withoutDurableInputPresentation } from "./durable-input-presentation";
+import {
+  DurableMemoryError,
+  durableMemoryWork,
+  MEMORY_BACKGROUND_WORK,
+} from "./durable-memory-work";
 import { durableModelFacade } from "./durable-model-facade";
 import { durableContextInspection } from "./durable-context-inspection";
 import { estimateContextTokens } from "@earendil-works/pi-durable-ai/utils/estimate";
@@ -122,10 +127,17 @@ export async function openDurableChatEngine(options: {
   // A single SDK-boundary worker serializes indexing with request preparation. It does not
   // cache nodes/originals or own model runs; the Harness owns those persisted tasks.
   let worker = Promise.resolve();
-  const index = (signal: AbortSignal, cutoff?: EntryId, budget?: number) => {
+  const index = (
+    signal: AbortSignal,
+    cutoff?: EntryId,
+    budget?: number,
+    batch: Parameters<typeof memory.synchronize>[3] = {},
+  ) => {
+    const work = batch.work ?? durableMemoryWork(signal);
+    signal = work.signal;
     const result = worker.then(() => {
       signal.throwIfAborted();
-      return memory.synchronize(signal, cutoff, budget);
+      return memory.synchronize(signal, cutoff, budget, { ...batch, work });
     });
     worker = result.then(
       () => undefined,
@@ -136,9 +148,59 @@ export async function openDurableChatEngine(options: {
     // when it eventually reaches the front of the queue.
     return awaitWithContext(result, withAbortSignal(signal, BACKGROUND_CONTEXT));
   };
+  // One coalesced high-water mark, not one catch-up job per commit. Maintenance
+  // runs only between coordinator runs, yields ownership after each original, and
+  // stops after 32 originals / 16 calls / 30s. A later original or reopen offers
+  // another allowance; failure never spins an automatic retry loop. Keep this
+  // inside the SDK's Promise/context lifecycle: Harness.close must cancel/drain
+  // this same commit owner before closing storage, not an independent scheduler.
+  let pendingCutoff: EntryId | undefined;
+  let maintenance: Promise<void> | undefined;
+  let maintenanceAbort: AbortController | undefined;
+  let foreground = 0;
+  const maintain = () => {
+    if (closing.signal.aborted || foreground > 0 || maintenance || pendingCutoff === undefined)
+      return;
+    let consumed = false;
+    let work: ReturnType<typeof durableMemoryWork> | undefined;
+    maintenance = (async () => {
+      if ((await harness.snapshot(LiveDoc, root.id, BACKGROUND_CONTEXT))?.run) return;
+      const cutoff = pendingCutoff;
+      pendingCutoff = undefined;
+      consumed = true;
+      maintenanceAbort = new AbortController();
+      work = durableMemoryWork(
+        AbortSignal.any([closing.signal, maintenanceAbort.signal]),
+        MEMORY_BACKGROUND_WORK,
+      );
+      for (let count = 0; count < 32; count += 1) {
+        if (foreground > 0 || (await harness.snapshot(LiveDoc, root.id, BACKGROUND_CONTEXT))?.run)
+          break;
+        const view = await index(work.signal, cutoff, undefined, { maxOriginals: 1, work });
+        if (view.complete) break;
+      }
+    })()
+      .catch((error: unknown) => {
+        if (!closing.signal.aborted && !maintenanceAbort?.signal.aborted)
+          options.onReport(
+            new Error(
+              `Cake Chat incremental memory maintenance paused: ${error instanceof DurableMemoryError ? error.reason : "preparation-failed"}; ${JSON.stringify(work?.metrics())}. Originals and committed progress are preserved.`,
+            ),
+          );
+      })
+      .finally(() => {
+        maintenanceAbort = undefined;
+        maintenance = undefined;
+        if (consumed && pendingCutoff !== undefined) maintain();
+      });
+  };
   const models = durableModelFacade(options.models, {
     streamSimple(model, request, streamOptions) {
       const stream = createAssistantMessageEventStream();
+      let preparing = true;
+      let preparationWork: ReturnType<typeof durableMemoryWork> | undefined;
+      foreground += 1;
+      maintenanceAbort?.abort();
       void (async () => {
         const signal = streamOptions?.signal
           ? AbortSignal.any([closing.signal, streamOptions.signal])
@@ -155,6 +217,7 @@ export async function openDurableChatEngine(options: {
           streamOptions?.sessionId !== undefined &&
           streamOptions.sessionId !== identity.sessionId
         ) {
+          preparing = false;
           const source = options.models.streamSimple(
             model,
             {
@@ -193,6 +256,10 @@ export async function openDurableChatEngine(options: {
         );
         const newInput = input !== undefined && boundary.input !== input;
         const reset = async (reason: "limit" | "cache-cold" | "cache-unknown" | "overflow") => {
+          preparing = true;
+          preparationWork ??= durableMemoryWork(signal);
+          const context = withAbortSignal(preparationWork.signal, BACKGROUND_CONTEXT);
+          preparationWork.signal.throwIfAborted();
           if (input === undefined)
             throw new Error("Cannot recover context without a committed current input.");
           const submission = await options.storage.submission(input, context);
@@ -266,20 +333,13 @@ export async function openDurableChatEngine(options: {
             activity = "summarizing";
             options.onChanged();
             try {
-              // Park a bounded active head before any slow or failing summary. Originals
-              // remain on disk, so repeated summary outages cannot grow the active range.
-              await root.commit(async (tx) => {
-                await tx.appendEntry(ResetEntry, root.id, {
-                  head: "self",
-                  model: [...(system ? [system] : []), ...current],
-                });
-                if (system) await markSystemCarried(tx, root.id);
-              }, context);
+              // Publish a replacement head only after its complete view is persisted.
+              // Failed preparation leaves the existing head (and cache evidence) intact.
               const budget = Math.min(
                 options.memory.budget(),
                 Math.floor(((remaining - 64) * 3.5) / 2),
               );
-              const view = await index(signal, cutoff, budget);
+              const view = await index(signal, cutoff, budget, { work: preparationWork });
               const messages: Message[] = system ? [system] : [];
               messages.push(
                 {
@@ -330,6 +390,7 @@ export async function openDurableChatEngine(options: {
           active = await root.context(context);
           const requestedAt = now();
           const evidence = durableCacheEvidence(model.api);
+          preparing = false;
           const source = options.models.streamSimple(
             model,
             {
@@ -404,28 +465,51 @@ export async function openDurableChatEngine(options: {
           }
           if (!recover) break;
         }
-      })().catch((error: unknown) => {
-        const aborted = closing.signal.aborted || streamOptions?.signal?.aborted;
-        const message = {
-          role: "assistant" as const,
-          content: [],
-          api: model.api,
-          provider: model.provider,
-          model: model.id,
-          timestamp: Date.now(),
-          stopReason: aborted ? ("aborted" as const) : ("error" as const),
-          errorMessage: error instanceof Error ? error.message : String(error),
-          usage: {
-            input: 0,
-            output: 0,
-            cacheRead: 0,
-            cacheWrite: 0,
-            totalTokens: 0,
-            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-          },
-        };
-        stream.push({ type: "error", reason: aborted ? "aborted" : "error", error: message });
-      });
+      })()
+        .catch((error: unknown) => {
+          const aborted = closing.signal.aborted || streamOptions?.signal?.aborted;
+          // A failed/stopped preparation is not a new maintenance opportunity.
+          // In particular its subsequently committed assistant error must not
+          // immediately replay the same expensive work in the background.
+          if (preparing) pendingCutoff = undefined;
+          if (preparing && !aborted)
+            options.onReport(
+              new Error(
+                `Cake Chat context preparation paused: ${error instanceof DurableMemoryError ? error.reason : "preparation-failed"}; ${JSON.stringify(preparationWork?.metrics())}.`,
+              ),
+            );
+          const message = {
+            role: "assistant" as const,
+            content: [],
+            api: model.api,
+            provider: model.provider,
+            model: model.id,
+            timestamp: Date.now(),
+            stopReason: aborted ? ("aborted" as const) : ("error" as const),
+            // Durable classifies retryable provider failures by message text. Never
+            // forward preparation/provider diagnostics (e.g. timeout/429) into that
+            // classifier: only a new explicit submission may resume preparation.
+            errorMessage:
+              preparing && !aborted
+                ? `Cake Chat context preparation failed${error instanceof DurableMemoryError ? ` (${error.reason})` : ""}. Originals and committed memory progress are preserved. Submit again to continue; if the input cannot fit, shorten it or raise the Cake Chat context limit.`
+                : error instanceof Error
+                  ? error.message
+                  : String(error),
+            usage: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 0,
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+            },
+          };
+          stream.push({ type: "error", reason: aborted ? "aborted" : "error", error: message });
+        })
+        .finally(() => {
+          foreground -= 1;
+          maintain();
+        });
       return stream;
     },
   });
@@ -458,8 +542,10 @@ export async function openDurableChatEngine(options: {
     memory = createDurableChatMemory(harness, root, options.storage, {
       ...options.memory,
       onConsolidating: () => {
-        activity = "consolidating";
-        options.onChanged();
+        if (activity) {
+          activity = "consolidating";
+          options.onChanged();
+        }
       },
     });
     await root.commit(async (tx) => {
@@ -470,6 +556,7 @@ export async function openDurableChatEngine(options: {
       let visible = false;
       let originals = 0;
       let contextChanged = false;
+      let liveChanged = false;
       for (const change of publication.changes) {
         // Side-chat forks commit through this Harness too; only Cake Chat's own
         // changes count toward its metadata, memory index and snapshots.
@@ -484,8 +571,21 @@ export async function openDurableChatEngine(options: {
         if (
           change.type === "entry" &&
           ["pi.user", "pi.assistant", "pi.tool-result"].includes(change.value.kind)
-        )
+        ) {
           originals += 1;
+          if (
+            change.value.kind === "pi.assistant" &&
+            change.value.model?.some(
+              (message) =>
+                message.role === "assistant" &&
+                message.stopReason !== "error" &&
+                message.stopReason !== "aborted" &&
+                message.stopReason !== "toolUse",
+            )
+          )
+            pendingCutoff = change.value.id;
+        }
+        if (change.type === "document" && change.record.kind === "pi.live") liveChanged = true;
         if (change.type === "entry" && !change.value.kind.startsWith("cake.chat-memory"))
           visible = true;
         if (
@@ -516,7 +616,11 @@ export async function openDurableChatEngine(options: {
             })().catch(options.onReport);
         });
       if (visible) queueMicrotask(options.onChanged);
+      if (originals > 0 || liveChanged) queueMicrotask(maintain);
     });
+    // Reopen resumes the same persisted cursor, never replays indexed originals.
+    pendingCutoff = (await root.entries({}, 1, undefined, BACKGROUND_CONTEXT)).items[0]?.id;
+    queueMicrotask(maintain);
     return {
       harness,
       root,
@@ -577,6 +681,7 @@ export async function openDurableChatEngine(options: {
         // its request checkpoint, not settle it as an ordinary model error.
         const closed = harness.close(BACKGROUND_CONTEXT);
         closing.abort();
+        await maintenance;
         await worker;
         await closed;
       },

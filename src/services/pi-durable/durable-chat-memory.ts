@@ -22,6 +22,11 @@ import {
 import type { ContextInspection } from "../../contracts/conversations/context-inspection";
 import { contextMessage } from "../pi/runtime/context-outline";
 import { splitContextReminders } from "../pi/runtime/session-context-reminders";
+import {
+  DurableMemoryError,
+  durableMemoryWork,
+  type DurableMemoryWork,
+} from "./durable-memory-work";
 
 const Id = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 const Range = Schema.Struct({ id: Id, n: Schema.Int.check(Schema.isGreaterThan(0)), entry: Id });
@@ -164,30 +169,24 @@ export function createDurableChatMemory(
       Object.assign(await tx.doc(StateDoc, root.id), value);
     }, contextFor(signal));
 
-  const summarize = async (text: string, prefix: string, signal: AbortSignal) => {
+  const summarize = async (text: string, prefix: string, work: DurableMemoryWork) => {
+    work.signal.throwIfAborted();
     if (memoryBytes(text) <= MEMORY_NODE_BYTES) return text;
-    const attempts: string[] = [];
-    let feedback = "";
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      signal.throwIfAborted();
-      const answer = (
-        await options.summarize({
+    const answer = (
+      await work.complete((signal) =>
+        options.summarize({
           instructions: MEMORY_COMPACTOR_PROMPT,
-          context: `${prefix}\n\nCompress or merge <input> into one line of at most 512 UTF-8 bytes. Size ruler:\n${"-".repeat(MEMORY_NODE_BYTES)}\n<input>\n${text}\n</input>${feedback}`,
+          context: `${prefix}\n\nCompress or merge <input> into one line. Aim for 384 UTF-8 bytes; the hard maximum is ${MEMORY_NODE_BYTES} UTF-8 bytes. Preserve meaningful facts, not padding.\n<input>\n${text}\n</input>`,
           signal,
-        })
-      ).trim();
-      signal.throwIfAborted();
-      if (!answer) throw new Error("Cake Chat memory summarizer returned an empty summary");
-      attempts.push(answer);
-      if (memoryBytes(answer) <= MEMORY_NODE_BYTES) break;
-      const cut = Buffer.from(answer)
-        .subarray(0, MEMORY_NODE_BYTES)
-        .toString("utf8")
-        .replace(/\uFFFD$/, "");
-      feedback = `\nYour previous line is ${memoryBytes(answer)} bytes: ${answer}\nRewrite it to fit before this cut:\n${cut}| LIMIT`;
-    }
-    return attempts.reduce((a, b) => (memoryBytes(a) <= memoryBytes(b) ? a : b));
+        }),
+      )
+    ).trim();
+    // No truncation, lossy placeholder or repeated full-input attempts. Reject the
+    // unfinished original/merge atomically; a later explicit attempt can continue.
+    if (!answer) throw new DurableMemoryError({ reason: "empty-summary" });
+    if (memoryBytes(answer) > MEMORY_NODE_BYTES)
+      throw new DurableMemoryError({ reason: "oversized-summary" });
+    return answer;
   };
 
   const fit = async (current: State, signal: AbortSignal, budget: number) => {
@@ -238,15 +237,16 @@ export function createDurableChatMemory(
     current: State,
     original: EntryRecord,
     text: string,
-    signal: AbortSignal,
+    work: DurableMemoryWork,
     budget: number,
   ) => {
+    const { signal } = work;
     const prefix = render(await nodes(current.parts, signal));
     const planned: { id: number; n: number; text: string; left?: number }[] = [
       {
         id: current.count,
         n: 1,
-        text: await summarize(text, prefix, signal),
+        text: await summarize(text, prefix, work),
       },
     ];
     const forest = [...current.forest];
@@ -257,7 +257,7 @@ export function createDurableChatMemory(
       right = {
         id: left.id,
         n: left.n * 2,
-        text: await summarize(source, prefix, signal),
+        text: await summarize(source, prefix, work),
         left: left.entry,
       };
       planned.push(right);
@@ -300,7 +300,12 @@ export function createDurableChatMemory(
     signal: AbortSignal,
     cutoff?: EntryId,
     budget = options.budget(),
-  ): Promise<DurableChatMemoryView> => {
+    batch: { maxOriginals?: number; work?: DurableMemoryWork } = {},
+  ): Promise<DurableChatMemoryView & { complete: boolean }> => {
+    const work = batch.work ?? durableMemoryWork(signal);
+    signal = work.signal;
+    let processed = 0;
+    let complete = true;
     const current = await state(signal);
     const newest =
       cutoff ?? (await root.entries({}, 1, undefined, contextFor(signal))).items[0]?.id;
@@ -309,12 +314,19 @@ export function createDurableChatMemory(
       const query: Omit<EntryQuery, "conversationId"> = { order: "ascending", maxEntryId: newest };
       if (current.through !== null)
         Object.assign(query, { minEntryId: entryId(current.through + 1) });
-      do {
+      scan: do {
         const page = await root.entries(query, 64, cursor, contextFor(signal));
         for (const original of page.items) {
+          signal.throwIfAborted();
           const text = sourceText(original);
-          if (text) await append(current, original, text, signal, budget);
-          else current.through = original.id;
+          if (text) {
+            if (processed >= (batch.maxOriginals ?? Infinity)) {
+              complete = false;
+              break scan;
+            }
+            await append(current, original, text, work, budget);
+            processed += 1;
+          } else current.through = original.id;
         }
         cursor = page.next;
       } while (cursor !== undefined);
@@ -325,6 +337,7 @@ export function createDurableChatMemory(
       throw new Error("Cake Chat history cannot fit its memory budget");
     return {
       text,
+      complete,
       bytes: memoryBytes(text),
       sourceCount: current.count,
       partCount: current.parts.length,
