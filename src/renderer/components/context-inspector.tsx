@@ -29,28 +29,17 @@ export const ContextInspector = observer(function ContextInspector({
   return (
     <>
       {usage ? (
-        <div className="flex min-w-0 flex-col items-end gap-1">
-          {store.activityLabel ? (
-            <span
-              className="flex items-center gap-1.5 text-[11px] text-muted-foreground"
-              role="status"
-            >
-              <LoadingSpinner label={store.activityLabel} />
-              {store.activityLabel}
-            </span>
-          ) : null}
-          <ContextUsageButton
-            ref={trigger}
-            system={store.status?.systemTokens}
-            memory={store.status?.memoryTokens}
-            messages={store.status?.messageTokens}
-            total={store.status?.totalTokens}
-            limit={store.status?.limitTokens}
-            cacheState={store.cache.state}
-            detail={store.usageTooltip}
-            onClick={() => store.show()}
-          />
-        </div>
+        <ContextUsageButton
+          ref={trigger}
+          system={store.status?.systemTokens}
+          memory={store.status?.memoryTokens}
+          messages={store.status?.messageTokens}
+          total={store.status?.totalTokens}
+          limit={store.status?.limitTokens}
+          cacheState={store.cache.state}
+          detail={store.usageTooltip}
+          onClick={() => store.show()}
+        />
       ) : (
         <IconButton ref={trigger} tooltip="Browse context" onClick={() => store.show()}>
           <ContextIcon />

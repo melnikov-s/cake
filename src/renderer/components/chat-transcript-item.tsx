@@ -19,6 +19,7 @@ interface ChatTranscriptItemProps {
   behavior: CanonicalTranscriptBehavior;
   changedFilesOpen: boolean;
   loadingStartedAt: number | undefined;
+  loadingLabel: string | undefined;
 }
 
 function sameParts(left: readonly UiPart[], right: readonly UiPart[]) {
@@ -48,6 +49,7 @@ export const ChatTranscriptItem = memo(
     behavior,
     changedFilesOpen,
     loadingStartedAt,
+    loadingLabel,
   }: ChatTranscriptItemProps) {
     const store: ChatStore = behavior.store;
     return (
@@ -98,7 +100,7 @@ export const ChatTranscriptItem = memo(
             }
           />
         ) : item.kind === "loading-state" ? (
-          <LoadingState startedAt={loadingStartedAt} />
+          <LoadingState label={loadingLabel} startedAt={loadingStartedAt} />
         ) : item.kind === "review-run" ? (
           <ReviewRunMessage run={item} onOpen={behavior.onOpenReviewRun} />
         ) : (
@@ -115,5 +117,7 @@ export const ChatTranscriptItem = memo(
     sameItem(previous.item, next.item) &&
     (next.item.kind !== "changed-files" ||
       (previous.parts === next.parts && previous.changedFilesOpen === next.changedFilesOpen)) &&
-    (next.item.kind !== "loading-state" || previous.loadingStartedAt === next.loadingStartedAt),
+    (next.item.kind !== "loading-state" ||
+      (previous.loadingStartedAt === next.loadingStartedAt &&
+        previous.loadingLabel === next.loadingLabel)),
 );

@@ -529,6 +529,7 @@ it("stops memory preparation without withdrawing queued input", async () => {
     await f.send("LONG_DETAIL ".repeat(100), "long");
     const active = await f.submit("Waiting for memory", "waiting");
     await vi.waitFor(() => expect(f.summarize).toHaveBeenCalled());
+    expect((await f.engine.contextStatus(durableModel)).activity).toBe("summarizing");
     // Request preparation parks its fresh head before awaiting the summarizer.
     // No background summary rewrites or indexes the preceding warm context.
     await vi.waitFor(async () => {
@@ -554,6 +555,7 @@ it("stops memory preparation without withdrawing queued input", async () => {
       (await f.engine.harness.snapshot(InboxDoc, f.engine.root.id, BACKGROUND_CONTEXT))?.items,
     ).toMatchObject([{ id: queued.id }]);
     expect(f.requests).toHaveLength(2);
+    expect((await f.engine.contextStatus(durableModel)).activity).toBeUndefined();
   } finally {
     summary.resolve("user: original details remain available through zoom");
     await stop;
@@ -617,6 +619,7 @@ it("admits before failing summarization, parks a bounded head and recovers witho
   const accepted = await f.submit("Continue", "accepted-before-summary");
   const failed = await accepted.wait(BACKGROUND_CONTEXT);
   expect(failed).toMatchObject({ status: "unanswered", reason: "model_error" });
+  expect((await f.engine.contextStatus(durableModel)).activity).toBeUndefined();
   expect(f.requests).toHaveLength(2);
   expect(JSON.stringify((await f.engine.root.context(BACKGROUND_CONTEXT)).messages)).not.toContain(
     original,
@@ -783,7 +786,9 @@ it("retains independent warm messages verbatim without even background summariza
   expect(f.summarize).toHaveBeenCalled();
   expect(JSON.stringify(f.requests[2])).not.toContain(original);
   expect((await f.engine.root.context(BACKGROUND_CONTEXT)).head?.id).not.toBe(head);
-  expect((await f.engine.contextStatus(durableModel)).lastSummary?.reason).toBe("cache-cold");
+  const completed = await f.engine.contextStatus(durableModel);
+  expect(completed.lastSummary?.reason).toBe("cache-cold");
+  expect(completed.activity).toBeUndefined();
   expect((await f.zoom(0, 1)).text).toContain(original);
 });
 

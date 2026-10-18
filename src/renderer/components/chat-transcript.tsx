@@ -240,17 +240,20 @@ export const ChatTranscript = observer(function ChatTranscript({
   // itemContent from its own render, outside this component's reactive tracking.
   const changedFilesOpen = store.transcriptInteraction.changedFilesOpen;
   const loadingStartedAt = store.transcriptInteraction.loadingStartedAt;
+  const loadingLabel = store.contextInspector?.activityLabel;
   const visibleParts = store.hideThinking
     ? parts.filter((part) => part.kind !== "reasoning")
     : parts;
-  const showAssistantLoading = chatWorkIsActive(
-    parts,
-    store.streaming,
-    store.submitting,
-    Boolean(
-      behavior.waitingForUser || behavior.interviews?.some((interview) => interview.requested),
-    ),
-  );
+  const showAssistantLoading =
+    Boolean(loadingLabel) ||
+    chatWorkIsActive(
+      parts,
+      store.streaming,
+      store.submitting,
+      Boolean(
+        behavior.waitingForUser || behavior.interviews?.some((interview) => interview.requested),
+      ),
+    );
   useLayoutEffect(() => {
     store.transcriptInteraction.syncChangedFilesOpen(showAssistantLoading);
   }, [showAssistantLoading, store]);
@@ -624,6 +627,7 @@ export const ChatTranscript = observer(function ChatTranscript({
       behavior={transcriptBehavior}
       changedFilesOpen={changedFilesOpen}
       loadingStartedAt={loadingStartedAt}
+      loadingLabel={loadingLabel}
     />
   );
   return (
@@ -653,7 +657,9 @@ export const ChatTranscript = observer(function ChatTranscript({
           {visibleParts.length === 0 ? (
             <Conversation className="px-6 pt-[42px] pb-[210px] max-[620px]:px-4">
               {empty}
-              {showAssistantLoading && <LoadingState startedAt={loadingStartedAt} />}
+              {showAssistantLoading && (
+                <LoadingState label={loadingLabel} startedAt={loadingStartedAt} />
+              )}
               {footer}
               {error?.message && (
                 <ErrorNotice

@@ -10,15 +10,28 @@ export async function openRequestInspectorFixture(
   {
     holdResponse = false,
     contextLimitTokens = 300_000,
-  }: { holdResponse?: boolean; contextLimitTokens?: number } = {},
+    beforeResponse,
+  }: {
+    holdResponse?: boolean;
+    contextLimitTokens?: number;
+    beforeResponse?: (body: string) => Promise<void>;
+  } = {},
 ) {
   const server = createServer((request, response) => {
     if (request.method !== "POST" || request.url !== "/v1/chat/completions") {
       response.writeHead(404).end();
       return;
     }
-    request.resume();
+    let body = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk: string) => {
+      body += chunk;
+    });
     request.on("end", () => {
+      void respond().catch((error: Error) => response.destroy(error));
+    });
+    async function respond() {
+      await beforeResponse?.(body);
       const chunk = (delta: object, finish_reason: string | null) =>
         `data: ${JSON.stringify({ id: "inspection-fixture", object: "chat.completion.chunk", model: "inspection-fixture", choices: [{ index: 0, delta, finish_reason }] })}\n\n`;
       response.writeHead(200, { "content-type": "text/event-stream" });
@@ -34,7 +47,7 @@ export async function openRequestInspectorFixture(
           chunk({}, "stop") +
           "data: [DONE]\n\n",
       );
-    });
+    }
   });
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);

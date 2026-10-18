@@ -20,9 +20,20 @@ for (const scope of ["global", "project-chat"] as const) {
       mkdir(project),
       mkdir(userData),
     ]);
+    const summary = Promise.withResolvers<void>();
+    const reply = Promise.withResolvers<void>();
+    let rebuilding = false;
     const closeProvider = await openRequestInspectorFixture(
       { cakeHome, project },
-      { contextLimitTokens: 8_000 },
+      {
+        contextLimitTokens: 8_000,
+        beforeResponse: async (body) => {
+          if (body.includes("Compress or merge <input>")) {
+            rebuilding = true;
+            await summary.promise;
+          } else if (rebuilding) await reply.promise;
+        },
+      },
     );
     const launch = () =>
       electron.launch({
@@ -65,6 +76,7 @@ for (const scope of ["global", "project-chat"] as const) {
         exact: true,
       });
       await input.click();
+      await expect(input).toBeFocused();
       await input.pressSequentially("Keep the interface quiet.");
       await expect(input).toHaveValue("Keep the interface quiet.");
       // Two individually fitting inputs cross the configured limit together,
@@ -78,9 +90,19 @@ for (const scope of ["global", "project-chat"] as const) {
       await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
       await input.fill("Use familiar disclosure triangles. " + "recent-detail ".repeat(900));
       await page.getByRole("button", { name: "Send", exact: true }).click();
+      const activity = page.locator('[data-slot="loading-state"]');
+      await expect(activity).toHaveCount(1);
+      await expect(activity).toHaveAccessibleName("Summarizing memory… in progress");
+      await expect(page.getByText("Summarizing memory…", { exact: true })).toHaveCount(1);
+      await expect(page.locator('.transcript [data-slot="loading-state"]')).toBeVisible();
+      await expect(page.locator(".workbench-composer")).not.toContainText("Summarizing memory");
+      summary.resolve();
+      await expect(activity).toHaveAccessibleName("Churning in progress");
+      reply.resolve();
       await expect(
         page.getByText("Request captured by the local inspection fixture.", { exact: true }).last(),
       ).toBeVisible();
+      await expect(activity).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
       const warm = page.getByRole("button", { name: "Browse context", exact: true });
       await expect(warm).toHaveAttribute("data-cache-state", "likely-warm");
@@ -148,6 +170,8 @@ for (const scope of ["global", "project-chat"] as const) {
         "Keep the interface quiet.",
       );
     } finally {
+      summary.resolve();
+      reply.resolve();
       await app.close();
       await closeProvider();
       await rm(root, { recursive: true, force: true });
