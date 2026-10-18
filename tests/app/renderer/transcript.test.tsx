@@ -4,10 +4,13 @@
 import React, { act, forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createStore, mount, observable } from "r-state-tree";
+import { updateStore } from "r-state-tree";
+import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
+import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
+import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
 import type { Annotation, UiPart } from "../../../src/contracts/conversations/session-contract";
 import { cakeHotkeyEventName } from "../../../src/renderer/lib/hotkeys";
-import { workLogChangeChunks } from "../../../src/utils/turn-diff";
 
 const { scrollToIndex, virtualizedLifecycle, virtualizedProps } = vi.hoisted(() => ({
   scrollToIndex: vi.fn(),
@@ -15,9 +18,11 @@ const { scrollToIndex, virtualizedLifecycle, virtualizedProps } = vi.hoisted(() 
   virtualizedProps: { current: undefined as undefined | Record<string, unknown> },
 }));
 
-vi.mock("@/components/ai-elements/conversation", () => ({
-  Conversation: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
-  VirtualizedConversation: forwardRef(function MockVirtualizedConversation(
+// Control only the external virtualizer measurement/imperative boundary.
+// Cake's Conversation and VirtualizedConversation composition remains real.
+// Native geometry is verified by the Electron scroll/selection suites.
+vi.mock("react-virtuoso", () => ({
+  Virtuoso: forwardRef(function ControlledVirtuoso(
     props: {
       className?: string;
       data: Array<{ id: string }>;
@@ -27,7 +32,7 @@ vi.mock("@/components/ai-elements/conversation", () => ({
     },
     ref,
   ) {
-    virtualizedProps.current = props as unknown as Record<string, unknown>;
+    virtualizedProps.current = { ...props };
     useImperativeHandle(ref, () => ({
       getState: (callback: (state: unknown) => void) =>
         callback({
@@ -63,10 +68,9 @@ import {
   groupTranscriptParts,
   type ChatTranscriptBehavior,
 } from "../../../src/renderer/components/chat-transcript";
-import { MessageCommentsStore } from "../../../src/renderer/stores/MessageCommentsStore";
-import { SideChatStore } from "../../../src/renderer/stores/SideChatStore";
-import type { ChatConfigurationStore } from "../../../src/renderer/stores/ChatConfigurationStore";
-import { ChatStore, type TranscriptScrollPosition } from "../../../src/renderer/stores/ChatStore";
+import type { DiscussionThread } from "../../../src/contracts/discussion-sessions/discussion-session-data";
+import { applyDiscussionSessionUpdate } from "../../../src/renderer/reducers/ConversationReducer";
+import { applyDiscussionCatalogUpdate } from "../../../src/renderer/reducers/DiscussionReducer";
 import type { MessageSelection } from "../../../src/renderer/stores/TranscriptInteractionStore";
 import { FullscreenSurfaceFixture } from "./fullscreen-surface-fixture";
 
@@ -109,9 +113,7 @@ function Transcript({
   errorTitle,
   messageSelection,
   annotations,
-  addAnnotation,
-  updateAnnotation,
-  removeAnnotation,
+  canAnnotate = false,
   virtualized = true,
 }: {
   parts: UiPart[];
@@ -130,9 +132,7 @@ function Transcript({
   errorTitle?: string;
   messageSelection?: MessageSelection;
   annotations?: readonly Annotation[];
-  addAnnotation?(annotation: Parameters<ChatStore["addAnnotation"]>[0]): void;
-  updateAnnotation?(id: string, update: Partial<Omit<Annotation, "id">>): void;
-  removeAnnotation?(id: string): void;
+  canAnnotate?: boolean;
   virtualized?: boolean;
 }) {
   const {
@@ -140,124 +140,50 @@ function Transcript({
     workLogsExpansion: initialExpansion = "collapsed",
     ...transcriptBehavior
   } = behavior ?? {};
-  // Expansion state must survive prop-only re-renders, like a real ChatStore.
-  const workLogStateRef = useRef<
-    | {
-        expansion: { value: "collapsed" | "expanded" | "fully-expanded" };
-        items: Map<string, boolean>;
-        groups: Map<string, boolean>;
-      }
-    | undefined
-  >(undefined);
-  if (!workLogStateRef.current)
-    workLogStateRef.current = {
-      expansion: observable({ value: initialExpansion }),
-      items: observable(new Map()),
-      groups: observable(new Map()),
-    };
-  const workLogState = workLogStateRef.current;
-  const changedFilesStateRef = useRef(observable({ open: false }));
-  const changedFilesChurningRef = useRef<boolean | undefined>(undefined);
-  const transcriptScrollPositionsRef = useRef(new Map<string, TranscriptScrollPosition>());
-  const sideChatRef = useRef<SideChatStore>(undefined);
-  if (!sideChatRef.current) sideChatRef.current = mount(createStore(SideChatStore, {}));
-  useEffect(() => () => sideChatRef.current?.[Symbol.dispose](), []);
-  const store = {
-    id: sessionId,
+  const session = transcriptSession(sessionId);
+  const conversation = session.conversationSessionStore;
+  const store = conversation.chatStore;
+  const initialized = useRef(new Set<string>());
+  useEffect(() => {
+    applyConversationUpdate(session.model, {
+      _tag: "Snapshot",
+      revision: ++revision,
+      snapshot: transcriptSnapshot(sessionId, parts, isStreaming),
+    });
+    store.submittingLocally = isSubmitting;
+    updateStore(store, {
+      ...store.props,
+      hideThinking: () => hideThinking,
+      // Shared transcript capability cases use the real annotation owner when enabled.
+      addAnnotation: canAnnotate
+        ? (annotation) => conversation.composerStore.draftStore.annotationDraft.add(annotation)
+        : undefined,
+    });
+    store.transcriptInteraction.messageSelection = messageSelection;
+    store.workLogPresentation.setViewMode(workLogViewMode);
+    if (!initialized.current.has(sessionId)) {
+      initialized.current.add(sessionId);
+      store.workLogPresentation.setExpansion(initialExpansion);
+      if (annotations) conversation.composerStore.draftStore.annotationDraft.append(annotations);
+    }
+  }, [
+    session,
+    store,
     parts,
-    streaming: isStreaming,
-    submitting: isSubmitting,
+    isStreaming,
+    isSubmitting,
     hideThinking,
-    transcriptInteraction: {
-      userMessageRendersAsMarkdown: (_entryId: string, projected: boolean) => projected,
-      get transcriptScrollPosition() {
-        return transcriptScrollPositionsRef.current.get(sessionId);
-      },
-      messageSelection,
-      selectedMessageId: messageSelection?.messageId,
-      clearMessageSelection() {},
-      get changedFilesOpen() {
-        return changedFilesStateRef.current.open;
-      },
-      setChangedFilesOpen(open: boolean) {
-        changedFilesStateRef.current.open = open;
-      },
-      syncChangedFilesOpen(churning: boolean) {
-        if (changedFilesChurningRef.current === churning) return;
-        changedFilesChurningRef.current = churning;
-        if (churning) changedFilesStateRef.current.open = false;
-      },
-      setTranscriptScrollPosition(position: TranscriptScrollPosition | undefined) {
-        if (position !== undefined) transcriptScrollPositionsRef.current.set(sessionId, position);
-        else transcriptScrollPositionsRef.current.delete(sessionId);
-      },
-    },
-    workLogPresentation: {
-      changeSummary: (summaryParts: readonly UiPart[]) =>
-        workLogChangeChunks(summaryParts).reduce(
-          (summary, change) => ({
-            editCount: summary.editCount + 1,
-            additions: summary.additions + change.additions,
-            deletions: summary.deletions + change.deletions,
-          }),
-          { editCount: 0, additions: 0, deletions: 0 },
-        ),
-      viewMode: workLogViewMode,
-      setViewMode: () => undefined,
-      cycleViewMode: () => undefined,
-      elapsedMs: () => undefined,
-      elapsedMsRange: () => undefined,
-      get expansion() {
-        return workLogState.expansion.value;
-      },
-      get itemOverrides() {
-        return workLogState.items;
-      },
-      get groupOverrides() {
-        return workLogState.groups;
-      },
-      setExpansion(expansion: "collapsed" | "expanded" | "fully-expanded") {
-        workLogState.expansion.value = expansion;
-        workLogState.items.clear();
-        workLogState.groups.clear();
-      },
-      cycleExpansion() {
-        workLogState.expansion.value =
-          workLogState.expansion.value === "collapsed"
-            ? "expanded"
-            : workLogState.expansion.value === "expanded"
-              ? "fully-expanded"
-              : "collapsed";
-        workLogState.items.clear();
-        workLogState.groups.clear();
-      },
-      groupOpen(groupId: string, hasDiff: boolean) {
-        const override = workLogState.groups.get(groupId);
-        if (override !== undefined) return override;
-        if (workLogState.expansion.value === "collapsed") return false;
-        if (workLogViewMode === "diff" && !hasDiff) return false;
-        return true;
-      },
-      setGroupOpen(groupId: string, open: boolean) {
-        workLogState.groups.set(groupId, open);
-      },
-      itemOpen(partId: string) {
-        return workLogState.items.get(partId) ?? workLogState.expansion.value === "fully-expanded";
-      },
-      setItemOpen(partId: string, open: boolean) {
-        workLogState.items.set(partId, open);
-      },
-    },
-    annotations: annotations ?? [],
-    canAnnotate: Boolean(addAnnotation),
-    addAnnotation,
-    updateAnnotation,
-    removeAnnotation,
-    error: undefined,
-  } as unknown as ChatStore;
+    messageSelection,
+    annotations,
+    canAnnotate,
+    initialExpansion,
+    workLogViewMode,
+    sessionId,
+    conversation,
+  ]);
   return (
     <SideChatLayout
-      store={sideChatRef.current}
+      store={conversation.sideChatStore}
       renderChat={(sideChatStore) => <Chat store={sideChatStore} embedded compact />}
     >
       <ChatTranscript
@@ -311,11 +237,44 @@ function TestTranscript({ store, sessionId }: { store: TranscriptHarness; sessio
   );
 }
 
-describe("Transcript scrolling", () => {
+let transcriptFixture: ReturnType<typeof createRendererStoreFixture>;
+let revision = 0;
+function transcriptSession(sessionId = "session-1") {
+  return transcriptFixture.root.sessionRegistry.load(sessionId, "/project");
+}
+function transcriptSnapshot(
+  sessionId: string,
+  parts: UiPart[],
+  streaming = false,
+): ConversationSnapshot {
+  return {
+    sessionId,
+    sessionFile: `/project/${sessionId}.jsonl`,
+    parts,
+    streaming,
+    models: [],
+    thinkingLevel: "off",
+    availableThinkingLevels: ["off"],
+    diagnostics: [],
+    commands: [],
+    compatibility: { resources: [], diagnostics: [] },
+    extensionUi: { statuses: [] },
+    tree: [],
+  };
+}
+
+describe("Transcript rendering and virtualizer adapter contracts", () => {
   let container: HTMLDivElement;
   let root: Root;
 
   beforeEach(() => {
+    revision = 0;
+    transcriptFixture = createRendererStoreFixture({
+      projects: [projectRecord({ path: "/project", name: "Project" })],
+      sessions: ["session-1", "session-2"].map((sessionId) =>
+        sessionSummary({ sessionId, projectPath: "/project" }),
+      ),
+    });
     Object.assign(globalThis, {
       IS_REACT_ACT_ENVIRONMENT: true,
       requestAnimationFrame: (callback: FrameRequestCallback) => {
@@ -352,6 +311,7 @@ describe("Transcript scrolling", () => {
 
   afterEach(() => {
     act(() => root.unmount());
+    transcriptFixture[Symbol.dispose]();
     container.remove();
   });
 
@@ -1564,23 +1524,8 @@ describe("Transcript scrolling", () => {
     };
   }
 
-  function mountedComments(draftChat: ChatStore): MessageCommentsStore {
-    return {
-      threadsForMessage: () => [],
-      prepareDraft: vi.fn(),
-      draftChatStore: draftChat,
-    } as unknown as MessageCommentsStore;
-  }
-
   it("offers Chat about this when right-clicking a message selection", async () => {
-    const comments: MessageCommentsStore = mount(
-      createStore(MessageCommentsStore, {
-        client: { createReviewThread: vi.fn() } as never,
-        catalog: () => undefined,
-        host: () => ({ configuration: undefined }) as never,
-        context: () => ({ workspacePath: "/project", sessionId: "session-1" }),
-      }),
-    );
+    const comments = transcriptSession().messageCommentsStore;
     const contextMenu = mountedContextMenuAction();
     act(() =>
       root.render(
@@ -1641,7 +1586,6 @@ describe("Transcript scrolling", () => {
     expect(input.value).toBe("Why is this important?");
     expect(input).toBe(document.activeElement);
     window.getSelection()?.removeAllRanges();
-    comments[Symbol.dispose]();
   });
 
   it("offers annotation and chat actions for a selection in the work-log diff", () => {
@@ -1665,11 +1609,11 @@ describe("Transcript scrolling", () => {
           sessionId="session-1"
           isStreaming={false}
           behavior={{
-            messageComments: {} as MessageCommentsStore,
+            messageComments: transcriptSession().messageCommentsStore,
             showSelectionContextMenu: contextMenu.showSelectionContextMenu,
             workLogsExpansion: "expanded",
           }}
-          addAnnotation={vi.fn()}
+          canAnnotate
           empty={<div />}
         />,
       ),
@@ -1686,7 +1630,8 @@ describe("Transcript scrolling", () => {
   });
 
   it("adds an annotated transcript selection to the composer", async () => {
-    const addAnnotation = vi.fn();
+    const draft =
+      transcriptSession().conversationSessionStore.composerStore.draftStore.annotationDraft;
     const contextMenu = mountedContextMenuAction();
     act(() =>
       root.render(
@@ -1704,7 +1649,7 @@ describe("Transcript scrolling", () => {
           sessionId="session-1"
           isStreaming={false}
           behavior={{ showSelectionContextMenu: contextMenu.showSelectionContextMenu }}
-          addAnnotation={addAnnotation}
+          canAnnotate
           empty={<div />}
         />,
       ),
@@ -1733,20 +1678,20 @@ describe("Transcript scrolling", () => {
     });
     act(() => dialog.querySelector<HTMLButtonElement>('button[type="submit"]')!.click());
 
-    expect(addAnnotation).toHaveBeenCalledWith(
+    expect(draft.annotations).toEqual([
       expect.objectContaining({
         messageId: "assistant-annotation",
         entryId: "entry-annotation",
         selectedText: "important",
         comment: "Remember this constraint",
       }),
-    );
+    ]);
     expect(document.body.querySelector('[role="dialog"][aria-label="Add annotation"]')).toBeNull();
   });
 
   it("renders pinned annotation marker and opens details popover to edit or delete", () => {
-    const updateAnnotation = vi.fn();
-    const removeAnnotation = vi.fn();
+    const draft =
+      transcriptSession().conversationSessionStore.composerStore.draftStore.annotationDraft;
     const annotation = {
       id: "annotation-1",
       messageId: "assistant-annotation-view",
@@ -1775,8 +1720,6 @@ describe("Transcript scrolling", () => {
           sessionId="session-1"
           isStreaming={false}
           annotations={[annotation]}
-          updateAnnotation={updateAnnotation}
-          removeAnnotation={removeAnnotation}
           empty={<div />}
         />,
       ),
@@ -1817,36 +1760,20 @@ describe("Transcript scrolling", () => {
 
     // Save changes
     act(() => detailsDialog.querySelector<HTMLButtonElement>('button[type="submit"]')!.click());
-    expect(updateAnnotation).toHaveBeenCalledWith("annotation-1", {
-      comment: "Updated note",
-    });
+    expect(draft.annotations[0]?.comment).toBe("Updated note");
+    expect(detailsDialog.textContent).toContain("Updated note");
 
     // Test delete action
     const deleteButton = detailsDialog.querySelector<HTMLButtonElement>(
       'button[aria-label="Delete annotation"]',
     );
-    if (deleteButton) {
-      act(() => deleteButton.click());
-      expect(removeAnnotation).toHaveBeenCalledWith("annotation-1");
-    }
+    expect(deleteButton).not.toBeNull();
+    act(() => deleteButton!.click());
+    expect(draft.annotations).toEqual([]);
   });
 
   it("keeps the native menu over editing surfaces and collapsed selections", () => {
-    const draftChat = mount(
-      createStore(ChatStore, {
-        id: () => "selection-editing-surface",
-        parts: () => [],
-        streaming: () => false,
-        submitting: () => false,
-        configuration: () => undefined,
-        commands: () => [],
-        placeholder: () => "Ask Cake about this passage…",
-        inputLabel: () => "Message about selected text",
-        canSubmit: (draft) => Boolean(draft.trim()),
-        submit: async () => true,
-      }),
-    );
-    const comments = mountedComments(draftChat);
+    const comments = transcriptSession().messageCommentsStore;
     act(() =>
       root.render(
         <Transcript
@@ -1877,26 +1804,10 @@ describe("Transcript scrolling", () => {
     composerInput.append(document.createTextNode("draft text"));
     container.appendChild(composerInput);
     rightClick(composerInput);
-
-    draftChat[Symbol.dispose]();
   });
 
   it("offers Chat about this for selections in the user's own message", async () => {
-    const draftChat = mount(
-      createStore(ChatStore, {
-        id: () => "user-message-comment-draft",
-        parts: () => [],
-        streaming: () => false,
-        submitting: () => false,
-        configuration: () => undefined,
-        commands: () => [],
-        placeholder: () => "Ask Cake about this passage…",
-        inputLabel: () => "Message about selected text",
-        canSubmit: (draft) => Boolean(draft.trim()),
-        submit: async () => true,
-      }),
-    );
-    const comments = mountedComments(draftChat);
+    const comments = transcriptSession().messageCommentsStore;
     const contextMenu = mountedContextMenuAction();
     act(() =>
       root.render(
@@ -1925,31 +1836,16 @@ describe("Transcript scrolling", () => {
     selectWithin(message, "settings shape");
     rightClick(message);
     await contextMenu.trigger();
-    expect(comments.prepareDraft).toHaveBeenCalledWith(
+    expect(comments.draftSelection).toEqual(
       expect.objectContaining({ messageId: "user-1", selectedText: "settings shape" }),
     );
     expect(
       document.body.querySelector('[data-slot="side-panel"][aria-label="Side chat"]'),
     ).not.toBeNull();
-    draftChat[Symbol.dispose]();
   });
 
   it("offers Chat about this for selections inside fenced code", async () => {
-    const draftChat = mount(
-      createStore(ChatStore, {
-        id: () => "code-message-comment-draft",
-        parts: () => [],
-        streaming: () => false,
-        submitting: () => false,
-        configuration: () => undefined,
-        commands: () => [],
-        placeholder: () => "Ask Cake about this passage…",
-        inputLabel: () => "Message about selected code",
-        canSubmit: (draft) => Boolean(draft.trim()),
-        submit: async () => true,
-      }),
-    );
-    const comments = mountedComments(draftChat);
+    const comments = transcriptSession().messageCommentsStore;
     const contextMenu = mountedContextMenuAction();
     act(() =>
       root.render(
@@ -1980,28 +1876,13 @@ describe("Transcript scrolling", () => {
     const codeBlock = content.querySelector("[data-streamdown='code-block'], pre, code")!;
     rightClick(codeBlock);
     await contextMenu.trigger();
-    expect(comments.prepareDraft).toHaveBeenCalledWith(
+    expect(comments.draftSelection).toEqual(
       expect.objectContaining({ messageId: "assistant-code", selectedText: "value" }),
     );
-    draftChat[Symbol.dispose]();
   });
 
   it("does not offer Chat about this while the selected part is streaming", () => {
-    const draftChat = mount(
-      createStore(ChatStore, {
-        id: () => "streaming-selection-draft",
-        parts: () => [],
-        streaming: () => false,
-        submitting: () => false,
-        configuration: () => undefined,
-        commands: () => [],
-        placeholder: () => "Ask Cake about this passage…",
-        inputLabel: () => "Message about selected text",
-        canSubmit: (draft) => Boolean(draft.trim()),
-        submit: async () => true,
-      }),
-    );
-    const comments = mountedComments(draftChat);
+    const comments = transcriptSession().messageCommentsStore;
     act(() =>
       root.render(
         <Transcript
@@ -2025,25 +1906,10 @@ describe("Transcript scrolling", () => {
     const content = container.querySelector<HTMLElement>('[data-slot="message-content"]')!;
     selectWithin(content, "answer");
     rightClick(content);
-    draftChat[Symbol.dispose]();
   });
 
   it("offers the same selection chat above a fullscreen assistant response", async () => {
-    const draftChat = mount(
-      createStore(ChatStore, {
-        id: () => "fullscreen-message-comment-draft",
-        parts: () => [],
-        streaming: () => false,
-        submitting: () => false,
-        configuration: () => undefined,
-        commands: () => [],
-        placeholder: () => "Ask Cake about this passage…",
-        inputLabel: () => "Message about selected fullscreen text",
-        canSubmit: (draft) => Boolean(draft.trim()),
-        submit: async () => true,
-      }),
-    );
-    const comments = mountedComments(draftChat);
+    const comments = transcriptSession().messageCommentsStore;
     const contextMenu = mountedContextMenuAction();
     act(() =>
       root.render(
@@ -2085,79 +1951,86 @@ describe("Transcript scrolling", () => {
     expect(
       document.body.querySelector('[data-slot="side-panel"][aria-label="Side chat"]'),
     ).not.toBeNull();
-    expect(comments.prepareDraft).toHaveBeenCalledWith(
-      expect.objectContaining({ selectedText: "important" }),
-    );
+    expect(comments.draftSelection).toEqual(expect.objectContaining({ selectedText: "important" }));
     expect(
       document.body.querySelector<HTMLTextAreaElement>(
-        '[aria-label="Message about selected fullscreen text"]',
+        '[aria-label="Message about selected text"]',
       ),
     ).toBe(document.activeElement);
     window.getSelection()?.removeAllRanges();
-    draftChat[Symbol.dispose]();
   });
   it("restores a selection marker and opens its persisted side chat", () => {
-    const now = new Date(0).toISOString();
-    const thread = {
-      id: "thread-1",
-      anchor: { selectedText: "important", startOffset: 6, endOffset: 15 },
-      messages: [
-        { id: "question-1", role: "user", body: "Why this word?", status: "complete" },
-        {
-          id: "answer-1",
-          role: "assistant",
-          body: "Because it carries the point.",
-          status: "complete",
-        },
-      ],
-      status: "open",
-      updatedAt: now,
-    };
-    const configuration = {
-      session: {
-        model: { provider: "openai", id: '["openai","gpt"]', modelId: "gpt", name: "GPT" },
-        thinkingLevel: "medium",
-        availableThinkingLevels: ["off", "medium"],
+    const threadParts: UiPart[] = [
+      {
+        id: "question-1",
+        kind: "text",
+        role: "user",
+        text: "Why this word?",
+        status: "complete",
       },
-      connectedModelsByProvider: [
-        {
-          id: "openai",
-          name: "OpenAI",
-          models: [{ provider: "openai", id: "gpt", name: "GPT", authenticated: true }],
+      {
+        id: "answer-1",
+        kind: "text",
+        role: "assistant",
+        text: "Because it carries the point.",
+        status: "complete",
+      },
+    ];
+    const thread: DiscussionThread = {
+      id: "thread-1",
+      sidecarSessionId: "sidecar-thread-1",
+      parentSessionId: "session-1",
+      workingDirectory: "/project",
+      anchor: {
+        path: "session:session-1",
+        view: "message",
+        messageId: "assistant-1",
+        start: { diffLine: 0 },
+        end: { diffLine: 0 },
+        selectedText: "important",
+        startOffset: 6,
+        endOffset: 15,
+        contextBefore: "Alpha ",
+        contextAfter: " detail.",
+        diff: "",
+      },
+      parts: threadParts,
+      status: "open",
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
+    };
+    applyDiscussionSessionUpdate(
+      transcriptFixture.models.discussionConversation("sidecar-thread-1", "/project"),
+      "sidecar-thread-1",
+      {
+        _tag: "Snapshot",
+        revision: 1,
+        snapshot: {
+          identity: {
+            _tag: "DiscussionSession",
+            sessionId: "sidecar-thread-1",
+            parentSessionId: "session-1",
+          },
+          conversation: {
+            ...transcriptSnapshot("sidecar-thread-1", threadParts),
+            model: { provider: "openai", id: "gpt", name: "GPT" },
+            thinkingLevel: "medium",
+            availableThinkingLevels: ["off", "medium"],
+          },
         },
-      ],
-      activeOperations: [],
-      presets: [],
-      selectModel: vi.fn(),
-      selectThinkingLevel: vi.fn(),
-    } as unknown as ChatConfigurationStore;
-    const threadChat = mount(
-      createStore(ChatStore, {
-        id: () => thread.id,
-        parts: () =>
-          thread.messages.map((message) => ({
-            id: message.id,
-            kind: "text" as const,
-            role: message.role as "user" | "assistant",
-            text: message.body,
-            status: message.status as "complete",
-          })),
-        streaming: () => false,
-        submitting: () => false,
-        configuration: () => configuration,
-        commands: () => [],
-        placeholder: () => "Ask a follow-up…",
-        inputLabel: () => "Reply to selection chat",
-        canSubmit: (draft) => Boolean(draft.trim()),
-        submit: async () => true,
-      }),
+      },
     );
-    const comments = {
-      threadsForMessage: () => [thread],
-      chatStore: () => threadChat,
-      replyThread: vi.fn(),
-      resolveThread: vi.fn(),
-    } as unknown as MessageCommentsStore;
+    applyDiscussionCatalogUpdate(
+      transcriptFixture.models.discussionCatalog("session-1"),
+      "session-1",
+      {
+        _tag: "Snapshot",
+        revision: 1,
+        parentSessionId: "session-1",
+        threads: [thread],
+      },
+    );
+    const comments = transcriptSession().messageCommentsStore;
     act(() =>
       root.render(
         <Transcript
@@ -2202,7 +2075,6 @@ describe("Transcript scrolling", () => {
     expect(
       document.body.querySelector('[data-slot="side-panel"][aria-label="Side chat"]'),
     ).toBeNull();
-    threadChat[Symbol.dispose]();
   });
 
   it("keeps a fullscreen response open when the settled snapshot replaces its live part", () => {

@@ -203,7 +203,11 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   }
 
   private materializeIdentity(sessionId: string, workingDirectory: string) {
-    this.assertSessionLocation(sessionId, workingDirectory);
+    // The pending workflow may have been activated in another window. Its
+    // temporary target is allowed to move, but a disk-backed identity is not.
+    const cataloged = this.props.catalog?.find(sessionId);
+    if (cataloged && !cataloged.pending && cataloged.workingDirectory !== workingDirectory)
+      throw new Error(`Session ID collision detected: ${sessionId}`);
     const session = this.relocateIdentity(sessionId, workingDirectory);
     this.observationRetention.materialize(sessionId);
     return session;

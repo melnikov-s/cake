@@ -625,9 +625,7 @@ describe("Saved Draft workflows", () => {
     expect(screen.getByText(attachment.name, { exact: false })).toBeDefined();
   });
 
-  // Known production blocker: materializeIdentity asserts the old temporary directory before
-  // relocating it. Keep the real Chat/sidebar regression rather than weakening the expected failure.
-  it.fails("adopts another window's activated Working Directory without changing session identity", async () => {
+  it("adopts another window's activated Working Directory without changing session identity", async () => {
     const drafts = fakeSavedDrafts();
     drafts.records.set(sessionId, savedDraft());
     const activate = vi.fn(drafts.client.activate);

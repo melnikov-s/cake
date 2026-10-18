@@ -1,15 +1,15 @@
 import { it } from "@effect/vitest";
 import { Effect, Queue, Schema, Stream } from "effect";
 import { describe, expect, vi } from "vitest";
-import { EffectiveArtifactProjection } from "../../../../src/contracts/artifacts/artifact-lineage";
+import {
+  EffectiveArtifactProjection,
+  decodeArtifactLineageId,
+  type ArtifactRevision,
+  type ArtifactLineageSummary,
+} from "../../../../src/contracts/artifacts/artifact-lineage";
 import type { ArtifactRecord } from "../../../../src/contracts/artifacts/artifact-contract";
-import type { CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
 import type { CakeEvent } from "../../../../src/contracts/application/cake-rpc-contract";
-import { createStore } from "r-state-tree";
-import { RootProjection } from "../../../../src/renderer/models/RootProjection";
-import type { RootStore } from "../../../../src/renderer/stores/RootStore";
-import { SessionArtifactsStore } from "../../../../src/renderer/stores/SessionArtifactsStore";
-import { mountWithClient } from "../mount-with-client";
+import type { CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { observeArtifactEvents } from "../../../../src/renderer/observers/artifact-events";
 import { applyConversationUpdate } from "../../../../src/renderer/reducers/ConversationReducer";
@@ -75,104 +75,202 @@ type ArtifactInvalidation = Extract<
 // observer with the actual loaded Registry, per-session panels and shared Model.
 describe("observeArtifactEvents", () => {
   it("invalidates catalog demand while keeping board and live-state channels independent", async () => {
-    const projection = RootProjection.create();
-    const client = {
-      events: {
-        artifacts: () =>
-          Stream.concat(
-            Stream.make(
-              { type: "artifact-state-invalidated" as const, lineageId: "shared" },
-              { type: "artifact-updated" as const, record },
-              { type: "artifact-catalog-invalidated" as const, lineageId: "shared" },
-              { type: "message-board-invalidated" as const, lineageId: "shared" },
-              { type: "renderer-events-ready" as const, channel: "artifacts" as const },
-            ),
-            Stream.never,
-          ),
+    type ArtifactEvent = Stream.Success<ReturnType<CakeIpcClientService["events"]["artifacts"]>>;
+    const events = Effect.runSync(Queue.unbounded<ArtifactEvent>());
+    const value = effective();
+    const id = value.revision.lineageId;
+    const revision: ArtifactRevision = {
+      ...value.revision,
+      metadata: { ...value.revision.metadata, kind: "message-board" },
+      snapshot: {
+        ...value.revision.snapshot,
+        kind: "message-board",
+        payload: { familyId: "family-1" },
       },
-    } as unknown as CakeIpcClientService;
-
-    const root = {
-      props: { projection },
-      inlineWidgetStore: { refreshArtifactState: vi.fn() },
-      artifactLibraryStore: { load: vi.fn(async () => undefined), receiveBoardChange: vi.fn() },
-      artifactPaneStore: { receiveBoardChange: vi.fn() },
-      projectWorkbenchStore: { setError: vi.fn() },
-    } as unknown as RootStore;
-    const cancel = observeArtifactEvents(observerRuntime(client), root);
-
-    await vi.waitFor(() => expect(projection.artifacts.invalidationVersion).toBe(3));
-    await vi.waitFor(() =>
-      expect(root.artifactLibraryStore.receiveBoardChange).toHaveBeenCalledTimes(4),
+    };
+    const lineage: ArtifactLineageSummary = {
+      id,
+      createdAt: record.createdAt,
+      latestRevision: revision.metadata.revision,
+      latest: revision.metadata,
+      stableRef: value.stableRef,
+    };
+    const catalog = vi.fn<Client["artifacts"]["catalog"]>(async () => ({
+      items: [lineage],
+      total: 1,
+      offset: 0,
+      limit: 50,
+      hasMore: false,
+    }));
+    const boardEntries = vi.fn<Client["artifacts"]["boardEntries"]>(async () => ({
+      boardId: id,
+      entries: [],
+      nextAfter: 0,
+      hasMore: false,
+    }));
+    let stateVersion = 0;
+    const stateRead = vi.fn<Client["artifacts"]["stateRead"]>(async () => ({
+      lineageId: id,
+      version: ++stateVersion,
+      value: { ready: true },
+    }));
+    using fixture = createRendererStoreFixture({
+      client: {
+        artifacts: {
+          catalog,
+          boardEntries,
+          stateRead,
+          detail: async () => ({ lineage, links: [], stableRef: value.stableRef }),
+          readExact: async () => revision,
+          history: async () => ({
+            items: [revision.metadata],
+            total: 1,
+            offset: 0,
+            limit: 50,
+            hasMore: false,
+          }),
+        },
+      },
+    });
+    const { root } = fixture;
+    await root.artifactLibraryStore.detailStore.select(id);
+    root.artifactPaneStore.open("child", id);
+    root.inlineWidgetStore.bindArtifactState("widget", "child", id);
+    await vi.waitFor(() => {
+      expect(root.artifactPaneStore.detailStore.detailLoading).toBe(false);
+      expect(root.inlineWidgetStore.artifactStates.widget?.current).toBeDefined();
+      expect(root.artifactLibraryStore.loading).toBe(false);
+      expect(root.artifactLibraryStore.detailStore.messageBoardStore.loading).toBe(false);
+      expect(root.artifactPaneStore.detailStore.messageBoardStore.loading).toBe(false);
+      expect(boardEntries).toHaveBeenCalledTimes(3);
+    });
+    const runtime = observerRuntime(
+      observerClient({ events: { artifacts: () => Stream.fromQueue(events) } }),
     );
-    expect(root.artifactLibraryStore.receiveBoardChange).toHaveBeenNthCalledWith(3, "shared");
-    expect(root.artifactLibraryStore.receiveBoardChange).toHaveBeenNthCalledWith(4);
-    expect(root.inlineWidgetStore.refreshArtifactState).toHaveBeenNthCalledWith(1, "shared");
-    expect(root.inlineWidgetStore.refreshArtifactState).toHaveBeenNthCalledWith(2);
-    expect(root.artifactPaneStore.receiveBoardChange).toHaveBeenCalledTimes(4);
-    expect(root.artifactPaneStore.receiveBoardChange).toHaveBeenNthCalledWith(
-      1,
-      record.artifact.id,
-    );
-    expect(root.artifactPaneStore.receiveBoardChange).toHaveBeenNthCalledWith(2, "shared");
-    expect(root.artifactPaneStore.receiveBoardChange).toHaveBeenNthCalledWith(3, "shared");
-    expect(root.artifactPaneStore.receiveBoardChange).toHaveBeenNthCalledWith(4);
-    cancel();
-    projection[Symbol.dispose]();
+    const cancel = observeArtifactEvents(runtime, root);
+    const send = async (event: ArtifactEvent) => {
+      Queue.offerUnsafe(events, event);
+      await Effect.runPromise(Queue.take(runtime.consumed));
+      await vi.waitFor(() => {
+        expect(root.artifactLibraryStore.detailStore.messageBoardStore.loading).toBe(false);
+        expect(root.artifactPaneStore.detailStore.messageBoardStore.loading).toBe(false);
+        expect(root.inlineWidgetStore.artifactStates.widget?.loading).toBe(false);
+        expect(root.artifactLibraryStore.loading).toBe(false);
+      });
+    };
+    try {
+      const version = fixture.models.artifacts.invalidationVersion;
+      const catalogs = catalog.mock.calls.length;
+      const boards = boardEntries.mock.calls.length;
+      const states = stateRead.mock.calls.length;
+      await send({ type: "artifact-state-invalidated", lineageId: id });
+      expect(stateRead).toHaveBeenCalledTimes(states + 1);
+      expect(fixture.models.artifacts.invalidationVersion).toBe(version);
+      expect(catalog).toHaveBeenCalledTimes(catalogs);
+      expect(boardEntries).toHaveBeenCalledTimes(boards);
+      await send({
+        type: "message-board-invalidated",
+        lineageId: decodeArtifactLineageId("other"),
+      });
+      expect(boardEntries).toHaveBeenCalledTimes(boards);
+      await send({ type: "message-board-invalidated", lineageId: id });
+      // The library preview and both selected viewers catch up from the same boundary.
+      expect(boardEntries).toHaveBeenCalledTimes(boards + 3);
+      expect(stateRead).toHaveBeenCalledTimes(states + 1);
+      expect(fixture.models.artifacts.invalidationVersion).toBe(version);
+      for (const event of [
+        { type: "artifact-updated" as const, record },
+        { type: "artifact-catalog-invalidated" as const, lineageId: id },
+        { type: "renderer-events-ready" as const, channel: "artifacts" as const },
+      ])
+        await send(event);
+      expect(fixture.models.artifacts.invalidationVersion).toBe(version + 3);
+      expect(catalog).toHaveBeenCalledTimes(catalogs + 3);
+      expect(stateRead).toHaveBeenCalledTimes(states + 2);
+      expect(root.artifactLibraryStore.error).toBeUndefined();
+      expect(root.artifactPaneStore.detailStore.error).toBeUndefined();
+    } finally {
+      cancel();
+      await runtime.dispose();
+    }
   });
 
   it("recovers a failed mount and missed changes at subscription readiness/reconnect, rejecting older fetches and disposed results", async () => {
     type Ready = { type: "renderer-events-ready"; channel: "artifacts" };
     const events = Effect.runSync(Queue.unbounded<Ready>());
     const pending: Array<(values: EffectiveArtifactProjection[]) => void> = [];
-    const query = vi.fn(async () => {
+    const query = vi.fn<Client["artifacts"]["effective"]>(async () => {
       if (query.mock.calls.length === 1) throw new Error("Initial fetch unavailable");
       return new Promise<EffectiveArtifactProjection[]>((resolve) => pending.push(resolve));
     });
-    const client = {
-      artifacts: { effective: query },
-      events: { artifacts: () => Stream.fromQueue(events) },
-    } as unknown as Client & CakeIpcClientService;
-    const projection = RootProjection.create();
-    const mounted = mountWithClient(
-      createStore(SessionArtifactsStore, {
+    using fixture = createRendererStoreFixture({
+      projects: [projectRecord({ path: "/project", name: "Project" })],
+      sessions: [sessionSummary({ sessionId: "child", projectPath: "/project" })],
+      client: {
+        artifacts: {
+          effective: query,
+          catalog: async () => ({
+            items: [],
+            total: 0,
+            offset: 0,
+            limit: 50,
+            hasMore: false,
+          }),
+        },
+      },
+    });
+    const session = fixture.root.sessionRegistry.load("child", "/project");
+    applyConversationUpdate(session.model, {
+      _tag: "Snapshot",
+      revision: 1,
+      snapshot: {
         sessionId: "child",
-        model: projection.artifacts,
-      }),
-      client,
+        sessionFile: "/project/child.jsonl",
+        parts: [],
+        models: [],
+        thinkingLevel: "off",
+        availableThinkingLevels: ["off"],
+        streaming: false,
+        diagnostics: [],
+        commands: [],
+        compatibility: { resources: [], diagnostics: [] },
+        extensionUi: { statuses: [] },
+        tree: [],
+      },
+    });
+    const panel = session.sessionArtifactsStore;
+    await vi.waitFor(() => expect(panel.error).toBe("Initial fetch unavailable"));
+    const runtime = observerRuntime(
+      observerClient({ events: { artifacts: () => Stream.fromQueue(events) } }),
     );
-    await vi.waitFor(() => expect(mounted.subject.error).toBe("Initial fetch unavailable"));
-    const root = {
-      props: { projection },
-      inlineWidgetStore: { refreshArtifactState: vi.fn() },
-      artifactLibraryStore: { receiveBoardChange: vi.fn() },
-      artifactPaneStore: { receiveBoardChange: vi.fn() },
-      projectWorkbenchStore: { setError: vi.fn() },
-    } as unknown as RootStore;
-    const stop = observeArtifactEvents(observerRuntime(client), root);
-    Queue.offerUnsafe(events, { type: "renderer-events-ready", channel: "artifacts" });
-    await vi.waitFor(() => expect(pending).toHaveLength(1));
-    pending.shift()!([effective()]);
-    await vi.waitFor(() => expect(mounted.subject.records).toHaveLength(1));
-    // No change notification was delivered. Each fresh readiness must query current authority.
-    Queue.offerUnsafe(events, { type: "renderer-events-ready", channel: "artifacts" });
-    await vi.waitFor(() => expect(pending).toHaveLength(1));
-    const older = pending.shift()!;
-    Queue.offerUnsafe(events, { type: "renderer-events-ready", channel: "artifacts" });
-    await vi.waitFor(() => expect(pending).toHaveLength(1));
-    pending.shift()!([]);
-    await vi.waitFor(() => expect(mounted.subject.records).toEqual([]));
-    older([effective()]);
-    await Promise.resolve();
-    expect(mounted.subject.records).toEqual([]);
-    Queue.offerUnsafe(events, { type: "renderer-events-ready", channel: "artifacts" });
-    await vi.waitFor(() => expect(pending).toHaveLength(1));
-    stop();
-    mounted.root[Symbol.dispose]();
-    pending.shift()!([effective()]);
-    await Promise.resolve();
-    expect(projection.artifacts.associationsFor("child")).toEqual([]);
-    projection[Symbol.dispose]();
+    const stop = observeArtifactEvents(runtime, fixture.root);
+    try {
+      Queue.offerUnsafe(events, { type: "renderer-events-ready", channel: "artifacts" });
+      await vi.waitFor(() => expect(pending).toHaveLength(1));
+      pending.shift()!([effective()]);
+      await vi.waitFor(() => expect(panel.records).toHaveLength(1));
+      // No change notification was delivered. Each fresh readiness must query current authority.
+      Queue.offerUnsafe(events, { type: "renderer-events-ready", channel: "artifacts" });
+      await vi.waitFor(() => expect(pending).toHaveLength(1));
+      const older = pending.shift()!;
+      Queue.offerUnsafe(events, { type: "renderer-events-ready", channel: "artifacts" });
+      await vi.waitFor(() => expect(pending).toHaveLength(1));
+      pending.shift()!([]);
+      await vi.waitFor(() => expect(panel.records).toEqual([]));
+      older([effective()]);
+      await Promise.resolve();
+      expect(panel.records).toEqual([]);
+      Queue.offerUnsafe(events, { type: "renderer-events-ready", channel: "artifacts" });
+      await vi.waitFor(() => expect(pending).toHaveLength(1));
+      stop();
+      fixture.root[Symbol.dispose]();
+      pending.shift()!([effective()]);
+      await Promise.resolve();
+      expect(fixture.models.artifacts.associationsFor("child")).toEqual([]);
+    } finally {
+      stop();
+      await runtime.dispose();
+    }
   });
 
   it.effect(

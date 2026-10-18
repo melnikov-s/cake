@@ -4,6 +4,7 @@ import { piBuiltinSlashCommands } from "../../../../src/contracts/conversations/
 import { applyConversationUpdate } from "../../../../src/renderer/reducers/ConversationReducer";
 import { createRendererStoreFixture } from "../renderer-store-fixture";
 import type { TestClientOverrides } from "../test-client";
+import { sessionSummary } from "../fixtures/catalog-fixtures";
 
 function registryFixture(snapshot?: StoreSnapshot, client?: TestClientOverrides) {
   return createRendererStoreFixture({
@@ -63,6 +64,45 @@ describe("Session Registry identity and observation integration", () => {
       "Session ID collision detected: session-1",
     );
     expect(registry.findSession("session-1")).toBe(first);
+  });
+
+  it("materializes a relocated temporary target without replacing its keyed Store, Model or composer", () => {
+    using fixture = registryFixture(undefined, {
+      workspaces: { loadStagedSlashCommands: async () => [] },
+    });
+    const registry = fixture.root.sessionRegistry;
+    const session = registry.pendingSessions.prepareStaged("/project", "draft");
+    const model = session.model;
+    const conversation = session.conversationSessionStore;
+    const composer = conversation.composerStore;
+    const chat = conversation.chatStore;
+    chat.setDraft("Keep this local follow-up");
+    registry.pendingSessions.materialize("draft", "/worktrees/activated");
+    expect(registry.load("draft", "/worktrees/activated")).toBe(session);
+    expect(session.workspacePath).toBe("/worktrees/activated");
+    expect(session.model).toBe(model);
+    expect(session.conversationSessionStore).toBe(conversation);
+    expect(conversation.composerStore).toBe(composer);
+    expect(conversation.chatStore).toBe(chat);
+    expect(chat.draft).toBe("Keep this local follow-up");
+    expect(registry.pendingSessions.isTemporary("draft")).toBe(false);
+    expect(() => registry.load("draft", "/project")).toThrow(
+      "Session ID collision detected: draft",
+    );
+  });
+
+  it("still rejects a relocated target conflicting with an authoritative session location", () => {
+    using fixture = createRendererStoreFixture({
+      sessions: [sessionSummary({ sessionId: "draft", projectPath: "/project" })],
+    });
+    const registry = fixture.root.sessionRegistry;
+    const session = registry.pendingSessions.prepareStaged("/project", "draft");
+    expect(() => registry.pendingSessions.materialize("draft", "/other-project")).toThrow(
+      "Session ID collision detected: draft",
+    );
+    expect(registry.findSession("draft")).toBe(session);
+    expect(session.workspacePath).toBe("/project");
+    expect(registry.pendingSessions.isTemporary("draft")).toBe(true);
   });
 
   it("indexes restored keyed Stores and avoids reconciling them on lookup or selection", () => {

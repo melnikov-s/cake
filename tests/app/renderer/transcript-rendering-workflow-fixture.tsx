@@ -51,6 +51,7 @@ export function renderTranscriptRendering(
   );
   return {
     user,
+    chat: session.conversationSessionStore.chatStore,
     container: view.container,
     publish(nextParts: UiPart[], streaming = false) {
       act(() => {

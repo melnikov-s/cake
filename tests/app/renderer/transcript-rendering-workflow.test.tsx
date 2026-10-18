@@ -1,9 +1,12 @@
 /** @vitest-environment jsdom */
-import { cleanup, screen, within } from "@testing-library/react";
+import { act, cleanup, screen, within } from "@testing-library/react";
+import { updateStore } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { renderTranscriptRendering } from "./transcript-rendering-workflow-fixture";
+import * as transcriptPart from "../../../src/renderer/components/chat-transcript-part";
+import { ChatStore } from "../../../src/renderer/stores/ChatStore";
 
 const user: Extract<UiPart, { kind: "text" }> = {
   id: "user",
@@ -22,13 +25,65 @@ const answer: Extract<UiPart, { kind: "text" }> = {
   status: "complete",
 };
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 // Native scroll opening/following/anchor restoration are owned by
 // session-scroll-position.smoke.spec.ts. Selection, annotation highlights and
 // fullscreen readers belong to message-selection/side-chat-streaming Electron
 // suites. This suite does not fabricate those layout or native-event contracts.
 describe("Projected transcript rendering workflows", () => {
+  it("does not execute settled message rendering when another message streams", () => {
+    // Call-through observation only: retain the real renderer and its children.
+    // DOM identity alone would also pass if React needlessly rendered every token.
+    const renders = vi.spyOn(transcriptPart, "TranscriptPart");
+    const live = {
+      ...answer,
+      id: "live",
+      entryId: "live-entry",
+      text: "One",
+      status: "streaming" as const,
+    };
+    using fixture = renderTranscriptRendering([answer, user, live], { streaming: true });
+    const count = (id: string) =>
+      renders.mock.calls.filter(([props]) => props.part.id === id).length;
+    const settledRenders = count(answer.id);
+    const liveRenders = count(live.id);
+    expect(settledRenders).toBeGreaterThan(0);
+    for (const text of ["One two", "One two three"]) {
+      fixture.publish([answer, user, { ...live, text }], true);
+      expect(screen.getByText(text)).toBeDefined();
+      expect(count(answer.id)).toBe(settledRenders);
+    }
+    expect(count(live.id)).toBeGreaterThan(liveRenders);
+    // Positive control: changing the settled message itself must render it.
+    fixture.publish([{ ...answer, text: "Revised answer" }, user, live], true);
+    expect(screen.getByText("Revised answer")).toBeDefined();
+    expect(count(answer.id)).toBeGreaterThan(settledRenders);
+  });
+
+  it("isolates draft changes from surrounding Chat render work", () => {
+    // composerVisible is read by Chat's render, not the isolated composer.
+    // Observe the real getter without replacing its behavior or any Store.
+    const reads = vi.spyOn(ChatStore.prototype, "composerVisible", "get");
+    using fixture = renderTranscriptRendering([answer]);
+    const surroundingReads = reads.mock.calls.length;
+    expect(surroundingReads).toBeGreaterThan(0);
+    // This is the reactive invalidation contract, not native typing/focus proof.
+    for (const draft of ["Only", "Only update the draft controls"]) {
+      act(() => fixture.chat.setDraft(draft));
+      expect(screen.getByRole("combobox", { name: "Message" })).toHaveProperty("value", draft);
+      expect(screen.getByRole("button", { name: "Send" })).toHaveProperty("disabled", false);
+      expect(reads).toHaveBeenCalledTimes(surroundingReads);
+    }
+    // Positive control: a Chat-owned visibility change must reach the observed render.
+    act(() => updateStore(fixture.chat, { ...fixture.chat.props, composerVisible: () => false }));
+    expect(reads.mock.calls.length).toBeGreaterThan(surroundingReads);
+    expect(screen.queryByRole("combobox", { name: "Message" })).toBeNull();
+  });
+
   it("keeps persisted user, review, skill and source content in order and lets the reader inspect a loaded skill", async () => {
     using fixture = renderTranscriptRendering([
       user,
