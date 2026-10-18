@@ -7,6 +7,7 @@ import { cakeChatControlTools } from "../../contracts/application/window-control
 import { locations } from "../project-sessions/projectSessionLocations";
 import { acquireOptions as projectOptions } from "../project-sessions/projectSessionRuntime";
 import { acquireOptions as chatOptions } from "../cake-chats/cakeChatRuntime";
+import * as chatLocations from "../cake-chats/cakeChatLocations";
 import { makeSubagentParent, type SubagentControlRequirements } from "./subagentControl";
 import { restore } from "./subagents";
 
@@ -24,10 +25,18 @@ export const initialize = Effect.fn("SubagentRecovery.initialize")(function* () 
       Effect.gen(function* () {
         const options =
           record.parentProfile === "CakeChatSession"
-            ? yield* chatOptions({
-                configuration: yield* CakeChatConfiguration,
-                target: { sessionId: record.parentSessionId, tools: cakeChatControlTools() },
-                newSession: false,
+            ? yield* Effect.gen(function* () {
+                const configuration = yield* CakeChatConfiguration;
+                // Rebuild the same scoped target that opening the chat would acquire.
+                const location = yield* chatLocations.resolve(
+                  configuration.location,
+                  record.parentSessionId,
+                );
+                return yield* chatOptions({
+                  configuration: { ...configuration, location },
+                  target: { sessionId: record.parentSessionId, tools: cakeChatControlTools() },
+                  newSession: false,
+                });
               })
             : yield* Effect.gen(function* () {
                 const location = availableLocations.find(
