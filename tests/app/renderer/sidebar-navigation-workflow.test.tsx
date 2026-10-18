@@ -817,6 +817,179 @@ describe("Sidebar navigation workflow", () => {
     expect(order()).toEqual(["root", "planner", "worker", "sibling", "standalone"]);
   });
 
+  it("reacts to nested work and completion on collapsed Projects without changing expanded activity or selection", async () => {
+    using fixture = renderSidebarNavigation({
+      projects: [project],
+      sessions: sidebarFamily,
+      loadedIds: ["worker"],
+      client: { projectSessions: { open: async () => undefined } },
+    });
+    const header = () =>
+      projectGroup("cake").querySelector<HTMLElement>('[data-slot="project-header"]')!;
+    const headerStatus = () =>
+      within(header()).queryByRole("img", { name: /Running|Ready, unread/ });
+    await fixture.publishStreaming(["worker"], true);
+    expect(headerStatus()).toBeNull();
+    await fixture.user.click(screen.getByRole("button", { name: "Collapse children of planner" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Collapse children of root" }));
+    expect(within(row("root")).getByRole("img", { name: "Running" })).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
+    expect(order()).toEqual([]);
+    expect(headerStatus()?.getAttribute("aria-label")).toBe("Running");
+
+    await fixture.publishStreaming(["worker"], false);
+    expect(headerStatus()).toBeNull();
+    await fixture.publishStreaming(["worker"], true);
+    expect(headerStatus()?.getAttribute("aria-label")).toBe("Running");
+    await fixture.publishStreaming(["worker"], false);
+    await fixture.publishEvent({
+      _tag: "TurnSettled",
+      sessionId: "worker",
+      turnId: TurnId.make("10000000-0000-4000-8000-000000000002"),
+      outcome: "complete",
+    });
+    expect(headerStatus()?.getAttribute("aria-label")).toBe("Ready, unread");
+    await fixture.user.click(screen.getByRole("button", { name: "Expand cake" }));
+    expect(headerStatus()).toBeNull();
+    expect(within(row("root")).getByRole("img", { name: "Ready, unread" })).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "Expand children of root" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Expand children of planner" }));
+    await fixture.user.click(rowButton("worker"));
+    await waitFor(() => expect(row("worker").getAttribute("data-navigation-active")).toBe("true"));
+    const pane = document.querySelector('[data-slot="session-pane"]');
+    await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
+    expect(headerStatus()).toBeNull();
+    expect(document.querySelector('[data-slot="session-pane"]')).toBe(pane);
+    expect(pane?.getAttribute("data-session-id")).toBe("worker");
+  });
+
+  it.each([
+    ["waiting", "Waiting for your answer"],
+    ["running", "Running"],
+    ["blocked", "Needs your input"],
+    ["error", "Error"],
+    ["unread", "Ready, unread"],
+    ["stopped", undefined],
+  ] as const)(
+    "shares collapsed-family precedence for mixed states starting with %s",
+    async (state, label) => {
+      const states = ["waiting", "running", "blocked", "error", "unread", "stopped"];
+      const included = (activity: string) => states.indexOf(activity) >= states.indexOf(state);
+      const sessions = [
+        ...sidebarFamily.map((session) => ({
+          ...session,
+          ...(session.sessionId === "root"
+            ? {
+                familyChildSessionIds: ["planner", "sibling", "blocked", "waiting"],
+                latestTurnOutcome: "aborted" as const,
+              }
+            : {}),
+          ...(session.sessionId === "planner" && included("error")
+            ? { latestTurnOutcome: "failed" as const }
+            : {}),
+          ...(session.sessionId === "worker" ? { running: included("running") } : {}),
+          ...(session.sessionId === "sibling" ? { unread: included("unread") } : {}),
+        })),
+        sidebarSummary("blocked", 1, {
+          familyParentSessionId: "root",
+          recoveryIssue: included("blocked") ? "Needs recovery" : undefined,
+        }),
+        sidebarSummary("waiting", 1, { familyParentSessionId: "root" }),
+      ];
+      using fixture = renderSidebarNavigation({
+        projects: [project],
+        sessions,
+        loadedIds: ["waiting"],
+      });
+      if (included("waiting"))
+        await fixture.publishInterview({
+          id: "precedence-question",
+          sessionId: "waiting",
+          request: {
+            protocol: "cake.request/v1",
+            id: "question",
+            title: "Choose",
+            responseSchema: { type: "object" },
+            view: { type: "form", fields: [{ id: "name", label: "Name", type: "text" }] },
+            fallback: { markdown: "What next?" },
+          },
+        });
+      await fixture.user.click(screen.getByRole("button", { name: "Collapse children of root" }));
+      const parentDot = row("root").querySelector(".session-status");
+      expect(parentDot?.getAttribute("aria-label")).toBe(label);
+      await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
+      const projectDot = projectGroup("cake").querySelector(
+        '[data-slot="project-chat-status"] .session-status',
+      );
+      expect(projectDot?.getAttribute("aria-label")).toBe(label);
+    },
+  );
+
+  it("preserves parent derivation through resolved descendants rather than filtering the family tree", async () => {
+    using fixture = renderSidebarNavigation({
+      projects: [project],
+      sessions: sidebarFamily.map((session) =>
+        session.sessionId === "worker" ? { ...session, resolved: true, unread: true } : session,
+      ),
+    });
+    expect(order()).not.toContain("worker");
+    await fixture.user.click(screen.getByRole("button", { name: "Collapse children of root" }));
+    expect(within(row("root")).getByRole("img", { name: "Ready, unread" })).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
+    expect(within(projectGroup("cake")).getByRole("img", { name: "Ready, unread" })).toBeDefined();
+    await fixture.publishSessions(
+      sidebarFamily.map((session) =>
+        session.sessionId === "worker" ? { ...session, resolved: true, unread: false } : session,
+      ),
+    );
+    expect(within(projectGroup("cake")).queryByRole("img", { name: "Ready, unread" })).toBeNull();
+  });
+
+  it("includes unpaginated sessions but not other Projects or standalone resolved rows, and retains Project Chat's own activity", async () => {
+    const sessions = [
+      ...Array.from({ length: 11 }, (_, index) =>
+        sidebarSummary(`task-${index}`, index + 1, { running: index === 0 }),
+      ),
+      sidebarSummary("resolved", 20, { resolved: true, recoveryIssue: "Needs recovery" }),
+      sidebarSummary("other-project", 20, { projectPath: "/pi", running: true }),
+    ];
+    using fixture = renderSidebarNavigation({
+      projects: [project, projectRecord({ path: "/pi" })],
+      sessions,
+    });
+    const chat = {
+      sessionId: "project-chat",
+      title: "Project Chat",
+      projectPath: "/cake",
+      createdAt: sessions[0]!.createdAt,
+      modifiedAt: sessions[0]!.modifiedAt,
+      messageCount: 2,
+      resolved: false,
+      unread: true,
+    };
+    await fixture.publishProjectChats([chat]);
+    const status = () =>
+      projectGroup("cake").querySelector('[data-slot="project-chat-status"] .session-status');
+    expect(order()).not.toContain("task-0");
+    expect(status()?.getAttribute("aria-label")).toBe("Ready, unread");
+    await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
+    expect(status()?.getAttribute("aria-label")).toBe("Running");
+    await fixture.publishSessions(
+      sessions.map((session) =>
+        session.sessionId === "task-0" ? { ...session, running: false } : session,
+      ),
+    );
+    expect(status()?.getAttribute("aria-label")).toBe("Ready, unread");
+    await fixture.publishProjectChats([{ ...chat, unread: false }]);
+    expect(status()).toBeNull();
+    await fixture.publishProjectChatStreaming("project-chat", true);
+    expect(status()?.getAttribute("aria-label")).toBe("Running");
+    await fixture.user.click(screen.getByRole("button", { name: "Expand cake" }));
+    expect(status()?.getAttribute("aria-label")).toBe("Running");
+    await fixture.publishProjectChatStreaming("project-chat", false);
+    expect(status()).toBeNull();
+  });
+
   it("keeps project and worktree details visible in Activity through mode and lifecycle changes", async () => {
     using fixture = renderSidebarNavigation({
       projects: [project],

@@ -90,7 +90,9 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
     shell.selection.kind === "cake-chat" &&
     shell.selection.sessionId === projectChat.sessionId,
   );
-  const projectChatActivity = projectChat ? cakeChat.activityFor(projectChat.sessionId) : undefined;
+  const projectActivity = !resolved
+    ? sessionList.projectActivityForDisplay(path, expanded)
+    : undefined;
   const empty = sessions.length === 0;
   const hasMore = resolved
     ? sessionList.hasMoreResolvedProjectSessions(path)
@@ -182,7 +184,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
           {/* Match session rows' px-2 inset and centered w-8 status column. */}
           {!resolved && (
             <div className="grid shrink-0 items-center [@media(pointer:coarse)]:basis-full [@media(pointer:coarse)]:justify-end">
-              {projectChat && (
+              {(projectChat || projectActivity) && (
                 <div
                   data-slot="project-chat-status"
                   className={cn(
@@ -190,7 +192,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
                     sortMenuOpen && "opacity-0",
                   )}
                 >
-                  <SessionActivityIndicator activity={projectChatActivity} />
+                  <SessionActivityIndicator activity={projectActivity} />
                 </div>
               )}
               <div

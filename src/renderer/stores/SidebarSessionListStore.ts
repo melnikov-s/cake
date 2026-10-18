@@ -2,7 +2,7 @@ import { Store, observable, snapshot, untracked } from "r-state-tree";
 import type { CakeChatCatalogQuery } from "../../contracts/cake-chats/cake-chat-data";
 import type { ProjectSessionCatalogQuery } from "../../contracts/project-sessions/project-session-data";
 import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
-import { isActiveSessionActivity } from "../lib/session-activity";
+import { isActiveSessionActivity, type SessionActivity } from "../lib/session-activity";
 import type { CakeChatCollectionStore } from "./CakeChatCollectionStore";
 import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
@@ -206,17 +206,36 @@ export class SidebarSessionListStore extends Store<{
     sessionId: string;
     familyChildSessionIds?: readonly string[];
   }) {
-    const own = this.metadata.sessionActivity(session.sessionId);
-    if (!session.familyChildSessionIds || !this.isFamilyCollapsed(session.sessionId)) return own;
-    const descendants = (sessionIds: readonly string[]): string[] =>
-      sessionIds.flatMap((id) => {
-        const child = this.props.catalog.find(id);
-        return [id, ...descendants(child?.familyChildSessionIds ?? [])];
-      });
-    const activities = [
+    if (!session.familyChildSessionIds || !this.isFamilyCollapsed(session.sessionId))
+      return this.metadata.sessionActivity(session.sessionId);
+    return this.collapsedSessionActivity([session]);
+  }
+
+  projectActivityForDisplay(projectPath: string, expanded: boolean) {
+    const projectChat = this.props.cakeChat().projectChat(projectPath);
+    const own = projectChat ? this.props.cakeChat().activityFor(projectChat.sessionId) : undefined;
+    if (expanded) return own;
+    return this.collapsedSessionActivity(
+      this.props.catalog.projectSessions(projectPath).filter((session) => !session.resolved),
       own,
-      ...descendants(session.familyChildSessionIds).map((id) => this.metadata.sessionActivity(id)),
-    ];
+    );
+  }
+
+  /** One hierarchy traversal and precedence policy for collapsed families and Projects. */
+  private collapsedSessionActivity(
+    sessions: ReadonlyArray<{ sessionId: string; familyChildSessionIds?: readonly string[] }>,
+    own?: SessionActivity,
+  ): SessionActivity | undefined {
+    const activities: Array<SessionActivity | undefined> = [own];
+    const visited = new Set<string>();
+    const visit = (session: (typeof sessions)[number]) => {
+      if (visited.has(session.sessionId)) return;
+      visited.add(session.sessionId);
+      activities.push(this.metadata.sessionActivity(session.sessionId));
+      for (const id of session.familyChildSessionIds ?? [])
+        visit(this.props.catalog.find(id) ?? { sessionId: id });
+    };
+    for (const session of sessions) visit(session);
     if (activities.includes("waiting")) return "waiting";
     if (activities.includes("running")) return "running";
     if (activities.includes("blocked")) return "blocked";

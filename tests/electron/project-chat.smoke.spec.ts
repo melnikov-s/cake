@@ -227,9 +227,9 @@ test("Project Chat isolates history and restores its root workspace, while globa
     await expect(actions).toHaveCSS("opacity", "0");
     const task = page.locator(`.session-item[data-session-id="${sessionId}"]`);
     const taskDot = task.getByRole("img", { name: "Ready, unread" });
-    const projectDot = status.getByRole("img");
     const assertDotAlignment = async () => {
-      const projectBounds = await projectDot.boundingBox();
+      // A selected, idle Project Chat has no dot; its reserved column stays aligned.
+      const projectBounds = await status.boundingBox();
       const taskBounds = await taskDot.boundingBox();
       expect(projectBounds).not.toBeNull();
       expect(taskBounds).not.toBeNull();

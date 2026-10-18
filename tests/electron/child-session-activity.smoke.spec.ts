@@ -240,6 +240,47 @@ test("background family children show running activity and only offer Mark as Un
     await subagentPanel.getByRole("button", { name: "Close Subagent" }).click();
     await expect(page.getByRole("button", { name: "Activity · 1 running" })).toBeVisible();
 
+    // A collapsed Project uses the same hidden-child activity as a collapsed parent.
+    // Measure the existing status column in both themes and sidebar viewport sizes.
+    const projectHeader = page.locator('[data-slot="project-header"]').first();
+    const projectStatus = projectHeader.locator('[data-slot="project-chat-status"]');
+    const projectActions = projectHeader.locator('[data-slot="project-actions"]');
+    const parentPane = page.locator('[data-slot="session-pane"]');
+    for (const width of [1280, 900]) {
+      await application.evaluate(({ BrowserWindow }, width) => {
+        BrowserWindow.getAllWindows()[0]!.setContentSize(width, 800);
+      }, width);
+      for (const theme of ["light", "dark"] as const) {
+        await page.emulateMedia({ colorScheme: theme });
+        const childBounds = await childRow.getByRole("img", { name: "Running" }).boundingBox();
+        const childRowBounds = await childRow.boundingBox();
+        expect(childBounds).not.toBeNull();
+        await expect(projectStatus.getByRole("img")).toHaveCount(0);
+        await projectHeader.getByRole("button", { name: "Collapse project", exact: true }).click();
+        await composer.click();
+        const dot = projectStatus.getByRole("img", { name: "Running", exact: true });
+        await expect(dot).toBeVisible();
+        await expect(projectStatus).toHaveCSS("opacity", "1");
+        const bounds = await dot.boundingBox();
+        expect(bounds).not.toBeNull();
+        const headerBounds = await projectHeader.boundingBox();
+        // Focus can scroll the sidebar horizontally; compare row-relative status insets.
+        const childInset =
+          childRowBounds!.x + childRowBounds!.width - childBounds!.x - childBounds!.width / 2;
+        const projectInset = headerBounds!.x + headerBounds!.width - bounds!.x - bounds!.width / 2;
+        expect(Math.abs(projectInset - childInset)).toBeLessThan(1);
+        await expect(childRow).toHaveCount(0);
+        await expect(parentPane).toHaveAttribute("data-session-id", parentId!);
+        await projectHeader.hover();
+        await expect(projectStatus).toHaveCSS("opacity", "0");
+        await expect(projectActions).toHaveCSS("opacity", "1");
+        await projectHeader.getByRole("button", { name: "Expand project", exact: true }).click();
+        await composer.click();
+        await expect(projectStatus.getByRole("img")).toHaveCount(0);
+        await expect(childRow.getByRole("img", { name: "Running" })).toBeVisible();
+      }
+    }
+
     // Inspect the real native menu without opening an OS popup in the hidden test window.
     await application.evaluate(({ Menu }) => {
       const build = Menu.buildFromTemplate.bind(Menu);
