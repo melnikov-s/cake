@@ -334,6 +334,8 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
       familyForMember: () => Effect.succeed(undefined),
       settleTurn: () => Effect.void,
       withMemberLock: (_sessionId, effect) => effect,
+      withNoticeDelivery: (effect) => effect,
+      pauseBoardContinuation: () => Effect.void,
     }),
     Layer.mock(SessionArchiveStorage, {
       resolvedIds: () => Effect.succeed(new Set<string>()),

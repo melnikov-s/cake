@@ -6,6 +6,7 @@ import { BrowserConnectionStore } from "./stores/BrowserConnectionStore";
 import { Schema } from "effect";
 import { makeNetworkRuntime } from "./runtime";
 import { makeClient } from "./client/ClientLive";
+import { retainedDeliveryUncertainty } from "./client/command-delivery-policy";
 import { BrowserFiles } from "./client/BrowserFiles";
 import { BrowserMenuStore } from "./stores/BrowserMenuStore";
 import { ContextActionMenu } from "./components/ui/context-action-menu";
@@ -43,7 +44,7 @@ const url = new URL("/rpc", window.location.href);
 url.protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 const connection = mount(
   createStore(BrowserConnectionStore, {
-    initialUncertainOperation: sessionStorage.getItem(uncertaintyKey) ?? undefined,
+    initialUncertainOperation: retainedDeliveryUncertainty(sessionStorage.getItem(uncertaintyKey)),
   }),
 );
 const stopConnectionPersistence = effect(() => {
@@ -54,9 +55,9 @@ const stopConnectionPersistence = effect(() => {
 });
 let started = false;
 const runtime = makeNetworkRuntime(url.href, (value) => {
-  if (value && connection.everConnected && !connection.connected)
-    rootStore.inlineWidgetStore.backendReconnected();
+  const reconnected = value && connection.everConnected && !connection.connected;
   connection.connectionChanged(value);
+  if (reconnected) rootStore.inlineWidgetStore.backendReconnected();
   if (value && !started) {
     started = true;
     void initialize(rootStore);

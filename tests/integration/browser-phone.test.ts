@@ -23,7 +23,17 @@ it.each([320, 360, 384, 390, 412])(
   async (width) => {
     await Effect.runPromise(
       Effect.gen(function* () {
-        const controlled = browserBackendAdapter("/project", true);
+        const controlled = browserBackendAdapter(
+          "/project",
+          true,
+          Array.from({ length: 24 }, (_, index) => ({
+            id: `history-${index}`,
+            kind: "text" as const,
+            role: "assistant" as const,
+            status: "complete" as const,
+            text: `Earlier answer ${index}\n\n${"Retained transcript content. ".repeat(20)}`,
+          })),
+        );
         const backend = yield* makeNetworkTestBackend({
           adapter: controlled.adapter,
           models: [browserTestModel],
@@ -52,25 +62,48 @@ it.each([320, 360, 384, 390, 412])(
             });
             const page = await context.newPage();
             page.setDefaultTimeout(15_000);
+            // Recover a read-only false-positive left by the previous client, too.
+            await page.addInitScript(() =>
+              sessionStorage.setItem("cake.browser.delivery-uncertain.v1", "artifacts.stateRead"),
+            );
             const errors: string[] = [];
             page.on("pageerror", (error) => errors.push(error.message));
             let connections = 0;
             let snapshots = 0;
             let sever: (() => void) | undefined;
+            let ignoreProbes = false;
+            let unavailable = false;
+            let probeReplies = 0;
+            const probeIds = new Set<string>();
             await page.routeWebSocket("**/rpc", (socket) => {
               connections++;
+              if (unavailable) {
+                socket.close();
+                return;
+              }
               const server = socket.connectToServer();
               sever = () => {
                 socket.close();
                 server.close();
               };
-              socket.onMessage((message) => server.send(message));
+              socket.onMessage((message) => {
+                const request = JSON.parse(String(message));
+                if (request.tag === "application.getState") {
+                  if (ignoreProbes) return; // Half-open transport: the read never responds.
+                  probeIds.add(String(request.id));
+                }
+                server.send(message);
+              });
               server.onMessage((message) => {
+                const response = JSON.parse(String(message));
+                if (response._tag === "Exit" && probeIds.delete(String(response.requestId)))
+                  probeReplies++;
                 if (String(message).includes('"streaming"')) snapshots++;
                 socket.send(message);
               });
             });
             await page.goto(url);
+            await page.locator('[data-slot="header-sidebar-toggle"]').first().tap();
             const sidebar = page.locator('[data-slot="sidebar"]');
             await sidebar.locator(`[data-session-id="${controlled.existingId}"]`).first().tap();
             await browserExpect(sidebar).toHaveCount(0);
@@ -189,10 +222,19 @@ it.each([320, 360, 384, 390, 412])(
             await page.keyboard.press("Escape");
             // Synthetic lifecycle signals exercise resume hooks, not actual device lock/suspension.
             await browserExpect.poll(() => snapshots).toBeGreaterThan(0);
+            const transcript = page.locator(".transcript").first();
+            // Establish a deterministic paused reading position. Native mobile scrolling
+            // physics are not under test; transport recovery must retain this DOM/Store.
+            await transcript.evaluate((element) => {
+              element.dispatchEvent(new WheelEvent("wheel", { deltaY: -100, bubbles: true }));
+              element.scrollTo({ top: 200, behavior: "instant" });
+              element.dispatchEvent(new Event("scroll"));
+              element.dispatchEvent(new Event("scrollend"));
+            });
             const resumeSignals = ["bfcache", "foreground", "offline", "online"];
             for (const signal of resumeSignals) {
               const before = connections;
-              const beforeSnapshots = snapshots;
+              const beforeReplies = probeReplies;
               await page.evaluate((signal) => {
                 if (signal === "bfcache") {
                   window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true }));
@@ -201,9 +243,81 @@ it.each([320, 360, 384, 390, 412])(
                   document.dispatchEvent(new Event("visibilitychange"));
                 else window.dispatchEvent(new Event(signal));
               }, signal);
-              await browserExpect.poll(() => connections).toBeGreaterThan(before);
-              await browserExpect.poll(() => snapshots).toBeGreaterThan(beforeSnapshots);
+              await browserExpect.poll(() => probeReplies).toBeGreaterThan(beforeReplies);
+              expect(connections).toBe(before); // Healthy resume must not disconnect anything.
               await browserExpect(input).toHaveValue("Draft from my phone");
+              await browserExpect(send).toBeEnabled();
+            }
+            // Repeated real drops automatically restore authoritative snapshots in the
+            // same selected pane, retaining the draft and transcript reading position.
+            const scrollTop = await transcript.evaluate((element) => element.scrollTop);
+            for (let attempt = 0; attempt < 2; attempt++) {
+              const before = connections;
+              const beforeSnapshots = snapshots;
+              sever?.();
+              await browserExpect
+                .poll(() => connections, { timeout: 15_000 })
+                .toBeGreaterThan(before);
+              await browserExpect
+                .poll(() => snapshots, { timeout: 15_000 })
+                .toBeGreaterThan(beforeSnapshots);
+              await browserExpect(input).toHaveValue("Draft from my phone");
+              await browserExpect(send).toBeEnabled();
+              await browserExpect(
+                page.getByRole("button", { name: "I checked the server state" }),
+              ).toHaveCount(0);
+              await browserExpect
+                .poll(async () =>
+                  Math.abs((await transcript.evaluate((element) => element.scrollTop)) - scrollTop),
+                )
+                .toBeLessThan(2);
+              await browserExpect(page.locator('[data-slot="workspace"]')).toHaveAttribute(
+                "data-session-id",
+                controlled.existingId,
+              );
+            }
+            // A genuinely half-open connection is replaced after a bounded read-only
+            // probe, without replaying a send or remounting navigation/drafts.
+            ignoreProbes = true;
+            const beforeHalfOpen = connections;
+            const beforeHalfOpenSnapshots = snapshots;
+            await page.evaluate(() => {
+              document.dispatchEvent(new Event("visibilitychange"));
+              window.dispatchEvent(new Event("online"));
+              window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+            });
+            await browserExpect
+              .poll(() => connections, { timeout: 15_000 })
+              .toBeGreaterThan(beforeHalfOpen);
+            ignoreProbes = false;
+            await browserExpect
+              .poll(() => snapshots, { timeout: 15_000 })
+              .toBeGreaterThan(beforeHalfOpenSnapshots);
+            await browserExpect(input).toHaveValue("Draft from my phone");
+            await browserExpect(send).toBeEnabled();
+            await browserExpect(
+              page.getByRole("button", { name: "I checked the server state" }),
+            ).toHaveCount(0);
+            if (width === 390) {
+              unavailable = true;
+              const beforeFailure = connections;
+              sever?.();
+              await browserExpect
+                .poll(() => connections, { timeout: 15_000 })
+                .toBeGreaterThan(beforeFailure + 1);
+              await browserExpect(
+                page.getByText("Disconnected — reconnecting.", { exact: false }),
+              ).toBeVisible();
+              await browserExpect(input).toHaveValue("Draft from my phone");
+              await browserExpect(send).toBeDisabled();
+              await browserExpect(
+                page.getByRole("button", { name: "I checked the server state" }),
+              ).toHaveCount(0);
+              unavailable = false;
+              const beforeRecovery = snapshots;
+              await browserExpect
+                .poll(() => snapshots, { timeout: 15_000 })
+                .toBeGreaterThan(beforeRecovery);
               await browserExpect(send).toBeEnabled();
             }
             expect(controlled.stats.turns).toBe(0);
@@ -212,7 +326,9 @@ it.each([320, 360, 384, 390, 412])(
             await browserExpect.poll(() => controlled.stats.turns).toBe(1);
             const before = connections;
             sever?.();
-            await browserExpect.poll(() => connections).toBeGreaterThan(before);
+            await browserExpect
+              .poll(() => connections, { timeout: 15_000 })
+              .toBeGreaterThan(before);
             controlled.finish(controlled.existingId);
             await browserExpect(
               page.getByText("Completed answer 1", { exact: true }),

@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, ManagedRuntime, Schedule, Stream } from "effect";
+import { Context, Effect, Layer, ManagedRuntime, Schedule, Semaphore, Stream } from "effect";
 import { RpcClient, RpcClientError, RpcSerialization } from "effect/unstable/rpc";
 import { Socket } from "effect/unstable/socket";
 import {
@@ -112,16 +112,32 @@ export const makeNetworkRuntime = (
   );
   const execute: ExecuteRendererEffect = (effect, signal) =>
     runtime.runPromise(effect, signal ? { signal } : undefined);
+  const probe = Semaphore.makeUnsafe(1);
+  const checkConnection = Effect.fn("Renderer.checkBrowserConnection")(function* () {
+    const current = socket;
+    // The protocol already retries closed/connecting sockets with capped backoff.
+    if (!current || current.readyState !== WebSocket.OPEN) return;
+    yield* Effect.flatMap(CakeIpcClient, (client) => client.application.getState()).pipe(
+      Effect.timeout("5 seconds"),
+      Effect.catch(() =>
+        Effect.sync(() => {
+          // A suspended tab may retain a half-open socket. Only replace that socket,
+          // never a newer connection that recovered while this probe was pending.
+          if (socket === current && current.readyState === WebSocket.OPEN) {
+            onConnection(false);
+            current.close(4000, "Browser connection unresponsive");
+          }
+        }),
+      ),
+    );
+  });
   return {
     execute,
     observe: (source, consume, options) => observeStream(execute, source, consume, options),
-    // A suspended tab can retain a half-open socket. Start a fresh transport on resume,
-    // letting RPC fail pending commands and retry only observations, never mutations.
+    // Foreground/online/pageshow can arrive together. Probe once, without tearing
+    // down healthy streams or turning an in-flight send into an uncertain receipt.
     reconnect: () => {
-      if (socket && socket.readyState < WebSocket.CLOSING) {
-        onConnection(false);
-        socket.close(4000, "Browser connection refresh");
-      }
+      void execute(probe.withPermitsIfAvailable(1)(checkConnection())).catch(() => undefined);
     },
     dispose: () => runtime.dispose(),
   };

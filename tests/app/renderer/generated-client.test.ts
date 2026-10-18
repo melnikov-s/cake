@@ -1,4 +1,6 @@
-import { Effect, Stream } from "effect";
+import { Effect, Schema, Stream } from "effect";
+import { ArtifactLineageId } from "../../../src/contracts/artifacts/artifact-lineage";
+import { retainedDeliveryUncertainty } from "../../../src/renderer/client/command-delivery-policy";
 import { RpcSchema } from "effect/unstable/rpc";
 import type {
   FromClientEncoded,
@@ -54,6 +56,143 @@ const requests = (messages: FromClientEncoded[]) =>
 const presetId = "00000000-0000-4000-8000-000000000001";
 
 describe("generated renderer command adaptation", () => {
+  it.each([
+    ["extensions", (client: Client) => client.piSettings.extensions()],
+    [
+      "state read",
+      (client: Client) =>
+        client.artifacts.stateRead({
+          sessionId: "session",
+          lineageId: Schema.decodeUnknownSync(ArtifactLineageId)(presetId),
+        }),
+    ],
+    [
+      "board entries",
+      (client: Client) =>
+        client.artifacts.boardEntries({
+          lineageId: Schema.decodeUnknownSync(ArtifactLineageId)(presetId),
+        }),
+    ],
+    [
+      "board body",
+      (client: Client) =>
+        client.artifacts.boardBody({
+          lineageId: Schema.decodeUnknownSync(ArtifactLineageId)(presetId),
+          sequence: 1,
+        }),
+    ],
+    [
+      "board receipts",
+      (client: Client) =>
+        client.artifacts.boardReceipts({
+          lineageId: Schema.decodeUnknownSync(ArtifactLineageId)(presetId),
+          sequence: 1,
+        }),
+    ],
+    ["widget release", (client: Client) => client.inlineWidgets.release(presetId)],
+    [
+      "widget compile",
+      (client: Client) => client.inlineWidgets.compile("html", "<p>Hi</p>", "display"),
+    ],
+    [
+      "composing presence",
+      (client: Client) => client.cakeChats.setComposing({ sessionId: "session", composing: true }),
+    ],
+    ["read marker", (client: Client) => client.workspaces.setSessionUnread("session", false)],
+  ] as const)("does not lock future sends or replay a failed routine %s", async (_name, invoke) => {
+    let uncertain: string | undefined;
+    let fail = true;
+    const test = harness((message, respond) => {
+      if (fail) throw new Error("Simulated connection loss");
+      respond({ _tag: "Exit", requestId: message.id, exit: { _tag: "Success", value: presetId } });
+    });
+    const client = makeClient(test.runtime, {
+      kind: "remote",
+      connected: () => true,
+      blocked: () => Boolean(uncertain),
+      uncertain: (operation) => {
+        uncertain = operation;
+      },
+    });
+    try {
+      await expect(invoke(client)).rejects.toBeInstanceOf(ClientError);
+      expect(uncertain).toBeUndefined();
+      expect(requests(test.messages)).toHaveLength(1);
+      fail = false;
+      await client.sessionChats.prompt({
+        sessionId: "session",
+        text: "Next",
+        attachments: [],
+        renderUserMessageAsMarkdown: false,
+      });
+      expect(requests(test.messages)).toHaveLength(2);
+      expect(requests(test.messages)[1]?.tag).toBe("sessionChats.prompt");
+    } finally {
+      await test.runtime.dispose();
+    }
+  });
+
+  it("retains real mutation uncertainty, permits state reads and Stop, and never replays a lost send", async () => {
+    let uncertain: string | undefined;
+    const test = harness((message, respond) => {
+      if (message.tag === "sessionChats.prompt") throw new Error("Lost send receipt");
+      respond({
+        _tag: "Exit",
+        requestId: message.id,
+        exit: { _tag: "Success", value: message.tag === "piSettings.extensions" ? [] : null },
+      });
+    });
+    const client = makeClient(test.runtime, {
+      kind: "remote",
+      connected: () => true,
+      blocked: () => Boolean(uncertain),
+      uncertain: (operation) => {
+        uncertain = operation;
+      },
+    });
+    const input = {
+      sessionId: "session",
+      text: "Once",
+      attachments: [],
+      renderUserMessageAsMarkdown: false,
+    };
+    try {
+      await expect(client.sessionChats.prompt(input)).rejects.toBeInstanceOf(ClientError);
+      expect(uncertain).toBe("sessionChats.prompt");
+      await expect(client.sessionChats.prompt(input)).rejects.toMatchObject({ kind: "rejected" });
+      await expect(client.piSettings.extensions()).resolves.toEqual([]);
+      await client.sessionChats.abort({ sessionId: "session", stop: { by: "user" } });
+      expect(requests(test.messages).map(({ tag }) => tag)).toEqual([
+        "sessionChats.prompt",
+        "piSettings.extensions",
+        "sessionChats.abort",
+      ]);
+    } finally {
+      await test.runtime.dispose();
+    }
+  });
+
+  it("discards persisted false-positive routine locks but retains genuinely uncertain mutations", () => {
+    for (const operation of [
+      "artifacts.stateRead",
+      "artifacts.boardBody",
+      "piSettings.extensions",
+      "widgets.release",
+      "widgets.compile-inline-widget",
+      "cakeChats.setComposing",
+    ])
+      expect(retainedDeliveryUncertainty(operation)).toBeUndefined();
+    for (const operation of [
+      "sessionChats.prompt",
+      "artifacts.stateReplace",
+      "workspaces.respond-workspace-trust",
+      "models.login",
+      "savedDrafts.activate",
+      "future.mutation",
+    ])
+      expect(retainedDeliveryUncertainty(operation)).toBe(operation);
+    expect(retainedDeliveryUncertainty(null)).toBeUndefined();
+  });
   it.each([
     {
       _tag: "ResolutionRejected",

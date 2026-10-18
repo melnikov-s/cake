@@ -3,6 +3,7 @@ import { ProjectSessionResolutionDomainFailure } from "../../contracts/project-s
 import { CakeIpcClient, type CakeIpcClientService } from "../../ipc/client/CakeIpcClient";
 import { makeClientCapabilities } from "./ClientCapabilities";
 import { makeCommandGroup } from "./command-group";
+import { requiresDeliveryReview } from "./command-delivery-policy";
 import type { Runtime } from "../runtime";
 import { ClientError, type Client, type ClientCommandOptions } from "./Client";
 import type { Attachment } from "../../contracts/conversations/session-contract";
@@ -231,16 +232,7 @@ export function makeClient(
     effect: Effect.Effect<Success, Failure, CakeIpcClient>,
     options?: ClientCommandOptions,
   ): Promise<Success> => {
-    const readOnly =
-      /\.(get|list|read|inspect|catalog|effective|detail|history|compare|reference|load|suggest)/i.test(
-        operation,
-      ) ||
-      /^(backendConnection\.connect|projectSessions\.(open|lookup)|cakeChats\.open|modelPresets\.resolve)$/.test(
-        operation,
-      ) ||
-      operation === "terminals.get-terminal-status" ||
-      operation === "workspaces.post-process-dictation";
-    const stop = /\.(abort|cancel)/i.test(operation);
+    const needsReview = requiresDeliveryReview(operation);
     if (host?.kind === "browser") {
       if (
         /^(speechOutput|dictation|desktopHost|backendConnection|desktopSharing|electron|windowState|browser)\./.test(
@@ -263,7 +255,7 @@ export function makeClient(
         return Promise.reject(
           new ClientError("transport", operation, "Disconnected. No command was sent.", operation),
         );
-      if (host.blocked() && !readOnly && !stop)
+      if (host.blocked() && needsReview)
         return Promise.reject(
           new ClientError(
             "rejected",
@@ -289,7 +281,7 @@ export function makeClient(
         );
       if (
         operation !== "backendConnection.connect" &&
-        (!host.connected() || (host.blocked() && !readOnly && !stop))
+        (!host.connected() || (host.blocked() && needsReview))
       )
         return Promise.reject(
           new ClientError(
@@ -307,8 +299,7 @@ export function makeClient(
       if (
         (host?.kind === "remote" || host?.kind === "browser") &&
         !native &&
-        !readOnly &&
-        !stop &&
+        needsReview &&
         (failure.kind === "transport" ||
           failure.kind === "unexpected" ||
           failure.kind === "interrupted")

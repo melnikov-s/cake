@@ -147,10 +147,16 @@ it("retains a lost-receipt draft but blocks resending until browser delivery is 
             });
           });
           await page.goto(url);
+          await page.locator('[data-slot="header-sidebar-toggle"]').first().click();
           await page
             .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
             .first()
             .click();
+          await browserExpect(page.locator('[data-slot="workspace"]')).toHaveAttribute(
+            "data-session-id",
+            controlled.existingId,
+          );
+          await browserExpect(page.getByText("Controlled model", { exact: true })).toBeVisible();
           const input = page.locator('[data-slot="workspace"] textarea').first();
           await input.fill("Lose this receipt");
           await page.getByRole("button", { name: "Send", exact: true }).click();
@@ -161,6 +167,12 @@ it("retains a lost-receipt draft but blocks resending until browser delivery is 
           await browserExpect(page.getByText("Connected", { exact: true })).toBeVisible();
           await page.reload();
           await browserExpect(page.getByText("Delivery uncertain", { exact: false })).toBeVisible();
+          // Phone page entry starts at Cake Chat with navigation collapsed.
+          await page.locator('[data-slot="header-sidebar-toggle"]').first().click();
+          await page
+            .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
+            .first()
+            .click();
           const restoredInput = page.locator('[data-slot="workspace"] textarea').first();
           await browserExpect(restoredInput).toHaveValue("Lose this receipt");
           controlled.finish(controlled.existingId);
