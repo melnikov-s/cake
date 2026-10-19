@@ -8,7 +8,11 @@ import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-ope
 import { readMessageReference } from "../../../src/services/pi/runtime/message-references";
 import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
 import { messageNavigationTarget } from "../../../src/contracts/conversations/message-reference";
-import { encodeCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
+import {
+  encodeCrossSessionMessage,
+  formatCrossSessionReportText,
+} from "../../../src/contracts/conversations/cross-session-message";
+import { formatSessionDigestReminder } from "../../../src/contracts/cake-chats/session-digest-reminder";
 import { appendMessageReferences } from "../../../src/contracts/conversations/message-reference-forwarding";
 import { Chat } from "../../../src/renderer/components/chat";
 import { Message } from "../../../src/renderer/models/Message";
@@ -204,6 +208,175 @@ describe("exact response presentation", () => {
     expect(screen.getAllByRole("button", { name: /Full agent response/ })[0]!).toBeTruthy();
     view.unmount();
   });
+
+  it.each(["assistant", "reply", "notification"] as const)(
+    "automatically presents the exact %s source once, without reading until expansion or sending a turn",
+    async (delivery) => {
+      const source = SessionManager.inMemory("/producer");
+      const entryId = source.appendMessage({
+        role: "assistant",
+        content: [{ type: "text", text: "## Original report\n\n**Exact earlier result**" }],
+        api: "openai-responses",
+        provider: "openai",
+        model: "fixture",
+        timestamp: 1,
+        usage,
+        stopReason: "stop",
+      });
+      const ref = readMessageReference(source, { entryId }).message.ref;
+      // The current/latest source is not the correlated result.
+      source.appendMessage({
+        role: "user",
+        content: "A later unrelated source message",
+        timestamp: 2,
+      });
+      const links = `[Review findings](${ref}) and [same original](${ref}).\n\n[Producer session](cake://session/${source.getSessionId()}) · [Website](https://example.com)`;
+      const parent = SessionManager.inMemory("/project");
+      if (delivery === "assistant") {
+        parent.appendMessage({
+          role: "assistant",
+          content: [{ type: "text", text: links }],
+          api: "openai-responses",
+          provider: "openai",
+          model: "fixture",
+          timestamp: 3,
+          usage,
+          stopReason: "stop",
+        });
+      } else {
+        parent.appendMessage({
+          role: "user",
+          timestamp: 3,
+          content:
+            delivery === "reply"
+              ? encodeCrossSessionMessage(
+                  formatCrossSessionReportText(source.getSessionId(), "completed", links),
+                  {
+                    version: 1,
+                    messageId: crypto.randomUUID(),
+                    threadId: crypto.randomUUID(),
+                    replyToMessageId: crypto.randomUUID(),
+                    sequence: 1,
+                    expectsResponse: false,
+                    sender: {
+                      sessionId: source.getSessionId(),
+                      title: "Producer session",
+                      kind: "project-session",
+                    },
+                  },
+                )
+              : `${formatSessionDigestReminder({
+                  lines: [
+                    {
+                      reference: "worker",
+                      sessionId: source.getSessionId(),
+                      title: "Producer session",
+                      summary: "Ready",
+                      status: "completed",
+                      resultMessageRef: ref,
+                    },
+                  ],
+                  running: 0,
+                  interruptedReport: false,
+                })}\n\nMy next real question`,
+        });
+      }
+      const parts = projectSessionEntries(parent.getEntries());
+      const inspect = vi.fn(async (request: { sessionId: string; entryId?: string }) => {
+        expect(request.sessionId).toBe(source.getSessionId());
+        return readMessageReference(source, request);
+      });
+      using fixture = createRendererStoreFixture({
+        projects: [projectRecord({ path: "/project" })],
+        sessions: [
+          sessionSummary({
+            sessionId: "parent",
+            projectPath: "/project",
+            workingDirectory: "/project",
+          }),
+        ],
+        client: { sessionChats: { inspect } },
+      });
+      const session = fixture.root.sessionRegistry.load("parent", "/project");
+      applyConversationUpdate(session.model, {
+        _tag: "Snapshot",
+        revision: 1,
+        snapshot: {
+          sessionId: "parent",
+          sessionFile: "/parent.jsonl",
+          parts,
+          models: [],
+          thinkingLevel: "off",
+          availableThinkingLevels: ["off"],
+          streaming: false,
+          diagnostics: [],
+          commands: [],
+          compatibility: { resources: [], diagnostics: [] },
+          extensionUi: { statuses: [] },
+          tree: [],
+        },
+      });
+      const view = render(
+        <Chat
+          store={session.conversationSessionStore.chatStore}
+          compact
+          composerFocusEnabled={false}
+        />,
+      );
+      expect(inspect).not.toHaveBeenCalled();
+      const disclosure = screen.getByRole("button", { name: /Full agent response/ });
+      expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+      expect(view.container.querySelectorAll('[data-slot="message-source"]')).toHaveLength(1);
+      const user = userEvent.setup();
+      if (delivery === "assistant") {
+        inspect.mockRejectedValueOnce(new Error("Source inaccessible"));
+        inspect.mockResolvedValueOnce({
+          ...readMessageReference(source, { entryId }),
+          message: {
+            ...readMessageReference(source, { entryId }).message,
+            ref: ref + "-different",
+          },
+        });
+      }
+      await user.click(disclosure);
+      if (delivery === "assistant") {
+        expect((await screen.findByRole("alert")).textContent).toContain("Source inaccessible");
+        expect(screen.queryByRole("heading", { name: "Original report" })).toBeNull();
+        await user.click(screen.getByRole("button", { name: "Retry source" }));
+        await waitFor(() =>
+          expect(screen.getByRole("alert").textContent).toContain("different message or page"),
+        );
+        expect(screen.queryByRole("heading", { name: "Original report" })).toBeNull();
+        await user.click(screen.getByRole("button", { name: "Retry source" }));
+      }
+      expect(await screen.findByRole("heading", { name: "Original report" })).toBeTruthy();
+      expect(screen.getByText("Exact earlier result")).toBeTruthy();
+      expect(screen.queryByText("A later unrelated source message")).toBeNull();
+      expect(inspect).toHaveBeenCalledTimes(delivery === "assistant" ? 3 : 1);
+      expect(inspect).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          sessionId: source.getSessionId(),
+          entryId,
+          offset: 0,
+          maxChars: 20_000,
+        }),
+        expect.anything(),
+      );
+      // Expansion/collapse creates no transcript entry or completion notice.
+      await user.click(disclosure);
+      expect(projectSessionEntries(parent.getEntries())).toEqual(parts);
+      expect(view.container.querySelectorAll('[data-slot="message-source"]')).toHaveLength(1);
+      if (delivery === "assistant") {
+        expect(screen.getByRole("link", { name: "Producer session" }).getAttribute("href")).toBe(
+          `cake://session/${source.getSessionId()}`,
+        );
+        expect(screen.getByRole("link", { name: "Website" }).getAttribute("href")).toBe(
+          "https://example.com/",
+        );
+      }
+      view.unmount();
+    },
+  );
 
   it("rejects missing, inaccessible and non-exact sources rather than falling back", async () => {
     const read = vi.fn(async () => {

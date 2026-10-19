@@ -224,6 +224,8 @@ export class ChatStore extends Store<ChatStoreProps> {
   private draftRevision = 0;
   private pendingImagePastes = 0;
 
+  // Source presentation belongs to the transcript, not an assistant's choice to call
+  // messages.present. Discover exact identities only; bodies stay lazy in each preview.
   @child
   get messageSources(): MessageReferencePreviewStore[] {
     return this.parts.flatMap((part) => {
@@ -231,13 +233,16 @@ export class ChatStore extends Store<ChatStoreProps> {
         part.kind === "tool" && part.messageReference
           ? [part.messageReference]
           : (part.kind === "context" && sessionNotificationMarkdown(part.text)) ||
-              (part.kind === "text" && part.crossSession?.replyToMessageId)
+              (part.kind === "text" &&
+                (part.role === "assistant" ||
+                  part.subagentReport ||
+                  part.crossSession?.replyToMessageId))
             ? messageReferencesInText(part.text)
             : [];
       return references.map((reference) =>
         createStore(MessageReferencePreviewStore, {
           key: part.id + reference,
-          sourceKey: part.id + reference,
+          partId: part.id,
           reference,
         }),
       );

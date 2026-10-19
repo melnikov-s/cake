@@ -10,7 +10,7 @@ import { ClientContext } from "./context/ClientContext";
 /** A transient exact-source preview, never added to the Conversation or a window snapshot. */
 export class MessageReferencePreviewStore extends Store<{
   reference?: string;
-  sourceKey?: string;
+  partId?: string;
 }> {
   expanded = false;
 

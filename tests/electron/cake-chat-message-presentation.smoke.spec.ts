@@ -1,5 +1,11 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { Harness, createRegistry, ToolResultEntry, UserEntry } from "@earendil-works/pi-durable";
+import {
+  Harness,
+  createRegistry,
+  AssistantEntry,
+  ToolResultEntry,
+  UserEntry,
+} from "@earendil-works/pi-durable";
 import { createModels } from "@earendil-works/pi-durable-ai";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
@@ -10,11 +16,11 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
 import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-identity";
-import { createMessageOperations } from "../../src/domain/conversations/cake-message-operations";
-import { CakeOperationRegistry } from "../../src/services/pi/runtime/cake-operation-registry";
 import { readMessageReference } from "../../src/services/pi/runtime/message-references";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { formatSessionDigestReminder } from "../../src/contracts/cake-chats/session-digest-reminder";
+import { durableInputText } from "../../src/services/pi-durable/durable-input-presentation";
+import { researchOrigin } from "../fixtures/subagent-report";
 
 const repository = resolve(import.meta.dirname, "../..");
 const usage = {
@@ -26,8 +32,13 @@ const usage = {
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 
-for (const theme of ["dark", "light"] as const)
-  test(`Project and global Chat retain exact full responses after reload (${theme})`, async () => {
+for (const [delivery, theme] of [
+  ["assistant", "dark"],
+  ["assistant", "light"],
+  ["subagent", "dark"],
+  ["subagent", "light"],
+] as const)
+  test(`Project and global Chat automatically present ${delivery} links after reload (${theme})`, async () => {
     test.setTimeout(90_000);
     const root = await mkdtemp(join(tmpdir(), "cake-message-presentation-"));
     const paths = {
@@ -66,25 +77,10 @@ for (const theme of ["dark", "light"] as const)
       const metadata = readMessageReference(source, { entryId }).message;
       const sourceFile = source.getSessionFile()!;
       const originalFile = await readFile(sourceFile, "utf8");
-      const operations = new CakeOperationRegistry(
-        createMessageOperations({
-          read: async () => readMessageReference(source, { entryId, maxChars: 1 }),
-          list: async () => null,
-          open: async () => {
-            throw new Error("No navigation");
-          },
-        }),
-      );
-      const result = await operations.invoke(
-        { command: "messages.present", input: { ref: metadata.ref } },
-        {
-          runtime: { sessionId: CAKE_CHAT_SESSION_ID },
-          signal: new AbortController().signal,
-          toolCallId: "present",
-        },
-      );
       const hash = createHash("sha256").update(paths.project).digest("hex");
       const projectId = `project-chat:${hash}`;
+      const firstPartIds = new Map<string, string>();
+      const notificationPartIds = new Map<string, string>();
       for (const sessionId of [CAKE_CHAT_SESSION_ID, projectId]) {
         const directory =
           sessionId === CAKE_CHAT_SESSION_ID
@@ -100,20 +96,42 @@ for (const theme of ["dark", "light"] as const)
         try {
           const conversation = await harness.root(BACKGROUND_CONTEXT);
           await conversation.commit(async (tx) => {
-            await tx.appendEntry(ToolResultEntry, conversation.id, {
-              model: [
-                {
-                  role: "toolResult",
-                  toolName: "cake",
-                  toolCallId: "present",
-                  content: result.content,
-                  details: result.details,
-                  isError: false,
-                  timestamp: 2,
-                },
-              ],
-            });
-            await tx.appendEntry(UserEntry, conversation.id, {
+            const links = `[Review findings](${metadata.ref}) and [same original](${metadata.ref}).\n\n[Producer session](cake://session/${source.getSessionId()})`;
+            if (delivery === "assistant") {
+              const entry = await tx.appendEntry(AssistantEntry, conversation.id, {
+                model: [
+                  {
+                    role: "assistant",
+                    content: [{ type: "text", text: links }],
+                    api: "anthropic-messages",
+                    provider: "anthropic",
+                    model: "fixture",
+                    stopReason: "stop",
+                    timestamp: 2,
+                    usage,
+                  },
+                ],
+              });
+              firstPartIds.set(sessionId, `entry-${entry.id}-text-0`);
+            } else {
+              const entry = await tx.appendEntry(UserEntry, conversation.id, {
+                model: [
+                  {
+                    role: "user",
+                    content: durableInputText(
+                      `Background subagent complete: ${researchOrigin.task}\n\n${links}`,
+                      [],
+                      true,
+                      false,
+                      researchOrigin,
+                    ),
+                    timestamp: 2,
+                  },
+                ],
+              });
+              firstPartIds.set(sessionId, `entry-${entry.id}-text`);
+            }
+            const notificationEntry = await tx.appendEntry(UserEntry, conversation.id, {
               model: [
                 {
                   role: "user",
@@ -135,6 +153,7 @@ for (const theme of ["dark", "light"] as const)
                 },
               ],
             });
+            notificationPartIds.set(sessionId, `entry-${notificationEntry.id}-context-0`);
             // This historical successful presentation now points at an unavailable original.
             await tx.appendEntry(ToolResultEntry, conversation.id, {
               model: [
@@ -177,6 +196,7 @@ for (const theme of ["dark", "light"] as const)
         },
       });
       const page = await app.firstWindow();
+      await page.emulateMedia({ reducedMotion: "reduce" });
       // Keep native clipboard contents untouched while exercising the actual UI.
       const stubClipboard = () =>
         page.evaluate(() => {
@@ -192,20 +212,22 @@ for (const theme of ["dark", "light"] as const)
       await app.evaluate(({ BrowserWindow }) =>
         BrowserWindow.getAllWindows()[0]!.setContentSize(1280, 1100),
       );
+      // Finish the seeded Project Session's startup selection before navigating away.
+      await expect(
+        page.getByRole("heading", { name: "Repository-owned visual checks" }),
+      ).toBeVisible();
       await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
-      const verify = async (inputName: string) => {
+      const verify = async (inputName: string, sessionId: string) => {
+        await expect(page.getByRole("combobox", { name: inputName })).toBeVisible();
         await stubClipboard();
         const surfaces = page.locator('[data-slot="message-source"]');
         await expect(surfaces).toHaveCount(3);
-        const first = page.locator('[data-part-id="tool-present"] [data-slot="message-source"]');
-        const notification = page
-          .locator('[data-part-id]:not([data-part-id="tool-present"]) [data-slot="message-source"]')
-          .filter({
-            has: page.getByRole("button", {
-              name: "Full agent response Detailed delegated review",
-              exact: true,
-            }),
-          });
+        const first = page.locator(
+          `[data-part-id="${firstPartIds.get(sessionId)}"] [data-slot="message-source"]`,
+        );
+        const notification = page.locator(
+          `[data-part-id="${notificationPartIds.get(sessionId)}"] [data-slot="message-source"]`,
+        );
         const missing = page.locator(
           '[data-message-reference="cake://session/deleted-producer?message=deleted-entry"]',
         );
@@ -242,17 +264,23 @@ for (const theme of ["dark", "light"] as const)
         await expect(missing.getByRole("button", { name: "Retry source" })).toBeVisible();
         await expect(page.getByRole("combobox", { name: inputName })).toBeVisible();
       };
-      await verify("Message Cake Chat");
+      await verify("Message Cake Chat", CAKE_CHAT_SESSION_ID);
       await page.reload();
-      await verify("Message Cake Chat");
+      await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+      await verify("Message Cake Chat", CAKE_CHAT_SESSION_ID);
       await page
         .locator(
           `[data-slot="project-header"][data-session-id="${projectId}"] [data-slot="project-label"]`,
         )
         .click();
-      await verify("Message Project Chat");
+      await verify("Message Project Chat", projectId);
       await page.reload();
-      await verify("Message Project Chat");
+      await page
+        .locator(
+          `[data-slot="project-header"][data-session-id="${projectId}"] [data-slot="project-label"]`,
+        )
+        .click();
+      await verify("Message Project Chat", projectId);
       expect(await readFile(sourceFile, "utf8")).toBe(originalFile);
       await page.getByRole("combobox", { name: "Message Project Chat" }).click();
       await page.keyboard.type("Follow-up stays here");
@@ -260,17 +288,6 @@ for (const theme of ["dark", "light"] as const)
         "Follow-up stays here",
       );
       await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
-      await mkdir(join(repository, ".visual-captures"), { recursive: true });
-      const shown = page.locator('[data-part-id="tool-present"] [data-slot="message-source"]');
-      await shown.getByRole("button", { name: /Full agent response/ }).click();
-      await shown.getByRole("button", { name: "Previous", exact: true }).click();
-      await expect(
-        shown.getByRole("heading", { name: "Original detailed findings" }),
-      ).toBeVisible();
-      await shown.getByRole("button", { name: /Full agent response/ }).click();
-      await page.screenshot({
-        path: join(repository, ".visual-captures", `inline-full-agent-response-${theme}.png`),
-      });
     } finally {
       await app?.close();
       await rm(root, { recursive: true, force: true });

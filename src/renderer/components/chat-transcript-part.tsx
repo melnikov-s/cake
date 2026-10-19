@@ -28,7 +28,6 @@ import { sessionNotificationMarkdown } from "../../contracts/cake-chats/session-
 import { SkillMessage } from "./skill-message";
 import { SourceAttachment } from "./source-attachment";
 import { InlineMessageSource } from "./inline-message-source";
-import { messageReferencesInText } from "../../contracts/conversations/message-reference-forwarding";
 
 const artifactReferenceInText =
   /(?:^|\s)cake:\/\/artifact\/[A-Za-z0-9][A-Za-z0-9._:-]*(?:@r[1-9][0-9]*)?(?=$|[\s),.;!?])/;
@@ -75,13 +74,6 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         }}
         onOpenSourceLocation={behavior.openSourceLocation}
       >
-        {part.crossSession?.replyToMessageId &&
-          messageReferencesInText(part.text).map((reference) => {
-            const source = behavior.store.messageSources.find(
-              (store) => store.props.sourceKey === part.id + reference,
-            );
-            return source ? <InlineMessageSource key={reference} store={source} /> : null;
-          })}
         <div className="ml-auto flex min-h-[30px] items-center gap-2" aria-label="User actions">
           {part.entryId &&
             behavior.store.transcriptInteraction.canToggleUserMessageMarkdown &&
@@ -188,9 +180,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
   if (part.kind === "command") return <ShellCommand part={part} />;
   if (part.kind === "tool") {
     if (part.messageReference) {
-      const source = behavior.store.messageSources.find(
-        (store) => store.props.sourceKey === part.id + part.messageReference,
-      );
+      const source = behavior.store.messageSources.find((store) => store.props.partId === part.id);
       if (source) return <InlineMessageSource store={source} />;
     }
     const interviewId = part.interview?.id;
@@ -277,12 +267,11 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
             text={notification}
             onOpenSourceLocation={behavior.openSourceLocation}
           />
-          {messageReferencesInText(notification).map((reference) => {
-            const source = behavior.store.messageSources.find(
-              (store) => store.props.sourceKey === part.id + reference,
-            );
-            return source ? <InlineMessageSource key={reference} store={source} /> : null;
-          })}
+          {behavior.store.messageSources
+            .filter((source) => source.props.partId === part.id)
+            .map((source) => (
+              <InlineMessageSource key={source.props.reference} store={source} />
+            ))}
         </div>
       );
     return (
@@ -343,7 +332,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
 /** Marks every rendered transcript part in the DOM so right-click selection
  *  capture can resolve any selectable surface back to its conversation part.
  *  The wrapper is layout-invisible via `display: contents`. */
-export function TranscriptPart(props: {
+export const TranscriptPart = observer(function TranscriptPart(props: {
   part: UiPart;
   behavior: CanonicalTranscriptBehavior;
   workLogItem?: boolean;
@@ -355,6 +344,10 @@ export function TranscriptPart(props: {
   return (
     <div className="contents" data-part-id={props.part.id}>
       <TranscriptPartContent {...props} />
+      {props.part.kind === "text" &&
+        props.behavior.store.messageSources
+          .filter((source) => source.props.partId === props.part.id)
+          .map((source) => <InlineMessageSource key={source.props.reference} store={source} />)}
     </div>
   );
-}
+});

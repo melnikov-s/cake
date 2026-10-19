@@ -81,8 +81,11 @@ second transcript is persisted.
 - `messages.present({ ref })` checks the existing message-read access boundary and returns
   only exact source metadata. Its successful Pi tool-result original projects a collapsed
   **Full agent response** disclosure, including after reload in permanent Project/global
-  Chat. Reply and notification-mode completion disclosures are also application-owned
-  and require no assistant relay. Source title, canonical link, entry identity, role and timestamp
+  Chat. The shared transcript also presents exact message refs in assistant text,
+  correlated replies, notification digests and subagent reports automatically, regardless
+  of the authored link label; repeated refs within one part produce one disclosure.
+  No assistant tool relay or additional completion notice/turn is required. Ordinary
+  session-only and unrelated links remain navigation links. Source title, canonical link, entry identity, role and timestamp
   retain provenance. Expansion pages at most 20,000 characters through the existing
   reader; pages stay transient and do not enter model context. Formatting uses shared
   Markdown, with image loading disabled and attachment metadata explicitly uninspected.
