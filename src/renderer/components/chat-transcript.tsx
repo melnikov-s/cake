@@ -10,7 +10,6 @@ import {
   type ReactNode,
   type Ref,
 } from "react";
-import { useStickToBottom } from "use-stick-to-bottom";
 import { untracked } from "r-state-tree";
 import { observer } from "r-state-tree/react";
 import {
@@ -142,26 +141,13 @@ export const ChatTranscript = observer(function ChatTranscript({
   const sideChat = useContext(SideChatContext);
   const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
-  const virtualContentRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const pendingSelectionRef = useRef<TranscriptSelectionCapture | undefined>(undefined);
   const restoredScrollPosition = useMemo(
     () => untracked(() => store.transcriptInteraction.transcriptScrollPosition),
     [store],
   );
   const [annotationDraft, setAnnotationDraft] = useState<TranscriptSelectionCapture>();
-  const {
-    scrollRef,
-    contentRef,
-    scrollToBottom: scrollCompactToBottom,
-    stopScroll,
-  } = useStickToBottom({
-    initial:
-      restoredScrollPosition ||
-      store.transcriptInteraction.messageSelection?.origin === "navigation"
-        ? false
-        : "instant",
-    resize: "instant",
-  });
   const atBottom = useRef(!restoredScrollPosition || restoredScrollPosition.kind === "bottom");
   // Following is ownership, not a property to rediscover after remeasurement.
   // Only a downward gesture against unchanged geometry can reacquire it.
@@ -200,13 +186,15 @@ export const ChatTranscript = observer(function ChatTranscript({
     }
   }, [handleTotalHeightChange, scroller]);
   useLayoutEffect(() => {
-    const content = virtualContentRef.current;
-    if (!virtualized || !scroller || !content) return;
+    const content = contentRef.current;
+    if (!scroller || !content) return;
+    // Both layouts share one following authority. A separate compact scroll
+    // helper can mistake a selection reveal for permission to follow again.
     const observer = new ResizeObserver(reconcileScrollGeometry);
     observer.observe(content);
     observer.observe(scroller);
     return () => observer.disconnect();
-  }, [reconcileScrollGeometry, scroller, virtualized]);
+  }, [reconcileScrollGeometry, scroller]);
   const scrollToBottom = useCallback(
     (options?: { fromMessageNavigation?: boolean; forMessageInsertion?: boolean }) => {
       // Sending is insertion permission, not permission to interrupt an active
@@ -222,19 +210,11 @@ export const ChatTranscript = observer(function ChatTranscript({
         virtuosoRef.current?.scrollToIndex({ index: "LAST", align: "end", behavior: "auto" });
       allowFollowing.current = undefined;
       atBottom.current = true;
-      if (virtualized) handleTotalHeightChange();
-      else void scrollCompactToBottom("instant");
+      handleTotalHeightChange();
     },
-    [handleTotalHeightChange, scrollCompactToBottom, virtualized],
+    [handleTotalHeightChange, virtualized],
   );
   useImperativeHandle(ref, () => ({ scrollToBottom }), [scrollToBottom]);
-  const attachScroller = useCallback(
-    (element: HTMLDivElement | null) => {
-      if (!virtualized) scrollRef(element);
-      setScroller(element);
-    },
-    [scrollRef, virtualized],
-  );
   const parts = store.parts;
   // Read disclosure state in this observer's render. VirtualizedConversation invokes
   // itemContent from its own render, outside this component's reactive tracking.
@@ -336,7 +316,6 @@ export const ChatTranscript = observer(function ChatTranscript({
     readingAnchor.current = undefined;
     allowFollowing.current = undefined;
     atBottom.current = false;
-    if (!virtualized) stopScroll();
     const item = scroller.querySelector<HTMLElement>(
       `[data-transcript-item-index="${selectedItemIndex}"]`,
     );
@@ -368,7 +347,7 @@ export const ChatTranscript = observer(function ChatTranscript({
     return () => {
       pendingSelectionReveal.current = undefined;
     };
-  }, [messageSelection, scroller, selectedItemIndex, stopScroll, virtualized]);
+  }, [messageSelection, scroller, selectedItemIndex, virtualized]);
   // Clicking anywhere outside the selected message ends the selection; clicks
   // inside it are left for actions on that message.
   useEffect(() => {
@@ -403,7 +382,6 @@ export const ChatTranscript = observer(function ChatTranscript({
       readingAnchor.current = undefined;
       allowFollowing.current = undefined;
       atBottom.current = false;
-      if (!virtualized) stopScroll();
     };
     const commitScrollPosition = () => {
       saveTimer = undefined;
@@ -547,7 +525,7 @@ export const ChatTranscript = observer(function ChatTranscript({
       if (saveTimer !== undefined) clearTimeout(saveTimer);
       commitScrollPosition();
     };
-  }, [scroller, stopScroll, store, virtualized]);
+  }, [scroller, store]);
   const error = errorOverride ?? store.error;
   // Right-clicking any selection inside this conversation keeps the native
   // Electron edit menu. The capture is held until that menu sends its
@@ -634,13 +612,13 @@ export const ChatTranscript = observer(function ChatTranscript({
     <>
       {selectionOverlays}
       <div
-        ref={attachScroller}
+        ref={setScroller}
         // Clicking the transcript focuses it (not the body) so its pane keeps
         // keyboard message selection and keyboard scrolling. Not a tab stop.
         tabIndex={-1}
         className="transcript outline-none h-full w-full max-w-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable_both-edges] [overflow-anchor:none]"
       >
-        <div ref={virtualized ? virtualContentRef : contentRef} className="min-w-0">
+        <div ref={contentRef} className="min-w-0">
           {store.history?.hasMore && (
             <div className="grid justify-items-center gap-2 px-6 py-2">
               <Button

@@ -211,6 +211,7 @@ async function expectRestoredAnchor(
 for (const scenario of [
   "opens a restored transcript without renderer errors",
   "keeps every streaming frame at the bottom",
+  "pauses streaming follow during message navigation and resumes past newest",
   "keeps user ownership through repeated streaming gestures",
   "keeps every resize frame at the bottom",
   "preserves the reading anchor during row resize",
@@ -269,6 +270,7 @@ for (const scenario of [
     const stream =
       scenario === "keeps reading position while another session streams" ||
       scenario === "keeps every streaming frame at the bottom" ||
+      scenario === "pauses streaming follow during message navigation and resumes past newest" ||
       scenario === "keeps user ownership through repeated streaming gestures"
         ? await streamingProvider(cakeHome)
         : undefined;
@@ -332,6 +334,8 @@ for (const scenario of [
 
       if (
         (scenario === "keeps every streaming frame at the bottom" ||
+          scenario ===
+            "pauses streaming follow during message navigation and resumes past newest" ||
           scenario === "keeps user ownership through repeated streaming gestures") &&
         stream
       ) {
@@ -357,6 +361,49 @@ for (const scenario of [
         stream.send("Initial streaming paragraph.\n\n");
         await expect(transcript).toContainText("Initial streaming paragraph.");
         await paintFrames(page, 6);
+        if (
+          scenario === "pauses streaming follow during message navigation and resumes past newest"
+        ) {
+          const selected = transcript.locator('[data-slot="transcript-item"][aria-current="true"]');
+          await composer.press("ArrowUp");
+          await expect(selected).toContainText("Initial streaming paragraph.");
+          await paintFrames(page, 6);
+          const selectedTop = await transcript.evaluate((element) => element.scrollTop);
+          for (let index = 0; index < 4; index++) {
+            stream.send(`Reading update ${index}. ${"More streaming. ".repeat(40)}\n\n`);
+            await expect(selected).toContainText(`Reading update ${index}.`);
+            await paintFrames(page, 6);
+            expect(await transcript.evaluate((element) => element.scrollTop)).toBe(selectedTop);
+          }
+          // Navigating to an older message and back must not resume following.
+          await composer.press("ArrowUp");
+          await expect(selected).toContainText("transcript item 47");
+          await composer.press("ArrowDown");
+          await expect(selected).toContainText("Initial streaming paragraph.");
+          await paintFrames(page, 6);
+          const readingTop = await transcript.evaluate((element) => element.scrollTop);
+          stream.send(`Still reading. ${"More streaming. ".repeat(40)}\n\n`);
+          await expect(selected).toContainText("Still reading.");
+          await paintFrames(page, 6);
+          expect(await transcript.evaluate((element) => element.scrollTop)).toBe(readingTop);
+          // Only Down past newest returns to the full bottom and stream following.
+          await composer.press("ArrowDown");
+          await expect(selected).toHaveCount(0);
+          await expect(composer).toBeFocused();
+          for (let index = 0; index < 3; index++) {
+            stream.send(`Following update ${index}. ${"More streaming. ".repeat(40)}\n\n`);
+            await expect(transcript).toContainText(`Following update ${index}.`);
+            await paintFrames(page, 6);
+            expect(
+              await transcript.evaluate(
+                (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+              ),
+            ).toBeLessThanOrEqual(1);
+          }
+          stream.finish();
+          await expect(firstSession.locator('[aria-label="Running"]')).toHaveCount(0);
+          return;
+        }
         if (scenario === "keeps user ownership through repeated streaming gestures") {
           await transcript.hover({ position: { x: 20, y: 200 } });
           for (let index = 0; index < 12; index++) {

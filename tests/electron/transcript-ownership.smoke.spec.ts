@@ -13,9 +13,10 @@ import {
 import type { TranscriptOwnershipFixture } from "./transcript-ownership-fixture";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
-const test = base.extend<{ fixturePage: Page; messageCount: number }>({
+const test = base.extend<{ fixturePage: Page; messageCount: number; chatMode: string }>({
   messageCount: [48, { option: true }],
-  fixturePage: async ({ messageCount }, use) => {
+  chatMode: ["", { option: true }],
+  fixturePage: async ({ messageCount, chatMode }, use) => {
     const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-transcript-ownership-"));
     const cakeHome = join(temporaryRoot, "cake-home");
     await mkdir(cakeHome);
@@ -70,11 +71,11 @@ const test = base.extend<{ fixturePage: Page; messageCount: number }>({
       await application.firstWindow();
       const opened = application.waitForEvent("window");
       await application.evaluate(
-        async ({ BrowserWindow }, { html, messageCount }) => {
+        async ({ BrowserWindow }, { html, messageCount, chatMode }) => {
           const window = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
-          await window.loadFile(html, { search: `?count=${messageCount}` });
+          await window.loadFile(html, { search: `?count=${messageCount}&chatMode=${chatMode}` });
         },
-        { html, messageCount },
+        { html, messageCount, chatMode },
       );
       const page = await opened;
       const errors: string[] = [];
@@ -327,6 +328,53 @@ test("user input supersedes navigation measurement retries", async ({ fixturePag
     expect(tops).toEqual([result.intended, result.intended, result.intended]);
   }
 });
+
+for (const chatMode of ["virtualized", "compact"]) {
+  test.describe(`${chatMode} keyboard navigation`, () => {
+    test.use({ chatMode });
+    test("pauses streaming follow until Down past the newest message", async ({
+      fixturePage: page,
+    }) => {
+      const transcript = page.locator(".transcript");
+      const selected = transcript.locator('[data-slot="transcript-item"][aria-current="true"]');
+      const composer = page.getByRole("combobox", { name: "Message", exact: true });
+      await command(page, "stream");
+      await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+      await composer.focus();
+      await composer.press("ArrowUp");
+      await expect(selected).toContainText("Streaming chunk.");
+      const saved = await top(transcript);
+      for (let step = 0; step < 4; step++) {
+        await command(page, "stream");
+        await page.evaluate(async () => {
+          for (let frame = 0; frame < 6; frame++)
+            await new Promise<void>((resolve) =>
+              requestAnimationFrame(() => setTimeout(resolve, 0)),
+            );
+        });
+        expect(Math.abs((await top(transcript)) - saved)).toBeLessThanOrEqual(1);
+      }
+      await composer.press("ArrowUp");
+      await expect(selected).toContainText("Message 47.");
+      await composer.press("ArrowDown");
+      await expect(selected).toContainText("Streaming chunk.");
+      await wheel(page, transcript, -180);
+      const readingTop = await top(transcript);
+      for (let step = 0; step < 4; step++) {
+        await command(page, "stream");
+        await expect.poll(() => top(transcript)).toBe(readingTop);
+      }
+      await composer.press("ArrowDown");
+      await expect(selected).toHaveCount(0);
+      await expect(composer).toBeFocused();
+      await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+      for (let step = 0; step < 4; step++) {
+        await command(page, "stream");
+        await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+      }
+    });
+  });
+}
 
 test.describe("short transcript", () => {
   test.use({ messageCount: 2 });

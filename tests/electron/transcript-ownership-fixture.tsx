@@ -5,6 +5,7 @@ import {
   ChatTranscript,
   type ChatTranscriptHandle,
 } from "../../src/renderer/components/chat-transcript";
+import { Chat } from "../../src/renderer/components/chat";
 import { createRendererStoreFixture } from "../app/renderer/renderer-store-fixture";
 import { projectRecord, sessionSummary } from "../app/renderer/fixtures/catalog-fixtures";
 import { applyConversationUpdate } from "../../src/renderer/reducers/ConversationReducer";
@@ -20,7 +21,9 @@ const fixture = createRendererStoreFixture({
 const session = fixture.root.sessionRegistry.load("ownership", "/project");
 const store = session.conversationSessionStore.chatStore;
 let revision = 0;
-const count = Number(new URLSearchParams(location.search).get("count") ?? 48);
+const parameters = new URLSearchParams(location.search);
+const count = Number(parameters.get("count") ?? 48);
+const chatMode = parameters.get("chatMode");
 let parts: UiPart[] = Array.from({ length: count }, (_, index) => ({
   kind: "text",
   id: `message-${index}`,
@@ -57,13 +60,17 @@ function render() {
   flushSync(() =>
     root.render(
       <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
-        <ChatTranscript
-          store={store}
-          ref={(value) => {
-            handle = value;
-          }}
-          footer={<div>Activity revision {revision}</div>}
-        />
+        {chatMode ? (
+          <Chat store={store} compact={chatMode === "compact"} />
+        ) : (
+          <ChatTranscript
+            store={store}
+            ref={(value) => {
+              handle = value;
+            }}
+            footer={<div>Activity revision {revision}</div>}
+          />
+        )}
       </StoreProvider>,
     ),
   );
