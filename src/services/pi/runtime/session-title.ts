@@ -6,24 +6,18 @@ import { stripPresentationModeReminder } from "../../../contracts/conversations/
 import { stripResponseModeReminder } from "../../../contracts/conversations/response-mode-reminders";
 
 function sessionTitle(sessionManager: SessionManager) {
-  const firstUserMessage = sessionManager
-    .getEntries()
-    .flatMap((entry) => {
-      if (entry.type !== "message" || entry.message.role !== "user") return [];
-      return [
-        visibleUserMessageText(
-          stripResponseModeReminder(
-            stripPresentationModeReminder(textFromContent(entry.message.content)),
-          ),
-        ).trim(),
-      ];
-    })
-    .find(Boolean);
-  return (
-    sessionManager.getSessionName() ||
-    firstUserMessage ||
-    sessionManager.getSessionId()
-  ).slice(0, SESSION_TITLE_MAX_LENGTH);
+  const name = sessionManager.getSessionName();
+  if (name) return name.slice(0, SESSION_TITLE_MAX_LENGTH);
+  for (const entry of sessionManager.getEntries()) {
+    if (entry.type !== "message" || entry.message.role !== "user") continue;
+    const text = visibleUserMessageText(
+      stripResponseModeReminder(
+        stripPresentationModeReminder(textFromContent(entry.message.content)),
+      ),
+    ).trim();
+    if (text) return text.slice(0, SESSION_TITLE_MAX_LENGTH);
+  }
+  return sessionManager.getSessionId().slice(0, SESSION_TITLE_MAX_LENGTH);
 }
 
 export function sessionTitleFromFile(path: string, cwd: string) {

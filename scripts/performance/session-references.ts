@@ -80,7 +80,10 @@ try {
       resolvedSessionDirectory: join(directory, "resolved"),
     }),
     Layer.mock(ManagedWorktrees, { records: () => Effect.succeed([]) }),
-    Layer.mock(SessionFamilyStorage, { list: () => Effect.succeed([]) }),
+    Layer.mock(SessionFamilyStorage, {
+      list: () => Effect.succeed([]),
+      state: () => Effect.succeed({ families: [], turns: [], spawnedSessions: [] }),
+    }),
     Layer.mock(SavedDraftStorage, { list: () => Effect.succeed([]) }),
     Layer.mock(SessionArchiveStorage, {
       resolvedProjects: () => Stream.empty,

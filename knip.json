@@ -7,6 +7,7 @@
     "src/server/main.ts",
     "scripts/visual-capture/cli.ts",
     "scripts/performance/session-references.ts",
+    "scripts/performance/session-list.mjs",
     "tests/integration/fixtures/headless-backend.ts",
     "tests/integration/fixtures/restart-backend.ts",
     "tests/integration/fixtures/workflow-sandbox-backend.ts"

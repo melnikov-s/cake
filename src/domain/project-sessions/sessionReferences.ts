@@ -11,6 +11,8 @@ import { ApplicationState } from "../../services/storage/ApplicationState";
 import { SavedDraftStorage } from "../../services/storage/SavedDraftStorage";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage, familyMemberIds } from "../../services/storage/SessionFamilyStorage";
+import type { ProjectSessionArchiveMetadata } from "../../services/storage/SessionArchiveStorage";
+import type { ProjectSessionLocation } from "../../contracts/project-sessions/project-session-data";
 import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
 import * as projectSessionLocations from "./projectSessionLocations";
 
@@ -56,7 +58,7 @@ export function labelIn(sessionId: string, roster: readonly SessionReferenceEntr
  * Resolved sessions stay in their Pi directory; archived project metadata also retains identities
  * whose worktree no longer exists. Include inactive family bindings without acquiring runtimes.
  */
-export const catalog = Effect.fn("SessionReferences.catalog")(
+export const discover = Effect.fn("SessionReferences.discover")(
   function* () {
     const sessions = yield* CakeSessionRuntimes;
     const archive = yield* SessionArchiveStorage;
@@ -64,15 +66,21 @@ export const catalog = Effect.fn("SessionReferences.catalog")(
     const application = yield* ApplicationState;
     const locations = yield* projectSessionLocations.locations({ includeInactive: true });
     const roster = new Map<string, SessionReferenceEntry>();
+    const familyState = yield* families.state();
+    const archives = new Map<string, ProjectSessionArchiveMetadata>();
+    const routes = new Map<string, ProjectSessionLocation[]>();
+    const idsByLocation = new Map<ProjectSessionLocation, ReadonlySet<string>>();
     for (const project of application.snapshot().projects) {
       const sessionId = projectChatSessionId(project.path);
       roster.set(sessionId, { sessionId, title: `${project.name} / Project Chat` });
     }
-    for (const family of yield* families.list())
+    for (const family of familyState.families)
       for (const sessionId of familyMemberIds(family)) roster.set(sessionId, { sessionId });
     for (const project of application.snapshot().projects)
-      for (const entry of yield* Stream.runCollect(archive.resolvedProjects(project.path)))
+      for (const entry of yield* Stream.runCollect(archive.resolvedProjects(project.path))) {
         roster.set(entry.sessionId, { sessionId: entry.sessionId });
+        archives.set(entry.sessionId, entry);
+      }
     for (const location of locations) {
       const ids = yield* Stream.runCollect(
         sessions.sessionIds({
@@ -80,13 +88,27 @@ export const catalog = Effect.fn("SessionReferences.catalog")(
           sessionDirectory: location.sessionDirectory,
         }),
       );
-      for (const sessionId of ids) roster.set(sessionId, { sessionId });
+      idsByLocation.set(location, new Set(ids));
+      for (const sessionId of ids) {
+        roster.set(sessionId, { sessionId });
+        const candidates = routes.get(sessionId) ?? [];
+        candidates.push(location);
+        routes.set(sessionId, candidates);
+      }
     }
-    const drafts = yield* Effect.serviceOption(SavedDraftStorage);
-    if (Option.isSome(drafts))
-      for (const draft of yield* drafts.value.list())
-        roster.set(draft.sessionId, { sessionId: draft.sessionId, title: draft.title });
-    return [...roster.values()];
+    const storage = yield* Effect.serviceOption(SavedDraftStorage);
+    const drafts = Option.isSome(storage) ? yield* storage.value.list() : [];
+    for (const draft of drafts)
+      roster.set(draft.sessionId, { sessionId: draft.sessionId, title: draft.title });
+    return {
+      roster: [...roster.values()],
+      locations,
+      familyState,
+      archives,
+      routes,
+      idsByLocation,
+      drafts,
+    };
   },
   Effect.mapError(
     (cause) =>
@@ -96,6 +118,11 @@ export const catalog = Effect.fn("SessionReferences.catalog")(
       }),
   ),
 );
+
+/** Identity-only consumers discard request-local routing evidence, never transcript content. */
+export const catalog = Effect.fn("SessionReferences.catalog")(function* () {
+  return (yield* discover()).roster;
+});
 
 export const resolve = Effect.fn("SessionReferences.resolve")(function* (reference: string) {
   return yield* resolveIn(reference, yield* catalog());

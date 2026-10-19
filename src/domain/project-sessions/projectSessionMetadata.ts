@@ -11,6 +11,9 @@ import { compareSessionSummariesForSidebar } from "../../utils/session-summary-o
 import { PiSessionError, CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import type { ProjectSessionLocation } from "../../contracts/project-sessions/project-session-data";
 import * as projectSessionLocations from "./projectSessionLocations";
+import type { discover } from "./sessionReferences";
+import type { SavedDraft } from "../../contracts/project-sessions/saved-draft-data";
+import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import { resolutionNamespace } from "./projectSessionResolution";
 import { ProjectSessionConfiguration } from "../../services/project-sessions/ProjectSessionConfiguration";
 import {
@@ -508,6 +511,187 @@ const discoverSessionAt = Effect.fn("ProjectSessions.discoverSessionAt")(functio
     status?.recoveryIssue,
     status?.latestTurnOutcome,
   );
+});
+
+/** One invocation's authoritative discovery evidence; no runtime or retained transcript cache.
+ * Keep routes through filtering instead of rediscovering each identity across every checkout.
+ */
+export const listing = Effect.fn("ProjectSessions.listing")(function* (
+  discovery: Effect.Success<ReturnType<typeof discover>>,
+  inScope: (projectPath: string) => boolean,
+) {
+  const state = yield* getState();
+  const configuration = yield* ProjectSessionConfiguration;
+  const runtimes = yield* CakeSessionRuntimes;
+  const archive = yield* SessionArchiveStorage;
+  const unread = new Set(state.unreadSessionIds);
+  const families = new Map(
+    discovery.familyState.families.flatMap((family) =>
+      familyMemberIds(family).map((id) => [id, family] as const),
+    ),
+  );
+  const spawns = new Map(
+    discovery.familyState.spawnedSessions.map((spawn) => [spawn.sessionId, spawn]),
+  );
+  const drafts = new Map(
+    discovery.drafts
+      .filter((draft) => draft.status !== "activated")
+      .map((draft) => [draft.sessionId, draft]),
+  );
+  const key = (location: ProjectSessionLocation) =>
+    JSON.stringify([
+      location.projectPath,
+      location.workingDirectory,
+      location.sessionDirectory,
+      location.resolvedSessionDirectory,
+    ]);
+  const knownLocations = new Map(discovery.locations.map((location) => [key(location), location]));
+  const groups = new Map<string, { location: ProjectSessionLocation; ids: Set<string> }>();
+  const resolutionLocations = new Map<string, ProjectSessionLocation>();
+  const routes = new Map<string, ProjectSessionLocation>();
+  const fallbackDrafts: SavedDraft[] = [];
+  for (const { sessionId } of discovery.roster) {
+    if (isCakeChatSessionId(sessionId)) continue;
+    const entry = discovery.archives.get(sessionId);
+    const family = families.get(sessionId);
+    const member = family && familyMember(family, sessionId);
+    const candidates = discovery.routes.get(sessionId) ?? [];
+    const location = entry
+      ? archivedLocation(entry)
+      : family && member
+        ? (discovery.locations.find(
+            (candidate) =>
+              candidate.workingDirectory === member.workingDirectory &&
+              candidate.projectPath === family.projectPath,
+          ) ?? {
+            projectPath: family.projectPath,
+            projectName:
+              state.projects.find((project) => project.path === family.projectPath)?.name ??
+              family.projectPath,
+            workingDirectory: member.workingDirectory,
+            sessionDirectory: configuration.sessionDirectory,
+            resolvedSessionDirectory: configuration.resolvedSessionDirectory,
+          })
+        : candidates.length === 1
+          ? candidates[0]
+          : undefined;
+    const draft = drafts.get(sessionId);
+    if (draft && inScope(draft.projectPath) && (!location || inScope(location.projectPath)))
+      fallbackDrafts.push(draft);
+    if (!location || !inScope(location.projectPath)) continue;
+    const routeKey = key(location);
+    routes.set(sessionId, location);
+    const group = groups.get(routeKey) ?? { location, ids: new Set<string>() };
+    group.ids.add(sessionId);
+    groups.set(routeKey, group);
+    // Family resolution belongs to the root, even when a child's transcript is elsewhere.
+    const resolutionLocation = family
+      ? { ...location, workingDirectory: family.workingDirectory }
+      : location;
+    resolutionLocations.set(key(resolutionLocation), resolutionLocation);
+  }
+  const resolutions = new Map<string, ReadonlySet<string>>();
+  for (const [routeKey, location] of resolutionLocations) {
+    const resolved = yield* archive
+      .resolvedIds(archiveLocation(location))
+      .pipe(Effect.catch(() => Effect.succeed(undefined)));
+    if (!resolved) continue;
+    const knownLocation = knownLocations.get(routeKey);
+    const ids = knownLocation ? discovery.idsByLocation.get(knownLocation) : undefined;
+    // resolvedIds may migrate old archived files back in place after discovery.
+    // Re-enumerate only when that snapshot cannot account for a resolved identity.
+    const present =
+      ids && [...resolved].every((id) => ids.has(id))
+        ? ids
+        : yield* Stream.runCollect(runtimes.sessionIds(location)).pipe(
+            Effect.map((items) => new Set(items)),
+            Effect.catch(() => Effect.succeed(undefined)),
+          );
+    if (present) resolutions.set(routeKey, new Set([...resolved].filter((id) => present.has(id))));
+  }
+  const sessions: Array<ProjectSessionSummary & { readonly savedDraft?: SavedDraft }> = [];
+  for (const [routeKey, { location, ids }] of groups) {
+    const knownLocation = knownLocations.get(routeKey);
+    const knownIds = knownLocation && discovery.idsByLocation.get(knownLocation);
+    const items = yield* Stream.runCollect(
+      runtimes.catalog({
+        workingDirectory: location.workingDirectory,
+        sessionDirectory: location.sessionDirectory,
+        excludedSessionIds: knownIds ? [...knownIds].filter((id) => !ids.has(id)) : [],
+      }),
+    ).pipe(Effect.catch(() => Effect.succeed<PiSessionSummary[]>([])));
+    const byId = new Map(items.map((item) => [item.id, item]));
+    const seen = new Set<string>();
+    const duplicates = new Set<string>();
+    for (const item of items) {
+      if (seen.has(item.id)) duplicates.add(item.id);
+      seen.add(item.id);
+    }
+    for (const sessionId of ids) {
+      const family = families.get(sessionId);
+      const entry = discovery.archives.get(sessionId);
+      let item = byId.get(sessionId);
+      if (duplicates.has(sessionId)) continue;
+      if (entry && !item) {
+        // A missing archived file keeps its ID title; a corrupt/unreadable file must
+        // still fail exact lookup rather than being silently revived by the bulk stream.
+        const exact = yield* Effect.result(runtimes.catalogEntry(location, sessionId));
+        if (exact._tag === "Failure") continue;
+        item = exact.success;
+      }
+      if (!entry && !item) continue;
+      const namespaceLocation = family
+        ? { ...location, workingDirectory: family.workingDirectory }
+        : location;
+      const resolution = resolutions.get(key(namespaceLocation));
+      if (!resolution) continue;
+      const resolved = resolution.has(family?.parentSessionId ?? sessionId);
+      if (entry) {
+        sessions.push({
+          ...archivedSummary(entry, item?.title ?? sessionId, unread, family),
+          resolved: family ? resolved : true,
+        });
+      } else if (item) {
+        const projected = yield* runtimes.currentStatus({ ...location, sessionId }).pipe(
+          Effect.map((status) =>
+            summary(
+              item,
+              location,
+              resolved,
+              unread,
+              status?.streaming ?? false,
+              family,
+              spawns.get(sessionId),
+              status?.recoveryIssue,
+              status?.latestTurnOutcome,
+            ),
+          ),
+          Effect.catch(() => Effect.succeed(undefined)),
+        );
+        if (projected) sessions.push(projected);
+      }
+    }
+  }
+  const found = new Set(sessions.map((session) => session.sessionId));
+  for (const draft of fallbackDrafts) {
+    const project = state.projects.find((project) => project.path === draft.projectPath);
+    if (found.has(draft.sessionId) || !project) continue;
+    sessions.push({
+      sessionId: draft.sessionId,
+      title: draft.title,
+      createdAt: draft.createdAt,
+      modifiedAt: draft.modifiedAt,
+      messageCount: 0,
+      resolved: draft.resolved,
+      unread: false,
+      running: false,
+      projectPath: draft.projectPath,
+      projectName: project.name,
+      workingDirectory: draft.workingDirectory,
+      savedDraft: draft,
+    });
+  }
+  return { sessions, routes };
 });
 
 /** Explicit lookup never relies on the renderer's disposable catalog or loads a runtime. */

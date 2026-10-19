@@ -434,6 +434,7 @@ export const invoke: (
           });
         }
         case "sessions.list": {
+          const startedAt = yield* Clock.currentTimeMillis;
           const global = caller.kind === "cake-chat" && caller.sessionId === CAKE_CHAT_SESSION_ID;
           const scope = global
             ? undefined
@@ -445,15 +446,25 @@ export const invoke: (
                   )?.path
               : (caller.projectPath ?? (yield* lookupSession(caller.sessionId)).projectPath);
           if (!global && !scope) return fail("The caller has no registered project scope.");
-          const roster = yield* sessionReferences.catalog();
-          const summaries = yield* Effect.forEach(
-            roster.filter(({ sessionId }) => !isCakeChatSessionId(sessionId)),
-            ({ sessionId }) =>
-              lookupSession(sessionId).pipe(Effect.catch(() => Effect.succeed(undefined))),
-          );
           const input = invocation.arguments;
-          const projectEntries = summaries
-            .filter((session): session is AgentSessionSummary => session !== undefined)
+          const inScope = (projectPath: string) =>
+            (!scope || projectPath === scope) &&
+            (!input.projectPath || projectPath === input.projectPath);
+          const discovery = yield* sessionReferences
+            .discover()
+            .pipe(Effect.withSpan("sessions.list.discovery"));
+          const discoveredAt = yield* Clock.currentTimeMillis;
+          const roster = discovery.roster;
+          const listing = yield* metadata.listing(discovery, inScope).pipe(
+            Effect.withSpan("sessions.list.summaries", {
+              attributes: {
+                locations: discovery.locations.length,
+                identities: roster.length,
+              },
+            }),
+          );
+          const summarizedAt = yield* Clock.currentTimeMillis;
+          const projectEntries = listing.sessions
             .filter(
               (session) =>
                 !input.launchedByCakeChat ||
@@ -474,7 +485,9 @@ export const invoke: (
           const chatConfiguration = yield* Effect.serviceOption(CakeChatConfiguration);
           const chatEntries =
             Option.isSome(chatConfiguration) && !input.launchedByCakeChat
-              ? (yield* chatMetadata.catalog(chatConfiguration.value.location)).map((chat) => ({
+              ? (yield* chatMetadata
+                  .catalog(chatConfiguration.value.location)
+                  .pipe(Effect.withSpan("sessions.list.chats"))).map((chat) => ({
                   sessionId: chat.sessionId,
                   title: chat.projectPath ? "Project Chat" : chat.title,
                   projectName: chat.projectPath ? chat.title : undefined,
@@ -493,7 +506,8 @@ export const invoke: (
                 (yield* (yield* TaskInputStorage).isRecipient(entry.sessionId));
               return protectedTitle ? { ...entry, title: "Task session" } : entry;
             }),
-          );
+          ).pipe(Effect.withSpan("sessions.list.redaction"));
+          const selectingAt = yield* Clock.currentTimeMillis;
           const query = input.query?.toLowerCase();
           const selected = entries
             .filter(
@@ -517,16 +531,35 @@ export const invoke: (
                 ? item.contextMetadata
                 : item.status === "draft"
                   ? undefined
-                  : yield* metadata
-                      .inspect({ sessionId: item.sessionId }, { includeParts: false })
-                      .pipe(
-                        Effect.map((preview) => preview.contextMetadata),
-                        // Advisory inspection failure must not hide an otherwise discoverable session.
-                        Effect.catch(() => Effect.succeed(undefined)),
-                      );
+                  : yield* Effect.gen(function* () {
+                      const location = listing.routes.get(item.sessionId);
+                      if (!location) return undefined;
+                      return yield* (yield* CakeSessionRuntimes)
+                        .inspect(
+                          { ...location, sessionId: item.sessionId },
+                          { includeParts: false },
+                        )
+                        .pipe(Effect.map((preview) => preview.contextMetadata));
+                    }).pipe(
+                      // Advisory inspection failure must not hide an otherwise discoverable session.
+                      Effect.catch(() => Effect.succeed(undefined)),
+                      Effect.withSpan("sessions.list.context"),
+                    );
               return { ...item, contextMetadata };
             }),
           );
+          // Numeric, request-local diagnostics only: no paths, titles, queries, or transcript data.
+          yield* Effect.logDebug("Session list timings", {
+            scopeAndDiscoveryMs: discoveredAt - startedAt,
+            summariesMs: summarizedAt - discoveredAt,
+            chatsAndRedactionMs: selectingAt - summarizedAt,
+            selectionMs: now - selectingAt,
+            contextMs: (yield* Clock.currentTimeMillis) - now,
+            locations: discovery.locations.length,
+            identities: roster.length,
+            matched: selected.length,
+            returned: listed.length,
+          });
           return sessionRoster(
             listed,
             page,

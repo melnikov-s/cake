@@ -37,7 +37,10 @@ import { ApplicationState } from "../../../src/services/storage/ApplicationState
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
 import { ApplicationWriteError } from "../../../src/contracts/storage/application-storage-errors";
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
-import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
+import {
+  SessionArchiveStorage,
+  type ProjectSessionArchiveMetadata,
+} from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import {
   CakeSessionRuntimes,
@@ -122,6 +125,24 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
   const deliveries = yield* Queue.unbounded<{ connectionId: number; event: CakeEvent }>();
   const runtimeCreates: string[] = [];
   const inspections: string[] = [];
+  const listReads = {
+    ids: [] as string[],
+    titles: [] as string[],
+    entries: [] as string[],
+    locate: 0,
+    resolutions: [] as string[],
+    drafts: 0,
+    records: 0,
+  };
+  const sessionsByDirectory = new Map<string, string[]>([["/project", [source, target, third]]]);
+  const archivedEntries = new Map<string, ProjectSessionArchiveMetadata>();
+  const worktreeRecords: Array<{
+    worktreePath: string;
+    projectPath: string;
+    branch: string;
+    baseBranch: string;
+    createdAt: string;
+  }> = [];
   const contextBySession = new Map<string, SessionContextMetadata>();
   const requestCalls: unknown[] = [];
   const project = {
@@ -162,10 +183,20 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
   const clients = Layer.merge(ClientConnectionsLive, ClientEventsLive);
   const renderers = RendererRequestCoordinatorLive.pipe(Layer.provideMerge(clients));
   const runtimes = makeCakeSessionRuntimesLayer({
-    sessionIds: () => Stream.fromIterable([source, target, third]),
-    catalog: () => Stream.fromIterable([source, target, third].map(summary)),
-    catalogEntry: (_query, id) =>
-      unavailable.has(id)
+    sessionIds: (query) => {
+      listReads.ids.push(query.workingDirectory);
+      return Stream.fromIterable(sessionsByDirectory.get(query.workingDirectory) ?? []);
+    },
+    catalog: (query) => {
+      const ids = (sessionsByDirectory.get(query.workingDirectory) ?? []).filter(
+        (id) => !unavailable.has(id) && !query.excludedSessionIds?.includes(id),
+      );
+      listReads.titles.push(...ids);
+      return Stream.fromIterable(ids.map(summary));
+    },
+    catalogEntry: (_query, id) => {
+      listReads.entries.push(id);
+      return unavailable.has(id)
         ? Effect.fail(
             new PiSessionError({ operation: "catalogEntry", message: "Recipient unavailable" }),
           )
@@ -173,7 +204,8 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
             [source, target, third].includes(id) || contextBySession.has(id)
               ? { ...summary(id), contextMetadata: contextBySession.get(id) }
               : undefined,
-          ),
+          );
+    },
     inspect: ({ sessionId }) =>
       Effect.sync(() => {
         inspections.push(sessionId);
@@ -260,7 +292,11 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
         })
       : Layer.empty,
     Layer.mock(SavedDraftStorage, {
-      list: () => Effect.succeed(drafts),
+      list: () =>
+        Effect.sync(() => {
+          listReads.drafts++;
+          return drafts;
+        }),
       update: (record, revision) =>
         Effect.sync(() => {
           const index = drafts.findIndex((item) => item.sessionId === record.sessionId);
@@ -295,20 +331,34 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
     SessionCatalogChanges.layer,
     ApplicationState.layer.pipe(Layer.provide(storage)),
     Layer.mock(ManagedWorktrees, {
-      records: () => Effect.succeed([]),
+      records: () =>
+        Effect.sync(() => {
+          listReads.records++;
+          return worktreeRecords;
+        }),
       awaitSetup: () => Effect.void,
     }),
     Layer.mock(SessionArchiveStorage, {
-      resolvedProjectEntry: () => Effect.succeed(undefined),
-      resolvedProjects: () => Stream.empty,
-      locate: (id, at) =>
-        Effect.succeed(
+      resolvedProjectEntry: (id) => Effect.succeed(archivedEntries.get(id)),
+      resolvedProjects: (path) =>
+        Stream.fromIterable(
+          [...archivedEntries.values()].filter((entry) => entry.projectPath === path),
+        ),
+      resolvedIds: (at) =>
+        Effect.sync(() => {
+          listReads.resolutions.push(at.cwd);
+          return new Set(resolved ? [target] : []);
+        }),
+      locate: (id, at) => {
+        listReads.locate++;
+        return Effect.succeed(
           at.cwd !== "/project"
             ? undefined
             : resolved && id === target
               ? ("resolved" as const)
               : ("active" as const),
-        ),
+        );
+      },
       restoreProject: () =>
         Effect.sync(() => {
           restored++;
@@ -395,6 +445,10 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
     runtimeCreates,
     inspections,
     contextBySession,
+    listReads,
+    sessionsByDirectory,
+    archivedEntries,
+    worktreeRecords,
     saves,
     saveRelease,
     call: (command: string, input: JsonObject = {}) =>
@@ -1288,6 +1342,175 @@ it.effect("keeps task-input metadata redacted in session and report text catalog
     expect(JSON.stringify(report)).not.toContain("PRIVATE_");
     expect((yield* storage.state()).deferredReferences).toHaveLength(1);
     expect(f.runtimeCreates).toEqual([source]);
+  }),
+);
+
+it.effect("lists a 699-location roster with one snapshot and no per-session route probes", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    const project = f.state().projects[0];
+    assert.ok(project);
+    yield* Context.get(f.context, ApplicationState).transact((state) =>
+      Effect.succeed({
+        ...state,
+        projects: [...state.projects, { ...project, path: "/other", name: "Other" }],
+      }),
+    );
+    // 699 directories and 1603 identities, including standalone sessions without family bindings.
+    f.sessionsByDirectory.set("/project", [
+      source,
+      target,
+      third,
+      ...Array.from(
+        { length: 97 },
+        (_, index) => `00000000-0000-4000-8001-${String(index).padStart(12, "0")}`,
+      ),
+    ]);
+    for (let index = 0; index < 697; index++) {
+      const cwd = `/other/worktree-${index}`;
+      f.worktreeRecords.push({
+        worktreePath: cwd,
+        projectPath: "/other",
+        branch: `agent/${index}`,
+        baseBranch: "main",
+        createdAt: "2026-01-01",
+      });
+      f.sessionsByDirectory.set(
+        cwd,
+        Array.from(
+          { length: index < 109 ? 3 : 2 },
+          (_, n) => `00000000-0000-4000-8002-${String(index * 3 + n).padStart(12, "0")}`,
+        ),
+      );
+    }
+    const family = Context.get(f.context, SessionFamilyStorage);
+    let familyReads = 0;
+    const before = {
+      locate: f.listReads.locate,
+      records: f.listReads.records,
+      drafts: f.listReads.drafts,
+    };
+    f.listReads.ids.length = 0;
+    f.listReads.titles.length = 0;
+    f.listReads.entries.length = 0;
+    const invoke = (input: JsonObject, sender: agentControl.AgentControlCaller = caller) =>
+      agentControl.invoke("sessions.list", input, sender).pipe(
+        Effect.provideService(SessionFamilyStorage, {
+          ...family,
+          state: () => {
+            familyReads++;
+            return family.state();
+          },
+        }),
+        Effect.provide(f.context),
+      );
+    const listing = yield* invoke({ query: "Same", offset: 3, limit: 2 });
+    expect(listing).toContain("99 sessions; next=5");
+    expect(f.listReads.ids).toHaveLength(699);
+    expect(new Set(f.listReads.ids).size).toBe(699);
+    expect(f.listReads.titles).toEqual(f.sessionsByDirectory.get("/project"));
+    expect(f.listReads.entries).toEqual([]);
+    expect(f.listReads.locate - before.locate).toBe(0);
+    expect(f.listReads.records - before.records).toBe(1);
+    expect(f.listReads.drafts - before.drafts).toBe(1);
+    expect(f.listReads.resolutions).toEqual(["/project"]);
+    expect(familyReads).toBe(1);
+    expect(f.inspections).toHaveLength(2);
+    // No retained roster: removing a transcript is visible on the very next invocation.
+    f.sessionsByDirectory.set("/project", [source]);
+    expect(yield* invoke({ query: "Same" })).toBe("0 sessions");
+    expect(familyReads).toBe(2);
+    expect(f.inspections).toHaveLength(2);
+    f.listReads.titles.length = 0;
+    const narrowedGlobal = yield* invoke(
+      { projectPath: "/other", query: "Same", limit: 1 },
+      {
+        kind: "cake-chat",
+        sessionId: CAKE_CHAT_SESSION_ID,
+        title: "Cake Chat",
+      },
+    );
+    expect(narrowedGlobal).toContain("1503 sessions; next=1");
+    expect(f.listReads.titles).toHaveLength(1503);
+    expect(f.listReads.titles).not.toContain(source);
+    expect(familyReads).toBe(3);
+    expect(f.inspections).toHaveLength(3);
+    expect(f.runtimeCreates).toEqual([source]);
+  }),
+);
+
+it.effect(
+  "lists archived history after checkout retirement and omits colliding standalone identities",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const archived = "00000000-0000-4000-8000-0000deadbeef";
+      f.archivedEntries.set(archived, {
+        version: 2,
+        sessionId: archived,
+        projectPath: "/project",
+        projectName: "Project",
+        workingDirectory: "/deleted-checkout",
+        activeRoot: "/cake/sessions",
+        resolvedRoot: "/cake/resolved",
+        createdAt: "2026-01-01",
+        modifiedAt: "2026-03-01",
+      });
+      // Missing historical transcripts keep their identity/title fallback, as exact lookup does.
+      expect(yield* f.direct("sessions.list", { status: "resolved" })).toContain(
+        `deadbeef resolved ? ? ? ? | ${archived}`,
+      );
+      f.worktreeRecords.push({
+        worktreePath: "/collision",
+        projectPath: "/project",
+        branch: "agent/collision",
+        baseBranch: "main",
+        createdAt: "2026-01-01",
+      });
+      f.sessionsByDirectory.set("/collision", [third]);
+      const result = yield* f.direct("sessions.list", { query: "Same" });
+      expect(result).toContain("1 sessions");
+      expect(result).toContain("00000022");
+      expect(result).not.toContain("00000033");
+      f.unavailable.add(archived);
+      expect(yield* f.direct("sessions.list", { status: "resolved" })).toBe("0 sessions");
+    }),
+);
+
+it.effect("uses family-root resolution in a listing snapshot", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    yield* Context.get(f.context, SessionFamilyStorage).addChild({
+      familyId: "listing-family",
+      parentSessionId: target,
+      parentWorkingDirectory: "/project",
+      childSessionId: third,
+      childWorkingDirectory: "/retired-worktree",
+      requestId: "child-request",
+      projectPath: "/project",
+      createdAt: "2026-01-01",
+    });
+    f.sessionsByDirectory.set("/project", [source, target]);
+    f.sessionsByDirectory.set("/retired-worktree", [third]);
+    expect(yield* f.direct("sessions.list", { status: "resolved" })).toBe("0 sessions");
+    f.resolve();
+    // Storage can migrate a resolved root back into place after the ID discovery pass.
+    f.sessionsByDirectory.set("/project", [source]);
+    const archive = Context.get(f.context, SessionArchiveStorage);
+    const result = yield* agentControl.invoke("sessions.list", { status: "resolved" }, caller).pipe(
+      Effect.provideService(SessionArchiveStorage, {
+        ...archive,
+        resolvedIds: (at) => {
+          f.sessionsByDirectory.set("/project", [source, target]);
+          return archive.resolvedIds(at);
+        },
+      }),
+      Effect.provide(f.context),
+    );
+    expect(result).toContain("2 sessions");
+    expect(result).toContain("00000022 resolved");
+    expect(result).toContain("00000033 resolved");
+    expect(f.listReads.locate).toBe(0);
   }),
 );
 

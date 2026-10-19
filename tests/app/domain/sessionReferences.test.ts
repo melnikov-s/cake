@@ -57,17 +57,21 @@ function fixture() {
         ]),
     }),
     Layer.mock(SessionFamilyStorage, {
-      list: () =>
-        Effect.succeed([
-          {
-            familyId: "family",
-            parentSessionId: parent,
-            projectPath: "/project",
-            workingDirectory: "/project",
-            createdAt: timestamp,
-            children: [],
-          },
-        ]),
+      state: () =>
+        Effect.succeed({
+          families: [
+            {
+              familyId: "family",
+              parentSessionId: parent,
+              projectPath: "/project",
+              workingDirectory: "/project",
+              createdAt: timestamp,
+              children: [],
+            },
+          ],
+          spawnedSessions: [],
+          turns: [],
+        }),
     }),
     Layer.mock(SessionArchiveStorage, {
       resolvedProjects: () =>

@@ -21,20 +21,21 @@ export function workingDirectorySessionPath(workingDirectory: string, root: stri
   return piProjectSessionDirectory(workingDirectory, root).directory;
 }
 
-const isSharedProjectDirectory = (input: {
-  workingDirectory: string;
-  root: string;
-  direct?: boolean;
-}) => !input.direct && piProjectSessionDirectory(input.workingDirectory, input.root).shared;
+const sessionRouting = (input: {
+  readonly workingDirectory: string;
+  readonly root: string;
+  readonly direct?: boolean;
+}) =>
+  input.direct
+    ? { directory: resolve(input.root), shared: false }
+    : piProjectSessionDirectory(input.workingDirectory, input.root);
 
 export function sessionDirectoryPath(input: {
   readonly workingDirectory: string;
   readonly root: string;
   readonly direct?: boolean;
 }) {
-  return input.direct
-    ? resolve(input.root)
-    : workingDirectorySessionPath(input.workingDirectory, input.root);
+  return sessionRouting(input).directory;
 }
 
 const identityFromFilename = (name: string) => {
@@ -127,8 +128,7 @@ export function streamSessionFileIds(input: {
   readonly root: string;
   readonly direct?: boolean;
 }): Stream.Stream<string, unknown> {
-  const directory = sessionDirectoryPath(input);
-  const shared = isSharedProjectDirectory(input);
+  const { directory, shared } = sessionRouting(input);
   return filterWorkingDirectory(
     Stream.fromAsyncIterable(readDirectorySessionIds(directory), (cause) => cause),
     directory,
@@ -143,8 +143,7 @@ export function streamSessionFiles(input: {
   readonly root: string;
   readonly direct?: boolean;
 }): Stream.Stream<SessionFileMetadata, unknown> {
-  const directory = sessionDirectoryPath(input);
-  const shared = isSharedProjectDirectory(input);
+  const { directory, shared } = sessionRouting(input);
   return filterWorkingDirectory(
     Stream.fromAsyncIterable(readDirectoryMetadata(directory), (cause) => cause),
     directory,
@@ -162,7 +161,14 @@ export async function findSessionFileById(
     readonly direct?: boolean;
   },
 ): Promise<string | undefined> {
-  const directory = sessionDirectoryPath(input);
+  return findSessionFileAt(sessionId, input.workingDirectory, sessionRouting(input));
+}
+
+async function findSessionFileAt(
+  sessionId: string,
+  cwd: string,
+  { directory, shared }: { readonly directory: string; readonly shared: boolean },
+): Promise<string | undefined> {
   let entries;
   try {
     entries = await readdir(directory, { withFileTypes: true });
@@ -173,11 +179,7 @@ export async function findSessionFileById(
   const suffix = `_${sessionId}.jsonl`;
   const matches = entries.filter((entry) => entry.isFile() && entry.name.endsWith(suffix));
   if (matches.length > 1) throw new Error(`Session ID collision detected: ${sessionId}`);
-  if (
-    isSharedProjectDirectory(input) &&
-    !piSessionMatchesWorkingDirectory(input.workingDirectory, sessionId, directory)
-  )
-    return undefined;
+  if (shared && !piSessionMatchesWorkingDirectory(cwd, sessionId, directory)) return undefined;
   return matches[0] ? join(directory, matches[0].name) : undefined;
 }
 
@@ -190,11 +192,8 @@ export async function findSessionFileMetadataById(
     readonly direct?: boolean;
   },
 ): Promise<SessionFileMetadata | undefined> {
-  const path = await findSessionFileById(sessionId, input);
+  const routing = sessionRouting(input);
+  const path = await findSessionFileAt(sessionId, input.workingDirectory, routing);
   if (!path) return undefined;
-  return metadataFromFilename(
-    sessionDirectoryPath(input),
-    basename(path),
-    (await stat(path)).mtime,
-  );
+  return metadataFromFilename(routing.directory, basename(path), (await stat(path)).mtime);
 }

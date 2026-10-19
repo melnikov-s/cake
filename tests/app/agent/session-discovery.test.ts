@@ -43,6 +43,25 @@ afterEach(async () => {
 });
 
 describe("loadWorkspacePiSessionPreview", () => {
+  it("uses an explicit Pi title without projecting user messages, and honors a cleared title", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-session-title-"));
+    temporaryDirectories.push(root);
+    const cwd = join(root, "project");
+    const sessionRoot = join(root, "sessions");
+    const manager = SessionManager.create(cwd, cakeWorkspaceSessionDirectory(cwd, sessionRoot));
+    manager.appendMessage({ role: "user", content: "", timestamp: 1 });
+    manager.appendMessage({ role: "user", content: "  Fallback title  ", timestamp: 2 });
+    manager.appendSessionInfo("Explicit title");
+    const entries = vi.spyOn(SessionManager.prototype, "getEntries");
+    const catalog = () =>
+      Effect.runPromise(streamWorkspaceSessions(cwd, sessionRoot).pipe(Stream.runCollect));
+    expect((await catalog())[0]?.title).toBe("Explicit title");
+    expect(entries).not.toHaveBeenCalled();
+    manager.appendSessionInfo("");
+    expect((await catalog())[0]?.title).toBe("Fallback title");
+    expect(entries).toHaveBeenCalledTimes(1);
+  });
+
   it("filters resolved IDs before opening transcripts for catalog titles", async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-session-title-filter-"));
     temporaryDirectories.push(root);

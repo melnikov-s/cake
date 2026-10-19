@@ -265,13 +265,9 @@ export async function loadWorkspacePiSessionPreview(
   direct = false,
   options: { readonly includeParts?: boolean } = {},
 ): Promise<PiSessionPreview | undefined> {
-  const activeDirectory = direct
-    ? resolve(sessionDir)
-    : cakeWorkspaceSessionDirectory(cwd, sessionDir);
-  const activeTarget = await findSessionFile(cwd, sessionId, sessionDir, direct);
-  const target = activeTarget;
+  const target = await findSessionFile(cwd, sessionId, sessionDir, direct);
   if (!target) return undefined;
-  const manager = SessionManager.open(target, activeDirectory, cwd);
+  const manager = SessionManager.open(target, dirname(target), cwd);
   const branch = manager.getBranch();
   let model: { provider: string; modelId: string } | undefined;
   for (const entry of branch) {

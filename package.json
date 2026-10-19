@@ -35,6 +35,7 @@
     "test:electron:full": "pnpm build && node scripts/build-server.mjs && playwright test",
     "measure:session-switch": "node scripts/measure-session-switching.mjs",
     "measure:session-references": "node scripts/measure-session-references.mjs",
+    "measure:session-list": "node scripts/measure-session-list.mjs",
     "typecheck": "tsc --noEmit",
     "visual:capture": "node scripts/visual-capture/run.mjs"
   },
