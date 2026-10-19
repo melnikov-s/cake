@@ -12,6 +12,7 @@ import * as sessionFamilyMessaging from "../session-families/sessionFamilyMessag
 import * as projectSessionAgentPolicy from "./projectSessionAgentPolicy";
 import { cakeModelCatalog, resolveCakeModelSelection } from "../model-presets/cake-model-selection";
 import * as projectSessionLocations from "./projectSessionLocations";
+import * as projectChatInstructions from "../projects/projectChatInstructions";
 import * as sessionReferences from "./sessionReferences";
 import * as managedWorktrees from "../worktrees/managedWorktrees";
 import * as worktreeMerges from "../worktrees/worktreeMerges";
@@ -408,6 +409,14 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
           ),
       },
       agentControl: agentControl(getRuntimeOptions, location.workingDirectory),
+      projectChatInstructions: {
+        get: (input, signal) =>
+          run(projectChatInstructions.get(input, location.projectPath), { signal }),
+        update: (input, signal) =>
+          run(projectChatInstructions.updateFromProjectSession(input, location.projectPath), {
+            signal,
+          }),
+      },
       attachmentReferenceControl: makeAttachmentReferenceControl(sessionId, run),
       messageReferenceControl: {
         list: (input, signal) =>

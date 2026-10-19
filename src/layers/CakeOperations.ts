@@ -94,6 +94,9 @@ export function projectCakeOperations(options: CakeOperationOptions): ProjectCak
       ...createProjectSessionOperations(bridge.api),
       ...createSessionApplicationOperations(bridge.api),
       ...createAgentProjectSettingsOperations(bridge.api),
+      ...(options.projectChatInstructions
+        ? createProjectChatInstructionOperations(options.projectChatInstructions)
+        : []),
       ...createConversationOperations(bridge.api),
       ...createSessionFamilyOperations(bridge.api),
       ...createScheduledMessageOperations(bridge.api),

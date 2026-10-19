@@ -11,8 +11,8 @@ export function createProjectChatInstructionOperations(
   control: ProjectChatInstructionsControl,
 ): CakeOperationDefinition[] {
   const guidance = [
-    "Only the named registered project's permanent Project Chat. Never coding Project Sessions, AGENTS.md, or shared Cake Chat instructions.",
-    "Use the exact registered projectPath from projects.list. A Project Chat can target only its own project; global Cake Chat can target any registered project.",
+    "This text is included only in the named registered project’s permanent Project Chat, never coding Project Session prompts, AGENTS.md, or shared Cake Chat instructions.",
+    "Use the exact registered projectPath from projects.list or project.settings.get, never a worktree path. Project Chats and coding Project Sessions can target only their own registered project; global Cake Chat can target any registered project.",
     "The same text appears in that project's settings → Project Chat instructions. Changes apply on the next Project Chat message.",
   ];
   return [
@@ -40,7 +40,7 @@ export function createProjectChatInstructionOperations(
       guidance: [
         ...guidance,
         "First read settings.project-chat.get; pass its exact text as expectedInstructions and complete merged text as instructions. Preserve unrelated user guidance. A stale read fails; read and merge again.",
-        "Empty instructions explicitly clears them. Read back the same projectPath before claiming success. Storage failures never return success.",
+        "Empty instructions explicitly clears them. Read back the same projectPath before claiming success. Storage failures never return success. Never silently substitute settings.cake-chat.update if this operation is unavailable.",
       ],
       inputSchema: ProjectChatInstructionsUpdate,
       outputSchema: ProjectChatInstructions,

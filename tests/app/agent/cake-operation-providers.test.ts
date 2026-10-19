@@ -350,8 +350,9 @@ describe("Backend-owned Cake operation composition", () => {
     expect(
       coding
         .definitions()
-        .some((operation) => operation.command.startsWith("settings.project-chat.")),
-    ).toBe(false);
+        .filter((operation) => operation.command.startsWith("settings.project-chat."))
+        .map((operation) => operation.command),
+    ).toEqual(["settings.project-chat.get", "settings.project-chat.update"]);
   });
 
   it("exposes Cake Chat's native worktree merge by session reference", async () => {

@@ -6,13 +6,15 @@ import {
   ProjectChatInstructionsUpdate,
 } from "../../contracts/projects/project-chat-instructions";
 import { ApplicationState } from "../../services/storage/ApplicationState";
+import { ProjectAccess } from "../../services/projects/ProjectAccess";
 
 /** Explicit identity must be registered, and a Project Chat may only target itself. */
 const requireProject = (path: string, scope: string | undefined) => {
   if (scope !== undefined && path !== scope)
     return new ProjectError({
       operation: "projectChatInstructions",
-      message: "Project Chat instructions can only target this chat's registered project.",
+      message:
+        "Project Chat instructions can only target the calling conversation’s registered project.",
     });
   return undefined;
 };
@@ -35,6 +37,19 @@ export const get = Effect.fn("ProjectChatInstructions.get")(function* (
     projectPath: project.path,
     instructions: project.settings?.projectChatInstructions ?? "",
   };
+});
+
+/** Coding-session writes retain the existing selected-project authorization boundary. */
+export const updateFromProjectSession = Effect.fn(
+  "ProjectChatInstructions.updateFromProjectSession",
+)(function* (request: ProjectChatInstructionsUpdate, projectPath: string) {
+  const access = yield* ProjectAccess;
+  if (!(yield* access.isAllowed(projectPath)))
+    return yield* new ProjectError({
+      operation: "projectChatInstructions",
+      message: "Project path was not selected by the user.",
+    });
+  return yield* update(request, projectPath);
 });
 
 export const update = Effect.fn("ProjectChatInstructions.update")(function* (

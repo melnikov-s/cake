@@ -416,9 +416,14 @@ return that identity with the committed text, and use the same application-state
 transaction and setting as the dialog. Updates require `expectedInstructions`;
 stale reads and failed persistence never report success. A Project Chat can target
 only its own registered root; global Cake Chat may explicitly target any registered
-Project. A worktree path is not a project identity. Coding sessions can also patch
-their own Project via `project.settings.update`, whose field guidance distinguishes
-the two instruction scopes.
+Project. Coding Project Sessions expose the same dedicated operations, bound to their
+registered Project rather than their working-directory/worktree path. Their updates
+recheck the existing selected-project authorization at execution time. Read-only
+auxiliaries do not receive these controls. All callers use the same persisted setting,
+conflict check, and committed readback; an unavailable operation must never silently
+fall back to the shared writer. Coding sessions can also patch their own Project via
+`project.settings.update`, whose field guidance distinguishes the two instruction scopes;
+prefer the dedicated instruction operations for their read-before-write protection.
 
 Side chats fork the coordinator conversation with Durable `fork()` after the
 completed reply that closes the anchored exchange. The fork inherits Cake Chat's

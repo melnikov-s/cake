@@ -40,6 +40,24 @@ function commands(overrides: Partial<CakeOperationOptions> = {}) {
 afterEach(() => vi.restoreAllMocks());
 
 describe("Project Session operation capabilities", () => {
+  it("grants explicit Project Chat tools only with a capability and never to a read-only auxiliary", () => {
+    const projectChatInstructions = {
+      get: async (input: { projectPath: string }) => ({ ...input, instructions: "" }),
+      update: async (input: { projectPath: string; instructions: string }) => ({
+        projectPath: input.projectPath,
+        instructions: input.instructions,
+      }),
+    };
+    const names = ["settings.project-chat.get", "settings.project-chat.update"];
+    expect(commands({ projectChatInstructions })).toEqual(expect.arrayContaining(names));
+    for (const unavailable of [
+      commands(),
+      commands({ projectChatInstructions, auxiliary: true, tools: ["read"] }),
+      commands({ projectChatInstructions, allowedCakeOperations: ["session.info"] }),
+    ])
+      for (const name of names) expect(unavailable).not.toContain(name);
+  });
+
   it("keeps local operations available without a current-session control", () => {
     const definitions = operations();
     expect(definitions.map((operation) => operation.command)).toEqual(

@@ -23,6 +23,9 @@ import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { SavedDraftStorage } from "../../../src/services/storage/SavedDraftStorage";
 import { backendAgentTools } from "../../../src/contracts/application/backend-agent-tools";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
+import { projectCakeOperations } from "../../../src/layers/CakeOperations";
+import { setCakeChatPreferences, upsertProject } from "../../../src/domain/application/application";
+import { defaultCakeChatPreferences } from "../../../src/contracts/cake-chats/cake-chat-preferences";
 import { createGlobalControlOperations } from "../../../src/domain/application/cake-global-control-operations";
 import type { Attachment } from "../../../src/contracts/conversations/session-contract";
 import { AttachmentUploadError } from "../../../src/contracts/filesystem/attachment-uploads-errors";
@@ -32,6 +35,7 @@ import * as cakeChatRuntime from "../../../src/domain/cake-chats/cakeChatRuntime
 import * as agentControl from "../../../src/domain/application/agentControl";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
+import { ApplicationWriteError } from "../../../src/contracts/storage/application-storage-errors";
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
@@ -96,6 +100,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
   const saves = yield* Queue.unbounded<void>();
   const saveRelease = yield* Deferred.make<void>();
   let pauseSave = false;
+  let failNextSave = false;
   let saveCount = 0;
   let restored = 0;
   let resolved = false;
@@ -144,6 +149,13 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
           saveCount++;
           yield* Queue.offer(saves, undefined);
           if (pauseSave) yield* Deferred.await(saveRelease);
+          if (failNextSave) {
+            failNextSave = false;
+            return yield* new ApplicationWriteError({
+              stage: "write",
+              message: "Injected storage failure",
+            });
+          }
         }),
     }),
   );
@@ -394,6 +406,9 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
       pauseSave = true;
     },
     saveCount: () => saveCount,
+    failNextSave: () => {
+      failNextSave = true;
+    },
     resolve: () => {
       resolved = true;
     },
@@ -621,6 +636,164 @@ it.effect("bounds label discovery and filters project/name before pagination", (
       _tag: "Failure",
     });
   }),
+);
+
+it.effect(
+  "lets coding sessions explicitly update only their registered Project Chat with readback and live authorization",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      yield* upsertProject("/other", "Other").pipe(Effect.provide(f.context));
+      yield* setCakeChatPreferences({
+        ...defaultCakeChatPreferences(),
+        instructions: "Existing shared Zombie Madness rule must stay.",
+      }).pipe(Effect.provide(f.context));
+      yield* f.call("project.settings.update", {
+        changes: {
+          customInstructions: "Existing coding guidance.",
+          projectChatInstructions: "Original chat guidance.",
+        },
+      });
+      f.deny("/worktrees/coding-session");
+      const options = yield* acquireOptions({
+        location: { ...location, workingDirectory: "/worktrees/coding-session" },
+        sessionId: source,
+        newSession: false,
+      }).pipe(Effect.provide(f.context));
+      const registry = new CakeOperationRegistry(
+        projectCakeOperations(options.runtime)({
+          host: { appendEntry: () => undefined },
+          api: () => {
+            throw new Error("No renderer or shared-instruction fallback is permitted");
+          },
+          sessionId: () => source,
+          publishSnapshot: async () => undefined,
+          getAvailableOfType: async () => [],
+        }),
+      );
+      const context = {
+        signal: signal(),
+        toolCallId: "project-guidance",
+        runtime: { sessionId: source, assistantEntryId: "assistant" },
+      };
+      const read = yield* Effect.promise(() =>
+        registry.invoke(
+          {
+            command: "settings.project-chat.get",
+            input: { projectPath: "/project" },
+          },
+          context,
+        ),
+      );
+      expect(read.details).toMatchObject({
+        result: { projectPath: "/project", instructions: "Original chat guidance." },
+      });
+      expect(registry.operationHelp("settings.project-chat.update")).toContain(
+        "Never silently substitute settings.cake-chat.update",
+      );
+      const input = {
+        projectPath: "/project",
+        expectedInstructions: "Original chat guidance.",
+        instructions:
+          "Original chat guidance. Shared checkout unless explicitly asked for a worktree.",
+      };
+      const saved = yield* Effect.promise(() =>
+        registry.invoke({ command: "settings.project-chat.update", input }, context),
+      );
+      expect(saved.details).toMatchObject({
+        result: { projectPath: "/project", instructions: input.instructions },
+      });
+      const readback = yield* Effect.promise(() =>
+        registry.invoke(
+          { command: "settings.project-chat.get", input: { projectPath: "/project" } },
+          context,
+        ),
+      );
+      expect(readback.details).toMatchObject({ result: { instructions: input.instructions } });
+      expect(yield* f.call("project.settings.get")).toMatchObject({
+        projectPath: "/project",
+        settings: {
+          projectChatInstructions: input.instructions,
+          customInstructions: "Existing coding guidance.",
+        },
+      });
+      expect(options.runtime.additionalSystemPrompt).not.toContain(input.instructions);
+      expect(f.state().cakeChatPreferences?.instructions).toBe(
+        "Existing shared Zombie Madness rule must stay.",
+      );
+      expect(f.state().projects.find((p) => p.path === "/other")?.settings).toBeUndefined();
+      yield* Effect.promise(() =>
+        expect(
+          registry.invoke({ command: "settings.project-chat.update", input }, context),
+        ).rejects.toThrow(/changed/),
+      );
+      for (const projectPath of ["/other", "/worktrees/coding-session", "/missing"]) {
+        yield* Effect.promise(() =>
+          expect(
+            registry.invoke(
+              { command: "settings.project-chat.get", input: { projectPath } },
+              context,
+            ),
+          ).rejects.toThrow(/calling conversation/),
+        );
+        yield* Effect.promise(() =>
+          expect(
+            registry.invoke(
+              {
+                command: "settings.project-chat.update",
+                input: { ...input, projectPath, expectedInstructions: "" },
+              },
+              context,
+            ),
+          ).rejects.toThrow(/calling conversation/),
+        );
+      }
+      f.failNextSave();
+      yield* Effect.promise(() =>
+        expect(
+          registry.invoke(
+            {
+              command: "settings.project-chat.update",
+              input: {
+                ...input,
+                expectedInstructions: input.instructions,
+                instructions: "Not persisted.",
+              },
+            },
+            context,
+          ),
+        ).rejects.toThrow(/Injected storage failure/),
+      );
+      const afterFailure = yield* Effect.promise(() =>
+        registry.invoke(
+          { command: "settings.project-chat.get", input: { projectPath: "/project" } },
+          context,
+        ),
+      );
+      expect(afterFailure.details).toMatchObject({ result: { instructions: input.instructions } });
+      f.deny("/project");
+      const saves = f.saveCount();
+      yield* Effect.promise(() =>
+        expect(
+          registry.invoke(
+            {
+              command: "settings.project-chat.update",
+              input: {
+                ...input,
+                expectedInstructions: input.instructions,
+                instructions: "Not authorized.",
+              },
+            },
+            context,
+          ),
+        ).rejects.toThrow(/not selected by the user/),
+      );
+      expect(f.saveCount()).toBe(saves);
+      expect(
+        f.state().projects.find((p) => p.path === "/project")?.settings?.projectChatInstructions,
+      ).toBe(input.instructions);
+      expect(f.requestCalls).toEqual([]);
+    }),
 );
 
 it.effect("executes settings, label lifecycle, and authoritative inspection with no renderer", () =>
