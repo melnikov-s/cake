@@ -88,24 +88,15 @@ describe("Transcript control-protocol navigation boundary", () => {
   });
 });
 
-describe("message selection", () => {
-  const user = (id: string): UiPart => ({
+describe("message selection identity", () => {
+  const text = (id: string, extra: Partial<Extract<UiPart, { kind: "text" }>> = {}): UiPart => ({
     id,
     kind: "text",
-    role: "user",
+    role: "assistant",
     text: id,
     status: "complete",
+    ...extra,
   });
-  const assistant = (id: string, extra: Partial<Extract<UiPart, { kind: "text" }>> = {}) =>
-    ({
-      id,
-      kind: "text",
-      role: "assistant",
-      text: id,
-      status: "complete",
-      ...extra,
-    }) satisfies UiPart;
-  const tool: UiPart = { id: "tool-1", kind: "tool", name: "read", input: "", state: "success" };
 
   function selectionStore(state: { parts: UiPart[] }) {
     return mount(
@@ -116,89 +107,79 @@ describe("message selection", () => {
     );
   }
 
-  it("walks assistant messages only, newest first, and clears past the newest", () => {
+  it("skips activity and empty assistant placeholders but includes attachment-only user anchors", () => {
     const state = observable<{ parts: UiPart[] }>({
       parts: [
-        user("user-1"),
-        assistant("assistant-1"),
-        user("user-2"),
-        tool,
-        assistant("assistant-2"),
-        user("user-3"),
+        text("user", { role: "user", text: "" }),
+        text("empty", { text: "" }),
+        { id: "tool", kind: "tool", name: "read", input: "", state: "success" },
       ],
     });
     using store = selectionStore(state);
-    expect(store.selectNextAssistantMessage()).toBe(false);
+    expect(store.selectPreviousMessage()).toBe(true);
+    expect(store.selectedMessageId).toBe("user");
+    store.selectNextMessage();
     expect(store.selectedMessageId).toBeUndefined();
-
-    expect(store.selectPreviousAssistantMessage()).toBe(true);
-    expect(store.selectedMessageId).toBe("assistant-2");
-    expect(store.messageSelection?.origin).toBe("keyboard");
-    store.selectPreviousAssistantMessage();
-    expect(store.selectedMessageId).toBe("assistant-1");
-
-    // The oldest assistant message stays selected and gets a fresh reveal revision.
-    const revision = store.messageSelection!.revision;
-    expect(store.selectPreviousAssistantMessage()).toBe(true);
-    expect(store.selectedMessageId).toBe("assistant-1");
-    expect(store.messageSelection!.revision).toBe(revision + 1);
-
-    store.selectNextAssistantMessage();
-    expect(store.selectedMessageId).toBe("assistant-2");
-    expect(store.selectNextAssistantMessage()).toBe(true);
-    expect(store.selectedMessageId).toBeUndefined();
-    expect(store.messageSelection).toBeUndefined();
+    state.parts = [text("empty", { text: "" })];
+    expect(store.selectPreviousMessage()).toBe(false);
   });
 
-  it("skips subagent reports and empty assistant text", () => {
+  it("continues keyboard selection from a linked activity between conversational entries", () => {
     const state = observable<{ parts: UiPart[] }>({
       parts: [
-        assistant("assistant-1"),
-        assistant("empty", { text: "" }),
-        assistant("report", {
-          // Only presence matters to selection; the full origin is irrelevant here.
-          subagentReport: { task: "Review" } as Extract<UiPart, { kind: "text" }>["subagentReport"],
-        }),
+        text("before", { role: "user" }),
+        { id: "tool", kind: "tool", name: "read", input: "", state: "success" },
+        text("after"),
       ],
     });
     using store = selectionStore(state);
-    store.selectPreviousAssistantMessage();
-    expect(store.selectedMessageId).toBe("assistant-1");
+    store.navigateToMessage("tool");
+    store.selectPreviousMessage();
+    expect(store.selectedMessageId).toBe("before");
+    store.navigateToMessage("tool");
+    store.selectNextMessage();
+    expect(store.selectedMessageId).toBe("after");
   });
 
-  it("reports nothing to select in a transcript without assistant messages", () => {
-    const state = observable<{ parts: UiPart[] }>({ parts: [user("user-1")] });
-    using store = selectionStore(state);
-    expect(store.selectPreviousAssistantMessage()).toBe(false);
-    expect(store.messageSelection).toBeUndefined();
-  });
-
-  it("continues keyboard selection from a linked message of any role", () => {
+  it("does not confuse a skill with its accompanying text when both settle", () => {
+    const skill = (id: string): UiPart => ({
+      id,
+      kind: "skill",
+      name: "review",
+      content: "Review",
+      renderKey: "input",
+    });
+    const user = (id: string) => text(id, { role: "user", renderKey: "input" });
     const state = observable<{ parts: UiPart[] }>({
-      parts: [assistant("assistant-1"), user("user-1"), assistant("assistant-2")],
+      parts: [skill("live-skill"), user("live-text")],
     });
     using store = selectionStore(state);
-    store.navigateToMessage("user-1");
-    expect(store.selectedMessageId).toBe("user-1");
-    store.selectPreviousAssistantMessage();
-    expect(store.selectedMessageId).toBe("assistant-1");
-    store.navigateToMessage("user-1");
-    store.selectNextAssistantMessage();
-    expect(store.selectedMessageId).toBe("assistant-2");
+    store.selectPreviousMessage();
+    state.parts = [skill("settled-skill"), user("settled-text")];
+    expect(store.selectedMessageId).toBe("settled-text");
+    store.selectPreviousMessage();
+    state.parts = [skill("resettled-skill"), user("resettled-text")];
+    expect(store.selectedMessageId).toBe("resettled-skill");
   });
 
-  it("keeps a streamed message selected when it settles under its entry id", () => {
-    const state = observable<{ parts: UiPart[] }>({
-      parts: [user("user-1"), assistant("stream-1", { renderKey: "turn-1", status: "streaming" })],
-    });
-    using store = selectionStore(state);
-    store.selectPreviousAssistantMessage();
-    expect(store.selectedMessageId).toBe("stream-1");
-    state.parts = [user("user-1"), assistant("entry-1", { renderKey: "turn-1" })];
-    expect(store.selectedMessageId).toBe("entry-1");
-    state.parts = [user("user-1")];
-    expect(store.selectedMessageId).toBeUndefined();
-    // A vanished selection behaves like no selection.
-    expect(store.selectNextAssistantMessage()).toBe(false);
-  });
+  it.each(["assistant", "user", "skill"] as const)(
+    "keeps a streamed %s selected when it settles under its entry id",
+    (kind) => {
+      const part = (id: string): UiPart =>
+        kind === "skill"
+          ? { id, kind, name: "review", content: "Review", renderKey: "turn-1" }
+          : text(id, { role: kind, renderKey: "turn-1" });
+      const state = observable<{ parts: UiPart[] }>({ parts: [part("stream-1")] });
+      using store = selectionStore(state);
+      store.selectPreviousMessage();
+      expect(store.selectedMessageId).toBe("stream-1");
+      const revision = store.messageSelection!.revision;
+      state.parts = [part("entry-1")];
+      expect(store.selectedMessageId).toBe("entry-1");
+      expect(store.messageSelection!.revision).toBe(revision);
+      state.parts = [];
+      expect(store.selectedMessageId).toBeUndefined();
+      expect(store.selectNextMessage()).toBe(false);
+    },
+  );
 });

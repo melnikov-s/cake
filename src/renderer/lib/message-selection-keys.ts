@@ -4,7 +4,7 @@
  * A Chat pane handles these keys only when DOM focus is inside that pane, so
  * split panes never react to each other's keys. Within the pane:
  *
- * - ArrowUp selects the previous assistant message (the newest one when nothing
+ * - ArrowUp selects the previous conversational entry (the newest one when nothing
  *   is selected). ArrowDown moves to the next one; past the newest it clears the
  *   selection. ArrowDown with nothing selected is left alone.
  * - Escape clears an existing selection, ahead of the composer's stop/dismiss.

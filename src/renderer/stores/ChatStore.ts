@@ -252,7 +252,8 @@ export class ChatStore extends Store<ChatStoreProps> {
   @child
   get transcriptInteraction(): TranscriptInteractionStore {
     return createStore(TranscriptInteractionStore, {
-      parts: this.props.parts,
+      // Selection must use the same visible projection as the transcript, not queued inputs.
+      parts: () => this.parts,
       loading: () => this.loading,
       userMessagePresentation: this.props.userMessagePresentation,
     });

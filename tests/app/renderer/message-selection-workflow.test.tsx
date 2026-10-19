@@ -9,10 +9,11 @@ import { Chat } from "../../../src/renderer/components/chat";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { researchOrigin } from "../../fixtures/subagent-report";
 
 afterEach(cleanup);
 
-const text = (id: string, role: "user" | "assistant"): UiPart => ({
+const text = (id: string, role: "user" | "assistant"): Extract<UiPart, { kind: "text" }> => ({
   id,
   kind: "text",
   role,
@@ -25,12 +26,26 @@ const conversation: UiPart[] = [
   text("assistant-1", "assistant"),
   text("user-2", "user"),
   { id: "tool-1", kind: "tool", name: "read", input: "README.md", state: "success" },
+  {
+    ...text("delivered-1", "user"),
+    crossSession: {
+      version: 1,
+      messageId: "00000000-0000-4000-8000-000000000001",
+      threadId: "00000000-0000-4000-8000-000000000002",
+      sequence: 1,
+      expectsResponse: false,
+      sender: { sessionId: "sender", title: "Other session", kind: "project-session" },
+    },
+  },
   text("assistant-2", "assistant"),
+  { ...text("report", "user"), subagentReport: researchOrigin, deliveryState: "queued" },
   text("user-3", "user"),
+  { ...text("queued", "user"), deliveryState: "queued" },
+  { ...text("steering", "user"), deliveryState: "steering" },
 ];
 
 /** Two real Project Session Chats side by side, like a split workbench. */
-function renderSplitPanes() {
+function renderSplitPanes(parts: UiPart[] = conversation) {
   const ids = ["left-session", "right-session"] as const;
   const fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: "/project", name: "Project" })],
@@ -41,7 +56,7 @@ function renderSplitPanes() {
     const snapshot: ConversationSnapshot = {
       sessionId,
       sessionFile: `/project/${sessionId}.jsonl`,
-      parts: conversation,
+      parts,
       models: [],
       thinkingLevel: "off",
       availableThinkingLevels: ["off"],
@@ -90,22 +105,34 @@ function renderSplitPanes() {
 }
 
 // jsdom proves the key routing and Store transitions, not native focus or smooth
-// scrolling; tests/electron/message-selection.spec.ts owns those.
+// scrolling; tests/electron/message-keyboard-selection.smoke.spec.ts owns those.
 describe("Transcript message keyboard selection", () => {
-  it("walks assistant messages from an empty composer and returns to writing", async () => {
+  it("walks displayed user, assistant, cross-session and report entries in both directions and at boundaries", async () => {
     using fixture = renderSplitPanes();
     const { user, left } = fixture;
     await user.click(left.composer);
 
+    const stops = [
+      "user-1",
+      "assistant-1",
+      "user-2",
+      "delivered-1",
+      "assistant-2",
+      "report",
+      "user-3",
+    ];
+    for (const id of stops.toReversed()) {
+      await user.keyboard("{ArrowUp}");
+      expect(left.selected()).toBe(id);
+    }
+    const revision = fixture.leftChat.transcriptInteraction.messageSelection!.revision;
     await user.keyboard("{ArrowUp}");
-    expect(left.selected()).toBe("assistant-2");
-    await user.keyboard("{ArrowUp}");
-    expect(left.selected()).toBe("assistant-1");
-    // The oldest assistant message stays selected instead of reaching user messages.
-    await user.keyboard("{ArrowUp}");
-    expect(left.selected()).toBe("assistant-1");
-    await user.keyboard("{ArrowDown}");
-    expect(left.selected()).toBe("assistant-2");
+    expect(left.selected()).toBe("user-1");
+    expect(fixture.leftChat.transcriptInteraction.messageSelection!.revision).toBe(revision + 1);
+    for (const id of stops.slice(1)) {
+      await user.keyboard("{ArrowDown}");
+      expect(left.selected()).toBe(id);
+    }
     await user.keyboard("{ArrowDown}");
     expect(left.selected()).toBeUndefined();
     expect(document.activeElement).toBe(left.composer);
@@ -114,12 +141,36 @@ describe("Transcript message keyboard selection", () => {
     expect(left.selected()).toBeUndefined();
   });
 
+  it("includes skill inputs and visible session notifications, not injected context", async () => {
+    using fixture = renderSplitPanes([
+      { id: "skill", kind: "skill", name: "review", content: "Review this" },
+      { id: "context", kind: "context", title: "Environment", text: "Injected context" },
+      text("answer", "assistant"),
+      {
+        id: "notification",
+        kind: "context",
+        title: "Session updates",
+        text: "<system-reminder>\nCake session updates\n- [Other session](cake://session/other) finished\n</system-reminder>",
+      },
+    ]);
+    const { user, left } = fixture;
+    await user.click(left.composer);
+    for (const id of ["notification", "answer", "skill"]) {
+      await user.keyboard("{ArrowUp}");
+      expect(left.selected()).toBe(id);
+    }
+    for (const id of ["answer", "notification"]) {
+      await user.keyboard("{ArrowDown}");
+      expect(left.selected()).toBe(id);
+    }
+  });
+
   it("only the pane holding focus responds", async () => {
     using fixture = renderSplitPanes();
     const { user, left, right } = fixture;
     await user.click(right.composer);
     await user.keyboard("{ArrowUp}{ArrowUp}");
-    expect(right.selected()).toBe("assistant-1");
+    expect(right.selected()).toBe("report");
     expect(left.selected()).toBeUndefined();
   });
 
@@ -132,7 +183,7 @@ describe("Transcript message keyboard selection", () => {
 
     await user.clear(left.composer);
     await user.keyboard("{ArrowUp}");
-    expect(left.selected()).toBe("assistant-2");
+    expect(left.selected()).toBe("user-3");
     await user.keyboard("x");
     expect(left.selected()).toBeUndefined();
     expect(left.composer).toHaveProperty("value", "x");
@@ -147,8 +198,8 @@ describe("Transcript message keyboard selection", () => {
     expect(left.selected()).toBeUndefined();
 
     await user.keyboard("{ArrowUp}");
-    await user.click(left.message("assistant-2"));
-    expect(left.selected()).toBe("assistant-2");
+    await user.click(left.message("user-3"));
+    expect(left.selected()).toBe("user-3");
     await user.click(left.message("user-2"));
     expect(left.selected()).toBeUndefined();
   });

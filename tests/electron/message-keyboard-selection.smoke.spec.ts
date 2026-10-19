@@ -4,6 +4,8 @@ import { join, resolve } from "node:path";
 import { _electron as electron, expect, test, type Locator } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { encodeCrossSessionMessage } from "../../src/contracts/conversations/cross-session-message";
+import { messageReference } from "../../src/contracts/conversations/message-reference";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const usage = {
@@ -15,7 +17,7 @@ const usage = {
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 
-test("selects assistant messages with the keyboard in the focused pane", async () => {
+test("selects mixed conversational entries once, in display order, only in the focused pane", async () => {
   test.setTimeout(60_000);
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-message-keyboard-selection-"));
   const userData = join(temporaryRoot, "user-data");
@@ -52,7 +54,11 @@ test("selects assistant messages with the keyboard in the focused pane", async (
       id: `user-${turn}`,
       parentId,
       timestamp,
-      message: { role: "user", content: [{ type: "text", text: `Question ${turn}` }], timestamp },
+      message: {
+        role: "user",
+        content: [{ type: "text", text: `Question ${turn}` }],
+        timestamp: turn * 3,
+      },
     });
     entries.push({
       type: "message",
@@ -66,6 +72,9 @@ test("selects assistant messages with the keyboard in the focused pane", async (
             type: "text",
             text: [
               `Answer ${turn}.`,
+              ...(turn === 3
+                ? [`[Full agent response](${messageReference(sessionId, "delivered-2")})`]
+                : []),
               ...Array.from({ length: 8 }, () => "Long detail. ".repeat(30)),
             ].join("\n\n"),
           },
@@ -75,10 +84,36 @@ test("selects assistant messages with the keyboard in the focused pane", async (
         model: "fixture",
         usage,
         stopReason: "stop",
-        timestamp,
+        timestamp: turn * 3 + 1,
       },
     });
     parentId = `assistant-${turn}`;
+    if (turn < 3) {
+      entries.push({
+        type: "message",
+        id: `delivered-${turn}`,
+        parentId,
+        timestamp,
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: encodeCrossSessionMessage(`Delivered result ${turn}`, {
+                version: 1,
+                messageId: `00000000-0000-4000-8000-00000000000${turn}`,
+                threadId: "00000000-0000-4000-8000-000000000003",
+                sequence: turn,
+                expectsResponse: false,
+                sender: { sessionId: "sender", title: "Other session", kind: "project-session" },
+              }),
+            },
+          ],
+          timestamp: turn * 3 + 2,
+        },
+      });
+      parentId = `delivered-${turn}`;
+    }
   }
   await writeFile(
     join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
@@ -107,10 +142,15 @@ test("selects assistant messages with the keyboard in the focused pane", async (
     const answer = (turn: number) =>
       pane.locator('[data-slot="transcript-item"]').filter({ hasText: `Answer ${turn}.` });
     await expect(answer(3)).toBeVisible({ timeout: 20_000 });
+    // The same delivered entry also appears nested inside an expanded exact-source
+    // preview. It must not become an extra keyboard stop.
+    const source = answer(3).locator('[data-slot="message-source"]');
+    await source.getByRole("button", { name: /Full agent response/ }).click();
+    await expect(source).toContainText("Delivered result 2");
     await composer.click();
     await expect(composer).toBeFocused();
 
-    // Empty composer: Up selects the newest assistant message; focus stays put.
+    // Empty composer: Up selects the newest conversational entry; focus stays put.
     await page.keyboard.press("ArrowUp");
     await expect(selected).toHaveCount(1);
     await expect(selected).toContainText("Answer 3.");
@@ -123,23 +163,33 @@ test("selects assistant messages with the keyboard in the focused pane", async (
       /0px 0px 0px 1px/,
     );
 
+    const stops = [
+      ["user-1", "text"],
+      ["assistant-1", "text-0"],
+      ["delivered-1", "text"],
+      ["user-2", "text"],
+      ["assistant-2", "text-0"],
+      ["delivered-2", "text"],
+      ["user-3", "text"],
+      ["assistant-3", "text-0"],
+    ].map(([entry, suffix]) => `entry-${entry}-${suffix}`);
+    for (const id of stops.slice(0, -1).toReversed()) {
+      await page.keyboard.press("ArrowUp");
+      await expect(selected).toHaveAttribute("data-transcript-anchor-id", id);
+      await expectTopRevealed(transcript, selected);
+    }
+    // Up at the oldest keeps the first user entry selected.
     await page.keyboard.press("ArrowUp");
-    await expect(selected).toContainText("Answer 2.");
-    await expectTopRevealed(transcript, answer(2));
-    await page.screenshot({ path: ".visual-captures/message-keyboard-selection.png" });
-
-    await page.keyboard.press("ArrowUp");
-    await expect(selected).toContainText("Answer 1.");
-    await expectTopRevealed(transcript, answer(1));
-    await page.keyboard.press("ArrowUp");
-    await expect(selected).toContainText("Answer 1.");
-
-    await page.keyboard.press("ArrowDown");
-    await expect(selected).toContainText("Answer 2.");
-    await page.keyboard.press("ArrowDown");
+    await expect(selected).toHaveAttribute("data-transcript-anchor-id", stops[0]!);
+    for (const id of stops.slice(1)) {
+      await page.keyboard.press("ArrowDown");
+      await expect(selected).toHaveAttribute("data-transcript-anchor-id", id);
+    }
     await page.keyboard.press("ArrowDown");
     await expect(selected).toHaveCount(0);
     await expect(composer).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(selected).toHaveCount(0);
 
     // Escape clears ahead of the composer; typing clears and keeps the text.
     await page.keyboard.press("ArrowUp");
@@ -151,6 +201,22 @@ test("selects assistant messages with the keyboard in the focused pane", async (
     await expect(composer).toHaveValue("h");
     // A composer with text keeps its arrows.
     await page.keyboard.press("ArrowUp");
+    await expect(selected).toHaveCount(0);
+    await expect(pane.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await composer.fill("first\nsecond");
+    await composer.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(2, 2));
+    await composer.press("ArrowDown");
+    // Native vertical caret navigation follows pixel position in this proportional
+    // font, not necessarily the same character column on differently shaped lines.
+    await expect
+      .poll(() => composer.evaluate((element: HTMLTextAreaElement) => element.selectionStart))
+      .toBeGreaterThanOrEqual("first\n".length);
+    await composer.press("ArrowUp");
+    await expect
+      .poll(() => composer.evaluate((element: HTMLTextAreaElement) => element.selectionStart))
+      .toBeLessThan("first\n".length);
+    await expect(composer).toHaveValue("first\nsecond");
+    await expect(composer).toBeFocused();
     await expect(selected).toHaveCount(0);
     await composer.fill("");
 

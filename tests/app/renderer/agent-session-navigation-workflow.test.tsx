@@ -181,10 +181,10 @@ describe("Agent session navigation workflow", () => {
       await act(async () => fixture.root.navigationStore.openSessionLink(sessionId, "linked"));
       const interaction = session.conversationSessionStore.chatStore.transcriptInteraction;
       expect(interaction.selectedMessageId).toBe("entry-linked-text-1");
-      act(() => interaction.selectPreviousAssistantMessage());
+      act(() => interaction.selectPreviousMessage());
       expect(interaction.selectedMessageId).toBe("before");
       await act(async () => fixture.root.navigationStore.openSessionLink(sessionId, "linked"));
-      act(() => interaction.selectNextAssistantMessage());
+      act(() => interaction.selectNextMessage());
       expect(interaction.selectedMessageId).toBe("after");
       // An exact activity part link remains exact rather than jumping to text.
       await act(async () =>

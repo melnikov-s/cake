@@ -1,5 +1,6 @@
 import { Store, computed, observable } from "r-state-tree";
 import type { UiPart } from "../../contracts/conversations/session-contract";
+import { sessionNotificationMarkdown } from "../../contracts/cake-chats/session-digest-reminder";
 
 export interface UserMessagePresentationCapabilities {
   setMarkdown(entryId: string, renderAsMarkdown: boolean): Promise<void>;
@@ -13,21 +14,32 @@ export interface TranscriptInteractionStoreProps {
 
 /**
  * The message a transcript pane has selected. Navigation selects a linked message
- * of any kind; keyboard selection walks assistant messages only. Each new
+ * of any kind; keyboard selection walks visible conversational entries. Each new
  * selection gets a fresh revision so the transcript reveals it exactly once.
  */
 export interface MessageSelection {
   messageId: string;
-  /** Presentation identity that survives a streamed part settling under a new id. */
+  /** Kind-qualified presentation identity that survives a streamed part settling under a new id. */
   renderKey?: string;
   origin: "navigation" | "keyboard";
   revision: number;
 }
 
-function isSelectableAssistantMessage(part: UiPart) {
-  return (
-    part.kind === "text" && part.role === "assistant" && !part.subagentReport && Boolean(part.text)
-  );
+/** Only top-level conversation parts are stops, never nested source previews or activity. */
+function isSelectableMessage(part: UiPart) {
+  if (part.kind === "text")
+    // Attachment-only user inputs still have a visible label and stable text anchor.
+    return part.role === "user" || Boolean(part.text) || Boolean(part.subagentReport);
+  if (part.kind === "skill") return true;
+  // Session result notifications are conversational; ordinary injected context is not.
+  return part.kind === "context" && Boolean(sessionNotificationMarkdown(part.text));
+}
+
+function messageRenderKey(part: UiPart | undefined) {
+  // A skill and its accompanying user text share an input renderKey but are distinct rows.
+  return (part?.kind === "text" || part?.kind === "skill") && part.renderKey
+    ? `${part.kind}:${part.renderKey}`
+    : undefined;
 }
 
 export type TranscriptScrollPosition =
@@ -144,15 +156,15 @@ export class TranscriptInteractionStore extends Store<TranscriptInteractionStore
   }
 
   /**
-   * Selects the assistant message before the current selection, or the newest one
-   * when nothing is selected. Returns false when there is no assistant message to
+   * Selects the conversational entry before the current selection, or the newest one
+   * when nothing is selected. Returns false when there is no message to
    * select; at the oldest message the selection stays and is revealed again.
    */
-  selectPreviousAssistantMessage() {
+  selectPreviousMessage() {
     const parts = this.props.parts();
     const before = this.selectedMessageIndex ?? parts.length;
     const target =
-      parts.findLast((part, index) => index < before && isSelectableAssistantMessage(part)) ??
+      parts.findLast((part, index) => index < before && isSelectableMessage(part)) ??
       (this.selectedMessageIndex === undefined ? undefined : parts[this.selectedMessageIndex]);
     if (!target) return false;
     this.selectMessage(target.id, "keyboard");
@@ -160,15 +172,15 @@ export class TranscriptInteractionStore extends Store<TranscriptInteractionStore
   }
 
   /**
-   * Moves the selection to the next assistant message. Moving past the newest one
+   * Moves the selection to the next conversational entry. Moving past the newest one
    * clears the selection. Returns false when nothing was selected.
    */
-  selectNextAssistantMessage() {
+  selectNextMessage() {
     const selected = this.selectedMessageIndex;
     if (selected === undefined) return false;
     const target = this.props
       .parts()
-      .find((part, index) => index > selected && isSelectableAssistantMessage(part));
+      .find((part, index) => index > selected && isSelectableMessage(part));
     if (target) this.selectMessage(target.id, "keyboard");
     else this.clearMessageSelection();
     return true;
@@ -185,9 +197,7 @@ export class TranscriptInteractionStore extends Store<TranscriptInteractionStore
     const parts = this.props.parts();
     let index = parts.findIndex((part) => part.id === selection.messageId);
     if (index < 0 && selection.renderKey)
-      index = parts.findIndex(
-        (part) => part.kind === "text" && part.renderKey === selection.renderKey,
-      );
+      index = parts.findIndex((part) => messageRenderKey(part) === selection.renderKey);
     return index < 0 ? undefined : index;
   }
 
@@ -195,7 +205,7 @@ export class TranscriptInteractionStore extends Store<TranscriptInteractionStore
     const part = this.props.parts().find((candidate) => candidate.id === messageId);
     this.messageSelection = {
       messageId,
-      renderKey: part?.kind === "text" ? part.renderKey : undefined,
+      renderKey: messageRenderKey(part),
       origin,
       revision: ++this.messageSelectionRevision,
     };

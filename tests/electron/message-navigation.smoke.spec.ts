@@ -234,14 +234,14 @@ for (const surface of ["Project Session", "Cake Chat", "Project Chat"] as const)
       // Focus, not a pointer click: clicking the composer intentionally clears selection.
       await composer.focus();
       await composer.press("ArrowUp");
-      await expect(selected).toContainText("Answer 5.");
+      await expect(selected).toContainText("Question 6");
       await expectRevealed(transcript, selected);
       await composer.press("ArrowDown");
       await expect(selected).toContainText("Answer 6.");
       // Rapid navigation crosses unmounted, variable-height rows, then reverses.
-      for (let index = 0; index < 9; index++) await composer.press("ArrowUp");
-      await expect(selected).toContainText("Answer 1.");
-      for (let index = 0; index < 11; index++) await composer.press("ArrowDown");
+      for (let index = 0; index < 15; index++) await composer.press("ArrowUp");
+      await expect(selected).toContainText("Question 1");
+      for (let index = 0; index < 23; index++) await composer.press("ArrowDown");
       await expect(selected).toContainText("Answer 12.");
       await expectRevealed(transcript, selected);
       await selected.getByRole("link", { name: "Linked request", exact: true }).click();
@@ -251,7 +251,7 @@ for (const surface of ["Project Session", "Cake Chat", "Project Chat"] as const)
       await expect(selected).toContainText("Answer 6.");
       await expectRevealed(transcript, selected);
       // Clearing past newest supersedes any virtualizer retry for an earlier target.
-      for (let index = 0; index < 7; index++) await composer.press("ArrowDown");
+      for (let index = 0; index < 13; index++) await composer.press("ArrowDown");
       await expect(selected).toHaveCount(0);
       await expect(composer).toBeFocused();
       await expect

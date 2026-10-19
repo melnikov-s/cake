@@ -254,9 +254,9 @@ export const Chat = observer(function Chat({
     if (!action) return;
     const handled =
       action === "select-previous"
-        ? interaction.selectPreviousAssistantMessage()
+        ? interaction.selectPreviousMessage()
         : action === "select-next"
-          ? interaction.selectNextAssistantMessage()
+          ? interaction.selectNextMessage()
           : (interaction.clearMessageSelection(), true);
     if (!handled) return;
     event.preventDefault();
