@@ -212,6 +212,47 @@ it("persists out-of-order progress through cancellation and SQLite reopen withou
   expect((await reopened.memory.synchronize(signal())).text).not.toContain("late abandoned output");
 });
 
+it("defers ready-only reads of a persisted serial merge chain without repeating completed work", async () => {
+  const started = Promise.withResolvers<void>();
+  const pending = Promise.withResolvers<string>();
+  const summarize = vi.fn<DurableMemoryOptions["summarize"]>(async ({ context }) => {
+    const { id, n } = identify(context);
+    if (n === 8) {
+      started.resolve();
+      return pending.promise;
+    }
+    return `built-${id}+${n}: ${"s".repeat(300)}`;
+  });
+  const f = await fixture(summarize);
+  for (let i = 0; i < 8; i += 1) await f.append(`RAW_${i} `.repeat(100));
+  const stop = new AbortController();
+  const building = f.memory.synchronize(stop.signal);
+  await started.promise;
+  const failure = expect(building).rejects.toBeDefined();
+  stop.abort();
+  await failure;
+  const calls = summarize.mock.calls.length;
+  const nodes = await f.nodes();
+  expect(nodes).toHaveLength(14); // All leaves and lower merges are already committed.
+  expect(
+    await f.memory.synchronize(signal(), undefined, undefined, { readyOnly: true }),
+  ).toMatchObject({
+    complete: false,
+    sourceCount: 8,
+  });
+  expect(summarize).toHaveBeenCalledTimes(calls);
+  expect(await f.nodes()).toEqual(nodes);
+  pending.resolve("abandoned result");
+  summarize.mockResolvedValue("talk: resumed final merge");
+  expect((await f.memory.synchronize(signal())).complete).toBe(true);
+  expect(summarize).toHaveBeenCalledTimes(calls + 1);
+  expect(await f.nodes()).toHaveLength(15);
+  const ready = await f.memory.synchronize(signal(), undefined, undefined, { readyOnly: true });
+  expect(ready).toMatchObject({ complete: true, sourceCount: 8 });
+  expect(ready.text).not.toContain("abandoned result");
+  expect(summarize).toHaveBeenCalledTimes(calls + 1);
+});
+
 it.each([4_000, 40_000])(
   "maintains separate 16/32 KB compaction references and binary view/zoom invariants across source windows (budget %i)",
   async (budget) => {
@@ -349,6 +390,12 @@ it.each([1, 2])(
     cleanup.pop();
     const summarize = vi.fn(async () => "must not run");
     const reopened = await fixture(summarize, await openNodeSqliteStorage(database), 4_000);
+    expect(
+      await reopened.memory.synchronize(signal(), undefined, undefined, { readyOnly: true }),
+    ).toMatchObject({ complete: false, sourceCount: 0 });
+    expect(summarize).not.toHaveBeenCalled();
+    expect(await reopened.nodes()).toHaveLength(1); // No migrated work on a cache-only read.
+    expect((await reopened.root.context(BACKGROUND_CONTEXT)).messages).toEqual(active.messages);
     expect((await reopened.memory.synchronize(signal())).text).toBe(
       "<chat>\n0+1|user: Persisted original\n</chat>",
     );

@@ -414,8 +414,10 @@ its first request repeats Cake Chat's prefix exactly. That relies on Durable 1.1
 is experimental.
 
 Permanent Chat retains its active prefix between warm turns. The existing conservative
-policy may reset on unknown/uncertain cache status, inferred coldness, or the effective
-input limit; restart alone is not expiry. Regular Project Sessions do not acquire a
+policy may reset on unknown/uncertain cache status or inferred coldness only when the
+complete memory index is already built; it never waits for summary providers just for cache
+freshness. The effective input limit still requires preparation; restart alone is not expiry.
+Regular Project Sessions do not acquire a
 cache-expiry compaction trigger. The context-policy document stores request/completion
 times, requested retention separately from resolved provider-payload policy, reported
 reads/aggregate writes and available five-minute/one-hour creation counters. Missing
@@ -510,9 +512,12 @@ SDK context cancellation, not a hard real-time guarantee for uninterruptible I/O
 nodes remain durable when lifecycle cancellation pauses a large catch-up.
 
 A replacement active head publishes only after the complete requested memory view persists.
-Preparation failure retains the previous head and clears activity. Failed optional cache-only
-maintenance can continue with that intact head when it still fits the input cap and output
-reserve; limit/overflow resets and cancellation are never bypassed. Required preparation
+Preparation failure retains the previous head and clears activity. Optional cache-only
+preparation uses a ready-only index read: pending leaves/merges, unindexed dialogue (including
+a migrated-index rebuild), or insufficient room for the handoff defer it to idle maintenance.
+The foreground continues with its intact head within the input cap and output reserve,
+without launching summary requests or publishing a partial reset. Limit/overflow resets and
+cancellation are never bypassed. Required preparation
 failures use non-provider error text so Durable cannot replay them through generic coordinator
 retries. Genuine coordinator provider failures retain their normal retry policy. Diagnostics expose fixed reason labels,
 application-call counts and elapsed time, never source bodies or raw summarizer diagnostics.

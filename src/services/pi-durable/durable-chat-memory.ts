@@ -536,13 +536,23 @@ export function createDurableChatMemory(
     signal: AbortSignal,
     cutoff?: EntryId,
     budget = options.budget(),
-    batch: { maxOriginals?: number; work?: DurableMemoryWork } = {},
+    batch: { maxOriginals?: number; readyOnly?: boolean; work?: DurableMemoryWork } = {},
   ): Promise<DurableChatMemoryView & { complete: boolean }> => {
     const work = batch.work ?? durableMemoryWork(signal);
     signal = work.signal;
     const current = await state(signal);
+    // Advisory cache refresh may only consume a complete persisted index. Never
+    // wait on a pending DAG (including a serial merge chain) or launch providers.
+    const incomplete = () => ({
+      text: "",
+      complete: false,
+      bytes: 0,
+      sourceCount: current.count,
+      partCount: current.parts.length,
+    });
     let processed = 0;
     if (current.pending) {
+      if (batch.readyOnly) return incomplete();
       processed += current.pending.jobs.filter(
         (job) => job.n === 1 && job.id >= current.count,
       ).length;
@@ -563,6 +573,7 @@ export function createDurableChatMemory(
         for (const original of page.items) {
           signal.throwIfAborted();
           if (sourceText(original)) {
+            if (batch.readyOnly) return incomplete();
             if (processed + originals.length >= (batch.maxOriginals ?? Infinity)) {
               if (originals.length) {
                 await plan(current, originals, signal);
@@ -585,8 +596,10 @@ export function createDurableChatMemory(
     }
     const text = await fitViews(current, signal, budget);
     await save(current, signal);
-    if (memoryBytes(text) > current.budget)
+    if (memoryBytes(text) > current.budget) {
+      if (batch.readyOnly) return incomplete();
       throw new Error("Cake Chat history cannot fit its memory budget");
+    }
     return {
       text,
       complete,

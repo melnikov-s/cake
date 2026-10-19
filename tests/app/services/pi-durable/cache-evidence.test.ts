@@ -259,6 +259,7 @@ it("captures the installed five-minute default and retains conservative unknown 
   expect(cache.retention).toBeUndefined();
   expect(cache.resolvedRetention).toMatchObject({ anthropic5m: true, anthropic1h: false });
   expect(cakeChatCacheFreshness(cache, at).state).toBe("unknown");
+  await chat.engine.index(new AbortController().signal); // Only completed idle work can reset for cache freshness.
   await chat.send("Conservative independent input", "second");
   expect((await chat.status()).lastSummary?.reason).toBe("cache-unknown");
   expect(f.summarize).toHaveBeenCalled();

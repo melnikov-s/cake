@@ -245,6 +245,7 @@ export async function openDurableChatEngine(options: {
         );
         const newInput = input !== undefined && boundary.input !== input;
         const reset = async (reason: "limit" | "cache-cold" | "cache-unknown" | "overflow") => {
+          const readyOnly = reason === "cache-cold" || reason === "cache-unknown";
           preparing = true;
           preparationWork ??= durableMemoryWork(signal);
           const context = withAbortSignal(preparationWork.signal, BACKGROUND_CONTEXT);
@@ -291,16 +292,26 @@ export async function openDurableChatEngine(options: {
           // SAFETY: Durable entry ids are nonnegative integers. The inclusive
           // cutoff excludes the latest tool tail; earlier user inputs also stay verbatim.
           const cutoff = ((entries[start]?.id ?? submission.entry) - 1) as EntryId;
+          const defer = async () => {
+            // Cache freshness is not admission. Leave the active head intact
+            // and let the idle owner resume the persisted rebuild after this run.
+            if (pendingCutoff === undefined || pendingCutoff < cutoff) pendingCutoff = cutoff;
+            await root.commit(async (tx) => {
+              (await tx.doc(BoundaryDoc, root.id)).input = input;
+            }, context);
+          };
           const system = getCurrentSystemMessage(active.messages);
           const base = [...(system ? [system] : []), ...current];
           const remaining =
             limit -
             estimateContextTokens(base.map((message) => withoutDurableInputPresentation(message)))
               .tokens;
-          if (remaining < 128)
+          if (remaining < 128) {
+            if (readyOnly) return defer();
             throw new Error(
               "The current input, tools and instructions cannot fit the context limit. Shorten the input or raise the Cake Chat limit.",
             );
+          }
           let hasHistory: boolean;
           let historyCursor;
           do {
@@ -328,7 +339,11 @@ export async function openDurableChatEngine(options: {
                 options.memory.budget(),
                 Math.floor(((remaining - 64) * 3.5) / 2),
               );
-              const view = await index(signal, cutoff, budget, { work: preparationWork });
+              const view = await index(signal, cutoff, budget, {
+                work: preparationWork,
+                readyOnly,
+              });
+              if (!view.complete) return defer();
               const messages: Message[] = system ? [system] : [];
               messages.push(
                 {
@@ -339,8 +354,10 @@ export async function openDurableChatEngine(options: {
                 ...current,
               );
               const after = durableContextBreakdown(messages).totalTokens;
-              if (after >= limit)
+              if (after >= limit) {
+                if (readyOnly) return defer();
                 throw new Error("Summarized context cannot fit the Cake Chat context limit.");
+              }
               await root.commit(async (tx) => {
                 const doc = await tx.doc(BoundaryDoc, root.id);
                 const policy = await tx.doc(ContextPolicyDoc, root.id);
@@ -366,22 +383,7 @@ export async function openDurableChatEngine(options: {
           }
         };
         if (input !== undefined && (reason === "limit" || (newInput && reason))) {
-          try {
-            await reset(reason);
-          } catch (error) {
-            signal.throwIfAborted();
-            // Cache freshness is advisory, not an admission requirement. If memory
-            // maintenance fails, the unchanged active head still fits this model's
-            // input cap and output reserve. Never bypass a required limit/overflow
-            // reset, publish a partial handoff, or recover an unrelated defect.
-            const failure = error instanceof DurableMemoryError ? error.reason : undefined;
-            if (reason === "limit" || !failure) throw error;
-            options.onReport(
-              new Error(
-                `Cake Chat optional memory maintenance paused (${failure}); continuing with the existing context within its limit. Originals and committed memory progress are preserved.`,
-              ),
-            );
-          }
+          await reset(reason);
         } else if (newInput) {
           await root.commit(async (tx) => {
             (await tx.doc(BoundaryDoc, root.id)).input = input;
