@@ -5,29 +5,14 @@ import {
   withAbortSignal,
 } from "@earendil-works/chord/context";
 
-// SDK-boundary budgets include queue wait, storage/model resolution and every completion.
-// Provider calls keep the existing utility boundary's 120s ceiling, never more
-// than the enclosing work allowance. These are cancellable runtime allowances,
-// not node/retry policy: the public OptMem chat spec permits five size attempts.
-// Optional call allowances count application invocations, not hidden transport retries.
 export class DurableMemoryError extends Schema.TaggedError<DurableMemoryError>()(
   "DurableMemoryError",
-  {
-    reason: Schema.Literals([
-      "work-allowance",
-      "completion-failed",
-      "completion-allowance",
-      "empty-summary",
-    ]),
-  },
+  { reason: Schema.Literals(["completion-failed", "empty-summary"]) },
 ) {}
 
-export const MEMORY_CALL_MS = 120_000;
-export const MEMORY_FOREGROUND_WORK = { milliseconds: 60_000, calls: Infinity };
-export const MEMORY_BACKGROUND_WORK = { milliseconds: 30_000, calls: Infinity };
-
-export function durableMemoryWork(parent: AbortSignal, limits = MEMORY_FOREGROUND_WORK) {
-  const signal = AbortSignal.any([parent, AbortSignal.timeout(limits.milliseconds)]);
+/** Catch-up has no wall-clock or call-count deadline. Its lifecycle owner cancels
+ * on Stop, foreground preemption or closure; successful nodes commit independently. */
+export function durableMemoryWork(signal: AbortSignal) {
   let calls = 0;
   const started = Date.now();
   return {
@@ -35,27 +20,19 @@ export function durableMemoryWork(parent: AbortSignal, limits = MEMORY_FOREGROUN
     metrics: () => ({ calls, elapsedMs: Date.now() - started }),
     async complete(operation: (signal: AbortSignal) => Promise<string>) {
       signal.throwIfAborted();
-      if (calls >= limits.calls) throw new DurableMemoryError({ reason: "work-allowance" });
       calls += 1;
-      const callSignal = AbortSignal.any([signal, AbortSignal.timeout(MEMORY_CALL_MS)]);
       // Release the serialized owner even if an external callback ignores cancellation.
       // The abandoned callback cannot commit nodes: only synchronize owns persistence.
       try {
         const result = await awaitWithContext(
-          operation(callSignal),
-          withAbortSignal(callSignal, BACKGROUND_CONTEXT),
+          operation(signal),
+          withAbortSignal(signal, BACKGROUND_CONTEXT),
         );
-        callSignal.throwIfAborted();
+        signal.throwIfAborted();
         return result;
       } catch {
-        if (parent.aborted) throw parent.reason;
-        throw new DurableMemoryError({
-          reason: signal.aborted
-            ? "work-allowance"
-            : callSignal.aborted
-              ? "completion-allowance"
-              : "completion-failed",
-        });
+        signal.throwIfAborted();
+        throw new DurableMemoryError({ reason: "completion-failed" });
       }
     },
   };

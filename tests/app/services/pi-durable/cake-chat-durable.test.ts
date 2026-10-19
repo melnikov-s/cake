@@ -627,12 +627,13 @@ it("pages originals once without resets, clocks or summary nodes", async () => {
   expect(new Set(ids).size).toBe(90);
 });
 
-it("admits before failing summarization, retains its head and recovers without losing originals", async () => {
+it("admits before required summarization fails, retains its head and recovers without losing originals", async () => {
   const f = await fixture();
   await f.send("Hello", "first");
-  const original = "USER_DETAIL ".repeat(100);
+  const original = "USER_DETAIL ".repeat(300);
   f.summarize.mockRejectedValue(new Error("Summarizer unavailable"));
   await f.send(original, "long");
+  f.limit(512);
   const accepted = await f.submit("Continue", "accepted-before-summary");
   const failed = await accepted.wait(BACKGROUND_CONTEXT);
   expect(failed).toMatchObject({ status: "unanswered", reason: "model_error" });
@@ -645,9 +646,10 @@ it("admits before failing summarization, retains its head and recovers without l
   expect(JSON.stringify((await readDurableOriginalPage(f.engine.root)).parts)).toContain(
     "Continue",
   );
+  f.limit(300_000);
   f.summarize.mockResolvedValue("user: precise original details remain on disk");
   await f.send("Try again", "retry");
-  expect((await f.view()).sourceCount).toBe(8);
+  expect((await f.view()).sourceCount).toBe(7); // The failed assistant response has no dialogue text.
   expect((await f.zoom(2, 1)).text).toContain(original);
 });
 
@@ -1163,7 +1165,33 @@ it("closes blocked background maintenance even when the completion ignores cance
   expect(f.onReport).not.toHaveBeenCalled();
 });
 
-it("does not route preparation failures through generic provider retries or immediately replay them as maintenance", async () => {
+it("continues with the intact, admissible context when cold-cache memory maintenance fails", async () => {
+  const f = await fixture(undefined, 20_000, new MemoryStorage(), undefined, true, false, {
+    summarize: async () => {
+      throw new Error("429 provider timeout; private summary body");
+    },
+    retry: { enabled: true, maxRetries: 3, baseDelayMs: 1 },
+  });
+  const original = "PRESERVE_ORIGINAL_DETAIL ".repeat(100);
+  await f.send(original, "history");
+  await vi.waitFor(() => expect(f.onReport).toHaveBeenCalledOnce());
+  const head = (await f.engine.root.context(BACKGROUND_CONTEXT)).head?.id;
+  f.advance(6 * 60_000);
+  expect((await f.send("Continue", "cold-cache")).status).toBe("done");
+  expect(f.requests).toHaveLength(2);
+  expect(JSON.stringify(f.requests[1])).toContain(original);
+  expect(JSON.stringify(f.requests[1])).toContain("Continue");
+  expect((await f.engine.root.context(BACKGROUND_CONTEXT)).head?.id).toBe(head);
+  expect((await f.engine.contextStatus(durableModel)).activity).toBeUndefined();
+  expect(f.onReport.mock.calls.map(([error]) => String(error)).join(" ")).toContain(
+    "optional memory maintenance paused (completion-failed)",
+  );
+  expect(f.onReport.mock.calls.map(([error]) => String(error)).join(" ")).not.toContain(
+    "private summary body",
+  );
+});
+
+it("does not route required preparation failures through generic provider retries or immediately replay them as maintenance", async () => {
   const f = await fixture(undefined, 20_000, new MemoryStorage(), undefined, true, false, {
     summarize: async () => {
       throw new Error(
@@ -1175,6 +1203,7 @@ it("does not route preparation failures through generic provider retries or imme
   await f.send("PREPARATION_DETAIL ".repeat(100), "history");
   await vi.waitFor(() => expect(f.onReport).toHaveBeenCalledOnce());
   const before = f.summarize.mock.calls.length;
+  f.limit(512);
   f.advance(6 * 60_000);
   const failed = await f.send("Continue", "failure");
   expect(failed).toMatchObject({ status: "unanswered", reason: "model_error" });
@@ -1189,6 +1218,7 @@ it("does not route preparation failures through generic provider retries or imme
   expect(f.onReport.mock.calls.map(([error]) => String(error)).join(" ")).not.toContain(
     "secret fixture body",
   );
+  f.limit(300_000);
   f.summarize.mockResolvedValue("user: details remain available through zoom");
   expect((await f.send("Explicit continuation", "continue")).status).toBe("done");
 });

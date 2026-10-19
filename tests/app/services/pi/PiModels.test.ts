@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { it } from "@effect/vitest";
 import { ModelRuntime, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { Cache, Deferred, Effect, Fiber, Ref } from "effect";
+import { TestClock } from "effect/testing";
 import { describe, it as vitestIt, vi } from "vitest";
 import {
   makePiModelsLayer,
@@ -482,6 +483,68 @@ describe("PiModels", () => {
     }).pipe(Effect.provide(layer));
   });
 
+  it.effect("finishes lifecycle-owned memory completion after more than two minutes", () =>
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      const layer = makePiModelsLayer({
+        loadCatalog: () => Effect.succeed([model()]),
+        loadNonChatCatalog: () => Effect.succeed([]),
+        refreshCatalog: () => Effect.void,
+        login: () => Effect.void,
+        logout: () => Effect.void,
+        complete: () =>
+          Deferred.succeed(started, undefined).pipe(
+            Effect.andThen(Effect.sleep("3 minutes")),
+            Effect.as("memory summary"),
+          ),
+      });
+      const operation = Effect.gen(function* () {
+        return yield* (yield* PiModels).complete({
+          selection,
+          instructions: "Compress conversation memory",
+          context: "history",
+          chat: { tools: [], previous: [] },
+          maximumOutputCharacters: 4_096,
+        });
+      }).pipe(Effect.provide(layer));
+      const fiber = yield* Effect.forkChild(operation);
+      yield* Deferred.await(started);
+      yield* TestClock.adjust("3 minutes");
+      assert.equal(yield* Fiber.join(fiber), "memory summary");
+    }),
+  );
+
+  it.effect("still enforces an explicit deadline for other utility work", () =>
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      const layer = makePiModelsLayer({
+        loadCatalog: () => Effect.succeed([model()]),
+        loadNonChatCatalog: () => Effect.succeed([]),
+        refreshCatalog: () => Effect.void,
+        login: () => Effect.void,
+        logout: () => Effect.void,
+        complete: () => Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never)),
+      });
+      const operation = Effect.gen(function* () {
+        return yield* Effect.flip(
+          (yield* PiModels).complete({
+            selection,
+            instructions: "Return a title",
+            context: "context",
+            maximumOutputCharacters: 80,
+            timeoutMs: 1_000,
+          }),
+        );
+      }).pipe(Effect.provide(layer));
+      const fiber = yield* Effect.forkChild(operation);
+      yield* Deferred.await(started);
+      yield* TestClock.adjust("1 second");
+      const error = yield* Fiber.join(fiber);
+      assert.equal(error._tag, "PiModelCompletionError");
+      assert.equal(error.message, "Bounded model completion timed out");
+    }),
+  );
+
   it.effect("interrupts the provider request when bounded completion is cancelled", () =>
     Effect.gen(function* () {
       const started = yield* Deferred.make<void>();
@@ -504,7 +567,6 @@ describe("PiModels", () => {
           instructions: "Return a title",
           context: "context",
           maximumOutputCharacters: 80,
-          timeoutMs: 1_000,
         });
       }).pipe(Effect.provide(layer));
       const fiber = yield* Effect.forkChild(operation);

@@ -88,13 +88,14 @@ const initial = (): State => ({
 });
 const StateDoc = defineDoc<State>({
   kind: "cake.chat-memory-state",
-  version: 2,
+  version: 3,
   scope: "conversation",
   history: "latest",
   fork: "initial",
   initial,
-  // Storage migration adds resumable jobs/reference view, never rebuilds old nodes.
-  migrate: (value) => Schema.decodeUnknownSync(State)(value),
+  // Earlier indexes included tool traffic. Rebuild only the derived tree from
+  // authoritative originals; never reuse old summaries or pending merge jobs.
+  migrate: () => initial(),
 });
 // Immutable nodes use indexed entry reads, not document families: Durable retains loaded
 // document trackers for its lifetime. Only StateDoc (bounded views/DAG + logarithmic forest) is live.
@@ -116,18 +117,13 @@ export interface DurableMemoryOptions {
 }
 
 function durableMessageText(message: Message): string {
-  if (message.role === "system") return "";
+  if (message.role === "system" || message.role === "toolResult") return "";
   if (message.role === "assistant")
-    return (
-      message.content
-        .flatMap((block) => {
-          if (block.type === "text") return [`talk: ${block.text}`];
-          if (block.type === "toolCall")
-            return [`tool: ${block.name} ${JSON.stringify(block.arguments)}`];
-          return []; // Reasoning remains in the authoritative transcript, never in the summary index.
-        })
-        .join("\n") + (message.errorMessage ? `\nerror: ${message.errorMessage}` : "")
-    );
+    return message.content
+      .flatMap((block) =>
+        block.type === "text" && block.text.trim() ? [`talk: ${block.text}`] : [],
+      )
+      .join("\n"); // Tool calls, reasoning and error metadata stay in originals, not memory.
   const rawText = Array.isArray(message.content)
     ? message.content
         .map((block) =>
@@ -137,8 +133,6 @@ function durableMessageText(message: Message): string {
     : message.content;
   const input = message.role === "user" ? durableInputPresentation(rawText) : undefined;
   const text = input?.body ?? rawText;
-  if (message.role === "toolResult")
-    return `echo: ${message.toolName}${message.isError ? " failed" : ""}: ${text}`;
   if (input?.subagentReport)
     return `work: received worker report ${JSON.stringify(input.subagentReport)}; receipt does not establish user-facing communication: ${text}`;
   const context = splitContextReminders(text);
@@ -164,7 +158,7 @@ function durableMessageText(message: Message): string {
 const sourceText = (entry: EntryRecord) => {
   // Only originals enter the tree. Reset handoffs, system declarations, emergency
   // compaction summaries and our derived nodes must never be summarized a second time.
-  if (!["pi.user", "pi.assistant", "pi.tool-result"].includes(entry.kind)) return "";
+  if (!["pi.user", "pi.assistant"].includes(entry.kind)) return "";
   return entry.model?.map(durableMessageText).filter(Boolean).join("\n") ?? "";
 };
 const render = (nodes: readonly StoredNode[]) =>
@@ -602,7 +596,7 @@ export function createDurableChatMemory(
     };
   };
 
-  const lookup = async (id: number, n: number, signal: AbortSignal) => {
+  const lookupIndexed = async (id: number, n: number, signal: AbortSignal) => {
     const current = await state(signal);
     if (
       !Number.isSafeInteger(id) ||
@@ -625,6 +619,27 @@ export function createDurableChatMemory(
       if (!found.children) throw new Error("Cake Chat summary has no children");
       found = await node(found.children[id < found.id + found.n / 2 ? 0 : 1], signal);
     }
+    return found;
+  };
+
+  const lookup = async (id: number, n: number, signal: AbortSignal) => {
+    const found = await lookupIndexed(id, n, signal);
+    const { head } = await root.context(contextFor(signal));
+    // Rebuilding renumbers ranges without rewriting the live head. A line from
+    // that head must never silently resolve to a newly indexed, different source.
+    if (
+      head &&
+      found.entry > head.id &&
+      head.model?.some(
+        (message) =>
+          message.role === "user" &&
+          typeof message.content === "string" &&
+          message.content.startsWith("<chat>\n"),
+      )
+    )
+      throw new Error(
+        "This memory range is no longer in the active memory index. Read original history until the next memory handoff.",
+      );
     return found;
   };
 

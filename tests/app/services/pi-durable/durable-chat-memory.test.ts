@@ -1,8 +1,10 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
+  AssistantEntry,
   createRegistry,
   Harness,
   MemoryStorage,
+  ToolResultEntry,
   UserEntry,
   type Storage,
 } from "@earendil-works/pi-durable";
@@ -15,12 +17,8 @@ import {
   createDurableChatMemory,
   type DurableMemoryOptions,
 } from "../../../../src/services/pi-durable/durable-chat-memory";
-import {
-  durableMemoryWork,
-  MEMORY_CALL_MS,
-  MEMORY_FOREGROUND_WORK,
-} from "../../../../src/services/pi-durable/durable-memory-work";
-import { durableModels } from "../../../fixtures/durable-chat";
+import { durableMemoryWork } from "../../../../src/services/pi-durable/durable-memory-work";
+import { durableAnswer, durableModels } from "../../../fixtures/durable-chat";
 
 const cleanup: Array<() => Promise<unknown>> = [];
 afterEach(async () => {
@@ -78,6 +76,108 @@ async function fixture(storage: Storage = new MemoryStorage(), budget = 4_000) {
     view: () => memory.synchronize(signal()),
   };
 }
+
+it("indexes dialogue text without tool traffic or reasoning and preserves complete originals", async () => {
+  const f = await fixture();
+  await f.append("Remember the decision");
+  const originals = await f.root.commit(async (tx) => {
+    const call = {
+      type: "toolCall" as const,
+      id: "call-1",
+      name: "inspect",
+      arguments: { secret: "TOOL_ARGUMENT" },
+    };
+    const toolOnly = await tx.appendEntry(AssistantEntry, f.root.id, {
+      model: [durableAnswer("", [call, { type: "thinking", thinking: "PRIVATE_REASONING" }])],
+    });
+    const result = await tx.appendEntry(ToolResultEntry, f.root.id, {
+      data: { diagnostics: [] },
+      model: [
+        {
+          role: "toolResult",
+          toolCallId: "call-1",
+          toolName: "inspect",
+          content: [{ type: "text", text: "TOOL_RESULT ".repeat(200) }],
+          isError: false,
+          timestamp: 1,
+        },
+      ],
+    });
+    const mixed = await tx.appendEntry(AssistantEntry, f.root.id, {
+      model: [
+        durableAnswer("", [
+          { type: "text", text: "We chose the dialogue-only policy. ".repeat(40) },
+          call,
+          { type: "thinking", thinking: "PRIVATE_REASONING" },
+        ]),
+      ],
+    });
+    await tx.appendEntry(AssistantEntry, f.root.id, {
+      model: [{ ...durableAnswer("   "), errorMessage: "ERROR_METADATA" }],
+    });
+    return { toolOnly, result, mixed };
+  }, BACKGROUND_CONTEXT);
+  const before = await f.root.context(BACKGROUND_CONTEXT);
+  const view = await f.view();
+  expect(view.sourceCount).toBe(2);
+  expect(f.summarize).toHaveBeenCalledOnce();
+  expect(inputText(f.summarize.mock.calls[0]![0].context)).toBe(
+    `talk: ${"We chose the dialogue-only policy. ".repeat(40)}`,
+  );
+  const zoom = await f.memory.zoom(1, 1, signal());
+  expect(zoom.text).toContain("talk: We chose the dialogue-only policy.");
+  expect(zoom.text).not.toMatch(/TOOL_ARGUMENT|TOOL_RESULT|PRIVATE_REASONING|ERROR_METADATA/);
+  expect(zoom.messages).toEqual(originals.mixed.model);
+  // Neither indexing nor zoom rewrites the live context or the stored originals.
+  expect((await f.root.context(BACKGROUND_CONTEXT)).messages).toEqual(before.messages);
+  expect(
+    await f.root.entries(
+      { minEntryId: originals.toolOnly.id, maxEntryId: originals.toolOnly.id },
+      1,
+      undefined,
+      BACKGROUND_CONTEXT,
+    ),
+  ).toMatchObject({ items: [originals.toolOnly] });
+  expect(
+    await f.root.entries(
+      { minEntryId: originals.result.id, maxEntryId: originals.result.id },
+      1,
+      undefined,
+      BACKGROUND_CONTEXT,
+    ),
+  ).toMatchObject({ items: [originals.result] });
+  await f.view();
+  expect(f.summarize).toHaveBeenCalledOnce();
+});
+
+it("advances across pages of tool-only entries and indexes subsequent dialogue exactly once", async () => {
+  const f = await fixture();
+  await f.append("First request");
+  for (let i = 0; i < 70; i += 1)
+    await f.root.commit(
+      (tx) =>
+        tx.appendEntry(AssistantEntry, f.root.id, {
+          model: [
+            durableAnswer("", [
+              {
+                type: "toolCall",
+                id: `call-${i}`,
+                name: "inspect",
+                arguments: { payload: "large tool arguments ".repeat(100) },
+              },
+            ]),
+          ],
+        }),
+      BACKGROUND_CONTEXT,
+    );
+  expect(
+    await f.memory.synchronize(signal(), undefined, undefined, { maxOriginals: 1 }),
+  ).toMatchObject({ sourceCount: 1, complete: true });
+  await f.append("Second request");
+  expect(await f.view()).toMatchObject({ sourceCount: 2, complete: true });
+  expect((await f.memory.zoom(1, 1, signal())).text).toContain("user: Second request");
+  expect(f.summarize).not.toHaveBeenCalled();
+});
 
 it("persists one-original slices, indexes only new raw input, and merges existing summaries", async () => {
   const f = await fixture();
@@ -171,54 +271,53 @@ it("accepts exactly 512 UTF-8 bytes and enforces that bound on both leaves and m
   expect(Buffer.byteLength(exact)).toBe(512);
 });
 
-it("bounds application calls across an entire catch-up and preserves committed originals for explicit continuation", async () => {
+it("finishes a catch-up across more than 32 model calls while preserving every original", async () => {
   const f = await fixture();
-  await f.append("RAW_A ".repeat(100));
-  await f.append("RAW_B ".repeat(100));
-  const work = durableMemoryWork(signal(), { milliseconds: 60_000, calls: 2 });
-  await expect(
-    f.memory.synchronize(work.signal, undefined, undefined, { work }),
-  ).rejects.toMatchObject({ reason: "work-allowance" });
-  expect(f.summarize).toHaveBeenCalledTimes(2); // Both independent leaves committed; their parent resumes later.
-  expect(await f.nodes()).toHaveLength(2);
-  expect(work.metrics().calls).toBe(2);
-  expect((await f.view()).sourceCount).toBe(2);
-  expect(
-    f.summarize.mock.calls
-      .map(([input]) => inputText(input.context))
-      .filter((input) => input.includes("RAW_A")),
-  ).toHaveLength(1);
+  for (let i = 0; i < 40; i += 1) await f.append(`RAW_${i} `.repeat(100));
+  const work = durableMemoryWork(signal());
+  const view = await f.memory.synchronize(work.signal, undefined, undefined, { work });
+  expect(view.sourceCount).toBe(40);
+  expect(work.metrics().calls).toBeGreaterThan(32);
+  expect((await f.memory.zoom(0, 1, signal())).text).toContain("RAW_0");
+  expect((await f.memory.zoom(39, 1, signal())).text).toContain("RAW_39");
 });
 
-it.each(["call", "overall"] as const)(
-  "applies the %s deadline to model resolution/completion and releases a non-cooperative callback",
-  async (deadline) => {
-    const deadlines: AbortController[] = [];
-    const timeout = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => {
-      const controller = new AbortController();
-      deadlines.push(controller);
-      return controller.signal;
-    });
+it("allows a completion to run past the former work and call deadlines", async () => {
+  vi.useFakeTimers();
+  vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), milliseconds);
+    return controller.signal;
+  });
+  try {
     const work = durableMemoryWork(signal());
-    const started = Promise.withResolvers<AbortSignal>();
-    const pending = work.complete((signal) => {
-      started.resolve(signal);
-      return new Promise<string>(() => undefined);
-    });
-    const callSignal = await started.promise;
-    expect(timeout.mock.calls.map(([milliseconds]) => milliseconds)).toEqual([
-      MEMORY_FOREGROUND_WORK.milliseconds,
-      MEMORY_CALL_MS,
-    ]);
-    const failure = expect(pending).rejects.toMatchObject({
-      reason: deadline === "call" ? "completion-allowance" : "work-allowance",
-    });
-    deadlines[deadline === "overall" ? 0 : 1]?.abort();
-    await failure;
-    expect(callSignal.aborted).toBe(true);
-    expect(work.metrics().calls).toBe(1);
-  },
-);
+    const pending = work.complete(
+      () => new Promise((resolve) => setTimeout(() => resolve("complete summary"), 180_000)),
+    );
+    const result = expect(pending).resolves.toBe("complete summary");
+    await vi.advanceTimersByTimeAsync(180_000);
+    await result;
+    expect(work.metrics()).toMatchObject({ calls: 1, elapsedMs: 180_000 });
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("releases a non-cooperative completion when its lifecycle owner cancels", async () => {
+  const cancellation = new AbortController();
+  const work = durableMemoryWork(cancellation.signal);
+  const started = Promise.withResolvers<AbortSignal>();
+  const pending = work.complete((signal) => {
+    started.resolve(signal);
+    return new Promise<string>(() => undefined);
+  });
+  const callSignal = await started.promise;
+  const reason = new Error("Stop");
+  const failure = expect(pending).rejects.toBe(reason);
+  cancellation.abort(reason);
+  await failure;
+  expect(callSignal.aborted).toBe(true);
+});
 
 it("cancels before publication and can resume with no abandoned leaf/carry nodes", async () => {
   const f = await fixture();

@@ -204,15 +204,19 @@ export const makePiModels = (adapter: PiModelsAdapter): PiModels["Service"] => {
       Effect.mapError((cause) => new PiModelCompletionError({ message: cause.message })),
     );
     yield* resolve(decoded.selection);
-    const text = yield* adapter.complete(decoded, observeRequest).pipe(
-      Effect.mapError((cause) => new PiModelCompletionError({ message: messageOf(cause) })),
-      Effect.timeout(decoded.timeoutMs),
-      Effect.mapError((cause) =>
-        cause instanceof PiModelCompletionError
-          ? cause
-          : new PiModelCompletionError({ message: "Bounded model completion timed out" }),
-      ),
-    );
+    const completion = adapter
+      .complete(decoded, observeRequest)
+      .pipe(Effect.mapError((cause) => new PiModelCompletionError({ message: messageOf(cause) })));
+    const text = yield* decoded.timeoutMs === undefined
+      ? completion
+      : completion.pipe(
+          Effect.timeout(decoded.timeoutMs),
+          Effect.mapError((cause) =>
+            cause instanceof PiModelCompletionError
+              ? cause
+              : new PiModelCompletionError({ message: "Bounded model completion timed out" }),
+          ),
+        );
     if (decoded.chat && text.length > decoded.maximumOutputCharacters)
       return yield* new PiModelCompletionError({
         message: "Memory completion exceeded its transport output limit",

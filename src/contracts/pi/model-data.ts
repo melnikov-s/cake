@@ -90,7 +90,10 @@ export const BoundedCompletionInput = Schema.Struct({
   context: Schema.String.check(Schema.isMaxLength(262_144)),
   chat: Schema.optionalKey(CompletionChat),
   maximumOutputCharacters: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 32_000 })),
-  timeoutMs: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 120_000 })),
+  /** Omit for lifecycle-cancelled work such as conversation memory catch-up. */
+  timeoutMs: Schema.optionalKey(
+    Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 120_000 })),
+  ),
 });
 
 export class UnknownPiModelError extends Schema.TaggedError<UnknownPiModelError>()(

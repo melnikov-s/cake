@@ -447,12 +447,18 @@ at revision `3c190e06f34aba0c69f49042c526093269604935` for its **whole-chat adap
 background compactions. This is not a claim that the standalone CLI has those policies,
 nor evidence of a public implementation of the author's chat application.
 
-Only SDK originals (`pi.user`, `pi.assistant`, `pi.tool-result`) enter the tree.
-Pi remains the authority for exact originals, images and reasoning; reasoning is not
-included in the summary index. SDK entries are the stable source/zoom units, retaining
-existing range identities rather than rewriting history into a second log. Cake keeps
-original tool output instead of destructively clipping it. Worker/report provenance and
-separately durable handling obligations remain distinct from human-authored input.
+Only dialogue from SDK originals enters the tree: user inputs (`pi.user`) and text
+blocks from assistant outputs (`pi.assistant`). Tool calls/arguments, tool results,
+assistant reasoning and error metadata are excluded. Mixed assistant entries contribute
+only their nonblank text blocks; tool-only/blank assistant entries create no leaf or
+merge jobs. Pi remains the authority for complete originals, including images, tool
+traffic and reasoning. Live warm context retains tool traffic unchanged; compaction
+replaces older dialogue with memory without carrying older tool traffic forward.
+SDK entries remain the source/zoom units, not a second transcript. Explicit zoom or
+original-history reads can still retrieve the complete original. Findings that appear
+only in tool output are not retained in memory unless reported in dialogue.
+Worker/report provenance and separately durable handling obligations remain distinct
+from human-authored input.
 
 The default view grows to 128,000 UTF-8 bytes, then consolidates toward 64,000. Explicit
 user budgets and model-window admission can lower this. The most-due built sibling pair
@@ -467,8 +473,13 @@ IDs. Ready queues permit up to eight independent requests; a leaf starts with fe
 eight preceding unbuilt leaves, and parents start only after both children are committed.
 The single persistence owner does not serialize HTTP requests. Each completed node and its
 DAG checkpoint commit atomically; the built-prefix cursor/view advances in order. Version
-two checkpoints add pending jobs and the separate reference view without rewriting existing
-nodes or originals. Reopen retries unfinished nodes, not their already committed children.
+three checkpoints discard earlier derived indexes (including pending jobs) and rebuild
+from dialogue-only originals. Old immutable summaries remain stored but are no longer
+indexed; original entries and the active head are not rewritten. Range IDs are reassigned
+by the rebuilt index. A range in a retained pre-rebuild head cannot resolve to a
+newer node: zoom/inspection rejects that stale handle until the next memory handoff;
+original-history reads remain available. Subsequent reopen retries unfinished nodes,
+not their already committed children.
 The bounded working window limits live state; dependencies drain before admitting another
 source window. Reads and zoom lazily retrieve immutable entries, not a lifetime node cache.
 
@@ -491,20 +502,19 @@ persisted jobs. Error, aborted and tool-use responses do not independently rearm
 There is no expiry timer, polling worker, or automatic failed-call retry loop: a later
 successful run, reopen or explicit foreground preparation offers another opportunity.
 
-Runtime integration retains a 30-second background and 60-second foreground allowance,
-including worker wait, storage/model resolution and overflow recovery. The utility provider's
-120-second per-call ceiling is capped by that enclosing allowance. Production work has no
-separate call-count or original-count allowance; ready-node concurrency and cancellable
-wall-clock work bound execution.
+Memory catch-up and its utility completions have no wall-clock deadline or call-count
+allowance. Ready-node concurrency bounds simultaneous requests, not total catch-up work.
 Stop, foreground preemption and closure cancel outstanding calls and drain the commit owner;
 even a callback that ignores cancellation cannot publish a late result. Storage relies on
-SDK context cancellation, not a hard real-time guarantee for uninterruptible I/O. These
-lifecycle allowances can pause a large catch-up before completion; progress remains durable.
+SDK context cancellation, not a hard real-time guarantee for uninterruptible I/O. Successful
+nodes remain durable when lifecycle cancellation pauses a large catch-up.
 
 A replacement active head publishes only after the complete requested memory view persists.
-Preparation failure retains the previous head, clears activity and uses non-provider error
-text so Durable cannot replay it through generic coordinator retries. Genuine coordinator
-provider failures retain their normal retry policy. Diagnostics expose fixed reason labels,
+Preparation failure retains the previous head and clears activity. Failed optional cache-only
+maintenance can continue with that intact head when it still fits the input cap and output
+reserve; limit/overflow resets and cancellation are never bypassed. Required preparation
+failures use non-provider error text so Durable cannot replay them through generic coordinator
+retries. Genuine coordinator provider failures retain their normal retry policy. Diagnostics expose fixed reason labels,
 application-call counts and elapsed time, never source bodies or raw summarizer diagnostics.
 Five size attempts and eight concurrent requests preserve the specified algorithm but can
 increase provider cost; concurrency is a latency improvement, not a request-count reduction.

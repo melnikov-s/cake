@@ -478,7 +478,6 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
                 context: input.context,
                 chat: { tools: input.tools ?? [], previous: input.previous ?? [] },
                 maximumOutputCharacters: 4_096,
-                timeoutMs: 120_000,
               },
               input.observeRequest,
             ),

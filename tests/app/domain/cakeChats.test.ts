@@ -34,6 +34,7 @@ const configuration = { location, agentDirectory: "/cake/pi" };
 function fixture() {
   let state = defaultApplicationState();
   const completions: string[] = [];
+  const completionTimeouts: Array<number | undefined> = [];
   const removed: string[] = [];
   const changes: SessionCatalogChange[] = [];
   const summary = (id: string) => ({
@@ -69,6 +70,7 @@ function fixture() {
       complete: (input) =>
         Effect.sync(() => {
           completions.push(input.selection.modelId);
+          completionTimeouts.push(input.timeoutMs);
           return "summary";
         }),
     }),
@@ -95,6 +97,7 @@ function fixture() {
   return {
     layer,
     completions,
+    completionTimeouts,
     removed,
     state: () => state,
     changes,
@@ -319,6 +322,7 @@ describe("permanent Cake Chat", () => {
           ),
         );
         expect(f.completions).toEqual(["cheap", "chosen", "chat"]);
+        expect(f.completionTimeouts).toEqual([undefined, undefined, undefined]);
         f.setState({
           ...defaultApplicationState(),
           cakeChatPreferences: {

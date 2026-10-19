@@ -5,6 +5,8 @@ import {
   defineEntry,
   Harness,
   MemoryStorage,
+  ResetEntry,
+  ToolResultEntry,
   UserEntry,
   type Storage,
 } from "@earendil-works/pi-durable";
@@ -252,58 +254,120 @@ it.each([4_000, 40_000])(
   },
 );
 
-it("migrates a version-one checkpoint without rebuilding nodes, originals or the saved view", async () => {
-  const NodeEntry = defineEntry<{ id: number; n: number; text: string; original: number }>(
-    "cake.chat-memory-node/v1",
-  );
-  const Legacy = defineDoc<{
-    through: number;
-    count: number;
-    budget: number;
-    shrinking: boolean;
-    forest: { id: number; n: number; entry: number }[];
-    parts: { id: number; n: number; entry: number; ancestors: number[] }[];
-  }>({
-    kind: "cake.chat-memory-state",
-    version: 1,
-    scope: "conversation",
-    history: "latest",
-    fork: "initial",
-    initial: () => ({
-      through: 0,
-      count: 0,
-      budget: 4_000,
-      shrinking: false,
-      forest: [],
-      parts: [],
-    }),
-  });
-  const directory = await mkdtemp(join(tmpdir(), "cake-memory-v1-"));
-  cleanup.push(() => rm(directory, { recursive: true, force: true }));
-  const database = join(directory, "memory.sqlite");
-  const first = await fixture(async () => "unused", await openNodeSqliteStorage(database), 4_000);
-  const original = await first.append("Persisted original");
-  await first.root.commit(async (tx) => {
-    const stored = await tx.appendEntry(NodeEntry, first.root.id, {
-      data: { id: 0, n: 1, text: "user: historical line", original: original.id },
+it.each([1, 2])(
+  "rebuilds a version-%i derived index from dialogue originals, discarding old summaries and pending jobs",
+  async (version) => {
+    const NodeEntry = defineEntry<{ id: number; n: number; text: string; original: number }>(
+      "cake.chat-memory-node/v1",
+    );
+    const Legacy = defineDoc<{
+      through: number;
+      count: number;
+      budget: number;
+      shrinking: boolean;
+      forest: { id: number; n: number; entry: number }[];
+      parts: { id: number; n: number; entry: number; ancestors: number[] }[];
+    }>({
+      kind: "cake.chat-memory-state",
+      version,
+      scope: "conversation",
+      history: "latest",
+      fork: "initial",
+      initial: () => ({
+        through: 0,
+        count: 0,
+        budget: 4_000,
+        shrinking: false,
+        forest: [],
+        parts: [],
+      }),
     });
-    Object.assign(await tx.doc(Legacy, first.root.id), {
-      through: original.id,
-      count: 1,
-      budget: 4_000,
-      shrinking: false,
-      forest: [{ id: 0, n: 1, entry: stored.id }],
-      parts: [{ id: 0, n: 1, entry: stored.id, ancestors: [] }],
-    });
-  }, BACKGROUND_CONTEXT);
-  await first.harness.close(BACKGROUND_CONTEXT);
-  cleanup.pop();
-  const summarize = vi.fn(async () => "must not run");
-  const reopened = await fixture(summarize, await openNodeSqliteStorage(database), 4_000);
-  expect((await reopened.memory.synchronize(signal())).text).toBe(
-    "<chat>\n0+1|user: historical line\n</chat>",
-  );
-  expect(summarize).not.toHaveBeenCalled();
-  expect((await reopened.memory.zoom(0, 1, signal())).text).toContain("Persisted original");
-  expect(await reopened.nodes()).toHaveLength(1);
-});
+    const directory = await mkdtemp(join(tmpdir(), "cake-memory-v1-"));
+    cleanup.push(() => rm(directory, { recursive: true, force: true }));
+    const database = join(directory, "memory.sqlite");
+    const first = await fixture(async () => "unused", await openNodeSqliteStorage(database), 4_000);
+    const original = await first.append("Persisted original");
+    const tool = await first.root.commit(
+      (tx) =>
+        tx.appendEntry(ToolResultEntry, first.root.id, {
+          data: { diagnostics: [] },
+          model: [
+            {
+              role: "toolResult",
+              toolCallId: "old-call",
+              toolName: "inspect",
+              content: [{ type: "text", text: "OLD_TOOL_OUTPUT ".repeat(200) }],
+              isError: false,
+              timestamp: 1,
+            },
+          ],
+        }),
+      BACKGROUND_CONTEXT,
+    );
+    await first.root.commit(async (tx) => {
+      const stored = await tx.appendEntry(NodeEntry, first.root.id, {
+        data: {
+          id: 0,
+          n: 1,
+          text: "old summary contaminated with tool output",
+          original: original.id,
+        },
+      });
+      Object.assign(await tx.doc(Legacy, first.root.id), {
+        through: original.id,
+        count: 1,
+        budget: 4_000,
+        shrinking: false,
+        forest: [{ id: 0, n: 1, entry: stored.id }],
+        parts: [{ id: 0, n: 1, entry: stored.id, ancestors: [] }],
+        ...(version === 2
+          ? {
+              pending: {
+                jobs: [{ id: 1, n: 1, original: tool.id }],
+                forest: [{ id: 1, n: 1, link: { job: 0 } }],
+              },
+            }
+          : {}),
+      });
+    }, BACKGROUND_CONTEXT);
+    await first.root.commit(
+      (tx) =>
+        tx.appendEntry(ResetEntry, first.root.id, {
+          head: "self",
+          model: [
+            {
+              role: "user",
+              content: "<chat>\n0+1|old summary contaminated with tool output\n</chat>",
+              timestamp: 1,
+            },
+          ],
+        }),
+      BACKGROUND_CONTEXT,
+    );
+    const active = await first.root.context(BACKGROUND_CONTEXT);
+    await first.harness.close(BACKGROUND_CONTEXT);
+    cleanup.pop();
+    const summarize = vi.fn(async () => "must not run");
+    const reopened = await fixture(summarize, await openNodeSqliteStorage(database), 4_000);
+    expect((await reopened.memory.synchronize(signal())).text).toBe(
+      "<chat>\n0+1|user: Persisted original\n</chat>",
+    );
+    expect(summarize).not.toHaveBeenCalled();
+    expect((await reopened.root.context(BACKGROUND_CONTEXT)).messages).toEqual(active.messages);
+    await expect(reopened.memory.zoom(0, 1, signal())).rejects.toThrow("Read original history");
+    await expect(reopened.memory.inspect(0, 1, signal())).rejects.toThrow("Read original history");
+    const view = await reopened.memory.synchronize(signal());
+    await reopened.root.commit(
+      (tx) =>
+        tx.appendEntry(ResetEntry, reopened.root.id, {
+          head: "self",
+          model: [{ role: "user", content: view.text, timestamp: 1 }],
+        }),
+      BACKGROUND_CONTEXT,
+    );
+    expect((await reopened.memory.zoom(0, 1, signal())).text).toContain("Persisted original");
+    expect(await reopened.nodes()).toHaveLength(2); // Immutable old entry remains, but is no longer indexed.
+    await reopened.memory.synchronize(signal());
+    expect(await reopened.nodes()).toHaveLength(2); // The migrated checkpoint persists; no repeated rebuild.
+  },
+);

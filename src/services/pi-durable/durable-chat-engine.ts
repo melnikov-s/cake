@@ -35,11 +35,7 @@ import { ChatMetadataDoc } from "./durable-chat-metadata";
 import { durableContextMetadata } from "./durable-context-metadata";
 import { createDurableChatMemory, type DurableMemoryOptions } from "./durable-chat-memory";
 import { withoutDurableInputPresentation } from "./durable-input-presentation";
-import {
-  DurableMemoryError,
-  durableMemoryWork,
-  MEMORY_BACKGROUND_WORK,
-} from "./durable-memory-work";
+import { DurableMemoryError, durableMemoryWork } from "./durable-memory-work";
 import { durableModelFacade } from "./durable-model-facade";
 import { durableContextInspection } from "./durable-context-inspection";
 import { estimateContextTokens } from "@earendil-works/pi-durable-ai/utils/estimate";
@@ -149,8 +145,8 @@ export async function openDurableChatEngine(options: {
     return awaitWithContext(result, withAbortSignal(signal, BACKGROUND_CONTEXT));
   };
   // One coalesced high-water mark, not one catch-up job per commit. Maintenance
-  // runs only between coordinator runs with a 30s lifecycle allowance and up to
-  // eight dependency-ready calls. A later original or reopen resumes persisted
+  // runs only between coordinator runs with up to eight dependency-ready calls
+  // and no work deadline. A later original or reopen resumes persisted
   // nodes; failure never spins an automatic retry loop. Keep this
   // inside the SDK's Promise/context lifecycle: Harness.close must cancel/drain
   // this same commit owner before closing storage, not an independent scheduler.
@@ -169,10 +165,7 @@ export async function openDurableChatEngine(options: {
       pendingCutoff = undefined;
       consumed = true;
       maintenanceAbort = new AbortController();
-      work = durableMemoryWork(
-        AbortSignal.any([closing.signal, maintenanceAbort.signal]),
-        MEMORY_BACKGROUND_WORK,
-      );
+      work = durableMemoryWork(AbortSignal.any([closing.signal, maintenanceAbort.signal]));
       if (foreground === 0 && !(await harness.snapshot(LiveDoc, root.id, BACKGROUND_CONTEXT))?.run)
         await index(work.signal, cutoff, undefined, { work });
     })()
@@ -373,7 +366,22 @@ export async function openDurableChatEngine(options: {
           }
         };
         if (input !== undefined && (reason === "limit" || (newInput && reason))) {
-          await reset(reason);
+          try {
+            await reset(reason);
+          } catch (error) {
+            signal.throwIfAborted();
+            // Cache freshness is advisory, not an admission requirement. If memory
+            // maintenance fails, the unchanged active head still fits this model's
+            // input cap and output reserve. Never bypass a required limit/overflow
+            // reset, publish a partial handoff, or recover an unrelated defect.
+            const failure = error instanceof DurableMemoryError ? error.reason : undefined;
+            if (reason === "limit" || !failure) throw error;
+            options.onReport(
+              new Error(
+                `Cake Chat optional memory maintenance paused (${failure}); continuing with the existing context within its limit. Originals and committed memory progress are preserved.`,
+              ),
+            );
+          }
         } else if (newInput) {
           await root.commit(async (tx) => {
             (await tx.doc(BoundaryDoc, root.id)).input = input;
@@ -468,10 +476,11 @@ export async function openDurableChatEngine(options: {
           // In particular its subsequently committed assistant error must not
           // immediately replay the same expensive work in the background.
           if (preparing) pendingCutoff = undefined;
+          const failure = error instanceof DurableMemoryError ? error.reason : "preparation-failed";
           if (preparing && !aborted)
             options.onReport(
               new Error(
-                `Cake Chat context preparation paused: ${error instanceof DurableMemoryError ? error.reason : "preparation-failed"}; ${JSON.stringify(preparationWork?.metrics())}.`,
+                `Cake Chat context preparation paused: ${failure}; ${JSON.stringify(preparationWork?.metrics())}.`,
               ),
             );
           const message = {
@@ -487,7 +496,7 @@ export async function openDurableChatEngine(options: {
             // classifier: only a new explicit submission may resume preparation.
             errorMessage:
               preparing && !aborted
-                ? `Cake Chat context preparation failed${error instanceof DurableMemoryError ? ` (${error.reason})` : ""}. Originals and committed memory progress are preserved. Submit again to continue; if the input cannot fit, shorten it or raise the Cake Chat context limit.`
+                ? `Cake Chat context preparation failed (${failure}). Originals and committed memory progress are preserved. Submit again to continue; if the input cannot fit, shorten it or raise the Cake Chat context limit.`
                 : error instanceof Error
                   ? error.message
                   : String(error),
