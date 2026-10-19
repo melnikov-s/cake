@@ -46,6 +46,9 @@ it("persists the active context limit, memory budget and dedicated instructions 
         expect.anything(),
       ),
     );
+    expect(
+      screen.getByText(/Shared by global Cake Chat and every permanent Project Chat/).textContent,
+    ).toContain("For one project only, use that project’s settings → Project Chat instructions");
     const instructions = screen.getByRole("textbox", { name: "Cake Chat instructions" });
     await user.type(instructions, "Always create worktrees.");
     await user.tab();

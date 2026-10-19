@@ -74,7 +74,7 @@ export const SettingsCakeChatSection = observer(function SettingsCakeChatSection
         <SettingsPromptField
           id="setting-cake-chat-instructions"
           label="Cake Chat instructions"
-          description="Always included, never summarized. Saved when you leave the field."
+          description="Shared by global Cake Chat and every permanent Project Chat, not coding Project Sessions. For one project only, use that project’s settings → Project Chat instructions. Always included, never summarized. Saved when you leave the field."
           value={store.preferences.instructions}
           defaultValue=""
           onApply={(value) => void store.setInstructions(value)}

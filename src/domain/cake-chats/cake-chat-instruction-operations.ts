@@ -18,7 +18,7 @@ export function createCakeChatInstructionOperations(
     {
       command: "settings.cake-chat.get",
       topic: "settings",
-      summary: "Read Cake Chat's permanent user instructions.",
+      summary: "Read shared instructions for global Cake Chat and all permanent Project Chats.",
       guidance,
       inputSchema: Schema.Struct({}),
       outputSchema: CakeChatInstructions,
@@ -32,7 +32,7 @@ export function createCakeChatInstructionOperations(
     {
       command: "settings.cake-chat.update",
       topic: "settings",
-      summary: "Save Cake Chat's permanent user instructions through application settings.",
+      summary: "Save shared instructions for global Cake Chat and all permanent Project Chats.",
       guidance: [
         ...guidance,
         "First call settings.cake-chat.get. Pass that exact text as expectedInstructions and the complete merged text as instructions. A stale read fails without overwriting newer guidance; read again and merge before retrying. Empty instructions explicitly clears them.",
