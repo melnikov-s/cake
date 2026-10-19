@@ -13,6 +13,7 @@ import {
 } from "../../contracts/cake-chats/cake-chat-identity";
 import type { RequestInspection } from "./request-inspection";
 import { readDurableChatPreview, readDurableChatSummary } from "./durable-chat-catalog";
+import { durableChatDatabase } from "./durable-chat-location";
 import { createRequestInspectionHistory } from "./request-inspection";
 import type {
   RequestInspectionHistory,
@@ -86,6 +87,10 @@ export const makeCakeChatDurableLive = (
       }
       return deferred;
     });
+    const catalog = (directory: string, sessionId: string) => {
+      const runtime = live.get(sessionId);
+      return runtime?.sessionFile === durableChatDatabase(directory) ? runtime.catalog : undefined;
+    };
     return CakeChatDurable.of({
       requestHistory: Effect.fn("CakeChatDurable.requestHistory")((sessionId) =>
         Effect.sync(() => inspection(sessionId).list()),
@@ -146,10 +151,16 @@ export const makeCakeChatDurableLive = (
           return parent ? live.get(parent)?.sideChats.preview(sessionId) : undefined;
         }),
       catalogEntry: (directory, sessionId = CAKE_CHAT_SESSION_ID) =>
-        operation("catalogEntry", () => readDurableChatSummary(directory, sessionId)),
+        operation(
+          "catalogEntry",
+          () =>
+            catalog(directory, sessionId)?.summary() ??
+            readDurableChatSummary(directory, sessionId),
+        ),
       inspect: (directory, sessionId) =>
         operation("inspect", async () => {
-          const preview = await readDurableChatPreview(directory, sessionId);
+          const preview = await (catalog(directory, sessionId)?.preview() ??
+            readDurableChatPreview(directory, sessionId));
           if (!preview) throw new Error("This chat has not started yet");
           return preview;
         }),

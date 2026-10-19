@@ -5,6 +5,7 @@ import type { CakeSessionRuntimeSetup } from "../../src/services/pi/CakeSessionR
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { Deferred, Effect, Layer, ManagedRuntime } from "effect";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { makePiSettingsLive } from "../../src/services/pi/live/PiSettingsLive";
@@ -653,6 +654,62 @@ it("runs quick bash checks in its scratch directory with bounded, annotated outp
   expect(JSON.stringify(where)).toContain(join(f.sessionDir, "scratch"));
 });
 
+it.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/catalog-project")])(
+  "repeatDurableSummaryReadsDoNotReinitializeStorage for %s",
+  async (sessionId) => {
+    const f = await fixture();
+    const scope = { sessionId, sessionDir: join(f.directory, "catalog-chat") };
+    const chat = await f.open(undefined, undefined, scope);
+    await chat.runtime.snapshot();
+    const exec = vi.spyOn(DatabaseSync.prototype, "exec");
+    const summary = () =>
+      f.serviceRuntime.runPromise(f.service.catalogEntry(scope.sessionDir, sessionId));
+    const preview = () =>
+      f.serviceRuntime.runPromise(f.service.inspect(scope.sessionDir, sessionId));
+    const expected = await summary();
+    const expectedPreview = await preview();
+    const writer = new DatabaseSync(chat.runtime.sessionFile, { timeout: 0 });
+    writer.exec("BEGIN IMMEDIATE");
+    try {
+      // WAL reads through the live connection do not contend for the writer lock.
+      for (let i = 0; i < 20; i++) {
+        expect(await summary()).toEqual(expected);
+        expect(await preview()).toEqual(expectedPreview);
+      }
+    } finally {
+      writer.exec("ROLLBACK");
+      writer.close();
+    }
+    // A live identity alone cannot satisfy a query for a different database.
+    expect(
+      await f.serviceRuntime.runPromise(
+        f.service.catalogEntry(join(f.directory, "not-started"), sessionId),
+      ),
+    ).toBeUndefined();
+    expect(exec.mock.calls.filter(([sql]) => sql === "BEGIN IMMEDIATE")).toHaveLength(1);
+    expect(exec.mock.calls.filter(([sql]) => sql === "PRAGMA journal_mode = WAL")).toHaveLength(0);
+    expect(
+      exec.mock.calls.filter(([sql]) => sql === "PRAGMA wal_checkpoint(TRUNCATE)"),
+    ).toHaveLength(0);
+    expect(f.requests).toHaveLength(0);
+
+    // Closing the existing runtime still owns storage cleanup. A subsequent cold
+    // inspection uses its own short-lived reader, never the disposed Harness.
+    await chat.close();
+    expect(
+      exec.mock.calls.filter(([sql]) => sql === "PRAGMA wal_checkpoint(TRUNCATE)"),
+    ).toHaveLength(1);
+    exec.mockClear();
+    expect(await summary()).toEqual(expected);
+    expect(await preview()).toEqual(expectedPreview);
+    expect(exec.mock.calls.filter(([sql]) => sql === "PRAGMA journal_mode = WAL")).toHaveLength(2);
+    expect(
+      exec.mock.calls.filter(([sql]) => sql === "PRAGMA wal_checkpoint(TRUNCATE)"),
+    ).toHaveLength(2);
+    expect(f.requests).toHaveLength(0);
+  },
+);
+
 it("uses production SQLite, existing credentials and exact originals across reopen", async () => {
   const f = await fixture();
   const original = `ANCIENT_DETAIL ${"original words ".repeat(200)}`;
@@ -670,12 +727,20 @@ it("uses production SQLite, existing credentials and exact originals across reop
       (part) => part.kind === "text" && part.role === "user" && part.renderAs === "markdown",
     ),
   ).toBe(true);
+  const liveSummary = await f.serviceRuntime.runPromise(f.service.catalogEntry(f.sessionDir));
+  const livePreview = await f.serviceRuntime.runPromise(
+    f.service.inspect(f.sessionDir, CAKE_CHAT_SESSION_ID),
+  );
+  expect(liveSummary?.messageCount).toBe(2);
   await first.close();
   const before = f.requests.length;
-  await f.serviceRuntime.runPromise(f.service.catalogEntry(f.sessionDir));
+  expect(await f.serviceRuntime.runPromise(f.service.catalogEntry(f.sessionDir))).toEqual(
+    liveSummary,
+  );
   const preview = await f.serviceRuntime.runPromise(
     f.service.inspect(f.sessionDir, CAKE_CHAT_SESSION_ID),
   );
+  expect(preview).toEqual(livePreview);
   expect(JSON.stringify(preview.parts)).toContain(original);
   expect(f.requests).toHaveLength(before);
   f.answer((index) =>

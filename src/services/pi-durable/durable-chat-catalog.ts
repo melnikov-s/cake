@@ -16,11 +16,58 @@ import { ChatMetadataDoc } from "./durable-chat-metadata";
 import { readDurableOriginalPage } from "./durable-chat-history";
 import { durableChatDatabase } from "./durable-chat-location";
 
+/** Read through the SDK owner's existing connection without acquiring another storage
+ * writer for migrations or checkpointing the active database on every inspection. */
+export function createDurableChatCatalog(
+  directory: string,
+  session: Pick<Session, "snapshot">,
+  storage: Storage,
+  sessionId = CAKE_CHAT_SESSION_ID,
+) {
+  return {
+    async summary(): Promise<PiSessionSummary> {
+      const metadata = await session.snapshot(
+        ChatMetadataDoc,
+        ROOT_CONVERSATION_ID,
+        BACKGROUND_CONTEXT,
+      );
+      return {
+        id: sessionId,
+        resolved: false,
+        title: "Cake Chat",
+        created: metadata?.createdAt ?? new Date().toISOString(),
+        modified: metadata?.modifiedAt ?? new Date().toISOString(),
+        messageCount: metadata?.messageCount ?? 0,
+        ...(metadata?.contextMetadata ? { contextMetadata: metadata.contextMetadata } : null),
+      };
+    },
+    async preview(): Promise<PiSessionPreview> {
+      return {
+        workspacePath: directory,
+        sessionId,
+        sessionFile: durableChatDatabase(directory),
+        parts: (
+          await readDurableOriginalPage({
+            entries: (query, limit, cursor, context) =>
+              storage.scanEntries(
+                { ...query, conversationId: ROOT_CONVERSATION_ID },
+                limit,
+                cursor,
+                context,
+              ),
+          })
+        ).parts,
+      };
+    },
+  };
+}
+
 /** Readers use the SDK's document kernel, not a Harness: discovery cannot create a
  * conversation, load providers, resume tasks, or run scheduler recovery cleanup. */
 async function read<A>(
   directory: string,
-  evaluate: (session: Session, storage: Storage) => Promise<A>,
+  sessionId: string,
+  evaluate: (catalog: ReturnType<typeof createDurableChatCatalog>) => Promise<A>,
 ): Promise<A | undefined> {
   const path = durableChatDatabase(directory);
   try {
@@ -33,7 +80,7 @@ async function read<A>(
   const session = createSession(storage);
   try {
     if (!(await storage.conversation(ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT))) return undefined;
-    return await evaluate(session, storage);
+    return await evaluate(createDurableChatCatalog(directory, session, storage, sessionId));
   } finally {
     await session.close(BACKGROUND_CONTEXT);
   }
@@ -43,42 +90,12 @@ export function readDurableChatSummary(
   directory: string,
   sessionId = CAKE_CHAT_SESSION_ID,
 ): Promise<PiSessionSummary | undefined> {
-  return read(directory, async (session) => {
-    const metadata = await session.snapshot(
-      ChatMetadataDoc,
-      ROOT_CONVERSATION_ID,
-      BACKGROUND_CONTEXT,
-    );
-    return {
-      id: sessionId,
-      resolved: false,
-      title: "Cake Chat",
-      created: metadata?.createdAt ?? new Date().toISOString(),
-      modified: metadata?.modifiedAt ?? new Date().toISOString(),
-      messageCount: metadata?.messageCount ?? 0,
-      ...(metadata?.contextMetadata ? { contextMetadata: metadata.contextMetadata } : null),
-    };
-  });
+  return read(directory, sessionId, (catalog) => catalog.summary());
 }
 
 export function readDurableChatPreview(
   directory: string,
   sessionId = CAKE_CHAT_SESSION_ID,
 ): Promise<PiSessionPreview | undefined> {
-  return read(directory, async (_session, storage) => ({
-    workspacePath: directory,
-    sessionId,
-    sessionFile: durableChatDatabase(directory),
-    parts: (
-      await readDurableOriginalPage({
-        entries: (query, limit, cursor, context) =>
-          storage.scanEntries(
-            { ...query, conversationId: ROOT_CONVERSATION_ID },
-            limit,
-            cursor,
-            context,
-          ),
-      })
-    ).parts,
-  }));
+  return read(directory, sessionId, (catalog) => catalog.preview());
 }

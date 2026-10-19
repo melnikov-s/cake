@@ -60,6 +60,7 @@ import {
 import { toJsonValue } from "../../utils/to-json-value";
 
 import { durableChatDatabase } from "./durable-chat-location";
+import { createDurableChatCatalog } from "./durable-chat-catalog";
 import { coordinatorSystemPrompt } from "./coordinator-system-prompt";
 import { cakeAgentDocumentationDirectory } from "../pi/runtime/cake-agent-documentation";
 import { createDurableChatCommands } from "./durable-chat-commands";
@@ -85,7 +86,10 @@ const unsupported = async () => {
 };
 
 /** The coordinator runtime and the side-chat forks that share its Durable database. */
-export type DurableCakeChatRuntime = CakeSessionRuntime & { readonly sideChats: DurableSideChats };
+export type DurableCakeChatRuntime = CakeSessionRuntime & {
+  readonly sideChats: DurableSideChats;
+  readonly catalog: ReturnType<typeof createDurableChatCatalog>;
+};
 
 /** The shared Cake conversation contract, backed solely by Pi Durable for the coordinator. */
 export async function createDurableCakeChatRuntime(
@@ -465,6 +469,7 @@ export async function createDurableCakeChatRuntime(
     fastMode: () => fastMode,
   });
   const runtime: DurableCakeChatRuntime = {
+    catalog: createDurableChatCatalog(options.sessionDir, engine.harness, storage, sessionId),
     sessionId,
     sessionFile,
     sideChats,
