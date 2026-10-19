@@ -6,15 +6,17 @@ import { _electron as electron, expect, test } from "@playwright/test";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
-for (const state of ["default", "project"]) {
-  test(`incoming communication is distinct and navigable in ${state === "default" ? "Cake Chat" : "Project Session"}`, async () => {
+for (const state of ["default", "project", "reference"]) {
+  test(`incoming communication is readable and navigable (${state})`, async () => {
     const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-session-messages-"));
     const paths = {
       cakeHome: join(temporaryRoot, "cake-home"),
       project: join(temporaryRoot, "project"),
       userData: join(temporaryRoot, "user-data"),
     };
-    const scenario = findVisualCaptureScenario("session-messages")!;
+    const scenario = findVisualCaptureScenario(
+      state === "reference" ? "session-message-variants" : "session-messages",
+    )!;
     await scenario.seed(paths, state === "default" ? "light" : "dark");
     if (state === "project") {
       const safePath = `--${resolve(paths.project)
@@ -68,8 +70,47 @@ for (const state of ["default", "project"]) {
       await scenario.prepare(page, state);
       const card = page.getByRole("region", { name: "Message from another session" }).first();
       await expect(card.getByRole("heading", { name: "Completed" })).toBeVisible();
-      await expect(card.locator("header svg")).toHaveCount(1);
-      await expect(card.locator("header")).toHaveCSS("border-bottom-style", "solid");
+      await expect(card).toHaveCSS("border-width", "0px");
+      await expect(card.locator("header")).toHaveCSS("border-bottom-width", "0px");
+      await expect(card).not.toContainText("cake-session-message");
+      const message = card.locator("..");
+      const actions = message.locator('[data-slot="message-actions"]');
+      await expect(actions.getByRole("button")).toHaveCount(1);
+      const copy = actions.getByRole("button", { name: "Copy response", exact: true });
+      await copy.focus();
+      await expect(copy).toBeFocused();
+      await copy.press("Enter");
+      await expect(actions.getByRole("button", { name: "Copied response" })).toBeVisible();
+      const copied = await application.evaluate(({ clipboard }) => clipboard.readText());
+      expect(copied).toContain("Installed the **manual post-mortem skill**");
+      expect(copied).not.toContain("cake-session-message");
+      if (state === "reference") {
+        const reply = page.getByRole("region", { name: "Message from another session" }).last();
+        await expect(reply).toContainText("Response received.");
+        await expect(reply).not.toContainText("Referenced Cake messages");
+        await expect(reply).not.toContainText("messages.read");
+        const replyMessage = reply.locator("..");
+        await expect(replyMessage.getByRole("button")).toHaveCount(1);
+        await replyMessage.getByRole("button", { name: "Copy response" }).click();
+        await expect(replyMessage.getByRole("button", { name: "Copied response" })).toBeVisible();
+        expect(await application.evaluate(({ clipboard }) => clipboard.readText())).toBe(
+          "Response received.",
+        );
+        const original = page.getByRole("button", { name: /Full agent response/ });
+        await original.focus();
+        await original.press("Enter");
+        await expect(page.getByRole("heading", { name: "Skill installed" })).toBeVisible();
+        await page.getByRole("button", { name: "Copy message", exact: true }).click();
+        await expect(
+          page.getByRole("button", { name: "Copied message", exact: true }),
+        ).toBeVisible();
+        expect(await application.evaluate(({ clipboard }) => clipboard.readText())).toContain(
+          "## Skill installed",
+        );
+        await original.focus();
+        await original.press("Enter");
+        await expect(original).toHaveAttribute("aria-expanded", "false");
+      }
       const context = page.getByRole("button", { name: "Cake · response mode", exact: true });
       await context.click();
       await expect(page.getByText(/Cake response mode: text/)).toBeVisible();

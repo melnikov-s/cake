@@ -164,7 +164,7 @@ describe("cross-session message presentation", () => {
   describe.each(["notification", "reply", "ignore"] as const)(
     "request delivery mode %s",
     (resultDelivery) => {
-      it("shows the selected delivery obligation in the UI and diagnostics", async () => {
+      it("shows the selected delivery obligation without exposing the envelope", () => {
         const expectsResponse = resultDelivery !== "ignore";
         const content = encodeCrossSessionMessage("Please **fix** the flaky test.", {
           ...metadata,
@@ -190,14 +190,13 @@ describe("cross-session message presentation", () => {
         );
         expect(screen.getByText("fix").getAttribute("data-streamdown")).toBe("strong");
         expect(region.textContent).not.toContain("cake-session-message");
-        await userEvent.setup().click(screen.getByRole("button", { name: "Raw envelope" }));
-        // The disclosure shows exactly the text the receiving agent was given.
-        expect(region.querySelector("pre")?.textContent).toBe(content);
+        expect(region.textContent).not.toContain(metadata.messageId);
+        expect(region.textContent).not.toContain("expectsResponse");
       });
     },
   );
 
-  it("turns a report lead line into a reply status badge and keeps the findings", async () => {
+  it("turns a report lead line into a reply status badge and keeps the findings", () => {
     const content = encodeCrossSessionMessage(
       formatCrossSessionReportText("source-session", "blocked", "Need a **decision**."),
       { ...metadata, replyToMessageId: metadata.threadId },
@@ -206,12 +205,11 @@ describe("cross-session message presentation", () => {
     const header = screen
       .getByRole("region", { name: "Message from another session" })
       .querySelector("header");
-    expect(header?.textContent).toContain("Reply from");
+    expect(header?.textContent).toContain("From");
     expect(screen.getByText("Blocked")).toBeTruthy();
     expect(screen.getByText("decision")).toBeTruthy();
     expect(screen.queryByText(/Session source-session/)).toBeNull();
-    await userEvent.setup().click(screen.getByRole("button", { name: "Raw envelope" }));
-    expect(screen.getByRole("region").querySelector("pre")?.textContent).toBe(content);
+    expect(screen.getByRole("region").textContent).not.toContain("cake-session-message");
   });
 
   it("explains generated notices in words instead of exposing bare session or message IDs", () => {
@@ -232,6 +230,21 @@ describe("cross-session message presentation", () => {
     expect(region.querySelector('[data-slot="message-content"]')?.textContent).not.toContain(
       metadata.messageId,
     );
+  });
+
+  it("preserves authored reply prose and links that resemble delivery scaffolding", () => {
+    renderPersisted(
+      encodeCrossSessionMessage(
+        "## Review notes\n\nReferenced Cake messages are useful here.\n\n[My original notes](cake://session/source-session?message=notes)\n\nKeep this explanation.",
+        { ...metadata, replyToMessageId: metadata.threadId },
+      ),
+    );
+    expect(screen.getByRole("heading", { name: "Review notes" })).toBeTruthy();
+    expect(screen.getByText("Referenced Cake messages are useful here.")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "My original notes" }).getAttribute("href")).toBe(
+      "cake://session/source-session?message=notes",
+    );
+    expect(screen.getByText("Keep this explanation.")).toBeTruthy();
   });
 
   it("keeps unrecognized notice text whole", () => {

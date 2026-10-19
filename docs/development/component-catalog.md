@@ -119,9 +119,11 @@ collision-aware session suffix while retaining the canonical UUID in its link an
 destination tooltip. Use it for identity metadata where the session context is clear.
 
 [`SessionMessage`](../../src/renderer/components/ui/session-message.tsx) presents
-incoming session communication as an expanded card with a compact attribution
-header (direction, source-session link, status/metadata badges) and an on-demand
-"Raw envelope" disclosure of the exact agent-facing text. Use recorded provenance;
+incoming session communication with lightweight attribution (source-session link
+and status/metadata badges), without an extra card or transport-envelope UI.
+Delivered messages use assistant-style Markdown and copy-only actions; exact
+original references remain available through lazy `InlineMessageSource` disclosures.
+Use recorded provenance;
 do not infer the sender from message text. Missing source identity/title is
 disclosed, not invented. Badges and bodies come from
 [`crossSessionPresentation`](../../src/renderer/lib/cross-session-presentation.ts),

@@ -1,10 +1,15 @@
 import {
   describeCrossSessionMessage,
-  encodeCrossSessionMessage,
   type CrossSessionMessageMetadata,
   type CrossSessionNotice,
   type CrossSessionReportOutcome,
 } from "../../contracts/conversations/cross-session-message";
+
+import {
+  appendMessageReferences,
+  messageReferencesInText,
+} from "../../contracts/conversations/message-reference-forwarding";
+import { protectedResponseNotice } from "../../contracts/conversations/reference-notification";
 
 export interface CrossSessionBadge {
   readonly label: string;
@@ -12,14 +17,12 @@ export interface CrossSessionBadge {
   readonly description: string;
 }
 
-/** Everything the transcript shows for one inter-session message; the model still gets `raw`. */
+/** Display-only projection; delivery and the agent-facing text remain unchanged. */
 export interface CrossSessionPresentation {
   readonly relation: "request" | "reply" | "notice";
   readonly badges: readonly CrossSessionBadge[];
   /** Markdown body with Cake's own lead line or notice sentence translated out. */
   readonly body: string;
-  /** The routing envelope and original body, exactly as it reached the receiving agent. */
-  readonly raw?: string;
 }
 
 const outcomeBadges = {
@@ -94,12 +97,15 @@ function noticePresentation(notice: CrossSessionNotice): NoticePresentation {
   }
 }
 
-function rawEnvelope(text: string, metadata: CrossSessionMessageMetadata) {
-  try {
-    return encodeCrossSessionMessage(text, metadata);
-  } catch {
-    return undefined;
-  }
+function replyBody(text: string): string {
+  const references = messageReferencesInText(text);
+  if (!references.length) return text;
+  // Only remove Cake's exact generated footer. Authored links and prose stay intact;
+  // the transcript independently presents these exact originals as lazy disclosures.
+  const footer = appendMessageReferences("", references).trimStart();
+  if (!text.endsWith(footer)) return text;
+  const body = text.slice(0, -footer.length).trimEnd();
+  return body === protectedResponseNotice ? "Response received." : body;
 }
 
 export function crossSessionPresentation(
@@ -108,7 +114,7 @@ export function crossSessionPresentation(
 ): CrossSessionPresentation {
   const described = describeCrossSessionMessage(text, metadata);
   const badges: CrossSessionBadge[] = [];
-  let body = described.body;
+  let body = described.relation === "reply" ? replyBody(described.body) : described.body;
   if (described.notice) {
     const notice = noticePresentation(described.notice);
     badges.push(notice.badge);
@@ -125,6 +131,5 @@ export function crossSessionPresentation(
           ? "Completion is retained until the sender’s next user message; it does not start a turn."
           : "Application-confirmed completion automatically starts or queues a normal sender turn.",
     });
-  const raw = rawEnvelope(text, metadata);
-  return { relation: described.relation, badges, body, ...(raw ? { raw } : null) };
+  return { relation: described.relation, badges, body };
 }

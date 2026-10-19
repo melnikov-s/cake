@@ -116,14 +116,18 @@ export const ChatTextMessage = forwardRef<
         report
           ? "border-l-2 border-accent bg-muted/35 text-foreground"
           : part.crossSession
-            ? "rounded-none border-0 bg-transparent px-4 py-3 shadow-none"
+            ? "rounded-none border-0 bg-transparent py-2 shadow-none"
             : assistant
               ? "bg-card text-foreground"
               : "border-user-message-foreground/20 bg-user-message text-user-message-foreground",
-        !assistant && !report && part.renderAs !== "markdown" && "whitespace-pre-wrap",
+        !assistant &&
+          !report &&
+          !part.crossSession &&
+          part.renderAs !== "markdown" &&
+          "whitespace-pre-wrap",
       )}
     >
-      {assistant || report || part.renderAs === "markdown" ? (
+      {assistant || report || part.crossSession || part.renderAs === "markdown" ? (
         <Markdown
           streaming={part.status === "streaming"}
           normalizeLatexDelimiters={part.status !== "streaming"}
@@ -167,7 +171,6 @@ export const ChatTextMessage = forwardRef<
           source={part.crossSession.sender}
           relation={crossSession?.relation}
           badges={crossSession?.badges}
-          raw={crossSession?.raw}
         >
           {content}
         </SessionMessage>
@@ -316,7 +319,11 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
   const draftAnnotations = behavior.store.annotations.filter(
     (annotation) => annotation.messageId === part.id,
   );
-  const canOpenFullscreen = part.text.length >= ASSISTANT_FULLSCREEN_MIN_CHARACTERS;
+  const copyText = part.crossSession
+    ? crossSessionPresentation(part.text, part.crossSession).body
+    : part.text;
+  const canOpenFullscreen =
+    !part.crossSession && part.text.length >= ASSISTANT_FULLSCREEN_MIN_CHARACTERS;
   const openFullscreen = useCallback(() => {
     if (canOpenFullscreen) setFullscreen(true);
   }, [canOpenFullscreen]);
@@ -485,13 +492,11 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
           <IconButton
             tooltip={copied ? "Copied" : "Copy response"}
             ariaLabel={copied ? "Copied response" : "Copy response"}
-            onClick={() =>
-              void navigator.clipboard.writeText(part.text).then(() => setCopied(true))
-            }
+            onClick={() => void navigator.clipboard.writeText(copyText).then(() => setCopied(true))}
           >
             {copied ? <CheckIcon /> : <CopyIcon />}
           </IconButton>
-          {part.entryId && behavior.onFork && (
+          {!part.crossSession && part.entryId && behavior.onFork && (
             <IconButton
               tooltip="Fork with full context"
               ariaLabel="Fork response with full context into new chat"
@@ -500,7 +505,7 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
               <ForkIcon />
             </IconButton>
           )}
-          {part.entryId && behavior.onTree && (
+          {!part.crossSession && part.entryId && behavior.onTree && (
             <IconButton
               tooltip="Continue here in session tree"
               ariaLabel="Continue from response in session tree"

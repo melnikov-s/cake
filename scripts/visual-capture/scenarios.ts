@@ -12,6 +12,8 @@ import {
   formatCrossSessionNoticeText,
   formatCrossSessionReportText,
 } from "../../src/contracts/conversations/cross-session-message.ts";
+import { appendMessageReferences } from "../../src/contracts/conversations/message-reference-forwarding.ts";
+import { protectedResponseNotice } from "../../src/contracts/conversations/reference-notification.ts";
 import {
   addSessionDigestReminder,
   formatSessionDigestReminder,
@@ -2448,8 +2450,8 @@ const sessionMessagesScenario: VisualCaptureScenario = {
 const sessionMessageVariantsScenario: VisualCaptureScenario = {
   name: "session-message-variants",
   description:
-    "Incoming reply, lifecycle notice, and Cake Chat request headers with badges; raw envelope on demand",
-  states: ["default", "project", "raw"],
+    "Incoming reply, lifecycle notice, and Cake Chat request attribution with copy-only actions",
+  states: ["default", "project", "hover", "reference", "original"],
   async seed(paths, theme) {
     await sessionMessagesScenario.seed(paths, theme);
     const timestamp = new Date(0).toISOString();
@@ -2501,9 +2503,60 @@ const sessionMessageVariantsScenario: VisualCaptureScenario = {
         sender: { sessionId: CAKE_CHAT_SESSION_ID, title: "Cake Chat", kind: "cake-chat" },
       },
     );
+    const sourceFile = join(
+      workspaceSessionDirectory(paths.project, join(paths.cakeHome, "pi", "sessions")),
+      `1970-01-01T00-00-00-000Z_${sourceId}.jsonl`,
+    );
+    const original = {
+      type: "message",
+      id: "original-result",
+      parentId: "source-input",
+      timestamp,
+      message: {
+        role: "assistant",
+        content: [
+          {
+            type: "text",
+            text: "## Skill installed\n\nThe **manual post-mortem skill** is available globally. Existing skills are unchanged.\n\nFocused verification passed; no repository merge was performed.",
+          },
+        ],
+        api: "anthropic-messages",
+        provider: "anthropic",
+        model: "visual-fixture",
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        stopReason: "stop",
+        timestamp: 1,
+      },
+    };
+    await writeFile(
+      sourceFile,
+      `${await readFile(sourceFile, "utf8")}${JSON.stringify(original)}\n`,
+    );
+    const referenceReply = encodeCrossSessionMessage(
+      appendMessageReferences(protectedResponseNotice, [
+        `cake://session/${sourceId}?message=original-result`,
+      ]),
+      {
+        version: 1,
+        messageId: "2e1f8a1c-7b3d-4c9e-8f60-1a2b3c4d5e6f",
+        threadId,
+        replyToMessageId: threadId,
+        sequence: 2,
+        expectsResponse: false,
+        sender: source,
+      },
+    );
     const messages = [
       { role: "user" as const, timestamp: 12, content: blocked },
       { role: "user" as const, timestamp: 13, content: stopped },
+      { role: "user" as const, timestamp: 14, content: referenceReply },
     ];
     // Project Sessions also receive Cake Chat requests; Cake Chat never messages itself.
     const projectMessages = [
@@ -2552,20 +2605,27 @@ const sessionMessageVariantsScenario: VisualCaptureScenario = {
       .locator('[data-slot="session-message"]')
       .first()
       .waitFor({ state: "visible", timeout: 20_000 });
-    if (state === "default") {
+    if (state === "default" || state === "reference" || state === "original") {
       await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
       await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText("Cake Chat");
     }
     await expect(
       page.getByRole("region", { name: "Notice about another session" }).last(),
     ).toBeVisible();
-    if (state === "raw") {
-      const request = page.getByRole("region", { name: "Message from another session" }).last();
-      await request.getByRole("button", { name: "Raw envelope" }).click();
-      await request.locator("pre").scrollIntoViewIfNeeded();
+    if (state === "reference" || state === "original") {
+      const response = page.getByRole("button", { name: /Full agent response/ });
+      await response.scrollIntoViewIfNeeded();
+      if (state === "original") {
+        await response.click();
+        await expect(page.getByRole("heading", { name: "Skill installed" })).toBeVisible();
+      }
     }
     await page.waitForFunction(() => document.fonts.status === "loaded");
-    await page.mouse.move(1, 1);
+    if (state === "hover") {
+      await page.getByRole("region", { name: "Message from another session" }).last().hover();
+    } else {
+      await page.mouse.move(1, 1);
+    }
   },
   region: (page) => page.locator(".transcript"),
 };

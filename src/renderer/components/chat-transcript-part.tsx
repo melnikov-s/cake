@@ -64,7 +64,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
   if (part.kind === "text" && part.subagentReport)
     return <ChatTextMessage part={part} onOpenSourceLocation={behavior.openSourceLocation} />;
   if (part.kind === "text")
-    return part.role === "assistant" ? (
+    return part.role === "assistant" || part.crossSession ? (
       <AssistantTextMessage part={part} behavior={behavior} />
     ) : (
       <ChatTextMessage

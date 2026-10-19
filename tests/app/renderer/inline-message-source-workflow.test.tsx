@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -14,6 +14,7 @@ import {
 } from "../../../src/contracts/conversations/cross-session-message";
 import { formatSessionDigestReminder } from "../../../src/contracts/cake-chats/session-digest-reminder";
 import { appendMessageReferences } from "../../../src/contracts/conversations/message-reference-forwarding";
+import { protectedResponseNotice } from "../../../src/contracts/conversations/reference-notification";
 import { Chat } from "../../../src/renderer/components/chat";
 import { Message } from "../../../src/renderer/models/Message";
 import { messageSnapshots } from "../../../src/renderer/reducers/SessionPartReducer";
@@ -158,6 +159,18 @@ describe("exact response presentation", () => {
     const user = userEvent.setup();
     let view = show();
     expect(inspect).not.toHaveBeenCalled();
+    const delivered = screen.getByRole("region", { name: "Message from another session" });
+    expect(delivered.textContent).toContain("Worker summary");
+    expect(delivered.textContent).not.toContain("Referenced Cake messages");
+    expect(delivered.textContent).not.toContain("messages.read");
+    expect(delivered.textContent).not.toContain("Full original message");
+    const message = within(delivered.closest("article")!);
+    expect(
+      message.getAllByRole("button").map((button) => button.getAttribute("aria-label")),
+    ).toEqual(["Copy response"]);
+    await user.click(message.getByRole("button", { name: "Copy response" }));
+    expect(await navigator.clipboard.readText()).toBe("Worker summary");
+    expect(inspect).not.toHaveBeenCalled();
     await user.click(screen.getAllByRole("button", { name: /Full agent response/ })[0]!);
     expect(await screen.findByRole("heading", { name: "Detailed result" })).toBeTruthy();
     expect(screen.getByText("Original substance").getAttribute("data-streamdown")).toBe("strong");
@@ -209,7 +222,7 @@ describe("exact response presentation", () => {
     view.unmount();
   });
 
-  it.each(["assistant", "reply", "notification"] as const)(
+  it.each(["assistant", "reply", "protected", "notification"] as const)(
     "automatically presents the exact %s source once, without reading until expansion or sending a turn",
     async (delivery) => {
       const source = SessionManager.inMemory("/producer");
@@ -248,9 +261,15 @@ describe("exact response presentation", () => {
           role: "user",
           timestamp: 3,
           content:
-            delivery === "reply"
+            delivery === "reply" || delivery === "protected"
               ? encodeCrossSessionMessage(
-                  formatCrossSessionReportText(source.getSessionId(), "completed", links),
+                  formatCrossSessionReportText(
+                    source.getSessionId(),
+                    "completed",
+                    delivery === "protected"
+                      ? appendMessageReferences(protectedResponseNotice, [ref])
+                      : links,
+                  ),
                   {
                     version: 1,
                     messageId: crypto.randomUUID(),
@@ -328,6 +347,21 @@ describe("exact response presentation", () => {
       expect(disclosure.getAttribute("aria-expanded")).toBe("false");
       expect(view.container.querySelectorAll('[data-slot="message-source"]')).toHaveLength(1);
       const user = userEvent.setup();
+      if (delivery === "protected" || delivery === "reply") {
+        const delivered = screen.getByRole("region", { name: "Message from another session" });
+        expect(delivered.textContent).not.toContain("cake-session-message");
+        expect(delivered.textContent).not.toContain("Referenced Cake messages");
+        expect(delivered.textContent).not.toContain(protectedResponseNotice);
+        const message = within(delivered.closest("article")!);
+        expect(
+          message.getAllByRole("button").map((button) => button.getAttribute("aria-label")),
+        ).toEqual(["Copy response"]);
+        await user.click(message.getByRole("button", { name: "Copy response" }));
+        expect(await navigator.clipboard.readText()).toBe(
+          delivery === "protected" ? "Response received." : links,
+        );
+        expect(inspect).not.toHaveBeenCalled();
+      }
       if (delivery === "assistant") {
         inspect.mockRejectedValueOnce(new Error("Source inaccessible"));
         inspect.mockResolvedValueOnce({
