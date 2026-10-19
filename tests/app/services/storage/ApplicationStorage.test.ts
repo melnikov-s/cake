@@ -14,6 +14,7 @@ import {
 import { ApplicationWriteError } from "../../../../src/contracts/storage/application-storage-errors";
 import { defaultApplicationState } from "../../../../src/contracts/application/application-data";
 import { ApplicationState } from "../../../../src/services/storage/ApplicationState";
+import { defaultCakeChatPreferences } from "../../../../src/contracts/cake-chats/cake-chat-preferences";
 import { updateNonChatModelPreference } from "../../../../src/domain/model-preferences/non-chat-model-preferences";
 import {
   defaultCakePrompts,
@@ -190,7 +191,7 @@ describe("ApplicationStorage", () => {
   );
 
   it.effect("loads a current version envelope", () =>
-    withStorage({ [documentPath]: JSON.stringify({ version: 7, data: current }) }, (storage) =>
+    withStorage({ [documentPath]: JSON.stringify({ version: 8, data: current }) }, (storage) =>
       Effect.gen(function* () {
         const loaded = yield* storage.load();
         assert.strictEqual(loaded.source, "current");
@@ -203,7 +204,7 @@ describe("ApplicationStorage", () => {
     withStorage(
       {
         [documentPath]: JSON.stringify({
-          version: 7,
+          version: 8,
           data: {
             ...current,
             globalCustomInstructions: undefined,
@@ -294,6 +295,72 @@ describe("ApplicationStorage", () => {
     }),
   );
 
+  it.effect(
+    "restores the raised saved memory default once while preserving custom budgets and unrelated preferences",
+    () =>
+      Effect.gen(function* () {
+        for (const memoryViewBytes of [undefined, 5_000, 20_000, 40_000, 80_000, 128_000]) {
+          const preferences =
+            memoryViewBytes === undefined
+              ? undefined
+              : {
+                  memoryViewBytes,
+                  instructions: "Keep this guidance",
+                  contextLimitTokens: 300_000,
+                  summarizationModel: { source: "utility" as const },
+                  subagentDefaultModel: { source: "inherit" as const },
+                };
+          const before = {
+            ...current,
+            globalCustomInstructions: "Keep global guidance",
+            cakePrompts: { worktreeCommit: "Custom commit guidance" },
+            ...(preferences ? { cakeChatPreferences: preferences } : {}),
+          };
+          const expected = preferences
+            ? {
+                ...before,
+                cakeChatPreferences: {
+                  ...preferences,
+                  memoryViewBytes: memoryViewBytes === 128_000 ? 40_000 : memoryViewBytes,
+                },
+              }
+            : before;
+          yield* withStorage(
+            { [documentPath]: JSON.stringify({ version: 7, data: before }) },
+            (storage, controls) =>
+              Effect.gen(function* () {
+                const loaded = yield* storage.load();
+                assert.equal(loaded.source, "migrated");
+                assert.deepEqual(loaded.state, expected);
+                assert.equal(
+                  (loaded.state.cakeChatPreferences ?? defaultCakeChatPreferences())
+                    .memoryViewBytes,
+                  memoryViewBytes === undefined || memoryViewBytes === 128_000
+                    ? 40_000
+                    : memoryViewBytes,
+                );
+                const persisted = controls.files.get(documentPath);
+                assert.ok(persisted);
+                assert.deepEqual(JSON.parse(persisted), { version: 8, data: expected });
+                assert.deepEqual(yield* storage.load(), { source: "current", state: expected });
+
+                // An explicit choice after the one-time transition must not be remapped.
+                const customized = {
+                  ...loaded.state,
+                  cakeChatPreferences: {
+                    ...defaultCakeChatPreferences(),
+                    ...preferences,
+                    memoryViewBytes: 128_000,
+                  },
+                };
+                yield* storage.save(customized);
+                assert.deepEqual(yield* storage.load(), { source: "current", state: customized });
+              }),
+          );
+        }
+      }),
+  );
+
   it.effect("migrates a version-six summarization model to an explicit model choice", () =>
     Effect.gen(function* () {
       const legacy = { provider: "p", modelId: "summary", thinkingLevel: "low" };
@@ -324,7 +391,7 @@ describe("ApplicationStorage", () => {
               );
               const persistedText = controls.files.get(documentPath);
               assert.ok(persistedText);
-              assert.equal(JSON.parse(persistedText).version, 7);
+              assert.equal(JSON.parse(persistedText).version, 8);
               assert.equal((yield* storage.load()).source, "current");
             }),
         );
@@ -336,7 +403,7 @@ describe("ApplicationStorage", () => {
     withStorage(
       {
         [documentPath]: JSON.stringify({
-          version: 7,
+          version: 8,
           data: {
             ...current,
             cakePrompts: {
@@ -401,7 +468,7 @@ describe("ApplicationStorage", () => {
             const persistedText = controls.files.get(documentPath);
             assert.ok(persistedText);
             const persisted = JSON.parse(persistedText);
-            assert.strictEqual(persisted.version, 7);
+            assert.strictEqual(persisted.version, 8);
             assert.ok(!("schemaVersion" in persisted.data));
           }),
         );
@@ -461,10 +528,10 @@ describe("ApplicationStorage", () => {
         ["{", ApplicationMalformedDocumentError],
         [JSON.stringify({ nope: true }), ApplicationMalformedDocumentError],
         [
-          JSON.stringify({ version: 7, data: { ...current, projects: "invalid" } }),
+          JSON.stringify({ version: 8, data: { ...current, projects: "invalid" } }),
           ApplicationDecodeError,
         ],
-        [JSON.stringify({ version: 8, data: current }), ApplicationUnsupportedVersionError],
+        [JSON.stringify({ version: 9, data: current }), ApplicationUnsupportedVersionError],
         [
           JSON.stringify({ version: 0, data: { schemaVersion: 1, projects: "invalid" } }),
           ApplicationMigrationError,

@@ -42,7 +42,7 @@ export const SettingsCakeChatSection = observer(function SettingsCakeChatSection
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <strong className="text-xs font-medium text-foreground">History-view budget</strong>
             <small className="text-[11px] text-muted-foreground">
-              OptMem history grows to this size, then consolidates toward half (128/64 KB by
+              OptMem history grows to this size, then consolidates toward half (40/20 KB by
               default). Model-window admission may lower it. Originals are retained.
             </small>
           </span>
@@ -54,7 +54,7 @@ export const SettingsCakeChatSection = observer(function SettingsCakeChatSection
           >
             {[5_000, 10_000, 20_000, 40_000, 80_000, 128_000].map((bytes) => (
               <option key={bytes} value={bytes}>
-                {bytes / 1_000} KB{bytes === 128_000 ? " (default)" : ""}
+                {bytes / 1_000} KB{bytes === 40_000 ? " (default)" : ""}
               </option>
             ))}
           </Select>

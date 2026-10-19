@@ -828,6 +828,59 @@ it("indexes warm committed originals without replacing the active head, then reb
   expect((await f.zoom(0, 1)).text).toContain(original);
 });
 
+it("fits a raised memory budget without rewriting a warm active context and hands off the smaller view only at normal cache expiry", async () => {
+  const f = await fixture(undefined, 20_000, new MemoryStorage(), undefined, true, false, {
+    summarize: async () => `talk: ${"s".repeat(480)}`,
+  });
+  f.budget(128_000);
+  await f.engine.root.commit(async (tx) => {
+    for (let i = 0; i < 128; i += 1)
+      await tx.appendEntry(UserEntry, f.engine.root.id, {
+        model: [{ role: "user", content: `RAW_${i} `.repeat(100), timestamp: 1 }],
+      });
+  }, BACKGROUND_CONTEXT);
+  await f.send("Start warm requests", "first");
+  expect((await f.view()).bytes).toBeGreaterThan(40_000);
+  f.advance(6 * 60_000);
+  await f.send("Carry the raised view", "large-view");
+  await f.view();
+  const before = await f.engine.root.context(BACKGROUND_CONTEXT);
+  const largeMemory = before.messages.find(
+    (message) =>
+      message.role === "user" &&
+      typeof message.content === "string" &&
+      message.content.startsWith("<chat>\n"),
+  )!;
+  expect(Buffer.byteLength(JSON.stringify(largeMemory))).toBeGreaterThan(40_000);
+  const calls = f.summarize.mock.calls.length;
+
+  f.budget(40_000);
+  const small = await f.view();
+  expect(small.bytes).toBeLessThanOrEqual(20_000);
+  expect(f.summarize).toHaveBeenCalledTimes(calls);
+  expect(await f.engine.root.context(BACKGROUND_CONTEXT)).toEqual(before);
+  await f.send("Still warm", "warm");
+  expect(JSON.stringify(f.requests[2])).toContain(JSON.stringify(largeMemory.content));
+  expect((await f.engine.root.context(BACKGROUND_CONTEXT)).head?.id).toBe(before.head?.id);
+  await f.view();
+
+  f.advance(6 * 60_000);
+  await f.send("Use the smaller memory at normal expiry", "small-view");
+  const after = await f.engine.root.context(BACKGROUND_CONTEXT);
+  expect(after.head?.id).not.toBe(before.head?.id);
+  const smallMemory = after.messages.find(
+    (message) =>
+      message.role === "user" &&
+      typeof message.content === "string" &&
+      message.content.startsWith("<chat>\n"),
+  )!;
+  expect(Buffer.byteLength(JSON.stringify(smallMemory))).toBeLessThan(40_000);
+  expect(JSON.stringify(f.requests[3])).not.toContain(JSON.stringify(largeMemory.content));
+  expect((await f.engine.contextStatus(durableModel)).lastSummary?.reason).toBe("cache-cold");
+  expect(f.summarize).toHaveBeenCalledTimes(calls);
+  expect((await f.zoom(127, 1)).text).toContain("RAW_127 ".repeat(100));
+});
+
 it.each(["settings", "model"] as const)(
   "forces summarization at the smaller %s limit even while cache is warm",
   async (which) => {

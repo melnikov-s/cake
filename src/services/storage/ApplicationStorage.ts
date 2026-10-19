@@ -20,7 +20,7 @@ import {
   ApplicationWriteError,
 } from "../../contracts/storage/application-storage-errors";
 
-const APPLICATION_DOCUMENT_VERSION = 7;
+const APPLICATION_DOCUMENT_VERSION = 8;
 export const APPLICATION_DOCUMENT_NAME = "application.json";
 
 class ApplicationReadError extends Schema.TaggedError<ApplicationReadError>()(
@@ -337,6 +337,21 @@ const migrateVersionSix = Effect.fn("ApplicationStorage.migrateVersionSix")((
   });
 });
 
+// Restore the deliberately small view after the shipped default was raised.
+// v7 stored no provenance: explicit 128k and a copied default are indistinguishable.
+// Preserve every other budget/field; v8 saves may explicitly select 128k again.
+const migrateVersionSeven = Effect.fn("ApplicationStorage.migrateVersionSeven")(
+  (state: ApplicationStateValue) =>
+    Effect.succeed<ApplicationStateValue>(
+      state.cakeChatPreferences?.memoryViewBytes === 128_000
+        ? {
+            ...state,
+            cakeChatPreferences: { ...state.cakeChatPreferences, memoryViewBytes: 40_000 },
+          }
+        : state,
+    ),
+);
+
 const writeError = (stage: AtomicFileStage, cause: unknown) =>
   new ApplicationWriteError({ stage, message: messageOf(cause) });
 
@@ -490,6 +505,17 @@ export const makeApplicationStorageLive = (userDataDirectory: string) =>
               ),
             );
             data = yield* migrateVersionSix(previous);
+          } else if (version === 7) {
+            const previous = yield* Schema.decodeUnknownEffect(ApplicationState)(data).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ApplicationMigrationError({
+                    fromVersion: 7,
+                    message: cause.message,
+                  }),
+              ),
+            );
+            data = yield* migrateVersionSeven(previous);
           } else
             return yield* new ApplicationMigrationError({
               fromVersion: version,

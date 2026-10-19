@@ -388,7 +388,11 @@ and two model choices that share one shape and Settings control (Inherit, Defaul
 preset, Utility, a preset, or a specific model): the Summarization model (absent
 means the utility model) and the Subagent default model (absent means Inherit).
 Version seven converted older bare summarization models into specific-model
-choices with Fast mode off.
+choices with Fast mode off. Version eight restores saved 128,000-byte memory budgets
+to 40,000 without changing other preferences. Earlier settings did not distinguish a
+copied default from an explicit 128,000-byte choice; both transition once. Other custom
+budgets remain unchanged, and a new explicit 128,000-byte choice is retained in version
+eight. Absent preferences use the 40,000-byte default.
 The permanent coordinator can read and update only its dedicated instructions with
 `settings.cake-chat.get` and `settings.cake-chat.update`. Updates use the existing
 application-state transaction, preserve other preferences, and require the exact
@@ -462,11 +466,21 @@ only in tool output are not retained in memory unless reported in dialogue.
 Worker/report provenance and separately durable handling obligations remain distinct
 from human-authored input.
 
-The default view grows to 128,000 UTF-8 bytes, then consolidates toward 64,000. Explicit
-user budgets and model-window admission can lower this. The most-due built sibling pair
-wins, using age from the pair's last message divided by its child size, oldest first on
-ties. The exact view and ancestor references persist; restart does not refit it. A separate
-compaction reference view uses a 32,000/16,000-byte sawtooth and reconsolidates when the
+The deliberately small default view grows to 40,000 UTF-8 bytes, then consolidates
+toward 20,000; zoom supplies detail. Explicit user budgets can change this, and
+model-window admission can lower it. The most-due built sibling pair wins, using age
+from the pair's last message divided by its child size, oldest first on ties. The exact
+view and ancestor references persist; restart alone does not refit it. A changed budget
+is applied at the next index synchronization/preparation: an oversized view collapses
+stored ancestors without provider calls when the index is complete. Pending parents
+resume from committed progress on required preparation or idle maintenance; optional
+cache-only preparation defers instead of waiting. Neither a settings migration nor
+index fitting rewrites a warm active head. The smaller view reaches model input only
+at the next normal cache-cold/unknown or limit/overflow handoff, under the unchanged
+active-context policy (300,000 tokens by default). No memory-index version change,
+reset, or rebuild is needed. Application settings migration runs when the updated
+backend loads application storage; a renderer-only reload does not reload that owner.
+A separate compaction reference view uses a 32,000/16,000-byte sawtooth and reconsolidates when the
 chat view consolidates. It ends before a leaf, or at a merge's end, and stops at the first
 unbuilt original. It never includes future text, raw unsummarized fragments or placeholders.
 

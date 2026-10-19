@@ -2,9 +2,9 @@ import type { CakeChatPreferences } from "../application/application-data";
 import type { CakeModelChoice } from "../model-presets/cake-model-selection";
 
 export const defaultCakeChatPreferences = (): CakeChatPreferences => ({
-  // Public OptMem chat-memory specification: 128 KB upper / 64 KB lower view.
-  // Admission may lower this to fit the selected model's actual token window.
-  memoryViewBytes: 128_000,
+  // Deliberately small OptMem view: 40,000 UTF-8 bytes upper / 20,000 target.
+  // Zoom retains detail; model-window admission may lower this budget further.
+  memoryViewBytes: 40_000,
   instructions: "",
 });
 

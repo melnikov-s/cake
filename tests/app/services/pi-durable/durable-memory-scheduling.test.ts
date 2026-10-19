@@ -21,6 +21,7 @@ import {
   type DurableMemoryOptions,
 } from "../../../../src/services/pi-durable/durable-chat-memory";
 import { durableModels } from "../../../fixtures/durable-chat";
+import { defaultCakeChatPreferences } from "../../../../src/contracts/cake-chats/cake-chat-preferences";
 
 const cleanup: Array<() => Promise<unknown>> = [];
 afterEach(async () => {
@@ -38,7 +39,7 @@ const identify = (context: string) => {
 async function fixture(
   summarize: DurableMemoryOptions["summarize"],
   storage: Storage = new MemoryStorage(),
-  budget = 128_000,
+  budget = defaultCakeChatPreferences().memoryViewBytes,
 ) {
   const harness = await Harness.open(
     storage,
@@ -252,6 +253,69 @@ it("defers ready-only reads of a persisted serial merge chain without repeating 
   expect(ready.text).not.toContain("abandoned result");
   expect(summarize).toHaveBeenCalledTimes(calls + 1);
 });
+
+it.each(["complete", "pending"] as const)(
+  "fits an existing oversized SQLite index to 40k/20k after reopen with %s parents, preserving nodes and zoom",
+  async (parents) => {
+    const directory = await mkdtemp(join(tmpdir(), "cake-memory-budget-"));
+    cleanup.push(() => rm(directory, { recursive: true, force: true }));
+    const database = join(directory, "memory.sqlite");
+    const first = await fixture(
+      async ({ context }) => {
+        const { id, n } = identify(context);
+        if (parents === "pending" && n === 128) throw new Error("Parent temporarily unavailable");
+        return `built-${id}+${n}: ${"s".repeat(480)}`;
+      },
+      await openNodeSqliteStorage(database),
+      128_000,
+    );
+    for (let i = 0; i < 128; i += 1) await first.append(`RAW_${i} `.repeat(100));
+    if (parents === "pending") {
+      await expect(first.memory.synchronize(signal())).rejects.toBeDefined();
+    } else {
+      const large = await first.memory.synchronize(signal());
+      expect(large.bytes).toBeGreaterThan(40_000);
+      expect(large.bytes).toBeLessThan(128_000);
+      expect(large.partCount).toBe(128);
+    }
+    const stored = await first.nodes();
+    expect(stored).toHaveLength(parents === "pending" ? 254 : 255);
+    const head = (await first.root.context(BACKGROUND_CONTEXT)).head?.id;
+    await first.harness.close(BACKGROUND_CONTEXT);
+    cleanup.pop();
+
+    const summarize = vi.fn<DurableMemoryOptions["summarize"]>(
+      async () => `resumed parent: ${"r".repeat(480)}`,
+    );
+    const reopened = await fixture(summarize, await openNodeSqliteStorage(database));
+    const ready = await reopened.memory.synchronize(signal(), undefined, undefined, {
+      readyOnly: true,
+    });
+    expect(summarize).not.toHaveBeenCalled();
+    expect(await reopened.nodes()).toEqual(stored);
+    expect(ready.complete).toBe(parents === "complete");
+    expect(ready.sourceCount).toBe(128);
+    const small = parents === "pending" ? await reopened.memory.synchronize(signal()) : ready;
+    expect(small).toMatchObject({ complete: true, sourceCount: 128 });
+    expect(small.bytes).toBeLessThanOrEqual(20_000);
+    expect(small.bytes).toBeGreaterThan(0);
+    expect(small.partCount).toBeLessThan(128);
+    expect(summarize).toHaveBeenCalledTimes(parents === "pending" ? 1 : 0);
+    if (parents === "pending")
+      expect(identify(summarize.mock.calls[0]![0].context)).toEqual({ id: 0, n: 128 });
+    const after = await reopened.nodes();
+    expect(after.slice(0, stored.length)).toEqual(stored);
+    expect(after).toHaveLength(255);
+    expect((await reopened.root.context(BACKGROUND_CONTEXT)).head?.id).toBe(head);
+    expect((await reopened.memory.zoom(0, 128, signal())).text).toContain("built-0+64");
+    for (const id of [0, 63, 127])
+      expect((await reopened.memory.zoom(id, 1, signal())).text).toContain(
+        `RAW_${id} `.repeat(100),
+      );
+    expect(await reopened.memory.synchronize(signal())).toEqual(small);
+    expect(summarize).toHaveBeenCalledTimes(parents === "pending" ? 1 : 0);
+  },
+);
 
 it.each([4_000, 40_000])(
   "maintains separate 16/32 KB compaction references and binary view/zoom invariants across source windows (budget %i)",

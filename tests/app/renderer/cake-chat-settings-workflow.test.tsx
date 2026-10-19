@@ -25,7 +25,11 @@ it("persists the active context limit, memory budget and dedicated instructions 
   try {
     const user = userEvent.setup();
     const budget = screen.getByRole("combobox", { name: "Cake Chat history-view budget" });
-    expect(budget).toHaveProperty("value", "128000");
+    expect(budget).toHaveProperty("value", "40000");
+    expect(within(budget).getByRole("option", { name: "40 KB (default)" })).toHaveProperty(
+      "selected",
+      true,
+    );
     await user.selectOptions(budget, "10000");
     await waitFor(() =>
       expect(save).toHaveBeenCalledWith(
@@ -84,7 +88,7 @@ it("shows a failed preference save and permits retry without discarding persiste
     expect(await screen.findByText("Could not save memory settings")).toBeDefined();
     await user.selectOptions(
       screen.getByRole("combobox", { name: "Cake Chat history-view budget" }),
-      "40000",
+      "20000",
     );
     await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.queryByText("Could not save memory settings")).toBeNull());
