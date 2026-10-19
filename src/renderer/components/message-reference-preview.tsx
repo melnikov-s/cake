@@ -3,6 +3,7 @@ import type { MessageReferencePreviewStore } from "../stores/MessageReferencePre
 import { FullscreenSurface } from "./fullscreen-surface";
 import { Button } from "./ui/button";
 import { Callout } from "./ui/callout";
+import { CopyButton } from "./ui/copy-button";
 
 /** Read-only Pi source evidence for a message outside the visible continuation. */
 export const MessageReferencePreview = observer(function MessageReferencePreview({
@@ -23,13 +24,26 @@ export const MessageReferencePreview = observer(function MessageReferencePreview
           This exact message is outside the visible conversation. Viewing its Pi original does not
           change the active branch or the agent’s context.
         </Callout>
-        <div className="text-xs text-muted-foreground">
-          {page.message.timestamp} · {page.message.ref}
+        <div className="flex items-center justify-between gap-3">
+          <div className="break-all text-xs text-muted-foreground">
+            {page.message.timestamp} · {page.message.ref}
+          </div>
+          <CopyButton
+            key={page.message.ref}
+            getText={() => store.textForCopy()}
+            onError={(error) => store.showCopyError(error)}
+            disabled={store.loading}
+          />
         </div>
         <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
           {page.text || "No textual content. Attachments are referenced in message metadata."}
         </div>
         {store.error && <Callout variant="error">{store.error}</Callout>}
+        {store.copyError && (
+          <Callout variant="error" role="alert">
+            {store.copyError}
+          </Callout>
+        )}
         {(page.offset > 0 || page.nextOffset !== null) && (
           <div className="flex items-center gap-3">
             <Button

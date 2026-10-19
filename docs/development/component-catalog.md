@@ -100,6 +100,8 @@ and [`ChatStore`](../../src/renderer/stores/ChatStore.ts).
 
 ## Conversation and media
 
+[`CopyButton`](../../src/renderer/components/ui/copy-button.tsx) copies text on demand with pending and success feedback and delegates errors to its owner. Linked-message views read the complete original across source pages without moving the displayed page.
+
 [`CopyReferenceButton`](../../src/renderer/components/ui/copy-reference-button.tsx) copies an
 exact attachment link with shared feedback. It never reads message bodies; the parent
 supplies the addressable session identity. Original-message previews reuse `FullscreenSurface` with bounded source pages.

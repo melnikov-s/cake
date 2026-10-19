@@ -5,6 +5,7 @@ import { messageNavigationTarget } from "../../contracts/conversations/message-r
 import { Markdown, useMarkdownLinkActions } from "./ai-elements/markdown";
 import { Button } from "./ui/button";
 import { Callout } from "./ui/callout";
+import { CopyButton } from "./ui/copy-button";
 import { DisclosureTrigger } from "./ui/disclosure-trigger";
 import { Link } from "./ui/link";
 import { LoadingState } from "./ui/loading-state";
@@ -33,22 +34,36 @@ export const InlineMessageSource = observer(function InlineMessageSource({
       {store.expanded && (
         <div
           id={contentId}
-          className="flex max-h-[65vh] min-w-0 flex-col gap-3 overflow-y-auto border-l border-border pl-4 pt-3"
+          className="flex max-h-[65vh] min-w-0 flex-col gap-3 overflow-y-auto border-l border-border px-4 pt-3"
         >
-          <Link
-            href={reference}
-            onClick={(event) => {
-              event.preventDefault();
-              actions?.openSession(target.sessionId, target.messageId);
-            }}
-          >
-            Original message · {title}
-          </Link>
+          <div className="flex shrink-0 items-center justify-between gap-3">
+            <Link
+              href={reference}
+              onClick={(event) => {
+                event.preventDefault();
+                actions?.openSession(target.sessionId, target.messageId);
+              }}
+            >
+              Original message · {title}
+            </Link>
+            {page && (
+              <CopyButton
+                getText={() => store.textForCopy()}
+                onError={(error) => store.showCopyError(error)}
+                disabled={store.loading}
+              />
+            )}
+          </div>
           <div className="break-all text-xs text-muted-foreground">
             {reference}
             {page ? ` · ${page.message.role} · ${page.message.timestamp}` : ""}
           </div>
           {store.loading && <LoadingState label="Loading original response" />}
+          {store.copyError && (
+            <Callout variant="error" role="alert">
+              {store.copyError}
+            </Callout>
+          )}
           {store.error ? (
             <Callout variant="error" role="alert">
               <strong>Original response unavailable</strong>

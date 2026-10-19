@@ -123,6 +123,10 @@ describe("Agent session navigation workflow", () => {
       await requestOpen(fixture, { sessionId, messageId: "original-entry" });
       const dialog = await screen.findByRole("dialog", { name: "user · original-entry" });
       expect(dialog.textContent).toContain("Exact original evidence");
+      await fixture.user.click(screen.getByRole("button", { name: "Copy message" }));
+      expect(await screen.findByRole("button", { name: "Copied message" })).toBeDefined();
+      expect(await navigator.clipboard.readText()).toBe("Exact original evidence");
+      expect(inspect).toHaveBeenCalledTimes(1);
       expect(inspect).toHaveBeenCalledWith(
         {
           sessionId,

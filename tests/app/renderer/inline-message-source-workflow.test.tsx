@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -169,6 +169,31 @@ describe("exact response presentation", () => {
       expect.objectContaining({ entryId, offset: 20_000 }),
       expect.anything(),
     );
+    // Copying from a later page still copies the whole original, not a truncated page.
+    inspect.mockRejectedValueOnce(new Error("Source temporarily unavailable"));
+    await user.click(screen.getByRole("button", { name: "Copy message" }));
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Could not copy original message: Source temporarily unavailable",
+    );
+    expect(screen.getByRole("button", { name: "Copy message" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Copy message" }));
+    expect(await screen.findByRole("button", { name: "Copied message" })).toBeTruthy();
+    expect(await navigator.clipboard.readText()).toBe(originalText);
+    expect(screen.getByText(/Final original detail/)).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Detailed result" })).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    // A clipboard failure must not claim success or hide the original.
+    const write = vi
+      .spyOn(navigator.clipboard, "writeText")
+      .mockRejectedValueOnce(new Error("Clipboard unavailable"));
+    await user.click(screen.getByRole("button", { name: "Copied message" }));
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain("Clipboard unavailable"),
+    );
+    expect(screen.getByRole("button", { name: "Copy message" })).toBeTruthy();
+    expect(screen.getByText(/Final original detail/)).toBeTruthy();
+    write.mockRestore();
     await user.click(screen.getByRole("button", { name: "Previous" }));
     expect(await screen.findByRole("heading", { name: "Detailed result" })).toBeTruthy();
     await user.click(screen.getAllByRole("button", { name: /Full agent response/ })[0]!);

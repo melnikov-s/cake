@@ -27,21 +27,50 @@ export class MessageReferencePreviewStore extends Store<{
   page: MessageReadResult | undefined;
   loading = false;
   error: string | undefined;
+  copyError: string | undefined;
   private revision = 0;
+
+  private async readPage(sessionId: string, entryId: string, offset: number) {
+    const value = await ClientContext.consume(this)!.sessionChats.inspect(
+      { sessionId, kind: "messages-read", entryId, offset, maxChars: 20_000 },
+      { signal: this.signal },
+    );
+    const page = decodeMessageReadResult(value);
+    if (page.message.ref !== messageReference(sessionId, entryId) || page.offset !== offset)
+      throw new Error("The source reader returned a different message or page");
+    return page;
+  }
+
+  /** Read the complete original without moving the reader's current page. */
+  async textForCopy() {
+    this.copyError = undefined;
+    const current = this.page;
+    if (!current) throw new Error("No original message is loaded");
+    const { sessionId, entryId } = current.message;
+    let page = current.offset === 0 ? current : await this.readPage(sessionId, entryId, 0);
+    const chunks = [page.text];
+    while (page.nextOffset !== null) {
+      if (page.nextOffset <= page.offset)
+        throw new Error("The source reader returned an invalid next page");
+      page = await this.readPage(sessionId, entryId, page.nextOffset);
+      chunks.push(page.text);
+    }
+    this.signal.throwIfAborted();
+    return chunks.join("");
+  }
+
+  showCopyError(error: unknown) {
+    this.copyError = `Could not copy original message: ${error instanceof Error ? error.message : String(error)}`;
+  }
 
   async open(sessionId: string, entryId: string, offset = 0) {
     const revision = ++this.revision;
     this.loading = true;
     this.error = undefined;
+    this.copyError = undefined;
     try {
-      const value = await ClientContext.consume(this)!.sessionChats.inspect(
-        { sessionId, kind: "messages-read", entryId, offset, maxChars: 20_000 },
-        { signal: this.signal },
-      );
+      const page = await this.readPage(sessionId, entryId, offset);
       if (revision !== this.revision || this.signal.aborted) return false;
-      const page = decodeMessageReadResult(value);
-      if (page.message.ref !== messageReference(sessionId, entryId) || page.offset !== offset)
-        throw new Error("The source reader returned a different message or page");
       this.page = page;
       return true;
     } catch (error) {
@@ -70,5 +99,6 @@ export class MessageReferencePreviewStore extends Store<{
     this.page = undefined;
     this.loading = false;
     this.error = undefined;
+    this.copyError = undefined;
   }
 }

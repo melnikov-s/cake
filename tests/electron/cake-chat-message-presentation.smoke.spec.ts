@@ -44,15 +44,16 @@ for (const theme of ["dark", "light"] as const)
       );
       source.appendSessionInfo("Detailed delegated review");
       source.appendMessage({ role: "user", content: "Review the subsystem", timestamp: 1 });
+      const originalText =
+        "## Original detailed findings\n\n**Substance stays in Pi.**\n\n```ts\nconst evidence = 'original';\n```\n\n" +
+        "Detailed review. ".repeat(1400) +
+        "\n\nLast original finding.";
       const entryId = source.appendMessage({
         role: "assistant",
         content: [
           {
             type: "text",
-            text:
-              "## Original detailed findings\n\n**Substance stays in Pi.**\n\n```ts\nconst evidence = 'original';\n```\n\n" +
-              "Detailed review. ".repeat(1400) +
-              "\n\nLast original finding.",
+            text: originalText,
           },
         ],
         api: "anthropic-messages",
@@ -176,11 +177,24 @@ for (const theme of ["dark", "light"] as const)
         },
       });
       const page = await app.firstWindow();
+      // Keep native clipboard contents untouched while exercising the actual UI.
+      const stubClipboard = () =>
+        page.evaluate(() => {
+          Object.defineProperty(navigator, "clipboard", {
+            configurable: true,
+            value: {
+              writeText: async (text: string) => {
+                Reflect.set(window, "copiedMessage", text);
+              },
+            },
+          });
+        });
       await app.evaluate(({ BrowserWindow }) =>
         BrowserWindow.getAllWindows()[0]!.setContentSize(1280, 1100),
       );
       await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
       const verify = async (inputName: string) => {
+        await stubClipboard();
         const surfaces = page.locator('[data-slot="message-source"]');
         await expect(surfaces).toHaveCount(3);
         const first = page.locator('[data-part-id="tool-present"] [data-slot="message-source"]');
@@ -208,6 +222,12 @@ for (const theme of ["dark", "light"] as const)
         );
         await expect(first).toHaveAttribute("data-message-reference", metadata.ref);
         await first.getByRole("button", { name: "Next", exact: true }).click();
+        await expect(first.getByText(/Last original finding/)).toBeVisible();
+        await first.getByRole("button", { name: "Copy message", exact: true }).click();
+        await expect(
+          first.getByRole("button", { name: "Copied message", exact: true }),
+        ).toBeVisible();
+        expect(await page.evaluate(() => Reflect.get(window, "copiedMessage"))).toBe(originalText);
         await expect(first.getByText(/Last original finding/)).toBeVisible();
         await expect(page.getByRole("combobox", { name: inputName })).toBeVisible();
         // Notification-mode source is available without any model-authored relay.
