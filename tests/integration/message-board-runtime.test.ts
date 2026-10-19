@@ -52,7 +52,7 @@ const entry = (sequence: number): BoardEntry => ({
   sequence,
   authorSessionId: "parent",
   createdAt: "2026-01-01T00:00:00Z",
-  audience: "workgroup",
+  audience: ["child"],
   description: `Finding ${sequence}`,
   body: `Full evidence ${sequence}`,
 });
@@ -88,6 +88,7 @@ const harness = async (
   const started = [gate(), gate()];
   const released = [gate(), gate()];
   const control: MessageBoardControl = input.persisted?.control ?? {
+    deliveryExclusions: async () => undefined,
     append: async (input) => {
       const value: BoardEntry = {
         ...entry(entries.length + 1),
@@ -323,6 +324,7 @@ const persistedBackend = async (cwd: string) => {
     ).pipe(Layer.provide(Layer.merge(NodeFileSystem.layer, NodePath.layer))),
   );
   const control: MessageBoardControl = {
+    deliveryExclusions: () => runtime.runPromise(boards.deliveryExclusions("child")),
     append: (input) => runtime.runPromise(boards.append("parent", input)),
     current: (input) => runtime.runPromise(boards.current("child", input)),
     readNew: (input, notificationOnly, excluded) =>
@@ -432,12 +434,12 @@ describe("message-board intake in real Pi", () => {
       const prompt = fixture.session.prompt("Work independently");
       await Promise.all(fixture.started.map((gate) => gate.promise));
       await fixture.control.append({
-        audience: "workgroup",
+        audience: ["child"],
         description: "Finding 1",
         body: "Full evidence 1",
       });
       await fixture.control.append({
-        audience: "workgroup",
+        audience: ["child"],
         description: "Finding 2",
         body: "Full evidence 2",
       });
@@ -642,6 +644,52 @@ describe("message-board intake in real Pi", () => {
       fixture.session.dispose();
     }
   });
+  it("filters canceled staged descriptions from outgoing context while preserving other entries and Pi history", async () => {
+    let hold = true;
+    const fixture = await harness({
+      after: (pi) => {
+        pi.on("context_with_system", (event) =>
+          hold
+            ? {
+                messages: event.messages.filter(
+                  (message) =>
+                    message.role !== "custom" || message.customType !== MESSAGE_BOARD_REMINDER,
+                ),
+              }
+            : undefined,
+        );
+      },
+    });
+    try {
+      fixture.entries.push(entry(1), entry(2));
+      await fixture.session.prompt("Original work");
+      expect(fixture.receipts).toEqual([]);
+      fixture.control.deliveryExclusions = async () => ({
+        boardId: "family-board-test",
+        paused: false,
+        sequences: [1],
+      });
+      hold = false;
+      await fixture.session.prompt("User resumed different work");
+      expect(JSON.stringify(fixture.requests[1])).not.toContain("Finding 1");
+      expect(JSON.stringify(fixture.requests[1])).toContain("Finding 2");
+      expect(fixture.receipts).toEqual([
+        { sequence: 2, sessionId: "child", notifiedAt: expect.any(String) },
+      ]);
+      expect(JSON.stringify(fixture.manager.buildSessionProjection().messages)).toContain(
+        "Finding 1",
+      );
+      fixture.control.deliveryExclusions = async () => ({
+        boardId: "family-board-test",
+        paused: true,
+        sequences: [],
+      });
+      await fixture.session.prompt("No automatic board work while paused");
+      expect(JSON.stringify(fixture.requests[2])).not.toContain("Finding 2");
+    } finally {
+      fixture.session.dispose();
+    }
+  });
   it("does not let ten staged but transformed-away notices starve a later entry", async () => {
     const fixture = await harness({
       after: (pi) => {
@@ -720,11 +768,11 @@ describe("message-board intake in real Pi", () => {
       fixture.session.dispose();
     }
   });
-  it("collects on genuine idle-start without waking the agent on append", async () => {
+  it("context-only extension collects on idle-start while application wake admission stays separate", async () => {
     const fixture = await harness();
     try {
       await fixture.control.append({
-        audience: "workgroup",
+        audience: ["child"],
         description: "Finding 1",
         body: "Full evidence 1",
       });
@@ -747,12 +795,12 @@ describe("message-board disk recovery with a recreated Pi session and storage ru
     const seeded = await seedPersistedBoard();
     let backend = seeded.backend;
     await backend.control.append({
-      audience: "workgroup",
+      audience: ["child"],
       description: "Finding 1",
       body: "Full evidence 1",
     });
     await backend.control.append({
-      audience: "workgroup",
+      audience: ["child"],
       description: "Finding 2",
       body: "Full evidence 2",
     });
@@ -823,7 +871,7 @@ describe("message-board disk recovery with a recreated Pi session and storage ru
     }
   });
 
-  it("recovers an undelivered description and newly appended idle entry only on the next genuine request", async () => {
+  it("recovers the next-request inbox independently of application wake admission", async () => {
     const seeded = await seedPersistedBoard();
     let backend = seeded.backend;
     let fixture = await harness({
@@ -840,7 +888,7 @@ describe("message-board disk recovery with a recreated Pi session and storage ru
       await fixture.started[0]?.promise;
       const boardId = seeded.boardId;
       await backend.control.append({
-        audience: "workgroup",
+        audience: ["child"],
         description: "Finding 1",
         body: "Full evidence 1",
       });
@@ -870,7 +918,7 @@ describe("message-board disk recovery with a recreated Pi session and storage ru
       expect(persistedReminders(fixture.manager)).toEqual(pendingReminders);
       expect(await backend.runtime.runPromise(backend.storage.receipts(boardId))).toEqual([]);
       await backend.control.append({
-        audience: "workgroup",
+        audience: ["child"],
         description: "Finding 2",
         body: "Full evidence 2",
       });

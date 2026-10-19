@@ -1,4 +1,5 @@
 import type { ResultDelivery } from "../conversations/result-delivery";
+import type { ChildSessionAssignment } from "../project-sessions/child-session-assignment";
 import type { ParentContinuation } from "../conversations/parent-continuation";
 import type { CakeArtifactOperationOptions } from "../artifacts/artifact-agent-control";
 import type { MessageBoardControl } from "../artifacts/message-board-control";
@@ -64,7 +65,7 @@ export interface CurrentSessionControl extends ProjectSessionLivePolicyControl {
     input: {
       requestId: string;
       title: string;
-      initialPrompt: string;
+      assignment: ChildSessionAssignment;
       model: ChatConfiguration;
       resultDelivery?: ResultDelivery;
       placement: "none" | "right" | "down";

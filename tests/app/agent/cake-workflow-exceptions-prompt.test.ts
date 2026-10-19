@@ -5,6 +5,7 @@ import commonTemplate from "../../../src/services/pi/runtime/prompts/common.md?r
 import projectTemplate from "../../../src/services/pi/runtime/prompts/project.md?raw";
 import workgroups from "../../../docs/agent/workgroups.md?raw";
 import chatGuide from "../../../docs/agent/cake-chat.md?raw";
+import repoInstructions from "../../../AGENTS.md?raw";
 
 const projectPrompt = renderPromptTemplate(projectTemplate, {
   commonPrompt: renderPromptTemplate(commonTemplate),
@@ -16,7 +17,10 @@ describe.each([
   ["Cake Chat", coordinatorSystemPrompt("", "/cake/docs"), chatGuide],
 ])("%s user-directed workflow guidance", (_, prompt, guide) => {
   it("keeps polling opt-in with durable scheduling and truthful runtime limits in the required guide", () => {
-    expect(prompt).toContain("Cake workflow defaults permit explicit task-scoped user exceptions");
+    expect(prompt).toContain(
+      "Current explicit user direction overrides earlier user-authored repo instructions",
+    );
+    expect(prompt).toContain("including harness-injected family/channel/process policies");
     expect(guide).toContain(
       "Do not periodically poll or schedule coordination check-ins unless the user explicitly requests them",
     );
@@ -31,18 +35,28 @@ describe.each([
   });
 
   it("honors permitted user exceptions while preserving hard constraints and communication channels", () => {
-    expect(guide).toContain("follow the user's task-scoped exception");
-    expect(guide).toContain("without requiring repeated confirmation or an AGENTS.md edit");
     expect(guide).toContain(
-      "does not override provider/system requirements, tool authorization, security boundaries, or required family communication channels",
+      "Current explicit task-scoped user instructions override earlier user-authored repository instructions",
+    );
+    expect(guide).toContain("No AGENTS.md edit or repeated confirmation is needed");
+    expect(guide).toContain(
+      "including harness-injected Cake policies and family communication/channel/process defaults",
     );
     expect(guide).toContain(
-      "Keep family assignments and results on their required communication channel",
+      "Genuine provider/platform/system constraints, security boundaries and actual tool capabilities still apply",
     );
-    expect(guide).toContain(
-      "identify that specific constraint and the closest available alternative",
-    );
+    expect(guide).toContain('not a blanket "harness forbids" refusal');
+    expect(guide).toContain("Confirm execution with tool evidence");
   });
+});
+
+it("repository policy honors current user direction across Cake-injected defaults without claiming platform authority", () => {
+  expect(repoInstructions).toContain("including Cake policies injected by the harness");
+  expect(repoInstructions).toContain("without an AGENTS.md edit or repeated confirmation");
+  expect(repoInstructions).toContain(
+    "This does not override genuine provider/platform/system constraints",
+  );
+  expect(repoInstructions).toContain("grant missing tools, or authorize unrelated actions");
 });
 
 it("both role kernels permit the explicit polling exception without preloading the full guide", () => {

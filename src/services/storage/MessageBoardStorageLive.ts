@@ -86,6 +86,30 @@ export const makeMessageBoardStorageLive = (artifactRoot: string) =>
                 Effect.mapError((cause) => error("append", cause)),
               );
               const all = yield* entries(id);
+              const previousRequest =
+                decoded.requestId &&
+                all.find(
+                  (entry) =>
+                    entry.authorSessionId === authorSessionId &&
+                    entry.requestId === decoded.requestId,
+                );
+              if (previousRequest) {
+                if (
+                  previousRequest.description !== decoded.description ||
+                  previousRequest.body !== decoded.body ||
+                  previousRequest.event !== decoded.event ||
+                  previousRequest.resultKind !== decoded.resultKind ||
+                  previousRequest.topic !== decoded.topic ||
+                  JSON.stringify(previousRequest.supersedes) !==
+                    JSON.stringify(decoded.supersedes) ||
+                  JSON.stringify(previousRequest.audience) !== JSON.stringify(decoded.audience)
+                )
+                  return yield* error(
+                    "append",
+                    "requestId already belongs to a different board entry; retry unchanged or use a new requestId",
+                  );
+                return previousRequest;
+              }
               if (decoded.supersedes) {
                 if (!decoded.topic)
                   return yield* error("append", "Superseding an entry requires a topic");

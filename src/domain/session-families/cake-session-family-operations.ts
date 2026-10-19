@@ -18,6 +18,8 @@ import { type JsonObject } from "../../contracts/serialization/json-contract";
 import type { RuntimeOperationApi } from "../../contracts/agent/cake-operation-api";
 import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
 
+import { ChildSessionAssignment } from "../../contracts/project-sessions/child-session-assignment";
+
 import { createSessionSendBatchOperation } from "../conversations/cake-session-batch-send-operation";
 
 export function createSessionFamilyOperations(
@@ -104,23 +106,24 @@ export function createSessionFamilyOperations(
       command: "sessions.create-child",
       requires: "createChildSession",
       topic: "sessions",
-      summary: "Create and start a full child Project Session in the calling session's family.",
+      summary:
+        "Persist an addressed Workboard assignment, then start a full child Project Session.",
       guidance: [
         "Use this operation—not cake subagents—when the user asks for a child session, full child Project Session, related session, or Session Family member.",
-        "Call it with input containing the required title and initialPrompt fields, not prompt. For family children, use initialPrompt only to bootstrap shared Workboard discovery; publish the substantive assignment on the board addressed to the returned child reference.",
+        "Required title and assignment: { description, body }. Cake reserves the child identity and persists its addressed Workboard assignment before its first turn can run. initialPrompt/bootstrap-first calls are unsupported and fail validation.",
         "The calling session becomes the child's immediate parent. Children may recursively create their own children.",
         "Omit worktreeName to share the caller's exact Working Directory. Supply worktreeName to create a Cake-managed worktree branched from the caller's current checkout.",
-        "This operation returns after the initial child turn is accepted; do not wait or poll for the child, and finish the parent turn normally.",
-        'Set resultDelivery: "ignore" for Workboard-only family children. Board posts do not settle private obligations. Later local user turns never notify the creator.',
-        "Creation joins the shared Workboard. Ordinary board assignments are passive; only an authorized boards.continuation.set grants board-driven wakeups.",
-        resultDeliveryGuidance,
+        "Returns accepted, already-admitted (with durable state), or failed launch status—not proof of work or completion. On failure retry with the returned requestId and unchanged assignment; the same ID never starts canceled or previously admitted work again. Do not wait or poll.",
+        'Family children default to resultDelivery: "ignore"; results belong on the Workboard unless the current user explicitly overrides Cake’s communication default. Cake supplies only the board-discovery bootstrap, never a private assignment.',
+        "Every later board post routes to explicit recipients and the family root, excluding the author. Idle recipients receive coalesced durable wakes; active recipients receive context-only reminders at supported prompt boundaries, with idle fallback. No event or continuation grant is required.",
         "Pane placement defaults to none. Set placement to right or down only when the child should be opened beside the parent.",
         "Omit model unless the user explicitly asks for a specific model. When omitted, the child uses the configured default model preset's complete settings (provider, model, thinking level, and Fast mode; see models.list), not the calling session's current model. Only when no default preset is configured does it use the calling session's current settings.",
       ],
       inputSchema: Schema.Struct({
         title: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(500))),
-        initialPrompt: Schema.Trim.pipe(
-          Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100_000)),
+        assignment: ChildSessionAssignment,
+        requestId: Schema.optionalKey(
+          Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
         ),
         model: Schema.optionalKey(CakeModelSelection),
         resultDelivery: Schema.optionalKey(ResultDelivery),
@@ -135,15 +138,18 @@ export function createSessionFamilyOperations(
         {
           input: {
             title: "Storage implementation",
-            initialPrompt:
-              "Read workgroups.md, discover the family Workboard, and read your assignment there. Communicate with family members only on the board.",
+            assignment: {
+              description: "Implement the storage slice",
+              body: "Own the storage files and tests. Post your commit, verification and any blockers on the Workboard addressed to the parent.",
+            },
             resultDelivery: "ignore",
             placement: "right",
           },
           description: "Open beside the parent with the configured default model.",
         },
       ],
-      result: "The stable child session identity and initial-turn launch outcome.",
+      result:
+        "Stable child identity, requestId for retry, assignment board/sequence receipt when persisted, and launch outcome. accepted is durable intake, not completion; failed leaves a retryable reservation. already-admitted includes active/blocked/complete/failed/stopped journal state and never relaunches.",
       limitations: [
         "A child worktree always branches from the caller's current checkout; it cannot select an unrelated base.",
         "Uncommitted changes remain in the caller's checkout and do not carry into a new child worktree.",
@@ -153,7 +159,8 @@ export function createSessionFamilyOperations(
         api().createChildSession(
           input as {
             title: string;
-            initialPrompt: string;
+            assignment: ChildSessionAssignment;
+            requestId?: string;
             model?: CakeModelSelection;
             resultDelivery?: ResultDelivery;
             placement: "none" | "right" | "down";
@@ -192,7 +199,7 @@ export function createSessionFamilyOperations(
         "Send a message to an explicitly targeted Project Session in any Cake project, or omit sessionId to message Cake Chat.",
       guidance: [
         'Omit sessionId to reach Cake Chat. Cake Chat has no session ID; never pass the sender ID shown on Cake Chat\'s messages (it is labelled "cake-chat"). delivery, resultDelivery, threadId, and replyToMessageId mean the same as in sessions.reply to Cake Chat. To ask the user a question through Cake Chat, set resultDelivery: "reply"; to report a blocker on assigned work, prefer sessions.reply with outcome: "blocked".',
-        "Do not use sessions.send (including send-batch or steering) for intra-family communication. Parents, children, siblings and recursive descendants communicate exclusively through their shared Workboard. This does not restrict user-facing replies, Cake Chat or unrelated independent sessions.",
+        "By default do not use sessions.send (including send-batch or steering) for intra-family communication. Current explicit user exceptions override this Cake policy; supported tool capabilities and genuine platform limits still apply. Parents, children, siblings and recursive descendants communicate exclusively through their shared Workboard. This does not restrict user-facing replies, Cake Chat or unrelated independent sessions.",
         "Outside the family, set delivery to steer to interrupt and redirect a running target. Omit delivery for normal behavior: start an idle target or queue behind an active target.",
         resultDeliveryGuidance,
         "Project Session sends default to ignore.",
@@ -259,7 +266,7 @@ export function createSessionFamilyOperations(
       summary:
         "Reply to the originating session in the current open exchange without carrying its session ID.",
       guidance: [
-        "Do not use sessions.reply for intra-family communication; publish results, questions and blockers exclusively on the shared Workboard. User-facing replies, Cake Chat and unrelated independent sessions retain their ordinary reporting rules.",
+        "By default do not use sessions.reply for intra-family communication; current explicit user exceptions override this Cake policy; publish results, questions and blockers exclusively on the shared Workboard. User-facing replies, Cake Chat and unrelated independent sessions retain their ordinary reporting rules.",
         "Replies default to resultDelivery: ignore because substantive results and informational responses do not request acknowledgment.",
         "Provide replyToMessageId when more than one request may be pending. Cake otherwise selects the latest matching request in the thread.",
         "A Project Session answering Cake Chat (including one Cake Chat launched) replies to its originating Cake Chat or Project Chat without needing to repeat its address. Optional outcome declares completed, blocked, or failed; a terminal report is delivered after the executing turn settles.",

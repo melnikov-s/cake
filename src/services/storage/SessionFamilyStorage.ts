@@ -1,6 +1,6 @@
 import { MessageReference } from "../../contracts/conversations/message-reference";
 import { PendingReport, ReportHandlingReceipt } from "../../contracts/conversations/pending-report";
-import { BoardContinuation } from "../../contracts/artifacts/workboard-continuation";
+import { BoardDelivery } from "../../contracts/artifacts/board-delivery";
 import {
   CompletionInboxItem,
   type CompletionDecisionState,
@@ -33,7 +33,7 @@ import {
   SessionRequester,
 } from "../../contracts/project-sessions/session-reporting";
 
-const DOCUMENT_VERSION = 8;
+const DOCUMENT_VERSION = 9;
 const LegacyDelivery = {
   continuation: Schema.optionalKey(Schema.Literals(["none", "resume"])),
   reportPolicy: Schema.optionalKey(Schema.Literals(["digest", "interrupt"])),
@@ -53,6 +53,8 @@ const SessionFamilyChild = Schema.Struct({
   requestId: BoundedId,
   workingDirectory: BoundedPath,
   managedWorktreePath: Schema.optionalKey(BoundedPath),
+  /** Assignment-first reservations survive restart before durable admission. */
+  assignmentTopic: Schema.optionalKey(BoundedId),
   resultDelivery: Schema.optionalKey(ResultDelivery),
   createdAt: Schema.String,
 });
@@ -204,7 +206,8 @@ export const SessionFamilyDocument = Schema.Struct({
   coordinatorDigest: Schema.optionalKey(Schema.Array(CoordinatorDigestItem)),
   deferredReferences: Schema.optionalKey(Schema.Array(PendingReport)),
   handledReports: Schema.optionalKey(Schema.Array(ReportHandlingReceipt)),
-  boardContinuations: Schema.optionalKey(Schema.Array(BoardContinuation)),
+  boardDeliveries: Schema.optionalKey(Schema.Array(BoardDelivery)),
+  boardDeliveryPaused: Schema.optionalKey(Schema.Array(BoundedId)),
   completionInbox: Schema.optionalKey(Schema.Array(CompletionInboxItem)),
 });
 export interface SessionFamilyDocument extends Schema.Schema.Type<typeof SessionFamilyDocument> {}
@@ -213,12 +216,17 @@ export class SessionFamilyStorage extends Context.Service<
   SessionFamilyStorage,
   {
     readonly state: () => Effect.Effect<SessionFamilyDocument, SessionFamilyStorageError>;
-    readonly changeBoardContinuation: (
-      sessionId: string,
-      change: (current: BoardContinuation | undefined) => BoardContinuation | undefined,
+    readonly recordBoardDelivery: (
+      delivery: BoardDelivery,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
-    readonly pauseBoardContinuation: (
+    readonly updateBoardDelivery: (
+      turnId: string,
+      status: BoardDelivery["status"],
+      issue?: string,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
+    readonly setBoardDeliveryPaused: (
       sessionId: string,
+      paused: boolean,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly recordCompletion: (
       item: CompletionInboxItem,
@@ -229,6 +237,11 @@ export class SessionFamilyStorage extends Context.Service<
       id: string,
       state: CompletionDecisionState,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
+    /** Serializes one create request through admission, independently of family turn admission. */
+    readonly withCreationLock: <A, E, R>(
+      key: string,
+      effect: Effect.Effect<A, E, R>,
+    ) => Effect.Effect<A, E, R>;
     readonly withMemberLock: <A, E, R>(
       sessionId: string,
       effect: Effect.Effect<A, E, R>,
@@ -314,6 +327,7 @@ export class SessionFamilyStorage extends Context.Service<
       readonly parentWorkingDirectory: string;
       readonly parentManagedWorktreePath?: string;
       readonly childSessionId: string;
+      readonly assignmentTopic?: string;
       readonly childWorkingDirectory: string;
       readonly resultDelivery?: ResultDelivery;
       readonly childManagedWorktreePath?: string;
@@ -398,7 +412,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         const envelope = yield* Schema.decodeUnknownEffect(StoredEnvelope)(parsed).pipe(
           Effect.mapError((cause) => storageError("load", cause)),
         );
-        if (![1, 2, 3, 4, 5, 6, 7, DOCUMENT_VERSION].includes(envelope.version))
+        if (![1, 2, 3, 4, 5, 6, 7, 8, DOCUMENT_VERSION].includes(envelope.version))
           return yield* storageError(
             "load",
             `Unsupported session family document version ${envelope.version}`,
@@ -523,6 +537,39 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             spawnedSessions: previous.spawnedSessions.map(migrate),
           };
         }
+        if (envelope.version < 9) {
+          const legacy = yield* Schema.decodeUnknownEffect(
+            Schema.Struct({
+              boardContinuations: Schema.optionalKey(
+                Schema.Array(
+                  Schema.Struct({
+                    recipientSessionId: BoundedId,
+                    mode: Schema.Literals(["resume", "paused", "off"]),
+                  }),
+                ),
+              ),
+            }),
+          )(envelope.data).pipe(Effect.mapError((cause) => storageError("migrate", cause)));
+          const previous = yield* Schema.decodeUnknownEffect(SessionFamilyDocument)(data).pipe(
+            Effect.mapError((cause) => storageError("migrate", cause)),
+          );
+          const paused =
+            legacy.boardContinuations
+              ?.filter((grant) => grant.mode !== "resume")
+              .map((grant) => grant.recipientSessionId) ?? [];
+          data = {
+            ...previous,
+            ...(paused.length
+              ? {
+                  boardDeliveryPaused: [
+                    ...new Set([...(previous.boardDeliveryPaused ?? []), ...paused]),
+                  ],
+                }
+              : null),
+          };
+        }
+        // v9 drops retired Workboard completion grants on decode. Default board
+        // delivery owns one cursor/batch per recipient; old budgets cannot gate or double-wake it.
         // v5 drops member-synchronization journals. The root's actual namespace
         // is authoritative even when an older transition stopped halfway through.
         const document = yield* Schema.decodeUnknownEffect(SessionFamilyDocument)(data).pipe(
@@ -614,6 +661,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
               requestId: input.requestId,
               workingDirectory: input.childWorkingDirectory,
               resultDelivery: input.resultDelivery ?? "reply",
+              ...(input.assignmentTopic ? { assignmentTopic: input.assignmentTopic } : null),
               createdAt: input.createdAt,
             };
             if (input.childManagedWorktreePath !== undefined)
@@ -652,23 +700,26 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             Effect.withSpan("SessionFamilyStorage.lock", { attributes: { parentSessionId } }),
           ),
       });
-      const withMemberLock: SessionFamilyStorage["Service"]["withMemberLock"] = (
-        sessionId,
-        effect,
-      ) =>
+      const withKeyLock: SessionFamilyStorage["Service"]["withCreationLock"] = (key, effect) =>
         Effect.acquireUseRelease(
           Scope.make(),
           (leaseScope) =>
             Effect.gen(function* () {
-              const family = yield* familyForMember(sessionId);
-              const memberLock = yield* RcMap.get(
-                memberLocks,
-                family?.parentSessionId ?? sessionId,
-              ).pipe(Effect.provideService(Scope.Scope, leaseScope));
+              const memberLock = yield* RcMap.get(memberLocks, key).pipe(
+                Effect.provideService(Scope.Scope, leaseScope),
+              );
               return yield* memberLock.withPermits(1)(effect);
             }),
           (leaseScope) => Scope.close(leaseScope, Exit.void),
         );
+      const withMemberLock: SessionFamilyStorage["Service"]["withMemberLock"] = (
+        sessionId,
+        effect,
+      ) =>
+        Effect.gen(function* () {
+          const family = yield* familyForMember(sessionId);
+          return yield* withKeyLock(family?.parentSessionId ?? sessionId, effect);
+        });
       const update = Effect.fn("SessionFamilyStorage.update")(
         (change: (document: SessionFamilyDocument) => SessionFamilyDocument) =>
           lock.withPermits(1)(
@@ -679,30 +730,58 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             }),
           ),
       );
-      const changeBoardContinuation = Effect.fn("SessionFamilyStorage.changeBoardContinuation")(
-        (
-          sessionId: string,
-          change: (current: BoardContinuation | undefined) => BoardContinuation | undefined,
-        ) =>
-          update((document) => {
-            const records = document.boardContinuations ?? [];
-            const previous = records.find((record) => record.recipientSessionId === sessionId);
-            const current = change(previous);
-            if (current === previous) return document;
-            return {
-              ...document,
-              boardContinuations: [
-                ...records.filter((record) => record.recipientSessionId !== sessionId),
-                ...(current ? [current] : []),
-              ],
-            };
-          }),
-      );
-      const pauseBoardContinuation = Effect.fn("SessionFamilyStorage.pauseBoardContinuation")(
-        (sessionId: string) =>
-          changeBoardContinuation(sessionId, (current) =>
-            current && current.mode !== "paused" ? { ...current, mode: "paused" } : current,
+      const recordBoardDelivery = Effect.fn("SessionFamilyStorage.recordBoardDelivery")(
+        (delivery: BoardDelivery) =>
+          update((document) =>
+            document.boardDeliveries?.some((item) => item.turnId === delivery.turnId)
+              ? document
+              : {
+                  ...document,
+                  boardDeliveries: [
+                    ...(document.boardDeliveries ?? []),
+                    document.boardDeliveryPaused?.includes(delivery.recipientSessionId)
+                      ? {
+                          ...delivery,
+                          status: "canceled" as const,
+                          issue: "Session explicitly stopped; this board batch will not restart it",
+                        }
+                      : delivery,
+                  ],
+                },
           ),
+      );
+      const updateBoardDelivery = Effect.fn("SessionFamilyStorage.updateBoardDelivery")(
+        (turnId: string, status: BoardDelivery["status"], issue?: string) =>
+          update((document) => ({
+            ...document,
+            boardDeliveries: (document.boardDeliveries ?? []).map((item) => {
+              if (item.turnId !== turnId || !["pending", "admitted"].includes(item.status))
+                return item;
+              return {
+                ...Struct.omit(item, ["issue"]),
+                status,
+                ...(issue ? { issue: issue.slice(0, 2000) } : null),
+              };
+            }),
+          })),
+      );
+      const setBoardDeliveryPaused = Effect.fn("SessionFamilyStorage.setBoardDeliveryPaused")(
+        (sessionId: string, paused: boolean) =>
+          update((document) => ({
+            ...document,
+            boardDeliveryPaused: paused
+              ? [...new Set([...(document.boardDeliveryPaused ?? []), sessionId])]
+              : (document.boardDeliveryPaused ?? []).filter((id) => id !== sessionId),
+            boardDeliveries: (document.boardDeliveries ?? []).map((item) =>
+              paused && item.recipientSessionId === sessionId && item.status === "pending"
+                ? {
+                    ...item,
+                    status: "canceled" as const,
+                    issue: "Session stopped or failed before board delivery admission",
+                  }
+                : item,
+            ),
+          })),
       );
       const recordCompletion = Effect.fn("SessionFamilyStorage.recordCompletion")(
         (item: CompletionInboxItem, digest?: CoordinatorDigestItem) =>
@@ -1099,8 +1178,9 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         }),
       );
       return SessionFamilyStorage.of({
-        changeBoardContinuation,
-        pauseBoardContinuation,
+        recordBoardDelivery,
+        updateBoardDelivery,
+        setBoardDeliveryPaused,
         recordCompletion,
         updateCompletion,
         list,
@@ -1108,6 +1188,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         addChild,
         state,
         withMemberLock,
+        withCreationLock: (key, effect) => withKeyLock(`creation:${key}`, effect),
         recordTurn,
         registerSpawn,
         recordReport,

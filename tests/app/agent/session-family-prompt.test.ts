@@ -30,14 +30,17 @@ describe("Project Session family communication policy", () => {
     expect(project).toContain(
       "User-facing replies, Cake Chat and unrelated sessions are outside this rule",
     );
-    expect(project).toContain("Create children with resultDelivery: ignore");
-    expect(project).toContain("bootstrap board discovery only");
+    expect(project).toContain("resultDelivery: ignore");
+    expect(project).toContain("Cake posts it before launch");
     expect(project).toContain("Posts never clear runtime-managed report obligations");
     expect(project).toContain("no private workaround or extra report");
     expect(project).toContain("Polling requires explicit user request");
-    expect(project).toContain("only authorized boards.continuation.set grants");
+    expect(project).toContain(
+      "Every board post routes to explicit recipients plus the family root",
+    );
     expect(project).toContain("Launch asynchronously; block only at the user");
-    expect(project).toContain("let the user resume members");
+    expect(project).toContain("Idle recipients get coalesced durable wakes");
+    expect(project).toContain("context-only reminders at before_agent_start/turn_end");
     expect(project).toContain("No board: disclose, never invent/fallback");
   });
 
@@ -52,8 +55,8 @@ describe("Project Session family communication policy", () => {
     expect(child).toContain("read workgroups.md and sessions.md");
     expect(parentTemplate.length).toBeLessThan(400);
     expect(child.length).toBeLessThan(650);
-    // This deliberately allows a little more than 300 tokens rather than dropping transport policy.
-    expect(project.length).toBeLessThan(2_100);
+    // Keep the operating kernel bounded while making delivery and user overrides explicit.
+    expect(project.length).toBeLessThan(3_200);
     expect(project).not.toContain("{{");
   });
 
@@ -62,8 +65,8 @@ describe("Project Session family communication policy", () => {
     expect(project).toContain("`workgroups.md` AND `sessions.md` before child assignments");
     expect(workgroups).toContain("they do not accept a board ID");
     expect(workgroups).toContain("An independent session cannot join an existing family");
-    expect(workgroups).toContain("After the returned child reference is known");
-    expect(workgroups).toContain("Use the initial prompt only for lifecycle/bootstrap directions");
+    expect(workgroups).toContain("before admitting the first child turn");
+    expect(workgroups).toContain("Cake supplies the board-discovery bootstrap");
     for (const operation of [
       "boards.current",
       "boards.read-new",
@@ -91,9 +94,9 @@ describe("Project Session family communication policy", () => {
     });
     const guidance = (command: string) =>
       operations.find((operation) => operation.command === command)?.guidance?.join("\n");
-    expect(guidance("sessions.create-child")).toContain('Set resultDelivery: "ignore"');
+    expect(guidance("sessions.create-child")).toContain('resultDelivery: "ignore"');
     expect(guidance("sessions.create-child")).toContain(
-      "Board posts do not settle private obligations",
+      "persists its addressed Workboard assignment before its first turn can run",
     );
     for (const command of ["sessions.send", "sessions.reply", "sessions.send-batch"]) {
       expect(guidance(command)).toContain("exclusively");
@@ -102,6 +105,9 @@ describe("Project Session family communication policy", () => {
     const example = operations.find((operation) => operation.command === "sessions.create-child")
       ?.examples?.[0]?.input;
     expect(example).toMatchObject({ resultDelivery: "ignore" });
-    expect(example?.initialPrompt).toContain("read your assignment there");
+    expect(example?.assignment).toMatchObject({
+      description: expect.any(String),
+      body: expect.any(String),
+    });
   });
 });

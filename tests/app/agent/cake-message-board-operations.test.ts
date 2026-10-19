@@ -27,6 +27,7 @@ const fixture = () => {
     entries: [{ ...description, body: "Detailed evidence" }],
   }));
   const control: MessageBoardControl = {
+    deliveryExclusions: async () => undefined,
     current,
     append,
     read,
@@ -61,10 +62,9 @@ describe("Workboard agent protocol", () => {
       "assignments and their substantive results belong exclusively on this board",
     );
     expect(appendHelp).toContain("not in sessions.send/reply or private side channels");
-    expect(appendHelp).toContain("resultDelivery: ignore");
-    expect(appendHelp).toContain(
-      "do not wake idle members or clear existing runtime-managed report obligations",
-    );
+    expect(appendHelp).toContain("resultDelivery defaults to ignore");
+    expect(appendHelp).toContain("Idle recipients receive coalesced durable wakes");
+    expect(appendHelp).toContain("No event or wakeup wording is required");
   });
   it("returns bounded typed current descriptions and relations without fetching bodies or recording reads", async () => {
     const { registry, current, read, recordIntake } = fixture();
@@ -100,6 +100,6 @@ describe("Workboard agent protocol", () => {
       supersedes: [1],
     };
     await registry.invoke({ command: "boards.append", input }, context);
-    expect(append).toHaveBeenCalledWith(input);
+    expect(append).toHaveBeenCalledWith({ ...input, requestId: context.toolCallId });
   });
 });

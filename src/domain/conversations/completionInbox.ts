@@ -77,7 +77,8 @@ export const queueBoardResult = Effect.fn("CompletionInbox.queueBoardResult")(fu
   boardId: string,
   entry: BoardEntry,
 ) {
-  if (!entry.event || entry.audience === "workgroup") return;
+  if ((entry.event !== "completion" && entry.event !== "blocker") || entry.audience === "workgroup")
+    return;
   const child = family.children.find((member) => member.sessionId === entry.authorSessionId);
   if (!child || !entry.audience.includes(child.parentSessionId)) return;
   yield* queue({

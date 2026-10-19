@@ -31,7 +31,7 @@ const location = {
 const input = {
   requestId: "creation-request",
   title: "Implement",
-  initialPrompt: "Implement and report back",
+  assignment: { description: "Implement", body: "Implement and report on the Workboard" },
   model: { provider: "test", modelId: "test", thinkingLevel: "off" as const, fastMode: false },
   senderContext: { usedTokens: 64_000, windowTokens: 128_000 },
 };
@@ -39,56 +39,54 @@ const modelLayer = Layer.mock(PiModels, { resolve: (selection) => Effect.succeed
 const archiveLayer = Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed(undefined) });
 
 describe("Session Family creation", () => {
-  it.effect(
-    "removes the reservation when runtime acquisition fails before a transcript exists",
-    () =>
-      Effect.gen(function* () {
-        let discardedWorkingDirectory: string | undefined;
-        const childLocation = { ...location, workingDirectory: "/child-worktree" };
-        const result = yield* Effect.scoped(
-          createChild(
-            "parent",
-            location,
-            { ...input, worktreeName: "child-worktree" },
-            (id, runtimeLocation) =>
-              Effect.succeed(
-                options({ cwd: runtimeLocation.workingDirectory, sessionId: id, newSession: true }),
-              ),
-            () => Effect.succeed(childLocation),
-            undefined,
-            (workingDirectory) =>
-              Effect.sync(() => {
-                discardedWorkingDirectory = workingDirectory;
-              }),
-          ),
-        );
-        assert.equal(result.launch.status, "failed");
-        assert.equal(discardedWorkingDirectory, "/child-worktree");
-        const storage = yield* SessionFamilyStorage;
-        assert.deepEqual((yield* storage.familyForMember("parent"))?.children, []);
-        assert.equal(yield* storage.familyForMember(result.childSessionId), undefined);
-      }).pipe(
-        Effect.provide(messageBoardHarness().layer),
-        Effect.provide(
-          Layer.mergeAll(
-            familyStorageHarness().layer,
-            modelLayer,
-            archiveLayer,
-            SessionCatalogChanges.layer,
-            makeCakeSessionRuntimesLayer({
-              sessionIds: () => Stream.empty,
-              catalog: () => Stream.empty,
-              catalogEntry: () => Effect.succeed(undefined),
-              inspect: () => Effect.succeed(undefined),
-              changelog: () => Effect.succeed(""),
-              createRuntime: () => Effect.fail(new Error("Could not load resources")),
-            }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
-          ),
+  it.effect("retains the reservation and worktree for retry when runtime acquisition fails", () =>
+    Effect.gen(function* () {
+      let discardedWorkingDirectory: string | undefined;
+      const childLocation = { ...location, workingDirectory: "/child-worktree" };
+      const result = yield* Effect.scoped(
+        createChild(
+          "parent",
+          location,
+          { ...input, worktreeName: "child-worktree" },
+          (id, runtimeLocation) =>
+            Effect.succeed(
+              options({ cwd: runtimeLocation.workingDirectory, sessionId: id, newSession: true }),
+            ),
+          () => Effect.succeed(childLocation),
+          undefined,
+          (workingDirectory) =>
+            Effect.sync(() => {
+              discardedWorkingDirectory = workingDirectory;
+            }),
+        ),
+      );
+      assert.equal(result.launch.status, "failed");
+      assert.equal(discardedWorkingDirectory, undefined);
+      const storage = yield* SessionFamilyStorage;
+      assert.equal((yield* storage.familyForMember("parent"))?.children.length, 1);
+      assert.ok(yield* storage.familyForMember(result.childSessionId));
+    }).pipe(
+      Effect.provide(messageBoardHarness().layer),
+      Effect.provide(
+        Layer.mergeAll(
+          familyStorageHarness().layer,
+          modelLayer,
+          archiveLayer,
+          SessionCatalogChanges.layer,
+          makeCakeSessionRuntimesLayer({
+            sessionIds: () => Stream.empty,
+            catalog: () => Stream.empty,
+            catalogEntry: () => Effect.succeed(undefined),
+            inspect: () => Effect.succeed(undefined),
+            changelog: () => Effect.succeed(""),
+            createRuntime: () => Effect.fail(new Error("Could not load resources")),
+          }).pipe(Layer.provideMerge(makeRuntimeRecoveryStorageTestLayer())),
         ),
       ),
+    ),
   );
 
-  it.effect("removes the reservation when configuration fails before the initial prompt", () =>
+  it.effect("retains the reservation when configuration fails before admission", () =>
     Effect.gen(function* () {
       const result = yield* Effect.scoped(
         createChild("parent", location, input, (id) =>
@@ -98,7 +96,7 @@ describe("Session Family creation", () => {
         ),
       );
       assert.equal(result.launch.status, "failed");
-      assert.deepEqual((yield* (yield* SessionFamilyStorage).list())[0]?.children, []);
+      assert.equal((yield* (yield* SessionFamilyStorage).list())[0]?.children.length, 1);
     }).pipe(
       Effect.provide(messageBoardHarness().layer),
       Effect.provide(
@@ -121,7 +119,7 @@ describe("Session Family creation", () => {
                   throw new Error("Configuration failed");
                 },
               }),
-          }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
+          }).pipe(Layer.provideMerge(makeRuntimeRecoveryStorageTestLayer())),
         ),
       ),
     ),
@@ -210,7 +208,7 @@ describe("Session Family creation", () => {
                 ...fakeRuntime(runtimeOptions, () => undefined),
                 sessionId: runtimeOptions.sessionId ?? "missing",
               }),
-          }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
+          }).pipe(Layer.provideMerge(makeRuntimeRecoveryStorageTestLayer())),
         ),
       ),
     ),
@@ -240,7 +238,7 @@ describe("Session Family creation", () => {
               Deferred.doneUnsafe(started, Effect.void);
             },
           }),
-      }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
+      }).pipe(Layer.provideMerge(makeRuntimeRecoveryStorageTestLayer()));
       yield* Effect.gen(function* () {
         const factory = (id: string) =>
           Effect.succeed(
@@ -257,16 +255,17 @@ describe("Session Family creation", () => {
         assert.equal(first.childSessionId, second.childSessionId);
         assert.equal(first.familyChildOrder, 0);
         assert.equal(second.familyChildOrder, 0);
-        assert.equal(second.launch.status, "already-started");
+        assert.equal(second.launch.status, "already-admitted");
         assert.equal(launches, 1);
         assert.deepEqual(parseCrossSessionMessage(initialMessage ?? ""), {
-          text: input.initialPrompt,
+          text: parseCrossSessionMessage(initialMessage ?? "")?.text,
           metadata: {
             version: 1,
             messageId: first.childSessionId,
             threadId: first.familyId,
             sequence: 1,
-            expectsResponse: true,
+            expectsResponse: false,
+            resultDelivery: "ignore",
             context: input.senderContext,
             sender: {
               sessionId: "parent",

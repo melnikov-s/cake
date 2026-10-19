@@ -1,4 +1,5 @@
 import type { ResultDelivery } from "../conversations/result-delivery";
+import type { ChildSessionAssignment } from "../project-sessions/child-session-assignment";
 import type {
   CakeModelSelection,
   ExplicitCakeModelSelection,
@@ -28,7 +29,8 @@ export interface RuntimeOperationApi {
   createChildSession(
     input: {
       title: string;
-      initialPrompt: string;
+      requestId?: string;
+      assignment: ChildSessionAssignment;
       model?: CakeModelSelection;
       resultDelivery?: ResultDelivery;
       placement: "none" | "right" | "down";

@@ -37,6 +37,7 @@ const familyLayer = Layer.mock(SessionFamilyStorage, {
   familyForMember: (id) =>
     Effect.succeed(["parent", "child", "sibling"].includes(id) ? family : undefined),
   list: () => Effect.succeed([family]),
+  state: () => Effect.succeed({ families: [family], turns: [], spawnedSessions: [] }),
 });
 const run = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   effect.pipe(Effect.provide(Layer.merge(messageBoardHarness().layer, familyLayer)));
@@ -151,6 +152,7 @@ describe("Workboard policy", () => {
       const receiptFamilyLayer = Layer.mock(SessionFamilyStorage, {
         familyForMember: () => Effect.succeed(receiptFamily),
         list: () => Effect.succeed([receiptFamily]),
+        state: () => Effect.succeed({ families: [receiptFamily], turns: [], spawnedSessions: [] }),
       });
       return Effect.gen(function* () {
         const board = yield* boards.ensureBoard(receiptFamily);
@@ -292,6 +294,8 @@ describe("Workboard policy", () => {
               familyForMember: (id) =>
                 Effect.succeed(ids.includes(id) ? referenceFamily : undefined),
               list: () => Effect.succeed([referenceFamily]),
+              state: () =>
+                Effect.succeed({ families: [referenceFamily], turns: [], spawnedSessions: [] }),
             }),
           ),
         ),

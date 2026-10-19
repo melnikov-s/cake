@@ -54,7 +54,7 @@ it.effect.each([
       catalogEntry: () => Effect.succeed(undefined),
       inspect: () => Effect.succeed(undefined),
       changelog: () => Effect.succeed(""),
-    }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
+    }).pipe(Layer.provideMerge(makeRuntimeRecoveryStorageTestLayer())),
     SessionCatalogChanges.layer,
     familyStorageHarness().layer,
     messageBoardHarness().layer,
@@ -85,7 +85,7 @@ it.effect.each([
         {
           requestId: "create-background-child",
           title: "Background worker",
-          initialPrompt: "Work without being selected",
+          assignment: { description: "Background work", body: "Work without being selected" },
           model: { provider: "test", modelId: "test", thinkingLevel: "off", fastMode: false },
           placement: scenario.placement,
           senderContext: { usedTokens: 1000, windowTokens: 128000 },

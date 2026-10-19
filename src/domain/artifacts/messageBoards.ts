@@ -1,5 +1,4 @@
 import { DateTime, Effect, Option, Schema } from "effect";
-import type { BoardContinuationInput } from "../../contracts/artifacts/workboard-continuation";
 import { queueBoardResult } from "../conversations/completionInbox";
 import { resolveSessionReference } from "../../contracts/project-sessions/session-reference";
 import type { BoardNoticeEntry } from "../../contracts/artifacts/message-board-control";
@@ -9,6 +8,7 @@ import {
   MessageBoardError,
   boardDescription,
   boardRelevant,
+  boardDeliveryRelevant,
   boardCurrentEntries,
   type BoardCurrentInput,
   type BoardAppendInput,
@@ -117,74 +117,16 @@ export const append = Effect.fn("MessageBoards.append")(function* (
   const entry = yield* (yield* MessageBoardStorage).append(id, sessionId, { ...input, audience });
   yield* queueBoardResult(family, id, entry);
   yield* publishInvalidation(id);
-  return { boardId: id, entry: boardDescription(entry) };
-});
-
-export const continuation = Effect.fn("MessageBoards.continuation")(function* (sessionId: string) {
-  const { id } = yield* callerBoard(sessionId);
   return {
     boardId: id,
-    policy:
-      (yield* (yield* SessionFamilyStorage).state()).boardContinuations?.find(
-        (item) => item.recipientSessionId === sessionId,
-      ) ?? null,
+    entry: boardDescription(entry),
+    scheduledRecipients: members.filter((recipient) =>
+      boardDeliveryRelevant(entry, recipient, family.parentSessionId),
+    ),
+    deliveries: ((yield* (yield* SessionFamilyStorage).state()).boardDeliveries ?? []).filter(
+      (item) => item.boardId === id && item.sequences.includes(entry.sequence),
+    ),
   };
-});
-
-export const setContinuation = Effect.fn("MessageBoards.setContinuation")(function* (
-  sessionId: string,
-  input: BoardContinuationInput,
-  authorizationId: string,
-) {
-  const { id, family } = yield* callerBoard(sessionId);
-  const authors: string[] = [];
-  for (const reference of input.awaitAuthors ?? []) {
-    const resolved = resolveSessionReference(reference, familyMemberIds(family));
-    if (!resolved.ok) return yield* failure("continuation", resolved.error);
-    if (resolved.sessionId === sessionId)
-      return yield* failure("continuation", "A batch cannot await the coordinator's own result");
-    authors.push(resolved.sessionId);
-  }
-  if (authors.length && !input.topic)
-    return yield* failure("continuation", "An expected-author batch requires a stable topic");
-  const latest = (yield* (yield* MessageBoardStorage).entries(id)).at(-1)?.sequence ?? 0;
-  const storage = yield* SessionFamilyStorage;
-  yield* storage.withNoticeDelivery(
-    storage.changeBoardContinuation(sessionId, (current) => {
-      if (current?.authorizationId === authorizationId) return current;
-      if (input.mode !== "resume")
-        return current
-          ? { ...current, mode: input.mode, authorizationId }
-          : {
-              recipientSessionId: sessionId,
-              boardId: id,
-              authorizationId,
-              mode: input.mode,
-              after: latest,
-              awaitAuthors: [],
-              completedAuthors: [],
-              remainingTurns: 0,
-            };
-      return {
-        ...current,
-        recipientSessionId: sessionId,
-        boardId: id,
-        authorizationId,
-        mode: "resume",
-        after: input.after ?? current?.after ?? latest,
-        completedAuthors:
-          input.after !== undefined ||
-          (input.topic !== undefined && input.topic !== current?.topic) ||
-          input.awaitAuthors !== undefined
-            ? []
-            : (current?.completedAuthors ?? []),
-        awaitAuthors: input.awaitAuthors ? [...new Set(authors)] : (current?.awaitAuthors ?? []),
-        remainingTurns: input.maxTurns ?? 1,
-        ...(input.topic ? { topic: input.topic } : null),
-      };
-    }),
-  );
-  return yield* continuation(sessionId);
 });
 
 const page = <T extends { readonly sequence: number }>(
@@ -202,24 +144,53 @@ const page = <T extends { readonly sequence: number }>(
   };
 };
 
+/** Suppression applies only to automatic inbox context, never historical discovery. */
+export const deliveryExclusions = Effect.fn("MessageBoards.deliveryExclusions")(function* (
+  sessionId: string,
+) {
+  const storage = yield* SessionFamilyStorage;
+  const family = yield* storage.familyForMember(sessionId);
+  if (!family) return undefined;
+  const boardId = boardIdFor(family.familyId);
+  const state = yield* storage.state();
+  return {
+    boardId,
+    paused: state.boardDeliveryPaused?.includes(sessionId) ?? false,
+    sequences: (state.boardDeliveries ?? [])
+      .filter(
+        (delivery) =>
+          delivery.boardId === boardId &&
+          delivery.recipientSessionId === sessionId &&
+          (delivery.status === "canceled" || delivery.status === "failed"),
+      )
+      .flatMap((delivery) => delivery.sequences),
+  };
+});
+
 export const readNew = Effect.fn("MessageBoards.readNew")(function* (
   sessionId: string,
   input: BoardPageInput = {},
   notificationOnly = false,
   excludeEntries: ReadonlyArray<BoardNoticeEntry> = [],
 ) {
-  const { id } = yield* callerBoard(sessionId);
+  const { id, family } = yield* callerBoard(sessionId);
   const storage = yield* MessageBoardStorage;
   const receipts = yield* storage.receipts(id);
   const excluded = new Set(
     excludeEntries.filter((entry) => entry.boardId === id).map((entry) => entry.sequence),
   );
-  const entries = boardCurrentEntries(yield* storage.entries(id), sessionId)
+  const policy = notificationOnly ? yield* deliveryExclusions(sessionId) : undefined;
+  for (const sequence of policy?.sequences ?? []) excluded.add(sequence);
+  const all = yield* storage.entries(id);
+  const entries = (notificationOnly ? all : boardCurrentEntries(all, sessionId))
     .filter((entry) => {
       if (
+        policy?.paused ||
         excluded.has(entry.sequence) ||
         entry.authorSessionId === sessionId ||
-        !boardRelevant(entry, sessionId)
+        !(notificationOnly
+          ? boardDeliveryRelevant(entry, sessionId, family.parentSessionId)
+          : boardRelevant(entry, sessionId))
       )
         return false;
       const receipt = receipts.find(
@@ -296,6 +267,9 @@ const receiptsFor = Effect.fn("MessageBoards.receiptsFor")(function* (
   ]);
   return {
     entry: boardDescription(entry),
+    deliveries: ((yield* (yield* SessionFamilyStorage).state()).boardDeliveries ?? []).filter(
+      (item) => item.boardId === id && item.sequences.includes(sequence),
+    ),
     receipts: [...recipients].map(
       (sessionId) =>
         receipts.find((value) => value.sessionId === sessionId) ?? { sequence, sessionId },

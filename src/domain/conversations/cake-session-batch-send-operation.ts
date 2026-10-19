@@ -20,7 +20,7 @@ export function createSessionSendBatchOperation(
     topic: "sessions",
     summary: "Send one shared message to multiple explicitly targeted Project Sessions.",
     guidance: [
-      "Do not target members of the calling Project Session's own Session Family: intra-family communication belongs exclusively on its shared Workboard, including assignments, questions, urgent redirection and results. Cake Chat and unrelated independent sessions retain ordinary messaging rules.",
+      "By default do not target members of the calling Project Session's own Session Family; current explicit user exceptions override this Cake policy: intra-family communication belongs exclusively on its shared Workboard, including assignments, questions, urgent redirection and results. Cake Chat and unrelated independent sessions retain ordinary messaging rules.",
       "Supply 1–100 unique sessionIds and one text. Invalid arguments or duplicate IDs reject the whole batch before sending.",
       "Recipients are attempted sequentially in input order. Unknown targets and individual delivery failures do not stop later recipients; inspect every outcome.",
       "Omit delivery to start idle targets or queue behind active targets; steer redirects active work. Cake Chat defaults to notification; Project Session sends default to ignore.",

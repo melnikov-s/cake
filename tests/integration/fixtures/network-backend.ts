@@ -179,7 +179,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
           };
         }),
     },
-  ).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
+  ).pipe(Layer.provideMerge(makeRuntimeRecoveryStorageTestLayer()));
   const application = ApplicationState.layer.pipe(
     Layer.provide(
       Layer.succeed(ApplicationStorage, {
@@ -335,7 +335,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
       settleTurn: () => Effect.void,
       withMemberLock: (_sessionId, effect) => effect,
       withNoticeDelivery: (effect) => effect,
-      pauseBoardContinuation: () => Effect.void,
+      setBoardDeliveryPaused: () => Effect.void,
     }),
     Layer.mock(SessionArchiveStorage, {
       resolvedIds: () => Effect.succeed(new Set<string>()),

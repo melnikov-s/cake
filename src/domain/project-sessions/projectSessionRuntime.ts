@@ -73,6 +73,8 @@ import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCa
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
 import { ArtifactStorage } from "../../services/storage/ArtifactStorage";
+import { MessageBoardStorage } from "../../services/storage/MessageBoardStorage";
+import { RuntimeRecoveryStorage } from "../../services/storage/RuntimeRecoveryStorage";
 import { resolutionNamespace } from "./projectSessionResolution";
 import { SessionFamilyStorage, familyMember } from "../../services/storage/SessionFamilyStorage";
 import type { SubagentCoordinator } from "../../services/subagents/SubagentCoordinator";
@@ -132,6 +134,8 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   const application = yield* ApplicationState;
   const archive = yield* SessionArchiveStorage;
   const artifactStorage = yield* Effect.serviceOption(ArtifactStorage);
+  const messageBoardStorage = yield* Effect.serviceOption(MessageBoardStorage);
+  const recoveryStorage = yield* Effect.serviceOption(RuntimeRecoveryStorage);
   const savedDraftStorage = yield* Effect.serviceOption(SavedDraftStorage);
   const landingCoordinator = yield* Effect.serviceOption(WorktreeLandingCoordinator);
   const landingAgent = yield* Effect.serviceOption(WorktreeLandingAgent);
@@ -354,8 +358,22 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
     },
     onTurnSettled: (event) =>
       Effect.gen(function* () {
-        if (event.outcome === "aborted" || event.outcome === "failed")
-          yield* families.pauseBoardContinuation(sessionId);
+        const boardDeliveries = (yield* families.state()).boardDeliveries ?? [];
+        if (boardDeliveries.some((item) => item.turnId === event.turnId))
+          yield* families.updateBoardDelivery(
+            event.turnId,
+            event.outcome === "complete"
+              ? "consumed"
+              : event.outcome === "aborted"
+                ? "canceled"
+                : "failed",
+            event.message,
+          );
+        if (
+          (event.outcome === "aborted" || event.outcome === "failed") &&
+          boardDeliveries.some((item) => item.recipientSessionId === sessionId)
+        )
+          yield* families.setBoardDeliveryPaused(sessionId, true);
         yield* coordination.settleTurn(event.turnId, event.outcome);
         if (event.outcome !== "aborted") yield* markFinishedTurnUnread;
         const workflowOwnsCompletion = yield* workflowLifecycle
@@ -578,7 +596,12 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
           });
         },
         createChildSession: async (input, signal) => {
-          if (Option.isNone(artifactStorage)) throw new Error("Artifact storage is unavailable");
+          if (
+            Option.isNone(artifactStorage) ||
+            Option.isNone(messageBoardStorage) ||
+            Option.isNone(recoveryStorage)
+          )
+            throw new Error("Child assignment launch storage is unavailable");
           const result = await run(
             Effect.scoped(
               sessionFamilies
@@ -586,14 +609,14 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                   sessionId,
                   location,
                   input,
-                  (childId, childLocation) =>
+                  (childId, childLocation, newSession) =>
                     inheritTaskInputProtection(sessionId, childId).pipe(
                       Effect.mapError((error) => compositionError("createChild", error)),
                       Effect.andThen(
                         acquireOptions({
                           location: childLocation,
                           sessionId: childId,
-                          newSession: true,
+                          newSession,
                         }),
                       ),
                     ),
@@ -632,7 +655,11 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                     ),
                   (workingDirectory) => managedWorktrees.discard(workingDirectory, false),
                 )
-                .pipe(Effect.provideService(ArtifactStorage, artifactStorage.value)),
+                .pipe(
+                  Effect.provideService(ArtifactStorage, artifactStorage.value),
+                  Effect.provideService(MessageBoardStorage, messageBoardStorage.value),
+                  Effect.provideService(RuntimeRecoveryStorage, recoveryStorage.value),
+                ),
             ),
             { signal },
           );

@@ -30,11 +30,38 @@ Child creation validates the effective model selection before durable creation.
 An omitted model resolves the configured default preset's complete settings
 (model, thinking level, and Fast mode), not the caller's current values; the
 caller's current values apply only when no default preset is configured. Cake
-persists request correlation and child identity before accepting the initial
-prompt. Accepting that background turn completes the creation operation; the
-parent never waits for the child's turn to settle. Retrying the same request
-returns that identity. A launch failure leaves a materialized child tracked and
-reports the failed launch; a reservation that never materialized is removed.
+persists request correlation and child identity, then an addressed Workboard
+assignment, before admitting the initial bootstrap turn. `assignment: { description,
+body }` is required; bootstrap-first `initialPrompt` callers fail validation. Family
+creation defaults to resultDelivery ignore; current explicit user exceptions may select private result modes.
+Accepting that background turn completes creation; the parent never waits for
+settlement. The returned assignment receipt proves persistence, not execution;
+launch reports accepted, already-admitted with durable journal state, or failed
+with its stage. Retrying the returned requestId with unchanged assignment reuses
+the identity and entry; initial assignment topics are application-owned.
+
+Assignment-first reservations and isolated worktrees survive preparation failure
+and restart for explicit create-child retry. Startup does not auto-activate
+pre-admission reservations. After admission, existing durable input recovery owns
+restart, deduplication and cancellation. A runtime or transcript alone does not
+prove admission. Any existing durable journal, including stopped/canceled or
+settled work, prevents retry from relaunching the child. Every later board post uses one durable coalesced delivery cursor/batch per recipient:
+explicit audiences plus the unique family root, excluding the author. Nested
+immediate parents are not additional orchestrators. Broadcasts automatically
+wake only the root; explicitly target other owners. Event metadata does not gate
+delivery. Idle recipients receive one stable normal input; active/queued recipients
+use Pi's context-only before_agent_start/turn_end inbox and confirmed outgoing
+request receipts. If no request consumes a reminder, idle fallback admits the batch.
+No concurrent turn, abort, force-send-now or steering of unrelated user inputs occurs.
+
+Completion continuation grants are removed, with v9 storage dropping their
+metadata; budgets never gate or double-wake default delivery. Outbox IDs and board
+request IDs deduplicate restart/retry; read receipts do not claim execution.
+Entry receipts expose scheduled/admitted/notified/consumed/canceled/failed facts,
+not understanding or completion. Stop pauses future delivery and withdraws pending
+batches; real user input accounts for stopped-period posts before re-enabling
+future ones. Queue cancellation and resolved pre-admission batches do not replay.
+Creation's initial assignment is excluded from a second generic child wake.
 
 Creating an isolated child uses the normal Managed Worktree service with the
 caller's Working Directory as `baseWorktreePath`. Git history therefore includes
@@ -50,8 +77,9 @@ nested work lands bottom-up.
 Cake regenerates relationship context whenever a Project Session runtime is
 acquired. Every member learns how to create and communicate with children. A
 non-root member receives its family and immediate-parent IDs; every member sees
-its fixed Working Directory policy. The parent-supplied initial prompt is the
-assignment; Cake stores no task copy.
+its fixed Working Directory policy. The substantive initial assignment lives on the
+Workboard; the application-supplied initial prompt only points at its persisted
+entry and explains board discovery. Pi remains transcript authority.
 
 Acquisition-time context is not a live eligibility decision. The same runtime can
 outlive promotion from standalone to family root or the creation of more children.
@@ -174,26 +202,12 @@ not current communication state: the durable workflow inbox/receipts remain auth
 even if a lossy summary drops details, and pending reminders are reattached on user turns.
 This does not reconstruct reports already removed by older admission-based delivery.
 
-### Workboard continuation and quiet decisions
+### Workboard delivery and quiet decisions
 
-Workboards remain passive unless a recipient explicitly grants `boards.continuation.set`.
-The grant persists an authorization ID, topic/expected authors, finite remaining parent-input
-budget (one by default, at most ten), cursor, completed-author credit and a stable pending input ID.
-New grants start after existing entries unless an explicit `after` cursor opts older results in.
-Only current typed completion/blocker entries explicitly addressed to the recipient qualify;
-self, broadcast, wrong-author/topic, untyped and superseded posts never do. Expected-author
-batches coalesce into one inspection; a blocker may break the barrier without losing
-previous completion credit.
-
-The existing family notice worker admits at most two outstanding Workboard inputs globally
-and one per recipient, behind active/queued user work, using normal durable runtime admission.
-It persists the ID/budget before submission and consults Pi consumption and durable cancellation
-receipts on retry. Failed/aborted execution or explicit session abort pauses future admission;
-paused/off grants do not abort an already-admitted turn. Resolved/missing members relinquish
-pending capacity. Runtime recovery gates remain authoritative. This limits automatic input
-count/concurrency, not monetary cost or tokens within an individual model turn.
-Board intake/read receipts are not execution receipts. No private report obligation is created,
-and completion never expands mutation/delegation authorization.
+Default board delivery is defined above: explicit audience plus the unique root,
+coalesced durable idle wakes and non-disruptive active-request inbox reminders.
+The retired completion-grant mechanism contributes neither a second wake nor an
+execution budget. Board content and intake never expand user authorization.
 
 Separately, `completionInbox` retains ready/blocked/investigation results and pending
 review/merge/resolve/next-step decisions, scoped to the requesting conversation. Typed board

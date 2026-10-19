@@ -1,4 +1,4 @@
-import type { BoardContinuation, BoardContinuationInput } from "./workboard-continuation";
+import type { BoardDelivery } from "./board-delivery";
 import type {
   BoardAppendInput,
   BoardCurrentInput,
@@ -17,14 +17,15 @@ export interface BoardNoticeEntry {
 }
 
 export interface MessageBoardControl {
-  continuation?: {
-    get(): Promise<{ boardId: string; policy: BoardContinuation | null }>;
-    set(
-      input: BoardContinuationInput,
-      authorizationId: string,
-    ): Promise<{ boardId: string; policy: BoardContinuation | null }>;
-  };
-  append(input: BoardAppendInput): Promise<{ boardId: string; entry: BoardDescription }>;
+  deliveryExclusions(): Promise<
+    { boardId: string; paused: boolean; sequences: ReadonlyArray<number> } | undefined
+  >;
+  append(input: BoardAppendInput): Promise<{
+    boardId: string;
+    entry: BoardDescription;
+    scheduledRecipients?: ReadonlyArray<string>;
+    deliveries?: ReadonlyArray<BoardDelivery>;
+  }>;
   readNew(
     input: BoardPageInput,
     notificationOnly?: boolean,

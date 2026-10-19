@@ -48,7 +48,10 @@ test("background family children show running activity and only offer Mark as Un
                   name: "cake",
                   arguments: JSON.stringify({
                     command: "sessions.create-child",
-                    input: { title: "Background worker", initialPrompt: "Child activity fixture" },
+                    input: {
+                      title: "Background worker",
+                      assignment: { description: "Child activity", body: "Child activity fixture" },
+                    },
                   }),
                 },
               },

@@ -3,6 +3,7 @@ import { it } from "@effect/vitest";
 import { Context, Effect, FileSystem, Layer, Path, Queue, Stream } from "effect";
 import { Git, GitError } from "../../src/services/git/Git";
 import type { WorktreeRecord } from "../../src/contracts/worktrees/managed-worktree-data";
+import * as boards from "../../src/domain/artifacts/messageBoards";
 import { acquireOptions } from "../../src/domain/project-sessions/projectSessionRuntime";
 import { ManagedWorktrees } from "../../src/services/worktrees/ManagedWorktrees";
 import { ProjectAccess } from "../../src/services/projects/ProjectAccess";
@@ -158,7 +159,7 @@ it.live(
           {
             requestId: "00000000-0000-4000-8000-000000000009",
             title: "Child task",
-            initialPrompt: "Child work",
+            assignment: { description: "Child work", body: "Child work" },
             model,
             placement: "none",
             worktreeName: "child-isolated",
@@ -174,7 +175,11 @@ it.live(
       assert.match(records[1]?.branch ?? "", /^agent\/child-isolated-[a-f0-9]{6}$/);
       assert.equal(records[1]?.baseCommit, "commit:HEAD");
       assert.equal((child as { launch: { status: string } }).launch.status, "accepted");
-      assert.match(yield* Queue.take(backend.started), /Child work/);
+      assert.match(yield* Queue.take(backend.started), /assignment is already persisted/);
+      const assignment = yield* run(
+        boards.read((child as { childSessionId: string }).childSessionId, [1]),
+      );
+      assert.equal(assignment.entries[0]?.body, "Child work");
       assert.deepEqual(created.at(-1), { projectPath: "/project", backgroundSetup: true });
       assert.equal(backend.stats.turns, 3);
     }).pipe(Effect.scoped),

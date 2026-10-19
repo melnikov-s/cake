@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { BoardDelivery } from "./board-delivery";
 
 export const BoardSessionId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 export const BoardSequence = Schema.Int.check(
@@ -16,8 +17,9 @@ const BoardRelations = {
     Schema.Array(BoardSequence).check(Schema.isMinLength(1), Schema.isMaxLength(10)),
   ),
 };
-const BoardEvent = Schema.Literals(["completion", "blocker"]);
+const BoardEvent = Schema.Literals(["assignment", "completion", "blocker"]);
 export const BoardAppendInput = Schema.Struct({
+  requestId: Schema.optionalKey(BoardSessionId),
   event: Schema.optionalKey(BoardEvent),
   resultKind: Schema.optionalKey(Schema.Literals(["ready", "investigation"])),
   description: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
@@ -27,6 +29,7 @@ export const BoardAppendInput = Schema.Struct({
 });
 export interface BoardAppendInput extends Schema.Schema.Type<typeof BoardAppendInput> {}
 export const BoardEntry = Schema.Struct({
+  requestId: BoardAppendInput.fields.requestId,
   sequence: BoardSequence,
   authorSessionId: BoardSessionId,
   createdAt: Schema.String,
@@ -59,6 +62,7 @@ export interface BoardReceipt extends Schema.Schema.Type<typeof BoardReceipt> {}
 export const BoardEntryReceipts = Schema.Struct({
   entry: BoardDescription,
   receipts: Schema.Array(BoardReceipt),
+  deliveries: Schema.optionalKey(Schema.Array(BoardDelivery)),
 });
 export interface BoardEntryReceipts extends Schema.Schema.Type<typeof BoardEntryReceipts> {}
 export const BoardPageInput = Schema.Struct({
@@ -109,6 +113,16 @@ export class MessageBoardError extends Schema.TaggedError<MessageBoardError>()(
     message: Schema.String,
   },
 ) {}
+
+/** Only the family root receives broadcasts automatically; explicit audiences route other members. */
+export const boardDeliveryRelevant = (
+  entry: BoardDescription,
+  sessionId: string,
+  rootSessionId: string,
+) =>
+  entry.authorSessionId !== sessionId &&
+  (sessionId === rootSessionId ||
+    (entry.audience !== "workgroup" && entry.audience.includes(sessionId)));
 
 export const boardRelevant = (entry: BoardDescription, sessionId: string) =>
   entry.audience === "workgroup" || entry.audience.includes(sessionId);

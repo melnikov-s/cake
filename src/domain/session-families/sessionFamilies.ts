@@ -4,9 +4,16 @@ import { appendMessageReferences } from "../../contracts/conversations/message-r
 import type { ResultDelivery } from "../../contracts/conversations/result-delivery";
 import { isReferenceNotification } from "../../contracts/conversations/reference-notification";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
-import * as workboardContinuations from "./workboardContinuations";
+import * as workboardDeliveries from "./workboardDeliveries";
 import * as completionInbox from "../conversations/completionInbox";
-import { ensureBoard } from "../artifacts/messageBoards";
+import {
+  ensureBoard,
+  boardIdFor,
+  append as appendBoardAssignment,
+} from "../artifacts/messageBoards";
+import { ChildSessionAssignment } from "../../contracts/project-sessions/child-session-assignment";
+import { MessageBoardStorage } from "../../services/storage/MessageBoardStorage";
+import { RuntimeRecoveryStorage } from "../../services/storage/RuntimeRecoveryStorage";
 import {
   CAKE_CHAT_SESSION_ID,
   isCakeChatSessionId,
@@ -23,7 +30,7 @@ import { acquireOptions as acquireProjectSessionOptions } from "../project-sessi
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
 import * as projectSessionMetadata from "../project-sessions/projectSessionMetadata";
 import * as workflowLifecycle from "../workflows/workflow-lifecycle";
-import { DateTime, Effect, Exit, Option, Schedule } from "effect";
+import { DateTime, Effect, Exit, Option, Schedule, Schema } from "effect";
 import { CakeChatComposerPresence } from "../../services/session-catalogs/CakeChatComposerPresence";
 import type { ChatConfiguration } from "../../contracts/conversations/session-contract";
 import { PiModels } from "../../services/pi/PiModels";
@@ -116,231 +123,278 @@ export const admitTurn = Effect.fn("SessionFamilies.admitTurn")(function* <E, R>
   );
 });
 
-export const createChild = Effect.fn("SessionFamilies.createChild")(function* <
-  E,
-  R,
-  E2 = never,
-  R2 = never,
-  E3 = never,
-  R3 = never,
-  E4 = never,
-  R4 = never,
->(
-  parentSessionId: string,
-  location: ProjectSessionLocation,
-  input: {
-    requestId: string;
-    title: string;
-    initialPrompt: string;
-    model: ChatConfiguration;
-    /** Delivery of the initial assignment result; defaults to reply. */
-    resultDelivery?: ResultDelivery;
-    worktreeName?: string;
-    senderContext: CrossSessionContextSnapshot;
-  },
-  runtimeOptions: (
-    sessionId: string,
-    childLocation: ProjectSessionLocation,
-  ) => Effect.Effect<CakeSessionRuntimeAcquireOptions, E, R>,
-  createIsolatedLocation?: (worktreeName: string) => Effect.Effect<ProjectSessionLocation, E2, R2>,
-  resolveLocation?: (workingDirectory: string) => Effect.Effect<ProjectSessionLocation, E3, R3>,
-  discardIsolatedLocation?: (workingDirectory: string) => Effect.Effect<void, E4, R4>,
-) {
-  const storage = yield* SessionFamilyStorage;
-  const sessions = yield* CakeSessionRuntimes;
-  const models = yield* PiModels;
-  const archive = yield* SessionArchiveStorage;
-  const catalogs = yield* SessionCatalogChanges;
-  const configuration = yield* models.resolve(input.model);
-  const archiveLocation = (workingDirectory: string) => ({
-    cwd: workingDirectory,
-    activeRoot: location.sessionDirectory,
-    resolvedRoot: location.resolvedSessionDirectory,
-  });
-  const publish = (sessionId: string, workingDirectory: string) =>
-    catalogs.publish({
-      _tag: "ProjectSessionChanged",
-      sessionId,
-      projectPath: location.projectPath,
-      workingDirectory,
-      resolved: false,
-    });
-  const childLocationFor = Effect.fn("SessionFamilies.childLocationFor")(function* (
-    workingDirectory: string,
+export const createChild = Effect.fn("SessionFamilies.createChild")(
+  function* <E, R, E2 = never, R2 = never, E3 = never, R3 = never, E4 = never, R4 = never>(
+    parentSessionId: string,
+    location: ProjectSessionLocation,
+    input: {
+      requestId: string;
+      title: string;
+      assignment: ChildSessionAssignment;
+      model: ChatConfiguration;
+      resultDelivery?: ResultDelivery;
+      worktreeName?: string;
+      senderContext: CrossSessionContextSnapshot;
+    },
+    runtimeOptions: (
+      sessionId: string,
+      childLocation: ProjectSessionLocation,
+      newSession: boolean,
+    ) => Effect.Effect<CakeSessionRuntimeAcquireOptions, E, R>,
+    createIsolatedLocation?: (
+      worktreeName: string,
+    ) => Effect.Effect<ProjectSessionLocation, E2, R2>,
+    resolveLocation?: (workingDirectory: string) => Effect.Effect<ProjectSessionLocation, E3, R3>,
+    discardIsolatedLocation?: (workingDirectory: string) => Effect.Effect<void, E4, R4>,
   ) {
-    if (workingDirectory === location.workingDirectory) return location;
-    if (resolveLocation) return yield* resolveLocation(workingDirectory);
-    return yield* new SessionFamilyStorageError({
-      operation: "createChild",
-      message: `Child Working Directory unavailable: ${workingDirectory}`,
+    const storage = yield* SessionFamilyStorage;
+    const sessions = yield* CakeSessionRuntimes;
+    const models = yield* PiModels;
+    const archive = yield* SessionArchiveStorage;
+    const catalogs = yield* SessionCatalogChanges;
+    // Validate even backend-direct callers before creating a reservation or runtime.
+    const assignment = yield* Schema.decodeUnknownEffect(ChildSessionAssignment)(input.assignment);
+    const configuration = yield* models.resolve(input.model);
+    const archiveLocation = (workingDirectory: string) => ({
+      cwd: workingDirectory,
+      activeRoot: location.sessionDirectory,
+      resolvedRoot: location.resolvedSessionDirectory,
     });
-  });
-  const prepared = yield* storage.withMemberLock(
-    parentSessionId,
-    Effect.gen(function* () {
-      yield* assertAdmission(parentSessionId, archiveLocation(location.workingDirectory));
-      const existing = yield* storage.familyForMember(parentSessionId);
-      const retriedChild = existing?.children.find((item) => item.requestId === input.requestId);
-      let childLocation = retriedChild
-        ? yield* childLocationFor(retriedChild.workingDirectory)
-        : location;
-      if (!retriedChild && input.worktreeName) {
-        if (!createIsolatedLocation)
+    const publish = (sessionId: string, workingDirectory: string) =>
+      catalogs.publish({
+        _tag: "ProjectSessionChanged",
+        sessionId,
+        projectPath: location.projectPath,
+        workingDirectory,
+        resolved: false,
+      });
+    const childLocationFor = Effect.fn("SessionFamilies.childLocationFor")(function* (
+      workingDirectory: string,
+    ) {
+      if (workingDirectory === location.workingDirectory) return location;
+      if (resolveLocation) return yield* resolveLocation(workingDirectory);
+      return yield* new SessionFamilyStorageError({
+        operation: "createChild",
+        message: `Child Working Directory unavailable: ${workingDirectory}`,
+      });
+    });
+    const requestId = createHash("sha256")
+      .update(JSON.stringify([parentSessionId, input.requestId]))
+      .digest("hex");
+    const prepared = yield* storage.withMemberLock(
+      parentSessionId,
+      Effect.gen(function* () {
+        yield* assertAdmission(parentSessionId, archiveLocation(location.workingDirectory));
+        const existing = yield* storage.familyForMember(parentSessionId);
+        const retriedChild = existing?.children.find((item) => item.requestId === requestId);
+        let childLocation = retriedChild
+          ? yield* childLocationFor(retriedChild.workingDirectory)
+          : location;
+        if (!retriedChild && input.worktreeName) {
+          if (!createIsolatedLocation)
+            return yield* new SessionFamilyStorageError({
+              operation: "createChild",
+              message: "Isolated child worktree creation is unavailable",
+            });
+          childLocation = yield* createIsolatedLocation(input.worktreeName);
+        }
+        const childSessionId = crypto.randomUUID();
+        const reservation = {
+          familyId: existing?.familyId ?? crypto.randomUUID(),
+          parentSessionId,
+          parentWorkingDirectory: location.workingDirectory,
+          childSessionId,
+          assignmentTopic: `child-${childSessionId}`,
+          childWorkingDirectory: childLocation.workingDirectory,
+          resultDelivery: input.resultDelivery ?? "ignore",
+          requestId,
+          projectPath: location.projectPath,
+          createdAt: DateTime.formatIso(yield* DateTime.now),
+        };
+        if (location.managedWorktree)
+          Object.assign(reservation, {
+            parentManagedWorktreePath: location.managedWorktree.worktreePath,
+          });
+        if (childLocation.managedWorktree)
+          Object.assign(reservation, {
+            childManagedWorktreePath: childLocation.managedWorktree.worktreePath,
+          });
+        const family = yield* storage
+          .addChild(reservation)
+          .pipe(
+            Effect.tapError(() =>
+              !retriedChild &&
+              childLocation.workingDirectory !== location.workingDirectory &&
+              discardIsolatedLocation
+                ? discardIsolatedLocation(childLocation.workingDirectory)
+                : Effect.void,
+            ),
+          );
+        const originatingSession = yield* sessions
+          .catalogEntry(
+            {
+              workingDirectory: family.workingDirectory,
+              sessionDirectory: location.sessionDirectory,
+            },
+            family.parentSessionId,
+          )
+          .pipe(Effect.catchTag("PiSessionError", () => Effect.succeed(undefined)));
+        const child = family.children.find((item) => item.requestId === requestId);
+        if (!child)
           return yield* new SessionFamilyStorageError({
             operation: "createChild",
-            message: "Isolated child worktree creation is unavailable",
+            message: "Child reservation missing",
           });
-        childLocation = yield* createIsolatedLocation(input.worktreeName);
-      }
-      const reservation = {
-        familyId: existing?.familyId ?? crypto.randomUUID(),
-        parentSessionId,
-        parentWorkingDirectory: location.workingDirectory,
-        childSessionId: crypto.randomUUID(),
-        childWorkingDirectory: childLocation.workingDirectory,
-        resultDelivery: input.resultDelivery ?? "reply",
-        requestId: input.requestId,
-        projectPath: location.projectPath,
-        createdAt: DateTime.formatIso(yield* DateTime.now),
-      };
-      if (location.managedWorktree)
-        Object.assign(reservation, {
-          parentManagedWorktreePath: location.managedWorktree.worktreePath,
-        });
-      if (childLocation.managedWorktree)
-        Object.assign(reservation, {
-          childManagedWorktreePath: childLocation.managedWorktree.worktreePath,
-        });
-      const family = yield* storage
-        .addChild(reservation)
-        .pipe(
-          Effect.tapError(() =>
-            childLocation.workingDirectory !== location.workingDirectory && discardIsolatedLocation
-              ? discardIsolatedLocation(childLocation.workingDirectory)
-              : Effect.void,
-          ),
-        );
-      const originatingSession = yield* sessions
-        .catalogEntry(
-          {
-            workingDirectory: family.workingDirectory,
-            sessionDirectory: location.sessionDirectory,
-          },
-          family.parentSessionId,
-        )
-        .pipe(Effect.catchTag("PiSessionError", () => Effect.succeed(undefined)));
-      yield* ensureBoard(family, originatingSession?.title);
-      const child = family.children.find((item) => item.requestId === input.requestId);
-      if (!child)
-        return yield* new SessionFamilyStorageError({
-          operation: "createChild",
-          message: "Child reservation missing",
-        });
-      yield* publish(parentSessionId, location.workingDirectory);
-      const target = {
-        sessionId: child.sessionId,
-        workingDirectory: childLocation.workingDirectory,
-        sessionDirectory: childLocation.sessionDirectory,
-      };
-      const status = yield* sessions.currentStatus(target);
-      if (
-        status ||
-        (yield* archive.locate(child.sessionId, archiveLocation(childLocation.workingDirectory)))
-      )
-        return { family, child, childLocation, handle: undefined };
-      const acquired = yield* Effect.result(
-        Effect.gen(function* () {
-          const handle = yield* sessions.acquire(
-            yield* runtimeOptions(child.sessionId, childLocation),
-          );
-          yield* handle.applyConfiguration(configuration);
-          yield* handle.rename(input.title);
-          return handle;
-        }),
-      );
-      if (acquired._tag === "Failure") {
-        if (
-          !(yield* archive.locate(child.sessionId, archiveLocation(childLocation.workingDirectory)))
-        ) {
-          yield* storage.removeUnmaterializedChild(child.sessionId);
-          if (
-            childLocation.workingDirectory !== location.workingDirectory &&
-            discardIsolatedLocation
-          )
-            yield* discardIsolatedLocation(childLocation.workingDirectory);
-        }
         yield* publish(parentSessionId, location.workingDirectory);
+        const assigned = yield* Effect.result(
+          Effect.gen(function* () {
+            if (!child.assignmentTopic)
+              return yield* failure(
+                "This is a bootstrap-first child; create a new assignment-first child instead",
+              );
+            yield* ensureBoard(family, originatingSession?.title);
+            const boardId = boardIdFor(family.familyId);
+            const previous = (yield* (yield* MessageBoardStorage).entries(boardId)).find(
+              (entry) =>
+                entry.topic === child.assignmentTopic && entry.authorSessionId === parentSessionId,
+            );
+            if (previous) {
+              if (
+                previous.description !== assignment.description ||
+                previous.body !== assignment.body
+              )
+                return yield* failure(
+                  "Retry must use the original assignment; publish later changes on the Workboard",
+                );
+              return { boardId, sequence: previous.sequence };
+            }
+            const posted = yield* appendBoardAssignment(parentSessionId, {
+              ...assignment,
+              audience: [child.sessionId],
+              topic: child.assignmentTopic,
+            });
+            return { boardId, sequence: posted.entry.sequence };
+          }),
+        );
+        if (assigned._tag === "Failure")
+          return {
+            family,
+            child,
+            childLocation,
+            handle: undefined,
+            error: String(assigned.failure),
+            stage: "assignment" as const,
+          };
+        // A runtime or transcript alone is not evidence of initial-turn admission.
+        // Any durable journal (including stopped/canceled work) forbids relaunch.
+        const record = yield* (yield* RuntimeRecoveryStorage).get(child.sessionId);
+        if (record)
+          return {
+            family,
+            child,
+            childLocation,
+            handle: undefined,
+            assignmentReceipt: assigned.success,
+            admissionState: record.state,
+          };
+        const archived = yield* archive.locate(
+          child.sessionId,
+          archiveLocation(childLocation.workingDirectory),
+        );
+        const acquired = yield* Effect.result(
+          Effect.gen(function* () {
+            const handle = yield* sessions.acquire(
+              yield* runtimeOptions(child.sessionId, childLocation, !archived),
+            );
+            yield* handle.applyConfiguration(configuration);
+            yield* handle.rename(input.title);
+            return handle;
+          }),
+        );
+        if (acquired._tag === "Failure") {
+          yield* publish(parentSessionId, location.workingDirectory);
+          return {
+            family,
+            child,
+            childLocation,
+            handle: undefined,
+            error: String(acquired.failure),
+            stage: "runtime" as const,
+            assignmentReceipt: assigned.success,
+          };
+        }
         return {
           family,
           child,
           childLocation,
-          handle: undefined,
-          error: String(acquired.failure),
+          handle: acquired.success,
+          assignmentReceipt: assigned.success,
         };
-      }
-      return { family, child, childLocation, handle: acquired.success };
-    }),
-  );
-  const identity = {
-    familyId: prepared.family.familyId,
-    parentSessionId,
-    childSessionId: prepared.child.sessionId,
-    workingDirectory: prepared.childLocation.workingDirectory,
-    familyChildOrder: familyChildren(prepared.family, parentSessionId).findIndex(
-      (child) => child.sessionId === prepared.child.sessionId,
-    ),
-    familyDepth: familyDepth(prepared.family, prepared.child.sessionId) ?? 0,
-    resultDelivery: prepared.child.resultDelivery ?? "reply",
-  };
-  if (!prepared.handle)
-    return {
-      ...identity,
-      launch: prepared.error
-        ? { status: "failed", message: prepared.error }
-        : { status: "already-started" },
-    };
-  const initialMessage = encodeCrossSessionMessage(input.initialPrompt, {
-    version: 1,
-    messageId: prepared.child.sessionId,
-    threadId: prepared.family.familyId,
-    sequence: 1,
-    expectsResponse: identity.resultDelivery !== "ignore",
-    resultDelivery: identity.resultDelivery,
-    context: input.senderContext,
-    sender: {
-      sessionId: parentSessionId,
-      title: `Parent session ${parentSessionId}`,
-      kind: "project-session",
-      projectName: location.projectName,
-      workingDirectory: location.workingDirectory,
-    },
-  });
-  const launched = yield* Effect.result(prepared.handle.prompt(initialMessage, [], false));
-  if (launched._tag === "Failure") {
-    yield* storage.withMemberLock(
-      parentSessionId,
-      Effect.gen(function* () {
-        if (
-          !(yield* archive.locate(
-            prepared.child.sessionId,
-            archiveLocation(prepared.childLocation.workingDirectory),
-          ))
-        ) {
-          yield* storage.removeUnmaterializedChild(prepared.child.sessionId);
-          if (
-            prepared.childLocation.workingDirectory !== location.workingDirectory &&
-            discardIsolatedLocation
-          )
-            yield* discardIsolatedLocation(prepared.childLocation.workingDirectory);
-        }
-        yield* publish(parentSessionId, location.workingDirectory);
       }),
     );
-    return { ...identity, launch: { status: "failed", message: String(launched.failure) } };
-  }
-  yield* publish(prepared.child.sessionId, prepared.childLocation.workingDirectory);
-  return { ...identity, launch: { status: "accepted", turnId: launched.success } };
-});
+    const identity = {
+      familyId: prepared.family.familyId,
+      parentSessionId,
+      childSessionId: prepared.child.sessionId,
+      workingDirectory: prepared.childLocation.workingDirectory,
+      familyChildOrder: familyChildren(prepared.family, parentSessionId).findIndex(
+        (child) => child.sessionId === prepared.child.sessionId,
+      ),
+      familyDepth: familyDepth(prepared.family, prepared.child.sessionId) ?? 0,
+      resultDelivery: prepared.child.resultDelivery ?? "ignore",
+      requestId: input.requestId,
+      assignment: prepared.assignmentReceipt,
+    };
+    if (!prepared.handle)
+      return {
+        ...identity,
+        launch: prepared.error
+          ? { status: "failed", stage: prepared.stage, message: prepared.error, retryable: true }
+          : { status: "already-admitted", state: prepared.admissionState },
+      };
+    const initialMessage = encodeCrossSessionMessage(
+      `Read workgroups.md and sessions.md. Your assignment is already persisted on the family Workboard: entry #${prepared.assignmentReceipt?.sequence}, topic ${prepared.child.assignmentTopic}. Read it with boards.read before working. Communicate with family members only on the Workboard.`,
+      {
+        version: 1,
+        messageId: prepared.child.sessionId,
+        threadId: prepared.family.familyId,
+        sequence: 1,
+        expectsResponse: identity.resultDelivery !== "ignore",
+        resultDelivery: identity.resultDelivery,
+        context: input.senderContext,
+        sender: {
+          sessionId: parentSessionId,
+          title: `Parent session ${parentSessionId}`,
+          kind: "project-session",
+          projectName: location.projectName,
+          workingDirectory: location.workingDirectory,
+        },
+      },
+    );
+    const launched = yield* Effect.result(prepared.handle.prompt(initialMessage, [], false));
+    if (launched._tag === "Failure") {
+      return {
+        ...identity,
+        launch: {
+          status: "failed",
+          stage: "admission",
+          message: String(launched.failure),
+          retryable: true,
+        },
+      };
+    }
+    yield* publish(prepared.child.sessionId, prepared.childLocation.workingDirectory);
+    return { ...identity, launch: { status: "accepted", turnId: launched.success } };
+  },
+  (effect, parentSessionId, _location, input) =>
+    Effect.gen(function* () {
+      const storage = yield* SessionFamilyStorage;
+      return yield* storage.withCreationLock(
+        JSON.stringify([parentSessionId, input.requestId]),
+        effect,
+      );
+    }),
+);
 
 export const initialize = Effect.fn("SessionFamilies.initialize")(function* <E, R>(
   activeRoot: string,
@@ -366,6 +420,9 @@ export const initialize = Effect.fn("SessionFamilies.initialize")(function* <E, 
       // must retain its member routing and must not gain a second failure notice.
       if ((yield* storage.state()).turns.some((turn) => turn.sessionId === child.sessionId))
         continue;
+      // Assignment-first reservations are explicit retryable handoffs, not orphaned
+      // bootstrap sessions. Never erase their request identity or restart them here.
+      if (child.assignmentTopic) continue;
       if (child.resultDelivery === "ignore") {
         yield* storage.removeUnmaterializedChild(child.sessionId);
         continue;
@@ -1091,7 +1148,7 @@ const deliverRequesterNotice = Effect.fn("SessionFamilies.deliverRequesterNotice
 });
 
 const runPass = Effect.fn("SessionFamilies.deliverPendingNotices")(function* () {
-  yield* workboardContinuations.runPass();
+  yield* workboardDeliveries.runPass();
   const storage = yield* SessionFamilyStorage;
   for (const turn of (yield* storage.state()).turns) {
     if (!turn.outcome || turn.reported) continue;

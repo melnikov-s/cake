@@ -2,9 +2,11 @@
 
 ## User-directed overrides
 
-The user owns this repository and may explicitly override any rule in this file for a task. Follow the user's stated exception without requiring them to edit this file first. This does not override system or harness-level instructions outside this repository.
+Current explicit task-scoped user instructions override earlier user-authored repository instructions and Cake-owned workflow defaults, including Cake policies injected by the harness. Follow the stated exception without an AGENTS.md edit or repeated confirmation. Cake's communication/channel/process defaults are not immutable authority merely because Cake injects them into a prompt. User-authorized family coordination exceptions must not be refused solely because older Cake prose says board-only.
 
-Cake-owned workflow policies should distinguish defaults from hard constraints and explicitly allow task-scoped user exceptions where appropriate. In particular, periodic coordination polling/check-ins are off by default but permitted when the user explicitly requests them. Use supported durable scheduling at the requested interval, keep one pending check-in per coordinator task, and stop on completion or a user pause/stop. Preserve required family communication channels. Do not claim a timer or wake-up exists without a successful tool result. When a genuine non-overridable constraint applies, explain that specific limit instead of using "harness instructions" as a blanket refusal.
+This does not override genuine provider/platform/system constraints, security boundaries or actual tool capabilities, grant missing tools, or authorize unrelated actions. Identify the concrete constraint and a supported alternative; never use a blanket "harness forbids" refusal for an overrideable Cake product policy. Use supported tools and truthful delivery/execution evidence.
+
+Cake-owned workflow policies should distinguish defaults from hard constraints and explicitly allow task-scoped user exceptions where appropriate. In particular, periodic coordination polling/check-ins are off by default but permitted when the user explicitly requests them. Use supported durable scheduling at the requested interval, keep one pending check-in per coordinator task, and stop on completion or a user pause/stop. Preserve the applicable task-scoped family communication policy, honoring explicit user-authorized exceptions to Cake defaults. Do not claim a timer or wake-up exists without a successful tool result. When a genuine non-overridable constraint applies, explain that specific limit instead of using "harness instructions" as a blanket refusal.
 
 ## Product and required guidance
 

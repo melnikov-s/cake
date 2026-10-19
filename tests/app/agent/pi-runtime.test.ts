@@ -120,9 +120,12 @@ describe("Pi 1.0.0 foundation contract", () => {
     expect(systemPrompt).toContain("<cake_system_prompt>");
     expect(systemPrompt).toContain("communicate exclusively via Workboard");
     expect(systemPrompt).toContain("parents, children, siblings and recursive descendants");
-    expect(systemPrompt).toContain("Create children with resultDelivery: ignore");
-    expect(systemPrompt).toContain("Workboards are passive by default");
-    expect(systemPrompt).toContain("authorized boards.continuation.set grants");
+    expect(systemPrompt).toContain("Create children with assignment: { description, body }");
+    expect(systemPrompt).toContain("Default resultDelivery: ignore");
+    expect(systemPrompt).toContain("Idle recipients get coalesced durable wakes");
+    expect(systemPrompt).toContain(
+      "Every board post routes to explicit recipients plus the family root",
+    );
     const docsDirectory = systemPrompt?.match(/Cake documentation directory: `([^`]+)`/)?.[1];
     if (!docsDirectory) throw new Error("Expected readable Cake documentation references");
     const modelDocs = await readFile(join(docsDirectory, "models.md"), "utf8");
@@ -136,7 +139,7 @@ describe("Pi 1.0.0 foundation contract", () => {
     expect(sessionDocs).toContain("never send acknowledgment-only or duplicate messages");
     expect(sessionDocs).toContain("family members communicate exclusively through that board");
     const workgroupDocs = await readFile(join(docsDirectory, "workgroups.md"), "utf8");
-    expect(workgroupDocs).toContain("All Session Family members");
+    expect(workgroupDocs).toContain("By default, all Session Family members");
     expect(workgroupDocs).toContain(
       "There are no separate agent board-create or board-join operations",
     );

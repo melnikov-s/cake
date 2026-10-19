@@ -35,6 +35,49 @@ const child = (requestId: string, childSessionId: string) => ({
 
 describe("SessionFamilyStorage", () => {
   it.effect(
+    "migrates explicit v8 delivery pauses without carrying old budgets into default delivery",
+    () => {
+      const files = new Map([
+        [
+          "state/session-families.json",
+          JSON.stringify({
+            version: 8,
+            data: {
+              families: [],
+              turns: [],
+              spawnedSessions: [],
+              boardContinuations: [
+                { recipientSessionId: "parent", mode: "resume", remainingInputs: 0 },
+                { recipientSessionId: "paused", mode: "paused", remainingInputs: 5 },
+                { recipientSessionId: "off", mode: "off" },
+              ],
+            },
+          }),
+        ],
+      ]);
+      return Effect.gen(function* () {
+        const storage = yield* SessionFamilyStorage;
+        assert.deepEqual((yield* storage.state()).boardDeliveryPaused, ["paused", "off"]);
+        for (const recipientSessionId of ["parent", "paused"]) {
+          yield* storage.recordBoardDelivery({
+            recipientSessionId,
+            boardId: "board",
+            sequences: [1],
+            through: 1,
+            turnId: crypto.randomUUID(),
+            status: "pending",
+          });
+        }
+        assert.deepEqual(
+          (yield* storage.state()).boardDeliveries?.map((item) => item.status),
+          ["pending", "canceled"],
+        );
+        assert.equal(JSON.parse(files.get("state/session-families.json")!).version, 9);
+      }).pipe(Effect.provide(familyStorageHarness(files).layer));
+    },
+  );
+
+  it.effect(
     "does not rearm a consumed notification when restart retries the still-pending settlement",
     () => {
       const harness = familyStorageHarness();
@@ -134,7 +177,7 @@ describe("SessionFamilyStorage", () => {
         assert.equal(reopened.turns.length, modes.length);
         assert.equal(reopened.turns[0]?.deliveryTurnId, "stable-admission");
         assert.deepEqual(reopened.coordinatorDigest, [digest]);
-        assert.equal(JSON.parse(files.get("state/session-families.json")!).version, 8);
+        assert.equal(JSON.parse(files.get("state/session-families.json")!).version, 9);
         assert.ok(
           !JSON.stringify(
             JSON.parse(files.get("state/session-families.json")!).data.turns,
@@ -282,7 +325,7 @@ describe("SessionFamilyStorage", () => {
         yield* storage.settleTurn("turn", "complete");
         const persisted = JSON.parse(files.get("state/session-families.json") ?? "{}");
         assert.deepEqual(persisted, {
-          version: 8,
+          version: 9,
           data: {
             families: [
               {
@@ -311,7 +354,7 @@ describe("SessionFamilyStorage", () => {
       yield* storage.settleTurn("turn", "complete");
       assert.deepEqual((yield* storage.state()).turns, []);
       assert.equal((yield* storage.list()).length, 1);
-      assert.equal(JSON.parse(files.get("state/session-families.json") ?? "{}").version, 8);
+      assert.equal(JSON.parse(files.get("state/session-families.json") ?? "{}").version, 9);
     }).pipe(Effect.provide(familyStorageHarness(files).layer));
   });
 

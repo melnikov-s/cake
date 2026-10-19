@@ -768,9 +768,9 @@ export async function createCakeSessionRuntime(
         throw new Error("This Project Session cannot create child sessions");
       return options.currentSessionControl.createChildSession(
         {
-          requestId,
+          requestId: input.requestId ?? requestId,
           title: input.title,
-          initialPrompt: input.initialPrompt,
+          assignment: input.assignment,
           resultDelivery: input.resultDelivery,
           placement: input.placement,
           model: configuration.resolveModelSelection(input.model),

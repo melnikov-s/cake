@@ -1,3 +1,4 @@
+import { resumeAfterUserInput } from "../session-families/workboardDeliveries";
 import * as messageReferences from "./messageReferences";
 import { messageReference } from "../../contracts/conversations/message-reference";
 import { toJsonValue } from "../../utils/to-json-value";
@@ -144,6 +145,8 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
     const text = message.crossSession
       ? encodeCrossSessionMessage(message.text, message.crossSession)
       : addReferenceNotifications(userMessage?.text ?? message.text, reportPage, references.length);
+    if (storage && !message.crossSession)
+      yield* resumeAfterUserInput(input.sessionId).pipe(asError("deliver"));
     const turnId = TurnId.make(
       yield* deliverConversation(
         Effect.succeed(handle),
@@ -183,8 +186,13 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
 export const abort = Effect.fn("SessionChats.abort")(function* (
   target: SessionChatTarget & { readonly stop: TurnStop },
 ) {
-  yield* (yield* SessionFamilyStorage)
-    .pauseBoardContinuation(target.sessionId)
+  const storage = yield* SessionFamilyStorage;
+  yield* storage
+    .withNoticeDelivery(
+      Effect.gen(function* () {
+        yield* storage.setBoardDeliveryPaused(target.sessionId, true);
+      }),
+    )
     .pipe(asError("abort"));
   yield* abortConversation(acquire(target.sessionId), target.stop).pipe(asError("abort"));
 });
