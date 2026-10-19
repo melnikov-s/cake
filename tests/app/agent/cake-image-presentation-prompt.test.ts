@@ -13,7 +13,7 @@ it("shared presentation guidance requires inline images rather than clickable li
 
 it("Cake Chat keeps inline images in its kernel and gates detailed presentation guidance", () => {
   const prompt = coordinatorSystemPrompt("", "/cake/docs");
-  expect(prompt).toContain("Show images inline, not as plain links");
+  expect(prompt).toContain("Show images inline");
   expect(prompt).toContain("read `presentation.md`");
 });
 

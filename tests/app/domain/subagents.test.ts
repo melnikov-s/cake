@@ -17,7 +17,10 @@ import {
 import { describe, vi } from "vitest";
 import { cakeOperationImageResult } from "../../../src/contracts/agent/cake-operation";
 import type { TaskInputReference } from "../../../src/contracts/conversations/task-input";
-import type { MessageOperationControl } from "../../../src/contracts/conversations/message-reference";
+import {
+  attachmentLink,
+  type MessageOperationControl,
+} from "../../../src/contracts/conversations/message-reference";
 import type { SubagentAttachmentFactory } from "../../../src/contracts/subagents/subagent-attachments";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { configureCakeSessionRuntime } from "../../../src/layers/CakeOperations";
@@ -452,7 +455,11 @@ function makeAttachmentFixture() {
     forward: (ids) => forwards(owner, recipient, ids),
     control: {
       list: async () => ({
-        references: (grants.get(recipient) ?? []).map((ref) => ({ ...ref })),
+        references: (grants.get(recipient) ?? []).map((ref) => ({
+          ...ref,
+          reference: ref.id,
+          deepLink: attachmentLink(recipient, ref.id),
+        })),
         nextAfter: null,
       }),
       read: async (input) => reads(recipient, input.reference),
@@ -707,6 +714,7 @@ describe("subagent attachment references", () => {
           const registry = workerRegistry(options);
           const listed = yield* Effect.promise(() => invokeWorker(registry, "attachments.list"));
           assert.ok(listed.text.includes(imageReference.id));
+          assert.ok(listed.text.includes(attachmentLink(sessionId, imageReference.id)));
           assert.ok(!listed.text.includes(textReference.id));
           yield* Effect.promise(() =>
             assert.rejects(

@@ -99,7 +99,7 @@ it.effect.each([
   { streaming: true, delivery: undefined, expected: "queue", lane: "follow-up", ask: true },
   { streaming: true, delivery: "steer" as const, expected: "steer", lane: "steer", ask: true },
   { streaming: false, delivery: "queue" as const, expected: "queue", lane: "follow-up", ask: true },
-  // Omitting expectsResponse is informational: no reply obligation is recorded.
+  // Omitting resultDelivery is informational: no reply obligation is recorded.
   { streaming: true, delivery: "steer" as const, expected: "steer", lane: "steer", ask: false },
 ])(
   "starts idle recipients, queues active recipients, and steers only when requested (%j)",
@@ -166,7 +166,7 @@ it.effect.each([
             {
               sessionId: "child",
               text: "Investigate queue behavior",
-              ...(scenario.ask ? { expectsResponse: true } : {}),
+              ...(scenario.ask ? { resultDelivery: "reply" } : {}),
               ...(scenario.delivery ? { delivery: scenario.delivery } : {}),
             },
             new AbortController().signal,
@@ -180,6 +180,7 @@ it.effect.each([
             turnId: Schema.String,
             delivery: Schema.String,
             expectsResponse: Schema.Boolean,
+            resultDelivery: Schema.Literals(["reply", "notification", "ignore"]),
             status: Schema.String,
             queue: Schema.optionalKey(
               Schema.Struct({
@@ -195,10 +196,12 @@ it.effect.each([
         assert.equal(delivered.delivery, scenario.lane);
         assert.equal(decoded.delivery, scenario.expected);
         assert.equal(decoded.expectsResponse, scenario.ask);
+        assert.equal(decoded.resultDelivery, scenario.ask ? "reply" : "ignore");
         assert.equal(decoded.status, scenario.expected === "queue" ? "queued" : "accepted");
         const metadata = parseCrossSessionMessage(delivered.text)?.metadata;
         assert.equal(metadata?.messageId, decoded.messageId);
         assert.equal(metadata?.threadId, decoded.threadId);
+        assert.equal(metadata?.resultDelivery, decoded.resultDelivery);
         assert.deepEqual(metadata?.context, { usedTokens: 10, windowTokens: 100 });
         const turns = (yield* (yield* SessionFamilyStorage).state()).turns;
         assert.equal(turns.length, scenario.ask ? 1 : 0);
@@ -279,7 +282,7 @@ it.effect.each([
       const result = yield* route(caller, "sessions.send", {
         sessionId: "child",
         text,
-        ...(scenario.mode === "question" ? { expectsResponse: true } : null),
+        ...(scenario.mode === "question" ? { resultDelivery: "reply" as const } : null),
         ...(scenario.mode === "steer" ? { delivery: "steer" as const } : null),
         ...(scenario.mode === "blocked" ? { outcome: "blocked" as const } : null),
       });

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { coordinatorSystemPrompt } from "../../../src/services/pi-durable/coordinator-system-prompt";
+import { MEMORY_COMPACTOR_PROMPT } from "../../../src/services/pi-durable/durable-memory-policy";
+import { renderPromptTemplate } from "../../../src/services/pi/runtime/prompt-template";
+import cakeChatPrompt from "../../../src/services/pi/runtime/prompts/cake-chat.md?raw";
 import { worktreeSystemPrompt } from "../../../src/services/pi/runtime/worktree-system-prompt";
 import chatGuide from "../../../docs/agent/cake-chat.md?raw";
 import projectPrompt from "../../../src/services/pi/runtime/prompts/project.md?raw";
@@ -90,8 +93,26 @@ describe("Cake Chat role kernel and required guide", () => {
     expect(commonPrompt).not.toContain("Weigh context size/cache freshness");
   });
 
-  it("bounds the assembled Cake Chat base without charging user-authored instructions", () => {
-    expect(prompt.length).toBeLessThanOrEqual(4_500);
+  it("budgets the role kernel, common guidance and compaction policy separately from user instructions", () => {
+    const roleKernel = renderPromptTemplate(cakeChatPrompt, {
+      commonPrompt: "",
+      cakeDocsDirectory: "/cake/docs",
+    });
+    const common = renderPromptTemplate(commonPrompt);
+    const base = renderPromptTemplate(cakeChatPrompt, {
+      commonPrompt: common,
+      cakeDocsDirectory: "/cake/docs",
+    });
+    expect(roleKernel.length).toBeLessThanOrEqual(4_500);
+    expect(common.length).toBeLessThanOrEqual(1_000);
+    expect(MEMORY_COMPACTOR_PROMPT.length).toBeLessThanOrEqual(2_500);
+    expect(prompt).toBe(
+      `${base}\n\n${MEMORY_COMPACTOR_PROMPT}\n\n<cake-chat-instructions>\n\n</cake-chat-instructions>`,
+    );
+    const instructions = "User-owned instructions. ".repeat(1_000);
+    expect(coordinatorSystemPrompt(instructions, "/cake/docs").length).toBe(
+      prompt.length + instructions.length,
+    );
     expect(prompt).not.toContain("{{");
   });
 });

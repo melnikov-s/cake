@@ -134,6 +134,7 @@ it.effect("retains a completed root request that expected a response", () =>
           threadId: familyId,
           reported: false,
           outcome: "complete",
+          resultDelivery: "reply",
         },
       ]);
       const pending = yield* storage.pendingResponseRequest("root", [], familyId, requestId);

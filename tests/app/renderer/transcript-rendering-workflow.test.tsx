@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { renderTranscriptRendering } from "./transcript-rendering-workflow-fixture";
-import * as transcriptPart from "../../../src/renderer/components/chat-transcript-part";
+import * as messageHighlights from "../../../src/renderer/lib/message-highlights";
 import { ChatStore } from "../../../src/renderer/stores/ChatStore";
 
 const user: Extract<UiPart, { kind: "text" }> = {
@@ -36,9 +36,10 @@ afterEach(() => {
 // suites. This suite does not fabricate those layout or native-event contracts.
 describe("Projected transcript rendering workflows", () => {
   it("does not execute settled message rendering when another message streams", () => {
-    // Call-through observation only: retain the real renderer and its children.
-    // DOM identity alone would also pass if React needlessly rendered every token.
-    const renders = vi.spyOn(transcriptPart, "TranscriptPart");
+    // The real assistant renderer calls this hook on every execution. Observe it
+    // call-through without replacing the renderer, hooks, or observer memo object;
+    // DOM identity alone cannot detect needless renders on every streaming token.
+    const renders = vi.spyOn(messageHighlights, "useMessageHighlights");
     const live = {
       ...answer,
       id: "live",
@@ -47,21 +48,21 @@ describe("Projected transcript rendering workflows", () => {
       status: "streaming" as const,
     };
     using fixture = renderTranscriptRendering([answer, user, live], { streaming: true });
-    const count = (id: string) =>
-      renders.mock.calls.filter(([props]) => props.part.id === id).length;
-    const settledRenders = count(answer.id);
-    const liveRenders = count(live.id);
+    const count = (text: string) =>
+      renders.mock.calls.filter(([, , renderedText]) => renderedText === text).length;
+    const settledRenders = count(answer.text);
     expect(settledRenders).toBeGreaterThan(0);
+    expect(count(live.text)).toBeGreaterThan(0);
     for (const text of ["One two", "One two three"]) {
       fixture.publish([answer, user, { ...live, text }], true);
       expect(screen.getByText(text)).toBeDefined();
-      expect(count(answer.id)).toBe(settledRenders);
+      expect(count(text)).toBeGreaterThan(0);
+      expect(count(answer.text)).toBe(settledRenders);
     }
-    expect(count(live.id)).toBeGreaterThan(liveRenders);
     // Positive control: changing the settled message itself must render it.
     fixture.publish([{ ...answer, text: "Revised answer" }, user, live], true);
     expect(screen.getByText("Revised answer")).toBeDefined();
-    expect(count(answer.id)).toBeGreaterThan(settledRenders);
+    expect(count("Revised answer")).toBeGreaterThan(0);
   });
 
   it("isolates draft changes from surrounding Chat render work", () => {

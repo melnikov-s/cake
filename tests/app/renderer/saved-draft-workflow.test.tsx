@@ -192,7 +192,7 @@ async function renderDrafts(
         fixture.root.sessionRegistry.pendingSessions.applyLiveTitle(sessionId, title);
       });
     },
-    publishCatalog(title: string) {
+    publishCatalog(title: string, modifiedAt = fixtureTimestamp) {
       act(() =>
         applySessionCatalogGroupUpdate(
           fixture.models.sessionCatalog,
@@ -202,7 +202,7 @@ async function renderDrafts(
             revision: 1,
             sessions: [
               ...initialSessions,
-              sessionSummary({ sessionId, projectPath, title, messageCount: 1 }),
+              sessionSummary({ sessionId, projectPath, title, messageCount: 1, modifiedAt }),
             ],
           },
         ),
@@ -458,9 +458,10 @@ describe("Saved Draft workflows", () => {
     expect(rowIds().sort()).toEqual([sessionId, otherId]);
     expect(screen.getByText(/This saved Draft may already have started/)).toBeDefined();
 
-    // The Pi catalog may arrive before the Saved Draft activation result. It must
-    // replace the same selected row, not duplicate it or drop it below Show more.
-    fixture.publishCatalog(title);
+    // The first Pi message is newer than the existing sessions. Its catalog can
+    // arrive before activation returns, replacing the draft without duplication
+    // or losing its visible selected row when it joins the normal recency lane.
+    fixture.publishCatalog(title, "2026-02-02T00:00:00.000Z");
     expect(rowIds().sort()).toEqual([sessionId, otherId]);
     await act(async () => held.release());
     await waitFor(() => expect(input()).toBeDefined());

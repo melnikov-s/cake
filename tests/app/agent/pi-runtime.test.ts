@@ -120,7 +120,7 @@ describe("Pi 1.0.0 foundation contract", () => {
     expect(systemPrompt).toContain("<cake_system_prompt>");
     expect(systemPrompt).toContain("communicate exclusively via Workboard");
     expect(systemPrompt).toContain("parents, children, siblings and recursive descendants");
-    expect(systemPrompt).toContain("Create children with expectsResponse: false");
+    expect(systemPrompt).toContain("Create children with resultDelivery: ignore");
     expect(systemPrompt).toContain("Workboards are passive by default");
     expect(systemPrompt).toContain("authorized boards.continuation.set grants");
     const docsDirectory = systemPrompt?.match(/Cake documentation directory: `([^`]+)`/)?.[1];

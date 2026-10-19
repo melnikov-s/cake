@@ -164,46 +164,81 @@ describe("Session Family outcome delivery", () => {
     ),
   );
 
-  it.effect("never messages a child about its parent's turn", () =>
-    Effect.gen(function* () {
-      const storage = yield* SessionFamilyStorage;
-      // The parent was processing the child's report when the user stopped it.
-      const parentTurn = {
-        sessionId: "session-1",
-        senderSessionId: childId,
-        turnId: "0a7d1e6c-3a8b-4d2e-9f11-6f2b7c1d9e01",
-        requestMessageId: "a262d069-78f8-4c36-9118-1b4aec199bf3",
-        threadId: "e648e33b-7192-499e-a471-3ee472e7d0a2",
-        reported: false,
-        outcome: "failed" as const,
-      };
-      yield* storage.addChild(reservation);
-      yield* storage.recordTurn(parentTurn);
-      yield* Effect.scoped(deliver(parentTurn));
-      assert.deepEqual((yield* storage.state()).turns, []);
-    }).pipe(
-      Effect.provide(
-        Layer.mergeAll(
-          familyStorageHarness().layer,
-          environment,
-          Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
-          makeCakeSessionRuntimesLayer({
-            sessionIds: () => Stream.empty,
-            catalog: () => Stream.empty,
-            catalogEntry: () => Effect.succeed(undefined),
-            inspect: () => Effect.succeed(undefined),
-            changelog: () => Effect.succeed(""),
-            createRuntime: (runtimeOptions) =>
-              Effect.succeed({
-                ...fakeRuntime(runtimeOptions, () => undefined),
-                prompt: async () => {
-                  throw new Error("A child must not receive notices about its parent");
-                },
+  it.effect(
+    "delivers a parent's failed requested turn to its child once without creating a reply loop",
+    () =>
+      Effect.gen(function* () {
+        const received = yield* Deferred.make<void>();
+        const transcript: string[] = [];
+        yield* Effect.gen(function* () {
+          const storage = yield* SessionFamilyStorage;
+          // A root can owe a response to its child just as a child can owe its parent.
+          const parentTurn = {
+            sessionId: "session-1",
+            senderSessionId: childId,
+            turnId: "0a7d1e6c-3a8b-4d2e-9f11-6f2b7c1d9e01",
+            requestMessageId: "a262d069-78f8-4c36-9118-1b4aec199bf3",
+            threadId: "e648e33b-7192-499e-a471-3ee472e7d0a2",
+            resultDelivery: "reply" as const,
+            reported: false,
+            outcome: "failed" as const,
+          };
+          yield* storage.addChild(reservation);
+          yield* storage.recordTurn(parentTurn);
+          yield* Effect.scoped(deliver(parentTurn));
+          yield* Deferred.await(received);
+          const notice = parseCrossSessionMessage(transcript[0] ?? "");
+          assert.equal(notice?.metadata.sender.sessionId, "session-1");
+          assert.equal(notice?.metadata.generatedNotice, true);
+          assert.equal(notice?.metadata.resultDelivery, "ignore");
+          assert.equal(notice?.metadata.expectsResponse, false);
+          assert.ok(notice?.text.includes(parentTurn.requestMessageId));
+          assert.match(notice?.text ?? "", /stopped with an error/);
+          // Transcript acceptance settles the request. Further passes must not resend it.
+          yield* Effect.scoped(deliver(parentTurn));
+          yield* Effect.scoped(deliver(parentTurn));
+          assert.equal(transcript.length, 1);
+          assert.deepEqual((yield* storage.state()).turns, []);
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              familyStorageHarness().layer,
+              environment,
+              Layer.mock(SessionArchiveStorage, {
+                locate: () => Effect.succeed("active" as const),
               }),
-          }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
-        ),
-      ),
-    ),
+              makeCakeSessionRuntimesLayer({
+                sessionIds: () => Stream.empty,
+                catalog: () => Stream.empty,
+                catalogEntry: () => Effect.succeed(undefined),
+                inspect: () => Effect.succeed(undefined),
+                changelog: () => Effect.succeed(""),
+                createRuntime: (runtimeOptions) =>
+                  Effect.succeed({
+                    ...fakeRuntime(runtimeOptions, () => undefined),
+                    snapshot: async () => ({
+                      ...snapshot,
+                      parts: projectSessionEntries(
+                        transcript.map((content, index) => ({
+                          type: "message",
+                          id: String(index),
+                          parentId: null,
+                          timestamp: "2026-01-01T00:00:00.000Z",
+                          message: { role: "user", content, timestamp: index },
+                        })),
+                      ),
+                    }),
+                    prompt: async (text: string) => {
+                      assert.equal(runtimeOptions.sessionId, childId);
+                      transcript.push(text);
+                      Deferred.doneUnsafe(received, Effect.void);
+                    },
+                  }),
+              }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
+            ),
+          ),
+        );
+      }),
   );
 
   it.effect("recovers an accepted reply when acknowledgement was interrupted", () => {
