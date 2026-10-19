@@ -52,13 +52,38 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
 
           <div className="mt-5 grid gap-5">
             <label className="grid gap-2">
-              <span className="text-xs font-semibold text-foreground">Custom instructions</span>
+              <span className="text-xs font-semibold text-foreground">
+                Project Chat instructions
+              </span>
+              <Textarea
+                dictation
+                rows={6}
+                maxLength={16_384}
+                placeholder="How should this project’s permanent Project Chat help you?"
+                aria-label="Project Chat instructions"
+                value={store.projectChatInstructions}
+                onChange={(event) => store.setProjectChatInstructions(event.target.value)}
+                aria-describedby="project-chat-instructions-help"
+              />
+              <span
+                id="project-chat-instructions-help"
+                className="text-[11px] leading-relaxed text-muted-foreground"
+              >
+                Only for this project’s permanent Project Chat. Never added to coding Project
+                Sessions or global Cake Chat. Applies on the next Project Chat message. Saved
+                personally in Cake, not in AGENTS.md or the repository.
+              </span>
+            </label>
+            <label className="grid gap-2">
+              <span className="text-xs font-semibold text-foreground">
+                Project Session instructions
+              </span>
               <Textarea
                 dictation
                 rows={6}
                 maxLength={16_384}
                 placeholder="How should the agent work on this project?"
-                aria-label="Custom instructions"
+                aria-label="Project Session instructions"
                 value={store.customInstructions}
                 onChange={(event) => store.setCustomInstructions(event.target.value)}
                 aria-describedby="project-custom-instructions-help"
@@ -67,9 +92,11 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
                 id="project-custom-instructions-help"
                 className="text-[11px] leading-relaxed text-muted-foreground"
               >
-                Personal to this Cake installation; not written to AGENTS.md or the repository.
-                Added alongside global instructions and repository guidance to Project Session
-                system prompts. Applies when a session runtime starts or restarts.
+                For coding Project Sessions only, not permanent Project Chat. Existing custom
+                instructions are preserved here; they have not been moved to Project Chat. Personal
+                to this Cake installation; not written to AGENTS.md or the repository. Added
+                alongside global Project Session instructions and repository guidance when a session
+                runtime starts or restarts.
               </span>
             </label>
             <section aria-labelledby="project-icon-title" className="grid gap-2">

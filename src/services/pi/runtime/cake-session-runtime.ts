@@ -175,6 +175,8 @@ export interface CakeSessionRuntimeOptions {
   sessionId?: string;
   sessionFile?: string;
   additionalSystemPrompt?: string;
+  /** Permanent chats reread project-owned guidance at each message; never used by coding runtimes. */
+  cakeChatSystemPrompt?(): string;
   cakeChatMemory?: CakeChatMemoryOptions;
   /** Replaces Pi's normal prompt and disables context-file loading for an isolated runtime. */
   isolatedSystemPrompt?: string;

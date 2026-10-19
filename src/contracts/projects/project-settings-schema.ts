@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { ProjectSettings } from "../application/application-data";
+import { ProjectChatInstructions } from "./project-chat-instructions";
 
 const boundedProjectPath = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096));
 
@@ -8,6 +9,7 @@ const ProjectSettingsChanges = Schema.Struct({
   worktreeSetupCommands: Schema.optionalKey(ProjectSettings.fields.worktreeSetupCommands),
   worktreeSetupInstructions: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(16_384))),
   customInstructions: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(16_384))),
+  projectChatInstructions: Schema.optionalKey(ProjectChatInstructions.fields.instructions),
   icon: Schema.optionalKey(ProjectSettings.fields.icon),
 }).check(
   Schema.makeFilter((changes) => Object.values(changes).some((value) => value !== undefined), {

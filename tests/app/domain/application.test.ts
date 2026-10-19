@@ -345,6 +345,7 @@ describe("Application domain", () => {
         const renamed = yield* renameProject("/work/cake", "  Cake desktop  ");
         assert.equal(renamed.projects[0]?.name, "Cake desktop");
         const configured = yield* setProjectSettings("/work/cake", {
+          projectChatInstructions: "Discuss before delegating.",
           worktreeCreateCommand: "custom-worktree {worktreeName} {worktreePath}",
           worktreeSetupCommands: "pnpm install",
           worktreeSetupInstructions: "Install dependencies only when needed.",
@@ -352,6 +353,7 @@ describe("Application domain", () => {
           icon: { mimeType: "image/png", data: "aWNvbg==" },
         });
         assert.deepEqual(configured.projects[0]?.settings, {
+          projectChatInstructions: "Discuss before delegating.",
           worktreeCreateCommand: "custom-worktree {worktreeName} {worktreePath}",
           worktreeSetupCommands: "pnpm install",
           worktreeSetupInstructions: "Install dependencies only when needed.",

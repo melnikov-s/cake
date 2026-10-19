@@ -131,6 +131,7 @@ describe("Project Session runtime worktree controls", () => {
                 worktreeSetupCommands: "",
                 worktreeSetupInstructions: "Run pnpm install only when dependencies are needed.",
                 customInstructions: "Prefer focused tests for this project.",
+                projectChatInstructions: "Project Chat only: discuss strategy.",
               },
             },
           ],
@@ -169,6 +170,7 @@ describe("Project Session runtime worktree controls", () => {
         newSession: false,
       });
       assert.doesNotMatch(rootOptions.runtime.additionalSystemPrompt ?? "", /pnpm install/);
+      assert.doesNotMatch(rootOptions.runtime.additionalSystemPrompt ?? "", /discuss strategy/);
       assert.match(
         rootOptions.runtime.additionalSystemPrompt ?? "",
         /## Personal global instructions\n\nGive direct answers globally\./,
@@ -177,6 +179,7 @@ describe("Project Session runtime worktree controls", () => {
         rootOptions.runtime.additionalSystemPrompt ?? "",
         /## Personal project instructions\n\nPrefer focused tests for this project\./,
       );
+      assert.equal(rootOptions.runtime.cakeChatSystemPrompt, undefined);
       const storage = yield* SessionFamilyStorage;
 
       yield* addFamilyMember(storage, sharedChildId, rootId, "/project", "/project");

@@ -257,6 +257,103 @@ describe("Backend-owned Cake operation composition", () => {
     ).toBe(true);
   });
 
+  it("validates explicit Project Chat targets and reports only successful committed writes", async () => {
+    let committed = "Existing.";
+    const get = vi.fn(async (input: { projectPath: string }) => ({
+      ...input,
+      instructions: committed,
+    }));
+    const update = vi.fn(
+      async (input: {
+        projectPath: string;
+        expectedInstructions: string;
+        instructions: string;
+      }) => {
+        committed = input.instructions;
+        return { projectPath: input.projectPath, instructions: committed };
+      },
+    );
+    const registry = new CakeOperationRegistry(
+      coordinatorCakeOperations({
+        cwd: "/workspace",
+        projectChatInstructions: { get, update },
+        globalControl: { tools: [], invoke: vi.fn() },
+        allowedCakeOperations: ["settings.project-chat.get", "settings.project-chat.update"],
+      })({
+        sessionId: "coordinator",
+        resolveModel: () => ({
+          provider: "p",
+          modelId: "m",
+          thinkingLevel: "off",
+          fastMode: false,
+        }),
+        setModel: async () => undefined,
+        info: async () => ({}),
+        usage: async () => ({}),
+        contextStatus: async () => ({}),
+        compact: async () => ({}),
+      }),
+    );
+    const input = {
+      projectPath: "/zombies",
+      expectedInstructions: "Existing.",
+      instructions: "Merged.",
+    };
+    const read = await registry.invoke(
+      { command: "settings.project-chat.get", input: { projectPath: input.projectPath } },
+      context,
+    );
+    expect(read.details).toMatchObject({
+      result: { projectPath: "/zombies", instructions: "Existing." },
+    });
+    expect(registry.operationHelp("settings.project-chat.update")).toContain(
+      "Read back the same projectPath before claiming success",
+    );
+    const saved = await registry.invoke(
+      { command: "settings.project-chat.update", input },
+      context,
+    );
+    expect(saved.details).toMatchObject({
+      result: { projectPath: "/zombies", instructions: "Merged." },
+    });
+    expect(update).toHaveBeenCalledWith(input, context.signal);
+    const readback = await registry.invoke(
+      { command: "settings.project-chat.get", input: { projectPath: "/zombies" } },
+      context,
+    );
+    expect(readback.details).toMatchObject({ result: { instructions: "Merged." } });
+    for (const invalid of [
+      { expectedInstructions: "", instructions: "No project." },
+      { projectPath: "/zombies", instructions: "No read." },
+      { projectPath: "/zombies", expectedInstructions: "Merged." },
+      { ...input, instructions: "x".repeat(16_385) },
+    ])
+      await expect(
+        registry.invoke({ command: "settings.project-chat.update", input: invalid }, context),
+      ).rejects.toThrow();
+    update.mockRejectedValueOnce(new Error("Storage failed"));
+    await expect(
+      registry.invoke({ command: "settings.project-chat.update", input }, context),
+    ).rejects.toThrow("Storage failed");
+    await expect(
+      registry.invoke(
+        { command: "settings.project-chat.update", input },
+        { ...context, signal: AbortSignal.abort() },
+      ),
+    ).rejects.toThrow();
+    expect(update).toHaveBeenCalledTimes(2);
+    const coding = new CakeOperationRegistry(
+      projectCakeOperations({ cwd: "/workspace", projectChatInstructions: { get, update } })(
+        bridge(),
+      ),
+    );
+    expect(
+      coding
+        .definitions()
+        .some((operation) => operation.command.startsWith("settings.project-chat.")),
+    ).toBe(false);
+  });
+
   it("exposes Cake Chat's native worktree merge by session reference", async () => {
     const merge = vi.fn(async () => ({ command: "worktrees.merge", outcome: "landed" }));
     const configured = configureCakeSessionRuntime({

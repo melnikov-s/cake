@@ -99,7 +99,12 @@ export const ProjectSettings = Schema.Struct({
   worktreeSetupInstructions: boundedString(16_384).pipe(
     Schema.withDecodingDefaultKey(Effect.succeed("")),
   ),
+  /** Coding Project Sessions only. Existing user text stays in this field. */
   customInstructions: boundedString(16_384).pipe(Schema.withDecodingDefaultKey(Effect.succeed(""))),
+  /** Only this registered project’s permanent Project Chat. Never inferred from session guidance. */
+  projectChatInstructions: boundedString(16_384).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed("")),
+  ),
   icon: Schema.optionalKey(ProjectIcon),
 });
 
@@ -208,6 +213,7 @@ export const defaultProjectSettings = (): ProjectSettings => ({
   worktreeSetupCommands: "",
   worktreeSetupInstructions: "",
   customInstructions: "",
+  projectChatInstructions: "",
 });
 
 export const ProjectRecord = Schema.Struct({

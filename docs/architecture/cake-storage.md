@@ -399,6 +399,26 @@ application-state transaction, preserve other preferences, and require the exact
 previous instructions to reject stale replacements. The user-facing setting remains
 Settings → Application → Cake Chat → Cake Chat instructions. Saved changes apply to
 the next Chat message without a reload; they are never summarized into memory.
+These application preferences remain shared by permanent chats, separate from per-project
+guidance. Only global Cake Chat exposes the shared-instruction writer, so Project Chat
+cannot mistake it for a project save.
+
+Each registered Project separately owns `settings.projectChatInstructions`. The
+Project settings dialog labels it **Project Chat instructions**, while the existing
+`settings.customInstructions` remains **Project Session instructions** for coding
+sessions only. Missing Project Chat guidance decodes to empty; existing user text
+is neither moved, copied, nor deleted, and the storage envelope remains version seven.
+The permanent chat rereads its registered project's guidance for each message.
+Coding runtimes and global Cake Chat never include this per-project text.
+
+`settings.project-chat.get/update` require an exact registered `projectPath`,
+return that identity with the committed text, and use the same application-state
+transaction and setting as the dialog. Updates require `expectedInstructions`;
+stale reads and failed persistence never report success. A Project Chat can target
+only its own registered root; global Cake Chat may explicitly target any registered
+Project. A worktree path is not a project identity. Coding sessions can also patch
+their own Project via `project.settings.update`, whose field guidance distinguishes
+the two instruction scopes.
 
 Side chats fork the coordinator conversation with Durable `fork()` after the
 completed reply that closes the anchored exchange. The fork inherits Cake Chat's

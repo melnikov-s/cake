@@ -230,9 +230,73 @@ describe("ApplicationStorage", () => {
           assert.strictEqual(loaded.source, "current");
           assert.equal(loaded.state.projects[0]?.settings?.worktreeSetupInstructions, "");
           assert.equal(loaded.state.projects[0]?.settings?.customInstructions, "");
+          assert.equal(loaded.state.projects[0]?.settings?.projectChatInstructions, "");
           assert.equal(loaded.state.globalCustomInstructions, "");
         }),
     ),
+  );
+
+  it.effect("preserves old session guidance without inferring Project Chat intent", () =>
+    withStorage(
+      {
+        [documentPath]: JSON.stringify({
+          version: 7,
+          data: {
+            ...current,
+            projects: [
+              {
+                path: "/work/zombies",
+                name: "Zombies",
+                addedAt: "2026-01-01T00:00:00.000Z",
+                lastOpenedAt: "2026-01-01T00:00:00.000Z",
+                settings: {
+                  worktreeCreateCommand: "git worktree add {worktreePath}",
+                  worktreeSetupCommands: "",
+                  customInstructions: "  Keep my exact session guidance.\n",
+                },
+              },
+            ],
+          },
+        }),
+      },
+      (storage) =>
+        Effect.gen(function* () {
+          const loaded = yield* storage.load();
+          assert.equal(
+            loaded.state.projects[0]?.settings?.customInstructions,
+            "  Keep my exact session guidance.\n",
+          );
+          assert.equal(loaded.state.projects[0]?.settings?.projectChatInstructions, "");
+          yield* storage.save(loaded.state);
+          const reloaded = yield* storage.load();
+          assert.deepEqual(reloaded.state.projects, loaded.state.projects);
+        }),
+    ),
+  );
+
+  it.effect(
+    "roundtrips distinct instructions for each registered project through application storage",
+    () =>
+      withStorage({}, (storage) =>
+        Effect.gen(function* () {
+          const projects = ["/zombies", "/other"].map((path) => ({
+            path,
+            name: path.slice(1),
+            addedAt: "2026-01-01T00:00:00.000Z",
+            lastOpenedAt: "2026-01-01T00:00:00.000Z",
+            settings: {
+              worktreeCreateCommand: "git worktree add {worktreePath}",
+              worktreeSetupCommands: "",
+              worktreeSetupInstructions: "",
+              customInstructions: path + " coding only.",
+              projectChatInstructions: "  " + path + " permanent chat only.  ",
+            },
+          }));
+          yield* storage.save({ ...current, projects });
+          const loaded = yield* storage.load();
+          assert.deepEqual(loaded.state.projects, projects);
+        }),
+      ),
   );
 
   it.effect("uses unset Cake prompts when migrating a version-four document", () => {

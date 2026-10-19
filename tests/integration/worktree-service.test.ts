@@ -153,6 +153,7 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
       worktreeSetupCommands: "printf ready > {worktreePath}/.cake-setup",
       worktreeSetupInstructions: "",
       customInstructions: "",
+      projectChatInstructions: "",
     });
 
     await expect(readFile(join(record.worktreePath, ".cake-setup"), "utf8")).resolves.toBe("ready");

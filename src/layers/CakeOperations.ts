@@ -37,6 +37,7 @@ import { createProjectSessionOperations } from "../domain/project-sessions/cake-
 import { createGlobalControlOperations } from "../domain/application/cake-global-control-operations";
 import { createAgentControlOperations } from "../domain/subagents/cake-subagent-operations";
 import { createCoordinatorOperations } from "../domain/cake-chats/cake-coordinator-operations";
+import { createProjectChatInstructionOperations } from "../domain/projects/project-chat-instruction-operations";
 import { createCakeChatInstructionOperations } from "../domain/cake-chats/cake-chat-instruction-operations";
 import { createCakeChatProjectOperations } from "../domain/projects/cake-chat-project-operations";
 import { createCakeArtifactOperations } from "../domain/artifacts/cake-artifact-operations";
@@ -199,6 +200,9 @@ export function coordinatorCakeOperations(
       ...(options.cakeChatInstructions
         ? createCakeChatInstructionOperations(options.cakeChatInstructions)
         : []),
+      ...(options.projectChatInstructions
+        ? createProjectChatInstructionOperations(options.projectChatInstructions)
+        : []),
       ...(options.cakeChatWorktrees
         ? createCakeChatWorktreeOperations(options.cakeChatWorktrees)
         : []),
@@ -238,6 +242,7 @@ export function configureCakeSessionRuntime(
     worktreeLandingControl,
     globalControl,
     cakeChatInstructions,
+    projectChatInstructions,
     cakeChatWorktrees,
     cakeChatProjects,
     sessionControl,
@@ -278,6 +283,7 @@ export function configureCakeSessionRuntime(
     worktreeLandingControl,
     globalControl,
     cakeChatInstructions,
+    projectChatInstructions,
     cakeChatWorktrees,
     cakeChatProjects,
     sessionControl,

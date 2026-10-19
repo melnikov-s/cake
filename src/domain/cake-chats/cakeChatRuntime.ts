@@ -14,6 +14,7 @@ import { makeAttachmentReferenceControl } from "../conversations/attachmentRefer
 import * as projectSessionCreation from "../project-sessions/projectSessionCreation";
 import * as sessionReferences from "../project-sessions/sessionReferences";
 import * as projects from "../projects/projects";
+import * as projectChatInstructions from "../projects/projectChatInstructions";
 import { AgentProjectSessionCreate } from "../../contracts/project-sessions/session-reporting";
 import { inputRefsSchema } from "../../contracts/conversations/task-input";
 import { toJsonValue } from "../../utils/to-json-value";
@@ -96,6 +97,8 @@ const CAKE_CHAT_OPERATIONS = [
   "app.user-selection",
   "settings.cake-chat.get",
   "settings.cake-chat.update",
+  "settings.project-chat.get",
+  "settings.project-chat.update",
   "models.list",
   "models.info",
   "session.info",
@@ -355,18 +358,20 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
     }),
     runtime: {
       cwd: configuration.location.workingDirectory,
-      additionalSystemPrompt: project
-        ? [
-            "## Project Chat scope",
-            `You are the permanent Project Chat for ${JSON.stringify(project.name)} at ${JSON.stringify(project.path)}.`,
-            `Your messaging address is ${target.sessionId}. Your history and memory belong only to this project; global Cake Chat is a separate conversation at cake-chat.`,
-            "Keep this conversation focused on the project. You can discuss ideas and decisions without creating tasks. Delegate only when useful, using this project's root as the default.",
-            "VS Code and the interactive Terminal open at this project root; Browser Mode belongs to this conversation. Use these shared tools for visual exploration while keeping discussion primary.",
-            "Other chats have independent memories. Exchange a focused request and relevant references, not entire histories. Do not repeatedly relay or delegate the same request.",
-            project.settings?.customInstructions,
-          ]
-            .filter(Boolean)
-            .join("\n\n")
+      cakeChatSystemPrompt: project
+        ? () =>
+            [
+              "## Project Chat scope",
+              `You are the permanent Project Chat for ${JSON.stringify(project.name)} at ${JSON.stringify(project.path)}.`,
+              `Your messaging address is ${target.sessionId}. Your history and memory belong only to this project; global Cake Chat is a separate conversation at cake-chat.`,
+              "Keep this conversation focused on the project. You can discuss ideas and decisions without creating tasks. Delegate only when useful, using this project's root as the default.",
+              "VS Code and the interactive Terminal open at this project root; Browser Mode belongs to this conversation. Use these shared tools for visual exploration while keeping discussion primary.",
+              "Other chats have independent memories. Exchange a focused request and relevant references, not entire histories. Do not repeatedly relay or delegate the same request.",
+              application.snapshot().projects.find((item) => item.path === project.path)?.settings
+                ?.projectChatInstructions,
+            ]
+              .filter(Boolean)
+              .join("\n\n")
         : undefined,
       sessionReferences: {
         resolve: (reference, signal) => run(sessionReferences.resolve(reference), { signal }),
@@ -387,7 +392,9 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
       // Pin the complete Cake Chat toolset instead of relying on Pi's default-tool
       // selection, which does not necessarily activate extension tools.
       tools: ["cake", "zoom", "date", "read", "bash", "mcp"],
-      allowedCakeOperations: CAKE_CHAT_OPERATIONS,
+      allowedCakeOperations: project
+        ? CAKE_CHAT_OPERATIONS.filter((command) => !command.startsWith("settings.cake-chat."))
+        : CAKE_CHAT_OPERATIONS,
       resolveArtifact: (reference) =>
         runArtifact(agentArtifactAccess.resolve(target.sessionId, reference)),
       resolveArtifactForPresentation: (reference) =>
@@ -450,9 +457,16 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
             { signal },
           ),
       },
-      cakeChatInstructions: {
-        get: (signal) => run(getCakeChatInstructions(), { signal }),
-        update: (input, signal) => run(updateCakeChatInstructions(input), { signal }),
+      cakeChatInstructions: project
+        ? undefined
+        : {
+            get: (signal) => run(getCakeChatInstructions(), { signal }),
+            update: (input, signal) => run(updateCakeChatInstructions(input), { signal }),
+          },
+      projectChatInstructions: {
+        get: (input, signal) => run(projectChatInstructions.get(input, project?.path), { signal }),
+        update: (input, signal) =>
+          run(projectChatInstructions.update(input, project?.path), { signal }),
       },
       cakeChatMemory: {
         preferences: () =>

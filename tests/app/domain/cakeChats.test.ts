@@ -5,9 +5,11 @@ import { Effect, Layer, Stream } from "effect";
 import { describe, expect } from "vitest";
 import * as chatLocations from "../../../src/domain/cake-chats/cakeChatLocations";
 import * as metadata from "../../../src/domain/cake-chats/cakeChatMetadata";
+import { configureCakeSessionRuntime } from "../../../src/layers/CakeOperations";
 import { acquireOptions } from "../../../src/domain/cake-chats/cakeChatRuntime";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { defaultCakeChatPreferences } from "../../../src/contracts/cake-chats/cake-chat-preferences";
+import { defaultProjectSettings } from "../../../src/contracts/application/application-data";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
@@ -158,6 +160,87 @@ describe("permanent Cake Chat", () => {
       }).pipe(Effect.provide(f.layer));
     },
   );
+  it.effect(
+    "keeps live Project Chat instructions local and scopes tools to the registered project",
+    () => {
+      const f = fixture();
+      const project = (path: string) => ({
+        path,
+        name: path.slice(1),
+        addedAt: "2026-01-01T00:00:00.000Z",
+        lastOpenedAt: "2026-01-01T00:00:00.000Z",
+        settings: {
+          ...defaultProjectSettings(),
+          customInstructions: "Coding only.",
+          projectChatInstructions: path + " chat only.",
+        },
+      });
+      f.setState({
+        ...defaultApplicationState(),
+        projects: [project("/zombies"), project("/other")],
+      });
+      return Effect.gen(function* () {
+        const sessionId = chatLocations.projectChatSessionId("/zombies");
+        const options = yield* acquireOptions({
+          configuration: {
+            ...configuration,
+            location: yield* chatLocations.resolve(location, sessionId),
+          },
+          target: { sessionId, tools: [] },
+          newSession: false,
+        });
+        const configured = configureCakeSessionRuntime({
+          ...options.runtime,
+          onEvent: () => undefined,
+        });
+        const prompt = () => configured.cakeChatSystemPrompt?.() ?? "";
+        expect(prompt()).toContain("/zombies chat only.");
+        expect(prompt()).not.toContain("/other chat only.");
+        expect(prompt()).not.toContain("Coding only.");
+        expect(options.runtime.allowedCakeOperations).toContain("settings.project-chat.update");
+        expect(options.runtime.allowedCakeOperations).not.toContain("settings.cake-chat.update");
+        expect(options.runtime.cakeChatInstructions).toBeUndefined();
+        const control = options.runtime.projectChatInstructions;
+        if (!control) throw new Error("Expected Project Chat instruction authority");
+        const signal = new AbortController().signal;
+        const saved = yield* Effect.promise(() =>
+          control.update(
+            {
+              projectPath: "/zombies",
+              expectedInstructions: "/zombies chat only.",
+              instructions: "Updated while running.",
+            },
+            signal,
+          ),
+        );
+        expect(
+          yield* Effect.promise(() => control.get({ projectPath: "/zombies" }, signal)),
+        ).toEqual(saved);
+        expect(prompt()).toContain("Updated while running.");
+        expect(prompt()).not.toContain("/zombies chat only.");
+        yield* Effect.tryPromise(() =>
+          control.update(
+            {
+              projectPath: "/other",
+              expectedInstructions: "/other chat only.",
+              instructions: "Wrong project.",
+            },
+            signal,
+          ),
+        ).pipe(Effect.flip);
+        expect(f.state().projects[1]?.settings?.projectChatInstructions).toBe("/other chat only.");
+        const global = yield* acquireOptions({
+          configuration,
+          target: { sessionId: CAKE_CHAT_SESSION_ID, tools: [] },
+          newSession: false,
+        });
+        expect(global.runtime.cakeChatSystemPrompt).toBeUndefined();
+        expect(global.runtime.additionalSystemPrompt).toBeUndefined();
+        expect(global.runtime.cakeChatInstructions).toBeDefined();
+      }).pipe(Effect.provide(f.layer));
+    },
+  );
+
   it.effect("uses the registered project's trust for permanent-chat resource discovery", () => {
     const f = fixture();
     const project = {

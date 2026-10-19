@@ -111,6 +111,7 @@ export async function createDurableCakeChatRuntime(
     [
       coordinatorSystemPrompt(preferences.preferences().instructions, cakeDocsDirectory),
       options.additionalSystemPrompt,
+      options.cakeChatSystemPrompt?.(),
       commands.instructions(),
     ]
       .filter(Boolean)

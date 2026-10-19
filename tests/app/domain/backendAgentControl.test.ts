@@ -637,9 +637,25 @@ it.effect("executes settings, label lifecycle, and authoritative inspection with
     ).toMatchObject({ ok: true, value: { instructions: "Backend-owned" } });
     expect(
       yield* f.call("project.settings.update", {
-        changes: { customInstructions: "Project-owned" },
+        changes: { customInstructions: "Project-owned", projectChatInstructions: "Chat-owned" },
       }),
-    ).toMatchObject({ ok: true, settings: { customInstructions: "Project-owned" } });
+    ).toMatchObject({
+      ok: true,
+      settings: { customInstructions: "Project-owned", projectChatInstructions: "Chat-owned" },
+    });
+    expect(yield* f.call("project.settings.get", {})).toMatchObject({
+      projectPath: "/project",
+      settings: { customInstructions: "Project-owned", projectChatInstructions: "Chat-owned" },
+    });
+    yield* f.call("project.settings.update", {
+      changes: { customInstructions: "Updated coding only" },
+    });
+    expect(yield* f.call("project.settings.get", {})).toMatchObject({
+      settings: {
+        customInstructions: "Updated coding only",
+        projectChatInstructions: "Chat-owned",
+      },
+    });
     const added = yield* f.call("session-labels.add", { name: "Review", color: "cyan" });
     const result = yield* Schema.decodeUnknownEffect(
       Schema.Struct({ label: Schema.Struct({ id: Schema.String }) }),

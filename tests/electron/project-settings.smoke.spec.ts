@@ -6,7 +6,7 @@ import { expect, test, _electron as electron } from "@playwright/test";
 
 const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
-test("edits and persists project-specific worktree settings", async () => {
+test("roundtrips separate Project Chat, coding instructions and worktree settings", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-project-settings-"));
   const userData = join(temporaryRoot, "user-data");
   const cakeHome = join(temporaryRoot, "cake-home");
@@ -48,7 +48,9 @@ test("edits and persists project-specific worktree settings", async () => {
   try {
     const page = await application.firstWindow();
     await page.getByRole("button", { name: "Open settings for project" }).click();
-    const customInstructions = page.getByRole("textbox", { name: /^Custom instructions/ });
+    const customInstructions = page.getByRole("textbox", { name: /^Project Session instructions/ });
+    const chatInstructions = page.getByRole("textbox", { name: /^Project Chat instructions/ });
+    await expect(page.getByText(/Only for this project’s permanent Project Chat/)).toBeVisible();
     const createCommand = page.getByLabel("Worktree creation command");
     const setupCommands = page.getByRole("textbox", { name: /^Setup commands/ });
     const setupInstructions = page.getByRole("textbox", { name: /^Setup instructions/ });
@@ -56,6 +58,7 @@ test("edits and persists project-specific worktree settings", async () => {
       "git worktree add -b {branchName} {worktreePath} {baseCommit}",
     );
     await customInstructions.fill("Prefer concise explanations for this project.");
+    await chatInstructions.fill("  Discuss ideas before creating coding tasks.  ");
     await createCommand.fill("my-worktree {worktreeName} {worktreePath}");
     await setupCommands.fill("pnpm install");
     await setupInstructions.fill("Run pnpm install only when dependencies are needed.");
@@ -78,7 +81,15 @@ test("edits and persists project-specific worktree settings", async () => {
         worktreeSetupCommands: "pnpm install",
         worktreeSetupInstructions: "Run pnpm install only when dependencies are needed.",
         customInstructions: "Prefer concise explanations for this project.",
+        projectChatInstructions: "  Discuss ideas before creating coding tasks.  ",
       });
+    await page.getByRole("button", { name: "Open settings for project" }).click();
+    await expect(page.getByRole("textbox", { name: /^Project Chat instructions/ })).toHaveValue(
+      "  Discuss ideas before creating coding tasks.  ",
+    );
+    await expect(page.getByRole("textbox", { name: /^Project Session instructions/ })).toHaveValue(
+      "Prefer concise explanations for this project.",
+    );
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });
