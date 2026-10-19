@@ -175,13 +175,36 @@ it.effect(
       f.setActiveIds([active, active]);
       expect(yield* resolve("112345678")).toBe(active);
       f.fail();
-      expect(yield* Effect.flip(resolve(active))).toMatchObject({
+      expect(yield* resolve(active)).toBe(active);
+      expect(yield* Effect.flip(resolve("112345678"))).toMatchObject({
         operation: "sessionReferenceCatalog",
         message: "Cannot list",
       });
     }).pipe(Effect.provide(f.layer));
   },
 );
+
+it.effect("canonicalUuidResolutionDoesNotEnumerateRoster", () => {
+  const f = fixture();
+  f.fail();
+  return Effect.gen(function* () {
+    expect(yield* resolve(active)).toBe(active);
+    expect(yield* resolve("01957936-0000-7000-8000-0000FFFFFFFF")).toBe(
+      "01957936-0000-7000-8000-0000FFFFFFFF",
+    );
+    expect(f.sessionIds).not.toHaveBeenCalled();
+  }).pipe(Effect.provide(f.layer));
+});
+
+it.effect("suffixAmbiguityStillRejected", () => {
+  const f = fixture();
+  return Effect.gen(function* () {
+    expect(yield* Effect.flip(resolve("12345678"))).toMatchObject({
+      message: expect.stringContaining("Ambiguous"),
+    });
+    expect(f.sessionIds).toHaveBeenCalledTimes(2);
+  }).pipe(Effect.provide(f.layer));
+});
 
 it.effect("does not scan the roster for results containing no session identities", () => {
   const f = fixture();

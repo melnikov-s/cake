@@ -22,7 +22,10 @@ import {
 import type { JsonValue } from "../../contracts/serialization/json-contract";
 import type { SavedDraft } from "../../contracts/project-sessions/saved-draft-data";
 import { SavedDraftStorage } from "../../services/storage/SavedDraftStorage";
-import type { ProjectSessionSummary } from "../../contracts/project-sessions/project-session-data";
+import type {
+  ProjectSessionLocation,
+  ProjectSessionSummary,
+} from "../../contracts/project-sessions/project-session-data";
 import { sessionLink } from "../../contracts/conversations/message-reference";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import { SessionFamilyStorage, familyMemberIds } from "../../services/storage/SessionFamilyStorage";
@@ -76,7 +79,10 @@ const labels = Effect.fn("AgentControl.labels")(function* () {
   ];
 });
 
-type AgentSessionSummary = ProjectSessionSummary & { readonly savedDraft?: SavedDraft };
+type AgentSessionSummary = ProjectSessionSummary & {
+  readonly savedDraft?: SavedDraft;
+  readonly location?: ProjectSessionLocation;
+};
 
 function sessionListStatus(session: AgentSessionSummary): AgentSessionStatus {
   if (session.resolved) return "resolved";
@@ -103,8 +109,8 @@ const lookupSession = Effect.fn("AgentControl.lookupSession")(function* (session
   const project = draft
     ? (yield* ApplicationState).snapshot().projects.find((item) => item.path === draft.projectPath)
     : undefined;
-  return yield* metadata.lookup({ sessionId }).pipe(
-    Effect.map((session): AgentSessionSummary => session),
+  return yield* metadata.lookupWithLocation({ sessionId }).pipe(
+    Effect.map(({ session, location }): AgentSessionSummary => ({ ...session, location })),
     Effect.catch((error) =>
       draft && project
         ? Effect.succeed<AgentSessionSummary>({
@@ -140,7 +146,7 @@ const controlSession = Effect.fn("AgentControl.controlSession")(function* (
   const available = yield* labels();
   const location = session.savedDraft
     ? undefined
-    : yield* metadata.findLocation({ sessionId: session.sessionId });
+    : (session.location ?? (yield* metadata.findLocation({ sessionId: session.sessionId })));
   const status = location
     ? yield* (yield* CakeSessionRuntimes).currentStatus({
         sessionId: session.sessionId,
@@ -668,7 +674,8 @@ export const invoke: (
                 session: yield* controlSession(known),
                 status: "idle",
               });
-            const preview = yield* metadata.inspect({ sessionId });
+            const location = known.location ?? (yield* metadata.findLocation({ sessionId }));
+            const preview = yield* metadata.inspectAt(location, sessionId);
             const session = yield* controlSession(known);
             return toJsonValue({
               ok: true,
@@ -707,7 +714,7 @@ export const invoke: (
             Schema.Literals(["history", "compactions", "tree", "context", "usage", "commands"]),
           )(kind);
           yield* projectSessions.acquireTarget(
-            yield* metadata.findLocation({ sessionId }),
+            known.location ?? (yield* metadata.findLocation({ sessionId })),
             sessionId,
             false,
           );

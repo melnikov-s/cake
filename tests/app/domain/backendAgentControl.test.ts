@@ -850,6 +850,83 @@ it.effect(
     }),
 );
 
+it.effect("sessionInfoReusesAuthoritativeRoute", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    for (let i = 0; i < 4; i++)
+      f.worktreeRecords.push({
+        worktreePath: `/unrelated-${i}`,
+        projectPath: "/project",
+        branch: `agent/unrelated-${i}`,
+        baseBranch: "main",
+        createdAt: "2026-01-01",
+      });
+    const before = {
+      records: f.listReads.records,
+      locate: f.listReads.locate,
+      entries: f.listReads.entries.length,
+      ids: f.listReads.ids.length,
+      creates: f.runtimeCreates.length,
+    };
+    expect(yield* f.direct("sessions.info", { sessionId: target })).toMatchObject({
+      ok: true,
+      session: {
+        sessionId: target,
+        workspacePath: "/project",
+        sessionFile: `/cake/sessions/${target}.jsonl`,
+        firstUserMessage: "First input",
+      },
+      status: "idle",
+    });
+    // One collision-checked search of five locations, then two local namespace checks.
+    expect(f.listReads.locate - before.locate).toBe(7);
+    expect(f.listReads.records - before.records).toBe(1);
+    expect(f.listReads.entries.slice(before.entries)).toEqual([target]);
+    expect(f.listReads.ids.length - before.ids).toBe(0);
+    expect(f.inspections).toEqual([target]);
+    expect(f.runtimeCreates.length).toBe(before.creates);
+  }),
+);
+
+it.effect("canonical session info retains authoritative existence validation", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    expect(
+      yield* Effect.flip(
+        f.direct("sessions.info", { sessionId: "00000000-0000-4000-8000-00000000ffff" }),
+      ),
+    ).toMatchObject({ message: expect.stringContaining("could not find Project Session") });
+    expect(f.inspections).toEqual([]);
+  }),
+);
+
+it.effect("session info rejects canonical identity location collisions before inspection", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    f.worktreeRecords.push({
+      worktreePath: "/collision",
+      projectPath: "/project",
+      branch: "agent/collision",
+      baseBranch: "main",
+      createdAt: "2026-01-01",
+    });
+    const archive = Context.get(f.context, SessionArchiveStorage);
+    const context = Context.add(f.context, SessionArchiveStorage, {
+      ...archive,
+      locate: (id, at) =>
+        id === target ? Effect.succeed("active" as const) : archive.locate(id, at),
+    });
+    expect(
+      yield* Effect.flip(
+        agentControl
+          .invoke("sessions.info", { sessionId: target }, caller)
+          .pipe(Effect.provide(context)),
+      ),
+    ).toMatchObject({ message: `Project Session ID collision detected: ${target}` });
+    expect(f.inspections).toEqual([]);
+  }),
+);
+
 it.effect("executes settings, label lifecycle, and authoritative inspection with no renderer", () =>
   Effect.gen(function* () {
     const f = yield* fixture();

@@ -712,8 +712,10 @@ export const listing = Effect.fn("ProjectSessions.listing")(function* (
   return { sessions, routes };
 });
 
-/** Explicit lookup never relies on the renderer's disposable catalog or loads a runtime. */
-export const lookup = Effect.fn("ProjectSessions.lookup")(function* (target: ProjectSessionTarget) {
+/** Keep the authoritative route with the summary for multi-step, request-local inspection. */
+export const lookupWithLocation = Effect.fn("ProjectSessions.lookupWithLocation")(function* (
+  target: ProjectSessionTarget,
+) {
   let location = yield* findLocation(target).pipe(
     Effect.catchTag("ProjectSessionError", (error) =>
       target.workingDirectory !== undefined && error.operation === "resolve"
@@ -731,7 +733,12 @@ export const lookup = Effect.fn("ProjectSessions.lookup")(function* (target: Pro
       operation: "lookup",
       message: `Cake could not find Project Session ${target.sessionId}`,
     });
-  return session;
+  return { session, location };
+});
+
+/** Explicit lookup never relies on the renderer's disposable catalog or loads a runtime. */
+export const lookup = Effect.fn("ProjectSessions.lookup")(function* (target: ProjectSessionTarget) {
+  return (yield* lookupWithLocation(target)).session;
 });
 
 const catalogEventForSessionChange = Effect.fn("ProjectSessions.catalogEventForSessionChange")(
@@ -1002,20 +1009,21 @@ export const findLocation = Effect.fn("ProjectSessions.findLocation")(function* 
   return location;
 });
 
-export const inspect = Effect.fn("ProjectSessions.inspect")(function* (
-  target: ProjectSessionTarget,
+/** The caller must retain a route from findLocation/lookupWithLocation in this request. */
+export const inspectAt = Effect.fn("ProjectSessions.inspectAt")(function* (
+  location: ProjectSessionLocation,
+  sessionId: string,
   options?: { readonly includeParts?: boolean },
 ) {
-  const location = yield* findLocation(target);
   const sessions = yield* CakeSessionRuntimes;
-  const namespace = yield* resolutionNamespace(target.sessionId, archiveLocation(location)).pipe(
+  const namespace = yield* resolutionNamespace(sessionId, archiveLocation(location)).pipe(
     asError("inspect"),
   );
   const preview = yield* sessions
     .inspect(
       {
         workingDirectory: location.workingDirectory,
-        sessionId: target.sessionId,
+        sessionId,
         sessionDirectory: location.sessionDirectory,
       },
       options,
@@ -1039,6 +1047,13 @@ export const inspect = Effect.fn("ProjectSessions.inspect")(function* (
   if (location.managedWorktree !== undefined)
     Object.assign(projected, { managedWorktree: location.managedWorktree });
   return projected;
+});
+
+export const inspect = Effect.fn("ProjectSessions.inspect")(function* (
+  target: ProjectSessionTarget,
+  options?: { readonly includeParts?: boolean },
+) {
+  return yield* inspectAt(yield* findLocation(target), target.sessionId, options);
 });
 
 export const open = Effect.fn("ProjectSessions.open")(function* (target: ProjectSessionTarget) {

@@ -125,6 +125,10 @@ export const catalog = Effect.fn("SessionReferences.catalog")(function* () {
 });
 
 export const resolve = Effect.fn("SessionReferences.resolve")(function* (reference: string) {
+  // Canonical identities still undergo existence/access checks at their authoritative route.
+  // Only suffixes and other roster-bound references need global identity discovery.
+  const canonical = resolveSessionReference(reference, []);
+  if (canonical.ok) return canonical.sessionId;
   return yield* resolveIn(reference, yield* catalog());
 });
 
