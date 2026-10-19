@@ -252,24 +252,44 @@ export const nextCopyTitle = (sourceTitle: string, existingTitles: ReadonlySet<s
   return formatCopyTitle(baseTitle, copyNumber);
 };
 
+/** Shared metadata belongs to one projection, never a retained cross-request cache. */
+const catalogMetadata = Effect.fn("ProjectSessions.catalogMetadata")(function* () {
+  const familyState = yield* (yield* SessionFamilyStorage).state().pipe(asError("catalog"));
+  const locations = yield* Effect.cached(
+    projectSessionLocations.locations({ includeInactive: true }).pipe(asError("catalog")),
+  );
+  return {
+    families: familyState.families,
+    spawns: new Map(familyState.spawnedSessions.map((spawn) => [spawn.sessionId, spawn])),
+    locations,
+  };
+});
+
+type CatalogMetadata = Effect.Success<ReturnType<typeof catalogMetadata>>;
+
 const familyCatalog = Effect.fn("ProjectSessions.familyCatalog")(function* (
   family: SessionFamily,
   state: ApplicationState,
+  metadata: CatalogMetadata,
+  resolvedFilter?: boolean,
 ) {
   const configuration = yield* ProjectSessionConfiguration;
   const archive = yield* SessionArchiveStorage;
-  const namespace = yield* resolutionNamespace(family.parentSessionId, {
-    cwd: family.workingDirectory,
-    activeRoot: configuration.sessionDirectory,
-    resolvedRoot: configuration.resolvedSessionDirectory,
-  }).pipe(asError("catalog"));
+  // The supplied family already identifies the lifecycle authority. Do not reload
+  // the complete family state to rediscover that authority for every root.
+  const namespace = yield* archive
+    .locate(family.parentSessionId, {
+      cwd: family.workingDirectory,
+      activeRoot: configuration.sessionDirectory,
+      resolvedRoot: configuration.resolvedSessionDirectory,
+    })
+    .pipe(asError("catalog"));
   const resolved = namespace === "resolved";
+  if (resolvedFilter !== undefined && resolved !== resolvedFilter)
+    return { resolved, sessions: [] };
   const unread = new Set(state.unreadSessionIds);
   const sessions = yield* CakeSessionRuntimes;
-  const locations = yield* projectSessionLocations
-    .locations({ includeInactive: true })
-    .pipe(asError("catalog"));
-  const spawns = yield* spawnedSessions();
+  const locations = yield* metadata.locations;
   const summaries = yield* Effect.forEach(familyMemberIds(family), (sessionId) =>
     Effect.gen(function* () {
       const member = familyMember(family, sessionId);
@@ -313,7 +333,7 @@ const familyCatalog = Effect.fn("ProjectSessions.familyCatalog")(function* (
             unread,
             status?.streaming ?? false,
             family,
-            spawns.get(sessionId),
+            metadata.spawns.get(sessionId),
             status?.recoveryIssue,
             status?.latestTurnOutcome,
           )
@@ -331,8 +351,8 @@ const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
   state: ApplicationState,
 ) {
   const archive = yield* SessionArchiveStorage;
-  const familyStorage = yield* SessionFamilyStorage;
-  const families = yield* familyStorage.list().pipe(asError("list"));
+  const metadata = yield* catalogMetadata();
+  const families = metadata.families;
   const familyByMember = new Map(
     families.flatMap((family) => [
       [family.parentSessionId, family] as const,
@@ -343,8 +363,7 @@ const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
   const familySummaries = Stream.fromIterable(
     families.filter((family) => family.projectPath === query.projectPath),
   ).pipe(
-    Stream.mapEffect((family) => familyCatalog(family, state)),
-    Stream.filter((catalog) => catalog.resolved === query.resolved),
+    Stream.mapEffect((family) => familyCatalog(family, state, metadata, query.resolved)),
     Stream.flatMap((catalog) => Stream.fromIterable(catalog.sessions)),
   );
   if (query.resolved) {
@@ -355,9 +374,7 @@ const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
     if (migrationComplete) {
       source = archive.resolvedProjects(query.projectPath);
     } else {
-      const locations = yield* projectSessionLocations
-        .locations({ includeInactive: true })
-        .pipe(asError("list"));
+      const locations = yield* metadata.locations;
       const projectName =
         state.projects.find((project) => project.path === query.projectPath)?.name ??
         query.projectPath;
@@ -400,12 +417,11 @@ const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
     );
   }
   const sessions = yield* CakeSessionRuntimes;
-  const spawns = yield* spawnedSessions();
+  const spawns = metadata.spawns;
   // Checkout retirement does not retire Pi history. Include inactive routes so
   // active transcripts left by an interrupted/older restore survive reconnect.
-  const locations = yield* projectSessionLocations
-    .locations({ includeInactive: true })
-    .pipe(asError("list"));
+  const locations = yield* metadata.locations;
+  const familyIds = [...familyByMember.keys()];
   const locationCatalogs = Stream.fromIterable(
     locations.filter((location) => location.projectPath === query.projectPath),
   ).pipe(
@@ -417,7 +433,9 @@ const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
               sessions.catalog({
                 workingDirectory: location.workingDirectory,
                 sessionDirectory: location.sessionDirectory,
-                excludedSessionIds: [...resolvedIds],
+                // Skip family titles before opening files; the family projection
+                // below is their sole reader, including cross-checkout members.
+                excludedSessionIds: [...resolvedIds, ...familyIds],
               }),
             ),
           ),
@@ -764,11 +782,10 @@ const catalogEventForChange = Effect.fn("ProjectSessions.catalogEventForChange")
     (change._tag === "ProjectSessionStatusChanged" || change._tag === "ProjectSessionChanged") &&
     change.projectPath === query.projectPath
   ) {
-    const family = yield* (yield* SessionFamilyStorage)
-      .familyForMember(change.sessionId)
-      .pipe(asError("catalog"));
+    const metadata = yield* catalogMetadata();
+    const family = metadata.families.find((family) => familyMember(family, change.sessionId));
     if (family) {
-      const catalog = yield* familyCatalog(family, yield* getState());
+      const catalog = yield* familyCatalog(family, yield* getState(), metadata, query.resolved);
       return catalog.resolved === query.resolved
         ? ({ _tag: "UpsertedBatch", sessions: catalog.sessions } as const)
         : ({ _tag: "RemovedBatch", sessionIds: familyMemberIds(family) } as const);
@@ -821,14 +838,16 @@ const catalogEventsForTransition = Effect.fn("ProjectSessions.catalogEventsForTr
   ) {
     const events: ProjectSessionCatalogEvent[] = [];
     if (change.projectPath !== query.projectPath) return events;
-    const families = yield* (yield* SessionFamilyStorage).list().pipe(asError("catalog"));
+    const metadata = yield* catalogMetadata();
     const affected = new Set(change.sessions.map(({ sessionId }) => sessionId));
-    const affectedFamilies = families.filter((family) =>
+    const affectedFamilies = metadata.families.filter((family) =>
       familyMemberIds(family).some((id) => affected.has(id)),
     );
     const state = yield* getState();
     const catalogs = yield* Effect.forEach(affectedFamilies, (family) =>
-      familyCatalog(family, state).pipe(Effect.map((catalog) => ({ family, catalog }))),
+      familyCatalog(family, state, metadata, query.resolved).pipe(
+        Effect.map((catalog) => ({ family, catalog })),
+      ),
     );
     const removedIds: string[] = [];
     const summaries: ProjectSessionSummary[] = [];

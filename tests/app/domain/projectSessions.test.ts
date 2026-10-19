@@ -234,7 +234,10 @@ const makeLayer = (
     onSessionIds?(): void;
     onCatalogChange?(change: SessionCatalogChange): void;
     sessionIds?(workingDirectory: string): Stream.Stream<string, unknown>;
-    catalog?(workingDirectory: string): Stream.Stream<PiSessionSummary, unknown>;
+    catalog?(
+      workingDirectory: string,
+      excludedSessionIds?: ReadonlyArray<string>,
+    ): Stream.Stream<PiSessionSummary, unknown>;
     catalogEntry?: CakeSessionRuntimesAdapter["catalogEntry"];
     locate?: SessionArchiveStorage["Service"]["locate"];
     resolvedCatalog?(
@@ -367,7 +370,7 @@ const makeLayer = (
       hooks.onCatalog?.(query.workingDirectory);
       if (hooks.catalog)
         return hooks
-          .catalog(query.workingDirectory)
+          .catalog(query.workingDirectory, query.excludedSessionIds)
           .pipe(Stream.filter((item) => !query.excludedSessionIds?.includes(item.id)));
       return hooks.sessionExists === false || query.excludedSessionIds?.includes("session-1")
         ? Stream.empty
@@ -455,7 +458,7 @@ const makeLayer = (
       addChild: () => Effect.die("Unexpected family child creation"),
       state: () =>
         Effect.succeed({
-          families: [],
+          families: family ? [family] : [],
           turns: [],
           spawnedSessions: [],
         }),
@@ -1977,6 +1980,174 @@ describe("Project Sessions domain", () => {
       ),
     );
   });
+
+  it.effect("familyCatalogReadsSharedMetadataOnce", () => {
+    let locationReads = 0;
+    let familyReads = 0;
+    const families = ["one", "two"].map((suffix) => ({
+      familyId: `family-${suffix}`,
+      parentSessionId: `parent-${suffix}`,
+      projectPath: "/project",
+      workingDirectory: "/project",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      children: [
+        {
+          sessionId: `child-${suffix}`,
+          parentSessionId: `parent-${suffix}`,
+          requestId: `request-${suffix}`,
+          workingDirectory: "/project",
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    }));
+    return Effect.gen(function* () {
+      const storage = yield* SessionFamilyStorage;
+      const observe = projectSessionMetadata
+        .observeCatalog({
+          projectPath: "/project",
+          resolved: false,
+        })
+        .pipe(Effect.flatMap((updates) => updates.pipe(Stream.take(1), Stream.runCollect)));
+      const first = yield* observe.pipe(
+        Effect.provideService(SessionFamilyStorage, {
+          ...storage,
+          state: () =>
+            Effect.sync(() => {
+              familyReads++;
+              return { families, turns: [], spawnedSessions: [] };
+            }),
+          list: () => Effect.die("Catalog must use the shared family snapshot"),
+          familyForMember: () => Effect.die("Known family roots need no rediscovery"),
+        }),
+      );
+      assert.equal(first[0]?._tag, "Snapshot");
+      if (first[0]?._tag !== "Snapshot") return;
+      assert.deepEqual(
+        first[0].sessions.map((item) => item.sessionId),
+        ["parent-one", "child-one", "parent-two", "child-two"],
+      );
+      assert.equal(first[0].sessions[1]?.familyParentSessionId, "parent-one");
+      assert.equal(first[0].sessions[1]?.familyDepth, 1);
+      assert.equal(familyReads, 1);
+      assert.equal(locationReads, 1);
+      // A later request must reload authoritative state, not reuse a global cache.
+      yield* observe.pipe(
+        Effect.provideService(SessionFamilyStorage, {
+          ...storage,
+          state: () =>
+            Effect.sync(() => {
+              familyReads++;
+              return { families: [], turns: [], spawnedSessions: [] };
+            }),
+        }),
+      );
+      assert.equal(familyReads, 2);
+      assert.equal(locationReads, 2);
+    }).pipe(
+      Effect.provide(
+        makeLayer(undefined, {
+          catalog: () => Stream.empty,
+          onLocations: () => locationReads++,
+        }),
+      ),
+    );
+  });
+
+  it.effect("activeFamilyTitleOpenedOnce", () => {
+    const titleReads: string[] = [];
+    const item = (id: string): PiSessionSummary => ({
+      id,
+      title: `Title ${id}`,
+      created: "2026-01-01",
+      modified: "2026-01-02",
+      messageCount: 0,
+      resolved: false,
+    });
+    return Effect.gen(function* () {
+      const updates = yield* projectSessionMetadata.observeCatalog({
+        projectPath: "/project",
+        resolved: false,
+      });
+      const first = (yield* updates.pipe(Stream.take(1), Stream.runCollect))[0];
+      assert.equal(first?._tag, "Snapshot");
+      if (first?._tag !== "Snapshot") return;
+      assert.deepEqual(
+        first.sessions.map((session) => [session.sessionId, session.title]),
+        [
+          ["ordinary", "Title ordinary"],
+          ["parent", "Title parent"],
+          ["child", "Title child"],
+        ],
+      );
+      assert.deepEqual(titleReads, ["ordinary", "parent", "child"]);
+    }).pipe(
+      Effect.provide(
+        makeLayer(undefined, {
+          family: {
+            familyId: "family",
+            parentSessionId: "parent",
+            projectPath: "/project",
+            workingDirectory: "/project",
+            createdAt: "2026-01-01",
+            children: [{ sessionId: "child", requestId: "request", createdAt: "2026-01-01" }],
+          },
+          catalog: (_cwd, excluded = []) =>
+            Stream.fromIterable(["ordinary", "parent", "child"]).pipe(
+              Stream.filter((id) => !excluded.includes(id)),
+              Stream.map((id) => {
+                titleReads.push(id);
+                return item(id);
+              }),
+            ),
+          catalogEntry: (_query, id) =>
+            Effect.sync(() => {
+              titleReads.push(id);
+              return item(id);
+            }),
+        }),
+      ),
+    );
+  });
+
+  it.effect.each([false, true])(
+    "filters families before opening transcripts when resolved=%s",
+    (resolved) => {
+      let titleReads = 0;
+      let locationReads = 0;
+      return Effect.gen(function* () {
+        const updates = yield* projectSessionMetadata.observeCatalog({
+          projectPath: "/project",
+          resolved,
+        });
+        const first = (yield* updates.pipe(Stream.take(1), Stream.runCollect))[0];
+        assert.equal(first?._tag, "Snapshot");
+        assert.deepEqual(first?._tag === "Snapshot" ? first.sessions : undefined, []);
+        assert.equal(titleReads, 0);
+        assert.equal(locationReads, resolved ? 0 : 1);
+      }).pipe(
+        Effect.provide(
+          makeLayer(undefined, {
+            family: {
+              familyId: "family",
+              parentSessionId: "parent",
+              projectPath: "/project",
+              workingDirectory: "/project",
+              createdAt: "2026-01-01",
+              children: [],
+            },
+            initialResolvedSessionIds: resolved ? [] : ["parent"],
+            catalog: () => Stream.empty,
+            catalogEntry: () =>
+              Effect.sync(() => {
+                titleReads++;
+                return undefined;
+              }),
+            onLocations: () => locationReads++,
+          }),
+        ),
+      );
+    },
+  );
 
   it.effect("bounds existing archive titles before catalog serialization", () => {
     return Effect.gen(function* () {
