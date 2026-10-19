@@ -485,9 +485,35 @@ only their nonblank text blocks; tool-only/blank assistant entries create no lea
 merge jobs. Pi remains the authority for complete originals, including images, tool
 traffic and reasoning. Live warm context retains tool traffic unchanged; compaction
 replaces older dialogue with memory without carrying older tool traffic forward.
-SDK entries remain the source/zoom units, not a second transcript. Explicit zoom or
-original-history reads can still retrieve the complete original. Findings that appear
-only in tool output are not retained in memory unless reported in dialogue.
+SDK entries remain the source/zoom units, not a second transcript. Zoom navigates
+indexed dialogue ranges; excluded tool-only entries have no memory leaf. Findings
+that appear only in tool output are not retained in memory unless reported in dialogue.
+Every rendered memory line also carries runtime-derived `[originals=A..B]` metadata:
+the inclusive SQLite entry IDs of its first and last dialogue originals. Parent bounds
+follow the tree's outermost leaves; zoomed children expose narrower bounds and leaves
+identify their exact original. Intervening tool-only entries are searchable within the
+span even though they have no memory leaf. These are location spans, not claims that
+every entry in them contributed dialogue; tool-only gaps outside a line's endpoints
+require a neighboring/wider search. Bounds are derived by reading only the tree's two
+boundary paths, not by summarizing provenance or scanning entire subtrees. They are
+rendered outside stored summary text, counted in view byte budgets, and reconstructed
+from existing immutable nodes on restart. No state/node version change or rebuild is
+needed. Existing warm heads remain unchanged until the ordinary next memory handoff.
+The runtime prompt separately carries the stable `cake://session/<id>` conversation
+reference and recall guidance, outside compressed memory. `conversation_search` searches
+or browses this conversation's SQLite originals through the SDK, including tool calls
+and results; `conversation_read` pages exact original text or a JSON record with stored
+arguments, results, details, diagnostics and timing. The tools are read-only and pinned
+to the owning runtime's conversation/database; side-chat callers cannot use them.
+Start searches with a relevant memory line's inclusive `fromEntryId=A` and
+`throughEntryId=B`; broaden only when that span lacks the necessary evidence.
+Search scans at most 1,000 entries per call and returns at most 20 excerpts. Continue
+with `nextAfterEntryId` as `afterEntryId`, the same inclusive bounds, and unchanged filters; a partial
+scan with no matches is not an exhaustive negative. Read offsets count UTF-16 characters;
+record pages must be concatenated before JSON parsing. Image bytes and reasoning are
+omitted, provenance and stored truncation diagnostics remain intact, and historical
+receipts do not establish current domain state. Retrieval requires no additional
+transcript/index, memory rebuild, or full-history injection into each turn.
 Worker/report provenance and separately durable handling obligations remain distinct
 from human-authored input.
 

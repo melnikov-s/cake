@@ -161,10 +161,11 @@ const sourceText = (entry: EntryRecord) => {
   if (!["pi.user", "pi.assistant"].includes(entry.kind)) return "";
   return entry.model?.map(durableMessageText).filter(Boolean).join("\n") ?? "";
 };
-const render = (nodes: readonly StoredNode[]) =>
-  `<chat>\n${nodes
-    .map((node) => `${node.id}+${node.n}|${node.text.replace(/\s*\n\s*/g, " ")}`)
-    .join("\n")}\n</chat>`;
+type SourceRange = { readonly fromEntryId: number; readonly throughEntryId: number };
+type AnchoredNode = StoredNode & SourceRange;
+const line = (node: AnchoredNode) =>
+  `${node.id}+${node.n}|[originals=${node.fromEntryId}..${node.throughEntryId}] ${node.text.replace(/\s*\n\s*/g, " ")}`;
+const render = (nodes: readonly AnchoredNode[]) => `<chat>\n${nodes.map(line).join("\n")}\n</chat>`;
 
 /** One serialized caller owns indexing. No lifetime transcript or node cache is retained. */
 export function createDurableChatMemory(
@@ -185,9 +186,28 @@ export function createDurableChatMemory(
     if (!NodeEntry.is(entry)) throw new Error(`Missing Cake Chat summary entry ${ref}`);
     return { ...(await Schema.decodeUnknownPromise(Node)(entry.data)), entry: entry.id };
   };
+  // Follow only the two boundary paths, never scan a summary's entire subtree.
+  // Existing immutable nodes already carry all provenance; no index migration or
+  // lifetime cache is needed to recover bounds after restart.
+  const sourceRange = async (found: StoredNode, signal: AbortSignal): Promise<SourceRange> => {
+    const boundary = async (side: 0 | 1) => {
+      let edge = found;
+      while (edge.children) edge = await node(edge.children[side], signal);
+      if (edge.original === undefined) throw new Error("Cake Chat summary has no original");
+      return edge.original;
+    };
+    if (found.original !== undefined)
+      return { fromEntryId: found.original, throughEntryId: found.original };
+    const [fromEntryId, throughEntryId] = await Promise.all([boundary(0), boundary(1)]);
+    return { fromEntryId, throughEntryId };
+  };
+  const anchored = async (found: StoredNode, signal: AbortSignal): Promise<AnchoredNode> => ({
+    ...found,
+    ...(await sourceRange(found, signal)),
+  });
   const nodes = async (parts: readonly Part[], signal: AbortSignal) => {
-    const result: StoredNode[] = [];
-    for (const part of parts) result.push(await node(part.entry, signal));
+    const result: AnchoredNode[] = [];
+    for (const part of parts) result.push(await anchored(await node(part.entry, signal), signal));
     return result;
   };
   const save = (value: State, signal: AbortSignal) =>
@@ -290,7 +310,11 @@ export function createDurableChatMemory(
           entry: parent.entry,
           ancestors: part.ancestors.slice(1),
         });
-        visible.splice(best, 2, parent);
+        visible.splice(best, 2, {
+          ...parent,
+          fromEntryId: visible[best]!.fromEntryId,
+          throughEntryId: visible[best + 1]!.throughEntryId,
+        });
       }
       current.shrinking = memoryBytes(render(visible)) > target;
     }
@@ -663,11 +687,16 @@ export function createDurableChatMemory(
       const original = (await storage.entry(root.id, entryId(found.original), contextFor(signal)))
         ?.entry;
       if (!original) throw new Error("Cake Chat original is missing");
-      return { text: `${id}+0|${sourceText(original)}`, messages: original.model ?? [] };
+      return {
+        text: `${id}+0|[originals=${found.original}..${found.original}] ${sourceText(original)}`,
+        messages: original.model ?? [],
+      };
     }
     const children = await Promise.all(found.children!.map((ref) => node(ref, signal)));
     return {
-      text: children.map((child) => `${child.id}+${child.n}|${child.text}`).join("\n"),
+      text: (await Promise.all(children.map((child) => anchored(child, signal))))
+        .map(line)
+        .join("\n"),
       messages: [],
     };
   };

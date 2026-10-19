@@ -58,6 +58,10 @@ import {
   readDurableMessageReference,
 } from "./durable-message-references";
 import { toJsonValue } from "../../utils/to-json-value";
+import {
+  createDurableConversationRecallTools,
+  durableConversationRecallInstructions,
+} from "./durable-conversation-recall";
 
 import { durableChatDatabase } from "./durable-chat-location";
 import { createDurableChatCatalog } from "./durable-chat-catalog";
@@ -114,6 +118,7 @@ export async function createDurableCakeChatRuntime(
   const instructions = () =>
     [
       coordinatorSystemPrompt(preferences.preferences().instructions, cakeDocsDirectory),
+      durableConversationRecallInstructions(sessionId),
       options.additionalSystemPrompt,
       options.cakeChatSystemPrompt?.(),
       commands.instructions(),
@@ -281,18 +286,19 @@ export async function createDurableCakeChatRuntime(
       return { content: [{ type: "text", text: new Date(timestamp).toISOString() }] };
     },
   });
+  await mkdir(dirname(sessionFile), { recursive: true });
+  const storage = await openNodeSqliteStorage(sessionFile);
   // Direct quick-check tools. No edit/write: project changes belong to Project Sessions.
   const tools = [
     cake,
     zoom,
     date,
+    ...createDurableConversationRecallTools({ sessionId, storage }),
     createCakeChatReadTool(),
     createCakeChatBashTool(),
     createCakeChatMcpTool(mcp),
   ];
   registry.install(defineExtension({ name: "cake-coordinator", tools }));
-  await mkdir(dirname(sessionFile), { recursive: true });
-  const storage = await openNodeSqliteStorage(sessionFile);
   let publishing: Promise<void> | undefined;
   let publishAgain = false;
   const publish = () => {

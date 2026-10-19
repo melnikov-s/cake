@@ -136,8 +136,8 @@ it("runs eight independent requests, admits a later leaf with seven preceding un
   expect(input(parent.context)).toContain("node-1+1");
   expect(input(parent.context)).not.toContain("RAW_");
   const reference = parent.context.split("\n\nCompaction:")[0]!;
-  expect(reference).toContain("0+1|node-0+1");
-  expect(reference).toContain("1+1|node-1+1");
+  expect(reference).toMatch(/0\+1\|\[originals=\d+\.\.\d+\] node-0\+1/);
+  expect(reference).toMatch(/1\+1\|\[originals=\d+\.\.\d+\] node-1\+1/);
   expect(reference).not.toContain("3+1|"); // First unbuilt leaf is 2, despite out-of-order completions.
   automatic = true;
   for (const request of held) request.finish();
@@ -325,18 +325,21 @@ it.each([4_000, 40_000])(
       return `built-${id}+${n}: ${"s".repeat(480)}`;
     });
     const f = await fixture(summarize, new MemoryStorage(), budget);
-    for (let i = 0; i < 96; i += 1) await f.append(`RAW_${i} `.repeat(100));
+    const originals = [];
+    for (let i = 0; i < 96; i += 1) originals.push(await f.append(`RAW_${i} `.repeat(100)));
     const view = await f.memory.synchronize(signal());
     expect(view.sourceCount).toBe(96);
     expect(view.bytes).toBeLessThanOrEqual(budget);
     expect(view.partCount).toBeLessThan(96);
     let through = 0;
-    for (const match of view.text.matchAll(/^(\d+)\+(\d+)\|/gm)) {
+    for (const match of view.text.matchAll(/^(\d+)\+(\d+)\|\[originals=(\d+)\.\.(\d+)\]/gm)) {
       const id = Number(match[1]);
       const n = Number(match[2]);
       expect(id).toBe(through);
       expect(id % n).toBe(0);
       expect(Number.isInteger(Math.log2(n))).toBe(true);
+      expect(Number(match[3])).toBe(originals[id]!.id);
+      expect(Number(match[4])).toBe(originals[id + n - 1]!.id);
       through += n;
       if (n > 1) {
         const zoomed = await f.memory.zoom(id, n, signal());
@@ -461,7 +464,7 @@ it.each([1, 2])(
     expect(await reopened.nodes()).toHaveLength(1); // No migrated work on a cache-only read.
     expect((await reopened.root.context(BACKGROUND_CONTEXT)).messages).toEqual(active.messages);
     expect((await reopened.memory.synchronize(signal())).text).toBe(
-      "<chat>\n0+1|user: Persisted original\n</chat>",
+      `<chat>\n0+1|[originals=${original.id}..${original.id}] user: Persisted original\n</chat>`,
     );
     expect(summarize).not.toHaveBeenCalled();
     expect((await reopened.root.context(BACKGROUND_CONTEXT)).messages).toEqual(active.messages);

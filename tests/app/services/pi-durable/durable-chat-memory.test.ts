@@ -232,6 +232,64 @@ it("persists each built node on mid-merge failure and resumes across SQLite reop
   expect(reopened.summarize).toHaveBeenCalledOnce();
 });
 
+it("derives bounded original anchors through view consolidation, zoom and SQLite reopen without rebuilding", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "cake-memory-anchors-"));
+  cleanup.push(() => rm(directory, { recursive: true, force: true }));
+  const database = join(directory, "memory.sqlite");
+  const first = await fixture(await openNodeSqliteStorage(database), 900);
+  const originals: Awaited<ReturnType<typeof first.append>>[] = [];
+  for (const marker of ["A", "B", "C", "D"]) {
+    originals.push(await first.append(`RAW_${marker} `.repeat(100)));
+    if (marker === "A")
+      await first.root.commit(
+        (tx) =>
+          tx.appendEntry(ToolResultEntry, first.root.id, {
+            data: { diagnostics: [] },
+            model: [
+              {
+                role: "toolResult",
+                toolCallId: "between",
+                toolName: "inspect",
+                content: [{ type: "text", text: "intervening tool evidence" }],
+                isError: false,
+                timestamp: 2,
+              },
+            ],
+          }),
+        BACKGROUND_CONTEXT,
+      );
+  }
+  const anchor = (start: number, end: number) =>
+    `[originals=${originals[start]!.id}..${originals[end]!.id}]`;
+  const view = await first.view();
+  expect(view).toMatchObject({ complete: true, sourceCount: 4, partCount: 1 });
+  expect(view.text).toContain(`0+4|${anchor(0, 3)}`);
+  expect(view.bytes).toBe(Buffer.byteLength(view.text));
+  expect(view.bytes).toBeLessThanOrEqual(900);
+  expect((await first.memory.zoom(0, 4, signal())).text.split("\n")).toEqual([
+    expect.stringContaining(`0+2|${anchor(0, 1)}`),
+    expect.stringContaining(`2+2|${anchor(2, 3)}`),
+  ]);
+  expect((await first.memory.zoom(0, 2, signal())).text.split("\n")).toEqual([
+    expect.stringContaining(`0+1|${anchor(0, 0)}`),
+    expect.stringContaining(`1+1|${anchor(1, 1)}`),
+  ]);
+  expect((await first.memory.zoom(0, 1, signal())).text).toContain(
+    `0+0|${anchor(0, 0)} user: RAW_A`,
+  );
+  const stored = await first.nodes();
+  const head = await first.root.context(BACKGROUND_CONTEXT);
+  await first.harness.close(BACKGROUND_CONTEXT);
+  cleanup.pop();
+  const reopened = await fixture(await openNodeSqliteStorage(database), 900);
+  expect(await reopened.view()).toEqual(view);
+  expect((await reopened.memory.zoom(0, 4, signal())).text).toContain(anchor(0, 1));
+  expect((await reopened.memory.zoom(3, 1, signal())).text).toContain(anchor(3, 3));
+  expect(reopened.summarize).not.toHaveBeenCalled();
+  expect(await reopened.nodes()).toEqual(stored);
+  expect((await reopened.root.context(BACKGROUND_CONTEXT)).messages).toEqual(head.messages);
+});
+
 it("rejects empty output without truncation or a placeholder and retries at the next explicit opportunity", async () => {
   const f = await fixture();
   await f.append("RAW_B ".repeat(100));
