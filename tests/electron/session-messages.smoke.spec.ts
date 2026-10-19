@@ -70,8 +70,11 @@ for (const state of ["default", "project", "reference"]) {
       await scenario.prepare(page, state);
       const card = page.getByRole("region", { name: "Message from another session" }).first();
       await expect(card.getByRole("heading", { name: "Completed" })).toBeVisible();
-      await expect(card).toHaveCSS("border-width", "0px");
+      await expect(card).toHaveCSS("border-width", "1px");
+      await expect(card).toHaveCSS("border-radius", "16px");
+      await expect(card.locator("header")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
       await expect(card.locator("header")).toHaveCSS("border-bottom-width", "0px");
+      await expect(card.locator('[data-slot="message-content"]')).toHaveCSS("border-width", "0px");
       await expect(card).not.toContainText("cake-session-message");
       const message = card.locator("..");
       const actions = message.locator('[data-slot="message-actions"]');

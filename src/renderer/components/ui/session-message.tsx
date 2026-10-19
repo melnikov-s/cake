@@ -44,7 +44,7 @@ export const SessionMessage = observer(function SessionMessage({
       aria-label={
         relation === "notice" ? "Notice about another session" : "Message from another session"
       }
-      className="min-w-0 text-foreground"
+      className="min-w-0 overflow-hidden rounded-2xl border border-border bg-card py-3 text-foreground"
     >
       <header className="flex flex-wrap items-baseline gap-x-2 gap-y-1 px-5 pt-1 pb-2">
         <span className="shrink-0 text-xs text-muted-foreground">{relationLabels[relation]}</span>

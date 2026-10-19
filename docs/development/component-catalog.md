@@ -120,7 +120,8 @@ destination tooltip. Use it for identity metadata where the session context is c
 
 [`SessionMessage`](../../src/renderer/components/ui/session-message.tsx) presents
 incoming session communication with lightweight attribution (source-session link
-and status/metadata badges), without an extra card or transport-envelope UI.
+and status/metadata badges) inside the standard message outline, without a shaded
+header, nested border, or transport-envelope UI.
 Delivered messages use assistant-style Markdown and copy-only actions; exact
 original references remain available through lazy `InlineMessageSource` disclosures.
 Use recorded provenance;
