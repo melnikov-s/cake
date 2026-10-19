@@ -142,6 +142,16 @@ export const makeTaskInputStorageLive = (state: string) =>
         yield* io("grant", () => mkdir(directory, { recursive: true, mode: 0o700 }));
         yield* atomic(join(directory, `${key}.json`), true);
       });
+      const hasAccess = Effect.fn("TaskInputStorage.hasAccess")((sessionId: string, key: string) =>
+        io("authorize", async () => {
+          try {
+            return (await readFile(join(access, sessionId, `${key}.json`), "utf8")) === "true";
+          } catch (cause) {
+            if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") return false;
+            throw cause;
+          }
+        }),
+      );
       const authorized = Effect.fn("TaskInputStorage.authorized")(function* (
         sessionId: string,
         key: string,
@@ -149,15 +159,7 @@ export const makeTaskInputStorageLive = (state: string) =>
         yield* sessionKey(sessionId);
         const input = yield* stored(key);
         if (input.ownerSessionId === sessionId) return input;
-        const allowed = yield* io("authorize", async () => {
-          try {
-            return (await readFile(join(access, sessionId, `${key}.json`), "utf8")) === "true";
-          } catch (cause) {
-            if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") return false;
-            throw cause;
-          }
-        });
-        if (!allowed) return yield* failure("authorize");
+        if (!(yield* hasAccess(sessionId, key))) return yield* failure("authorize");
         return input;
       });
       // Storage migration: older accepted forwards persisted bound grants, but no
@@ -342,12 +344,28 @@ export const makeTaskInputStorageLive = (state: string) =>
         const references: TaskInputReference[] = [];
         const limit = Math.min(100, Math.max(1, query.limit ?? 20));
         if (query.after) yield* authorized(sessionId, query.after);
+        // Negative lookup hints are request-local: do not open an absent access marker
+        // for every retained input. Existing markers must still contain exactly true.
+        // An unreadable/missing access directory grants no shared visibility.
+        const sharedKeys = new Set(
+          (yield* io("list", () => readdir(join(access, sessionId))).pipe(
+            Effect.catch(() => Effect.succeed([])),
+          ))
+            .filter((name) => name.endsWith(".json"))
+            .map((name) => name.slice(0, -5)),
+        );
         for (const key of keys) {
           if (query.after && key <= query.after) continue;
-          const input = yield* authorized(sessionId, key).pipe(
-            Effect.catch(() => Effect.succeed(undefined)),
-          );
-          if (input) references.push(input.reference);
+          const input = yield* stored(key).pipe(Effect.catch(() => Effect.succeed(undefined)));
+          if (!input) continue;
+          if (input.ownerSessionId !== sessionId) {
+            if (!sharedKeys.has(key)) continue;
+            const allowed = yield* hasAccess(sessionId, key).pipe(
+              Effect.catch(() => Effect.succeed(false)),
+            );
+            if (!allowed) continue;
+          }
+          references.push(input.reference);
           if (references.length > limit) break;
         }
         const hasMore = references.length > limit;
