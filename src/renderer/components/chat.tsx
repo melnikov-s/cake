@@ -72,7 +72,7 @@ const Usage = observer(function Usage({ store }: { store: ChatStore }) {
             ? "moderate"
             : "normal";
   const cacheSummary = cache ? `${cache.label}. ${cache.detail}` : "Cache status unavailable";
-  const tooltipLabel = `${contextTokenSummary} · ${cache?.label ?? "Cache unknown"}`;
+  const tooltipLabel = `${contextTitle} · ${usage.tokens.total.toLocaleString()} billed tokens · ${cacheSummary}`;
   return (
     <div
       className={cn(
@@ -84,7 +84,7 @@ const Usage = observer(function Usage({ store }: { store: ChatStore }) {
             : "border-border/60",
       )}
       aria-label={`${contextLabel}; ${contextTokenSummary}; ${cacheSummary}`}
-      title={`${contextTitle} · ${usage.tokens.total.toLocaleString()} billed tokens · ${cacheSummary}`}
+      aria-description={tooltipLabel}
       data-context-state={contextState}
       data-cache-state={cache?.state ?? "unknown"}
       tabIndex={0}
@@ -132,7 +132,7 @@ const Usage = observer(function Usage({ store }: { store: ChatStore }) {
           {`${formatCompactTokenCount(context.tokens)}/${formatCompactTokenCount(context.contextWindow)}`}
         </span>
       )}
-      {anchor && <TooltipBubble label={tooltipLabel} anchor={anchor} placement="above" />}
+      {anchor && <TooltipBubble label={tooltipLabel} anchor={anchor} placement="above" wrap />}
     </div>
   );
 });

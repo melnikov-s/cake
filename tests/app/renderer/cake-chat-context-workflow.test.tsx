@@ -107,27 +107,42 @@ function fixture(
   };
 }
 
-it("opens the existing read-only Context Browser from compact token accounting", async () => {
-  vi.useFakeTimers({ shouldAdvanceTime: true });
-  vi.setSystemTime(at);
-  using f = fixture();
-  const button = screen.getByRole("button", { name: "Browse context" });
-  expect(button.textContent).toBe("[Sys 5k · Mem 10k · Msgs 30k] · ≈45k/300k");
-  expect(button.getAttribute("data-cache-state")).toBe("likely-warm");
-  expect(button.title).toBe("Cache: Likely warm\nExpires: ≈5 min\nNext: Continue");
-  fireEvent.mouseEnter(button);
-  const tooltip = await screen.findByRole("tooltip");
-  expect(tooltip.textContent).toBe("Cache: Likely warm\nExpires: ≈5 min\nNext: Continue");
-  fireEvent.click(button);
-  expect(await screen.findByRole("dialog", { name: "Context" })).toBeTruthy();
-  expect(screen.getByText("Baseline (system + memory): ≈15,000 tokens.")).toBeTruthy();
-  expect(screen.getByText(/Browsing earlier originals does not add them/)).toBeTruthy();
-  expect(f.inspect).toHaveBeenCalledExactlyOnceWith(
-    { sessionId: CAKE_CHAT_SESSION_ID, kind: "context-outline" },
-    expect.anything(),
-  );
-  expect(f.compact).not.toHaveBeenCalled();
-});
+it.each(["global", "project-chat"] as const)(
+  "opens the read-only Context Browser from %s token accounting with one described tooltip",
+  async (scope) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(at);
+    using f = fixture(status, scope);
+    const button = screen.getByRole("button", { name: "Browse context" });
+    expect(button.closest("[title]")).toBeNull();
+    expect(button.textContent).toBe("[Sys 5k · Mem 10k · Msgs 30k] · ≈45k/300k");
+    expect(button.getAttribute("data-cache-state")).toBe("likely-warm");
+    expect(button.getAttribute("aria-description")).toBe(
+      "Cache: Likely warm\nExpires: ≈5 min\nNext: Continue",
+    );
+    fireEvent.mouseEnter(button);
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip.textContent).toBe("Cache: Likely warm\nExpires: ≈5 min\nNext: Continue");
+    expect(screen.getAllByRole("tooltip")).toHaveLength(1);
+    fireEvent.mouseLeave(button);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    fireEvent.mouseEnter(button);
+    await screen.findByRole("tooltip");
+    fireEvent.click(button);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    expect(await screen.findByRole("dialog", { name: "Context" })).toBeTruthy();
+    expect(screen.getByText("Baseline (system + memory): ≈15,000 tokens.")).toBeTruthy();
+    expect(screen.getByText(/Browsing earlier originals does not add them/)).toBeTruthy();
+    expect(f.inspect).toHaveBeenCalledExactlyOnceWith(
+      {
+        sessionId: scope === "global" ? CAKE_CHAT_SESSION_ID : projectChatSessionId("/project"),
+        kind: "context-outline",
+      },
+      expect.anything(),
+    );
+    expect(f.compact).not.toHaveBeenCalled();
+  },
+);
 
 it("changes the next-message forecast at persisted-request expiry without invoking compaction on a timer", () => {
   vi.useFakeTimers();
@@ -137,7 +152,9 @@ it("changes the next-message forecast at persisted-request expiry without invoki
   expect(button.getAttribute("data-cache-state")).toBe("likely-warm");
   act(() => vi.advanceTimersByTime(5 * 60_000));
   expect(button.getAttribute("data-cache-state")).toBe("likely-cold");
-  expect(button.title).toBe("Cache: Likely cold\nExpires: Expired\nNext: Summarize");
+  expect(button.getAttribute("aria-description")).toBe(
+    "Cache: Likely cold\nExpires: Expired\nNext: Summarize",
+  );
   fireEvent.mouseEnter(button);
   act(() => vi.advanceTimersByTime(120));
   expect(screen.getByRole("tooltip").textContent).toBe(
@@ -154,7 +171,9 @@ it("keeps missing cache metadata unknown and plans blocking preparation for the 
   using f = fixture(missing);
   const button = screen.getByRole("button", { name: "Browse context" });
   expect(button.getAttribute("data-cache-state")).toBe("unknown");
-  expect(button.title).toBe("Cache: Unknown\nExpires: Unknown\nNext: Summarize");
+  expect(button.getAttribute("aria-description")).toBe(
+    "Cache: Unknown\nExpires: Unknown\nNext: Summarize",
+  );
   expect(f.compact).not.toHaveBeenCalled();
 });
 
@@ -209,9 +228,9 @@ it("uses the same activity row for preparation with an empty transcript", () => 
 
 it("shows actual preparation activity, a limit-triggered plan despite warm cache, and completed before/after detail", async () => {
   using f = fixture({ ...status, totalTokens: 300_000 });
-  expect(screen.getByRole("button", { name: "Browse context" }).title).toContain(
-    "Next: Summarize (limit)",
-  );
+  expect(
+    screen.getByRole("button", { name: "Browse context" }).getAttribute("aria-description"),
+  ).toContain("Next: Summarize (limit)");
   f.publish({ ...status, activity: "summarizing" });
   expect(screen.getByText("Summarizing memory…")).toBeTruthy();
   f.publish({ ...status, activity: "consolidating" });

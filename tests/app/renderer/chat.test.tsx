@@ -161,7 +161,7 @@ describe("Chat composition", () => {
     expect(gauge.getAttribute("data-context-state")).toBe(state);
     await fixture.user.hover(gauge);
     expect((await screen.findByRole("tooltip")).textContent).toBe(
-      `${percent}k / 100k tokens · Cache unknown`,
+      `${percent},000 of 100,000 context tokens · ${percent},000 billed tokens · Cache status unavailable`,
     );
   });
 

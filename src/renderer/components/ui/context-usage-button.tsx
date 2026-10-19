@@ -37,7 +37,7 @@ export function ContextUsageButton({
         ref={ref}
         variant="ghost"
         aria-label="Browse context"
-        title={detail}
+        aria-description={detail}
         data-slot="context-usage"
         data-cache-state={cacheState}
         className={cn(

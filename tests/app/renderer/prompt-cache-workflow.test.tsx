@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../src/renderer/client/Client";
 import {
@@ -21,6 +21,31 @@ afterEach(() => {
 });
 
 describe("Prompt cache advisory in shared Chat", () => {
+  it("shows one usage tooltip with full accounting and cache details, without a competing native title", () => {
+    using fixture = renderPromptCache(
+      cacheResponse({
+        provider: "anthropic",
+        modelId: "claude",
+        requestedAt: cacheNow - 60_000,
+        cacheReadTokens: 12_000,
+      }).response,
+    );
+    void fixture;
+    const target = gauge();
+    expect(target.closest("[title]")).toBeNull();
+    expect(target.querySelector("[title]")).toBeNull();
+    expect(target.getAttribute("aria-label")).toContain("Cache estimated 4:00");
+    const detail = target.getAttribute("aria-description");
+    expect(detail).toContain("12,100 of 200,000 context tokens");
+    expect(detail).toContain("12,110 billed tokens");
+    expect(detail).toContain("Cache estimated 4:00");
+    fireEvent.mouseEnter(target);
+    act(() => vi.advanceTimersByTime(120));
+    expect(screen.getAllByRole("tooltip")).toHaveLength(1);
+    expect(screen.getByRole("tooltip").textContent).toBe(detail);
+    fireEvent.mouseLeave(target);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
   // Provider-response authority and virtual time drive this projection workflow.
   // This does not claim to test provider caching itself or native tooltip hover.
   it.each([
