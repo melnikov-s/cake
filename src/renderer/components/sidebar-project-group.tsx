@@ -188,7 +188,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
                 <div
                   data-slot="project-chat-status"
                   className={cn(
-                    "pointer-events-none col-start-1 row-start-1 flex w-8 items-center justify-center justify-self-end transition-opacity group-hover/proj:opacity-0 group-focus-within/proj:opacity-0 [@media(pointer:coarse)]:hidden",
+                    "pointer-events-none col-start-1 row-start-1 flex w-8 items-center justify-center justify-self-end transition-opacity group-hover/proj:opacity-0 group-has-[:focus-visible]/proj:opacity-0 [@media(pointer:coarse)]:hidden",
                     sortMenuOpen && "opacity-0",
                   )}
                 >
@@ -198,7 +198,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
               <div
                 data-slot="project-actions"
                 className={cn(
-                  "col-start-1 row-start-1 flex items-center gap-1 opacity-0 transition-opacity group-hover/proj:opacity-100 group-focus-within/proj:opacity-100 [@media(pointer:coarse)]:opacity-100",
+                  "col-start-1 row-start-1 flex items-center gap-1 opacity-0 transition-opacity group-hover/proj:opacity-100 group-has-[:focus-visible]/proj:opacity-100 [@media(pointer:coarse)]:opacity-100",
                   sortMenuOpen && "opacity-100",
                 )}
               >

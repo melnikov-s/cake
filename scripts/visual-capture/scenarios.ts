@@ -1711,7 +1711,7 @@ const appearanceSettingsScenario: VisualCaptureScenario = {
 const projectChatSidebar: VisualCaptureScenario = {
   name: "project-chat-sidebar",
   description: "Full-width Project Chat selection and status alignment with Project Sessions",
-  states: ["selected", "unselected", "focus", "hover"],
+  states: ["selected", "unselected", "focus", "hover", "collapsed", "collapsed-hover"],
   async seed(paths, theme) {
     await assistantMarkdownCode.seed(paths, theme);
     const file = join(paths.cakeHome, "state", "application.json");
@@ -1756,10 +1756,29 @@ const projectChatSidebar: VisualCaptureScenario = {
         .getByRole("img", { name: "Ready, unread" }),
     ).toBeVisible();
     await page.waitForFunction(() => document.fonts.status === "loaded");
-    if (state === "hover") await page.locator('[data-slot="project-header"]').hover();
+    const header = page.locator('[data-slot="project-header"]').first();
+    if (state.startsWith("collapsed")) {
+      const disclosure = header.locator("button[aria-expanded]").first();
+      await disclosure.click();
+      await expect(disclosure).toHaveAttribute("aria-expanded", "false");
+      await expect(disclosure).toBeFocused();
+    }
+    const hovering = state === "hover" || state === "collapsed-hover";
+    if (hovering) await header.locator('[data-slot="project-label"]').hover();
     else await page.mouse.move(1, 1);
+    await expect(header.locator('[data-slot="project-actions"]')).toHaveCSS(
+      "opacity",
+      hovering ? "1" : "0",
+    );
+    await expect(header.locator('[data-slot="project-chat-status"]')).toHaveCSS(
+      "opacity",
+      hovering ? "0" : "1",
+    );
   },
-  region: (page) => page.locator('[data-slot="sidebar"]'),
+  region: (page, state) =>
+    state.startsWith("collapsed")
+      ? page.locator('[data-slot="project-header"]').first()
+      : page.locator('[data-slot="sidebar"]'),
 };
 
 const activeSidebarSessions: VisualCaptureScenario = {
