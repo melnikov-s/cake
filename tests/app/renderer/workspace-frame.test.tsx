@@ -79,11 +79,11 @@ function renderWorkspace(kind: Kind, mode: Mode) {
       ? root.sessionRegistry.load(projectId, "/project")
       : root.cakeChatCollectionStore.registry.load(cakeChatId);
   if (kind === "project") {
-    root.appShellStore.selectProjectSession(session.sessionId);
+    root.navigationStore.selectProjectSession(session.sessionId);
     root.projectWorkbenchStore.showLoadedSession(session.sessionId);
     root.sessionLayoutStore.ensureSession(session.sessionId);
   } else {
-    root.appShellStore.selectCakeChat(session.sessionId);
+    root.navigationStore.selectCakeChat(session.sessionId);
     root.cakeChatCollectionStore.sessionLayoutStore.ensureSession(session.sessionId);
   }
   session.showPresentation(mode);

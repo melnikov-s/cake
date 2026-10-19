@@ -15,7 +15,7 @@ function isVisibleMessage(entry: SessionTreeEntry) {
   );
 }
 
-export function visibleSessionTree(entries: SessionTreeEntry[]): SessionTreeEntry[] {
+function visibleSessionTree(entries: SessionTreeEntry[]): SessionTreeEntry[] {
   const byId = new Map(entries.map((entry) => [entry.id, entry]));
   const visibleIds = new Set(entries.filter(isVisibleMessage).map((entry) => entry.id));
   return entries.filter(isVisibleMessage).map((entry) => {
@@ -29,7 +29,7 @@ export function visibleSessionTree(entries: SessionTreeEntry[]): SessionTreeEntr
   });
 }
 
-export function flattenSessionTree(entries: SessionTreeEntry[]): SessionTreeRow[] {
+function flattenSessionTree(entries: SessionTreeEntry[]): SessionTreeRow[] {
   const byId = new Map(entries.map((entry) => [entry.id, entry]));
   const childrenByParent = new Map<string, SessionTreeEntry[]>();
   const roots: SessionTreeEntry[] = [];

@@ -18,8 +18,8 @@ import { applyConversationUpdate } from "../../../src/renderer/reducers/Conversa
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
-export const reportId = decodeArtifactLineageId("report");
-export const appendixId = decodeArtifactLineageId("appendix");
+const reportId = decodeArtifactLineageId("report");
+const appendixId = decodeArtifactLineageId("appendix");
 export const reportRef = formatArtifactRef({
   lineageId: reportId,
   revision: decodeArtifactRevisionNumber(1),

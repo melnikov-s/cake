@@ -89,7 +89,6 @@ export function renderConversationDelivery(
         applyConversationUpdate(session.model, {
           _tag: "Event",
           revision: ++revision,
-          sessionId: deliverySessionId,
           event,
         });
       });

@@ -147,6 +147,7 @@ export async function renderSelectionUi(
       highlights: fixture.highlights,
       // Agent commands have no UI control: this is the public application boundary.
       invoke: fixture.invoke,
+      list: fixture.list,
       [Symbol.dispose]() {
         view.unmount();
         fixture[Symbol.dispose]();

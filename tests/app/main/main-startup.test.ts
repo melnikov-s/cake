@@ -12,7 +12,7 @@ const fixture = vi.hoisted(() => ({
   host: { kind: "local" } as { kind: "local" } | { kind: "remote"; url: string },
   layer: undefined as Layer.Layer<never, unknown> | undefined,
   program: undefined as Effect.Effect<void, unknown> | undefined,
-  exited: (code: number) => {
+  exited: (code: number): void => {
     throw new Error(`Unexpected exit: ${code}`);
   },
 }));

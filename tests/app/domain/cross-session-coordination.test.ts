@@ -72,7 +72,7 @@ describe("cross-session coordination metadata", () => {
 
     expect(parseCrossSessionMessage(encoded)).toEqual({
       text: "A session-authored reply",
-      metadata,
+      metadata: { ...metadata, resultDelivery: "reply" },
     });
     expect(encoded).toContain("<cake-session-message>");
   });
@@ -125,7 +125,7 @@ describe("cross-session coordination metadata", () => {
     };
     expect(
       parseCrossSessionMessage(encodeCrossSessionMessage("Continue", unknown))?.metadata,
-    ).toEqual(unknown);
+    ).toEqual({ ...unknown, resultDelivery: "reply" });
   });
 
   it("decodes legacy coordination messages as informational", () => {

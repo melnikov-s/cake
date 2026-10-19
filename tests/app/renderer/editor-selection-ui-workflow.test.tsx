@@ -86,10 +86,10 @@ describe("Editor selection pills workflow", () => {
 
   it("honors agent removal and clear while hidden, then resends only retained highlights on reopen", async () => {
     using fixture = await renderSelectionUi();
-    const listed = await fixture.invoke("vscode.selections.list");
-    if (!listed.ok || listed.command !== "vscode.selections.list")
-      throw new Error("Missing selection reply");
-    const tour = listed.state.selections.find(({ location }) => location.path === "src/tour.ts")!;
+    const listed = await fixture.list();
+    const tour = listed.selections.find(({ location }) => location.path === "src/tour.ts");
+    expect(tour).toBeDefined();
+    if (!tour) throw new Error("Missing tour selection");
     await fixture.user.click(screen.getByRole("button", { name: "Back to agent" }));
     const sends = fixture.highlights.mock.calls.length;
     await act(async () => {

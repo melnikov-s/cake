@@ -61,7 +61,7 @@ function conversation(
   };
 }
 
-export function createSessionAssistantFixture(
+function createSessionAssistantFixture(
   client: TestClientOverrides,
   options: { staged?: boolean } = {},
 ) {

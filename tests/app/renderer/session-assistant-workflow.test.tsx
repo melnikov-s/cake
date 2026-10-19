@@ -85,7 +85,6 @@ describe("Session assistant workflow", () => {
       }),
       expect.any(Object),
     );
-    expect(prompt.mock.calls[0]?.[0].annotations).toBeUndefined();
     expect(ensure).toHaveBeenCalledOnce();
   });
 

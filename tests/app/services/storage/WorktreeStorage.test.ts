@@ -7,7 +7,7 @@ import type { WorktreeRecord } from "../../../../src/contracts/worktrees/managed
 import { Git } from "../../../../src/services/git/Git";
 import { WorktreeStorage } from "../../../../src/services/storage/WorktreeStorage";
 import { makeWorktreeStorageLive } from "../../../../src/services/storage/WorktreeStorageLive";
-import { ManagedWorktrees } from "../../../../src/services/worktrees/ManagedWorktrees";
+import { createCheckout } from "../../../../src/domain/worktrees/worktreeCreation";
 import { ManagedWorktreesLive } from "../../../../src/services/worktrees/ManagedWorktreesLive";
 
 const record = (index: number): WorktreeRecord => ({
@@ -114,9 +114,9 @@ describe("WorktreeStorage", () => {
             ),
           );
           const created = yield* Effect.result(
-            Effect.flatMap(ManagedWorktrees, (worktrees) =>
-              worktrees.create(path.join(path.dirname(storagePath), "project")),
-            ).pipe(Effect.provide(engine)),
+            createCheckout(path.join(path.dirname(storagePath), "project")).pipe(
+              Effect.provide(engine),
+            ),
           );
           expect(created).toEqual(loaded);
           expect(yield* Ref.get(saves)).toBe(0);

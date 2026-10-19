@@ -204,6 +204,7 @@ describe("Workbench workflow", () => {
           workingDirectory: "/worktree",
           resolvedSessionIds: ["one", "two"],
           failures: [],
+          cleanupFailures: [],
         }),
       );
       using fixture = renderWorkbench({ projectSessions: { resolveWorkingDirectory } });
