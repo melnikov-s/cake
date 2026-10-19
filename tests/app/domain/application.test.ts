@@ -171,7 +171,7 @@ describe("Application domain", () => {
         instructions: "Remember this.",
       });
       assert.deepEqual(f.persisted().cakeChatPreferences, {
-        memoryViewBytes: 40_000,
+        memoryViewBytes: 128_000,
         instructions: "Remember this.",
       });
     }).pipe(Effect.provide(f.layer));

@@ -1,4 +1,8 @@
-import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
+import {
+  awaitWithContext,
+  BACKGROUND_CONTEXT,
+  withAbortSignal,
+} from "@earendil-works/chord/context";
 import type { Message } from "@earendil-works/pi-durable-ai";
 import {
   defineDoc,
@@ -12,6 +16,11 @@ import {
   type Storage,
 } from "@earendil-works/pi-durable";
 import { Schema } from "effect";
+import {
+  getCurrentSystemPrompt,
+  getCurrentTools,
+} from "@earendil-works/pi-durable-ai/utils/transcript";
+import { CompletionChat } from "../../contracts/pi/model-data";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import { MEMORY_COMPACTOR_PROMPT, MEMORY_NODE_BYTES, memoryBytes } from "./durable-memory-policy";
 import type { DurableChatMemoryView } from "./durable-chat-data";
@@ -41,6 +50,23 @@ type Node = Schema.Schema.Type<typeof Node>;
 type StoredNode = Node & { readonly entry: number };
 const Part = Schema.Struct({ ...Range.fields, ancestors: Schema.mutable(Schema.Array(Id)) });
 type Part = Schema.Schema.Type<typeof Part>;
+const Link = Schema.Union([Schema.Struct({ entry: Id }), Schema.Struct({ job: Id })]);
+const Job = Schema.Struct({
+  id: Id,
+  n: Schema.Int.check(Schema.isGreaterThan(0)),
+  original: Schema.optionalKey(Id),
+  left: Schema.optionalKey(Link),
+  right: Schema.optionalKey(Link),
+  entry: Schema.mutableKey(Schema.optionalKey(Id)),
+});
+const Reference = Schema.Struct({
+  parts: Schema.mutableKey(Schema.mutable(Schema.Array(Part))),
+  shrinking: Schema.mutableKey(Schema.Boolean),
+});
+const Pending = Schema.Struct({
+  jobs: Schema.mutable(Schema.Array(Job)),
+  forest: Schema.mutable(Schema.Array(Schema.Struct({ id: Id, n: Schema.Int, link: Link }))),
+});
 const State = Schema.Struct({
   through: Schema.mutableKey(Schema.NullOr(Id)),
   count: Schema.mutableKey(Id),
@@ -48,6 +74,8 @@ const State = Schema.Struct({
   shrinking: Schema.mutableKey(Schema.Boolean),
   forest: Schema.mutableKey(Schema.mutable(Schema.Array(Range))),
   parts: Schema.mutableKey(Schema.mutable(Schema.Array(Part))),
+  reference: Schema.mutableKey(Schema.optionalKey(Reference)),
+  pending: Schema.mutableKey(Schema.optionalKey(Pending)),
 });
 type State = Schema.Schema.Type<typeof State>;
 const initial = (): State => ({
@@ -60,14 +88,16 @@ const initial = (): State => ({
 });
 const StateDoc = defineDoc<State>({
   kind: "cake.chat-memory-state",
-  version: 1,
+  version: 2,
   scope: "conversation",
   history: "latest",
   fork: "initial",
   initial,
+  // Storage migration adds resumable jobs/reference view, never rebuilds old nodes.
+  migrate: (value) => Schema.decodeUnknownSync(State)(value),
 });
 // Immutable nodes use indexed entry reads, not document families: Durable retains loaded
-// document trackers for its lifetime. Only StateDoc (bounded view + logarithmic forest) is live.
+// document trackers for its lifetime. Only StateDoc (bounded views/DAG + logarithmic forest) is live.
 const NodeEntry = defineEntry<Node>("cake.chat-memory-node/v1");
 
 // SAFETY: SDK ids are branded numbers; values here come from Durable or schema-validated persisted Id fields.
@@ -80,6 +110,8 @@ export interface DurableMemoryOptions {
     instructions: string;
     context: string;
     signal: AbortSignal;
+    previous?: readonly { role: "user" | "assistant"; text: string }[];
+    tools?: CompletionChat["tools"];
   }) => Promise<string>;
 }
 
@@ -166,27 +198,65 @@ export function createDurableChatMemory(
   };
   const save = (value: State, signal: AbortSignal) =>
     root.commit(async (tx) => {
-      Object.assign(await tx.doc(StateDoc, root.id), value);
+      const doc = await tx.doc(StateDoc, root.id);
+      Object.assign(doc, value);
+      if (!value.pending) delete doc.pending;
     }, contextFor(signal));
 
-  const summarize = async (text: string, prefix: string, work: DurableMemoryWork) => {
+  const summarize = async (
+    text: string,
+    prefix: string,
+    task: { id: number; n: number },
+    work: DurableMemoryWork,
+    shared: { instructions: string; tools: CompletionChat["tools"] },
+  ) => {
     work.signal.throwIfAborted();
     if (memoryBytes(text) <= MEMORY_NODE_BYTES) return text;
-    const answer = (
-      await work.complete((signal) =>
-        options.summarize({
-          instructions: MEMORY_COMPACTOR_PROMPT,
-          context: `${prefix}\n\nCompress or merge <input> into one line. Aim for 384 UTF-8 bytes; the hard maximum is ${MEMORY_NODE_BYTES} UTF-8 bytes. Preserve meaningful facts, not padding.\n<input>\n${text}\n</input>`,
-          signal,
-        }),
-      )
-    ).trim();
-    // No truncation, lossy placeholder or repeated full-input attempts. Reject the
-    // unfinished original/merge atomically; a later explicit attempt can continue.
-    if (!answer) throw new DurableMemoryError({ reason: "empty-summary" });
-    if (memoryBytes(answer) > MEMORY_NODE_BYTES)
-      throw new DurableMemoryError({ reason: "oversized-summary" });
-    return answer;
+    const request =
+      task.n === 1
+        ? `Compaction: compress message ${task.id} into one line of at most 512 bytes\n(about 70 words), the length of this ruler:\n${"-".repeat(512)}`
+        : `Compaction: merge lines ${task.id}+${task.n / 2} and ${task.id + task.n / 2}+${task.n / 2}, adjacent, into one line of at most\n512 bytes (about 70 words), the length of this ruler:\n${"-".repeat(512)}\n<chat> may hold their messages, ${task.id} to ${task.id + task.n - 1}, in more detail: take details\nof them from there too.`;
+    // Persisted active heads can predate the shared compaction section. Preserve
+    // their exact system/cache prefix, but never drop compaction's data/provenance
+    // safeguards while waiting for the next ordinary request to update that head.
+    const policy = shared.instructions.includes(MEMORY_COMPACTOR_PROMPT)
+      ? ""
+      : `\n${MEMORY_COMPACTOR_PROMPT}`;
+    const context = `${prefix}\n\n${request}${policy}\n<input>\n${text}\n</input>`;
+    const previous: { role: "user" | "assistant"; text: string }[] = [];
+    let shortest: string | undefined;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const answer = (
+        await work.complete((signal) =>
+          options.summarize({
+            instructions: shared.instructions,
+            tools: shared.tools,
+            context,
+            previous: [...previous],
+            signal,
+          }),
+        )
+      ).trim();
+      if (!answer) throw new DurableMemoryError({ reason: "empty-summary" });
+      if (shortest === undefined || memoryBytes(answer) < memoryBytes(shortest)) shortest = answer;
+      if (memoryBytes(answer) <= MEMORY_NODE_BYTES) return answer;
+      // A UTF-8-safe byte cut is a ruler in feedback, never a stored summary.
+      let cut = "";
+      for (const character of answer) {
+        if (memoryBytes(cut + character) > MEMORY_NODE_BYTES) break;
+        cut += character;
+      }
+      previous.push(
+        { role: "assistant", text: answer },
+        {
+          role: "user",
+          text: `Too long: your line is ${memoryBytes(answer)} bytes, over the 512-byte limit. Write the whole line again for the same <input>, cutting just enough of the least valuable items to fit before this cut:\n${cut}| ← LIMIT`,
+        },
+      );
+    }
+    // Public chat-memory spec: five attempts, retain the shortest, measure real
+    // view bytes. It explicitly tolerates slight oversize, not arbitrary truncation.
+    return shortest!;
   };
 
   const fit = async (current: State, signal: AbortSignal, budget: number) => {
@@ -233,67 +303,239 @@ export function createDurableChatMemory(
     return render(visible);
   };
 
-  const append = async (
-    current: State,
-    original: EntryRecord,
-    text: string,
-    work: DurableMemoryWork,
-    budget: number,
-  ) => {
-    const { signal } = work;
-    const prefix = render(await nodes(current.parts, signal));
-    const planned: { id: number; n: number; text: string; left?: number }[] = [
-      {
-        id: current.count,
-        n: 1,
-        text: await summarize(text, prefix, work),
-      },
-    ];
-    const forest = [...current.forest];
-    let right = planned[0]!;
-    while (forest.at(-1)?.n === right.n) {
-      const left = forest.pop()!;
-      const source = `${(await node(left.entry, signal)).text}\n${right.text}`;
-      right = {
-        id: left.id,
-        n: left.n * 2,
-        text: await summarize(source, prefix, work),
-        left: left.entry,
-      };
-      planned.push(right);
-    }
-    signal.throwIfAborted();
-    // All model calls precede the transaction. The leaf, its carry-chain parents,
-    // source cursor and view references commit together: restart never indexes a source twice.
-    await root.commit(async (tx) => {
-      let previous: EntryId | undefined;
-      for (const step of planned) {
-        const stored = await tx.appendEntry(NodeEntry, root.id, {
-          data: {
-            id: step.id,
-            n: step.n,
-            text: step.text,
-            ...(step.left === undefined
-              ? { original: original.id }
-              : { children: [entryId(step.left), previous!] }),
-          },
-        });
-        previous = stored.id;
-        if (step.n === 1)
-          current.parts.push({ id: step.id, n: 1, entry: stored.id, ancestors: [] });
-        else
-          for (const part of current.parts)
-            if (part.id >= step.id && part.id + part.n <= step.id + step.n)
-              part.ancestors.push(stored.id);
+  const fitViews = async (current: State, signal: AbortSignal, budget: number) => {
+    const before = current.parts.length;
+    const text = await fit(current, signal, budget);
+    if (current.reference) {
+      if (current.parts.length < before) {
+        current.reference.parts = structuredClone(current.parts);
+        current.reference.shrinking = true;
       }
-      forest.push({ id: right.id, n: right.n, entry: previous! });
-      current.forest = forest;
-      current.count += 1;
-      current.through = original.id;
-      Object.assign(await tx.doc(StateDoc, root.id), current);
-    }, contextFor(signal));
-    await fit(current, signal, budget);
+      const refState = {
+        ...current,
+        parts: current.reference.parts,
+        shrinking: current.reference.shrinking,
+      };
+      await fit(refState, signal, 32_000);
+      current.reference.parts = refState.parts;
+      current.reference.shrinking = refState.shrinking;
+    }
+    return text;
+  };
+
+  // A bounded persisted source window gives deterministic IDs without retaining
+  // lifetime history. Each source is scanned once; every successful node commits
+  // independently. Recovery resumes the same DAG, not a leaf's entire carry chain.
+  const plan = async (current: State, originals: readonly EntryRecord[], signal: AbortSignal) => {
+    const jobs: Schema.Schema.Type<typeof Pending>["jobs"] = [];
+    const forest: Schema.Schema.Type<typeof Pending>["forest"] = current.forest.map((range) => ({
+      id: range.id,
+      n: range.n,
+      link: { entry: range.entry },
+    }));
+    for (const [offset, original] of originals.entries()) {
+      const leaf = { id: current.count + offset, n: 1, original: original.id };
+      jobs.push(leaf);
+      let right: Schema.Schema.Type<typeof Pending>["forest"][number] = {
+        id: leaf.id,
+        n: 1,
+        link: { job: jobs.length - 1 },
+      };
+      while (forest.at(-1)?.n === right.n) {
+        const left = forest.pop()!;
+        jobs.push({ id: left.id, n: left.n * 2, left: left.link, right: right.link });
+        right = { id: left.id, n: left.n * 2, link: { job: jobs.length - 1 } };
+      }
+      forest.push(right);
+    }
+    current.pending = { jobs, forest };
     await save(current, signal);
+  };
+
+  const build = async (current: State, work: DurableMemoryWork, budget: number) => {
+    const pending = current.pending!;
+    const stopped = new AbortController();
+    const signal = AbortSignal.any([work.signal, stopped.signal]);
+    const jobs = pending.jobs;
+    const activeContext = await root.context(contextFor(signal));
+    const shared = {
+      instructions: getCurrentSystemPrompt(activeContext.messages) || MEMORY_COMPACTOR_PROMPT,
+      tools: (
+        await Schema.decodeUnknownPromise(CompletionChat)({
+          tools: getCurrentTools(activeContext.messages),
+          previous: [],
+        })
+      ).tools,
+    };
+    const leaves = jobs.map((job, index) => ({ job, index })).filter(({ job }) => job.n === 1);
+    const dependents = new Map<number, number[]>();
+    const waiting = new Map<number, number>();
+    const ready: number[] = [];
+    let nextLeaf = 0;
+    let unbuiltBefore = 0;
+    const done = (link: Schema.Schema.Type<typeof Link>) =>
+      "entry" in link || jobs[link.job]!.entry !== undefined;
+    const resolve = (link: Schema.Schema.Type<typeof Link>) =>
+      "entry" in link ? link.entry : jobs[link.job]!.entry!;
+    for (const [index, job] of jobs.entries()) {
+      if (job.entry !== undefined || job.n === 1) continue;
+      let count = 0;
+      for (const link of [job.left!, job.right!]) {
+        if (!done(link) && "job" in link) {
+          count += 1;
+          const list = dependents.get(link.job) ?? [];
+          list.push(index);
+          dependents.set(link.job, list);
+        }
+      }
+      waiting.set(index, count);
+      if (count === 0) ready.push(index);
+    }
+    const releaseLeaves = () => {
+      while (nextLeaf < leaves.length && unbuiltBefore < 8) {
+        const { job, index } = leaves[nextLeaf++]!;
+        if (job.entry !== undefined) continue;
+        unbuiltBefore += 1;
+        ready.push(index);
+      }
+    };
+    const inherit = (parts: Part[], job: Schema.Schema.Type<typeof Job>) => {
+      if (job.n === 1 || job.entry === undefined) return;
+      for (const part of parts) {
+        if (
+          job.n > part.n &&
+          part.id >= job.id &&
+          part.id + part.n <= job.id + job.n &&
+          !part.ancestors.includes(job.entry)
+        )
+          part.ancestors.push(job.entry);
+      }
+    };
+    const updateViews = async () => {
+      if (!current.reference)
+        current.reference = { parts: structuredClone(current.parts), shrinking: true };
+      for (const { job } of leaves) {
+        if (job.id < current.count) continue;
+        if (job.id !== current.count || job.entry === undefined) break;
+        const part = { id: job.id, n: 1, entry: job.entry, ancestors: [] };
+        current.parts.push(structuredClone(part));
+        current.reference.parts.push(structuredClone(part));
+        current.count += 1;
+        current.through = job.original!;
+      }
+      for (const job of jobs) {
+        inherit(current.parts, job);
+        inherit(current.reference.parts, job);
+      }
+      await fitViews(current, signal, budget);
+    };
+    const prefix = async (job: Schema.Schema.Type<typeof Job>) => {
+      const end = job.id + (job.n === 1 ? 0 : job.n);
+      // count is the built leaf prefix. The reference view contains no future
+      // lines or placeholders, even if a later independent leaf finished first.
+      const visible: Part[] = [];
+      const include = async (found: StoredNode, ancestors: number[]): Promise<void> => {
+        if (found.id >= end) return;
+        if (found.id + found.n <= end)
+          visible.push({ id: found.id, n: found.n, entry: found.entry, ancestors });
+        else if (found.children) {
+          const parents = [found.entry, ...ancestors];
+          await include(await node(found.children[0], signal), parents);
+          await include(await node(found.children[1], signal), parents);
+        }
+      };
+      for (const part of current.reference?.parts ?? current.parts)
+        await include(await node(part.entry, signal), part.ancestors);
+      // Splitting the one line crossing the task boundary can add bytes. Bound
+      // that request's built prefix with the same merge policy, never a text cut.
+      return fit(
+        { ...current, count: Math.min(current.count, end), parts: visible, shrinking: false },
+        signal,
+        32_000,
+      );
+    };
+    type Completion = { index: number; text: string } | { index: number; error: unknown };
+    const active = new Map<number, Promise<Completion>>();
+    const launch = (index: number) => {
+      const job = jobs[index]!;
+      const task = (async () => {
+        const context = await prefix(job);
+        const text =
+          job.n === 1
+            ? sourceText(
+                (await storage.entry(root.id, entryId(job.original!), contextFor(signal)))!.entry,
+              )
+            : `${(await node(resolve(job.left!), signal)).text}\n${(await node(resolve(job.right!), signal)).text}`;
+        return summarize(
+          text,
+          context,
+          job,
+          {
+            ...work,
+            signal,
+            complete: (operation) =>
+              work.complete((callSignal) => operation(AbortSignal.any([callSignal, signal]))),
+          },
+          shared,
+        );
+      })();
+      active.set(
+        index,
+        awaitWithContext(task, contextFor(signal)).then(
+          (text) => ({ index, text }),
+          (error: unknown) => ({ index, error }),
+        ),
+      );
+    };
+    try {
+      await updateViews();
+      releaseLeaves();
+      while (ready.length || active.size) {
+        signal.throwIfAborted();
+        while (ready.length && active.size < 8) launch(ready.shift()!);
+        if (!active.size) break;
+        const result = await Promise.race(active.values());
+        active.delete(result.index);
+        if ("error" in result) throw result.error;
+        signal.throwIfAborted();
+        const job = jobs[result.index]!;
+        await root.commit(async (tx) => {
+          const stored = await tx.appendEntry(NodeEntry, root.id, {
+            data: {
+              id: job.id,
+              n: job.n,
+              text: result.text,
+              ...(job.n === 1
+                ? { original: job.original! }
+                : { children: [resolve(job.left!), resolve(job.right!)] }),
+            },
+          });
+          job.entry = stored.id;
+          Object.assign(await tx.doc(StateDoc, root.id), current);
+        }, contextFor(signal));
+        if (job.n === 1) unbuiltBefore -= 1;
+        for (const parent of dependents.get(result.index) ?? []) {
+          const count = waiting.get(parent)! - 1;
+          waiting.set(parent, count);
+          if (count === 0) ready.push(parent);
+        }
+        await updateViews();
+        await save(current, signal);
+        releaseLeaves();
+      }
+      current.forest = pending.forest.map((range) => ({
+        id: range.id,
+        n: range.n,
+        entry: resolve(range.link),
+      }));
+      delete current.pending;
+      await save(current, signal);
+    } finally {
+      stopped.abort();
+      // Drain wrappers before releasing the serialized persistence owner. A
+      // cancellation-ignoring provider can never publish a late node.
+      await Promise.all(active.values());
+    }
   };
 
   const synchronize = async (
@@ -304,11 +546,17 @@ export function createDurableChatMemory(
   ): Promise<DurableChatMemoryView & { complete: boolean }> => {
     const work = batch.work ?? durableMemoryWork(signal);
     signal = work.signal;
-    let processed = 0;
-    let complete = true;
     const current = await state(signal);
+    let processed = 0;
+    if (current.pending) {
+      processed += current.pending.jobs.filter(
+        (job) => job.n === 1 && job.id >= current.count,
+      ).length;
+      await build(current, work, budget);
+    }
     const newest =
       cutoff ?? (await root.entries({}, 1, undefined, contextFor(signal))).items[0]?.id;
+    let complete = true;
     if (newest !== undefined) {
       let cursor: Cursor | undefined;
       const query: Omit<EntryQuery, "conversationId"> = { order: "ascending", maxEntryId: newest };
@@ -316,22 +564,32 @@ export function createDurableChatMemory(
         Object.assign(query, { minEntryId: entryId(current.through + 1) });
       scan: do {
         const page = await root.entries(query, 64, cursor, contextFor(signal));
+        const originals: EntryRecord[] = [];
+        let skipped: number | undefined;
         for (const original of page.items) {
           signal.throwIfAborted();
-          const text = sourceText(original);
-          if (text) {
-            if (processed >= (batch.maxOriginals ?? Infinity)) {
+          if (sourceText(original)) {
+            if (processed + originals.length >= (batch.maxOriginals ?? Infinity)) {
+              if (originals.length) {
+                await plan(current, originals, signal);
+                await build(current, work, budget);
+              }
               complete = false;
               break scan;
             }
-            await append(current, original, text, work, budget);
-            processed += 1;
-          } else current.through = original.id;
+            originals.push(original);
+          } else skipped = original.id;
         }
+        if (originals.length) {
+          await plan(current, originals, signal);
+          await build(current, work, budget);
+          processed += originals.length;
+        }
+        if (skipped !== undefined) current.through = Math.max(current.through ?? -1, skipped);
         cursor = page.next;
       } while (cursor !== undefined);
     }
-    const text = await fit(current, signal, budget);
+    const text = await fitViews(current, signal, budget);
     await save(current, signal);
     if (memoryBytes(text) > current.budget)
       throw new Error("Cake Chat history cannot fit its memory budget");
@@ -356,6 +614,10 @@ export function createDurableChatMemory(
       id + n > current.count
     )
       throw new Error(`No memory line ${id}+${n}`);
+    const pending = current.pending?.jobs.find(
+      (job) => job.id === id && job.n === n && job.entry !== undefined,
+    );
+    if (pending?.entry !== undefined) return node(pending.entry, signal);
     const rootRef = current.forest.find((range) => range.id <= id && range.id + range.n >= id + n);
     if (!rootRef) throw new Error(`No memory line ${id}+${n}`);
     let found = await node(rootRef.entry, signal);

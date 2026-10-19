@@ -1,0 +1,309 @@
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import {
+  createRegistry,
+  defineDoc,
+  defineEntry,
+  Harness,
+  MemoryStorage,
+  UserEntry,
+  type Storage,
+} from "@earendil-works/pi-durable";
+import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, expect, it, vi } from "vitest";
+import { Schema } from "effect";
+import {
+  createDurableChatMemory,
+  type DurableMemoryOptions,
+} from "../../../../src/services/pi-durable/durable-chat-memory";
+import { durableModels } from "../../../fixtures/durable-chat";
+
+const cleanup: Array<() => Promise<unknown>> = [];
+afterEach(async () => {
+  for (const close of cleanup.splice(0).reverse()) await close();
+});
+const signal = () => new AbortController().signal;
+const input = (context: string) => context.split("<input>\n")[1]?.split("\n</input>")[0] ?? "";
+const identify = (context: string) => {
+  const leaf = /compress message (\d+)/.exec(context);
+  const parent = /merge lines (\d+)\+(\d+)/.exec(context);
+  return leaf
+    ? { id: Number(leaf[1]), n: 1 }
+    : { id: Number(parent![1]), n: 2 * Number(parent![2]) };
+};
+async function fixture(
+  summarize: DurableMemoryOptions["summarize"],
+  storage: Storage = new MemoryStorage(),
+  budget = 128_000,
+) {
+  const harness = await Harness.open(
+    storage,
+    {
+      models: durableModels().models,
+      registry: createRegistry(),
+      settings: { contextRetentionMs: 0 },
+    },
+    BACKGROUND_CONTEXT,
+  );
+  cleanup.push(() => harness.close(BACKGROUND_CONTEXT));
+  const root = await harness.root(BACKGROUND_CONTEXT);
+  const memory = createDurableChatMemory(harness, root, storage, {
+    summarize,
+    budget: () => budget,
+  });
+  return {
+    harness,
+    root,
+    memory,
+    append: (text: string) =>
+      root.commit(
+        (tx) =>
+          tx.appendEntry(UserEntry, root.id, {
+            model: [{ role: "user", content: text, timestamp: 1 }],
+          }),
+        BACKGROUND_CONTEXT,
+      ),
+    async nodes() {
+      const nodes = [];
+      let cursor;
+      do {
+        const page = await root.entries({ order: "ascending" }, 64, cursor, BACKGROUND_CONTEXT);
+        nodes.push(...page.items.filter((entry) => entry.kind === "cake.chat-memory-node/v1"));
+        cursor = page.next;
+      } while (cursor !== undefined);
+      return nodes;
+    },
+  };
+}
+
+it("runs eight independent requests, admits a later leaf with seven preceding unbuilt lines, and starts parents only after both children commit", async () => {
+  type Request = { id: number; n: number; context: string; finish(): void };
+  const queued: Request[] = [];
+  const waiters: Array<(request: Request) => void> = [];
+  const held: Request[] = [];
+  let automatic = false;
+  let active = 0;
+  let peak = 0;
+  const next = () =>
+    queued.length
+      ? Promise.resolve(queued.shift()!)
+      : new Promise<Request>((resolve) => waiters.push(resolve));
+  const f = await fixture(async ({ context }) => {
+    const { id, n } = identify(context);
+    const result = Promise.withResolvers<string>();
+    active += 1;
+    peak = Math.max(peak, active);
+    const request = {
+      id,
+      n,
+      context,
+      finish: () => result.resolve(`node-${id}+${n}: ${"s".repeat(300)}`),
+    };
+    held.push(request);
+    if (automatic) request.finish();
+    else {
+      const waiter = waiters.shift();
+      if (waiter) waiter(request);
+      else queued.push(request);
+    }
+    try {
+      return await result.promise;
+    } finally {
+      active -= 1;
+    }
+  });
+  for (let i = 0; i < 10; i += 1) await f.append(`RAW_${i} `.repeat(100));
+  const pending = f.memory.synchronize(signal());
+  const first = [];
+  for (let i = 0; i < 8; i += 1) first.push(await next());
+  expect(first.map((r) => [r.id, r.n])).toEqual(Array.from({ length: 8 }, (_, i) => [i, 1]));
+  expect(active).toBe(8);
+  first[3]!.finish();
+  const ninth = await next();
+  expect(ninth).toMatchObject({ id: 8, n: 1 });
+  expect(ninth.context.split("\n\nCompaction:")[0]).toBe("<chat>\n\n</chat>"); // Leaf 3 is built, but leaf 0 is not.
+  first[1]!.finish();
+  expect(await next()).toMatchObject({ id: 9, n: 1 });
+  first[0]!.finish();
+  const parent = await next();
+  expect(parent).toMatchObject({ id: 0, n: 2 });
+  expect(input(parent.context)).toContain("node-0+1");
+  expect(input(parent.context)).toContain("node-1+1");
+  expect(input(parent.context)).not.toContain("RAW_");
+  const reference = parent.context.split("\n\nCompaction:")[0]!;
+  expect(reference).toContain("0+1|node-0+1");
+  expect(reference).toContain("1+1|node-1+1");
+  expect(reference).not.toContain("3+1|"); // First unbuilt leaf is 2, despite out-of-order completions.
+  automatic = true;
+  for (const request of held) request.finish();
+  const view = await pending;
+  expect(view.sourceCount).toBe(10);
+  expect(peak).toBe(8);
+  const nodes = await f.nodes();
+  expect(nodes).toHaveLength(18);
+  expect(
+    new Set(
+      nodes.map((entry) => {
+        const range = Schema.decodeUnknownSync(Schema.Struct({ id: Schema.Int, n: Schema.Int }))(
+          entry.data,
+        );
+        return `${range.id}+${range.n}`;
+      }),
+    ).size,
+  ).toBe(18);
+  for (let i = 0; i < 10; i += 1)
+    expect((await f.memory.zoom(i, 1, signal())).text).toContain(`RAW_${i} `.repeat(100));
+});
+
+it("persists out-of-order progress through cancellation and SQLite reopen without repeating a completed leaf", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "cake-memory-parallel-"));
+  cleanup.push(() => rm(directory, { recursive: true, force: true }));
+  const database = join(directory, "memory.sqlite");
+  const started = Promise.withResolvers<AbortSignal>();
+  const stored = Promise.withResolvers<void>();
+  const never = Promise.withResolvers<string>();
+  const first = await fixture(
+    async ({ context, signal }) => {
+      if (identify(context).id === 0) {
+        started.resolve(signal);
+        return never.promise;
+      }
+      return `built-B: ${"b".repeat(300)}`;
+    },
+    await openNodeSqliteStorage(database),
+  );
+  await first.append("RAW_A ".repeat(100));
+  await first.append("RAW_B ".repeat(100));
+  const unsubscribe = first.harness.subscribeCommits((publication) => {
+    if (
+      publication.changes.some(
+        (change) => change.type === "entry" && change.value.kind === "cake.chat-memory-node/v1",
+      )
+    )
+      stored.resolve();
+  });
+  const stop = new AbortController();
+  const pending = first.memory.synchronize(stop.signal);
+  const providerSignal = await started.promise;
+  await stored.promise;
+  const failure = expect(pending).rejects.toBeDefined();
+  stop.abort();
+  await failure;
+  expect(providerSignal.aborted).toBe(true);
+  expect(await first.nodes()).toHaveLength(1);
+  unsubscribe();
+  await first.harness.close(BACKGROUND_CONTEXT);
+  cleanup.pop();
+  const summarize = vi.fn<DurableMemoryOptions["summarize"]>(
+    async () => `resumed: ${"r".repeat(300)}`,
+  );
+  const reopened = await fixture(summarize, await openNodeSqliteStorage(database));
+  expect((await reopened.memory.synchronize(signal())).sourceCount).toBe(2);
+  expect(summarize).toHaveBeenCalledTimes(2); // A and AB, never B again.
+  expect(summarize.mock.calls.map(([request]) => input(request.context)).join(" ")).not.toContain(
+    "RAW_B",
+  );
+  expect(await reopened.nodes()).toHaveLength(3);
+  never.resolve("late abandoned output");
+  expect((await reopened.memory.synchronize(signal())).text).not.toContain("late abandoned output");
+});
+
+it.each([4_000, 40_000])(
+  "maintains separate 16/32 KB compaction references and binary view/zoom invariants across source windows (budget %i)",
+  async (budget) => {
+    const summarize = vi.fn<DurableMemoryOptions["summarize"]>(async ({ context }) => {
+      const { id, n } = identify(context);
+      return `built-${id}+${n}: ${"s".repeat(480)}`;
+    });
+    const f = await fixture(summarize, new MemoryStorage(), budget);
+    for (let i = 0; i < 96; i += 1) await f.append(`RAW_${i} `.repeat(100));
+    const view = await f.memory.synchronize(signal());
+    expect(view.sourceCount).toBe(96);
+    expect(view.bytes).toBeLessThanOrEqual(budget);
+    expect(view.partCount).toBeLessThan(96);
+    let through = 0;
+    for (const match of view.text.matchAll(/^(\d+)\+(\d+)\|/gm)) {
+      const id = Number(match[1]);
+      const n = Number(match[2]);
+      expect(id).toBe(through);
+      expect(id % n).toBe(0);
+      expect(Number.isInteger(Math.log2(n))).toBe(true);
+      through += n;
+      if (n > 1) {
+        const zoomed = await f.memory.zoom(id, n, signal());
+        expect(zoomed.text.split("\n").map((line) => line.split("|")[0])).toEqual([
+          `${id}+${n / 2}`,
+          `${id + n / 2}+${n / 2}`,
+        ]);
+      }
+    }
+    expect(through).toBe(96);
+    const references = summarize.mock.calls.map(
+      ([request]) => request.context.split("\n\nCompaction:")[0]!,
+    );
+    expect(Math.max(...references.map((text) => Buffer.byteLength(text)))).toBeLessThanOrEqual(
+      32_000,
+    );
+    const count = summarize.mock.calls.length;
+    expect((await f.memory.synchronize(signal())).text).toBe(view.text);
+    expect(summarize).toHaveBeenCalledTimes(count); // No raw-history reprocessing or reference refit on no-op reopen/read.
+  },
+);
+
+it("migrates a version-one checkpoint without rebuilding nodes, originals or the saved view", async () => {
+  const NodeEntry = defineEntry<{ id: number; n: number; text: string; original: number }>(
+    "cake.chat-memory-node/v1",
+  );
+  const Legacy = defineDoc<{
+    through: number;
+    count: number;
+    budget: number;
+    shrinking: boolean;
+    forest: { id: number; n: number; entry: number }[];
+    parts: { id: number; n: number; entry: number; ancestors: number[] }[];
+  }>({
+    kind: "cake.chat-memory-state",
+    version: 1,
+    scope: "conversation",
+    history: "latest",
+    fork: "initial",
+    initial: () => ({
+      through: 0,
+      count: 0,
+      budget: 4_000,
+      shrinking: false,
+      forest: [],
+      parts: [],
+    }),
+  });
+  const directory = await mkdtemp(join(tmpdir(), "cake-memory-v1-"));
+  cleanup.push(() => rm(directory, { recursive: true, force: true }));
+  const database = join(directory, "memory.sqlite");
+  const first = await fixture(async () => "unused", await openNodeSqliteStorage(database), 4_000);
+  const original = await first.append("Persisted original");
+  await first.root.commit(async (tx) => {
+    const stored = await tx.appendEntry(NodeEntry, first.root.id, {
+      data: { id: 0, n: 1, text: "user: historical line", original: original.id },
+    });
+    Object.assign(await tx.doc(Legacy, first.root.id), {
+      through: original.id,
+      count: 1,
+      budget: 4_000,
+      shrinking: false,
+      forest: [{ id: 0, n: 1, entry: stored.id }],
+      parts: [{ id: 0, n: 1, entry: stored.id, ancestors: [] }],
+    });
+  }, BACKGROUND_CONTEXT);
+  await first.harness.close(BACKGROUND_CONTEXT);
+  cleanup.pop();
+  const summarize = vi.fn(async () => "must not run");
+  const reopened = await fixture(summarize, await openNodeSqliteStorage(database), 4_000);
+  expect((await reopened.memory.synchronize(signal())).text).toBe(
+    "<chat>\n0+1|user: historical line\n</chat>",
+  );
+  expect(summarize).not.toHaveBeenCalled();
+  expect((await reopened.memory.zoom(0, 1, signal())).text).toContain("Persisted original");
+  expect(await reopened.nodes()).toHaveLength(1);
+});

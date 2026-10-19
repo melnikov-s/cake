@@ -2,8 +2,9 @@ import type { CakeChatPreferences } from "../application/application-data";
 import type { CakeModelChoice } from "../model-presets/cake-model-selection";
 
 export const defaultCakeChatPreferences = (): CakeChatPreferences => ({
-  // Roughly 10k tokens for English summaries; bytes are the stable cross-model limit.
-  memoryViewBytes: 40_000,
+  // Public OptMem chat-memory specification: 128 KB upper / 64 KB lower view.
+  // Admission may lower this to fit the selected model's actual token window.
+  memoryViewBytes: 128_000,
   instructions: "",
 });
 

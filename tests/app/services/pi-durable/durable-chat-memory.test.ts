@@ -30,7 +30,7 @@ afterEach(async () => {
 const signal = () => new AbortController().signal;
 const inputText = (context: string) =>
   context.slice(context.indexOf("<input>\n") + 8, context.lastIndexOf("\n</input>"));
-async function fixture(storage: Storage = new MemoryStorage()) {
+async function fixture(storage: Storage = new MemoryStorage(), budget = 4_000) {
   const harness = await Harness.open(
     storage,
     {
@@ -48,7 +48,7 @@ async function fixture(storage: Storage = new MemoryStorage()) {
     return `${marker ? `summary-${marker}` : "merged-summary"}: ${"s".repeat(290)}`;
   });
   const memory = createDurableChatMemory(harness, root, storage, {
-    budget: () => 4_000,
+    budget: () => budget,
     summarize,
   });
   return {
@@ -66,9 +66,14 @@ async function fixture(storage: Storage = new MemoryStorage()) {
       );
     },
     async nodes() {
-      return (
-        await root.entries({ order: "ascending" }, 64, undefined, BACKGROUND_CONTEXT)
-      ).items.filter((entry) => entry.kind === "cake.chat-memory-node/v1");
+      const entries = [];
+      let cursor;
+      do {
+        const page = await root.entries({ order: "ascending" }, 64, cursor, BACKGROUND_CONTEXT);
+        entries.push(...page.items.filter((entry) => entry.kind === "cake.chat-memory-node/v1"));
+        cursor = page.next;
+      } while (cursor !== undefined);
+      return entries;
     },
     view: () => memory.synchronize(signal()),
   };
@@ -94,7 +99,7 @@ it("persists one-original slices, indexes only new raw input, and merges existin
   expect((await f.memory.zoom(0, 1, signal())).text).toContain("RAW_A ".repeat(100));
 });
 
-it("keeps per-original atomic progress on mid-merge failure and resumes across SQLite reopen without replaying indexed originals", async () => {
+it("persists each built node on mid-merge failure and resumes across SQLite reopen without rebuilding leaves or children", async () => {
   const directory = await mkdtemp(join(tmpdir(), "cake-memory-merge-"));
   cleanup.push(() => rm(directory, { recursive: true, force: true }));
   const database = join(directory, "memory.sqlite");
@@ -109,45 +114,49 @@ it("keeps per-original atomic progress on mid-merge failure and resumes across S
     .mockResolvedValueOnce("merged-CD: " + "m".repeat(290))
     .mockRejectedValueOnce(new Error("fixture failure at final carry"));
   await expect(first.view()).rejects.toMatchObject({ reason: "completion-failed" });
-  expect(await first.nodes()).toEqual(committed);
+  expect(await first.nodes()).toHaveLength(committed.length + 2);
   expect((await first.memory.zoom(2, 1, signal())).text).toContain("RAW_C");
-  await expect(first.memory.zoom(3, 1, signal())).rejects.toThrow("No memory line");
+  expect((await first.memory.zoom(3, 1, signal())).text).toContain("RAW_D");
   await first.harness.close(BACKGROUND_CONTEXT);
   cleanup.pop();
 
   const reopened = await fixture(await openNodeSqliteStorage(database));
   expect((await reopened.view()).sourceCount).toBe(4);
-  expect(reopened.summarize).toHaveBeenCalledTimes(3); // D's leaf and two summary-only carries.
+  expect(reopened.summarize).toHaveBeenCalledOnce(); // Only the unfinished root, from built children.
   const payloads = reopened.summarize.mock.calls.map(([input]) => inputText(input.context));
-  expect(payloads[0]).toContain("RAW_D");
-  expect(payloads.slice(1).join(" ")).not.toContain("RAW_");
-  expect(payloads.join(" ")).not.toMatch(/RAW_[ABC]/);
+  expect(payloads.join(" ")).not.toContain("RAW_");
   expect(await reopened.nodes()).toHaveLength(7);
   expect((await reopened.memory.zoom(0, 1, signal())).text).toContain("RAW_A");
   expect((await reopened.memory.zoom(3, 1, signal())).text).toContain("RAW_D");
   await reopened.view();
-  expect(reopened.summarize).toHaveBeenCalledTimes(3);
+  expect(reopened.summarize).toHaveBeenCalledOnce();
 });
 
-it.each(["", "界".repeat(171)])(
-  "rejects empty or oversized UTF-8 output after one full-input call without truncation or partial publication (%#)",
-  async (output) => {
-    const f = await fixture();
-    await f.append("short original");
-    expect((await f.view()).sourceCount).toBe(1);
-    const before = await f.nodes();
-    await f.append("RAW_B ".repeat(100));
-    f.summarize.mockResolvedValue(output);
-    await expect(f.view()).rejects.toMatchObject({
-      reason: output ? "oversized-summary" : "empty-summary",
-    });
-    expect(f.summarize).toHaveBeenCalledOnce();
-    expect(await f.nodes()).toEqual(before);
-    f.summarize.mockResolvedValue("valid summary");
-    expect((await f.view()).sourceCount).toBe(2);
-    expect((await f.memory.zoom(1, 1, signal())).text).toContain("RAW_B ".repeat(100));
-  },
-);
+it("rejects empty output without truncation or a placeholder and retries at the next explicit opportunity", async () => {
+  const f = await fixture();
+  await f.append("RAW_B ".repeat(100));
+  f.summarize.mockResolvedValue("");
+  await expect(f.view()).rejects.toMatchObject({ reason: "empty-summary" });
+  expect(f.summarize).toHaveBeenCalledOnce();
+  expect(await f.nodes()).toHaveLength(0);
+  f.summarize.mockResolvedValue("valid summary");
+  expect((await f.view()).sourceCount).toBe(1);
+  expect((await f.memory.zoom(0, 1, signal())).text).toContain("RAW_B ".repeat(100));
+});
+
+it("uses a 512-byte ruler and same-conversation shortening feedback, retaining the shortest of five attempts", async () => {
+  const f = await fixture();
+  await f.append("RAW_A ".repeat(100));
+  const shortest = "界".repeat(171); // 513 bytes: spec permits slight oversize after five attempts.
+  for (const text of ["a".repeat(700), "b".repeat(600), shortest, "c".repeat(650), "d".repeat(800)])
+    f.summarize.mockResolvedValueOnce(text);
+  expect((await f.view()).sourceCount).toBe(1);
+  expect(f.summarize.mock.calls.map(([input]) => input.previous?.length)).toEqual([0, 2, 4, 6, 8]);
+  expect(f.summarize.mock.calls[0]![0].context).toContain("-".repeat(512));
+  expect(f.summarize.mock.calls[3]![0].previous?.at(-1)?.text).toContain("513 bytes");
+  expect((await f.nodes())[0]?.data).toMatchObject({ text: shortest });
+  expect((await f.memory.zoom(0, 1, signal())).text).toContain("RAW_A ".repeat(100));
+});
 
 it("accepts exactly 512 UTF-8 bytes and enforces that bound on both leaves and merges", async () => {
   const f = await fixture();
@@ -170,8 +179,8 @@ it("bounds application calls across an entire catch-up and preserves committed o
   await expect(
     f.memory.synchronize(work.signal, undefined, undefined, { work }),
   ).rejects.toMatchObject({ reason: "work-allowance" });
-  expect(f.summarize).toHaveBeenCalledTimes(2); // A committed; B's carry cannot begin.
-  expect(await f.nodes()).toHaveLength(1);
+  expect(f.summarize).toHaveBeenCalledTimes(2); // Both independent leaves committed; their parent resumes later.
+  expect(await f.nodes()).toHaveLength(2);
   expect(work.metrics().calls).toBe(2);
   expect((await f.view()).sourceCount).toBe(2);
   expect(

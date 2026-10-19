@@ -25,7 +25,7 @@ it("persists the active context limit, memory budget and dedicated instructions 
   try {
     const user = userEvent.setup();
     const budget = screen.getByRole("combobox", { name: "Cake Chat history-view budget" });
-    expect(budget).toHaveProperty("value", "40000");
+    expect(budget).toHaveProperty("value", "128000");
     await user.selectOptions(budget, "10000");
     await waitFor(() =>
       expect(save).toHaveBeenCalledWith(

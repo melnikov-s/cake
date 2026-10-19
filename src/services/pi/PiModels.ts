@@ -213,6 +213,10 @@ export const makePiModels = (adapter: PiModelsAdapter): PiModels["Service"] => {
           : new PiModelCompletionError({ message: "Bounded model completion timed out" }),
       ),
     );
+    if (decoded.chat && text.length > decoded.maximumOutputCharacters)
+      return yield* new PiModelCompletionError({
+        message: "Memory completion exceeded its transport output limit",
+      });
     return text.slice(0, decoded.maximumOutputCharacters);
   });
 

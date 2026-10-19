@@ -131,6 +131,92 @@ describe("PiModels", () => {
     },
   );
 
+  vitestIt(
+    "sends the shared memory system/tools prefix and real assistant/user shortening turns without a utility wrapper",
+    async () => {
+      const directory = await mkdtemp(join(tmpdir(), "cake-memory-prefix-"));
+      const auth = vi
+        .spyOn(ModelRuntime.prototype, "checkAuth")
+        .mockResolvedValue({ type: "api_key", source: "fixture" });
+      const available = vi
+        .spyOn(ModelRuntime.prototype, "getAvailable")
+        .mockImplementation(async function (this: ModelRuntime, provider) {
+          return this.getModels(provider);
+        });
+      const tools = [
+        {
+          name: "zoom",
+          description: "Open original detail",
+          parameters: { type: "object", properties: {} },
+        },
+      ];
+      const previous = [
+        { role: "assistant" as const, text: "An oversized first line" },
+        { role: "user" as const, text: "Too long: shorten the same input" },
+      ];
+      const complete = vi
+        .spyOn(ModelRuntime.prototype, "completeSimple")
+        .mockImplementation(async (model, context) => {
+          assert.equal(context.systemPrompt, "Stable coordinator system and compaction rules");
+          assert.deepEqual(context.tools, tools);
+          assert.deepEqual(
+            context.messages.map((message) => message.role),
+            ["user", "assistant", "user"],
+          );
+          assert.equal(
+            context.messages[0]?.content,
+            "<chat>built prefix</chat>\\nCompaction: compress message 4",
+          );
+          assert.deepEqual(context.messages[1]?.content, [
+            { type: "text", text: previous[0]!.text },
+          ]);
+          assert.equal(context.messages[2]?.content, previous[1]!.text);
+          return {
+            role: "assistant",
+            content: [{ type: "text", text: "Fits now" }],
+            api: model.api,
+            provider: model.provider,
+            model: model.id,
+            usage: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 0,
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+            },
+            stopReason: "stop",
+            timestamp: 0,
+          };
+        });
+      try {
+        const answer = await Effect.runPromise(
+          Effect.gen(function* () {
+            return yield* (yield* PiModels).complete({
+              selection: {
+                provider: "openai",
+                modelId: "gpt-5-mini",
+                thinkingLevel: "low",
+                fastMode: false,
+              },
+              instructions: "Stable coordinator system and compaction rules",
+              context: "<chat>built prefix</chat>\\nCompaction: compress message 4",
+              chat: { tools, previous },
+              maximumOutputCharacters: 4_096,
+              timeoutMs: 120_000,
+            });
+          }).pipe(Effect.provide(makePiModelsLive(directory))),
+        );
+        assert.equal(answer, "Fits now");
+      } finally {
+        complete.mockRestore();
+        available.mockRestore();
+        auth.mockRestore();
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
   vitestIt("supplies and persists Pi's installation ID for provider login", async () => {
     const directory = await mkdtemp(join(tmpdir(), "cake-provider-device-id-"));
     const deviceIds: Array<string | undefined> = [];

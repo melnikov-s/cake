@@ -6,8 +6,10 @@ import {
 } from "@earendil-works/chord/context";
 
 // SDK-boundary budgets include queue wait, storage/model resolution and every completion.
-// A completion gets at most 20s, and never more than the enclosing work allowance.
-// Counts bound application invocations, not transport attempts internal to a provider.
+// Provider calls keep the existing utility boundary's 120s ceiling, never more
+// than the enclosing work allowance. These are cancellable runtime allowances,
+// not node/retry policy: the public OptMem chat spec permits five size attempts.
+// Optional call allowances count application invocations, not hidden transport retries.
 export class DurableMemoryError extends Schema.TaggedError<DurableMemoryError>()(
   "DurableMemoryError",
   {
@@ -16,14 +18,13 @@ export class DurableMemoryError extends Schema.TaggedError<DurableMemoryError>()
       "completion-failed",
       "completion-allowance",
       "empty-summary",
-      "oversized-summary",
     ]),
   },
 ) {}
 
-export const MEMORY_CALL_MS = 20_000;
-export const MEMORY_FOREGROUND_WORK = { milliseconds: 60_000, calls: 32 };
-export const MEMORY_BACKGROUND_WORK = { milliseconds: 30_000, calls: 16 };
+export const MEMORY_CALL_MS = 120_000;
+export const MEMORY_FOREGROUND_WORK = { milliseconds: 60_000, calls: Infinity };
+export const MEMORY_BACKGROUND_WORK = { milliseconds: 30_000, calls: Infinity };
 
 export function durableMemoryWork(parent: AbortSignal, limits = MEMORY_FOREGROUND_WORK) {
   const signal = AbortSignal.any([parent, AbortSignal.timeout(limits.milliseconds)]);

@@ -69,10 +69,26 @@ export const ModelSelection = Schema.Struct({
   fastMode: Schema.Boolean,
 });
 
+/** Plain provider context for memory compactions sharing the coordinator prefix. */
+export const CompletionChat = Schema.Struct({
+  tools: Schema.Array(
+    Schema.Struct({
+      name: Schema.String,
+      description: Schema.String,
+      parameters: Schema.Record(Schema.String, Schema.Json),
+    }),
+  ),
+  previous: Schema.Array(
+    Schema.Struct({ role: Schema.Literals(["user", "assistant"]), text: Schema.String }),
+  ),
+});
+export interface CompletionChat extends Schema.Schema.Type<typeof CompletionChat> {}
+
 export const BoundedCompletionInput = Schema.Struct({
   selection: ModelSelection,
   instructions: nonEmptyBoundedString(32_000),
   context: Schema.String.check(Schema.isMaxLength(262_144)),
+  chat: Schema.optionalKey(CompletionChat),
   maximumOutputCharacters: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 32_000 })),
   timeoutMs: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 120_000 })),
 });

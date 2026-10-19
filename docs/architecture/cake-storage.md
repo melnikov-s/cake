@@ -435,43 +435,79 @@ model output room (by default up to 16,384 tokens, capped by model output capaci
 the request output cap uses that same reserve.
 Side-chat requests retain their separate SDK behavior rather than mutating the root head.
 
-Incremental memory maintenance is separate from active-context replacement. Successful
-terminal assistant commits coalesce into one pending cutoff; once the run is idle,
-maintenance indexes newly committed originals through that cutoff without changing the
-active head or cache evidence. Reopen offers the same opportunity using the persisted
-cursor/tree. Error, aborted and tool-use responses do not independently rearm maintenance.
-There is no expiry timer, polling worker, or unbounded idle catch-up loop. Each opportunity
-allows at most 32 originals, 16 application completion calls and 30 seconds; unfinished
-work waits for another successful run, reopen, or foreground preparation. The serialized
-owner yields between originals, and a foreground provider request aborts an in-flight
-maintenance completion. Closure also cancels it and drains ownership. These bounds move
-work off the response path but do not remove its provider cost, and sustained large runs
-or slow models can still leave a backlog.
+#### OptMem whole-chat memory
 
-Foreground preparation has one 60-second wall-clock allowance starting at its first
-reset (including storage/model resolution, worker wait, and any overflow recovery), and
-at most 32 application completion calls. Each completion has a 20-second ceiling within
-its enclosing allowance. Cancellation propagates to the provider; even a callback that
-ignores cancellation cannot retain the index owner or publish a late result. These are
-application-invocation bounds, not counts of hidden transport/provider attempts, nor a
-deadline for the coordinator response itself. The enclosing deadline also covers time
-between the first reset and overflow recovery. Storage operations rely on the SDK's
-context cancellation; these are not hard real-time guarantees for uninterruptible I/O.
+The kernel reference is [VictorTaelin/OptMem](https://github.com/VictorTaelin/OptMem/tree/1fb164cf39028047781f72ac3bb1e5a691c1dcb0)
+at revision `1fb164cf39028047781f72ac3bb1e5a691c1dcb0` (`memo` and README).
+That standalone kernel records selected 280-byte notes, builds aligned binary ranges,
+and computes an alpha-refit reading view. Cake uses the author's
+[public chat-memory specification](https://gist.github.com/VictorTaelin/91837951a5ce5b38f341ec1ba1df6449/3c190e06f34aba0c69f49042c526093269604935)
+at revision `3c190e06f34aba0c69f49042c526093269604935` for its **whole-chat adaptation**:
+512-byte leaf/pair summaries, a persisted byte-budget sawtooth view and concurrent
+background compactions. This is not a claim that the standalone CLI has those policies,
+nor evidence of a public implementation of the author's chat application.
 
-Each oversized leaf or summary-pair merge gets one full-input completion, targeting 384
-UTF-8 bytes with a hard 512-byte output maximum. Empty or oversized output fails the
-unfinished original atomically: no truncation, shortest-oversized fallback, placeholder,
-or five-attempt replay. Previously persisted oversized nodes are not rewritten; newly
-created nodes obey the limit, including merges that reuse those old summaries. Originals
-and zoom remain authoritative. A leaf and its carry-chain merges commit together with
-the cursor; an interrupted unfinished chain may repeat, but indexed raw originals do not.
-A replacement active head publishes only after its complete memory view is persisted;
-failed preparation retains the prior head and clears activity. Preparation errors use
-non-provider failure text so Durable's generic provider retry policy cannot replay them,
-and do not immediately rearm maintenance. A later explicit submission can continue from
-committed progress. Genuine coordinator-provider transient failures retain normal retries.
-Failure diagnostics include only fixed reason labels, application-call counts and elapsed
-time, never source bodies or raw summarizer diagnostics.
+Only SDK originals (`pi.user`, `pi.assistant`, `pi.tool-result`) enter the tree.
+Pi remains the authority for exact originals, images and reasoning; reasoning is not
+included in the summary index. SDK entries are the stable source/zoom units, retaining
+existing range identities rather than rewriting history into a second log. Cake keeps
+original tool output instead of destructively clipping it. Worker/report provenance and
+separately durable handling obligations remain distinct from human-authored input.
+
+The default view grows to 128,000 UTF-8 bytes, then consolidates toward 64,000. Explicit
+user budgets and model-window admission can lower this. The most-due built sibling pair
+wins, using age from the pair's last message divided by its child size, oldest first on
+ties. The exact view and ancestor references persist; restart does not refit it. A separate
+compaction reference view uses a 32,000/16,000-byte sawtooth and reconsolidates when the
+chat view consolidates. It ends before a leaf, or at a merge's end, and stops at the first
+unbuilt original. It never includes future text, raw unsummarized fragments or placeholders.
+
+A persisted, bounded source window (up to 64 scanned entries) assigns chronological range
+IDs. Ready queues permit up to eight independent requests; a leaf starts with fewer than
+eight preceding unbuilt leaves, and parents start only after both children are committed.
+The single persistence owner does not serialize HTTP requests. Each completed node and its
+DAG checkpoint commit atomically; the built-prefix cursor/view advances in order. Version
+two checkpoints add pending jobs and the separate reference view without rewriting existing
+nodes or originals. Reopen retries unfinished nodes, not their already committed children.
+The bounded working window limits live state; dependencies drain before admitting another
+source window. Reads and zoom lazily retrieve immutable entries, not a lifetime node cache.
+
+Sources/pairs within 512 bytes pass through unchanged. Oversized nodes use the shared
+coordinator system prompt and tool definitions (tools are never executed by the compactor),
+a 512-dash ruler and up to five total attempts. Saved active heads predating the shared
+compaction section receive its data/provenance safeguards in the task until an ordinary
+request updates the system prefix; maintenance never rewrites that retained head. Shortening feedback uses actual byte counts,
+a UTF-8-safe cut marker, and real assistant/user turns in the same request conversation.
+After five oversized responses the shortest complete response is retained, as specified;
+it can exceed 512 bytes. The view measures actual sizes. Empty responses and transport
+overflow fail explicitly, never publish a placeholder or truncate a stored answer. The
+summarization-model setting still resolves through the existing provider/utility selection,
+not a hard-coded provider.
+
+Incremental maintenance is independent of Cake's deliberate warm-context retention.
+Successful terminal assistant commits coalesce into one pending cutoff; idle maintenance
+indexes through it without replacing the active head or cache evidence. Reopen resumes
+persisted jobs. Error, aborted and tool-use responses do not independently rearm maintenance.
+There is no expiry timer, polling worker, or automatic failed-call retry loop: a later
+successful run, reopen or explicit foreground preparation offers another opportunity.
+
+Runtime integration retains a 30-second background and 60-second foreground allowance,
+including worker wait, storage/model resolution and overflow recovery. The utility provider's
+120-second per-call ceiling is capped by that enclosing allowance. Production work has no
+separate call-count or original-count allowance; ready-node concurrency and cancellable
+wall-clock work bound execution.
+Stop, foreground preemption and closure cancel outstanding calls and drain the commit owner;
+even a callback that ignores cancellation cannot publish a late result. Storage relies on
+SDK context cancellation, not a hard real-time guarantee for uninterruptible I/O. These
+lifecycle allowances can pause a large catch-up before completion; progress remains durable.
+
+A replacement active head publishes only after the complete requested memory view persists.
+Preparation failure retains the previous head, clears activity and uses non-provider error
+text so Durable cannot replay it through generic coordinator retries. Genuine coordinator
+provider failures retain their normal retry policy. Diagnostics expose fixed reason labels,
+application-call counts and elapsed time, never source bodies or raw summarizer diagnostics.
+Five size attempts and eight concurrent requests preserve the specified algorithm but can
+increase provider cost; concurrency is a latency improvement, not a request-count reduction.
 
 The Pi Durable SDK supplies process-crash recovery, not a newest-commit power-loss
 guarantee. Replay-unsafe Cake mutations require inspecting live state rather than

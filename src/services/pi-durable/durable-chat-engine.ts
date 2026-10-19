@@ -149,9 +149,9 @@ export async function openDurableChatEngine(options: {
     return awaitWithContext(result, withAbortSignal(signal, BACKGROUND_CONTEXT));
   };
   // One coalesced high-water mark, not one catch-up job per commit. Maintenance
-  // runs only between coordinator runs, yields ownership after each original, and
-  // stops after 32 originals / 16 calls / 30s. A later original or reopen offers
-  // another allowance; failure never spins an automatic retry loop. Keep this
+  // runs only between coordinator runs with a 30s lifecycle allowance and up to
+  // eight dependency-ready calls. A later original or reopen resumes persisted
+  // nodes; failure never spins an automatic retry loop. Keep this
   // inside the SDK's Promise/context lifecycle: Harness.close must cancel/drain
   // this same commit owner before closing storage, not an independent scheduler.
   let pendingCutoff: EntryId | undefined;
@@ -173,12 +173,8 @@ export async function openDurableChatEngine(options: {
         AbortSignal.any([closing.signal, maintenanceAbort.signal]),
         MEMORY_BACKGROUND_WORK,
       );
-      for (let count = 0; count < 32; count += 1) {
-        if (foreground > 0 || (await harness.snapshot(LiveDoc, root.id, BACKGROUND_CONTEXT))?.run)
-          break;
-        const view = await index(work.signal, cutoff, undefined, { maxOriginals: 1, work });
-        if (view.complete) break;
-      }
+      if (foreground === 0 && !(await harness.snapshot(LiveDoc, root.id, BACKGROUND_CONTEXT))?.run)
+        await index(work.signal, cutoff, undefined, { work });
     })()
       .catch((error: unknown) => {
         if (!closing.signal.aborted && !maintenanceAbort?.signal.aborted)
