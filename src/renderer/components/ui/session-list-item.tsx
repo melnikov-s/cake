@@ -94,7 +94,7 @@ export const SessionListItem = observer(function SessionListItem({
   const isFamilyParent = Boolean(session.familyChildSessionIds?.length);
   const isFamilyChild =
     Boolean(session.familyParentSessionId) && session.familyParentSessionId !== session.sessionId;
-  const canResolve = !activity && !isFamilyChild && Boolean(onResolve);
+  const canResolve = (!activity || activity === "unread") && !isFamilyChild && Boolean(onResolve);
   const canSetLabels = !session.draft && !resolved && Boolean(onSetLabels);
   const branch = session.draft
     ? undefined
@@ -111,7 +111,7 @@ export const SessionListItem = observer(function SessionListItem({
       data-navigation-active={selected}
       data-family-role={isFamilyChild ? "child" : isFamilyParent ? "parent" : "root"}
       className={cn(
-        "session-item group relative grid min-h-11 w-full items-center rounded-md text-[13px] select-none transition-colors duration-200 ease-out motion-reduce:transition-none",
+        "session-item group group/session relative grid min-h-11 w-full items-center rounded-md text-[13px] select-none transition-colors duration-200 ease-out motion-reduce:transition-none",
         focusMode && "min-h-14 text-sm [&_svg]:size-5",
         focusMode && charactersEnabled && "[&_[data-slot=avatar]]:size-7",
         avatarsEnabled
@@ -292,27 +292,34 @@ export const SessionListItem = observer(function SessionListItem({
           }
           trailing={
             <div className="session-meta relative flex h-full w-8 shrink-0 items-center justify-center">
-              {activity ? (
-                <SessionActivityIndicator activity={activity} />
-              ) : (
-                canResolve && (
-                  <IconButton
-                    className={cn(
-                      "session-resolve-action size-6 flex items-center justify-center rounded transition-opacity",
-                      selected
-                        ? "text-primary/80 opacity-100 hover:bg-primary/10 hover:text-primary"
-                        : "absolute inset-0 m-auto text-muted-foreground opacity-0 hover:bg-sidebar-hover hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100",
-                    )}
-                    tooltip={resolved ? "Restore" : "Resolve"}
-                    ariaLabel={`${resolved ? "Restore" : "Resolve"} ${session.title}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onResolve?.(session.sessionId, !resolved);
-                    }}
-                  >
-                    {resolved ? <RestoreIcon /> : <ResolveIcon />}
-                  </IconButton>
-                )
+              {activity && (
+                <span
+                  className={cn(
+                    "flex items-center justify-center",
+                    canResolve &&
+                      "group-hover/session:opacity-0 group-focus-within/session:opacity-0",
+                  )}
+                >
+                  <SessionActivityIndicator activity={activity} />
+                </span>
+              )}
+              {canResolve && (
+                <IconButton
+                  className={cn(
+                    "session-resolve-action absolute inset-0 m-auto size-6 flex items-center justify-center rounded transition-opacity",
+                    selected && !activity
+                      ? "text-primary/80 opacity-100 hover:bg-primary/10 hover:text-primary"
+                      : "text-muted-foreground opacity-0 hover:bg-sidebar-hover hover:text-foreground group-hover/session:opacity-100 group-focus-within/session:opacity-100",
+                  )}
+                  tooltip={resolved ? "Restore" : "Resolve"}
+                  ariaLabel={`${resolved ? "Restore" : "Resolve"} ${session.title}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onResolve?.(session.sessionId, !resolved);
+                  }}
+                >
+                  {resolved ? <RestoreIcon /> : <ResolveIcon />}
+                </IconButton>
               )}
             </div>
           }

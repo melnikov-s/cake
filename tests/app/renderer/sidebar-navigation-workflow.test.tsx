@@ -191,7 +191,7 @@ describe("Sidebar navigation workflow", () => {
       .getByRole("button", { name: /^Renamed work / })
       .closest<HTMLElement>(".session-item")!;
     expect(within(unreadRow).getByRole("img", { name: "Ready, unread" })).toBeDefined();
-    expect(within(unreadRow).queryByRole("button", { name: "Resolve Renamed work" })).toBeNull();
+    expect(within(unreadRow).getByRole("button", { name: "Resolve Renamed work" })).toBeDefined();
     expect(unreadRow.querySelector("time")?.dateTime).toBe(renamed.modifiedAt);
     await context(screen.getByRole("button", { name: /^Renamed work / }));
     await waitFor(() =>
