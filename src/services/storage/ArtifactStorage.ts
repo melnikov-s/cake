@@ -50,6 +50,12 @@ interface ArtifactCollectionStats {
   readonly blobsRemoved: number;
 }
 
+interface ResolvedArtifactLink {
+  readonly revision: ArtifactRevision;
+  readonly link: ArtifactLink;
+  readonly latestRevision: ArtifactRevisionNumber;
+}
+
 export interface ArtifactStorageService {
   readonly readState: (
     lineageId: ArtifactLineageId,
@@ -83,9 +89,10 @@ export interface ArtifactStorageService {
     target: ArtifactLinkTarget,
     lineageId: ArtifactLineageId,
   ) => Effect.Effect<void, ArtifactStorageError>;
+  /** Select links synchronously and resolve their blobs/metadata from one locked catalog snapshot. */
   readonly resolveLinks: (
-    target: ArtifactLinkTarget,
-  ) => Effect.Effect<ReadonlyArray<ArtifactRevision>, ArtifactStorageError>;
+    selectLinks: (links: ReadonlyArray<ArtifactLink>) => ReadonlyArray<ArtifactLink>,
+  ) => Effect.Effect<ReadonlyArray<ResolvedArtifactLink>, ArtifactStorageError>;
   readonly removeTargetLinks: (
     target: ArtifactLinkTarget,
   ) => Effect.Effect<void, ArtifactStorageError>;

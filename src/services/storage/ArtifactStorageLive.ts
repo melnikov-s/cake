@@ -1040,34 +1040,34 @@ export const makeArtifactStorageLive = (root: string) =>
           }),
         ),
       );
-      const resolveLinks = Effect.fn("ArtifactStorage.resolveLinks")((target) =>
-        lock.withPermits(1)(
-          Effect.gen(function* () {
-            const catalog = yield* loadUnlocked();
-            const links = catalog.links.filter(
-              (candidate) => targetKey(candidate.target) === targetKey(target),
-            );
-            return yield* Effect.forEach(links, (link) => {
-              const lineage = catalog.lineages.find((candidate) => candidate.id === link.lineageId);
-              const revision =
-                link.selection.mode === "pinned"
-                  ? link.selection.revision
-                  : lineage?.latestRevision;
-              if (revision === undefined)
-                return storageError("resolveLinks", `Missing lineage ${link.lineageId}`);
-              return readRevisionUnlocked(catalog, link.lineageId, revision).pipe(
-                Effect.flatMap((value) =>
-                  value === undefined
-                    ? storageError(
-                        "resolveLinks",
-                        `Missing revision ${link.lineageId}@r${revision}`,
-                      )
-                    : Effect.succeed(value),
-                ),
+      const resolveLinks = Effect.fn("ArtifactStorage.resolveLinks")(
+        (selectLinks: (links: ReadonlyArray<ArtifactLink>) => ReadonlyArray<ArtifactLink>) =>
+          lock.withPermits(1)(
+            Effect.gen(function* () {
+              const catalog = yield* loadUnlocked();
+              return yield* Effect.forEach(
+                selectLinks(catalog.links),
+                Effect.fn("ArtifactStorage.resolveLink")(function* (link: ArtifactLink) {
+                  const lineage = catalog.lineages.find(
+                    (candidate) => candidate.id === link.lineageId,
+                  );
+                  if (!lineage)
+                    return yield* storageError("resolveLinks", `Missing lineage ${link.lineageId}`);
+                  const revision =
+                    link.selection.mode === "pinned"
+                      ? link.selection.revision
+                      : lineage.latestRevision;
+                  const value = yield* readRevisionUnlocked(catalog, link.lineageId, revision);
+                  if (!value)
+                    return yield* storageError(
+                      "resolveLinks",
+                      `Missing revision ${link.lineageId}@r${revision}`,
+                    );
+                  return { revision: value, link, latestRevision: lineage.latestRevision };
+                }),
               );
-            });
-          }),
-        ),
+            }),
+          ),
       );
       const removeTargetLinks = Effect.fn("ArtifactStorage.removeTargetLinks")((target) =>
         lock.withPermits(1)(

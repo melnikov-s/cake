@@ -38,6 +38,7 @@ export interface PublishArtifactInput extends CreateArtifactInput {
 export interface EffectiveArtifact {
   readonly revision: ArtifactRevision;
   readonly link: ArtifactLink;
+  readonly latestRevision: ArtifactRevisionNumber;
 }
 
 const sameTarget = (left: ArtifactLinkTarget, right: ArtifactLinkTarget) =>
@@ -55,20 +56,28 @@ const familyTargetForSession = Effect.fn("Artifacts.familyTargetForSession")(fun
     : ({ type: "family", familyId: family.familyId } satisfies ArtifactLinkTarget);
 });
 
+const selectEffectiveLinks = (
+  links: ReadonlyArray<ArtifactLink>,
+  sessionId: string,
+  familyTarget: ArtifactLinkTarget | undefined,
+): ReadonlyArray<ArtifactLink> => {
+  const directTarget = { type: "session", sessionId } satisfies ArtifactLinkTarget;
+  const selected = new Map<string, ArtifactLink>();
+  if (familyTarget)
+    for (const link of links)
+      if (sameTarget(link.target, familyTarget)) selected.set(link.lineageId, link);
+  // A direct link is the more specific projection when both scopes link one lineage.
+  for (const link of links)
+    if (sameTarget(link.target, directTarget)) selected.set(link.lineageId, link);
+  return [...selected.values()];
+};
+
 const effectiveLinks = Effect.fn("Artifacts.effectiveLinks")(function* (sessionId: string) {
   // Membership lookup deliberately happens before catalog access. Failure must not
   // degrade a family member to standalone visibility.
   const familyTarget = yield* familyTargetForSession(sessionId);
   const catalog = yield* (yield* ArtifactStorage).catalog();
-  const directTarget = { type: "session", sessionId } satisfies ArtifactLinkTarget;
-  const selected = new Map<string, ArtifactLink>();
-  if (familyTarget)
-    for (const link of catalog.links)
-      if (sameTarget(link.target, familyTarget)) selected.set(link.lineageId, link);
-  // A direct link is the more specific projection when both scopes link one lineage.
-  for (const link of catalog.links)
-    if (sameTarget(link.target, directTarget)) selected.set(link.lineageId, link);
-  return { catalog, links: [...selected.values()] };
+  return { catalog, links: selectEffectiveLinks(catalog.links, sessionId, familyTarget) };
 });
 
 const requireLineage = (
@@ -124,25 +133,12 @@ export const hasEffectiveSessionArtifacts = Effect.fn("Artifacts.hasEffectiveSes
 
 export const listEffectiveSessionArtifacts = Effect.fn("Artifacts.listEffectiveSessionArtifacts")(
   function* (sessionId: string) {
+    // Resolve membership before taking the storage lock; selection policy stays in
+    // the domain while links, selected revisions and latest metadata share one snapshot.
+    const familyTarget = yield* familyTargetForSession(sessionId);
     const storage = yield* ArtifactStorage;
-    const { links } = yield* effectiveLinks(sessionId);
-    return yield* Effect.forEach(
-      links,
-      Effect.fn("Artifacts.resolveEffectiveLink")(function* (link): Effect.fn.Return<
-        EffectiveArtifact,
-        ArtifactStorageError | ArtifactNotFound
-      > {
-        const revision = yield* storage.read(
-          link.lineageId,
-          link.selection.mode === "pinned" ? link.selection.revision : undefined,
-        );
-        if (!revision)
-          return yield* new ArtifactNotFound({
-            lineageId: link.lineageId,
-            ...(link.selection.mode === "pinned" ? { revision: link.selection.revision } : null),
-          });
-        return { revision, link };
-      }),
+    return yield* storage.resolveLinks((links) =>
+      selectEffectiveLinks(links, sessionId, familyTarget),
     );
   },
 );

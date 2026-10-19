@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
-import { Effect, Layer, Schema } from "effect";
+import { Effect, FileSystem, Layer, Schema } from "effect";
 import { it as effectIt } from "@effect/vitest";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { afterEach, describe, expect, it } from "vitest";
@@ -67,11 +67,25 @@ const family = (children: ReadonlyArray<string>): SessionFamily => ({
 const makeLayer = async (
   getFamilies: () => ReadonlyArray<SessionFamily>,
   getLookupFailure: () => SessionFamilyStorageError | undefined = () => undefined,
+  onReadFileString: (path: string) => void = () => {},
 ) => {
   const root = await mkdtemp(join(tmpdir(), "cake-artifact-workflows-"));
   directories.push(root);
+  const fileSystem = Layer.effect(
+    FileSystem.FileSystem,
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      return FileSystem.FileSystem.of({
+        ...fs,
+        readFileString: (path, encoding) =>
+          fs
+            .readFileString(path, encoding)
+            .pipe(Effect.tap(() => Effect.sync(() => onReadFileString(path)))),
+      });
+    }),
+  ).pipe(Layer.provide(NodeFileSystem.layer));
   const storage = makeArtifactStorageLive(join(root, "artifacts")).pipe(
-    Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
+    Layer.provide(Layer.merge(fileSystem, NodePath.layer)),
   );
   const membership = Layer.mock(SessionFamilyStorage, {
     withMemberLock: (_sessionId, effect) => effect,
@@ -101,6 +115,131 @@ const visible = (sessionId: string) =>
     );
 
 describe("artifact lineage workflows", () => {
+  effectIt.effect("effectiveArtifactsLoadsCatalogOnceForTwentyLinks", () =>
+    Effect.gen(function* () {
+      const reads: string[] = [];
+      const base = yield* Effect.promise(() =>
+        makeLayer(
+          () => [family(["child"])],
+          undefined,
+          (path) => reads.push(path),
+        ),
+      );
+      const access = Layer.mock(ProjectAccess, {
+        resolveSessionWorkingDirectory: () => Effect.succeed("/project"),
+        isAllowed: () => Effect.succeed(true),
+      });
+      yield* Effect.gen(function* () {
+        for (let index = 0; index < 20; index++) {
+          const id = lineageId(`selected-${index}`);
+          yield* workflows.create({
+            sessionId: "parent",
+            lineageId: id,
+            snapshot: snapshot(id, "parent", 1, `content ${index}`),
+            workingDirectory: "/project",
+          });
+        }
+        reads.length = 0;
+        const values = yield* artifacts.listEffective("child");
+        expect(values).toHaveLength(20);
+        expect(values.map((value) => value.revision.lineageId)).toEqual(
+          Array.from({ length: 20 }, (_, index) => `selected-${index}`),
+        );
+        expect(values.every((value) => value.latestRevision === 1)).toBe(true);
+        expect(reads.filter((path) => path.endsWith("/catalog.json"))).toHaveLength(1);
+        expect(reads.filter((path) => path.includes("/blobs/"))).toHaveLength(20);
+
+        // A subsequent request must observe publication, not reuse a global snapshot.
+        const id = lineageId("selected-0");
+        yield* workflows.publish({
+          sessionId: "parent",
+          lineageId: id,
+          expectedLatestRevision: 1,
+          snapshot: snapshot(id, "parent", 2, "updated"),
+          workingDirectory: "/project",
+        });
+        reads.length = 0;
+        const updated = yield* artifacts.listEffective("child");
+        expect(updated[0]?.revision.metadata.revision).toBe(2);
+        expect(updated[0]?.latestRevision).toBe(2);
+        expect(reads.filter((path) => path.endsWith("/catalog.json"))).toHaveLength(1);
+      }).pipe(Effect.provide(Layer.merge(base, access)));
+    }),
+  );
+
+  effectIt.effect("preserves direct-over-family selection and pinned latest metadata", () =>
+    Effect.gen(function* () {
+      const base = yield* Effect.promise(() => makeLayer(() => [family(["child"])]));
+      const access = Layer.mock(ProjectAccess, {
+        resolveSessionWorkingDirectory: () => Effect.succeed("/project"),
+        isAllowed: () => Effect.succeed(true),
+      });
+      yield* Effect.gen(function* () {
+        for (const name of ["direct-pinned", "direct-latest", "family-pinned"]) {
+          const id = lineageId(name);
+          yield* workflows.create({
+            sessionId: "parent",
+            lineageId: id,
+            snapshot: snapshot(id, "parent", 1, "one"),
+            workingDirectory: "/project",
+          });
+          yield* workflows.publish({
+            sessionId: "parent",
+            lineageId: id,
+            expectedLatestRevision: 1,
+            snapshot: snapshot(id, "parent", 2, "two"),
+            workingDirectory: "/project",
+          });
+        }
+        yield* workflows.linkSession(lineageId("direct-pinned"), "child", {
+          mode: "pinned",
+          revision: revision(1),
+        });
+        yield* workflows.linkFamily(lineageId("direct-latest"), "family-1", {
+          mode: "pinned",
+          revision: revision(1),
+        });
+        yield* workflows.linkSession(lineageId("direct-latest"), "child");
+        yield* workflows.linkFamily(lineageId("family-pinned"), "family-1", {
+          mode: "pinned",
+          revision: revision(1),
+        });
+
+        const values = yield* artifacts.listEffective("child");
+        expect(
+          values.map(({ revision: value, link, latestRevision, exactRef }) => ({
+            id: value.lineageId,
+            revision: value.metadata.revision,
+            target: link.target.type,
+            latestRevision,
+            exactRef,
+          })),
+        ).toEqual([
+          {
+            id: "direct-pinned",
+            revision: 1,
+            target: "session",
+            latestRevision: 2,
+            exactRef: "cake://artifact/direct-pinned@r1",
+          },
+          {
+            id: "direct-latest",
+            revision: 2,
+            target: "session",
+            latestRevision: 2,
+            exactRef: "cake://artifact/direct-latest@r2",
+          },
+          {
+            id: "family-pinned",
+            revision: 1,
+            target: "family",
+            latestRevision: 2,
+            exactRef: "cake://artifact/family-pinned@r1",
+          },
+        ]);
+      }).pipe(Effect.provide(Layer.merge(base, access)));
+    }),
+  );
   it("shares parent and child creations across the current family and future descendants", async () => {
     let currentFamily = family(["child", "sibling"]);
     const layer = await makeLayer(() => [currentFamily]);

@@ -295,13 +295,24 @@ describe("ArtifactStorage", () => {
     );
 
     const session = await Effect.runPromise(
-      storage.resolveLinks({ type: "session", sessionId: "session-1" }),
+      storage.resolveLinks((links) =>
+        links.filter(
+          (link) => link.target.type === "session" && link.target.sessionId === "session-1",
+        ),
+      ),
     );
     const family = await Effect.runPromise(
-      storage.resolveLinks({ type: "family", familyId: "family-1" }),
+      storage.resolveLinks((links) =>
+        links.filter(
+          (link) => link.target.type === "family" && link.target.familyId === "family-1",
+        ),
+      ),
     );
-    expect(session[0]?.metadata.revision).toBe(2);
-    expect(family[0]?.metadata.revision).toBe(1);
+    expect(session[0]?.revision.metadata.revision).toBe(2);
+    expect(family[0]?.revision.metadata.revision).toBe(1);
+    expect(session[0]?.latestRevision).toBe(2);
+    expect(family[0]?.latestRevision).toBe(2);
+    expect(family[0]?.link.selection).toEqual({ mode: "pinned", revision: 1 });
     expect(await readdir(join(root, "blobs"))).toHaveLength(2);
   });
 
@@ -326,8 +337,19 @@ describe("ArtifactStorage", () => {
     await writeFile(join(root, "blobs", `${orphanDigest}.json`), orphanContent);
     expect(await Effect.runPromise(storage.deleteBlobIfOrphaned(orphanDigest))).toBe(true);
 
+    await Effect.runPromise(
+      storage.putLink({
+        lineageId: id,
+        target: { type: "session", sessionId: "session-1" },
+        selection: { mode: "follow-latest" },
+        createdAt: new Date(0).toISOString(),
+      }),
+    );
     await writeFile(join(root, "blobs", `${published.metadata.digest}.json`), "corrupt");
     await expect(Effect.runPromise(storage.read(id))).rejects.toThrow("digest does not match");
+    await expect(Effect.runPromise(storage.resolveLinks((links) => links))).rejects.toThrow(
+      "digest does not match",
+    );
   });
 
   it("retains a blob shared by a retained revision while collecting another lineage", async () => {

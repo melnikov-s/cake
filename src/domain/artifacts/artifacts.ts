@@ -76,19 +76,13 @@ export const listEffective = Effect.fn("Artifacts.listEffective")(function* (ses
   // query is catalog-only; ordinary Project Session reads still require project access.
   if (!isCakeChatSessionId(sessionId)) yield* authorizedWorkingDirectory(sessionId);
   const values = yield* artifactWorkflows.listEffectiveSessionArtifacts(sessionId);
-  return yield* Effect.forEach(
-    values,
-    Effect.fn("Artifacts.projectEffective")(function* ({ revision, link }) {
-      const { lineage } = yield* artifactWorkflows.lineageDetail(revision.lineageId);
-      return {
-        revision,
-        link,
-        latestRevision: lineage.latestRevision,
-        stableRef: `cake://artifact/${revision.lineageId}`,
-        exactRef: `cake://artifact/${revision.lineageId}@r${revision.metadata.revision}`,
-      };
-    }),
-  );
+  return values.map(({ revision, link, latestRevision }) => ({
+    revision,
+    link,
+    latestRevision,
+    stableRef: `cake://artifact/${revision.lineageId}`,
+    exactRef: `cake://artifact/${revision.lineageId}@r${revision.metadata.revision}`,
+  }));
 });
 
 export const detail = artifactWorkflows.lineageDetail;
