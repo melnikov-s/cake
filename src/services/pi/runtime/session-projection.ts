@@ -635,6 +635,12 @@ function partsFromMessage(
   if (role === "toolResult") {
     const name = String(Reflect.get(message, "toolName") ?? "tool");
     const details = Reflect.get(message, "details");
+    const timing = Schema.decodeUnknownOption(
+      Schema.Struct({
+        durationMs: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+        timestamp: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+      }),
+    )(message);
     // Durable has no regular-Pi custom entries. Its original tool result is the
     // presentation authority, including on a page without the assistant tool call.
     const presentation =
@@ -652,32 +658,39 @@ function partsFromMessage(
             Schema.Struct({ command: Schema.Literal("messages.present"), result: MessageMetadata }),
           )(details)
         : Option.none();
-    return [
-      {
-        id: boundedProjectionKey(`tool-${String(Reflect.get(message, "toolCallId"))}`),
-        kind: "tool",
-        name,
-        command: name === "cake" ? cakeOperationCommand({ details }) : undefined,
-        input: "",
-        output: textFromContent(content) || formatUnknown(details),
-        outputContent: projectToolOutputContent(content),
-        nestedCalls: projectNestedToolCalls(Reflect.get(message, "nestedCalls")),
-        artifactId: Option.isSome(presentation)
-          ? presentation.value.result.lineageId
-          : toolArtifactId({ details }),
-        artifactRevision: Option.isSome(presentation)
-          ? presentation.value.result.selectedRevision
-          : toolArtifactRevision({ details }),
-        ...(Option.isSome(presentation)
-          ? { artifactReference: presentation.value.result.exactRef }
-          : null),
-        ...(Option.isSome(messagePresentation)
-          ? { messageReference: messagePresentation.value.result.ref }
-          : null),
-        diff: toolResultDiff(name, { details }),
-        state: Reflect.get(message, "isError") ? "error" : "success",
-      },
-    ];
+    const part: Extract<UiPart, { kind: "tool" }> = {
+      id: boundedProjectionKey(`tool-${String(Reflect.get(message, "toolCallId"))}`),
+      kind: "tool",
+      name,
+      command: name === "cake" ? cakeOperationCommand({ details }) : undefined,
+      input: "",
+      output: textFromContent(content) || formatUnknown(details),
+      outputContent: projectToolOutputContent(content),
+      nestedCalls: projectNestedToolCalls(Reflect.get(message, "nestedCalls")),
+      artifactId: Option.isSome(presentation)
+        ? presentation.value.result.lineageId
+        : toolArtifactId({ details }),
+      artifactRevision: Option.isSome(presentation)
+        ? presentation.value.result.selectedRevision
+        : toolArtifactRevision({ details }),
+      ...(Option.isSome(presentation)
+        ? { artifactReference: presentation.value.result.exactRef }
+        : null),
+      ...(Option.isSome(messagePresentation)
+        ? { messageReference: messagePresentation.value.result.ref }
+        : null),
+      diff: toolResultDiff(name, { details }),
+      state: Reflect.get(message, "isError") ? "error" : "success",
+    };
+    if (Option.isSome(timing))
+      return [
+        {
+          ...part,
+          durationMs: timing.value.durationMs,
+          startedAt: Math.max(0, timing.value.timestamp - timing.value.durationMs),
+        },
+      ];
+    return [part];
   }
 
   if (role === "bashExecution") {

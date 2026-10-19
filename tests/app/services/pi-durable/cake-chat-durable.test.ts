@@ -29,7 +29,10 @@ import {
   durableAdmission,
   openDurableChatEngine,
 } from "../../../../src/services/pi-durable/durable-chat-engine";
-import { readDurableOriginalPage } from "../../../../src/services/pi-durable/durable-chat-history";
+import {
+  readDurableActiveTools,
+  readDurableOriginalPage,
+} from "../../../../src/services/pi-durable/durable-chat-history";
 import { abortDurableActiveTurn } from "../../../../src/services/pi-durable/durable-chat-queue";
 import {
   durableInputText,
@@ -197,6 +200,61 @@ it("records only the active bounded head for listing, and inspection never start
   } finally {
     unsubscribe();
   }
+});
+
+it("keeps abandoned calls interrupted even while a later tool is active", async () => {
+  let activeParts: UiPart[] = [];
+  const f = await fixture(
+    (_request, index) =>
+      index === 1
+        ? durableAnswer("", [
+            { type: "toolCall", id: "current", name: "zoom", arguments: { id: 0, n: 1 } },
+          ])
+        : durableAnswer("Done"),
+    20_000,
+    new MemoryStorage(),
+    async () => {
+      activeParts = await f.engine.root.commit(
+        async (tx) =>
+          (
+            await readDurableOriginalPage(
+              {
+                entries: (query, limit, cursor) =>
+                  tx.scanEntries({ ...query, conversationId: f.engine.root.id }, limit, cursor),
+              },
+              undefined,
+              await readDurableActiveTools(tx, f.engine.root.id),
+            )
+          ).parts,
+        BACKGROUND_CONTEXT,
+      );
+    },
+  );
+  await f.engine.root.commit(
+    (tx) =>
+      tx.appendEntry(AssistantEntry, f.engine.root.id, {
+        model: [
+          durableAnswer("", [
+            { type: "toolCall", id: "abandoned", name: "zoom", arguments: { id: 0, n: 1 } },
+          ]),
+        ],
+      }),
+    BACKGROUND_CONTEXT,
+  );
+  expect((await readDurableOriginalPage(f.engine.root)).parts).toMatchObject([
+    { state: "interrupted" },
+  ]);
+  await f.send("Continue", "current");
+  expect(activeParts.filter((part) => part.kind === "tool")).toMatchObject([
+    { id: "tool-abandoned", state: "interrupted" },
+    { id: "tool-current", state: "running", startedAt: expect.any(Number) },
+  ]);
+  expect(
+    (await readDurableOriginalPage(f.engine.root)).parts.filter((part) => part.kind === "tool"),
+  ).toMatchObject([
+    { id: "tool-abandoned", state: "interrupted" },
+    { id: "tool-current", state: "error", durationMs: expect.any(Number) },
+  ]);
 });
 
 it("anchors report acknowledgment to persisted user-visible Pi text before a tool runs", async () => {

@@ -46,6 +46,8 @@ export class Message extends Model {
   output: string | undefined;
   outputContent: readonly ToolOutputContent[] | undefined;
   nestedCalls: NestedToolCalls | undefined;
+  startedAt: number | null | undefined;
+  durationMs: number | undefined;
   interview: Extract<UiPart, { kind: "tool" }>["interview"];
   interviewResult: Extract<UiPart, { kind: "tool" }>["interviewResult"];
   artifactId: string | undefined;
@@ -129,6 +131,8 @@ export class Message extends Model {
         this.output = part.output;
         this.outputContent = part.outputContent ? [...part.outputContent] : undefined;
         this.nestedCalls = part.nestedCalls;
+        this.startedAt = part.startedAt;
+        this.durationMs = part.durationMs;
         // Live tool deltas do not repeat immutable interview metadata. Full
         // authoritative snapshots replace it when the transcript branch changes.
         if (part.interview) this.interview = part.interview;
@@ -254,6 +258,8 @@ export class Message extends Model {
           output: this.output,
           outputContent: this.outputContent,
           nestedCalls: this.nestedCalls,
+          startedAt: this.startedAt,
+          durationMs: this.durationMs,
           interview: this.interview,
           interviewResult: this.interviewResult,
           artifactId: this.artifactId,

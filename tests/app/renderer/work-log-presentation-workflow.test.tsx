@@ -2,6 +2,7 @@
 import { act, cleanup, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
+import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
 import {
   addedFile,
   readFile,
@@ -227,6 +228,95 @@ describe("Work-log presentation workflow", () => {
         .getAllByLabelText("elapsed time")
         .map((chip) => chip.textContent),
     ).toEqual(["1.0s", "1.5s"]);
+  });
+
+  it("reconciles live starts, pending siblings and recorded result durations through reload", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    vi.setSystemTime(1_000_000);
+    const running = { ...readFile("tool-first", "running"), startedAt: 999_000 };
+    const pending = { ...readFile("tool-second", "running"), startedAt: null };
+    const result = (durationMs: number) => {
+      const message = {
+        role: "toolResult" as const,
+        toolCallId: "first",
+        toolName: "read",
+        content: [{ type: "text" as const, text: "Done" }],
+        isError: false,
+        timestamp: 1_040_000,
+        durationMs,
+      };
+      return projectSessionEntries([
+        {
+          type: "message",
+          id: "result",
+          parentId: null,
+          timestamp: new Date(message.timestamp).toISOString(),
+          message,
+        },
+      ]);
+    };
+    {
+      using fixture = renderWorkLog([readFile("tool-first", "running")], { streaming: true });
+      await fixture.user.click(workLog().summary);
+      act(() => vi.advanceTimersByTime(100));
+      fixture.publish([running, pending], true);
+      act(() => vi.advanceTimersByTime(2_000));
+      expect(screen.getAllByLabelText("elapsed time").map((chip) => chip.textContent)).toEqual([
+        "3.1s",
+      ]);
+      fixture.publish([{ ...running, state: "interrupted" }, pending], true);
+      act(() => vi.advanceTimersByTime(100));
+      fixture.publish([running, pending], true);
+      act(() => vi.advanceTimersByTime(1_000));
+      expect(screen.getByLabelText("elapsed time").textContent).toBe("4.2s");
+      fixture.publish(result(32_021));
+      expect(screen.getByLabelText("elapsed time").textContent).toBe("32.0s");
+      // Timing can arrive without a state change, and must replace a local estimate.
+      fixture.publish(result(38_224));
+      expect(screen.getByLabelText("elapsed time").textContent).toBe("38.2s");
+      act(() => vi.advanceTimersByTime(5_000));
+      expect(screen.getByLabelText("elapsed time").textContent).toBe("38.2s");
+    }
+    {
+      using reconnected = renderWorkLog([running, pending], { streaming: true });
+      await reconnected.user.click(workLog().summary);
+      expect(screen.getByLabelText("elapsed time").textContent).toBe("9.2s");
+      act(() => vi.advanceTimersByTime(1_000));
+      expect(screen.getByLabelText("elapsed time").textContent).toBe("10.2s");
+    }
+    using reloaded = renderWorkLog(result(38_224));
+    await reloaded.user.click(workLog().summary);
+    expect(screen.getByLabelText("elapsed time").textContent).toBe("38.2s");
+    reloaded.publish(result(5));
+    expect(screen.getByLabelText("elapsed time").textContent).toBe("0.0s");
+  });
+
+  it("keeps Churning continuous through committed tools, model output and the next tool round", () => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    vi.setSystemTime(1_000_000);
+    using fixture = renderWorkLog([readFile("first", "running")], { streaming: true });
+    const loading = () => screen.getByRole("status", { name: "Churning in progress" });
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(within(loading()).getByText("1.0s")).toBeDefined();
+    fixture.publish(
+      [
+        readFile("first"),
+        {
+          id: "assistant",
+          kind: "text",
+          role: "assistant",
+          text: "Continuing",
+          status: "streaming",
+        },
+      ],
+      true,
+    );
+    act(() => vi.advanceTimersByTime(1_000));
+    fixture.publish([readFile("first"), readFile("second", "running")], true);
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(within(loading()).getByText("3.0s")).toBeDefined();
+    fixture.publish([readFile("first"), readFile("second")]);
+    expect(screen.queryByRole("status", { name: "Churning in progress" })).toBeNull();
   });
 
   it("retains the open surviving group when a tool is removed and resets disclosure after the whole group disappears", async () => {

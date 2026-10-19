@@ -379,6 +379,10 @@ export const uiPartSchema = Schema.Union([
     ),
     inputStreaming: Schema.optional(Schema.Boolean),
     nestedCalls: Schema.optional(nestedToolCallsSchema),
+    /** Pi task start (or result timestamp minus duration); null means not yet started. */
+    startedAt: Schema.optionalKey(Schema.NullOr(nonNegativeInt)),
+    /** Pi-recorded execution time, excluding time waiting for sibling calls. */
+    durationMs: Schema.optionalKey(nonNegativeInt),
     response: Schema.optional(promptCacheResponseSchema),
   }),
   Schema.Struct({

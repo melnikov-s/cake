@@ -52,7 +52,7 @@ import { durableModels } from "./durable-models";
 import type { RequestInspection } from "./request-inspection";
 import { openDurableChatEngine } from "./durable-chat-engine";
 import { createDurableSideChats, type DurableSideChats } from "./durable-side-chats";
-import { readDurableOriginalPage } from "./durable-chat-history";
+import { readDurableActiveTools, readDurableOriginalPage } from "./durable-chat-history";
 import {
   listDurableMessageReferences,
   readDurableMessageReference,
@@ -380,7 +380,19 @@ export async function createDurableCakeChatRuntime(
     kind: "root",
     executingTurnIds: () => activeTurnIds,
   });
-  const history = (cursor?: string) => readDurableOriginalPage(engine.root, cursor);
+  const history = (cursor?: string) =>
+    engine.root.commit(
+      async (tx) =>
+        readDurableOriginalPage(
+          {
+            entries: (query, limit, next) =>
+              tx.scanEntries({ ...query, conversationId: engine.root.id }, limit, next),
+          },
+          cursor,
+          await readDurableActiveTools(tx, engine.root.id),
+        ),
+      BACKGROUND_CONTEXT,
+    );
   const configureAgent = async () => {
     await engine.root.configure(
       {
@@ -490,10 +502,14 @@ export async function createDurableCakeChatRuntime(
       // One Session-line read prevents a completed original and its stale live
       // preview from appearing together, or model/inbox facts from different commits.
       const snapshot = await engine.root.commit(async (tx) => {
-        const page = await readDurableOriginalPage({
-          entries: (query, limit, cursor) =>
-            tx.scanEntries({ ...query, conversationId: engine.root.id }, limit, cursor),
-        });
+        const page = await readDurableOriginalPage(
+          {
+            entries: (query, limit, cursor) =>
+              tx.scanEntries({ ...query, conversationId: engine.root.id }, limit, cursor),
+          },
+          undefined,
+          await readDurableActiveTools(tx, engine.root.id),
+        );
         const live = await tx.doc(LiveDoc, engine.root.id);
         const agent = await tx.doc(AgentDoc, engine.root.id);
         const usage = await tx.doc(UsageDoc, engine.root.id);

@@ -1221,3 +1221,98 @@ it("rejects side-chat forks from a message without a completed reply", async () 
   f.finishes[0]!();
   await pending;
 });
+
+it.each(["global", "project"] as const)(
+  "keeps %s Cake Chat committed sequential tools live and restores Pi durations on reload",
+  async (scope) => {
+    const f = await fixture();
+    const entered = [Deferred.makeUnsafe<void>(), Deferred.makeUnsafe<void>()];
+    const release = [Deferred.makeUnsafe<void>(), Deferred.makeUnsafe<void>()];
+    let call = 0;
+    const control: NonNullable<CakeSessionRuntimeSetup["globalControl"]> = {
+      tools: [
+        {
+          command: "sessions.list",
+          topic: "sessions",
+          summary: "List sessions",
+          parameters: { type: "object", properties: {}, additionalProperties: false },
+        },
+      ],
+      invoke: async (_input, signal) => {
+        const index = call++;
+        Effect.runSync(Deferred.succeed(entered[index]!, undefined));
+        await Effect.runPromise(Deferred.await(release[index]!), { signal });
+        return { sessions: [] };
+      },
+    };
+    f.answer((index) =>
+      index === 2
+        ? durableAnswer("", [
+            {
+              type: "toolCall",
+              id: "parity",
+              name: "cake",
+              arguments: { command: "sessions.list", input: {} },
+            },
+            {
+              type: "toolCall",
+              id: "audit",
+              name: "cake",
+              arguments: { command: "sessions.list", input: {} },
+            },
+            { type: "toolCall", id: "zoom", name: "zoom", arguments: { id: 0, n: 1 } },
+          ])
+        : durableAnswer("Done"),
+    );
+    const location =
+      scope === "project"
+        ? {
+            sessionId: projectChatSessionId(f.directory),
+            sessionDir: join(f.directory, "project-chat"),
+          }
+        : undefined;
+    const first = await f.open(control, undefined, location);
+    await first.runtime.prompt("Seed zoom originals", "prompt", [], false, ids.second);
+    f.hold(true);
+    const pending = first.runtime.prompt("Check sessions", "prompt", [], false, ids.first);
+    await Effect.runPromise(Deferred.await(f.started));
+    const tools = (snapshot: ConversationSnapshot) =>
+      snapshot.parts.filter((part) => part.kind === "tool");
+    const streamed = await f.waitSnapshot(
+      first.runtime,
+      (snapshot) => tools(snapshot).length === 3,
+    );
+    expect(tools(streamed).map((part) => part.state)).toEqual(["running", "running", "running"]);
+    f.hold(false);
+    f.finishes[1]!();
+    await Effect.runPromise(Deferred.await(entered[0]!));
+    const blocked = await first.runtime.snapshot();
+    expect(blocked.streaming).toBe(true);
+    expect(tools(blocked)).toMatchObject([
+      { id: "tool-parity", state: "running", startedAt: expect.any(Number) },
+      { id: "tool-audit", state: "running", startedAt: null },
+      { id: "tool-zoom", state: "running", startedAt: null },
+    ]);
+    expect(call).toBe(1);
+    Effect.runSync(Deferred.succeed(release[0]!, undefined));
+    await Effect.runPromise(Deferred.await(entered[1]!));
+    expect(tools(await first.runtime.snapshot())).toMatchObject([
+      { state: "success", durationMs: expect.any(Number) },
+      { state: "running", startedAt: expect.any(Number) },
+      { state: "running", startedAt: null },
+    ]);
+    Effect.runSync(Deferred.succeed(release[1]!, undefined));
+    await pending;
+    const settled = tools(await first.runtime.snapshot());
+    expect(settled).toHaveLength(3);
+    expect(settled).toMatchObject([
+      { state: "success", durationMs: expect.any(Number) },
+      { state: "success", durationMs: expect.any(Number) },
+      { state: "success", durationMs: expect.any(Number) },
+    ]);
+    await first.close();
+    const reopened = await f.open(control, undefined, location);
+    expect(tools(await reopened.runtime.snapshot())).toEqual(settled);
+    expect(call).toBe(2);
+  },
+);

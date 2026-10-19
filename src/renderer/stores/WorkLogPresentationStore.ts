@@ -47,7 +47,11 @@ export class WorkLogPresentationStore extends Store<WorkLogPresentationStoreProp
       () =>
         this.props
           .parts()
-          .flatMap((part) => (part.kind === "tool" ? [`${part.id}\u0000${part.state}`] : []))
+          .flatMap((part) =>
+            part.kind === "tool"
+              ? [`${part.id}\u0000${part.state}\u0000${part.startedAt}\u0000${part.durationMs}`]
+              : [],
+          )
           .join("\u0001"),
       () => this.syncTimers(),
     );
@@ -68,7 +72,19 @@ export class WorkLogPresentationStore extends Store<WorkLogPresentationStoreProp
       if (part.kind !== "tool") continue;
       const timer = this.timers.get(part.id);
       if (part.state === "running" || part.state === "approval") {
-        if (!timer) this.timers.set(part.id, { startedAt: now });
+        if (part.startedAt === null) {
+          this.timers.delete(part.id);
+        } else {
+          // A fresh authoritative live snapshot can resume an observed terminal
+          // preview, or supply the original start after reconnect.
+          this.timers.set(part.id, { startedAt: part.startedAt ?? timer?.startedAt ?? now });
+        }
+      } else if (part.durationMs !== undefined) {
+        const startedAt = part.startedAt ?? timer?.startedAt ?? now - part.durationMs;
+        this.timers.set(part.id, {
+          startedAt,
+          endedAt: startedAt + part.durationMs,
+        });
       } else if (timer && timer.endedAt === undefined) {
         this.timers.set(part.id, { ...timer, endedAt: now });
       }
