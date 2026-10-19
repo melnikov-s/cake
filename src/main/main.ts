@@ -231,6 +231,7 @@ function startMain() {
         sessionId: string;
         workingDirectory: string;
         artifactId: string;
+        language?: "react" | "html";
         source: string;
         pluginState?: JsonValue;
         artifactState?: JsonValue;
@@ -274,7 +275,7 @@ function startMain() {
             );
             const compiled = yield* Effect.promise(() =>
               compileInlineWidget(
-                "react",
+                input.language ?? "react",
                 input.source,
                 input.artifactState !== undefined || input.capability === "artifact"
                   ? "artifact"
@@ -321,7 +322,7 @@ function startMain() {
               return yield* Effect.die("Missing artifact persistence");
             // Deterministic model boundary; compilation, pixels, repository CAS and linking are real.
             const generated = async (): Promise<InlineWidgetGenerationResult> => ({
-              language: "react",
+              language: input.language ?? "react",
               source: input.source,
               generationSessionId: "smoke-review",
               browser,
@@ -357,6 +358,7 @@ function startMain() {
                       input: {
                         widget: {
                           id: input.artifactId,
+                          language: input.language ?? "react",
                           title: "Captured widget fixture",
                           brief: "Electron rendered-review fixture",
                           fallback: { markdown: "Captured widget fixture." },

@@ -73,9 +73,26 @@ export default function Visual() {
   return <main><h2>Source revision two</h2><p>{hydrated ? value.title : "Loading state"}</p></main>;
 }`;
     for (const revision of [2, 3]) {
+      const language = revision === 2 ? "react" : "html";
       const revisionSource =
-        revision === 2 ? source : source.replace("Source revision two", "Source revision three");
-      const compiled = await compileInlineWidget("react", revisionSource, "artifact");
+        revision === 2
+          ? source
+          : `<!doctype html><html><head></head><body>
+<main><h2>Source revision three</h2><p>Loading state</p><button disabled>Save HTML title</button></main>
+<script>
+const api = globalThis.cakeArtifact;
+const button = document.querySelector("button");
+api.subscribe(() => {
+  const state = api.getSnapshot();
+  document.querySelector("p").textContent = state.hydrated ? state.value.title : "Loading state";
+  button.disabled = !state.hydrated;
+});
+button.onclick = async () => {
+  const state = api.getSnapshot();
+  await api.replace({title: "Saved from HTML"}, state.version);
+};
+</script></body></html>`;
+      const compiled = await compileInlineWidget(language, revisionSource, "artifact");
       const browser = await runtime.runPromise(
         Effect.flatMap(WidgetBrowserOutputs, (outputs) => outputs.retain(compiled)),
       );
@@ -87,7 +104,7 @@ export default function Visual() {
           snapshot: {
             ...first.snapshot,
             revision,
-            payload: { ...first.snapshot.payload, source: revisionSource, browser },
+            payload: { ...first.snapshot.payload, language, source: revisionSource, browser },
           },
         }),
       );
@@ -217,6 +234,32 @@ export default function Visual() {
         .getByRole("heading", { name: "One artifact, two views" }),
     ).toBeVisible();
     expect(await readFile(join(artifactRoot, "catalog.json"), "utf8")).toBe(before);
+    // HTML uses the real ArtifactHost, CAS repository and retained browser output, not a fixture state host.
+    await disclosures
+      .nth(3)
+      .locator("iframe")
+      .contentFrame()
+      .getByRole("button", { name: "Save HTML title" })
+      .click();
+    for (const index of [0, 2, 3, 4]) {
+      await expect(
+        disclosures
+          .nth(index)
+          .locator("iframe")
+          .contentFrame()
+          .getByText("Saved from HTML", { exact: true }),
+      ).toBeVisible();
+    }
+    expect(await readFile(join(artifactRoot, "catalog.json"), "utf8")).not.toBe(before);
+    await page.reload();
+    await expect(
+      page
+        .locator('[data-slot="artifact-disclosure"]')
+        .nth(3)
+        .locator("iframe")
+        .contentFrame()
+        .getByText("Saved from HTML", { exact: true }),
+    ).toBeVisible();
   } finally {
     await app?.close();
     await runtime.dispose();

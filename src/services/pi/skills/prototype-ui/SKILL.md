@@ -28,7 +28,7 @@ When a web recreation cannot convey the design well, use image generation with t
 
 Read `widget.md` before preparing the brief. Request the `widgets` topic and use `widgets.present` once, with:
 
-- One stable artifact ID for this exploration.
+- One stable artifact ID for this exploration and `language: "react"` (the selected-source module manifest requires React; lightweight HTML mode is for simpler experiences, not this skill).
 - Five meaningful alternatives, each with a stable ID such as `option-1` through `option-5`, a short name, and a complete prototype. Vary layout, information hierarchy, or interaction where appropriate; do not present five color swaps.
 - The same realistic content, theme, and intended viewport across alternatives so the comparison is useful.
 - The gathered app-specific design context. Match the existing app by default; make a redesign only when requested.

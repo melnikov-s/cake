@@ -1,4 +1,7 @@
 import { Effect } from "effect";
+import type { CakeArtifactV1 } from "../../../../src/contracts/artifacts/artifact-contract";
+import { createCakeArtifactOperations } from "../../../../src/domain/artifacts/cake-artifact-operations";
+import { CakeOperationRegistry } from "../../../../src/services/pi/runtime/cake-operation-registry";
 import { describe, expect, it, vi } from "vitest";
 import { generateReviewedWidget } from "../../../../src/domain/widgets/widgetGenerationReview";
 import { ProjectSessionIntegrationHost } from "../../../../src/layers/ProjectSessionIntegrationHost";
@@ -10,8 +13,12 @@ import { inlineWidgetDocument } from "../../../../src/services/widgets/inline-wi
 const source = (name: string) =>
   `\`\`\`cake-react\nexport default function ${name}(){ return <div>${name}</div> }\n\`\`\``;
 
+const htmlSource = (name: string) =>
+  `\`\`\`cake-html\n<!doctype html><html><head><style>button{font:inherit}</style></head><body><button id="count">Count 0</button><script>function ${name}() { let count = 0; document.querySelector("button").onclick = () => document.querySelector("button").textContent = "Count " + ++count; } ${name}();</script></body></html>\n\`\`\``;
+
 function host(options: {
   generation?: string;
+  language?: "html" | "react";
   reviews: string[];
   compileFailures?: Set<string>;
   signal?: AbortSignal;
@@ -21,6 +28,7 @@ function host(options: {
   stageState?: (candidate: WidgetCandidate) => void;
 }) {
   const calls: string[] = [];
+  const compileLanguages: string[] = [];
   const generationInputs: unknown[] = [];
   const captureStates: unknown[] = [];
   const capturedTokens: string[] = [];
@@ -44,14 +52,20 @@ function host(options: {
     runWidgetGeneration: async (input) => {
       generationInputs.push(input);
       calls.push("generate");
-      return { sessionId: "generation-session", response: options.generation ?? source("Initial") };
+      return {
+        sessionId: "generation-session",
+        response:
+          options.generation ??
+          (options.language === "html" ? htmlSource("Initial") : source("Initial")),
+      };
     },
     retainWidgetBrowser: async (compiled) => {
       calls.push(`retain:${compiled.token.slice(-1)}`);
       if (options.retainError) throw new Error(options.retainError);
       return { digest: "a".repeat(64) };
     },
-    compileWidget: async (_language, candidate) => {
+    compileWidget: async (language, candidate) => {
+      compileLanguages.push(language);
       const name = candidate.match(/function (\w+)/)?.[1] ?? "unknown";
       calls.push(`compile:${name}`);
       if (options.compileFailures?.has(name)) throw new Error(`bad ${name}`);
@@ -76,7 +90,10 @@ function host(options: {
       repairInputs.push(input);
       if (input.candidate) options.stageState?.(input.candidate);
       calls.push(`repair:${input.diagnostic?.split(":")[0]}`);
-      return { sessionId: "repair", response: source("Repaired") };
+      return {
+        sessionId: "repair",
+        response: input.language === "html" ? htmlSource("Repaired") : source("Repaired"),
+      };
     },
     runWidgetVisualReview: async (input) => {
       reviewInputs.push(input);
@@ -94,6 +111,7 @@ function host(options: {
   return {
     integration,
     calls,
+    compileLanguages,
     generationInputs,
     repairInputs,
     reviewInputs,
@@ -126,6 +144,203 @@ const generate = (
 };
 
 describe("ProjectSessionIntegrationHost widget rendered review", () => {
+  it.each([undefined, "html"] as const)(
+    "publishes explicit %s through the authoring operation and real review policy",
+    async (language) => {
+      const fixture = host({ language, reviews: ["ACCEPT_CURRENT"] });
+      const persistArtifact = vi.fn(async (artifact: CakeArtifactV1) => ({
+        artifact,
+        workspacePath: "/workspace",
+        digest: "a".repeat(64),
+        createdAt: new Date(0).toISOString(),
+        updatedAt: new Date(0).toISOString(),
+      }));
+      const appendEntry = vi.fn();
+      const registry = new CakeOperationRegistry(
+        createCakeArtifactOperations(
+          { appendEntry },
+          {
+            persistArtifact,
+            generateInlineWidget:
+              fixture.integration.runtimeIntegrations("project-session").generateInlineWidget,
+          },
+        ),
+      );
+      const result = await registry.invoke(
+        {
+          command: "widgets.present",
+          input: {
+            widget: {
+              id: "counter",
+              title: "Counter",
+              brief: "Interactive count",
+              ...(language ? { language } : {}),
+              initialState: { count: 0 },
+              fallback: { markdown: "A count" },
+            },
+          },
+        },
+        {
+          signal: new AbortController().signal,
+          toolCallId: "widget-1",
+          runtime: {
+            ...request().parentConversation,
+            model: request().model,
+          },
+        },
+      );
+      expect(fixture.compileLanguages).toEqual([language ?? "react"]);
+      expect(persistArtifact).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "widget",
+          revision: 1,
+          payload: expect.objectContaining({ language: language ?? "react" }),
+          fallback: { markdown: "A count" },
+        }),
+        { expectedVersion: 0, value: { count: 0 } },
+      );
+      expect(result.content[1]).toEqual({
+        type: "image",
+        mimeType: "image/png",
+        data: Buffer.from("png-1").toString("base64"),
+      });
+      expect(appendEntry).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each(["invalid", "rejected"] as const)(
+    "does not publish %s HTML through the authoring operation",
+    async (failure) => {
+      const fixture = host({
+        language: "html",
+        generation: failure === "invalid" ? "Not HTML" : undefined,
+        reviews: [htmlSource("Second"), htmlSource("Third"), htmlSource("Rejected")],
+      });
+      const persistArtifact = vi.fn();
+      const appendEntry = vi.fn();
+      const registry = new CakeOperationRegistry(
+        createCakeArtifactOperations(
+          { appendEntry },
+          {
+            persistArtifact,
+            generateInlineWidget:
+              fixture.integration.runtimeIntegrations("project-session").generateInlineWidget,
+          },
+        ),
+      );
+      await expect(
+        registry.invoke(
+          {
+            command: "widgets.present",
+            input: {
+              widget: {
+                id: "counter",
+                title: "Counter",
+                brief: "Count",
+                language: "html",
+                fallback: { markdown: "Count" },
+              },
+            },
+          },
+          {
+            signal: new AbortController().signal,
+            toolCallId: "rejected",
+            runtime: {
+              ...request().parentConversation,
+              model: request().model,
+            },
+          },
+        ),
+      ).rejects.toThrow(failure === "invalid" ? "HTML generation requires" : "third replacement");
+      expect(persistArtifact).not.toHaveBeenCalled();
+      expect(appendEntry).not.toHaveBeenCalled();
+      expect(fixture.calls.some((call) => call.startsWith("retain"))).toBe(false);
+    },
+  );
+
+  it("preserves HTML and stages state when revising the accepted generation branch", async () => {
+    const fixture = host({
+      reviews: ["ACCEPT_CURRENT"],
+      stageState: (candidate) => {
+        candidate.state = { count: 2 };
+      },
+    });
+    const revise = fixture.integration.runtimeIntegrations("project-session").reviseInlineWidget;
+    if (!revise) throw new Error("Missing revision integration");
+    const result = await revise({
+      sessionId: "project-session",
+      generationSessionId: "accepted-html",
+      language: "html",
+      source: htmlSource("Initial"),
+      brief: "Count",
+      fallback: "Count",
+      instructions: "Clarify count",
+      initialState: { count: 1 },
+      initialStateVersion: 4,
+      model: request().model,
+    });
+    expect(result.language).toBe("html");
+    expect(result.state).toEqual({ count: 2 });
+    expect(fixture.captureStates).toEqual([{ count: 2 }]);
+    expect(fixture.compileLanguages).toEqual(["html"]);
+    expect(fixture.repairInputs[0]).toMatchObject({
+      language: "html",
+      conversation: { type: "revision", sessionId: "accepted-html" },
+    });
+    expect(fixture.reviewInputs[0]).toMatchObject({
+      language: "html",
+      conversation: { type: "continue", sessionId: "repair" },
+    });
+  });
+
+  it("threads explicit HTML through repair, repeated visual review and accepted browser retention", async () => {
+    const fixture = host({
+      language: "html",
+      compileFailures: new Set(["Initial"]),
+      reviews: [htmlSource("Second"), "ACCEPT_CURRENT"],
+    });
+    const result = await generate(fixture.integration, { ...request(), language: "html" });
+    expect(result.language).toBe("html");
+    expect(result.source).toContain("function Second");
+    expect(fixture.compileLanguages).toEqual(["html", "html", "html"]);
+    expect(fixture.generationInputs[0]).toMatchObject({ language: "html" });
+    expect(fixture.repairInputs[0]).toMatchObject({ language: "html" });
+    expect(fixture.reviewInputs).toEqual([
+      expect.objectContaining({ language: "html" }),
+      expect.objectContaining({ language: "html" }),
+    ]);
+    expect(fixture.calls.filter((call) => call.startsWith("retain"))).toEqual(["retain:2"]);
+    expect(result.preview.data).toBe(Buffer.from("png-2").toString("base64"));
+  });
+
+  it.each([
+    "prose",
+    "```cake-html\n<p>Not a document</p>\n```",
+    source("WrongMode"),
+    htmlSource("Valid") + "\nTrailing prose",
+    htmlSource("Valid") + "\nTrailing prose\n```",
+  ])("rejects invalid HTML candidates without retention: %s", async (generation) => {
+    const fixture = host({ generation, reviews: [] });
+    await expect(generate(fixture.integration, { ...request(), language: "html" })).rejects.toThrow(
+      /HTML generation requires/,
+    );
+    expect(fixture.compileLanguages).toEqual([]);
+    expect(fixture.calls.some((call) => call.startsWith("retain"))).toBe(false);
+  });
+
+  it("never retains HTML after visual rejection exhausts the replacement budget", async () => {
+    const fixture = host({
+      language: "html",
+      reviews: [htmlSource("Second"), htmlSource("Third"), htmlSource("Rejected")],
+    });
+    await expect(generate(fixture.integration, { ...request(), language: "html" })).rejects.toThrow(
+      "third replacement",
+    );
+    expect(fixture.compileLanguages).toEqual(["html", "html", "html"]);
+    expect(fixture.calls.some((call) => call.startsWith("retain"))).toBe(false);
+    for (const token of fixture.capturedTokens) expect(inlineWidgetDocument(token)).toBeUndefined();
+  });
+
   it("compiles and retains built-in diagnostic browser output without generation or visual review", async () => {
     const fixture = host({ reviews: [] });
     const compile =
@@ -157,6 +372,7 @@ describe("ProjectSessionIntegrationHost widget rendered review", () => {
     await revise({
       sessionId: "project-session",
       generationSessionId: "existing",
+      language: "react",
       source: "existing",
       brief: "defaults",
       fallback: "defaults",
@@ -176,6 +392,7 @@ describe("ProjectSessionIntegrationHost widget rendered review", () => {
     await revise({
       sessionId: "project-session",
       generationSessionId: "existing",
+      language: "react",
       source: "existing",
       brief: "null",
       fallback: "null",
@@ -214,6 +431,7 @@ describe("ProjectSessionIntegrationHost widget rendered review", () => {
     const result = await revise({
       sessionId: "project-session",
       generationSessionId: "existing-generation",
+      language: "react",
       source: "export default function Existing(){ return <div>Existing</div> }",
       brief: "Show the flow",
       fallback: "Readable fallback",
@@ -344,6 +562,7 @@ describe("ProjectSessionIntegrationHost widget rendered review", () => {
     const accepted = await revise({
       sessionId: "project-session",
       generationSessionId: "existing",
+      language: "react",
       source: "existing",
       brief: "scene",
       fallback: "scene",

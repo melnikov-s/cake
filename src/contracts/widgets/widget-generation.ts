@@ -1,3 +1,4 @@
+import type { InlineWidgetLanguage } from "./inline-widget-contract";
 import type { JsonValue } from "../serialization/json-contract";
 import type { WidgetConversationOrigin } from "./widget-conversation";
 import type { WidgetPreview } from "./widget-preview";
@@ -7,6 +8,8 @@ export interface InlineWidgetGenerationRequest {
   sessionId: string;
   parentConversation: WidgetConversationOrigin;
   brief: string;
+  /** Defaults to React; HTML is a self-contained document without dependency bundling. */
+  language?: InlineWidgetLanguage;
   data?: unknown;
   initialState?: JsonValue;
   fallback: string;
@@ -16,7 +19,7 @@ export interface InlineWidgetGenerationRequest {
 }
 
 export interface InlineWidgetGenerationResult {
-  language: "react";
+  language: InlineWidgetLanguage;
   source: string;
   generationSessionId: string;
   preview: WidgetPreview;
@@ -28,6 +31,7 @@ export interface InlineWidgetGenerationResult {
 export interface InlineWidgetRevisionRequest {
   sessionId: string;
   generationSessionId: string;
+  language: InlineWidgetLanguage;
   source: string;
   brief: string;
   fallback: string;

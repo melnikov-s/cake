@@ -6,7 +6,7 @@ import { callRpcHarness, openRpcHarness } from "./rpc-harness";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("executes compiled React in the sandboxed document origin", async () => {
+async function verifyInlineWidget(language: "react" | "html") {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-inline-widget-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const cakeHome = join(temporaryRoot, "cake-home");
@@ -66,61 +66,103 @@ test("executes compiled React in the sandboxed document origin", async () => {
     expect(localFetch.status).toBe(200);
     expect(localFetch.source).toContain("React widget executed");
 
-    const expanding = await callRpcHarness<{
-      widget: { token: string; url: string };
-    }>(harness, "invokeNative", {
-      type: "compile-inline-widget",
-      language: "react",
-      capability: "display",
-      source: `import React, { useState } from "react";
+    if (language === "react") {
+      const expanding = await callRpcHarness<{
+        widget: { token: string; url: string };
+      }>(harness, "invokeNative", {
+        type: "compile-inline-widget",
+        language: "react",
+        capability: "display",
+        source: `import React, { useState } from "react";
 export default function ExpandingWidget() {
   const [expanded, setExpanded] = useState(false);
   return <main><button onClick={() => setExpanded(true)}>Expand after ready</button>
     {expanded && <section style={{ minHeight: 720 }}><p>Late content</p><button>Reachable late control</button></section>}
   </main>;
 }`,
-    });
-    await page.evaluate(({ url, token }) => {
-      const frame = document.querySelector<HTMLIFrameElement>('iframe[title="CSP React widget"]');
-      if (!frame) throw new Error("Widget frame is unavailable");
-      const receive = (event: MessageEvent) => {
-        if (event.source !== frame.contentWindow) return;
-        // SAFETY: Each field is checked below before use; this listener only adapts the fixed fixture bridge.
-        const data = event.data as {
-          source?: string;
-          token?: string;
-          type?: string;
-          value?: number;
+      });
+      await page.evaluate(({ url, token }) => {
+        const frame = document.querySelector<HTMLIFrameElement>('iframe[title="CSP React widget"]');
+        if (!frame) throw new Error("Widget frame is unavailable");
+        const receive = (event: MessageEvent) => {
+          if (event.source !== frame.contentWindow) return;
+          // SAFETY: Each field is checked below before use; this listener only adapts the fixed fixture bridge.
+          const data = event.data as {
+            source?: string;
+            token?: string;
+            type?: string;
+            value?: number;
+          };
+          if (data.source !== "cake-inline-widget" || data.token !== token) return;
+          if (data.type === "height" && typeof data.value === "number")
+            frame.style.height = `${Math.ceil(data.value)}px`;
         };
-        if (data.source !== "cake-inline-widget" || data.token !== token) return;
-        if (data.type === "height" && typeof data.value === "number")
-          frame.style.height = `${Math.ceil(data.value)}px`;
-      };
-      window.addEventListener("message", receive);
-      frame.src = url;
-    }, expanding.widget);
-    const expandingFrame = iframe.contentFrame();
-    await expect(expandingFrame.getByRole("button", { name: "Expand after ready" })).toBeVisible();
-    await expect(expandingFrame.locator("html")).toHaveAttribute("data-cake-widget-ready", "true");
-    const initialHeight = await iframe.evaluate(
-      (element) => element.getBoundingClientRect().height,
-    );
-    await expandingFrame.getByRole("button", { name: "Expand after ready" }).click();
-    await expect
-      .poll(() => iframe.evaluate((element) => element.getBoundingClientRect().height))
-      .toBeGreaterThan(initialHeight + 500);
-    await expect(
-      expandingFrame.getByRole("button", { name: "Reachable late control" }),
-    ).toBeVisible();
+        window.addEventListener("message", receive);
+        frame.src = url;
+      }, expanding.widget);
+      const expandingFrame = iframe.contentFrame();
+      await expect(
+        expandingFrame.getByRole("button", { name: "Expand after ready" }),
+      ).toBeVisible();
+      await expect(expandingFrame.locator("html")).toHaveAttribute(
+        "data-cake-widget-ready",
+        "true",
+      );
+      const initialHeight = await iframe.evaluate(
+        (element) => element.getBoundingClientRect().height,
+      );
+      await expandingFrame.getByRole("button", { name: "Expand after ready" }).click();
+      await expect
+        .poll(() => iframe.evaluate((element) => element.getBoundingClientRect().height))
+        .toBeGreaterThan(initialHeight + 500);
+      await expect(
+        expandingFrame.getByRole("button", { name: "Reachable late control" }),
+      ).toBeVisible();
+    }
 
     const artifact = await callRpcHarness<{ widget: { token: string; url: string } }>(
       harness,
       "invokeNative",
       {
         type: "compile-inline-widget",
-        language: "react",
+        language,
         capability: "artifact",
-        source: `import { useRef, useState } from "react";
+        source:
+          language === "html"
+            ? `<!doctype html><html><head><style>
+body{background:transparent}main{background:Canvas;color:CanvasText;display:flex;flex-wrap:wrap;gap:12px;padding:20px}
+h1,output{flex-basis:100%}button{padding:10px;border:1px solid var(--border);border-radius:6px;color:var(--foreground);background:var(--background)}
+</style></head><body><main><h1>Saved HTML counter</h1>
+<button id="save" disabled>Hydrating artifact</button><button id="stale-save">Replay stale save</button>
+<button id="stale-replace">Replay stale replace</button><output></output></main><script>
+const api = globalThis.cakeArtifact;
+let queuedVersion;
+function render() {
+  const state = api.getSnapshot();
+  const button = document.querySelector("#save");
+  button.disabled = !state.hydrated || !!state.error;
+  if (!state.hydrated) return;
+  if (queuedVersion === undefined) queuedVersion = state.version;
+  const value = state.version === 0 ? {count: 0} : state.value;
+  button.textContent = "Saved count " + value.count;
+}
+api.subscribe(render);
+render();
+document.querySelector("#save").onclick = async () => {
+  const state = api.getSnapshot();
+  await api.replace({count: state.value.count + 1}, state.version);
+};
+for (const method of ["save", "replace"]) {
+  document.querySelector("#stale-" + method).onclick = async () => {
+    try { await api.replace({count: 999}, queuedVersion); }
+    catch {
+      const state = api.getSnapshot();
+      document.querySelector("output").textContent = method + " rejected after refresh " + state.version + ":" + state.error;
+    }
+  };
+}
+</script></body></html>`
+            : `import { useRef, useState } from "react";
 import { useArtifact, useArtifactState } from "@cake/artifact-sdk";
 export default function Editor() {
   const state = useArtifactState({count: 0});
@@ -145,6 +187,8 @@ export default function Editor() {
     await page.evaluate(({ url, token }) => {
       const frame = document.querySelector<HTMLIFrameElement>('iframe[title="CSP React widget"]');
       if (!frame) throw new Error("Widget frame is unavailable");
+      frame.style.width = "560px";
+      frame.style.height = "400px";
       let state = { version: 1, value: { count: 2 } };
       const staleVersions: number[] = [];
       Object.assign(window, {
@@ -238,6 +282,38 @@ export default function Editor() {
       1, 1,
     ]);
 
+    // Reopen the same HTML/React source: mutable state belongs to the host, not the frame.
+    await iframe.evaluate((element) => {
+      const frame = element as HTMLIFrameElement;
+      const url = frame.src;
+      frame.src = url;
+    });
+    await expect(artifactFrame.getByRole("button", { name: "Saved count 8" })).toBeVisible();
+    expect(
+      await artifactFrame.locator("body").evaluate(() => {
+        let parentDom = false;
+        try {
+          parentDom = !!parent.document.body;
+        } catch {
+          /* Opaque sandbox: parent DOM must remain inaccessible. */
+        }
+        return {
+          parentDom,
+          node: typeof Reflect.get(globalThis, "require"),
+          electron: typeof Reflect.get(globalThis, "electron"),
+        };
+      }),
+    ).toEqual({ parentDom: false, node: "undefined", electron: "undefined" });
+    if (language === "html") {
+      await mkdir(join(repositoryRoot, ".visual-captures"), { recursive: true });
+      const screenshot = await iframe.screenshot({
+        path: join(repositoryRoot, ".visual-captures", "html-widget-state.png"),
+      });
+      await test
+        .info()
+        .attach("html-widget-state.png", { body: screenshot, contentType: "image/png" });
+    }
+
     const plugin = await callRpcHarness<{
       widget: { token: string; url: string };
     }>(harness, "invokeNative", {
@@ -307,4 +383,8 @@ export default function TourPlugin() {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });
   }
-});
+}
+
+test("executes compiled React in the sandboxed document origin", () => verifyInlineWidget("react"));
+test("executes HTML interaction and saved state in the sandboxed document origin", () =>
+  verifyInlineWidget("html"));

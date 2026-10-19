@@ -253,7 +253,12 @@ Cake-owned Markdown component.
 The primary agent creates a one-off visual explanation with the non-blocking
 `widgets.present` Cake operation. Its tool input contains a stable message-scoped ID, title,
 self-contained presentation brief, required data, and readable Markdown
-fallback. The primary agent does not author React or HTML. The brief remains in
+fallback, plus an optional `language: "react" | "html"` choice. React remains the default;
+choose HTML explicitly for simple native-DOM interactions, small calculators, or compact
+visualizations that need no component framework or installed libraries. Choose React for
+component-heavy experiences, installed widget packages, and prototype-ui module manifests.
+There is no automatic classifier or silent mode selection. Both are the existing `widget`
+artifact kind, not static `kind: "html"` artifacts. The primary agent does not author React or HTML. The brief remains in
 the Pi transcript. Publication supplies the accepted review PNG as a native model-visible
 image with its exact revision reference and digest. Generated implementation source is
 available selectively through exact-revision file reads; it is not automatically injected.
@@ -271,7 +276,8 @@ Cake-owned inline hooks preserve inherited prompt sections, append restricted ta
 instructions, and reuse the existing fork-lineage provider cache-key policy across
 the explicitly allowed project/widget session roots. Transcript and transport
 identities stay independent; actual cache hits remain provider/prefix-dependent.
-That agent stages one React component and optional JSON document state from the
+That agent stages one React component or one complete self-contained HTML document,
+and optional JSON document state from the
 untrusted brief and skill resources. Electron main compile-checks it and
 loads the compiled sandbox document in a fixed-size, main-owned hidden offscreen
 `BrowserWindow` with deterministic artifact-panel dimensions. The host waits for
@@ -322,8 +328,21 @@ the existing session/lineage projection cleanup and integrity/rematerialization 
 Cancellation, review failure, or a publication CAS conflict cannot mutate a prior
 revision or replace its capture.
 
+HTML generation returns exactly one `cake-html` fence containing a complete
+`<!doctype html><html><head>...</head><body>...</body></html>` document, with inline
+CSS and browser JavaScript. It has no JSX, imports, external scripts/styles/fonts,
+remote resources, npm packages, dependency resolution or bundling step. Native DOM,
+SVG and browser APIs provide interaction. The existing compiler injects the same
+sandbox runtime and scoped state bridge before authored scripts; the same mandatory
+browser render, visual acceptance and retained-build integrity checks apply. Markdown,
+wrong-language fences and incomplete documents cannot publish as generated HTML.
+Staged surgical source/state edits keep the selected language through generation,
+repair and visual replacements. `artifacts.replace` preserves the accepted revision’s
+`payload.language`; it has no language-switch input. Source, language, brief, browser
+output and accepted screenshot remain immutable revision metadata.
+
 React source is bundled as TSX and must default-export one component. React is the
-core runtime; other libraries are explicitly installed by the user in Cake's shared
+default runtime; other libraries are explicitly installed by the user in Cake's shared
 widget-package environment, outside Cake's application dependencies and the user's
 project. Settings and agent package operations manage this environment. Installation,
 upgrade, removal, and subsequent runtime compilation require no application rebuild
@@ -512,6 +531,53 @@ history, snapshots, patches, or an event log. The repository atomically overwrit
 current state in its private catalog envelope. State is shared across linked
 sessions and open instances, including views of older source revisions; restoring
 source does not restore old document data. Unrelated lineages remain isolated.
+
+HTML artifacts use `globalThis.cakeArtifact`, the same token-bound scoped state bridge
+used by the React SDK, without importing a package. It exposes `read()`,
+`getSnapshot()`, `subscribe(listener)` (returns unsubscribe), and
+`replace(jsonValue, expectedVersion)`. Read resolves `{version, value}`; snapshots
+also contain `hydrated` and `error`. No arbitrary lineage ID or host operation is
+accepted. Display widgets have no such capability. Example inside an inline script,
+after `<button disabled>Loading</button><output aria-live="polite"></output>` exists:
+
+```js
+const api = globalThis.cakeArtifact;
+const button = document.querySelector("button");
+const notice = document.querySelector("output");
+button.disabled = true;
+function render() {
+  const state = api.getSnapshot();
+  button.disabled = !state.hydrated || !!state.error;
+  if (state.hydrated) button.textContent = `Count ${state.version === 0 ? 0 : state.value.count}`;
+}
+api.subscribe(render);
+api
+  .read()
+  .then(render)
+  .catch((error) => {
+    button.textContent = error.message;
+  });
+button.onclick = async () => {
+  const state = api.getSnapshot();
+  const count = state.version === 0 ? 0 : state.value.count;
+  button.disabled = true;
+  try {
+    await api.replace({ count: count + 1 }, state.version);
+  } catch (error) {
+    notice.textContent = error.message;
+  } finally {
+    // Conflicts refresh state; do not blindly retry.
+    render();
+  }
+};
+```
+
+Persist only JSON, choose a
+schema that handles saved null if supported, and capture the version with the edited
+data rather than looking up a newer version at save time. Version 0 uses your seed;
+saved null has a nonzero version. Subscribe for live changes from other instances.
+Reloading/reopening source rehydrates the current lineage document; DOM/JS variables
+are mount-local and are not saved automatically.
 
 `@cake/artifact-sdk` exposes `useArtifactState(initialValue)` returning
 `{ value, hydrated, version, save, error, reload }`, and a narrow read/replace API through

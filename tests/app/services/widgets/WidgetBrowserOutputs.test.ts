@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, ManagedRuntime } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
+import { compileInlineWidget } from "../../../../src/services/widgets/inline-widget-service";
 import { WidgetBrowserOutputs } from "../../../../src/services/widgets/WidgetBrowserOutputs";
 import { makeWidgetBrowserOutputsLive } from "../../../../src/services/widgets/WidgetBrowserOutputsLive";
 import {
@@ -38,6 +39,28 @@ const candidate = () => {
 };
 
 describe("durable widget browser outputs", () => {
+  it("reopens retained HTML and its scoped state runtime after restart, rejecting changed HTML bytes", async () => {
+    const { outputs, root } = await fixture();
+    const compiled = await compileInlineWidget(
+      "html",
+      '<!doctype html><html><head></head><body><button onclick="this.textContent=1">Count</button></body></html>',
+      "artifact",
+    );
+    const browser = await Effect.runPromise(outputs.retain(compiled));
+    const restarted = ManagedRuntime.make(makeWidgetBrowserOutputsLive(root));
+    runtimes.push(restarted);
+    const reopened = await restarted.runPromise(
+      Effect.flatMap(WidgetBrowserOutputs, (service) => service.open(browser)),
+    );
+    expect(reopened.token).not.toBe(compiled.token);
+    expect(reopened.document).not.toContain(compiled.token);
+    expect(reopened.document).toContain(reopened.token);
+    expect(reopened.document).toContain('onclick="this.textContent=1"');
+    expect(reopened.document).toContain("globalThis.cakeArtifact =");
+    await writeFile(join(root, browser.digest, "document.html"), "changed");
+    await expect(Effect.runPromise(outputs.open(browser))).rejects.toThrow("integrity");
+  });
+
   it("deduplicates immutable builds independent of transient token and rebinds each open", async () => {
     const { outputs, root } = await fixture();
     const first = candidate();

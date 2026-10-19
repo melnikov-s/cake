@@ -67,6 +67,8 @@ test("production widget review captures settled sandbox pixels before persistenc
       sessionId: string;
       workingDirectory: string;
       artifactId: string;
+      language?: "react" | "html";
+      artifactState?: { count: number };
       source: string;
       pluginState?: { topic: string };
       capability?: "artifact";
@@ -192,6 +194,38 @@ export default function DelayedReviewFixture() {
     expect(result.diagnostics).toContain("host=hidden-offscreen");
     expect(colors.size.width).toBeGreaterThan(800);
     expect(colors.size.width).toBeLessThan(1_200);
+
+    const html = await capture({
+      sessionId: "widget-review-session",
+      workingDirectory: project,
+      artifactId: "html-reviewed",
+      language: "html",
+      capability: "artifact",
+      artifactState: { count: 7 },
+      source: `<!doctype html><html><head><style>
+body{background:transparent}main{background:Canvas;color:CanvasText;padding:24px;display:grid;gap:16px}
+button{font:inherit;padding:12px;color:var(--foreground);background:var(--background);border:1px solid var(--border)}
+</style></head><body><main><h1>HTML state review</h1><p>Self-contained JavaScript, no dependency bundle.</p><button disabled>Hydrating</button></main>
+<script>
+const api = globalThis.cakeArtifact;
+const button = document.querySelector("button");
+api.subscribe(() => {const s = api.getSnapshot(); if (s.hydrated) {button.textContent = "Saved count " + s.value.count; button.disabled = false;}});
+button.onclick = () => {const s = api.getSnapshot(); return api.replace({count: s.value.count + 1}, s.version);};
+</script></body></html>`,
+    });
+    expect(html.persistedBeforeCapture).toBe(false);
+    expect(html.persistedAfterCapture).toBe(true);
+    expect(html.publishedImage.data).toBe(html.pngBase64);
+    expect(html.retainedImage).toEqual(html.publishedImage);
+    expect(html.exactRef).toBe("cake://artifact/html-reviewed@r1");
+    await writeFile(
+      join(repositoryRoot, ".visual-captures", "html-widget-reviewed.png"),
+      Buffer.from(html.pngBase64, "base64"),
+    );
+    await testInfo.attach("html-widget-reviewed.png", {
+      body: Buffer.from(html.pngBase64, "base64"),
+      contentType: "image/png",
+    });
 
     // A generated plugin must be reviewed with host state, not just its hook default.
     const plugin = await capture({

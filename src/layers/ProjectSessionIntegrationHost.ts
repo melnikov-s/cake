@@ -380,10 +380,12 @@ export class ProjectSessionIntegrationHost {
       brief: input.brief,
       fallback: input.fallback,
       revisionInstructions: input.instructions,
+      language: input.language,
       initialState: input.initialState ?? null,
     });
     const generationInput: WidgetReviewInput = {
       sessionId: input.sessionId,
+      language: input.language,
       brief: input.brief,
       fallback: input.fallback,
       initialState: input.initialStateVersion === 0 ? undefined : input.initialState,
@@ -398,7 +400,7 @@ export class ProjectSessionIntegrationHost {
         sessionDir: this.widgetSessionDir,
         sessionRoots: this.widgetSessionRoots,
         conversation: { type: "revision", sessionId: input.generationSessionId },
-        language: "react",
+        language: input.language,
         capability: "artifact",
         source: input.source,
         candidate,
@@ -437,7 +439,7 @@ export class ProjectSessionIntegrationHost {
         fromPromise(() => {
           candidate.source = source;
           return this.compileWidget(
-            "react",
+            input.language ?? "react",
             source,
             input.surface === "session-plugin" ? "session-plugin" : "artifact",
           );
@@ -459,7 +461,7 @@ export class ProjectSessionIntegrationHost {
             sessionDir: this.widgetSessionDir,
             sessionRoots: this.widgetSessionRoots,
             conversation: conversation(),
-            language: "react",
+            language: input.language ?? "react",
             capability: input.surface === "session-plugin" ? "session-plugin" : "artifact",
             source,
             candidate: input.surface === "session-plugin" ? undefined : candidate,
@@ -496,6 +498,7 @@ export class ProjectSessionIntegrationHost {
             sessionDir: this.widgetSessionDir,
             sessionRoots: this.widgetSessionRoots,
             conversation: conversation(),
+            language: input.language ?? "react",
             source,
             context:
               input.surface === "session-plugin"

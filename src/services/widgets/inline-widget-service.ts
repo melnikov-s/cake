@@ -153,7 +153,7 @@ function runtimeBridge(token: string, capability: InlineWidgetCapability) {
       }
     }
   });
-  globalThis.__cakeArtifactBridge = Object.freeze({
+  globalThis.cakeArtifact = globalThis.__cakeArtifactBridge = Object.freeze({
     getSnapshot: () => stateSnapshot,
     subscribe(listener) { stateListeners.add(listener); return () => stateListeners.delete(listener); },
     read: () => requestState("artifact-state-read", {}),

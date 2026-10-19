@@ -5,6 +5,7 @@ import { createCakeArtifactStateOperations } from "./cake-artifact-state-operati
 import { createSelectedDesignOperations } from "./cake-selected-design-operations";
 import { readPrototypeSource } from "../../services/widgets/prototype-source";
 import { Schema } from "effect";
+import { inlineWidgetLanguageSchema } from "../../contracts/widgets/inline-widget-contract";
 import { retainedWidgetPreviewEvidence } from "../../contracts/widgets/widget-view-evidence";
 import { jsonValueSchema } from "../../contracts/serialization/json-contract";
 import {
@@ -45,6 +46,7 @@ const markdownSchema = Schema.String.check(
 );
 
 const widgetSchema = Schema.Struct({
+  language: Schema.optionalKey(inlineWidgetLanguageSchema),
   id: artifactIdSchema,
   title: titleSchema,
   brief: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(262_144)),
@@ -499,7 +501,7 @@ export function createCakeArtifactOperations(
       summary: "Replace an existing artifact or revise a widget from instructions.",
       guidance: [
         "Use this operation when the user asks to edit, fix, revise, or repair an artifact. Cake preserves its stable ID and publishes the next immutable revision.",
-        "Markdown replacements require the complete document; prefer artifacts.update for targeted text edits. File replacements snapshot a replacement workspace-relative path. Widget replacements accept revision instructions and run isolated generation, rendering, and visual review before publication, returning the new revision's accepted PNG as a native image.",
+        "Markdown replacements require the complete document; prefer artifacts.update for targeted text edits. File replacements snapshot a replacement workspace-relative path. Widget replacements accept revision instructions and run isolated generation, rendering, and visual review before publication, returning the new revision's accepted PNG as a native image. Widget revisions retain the stored source language; there is no language-switch input.",
       ],
       inputSchema: artifactReplaceSchema,
       examples: [
@@ -562,6 +564,7 @@ export function createCakeArtifactOperations(
           const generated = await options.reviseInlineWidget({
             sessionId,
             generationSessionId: current.artifact.payload.generationSessionId,
+            language: current.artifact.payload.language,
             source: current.artifact.payload.source,
             brief: current.artifact.payload.brief,
             fallback: current.artifact.fallback.markdown,
@@ -574,7 +577,12 @@ export function createCakeArtifactOperations(
           if (context.signal.aborted) throw new Error("Widget revision was cancelled");
           if (!generated.browser)
             throw new Error("Accepted widget revision has no retained browser output");
-          const previousPrototype = readPrototypeSource(current.artifact.payload.source);
+          if (generated.language !== current.artifact.payload.language)
+            throw new Error("Widget revisions must preserve the source language");
+          const previousPrototype =
+            current.artifact.payload.language === "react"
+              ? readPrototypeSource(current.artifact.payload.source)
+              : undefined;
           if (previousPrototype) {
             const nextPrototype = readPrototypeSource(generated.source);
             if (
@@ -684,11 +692,13 @@ export function createCakeArtifactOperations(
     operations.push({
       command: "widgets.present",
       topic: "widgets",
-      summary: "Delegate and present one self-contained interactive or highly visual React widget.",
+      summary: "Delegate and present one self-contained interactive or highly visual widget.",
       guidance: [
         "Prefer ordinary inline Markdown—including Mermaid and small tables—whenever it communicates the result clearly. Create a widget only for a substantial, reusable, or genuinely interactive/visual deliverable, especially when requested.",
-        "Supply the explanation goal, audience, verified facts/source references, bounded data, and a readable Markdown fallback. Do not write the generated React source yourself.",
+        "Supply the explanation goal, audience, verified facts/source references, bounded data, and a readable Markdown fallback. Do not write the generated source yourself.",
         "Publication supplies the accepted rendered preview to the agent as a native image, with an immutable exact reference. The user sees a live interactive widget. The retained PNG is Initial state—not current interactive view. Revision alone does not identify a selected variant. Before implementing an approved design, inspect matching revision AND state pixels: use the exact preview for the initial state, or ask the user to Attach current view for their interactive selection. Never claim visual verification from source or textual image descriptions. Read projected source selectively when needed and compare the implementation's real screenshot against the approved revision.",
+        'Choose language: "html" for simple self-contained experiences using inline CSS and browser JavaScript without JSX, npm packages or bundling. Omit language (or choose "react") for React components, installed libraries, and prototype-ui module manifests. HTML remains an interactive widget, not a static HTML artifact. Replacements and repairs preserve the source language.',
+        "HTML durable state uses globalThis.cakeArtifact.read(), getSnapshot(), subscribe(listener), and replace(value, expectedVersion); React uses @cake/artifact-sdk hooks. Both are scoped to this artifact. Wait for hydration, save only JSON, and handle version conflicts.",
         "The specialist can read domain skills and combine React, installed widget libraries, editable canvases, filters and details. Supply initialState for artifact-scoped JSON data; the widget owns its format and save timing. Describe intended relationships and useful interactions, not pixel coordinates or a mandatory graph DSL.",
         "The published visualization is shown inline, expanded by default with a collapse control. Do not add a redundant embed or Open artifact link after publication. To show an existing artifact again on demand, use artifacts.present with its stable or exact reference, not widgets.present regeneration or duplicate Markdown embeds. Ordinary [Title](cake://artifact/<id>) links stay compact. Use exact revisions for historical explanations.",
       ],
@@ -709,7 +719,7 @@ export function createCakeArtifactOperations(
         "The persisted widget ID, revision, digest and exact reference plus its accepted review PNG as a native model-visible image; no generated source or private branch history.",
       limitations: [
         "The immutable snapshot, including accepted PNG bytes, must fit the existing 1 MiB serialized artifact limit. Oversized publication fails rather than silently omitting the preview.",
-        "Generated widgets have no filesystem, Node, Electron, parent-DOM or unrestricted Cake API access. @cake/artifact-sdk grants only artifact-scoped JSON state. CSP blocks fetch/XHR/WebSocket. Required libraries must already be installed; ask for dependency authorization outside the private generation branch.",
+        "Generated widgets have no filesystem, Node, Electron, parent-DOM or unrestricted Cake API access. @cake/artifact-sdk (React) and globalThis.cakeArtifact (HTML) grant only artifact-scoped JSON state. CSP blocks fetch/XHR/WebSocket. HTML has no external scripts/dependencies; React libraries must already be installed; ask for dependency authorization outside the private generation branch.",
         "Generation inherits the caller's ancestor context at creation time, excluding sibling branches and unfinished tool calls. Revisions follow the artifact's generation branch, not later parent messages.",
         "Every successfully rendered candidate is reviewed from an actual Cake Electron screenshot. Private review history stays private; only the accepted capture is retained in the immutable artifact snapshot and supplied to the caller. The capture covers one bounded initial state, not every interaction, theme, or viewport.",
       ],
@@ -725,6 +735,7 @@ export function createCakeArtifactOperations(
           sessionId,
           parentConversation: widgetConversationFromOperation(runtime),
           brief: widget.brief,
+          language: widget.language ?? "react",
           data: widget.data,
           initialState: widget.initialState,
           fallback: widget.fallback.markdown,

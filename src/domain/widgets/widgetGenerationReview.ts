@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect";
+import type { InlineWidgetLanguage } from "../../contracts/widgets/inline-widget-contract";
 import type { WidgetBrowserOutput } from "../../contracts/widgets/widget-browser-output";
 import type { WidgetPreview } from "../../contracts/widgets/widget-preview";
 import type { JsonValue } from "../../contracts/serialization/json-contract";
@@ -8,6 +9,7 @@ import { RenderedWidgetCaptureError } from "../../contracts/widgets/rendered-wid
 export interface InlineWidgetGenerationRequest {
   readonly sessionId: string;
   readonly brief: string;
+  readonly language?: InlineWidgetLanguage;
   readonly data?: unknown;
   readonly initialState?: JsonValue;
   readonly fallback: string;
@@ -17,7 +19,7 @@ export interface InlineWidgetGenerationRequest {
 }
 
 export interface InlineWidgetGenerationResult {
-  readonly language: "react";
+  readonly language: InlineWidgetLanguage;
   readonly source: string;
   readonly generationSessionId: string;
   readonly preview: WidgetPreview;
@@ -79,9 +81,21 @@ const mapFailure = (
   operation: WidgetGenerationReviewError["operation"],
   kind: WidgetGenerationReviewError["kind"],
 ) => Effect.mapError((cause: unknown) => fail(operation, kind, cause));
-const extract = (response: string, operation: WidgetGenerationReviewError["operation"]) =>
+const extract = (
+  response: string,
+  operation: WidgetGenerationReviewError["operation"],
+  language: InlineWidgetLanguage,
+) =>
   Effect.try({
-    try: () => extractRepairedWidget(response, "react"),
+    try: () => {
+      if (language !== "html") return extractRepairedWidget(response, language);
+      const match = /^```cake-html[^\S\r\n]*\r?\n([\s\S]*?)\r?\n```$/.exec(response.trim());
+      const source = match?.[1]?.trim();
+      if (!source) throw new Error("HTML generation requires one complete cake-html fence");
+      if (!/^<!doctype html>\s*<html[\s>][\s\S]*<\/html>$/i.test(source))
+        throw new Error("HTML generation requires a complete self-contained HTML document");
+      return source;
+    },
     catch: (cause) => fail(operation, "candidate", cause),
   });
 
@@ -98,7 +112,8 @@ export const generateReviewedWidget = Effect.fn("WidgetGenerationReview.generate
       "Rendered widget review requires a configured vision-capable model",
     );
   const generated = yield* dependencies.generate().pipe(mapFailure("generate", "infrastructure"));
-  let source = yield* extract(generated.response, "generate");
+  const language = input.language ?? "react";
+  let source = yield* extract(generated.response, "generate", language);
   let replacements = 0;
   let diagnostic = "Compilation succeeded.";
 
@@ -119,7 +134,7 @@ export const generateReviewedWidget = Effect.fn("WidgetGenerationReview.generate
       const repaired = yield* dependencies
         .repair(source, diagnostic)
         .pipe(mapFailure("repair", "infrastructure"));
-      source = yield* extract(repaired.response, "repair");
+      source = yield* extract(repaired.response, "repair", language);
       replacements += 1;
       continue;
     }
@@ -154,7 +169,7 @@ export const generateReviewedWidget = Effect.fn("WidgetGenerationReview.generate
       const repaired = yield* dependencies
         .repair(source, `Rendered preview failed: ${outcome.failure.message}`)
         .pipe(mapFailure("repair", "infrastructure"));
-      source = yield* extract(repaired.response, "repair");
+      source = yield* extract(repaired.response, "repair", language);
       replacements += 1;
       continue;
     }
@@ -168,7 +183,7 @@ export const generateReviewedWidget = Effect.fn("WidgetGenerationReview.generate
           "Accepted widget is missing retained browser output",
         );
       return {
-        language: "react" as const,
+        language,
         source,
         generationSessionId: generated.sessionId,
         preview: { mimeType: "image/png" as const, data: outcome.success.pngBase64 },
@@ -181,7 +196,7 @@ export const generateReviewedWidget = Effect.fn("WidgetGenerationReview.generate
         "candidate",
         "Widget visual review requested a third replacement; the two-replacement limit is exhausted",
       );
-    source = yield* extract(response, "review");
+    source = yield* extract(response, "review", language);
     replacements += 1;
     diagnostic = "Visual reviewer supplied a replacement.";
   }

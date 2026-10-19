@@ -698,52 +698,101 @@ describe("Cake artifact management operations", () => {
     expect(replaceHelp.text).toContain('"instructions"');
   });
 
-  it("revises from the accepted widget generation branch and publishes its new branch identity", async () => {
-    const initial = widgetArtifact();
-    if (initial.kind !== "widget") throw new Error("Expected widget");
-    const { registry, callbacks } = makeHarness(initial);
-    const revise = vi.fn(async () => ({
-      language: "react" as const,
-      source: "export default function Revised(){return null}",
-      generationSessionId: "revision-branch",
-      browser: { digest: "a".repeat(64) },
-      preview: { mimeType: "image/png" as const, data: "cG5n" },
-    }));
-    callbacks.reviseInlineWidget = revise;
-    const result = await registry.invoke(
-      {
-        command: "artifacts.replace",
-        input: { lineageId: "chart", expectedRevision: 1, instructions: "Use clearer labels" },
+  it.each(["react", "html"] as const)(
+    "revises %s from the accepted widget generation branch, retaining language and publishing its new branch identity",
+    async (language) => {
+      const original = widgetArtifact();
+      if (original.kind !== "widget") throw new Error("Expected widget");
+      const initial = {
+        ...original,
+        payload: {
+          ...original.payload,
+          language,
+          source:
+            language === "html"
+              ? "<!doctype html><html><head></head><body><button>Count</button></body></html>"
+              : original.payload.source,
+        },
+      };
+      const { registry, callbacks } = makeHarness(initial);
+      const revise = vi.fn(async () => ({
+        language,
+        source:
+          language === "html"
+            ? initial.payload.source.replace("Count", "Revised count")
+            : "export default function Revised(){return null}",
+        generationSessionId: "revision-branch",
+        browser: { digest: "a".repeat(64) },
+        preview: { mimeType: "image/png" as const, data: "cG5n" },
+      }));
+      callbacks.reviseInlineWidget = revise;
+      const result = await registry.invoke(
+        {
+          command: "artifacts.replace",
+          input: { lineageId: "chart", expectedRevision: 1, instructions: "Use clearer labels" },
+        },
+        context(),
+      );
+      expect(result.content[1]).toEqual({ type: "image", mimeType: "image/png", data: "cG5n" });
+      expect(result.details).toMatchObject({ result: { exactRef: "cake://artifact/chart@r2" } });
+      await expect(
+        registry.invoke(
+          { command: "artifacts.preview", input: { reference: "chart@r1" } },
+          context(),
+        ),
+      ).rejects.toThrow("No retained rendered preview");
+      await expect(
+        registry.invoke({ command: "artifacts.preview", input: { reference: "chart" } }, context()),
+      ).rejects.toThrow();
+      expect(revise).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: "session-1",
+          generationSessionId: "accepted-generation",
+          language,
+          source: initial.payload.source,
+          instructions: "Use clearer labels",
+          initialState: { scene: "latest live state" },
+        }),
+      );
+      expect(callbacks.persistArtifact).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: "session-1",
+          revision: 2,
+          payload: expect.objectContaining({ generationSessionId: "revision-branch", language }),
+        }),
+      );
+    },
+  );
+
+  it("rejects an accidental mode switch before publishing a replacement", async () => {
+    const original = widgetArtifact();
+    if (original.kind !== "widget") throw new Error("Expected widget");
+    const { registry, callbacks, appendEntry } = makeHarness({
+      ...original,
+      payload: {
+        ...original.payload,
+        language: "html",
+        source: "<!doctype html><html><head></head><body>Count</body></html>",
       },
-      context(),
-    );
-    expect(result.content[1]).toEqual({ type: "image", mimeType: "image/png", data: "cG5n" });
-    expect(result.details).toMatchObject({ result: { exactRef: "cake://artifact/chart@r2" } });
+    });
+    callbacks.reviseInlineWidget = async () => ({
+      language: "react",
+      source: "export default () => null",
+      generationSessionId: "wrong-mode",
+      browser: { digest: "a".repeat(64) },
+      preview: { mimeType: "image/png", data: "cG5n" },
+    });
     await expect(
       registry.invoke(
-        { command: "artifacts.preview", input: { reference: "chart@r1" } },
+        {
+          command: "artifacts.replace",
+          input: { lineageId: "chart", expectedRevision: 1, instructions: "Clarify" },
+        },
         context(),
       ),
-    ).rejects.toThrow("No retained rendered preview");
-    await expect(
-      registry.invoke({ command: "artifacts.preview", input: { reference: "chart" } }, context()),
-    ).rejects.toThrow();
-    expect(revise).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sessionId: "session-1",
-        generationSessionId: "accepted-generation",
-        source: initial.payload.source,
-        instructions: "Use clearer labels",
-        initialState: { scene: "latest live state" },
-      }),
-    );
-    expect(callbacks.persistArtifact).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sessionId: "session-1",
-        revision: 2,
-        payload: expect.objectContaining({ generationSessionId: "revision-branch" }),
-      }),
-    );
+    ).rejects.toThrow("preserve the source language");
+    expect(callbacks.persistArtifact).not.toHaveBeenCalled();
+    expect(appendEntry).not.toHaveBeenCalled();
   });
 
   it("commits only accepted staged state with the version read from live storage", async () => {

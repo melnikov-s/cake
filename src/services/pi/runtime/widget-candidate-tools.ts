@@ -79,7 +79,7 @@ export async function createWidgetCandidateTools(options: {
           params.target === "source" ? candidate.source : JSON.stringify(candidate.state, null, 2);
         const edited = await editText({
           workingDirectory: options.cwd,
-          path: `candidate.${params.target === "source" ? "tsx" : "json"}`,
+          path: `candidate.${params.target === "source" ? "source" : "json"}`,
           text,
           edits: params.edits,
           toolCallId: id,
