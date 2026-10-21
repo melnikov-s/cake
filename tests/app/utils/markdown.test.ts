@@ -1,5 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { shouldRenderMarkdown } from "../../../src/utils/markdown";
+import { markdownTextPreview, shouldRenderMarkdown } from "../../../src/utils/markdown";
+
+describe("markdownTextPreview", () => {
+  it("keeps readable source content while deferring images and navigation", () => {
+    expect(
+      markdownTextPreview(
+        "## Result\n\n**Verified** [source](cake://session/producer?message=result).\n\n![Screenshot](private.png)\n\n![Reference][image]\n\n[image]: attachment.png",
+      ),
+    ).toBe("Result\nVerified source.\n[Image: Screenshot]\n[Image: Reference]");
+  });
+
+  it("bounds excerpts and retains honest empty content", () => {
+    expect(markdownTextPreview("**" + "a".repeat(500) + "**")).toBe("a".repeat(400));
+    expect(markdownTextPreview("   ")).toBe("");
+  });
+});
 
 describe("shouldRenderMarkdown", () => {
   it.each([

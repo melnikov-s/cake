@@ -7,6 +7,7 @@ import {
   type MessageReadResult,
 } from "../../contracts/conversations/message-reference";
 import { ClientContext } from "./context/ClientContext";
+import { markdownTextPreview } from "../../utils/markdown";
 
 /** A transient exact-source preview, never added to the Conversation or a window snapshot. */
 export class MessageReferencePreviewStore extends Store<{
@@ -103,7 +104,7 @@ export class MessageReferencePreviewStore extends Store<{
       const page = await this.readPage(sessionId, entryId, offset);
       if (revision !== this.revision || this.signal.aborted) return false;
       this.page = page;
-      if (offset === 0) this.previewText = page.text.trim().slice(0, 400);
+      if (offset === 0) this.previewText = markdownTextPreview(page.text);
       return true;
     } catch (error) {
       if (revision === this.revision && !this.signal.aborted)

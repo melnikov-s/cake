@@ -58,9 +58,7 @@ export const InlineMessageSource = observer(function InlineMessageSource({
             </span>
           ) : store.previewText !== undefined ? (
             store.previewText ? (
-              <Markdown renderImages={false} className="line-clamp-3">
-                {store.previewText}
-              </Markdown>
+              <p className="line-clamp-3 whitespace-pre-wrap break-words">{store.previewText}</p>
             ) : (
               <span className="text-muted-foreground">
                 This response has no textual content. Expand response to inspect available

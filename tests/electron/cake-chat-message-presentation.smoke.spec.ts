@@ -291,9 +291,9 @@ for (const [delivery, theme] of [
         };
         await verifyImages();
         // Collapse unmounts image reads; reopening must resolve in the same source context.
-        await first.getByRole("button", { name: /Full agent response/ }).click();
+        await first.getByRole("button", { name: /(?:Expand|Collapse) response/ }).click();
         await expect(first.getByRole("img")).toHaveCount(0);
-        await first.getByRole("button", { name: /Full agent response/ }).click();
+        await first.getByRole("button", { name: /(?:Expand|Collapse) response/ }).click();
         await verifyImages();
         await first.getByRole("button", { name: "Next", exact: true }).click();
         await expect(first.getByText(/Last original finding/)).toBeVisible();
