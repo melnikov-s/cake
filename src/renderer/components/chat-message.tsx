@@ -133,6 +133,7 @@ export const ChatTextMessage = forwardRef<
           normalizeLatexDelimiters={part.status !== "streaming"}
           onOpenSourceLocation={onOpenSourceLocation}
           omitArtifactEmbeds={omitArtifactEmbeds}
+          className="has-[[data-slot=artifact-disclosure]]:[&>:not([data-slot=artifact-disclosure])]:mx-auto has-[[data-slot=artifact-disclosure]]:[&>:not([data-slot=artifact-disclosure])]:max-w-[45.375rem]"
         >
           {text}
         </Markdown>

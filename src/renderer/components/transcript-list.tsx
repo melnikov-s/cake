@@ -12,7 +12,7 @@ export const TranscriptList = forwardRef<
     <div
       ref={ref}
       className={cn(
-        "mx-auto w-full max-w-[51rem] min-w-0 px-6 pt-[42px] max-[620px]:px-4 in-[.chat-layout-compact]:px-3 in-[.chat-layout-compact]:pt-5",
+        "mx-auto w-full max-w-[75rem] min-w-0 px-6 pt-[42px] max-[620px]:px-4 in-[.chat-layout-compact]:px-3 in-[.chat-layout-compact]:pt-5",
         className,
       )}
       aria-label="Conversation"

@@ -58,10 +58,11 @@ export const RendererRoot = observer(function RendererRoot({
                       signal,
                     });
                   },
-                  renderArtifactEmbed: (reference, label) => (
+                  renderArtifactEmbed: (reference, label, surfaceId) => (
                     <InlineArtifactPreview
                       reference={formatArtifactRef(parseArtifactRef(reference))}
                       label={label}
+                      surfaceId={surfaceId}
                       stateSessionId={activeSessionId}
                       store={rootStore.inlineArtifactPreviewStore}
                       inlineWidgets={rootStore.inlineWidgetStore}

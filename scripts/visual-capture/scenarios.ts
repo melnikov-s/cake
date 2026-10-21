@@ -1379,7 +1379,7 @@ export default function Visual() {
 const inlineArtifactScenario: VisualCaptureScenario = {
   name: "inline-artifact",
   description: "One saved visualization, expanded inline by default with collapse and fullscreen",
-  states: ["default", "collapsed", "fullscreen", "popup", "pane"],
+  states: ["default", "collapsed", "reexpanded", "fullscreen", "popup", "pane"],
   async seed(paths, theme) {
     const source = `import React, { useState } from "react";
 export default function Visual() {
@@ -1424,6 +1424,12 @@ export default function Visual() {
     );
   },
   async prepare(page, state) {
+    await page
+      .locator(".transcript")
+      .first()
+      .evaluate((element) => {
+        element.scrollTop = 0;
+      });
     const disclosure = page.locator('[data-slot="artifact-disclosure"]').first();
     await expect(disclosure).toBeVisible();
     await expect(
@@ -1456,8 +1462,17 @@ export default function Visual() {
       ).toBeVisible();
       await expect(page.getByRole("dialog", { name: "Artifacts", exact: true })).not.toBeAttached();
     }
-    if (state === "collapsed")
+    if (state === "collapsed" || state === "reexpanded")
       await disclosure.getByRole("button", { name: "Inline visualization Collapse" }).click();
+    if (state === "reexpanded") {
+      await disclosure.getByRole("button", { name: "Inline visualization Expand" }).click();
+      await expect(
+        disclosure
+          .locator("iframe")
+          .contentFrame()
+          .getByRole("heading", { name: "One artifact, two views" }),
+      ).toBeVisible();
+    }
     if (state === "fullscreen")
       await disclosure
         .getByRole("button", { name: "View Inline visualization fullscreen" })

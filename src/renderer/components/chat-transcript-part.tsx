@@ -1,4 +1,5 @@
 import { observer } from "r-state-tree/react";
+import { InlineArtifactContext } from "./inline-artifact-context";
 import { Markdown } from "@/components/ai-elements/markdown";
 import { Reasoning } from "@/components/ai-elements/reasoning";
 import { ShellCommand } from "@/components/ai-elements/shell-command";
@@ -196,7 +197,12 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         <InlineArtifactPreview
           reference={
             part.artifactReference ??
-            behavior.inlineArtifactPreviews.publicationReference(part.artifactId, behavior.store.id)
+            (part.artifactRevision
+              ? `cake://artifact/${part.artifactId}@r${part.artifactRevision}`
+              : behavior.inlineArtifactPreviews.publicationReference(
+                  part.artifactId,
+                  behavior.store.id,
+                ))
           }
           stateSessionId={behavior.store.id}
           store={behavior.inlineArtifactPreviews}
@@ -342,12 +348,16 @@ export const TranscriptPart = observer(function TranscriptPart(props: {
   omitToolDiff?: boolean;
 }) {
   return (
-    <div className="contents" data-part-id={props.part.id}>
-      <TranscriptPartContent {...props} />
-      {props.part.kind === "text" &&
-        props.behavior.store.messageSources
-          .filter((source) => source.props.partId === props.part.id)
-          .map((source) => <InlineMessageSource key={source.props.reference} store={source} />)}
-    </div>
+    <InlineArtifactContext
+      value={{ conversationId: props.behavior.store.id, partId: props.part.id }}
+    >
+      <div className="contents" data-part-id={props.part.id}>
+        <TranscriptPartContent {...props} />
+        {props.part.kind === "text" &&
+          props.behavior.store.messageSources
+            .filter((source) => source.props.partId === props.part.id)
+            .map((source) => <InlineMessageSource key={source.props.reference} store={source} />)}
+      </div>
+    </InlineArtifactContext>
   );
 });

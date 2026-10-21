@@ -53,7 +53,8 @@ for (const theme of ["light", "dark"] as const) {
       await expect(page.getByRole("button", { name: "1 artifacts" })).toBeVisible({
         timeout: 20000,
       });
-      await page.getByRole("link", { name: "saved visualization" }).click();
+      await page.getByRole("link", { name: "saved visualization" }).focus();
+      await page.getByRole("link", { name: "saved visualization" }).press("Enter");
       const pane = page.locator('[data-artifact-id="inline-visual"]');
       await expect(page.getByLabel("Search artifact library")).toBeVisible();
       await expect(page.getByRole("button", { name: /Historical widget widget/ })).toBeVisible();
@@ -79,6 +80,28 @@ for (const theme of ["light", "dark"] as const) {
       await expect(frame.locator("html")).toHaveAttribute("data-theme", theme);
       await expect(frame.locator("html")).toHaveAttribute("data-presentation", "inline");
       await expect(frame.locator("html")).toHaveAttribute("data-cake-widget-ready", "true");
+      // Artifact rows have their own cap; ordinary messages and prose retain their reading width.
+      await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0]!.setContentSize(1800, 1100),
+      );
+      await expect
+        .poll(() => inline.evaluate((element) => element.getBoundingClientRect().width))
+        .toBeGreaterThan(900);
+      await page
+        .locator(".transcript")
+        .first()
+        .evaluate((element) => {
+          element.scrollTop = 0;
+        });
+      const prose = page
+        .locator(".markdown-content > p")
+        .filter({ hasText: "saved visualization" })
+        .first();
+      expect((await prose.boundingBox())!.width).toBeLessThanOrEqual(727);
+      const userMessage = page
+        .locator('[data-slot="message-content"]')
+        .filter({ hasText: "Explain how Cake" });
+      expect((await userMessage.boundingBox())!.width).toBeLessThanOrEqual(672);
       const originalSrc = await iframe.getAttribute("src");
       const initialHeight = await iframe.evaluate(
         (element) => element.getBoundingClientRect().height,
@@ -134,6 +157,17 @@ for (const theme of ["light", "dark"] as const) {
       expect(
         await frame.locator("body").evaluate((body) => body.scrollWidth > body.clientWidth),
       ).toBe(false);
+      const transcript = page.locator(".transcript").first();
+      const assertContained = async () => {
+        const bounds = (await inline.boundingBox())!;
+        const available = (await transcript.boundingBox())!;
+        expect(bounds.x).toBeGreaterThanOrEqual(available.x);
+        expect(bounds.x + bounds.width).toBeLessThanOrEqual(available.x + available.width);
+        expect(
+          await transcript.evaluate((element) => element.scrollWidth <= element.clientWidth),
+        ).toBe(true);
+      };
+      await assertContained();
       await app.evaluate(({ BrowserWindow }) =>
         BrowserWindow.getAllWindows()[0]!.setContentSize(1280, 1000),
       );
@@ -238,6 +272,25 @@ for (const theme of ["light", "dark"] as const) {
         inline.locator("iframe").contentFrame().getByRole("button", { name: "Explore detail" }),
       ).toBeVisible();
       await expect(disclosures).toHaveCount(2);
+      // Repeated collapse/re-expand must publish a fresh usable document, never a blank/stale frame.
+      for (let cycle = 0; cycle < 3; cycle++) {
+        const previousSrc = await inline.locator("iframe").getAttribute("src");
+        await inline.getByRole("button", { name: "Inline visualization Collapse" }).click();
+        await inline.getByRole("button", { name: "Inline visualization Expand" }).click();
+        const reopened = inline.locator("iframe").contentFrame();
+        await expect(
+          reopened.getByRole("heading", { name: "One artifact, two views" }),
+        ).toBeVisible();
+        await expect(reopened.locator("html")).toHaveAttribute("data-cake-widget-ready", "true");
+        expect(await inline.locator("iframe").getAttribute("src")).not.toBe(previousSrc);
+      }
+      // The real accessory pane reduces available chat space, rather than forcing the artifact wider.
+      await page.getByRole("button", { name: "1 artifacts" }).click();
+      await page
+        .getByRole("dialog", { name: "Artifacts", exact: true })
+        .getByRole("button", { name: /Inline visualization/ })
+        .click();
+      await assertContained();
     } finally {
       await app.close();
       await rm(root, { recursive: true, force: true });

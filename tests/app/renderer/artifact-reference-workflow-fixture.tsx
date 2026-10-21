@@ -1,6 +1,7 @@
 import { act, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Schema } from "effect";
+import { applySnapshot } from "r-state-tree";
 import { VirtuosoMockContext } from "react-virtuoso";
 import {
   ArtifactReferenceMetadata,
@@ -45,8 +46,8 @@ export function referenceMetadata(reference: string): ArtifactReferenceMetadata 
             ? "Appendix"
             : `Artifact ${lineageId}`,
       createdAt: metadata(1).publishedAt,
-      latestRevision: 2,
-      latest: metadata(2),
+      latestRevision: Math.max(2, revision),
+      latest: metadata(Math.max(2, revision)),
       stableRef: formatArtifactRef({ lineageId }),
     },
     revision: metadata(revision),
@@ -81,7 +82,9 @@ export function renderArtifactReferences(
   text: string,
   artifacts: Partial<Client["artifacts"]> = {},
   inlineParts: UiPart[] = [],
+  surface: "project-session" | "project-chat" = "project-session",
 ) {
+  const sessionId = surface === "project-chat" ? `project-chat:${"a".repeat(64)}` : "session-1";
   const fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: "/project", name: "Project" })],
     sessions: [
@@ -93,6 +96,7 @@ export function renderArtifactReferences(
     ],
     client: {
       projectSessions: { open: async () => undefined },
+      cakeChats: { open: async () => undefined, setUnread: async () => undefined },
       workspaces: { loadStagedSlashCommands: async () => [] },
       artifacts: {
         effective: async () => [],
@@ -127,12 +131,32 @@ export function renderArtifactReferences(
       },
     },
   });
-  const session = fixture.root.sessionRegistry.load("session-1", "/project");
-  const snapshot = (content: string): ConversationSnapshot => ({
-    sessionId: "session-1",
-    sessionFile: "/sessions/session-1.jsonl",
+  if (surface === "project-chat")
+    applySnapshot(fixture.models.cakeChatCatalog, {
+      loaded: true,
+      sessions: [
+        {
+          sessionId,
+          title: "Project Chat",
+          projectPath: "/project",
+          createdAt: "2025-01-01T00:00:00Z",
+          modifiedAt: "2025-01-02T00:00:00Z",
+          messageCount: 1,
+          resolved: false,
+          unread: false,
+        },
+      ],
+    });
+  const session =
+    surface === "project-chat"
+      ? fixture.root.cakeChatCollectionStore.registry.load(sessionId)
+      : fixture.root.sessionRegistry.load(sessionId, "/project");
+  const snapshot = (content: string, parts = inlineParts): ConversationSnapshot => ({
+    sessionId,
+    sessionFile:
+      surface === "project-chat" ? "/chats/coordinator.sqlite" : "/sessions/session-1.jsonl",
     parts: [
-      ...inlineParts,
+      ...parts,
       { id: "response", kind: "text", role: "assistant", status: "complete", text: content },
     ],
     models: [],
@@ -145,12 +169,23 @@ export function renderArtifactReferences(
     extensionUi: { statuses: [] },
     tree: [],
   });
-  const conversation = fixture.models.projectConversation("session-1", "/project");
+  const conversation =
+    surface === "project-chat"
+      ? fixture.models.cakeChatConversation(sessionId)
+      : fixture.models.projectConversation(sessionId, "/project");
   let revision = 1;
   applyConversationUpdate(conversation, { _tag: "Snapshot", revision, snapshot: snapshot(text) });
-  fixture.root.navigationStore.selectProjectSession("session-1");
-  fixture.root.projectWorkbenchStore.showLoadedSession("session-1");
-  fixture.root.sessionLayoutStore.ensureSession("session-1");
+  const ready =
+    surface === "project-chat"
+      ? fixture.root.cakeChatCollectionStore
+          .initialize()
+          .then(() => fixture.root.navigationStore.openCakeChat(sessionId))
+      : Promise.resolve();
+  if (surface === "project-session") {
+    fixture.root.navigationStore.selectProjectSession(sessionId);
+    fixture.root.projectWorkbenchStore.showLoadedSession(sessionId);
+    fixture.root.sessionLayoutStore.ensureSession(sessionId);
+  }
   session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
     kind: "top",
   });
@@ -170,15 +205,16 @@ export function renderArtifactReferences(
   let disposed = false;
   return {
     user: userEvent.setup(),
+    ready,
     async publishArtifactsChanged() {
       await act(async () => fixture.models.artifacts.invalidate());
     },
-    async receiveTranscript(content: string) {
+    async receiveTranscript(content: string, parts = inlineParts) {
       await act(async () => {
         applyConversationUpdate(conversation, {
           _tag: "Snapshot",
           revision: ++revision,
-          snapshot: snapshot(content),
+          snapshot: snapshot(content, parts),
         });
       });
     },

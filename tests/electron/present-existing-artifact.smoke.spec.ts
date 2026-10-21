@@ -212,8 +212,8 @@ button.onclick = async () => {
     );
     const disclosures = page.locator('[data-slot="artifact-disclosure"]');
     await expect(disclosures).toHaveCount(5);
-    // A prior publication plus the two new stable-reference calls mount r3.
-    for (const index of [0, 2, 3]) {
+    // New stable-reference calls select r3; prior publications retain their actual revision.
+    for (const index of [2, 3]) {
       const frame = disclosures.nth(index).locator("iframe").contentFrame();
       await expect(frame.getByRole("heading", { name: "Source revision three" })).toBeVisible();
       await expect(frame.getByText("Pi execution loop", { exact: true })).toBeVisible();
@@ -222,7 +222,14 @@ button.onclick = async () => {
         "allow-scripts allow-downloads",
       );
     }
-    // An exact historical source still hydrates the current lineage state.
+    for (const index of [0, 1, 4]) {
+      const trigger = disclosures
+        .nth(index)
+        .getByRole("button", { name: "Inline visualization Expand", exact: true });
+      await expect(trigger).toHaveAttribute("aria-expanded", "false");
+      await trigger.click();
+    }
+    // Reopening an exact historical source still hydrates the current lineage state.
     const historical = disclosures.nth(4).locator("iframe").contentFrame();
     await expect(historical.getByRole("heading", { name: "Source revision two" })).toBeVisible();
     await expect(historical.getByText("Pi execution loop", { exact: true })).toBeVisible();
@@ -241,7 +248,7 @@ button.onclick = async () => {
       .contentFrame()
       .getByRole("button", { name: "Save HTML title" })
       .click();
-    for (const index of [0, 2, 3, 4]) {
+    for (const index of [2, 3, 4]) {
       await expect(
         disclosures
           .nth(index)

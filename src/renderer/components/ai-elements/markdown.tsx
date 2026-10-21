@@ -65,7 +65,7 @@ type MarkdownLinkActions = {
     signal: AbortSignal,
   ): Promise<{ readonly data: string; readonly mimeType: string }>;
   renderArtifactReference?(reference: string, label?: ReactNode): ReactNode;
-  renderArtifactEmbed?(reference: string, label?: string): ReactNode;
+  renderArtifactEmbed?(reference: string, label?: string, surfaceId?: string): ReactNode;
 };
 
 const MarkdownLinkContext = createContext<MarkdownLinkActions | undefined>(undefined);
@@ -593,6 +593,7 @@ function MarkdownRenderer({
             return linkActions.renderArtifactEmbed(
               reference,
               image.properties.alt === undefined ? undefined : String(image.properties.alt),
+              String(node?.position?.start.offset ?? 0),
             );
         }
         return <p {...paragraphProps}>{children}</p>;

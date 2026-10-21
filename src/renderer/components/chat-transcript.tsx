@@ -138,6 +138,10 @@ export const ChatTranscript = observer(function ChatTranscript({
   virtualized?: boolean;
   ref?: Ref<ChatTranscriptHandle>;
 }) {
+  useEffect(
+    () => behavior.inlineArtifactPreviews?.observeConversation(store.id, () => store.parts),
+    [behavior.inlineArtifactPreviews, store],
+  );
   const sideChat = useContext(SideChatContext);
   const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);

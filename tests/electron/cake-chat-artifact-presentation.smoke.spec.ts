@@ -215,11 +215,21 @@ export default function Prototype() {
     );
     await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
     const surfaces = page.locator('[data-slot="artifact-disclosure"]');
-    const verify = async (selected: string) => {
+    const verify = async (selected: string, restored = false) => {
       await expect(surfaces).toHaveCount(4);
       await expect(
         surfaces.nth(3).getByRole("heading", { name: "Existing document", exact: true }),
       ).toBeVisible();
+      await expect(
+        surfaces.nth(1).getByRole("button", { name: "Inline visualization Collapse", exact: true }),
+      ).toHaveAttribute("aria-expanded", "true");
+      for (const index of [0, 2]) {
+        const expand = surfaces
+          .nth(index)
+          .getByRole("button", { name: "Inline visualization Expand", exact: true });
+        if (restored) await expect(expand).toHaveAttribute("aria-expanded", "false");
+        if (await expand.count()) await expand.click();
+      }
       for (const [index, revision] of [2, 3, 2].entries()) {
         const frame = surfaces.nth(index).locator("iframe").contentFrame();
         await expect(
@@ -228,9 +238,9 @@ export default function Prototype() {
         await expect(frame.getByText(selected, { exact: true })).toBeVisible();
       }
     };
-    await verify("Selected option B");
+    await verify("Selected option B", true);
     await page.reload();
-    await verify("Selected option B");
+    await verify("Selected option B", true);
     expect(await readFile(join(artifactRoot, "catalog.json"), "utf8")).toBe(before);
     await surfaces
       .nth(0)
@@ -244,9 +254,9 @@ export default function Prototype() {
         `[data-slot="project-header"][data-session-id="${projectId}"] [data-slot="project-label"]`,
       )
       .click();
-    await verify("Selected option C");
+    await verify("Selected option C", true);
     await page.reload();
-    await verify("Selected option C");
+    await verify("Selected option C", true);
     await mkdir(join(repositoryRoot, ".visual-captures"), { recursive: true });
     await page.screenshot({
       path: join(repositoryRoot, ".visual-captures", "cake-chat-inline-artifact.png"),

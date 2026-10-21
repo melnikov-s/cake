@@ -1,4 +1,5 @@
-import { useEffect, useId } from "react";
+import { useContext, useEffect, useId } from "react";
+import { InlineArtifactContext } from "./inline-artifact-context";
 import { observer } from "r-state-tree/react";
 import {
   parseArtifactRef,
@@ -18,20 +19,25 @@ export const InlineArtifactPreview = observer(function InlineArtifactPreview({
   store,
   inlineWidgets,
   stateSessionId,
+  surfaceId,
 }: {
   reference: ArtifactStableRef;
   label?: string;
   store: InlineArtifactPreviewStore;
   inlineWidgets: InlineWidgetStore;
   stateSessionId?: string;
+  surfaceId?: string;
 }) {
   const key = useId();
+  const context = useContext(InlineArtifactContext);
+  const conversationId = context?.conversationId ?? stateSessionId;
+  const presentationId = context ? `${context.partId}:${surfaceId ?? "publication"}` : surfaceId;
   useEffect(() => {
-    store.prepare(key, reference);
+    store.prepare(key, reference, conversationId, presentationId);
     return () => store.release(key);
-  }, [key, reference, store]);
+  }, [key, reference, store, conversationId, presentationId]);
   const state = store.states[key];
-  const exactRef = state?.exactRef ?? reference;
+  const exactRef = state?.exactRef ?? state?.targetRef ?? reference;
   const title = label ?? store.title(key) ?? parseArtifactRef(reference).lineageId;
   const record = store.revision(key)?.record;
   const error = state?.error ? (
@@ -46,7 +52,7 @@ export const InlineArtifactPreview = observer(function InlineArtifactPreview({
     <ArtifactDisclosure
       title={title}
       reference={exactRef}
-      open={state?.expanded ?? true}
+      open={store.expanded(key)}
       onToggle={() => store.toggle(key)}
     >
       {error ??

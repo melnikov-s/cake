@@ -65,7 +65,7 @@ export const ChatTranscriptItem = memo(
         }
         aria-current={selected ? "true" : undefined}
         className={cn(
-          "min-w-0 pb-5 in-[.chat-layout-compact]:pb-3.5",
+          "mx-auto w-full max-w-3xl min-w-0 pb-5 has-[[data-slot=artifact-disclosure]]:max-w-6xl in-[.chat-layout-compact]:pb-3.5",
           errorFollowsUser && "pt-3",
           // The selection ring outlines only the message bubble, not its label or
           // action row. Items without a bubble (tools, groups) ring the whole item.
