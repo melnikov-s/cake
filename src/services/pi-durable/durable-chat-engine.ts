@@ -575,6 +575,13 @@ export async function openDurableChatEngine(options: {
           options.onChanged();
         }
       },
+      // Provider text never enters reports (it may hold private bodies or retry wording).
+      onExcerpt: ({ id, n }) =>
+        options.onReport(
+          new Error(
+            `Cake Chat memory line ${id}+${n} kept a verbatim excerpt because summarization failed. Originals remain available through zoom.`,
+          ),
+        ),
     });
     await root.commit(async (tx) => {
       await tx.doc(ChatMetadataDoc, root.id);

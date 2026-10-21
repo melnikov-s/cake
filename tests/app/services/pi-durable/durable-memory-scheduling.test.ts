@@ -260,10 +260,14 @@ it.each(["complete", "pending"] as const)(
     const directory = await mkdtemp(join(tmpdir(), "cake-memory-budget-"));
     cleanup.push(() => rm(directory, { recursive: true, force: true }));
     const database = join(directory, "memory.sqlite");
+    const interrupted = new AbortController();
     const first = await fixture(
       async ({ context }) => {
         const { id, n } = identify(context);
-        if (parents === "pending" && n === 128) throw new Error("Parent temporarily unavailable");
+        if (parents === "pending" && n === 128) {
+          interrupted.abort(new Error("Interrupted before the parent"));
+          return new Promise<string>(() => undefined);
+        }
         return `built-${id}+${n}: ${"s".repeat(480)}`;
       },
       await openNodeSqliteStorage(database),
@@ -271,7 +275,7 @@ it.each(["complete", "pending"] as const)(
     );
     for (let i = 0; i < 128; i += 1) await first.append(`RAW_${i} `.repeat(100));
     if (parents === "pending") {
-      await expect(first.memory.synchronize(signal())).rejects.toBeDefined();
+      await expect(first.memory.synchronize(interrupted.signal)).rejects.toBeDefined();
     } else {
       const large = await first.memory.synchronize(signal());
       expect(large.bytes).toBeGreaterThan(40_000);

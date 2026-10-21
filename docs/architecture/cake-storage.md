@@ -557,17 +557,23 @@ compaction section receive its data/provenance safeguards in the task until an o
 request updates the system prefix; maintenance never rewrites that retained head. Shortening feedback uses actual byte counts,
 a UTF-8-safe cut marker, and real assistant/user turns in the same request conversation.
 After five oversized responses the shortest complete response is retained, as specified;
-it can exceed 512 bytes. The view measures actual sizes. Empty responses and transport
-overflow fail explicitly, never publish a placeholder or truncate a stored answer. The
-summarization-model setting still resolves through the existing provider/utility selection,
-not a hard-coded provider.
+it can exceed 512 bytes. The view measures actual sizes. A stored answer is never truncated.
+A failed completion (provider error, tool call, empty or transport-oversized output) is
+retried once per node; if it fails again, the node stores a labelled verbatim excerpt
+(`[excerpt; summary unavailable]`, within 512 bytes, splitting room between both children
+of a merge) and reports only its range. One unsummarizable message therefore never stalls
+the index, maintenance or a required limit reset; zoom still reaches the original. One
+request's `<input>` is bounded to 64,000 bytes: a larger original sends its head and tail
+with an omitted-bytes marker. The summarization-model setting still resolves through the
+existing provider/utility selection, not a hard-coded provider.
 
 Incremental maintenance is independent of Cake's deliberate warm-context retention.
 Successful terminal assistant commits coalesce into one pending cutoff; idle maintenance
 indexes through it without replacing the active head or cache evidence. Reopen resumes
 persisted jobs. Error, aborted and tool-use responses do not independently rearm maintenance.
-There is no expiry timer, polling worker, or automatic failed-call retry loop: a later
-successful run, reopen or explicit foreground preparation offers another opportunity.
+There is no expiry timer, polling worker, or automatic failed-call retry loop beyond the
+single per-node retry: a later successful run, reopen or explicit foreground preparation
+offers another opportunity after cancellation or storage failure.
 
 Memory catch-up and its utility completions have no wall-clock deadline or call-count
 allowance. Ready-node concurrency bounds simultaneous requests, not total catch-up work.
@@ -585,7 +591,7 @@ without launching summary requests or publishing a partial reset. Limit/overflow
 cancellation are never bypassed. Required preparation
 failures use non-provider error text so Durable cannot replay them through generic coordinator
 retries. Genuine coordinator provider failures retain their normal retry policy. Diagnostics expose fixed reason labels,
-application-call counts and elapsed time, never source bodies or raw summarizer diagnostics.
+excerpt ranges, application-call counts and elapsed time, never source bodies or raw summarizer diagnostics.
 Five size attempts and eight concurrent requests preserve the specified algorithm but can
 increase provider cost; concurrency is a latency improvement, not a request-count reduction.
 

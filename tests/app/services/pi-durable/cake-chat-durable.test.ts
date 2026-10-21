@@ -28,6 +28,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Type } from "@earendil-works/pi-durable-ai";
+import { estimateContextTokens } from "@earendil-works/pi-durable-ai/utils/estimate";
 import { afterEach, expect, it, vi } from "vitest";
 import { ChatMetadataDoc } from "../../../../src/services/pi-durable/durable-chat-metadata";
 import type { DurableMemoryOptions } from "../../../../src/services/pi-durable/durable-chat-memory";
@@ -773,30 +774,26 @@ it("pages originals once without resets, clocks or summary nodes", async () => {
   expect(new Set(ids).size).toBe(90);
 });
 
-it("admits before required summarization fails, retains its head and recovers without losing originals", async () => {
+it("answers an over-limit send with verbatim excerpts when the summarizer is unavailable", async () => {
   const f = await fixture();
   await f.send("Hello", "first");
   const original = "USER_DETAIL ".repeat(300);
   f.summarize.mockRejectedValue(new Error("Summarizer unavailable"));
   await f.send(original, "long");
   f.limit(512);
-  const accepted = await f.submit("Continue", "accepted-before-summary");
-  const failed = await accepted.wait(BACKGROUND_CONTEXT);
-  expect(failed).toMatchObject({ status: "unanswered", reason: "model_error" });
+  const answered = await f.send("Continue", "accepted-before-summary");
+  expect(answered.status).toBe("done");
   expect((await f.engine.contextStatus(durableModel)).activity).toBeUndefined();
-  expect(f.requests).toHaveLength(2);
-  expect(JSON.stringify((await f.engine.root.context(BACKGROUND_CONTEXT)).messages)).toContain(
-    original,
-  );
-  expect((await f.engine.contextStatus(durableModel)).activity).toBeUndefined();
-  expect(JSON.stringify((await readDurableOriginalPage(f.engine.root)).parts)).toContain(
-    "Continue",
-  );
+  expect(f.requests).toHaveLength(3);
+  const last = JSON.stringify(f.requests[2]);
+  expect(last).toContain("Continue");
+  expect(last).not.toContain(original);
+  expect(last).toContain("[excerpt; summary unavailable] user: USER_DETAIL");
+  expect((await f.view()).sourceCount).toBe(6);
+  expect((await f.zoom(2, 1)).text).toContain(original);
   f.limit(300_000);
   f.summarize.mockResolvedValue("user: precise original details remain on disk");
-  await f.send("Try again", "retry");
-  expect((await f.view()).sourceCount).toBe(7); // The failed assistant response has no dialogue text.
-  expect((await f.zoom(2, 1)).text).toContain(original);
+  expect((await f.send("Try again", "retry")).status).toBe("done");
 });
 
 it("adds voice guidance only on transitions, recovering the mode from durable storage after a restart", async () => {
@@ -1338,9 +1335,10 @@ it("persists the overflow attempt bound across an interrupted reset and SQLite r
     undefined,
     true,
   );
-  first.summarize.mockRejectedValue(new Error("fixture background paused"));
+  // Background maintenance is still in flight when the overflow preempts it.
+  first.summarize.mockImplementation(() => new Promise<string>(() => undefined));
   await first.send("RESTART_OVERFLOW_HISTORY ".repeat(100), "history");
-  await vi.waitFor(() => expect(first.onReport).toHaveBeenCalled());
+  await vi.waitFor(() => expect(first.summarize).toHaveBeenCalled());
   const started = Promise.withResolvers<void>();
   const pending = Promise.withResolvers<string>();
   first.summarize.mockImplementation(() => {
@@ -1527,7 +1525,7 @@ it("closes blocked background maintenance even when the completion ignores cance
   expect(f.onReport).not.toHaveBeenCalled();
 });
 
-it("continues with the intact, admissible context when cold-cache memory maintenance fails", async () => {
+it("keeps memory moving with a verbatim excerpt when the summarizer keeps failing, without leaking provider text", async () => {
   const f = await fixture(undefined, 20_000, new MemoryStorage(), undefined, true, false, {
     summarize: async () => {
       throw new Error("429 provider timeout; private summary body");
@@ -1536,21 +1534,20 @@ it("continues with the intact, admissible context when cold-cache memory mainten
   });
   const original = "PRESERVE_ORIGINAL_DETAIL ".repeat(100);
   await f.send(original, "history");
-  await vi.waitFor(() => expect(f.onReport).toHaveBeenCalledOnce());
-  const head = (await f.engine.root.context(BACKGROUND_CONTEXT)).head?.id;
+  // The leaf and its merge with the answer each retry once, then keep an excerpt; no loop.
+  await vi.waitFor(() => expect(f.onReport).toHaveBeenCalledTimes(2));
+  expect(f.summarize).toHaveBeenCalledTimes(4);
   f.advance(6 * 60_000);
   expect((await f.send("Continue", "cold-cache")).status).toBe("done");
   expect(f.requests).toHaveLength(2);
-  expect(JSON.stringify(f.requests[1])).toContain(original);
+  expect(JSON.stringify(f.requests[1])).not.toContain(original);
+  expect(JSON.stringify(f.requests[1])).toContain("[excerpt; summary unavailable] user: PRESERVE");
   expect(JSON.stringify(f.requests[1])).toContain("Continue");
-  expect((await f.engine.root.context(BACKGROUND_CONTEXT)).head?.id).toBe(head);
-  expect((await f.engine.contextStatus(durableModel)).activity).toBeUndefined();
-  expect(f.onReport.mock.calls.map(([error]) => String(error)).join(" ")).toContain(
-    "incremental memory maintenance paused: completion-failed",
-  );
-  expect(f.onReport.mock.calls.map(([error]) => String(error)).join(" ")).not.toContain(
-    "private summary body",
-  );
+  expect((await f.engine.contextStatus(durableModel)).lastSummary?.reason).toBe("cache-cold");
+  expect((await f.zoom(0, 1)).text).toContain(original);
+  const reports = f.onReport.mock.calls.map(([error]) => String(error)).join(" ");
+  expect(reports).toContain("kept a verbatim excerpt because summarization failed");
+  expect(reports).not.toContain("private summary body");
 });
 
 it("does not route required preparation failures through generic provider retries or immediately replay them as maintenance", async () => {
@@ -1563,25 +1560,27 @@ it("does not route required preparation failures through generic provider retrie
     retry: { enabled: true, maxRetries: 3, baseDelayMs: 1 },
   });
   await f.send("PREPARATION_DETAIL ".repeat(100), "history");
-  await vi.waitFor(() => expect(f.onReport).toHaveBeenCalledOnce());
-  const before = f.summarize.mock.calls.length;
-  f.limit(512);
+  await vi.waitFor(() => expect(f.onReport).toHaveBeenCalledTimes(2));
+  const calls = f.summarize.mock.calls.length;
+  // Too little room for even one memory line: a genuine, explicit preparation failure.
+  f.limit(240);
   f.advance(6 * 60_000);
   const failed = await f.send("Continue", "failure");
   expect(failed).toMatchObject({ status: "unanswered", reason: "model_error" });
-  expect(f.summarize).toHaveBeenCalledTimes(before + 1);
   expect(f.requests).toHaveLength(1);
   const live = await f.engine.harness.snapshot(LiveDoc, f.engine.root.id, BACKGROUND_CONTEXT);
   expect(live?.generation).toBeUndefined();
   expect((await f.engine.contextStatus(durableModel)).activity).toBeUndefined();
+  await f.engine.index(new AbortController().signal);
+  expect(f.summarize).toHaveBeenCalledTimes(calls); // Not replayed as maintenance.
   const originals = JSON.stringify((await readDurableOriginalPage(f.engine.root)).parts);
   expect(originals).toContain("context preparation failed");
+  expect(originals).toContain("Submit again to continue");
   expect(originals).not.toContain("secret fixture body");
   expect(f.onReport.mock.calls.map(([error]) => String(error)).join(" ")).not.toContain(
     "secret fixture body",
   );
   f.limit(300_000);
-  f.summarize.mockResolvedValue("user: details remain available through zoom");
   expect((await f.send("Explicit continuation", "continue")).status).toBe("done");
 });
 
@@ -1602,6 +1601,58 @@ it("still retries a genuine coordinator-provider transient failure", async () =>
   );
   expect((await f.send("Hello", "retry-provider")).status).toBe("done");
   expect(f.requests).toHaveLength(2);
+});
+
+it("compacts an over-limit chat before its model request even when one original can never be summarized", async () => {
+  let providerLimit = 300_000;
+  const f = await fixture(
+    (request) =>
+      estimateContextTokens(request.messages).tokens > providerLimit
+        ? {
+            ...durableAnswer(""),
+            stopReason: "error",
+            errorMessage: "prompt is too long: request exceeds the context window",
+          }
+        : durableAnswer("Done"),
+    20_000,
+    new MemoryStorage(),
+    undefined,
+    true,
+    false,
+    {
+      // A weak utility model that consistently refuses one message (for example by
+      // calling a tool) must not wedge memory or the chat.
+      summarize: async ({ context }) => {
+        if (context.includes("<input>\nuser: POISON"))
+          throw new Error("Memory completion did not produce a successful text-only summary");
+        return "user: compact summary";
+      },
+    },
+  );
+  const poison = "POISON_DETAIL ".repeat(100);
+  await f.send(poison, "poison");
+  await f.send("FOLLOW_UP ".repeat(100), "follow-up");
+  const before = await f.engine.contextStatus(durableModel);
+  // Over the limit with a warm cache: the next send must compact first.
+  providerLimit = before.totalTokens + 50;
+  f.limit(before.totalTokens - 1);
+  const result = await f.send("What next?", "over-limit");
+  expect(result.status).toBe("done");
+  const last = f.requests.at(-1)!;
+  expect(estimateContextTokens(last.messages).tokens).toBeLessThan(before.totalTokens);
+  expect(JSON.stringify(last)).toContain("What next?");
+  expect(JSON.stringify(last)).not.toContain(poison);
+  expect(JSON.stringify(last)).toContain("POISON_DETAIL"); // Verbatim bounded excerpt.
+  expect(
+    f.requests.every((request) => estimateContextTokens(request.messages).tokens <= providerLimit),
+  ).toBe(true);
+  expect((await f.engine.contextStatus(durableModel)).lastSummary?.reason).toBe("limit");
+  expect((await f.zoom(0, 1)).text).toContain(poison);
+  expect(f.onReport.mock.calls.map(([error]) => String(error)).join(" ")).toContain(
+    "verbatim excerpt",
+  );
+  // Repeated sends keep working on top of the rebuilt memory.
+  expect((await f.send("And after that?", "repeat")).status).toBe("done");
 });
 
 it("reserves model output room independently of the configured input cap", () => {

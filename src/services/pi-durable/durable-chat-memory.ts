@@ -22,7 +22,14 @@ import {
 } from "@earendil-works/pi-durable-ai/utils/transcript";
 import { CompletionChat } from "../../contracts/pi/model-data";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
-import { MEMORY_COMPACTOR_PROMPT, MEMORY_NODE_BYTES, memoryBytes } from "./durable-memory-policy";
+import {
+  MEMORY_COMPACTOR_PROMPT,
+  MEMORY_INPUT_BYTES,
+  MEMORY_NODE_BYTES,
+  MEMORY_SUMMARY_FAILURES,
+  memoryBytes,
+  utf8Slice,
+} from "./durable-memory-policy";
 import type { DurableChatMemoryView } from "./durable-chat-data";
 import {
   durableInputPresentation,
@@ -107,6 +114,8 @@ const entryId = (value: number) => value as EntryId;
 export interface DurableMemoryOptions {
   readonly budget: () => number;
   readonly onConsolidating?: () => void;
+  /** A node's summary kept failing, so it stores a verbatim excerpt instead. */
+  readonly onExcerpt?: (line: { id: number; n: number }) => void;
   readonly summarize: (input: {
     instructions: string;
     context: string;
@@ -167,6 +176,25 @@ type AnchoredNode = StoredNode & SourceRange;
 const line = (node: AnchoredNode) =>
   `${node.id}+${node.n}|[originals=${node.fromEntryId}..${node.throughEntryId}] ${node.text.replace(/\s*\n\s*/g, " ")}`;
 const render = (nodes: readonly AnchoredNode[]) => `<chat>\n${nodes.map(line).join("\n")}\n</chat>`;
+/** Bound one request's <input>: head and tail of an oversized original, never a model overflow. */
+const boundedInput = (text: string) => {
+  const bytes = memoryBytes(text);
+  if (bytes <= MEMORY_INPUT_BYTES) return text;
+  const half = Math.floor(MEMORY_INPUT_BYTES / 2);
+  const head = utf8Slice(text, half);
+  const tail = utf8Slice(text, half, "end");
+  return `${head}\n[… ${bytes - memoryBytes(head) - memoryBytes(tail)} bytes omitted; zoom for the original …]\n${tail}`;
+};
+const EXCERPT = "[excerpt; summary unavailable] ";
+const EXCERPT_JOIN = " … ";
+/** Deterministic fallback when the summarizer keeps failing: verbatim text from every
+ * source (both children of a merge), bounded to one memory line. */
+const excerpt = (sources: readonly string[]) => {
+  const room =
+    MEMORY_NODE_BYTES - memoryBytes(EXCERPT) - memoryBytes(EXCERPT_JOIN) * (sources.length - 1);
+  const each = Math.floor(room / sources.length);
+  return `${EXCERPT}${sources.map((source) => utf8Slice(source.replace(/\s+/g, " ").trim(), each)).join(EXCERPT_JOIN)}`;
+};
 
 /** One serialized caller owns indexing. No lifetime transcript or node cache is retained. */
 export function createDurableChatMemory(
@@ -219,13 +247,14 @@ export function createDurableChatMemory(
     }, contextFor(signal));
 
   const summarize = async (
-    text: string,
+    sources: readonly string[],
     prefix: string,
     task: { id: number; n: number },
     work: DurableMemoryWork,
     shared: { instructions: string; tools: CompletionChat["tools"] },
   ) => {
     work.signal.throwIfAborted();
+    const text = sources.join("\n");
     if (memoryBytes(text) <= MEMORY_NODE_BYTES) return text;
     const request =
       task.n === 1
@@ -237,30 +266,37 @@ export function createDurableChatMemory(
     const policy = shared.instructions.includes(MEMORY_COMPACTOR_PROMPT)
       ? ""
       : `\n${MEMORY_COMPACTOR_PROMPT}`;
-    const context = `${prefix}\n\n${request}${policy}\n<input>\n${text}\n</input>`;
+    const context = `${prefix}\n\n${request}${policy}\n<input>\n${boundedInput(text)}\n</input>`;
     const previous: { role: "user" | "assistant"; text: string }[] = [];
     let shortest: string | undefined;
+    let failures = 0;
     for (let attempt = 0; attempt < 5; attempt += 1) {
-      const answer = (
-        await work.complete((signal) =>
-          options.summarize({
-            instructions: shared.instructions,
-            tools: shared.tools,
-            context,
-            previous: [...previous],
-            signal,
-          }),
-        )
-      ).trim();
-      if (!answer) throw new DurableMemoryError({ reason: "empty-summary" });
+      let answer: string;
+      try {
+        answer = (
+          await work.complete((signal) =>
+            options.summarize({
+              instructions: shared.instructions,
+              tools: shared.tools,
+              context,
+              previous: [...previous],
+              signal,
+            }),
+          )
+        ).trim();
+        if (!answer) throw new DurableMemoryError({ reason: "empty-summary" });
+      } catch (error) {
+        // Cancellation propagates. A failed answer (provider error, tool call,
+        // oversized or empty output) is retried, then replaced by an excerpt.
+        if (!(error instanceof DurableMemoryError)) throw error;
+        failures += 1;
+        if (failures < MEMORY_SUMMARY_FAILURES) continue;
+        break;
+      }
       if (shortest === undefined || memoryBytes(answer) < memoryBytes(shortest)) shortest = answer;
       if (memoryBytes(answer) <= MEMORY_NODE_BYTES) return answer;
       // A UTF-8-safe byte cut is a ruler in feedback, never a stored summary.
-      let cut = "";
-      for (const character of answer) {
-        if (memoryBytes(cut + character) > MEMORY_NODE_BYTES) break;
-        cut += character;
-      }
+      const cut = utf8Slice(answer, MEMORY_NODE_BYTES);
       previous.push(
         { role: "assistant", text: answer },
         {
@@ -271,7 +307,9 @@ export function createDurableChatMemory(
     }
     // Public chat-memory spec: five attempts, retain the shortest, measure real
     // view bytes. It explicitly tolerates slight oversize, not arbitrary truncation.
-    return shortest!;
+    if (shortest !== undefined) return shortest;
+    options.onExcerpt?.(task);
+    return excerpt(sources);
   };
 
   const fit = async (current: State, signal: AbortSignal, budget: number) => {
@@ -479,14 +517,19 @@ export function createDurableChatMemory(
       const job = jobs[index]!;
       const task = (async () => {
         const context = await prefix(job);
-        const text =
+        const sources =
           job.n === 1
-            ? sourceText(
-                (await storage.entry(root.id, entryId(job.original!), contextFor(signal)))!.entry,
-              )
-            : `${(await node(resolve(job.left!), signal)).text}\n${(await node(resolve(job.right!), signal)).text}`;
+            ? [
+                sourceText(
+                  (await storage.entry(root.id, entryId(job.original!), contextFor(signal)))!.entry,
+                ),
+              ]
+            : [
+                (await node(resolve(job.left!), signal)).text,
+                (await node(resolve(job.right!), signal)).text,
+              ];
         return summarize(
-          text,
+          sources,
           context,
           job,
           {

@@ -11,7 +11,9 @@ export class DurableMemoryError extends Schema.TaggedError<DurableMemoryError>()
 ) {}
 
 /** Catch-up has no wall-clock or call-count deadline. Its lifecycle owner cancels
- * on Stop, foreground preemption or closure; successful nodes commit independently. */
+ * on Stop, foreground preemption or closure; successful nodes commit independently.
+ * A completion failure is per node: the index stores a verbatim excerpt instead,
+ * so one unsummarizable message can never stall memory or wedge the chat. */
 export function durableMemoryWork(signal: AbortSignal) {
   let calls = 0;
   const started = Date.now();
