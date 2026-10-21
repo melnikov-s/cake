@@ -6,6 +6,7 @@ import {
   type Tx,
 } from "@earendil-works/pi-durable";
 import { Schema } from "effect";
+import { internalInputEntryType } from "../pi/runtime/internal-input-projection";
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
   boundedProjectionKey,
@@ -55,10 +56,32 @@ export async function readDurableOriginalPage(
       .reverse()
       .flatMap((entry) =>
         ["pi.user", "pi.assistant", "pi.tool-result"].includes(entry.kind)
-          ? (entry.model ?? []).flatMap((message) =>
-              message.role === "system"
+          ? (entry.model ?? []).flatMap((message) => {
+              const presentation =
+                message.role === "user"
+                  ? durableInputPresentation(
+                      typeof message.content === "string"
+                        ? message.content
+                        : message.content
+                            .flatMap((block) => (block.type === "text" ? [block.text] : []))
+                            .join("\n"),
+                    )
+                  : undefined;
+              return message.role === "system"
                 ? []
                 : [
+                    ...(presentation?.internal
+                      ? [
+                          {
+                            type: "custom" as const,
+                            id: `internal-${entry.id}`,
+                            parentId: null,
+                            timestamp: new Date(message.timestamp).toISOString(),
+                            customType: internalInputEntryType,
+                            data: { timestamp: message.timestamp, origin: presentation.internal },
+                          },
+                        ]
+                      : []),
                     {
                       type: "message" as const,
                       id: String(entry.id),
@@ -66,14 +89,7 @@ export async function readDurableOriginalPage(
                       timestamp: new Date(message.timestamp).toISOString(),
                       message: withoutDurableInputPresentation(message, { display: true }),
                     },
-                    ...(message.role === "user" &&
-                    durableInputPresentation(
-                      typeof message.content === "string"
-                        ? message.content
-                        : message.content
-                            .flatMap((block) => (block.type === "text" ? [block.text] : []))
-                            .join("\n"),
-                    ).markdown
+                    ...(presentation?.markdown
                       ? [
                           {
                             type: "custom" as const,
@@ -85,8 +101,8 @@ export async function readDurableOriginalPage(
                           },
                         ]
                       : []),
-                  ],
-            )
+                  ];
+            })
           : [],
       );
     const origins = new Map(

@@ -5,6 +5,7 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it } from "vitest";
 import { Chat } from "../../../src/renderer/components/chat";
 import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";
+import { internalInputEntryType } from "../../../src/services/pi/runtime/internal-input-projection";
 import { projectConversationDisplay } from "../../../src/services/pi/runtime/conversation-display-projection";
 import { appendToolCompactedBranch } from "../../../src/services/pi/runtime/session-tool-compaction";
 import {
@@ -28,6 +29,66 @@ const usage = {
 afterEach(cleanup);
 
 describe("Context visibility through the authoritative projection and shared Chat", () => {
+  it("renders a typed Workboard wake as application context, then labels only the genuine user quotation You", () => {
+    const pi = SessionManager.inMemory("/project");
+    const text =
+      "<system-reminder>\nWorkboard delivery (family-board-private): entries #3. Read boards.read.\n</system-reminder>";
+    pi.appendCustomEntry(internalInputEntryType, {
+      timestamp: 1,
+      origin: { _tag: "WorkboardDelivery", boardId: "family-board-private", sequences: [3] },
+    });
+    pi.appendMessage({ role: "user", content: text, timestamp: 1 });
+    using fixture = createRendererStoreFixture({
+      projects: [projectRecord({ path: "/project" })],
+      sessions: [
+        sessionSummary({
+          sessionId: "workboard",
+          projectPath: "/project",
+          workingDirectory: "/project",
+        }),
+      ],
+    });
+    const session = fixture.root.sessionRegistry.load("workboard", "/project");
+    const publish = () =>
+      applyConversationSnapshot(session.model, {
+        sessionId: "workboard",
+        sessionFile: "/sessions/workboard.jsonl",
+        parts: projectConversationDisplay(pi),
+        models: [],
+        thinkingLevel: "off",
+        availableThinkingLevels: ["off"],
+        streaming: false,
+        diagnostics: [],
+        commands: [],
+        compatibility: { resources: [], diagnostics: [] },
+        extensionUi: { statuses: [] },
+        tree: [],
+      });
+    publish();
+    const view = render(
+      <Chat
+        store={session.conversationSessionStore.chatStore}
+        compact
+        composerFocusEnabled={false}
+      />,
+    );
+    try {
+      expect(screen.getByRole("button", { name: "Workboard" })).toBeTruthy();
+      expect(screen.queryByText("You", { exact: true })).toBeNull();
+      expect(view.container.textContent).not.toContain("family-board-private");
+      expect(view.container.textContent).not.toContain("<system-reminder>");
+      act(() => {
+        pi.appendMessage({ role: "user", content: text, timestamp: 2 });
+        publish();
+      });
+      expect(screen.getByText("You", { exact: true })).toBeTruthy();
+      expect(screen.getByText(/Workboard delivery \(family-board-private\)/)).toBeTruthy();
+      expect(view.container.textContent).toContain("<system-reminder>");
+      expect(screen.getByRole("button", { name: "Workboard" })).toBeTruthy();
+    } finally {
+      view.unmount();
+    }
+  });
   it("shows application-owned completion and exact result link with the next user message without any assistant relay", () => {
     const pi = SessionManager.inMemory("/project");
     const ref = "cake://session/worker?message=application-captured-result";

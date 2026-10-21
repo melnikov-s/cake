@@ -1,4 +1,6 @@
 import { Option, Schema } from "effect";
+import { InternalInput } from "../../contracts/conversations/internal-input";
+import { internalInputPart } from "../pi/runtime/internal-input-projection";
 import type { Message } from "@earendil-works/pi-durable-ai";
 import {
   attachmentSchema,
@@ -22,6 +24,7 @@ import {
 const Presentation = Schema.Struct({
   textLength: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   markdown: Schema.Boolean,
+  internal: Schema.optionalKey(InternalInput),
   steering: Schema.optionalKey(Schema.Boolean),
   files: Schema.Array(attachmentSchema),
   imageNames: Schema.Array(Schema.String),
@@ -49,8 +52,10 @@ export function durableInputText(
   steering = false,
   subagentReport?: SubagentReportOrigin,
   response: DurableInputResponse = { mode: "text", remind: false },
+  internal?: InternalInput,
 ) {
   const metadata = {
+    internal,
     subagentReport,
     textLength: text.length,
     markdown,
@@ -73,6 +78,7 @@ export function durableInputPresentation(value: string) {
       return {
         body,
         subagentReport: decoded.value.subagentReport,
+        internal: decoded.value.internal,
         text: body.slice(0, decoded.value.textLength),
         markdown: decoded.value.markdown,
         steering: decoded.value.steering ?? false,
@@ -91,6 +97,7 @@ export function durableInputPresentation(value: string) {
     files: [],
     imageNames: [],
     subagentReport: undefined,
+    internal: undefined,
     // Not a Cake input, so it carries no response mode of its own.
     responseMode: undefined,
   };
@@ -99,6 +106,7 @@ export function durableInputPresentation(value: string) {
 export function markDurableInputSteering(value: string, steering = true): string {
   const input = durableInputPresentation(value);
   const metadata = {
+    internal: input.internal,
     subagentReport: input.subagentReport,
     textLength: input.text.length,
     markdown: input.markdown,
@@ -170,7 +178,9 @@ export const durableQueuedDisplayText = (content: Blocks) =>
 export function durableQueuedPart(
   item: Extract<InboxItem, { content: unknown }>,
   id: string,
-): Extract<UiPart, { kind: "text" }> {
+): UiPart {
+  const internal = durableQueuedPresentation(item.content).internal;
+  if (internal) return internalInputPart(internal, `queued-${id}`);
   const display = queuedUserMessageDisplay(durableQueuedDisplayText(item.content));
   const { subagentReport } = durableQueuedPresentation(item.content);
   return {

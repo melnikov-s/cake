@@ -80,6 +80,7 @@ import { CakeChatMcp, createCakeChatMcpTool, loadCakeChatMcpServers } from "./ca
 import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import { SubagentResult, SubagentReportOrigin } from "../../contracts/subagents/subagent-data";
 import { Option } from "effect";
+import type { InternalInput } from "../../contracts/conversations/internal-input";
 import { durableInputText, durableQueuedPart } from "./durable-input-presentation";
 import { durableInputResponse, previousDurableResponseMode } from "./durable-response-mode";
 import type { ConversationResponseMode } from "../../contracts/conversations/response-mode-reminders";
@@ -424,6 +425,7 @@ export async function createDurableCakeChatRuntime(
     markdown = false,
     subagentReport?: SubagentReportOrigin,
     responseMode?: ConversationResponseMode,
+    internal?: InternalInput,
   ) => {
     // Defense in depth: no caller may submit payload-bearing attachments to the coordinator.
     // Annotations quote Cake Chat's own transcript and stay inline.
@@ -450,7 +452,15 @@ export async function createDurableCakeChatRuntime(
     const content = [
       {
         type: "text" as const,
-        text: durableInputText(text, attachments, markdown, busy, subagentReport, response),
+        text: durableInputText(
+          text,
+          attachments,
+          markdown,
+          busy,
+          subagentReport,
+          response,
+          internal,
+        ),
       },
       // Reference attachments have no image parts.
     ];
@@ -625,6 +635,7 @@ export async function createDurableCakeChatRuntime(
       _presentation,
       _title,
       responseMode,
+      internal,
     ) {
       if (disposed) throw new Error("Coordinator has closed");
       const submission = await admit(
@@ -635,6 +646,7 @@ export async function createDurableCakeChatRuntime(
         markdown,
         undefined,
         responseMode,
+        internal,
       );
       const settled = await submission.wait(BACKGROUND_CONTEXT);
       if (turnId && settled.status !== "unanswered") {

@@ -872,6 +872,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
           recovered?: RuntimeRecoveryInput,
           paused = false,
           admissionId?: string,
+          internal = recovered?.internal,
         ) {
           const coordination = parseCrossSessionMessage(text);
           const turnId =
@@ -979,6 +980,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                       presentationMode,
                       automaticTitle,
                       responseMode,
+                      internal,
                     ),
             catch: (cause) => cause,
           }).pipe(
@@ -1032,6 +1034,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                 delivery,
                 attachments: [...attachments],
                 markdown,
+                ...(internal === undefined ? null : { internal }),
                 ...(presentationMode === undefined ? null : { presentationMode }),
                 ...(responseMode === undefined ? null : { responseMode }),
                 ...(automaticTitle === undefined ? null : { automaticTitle }),
@@ -1149,11 +1152,12 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
           automaticTitle?: boolean,
           responseMode?: ConversationResponseMode,
           admissionId?: string,
+          internal?: RuntimeRecoveryInput["internal"],
         ) {
           const record = yield* recoveryStorage
             .get(shared.runtime.sessionId)
             .pipe(sessionError(delivery));
-          if (record?.state === "blocked" && !parseCrossSessionMessage(text)) {
+          if (record?.state === "blocked" && !internal && !parseCrossSessionMessage(text)) {
             // Only a new local-user input may supersede the blocked run. Keep
             // unconsumed ordinary queue items; never replay an uncertain command.
             const queued = record.inputs.filter(
@@ -1196,6 +1200,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
             undefined,
             false,
             admissionId,
+            internal,
           );
         }, shared.queueEdits.withPermit);
 
@@ -1210,6 +1215,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
               input.automaticTitle,
               input.responseMode,
               input.turnId,
+              input.internal,
             ),
           recover: (inputs, paused = false) =>
             Effect.gen(function* () {

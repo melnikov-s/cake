@@ -1,4 +1,5 @@
 import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import type { InternalInput } from "../../../contracts/conversations/internal-input";
 import type {
   SessionUsage,
   ToolOutputContent,
@@ -78,6 +79,7 @@ export function createCakeSessionRuntimeEventProjection(input: {
   readonly emit: (event: RuntimeProjectionEvent) => void;
   readonly compactionQueuedMessages: () => readonly string[];
   readonly queuedParts?: () => UiPart[];
+  readonly internalInput?: (content: string) => InternalInput | undefined;
   readonly abortPresentation?: () => AbortPresentation;
   readonly isDisposed: () => boolean;
 }): RuntimeEventProjection {
@@ -106,6 +108,7 @@ export function createCakeSessionRuntimeEventProjection(input: {
   );
   const projectLiveMessage = createLiveMessageProjector({
     deferProviderErrors: true,
+    internalInput: input.internalInput,
     abortPresentation: input.abortPresentation,
     initialSystemMessages: session.messages,
     currentSystemPrompt: isFork ? undefined : () => session.systemPrompt,

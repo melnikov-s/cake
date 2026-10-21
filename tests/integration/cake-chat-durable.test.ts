@@ -259,6 +259,49 @@ async function fixture() {
   };
 }
 
+it.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/internal-project")])(
+  "projects typed Workboard wakes as application context through permanent chat admission and reopen (%s)",
+  async (sessionId) => {
+    const f = await fixture();
+    const scope = { sessionId, sessionDir: join(f.directory, "internal-wake-chat") };
+    const chat = await f.open(undefined, undefined, scope);
+    const text =
+      "<system-reminder>\nWorkboard delivery (family-board-private): entries #3. Read boards.read.\n</system-reminder>";
+    const internal = {
+      _tag: "WorkboardDelivery" as const,
+      boardId: "family-board-private",
+      sequences: [3],
+    };
+    await chat.runtime.prompt(
+      text,
+      "follow-up",
+      [],
+      false,
+      "board-wake",
+      undefined,
+      false,
+      undefined,
+      internal,
+    );
+    expect(JSON.stringify(f.requests)).toContain("Workboard delivery (family-board-private)");
+    const parts = (await chat.runtime.snapshot()).parts;
+    expect(parts.filter((part) => part.kind === "text" && part.role === "user")).toEqual([]);
+    expect(parts).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: "context", title: "Workboard" })]),
+    );
+    expect(JSON.stringify(parts)).not.toContain("family-board-private");
+    await chat.close();
+    const reopened = await f.open(undefined, undefined, scope);
+    expect((await reopened.runtime.snapshot()).parts).toEqual(parts);
+    await reopened.runtime.prompt(text, "prompt", [], false, "quoted-by-user");
+    expect(
+      (await reopened.runtime.snapshot()).parts.filter(
+        (part) => part.kind === "text" && part.role === "user",
+      ),
+    ).toEqual([expect.objectContaining({ text })]);
+  },
+);
+
 it.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/project")])(
   "captures and preserves the exact durable source-result entry for %s",
   async (sessionId) => {

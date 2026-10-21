@@ -1,3 +1,5 @@
+import type { InternalInput } from "../../../contracts/conversations/internal-input";
+
 /**
  * Rejection for accepted input the user withdrew: an abort, a removed queue
  * row, or a cleared queue. It is a cancellation, never a runtime failure.
@@ -14,25 +16,36 @@ export class RuntimeTurnCompletion {
       content: string;
       consumed: boolean;
       mayTransform: boolean;
+      internal?: InternalInput;
       resolve(): void;
       reject(error: Error): void;
     }
   >();
 
-  track(id: string, content: string, mayTransform = false) {
+  track(id: string, content: string, mayTransform = false, internal?: InternalInput) {
     const completion = new Promise<void>((resolve, reject) => {
-      this.pending.set(id, { content, consumed: false, mayTransform, resolve, reject });
+      this.pending.set(id, { content, consumed: false, mayTransform, internal, resolve, reject });
     });
     // Delivery can still be awaiting Pi when an abort rejects its completion.
     void completion.catch(() => undefined);
     return completion;
   }
 
-  consume(content: string) {
+  internalInput(content: string) {
+    return [...this.pending.values()].find((item) => !item.consumed && item.content === content)
+      ?.internal;
+  }
+
+  internalInputById(id: string) {
+    return this.pending.get(id)?.internal;
+  }
+
+  consume(content: string, turnId?: string) {
     const waiting = [...this.pending].filter(([, item]) => !item.consumed);
-    const entry =
-      waiting.find(([, item]) => item.content === content) ??
-      waiting.find(([, item]) => item.mayTransform);
+    const entry = turnId
+      ? waiting.find(([id]) => id === turnId)
+      : (waiting.find(([, item]) => item.content === content) ??
+        waiting.find(([, item]) => item.mayTransform));
     if (entry) entry[1].consumed = true;
     return entry?.[0];
   }

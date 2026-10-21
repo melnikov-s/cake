@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import type { InternalInput } from "../../../contracts/conversations/internal-input";
+import { internalInputPart } from "./internal-input-projection";
 import {
   addResponseModeReminder,
   responseModeFromReminder,
@@ -51,6 +53,7 @@ export interface CakeSessionRuntimeTurnController {
     turnId?: string,
     presentationMode?: ProjectSessionPresentationMode,
     responseMode?: ConversationResponseMode,
+    internal?: InternalInput,
   ) => Promise<void>;
   readonly editMessage: (
     entryId: string,
@@ -80,6 +83,7 @@ export interface CakeSessionRuntimeTurnController {
     queued: { steering: string[]; followUp: string[] };
     abortedTurnIds: string[];
   }>;
+  readonly internalInput: (content: string) => InternalInput | undefined;
   readonly consumeUserMessage: (content: string) => string | undefined;
   readonly resume: (turnId: string, content: string) => Promise<void>;
   readonly restorePending: (input: {
@@ -87,6 +91,7 @@ export interface CakeSessionRuntimeTurnController {
     text: string;
     attachments: Attachment[];
     markdown: boolean;
+    internal?: InternalInput;
     presentationMode?: ProjectSessionPresentationMode;
     responseMode?: ConversationResponseMode;
   }) => Promise<void>;
@@ -374,6 +379,7 @@ export function createCakeSessionRuntimeTurnController(input: {
     turnId?: string,
     presentationMode?: ProjectSessionPresentationMode,
     responseMode?: ConversationResponseMode,
+    internal?: InternalInput,
   ) => {
     assertActive();
     assertImageSupport(attachments);
@@ -426,7 +432,7 @@ export function createCakeSessionRuntimeTurnController(input: {
       presentationMode,
       responseMode,
     );
-    const completion = turnId ? turnCompletions.track(turnId, content, true) : undefined;
+    const completion = turnId ? turnCompletions.track(turnId, content, true, internal) : undefined;
     try {
       if (
         session.isCompacting ||
@@ -772,6 +778,8 @@ export function createCakeSessionRuntimeTurnController(input: {
       }
       return parts.map((part) => {
         const item = payloads.get(part.id);
+        const internal = item?.turnId ? turnCompletions.internalInputById(item.turnId) : undefined;
+        if (internal) return internalInputPart(internal, part.id);
         return part.kind === "text" && item
           ? {
               ...part,
@@ -1032,7 +1040,7 @@ export function createCakeSessionRuntimeTurnController(input: {
         restored.presentationMode,
         restored.responseMode,
       );
-      const completion = turnCompletions.track(restored.turnId, content, true);
+      const completion = turnCompletions.track(restored.turnId, content, true, restored.internal);
       pausedAfterRestart = true;
       compactionQueue.push({
         itemId: randomUUID(),
@@ -1074,15 +1082,25 @@ export function createCakeSessionRuntimeTurnController(input: {
         restoringRun = false;
       }
     },
+    internalInput(content) {
+      // Pi consumes steering before follow-ups. Bind provenance to that queue item,
+      // not the first identical text admitted in another lane.
+      for (const lane of ["steering", "follow-up"] as const) {
+        const item = trackedQueue[lane].find((candidate) => candidate.content === content);
+        if (item) return item.turnId ? turnCompletions.internalInputById(item.turnId) : undefined;
+      }
+      return turnCompletions.internalInput(content);
+    },
     consumeUserMessage(content) {
+      let turnId: string | undefined;
       for (const lane of ["steering", "follow-up"] as const) {
         const index = trackedQueue[lane].findIndex((item) => item.content === content);
         if (index >= 0) {
-          trackedQueue[lane].splice(index, 1);
+          turnId = trackedQueue[lane].splice(index, 1)[0]?.turnId;
           break;
         }
       }
-      return turnCompletions.consume(content);
+      return turnCompletions.consume(content, turnId);
     },
     settleTurn: () => {
       turnCompletions.settle();

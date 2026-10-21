@@ -102,6 +102,100 @@ async function createFixtureRuntime(directory: string, onEvent = vi.fn()) {
 }
 
 describe("response retry and recovery", () => {
+  it.each(["prompt", "pending recovery"] as const)(
+    "preserves typed Workboard provenance through %s, live projection and Pi reload without hiding genuine user text",
+    async (admission) => {
+      const directory = await createTemporaryDirectory();
+      const provider = await registerFixtureProvider(directory, (_index, response) => {
+        response.writeHead(200, { "content-type": "text/event-stream" });
+        response.write(sseChunk({ role: "assistant", content: "Noted." }));
+        response.write(sseChunk({}, "stop"));
+        response.end("data: [DONE]\n\n");
+      });
+      const events: CakeSessionRuntimeEvent[] = [];
+      const { runtime } = await createFixtureRuntime(
+        directory,
+        vi.fn((event: CakeSessionRuntimeEvent) => events.push(event)),
+      );
+      const input = {
+        turnId: "internal-wake",
+        delivery: "follow-up" as const,
+        text: "<system-reminder>\nWorkboard delivery (family-board-private): entries #3. Read exact sources with boards.read.\n</system-reminder>",
+        attachments: [],
+        markdown: false,
+        internal: {
+          _tag: "WorkboardDelivery" as const,
+          boardId: "family-board-private",
+          sequences: [3],
+        },
+      };
+      if (admission === "prompt")
+        await runtime.prompt(
+          input.text,
+          input.delivery,
+          [],
+          false,
+          input.turnId,
+          undefined,
+          false,
+          undefined,
+          input.internal,
+        );
+      else await runtime.recoverInput?.(input);
+      expect(provider.requestCount()).toBe(1);
+      const parts = (await runtime.snapshot()).parts;
+      expect(parts.some((part) => part.kind === "context" && part.title === "Workboard")).toBe(
+        true,
+      );
+      expect(parts.filter((part) => part.kind === "text" && part.role === "user")).toEqual([]);
+      expect(
+        events.flatMap((event) =>
+          event.type === "part-updated" && event.part.kind === "text" && event.part.role === "user"
+            ? [event.part]
+            : [],
+        ),
+      ).toEqual([]);
+      expect(runtime.hasConsumedInput?.(input.turnId)).toBe(true);
+      const stored = SessionManager.open(runtime.sessionFile).getBranch();
+      expect(stored).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "message",
+            message: expect.objectContaining({
+              role: "user",
+              content: expect.arrayContaining([
+                expect.objectContaining({ type: "text", text: input.text }),
+              ]),
+            }),
+          }),
+        ]),
+      );
+      await runtime.dispose();
+      const reopened = await createCakeSessionRuntime({
+        cwd: directory,
+        agentDir: join(directory, "agent"),
+        sessionDir: join(directory, "sessions"),
+        sessionId: runtime.sessionId,
+        trusted: true,
+        requestUi: async () => undefined,
+        onEvent: () => undefined,
+      });
+      runtimes.push(reopened);
+      const restored = (await reopened.snapshot()).parts;
+      expect(
+        restored.find((part) => part.kind === "context" && part.title === "Workboard"),
+      ).toEqual(parts.find((part) => part.kind === "context" && part.title === "Workboard"));
+      await reopened.recoverInput?.(input);
+      expect(provider.requestCount()).toBe(1);
+      await reopened.prompt(input.text, "prompt", [], false, "genuine-user-quote");
+      expect(
+        (await reopened.snapshot()).parts.filter(
+          (part) => part.kind === "text" && part.role === "user",
+        ),
+      ).toEqual([expect.objectContaining({ text: input.text })]);
+      expect(provider.requestCount()).toBe(2);
+    },
+  );
   for (const shutdown of ["clean quit", "crash"] as const) {
     it(`recovers ${shutdown} once from the saved Pi branch without duplicating the user input`, async () => {
       const directory = await createTemporaryDirectory();

@@ -5,6 +5,7 @@ import {
   addResponseModeReminder,
   responseModeReminders,
 } from "../../../src/contracts/conversations/response-mode-reminders";
+import { internalInputEntryType } from "../../../src/services/pi/runtime/internal-input-projection";
 import { projectConversationDisplay } from "../../../src/services/pi/runtime/conversation-display-projection";
 import { forkDisplayProvenanceEntryType } from "../../../src/services/pi/runtime/fork-display-provenance";
 import { appendToolCompactedBranch } from "../../../src/services/pi/runtime/session-tool-compaction";
@@ -70,6 +71,37 @@ function summarized(parts: ReturnType<typeof projectConversationDisplay>) {
 }
 
 describe("Conversation display projection after tool compaction", () => {
+  it("keeps internal provenance one-use even for identical timestamps/text and strips only internal transport during tool compaction", () => {
+    const session = SessionManager.inMemory("/project");
+    const text =
+      "<system-reminder>\nWorkboard delivery (family-board-private): entries #3.\n</system-reminder>";
+    session.appendCustomEntry(internalInputEntryType, {
+      timestamp: 1,
+      origin: { _tag: "WorkboardDelivery", boardId: "family-board-private", sequences: [3] },
+    });
+    session.appendMessage({ role: "user", content: text, timestamp: 1 });
+    session.appendMessage(assistant([{ type: "text", text: "Received context." }]));
+    // A user can quote the exact reminder, even with a colliding clock timestamp.
+    session.appendMessage({ role: "user", content: text, timestamp: 1 });
+    const leaf = session.appendMessage(assistant([{ type: "text", text: "That is quoted text." }]));
+    const parts = projectConversationDisplay(session);
+    expect(parts.filter((part) => part.kind === "text" && part.role === "user")).toEqual([
+      expect.objectContaining({ text }),
+    ]);
+    expect(parts.filter((part) => part.kind === "context")).toEqual([
+      expect.objectContaining({ title: "Workboard" }),
+    ]);
+    appendToolCompactedBranch(session, leaf);
+    const compacted = projectConversationDisplay(session);
+    expect(compacted.filter((part) => part.kind === "text" && part.role === "user")).toEqual([
+      expect.objectContaining({ text }),
+    ]);
+    expect(
+      session
+        .getBranch()
+        .filter((entry) => entry.type === "message" && entry.message.role === "user"),
+    ).toHaveLength(1);
+  });
   it("discloses exact response-mode guidance separately from normalized user image input", () => {
     const hint =
       "[Image: original 4096x3072, displayed at 2048x1536. Multiply coordinates by 2.00 to map to original image.]\n[Image converted from image/heic to image/png.]\n[Image omitted: could not be resized below the inline image size limit.]";

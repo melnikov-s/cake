@@ -6,6 +6,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { existsSync } from "node:fs";
+import { internalInputEntryType } from "./internal-input-projection";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { observeMessageBoardRequests } from "./message-board-extension";
@@ -253,6 +254,7 @@ export interface CakeSessionRuntime {
     presentationMode?: ProjectSessionPresentationMode,
     automaticTitle?: boolean,
     responseMode?: ConversationResponseMode,
+    internal?: RuntimeRecoveryInput["internal"],
   ): Promise<void>;
   listQueuedMessages(): Promise<{ steering: string[]; followUp: string[] }>;
   pendingMessages(): Promise<PiPendingMessages>;
@@ -464,6 +466,7 @@ export async function createCakeSessionRuntime(
     emit: options.onEvent,
     compactionQueuedMessages: () => compactionQueuedMessages(),
     queuedParts: () => queueProjection.parts(),
+    internalInput: (content) => turnController.internalInput(content),
     abortPresentation,
     isDisposed: () => disposed,
   });
@@ -645,6 +648,12 @@ export async function createCakeSessionRuntime(
     }
     if (event.type === "message_end" && event.message.role === "user") {
       const content = textFromContent(event.message.content);
+      const internal = turnController.internalInput(content);
+      if (internal)
+        session.sessionManager.appendCustomEntry(internalInputEntryType, {
+          timestamp: event.message.timestamp,
+          origin: internal,
+        });
       const consumedTurnId = turnController.consumeUserMessage(content);
       if (consumedTurnId && !options.ephemeral)
         session.sessionManager.appendCustomEntry(recoveryInputEntryType, {
@@ -667,7 +676,7 @@ export async function createCakeSessionRuntime(
         });
       const automaticTitle = automaticTitleForNextMessage;
       automaticTitleForNextMessage = true;
-      if (!options.auxiliary)
+      if (!options.auxiliary && !internal)
         void continuations.initializeSessionFromFirstMessage(
           textFromContent(event.message.content),
           automaticTitle,
@@ -923,6 +932,7 @@ export async function createCakeSessionRuntime(
           input.turnId,
           input.presentationMode,
           input.responseMode,
+          input.internal,
         );
         return;
       }
@@ -1116,6 +1126,7 @@ export async function createCakeSessionRuntime(
       presentationMode,
       automaticTitle = true,
       responseMode,
+      internal,
     ) {
       automaticTitleForNextMessage = automaticTitle;
       return turnController.prompt(
@@ -1126,6 +1137,7 @@ export async function createCakeSessionRuntime(
         turnId,
         presentationMode,
         responseMode,
+        internal,
       );
     },
     listQueuedMessages: turnController.listQueuedMessages,

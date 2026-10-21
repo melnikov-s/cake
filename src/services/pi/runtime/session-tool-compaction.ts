@@ -18,6 +18,7 @@ import {
   type ToolCompactMarker,
 } from "./tool-compaction-provenance";
 
+import { internalInputOrigins } from "./internal-input-projection";
 import { splitContextReminders } from "./session-context-reminders";
 import { parseCrossSessionMessage } from "../../../contracts/conversations/cross-session-message";
 
@@ -143,7 +144,9 @@ export function appendToolCompactedBranch(
   const markerEntryId = session.appendCustomEntry(toolCompactEntryType, marker);
   const mappings: ToolCompactProvenance["mappings"][number][] = [];
 
+  const internalInputs = internalInputOrigins(branch);
   for (const entry of branch) {
+    if (internalInputs.has(entry.id)) continue;
     const message = toolCompactDialogueMessage(entry);
     if (!message) continue;
     mappings.push({ sourceEntryId: entry.id, replayedEntryId: session.appendMessage(message) });

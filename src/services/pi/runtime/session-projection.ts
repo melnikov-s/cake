@@ -1,3 +1,5 @@
+import type { InternalInput } from "../../../contracts/conversations/internal-input";
+import { internalInputOrigins, internalInputPart } from "./internal-input-projection";
 import {
   parseSkillBlock,
   type AgentSessionEvent,
@@ -734,6 +736,7 @@ export function createLiveMessageProjector(
     currentSystemTools?(): readonly Tool[];
     initialSystemMessages?: readonly unknown[];
     renderUserMessageAsMarkdown?(message: unknown): boolean;
+    internalInput?(content: string): InternalInput | undefined;
   } = {},
 ) {
   const projectSystem = createSystemContextProjector(options.initialSystemMessages);
@@ -746,6 +749,8 @@ export function createLiveMessageProjector(
   const nextStreamId = () => `stream-${++streamIndex}`;
   const project = (event: AgentSessionEvent): UiPart[] => {
     if (event.type === "message_start" && event.message.role === "user") {
+      const internal = options.internalInput?.(textFromContent(event.message.content));
+      if (internal) return [internalInputPart(internal, `live-user-${++userIndex}-context`)];
       return partsFromMessage(
         event.message,
         `live-user-${++userIndex}`,
@@ -1031,8 +1036,14 @@ export function projectSessionEntries(
   }
 
   const projectSystem = createSystemContextProjector();
+  const internalInputs = internalInputOrigins(entries);
   for (const entry of entries) {
     if (entry.type === "message") {
+      const internal = internalInputs.get(entry.id);
+      if (internal) {
+        append(internalInputPart(internal, `entry-${entry.id}-context`));
+        continue;
+      }
       if (intermediateRetryErrors.has(entry.id)) continue;
       if (entry.message.role === "system") {
         const parts = projectSystem(

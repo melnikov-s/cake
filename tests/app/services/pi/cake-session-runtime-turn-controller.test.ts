@@ -67,6 +67,68 @@ function createFixture(overrides: Partial<AgentSession> = {}) {
 }
 
 describe("CakeSessionRuntime turn controller", () => {
+  it("binds identical user steering and internal follow-up text to their own admission identities", async () => {
+    const queues = { steering: [] as string[], followUp: [] as string[] };
+    const { controller } = createFixture({
+      isStreaming: true,
+      getSteeringMessages: () => queues.steering,
+      getFollowUpMessages: () => queues.followUp,
+      prompt: vi.fn(async (content, options) => {
+        queues[options?.streamingBehavior === "steer" ? "steering" : "followUp"].push(content);
+      }),
+    });
+    const text = "<system-reminder>Workboard delivery</system-reminder>";
+    const origin = { _tag: "WorkboardDelivery" as const, boardId: "private", sequences: [3] };
+    const internal = controller.prompt(
+      text,
+      "follow-up",
+      [],
+      false,
+      "internal",
+      undefined,
+      undefined,
+      origin,
+    );
+    const user = controller.prompt(text, "steer", [], false, "user");
+    expect(controller.internalInput(text)).toBeUndefined();
+    expect(controller.consumeUserMessage(text)).toBe("user");
+    expect(controller.internalInput(text)).toEqual(origin);
+    expect(controller.consumeUserMessage(text)).toBe("internal");
+    controller.settleTurn();
+    await Promise.all([internal, user]);
+    controller.dispose();
+  });
+  it("restores queued internal provenance and revokes it on cancellation without hiding a later identical user input", async () => {
+    const { controller, session } = createFixture({ isCompacting: true });
+    const text =
+      "<system-reminder>\nWorkboard delivery (family-board-private): entries #3.\n</system-reminder>";
+    const internal = {
+      _tag: "WorkboardDelivery" as const,
+      boardId: "family-board-private",
+      sequences: [3],
+    };
+    const restored = controller.restorePending({
+      turnId: "wake",
+      text,
+      internal,
+      attachments: [],
+      markdown: false,
+    });
+    expect(controller.internalInput(text)).toEqual(internal);
+    expect(controller.queuedParts()).toEqual([
+      expect.objectContaining({ kind: "context", title: "Workboard" }),
+    ]);
+    expect(JSON.stringify(controller.queuedParts())).not.toContain("system-reminder");
+    expect(controller.pendingRecoveryInputs()).toEqual([{ turnId: "wake", delivery: "follow-up" }]);
+    await controller.clearQueue();
+    await expect(restored).rejects.toBeInstanceOf(TurnCanceledError);
+    expect(controller.internalInput(text)).toBeUndefined();
+    Object.assign(session, { isCompacting: false });
+    await controller.prompt(text, "prompt", []);
+    expect(controller.internalInput(text)).toBeUndefined();
+    expect(vi.mocked(session.prompt).mock.calls[0]?.[0]).toBe(text);
+    controller.dispose();
+  });
   it("rejects images for unsupported models or disabled images before starting or queueing a turn", async () => {
     const attachment = {
       kind: "image" as const,

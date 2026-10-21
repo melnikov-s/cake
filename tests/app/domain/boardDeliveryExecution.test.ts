@@ -49,6 +49,10 @@ const fixture = Effect.fn("BoardDeliveryTest.fixture")(function* (
   const release = yield* Deferred.make<void>();
   const lanes: string[] = [];
   const recipients: string[] = [];
+  const admitted: Array<{
+    text: string;
+    internal: RuntimeRecoveryRecord["inputs"][number]["internal"];
+  }> = [];
   let busy = settings.busy ?? false;
   let failAcquire = settings.failFirstAcquire ?? false;
   const core = yield* Layer.build(
@@ -98,7 +102,18 @@ const fixture = Effect.fn("BoardDeliveryTest.fixture")(function* (
                 sessionId: setup.sessionId ?? "child",
                 streaming: busy,
               }),
-              prompt: async (_text, lane) => {
+              prompt: async (
+                text,
+                lane,
+                _attachments,
+                _markdown,
+                _turnId,
+                _presentation,
+                _title,
+                _response,
+                internal,
+              ) => {
+                admitted.push({ text, internal });
                 lanes.push(lane);
                 recipients.push(setup.sessionId ?? "missing");
                 await Effect.runPromise(
@@ -150,6 +165,7 @@ const fixture = Effect.fn("BoardDeliveryTest.fixture")(function* (
     state,
     lanes,
     recipients,
+    admitted,
     setBusy: (value: boolean) => {
       busy = value;
     },
@@ -286,6 +302,20 @@ describe("default board-driven execution", () => {
         yield* Deferred.await(f.started);
         assert.deepEqual(f.lanes, ["follow-up"]);
         assert.deepEqual(state.boardDeliveries?.[0]?.sequences, [1, 2, 3]);
+        const origin = {
+          _tag: "WorkboardDelivery",
+          boardId: state.boardDeliveries?.[0]?.boardId,
+          sequences: [1, 2, 3],
+        };
+        assert.deepEqual(f.admitted[0]?.internal, origin);
+        assert.match(f.admitted[0]?.text ?? "", /<system-reminder>\nWorkboard delivery/);
+        const journal = yield* f.provide(
+          Effect.gen(function* () {
+            return yield* (yield* RuntimeRecoveryStorage).get("child");
+          }),
+        );
+        assert.deepEqual(journal?.inputs[0]?.internal, origin);
+        assert.equal(journal?.inputs[0]?.turnId, state.boardDeliveries?.[0]?.turnId);
         const again = yield* f.post("a");
         assert.equal(again.entry.sequence, 1);
         yield* f.provide(deliveries.runPass());

@@ -1,5 +1,6 @@
 import type { SessionEntry, SessionManager } from "@earendil-works/pi-coding-agent";
 import { Option, Schema } from "effect";
+import { internalInputOrigins } from "./internal-input-projection";
 import type { UiPart } from "../../../contracts/conversations/session-contract";
 import { isWorkLogPart } from "../../../utils/work-log-groups";
 import {
@@ -107,8 +108,9 @@ function validateReplay(
 
   const replayRange = branch.slice(replayStartIndex, replayEndIndex + 1);
   const sourceBranch = session.getBranch(provenance.sourceLeafId);
+  const internalInputs = internalInputOrigins(sourceBranch);
   const replayableSourceIds = sourceBranch.flatMap((entry) => {
-    return toolCompactDialogueMessage(entry) ? [entry.id] : [];
+    return !internalInputs.has(entry.id) && toolCompactDialogueMessage(entry) ? [entry.id] : [];
   });
   if (
     replayRange.length !== provenance.mappings.length ||

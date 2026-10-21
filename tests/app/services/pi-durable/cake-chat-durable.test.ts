@@ -44,6 +44,7 @@ import {
   durableInputText,
   durableInputPresentation,
   markDurableInputSteering,
+  durableQueuedPart,
 } from "../../../../src/services/pi-durable/durable-input-presentation";
 import {
   investigatorOrigin,
@@ -863,6 +864,49 @@ it("adds voice guidance only on transitions, recovering the mode from durable st
     "Background report",
     "Typed again",
   ]);
+});
+
+it("keeps typed Workboard delivery as application context across durable queues, SQLite reload, and user quotations", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "cake-internal-input-"));
+  cleanup.push(() => rm(directory, { recursive: true, force: true }));
+  const database = join(directory, "chat.sqlite");
+  const origin = {
+    _tag: "WorkboardDelivery" as const,
+    boardId: "family-board-private",
+    sequences: [3],
+  };
+  const reminder =
+    "<system-reminder>\nWorkboard delivery (family-board-private): entries #3.\n</system-reminder>";
+  const encoded = durableInputText(reminder, [], false, false, undefined, undefined, origin);
+  const f = await fixture(undefined, 20_000, await openNodeSqliteStorage(database));
+  expect(durableInputPresentation(markDurableInputSteering(encoded)).internal).toEqual(origin);
+  const submission = await f.submit(encoded, "board-wake");
+  await submission.wait(BACKGROUND_CONTEXT);
+  expect(JSON.stringify(f.requests)).toContain("Workboard delivery (family-board-private)");
+  const parts = (await readDurableOriginalPage(f.engine.root)).parts;
+  expect(parts.filter((part) => part.kind === "text" && part.role === "user")).toEqual([]);
+  expect(parts).toEqual(
+    expect.arrayContaining([expect.objectContaining({ kind: "context", title: "Workboard" })]),
+  );
+  expect(JSON.stringify(parts)).not.toContain("family-board-private");
+  // Inbox presentation consumes the same persisted admission metadata, including after steering edits.
+  const queued = durableQueuedPart(
+    { id: submission.id, mode: "followUp", content: encoded },
+    "board-wake",
+  );
+  expect(queued).toMatchObject({ kind: "context", title: "Workboard" });
+  expect(JSON.stringify(queued)).not.toContain("system-reminder");
+  await f.engine.close();
+  cleanup.pop();
+  const reopened = await fixture(undefined, 20_000, await openNodeSqliteStorage(database));
+  expect((await readDurableOriginalPage(reopened.engine.root)).parts).toEqual(parts);
+  // Even an exact copy of the application transport/envelope is ordinary text inside a new user input.
+  await reopened.send(durableInputText(reminder, [], false), "user-quote");
+  await reopened.send(durableInputText(encoded, [], false), "envelope-quote");
+  const users = (await readDurableOriginalPage(reopened.engine.root)).parts.filter(
+    (part) => part.kind === "text" && part.role === "user",
+  );
+  expect(users.map((part) => part.kind === "text" && part.text)).toEqual([reminder, encoded]);
 });
 
 it("renders a durable voice turn with the same context pill as a Project Session voice turn", async () => {

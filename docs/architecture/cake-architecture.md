@@ -114,6 +114,12 @@ projections needed by a surface. References do not transfer ownership.
   instruction-file and skill sections; a small path mapping and replacement
   worktree guidance carry the move instead of redeclaring unchanged sources.
   Genuine instruction/tool changes remain inspectable in the timeline.
+  Application-generated Workboard wake inputs carry typed admission provenance,
+  persisted in regular Pi metadata or the Durable input envelope and retained by
+  recovery. Project and Session Chat present these as Workboard summary context
+  pills, not user-authored bubbles or raw transport markup/storage identities.
+  The exact model payload remains in Pi and Browse context. Never infer internal
+  provenance from `<system-reminder>` text: genuine user quotations remain dialogue.
   Presentation does not create another transcript authority.
 - Project Session Tool Compact replays only user-authored input and assistant text as dialogue.
   Preserve Pi's canonical system prompt/tool baseline as a folded checkpoint, not

@@ -1,4 +1,5 @@
 import { Context, Effect, Layer, Path, Schema } from "effect";
+import { InternalInput } from "../../contracts/conversations/internal-input";
 import { attachmentSchema } from "../../contracts/conversations/session-contract";
 import { ConversationResponseMode } from "../../contracts/conversations/response-mode-reminders";
 import { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
@@ -11,6 +12,7 @@ export const RuntimeRecoveryInput = Schema.Struct({
   delivery: Schema.Literals(["prompt", "steer", "follow-up"]),
   attachments: Schema.Array(attachmentSchema),
   markdown: Schema.Boolean,
+  internal: Schema.optionalKey(InternalInput),
   presentationMode: Schema.optionalKey(ProjectSessionPresentationMode),
   responseMode: Schema.optionalKey(ConversationResponseMode),
   automaticTitle: Schema.optionalKey(Schema.Boolean),
