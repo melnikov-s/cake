@@ -5,7 +5,11 @@ import type {
 } from "../../contracts/application/cake-rpc-contract";
 import type { WorkspaceFileError } from "../../contracts/filesystem/workspace-files-errors";
 
-type FilesystemOperation = "suggest-files" | "read-workspace-file" | "read-workspace-image";
+type FilesystemOperation =
+  | "suggest-files"
+  | "read-workspace-file"
+  | "read-workspace-image"
+  | "prepare-file-location";
 type Payload<Type extends FilesystemOperation> = (typeof cakeRpcPayloadSchemas)[Type]["Type"];
 type Success<Type extends FilesystemOperation> = (typeof cakeRpcSuccessSchemas)[Type]["Type"];
 
@@ -16,6 +20,10 @@ export class WorkspaceFiles extends Context.Service<
       connectionId: number,
       request: Payload<"suggest-files">,
     ) => Effect.Effect<Success<"suggest-files">, WorkspaceFileError>;
+    readonly prepareFileLocation: (
+      connectionId: number,
+      request: Payload<"prepare-file-location">,
+    ) => Effect.Effect<Success<"prepare-file-location">, WorkspaceFileError>;
     readonly readFile: (
       connectionId: number,
       request: Payload<"read-workspace-file">,

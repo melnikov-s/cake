@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { VirtuosoMockContext } from "react-virtuoso";
+import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import type { EmbeddedEditorStateSnapshot } from "../../../src/renderer/client/Client";
 import type { DiscussionThread } from "../../../src/contracts/discussion-sessions/discussion-session-data";
 import type { StoreEvent } from "../../../src/renderer/events/StoreEvent";
@@ -38,6 +39,7 @@ export function renderEmbeddedEditor(
   client: TestClientOverrides,
   options: {
     threads?: readonly DiscussionThread[];
+    parts?: readonly UiPart[];
     bootstrap?: boolean;
     savedIde?: boolean;
     additionalSessions?: ReturnType<typeof sessionSummary>[];
@@ -59,8 +61,13 @@ export function renderEmbeddedEditor(
     sessions,
     client: {
       ...client,
+      electron: { setFullscreenSurfaceOpen: async () => undefined, ...client.electron },
       projectSessions: { open: async () => undefined, ...client.projectSessions },
       workspaces: { loadStagedSlashCommands: async () => [], ...client.workspaces },
+      filesystem: {
+        prepareFileLocation: async ({ location }) => ({ viewer: "vscode", location }),
+        ...client.filesystem,
+      },
       vscode: {
         updateBounds: async () => undefined,
         updateAnnotations: async () => undefined,
@@ -81,7 +88,7 @@ export function renderEmbeddedEditor(
         snapshot: {
           sessionId,
           sessionFile: `/sessions/${sessionId}.jsonl`,
-          parts: [],
+          parts: options.parts ?? [],
           models: [],
           thinkingLevel: "off",
           availableThinkingLevels: ["off"],
@@ -157,9 +164,11 @@ export function renderEmbeddedEditor(
   editor.applyState({ status: "ready" });
   const view = render(
     <StoreProvider store={fixture.root}>
-      <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
-        <App />
-      </VirtuosoMockContext.Provider>
+      <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
+        <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
+          <App />
+        </VirtuosoMockContext.Provider>
+      </StoreProvider>
     </StoreProvider>,
   );
   // Bootstrap reauthorizes the retained target; tests control only its external boundaries.

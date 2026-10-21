@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { extname, isAbsolute, relative, resolve, sep } from "node:path";
 import { Effect, Layer } from "effect";
@@ -5,6 +6,7 @@ import { ProjectAccess } from "../projects/ProjectAccess";
 import { suggestProjectFiles } from "../pi/runtime/session-discovery";
 import { WorkspaceFileError } from "../../contracts/filesystem/workspace-files-errors";
 import { WorkspaceFiles } from "./WorkspaceFiles";
+import { prepareFileLocation } from "./file-location";
 
 const imageMimeTypes = new Map([
   [".avif", "image/avif"],
@@ -128,6 +130,23 @@ export const makeWorkspaceFilesLive = (agentDirectory: string) =>
 
       return WorkspaceFiles.of({
         suggestFiles,
+        prepareFileLocation: Effect.fn("WorkspaceFiles.prepareFileLocation")(
+          function* (_connectionId, request) {
+            if (request.workspacePath) yield* requireAllowed(request.workspacePath);
+            const originatingDirectory = request.originatingDirectory ?? homedir();
+            yield* requireAllowed(originatingDirectory);
+            const allowedDirectories = yield* access.allowedWorkingDirectories();
+            return yield* Effect.tryPromise({
+              try: (signal) =>
+                prepareFileLocation(
+                  { ...request, originatingDirectory },
+                  allowedDirectories,
+                  signal,
+                ),
+              catch: (cause) => workspaceFilesError("prepareFileLocation", cause),
+            });
+          },
+        ),
         readFile: readWorkspaceFile,
         readImage: readWorkspaceImage,
       });

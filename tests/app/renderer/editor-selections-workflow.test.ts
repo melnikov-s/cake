@@ -37,6 +37,7 @@ function harness() {
     projects: [projectRecord({ path: workspace, name: "Example" })],
     sessions: ["a", "b"].map((sessionId) => sessionSummary({ sessionId, projectPath: workspace })),
     client: {
+      filesystem: { prepareFileLocation: async ({ location }) => ({ viewer: "vscode", location }) },
       vscode: {
         open: vi.fn(async () => undefined),
         reveal,

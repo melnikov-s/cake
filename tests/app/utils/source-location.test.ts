@@ -4,6 +4,20 @@ import { formatSourceLocation, parseSourceLocation } from "../../../src/utils/so
 describe("parseSourceLocation", () => {
   it.each([
     ["src/main.ts", { path: "src/main.ts" }],
+    ["/authorized/main.ts", { path: "/authorized/main.ts" }],
+    [
+      "../sibling/main.ts#L2",
+      { path: "../sibling/main.ts", range: { start: { line: 1 }, end: { line: 1 } } },
+    ],
+    [
+      "/authorized/main.ts?view=changes&side=before#L2",
+      {
+        path: "/authorized/main.ts",
+        view: "changes",
+        side: "before",
+        range: { start: { line: 1 }, end: { line: 1 } },
+      },
+    ],
     ["src/main.ts:880", { path: "src/main.ts", range: { start: { line: 879 } } }],
     ["src/main.ts:880:12", { path: "src/main.ts", range: { start: { line: 879, column: 11 } } }],
     [

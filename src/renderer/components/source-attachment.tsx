@@ -60,10 +60,10 @@ export function SourceAttachment({
               variant="outline"
               size="sm"
               className="mt-3"
-              aria-label={`Open ${label} in VS Code`}
+              aria-label={`Open ${label}`}
               onClick={() => openSource(attachment.location)}
             >
-              Open in VS Code
+              Open file
             </Button>
           )}
         </PopoverContent>
@@ -76,7 +76,7 @@ export function SourceAttachment({
         <Button
           className={cn(surface, "h-auto block whitespace-normal font-normal hover:bg-muted/70")}
           variant="ghost"
-          aria-label={`Open ${label} in VS Code`}
+          aria-label={`Open ${label}`}
           onClick={() => openSource(attachment.location)}
         >
           {content}

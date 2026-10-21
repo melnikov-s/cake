@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { PrepareFileLocation, PreparedFileLocation } from "../filesystem/file-location";
 import { WidgetViewCapture } from "../widgets/widget-view-evidence";
 import { piSettingsSchema } from "../conversations/session-contract";
 import { AgentActionNotice } from "./agent-action-notice";
@@ -626,6 +627,7 @@ export const cakeRpcPayloadSchemas = {
     workspacePath: stringMax(4_096),
     prefix: stringMax(4_096),
   }),
+  "prepare-file-location": PrepareFileLocation,
   "read-workspace-file": Schema.Struct({
     workspacePath: stringMax(4_096),
     path: bounded(1, 8_192),
@@ -903,6 +905,7 @@ export const cakeRpcSuccessSchemas = {
   "upload-finish": cakeRpcResultSchemas["upload-finished"],
   "upload-discard": Schema.Void,
   "suggest-files": cakeRpcResultSchemas["file-suggestions"],
+  "prepare-file-location": PreparedFileLocation,
   "read-workspace-file": cakeRpcResultSchemas["workspace-file"],
   "read-workspace-image": cakeRpcResultSchemas["workspace-image"],
   "post-process-dictation": Schema.Struct({ text: bounded(0, 32_000) }),

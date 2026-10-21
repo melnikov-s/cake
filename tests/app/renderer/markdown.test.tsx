@@ -76,6 +76,8 @@ describe("Markdown rendering integration", () => {
         '[file](src/modelMeta.ts#L8-L12 "Authored title")',
         "[before](src/modelMeta.ts?view=changes&side=before#L8-L12)",
         "[functions](src/modelMeta.ts#L153-L170,L182-L192)",
+        "[sibling](../sibling/notes.txt#L2-L3)",
+        "[absolute](/authorized/notes.txt?view=changes&side=before#L2)",
         "[protocol](docs/architecture/s4-artifact-protocol.md#authority-and-durability)",
         "src/main.ts:880:12 and `src/not-a-link.ts:3`",
       ].join(" · "),
@@ -107,6 +109,18 @@ describe("Markdown rendering integration", () => {
     expect(open).toHaveBeenLastCalledWith({
       path: "src/main.ts",
       range: { start: { line: 879, column: 11 } },
+    });
+    await fixture.user.click(screen.getByRole("link", { name: "sibling" }));
+    expect(open).toHaveBeenLastCalledWith({
+      path: "../sibling/notes.txt",
+      range: { start: { line: 1 }, end: { line: 2 } },
+    });
+    await fixture.user.click(screen.getByRole("link", { name: "absolute" }));
+    expect(open).toHaveBeenLastCalledWith({
+      path: "/authorized/notes.txt",
+      view: "changes",
+      side: "before",
+      range: { start: { line: 1 }, end: { line: 1 } },
     });
     expect(screen.queryByRole("link", { name: "src/not-a-link.ts:3" })).toBeNull();
     expect(screen.getByText("src/not-a-link.ts:3").tagName).toBe("CODE");

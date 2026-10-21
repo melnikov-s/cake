@@ -1,6 +1,5 @@
 import { editorLocationFromPath } from "../../contracts/editor/editor-location";
 import type { SourceLocation } from "../../contracts/editor/source-location";
-import { toWorkspaceRelativePath } from "../../utils/workspace-relative-path";
 import type { RootStore } from "../stores/RootStore";
 import type { ProjectSessionStore } from "../stores/ProjectSessionStore";
 import type { ChatTranscriptBehavior } from "../components/chat-transcript";
@@ -38,12 +37,7 @@ export function projectTranscriptBehaviorFor(
             root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId,
           );
           void store.presentationStore
-            .openFile(
-              editorLocationFromPath({
-                ...location,
-                path: toWorkspaceRelativePath(location.path, paneSession.workspacePath),
-              }),
-            )
+            .openFile(editorLocationFromPath(location))
             .catch(() => undefined);
         },
     onOpenReviewRun: resolved

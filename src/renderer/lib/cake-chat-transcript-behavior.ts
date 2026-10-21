@@ -19,16 +19,14 @@ export function cakeChatTranscriptBehaviorFor(
     subagents: session.subagentActivityStore,
     inlineWidgets: root.inlineWidgetStore,
     inlineArtifactPreviews: root.inlineArtifactPreviewStore,
-    openSourceLocation: projectPath
-      ? (location) => {
-          const pane = root.cakeChatCollectionStore.sessionLayoutStore.paneForSession(
-            session.sessionId,
-          );
-          if (pane) root.navigationStore.focusCakeChatPane(pane.paneId);
-          void root.projectWorkbenchStore.presentationStore
-            .openFile(editorLocationFromPath(location))
-            .catch(() => undefined);
-        }
-      : undefined,
+    openSourceLocation: (location) => {
+      const pane = root.cakeChatCollectionStore.sessionLayoutStore.paneForSession(
+        session.sessionId,
+      );
+      if (pane) root.navigationStore.focusCakeChatPane(pane.paneId);
+      void root.projectWorkbenchStore.presentationStore
+        .openFile(editorLocationFromPath(location))
+        .catch(() => undefined);
+    },
   };
 }

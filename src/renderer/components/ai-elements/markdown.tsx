@@ -94,15 +94,22 @@ function sessionTargetFromHref(href: string) {
 }
 
 function sourceHref(reference: string) {
-  return `${workspacePathPrefix}${reference}`;
+  // Keep dot segments and fragments opaque until our click handler sees the originating path.
+  return `${workspacePathPrefix}${encodeURIComponent(reference)}`;
+}
+
+function sourceReferenceFromHref(href: string) {
+  if (!href.startsWith(workspacePathPrefix)) return href.startsWith("./") ? href.slice(2) : href;
+  try {
+    return decodeURIComponent(href.slice(workspacePathPrefix.length));
+  } catch {
+    return undefined;
+  }
 }
 
 function workspaceImagePathFromSrc(src: string) {
-  const reference = src.startsWith(workspacePathPrefix)
-    ? src.slice(workspacePathPrefix.length)
-    : src.startsWith("./")
-      ? src.slice(2)
-      : src;
+  const reference = sourceReferenceFromHref(src);
+  if (!reference) return undefined;
   if (nonPathHref.test(reference)) return undefined;
   const location = parseSourceLocation(reference);
   return location && !location.range && !location.ranges && !location.view
@@ -602,11 +609,8 @@ function MarkdownRenderer({
         if (!openSourceLocation) return linkAnchor(allProps, linkActions);
         const href = allProps.href;
         if (!href) return linkAnchor(allProps, linkActions);
-        const reference = href.startsWith(workspacePathPrefix)
-          ? href.slice(workspacePathPrefix.length)
-          : href.startsWith("./")
-            ? href.slice(2)
-            : href;
+        const reference = sourceReferenceFromHref(href);
+        if (!reference) return linkAnchor(allProps, linkActions);
         const location = parseSourceLocation(reference);
         if (!location || (nonPathHref.test(href) && !href.startsWith(workspacePathPrefix)))
           return linkAnchor(allProps, linkActions);

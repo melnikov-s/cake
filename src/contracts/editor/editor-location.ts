@@ -30,6 +30,9 @@ const workingDirectoryEditorLocationSchema = Schema.Struct({
 const absoluteFileEditorLocationSchema = Schema.Struct({
   kind: Schema.Literal("absolute-file"),
   path: sourceLocationSchema.fields.path,
+  view: sourceLocationSchema.fields.view,
+  side: sourceLocationSchema.fields.side,
+  base: sourceLocationSchema.fields.base,
   range: sourceLocationSchema.fields.range,
   ranges: sourceLocationSchema.fields.ranges,
   symbol: sourceLocationSchema.fields.symbol,
@@ -37,7 +40,7 @@ const absoluteFileEditorLocationSchema = Schema.Struct({
   ...editorPresentationFields,
 });
 
-/** A file that embedded VS Code can open without changing the session's Working Directory. */
+/** A file navigation intent, resolved against its origin before selecting a viewer. */
 export const editorLocationSchema = Schema.Union([
   workingDirectoryEditorLocationSchema,
   absoluteFileEditorLocationSchema,
@@ -53,7 +56,9 @@ export type EditorLocation = typeof editorLocationSchema.Type;
  */
 export const editorRevealOutcomeSchema = Schema.Struct({
   view: Schema.Literals(["changes", "file"]),
-  fallback: Schema.optionalKey(Schema.Literals(["no-changes", "unknown-base", "git-unavailable"])),
+  fallback: Schema.optionalKey(
+    Schema.Literals(["no-changes", "unknown-base", "git-unavailable", "external-file"]),
+  ),
 });
 
 /** Classifies a user-facing path while keeping project source locations Working Directory-relative. */

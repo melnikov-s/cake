@@ -33,7 +33,7 @@ it("opens a source attachment by clicking its surface, while removal stays separ
 
   const open = host.querySelector<HTMLButtonElement>('button[aria-label^="Open "]')!;
   expect(open.textContent).toContain("src/active.ts");
-  expect(host.textContent).not.toContain("Open in VS Code");
+  expect(host.textContent).not.toContain("Open file");
   act(() => open.click());
   expect(onOpen).toHaveBeenCalledWith(location);
   const remove = host.querySelector<HTMLButtonElement>('button[aria-label^="Remove "]')!;

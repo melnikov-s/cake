@@ -7,6 +7,11 @@ import {
 
 /** Workspace presentation executes only on the backend with ProjectAccess. */
 export const FilesystemRpc = RpcGroup.make(
+  Rpc.make("filesystem.prepare-file-location", {
+    payload: cakeRpcPayloadSchemas["prepare-file-location"],
+    success: cakeRpcSuccessSchemas["prepare-file-location"],
+    error: WorkspaceFileError,
+  }),
   Rpc.make("filesystem.suggest-files", {
     payload: cakeRpcPayloadSchemas["suggest-files"],
     success: cakeRpcSuccessSchemas["suggest-files"],

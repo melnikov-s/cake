@@ -944,9 +944,7 @@ describe("Transcript rendering and virtualizer adapter contracts", () => {
     expect(summary.textContent).toContain("src/new.ts+2−0");
 
     act(() =>
-      summary
-        .querySelector<HTMLButtonElement>('[title="Open src/app.ts in VS Code Changes"]')!
-        .click(),
+      summary.querySelector<HTMLButtonElement>('[title="Open changes for src/app.ts"]')!.click(),
     );
     expect(openSourceLocation).toHaveBeenCalledWith({ path: "src/app.ts", view: "changes" });
 

@@ -6,7 +6,7 @@ import {
 } from "../contracts/editor/source-location";
 
 const webReference = /^(?:(?:https?|mailto|file|data|javascript|vscode):|\/\/|#)/i;
-const sourcePath = /^(?!\.\.?$)(?:[^\s/:#]+\/)*[^\s/:#]+\.[a-z][a-z0-9._+-]*$/i;
+const sourcePath = /^(?!\.\.?$)(?:\/|[a-z]:\/)?(?:[^\s/:#]+\/)*[^\s/:#]+\.[a-z][a-z0-9._+-]*$/i;
 const lineRangeReference = /^L(\d+)(?:-L?(\d+))?$/;
 const isGitRevision = Schema.is(gitRevisionSchema);
 

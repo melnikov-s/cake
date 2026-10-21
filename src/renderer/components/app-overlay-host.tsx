@@ -7,6 +7,7 @@ import { AppNotifications } from "./app-notifications";
 import { ExtensionRequestDialog } from "./extension-request-dialog";
 import { FullscreenMessage } from "./fullscreen-message";
 import { MessageReferencePreview } from "./message-reference-preview";
+import { FileLocationPreview } from "./file-location-preview";
 import { AttachmentReferencePreview } from "./attachment-reference-preview";
 import { QuakeTerminal } from "./quake-terminal";
 import { SessionContinuationDialog } from "./session-continuation-dialog";
@@ -35,6 +36,7 @@ export const AppOverlayHost = observer(function AppOverlayHost({
     return (
       <>
         {floatingTerminal}
+        <FileLocationPreview store={workbench.presentationStore} />
         <MessageReferencePreview store={root.navigationStore.messageReferencePreview} />
         <AttachmentReferencePreview store={root.navigationStore.attachmentReferencePreview} />
         <SessionContinuationDialog store={workbench.sessionContinuationStore} />
@@ -45,6 +47,7 @@ export const AppOverlayHost = observer(function AppOverlayHost({
 
   return (
     <>
+      <FileLocationPreview store={workbench.presentationStore} />
       <MessageReferencePreview store={root.navigationStore.messageReferencePreview} />
       <AttachmentReferencePreview store={root.navigationStore.attachmentReferencePreview} />
       <WorkspaceTrustDialog />

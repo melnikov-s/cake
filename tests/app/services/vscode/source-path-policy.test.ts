@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -33,7 +33,7 @@ describe("VS Code source path policy", () => {
     });
   });
 
-  it("resolves an absolute editor file without changing the Working Directory", async () => {
+  it("rejects absolute editor files outside the workspace", async () => {
     const { workspace } = await workspaceFixture();
     const externalRoot = await mkdtemp(join(tmpdir(), "cake-external-file-"));
     roots.push(externalRoot);
@@ -42,11 +42,7 @@ describe("VS Code source path policy", () => {
 
     await expect(
       resolveEditorTarget(workspace, { kind: "absolute-file", path: target }),
-    ).resolves.toEqual({
-      workspace: await realpath(workspace),
-      target: await realpath(target),
-      location: { kind: "absolute-file", path: await realpath(target) },
-    });
+    ).rejects.toThrow("outside the selected project");
   });
 
   it("normalizes a Working Directory editor file to a relative path", async () => {
@@ -59,6 +55,25 @@ describe("VS Code source path policy", () => {
       target: await realpath(target),
       location: { kind: "working-directory", path: "src/main.ts" },
     });
+  });
+
+  it("revalidates symlink escapes at the VS Code boundary", async () => {
+    const { workspace } = await workspaceFixture();
+    const outside = await workspaceFixture();
+    await symlink(outside.target, join(workspace, "external.ts"));
+    await expect(
+      resolveEditorTarget(workspace, { kind: "working-directory", path: "external.ts" }),
+    ).rejects.toThrow("outside the selected project");
+    await expect(
+      resolveEditorTarget(workspace, {
+        kind: "absolute-file",
+        path: join(workspace, "external.ts"),
+      }),
+    ).rejects.toThrow("outside the selected project");
+    await writeFile(join(workspace, "..notes.ts"), "safe");
+    await expect(
+      resolveEditorTarget(workspace, { kind: "working-directory", path: "..notes.ts" }),
+    ).resolves.toMatchObject({ location: { path: "..notes.ts" } });
   });
 
   it("rejects a relative path labeled as an absolute editor file", async () => {

@@ -104,6 +104,115 @@ const sourceControlButton = () =>
   screen.getByRole("button", { name: "Open workspace changes in VS Code" });
 
 describe("Embedded editor workflow", () => {
+  it.each(["vscode", "text"] as const)(
+    "routes chat range/diff links to %s before any editor launch",
+    async (viewer) => {
+      const location = {
+        kind: "working-directory" as const,
+        path: "src/app.ts",
+        view: "changes" as const,
+        base: "HEAD~1",
+        range: { start: { line: 1 }, end: { line: 2 } },
+      };
+      const prepare = vi.fn<Client["filesystem"]["prepareFileLocation"]>(async () =>
+        viewer === "vscode"
+          ? { viewer, location }
+          : {
+              viewer,
+              path: "/authorized-external/app.ts",
+              content: "first line\nexternal selected line\nthird line",
+            },
+      );
+      const open = vi.fn<Client["vscode"]["open"]>(async () => editorLease("a"));
+      const reveal = vi.fn<Client["vscode"]["reveal"]>(async () => ({
+        outcome: { view: "changes" },
+        locations: [],
+      }));
+      using fixture = renderEmbeddedEditor(
+        { filesystem: { prepareFileLocation: prepare }, vscode: { open, reveal } },
+        {
+          parts: [
+            {
+              id: "file-link",
+              kind: "text",
+              role: "assistant",
+              status: "complete",
+              text: "[Inspect source](src/app.ts?view=changes&base=HEAD~1#L2-L3)",
+            },
+          ],
+        },
+      );
+      await fixture.user.click(await screen.findByRole("link", { name: "Inspect source" }));
+      await waitFor(() =>
+        expect(prepare).toHaveBeenCalledWith(
+          {
+            workspacePath: editorWorkingDirectory,
+            originatingDirectory: editorWorkingDirectory,
+            location,
+          },
+          expect.objectContaining({ signal: expect.any(AbortSignal) }),
+        ),
+      );
+      if (viewer === "text") {
+        const dialog = await screen.findByRole("dialog", {
+          name: /\/authorized-external\/app\.ts\?view=changes/,
+        });
+        expect(
+          within(dialog).getByText(/Diff unavailable outside the selected project/),
+        ).toBeDefined();
+        expect(within(dialog).getByText("external selected line").className).toContain("bg-accent");
+        expect(open).not.toHaveBeenCalled();
+        expect(reveal).not.toHaveBeenCalled();
+        expect(screen.queryByText(/File is outside the selected project/)).toBeNull();
+      } else {
+        await waitFor(() =>
+          expect(reveal).toHaveBeenCalledWith(editorWorkingDirectory, location, expect.any(Object)),
+        );
+        expect(prepare.mock.invocationCallOrder[0]).toBeLessThan(open.mock.invocationCallOrder[0]!);
+      }
+    },
+  );
+
+  it("discards pending file routing when the selected project changes", async () => {
+    const pending =
+      deferredCompletion<Awaited<ReturnType<Client["filesystem"]["prepareFileLocation"]>>>();
+    const prepare = vi.fn<Client["filesystem"]["prepareFileLocation"]>(() => pending.promise);
+    const open = vi.fn<Client["vscode"]["open"]>(async () => editorLease("a"));
+    using fixture = renderEmbeddedEditor(
+      { filesystem: { prepareFileLocation: prepare }, vscode: { open } },
+      {
+        additionalSessions: [
+          sessionSummary({
+            sessionId: "other-project",
+            title: "Other project",
+            projectPath: "/other",
+            workingDirectory: "/other",
+          }),
+        ],
+        parts: [
+          {
+            id: "file-link",
+            kind: "text",
+            role: "assistant",
+            status: "complete",
+            text: "[Inspect source](src/app.ts#L2)",
+          },
+        ],
+      },
+    );
+    await fixture.user.click(await screen.findByRole("link", { name: "Inspect source" }));
+    await waitFor(() => expect(prepare).toHaveBeenCalledTimes(1));
+    await fixture.user.click(screen.getByRole("button", { name: /^Other project / }));
+    await act(async () =>
+      pending.resolve({
+        viewer: "text",
+        path: "/old-project/app.ts",
+        content: "stale external content",
+      }),
+    );
+    expect(screen.queryByText("stale external content")).toBeNull();
+    expect(open).not.toHaveBeenCalled();
+  });
   it("preserves one pending Source Control open through same-target bootstrap reauthorization and hydration", async () => {
     const boundary = bootstrapBoundary();
     const pending = deferredEditorOpen();

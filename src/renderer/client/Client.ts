@@ -1,3 +1,7 @@
+import type {
+  PrepareFileLocation,
+  PreparedFileLocation,
+} from "../../contracts/filesystem/file-location";
 import type { CommandGroup } from "./command-group";
 import type { WidgetViewCapture } from "../../contracts/widgets/widget-view-evidence";
 import type { WidgetBrowserOutput } from "../../contracts/widgets/widget-browser-output";
@@ -219,6 +223,10 @@ interface BrowserCommands {
 }
 
 interface FilesystemCommands {
+  prepareFileLocation(
+    request: PrepareFileLocation,
+    options?: ClientCommandOptions,
+  ): Promise<PreparedFileLocation>;
   chooseAttachments(options?: ClientCommandOptions): Promise<ReadonlyArray<Attachment>>;
   suggestFiles(
     workingDirectory: string,

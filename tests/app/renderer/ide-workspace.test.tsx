@@ -113,9 +113,7 @@ describe("IDE conversation workflows", () => {
       endLine: 3,
     });
     await fixture.user.click(screen.getByRole("button", { name: "src/main.ts#L3-L4" }));
-    await fixture.user.click(
-      screen.getByRole("button", { name: "Open src/main.ts#L3-L4 in VS Code" }),
-    );
+    await fixture.user.click(screen.getByRole("button", { name: "Open src/main.ts#L3-L4" }));
     await waitFor(() =>
       expect(reveal).toHaveBeenCalledWith(
         editorWorkingDirectory,

@@ -41,6 +41,10 @@ export async function createSelectionCommandFixture(
     client: {
       ...client,
       workspaces: { loadStagedSlashCommands: async () => [], ...client.workspaces },
+      filesystem: {
+        prepareFileLocation: async ({ location }) => ({ viewer: "vscode", location }),
+        ...client.filesystem,
+      },
       vscode: {
         open: async () => undefined,
         updateBounds: async () => undefined,

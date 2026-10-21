@@ -28,6 +28,7 @@ export interface ProjectWorkbenchStoreProps {
   startCakeChat(prompt?: string): Promise<void>;
   presentationSession(): PresentationSession | undefined;
   presentationProjectPath(): string | undefined;
+  originatingDirectory(): string | undefined;
   browserHost?: boolean;
   onBrowserUnavailable?(): void;
   /** Removes resolved worktree sessions from history and chooses the next conversation. */
@@ -112,6 +113,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       activeSessionId: () => this.props.presentationSession()?.sessionId,
       activeSessionResolved: () => this.activeSessionResolved,
       projectPath: this.props.presentationProjectPath,
+      originatingDirectory: this.props.originatingDirectory,
       reviews: this.props.reviews,
       dismissCommandPane: () => this.commandPaneStore.dismiss(),
       startCakeChat: this.props.startCakeChat,

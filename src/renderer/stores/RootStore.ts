@@ -764,6 +764,12 @@ export class RootStore extends Store<{
       startCakeChat: (prompt) => this.navigationStore.startCakeChat(prompt),
       presentationSession: () => this.workspaceSession,
       presentationProjectPath: () => this.workspaceProjectPath,
+      originatingDirectory: () => {
+        const active = this.appShellStore.activeConversation;
+        return active?.kind === "cake-chat"
+          ? this.workspaceProjectPath
+          : this.projectWorkbenchStore.activeSession?.workspacePath;
+      },
       browserHost: this.props.browserHost,
       onBrowserUnavailable: () =>
         this.toastStore.show({

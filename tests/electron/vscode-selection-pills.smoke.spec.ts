@@ -259,7 +259,7 @@ test("a user-selected source opens on click, appears in the sent message, and le
     const attachment = h.page.getByRole("button", { name: "src/a.ts#L4-L5", exact: true });
     await expect(attachment).toBeVisible();
     const source = h.page.getByRole("button", {
-      name: "Open src/a.ts#L4-L5 in VS Code",
+      name: "Open src/a.ts#L4-L5",
       exact: true,
     });
     const input = h.page.getByLabel("Message", { exact: true });

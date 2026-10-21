@@ -153,6 +153,12 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
             client.filesystem["suggest-files"]({ workspacePath: workingDirectory, prefix }),
           options,
         ).then((response) => response.suggestions),
+      prepareFileLocation: (request, options) =>
+        execute(
+          "filesystem.prepare-file-location",
+          (client) => client.filesystem["prepare-file-location"](request),
+          options,
+        ),
       readFile: (workingDirectory, path, options) =>
         execute(
           "filesystem.read-workspace-file",

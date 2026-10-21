@@ -20,6 +20,7 @@ test("workspace changes use Source Control, committed files fall back to the fil
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-vscode-source-control-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
+  const external = join(temporaryRoot, "project-sibling");
   const cakeHome = join(temporaryRoot, "cake-home");
   const sessionId = "source-control-session";
   const timestamp = new Date(0).toISOString();
@@ -27,9 +28,14 @@ test("workspace changes use Source Control, committed files fall back to the fil
 
   await Promise.all([
     mkdir(userData, { recursive: true }),
+    mkdir(external, { recursive: true }),
     mkdir(join(project, "src"), { recursive: true }),
     mkdir(sessionDirectory, { recursive: true }),
   ]);
+  await writeFile(
+    join(external, "notes.txt"),
+    "External first line\nExternal selected line\nExternal third line\n",
+  );
   await writeFile(join(project, "src", "app.ts"), "export const value = 0;\n");
   await git(project, "-c", "init.defaultBranch=main", "init");
   await git(project, "config", "user.name", "Cake Test");
@@ -47,7 +53,12 @@ test("workspace changes use Source Control, committed files fall back to the fil
     join(cakeHome, "state", "application.json"),
     JSON.stringify({
       schemaVersion: 1,
-      projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
+      projects: [project, external].map((path) => ({
+        path,
+        name: path === project ? "project" : "external",
+        addedAt: timestamp,
+        lastOpenedAt: timestamp,
+      })),
       trustedProjectPaths: [],
     }),
   );
@@ -81,6 +92,15 @@ test("workspace changes use Source Control, committed files fall back to the fil
               arguments: {
                 path: "src/app.ts",
                 edits: [{ oldText: "export const value = 0;", newText: "export const value = 1;" }],
+              },
+            },
+            {
+              type: "toolCall",
+              id: "edit-external",
+              name: "edit",
+              arguments: {
+                path: join(external, "notes.txt"),
+                edits: [{ oldText: "External old line", newText: "External selected line" }],
               },
             },
           ],
@@ -123,7 +143,7 @@ test("workspace changes use Source Control, committed files fall back to the fil
           content: [
             {
               type: "text",
-              text: "Compare with the previous commit: [what this branch changed](src/app.ts?view=changes&base=HEAD~1#L1).",
+              text: `Compare with the previous commit: [what this branch changed](src/app.ts?view=changes&base=HEAD~1#L1). Read [external lines](../project-sibling/notes.txt#L2-L3) or [external before revision](${join(external, "notes.txt")}?view=changes&side=before&base=HEAD~1#L2).`,
             },
           ],
           api: "anthropic-messages",
@@ -174,6 +194,31 @@ test("workspace changes use Source Control, committed files fall back to the fil
       });
     const changes = page.getByRole("button", { name: "Open workspace changes in VS Code" });
     await expect(changes).toBeVisible({ timeout: 20_000 });
+    // Real RPC authorization and fullscreen reader, before any editor is started.
+    await page.getByRole("link", { name: "external lines" }).click();
+    const externalReader = page.getByRole("dialog", { name: /project-sibling\/notes\.txt/ });
+    await expect(externalReader).toBeVisible();
+    await expect(externalReader.getByText("External selected line", { exact: true })).toHaveClass(
+      /bg-accent/,
+    );
+    await expect(externalReader.getByText("External third line", { exact: true })).toHaveClass(
+      /bg-accent/,
+    );
+    expect(await activeVsCodeTab()).toBeUndefined();
+    await page.keyboard.press("Escape");
+    await expect(externalReader).toBeHidden();
+    await page.getByRole("link", { name: "external before revision" }).click();
+    await expect(externalReader).toBeVisible();
+    await expect(
+      externalReader.getByText(/Diff unavailable outside the selected project/),
+    ).toBeVisible();
+    await expect(
+      externalReader.getByText("External selected line", { exact: false }),
+    ).toBeVisible();
+    expect(await activeVsCodeTab()).toBeUndefined();
+    await page.keyboard.press("Escape");
+    await expect(externalReader).toBeHidden();
+    await expect(page.getByText(/Could not open editor location/)).toHaveCount(0);
     await changes.click();
 
     await expect
@@ -201,7 +246,14 @@ test("workspace changes use Source Control, committed files fall back to the fil
     await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeHidden();
 
     await page.getByRole("button", { name: /Changed Files/ }).click();
-    await page.getByTitle("Open src/app.ts in VS Code Changes").click();
+    await page.getByTitle(`Open changes for ${join(external, "notes.txt")}`).click();
+    await expect(externalReader).toBeVisible();
+    await expect(
+      externalReader.getByText(/Diff unavailable outside the selected project/),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(externalReader).toBeHidden();
+    await page.getByTitle("Open changes for src/app.ts").click();
     await expect.poll(activeVsCodeTab, { timeout: 20_000 }).toMatch(/app\.ts.+/);
 
     await emitRendererEvent(application, {
@@ -212,7 +264,7 @@ test("workspace changes use Source Control, committed files fall back to the fil
 
     await git(project, "add", ".");
     await git(project, "commit", "-m", "Commit agent change");
-    await page.getByTitle("Open src/app.ts in VS Code Changes").click();
+    await page.getByTitle("Open changes for src/app.ts").click();
 
     await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible();
     await expect.poll(activeVsCodeTab, { timeout: 20_000 }).toBe("app.ts");

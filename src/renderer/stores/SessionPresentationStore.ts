@@ -1,4 +1,5 @@
 import { Store, child, createStore } from "r-state-tree";
+import { ClientContext } from "./context/ClientContext";
 import {
   workingDirectoryEditorLocation,
   type EditorLocation,
@@ -36,6 +37,7 @@ export interface SessionPresentationStoreProps {
   activeSessionId(): string | undefined;
   activeSessionResolved(): boolean;
   projectPath(): string | undefined;
+  originatingDirectory(): string | undefined;
   reviews(): ReviewsStore;
   dismissCommandPane(): void;
   startCakeChat(prompt?: string): Promise<void>;
@@ -47,6 +49,12 @@ export interface SessionPresentationStoreProps {
 
 /** Coordinates Agent, embedded VS Code, and browser presentation for the active session. */
 export class SessionPresentationStore extends Store<SessionPresentationStoreProps> {
+  filePreview: { path: string; content: string; location: EditorLocation } | undefined;
+
+  closeFilePreview() {
+    this.filePreview = undefined;
+  }
+
   private get session() {
     return this.props.activeSession();
   }
@@ -110,6 +118,7 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
     this.session?.conversationSessionStore.composerStore.draftStore.setEditorContextAttachment(
       undefined,
     );
+    this.filePreview = undefined;
     this.embeddedEditorStore.suspend();
     this.browserStore.suspend();
   }
@@ -210,25 +219,69 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
 
   async openFile(location: EditorLocation) {
     const session = this.session;
-    if (!session || !this.canOpen()) return;
+    if (!session || this.props.activeSessionResolved()) return;
     this.props.dismissCommandPane();
     this.browserStore.suspend();
     await session.editorSelectionsStore.open(location);
   }
 
-  /** Native navigation callback for the source session's selection Store. */
+  /** Route before launching VS Code; the backend owns realpath and read authorization. */
   async openSelectionLocation(sessionId: string, location: EditorLocation, signal: AbortSignal) {
     signal.throwIfAborted();
     const session = this.session;
-    if (!session || this.props.activeSessionId() !== sessionId || !this.canOpen())
+    if (
+      !session ||
+      this.props.activeSessionId() !== sessionId ||
+      this.props.activeSessionResolved()
+    )
       throw new Error("VSCODE_MODE_REQUIRED: Select the calling session before opening code.");
+    const projectPath = this.props.projectPath();
+    const originatingDirectory = this.props.originatingDirectory();
+    const prepared = await ClientContext.consume(this)!.filesystem.prepareFileLocation(
+      {
+        ...(projectPath ? { workspacePath: projectPath } : null),
+        ...(originatingDirectory ? { originatingDirectory } : null),
+        location,
+      },
+      { signal },
+    );
+    signal.throwIfAborted();
+    if (
+      this.session !== session ||
+      this.props.activeSessionId() !== sessionId ||
+      this.props.projectPath() !== projectPath ||
+      this.props.originatingDirectory() !== originatingDirectory ||
+      this.props.activeSessionResolved()
+    )
+      throw new Error("The active file context changed before navigation completed");
+    if (prepared.viewer === "text") {
+      this.embeddedEditorStore.suspend();
+      this.browserStore.suspend();
+      session.showPresentation("normal");
+      this.filePreview = { ...prepared, location };
+      return {
+        outcome: { view: "file" as const, fallback: "external-file" as const },
+        locations: [],
+      };
+    }
+    this.closeFilePreview();
     await this.embeddedEditorStore.show();
     signal.throwIfAborted();
-    if (this.session !== session || this.props.activeSessionId() !== sessionId || !this.canOpen())
+    if (
+      this.session !== session ||
+      this.props.activeSessionId() !== sessionId ||
+      this.props.projectPath() !== projectPath ||
+      !this.canOpen()
+    )
       throw new Error("The active session changed before VS Code navigation completed");
-    const result = await this.embeddedEditorStore.reveal(location);
+    const result = await this.embeddedEditorStore.reveal(prepared.location);
     signal.throwIfAborted();
-    if (this.session !== session || this.props.activeSessionId() !== sessionId || !this.canOpen())
+    if (
+      this.session !== session ||
+      this.props.activeSessionId() !== sessionId ||
+      this.props.projectPath() !== projectPath ||
+      !this.canOpen()
+    )
       throw new Error("The active session changed before VS Code navigation completed");
     return result;
   }

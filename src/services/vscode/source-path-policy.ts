@@ -19,7 +19,12 @@ export async function resolveSourceTarget(workingDirectory: string, requestedPat
   const candidate = resolve(workspace, filePathFromEditorLocation(requestedPath));
   const ensureInsideWorkspace = (target: string) => {
     const relativePath = relative(workspace, target);
-    if (!relativePath || relativePath.startsWith("..") || isAbsolute(relativePath))
+    if (
+      !relativePath ||
+      relativePath === ".." ||
+      relativePath.startsWith(`..${sep}`) ||
+      isAbsolute(relativePath)
+    )
       throw new Error("File is outside the selected project");
     return target;
   };
@@ -53,12 +58,6 @@ export async function resolveEditorTarget(
 
   const requestedPath = location.path.trim();
   if (!isAbsolute(requestedPath)) throw new Error("An absolute editor file path is required");
-  const workspace = await realpath(workingDirectory);
-  let target: string;
-  try {
-    target = await realpath(requestedPath);
-  } catch {
-    target = join(await realpath(dirname(requestedPath)), basename(requestedPath));
-  }
+  const { workspace, target } = await resolveSourceTarget(workingDirectory, requestedPath);
   return { workspace, target, location: { ...location, path: target } };
 }

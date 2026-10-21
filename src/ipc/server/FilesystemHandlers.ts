@@ -20,6 +20,12 @@ export const nativeAttachmentsHandlers = NativeAttachmentsRpc.of({
 });
 
 export const filesystemHandlers = FilesystemRpc.of({
+  "filesystem.prepare-file-location": (request) =>
+    withConnection((connectionId) =>
+      Effect.flatMap(WorkspaceFiles, (service) =>
+        service.prepareFileLocation(connectionId, request),
+      ),
+    ),
   "filesystem.suggest-files": (request) =>
     withConnection((connectionId) =>
       Effect.flatMap(WorkspaceFiles, (service) => service.suggestFiles(connectionId, request)),

@@ -78,6 +78,8 @@ function revealFallbackWarning(fallback: RevealFallback, base: string | undefine
         : `${opened} its working tree does not differ from ${base}.`;
     case "unknown-base":
       return `${opened} Git could not compare it with ${base ?? "HEAD"}; check that the revision exists in this checkout.`;
+    case "external-file":
+      return "Cake opened the authorized external file in its read-only text viewer. Native diffs, revision contents, symbol lookup and editor selection highlights are unavailable there.";
     case "git-unavailable":
       return `${opened} its Git extension did not report the file's changes in time.`;
   }
