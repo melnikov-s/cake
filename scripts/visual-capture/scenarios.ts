@@ -1829,10 +1829,26 @@ const projectChatHeader: VisualCaptureScenario = {
 
 const projectChatTodos: VisualCaptureScenario = {
   name: "project-chat-todos",
-  description: "Project Chat toolbar to-do accessory, selection and completed disclosure",
-  states: ["open", "done", "empty", "unselected"],
+  description: "Project Chat to-do accessory with compact destination-specific work links",
+  states: ["open", "done", "empty", "unselected", "links-hover", "links-focus"],
   async seed(paths, theme) {
     await assistantMarkdownCode.seed(paths, theme);
+    await writeFile(join(paths.project, "README.md"), "# Startup investigation\n");
+    await writeFile(join(paths.project, "startup.ts"), "export const startup = true;\n");
+    await seedArtifact(
+      paths,
+      {
+        protocol: "cake.artifact/v1",
+        id: "visual-todo-report",
+        sessionId: "visual-assistant-markdown-code",
+        revision: 1,
+        kind: "markdown",
+        title: "Startup findings",
+        payload: { markdown: "# Startup findings\n\nA focused recommendation." },
+        fallback: { markdown: "Startup findings" },
+      },
+      new Date(0).toISOString(),
+    );
     const file = join(paths.cakeHome, "state", "application.json");
     const state = JSON.parse(await readFile(file, "utf8"));
     const selectedId = "00000000-0000-4000-8000-000000000011";
@@ -1864,6 +1880,23 @@ const projectChatTodos: VisualCaptureScenario = {
                       sessionId: "visual-assistant-markdown-code",
                       title: "Startup investigation session",
                     },
+                    {
+                      kind: "source",
+                      ref: "cake://session/visual-assistant-markdown-code?message=assistant-1",
+                      title: "Exact investigation report",
+                    },
+                    {
+                      kind: "source",
+                      ref: "https://example.com/startup",
+                      title: "Startup reference website",
+                    },
+                    {
+                      kind: "source",
+                      ref: "cake://artifact/visual-todo-report",
+                      title: "Startup findings artifact",
+                    },
+                    { kind: "source", ref: "README.md", title: "Investigation notes" },
+                    { kind: "source", ref: "startup.ts#L1", title: "Startup implementation" },
                   ],
                 },
                 {
@@ -1912,6 +1945,17 @@ const projectChatTodos: VisualCaptureScenario = {
     if (state === "done") await page.getByRole("button", { name: "Done (1)" }).click();
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.mouse.move(1, 1);
+    const report = page.getByRole("link", { name: "Exact investigation report", exact: true });
+    if (state === "links-hover") await report.hover();
+    if (state === "links-focus") {
+      await page.getByRole("link", { name: "Startup investigation session", exact: true }).focus();
+      await page.keyboard.press("Tab");
+      await expect(report).toBeFocused();
+    }
+    if (state === "links-hover" || state === "links-focus")
+      await expect(page.getByRole("tooltip")).toHaveText(
+        "cake://session/visual-assistant-markdown-code?message=assistant-1",
+      );
   },
   region: (page) => page.locator('[data-slot="side-chat-layout"]'),
 };

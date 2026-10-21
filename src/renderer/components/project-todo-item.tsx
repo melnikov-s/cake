@@ -2,11 +2,11 @@ import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
 import { MarkdownLink } from "./ai-elements/markdown";
 import { editorLocationFromPath } from "../../contracts/editor/editor-location";
-import { sessionLink } from "../../contracts/conversations/message-reference";
+import { projectTodoAssociationDestination } from "../lib/project-todo-association";
 import { projectTodoAssociationKey } from "../../contracts/projects/project-todos";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
-import { CircleIcon, CheckIcon, LinkIcon } from "@/components/ui/icons";
+import { CircleIcon, CheckIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 import type { ProjectTodo } from "../../contracts/projects/project-todos";
 import type { ProjectTodosStore } from "../stores/ProjectTodosStore";
@@ -65,30 +65,31 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
       {item.associations.length > 0 && (
         <ul
           aria-label={`Work for ${item.title}`}
-          className="mt-2 space-y-1 text-[11px] text-muted-foreground"
+          className="mt-1.5 space-y-0.5 text-[11px] leading-4 text-muted-foreground"
         >
-          {item.associations.map((association) => (
-            <li key={projectTodoAssociationKey(association)} className="flex items-start gap-1.5">
-              <span className="mt-0.5 shrink-0">
-                <LinkIcon />
-              </span>
-              <MarkdownLink
-                href={
-                  association.kind === "session"
-                    ? sessionLink(association.sessionId)
-                    : association.ref
-                }
-                className="min-w-0 break-words font-normal no-underline hover:text-foreground hover:underline"
-                onOpenSourceLocation={(location) =>
-                  void root.projectWorkbenchStore.presentationStore.openFile(
-                    editorLocationFromPath(location),
-                  )
-                }
+          {item.associations.map((association) => {
+            const { href, Icon } = projectTodoAssociationDestination(association);
+            return (
+              <li
+                key={projectTodoAssociationKey(association)}
+                className="flex items-start gap-1.5 [&>a]:min-w-0 [&>a]:break-words [&>a]:font-normal [&>a]:no-underline [&>a:hover]:text-foreground [&>a:hover]:underline"
               >
-                {association.title}
-              </MarkdownLink>
-            </li>
-          ))}
+                <span className="mt-0.5 shrink-0 [&>svg]:size-3">
+                  <Icon />
+                </span>
+                <MarkdownLink
+                  href={href}
+                  onOpenSourceLocation={(location) =>
+                    void root.projectWorkbenchStore.presentationStore.openFile(
+                      editorLocationFromPath(location),
+                    )
+                  }
+                >
+                  {association.title}
+                </MarkdownLink>
+              </li>
+            );
+          })}
         </ul>
       )}
     </li>
