@@ -488,8 +488,8 @@ function partsFromMessage(
         text: "",
         status: "complete",
       });
-    parts.push(...reminderParts);
-    return parts;
+    // Attached application context precedes this input in both live and persisted views.
+    return [...reminderParts, ...parts];
   }
 
   if (role === "assistant" && Array.isArray(content)) {

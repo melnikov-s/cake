@@ -145,7 +145,7 @@ test("selects mixed conversational entries once, in display order, only in the f
     // The same delivered entry also appears nested inside an expanded exact-source
     // preview. It must not become an extra keyboard stop.
     const source = answer(3).locator('[data-slot="message-source"]');
-    await source.getByRole("button", { name: /Full agent response/ }).click();
+    await source.getByRole("button", { name: /(?:Expand|Collapse) response/ }).click();
     await expect(source).toContainText("Delivered result 2");
     await composer.click();
     await expect(composer).toBeFocused();

@@ -25,6 +25,13 @@ export class MessageReferencePreviewStore extends Store<{
     return this.open(target.sessionId, target.messageId);
   }
 
+  /** Bounded first-page preview; transient, like the source page itself. */
+  previewText: string | undefined;
+
+  loadPreview() {
+    if (!this.page && !this.loading && !this.error) void this.load();
+  }
+
   page: MessageReadResult | undefined;
   loading = false;
   error: string | undefined;
@@ -96,6 +103,7 @@ export class MessageReferencePreviewStore extends Store<{
       const page = await this.readPage(sessionId, entryId, offset);
       if (revision !== this.revision || this.signal.aborted) return false;
       this.page = page;
+      if (offset === 0) this.previewText = page.text.trim().slice(0, 400);
       return true;
     } catch (error) {
       if (revision === this.revision && !this.signal.aborted)
@@ -121,6 +129,7 @@ export class MessageReferencePreviewStore extends Store<{
   close() {
     this.revision++;
     this.page = undefined;
+    this.previewText = undefined;
     this.loading = false;
     this.error = undefined;
     this.copyError = undefined;

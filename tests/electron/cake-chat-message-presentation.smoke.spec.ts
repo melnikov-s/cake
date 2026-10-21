@@ -268,11 +268,10 @@ for (const [delivery, theme] of [
         const missing = page.locator(
           '[data-message-reference="cake://session/deleted-producer?message=deleted-entry"]',
         );
-        await expect(first.getByRole("button", { name: /Full agent response/ })).toHaveAttribute(
-          "aria-expanded",
-          "false",
-        );
-        await first.getByRole("button", { name: /Full agent response/ }).click();
+        await expect(
+          first.getByRole("button", { name: /(?:Expand|Collapse) response/ }),
+        ).toHaveAttribute("aria-expanded", "false");
+        await first.getByRole("button", { name: /(?:Expand|Collapse) response/ }).click();
         await expect(
           first.getByRole("heading", { name: "Original detailed findings" }),
         ).toBeVisible();
@@ -306,13 +305,13 @@ for (const [delivery, theme] of [
         await expect(first.getByText(/Last original finding/)).toBeVisible();
         await expect(page.getByRole("combobox", { name: inputName })).toBeVisible();
         // Notification-mode source is available without any model-authored relay.
-        await first.getByRole("button", { name: /Full agent response/ }).click();
-        await notification.getByRole("button", { name: /Full agent response/ }).click();
+        await first.getByRole("button", { name: /(?:Expand|Collapse) response/ }).click();
+        await notification.getByRole("button", { name: /(?:Expand|Collapse) response/ }).click();
         await expect(
           notification.getByRole("heading", { name: "Original detailed findings" }),
         ).toBeVisible();
-        await notification.getByRole("button", { name: /Full agent response/ }).click();
-        await missing.getByRole("button", { name: /Full agent response/ }).click();
+        await notification.getByRole("button", { name: /(?:Expand|Collapse) response/ }).click();
+        await missing.getByRole("button", { name: /(?:Expand|Collapse) response/ }).click();
         await expect(missing.getByText("Original response unavailable")).toBeVisible();
         await expect(missing.getByRole("button", { name: "Retry source" })).toBeVisible();
         await expect(page.getByRole("combobox", { name: inputName })).toBeVisible();

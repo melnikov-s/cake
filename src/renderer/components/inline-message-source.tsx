@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useEffect, useId, useRef } from "react";
 import { observer } from "r-state-tree/react";
 import type { MessageReferencePreviewStore } from "../stores/MessageReferencePreviewStore";
 import {
@@ -17,20 +17,66 @@ import { LoadingState } from "./ui/loading-state";
 /** A user-expanded reference to Pi's original, never a second transcript. */
 export const InlineMessageSource = observer(function InlineMessageSource({
   store,
+  preview = false,
 }: {
   store: MessageReferencePreviewStore;
+  /** Receipt cards reveal a bounded source preview only when visible. */
+  preview?: boolean;
 }) {
   const contentId = useId();
+  const previewRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const element = previewRef.current;
+    if (!preview || !element || !("IntersectionObserver" in globalThis)) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      observer.disconnect();
+      store.loadPreview();
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [preview, store]);
   const actions = useMarkdownLinkActions();
   const reference = store.props.reference!;
   const target = messageNavigationTarget(reference);
   const title = actions?.sessionTitle?.(target.sessionId) ?? "Source session";
   const page = store.page;
   return (
-    <section className="min-w-0" data-slot="message-source" data-message-reference={reference}>
+    <section
+      ref={previewRef}
+      className="min-w-0"
+      data-slot="message-source"
+      data-message-reference={reference}
+    >
+      {preview && !store.expanded && (
+        <div className="pb-3 text-sm" data-slot="response-preview">
+          {store.loading ? (
+            <LoadingState label="Loading response preview" />
+          ) : store.error ? (
+            <span className="text-muted-foreground">
+              Original response unavailable. Expand response to retry.
+            </span>
+          ) : store.previewText !== undefined ? (
+            store.previewText ? (
+              <Markdown renderImages={false} className="line-clamp-3">
+                {store.previewText}
+              </Markdown>
+            ) : (
+              <span className="text-muted-foreground">
+                This response has no textual content. Expand response to inspect available
+                attachments.
+              </span>
+            )
+          ) : (
+            <span className="text-muted-foreground">
+              Response preview not loaded. Expand response to read the original report.
+            </span>
+          )}
+        </div>
+      )}
       <DisclosureTrigger
-        title="Full agent response"
-        subtitle={title}
+        title={store.expanded ? "Collapse response" : "Expand response"}
+        subtitle={preview ? undefined : title}
         open={store.expanded}
         aria-controls={store.expanded ? contentId : undefined}
         onClick={() => store.toggle()}

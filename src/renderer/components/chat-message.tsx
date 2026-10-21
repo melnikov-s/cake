@@ -44,6 +44,7 @@ import { describeScheduledOrigin } from "../../utils/scheduled-message-time";
 import { SubagentReportHeader } from "./subagent-report-header";
 import { subagentReportFindings, subagentReportHeading } from "../lib/subagent-report-presentation";
 import { crossSessionPresentation } from "../lib/cross-session-presentation";
+import { InlineMessageSource } from "./inline-message-source";
 
 export function chatWorkIsActive(
   parts: UiPart[],
@@ -79,6 +80,7 @@ export const ChatTextMessage = forwardRef<
     onMouseLeave?: MouseEventHandler<HTMLElement>;
     onOpenSourceLocation?(location: SourceLocation): void;
     omitArtifactEmbeds?: readonly string[];
+    sourceResponse?: ReactNode;
   }
 >(function ChatTextMessage(
   {
@@ -89,6 +91,7 @@ export const ChatTextMessage = forwardRef<
     onMouseLeave,
     onOpenSourceLocation,
     omitArtifactEmbeds,
+    sourceResponse,
   },
   ref,
 ) {
@@ -174,6 +177,15 @@ export const ChatTextMessage = forwardRef<
           badges={crossSession?.badges}
         >
           {content}
+          {crossSession?.sourceResponse && (
+            <div className="flex flex-col gap-3 px-5 py-2">
+              {sourceResponse ?? (
+                <p className="text-sm text-muted-foreground">
+                  Original response unavailable: no exact source reference was recorded.
+                </p>
+              )}
+            </div>
+          )}
         </SessionMessage>
       ) : (
         content
@@ -320,9 +332,13 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
   const draftAnnotations = behavior.store.annotations.filter(
     (annotation) => annotation.messageId === part.id,
   );
-  const copyText = part.crossSession
-    ? crossSessionPresentation(part.text, part.crossSession).body
-    : part.text;
+  const presentation = part.crossSession
+    ? crossSessionPresentation(part.text, part.crossSession)
+    : undefined;
+  const copyText = presentation?.body ?? part.text;
+  const sources = presentation?.sourceResponse
+    ? behavior.store.messageSources.filter((source) => source.props.partId === part.id)
+    : [];
   const canOpenFullscreen =
     !part.crossSession && part.text.length >= ASSISTANT_FULLSCREEN_MIN_CHARACTERS;
   const openFullscreen = useCallback(() => {
@@ -423,6 +439,13 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
       contentRef={contentRef}
       onOpenSourceLocation={behavior.openSourceLocation}
       omitArtifactEmbeds={publishedArtifactReferences}
+      sourceResponse={
+        sources.length
+          ? sources.map((source) => (
+              <InlineMessageSource key={source.props.reference} store={source} preview />
+            ))
+          : undefined
+      }
     >
       {behavior.showAssistantFullscreen !== false && canOpenFullscreen && (
         <FullscreenButton
@@ -484,7 +507,7 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
           onClose={() => setOpenAnnotation(undefined)}
         />
       )}
-      {part.status !== "streaming" && (
+      {part.status !== "streaming" && !presentation?.sourceResponse && (
         <div
           data-slot="message-actions"
           className="mt-1.5 flex min-h-7 items-center gap-1 opacity-0 group-hover/msg:opacity-100 group-focus-within/msg:opacity-100 transition-opacity"

@@ -29,6 +29,7 @@ import { sessionNotificationMarkdown } from "../../contracts/cake-chats/session-
 import { SkillMessage } from "./skill-message";
 import { SourceAttachment } from "./source-attachment";
 import { InlineMessageSource } from "./inline-message-source";
+import { crossSessionPresentation } from "../lib/cross-session-presentation";
 
 const artifactReferenceInText =
   /(?:^|\s)cake:\/\/artifact\/[A-Za-z0-9][A-Za-z0-9._:-]*(?:@r[1-9][0-9]*)?(?=$|[\s),.;!?])/;
@@ -354,6 +355,10 @@ export const TranscriptPart = observer(function TranscriptPart(props: {
       <div className="contents" data-part-id={props.part.id}>
         <TranscriptPartContent {...props} />
         {props.part.kind === "text" &&
+          !(
+            props.part.crossSession &&
+            crossSessionPresentation(props.part.text, props.part.crossSession).sourceResponse
+          ) &&
           props.behavior.store.messageSources
             .filter((source) => source.props.partId === props.part.id)
             .map((source) => <InlineMessageSource key={source.props.reference} store={source} />)}

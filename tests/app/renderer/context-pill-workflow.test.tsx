@@ -4,7 +4,11 @@ import userEvent from "@testing-library/user-event";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it } from "vitest";
 import { Chat } from "../../../src/renderer/components/chat";
-import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";
+import {
+  applyConversationSnapshot,
+  applyConversationUpdate,
+} from "../../../src/renderer/reducers/ConversationReducer";
+import { createLiveMessageProjector } from "../../../src/services/pi/runtime/session-projection";
 import { internalInputEntryType } from "../../../src/services/pi/runtime/internal-input-projection";
 import { projectConversationDisplay } from "../../../src/services/pi/runtime/conversation-display-projection";
 import { appendToolCompactedBranch } from "../../../src/services/pi/runtime/session-tool-compaction";
@@ -157,6 +161,137 @@ describe("Context visibility through the authoritative projection and shared Cha
     } finally {
       view.unmount();
     }
+  });
+
+  it("renders attached reminder batches above their input with identical live and reloaded chronology", () => {
+    const pi = SessionManager.inMemory("/project");
+    pi.appendMessage({ role: "user", content: "Earlier question", timestamp: 1 });
+    pi.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "Earlier answer" }],
+      api: "openai-responses",
+      provider: "openai",
+      model: "fixture",
+      timestamp: 2,
+      usage,
+      stopReason: "stop",
+    });
+    const message = {
+      role: "user" as const,
+      timestamp: 3,
+      content: addResponseModeReminder(
+        addPresentationModeReminder(
+          addSessionDigestReminder(
+            "My newly sent question",
+            formatSessionDigestReminder({
+              lines: [
+                {
+                  reference: "first",
+                  sessionId: "worker-one",
+                  title: "First result",
+                  summary: "First report",
+                  status: "completed",
+                  resultMessageRef: "cake://session/worker-one?message=result-one",
+                },
+                {
+                  reference: "second",
+                  sessionId: "worker-two",
+                  title: "Second result",
+                  summary: "Second report",
+                  status: "completed",
+                  resultMessageRef: "cake://session/worker-two?message=result-two",
+                },
+              ],
+              running: 0,
+              interruptedReport: false,
+            }),
+          ),
+          "normal",
+          "vscode",
+        ),
+        "text",
+      ),
+    };
+    using fixture = createRendererStoreFixture({
+      projects: [projectRecord({ path: "/project" })],
+      sessions: [
+        sessionSummary({
+          sessionId: "ordered",
+          projectPath: "/project",
+          workingDirectory: "/project",
+        }),
+      ],
+    });
+    const session = fixture.root.sessionRegistry.load("ordered", "/project");
+    const publish = () =>
+      applyConversationSnapshot(session.model, {
+        sessionId: "ordered",
+        sessionFile: "/ordered.jsonl",
+        parts: projectConversationDisplay(pi),
+        models: [],
+        thinkingLevel: "off",
+        availableThinkingLevels: ["off"],
+        streaming: false,
+        diagnostics: [],
+        commands: [],
+        compatibility: { resources: [], diagnostics: [] },
+        extensionUi: { statuses: [] },
+        tree: [],
+      });
+    publish();
+    const view = render(
+      <Chat
+        store={session.conversationSessionStore.chatStore}
+        compact
+        composerFocusEnabled={false}
+      />,
+    );
+    act(() => {
+      for (const part of createLiveMessageProjector()({ type: "message_start", message }))
+        applyConversationUpdate(session.model, {
+          _tag: "Event",
+          revision: 2,
+          event: { _tag: "PartUpdated", sessionId: "ordered", part },
+        });
+    });
+    const assertOrder = () => {
+      const ordered = [
+        screen.getByText("Earlier question", { exact: true }),
+        screen.getByText("Earlier answer", { exact: true }),
+        screen.getByRole("button", { name: "Cake · presentation mode" }),
+        screen.getByRole("status", { name: "Session results" }),
+        screen.getByRole("button", { name: "Cake · response mode" }),
+        screen.getByText("My newly sent question", { exact: true }),
+      ];
+      for (let index = 1; index < ordered.length; index++)
+        expect(
+          ordered[index - 1]!.compareDocumentPosition(ordered[index]!) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+      const results = screen.getByRole("status", { name: "Session results" }).textContent!;
+      expect(results.indexOf("First result")).toBeLessThan(results.indexOf("Second result"));
+      expect(screen.getAllByText("You", { exact: true })).toHaveLength(2);
+      expect(screen.getByText("My newly sent question").textContent).not.toContain(
+        "system-reminder",
+      );
+    };
+    assertOrder();
+    act(() => {
+      pi.appendMessage(message);
+      publish();
+    });
+    assertOrder();
+    view.unmount();
+    const reloaded = render(
+      <Chat
+        store={session.conversationSessionStore.chatStore}
+        compact
+        composerFocusEnabled={false}
+      />,
+    );
+    assertOrder();
+    expect(pi.getEntries().filter((entry) => entry.type === "message")).toHaveLength(3);
+    reloaded.unmount();
   });
 
   it("discloses current context and hides it after Tool Compact while retaining dialogue", async () => {

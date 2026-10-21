@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -28,7 +28,10 @@ import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { isWorkLogPart } from "../../../src/utils/work-log-groups";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 const usage = {
   input: 0,
@@ -327,7 +330,7 @@ describe("exact response presentation", () => {
     await user.click(message.getByRole("button", { name: "Copy response" }));
     expect(await navigator.clipboard.readText()).toBe("Worker summary");
     expect(inspect).not.toHaveBeenCalled();
-    await user.click(screen.getAllByRole("button", { name: /Full agent response/ })[0]!);
+    await user.click(screen.getAllByRole("button", { name: /(?:Expand|Collapse) response/ })[0]!);
     expect(await screen.findByRole("heading", { name: "Detailed result" })).toBeTruthy();
     expect(screen.getByText("Original substance").getAttribute("data-streamdown")).toBe("strong");
     expect(await screen.findByRole("img", { name: "source image" })).toBeTruthy();
@@ -368,18 +371,21 @@ describe("exact response presentation", () => {
     write.mockRestore();
     await user.click(screen.getByRole("button", { name: "Previous" }));
     expect(await screen.findByRole("heading", { name: "Detailed result" })).toBeTruthy();
-    await user.click(screen.getAllByRole("button", { name: /Full agent response/ })[0]!);
+    await user.click(screen.getAllByRole("button", { name: /(?:Expand|Collapse) response/ })[0]!);
     view.unmount();
     // Reprojecting the persisted original tool result reconstructs the same reference.
     expect(projectSessionEntries(parent.getEntries())[0]).toMatchObject({ messageReference: ref });
     view = show();
-    expect(screen.getAllByRole("button", { name: /Full agent response/ })[0]!).toBeTruthy();
+    expect(
+      screen.getAllByRole("button", { name: /(?:Expand|Collapse) response/ })[0]!,
+    ).toBeTruthy();
     view.unmount();
   });
 
-  it.each(["assistant", "reply", "protected", "notification"] as const)(
+  it.each(["assistant", "reply", "protected", "notice", "notification"] as const)(
     "automatically presents the exact %s source once, without reading until expansion or sending a turn",
     async (delivery) => {
+      const receipt = delivery === "protected" || delivery === "notice";
       const source = SessionManager.inMemory("/producer");
       const entryId = source.appendMessage({
         role: "assistant",
@@ -416,20 +422,20 @@ describe("exact response presentation", () => {
           role: "user",
           timestamp: 3,
           content:
-            delivery === "reply" || delivery === "protected"
+            delivery === "reply" || receipt
               ? encodeCrossSessionMessage(
                   formatCrossSessionReportText(
                     source.getSessionId(),
                     "completed",
-                    delivery === "protected"
-                      ? appendMessageReferences(protectedResponseNotice, [ref])
-                      : links,
+                    receipt ? appendMessageReferences(protectedResponseNotice, [ref]) : links,
                   ),
                   {
                     version: 1,
                     messageId: crypto.randomUUID(),
                     threadId: crypto.randomUUID(),
-                    replyToMessageId: crypto.randomUUID(),
+                    ...(delivery === "notice"
+                      ? { generatedNotice: true }
+                      : { replyToMessageId: crypto.randomUUID() }),
                     sequence: 1,
                     expectsResponse: false,
                     sender: {
@@ -498,23 +504,32 @@ describe("exact response presentation", () => {
         />,
       );
       expect(inspect).not.toHaveBeenCalled();
-      const disclosure = screen.getByRole("button", { name: /Full agent response/ });
+      const disclosure = screen.getByRole("button", { name: /(?:Expand|Collapse) response/ });
       expect(disclosure.getAttribute("aria-expanded")).toBe("false");
       expect(view.container.querySelectorAll('[data-slot="message-source"]')).toHaveLength(1);
       const user = userEvent.setup();
-      if (delivery === "protected" || delivery === "reply") {
-        const delivered = screen.getByRole("region", { name: "Message from another session" });
+      if (receipt || delivery === "reply") {
+        const delivered = screen.getByRole("region", {
+          name:
+            delivery === "notice" ? "Notice about another session" : "Message from another session",
+        });
         expect(delivered.textContent).not.toContain("cake-session-message");
         expect(delivered.textContent).not.toContain("Referenced Cake messages");
         expect(delivered.textContent).not.toContain(protectedResponseNotice);
         const message = within(delivered.closest("article")!);
-        expect(
-          message.getAllByRole("button").map((button) => button.getAttribute("aria-label")),
-        ).toEqual(["Copy response"]);
-        await user.click(message.getByRole("button", { name: "Copy response" }));
-        expect(await navigator.clipboard.readText()).toBe(
-          delivery === "protected" ? "Response received." : links,
-        );
+        if (receipt) {
+          expect(within(delivered).getByRole("button", { name: /Expand response/ })).toBe(
+            disclosure,
+          );
+          expect(message.queryByRole("button", { name: "Copy response" })).toBeNull();
+          expect(delivered.textContent).toContain("Response preview not loaded");
+        } else {
+          expect(
+            message.getAllByRole("button").map((button) => button.getAttribute("aria-label")),
+          ).toEqual(["Copy response"]);
+          await user.click(message.getByRole("button", { name: "Copy response" }));
+          expect(await navigator.clipboard.readText()).toBe(links);
+        }
         expect(inspect).not.toHaveBeenCalled();
       }
       if (delivery === "assistant") {
@@ -553,6 +568,13 @@ describe("exact response presentation", () => {
       );
       // Expansion/collapse creates no transcript entry or completion notice.
       await user.click(disclosure);
+      expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+      if (!receipt) expect(screen.queryByRole("heading", { name: "Original report" })).toBeNull();
+      if (receipt) expect(screen.getByText("Exact earlier result")).toBeTruthy();
+      await user.click(disclosure);
+      expect(await screen.findByRole("heading", { name: "Original report" })).toBeTruthy();
+      expect(inspect).toHaveBeenCalledTimes(delivery === "assistant" ? 3 : 1);
+      await user.click(disclosure);
       expect(projectSessionEntries(parent.getEntries())).toEqual(parts);
       expect(view.container.querySelectorAll('[data-slot="message-source"]')).toHaveLength(1);
       if (delivery === "assistant") {
@@ -563,6 +585,177 @@ describe("exact response presentation", () => {
           "https://example.com/",
         );
       }
+      view.unmount();
+    },
+  );
+
+  it.each(["ready", "unavailable", "empty", "missing"] as const)(
+    "replaces the screenshot receipt with a visible lazy source preview and honest %s content after reload",
+    async (state) => {
+      let showPreview = () => {};
+      vi.stubGlobal(
+        "IntersectionObserver",
+        class {
+          constructor(callback: (entries: { isIntersecting: boolean }[]) => void) {
+            showPreview = () => callback([{ isIntersecting: true }]);
+          }
+          observe() {}
+          disconnect() {}
+        },
+      );
+      const source = SessionManager.inMemory("/producer");
+      const report =
+        state === "empty"
+          ? ""
+          : "Implemented compact To-do tools. Verification passed; no merge performed.";
+      const entryId = source.appendMessage({
+        role: "assistant",
+        content: [{ type: "text", text: report }],
+        api: "openai-responses",
+        provider: "openai",
+        model: "fixture",
+        timestamp: 1,
+        usage,
+        stopReason: "stop",
+      });
+      const ref = readMessageReference(source, { entryId }).message.ref;
+      source.appendMessage({ role: "user", content: "Later unrelated work", timestamp: 2 });
+      const parent = SessionManager.inMemory("/project");
+      parent.appendMessage({
+        role: "user",
+        timestamp: 3,
+        content: encodeCrossSessionMessage(
+          state === "missing"
+            ? protectedResponseNotice
+            : appendMessageReferences(protectedResponseNotice, [ref]),
+          {
+            version: 1,
+            messageId: crypto.randomUUID(),
+            threadId: crypto.randomUUID(),
+            replyToMessageId: crypto.randomUUID(),
+            sequence: 1,
+            expectsResponse: false,
+            sender: {
+              sessionId: source.getSessionId(),
+              title: "Implement compact To-do tools and metadata lifecycle contracts",
+              kind: "project-session",
+            },
+          },
+        ),
+      });
+      let completeRead = () => {};
+      const gate = new Promise<void>((resolve) => {
+        completeRead = resolve;
+      });
+      const inspect = vi.fn(async (request: { sessionId: string; entryId?: string }) => {
+        expect(request).toMatchObject({ sessionId: source.getSessionId(), entryId });
+        await gate;
+        if (state === "unavailable") throw new Error("Exact original was removed");
+        return readMessageReference(source, request);
+      });
+      const makeFixture = () =>
+        createRendererStoreFixture({
+          projects: [projectRecord({ path: "/project" })],
+          sessions: [
+            sessionSummary({
+              sessionId: "parent",
+              projectPath: "/project",
+              workingDirectory: "/project",
+            }),
+          ],
+          client: { sessionChats: { inspect } },
+        });
+      using fixture = makeFixture();
+      const session = fixture.root.sessionRegistry.load("parent", "/project");
+      const show = (target = session) => {
+        applyConversationUpdate(target.model, {
+          _tag: "Snapshot",
+          revision: 1,
+          snapshot: {
+            sessionId: "parent",
+            sessionFile: "/parent.jsonl",
+            parts: projectSessionEntries(parent.getEntries()),
+            models: [],
+            thinkingLevel: "off",
+            availableThinkingLevels: ["off"],
+            streaming: false,
+            diagnostics: [],
+            commands: [],
+            compatibility: { resources: [], diagnostics: [] },
+            extensionUi: { statuses: [] },
+            tree: [],
+          },
+        });
+        return render(
+          <Chat
+            store={target.conversationSessionStore.chatStore}
+            compact
+            composerFocusEnabled={false}
+          />,
+        );
+      };
+      let view = show();
+      const card = screen.getByRole("region", { name: "Message from another session" });
+      expect(card.textContent).toContain(
+        "Implement compact To-do tools and metadata lifecycle contracts",
+      );
+      expect(inspect).not.toHaveBeenCalled();
+      if (state === "missing") {
+        expect(card.textContent).toContain("no exact source reference was recorded");
+        expect(within(card).queryByRole("button", { name: /Expand response/ })).toBeNull();
+      } else {
+        act(showPreview);
+        expect(await screen.findByText("Loading response preview")).toBeTruthy();
+        await act(async () => {
+          completeRead();
+          await gate;
+        });
+        const user = userEvent.setup();
+        if (state === "ready") expect(await screen.findByText(report)).toBeTruthy();
+        if (state === "empty")
+          expect(await screen.findByText(/This response has no textual content/)).toBeTruthy();
+        if (state === "unavailable")
+          expect(
+            await screen.findByText(/Original response unavailable. Expand response to retry/),
+          ).toBeTruthy();
+        await user.click(within(card).getByRole("button", { name: /Expand response/ }));
+        if (state === "unavailable") {
+          expect((await screen.findByRole("alert")).textContent).toContain(
+            "Exact original was removed",
+          );
+          await user.click(screen.getByRole("button", { name: "Retry source" }));
+          await waitFor(() => expect(inspect).toHaveBeenCalledTimes(3));
+        } else if (state === "empty") {
+          expect(await screen.findByText("No textual content.")).toBeTruthy();
+        } else {
+          expect(await screen.findByText(report)).toBeTruthy();
+        }
+        await user.click(within(card).getByRole("button", { name: /Collapse response/ }));
+        expect(
+          within(card)
+            .getByRole("button", { name: /Expand response/ })
+            .getAttribute("aria-expanded"),
+        ).toBe("false");
+      }
+      expect(screen.queryByText("Later unrelated work")).toBeNull();
+      const persisted = projectSessionEntries(parent.getEntries());
+      expect(JSON.stringify(persisted)).not.toContain(report || "No textual content.");
+      view.unmount();
+      using restoredFixture = makeFixture();
+      view = show(restoredFixture.root.sessionRegistry.load("parent", "/project"));
+      expect(screen.getByRole("region", { name: "Message from another session" })).toBeTruthy();
+      if (state !== "missing") {
+        expect(screen.getByText(/Response preview not loaded/)).toBeTruthy();
+        act(showPreview);
+        if (state === "ready") expect(await screen.findByText(report)).toBeTruthy();
+        if (state === "unavailable")
+          expect(
+            await screen.findByText(/Original response unavailable. Expand response to retry/),
+          ).toBeTruthy();
+        if (state === "empty")
+          expect(await screen.findByText(/This response has no textual content/)).toBeTruthy();
+      }
+      expect(projectSessionEntries(parent.getEntries())).toEqual(persisted);
       view.unmount();
     },
   );

@@ -89,17 +89,15 @@ for (const state of ["default", "project", "reference"]) {
       expect(copied).not.toContain("cake-session-message");
       if (state === "reference") {
         const reply = page.getByRole("region", { name: "Message from another session" }).last();
-        await expect(reply).toContainText("Response received.");
+        await expect(reply.locator('[data-slot="response-preview"]')).toContainText(
+          "manual post-mortem skill",
+        );
         await expect(reply).not.toContainText("Referenced Cake messages");
         await expect(reply).not.toContainText("messages.read");
         const replyMessage = reply.locator("..");
-        await expect(replyMessage.getByRole("button")).toHaveCount(1);
-        await replyMessage.getByRole("button", { name: "Copy response" }).click();
-        await expect(replyMessage.getByRole("button", { name: "Copied response" })).toBeVisible();
-        expect(await application.evaluate(({ clipboard }) => clipboard.readText())).toBe(
-          "Response received.",
-        );
-        const original = page.getByRole("button", { name: /Full agent response/ });
+        await expect(replyMessage.getByRole("button", { name: "Copy response" })).toHaveCount(0);
+        await expect(reply.getByRole("button", { name: /Expand response/ })).toBeVisible();
+        const original = page.getByRole("button", { name: /(?:Expand|Collapse) response/ });
         await original.focus();
         await original.press("Enter");
         await expect(page.getByRole("heading", { name: "Skill installed" })).toBeVisible();
@@ -114,6 +112,9 @@ for (const state of ["default", "project", "reference"]) {
         await original.press("Enter");
         await expect(original).toHaveAttribute("aria-expanded", "false");
       }
+      // Attached reminders now precede the user input and can be above the virtualized window.
+      await page.locator(".transcript").hover();
+      await page.mouse.wheel(0, -3000);
       const context = page.getByRole("button", { name: "Cake · response mode", exact: true });
       await context.click();
       await expect(page.getByText(/Cake response mode: text/)).toBeVisible();

@@ -23,6 +23,8 @@ export interface CrossSessionPresentation {
   readonly badges: readonly CrossSessionBadge[];
   /** Markdown body with Cake's own lead line or notice sentence translated out. */
   readonly body: string;
+  /** The delivered body is only a receipt; content must come from its exact sources. */
+  readonly sourceResponse: boolean;
 }
 
 const outcomeBadges = {
@@ -105,7 +107,7 @@ function replyBody(text: string): string {
   const footer = appendMessageReferences("", references).trimStart();
   if (!text.endsWith(footer)) return text;
   const body = text.slice(0, -footer.length).trimEnd();
-  return body === protectedResponseNotice ? "Response received." : body;
+  return body;
 }
 
 export function crossSessionPresentation(
@@ -114,7 +116,9 @@ export function crossSessionPresentation(
 ): CrossSessionPresentation {
   const described = describeCrossSessionMessage(text, metadata);
   const badges: CrossSessionBadge[] = [];
-  let body = described.relation === "reply" ? replyBody(described.body) : described.body;
+  const sourceBody = replyBody(described.body);
+  const sourceResponse = !described.notice && sourceBody.trim() === protectedResponseNotice;
+  let body = sourceResponse ? "" : described.relation === "reply" ? sourceBody : described.body;
   if (described.notice) {
     const notice = noticePresentation(described.notice);
     badges.push(notice.badge);
@@ -131,5 +135,5 @@ export function crossSessionPresentation(
           ? "Completion is retained until the sender’s next user message; it does not start a turn."
           : "Application-confirmed completion automatically starts or queues a normal sender turn.",
     });
-  return { relation: described.relation, badges, body };
+  return { relation: described.relation, badges, body, sourceResponse };
 }

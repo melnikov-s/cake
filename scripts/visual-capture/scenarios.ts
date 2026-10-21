@@ -2840,8 +2840,11 @@ const sessionMessageVariantsScenario: VisualCaptureScenario = {
       page.getByRole("region", { name: "Notice about another session" }).last(),
     ).toBeVisible();
     if (state === "reference" || state === "original") {
-      const response = page.getByRole("button", { name: /Full agent response/ });
+      const response = page.getByRole("button", { name: /(?:Expand|Collapse) response/ });
       await response.scrollIntoViewIfNeeded();
+      await expect(page.locator('[data-slot="response-preview"]')).toContainText(
+        "manual post-mortem skill",
+      );
       if (state === "original") {
         await response.click();
         await expect(page.getByRole("heading", { name: "Skill installed" })).toBeVisible();
