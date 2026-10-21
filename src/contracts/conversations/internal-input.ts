@@ -7,6 +7,10 @@ export const InternalInput = Schema.TaggedUnion({
     text: Schema.String,
     notices: Schema.Array(PassiveNotice),
   },
+  /** Timer-delivered batch of deferred updates; carries no user text. */
+  UpdateBatch: {
+    notices: Schema.Array(PassiveNotice),
+  },
   WorkboardDelivery: {
     boardId: Schema.String,
     sequences: Schema.Array(Schema.Int.check(Schema.isGreaterThan(0))),
@@ -15,7 +19,8 @@ export const InternalInput = Schema.TaggedUnion({
 export type InternalInput = Schema.Schema.Type<typeof InternalInput>;
 
 export function withoutPassiveNotices(text: string, origin?: InternalInput): string {
-  if (origin?._tag !== "UserWithReminders") return text;
+  if (origin?._tag !== "UserWithReminders" && origin?._tag !== "UpdateBatch") return text;
+  if (!origin.notices.length) return text;
   const suffix = `\n\n${passiveNoticeContext(origin.notices)}`;
   return text.endsWith(suffix) ? text.slice(0, -suffix.length) : text;
 }

@@ -25,7 +25,7 @@ export const createMessageBoardOperations = (
     summary:
       "Append a substantive finding, decision, question, blocker, or result to the workgroup's Workboard.",
     guidance: [
-      "Family-only: posts route to explicit recipients plus the unique root, never their author. Routine findings/completions are passive until the recipient’s next actual user input. Declare event: assignment for necessary dependent work or blocker for unblocking; only these retain durable idle execution and active-context intake. Never steer unrelated user work or acknowledge posts. Tool retries use requestId; inspect execution status, not posting alone. Stop/cancel/resolve remains authoritative.",
+      "Family-only: posts route to explicit recipients plus the unique root, never their author. Routine findings/completions are passive: they join the recipient’s pending batch (next user input, or one batched turn within 5 minutes). Declare event: assignment for necessary dependent work or blocker for unblocking; only these retain durable idle execution and active-context intake. Never steer unrelated user work or acknowledge posts. Tool retries use requestId; inspect execution status, not posting alone. Stop/cancel/resolve remains authoritative.",
       "Declare event: completion for a quiet result, blocker only for necessary unblocking, and resultKind: ready or investigation. Typed completion facts retain quiet decisions. Never duplicate a board result with a private report.",
     ],
     inputSchema: BoardAppendInput,

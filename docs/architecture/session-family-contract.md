@@ -51,7 +51,7 @@ immediate parents are not additional orchestrators. Broadcasts automatically
 reach only the root; explicitly target other owners. Only necessary assignment/blocker
 events permit automatic execution: idle recipients receive one stable input; active
 recipients use supported context boundaries. Routine findings/completions are durably
-deferred to the next actual user input, never an idle wake or active steering.
+deferred into the recipient's pending batch (see Batched delivery), never active steering.
 No concurrent turn, abort, force-send-now or steering of unrelated user inputs occurs.
 
 Completion continuation grants are removed, with v9 storage dropping their
@@ -149,8 +149,8 @@ returns. Only consumed input IDs count when correlating a child's reply.
   and automatically starts an idle parent or queues behind active work. No steering or concurrent
   parent turns. The app does not wait for a new user message.
 - **Expect notification** (`notification`): retain a compact completion plus an application-generated
-  exact source-result message link in the durable inbox. Attach it only to the next real user
-  message; never start a completion-only parent turn.
+  exact source-result message link in the durable inbox. It joins the parent's pending batch
+  (see Batched delivery); never start a completion-only parent turn per result.
 - **Ignore** (`ignore`): no obligation, result notification or parent turn.
 
 Pi's settled final assistant entry supplies the source entry ID, including restart reconciliation.
@@ -220,18 +220,45 @@ or rearms notices.
 
 `recordCompletion` atomically deduplicates the retained decision and, for notification mode or board results, its one-time coordinator
 digest. Reply mode retains decisions without a second quiet notice. Both ordinary Project Sessions and permanent chats attach at most twenty new result
-notices to the next real user input. Linked reports retain exact references in the same group,
+notices to the next real user input or batched turn. Linked reports retain exact references in the same group,
 not duplicate private reminders. The shared renderer displays compact status and result links alongside that user input without
 requiring an agent relay. Model-facing orientation asks it to answer the user first and explain
 results only when useful. Decisions survive delivery without repeated nags.
 Admission receipts prevent replay when accepted input outlives digest removal. No transcript
 is copied: full reports remain Pi-owned. Execution continuation is independent of this inbox.
 
+### Batched delivery
+
+Everything deferred instead of waking a conversation accumulates in one pending batch per
+recipient conversation (global Cake Chat, a Project Chat or a parent Project Session):
+coordinatorDigest notification results, undelivered passiveNotices (delivery fyi and routine
+Workboard posts) and never-admitted deferredReferences (quiet worker reports). Already admitted
+reports remain discoverable but do not rearm a timer.
+
+- `updateBatches` holds one durable timer record per recipient: `openedAt`, `dueAt` and an
+  optional admission `turnId`. The application delivery worker (`updateBatches.runPass`, run by
+  the existing session-result pass) opens the record when it first sees pending items, so a
+  missing record is re-derived after restart.
+- `dueAt` is the earlier of `openedAt + 5 minutes` and 30 seconds before the recipient's
+  estimated prompt-cache expiry (`sessionContextCost`, the sessions.list estimate). An unknown or
+  expired cache keeps the 5-minute window. Later items join without moving the deadline.
+- A real user input carries every pending item as before and closes the record.
+- When due, the worker waits while the recipient streams, has active turns or queued input,
+  holds a Cake Chat composer draft, is explicitly stopped/blocked, or is resolved. Items that arrive
+  meanwhile join the waiting batch. It then admits one follow-up input with `internal: UpdateBatch`,
+  the digest/reference reminders, passive notices and a `Cake batched updates` reminder. There is no
+  user text; the transcript shows only Cake context pills.
+- The admission `turnId` is recorded before submission. After a restart, an existing Pi input
+  receipt settles exactly the notices marked with that turn and the journaled digest receipts;
+  otherwise the batch is rebuilt. Items arriving during an in-flight batch open the next batch.
+
+Reply mode, direct questions and blockers remain immediate and are not batched.
+
 ### Permanent chat delivery
 
 Global Cake Chat and permanent Project Chat share the result-delivery mechanism above, scoped
 to the requesting chat identity. Notification entries live in coordinatorDigest and are removed
-only after the next real user input is durably accepted; admission receipts prevent replay.
+only after the next real user input or batched turn is durably accepted; admission receipts prevent replay.
 They carry compact status, classification, pending decisions and the exact resultMessageRef.
 The shared transcript renders those lines as an application-owned Session results notice with
 clickable result links at user-input admission, even if the model produces no explanation.
@@ -274,7 +301,7 @@ The first child reservation creates one **Workboard** (`message-board` artifact 
 
 `boards.read-new` discovers bounded relevant unread, non-superseded descriptions (including previously notified but deferred entries); `boards.read` retrieves selected bodies. `boards.current` pages current relevant descriptions, optionally by topic, regardless of existing receipts. Neither discovery query records body reads. A relevant successor explicitly supersedes its referenced entries for its recipients only; narrower audiences cannot hide decisions from other recipients. Superseded originals remain available through explicit reads, receipts and human browsing. Current denotes explicit relationships, not semantic agreement, verification or a uniquely authoritative proposal. Family-wide and explicitly addressed descriptions are eligible for notifications; authors do not receive notices of their own posts. Audience is routing, not privacy: family members may explicitly browse any entry. Entry and session receipt queries expose independent first-notified and first-read timestamps. Read means content supplied to a tool caller, not comprehension, agreement, action or memory after compaction. Human artifact browsing never records agent receipts.
 
-Necessary assignment/blocker events use Pi's supported context-only boundaries and durable idle fallback. Routine descriptions/completions are not injected at active boundaries: the durable passive inbox attaches them to the next actual user input with typed provenance. Notification/read receipts are not understanding or execution evidence. Explicit stop, queue withdrawal and resolution remain authoritative; no acknowledgment or private relay is required.
+Necessary assignment/blocker events use Pi's supported context-only boundaries and durable idle fallback. Routine descriptions/completions are not injected at active boundaries: the durable passive inbox delivers them with the recipient's pending batch with typed provenance. Notification/read receipts are not understanding or execution evidence. Explicit stop, queue withdrawal and resolution remain authoritative; no acknowledgment or private relay is required.
 
 ## Lifecycle
 

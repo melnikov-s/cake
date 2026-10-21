@@ -38,6 +38,7 @@ import {
 import type { ContextInspection } from "../../contracts/conversations/context-inspection";
 import { contextMessage } from "../pi/runtime/context-outline";
 import { splitContextReminders } from "../pi/runtime/session-context-reminders";
+import { withoutPassiveNotices } from "../../contracts/conversations/internal-input";
 import {
   DurableMemoryError,
   durableMemoryWork,
@@ -142,7 +143,11 @@ function durableMessageText(message: Message): string {
     : message.content;
   const input = message.role === "user" ? durableInputPresentation(rawText) : undefined;
   const text =
-    input?.internal?._tag === "UserWithReminders" ? input.internal.text : (input?.body ?? rawText);
+    input?.internal?._tag === "UserWithReminders"
+      ? input.internal.text
+      : input?.internal?._tag === "UpdateBatch"
+        ? withoutPassiveNotices(input.body, input.internal)
+        : (input?.body ?? rawText);
   if (input?.subagentReport)
     return `work: received worker report ${JSON.stringify(input.subagentReport)}; receipt does not establish user-facing communication: ${text}`;
   const context = splitContextReminders(text);
@@ -158,7 +163,7 @@ function durableMessageText(message: Message): string {
           ? `work: received workflow context; user-facing handling not established by intake (current obligations live in sessions.reports): ${item.text}`
           : `work: received session updates; receipt is not communication (decisions live in sessions.completions): ${item.text}`,
       );
-    return [...work, `user: ${context.text}`].join("\n");
+    return [...work, ...(context.text ? [`user: ${context.text}`] : [])].join("\n");
   }
   const report = parseCrossSessionMessage(text);
   if (report) return `work: [${report.metadata.sender.title}] ${report.text}`;

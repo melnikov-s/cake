@@ -185,7 +185,8 @@ export function durableQueuedPart(
   id: string,
 ): UiPart {
   const internal = durableQueuedPresentation(item.content).internal;
-  if (internal?._tag === "WorkboardDelivery") return internalInputPart(internal, `queued-${id}`);
+  if (internal?._tag === "WorkboardDelivery" || internal?._tag === "UpdateBatch")
+    return internalInputPart(internal, `queued-${id}`);
   const display = queuedUserMessageDisplay(durableQueuedDisplayText(item.content));
   const { subagentReport } = durableQueuedPresentation(item.content);
   return {

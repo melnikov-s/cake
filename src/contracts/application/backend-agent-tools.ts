@@ -298,7 +298,7 @@ const definitions = [
       summary:
         "Inspect your quiet completion inbox and outstanding review/merge/resolve/next-step decisions, without waking work.",
       guidance: [
-        "Returns at most fifty pending/deferred items scoped to this requesting conversation. The application displays notification-mode result links with the next user message; delivered notices do not repeat. Reply-mode results start/queue a turn without a second quiet notification. Completion is never permission to mutate or merge.",
+        "Returns at most fifty pending/deferred items scoped to this requesting conversation. The application displays notification-mode result links with the next user message or the batched turn that delivers them when the user is idle; delivered notices do not repeat. Reply-mode results start/queue a turn without a second quiet notification. Completion is never permission to mutate or merge.",
       ],
     },
   },

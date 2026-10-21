@@ -201,6 +201,18 @@ const CoordinatorDigestItem = Schema.Struct({
   reportedAt: Schema.String,
 });
 export interface CoordinatorDigestItem extends Schema.Schema.Type<typeof CoordinatorDigestItem> {}
+/**
+ * One open batch timer per recipient conversation. Opened when the first deferred update
+ * arrives in an empty batch; delivered at dueAt or carried by the next user message.
+ * turnId records an admission attempt so a restart reconciles instead of resending.
+ */
+const UpdateBatch = Schema.Struct({
+  recipientSessionId: BoundedId,
+  openedAt: Schema.String,
+  dueAt: Schema.String,
+  turnId: Schema.optionalKey(BoundedId),
+});
+export interface UpdateBatch extends Schema.Schema.Type<typeof UpdateBatch> {}
 export const SessionFamilyDocument = Schema.Struct({
   families: Schema.Array(SessionFamily),
   turns: Schema.Array(FamilyTurn),
@@ -213,6 +225,7 @@ export const SessionFamilyDocument = Schema.Struct({
   boardDeliveries: Schema.optionalKey(Schema.Array(BoardDelivery)),
   boardDeliveryPaused: Schema.optionalKey(Schema.Array(BoundedId)),
   completionInbox: Schema.optionalKey(Schema.Array(CompletionInboxItem)),
+  updateBatches: Schema.optionalKey(Schema.Array(UpdateBatch)),
 });
 export interface SessionFamilyDocument extends Schema.Schema.Type<typeof SessionFamilyDocument> {}
 
@@ -312,6 +325,14 @@ export class SessionFamilyStorage extends Context.Service<
     readonly recordLaunchReport: (
       sessionId: string,
       report: CakeChatLaunchReport,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
+    /** Opens or replaces the recipient's batch timer record. */
+    readonly saveUpdateBatch: (
+      batch: UpdateBatch,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
+    /** Cancels the recipient's batch timer after its items were delivered. */
+    readonly closeUpdateBatch: (
+      recipientSessionId: string,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
     /** Removes digest items once they were attached to an accepted Cake Chat message. */
     readonly removeDigest: (
@@ -1164,6 +1185,31 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
                 },
           ),
       );
+      const saveUpdateBatch = Effect.fn("SessionFamilyStorage.saveUpdateBatch")(
+        (batch: UpdateBatch) =>
+          update((document) => ({
+            ...document,
+            updateBatches: [
+              ...(document.updateBatches ?? []).filter(
+                (item) => item.recipientSessionId !== batch.recipientSessionId,
+              ),
+              batch,
+            ],
+          })),
+      );
+      const closeUpdateBatch = Effect.fn("SessionFamilyStorage.closeUpdateBatch")(
+        (recipientSessionId: string) =>
+          update((document) =>
+            document.updateBatches?.some((item) => item.recipientSessionId === recipientSessionId)
+              ? {
+                  ...document,
+                  updateBatches: document.updateBatches.filter(
+                    (item) => item.recipientSessionId !== recipientSessionId,
+                  ),
+                }
+              : document,
+          ),
+      );
       const withdrawNotices = Effect.fn("SessionFamilyStorage.withdrawNotices")(
         (recipientSessionId: string, messageIds: ReadonlyArray<string>) =>
           update((document) => {
@@ -1219,6 +1265,13 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
                   ),
                 }
               : null),
+            ...(document.updateBatches
+              ? {
+                  updateBatches: document.updateBatches.filter(
+                    (item) => !removedMembers.has(item.recipientSessionId),
+                  ),
+                }
+              : null),
             ...(document.handledReports
               ? {
                   handledReports: document.handledReports.filter(
@@ -1266,6 +1319,8 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         acknowledgeReports,
         recordLaunchReport,
         removeDigest,
+        saveUpdateBatch,
+        closeUpdateBatch,
         withNoticeDelivery: (effect) => noticeDeliveryLock.withPermit(effect),
         withdrawNotices,
         removeUnmaterializedChild,

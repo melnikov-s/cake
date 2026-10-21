@@ -9,6 +9,7 @@ import {
 } from "../../../contracts/projects/project-todo-context";
 import { splitSessionDigestReminder } from "../../../contracts/cake-chats/session-digest-reminder";
 import { splitReferenceNotifications } from "../../../contracts/conversations/reference-notification";
+import { splitUpdateBatchReminder } from "../../../contracts/conversations/update-batch";
 
 /** Only remove Cake-owned blocks at their injection boundaries, never user-authored tags. */
 export function splitContextReminders(text: string) {
@@ -17,7 +18,8 @@ export function splitContextReminders(text: string) {
   const references = splitReferenceNotifications(withoutPresentation);
   const digest = splitSessionDigestReminder(references.text);
   const todos = splitProjectTodoReminder(digest.text);
-  const body = todos.text;
+  const batch = splitUpdateBatchReminder(todos.text);
+  const body = batch.text;
   const reminders: { title: string; text: string }[] = [];
   if (withoutPresentation !== withoutResponse) {
     const block = withoutResponse.match(/^<system-reminder>[\s\S]*?<\/system-reminder>/)?.[0];
@@ -27,6 +29,7 @@ export function splitContextReminders(text: string) {
     reminders.push({ title: "Cake · reference notifications", text: references.reminder });
   if (digest.reminder) reminders.push({ title: "Cake · session updates", text: digest.reminder });
   if (todos.reminder) reminders.push(projectTodoContextPresentation(todos.reminder));
+  if (batch.reminder) reminders.push({ title: "Cake · batched updates", text: batch.reminder });
   if (withoutResponse !== text) {
     const block = Object.values(responseModeReminders).find((reminder) => text.includes(reminder));
     if (block) reminders.push({ title: "Cake · response mode", text: block });

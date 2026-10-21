@@ -4,6 +4,7 @@ import {
   type StoredPassiveNotice,
 } from "../../contracts/conversations/passive-notice";
 import { resumeAfterUserInput } from "../session-families/workboardDeliveries";
+import { takePassiveNotices } from "../session-families/updateBatches";
 import * as messageReferences from "./messageReferences";
 import { messageReference } from "../../contracts/conversations/message-reference";
 import { toJsonValue } from "../../utils/to-json-value";
@@ -174,24 +175,10 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
       : addReferenceNotifications(preparedText, reportPage, references.length);
     if (storage && !message.crossSession)
       yield* resumeAfterUserInput(input.sessionId).pipe(asError("deliver"));
-    const passive: StoredPassiveNotice[] = [];
-    if (storage && !message.crossSession && !/^[!/]/.test(message.text)) {
-      for (const notice of (yield* storage.state()).passiveNotices ?? []) {
-        if (notice.recipientSessionId !== input.sessionId || notice.delivered) continue;
-        const receipt =
-          notice.admissionTurnId && handle.inputReceipt
-            ? yield* handle.inputReceipt(notice.admissionTurnId).pipe(asError("deliver"))
-            : undefined;
-        if (receipt) {
-          // Includes canceled input: an explicit withdrawal must not rearm a notice.
-          yield* storage.markPassiveNoticeAdmission(
-            [notice.id],
-            notice.admissionTurnId ?? notice.id,
-            true,
-          );
-        } else passive.push(notice);
-      }
-    }
+    const carriesUpdates = Boolean(storage && !message.crossSession && !/^[!/]/.test(message.text));
+    const passive: readonly StoredPassiveNotice[] = carriesUpdates
+      ? yield* takePassiveNotices(handle, input.sessionId).pipe(asError("deliver"))
+      : [];
     const attachments = projectAttachments(
       yield* prepareTaskInputs(
         input.sessionId,
@@ -247,6 +234,9 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
       yield* storage
         .markReferenceAdmissions(reportPage.map((item) => item.id))
         .pipe(asError("deliver"));
+    // The user's message carried the pending batch, so its timer is cancelled.
+    if (storage && carriesUpdates)
+      yield* storage.closeUpdateBatch(input.sessionId).pipe(asError("deliver"));
     yield* handle.publishSessionChanged().pipe(asError("deliver"));
     return turnId;
   });

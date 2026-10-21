@@ -226,8 +226,9 @@ projections needed by a surface. References do not transfer ownership.
   presentation, without changing model-facing input roles.
 - Session launch/send uses one canonical `resultDelivery: "reply" | "notification" | "ignore"`.
   Reply transports the correlated application-confirmed result and starts/queues a normal
-  parent turn; notification retains a compact exact result-message link for the next real user
-  input without a completion-only turn; ignore creates neither obligation nor notification.
+  parent turn; notification retains a compact exact result-message link in the parent's pending
+  batch (next real user input, or one batched turn within 5 minutes/before cache expiry) without a
+  per-result turn; ignore creates neither obligation nor notification.
   The application owns correlation, settlement, entry links and retry/deduplication; no worker
   manual completion call is required. Artifact/link-only presentation cannot suppress a reply
   wakeup. Durable transport is not a guarantee of exactly-once LLM prose. Direct questions

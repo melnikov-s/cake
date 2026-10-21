@@ -31,7 +31,14 @@ export function internalInputOrigins(entries: readonly SessionEntry[]) {
 }
 
 export function internalInputPart(origin: InternalInput, id: string): UiPart {
-  if (origin._tag === "UserWithReminders")
+  if (origin._tag === "UpdateBatch" && !origin.notices.length)
+    return {
+      id,
+      kind: "context",
+      title: "Cake · batched updates",
+      text: "Deferred updates delivered together without a user message.",
+    };
+  if (origin._tag === "UserWithReminders" || origin._tag === "UpdateBatch")
     return {
       id,
       kind: "context",

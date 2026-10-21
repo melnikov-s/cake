@@ -10,6 +10,7 @@ import {
 import { isReferenceNotification } from "../../contracts/conversations/reference-notification";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 import * as workboardDeliveries from "./workboardDeliveries";
+import * as updateBatches from "./updateBatches";
 import * as completionInbox from "../conversations/completionInbox";
 import {
   ensureBoard,
@@ -1205,6 +1206,10 @@ const runPass = Effect.fn("SessionFamilies.deliverPendingNotices")(function* () 
       Effect.catch((error) => Effect.logError("Session result delivery will retry", error)),
     );
   }
+  // After results settle into deferred stores, so a completion opens its batch this pass.
+  yield* updateBatches
+    .runPass()
+    .pipe(Effect.catch((error) => Effect.logError("Batched update pass will retry", error)));
 });
 
 export const runWorker = runPass().pipe(

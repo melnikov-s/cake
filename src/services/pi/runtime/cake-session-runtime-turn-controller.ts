@@ -786,7 +786,8 @@ export function createCakeSessionRuntimeTurnController(input: {
       return parts.map((part) => {
         const item = payloads.get(part.id);
         const internal = item?.turnId ? turnCompletions.internalInputById(item.turnId) : undefined;
-        if (internal?._tag === "WorkboardDelivery") return internalInputPart(internal, part.id);
+        if (internal?._tag === "WorkboardDelivery" || internal?._tag === "UpdateBatch")
+          return internalInputPart(internal, part.id);
         return part.kind === "text" && item
           ? {
               ...part,

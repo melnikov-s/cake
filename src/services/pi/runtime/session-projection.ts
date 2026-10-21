@@ -377,7 +377,10 @@ function partsFromMessage(
       title: reminder.title,
       text: reminder.text,
     }));
-    if (internal?._tag === "UserWithReminders")
+    if (
+      internal?._tag === "UserWithReminders" ||
+      (internal?._tag === "UpdateBatch" && internal.notices.length)
+    )
       reminderParts.push(internalInputPart(internal, `${baseId}-passive`));
     const parsedContext = parseContextAttachmentBlocks(envelope.text);
     const text = parsedContext.text;

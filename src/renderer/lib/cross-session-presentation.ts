@@ -132,7 +132,7 @@ export function crossSessionPresentation(
       tone: "accent",
       description:
         described.resultDelivery === "notification"
-          ? "Completion is retained until the sender’s next user message; it does not start a turn."
+          ? "Completion joins the sender’s pending batch: it arrives with their next message or in one batched turn within 5 minutes."
           : "Application-confirmed completion automatically starts or queues a normal sender turn.",
     });
   return { relation: described.relation, badges, body, sourceResponse };
