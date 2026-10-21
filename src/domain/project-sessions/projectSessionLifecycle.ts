@@ -1,4 +1,5 @@
 import { Effect, Stream } from "effect";
+import { completeLinked } from "../projects/projectTodoResolution";
 import {
   ResolutionRejected,
   ResolutionCleanupFailed,
@@ -138,6 +139,15 @@ const archiveAuthority = Effect.fn("ProjectSessions.archiveAuthority")(function*
     if (publish) yield* publishCatalogStatus(sessionId, location, true).pipe(asError(operation));
     if (afterCommit) yield* afterCommit;
   }).pipe(Effect.uninterruptible);
+  // Advisory projection repair must not turn committed resolution into a failure claim.
+  // The explicit joined list + revision-checked batch path remains available for repair.
+  yield* completeLinked(location.projectPath).pipe(
+    Effect.catch((cause) =>
+      Effect.logWarning("Session resolved; linked to-do synchronization needs reconciliation", {
+        message: cause.message,
+      }),
+    ),
+  );
 });
 
 const restoreAuthority = Effect.fn("ProjectSessions.restoreAuthority")(function* (

@@ -355,8 +355,19 @@ is a refactoring signal, not precedent.
   start/child/fork boundaries, idempotent by canonical session identity; drafts and private
   subagents do not. Items have a title, short durable description and freeform progress
   status. Optional titled session, message, artifact, web and workspace associations use
-  shared conversation navigation. To-do done/reopen and session resolve/restore are
-  independent. Selection is removable next-message context, never a send action.
+  shared conversation navigation. Linked-policy items close when all associated session
+  work is effectively resolved by its standalone/family-root authority; session-linked
+  message/report sources count as work and other source links are supporting context.
+  Execution completion and reports are not resolution. Explicit done/reopen switches
+  to manual policy, historical missing policies remain manual, and restore never reopens.
+  Creation/policy adoption checks already-resolved work before committing. Native
+  resolution commits independently of advisory to-do synchronization; explicit joined
+  list plus atomic revision-checked batch edits repair missed closure without guessing
+  historical reopen intent. One metadata-index snapshot and family snapshot join a bounded
+  page, with filename-only identity enumeration per Project directory, never per item.
+  Tools default to title/id/state/revision rows and compact mutation receipts; content is
+  disclosed by exact detail or opt-in detail only. Selection is removable next-message
+  context, never a send action.
   User context deltas coalesce in the Project record; read-only send preparation copies
   them into the existing recoverable input. A bound receipt is acknowledged only after
   Pi Durable has placed that input in originals, not on preparation or queue admission.

@@ -179,13 +179,15 @@ export function createConversationOperations(
       requires: "invokeAppControl",
       topic: "sessions",
       summary: "Inspect one explicitly targeted Project Session.",
-      guidance: ["sessionFile is the full path to Pi's authoritative JSONL transcript."],
+      guidance: [
+        "Metadata only: no transcript, first input, attachment content, or report summary. Use explicit scoped history/messages/attachments operations for content.",
+      ],
       inputSchema: Schema.Struct({
         sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
       }),
       examples: [{ input: { sessionId: "target-session-id" } }],
       result:
-        "The target's metadata, ready-made full-UUID deepLink (cake://session/<uuid>; use it verbatim for user links), full sessionFile path, firstUserMessage, selection, and activity state.",
+        "Compact identity/deepLink, workspace, effective resolved lifecycle and separate execution outcome/activity. No transcript/runtime inspection.",
       execute: invokeAppControl("sessions.info"),
     },
     {

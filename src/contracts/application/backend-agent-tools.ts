@@ -148,9 +148,11 @@ const definitions = [
     discovery: {
       topic: "sessions",
       summary: "Inspect one explicitly targeted project session.",
-      guidance: ["sessionFile is the full path to Pi's authoritative JSONL transcript."],
+      guidance: [
+        "Metadata only: no transcript, first input, attachment content, or report summary. Use explicit scoped history/messages/attachments operations for content.",
+      ],
       result:
-        "The target's metadata, ready-made full-UUID deepLink (cake://session/<uuid>; use it verbatim for user links), full sessionFile path, firstUserMessage, and backend activity state. Window selection is available through app.state.",
+        "Compact identity/deepLink, workspace, effective resolved lifecycle and separate execution outcome/activity. No transcript/runtime inspection.",
     },
   },
   {

@@ -17,7 +17,7 @@ export type AgentSessionStatus = typeof AgentSessionStatus.Type;
 
 export const sessionListGuidance = [
   "Global Cake Chat discovers all projects; every other caller is limited to its project. projectPath only narrows that scope. Filter by query/status/attentionOnly, then offset/limit (default 20, max 50).",
-  "Rows: bare id, status, tokens (estimated active context, K/M), cache (warm/expired?/?), age since recorded model activity, ttl (estimated remaining time; negative means elapsed). ? means unknown. Cache hints never prove a hit/miss. sessions.info supplies exact metadata and evidence.",
+  "Rows: bare id, status, lifecycle (active/draft/resolved), execution outcome (- if unknown), tokens (estimated active context, K/M), cache (warm/expired?/?), age since recorded model activity, ttl (estimated remaining time; negative means elapsed). ? means unknown. Cache hints never prove a hit/miss. sessions.info supplies exact metadata and evidence.",
   "launchedByCakeChat selects your unresolved launches.",
 ];
 export const sessionListResult =

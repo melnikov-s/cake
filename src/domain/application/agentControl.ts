@@ -1,10 +1,9 @@
 import { Clock, Effect, Option, Schema, type Scope } from "effect";
-import { sessionContextCost } from "../../utils/session-context-cost";
 import {
   CAKE_CHAT_SESSION_ID,
   isCakeChatSessionId,
 } from "../../contracts/cake-chats/cake-chat-identity";
-import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
+import { projectChatSessionId, projectLocation } from "../cake-chats/cakeChatLocations";
 import { sessionRoster } from "./sessionRoster";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 import { CakeChatConfiguration } from "../../services/pi-durable/CakeChatConfiguration";
@@ -28,7 +27,11 @@ import type {
 } from "../../contracts/project-sessions/project-session-data";
 import { sessionLink } from "../../contracts/conversations/message-reference";
 import { ApplicationState } from "../../services/storage/ApplicationState";
-import { SessionFamilyStorage, familyMemberIds } from "../../services/storage/SessionFamilyStorage";
+import {
+  SessionFamilyStorage,
+  familyMember,
+  familyMemberIds,
+} from "../../services/storage/SessionFamilyStorage";
 import { SessionCoordination } from "../../services/session-catalogs/SessionCoordination";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import * as application from "./application";
@@ -40,6 +43,7 @@ import * as agentSessionMessaging from "./agentSessionMessaging";
 import * as agentActionNotices from "./agentActionNotices";
 import { AgentControlError } from "./agentSettings";
 import * as metadata from "../project-sessions/projectSessionMetadata";
+import { resolutionNamespace } from "../project-sessions/projectSessionResolution";
 import * as sessionReferences from "../project-sessions/sessionReferences";
 import * as projectSessions from "../project-sessions/projectSessionOperations";
 import * as sessionCompaction from "../project-sessions/sessionCompaction";
@@ -131,90 +135,6 @@ const lookupSession = Effect.fn("AgentControl.lookupSession")(function* (session
         : Effect.fail(error),
     ),
   );
-});
-
-const controlSession = Effect.fn("AgentControl.controlSession")(function* (
-  session: AgentSessionSummary,
-) {
-  const state = (yield* ApplicationState).snapshot();
-  const assigned =
-    session.savedDraft?.labelIds ??
-    state.projects
-      .find((project) => project.path === session.projectPath)
-      ?.workflow?.assignments.find((assignment) => assignment.sessionId === session.sessionId)
-      ?.labelIds ??
-    [];
-  const available = yield* labels();
-  const location = session.savedDraft
-    ? undefined
-    : (session.location ?? (yield* metadata.findLocation({ sessionId: session.sessionId })));
-  const status = location
-    ? yield* (yield* CakeSessionRuntimes).currentStatus({
-        sessionId: session.sessionId,
-        workingDirectory: location.workingDirectory,
-        sessionDirectory: location.sessionDirectory,
-      })
-    : undefined;
-  const activity = status?.streaming
-    ? "running"
-    : state.unreadSessionIds.includes(session.sessionId)
-      ? "unread"
-      : undefined;
-  const launch = session.cakeChatLaunch;
-  return {
-    workspacePath: session.workingDirectory,
-    workspaceName: session.projectName,
-    sessionId: session.sessionId,
-    deepLink: sessionLink(session.sessionId),
-    title: session.title,
-    modified: session.modifiedAt,
-    messageCount: session.messageCount,
-    resolved: session.resolved,
-    draft: session.savedDraft !== undefined,
-    ...(location?.managedWorktree ? { managedWorktree: location.managedWorktree } : null),
-    ...(session.familyId
-      ? {
-          familyId: session.familyId,
-          familyParentSessionId: session.familyParentSessionId,
-          familyChildSessionIds: session.familyChildSessionIds,
-          familyChildOrder: session.familyChildOrder,
-          familyDepth: session.familyDepth,
-        }
-      : null),
-    ...(assigned.length
-      ? {
-          labels: available.filter(
-            (label) =>
-              assigned.includes(label.id) &&
-              (label.scope === "global" || label.projectPath === session.projectPath),
-          ),
-        }
-      : null),
-    ...(activity ? { activity } : null),
-    ...(launch
-      ? {
-          launch: {
-            status: status?.streaming
-              ? "running"
-              : launch.lastReport?.status === "blocked"
-                ? "needs-you"
-                : launch.lastReport?.status === "failed"
-                  ? "failed"
-                  : launch.lastReport?.status === "interrupted"
-                    ? "interrupted"
-                    : launch.lastReport?.status === "stopped"
-                      ? "stopped"
-                      : launch.lastReport
-                        ? "done"
-                        : "idle",
-            ...(launch.launchedAt ? { launchedAt: launch.launchedAt } : null),
-            ...(launch.lastReport
-              ? { summary: launch.lastReport.summary, reportedAt: launch.lastReport.reportedAt }
-              : null),
-          },
-        }
-      : null),
-  };
 });
 
 /** Undefined means a genuinely window/device-owned operation. Errors never fall back to a renderer. */
@@ -488,6 +408,8 @@ export const invoke: (
               projectPath: session.projectPath,
               modifiedAt: session.modifiedAt,
               status: sessionListStatus(session),
+              resolved: session.resolved,
+              outcome: session.cakeChatLaunch?.lastReport?.status ?? session.latestTurnOutcome,
             }));
           const chatConfiguration = yield* Effect.serviceOption(CakeChatConfiguration);
           const chatEntries =
@@ -634,86 +556,115 @@ export const invoke: (
         default: {
           const sessionId = yield* sessionReferences.resolve(invocation.arguments.sessionId);
           if (isCakeChatSessionId(sessionId)) {
+            if (invocation.name === "sessions.info") {
+              const configuration = yield* Effect.serviceOption(CakeChatConfiguration);
+              if (Option.isNone(configuration))
+                return yield* new AgentControlError({
+                  message: "Cake Chat metadata is unavailable",
+                });
+              const project = (yield* ApplicationState)
+                .snapshot()
+                .projects.find((project) => projectChatSessionId(project.path) === sessionId);
+              if (sessionId !== CAKE_CHAT_SESSION_ID && !project)
+                return yield* new AgentControlError({ message: "Unknown Project Chat" });
+              const location = project
+                ? projectLocation(configuration.value.location, project.path)
+                : configuration.value.location;
+              const status = yield* (yield* CakeSessionRuntimes).currentStatus({
+                ...location,
+                sessionId,
+              });
+              return toJsonValue({
+                ok: true,
+                command,
+                session: {
+                  sessionId,
+                  kind: "cake-chat",
+                  deepLink: sessionLink(sessionId),
+                  workspacePath: location.workingDirectory,
+                  resolved: false,
+                  lifecycle: "active",
+                },
+                status: status?.streaming ? "running" : "idle",
+              });
+            }
             const handle = yield* chatTargets.acquireAvailable(sessionId);
             const snapshot = yield* handle.snapshot();
-            if (invocation.name !== "sessions.info") {
-              const target = { sessionId, workspacePath: snapshot.workspacePath };
-              const result =
-                invocation.name === "sessions.cake"
-                  ? yield* handle.callCakeOperation(
-                      invocation.arguments.command,
-                      invocation.arguments.input ?? {},
-                    )
-                  : yield* handle.inspectSession({
-                      ...invocation.arguments,
-                      kind: yield* Schema.decodeUnknownEffect(
-                        Schema.Literals([
-                          "history",
-                          "compactions",
-                          "tree",
-                          "context",
-                          "usage",
-                          "commands",
-                        ]),
-                      )(invocation.name.slice("sessions.".length)),
-                    });
-              return toJsonValue({ ok: true, command, target, result });
-            }
-            const configuration = yield* Effect.serviceOption(CakeChatConfiguration);
-            const contextMetadata = Option.isSome(configuration)
-              ? (yield* chatMetadata.catalog(configuration.value.location)).find(
-                  (chat) => chat.sessionId === sessionId,
-                )?.contextMetadata
+            const target = { sessionId, workspacePath: snapshot.workspacePath };
+            const result =
+              invocation.name === "sessions.cake"
+                ? yield* handle.callCakeOperation(
+                    invocation.arguments.command,
+                    invocation.arguments.input ?? {},
+                  )
+                : yield* handle.inspectSession({
+                    ...invocation.arguments,
+                    kind: yield* Schema.decodeUnknownEffect(
+                      Schema.Literals([
+                        "history",
+                        "compactions",
+                        "tree",
+                        "context",
+                        "usage",
+                        "commands",
+                      ]),
+                    )(invocation.name.slice("sessions.".length)),
+                  });
+            return toJsonValue({ ok: true, command, target, result });
+          }
+          if (invocation.name === "sessions.info") {
+            // Identity/lifecycle metadata only: no catalog/title derivation, transcript or inspection.
+            const storage = yield* Effect.serviceOption(SavedDraftStorage);
+            const draft = Option.isSome(storage)
+              ? (yield* storage.value.list()).find(
+                  (draft) => draft.sessionId === sessionId && draft.status !== "activated",
+                )
               : undefined;
+            const location = draft ? undefined : yield* metadata.findLocation({ sessionId });
+            const familyState = yield* (yield* SessionFamilyStorage).state();
+            const family = familyState.families.find((family) =>
+              familyMemberIds(family).includes(sessionId),
+            );
+            const resolved = draft
+              ? draft.resolved
+              : location
+                ? (yield* resolutionNamespace(sessionId, metadata.archiveLocation(location))) ===
+                  "resolved"
+                : false;
+            const runtime = location
+              ? yield* (yield* CakeSessionRuntimes).currentStatus({ ...location, sessionId })
+              : undefined;
+            const report = familyState.spawnedSessions.find(
+              (spawn) => spawn.sessionId === sessionId,
+            )?.lastReport;
+            const status = runtime?.streaming ? "running" : "idle";
             return toJsonValue({
               ok: true,
               command,
               session: {
                 sessionId,
-                kind: "cake-chat",
-                context: sessionContextCost(contextMetadata, yield* Clock.currentTimeMillis),
-                ...(contextMetadata?.cacheObservation
-                  ? { cacheEvidence: contextMetadata.cacheObservation }
+                deepLink: sessionLink(sessionId),
+                workspacePath: location?.workingDirectory ?? draft?.workingDirectory,
+                resolved,
+                lifecycle: resolved ? "resolved" : draft ? "draft" : "active",
+                draft: draft !== undefined,
+                ...(family
+                  ? {
+                      familyId: family.familyId,
+                      familyRootSessionId: family.parentSessionId,
+                      familyParentSessionId:
+                        familyMember(family, sessionId)?.parentSessionId ?? sessionId,
+                    }
                   : null),
-                workingDirectory: snapshot.workspacePath,
-                sessionFile: snapshot.sessionFile,
+                ...(report || runtime?.latestTurnOutcome
+                  ? { outcome: report?.status ?? runtime?.latestTurnOutcome }
+                  : null),
               },
-              status: snapshot.streaming ? "running" : "idle",
+              status,
             });
           }
           const known = yield* lookupSession(sessionId);
           const target = { workspacePath: known.workingDirectory, sessionId };
-          if (invocation.name === "sessions.info") {
-            if (known.savedDraft)
-              return toJsonValue({
-                ok: true,
-                command,
-                session: yield* controlSession(known),
-                status: "idle",
-              });
-            const location = known.location ?? (yield* metadata.findLocation({ sessionId }));
-            const preview = yield* metadata.inspectAt(location, sessionId);
-            const session = yield* controlSession(known);
-            return toJsonValue({
-              ok: true,
-              command,
-              session: {
-                ...session,
-                sessionFile: preview.sessionFile,
-                context: sessionContextCost(
-                  preview.contextMetadata,
-                  yield* Clock.currentTimeMillis,
-                ),
-                ...(preview.contextMetadata?.cacheObservation
-                  ? { cacheEvidence: preview.contextMetadata.cacheObservation }
-                  : null),
-                ...(preview.firstUserMessage
-                  ? { firstUserMessage: preview.firstUserMessage }
-                  : null),
-              },
-              status: session.activity ?? "idle",
-            });
-          }
           if (invocation.name === "sessions.cake")
             return toJsonValue({
               ok: true,

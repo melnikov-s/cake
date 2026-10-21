@@ -1010,7 +1010,7 @@ export const findLocation = Effect.fn("ProjectSessions.findLocation")(function* 
 });
 
 /** The caller must retain a route from findLocation/lookupWithLocation in this request. */
-export const inspectAt = Effect.fn("ProjectSessions.inspectAt")(function* (
+const inspectAt = Effect.fn("ProjectSessions.inspectAt")(function* (
   location: ProjectSessionLocation,
   sessionId: string,
   options?: { readonly includeParts?: boolean },

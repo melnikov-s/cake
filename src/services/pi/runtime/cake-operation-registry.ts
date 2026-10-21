@@ -82,6 +82,11 @@ const cakeTopics = [
       "Discover, forward without reading, or explicitly inspect exact attachment references.",
   },
   { name: "messages", summary: "Discover, read and navigate exact Pi message references." },
+  {
+    name: "todos",
+    summary:
+      "Discover compact Project Chat commitments, join lifecycle metadata, and commit revision-checked edits.",
+  },
   { name: "context", summary: "Inspect context use or compact the current session." },
   { name: "models", summary: "Discover and inspect configured model presets." },
   { name: "session-labels", summary: "Discover and manage session labels." },

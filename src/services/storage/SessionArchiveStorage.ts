@@ -78,6 +78,11 @@ export class SessionArchiveStorage extends Context.Service<
       sessionId: string,
       location: SessionArchiveLocation,
     ) => Effect.Effect<"active" | "resolved" | undefined, SessionArchiveStorageError>;
+    /** Pure read of the existing authoritative index, once; no migration or transcript IO. */
+    readonly resolutionSnapshot: () => Effect.Effect<
+      typeof SessionResolutionIndex.Type,
+      SessionArchiveStorageError
+    >;
     /** One metadata read per listing; never reads transcript bodies. */
     readonly resolvedIds: (
       location: SessionArchiveLocation,

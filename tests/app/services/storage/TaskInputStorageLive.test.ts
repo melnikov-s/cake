@@ -296,11 +296,32 @@ describe("task-input isolation", () => {
           expect(yield* storage.isRecipient(target)).toBe(true);
           const projection = yield* safeCoordinatorProjection({
             sessions: [
-              { sessionId: target, title: "PRIVATE_DERIVED_SUMMARY", firstUserMessage: log },
+              {
+                sessionId: target,
+                title: "PRIVATE_DERIVED_SUMMARY",
+                firstUserMessage: log,
+                deepLink: `cake://session/${target}`,
+                resolved: true,
+                lifecycle: "resolved",
+                outcome: "stopped",
+              },
               { sessionId: other, title: "Unrelated session" },
             ],
           });
           expect(JSON.stringify(projection)).not.toContain("PRIVATE_");
+          expect(projection).toMatchObject({
+            sessions: [
+              {
+                sessionId: target,
+                title: "Task session",
+                deepLink: `cake://session/${target}`,
+                resolved: true,
+                lifecycle: "resolved",
+                outcome: "stopped",
+              },
+              { title: "Unrelated session" },
+            ],
+          });
           expect(JSON.stringify(projection)).toContain("Unrelated session");
           expect(
             JSON.stringify(

@@ -1205,17 +1205,18 @@ it.effect("sessionInfoReusesAuthoritativeRoute", () =>
       session: {
         sessionId: target,
         workspacePath: "/project",
-        sessionFile: `/cake/sessions/${target}.jsonl`,
-        firstUserMessage: "First input",
+        deepLink: `cake://session/${target}`,
+        lifecycle: "active",
+        resolved: false,
       },
       status: "idle",
     });
-    // One collision-checked search of five locations, then two local namespace checks.
-    expect(f.listReads.locate - before.locate).toBe(7);
+    // One collision-checked route search, then one authoritative namespace check.
+    expect(f.listReads.locate - before.locate).toBe(6);
     expect(f.listReads.records - before.records).toBe(1);
-    expect(f.listReads.entries.slice(before.entries)).toEqual([target]);
+    expect(f.listReads.entries.slice(before.entries)).toEqual([]);
     expect(f.listReads.ids.length - before.ids).toBe(0);
-    expect(f.inspections).toEqual([target]);
+    expect(f.inspections).toEqual([]);
     expect(f.runtimeCreates.length).toBe(before.creates);
   }),
 );
@@ -1303,9 +1304,8 @@ it.effect("executes settings, label lifecycle, and authoritative inspection with
       session: {
         sessionId: target,
         deepLink: `cake://session/${target}`,
-        sessionFile: `/cake/sessions/${target}.jsonl`,
-        firstUserMessage: "First input",
-        labels: [{ id: labelId }],
+        lifecycle: "active",
+        resolved: false,
       },
     });
     yield* f.call("session-labels.update", { labelId, name: "Ready" });
@@ -1316,7 +1316,7 @@ it.effect("executes settings, label lifecycle, and authoritative inspection with
     yield* f.call("session-labels.remove", { labelId });
     expect(f.state().projects[0]?.workflow?.assignments[0]?.labelIds ?? []).toEqual([]);
     expect(yield* f.call("sessions.list")).toBe(
-      "3 sessions\nid status tokens cache age ttl | title\n00000022 idle ? ? ? ? | Same title\n00000011 idle ? ? ? ? | Source\n00000033 idle ? ? ? ? | Same title",
+      "3 sessions\nid status lifecycle outcome tokens cache age ttl | title\n00000022 idle active - ? ? ? ? | Same title\n00000011 idle active - ? ? ? ? | Source\n00000033 idle active - ? ? ? ? | Same title",
     );
     for (const command of ["history", "compactions", "tree", "context", "usage", "commands"])
       expect(yield* f.call(`sessions.${command}`, { sessionId: "00000022" })).toMatchObject({
@@ -1556,10 +1556,10 @@ it.effect(
         revision: 1,
         status: "saved",
       });
-      expect(yield* f.call("sessions.list")).toContain("draft ? ? ? ? | Unsent");
+      expect(yield* f.call("sessions.list")).toContain("draft draft - ? ? ? ? | Unsent");
       expect(yield* f.call("sessions.info", { sessionId: draftId })).toMatchObject({
         ok: true,
-        session: { sessionId: draftId, draft: true, title: "Unsent", messageCount: 0 },
+        session: { sessionId: draftId, draft: true, lifecycle: "draft", resolved: false },
         status: "idle",
       });
       const added = yield* f.call("session-labels.add", { name: "Draft label", color: "cyan" });
@@ -1602,15 +1602,15 @@ it.effect(
         },
       });
       expect(yield* f.call("sessions.list", { limit: 1 })).toBe(
-        "3 sessions; next=1\nid status tokens cache age ttl | title\n00000022 idle 120K expired? 1h -55m | Same title",
+        "3 sessions; next=1\nid status lifecycle outcome tokens cache age ttl | title\n00000022 idle active - 120K expired? 1h -55m | Same title",
       );
       expect(f.inspections).toEqual([target]);
       expect(f.runtimeCreates).toEqual([source]);
       expect(yield* Queue.size(f.prompts)).toBe(0);
       expect(yield* f.call("sessions.info", { sessionId: target })).toMatchObject({
         session: {
-          context: { estimatedTokens: 120_000, cache: "potentially-expired" },
-          cacheEvidence: { writeTokens: 10_000 },
+          sessionId: target,
+          resolved: false,
         },
       });
     }),
@@ -1629,9 +1629,23 @@ it.effect(
         { query: "Chat" },
         { kind: "cake-chat", sessionId: CAKE_CHAT_SESSION_ID, title: "Cake Chat" },
       );
-      expect(listing).toContain("2 sessions\nid status tokens cache age ttl | project | title");
-      expect(listing).toContain("cake-chat idle 1.2K ? ? ? | — | Cake Chat");
-      expect(listing).toContain("idle 1.2K ? ? ? | Project | Project Chat");
+      expect(listing).toContain(
+        "2 sessions\nid status lifecycle outcome tokens cache age ttl | project | title",
+      );
+      expect(listing).toContain("cake-chat idle active - 1.2K ? ? ? | — | Cake Chat");
+      expect(listing).toContain("idle active - 1.2K ? ? ? | Project | Project Chat");
+      const entries = f.listReads.entries.length;
+      for (const sessionId of [CAKE_CHAT_SESSION_ID, projectChat])
+        expect(yield* f.direct("sessions.info", { sessionId })).toMatchObject({
+          ok: true,
+          session: {
+            sessionId,
+            deepLink: `cake://session/${encodeURIComponent(sessionId)}`,
+            lifecycle: "active",
+            resolved: false,
+          },
+        });
+      expect(f.listReads.entries.length).toBe(entries);
       expect(f.inspections).toEqual([]);
       expect(f.runtimeCreates).toEqual([source]);
     }),
@@ -1670,11 +1684,11 @@ it.effect(
         title: "Cake Chat",
       };
       expect(yield* f.direct("sessions.list", { query: "Foreign" }, global)).toContain(
-        "0000abcd draft ? ? ? ? | Other | Foreign task",
+        "0000abcd draft draft - ? ? ? ? | Other | Foreign task",
       );
       expect(
         yield* f.direct("sessions.list", { query: "Foreign", projectPath: "/other" }, global),
-      ).toContain("0000abcd draft ? ? ? ? | Foreign task");
+      ).toContain("0000abcd draft draft - ? ? ? ? | Foreign task");
       const projectChat = {
         kind: "cake-chat" as const,
         sessionId: projectChatSessionId("/project"),
@@ -1691,7 +1705,7 @@ it.effect(
           "0 sessions",
         );
         expect(yield* f.direct("sessions.list", { query: "Same" }, sender)).toContain(
-          "00000022 idle ? ? ? ? | Same title",
+          "00000022 idle active - ? ? ? ? | Same title",
         );
       }
       expect(
@@ -1718,11 +1732,11 @@ it.effect("keeps task-input metadata redacted in session and report text catalog
       title: "Cake Chat",
     };
     expect(yield* f.direct("sessions.list", { query: "Task" }, global)).toBe(
-      "1 sessions\nid status tokens cache age ttl | project | title\n00000022 idle ? ? ? ? | Project | Task session",
+      "1 sessions\nid status lifecycle outcome tokens cache age ttl | project | title\n00000022 idle active - ? ? ? ? | Project | Task session",
     );
     const invoke = yield* batchRegistry(f);
     const expected =
-      "1 sessions\nid status tokens cache age ttl | project | title\n00000022 idle ? ? ? ? | Project | Task session";
+      "1 sessions\nid status lifecycle outcome tokens cache age ttl | project | title\n00000022 idle active - ? ? ? ? | Project | Task session";
     expect(yield* invoke("sessions.list", { query: "Task" })).toMatchObject({
       text: expected,
       structuredContent: expected,
@@ -1746,7 +1760,7 @@ it.effect("keeps task-input metadata redacted in session and report text catalog
     });
     const report = yield* invoke("sessions.reports", {});
     expect(report.text).toBe(
-      `1 pending reports\nid\tadmissions\tsession\thandle\tstatus\ttask\nprotected-report\t0\t${target}\t-\t-\tTask session`,
+      `1 pending reports\nid\tadmissions\tsession\thandle\tstatus\ttask\nprotected-report\t0\t${target}\t-\tdone\tTask session`,
     );
     expect(JSON.stringify(report)).not.toContain("PRIVATE_");
     expect((yield* storage.state()).deferredReferences).toHaveLength(1);
@@ -1867,7 +1881,7 @@ it.effect(
       });
       // Missing historical transcripts keep their identity/title fallback, as exact lookup does.
       expect(yield* f.direct("sessions.list", { status: "resolved" })).toContain(
-        `deadbeef resolved ? ? ? ? | ${archived}`,
+        `deadbeef resolved resolved - ? ? ? ? | ${archived}`,
       );
       f.worktreeRecords.push({
         worktreePath: "/collision",
@@ -1953,7 +1967,7 @@ it.effect("paginates a minimal session roster and filters before selecting a pag
       projectPath: "/project",
     });
     expect(filtered).toBe(
-      "11 sessions\nid status tokens cache age ttl | title\n00000118 draft ? ? ? ? | Paging 18\n00000119 draft ? ? ? ? | Paging 19",
+      "11 sessions\nid status lifecycle outcome tokens cache age ttl | title\n00000118 draft draft - ? ? ? ? | Paging 18\n00000119 draft draft - ? ? ? ? | Paging 19",
     );
     const last = yield* f.call("sessions.list", { status: "draft", limit: 50, offset: 50 });
     assert.ok(typeof last === "string");
@@ -1961,12 +1975,46 @@ it.effect("paginates a minimal session roster and filters before selecting a pag
     expect(last).toContain("61 sessions\n");
     expect(yield* f.call("sessions.list", { projectPath: "/absent" })).toBe("0 sessions");
     expect(yield* f.call("sessions.info", { sessionId: target })).toMatchObject({
-      session: { firstUserMessage: "First input", sessionFile: `/cake/sessions/${target}.jsonl` },
+      session: { sessionId: target, lifecycle: "active", resolved: false },
     });
     expect(yield* f.call("sessions.list", { limit: 51 }).pipe(Effect.exit)).toMatchObject({
       _tag: "Failure",
     });
   }),
+);
+
+it.effect(
+  "resolved lifecycle is independent of stopped/completed execution outcomes without content inspection",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const families = Context.get(f.context, SessionFamilyStorage);
+      f.resolve();
+      for (const outcome of ["stopped", "completed"] as const) {
+        yield* families.registerSpawn({
+          sessionId: target,
+          projectPath: "/project",
+          workingDirectory: "/project",
+          requester: { kind: "cake-chat", sessionId: CAKE_CHAT_SESSION_ID, title: "Cake Chat" },
+          reportDelivered: true,
+          handoffSettled: true,
+          lastReport: { status: outcome, summary: "PRIVATE_REPORT", reportedAt: "2026-01-02" },
+        });
+        yield* families.recordLaunchReport(target, {
+          status: outcome,
+          summary: "PRIVATE_REPORT",
+          reportedAt: "2026-01-02",
+        });
+        expect(yield* f.call("sessions.info", { sessionId: target })).toMatchObject({
+          session: { resolved: true, lifecycle: "resolved", outcome },
+        });
+        expect(f.inspections).toEqual([]);
+        expect(yield* f.call("sessions.list", { status: "resolved" })).toContain(
+          `00000022 resolved resolved ${outcome}`,
+        );
+        f.inspections.length = 0;
+      }
+    }),
 );
 
 it.effect(
@@ -1990,17 +2038,19 @@ it.effect(
           lastReport: { status, summary: summaryText, reportedAt: "2026-01-02" },
         });
       expect(yield* f.call("sessions.list", { launchedByCakeChat: true })).toBe(
-        "2 sessions\nid status tokens cache age ttl | title\n00000022 failed ? ? ? ? | Same title\n00000033 done ? ? ? ? | Same title",
+        "2 sessions\nid status lifecycle outcome tokens cache age ttl | title\n00000022 failed active failed ? ? ? ? | Same title\n00000033 done active completed ? ? ? ? | Same title",
       );
       expect(yield* f.call("sessions.info", { sessionId: target })).toMatchObject({
         session: {
-          launch: { status: "failed", summary: "Typecheck failed", reportedAt: "2026-01-02" },
+          outcome: "failed",
+          lifecycle: "active",
+          resolved: false,
         },
       });
       expect(
         yield* f.call("sessions.list", { launchedByCakeChat: true, attentionOnly: true }),
       ).toBe(
-        "1 sessions\nid status tokens cache age ttl | title\n00000022 failed ? ? ? ? | Same title",
+        "1 sessions\nid status lifecycle outcome tokens cache age ttl | title\n00000022 failed active failed ? ? ? ? | Same title",
       );
       for (const status of ["interrupted", "stopped"] as const) {
         yield* families.recordLaunchReport(target, {
@@ -2009,13 +2059,13 @@ it.effect(
           reportedAt: "2026-01-03",
         });
         expect(yield* f.call("sessions.list", { launchedByCakeChat: true })).toContain(
-          `00000022 ${status} ? ? ? ? | Same title`,
+          `00000022 ${status} active ${status} ? ? ? ? | Same title`,
         );
         expect(
           yield* f.call("sessions.list", { launchedByCakeChat: true, attentionOnly: true }),
         ).toBe(
           status === "interrupted"
-            ? "1 sessions\nid status tokens cache age ttl | title\n00000022 interrupted ? ? ? ? | Same title"
+            ? "1 sessions\nid status lifecycle outcome tokens cache age ttl | title\n00000022 interrupted active interrupted ? ? ? ? | Same title"
             : "0 sessions",
         );
       }
@@ -2023,7 +2073,7 @@ it.effect(
       yield* f.call("sessions.send", { sessionId: third, text: "Run" });
       yield* Queue.take(f.prompts);
       expect(yield* f.call("sessions.list", { launchedByCakeChat: true })).toContain(
-        "00000033 running ? ? ? ? | Same title",
+        "00000033 running active completed ? ? ? ? | Same title",
       );
       yield* Deferred.succeed(f.messageRelease, undefined);
     }),
@@ -2214,6 +2264,17 @@ it.effect("Cake Chat keeps report policy and protected-task redaction without a 
     ).toMatchObject({ ok: true, value: { instructions: "Coordinator-owned" } });
     f.protect();
     expect(yield* call("sessions.info", { sessionId: target })).toMatchObject({
+      ok: true,
+      session: {
+        sessionId: target,
+        title: "Task session",
+        deepLink: `cake://session/${target}`,
+        resolved: false,
+        lifecycle: "active",
+      },
+    });
+    expect(f.inspections).toEqual([]);
+    expect(yield* call("sessions.history", { sessionId: target })).toMatchObject({
       ok: false,
       error: expect.stringContaining("task inputs"),
     });

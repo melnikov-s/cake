@@ -436,12 +436,16 @@ it("exposes exact Project Chat controls and conflict-safe lifecycle help", () =>
     update: async () => {
       throw new Error("Unused");
     },
+    updateMany: async () => {
+      throw new Error("Unused");
+    },
   });
   expect(operations.map((item) => item.command)).toEqual([
     "todos.list",
     "todos.read",
     "todos.create",
     "todos.update",
+    "todos.update-many",
   ]);
   expect(operations.find((item) => item.command === "todos.update")?.guidance?.join(" ")).toContain(
     "expectedRevision",

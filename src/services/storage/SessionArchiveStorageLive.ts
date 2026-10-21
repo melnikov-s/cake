@@ -898,6 +898,7 @@ export const makeSessionArchiveStorageLive = (
         ),
         locate,
         resolvedIds,
+        resolutionSnapshot: readIndex,
         resolved,
         resolvedEntry,
         resolveProject,

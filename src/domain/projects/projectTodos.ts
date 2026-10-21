@@ -10,9 +10,11 @@ import { ApplicationState } from "../../services/storage/ApplicationState";
 import { ProjectError } from "../../contracts/projects/project-error";
 import {
   emptyProjectTodos,
+  ProjectTodoUpdates,
+  type ProjectTodo,
   projectTodoReminder,
   ProjectTodoCreate,
-  ProjectTodoUpdate,
+  type ProjectTodoUpdate,
   ProjectTodoUserMutation,
   type ProjectTodos,
   type ProjectTodoUserChange,
@@ -64,14 +66,16 @@ export const read = Effect.fn("ProjectTodos.read")(function* (projectPath: strin
 export const create = Effect.fn("ProjectTodos.create")(function* (
   projectPath: string,
   request: ProjectTodoCreate,
+  resolved = false,
 ) {
   const input = yield* Schema.decodeUnknownEffect(ProjectTodoCreate)(request).pipe(mapError);
   const item = {
     ...input,
     status: input.status ?? "",
     associations: input.associations ?? [],
+    completionPolicy: input.completionPolicy ?? ("linked" as const),
     id: randomUUID(),
-    state: "open" as const,
+    state: resolved ? ("done" as const) : ("open" as const),
     revision: 0,
   };
   yield* change(projectPath, (value) =>
@@ -87,40 +91,84 @@ export const update = Effect.fn("ProjectTodos.update")(function* (
   request: ProjectTodoUpdate,
   user = false,
 ) {
-  const input = yield* Schema.decodeUnknownEffect(ProjectTodoUpdate)(request).pipe(mapError);
+  const [item] = yield* updateMany(projectPath, [request], user);
+  if (!item) return yield* error("Unknown to-do in this project");
+  return item;
+});
+
+/** Validate and commit the whole bounded batch in one storage transaction, or write nothing. */
+export const updateMany = Effect.fn("ProjectTodos.updateMany")(function* (
+  projectPath: string,
+  requests: readonly ProjectTodoUpdate[],
+  user = false,
+  resolved: ReadonlySet<string> = new Set(),
+) {
+  const inputs = yield* Schema.decodeUnknownEffect(ProjectTodoUpdates)(requests).pipe(mapError);
   const next = yield* change(projectPath, (value) =>
     Effect.gen(function* () {
-      const item = value.items.find((item) => item.id === input.id);
-      if (!item) return yield* error("Unknown to-do in this project");
-      if (item.revision !== input.expectedRevision)
-        return yield* error("To-do changed; read it again before updating");
-      const updated = {
-        ...item,
-        title: input.title ?? item.title,
-        description: input.description ?? item.description,
-        status: input.status ?? item.status,
-        state: input.state ?? item.state,
-        associations: input.associations ?? item.associations,
-        revision: item.revision + 1,
-      };
-      let result: ProjectTodos = {
-        ...value,
-        items: value.items.map((candidate) => (candidate.id === item.id ? updated : candidate)),
-      };
-      if (user && updated.state !== item.state)
-        result = enqueue(result, {
-          _tag: "ItemState",
-          sequence: value.sequence + 1,
-          id: item.id,
-          title: updated.title,
-          state: updated.state,
-        });
+      let result = value;
+      for (const input of inputs) {
+        const item = result.items.find((item) => item.id === input.id);
+        if (!item) return yield* error("Unknown to-do in this project");
+        if (item.revision !== input.expectedRevision)
+          return yield* error(
+            `Atomic update rejected: to-do ${input.id} changed (current revision ${item.revision}); no items committed`,
+          );
+        const updated = {
+          ...item,
+          title: input.title ?? item.title,
+          description: input.description ?? item.description,
+          status: input.status ?? item.status,
+          state:
+            input.state ??
+            (resolved.has(item.id) && item.state === "open" ? ("done" as const) : item.state),
+          associations: input.associations ?? item.associations,
+          ...(input.state !== undefined
+            ? { completionPolicy: "manual" as const }
+            : input.completionPolicy !== undefined
+              ? { completionPolicy: input.completionPolicy }
+              : {}),
+          revision: item.revision + 1,
+        };
+        result = {
+          ...result,
+          items: result.items.map((candidate) => (candidate.id === item.id ? updated : candidate)),
+        };
+        if (user && updated.state !== item.state)
+          result = enqueue(result, {
+            _tag: "ItemState",
+            sequence: result.sequence + 1,
+            id: item.id,
+            title: updated.title,
+            state: updated.state,
+          });
+      }
       return result;
     }),
   );
-  const item = next.items.find((item) => item.id === input.id);
-  if (!item) return yield* error("Unknown to-do in this project");
-  return item;
+  return inputs.flatMap((input) => next.items.filter((item) => item.id === input.id));
+});
+
+/** Resolution is monotonic for to-dos. Revision checks preserve edits/reopens made during the join. */
+export const completeResolved = Effect.fn("ProjectTodos.completeResolved")(function* (
+  projectPath: string,
+  candidates: readonly Pick<ProjectTodo, "id" | "revision">[],
+) {
+  if (!candidates.length) return;
+  yield* change(projectPath, (value) =>
+    Effect.succeed({
+      ...value,
+      items: value.items.map((item) =>
+        item.state === "open" &&
+        item.completionPolicy === "linked" &&
+        candidates.some(
+          (candidate) => candidate.id === item.id && candidate.revision === item.revision,
+        )
+          ? { ...item, state: "done" as const, revision: item.revision + 1 }
+          : item,
+      ),
+    }),
+  );
 });
 
 const changeKey = (entry: ProjectTodoUserChange) =>
@@ -204,6 +252,7 @@ export const ensureSession = Effect.fn("ProjectTodos.ensureSession")(function* (
           description,
           status: "",
           state: "open" as const,
+          completionPolicy: "linked" as const,
           revision: 0,
           associations: [{ kind: "session" as const, sessionId, title: name }],
         },

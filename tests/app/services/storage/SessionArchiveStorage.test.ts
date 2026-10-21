@@ -79,6 +79,50 @@ const withPlatform = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   effect.pipe(Effect.provide(PlatformLive));
 
 describe("SessionArchiveStorage", () => {
+  it.effect(
+    "resolution snapshot reads the existing metadata index exactly once, without archives, migrations or transcripts",
+    () =>
+      withPlatform(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const metadataRoot = yield* fs.makeTempDirectoryScoped({
+            prefix: "cake-resolution-snapshot-",
+          });
+          const indexPath = `${metadataRoot}/resolution.json`;
+          const document = {
+            version: 1,
+            directories: { "/sessions/project": ["resolved-session"] },
+          };
+          yield* fs.writeFileString(indexPath, JSON.stringify(document));
+          const reads: string[] = [];
+          const scans: string[] = [];
+          const instrumented = Layer.succeed(FileSystem.FileSystem, {
+            ...fs,
+            readFileString: (...args) => {
+              reads.push(args[0]);
+              return fs.readFileString(...args);
+            },
+            readDirectory: (...args) => {
+              scans.push(args[0]);
+              return fs.readDirectory(...args);
+            },
+          });
+          const snapshot = yield* Effect.flatMap(SessionArchiveStorage, (storage) =>
+            storage.resolutionSnapshot(),
+          ).pipe(
+            Effect.provide(
+              makeSessionArchiveStorageLive(metadataRoot, {
+                activeRoot: "/sessions",
+                resolvedRoot: "/resolved",
+              }).pipe(Layer.provide(Layer.mergeAll(instrumented, NodePath.layer))),
+            ),
+          );
+          expect(snapshot).toEqual(document);
+          expect(reads).toEqual([indexPath]);
+          expect(scans).toEqual([]);
+        }),
+      ),
+  );
   it.effect("migrates stale v1 Pi roots without modifying either transcript copy", () =>
     withPlatform(
       Effect.gen(function* () {

@@ -3,6 +3,8 @@ import { parseSessionLink, sessionLink } from "../../contracts/conversations/mes
 import {
   ProjectTodoCreate,
   ProjectTodoUpdate,
+  ProjectTodoListInput,
+  ProjectTodoUpdates,
   type ProjectTodoAssociation,
 } from "../../contracts/projects/project-todos";
 import { ProjectError } from "../../contracts/projects/project-error";
@@ -11,6 +13,8 @@ import { lookup } from "../project-sessions/projectSessionMetadata";
 import * as sessionReferences from "../project-sessions/sessionReferences";
 import * as messageReferences from "../conversations/messageReferences";
 import * as todos from "./projectTodos";
+import { agentListPage } from "../../contracts/agent/agent-list-data";
+import { join } from "./projectTodoResolution";
 
 const asError = <A, E, R>(operation: Effect.Effect<A, E, R>) =>
   operation.pipe(
@@ -57,24 +61,119 @@ const validate = Effect.fn("ProjectTodos.validateAssociations")(function* (
   return result;
 });
 
+export const list = Effect.fn("ProjectTodos.listForAgent")(function* (
+  projectPath: string,
+  request: ProjectTodoListInput,
+) {
+  const input = yield* Schema.decodeUnknownEffect(ProjectTodoListInput)(request).pipe(asError);
+  const query = input.query?.toLowerCase();
+  const value = yield* todos.list(projectPath);
+  const page = agentListPage(
+    value.items.filter(
+      (item) =>
+        (!input.state || item.state === input.state) &&
+        (!query || item.title.toLowerCase().includes(query)),
+    ),
+    input,
+  );
+  const summary = (item: (typeof value.items)[number]) => ({
+    id: item.id,
+    title: item.title,
+    state: item.state,
+    revision: item.revision,
+  });
+  if (input.view !== "reconciliation") return { ...page, items: page.items.map(summary) };
+  const joined = yield* join(projectPath, page.items);
+  return {
+    ...page,
+    items: joined.map(({ item, sessions }) => ({
+      ...summary(item),
+      completionPolicy: item.completionPolicy ?? ("manual" as const),
+      sessions,
+    })),
+  };
+});
+
+export const read = Effect.fn("ProjectTodos.readForAgent")(function* (
+  projectPath: string,
+  id: string,
+) {
+  const item = yield* todos.read(projectPath, id);
+  const [joined] = yield* join(projectPath, [item]);
+  return { ...item, sessions: joined?.sessions ?? [] };
+});
+
+export const updateMany = Effect.fn("ProjectTodos.updateManyWithAssociations")(function* (
+  projectPath: string,
+  request: readonly ProjectTodoUpdate[],
+) {
+  const inputs = yield* Schema.decodeUnknownEffect(ProjectTodoUpdates)(request).pipe(asError);
+  const canonical = yield* Effect.forEach(inputs, (input) =>
+    Effect.gen(function* () {
+      return input.associations
+        ? { ...input, associations: yield* validate(projectPath, input.associations) }
+        : input;
+    }),
+  );
+  const changesWork = canonical.filter(
+    (input) =>
+      input.state === undefined &&
+      (input.associations !== undefined || input.completionPolicy !== undefined),
+  );
+  const current = changesWork.length ? (yield* todos.list(projectPath)).items : [];
+  const candidates = changesWork.flatMap((input) => {
+    const item = current.find((item) => item.id === input.id);
+    return item &&
+      (input.completionPolicy ?? item.completionPolicy) === "linked" &&
+      item.state === "open"
+      ? [{ ...item, ...input }]
+      : [];
+  });
+  const joined = yield* join(projectPath, candidates);
+  const resolved = new Set(
+    joined
+      .filter(
+        ({ sessions }) => sessions.length && sessions.every((session) => session.resolved === true),
+      )
+      .map(({ item }) => item.id),
+  );
+  return yield* todos.updateMany(projectPath, canonical, false, resolved);
+});
+
 export const create = Effect.fn("ProjectTodos.createWithAssociations")(function* (
   projectPath: string,
   request: ProjectTodoCreate,
 ) {
   const input = yield* Schema.decodeUnknownEffect(ProjectTodoCreate)(request).pipe(asError);
-  return yield* todos.create(projectPath, {
-    ...input,
-    associations: yield* validate(projectPath, input.associations ?? []),
-  });
+  const associations = yield* validate(projectPath, input.associations ?? []);
+  const [joined] =
+    (input.completionPolicy ?? "linked") === "linked"
+      ? yield* join(projectPath, [
+          {
+            ...input,
+            associations,
+            id: "00000000-0000-4000-8000-000000000000",
+            state: "open",
+            revision: 0,
+            status: input.status ?? "",
+          },
+        ])
+      : [];
+  const resolved = Boolean(
+    joined?.sessions.length && joined.sessions.every((session) => session.resolved === true),
+  );
+  return yield* todos.create(projectPath, { ...input, associations }, resolved);
 });
 export const update = Effect.fn("ProjectTodos.updateWithAssociations")(function* (
   projectPath: string,
   request: ProjectTodoUpdate,
 ) {
   const input = yield* Schema.decodeUnknownEffect(ProjectTodoUpdate)(request).pipe(asError);
-  if (!input.associations) return yield* todos.update(projectPath, input);
-  return yield* todos.update(projectPath, {
-    ...input,
-    associations: yield* validate(projectPath, input.associations),
-  });
+  const [item] = yield* updateMany(projectPath, [input]);
+  if (!item)
+    return yield* new ProjectError({
+      operation: "projectTodoAssociations",
+      message: "Unknown to-do",
+    });
+  return item;
 });

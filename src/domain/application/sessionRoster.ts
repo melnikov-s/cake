@@ -9,6 +9,8 @@ interface RosterRow {
   readonly title: string;
   readonly projectName?: string;
   readonly status: AgentSessionStatus;
+  readonly resolved?: boolean;
+  readonly outcome?: string;
   readonly contextMetadata?: SessionContextMetadata;
 }
 
@@ -37,7 +39,9 @@ export function sessionRoster(
   const header = `${page.total} sessions${page.nextOffset === null ? "" : `; next=${page.nextOffset}`}`;
   const lines = [header];
   if (!rows.length) return header;
-  lines.push(`id status tokens cache age ttl | ${showProject ? "project | " : ""}title`);
+  lines.push(
+    `id status lifecycle outcome tokens cache age ttl | ${showProject ? "project | " : ""}title`,
+  );
   for (const row of rows) {
     const context = sessionContextCost(row.contextMetadata, now);
     const activity = context.lastModelActivityAt ? Date.parse(context.lastModelActivityAt) : NaN;
@@ -55,7 +59,7 @@ export function sessionRoster(
     const tokens =
       context.estimatedTokens === undefined ? "?" : compactNumber.format(context.estimatedTokens);
     lines.push(
-      `${sessionReference(row.sessionId, knownIds)} ${row.status} ${tokens} ${cache} ${age} ${ttl} | ${showProject ? `${label(row.projectName ?? "—")} | ` : ""}${label(row.title)}`,
+      `${sessionReference(row.sessionId, knownIds)} ${row.status} ${row.resolved || row.status === "resolved" ? "resolved" : row.status === "draft" ? "draft" : "active"} ${row.outcome ?? "-"} ${tokens} ${cache} ${age} ${ttl} | ${showProject ? `${label(row.projectName ?? "—")} | ` : ""}${label(row.title)}`,
     );
   }
   return lines.join("\n");

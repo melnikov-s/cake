@@ -65,6 +65,7 @@ import { Electron } from "../../../src/services/electron/Electron";
 import { PiModels } from "../../../src/services/pi/PiModels";
 import { ProjectSessionRuntimeHost } from "../../../src/services/pi/ProjectSessionRuntimeHost";
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
+import { sessionDirectoryPath } from "../../../src/services/storage/session-files";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
 import { SubagentEnvironment } from "../../../src/services/subagents/SubagentEnvironment";
 import { VsCodeServer } from "../../../src/services/vscode/VsCodeServer";
@@ -637,6 +638,16 @@ const makeLayer = (
                     ? "resolved"
                     : "active",
               ),
+        resolutionSnapshot: () =>
+          Effect.succeed({
+            version: 1 as const,
+            directories: {
+              [sessionDirectoryPath({
+                workingDirectory: hooks.family?.workingDirectory ?? "/project",
+                root: "/sessions",
+              })]: [...resolvedSessionIds],
+            },
+          }),
         resolvedIds: () =>
           Effect.succeed(
             new Set([
@@ -1935,6 +1946,7 @@ describe("Project Sessions domain", () => {
     return Effect.gen(function* () {
       const item = yield* projectTodos.create("/project", {
         title: "Review report",
+        completionPolicy: "manual",
         description: "Review report.",
         status: "Awaiting review",
         associations: [{ kind: "session", sessionId: "session-1", title: "Session one" }],
@@ -1972,7 +1984,7 @@ describe("Project Sessions domain", () => {
   });
 
   it.effect(
-    "agent/native resolution and restoration preserve open session-only and mixed to-dos",
+    "explicit resolution closes all-linked and report-source to-dos; restore never reopens",
     () =>
       Effect.gen(function* () {
         const associations = [
@@ -2001,12 +2013,41 @@ describe("Project Sessions domain", () => {
         yield* projectSessionLifecycle.resolve({ sessionId: "session-1" });
         assert.equal((yield* projectTodos.read("/project", item.id)).state, "open");
         yield* projectSessionLifecycle.resolve({ sessionId: "session-2" });
-        assert.equal((yield* projectTodos.read("/project", item.id)).state, "open");
-        assert.equal((yield* projectTodos.read("/project", mixed.id)).state, "open");
+        assert.equal((yield* projectTodos.read("/project", item.id)).state, "done");
+        assert.equal((yield* projectTodos.read("/project", mixed.id)).state, "done");
         assert.equal((yield* projectTodos.list("/project")).pending.length, 0); // agent/native changes are not labeled user actions
         yield* projectSessionLifecycle.restore({ sessionId: "session-1" });
-        assert.equal((yield* projectTodos.read("/project", item.id)).state, "open");
+        assert.equal((yield* projectTodos.read("/project", item.id)).state, "done");
       }).pipe(Effect.provide(makeLayer())),
+  );
+
+  it.effect("to-do sync failure cannot reject a committed native resolution", () =>
+    Effect.gen(function* () {
+      const item = yield* projectTodos.create("/project", {
+        title: "Work",
+        description: "Work.",
+        associations: [{ kind: "session", sessionId: "session-1", title: "Work" }],
+      });
+      const archive = yield* SessionArchiveStorage;
+      yield* projectSessionLifecycle.resolve({ sessionId: "session-1" }).pipe(
+        Effect.provideService(SessionArchiveStorage, {
+          ...archive,
+          resolutionSnapshot: () =>
+            Effect.fail(
+              new SessionArchiveStorageError({
+                operation: "resolutionSnapshot",
+                sessionId: "",
+                message: "Advisory read failed",
+              }),
+            ),
+        }),
+      );
+      assert.equal(
+        (yield* projectSessionMetadata.lookup({ sessionId: "session-1" })).resolved,
+        true,
+      );
+      assert.equal((yield* projectTodos.read("/project", item.id)).state, "open");
+    }).pipe(Effect.provide(makeLayer())),
   );
 
   it.effect("to-do state and native family-parent lifecycle stay independent", () => {
@@ -2030,6 +2071,11 @@ describe("Project Sessions domain", () => {
           { kind: "session", sessionId: "session-1", title: "Child implementation" },
         ],
       });
+      const linked = yield* projectTodos.create("/project", {
+        title: "Linked family work",
+        description: "Work.",
+        associations: item.associations,
+      });
       yield* projectTodos.mutateUser("/project", {
         _tag: "SetState",
         id: item.id,
@@ -2047,6 +2093,7 @@ describe("Project Sessions domain", () => {
         state: "open",
       });
       yield* projectSessionLifecycle.resolve({ sessionId: "parent-1" });
+      assert.equal((yield* projectTodos.read("/project", linked.id)).state, "done");
       assert.equal((yield* projectTodos.read("/project", item.id)).state, "open");
       yield* projectSessionLifecycle.restore({ sessionId: "parent-1" });
       assert.equal((yield* projectTodos.read("/project", item.id)).state, "open");

@@ -17,10 +17,46 @@ const SafeSessionMetadata = Schema.Struct({
   ok: Schema.optionalKey(Schema.Boolean),
   command: Schema.optionalKey(Schema.String),
   status: Schema.optionalKey(
-    Schema.Literals(["started", "accepted", "queued", "stopping", "renamed", "resolved"]),
+    Schema.Literals([
+      "started",
+      "accepted",
+      "queued",
+      "stopping",
+      "renamed",
+      "resolved",
+      "running",
+      "idle",
+      "stopped",
+      "done",
+      "failed",
+      "interrupted",
+      "needs-you",
+      "unread",
+      "draft",
+    ]),
   ),
   workspacePath: Schema.optionalKey(Schema.String),
   resolved: Schema.optionalKey(Schema.Boolean),
+  deepLink: Schema.optionalKey(Schema.String),
+  lifecycle: Schema.optionalKey(Schema.Literals(["active", "resolved", "draft"])),
+  outcome: Schema.optionalKey(
+    Schema.Literals([
+      "complete",
+      "completed",
+      "failed",
+      "aborted",
+      "done",
+      "stopped",
+      "blocked",
+      "interrupted",
+      "ready",
+      "investigation",
+    ]),
+  ),
+  draft: Schema.optionalKey(Schema.Boolean),
+  familyId: Schema.optionalKey(Schema.String),
+  familyParentSessionId: Schema.optionalKey(Schema.String),
+  familyRootSessionId: Schema.optionalKey(Schema.String),
 });
 
 /** The global model sees IDs. Only this trusted boundary can mint recipient grants. */
@@ -65,11 +101,15 @@ export const safeCoordinatorProjection = Effect.fn("CakeChats.safeCoordinatorPro
     const inputs = yield* TaskInputStorage;
     const pointer = Schema.decodeUnknownOption(SessionPointer)(value);
     if (Option.isSome(pointer) && (yield* inputs.isRecipient(pointer.value.sessionId))) {
-      const metadata = Schema.decodeUnknownOption(SafeSessionMetadata)(value);
-      return {
-        ...(Option.isSome(metadata) ? metadata.value : pointer.value),
-        title: "Task session",
-      };
+      // Validate each allowed metadata field independently: one content-derived/invalid
+      // field must not discard an otherwise valid identity, deep link or lifecycle.
+      const metadata = Object.fromEntries(
+        Object.entries(SafeSessionMetadata.fields).flatMap(([key, schema]) => {
+          const field = value[key];
+          return field !== undefined && Schema.is(schema)(field) ? [[key, field]] : [];
+        }),
+      );
+      return { ...metadata, title: "Task session" };
     }
     let fields = Object.entries(value);
     const target = Schema.decodeUnknownOption(SessionPointer)(value.target);

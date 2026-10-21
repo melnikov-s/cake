@@ -214,6 +214,7 @@ describe("permanent Cake Chat", () => {
           "todos.read",
           "todos.create",
           "todos.update",
+          "todos.update-many",
         ]);
         const prompt = () => configured.cakeChatSystemPrompt?.() ?? "";
         expect(prompt()).toContain("/zombies chat only.");
@@ -237,7 +238,9 @@ describe("permanent Cake Chat", () => {
         );
         expect(prompt()).toContain(todo.id);
         expect(prompt()).toContain("Project commitment");
-        expect((yield* Effect.promise(() => todoControl.list(todoSignal))).items).toHaveLength(1);
+        expect((yield* Effect.promise(() => todoControl.list({}, todoSignal))).items).toHaveLength(
+          1,
+        );
         expect(f.state().projects[1]?.todos).toBeUndefined();
         const control = options.runtime.projectChatInstructions;
         if (!control) throw new Error("Expected Project Chat instruction authority");

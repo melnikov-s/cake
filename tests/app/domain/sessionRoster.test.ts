@@ -28,7 +28,7 @@ const page = { total: 1, nextOffset: null };
 describe("LLM session roster", () => {
   it("uses one compact header, rounded tokens, relative freshness and a bare routable id", () => {
     expect(sessionRoster([row], page, [a], at + 120_000, false)).toBe(
-      "1 sessions\nid status tokens cache age ttl | title\n12345678 idle 18K warm 2m 3m | Implement search",
+      "1 sessions\nid status lifecycle outcome tokens cache age ttl | title\n12345678 idle active - 18K warm 2m 3m | Implement search",
     );
   });
 
@@ -43,16 +43,16 @@ describe("LLM session roster", () => {
       ),
     ).toContain("145K expired? 1h -55m");
     expect(sessionRoster([{ ...row, contextMetadata: undefined }], page, [a], at, false)).toContain(
-      "idle ? ? ? ?",
+      "idle active - ? ? ? ?",
     );
     expect(
       sessionRoster([{ ...row, contextMetadata: { estimatedTokens: 0 } }], page, [a], at, false),
-    ).toContain("idle 0 ? ? ?");
+    ).toContain("idle active - 0 ? ? ?");
   });
 
   it("shows project names only for cross-project discovery and preserves collision-safe references", () => {
     expect(sessionRoster([row], { total: 2, nextOffset: 1 }, [a, b], at, true)).toBe(
-      "2 sessions; next=1\nid status tokens cache age ttl | project | title\n112345678 idle 18K warm 0s 5m | My App | Implement search",
+      "2 sessions; next=1\nid status lifecycle outcome tokens cache age ttl | project | title\n112345678 idle active - 18K warm 0s 5m | My App | Implement search",
     );
     expect(sessionRoster([], { total: 0, nextOffset: null }, [], at, false)).toBe("0 sessions");
   });

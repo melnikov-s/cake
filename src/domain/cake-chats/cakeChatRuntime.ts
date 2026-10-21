@@ -108,6 +108,7 @@ const CAKE_CHAT_OPERATIONS = [
   "todos.read",
   "todos.create",
   "todos.update",
+  "todos.update-many",
   "models.list",
   "models.info",
   "session.info",
@@ -488,12 +489,15 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
           },
       projectTodos: project
         ? {
-            list: (signal) => run(projectTodos.list(project.path), { signal }),
-            read: (id, signal) => run(projectTodos.read(project.path, id), { signal }),
+            list: (input, signal) =>
+              run(projectTodoAssociations.list(project.path, input), { signal }),
+            read: (id, signal) => run(projectTodoAssociations.read(project.path, id), { signal }),
             create: (input, signal) =>
               run(projectTodoAssociations.create(project.path, input), { signal }),
             update: (input, signal) =>
               run(projectTodoAssociations.update(project.path, input), { signal }),
+            updateMany: (input, signal) =>
+              run(projectTodoAssociations.updateMany(project.path, input), { signal }),
           }
         : undefined,
       projectChatInstructions: {
@@ -662,6 +666,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
                 invocation.name.startsWith("sessions.") &&
                 ![
                   "sessions.send",
+                  "sessions.info",
                   "sessions.open",
                   "sessions.abort",
                   "sessions.compact",
