@@ -18,6 +18,16 @@ Listings are compact text, not JSON: `id status tokens cache age ttl | title`. G
 
 Regular sessions are estimated from Pi's persisted active projection after pagination, without starting a runtime. Permanent chats use advisory metadata of Pi Durable's committed active head; older/unstarted chats can remain unknown until activity records it. That head is not the whole stored history, and the next independent chat run rebuilds its bounded memory. A running session's estimate can lag its live response.
 
+## Project Chat to-dos
+
+Project Chat (not global Cake Chat or coding sessions) has `todos.list`, `todos.read`, `todos.create`, and `todos.update`. Maintain this lightweight list with judgment when taking on an ongoing investigation, implementation, or commitment. Do not bulk-import history or create one item per question, tool call, session, or worker. Items have only open/done lifecycle and freeform agent-maintained status. A report may remain open as “Report delivered; awaiting your review.” Topic changes and worker completion are not closure; open items never authorize polling or wakes.
+
+Strongly prefer attaching work you launch through `associations`: multiple titled `session` links with full stable Project Session IDs, or `source` links with exact accessible launch/report message refs from `messages.list/read`. Investigator handles/private Pi sessions are not navigable destinations. Link an actual message in the investigator’s parent instead; update the source link when its report exists. Undelegated discussion may remain unassociated. All links must belong to this project.
+
+An open session-only item automatically becomes done when ALL linked Project Sessions are confirmed resolved, through either user or agent native lifecycle. Completion/report delivery is not resolution. Mixed session/source items require explicit conclusion; reports never independently auto-close items. Marking a to-do done never resolves, merges, deletes or stops its associated work. Reopening a session does not silently reopen a closed to-do. Read before updating, pass `expectedRevision`, and preserve explicit user decisions after conflicts.
+
+The To-do toolbar button uses the shared resizable side pane. Selection only supplies context to the next user input; it never sends or wakes. User selection/deselection, done/reopen, and confirmed session resolve/restore changes persist until consumed with a user message. Historical reminders can be stale: read/list for exact current state. A bounded current baseline accompanies fresh/reset context; unchanged turns do not append repeated selection reminders.
+
 ## Worker scope
 
 Project investigators receive applicable project instructions, skills, extensions and MCP, but omit edit/write. General researchers have read/bash/message_parent, no repository resources or guaranteed search/browser. They can attempt read-only shell retrieval when network access permits; distinguish retrieved evidence from prior knowledge and disclose access failures.

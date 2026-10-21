@@ -372,7 +372,7 @@ describe("Session management workflow", () => {
     await fixture.user.click(region().getByRole("button", { name: "Resolve Family parent" }));
     expect(resolve).toHaveBeenCalledOnce();
     expect(resolve).toHaveBeenCalledWith(
-      { sessionId: "parent", workingDirectory: projectPath },
+      { sessionId: "parent", workingDirectory: projectPath, userInitiated: true },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     await fixture.publishSessions(family.map((session) => ({ ...session, resolved: true })));
@@ -383,7 +383,7 @@ describe("Session management workflow", () => {
     await fixture.user.click(region(true).getByRole("button", { name: "Restore Family parent" }));
     await waitFor(() => expect(restore).toHaveBeenCalledOnce());
     expect(restore).toHaveBeenCalledWith(
-      { sessionId: "parent", workingDirectory: projectPath },
+      { sessionId: "parent", workingDirectory: projectPath, userInitiated: true },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     await fixture.publishSessions(family);

@@ -179,7 +179,7 @@ describe("App shell navigation workflow", () => {
     expect(forward()).toHaveProperty("disabled", true);
     await fixture.user.click(screen.getByRole("button", { name: "Restore beta conversation" }));
     expect(restore).toHaveBeenCalledWith(
-      { sessionId: "beta", workingDirectory: "/beta" },
+      { sessionId: "beta", workingDirectory: "/beta", userInitiated: true },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     // Successful RPC alone must not promote an archived preview.

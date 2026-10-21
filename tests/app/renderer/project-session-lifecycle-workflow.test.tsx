@@ -34,7 +34,7 @@ it("restores an archived project session and waits for a fresh projection before
     await fixture.user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(restore).toHaveBeenCalledOnce());
     expect(restore).toHaveBeenCalledWith(
-      { sessionId: "resolved", workingDirectory: "/project" },
+      { sessionId: "resolved", workingDirectory: "/project", userInitiated: true },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     expect(prompt).not.toHaveBeenCalled();

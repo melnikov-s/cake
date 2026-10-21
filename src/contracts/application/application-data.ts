@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect";
+import { ProjectTodos } from "../projects/project-todos";
 import { SessionPluginControls } from "./session-plugin-controls";
 import { ThinkingLevel } from "../pi/model-data";
 import { SESSION_LABEL_COLORS } from "../../utils/session-label-palette";
@@ -223,6 +224,7 @@ export const ProjectRecord = Schema.Struct({
   lastOpenedAt: IsoTimestamp,
   settings: Schema.optionalKey(ProjectSettings),
   workflow: Schema.optionalKey(ProjectWorkflow),
+  todos: Schema.optionalKey(ProjectTodos),
 });
 
 export const ExperimentalFeatures = Schema.Struct({ dynamicWorkflows: Schema.Boolean });

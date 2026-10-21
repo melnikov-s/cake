@@ -2,6 +2,13 @@
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
+import { Effect, Layer, ManagedRuntime } from "effect";
+import * as projectTodos from "../../../src/domain/projects/projectTodos";
+import { upsertProject } from "../../../src/domain/application/application";
+import { ApplicationState } from "../../../src/services/storage/ApplicationState";
+import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
+import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import { applyProjectCatalogUpdate } from "../../../src/renderer/reducers/CatalogReducer";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
@@ -40,7 +47,7 @@ afterEach(() => {
   Reflect.deleteProperty(SVGElement.prototype, "getBBox");
 });
 
-async function fixture() {
+async function fixture(mutateTodos?: Client["projectTodos"]["mutateUser"]) {
   const browserState = (sessionId: string) => ({
     sessionId,
     url: "https://example.com/",
@@ -71,6 +78,7 @@ async function fixture() {
     client: {
       cakeChats: { open: async () => undefined, setUnread: async () => undefined },
       projectSessions: { open: async () => undefined },
+      projectTodos: mutateTodos ? { mutateUser: mutateTodos } : {},
       browser: {
         open: browserOpen,
         updateBounds: async ({ sessionId }) => browserState(sessionId),
@@ -138,6 +146,95 @@ async function fixture() {
     },
   };
 }
+
+it("toggles Project Chat to-dos in the existing side pane, selects/deselects, completes/reopens and navigates titled work links", async () => {
+  const runtime = ManagedRuntime.make(
+    ApplicationState.layer.pipe(
+      Layer.provide(
+        Layer.succeed(
+          ApplicationStorage,
+          ApplicationStorage.of({
+            load: () => Effect.succeed({ state: defaultApplicationState(), source: "current" }),
+            save: () => Effect.void,
+          }),
+        ),
+      ),
+    ),
+  );
+  try {
+    await runtime.runPromise(upsertProject("/zombies", "zombies"));
+    await runtime.runPromise(upsertProject("/finance", "finance"));
+    const item = await runtime.runPromise(
+      projectTodos.create("/zombies", {
+        title: "Investigate startup",
+        status: "Report delivered; awaiting your review",
+        associations: [{ kind: "session", sessionId: "task", title: "Startup investigation" }],
+      }),
+    );
+    const completed = await runtime.runPromise(
+      projectTodos.create("/zombies", { title: "Earlier question", status: "Answered" }),
+    );
+    await runtime.runPromise(
+      projectTodos.update("/zombies", { id: completed.id, expectedRevision: 0, state: "done" }),
+    );
+    const projectSnapshot = () =>
+      runtime.runPromise(Effect.map(ApplicationState, (state) => state.snapshot().projects));
+    using f = await fixture(async (request) => {
+      const value = await runtime.runPromise(
+        projectTodos.mutateUser(request.projectPath, request.mutation),
+      );
+      const projects = await projectSnapshot();
+      act(() =>
+        applyProjectCatalogUpdate(f.models.projects, {
+          _tag: "Snapshot",
+          revision: value.sequence + 1,
+          projects,
+        }),
+      );
+      return value;
+    });
+    const initialProjects = await projectSnapshot();
+    act(() =>
+      applyProjectCatalogUpdate(f.models.projects, {
+        _tag: "Snapshot",
+        revision: 1,
+        projects: initialProjects,
+      }),
+    );
+    await f.user.click(screen.getByRole("button", { name: "Open Project Chat for zombies" }));
+    const toggle = screen.getByRole("button", { name: "To-do" });
+    await f.user.click(toggle);
+    const panel = screen.getByRole("complementary", { name: "To-do" });
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(within(panel).getByText("Report delivered; awaiting your review")).toBeTruthy();
+    expect(within(panel).queryByText("Earlier question")).toBeNull();
+    const select = within(panel).getByRole("button", { name: item.title });
+    await f.user.click(select);
+    await waitFor(() => expect(select.getAttribute("aria-pressed")).toBe("true"));
+    await f.user.click(select);
+    await waitFor(() => expect(select.getAttribute("aria-pressed")).toBe("false"));
+    await f.user.click(within(panel).getByRole("button", { name: `Mark done: ${item.title}` }));
+    await waitFor(() =>
+      expect(
+        within(panel).getByText(
+          "No open to-dos. Your agent can add a thread when taking on a commitment.",
+        ),
+      ).toBeTruthy(),
+    );
+    await f.user.click(within(panel).getByRole("button", { name: "Done (2)" }));
+    await f.user.click(within(panel).getByRole("button", { name: `Reopen: ${item.title}` }));
+    await waitFor(() =>
+      expect(within(panel).getByRole("list", { name: "Open to-dos" })).toBeTruthy(),
+    );
+    await f.user.click(screen.getByRole("button", { name: "Close To-do" }));
+    expect(screen.getByRole("combobox", { name: "Message Project Chat" })).toBeTruthy();
+    await f.user.click(toggle);
+    await f.user.click(screen.getByRole("link", { name: "Startup investigation" }));
+    await waitFor(() => expect(f.root.appShellStore.activeConversation?.sessionId).toBe("task"));
+  } finally {
+    await runtime.dispose();
+  }
+});
 
 it("opens Project Chat from its collapsed project header with VS Code and Terminal at the registered project root", async () => {
   using f = await fixture();

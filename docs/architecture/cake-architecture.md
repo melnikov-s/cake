@@ -341,6 +341,20 @@ is a refactoring signal, not precedent.
   primitives; shared chat primitives do not consume Project-only contexts.
   **ScreenCaptureAttachmentStore** owns capture destination presentation and routing,
   including unsent pane identities that intentionally remain outside sidebar lists.
+- **Project Chat to-dos** are Project-owned ApplicationStorage data, projected through
+  the existing Project catalog into `Project.todos`; `ProjectTodosStore` owns only
+  local edits, disclosure and side-pane interaction. The To-do toolbar toggle selects
+  the same accessory slot/width as side chat, with its existing narrow replacement
+  and composer-focus restoration. No session, worker or tool deterministically creates
+  an item. Multiple titled session/exact-message associations support a commitment.
+  Native session resolution completes session-only items once all links are resolved;
+  source/mixed items require explicit conclusion. To-do edits never drive session lifecycle.
+  User context deltas coalesce in the Project record; read-only send preparation copies
+  them into the existing recoverable input. A bound receipt is acknowledged only after
+  Pi Durable has placed that input in originals, not on preparation or queue admission.
+  Newer concurrent edits invalidate an older receipt and remain pending (at-least-once
+  context delivery, not exactly-once prose). A bounded baseline in Project Chat’s live
+  system context survives recreation/reset without repeated per-message selection blocks.
 - **Conversation navigation**: pane layouts own the focused session and pane-local
   histories within the Project Session and Cake Chat/Project Chat workspaces.
   `AppShellStore` owns the selected workspace and optional Settings/artifact-library

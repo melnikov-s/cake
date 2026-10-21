@@ -20,6 +20,9 @@ import { describe, vi } from "vitest";
 import * as projectSessionMetadata from "../../../src/domain/project-sessions/projectSessionMetadata";
 import * as projectSessionOperations from "../../../src/domain/project-sessions/projectSessionOperations";
 import * as projectSessionContinuations from "../../../src/domain/project-sessions/projectSessionContinuations";
+import * as projectSessionUserLifecycle from "../../../src/domain/project-sessions/projectSessionUserLifecycle";
+import * as projectTodos from "../../../src/domain/projects/projectTodos";
+import * as projectTodoAssociations from "../../../src/domain/projects/projectTodoAssociations";
 import * as projectSessionLifecycle from "../../../src/domain/project-sessions/projectSessionLifecycle";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import { TurnCanceledError } from "../../../src/services/pi/runtime/RuntimeTurnCompletion";
@@ -1925,6 +1928,163 @@ describe("Project Sessions domain", () => {
       );
       assert.equal(directResolution.message, "Activate a Draft before resolving it");
     }).pipe(Effect.provide(makeLayer(undefined, { sessionExists: false }))),
+  );
+
+  it.effect(
+    "user resolve/reopen reuses native authority, completes linked to-dos and never auto-reopens them",
+    () => {
+      const transitions: string[] = [];
+      return Effect.gen(function* () {
+        const item = yield* projectTodos.create("/project", {
+          title: "Review report",
+          status: "Awaiting review",
+          associations: [{ kind: "session", sessionId: "session-1", title: "Session one" }],
+        });
+        yield* projectSessionUserLifecycle.setResolved({ sessionId: "session-1" }, true);
+        let current = yield* projectTodos.list("/project");
+        assert.equal(current.items[0]?.state, "done");
+        assert.deepEqual(
+          current.pending.map((change) => change._tag),
+          ["SessionState"],
+        );
+        assert.ok(current.pending[0]?._tag === "SessionState" && current.pending[0].resolved);
+        const receipt = current.sequence;
+        yield* projectSessionUserLifecycle.setResolved({ sessionId: "session-1" }, true);
+        assert.equal((yield* projectTodos.list("/project")).sequence, receipt);
+        assert.equal((yield* projectTodos.read("/project", item.id)).revision, 1);
+        yield* projectSessionUserLifecycle.setResolved({ sessionId: "session-1" }, false);
+        current = yield* projectTodos.list("/project");
+        assert.equal(current.items[0]?.state, "done");
+        assert.ok(
+          current.pending.some(
+            (change) =>
+              change._tag === "SessionState" &&
+              change.sessionId === "session-1" &&
+              !change.resolved,
+          ),
+        );
+        assert.deepEqual(transitions, ["resolve:session-1", "restore:session-1"]);
+      }).pipe(
+        Effect.provide(
+          makeLayer(undefined, {
+            onArchive: (id) => transitions.push(`resolve:${id}`),
+            onRestore: (id) => transitions.push(`restore:${id}`),
+          }),
+        ),
+      );
+    },
+  );
+
+  it.effect(
+    "agent/native resolution closes only once all linked Project Sessions are resolved; source/mixed review threads stay open",
+    () =>
+      Effect.gen(function* () {
+        const associations = [
+          { kind: "session" as const, sessionId: "session-1", title: "First implementation" },
+          { kind: "session" as const, sessionId: "session-2", title: "Second implementation" },
+        ];
+        const item = yield* projectTodos.create("/project", {
+          title: "Combined implementation",
+          status: "In progress",
+          associations,
+        });
+        const mixed = yield* projectTodos.create("/project", {
+          title: "Discuss report",
+          status: "Awaiting review",
+          associations: [
+            ...associations,
+            {
+              kind: "source",
+              ref: "cake://session/session-1?message=report",
+              title: "Investigator report",
+            },
+          ],
+        });
+        yield* projectSessionLifecycle.resolve({ sessionId: "session-1" });
+        assert.equal((yield* projectTodos.read("/project", item.id)).state, "open");
+        yield* projectSessionLifecycle.resolve({ sessionId: "session-2" });
+        assert.equal((yield* projectTodos.read("/project", item.id)).state, "done");
+        assert.equal((yield* projectTodos.read("/project", mixed.id)).state, "open");
+        assert.equal((yield* projectTodos.list("/project")).pending.length, 0); // agent/native changes are not labeled user actions
+        yield* projectSessionLifecycle.restore({ sessionId: "session-1" });
+        assert.equal((yield* projectTodos.read("/project", item.id)).state, "done");
+      }).pipe(Effect.provide(makeLayer())),
+  );
+
+  it.effect("native family-parent resolution completes links to its child work", () => {
+    const family = {
+      familyId: "linked-family",
+      parentSessionId: "parent-1",
+      projectPath: "/project",
+      workingDirectory: "/project",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      children: [
+        { sessionId: "session-1", requestId: "child-1", createdAt: "2026-01-01T00:00:00.000Z" },
+      ],
+    };
+    return Effect.gen(function* () {
+      const item = yield* projectTodos.create("/project", {
+        title: "Family implementation",
+        status: "Report available; still open",
+        associations: [
+          { kind: "session", sessionId: "parent-1", title: "Parent" },
+          { kind: "session", sessionId: "session-1", title: "Child implementation" },
+        ],
+      });
+      yield* projectTodos.mutateUser("/project", {
+        _tag: "SetState",
+        id: item.id,
+        expectedRevision: 0,
+        state: "done",
+      });
+      assert.equal(
+        (yield* projectSessionMetadata.lookup({ sessionId: "parent-1" })).resolved,
+        false,
+      );
+      yield* projectTodos.mutateUser("/project", {
+        _tag: "SetState",
+        id: item.id,
+        expectedRevision: 1,
+        state: "open",
+      });
+      yield* projectSessionLifecycle.resolve({ sessionId: "parent-1" });
+      assert.equal((yield* projectTodos.read("/project", item.id)).state, "done");
+      yield* projectSessionLifecycle.restore({ sessionId: "parent-1" });
+      assert.equal((yield* projectTodos.read("/project", item.id)).state, "done");
+    }).pipe(Effect.provide(makeLayer(undefined, { family })));
+  });
+
+  it.effect("rejects session and source associations belonging to another project", () =>
+    Effect.gen(function* () {
+      for (const association of [
+        { kind: "session" as const, sessionId: "session-1", title: "Other project session" },
+        {
+          kind: "source" as const,
+          ref: "cake://session/session-1?message=report",
+          title: "Other project report",
+        },
+      ]) {
+        const failure = yield* projectTodoAssociations
+          .create("/other", {
+            title: "Wrong project",
+            status: "",
+            associations: [association],
+          })
+          .pipe(Effect.flip);
+        assert.match(failure.message, /must belong to this Project Chat.s project/);
+      }
+      assert.deepEqual((yield* projectTodos.list("/project")).items, []);
+    }).pipe(Effect.provide(makeLayer())),
+  );
+
+  it.effect("blocked user resolution leaves no Project Chat lifecycle delta", () =>
+    Effect.gen(function* () {
+      const failure = yield* projectSessionUserLifecycle
+        .setResolved({ sessionId: "session-1" }, true)
+        .pipe(Effect.result);
+      assert.equal(failure._tag, "Failure");
+      assert.deepEqual((yield* projectTodos.list("/project")).pending, []);
+    }).pipe(Effect.provide(makeLayer(undefined, { archiveErrorSessionId: "session-1" }))),
   );
 
   it.effect("rejects child lifecycle requests instead of routing them to the parent", () => {

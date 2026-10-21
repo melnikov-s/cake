@@ -794,6 +794,12 @@ export class RootStore extends Store<{
   get cakeChatCollectionStore(): CakeChatCollectionStore {
     return createStore(CakeChatCollectionStore, {
       catalog: this.cakeChatCatalogModel,
+      projectForChat: (sessionId) => {
+        const path = this.cakeChatCatalogModel.sessions.find(
+          (chat) => chat.sessionId === sessionId,
+        )?.projectPath;
+        return path ? this.projectCatalogModel.find(path) : undefined;
+      },
       artifactModel: this.props.projection.artifacts,
       isSelected: () => this.appShellStore.selection.kind === "cake-chat",
       sessionModel: (sessionId) => this.props.projection.cakeChatConversation(sessionId),

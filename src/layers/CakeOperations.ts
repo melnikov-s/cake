@@ -37,6 +37,7 @@ import { createProjectSessionOperations } from "../domain/project-sessions/cake-
 import { createGlobalControlOperations } from "../domain/application/cake-global-control-operations";
 import { createAgentControlOperations } from "../domain/subagents/cake-subagent-operations";
 import { createCoordinatorOperations } from "../domain/cake-chats/cake-coordinator-operations";
+import { createProjectTodoOperations } from "../domain/projects/project-todo-operations";
 import { createProjectChatInstructionOperations } from "../domain/projects/project-chat-instruction-operations";
 import { createCakeChatInstructionOperations } from "../domain/cake-chats/cake-chat-instruction-operations";
 import { createCakeChatProjectOperations } from "../domain/projects/cake-chat-project-operations";
@@ -206,6 +207,7 @@ export function coordinatorCakeOperations(
       ...(options.projectChatInstructions
         ? createProjectChatInstructionOperations(options.projectChatInstructions)
         : []),
+      ...(options.projectTodos ? createProjectTodoOperations(options.projectTodos) : []),
       ...(options.cakeChatWorktrees
         ? createCakeChatWorktreeOperations(options.cakeChatWorktrees)
         : []),
@@ -232,6 +234,7 @@ export function configureCakeSessionRuntime(
   options: CakeSessionRuntimeSetup,
 ): CakeSessionRuntimeOptions {
   const {
+    projectTodos,
     messageReferenceControl,
     attachmentReferenceControl,
     allowedCakeOperations,
@@ -267,6 +270,7 @@ export function configureCakeSessionRuntime(
     ...runtime
   } = options;
   const featureOptions: CakeOperationOptions = {
+    projectTodos,
     messageReferenceControl,
     attachmentReferenceControl,
     cwd: runtime.cwd,

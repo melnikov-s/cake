@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import * as projectTodos from "../../../../src/domain/projects/projectTodos";
+import { upsertProject } from "../../../../src/domain/application/application";
 import { it } from "@effect/vitest";
 import { describe } from "vitest";
 import { Deferred, Effect, Fiber, FileSystem, Layer, Path, PlatformError, Schema } from "effect";
@@ -519,6 +521,35 @@ describe("ApplicationStorage", () => {
         ),
       ),
     ),
+  );
+
+  it.effect(
+    "round-trips Project Chat to-dos, selection and undelivered user changes through typed atomic storage",
+    () =>
+      withStorage({}, (storage) => {
+        const owner = ApplicationState.layer.pipe(
+          Layer.provide(Layer.succeed(ApplicationStorage)(storage)),
+        );
+        return Effect.gen(function* () {
+          const created = yield* Effect.gen(function* () {
+            yield* (yield* ApplicationState).initialize();
+            yield* upsertProject("/project", "Project");
+            const item = yield* projectTodos.create("/project", {
+              title: "Follow up",
+              status: "Report delivered; awaiting your review",
+            });
+            yield* projectTodos.mutateUser("/project", { _tag: "Select", selectedId: item.id });
+            return item;
+          }).pipe(Effect.provide(owner, { local: true }));
+          yield* Effect.gen(function* () {
+            yield* (yield* ApplicationState).initialize();
+            const recovered = yield* projectTodos.list("/project");
+            assert.deepEqual(recovered.items, [created]);
+            assert.equal(recovered.selectedId, created.id);
+            assert.equal(recovered.pending.length, 1);
+          }).pipe(Effect.provide(owner, { local: true }));
+        });
+      }),
   );
 
   it.effect("migrates recognized legacy and version-zero documents", () =>

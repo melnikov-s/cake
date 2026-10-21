@@ -435,6 +435,7 @@ export function makeClient(
     savedDrafts: commands("savedDrafts"),
     scheduledMessages: commands("scheduledMessages"),
     projectWorkflow: commands("projectWorkflow"),
+    projectTodos: commands("projectTodos"),
     projectSessions: {
       ...commands("projectSessions"),
       start: (input, options) =>

@@ -26,7 +26,8 @@ test("Project Chat isolates history and restores its root workspace, while globa
     }
     let body = "";
     for await (const chunk of request) body += chunk;
-    const summary = body.includes("You write the memory of Cake Chat");
+    const latest = JSON.stringify(JSON.parse(body).messages.at(-1)?.content);
+    const summary = /Compaction: (?:compress message|merge lines)/.test(latest);
     if (!summary) requests.push(body);
     const content = summary ? "talk: project guidance discussed" : `Reply ${requests.length}`;
     const chunk = (delta: object, finish_reason: string | null) =>
@@ -369,7 +370,16 @@ test("Project Chat isolates history and restores its root workspace, while globa
     const skillRequest = JSON.parse(requests[2]);
     expect(
       skillRequest.tools.map((tool: { function: { name: string } }) => tool.function.name).sort(),
-    ).toEqual(["bash", "cake", "date", "mcp", "read", "zoom"]);
+    ).toEqual([
+      "bash",
+      "cake",
+      "conversation_read",
+      "conversation_search",
+      "date",
+      "mcp",
+      "read",
+      "zoom",
+    ]);
 
     // Mouse selection completes without sending; Enter on a filtered option executes.
     await input.fill("/skill:global");

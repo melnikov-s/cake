@@ -310,7 +310,11 @@ export function createRootApplicationControlHost(
       rename: (sessionId, title) =>
         capabilities.sessionManagementStore.renameSession(sessionId, title),
       setProjectSessionsResolved: (sessionIds, resolved) =>
-        capabilities.sessionRetirementStore.setProjectSessionsResolved(sessionIds, resolved),
+        capabilities.sessionRetirementStore.setProjectSessionsResolved(
+          sessionIds,
+          resolved,
+          "agent",
+        ),
     },
     presentation: {
       splitView: (source, direction) => {

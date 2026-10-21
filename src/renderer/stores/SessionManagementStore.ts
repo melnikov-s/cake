@@ -75,6 +75,7 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
     sessionId: string,
     resolved: boolean,
     onResolved?: (sessionIds: readonly string[]) => Promise<void> | void,
+    origin: "user" | "agent" = "user",
   ) {
     const session = this.props.catalog.find(sessionId);
     if (!session || this.signal.aborted) return false;
@@ -109,6 +110,7 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
       const target = {
         sessionId: transitionSessionId,
         workingDirectory: session.workingDirectory,
+        userInitiated: origin === "user",
       };
       if (resolved) await this.client.projectSessions.resolve(target, { signal: this.signal });
       else await this.client.projectSessions.restore(target, { signal: this.signal });
@@ -224,6 +226,7 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
     sessionIds: readonly string[],
     resolved: boolean,
     onResolved?: (sessionIds: readonly string[]) => Promise<void> | void,
+    origin: "user" | "agent" = "user",
   ) {
     if (this.signal.aborted) return 0;
     const requestedIds = new Set(sessionIds);
@@ -239,7 +242,7 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
     }
     let resolvedCount = 0;
     for (const [sessionId, requestedCount] of plans) {
-      if (await this.resolveSession(sessionId, resolved, onResolved))
+      if (await this.resolveSession(sessionId, resolved, onResolved, origin))
         resolvedCount += requestedCount;
     }
     return resolvedCount;

@@ -4,6 +4,7 @@ import * as projects from "../../domain/projects/projects";
 import * as projectSessionMetadata from "../../domain/project-sessions/projectSessionMetadata";
 import * as projectSessionOperations from "../../domain/project-sessions/projectSessionOperations";
 import * as projectSessionContinuations from "../../domain/project-sessions/projectSessionContinuations";
+import * as projectSessionUserLifecycle from "../../domain/project-sessions/projectSessionUserLifecycle";
 import * as projectSessionLifecycle from "../../domain/project-sessions/projectSessionLifecycle";
 import { ProjectSessionRpc } from "../protocol/ProjectSessionRpc";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
@@ -90,12 +91,23 @@ export const projectSessionHandlers = ProjectSessionRpc.of({
     if (resolveSource !== undefined) Object.assign(input, { resolveSource });
     return projectSessionContinuations.fork(input);
   },
-  "projectSessions.resolve": (target) =>
-    projectSessionLifecycle.resolve(target).pipe(Effect.asVoid),
+  "projectSessions.resolve": ({ userInitiated, ...target }) =>
+    (userInitiated
+      ? projectSessionUserLifecycle.setResolved(target, true)
+      : projectSessionLifecycle.resolve(target)
+    ).pipe(Effect.asVoid),
   "projectSessions.resolveWorkingDirectory": ({ workingDirectory }) =>
     projectSessionLifecycle.resolveWorkingDirectory(workingDirectory),
-  "projectSessions.restore": (target) =>
-    projectSessionLifecycle.restore(target).pipe(Effect.asVoid),
+  "projectSessions.restore": ({ userInitiated, ...target }) =>
+    (userInitiated
+      ? projectSessionUserLifecycle.setResolved(target, false)
+      : projectSessionLifecycle.restore(target)
+    ).pipe(
+      Effect.asVoid,
+      Effect.mapError(
+        (error) => new ProjectSessionError({ operation: "restore", message: error.message }),
+      ),
+    ),
   "projectSessions.respondControl": ({ sessionId, controlRequestId, result }) =>
     withConnection((connectionId) =>
       Effect.flatMap(RendererRequestCoordinator, (coordinator) =>

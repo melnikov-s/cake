@@ -356,6 +356,7 @@ export async function createDurableCakeChatRuntime(
       instructions: instructions(),
     },
     contextLimitTokens: () => preferences.preferences().contextLimitTokens ?? 300_000,
+    onInputConsumed: options.onCakeChatInputConsumed,
     memory: {
       budget: () => preferences.preferences().memoryViewBytes,
       summarize: (input) =>

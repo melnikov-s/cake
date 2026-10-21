@@ -31,10 +31,19 @@ export class SessionRetirementStore extends Store<SessionRetirementStoreProps> {
     });
   }
 
-  async setProjectSessionsResolved(sessionIds: readonly string[], resolved: boolean) {
-    return this.management.resolveSessionsById(sessionIds, resolved, async (ids) => {
-      if (!this.signal.aborted) await this.forgetProjectSessions(ids);
-    });
+  async setProjectSessionsResolved(
+    sessionIds: readonly string[],
+    resolved: boolean,
+    origin: "user" | "agent" = "user",
+  ) {
+    return this.management.resolveSessionsById(
+      sessionIds,
+      resolved,
+      async (ids) => {
+        if (!this.signal.aborted) await this.forgetProjectSessions(ids);
+      },
+      origin,
+    );
   }
 
   async deleteProjectSession(sessionId: string) {

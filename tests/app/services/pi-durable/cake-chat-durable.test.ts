@@ -1,3 +1,9 @@
+import {
+  projectTodoReminder,
+  emptyProjectTodos,
+} from "../../../../src/contracts/projects/project-todos";
+import { projectTodoReceipt } from "../../../../src/contracts/projects/project-todo-context";
+import { createDurableConversationQueue } from "../../../../src/services/pi-durable/durable-chat-queue";
 import type { UiPart } from "../../../../src/contracts/conversations/session-contract";
 import { addReferenceNotifications } from "../../../../src/contracts/conversations/reference-notification";
 import * as pendingReports from "../../../../src/domain/conversations/pendingReports";
@@ -72,7 +78,11 @@ async function fixture(
   onZoom?: (parts: readonly UiPart[]) => Promise<void>,
   retainWarm = false,
   sdkCompaction = false,
-  setup: { summarize?: DurableMemoryOptions["summarize"]; retry?: HarnessSettings["retry"] } = {},
+  setup: {
+    summarize?: DurableMemoryOptions["summarize"];
+    retry?: HarnessSettings["retry"];
+    onInputConsumed?: Parameters<typeof openDurableChatEngine>[0]["onInputConsumed"];
+  } = {},
 ) {
   const f = durableModels(answer);
   const summarize = vi.fn<DurableMemoryOptions["summarize"]>(
@@ -117,6 +127,7 @@ async function fixture(
       retry: setup.retry,
     },
     onChanged: vi.fn(),
+    onInputConsumed: setup.onInputConsumed,
     onReport,
   });
   cleanup.push(() => engine.close());
@@ -133,6 +144,7 @@ async function fixture(
   return {
     ...f,
     engine,
+    storage,
     summarize,
     onReport,
     submit,
@@ -150,6 +162,69 @@ async function fixture(
     },
   };
 }
+
+it("delivers Project Chat context only on consumed originals, not preparation, canceled queues, or runtime metadata wrappers", async () => {
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const receipts: number[] = [];
+  let holding = true;
+  const f = await fixture(undefined, 20_000, undefined, undefined, true, false, {
+    onInputConsumed: async (text) => {
+      const receipt = projectTodoReceipt(text);
+      if (receipt !== undefined) receipts.push(receipt.sequence);
+      if (holding) {
+        entered.resolve();
+        await release.promise;
+      }
+    },
+  });
+  const id = "00000000-0000-4000-8000-000000000001";
+  const reminder = projectTodoReminder({
+    ...emptyProjectTodos(),
+    selectedId: id,
+    sequence: 1,
+    deliveryToken: "00000000-0000-4000-8000-000000000002",
+    items: [
+      {
+        id,
+        title: "Follow up",
+        status: "Awaiting review",
+        state: "open",
+        revision: 0,
+        associations: [],
+      },
+    ],
+    pending: [{ _tag: "Selection", selectedId: id, sequence: 1 }],
+  });
+  const text = durableInputText(`${reminder}\n\nNext user input`, [], false);
+  const active = await f.submit("Active input", "active-input");
+  await entered.promise;
+  const queue = createDurableConversationQueue({
+    harness: f.engine.harness,
+    conversation: f.engine.root,
+    storage: f.storage,
+    kind: "root",
+    executingTurnIds: () => ["active-input"],
+  });
+  try {
+    const pending = await f.submit(text, "queued-todo");
+    expect(receipts).toEqual([]);
+    expect((await queue.operations.pendingMessages()).items[0]?.text).toContain(
+      "Project Chat user changes",
+    );
+    await queue.operations.removeQueuedMessage("queued-todo");
+    expect((await pending.wait(BACKGROUND_CONTEXT)).status).toBe("unanswered");
+    expect(receipts).toEqual([]);
+  } finally {
+    holding = false;
+    release.resolve();
+  }
+  await active.wait(BACKGROUND_CONTEXT);
+  await f.send(text, "retry-todo");
+  expect(receipts).toEqual([1]);
+  expect(JSON.stringify(f.requests.at(-1))).toContain("Follow up");
+  expect(JSON.stringify(f.requests.at(-1))).not.toContain("cake-input-presentation");
+});
 
 it("records only the active bounded head for listing, and inspection never starts another request", async () => {
   const f = await fixture();

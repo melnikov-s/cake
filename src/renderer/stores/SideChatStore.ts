@@ -1,18 +1,24 @@
 import { Store } from "r-state-tree";
 import type { ChatStore } from "./ChatStore";
+import type { ProjectTodosStore } from "./ProjectTodosStore";
 
-export interface SideChatTarget {
+interface SidePanelTarget {
   readonly key: string;
   readonly title: string;
   readonly eyebrow: () => string;
-  readonly chatStore: ChatStore;
 }
+
+export type SideChatTarget = SidePanelTarget &
+  (
+    | { readonly chatStore: ChatStore; readonly todos?: never }
+    | { readonly chatStore?: never; readonly todos: ProjectTodosStore }
+  );
 
 export interface SideChatStoreProps {
   onClose?(): void;
 }
 
-/** Owns one session's transient secondary-chat selection and drawer width. */
+/** Owns one session’s transient accessory selection and shared secondary-pane width. */
 export class SideChatStore extends Store<SideChatStoreProps> {
   target: SideChatTarget | undefined;
   width = 416;

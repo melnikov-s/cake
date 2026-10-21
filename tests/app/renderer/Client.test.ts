@@ -379,6 +379,7 @@ describe("Client", () => {
       "savedDrafts",
       "scheduledMessages",
       "projectWorkflow",
+      "projectTodos",
       "projectSessions",
       "sessionChats",
       "cakeChats",

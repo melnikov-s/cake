@@ -1,3 +1,4 @@
+import type { Project } from "../models/Project";
 import { Store, child, createStore, observable, snapshot } from "r-state-tree";
 import type { CakeChatTarget } from "../../contracts/cake-chats/cake-chat-data";
 import type { ModelPreset } from "../../contracts/conversations/session-contract";
@@ -13,6 +14,7 @@ import { CakeChatSessionStore } from "./CakeChatSessionStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 
 export interface CakeChatRegistryStoreProps {
+  projectForChat?(sessionId: string): Project | undefined;
   sessionModel(sessionId: string): Conversation;
   artifactModel: ArtifactCatalog;
   controlsModel(sessionId: string): CakeChatControls;
@@ -44,6 +46,7 @@ export class CakeChatRegistryStore extends Store<CakeChatRegistryStoreProps> {
       createStore(CakeChatSessionStore, {
         key: sessionId,
         sessionId,
+        project: () => this.props.projectForChat?.(sessionId),
         model: this.props.sessionModel(sessionId),
         artifactModel: this.props.artifactModel,
         controls: this.props.controlsModel(sessionId),

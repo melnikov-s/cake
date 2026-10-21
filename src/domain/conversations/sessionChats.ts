@@ -1,3 +1,4 @@
+import { prepareForChat } from "../projects/projectTodos";
 import { resumeAfterUserInput } from "../session-families/workboardDeliveries";
 import * as messageReferences from "./messageReferences";
 import { messageReference } from "../../contracts/conversations/message-reference";
@@ -142,9 +143,14 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
         ? yield* cakeChatDigest.prepareUserMessage(handle, message.text).pipe(asError("deliver"))
         : undefined;
     const reportPage = pendingReportPage(references);
+    const preparedText = message.crossSession
+      ? message.text
+      : yield* prepareForChat(input.sessionId, userMessage?.text ?? message.text).pipe(
+          asError("deliver"),
+        );
     const text = message.crossSession
       ? encodeCrossSessionMessage(message.text, message.crossSession)
-      : addReferenceNotifications(userMessage?.text ?? message.text, reportPage, references.length);
+      : addReferenceNotifications(preparedText, reportPage, references.length);
     if (storage && !message.crossSession)
       yield* resumeAfterUserInput(input.sessionId).pipe(asError("deliver"));
     const turnId = TurnId.make(

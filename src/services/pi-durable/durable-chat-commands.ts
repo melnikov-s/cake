@@ -1,3 +1,4 @@
+import { splitProjectTodoReminder } from "../../contracts/projects/project-todo-context";
 import {
   DefaultResourceLoader,
   formatSkillsForPrompt,
@@ -55,7 +56,8 @@ export async function createDurableChatCommands(
     ],
     async expand(text: string) {
       const input = splitSessionDigestReminder(text);
-      const match = /^\/skill:([^\s]+)(?:\s+([\s\S]*))?$/.exec(input.text);
+      const todos = splitProjectTodoReminder(input.text);
+      const match = /^\/skill:([^\s]+)(?:\s+([\s\S]*))?$/.exec(todos.text);
       if (!match) return text;
       const skill = loader.getSkills().skills.find((entry) => entry.name === match[1]);
       if (!skill) throw new Error(`Unknown skill: ${match[1]}`);
@@ -64,7 +66,11 @@ export async function createDurableChatCommands(
       const body = stripFrontmatter(await readFile(skill.filePath, "utf8")).trim();
       const block = `<skill name="${skill.name}" location="${skill.filePath}">\nReferences are relative to ${skill.baseDir}.\n\n${body}\n</skill>`;
       const args = match[2]?.trim();
-      return addSessionDigestReminder(args ? `${block}\n\n${args}` : block, input.reminder);
+      const expanded = args ? `${block}\n\n${args}` : block;
+      return addSessionDigestReminder(
+        todos.reminder ? `${todos.reminder}\n\n${expanded}` : expanded,
+        input.reminder,
+      );
     },
   };
 }

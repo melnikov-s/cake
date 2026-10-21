@@ -193,6 +193,28 @@ describe("permanent Cake Chat", () => {
           ...options.runtime,
           onEvent: () => undefined,
         });
+        const commands = configured.coordinator
+          ?.operations({
+            sessionId,
+            resolveModel: () => ({
+              provider: "p",
+              modelId: "m",
+              thinkingLevel: "off",
+              fastMode: false,
+            }),
+            setModel: async () => undefined,
+            info: async () => ({}),
+            usage: async () => ({}),
+            contextStatus: async () => ({}),
+            compact: async () => ({}),
+          })
+          .map((definition) => definition.command);
+        expect(commands?.filter((command) => command.startsWith("todos."))).toEqual([
+          "todos.list",
+          "todos.read",
+          "todos.create",
+          "todos.update",
+        ]);
         const prompt = () => configured.cakeChatSystemPrompt?.() ?? "";
         expect(prompt()).toContain("/zombies chat only.");
         expect(prompt()).not.toContain("/other chat only.");
@@ -200,6 +222,16 @@ describe("permanent Cake Chat", () => {
         expect(options.runtime.allowedCakeOperations).toContain("settings.project-chat.update");
         expect(options.runtime.allowedCakeOperations).not.toContain("settings.cake-chat.update");
         expect(options.runtime.cakeChatInstructions).toBeUndefined();
+        const todoControl = options.runtime.projectTodos;
+        if (!todoControl) throw new Error("Expected Project Chat to-do controls");
+        const todoSignal = new AbortController().signal;
+        const todo = yield* Effect.promise(() =>
+          todoControl.create({ title: "Project commitment", status: "Investigating" }, todoSignal),
+        );
+        expect(prompt()).toContain(todo.id);
+        expect(prompt()).toContain("Project commitment");
+        expect((yield* Effect.promise(() => todoControl.list(todoSignal))).items).toHaveLength(1);
+        expect(f.state().projects[1]?.todos).toBeUndefined();
         const control = options.runtime.projectChatInstructions;
         if (!control) throw new Error("Expected Project Chat instruction authority");
         const signal = new AbortController().signal;
@@ -235,6 +267,8 @@ describe("permanent Cake Chat", () => {
           newSession: false,
         });
         expect(global.runtime.cakeChatSystemPrompt).toBeUndefined();
+        expect(global.runtime.projectTodos).toBeUndefined();
+        expect(global.runtime.onCakeChatInputConsumed).toBeUndefined();
         expect(global.runtime.additionalSystemPrompt).toBeUndefined();
         expect(global.runtime.cakeChatInstructions).toBeDefined();
       }).pipe(Effect.provide(f.layer));

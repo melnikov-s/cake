@@ -88,7 +88,7 @@ describe("Root App workflow", () => {
     await fixture.user.click(screen.getByRole("button", { name: "Resolve Current conversation" }));
     await waitFor(() =>
       expect(resolve).toHaveBeenCalledWith(
-        { sessionId: rootAppSession.sessionId, workingDirectory: "/alpha" },
+        { sessionId: rootAppSession.sessionId, workingDirectory: "/alpha", userInitiated: true },
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       ),
     );

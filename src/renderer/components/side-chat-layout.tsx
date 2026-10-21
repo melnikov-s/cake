@@ -5,6 +5,7 @@ import { SidePanel } from "@/components/ui/side-panel";
 import type { ChatStore } from "../stores/ChatStore";
 import type { SideChatStore } from "../stores/SideChatStore";
 import { SideChatContext } from "./side-chat-context";
+import { ProjectTodosPanel } from "./project-todos-panel";
 
 export const SideChatLayout = observer(function SideChatLayout({
   store,
@@ -31,7 +32,11 @@ export const SideChatLayout = observer(function SideChatLayout({
               eyebrow={target.eyebrow()}
               onClose={() => store.close()}
             >
-              {renderChat(target.chatStore)}
+              {target.todos ? (
+                <ProjectTodosPanel store={target.todos} />
+              ) : (
+                renderChat(target.chatStore)
+              )}
             </SidePanel>
           ) : null
         }

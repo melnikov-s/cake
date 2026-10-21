@@ -1783,6 +1783,85 @@ const projectChatSidebar: VisualCaptureScenario = {
       : page.locator('[data-slot="sidebar"]'),
 };
 
+const projectChatTodos: VisualCaptureScenario = {
+  name: "project-chat-todos",
+  description: "Project Chat toolbar to-do accessory, selection and completed disclosure",
+  states: ["open", "done"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    const file = join(paths.cakeHome, "state", "application.json");
+    const state = JSON.parse(await readFile(file, "utf8"));
+    const selectedId = "00000000-0000-4000-8000-000000000011";
+    await writeFile(
+      file,
+      JSON.stringify({
+        version: 8,
+        data: {
+          ...defaultApplicationState(),
+          ...state,
+          projects: state.projects.map((project: { path: string }) => ({
+            ...project,
+            todos: {
+              selectedId,
+              sequence: 0,
+              deliveryToken: null,
+              pending: [],
+              items: [
+                {
+                  id: selectedId,
+                  title: "Startup investigation",
+                  status: "Report delivered; awaiting your review",
+                  state: "open",
+                  revision: 0,
+                  associations: [
+                    {
+                      kind: "session",
+                      sessionId: "visual-assistant-markdown-code",
+                      title: "Startup investigation session",
+                    },
+                  ],
+                },
+                {
+                  id: "00000000-0000-4000-8000-000000000012",
+                  title: "Improve project navigation",
+                  status: "Implementation in progress",
+                  state: "open",
+                  revision: 0,
+                  associations: [],
+                },
+                {
+                  id: "00000000-0000-4000-8000-000000000013",
+                  title: "Discuss the next milestone",
+                  status: "Decision recorded",
+                  state: "done",
+                  revision: 0,
+                  associations: [],
+                },
+              ],
+            },
+          })),
+        },
+      }),
+    );
+  },
+  async prepare(page, state) {
+    await assistantMarkdownCode.prepare(page, "default");
+    await page
+      .getByRole("button", { name: /^Open Project Chat for / })
+      .first()
+      .click();
+    const input = page.getByRole("combobox", { name: "Message Project Chat" });
+    await expect(input).toBeVisible();
+    await input.fill("Let’s revisit the startup investigation.");
+    await page.getByRole("button", { name: "To-do", exact: true }).click();
+    await expect(page.getByRole("complementary", { name: "To-do" })).toBeVisible();
+    if (state === "done") await page.getByRole("button", { name: "Done (1)" }).click();
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator('[data-slot="side-chat-layout"]'),
+};
+
 const activeSidebarSessions: VisualCaptureScenario = {
   name: "active-sidebar-sessions",
   description: "Active sidebar rows omit all timestamps while retaining inactive metadata",
@@ -3838,6 +3917,7 @@ export const visualCaptureScenarios = [
   taskInputAttachmentsScenario,
   cakeChatSidebarUnread,
   projectChatSidebar,
+  projectChatTodos,
   activeSidebarSessions,
   dictationInputScenario,
   dictationSettingsScenario,

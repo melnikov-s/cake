@@ -14,6 +14,11 @@ import { makeAttachmentReferenceControl } from "../conversations/attachmentRefer
 import * as projectSessionCreation from "../project-sessions/projectSessionCreation";
 import * as sessionReferences from "../project-sessions/sessionReferences";
 import * as projects from "../projects/projects";
+import * as projectTodoAssociations from "../projects/projectTodoAssociations";
+import * as projectTodos from "../projects/projectTodos";
+import { emptyProjectTodos, projectTodoBaseline } from "../../contracts/projects/project-todos";
+import { projectTodoReceipt } from "../../contracts/projects/project-todo-context";
+import { splitSessionDigestReminder } from "../../contracts/cake-chats/session-digest-reminder";
 import * as projectChatInstructions from "../projects/projectChatInstructions";
 import { AgentProjectSessionCreate } from "../../contracts/project-sessions/session-reporting";
 import { inputRefsSchema } from "../../contracts/conversations/task-input";
@@ -99,6 +104,10 @@ const CAKE_CHAT_OPERATIONS = [
   "settings.cake-chat.update",
   "settings.project-chat.get",
   "settings.project-chat.update",
+  "todos.list",
+  "todos.read",
+  "todos.create",
+  "todos.update",
   "models.list",
   "models.info",
   "session.info",
@@ -358,6 +367,14 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
     }),
     runtime: {
       cwd: configuration.location.workingDirectory,
+      onCakeChatInputConsumed: project
+        ? (text, signal) => {
+            const receipt = projectTodoReceipt(splitSessionDigestReminder(text).text);
+            return receipt === undefined
+              ? Promise.resolve()
+              : run(projectTodos.acknowledge(project.path, receipt), { signal });
+          }
+        : undefined,
       cakeChatSystemPrompt: project
         ? () =>
             [
@@ -367,6 +384,10 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
               "Keep this conversation focused on the project. You can discuss ideas and decisions without creating tasks. Delegate only when useful, using this project's root as the default.",
               "VS Code and the interactive Terminal open at this project root; Browser Mode belongs to this conversation. Use these shared tools for visual exploration while keeping discussion primary.",
               "Other chats have independent memories. Exchange a focused request and relevant references, not entire histories. Do not repeatedly relay or delegate the same request.",
+              projectTodoBaseline(
+                application.snapshot().projects.find((item) => item.path === project.path)?.todos ??
+                  emptyProjectTodos(),
+              ),
               application.snapshot().projects.find((item) => item.path === project.path)?.settings
                 ?.projectChatInstructions,
             ]
@@ -463,6 +484,16 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
             get: (signal) => run(getCakeChatInstructions(), { signal }),
             update: (input, signal) => run(updateCakeChatInstructions(input), { signal }),
           },
+      projectTodos: project
+        ? {
+            list: (signal) => run(projectTodos.list(project.path), { signal }),
+            read: (id, signal) => run(projectTodos.read(project.path, id), { signal }),
+            create: (input, signal) =>
+              run(projectTodoAssociations.create(project.path, input), { signal }),
+            update: (input, signal) =>
+              run(projectTodoAssociations.update(project.path, input), { signal }),
+          }
+        : undefined,
       projectChatInstructions: {
         get: (input, signal) => run(projectChatInstructions.get(input, project?.path), { signal }),
         update: (input, signal) =>

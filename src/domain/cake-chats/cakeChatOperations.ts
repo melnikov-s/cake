@@ -1,4 +1,5 @@
 import { Effect, Stream, type Schema } from "effect";
+import { prepareForChat } from "../projects/projectTodos";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
@@ -90,7 +91,7 @@ export const start = Effect.fn("CakeChats.start")(function* (
   const turnId = TurnId.make(
     yield* deliverWhenAvailable(
       Effect.succeed(handle),
-      input.text,
+      yield* prepareForChat(input.sessionId, input.text).pipe(asError("start")),
       projectAttachments(
         yield* prepareTaskInputs(input.sessionId, true, input.attachments).pipe(asError("start")),
       ),

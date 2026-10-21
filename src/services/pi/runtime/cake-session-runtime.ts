@@ -177,6 +177,8 @@ export interface CakeSessionRuntimeOptions {
   additionalSystemPrompt?: string;
   /** Permanent chats reread project-owned guidance at each message; never used by coding runtimes. */
   cakeChatSystemPrompt?(): string;
+  /** Durable calls this only for committed, consumed input, never send preparation or queued rows. */
+  onCakeChatInputConsumed?(text: string, signal: AbortSignal): Promise<void>;
   cakeChatMemory?: CakeChatMemoryOptions;
   /** Replaces Pi's normal prompt and disables context-file loading for an isolated runtime. */
   isolatedSystemPrompt?: string;

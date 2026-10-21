@@ -114,6 +114,7 @@ export async function openDurableChatEngine(options: {
   env?: HarnessOptions["env"];
   onChanged(): void;
   onReport(error: unknown): void;
+  onInputConsumed?(text: string, signal: AbortSignal): Promise<void>;
 }) {
   const closing = new AbortController();
   let root: Conversation;
@@ -219,6 +220,26 @@ export async function openDurableChatEngine(options: {
         }
         const live = await harness.snapshot(LiveDoc, root.id, context);
         const input = live?.run?.inputs[0];
+        // Placement in SDK originals, not queue admission, commits application context delivery.
+        // Replaying this on recovery is intentional: the domain acknowledgement is idempotent.
+        if (options.onInputConsumed)
+          for (const id of live?.run?.inputs ?? []) {
+            const submission = await options.storage.submission(id, context);
+            if (submission?.status !== "placed") continue;
+            const record = await options.storage.entry(root.id, submission.entry, context);
+            for (const message of record?.entry.model ?? []) {
+              if (message.role !== "user") continue;
+              const content = withoutDurableInputPresentation(message).content;
+              const text =
+                typeof content === "string"
+                  ? content
+                  : content
+                      .filter((part) => part.type === "text")
+                      .map((part) => part.text)
+                      .join("\n");
+              await options.onInputConsumed(text, signal);
+            }
+          }
         let active = await root.context(context);
         const boundary = await Schema.decodeUnknownPromise(Boundary)(
           (await harness.snapshot(BoundaryDoc, root.id, context)) ?? { input: -1, marker: -1 },

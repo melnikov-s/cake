@@ -1,3 +1,5 @@
+import type { Project } from "../models/Project";
+import { ProjectTodosStore } from "./ProjectTodosStore";
 import { Store, child, createStore, snapshot } from "r-state-tree";
 import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
 import { EditorSelectionsStore } from "./EditorSelectionsStore";
@@ -27,6 +29,7 @@ import { ConversationModeContext, conversationModeTarget } from "./ConversationM
 
 export interface CakeChatSessionStoreProps {
   sessionId: string;
+  project?(): Project | undefined;
   model: Conversation;
   artifactModel: ArtifactCatalog;
   controls: CakeChatControls;
@@ -149,6 +152,15 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     return createStore(SessionArtifactsStore, {
       sessionId: this.sessionId,
       model: this.props.artifactModel,
+    });
+  }
+
+  @child
+  get todos(): ProjectTodosStore {
+    return createStore(ProjectTodosStore, {
+      project: () =>
+        this.sessionId.startsWith("project-chat:") ? this.props.project?.() : undefined,
+      sidePanel: () => this.conversationSessionStore.sideChatStore,
     });
   }
 

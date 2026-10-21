@@ -23,6 +23,7 @@ import type { JsonObject, JsonValue } from "../serialization/json-contract";
 import type { WorkflowControl } from "../workflows/workflow-agent-control";
 import type { WorktreeLandingControl } from "../worktrees/worktree-agent-control";
 import type { GlobalControlTool } from "./cake-operation-control";
+import type { ProjectTodoControl } from "../projects/project-todos";
 import type { ProjectChatInstructionsControl } from "../projects/project-chat-instructions";
 import type { CakeChatInstructionsControl } from "../cake-chats/cake-chat-instructions";
 import type { CakeChatProjectControl } from "../projects/agent-projects";
@@ -175,6 +176,7 @@ export interface CakeOperationOptions extends Partial<CakeArtifactOperationOptio
   globalControl?: GlobalOperationControl;
   cakeChatInstructions?: CakeChatInstructionsControl;
   projectChatInstructions?: ProjectChatInstructionsControl;
+  projectTodos?: ProjectTodoControl;
   cakeChatWorktrees?: CakeChatWorktreeControl;
   cakeChatProjects?: CakeChatProjectControl;
   /** Parent Project Session gateway granted to an auxiliary runtime, not coordinator authority. */

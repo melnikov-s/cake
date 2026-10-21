@@ -1,3 +1,4 @@
+import { emptyProjectTodos, type ProjectTodos } from "../../contracts/projects/project-todos";
 import { Model, id } from "r-state-tree";
 import {
   defaultProjectSettings,
@@ -13,4 +14,5 @@ export class Project extends Model {
   lastOpenedAt = "";
   settings: ProjectSettings = defaultProjectSettings();
   workflow: ProjectWorkflow = defaultProjectWorkflow();
+  todos: ProjectTodos = emptyProjectTodos();
 }

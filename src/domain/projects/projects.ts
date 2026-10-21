@@ -706,6 +706,7 @@ const sameProjects = (left: ReadonlyArray<ProjectRecord>, right: ReadonlyArray<P
       project.addedAt === other.addedAt &&
       project.lastOpenedAt === other.lastOpenedAt &&
       JSON.stringify(project.settings) === JSON.stringify(other.settings) &&
-      JSON.stringify(project.workflow) === JSON.stringify(other.workflow)
+      JSON.stringify(project.workflow) === JSON.stringify(other.workflow) &&
+      JSON.stringify(project.todos) === JSON.stringify(other.todos)
     );
   });

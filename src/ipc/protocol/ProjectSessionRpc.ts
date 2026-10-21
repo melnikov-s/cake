@@ -102,7 +102,10 @@ export const ProjectSessionRpc = RpcGroup.make(
     error: Schema.Union([ProjectSessionError, ProjectSessionResolutionDomainFailure]),
   }),
   Rpc.make("projectSessions.resolve", {
-    payload: ProjectSessionTarget,
+    payload: Schema.Struct({
+      ...ProjectSessionTarget.fields,
+      userInitiated: Schema.optionalKey(Schema.Boolean),
+    }),
     error: Schema.Union([ProjectSessionError, ProjectSessionResolutionDomainFailure]),
   }),
   Rpc.make("projectSessions.resolveWorkingDirectory", {
@@ -111,7 +114,10 @@ export const ProjectSessionRpc = RpcGroup.make(
     error: ProjectSessionError,
   }),
   Rpc.make("projectSessions.restore", {
-    payload: ProjectSessionTarget,
+    payload: Schema.Struct({
+      ...ProjectSessionTarget.fields,
+      userInitiated: Schema.optionalKey(Schema.Boolean),
+    }),
     error: ProjectSessionError,
   }),
   Rpc.make("projectSessions.respondControl", {
