@@ -4,6 +4,7 @@ import { it } from "@effect/vitest";
 import { Effect, Layer, Stream } from "effect";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import { projectTodoLayer } from "../helpers/projectTodoHarness";
+import * as projectTodos from "../../../src/domain/projects/projectTodos";
 import {
   makeCakeSessionRuntimesLayer,
   type CakeSessionRuntimesAdapter,
@@ -17,6 +18,9 @@ import { makeRuntimeRecoveryStorageTestLayer, fakeRuntime } from "../helpers/piR
 
 it.effect("creates independent Pi-backed Project Session without any renderer", () => {
   const prompts: string[] = [];
+  const initialPrompt =
+    "Start exactly one real turn. Keep the original prompt intact.\n\n" +
+    "Detailed implementation instructions for Pi only. ".repeat(80);
   let reportPrompt: () => void = () => undefined;
   const promptCalled = new Promise<void>((resolve) => {
     reportPrompt = resolve;
@@ -88,7 +92,7 @@ it.effect("creates independent Pi-backed Project Session without any renderer", 
       control(
         {
           name: "Headless",
-          initialPrompt: "Start exactly one real turn",
+          initialPrompt,
           model: { provider: "openai", modelId: "model", thinkingLevel: "high", fastMode: false },
         },
         new AbortController().signal,
@@ -96,6 +100,12 @@ it.effect("creates independent Pi-backed Project Session without any renderer", 
     );
     assert.equal((result as { ok: boolean }).ok, true);
     yield* Effect.promise(() => promptCalled);
-    assert.deepEqual(prompts, ["Start exactly one real turn"]);
+    assert.deepEqual(prompts, [initialPrompt]);
+    const items = (yield* projectTodos.list("/project")).items;
+    assert.equal(items.length, 1);
+    assert.equal(
+      items[0]?.description,
+      "Start exactly one real turn. Keep the original prompt intact.",
+    );
   }).pipe(Effect.provide(dependencies));
 });

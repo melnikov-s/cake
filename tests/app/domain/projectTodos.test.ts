@@ -307,6 +307,7 @@ it.effect(
 it("requires a short description, defaults optional progress, and accepts only supported useful link targets", () => {
   const input = { title: "Investigate startup", description: "Find what delays startup." };
   expect(Schema.is(ProjectTodoCreate)(input)).toBe(true);
+  expect(Schema.is(ProjectTodoCreate)({ ...input, description: "x".repeat(2048) })).toBe(true);
   expect(Schema.is(ProjectTodoCreate)({ title: input.title })).toBe(false);
   for (const description of ["", "   ", " Brief ", "x".repeat(2049)])
     expect(Schema.is(ProjectTodoCreate)({ ...input, description })).toBe(false);
@@ -350,6 +351,33 @@ it.effect(
       expect(updated.description).toBe("Find the bottleneck and recommend a fix.");
       expect(updated.state).toBe("open");
       expect(projectTodoBaseline(yield* todos.list(project))).toContain('"descriptionPreview"');
+    }).pipe(Effect.provide(f.layer));
+  },
+);
+
+it.effect(
+  "keeps automatic descriptions to the first paragraph, at most two sentences and 320 characters",
+  () => {
+    const f = fixture();
+    return Effect.gen(function* () {
+      yield* upsertProject(project, "Project");
+      const initialPrompt =
+        "\n\nInvestigate startup latency.\nRecommend a measured fix. Then implement everything.\n\n## Detailed instructions\n" +
+        "Preserve these full instructions in Pi only. ".repeat(80);
+      yield* todos.ensureSession(project, "session-brief", "Startup", initialPrompt);
+      yield* todos.ensureSession(
+        project,
+        "session-long",
+        "Measurements",
+        "Measure startup latency ".repeat(80) + "\n\nDetailed instructions.",
+      );
+      yield* todos.ensureSession(project, "session-empty", "Follow up", "  \n  ");
+      const items = (yield* todos.list(project)).items;
+      expect(items[0]?.description).toBe("Investigate startup latency. Recommend a measured fix.");
+      expect(items[1]?.description.length).toBeLessThanOrEqual(320);
+      expect(items[1]?.description.endsWith("…")).toBe(true);
+      expect(items[1]?.description).not.toContain("Detailed instructions");
+      expect(items[2]?.description).toBe("Continue work in Follow up.");
     }).pipe(Effect.provide(f.layer));
   },
 );

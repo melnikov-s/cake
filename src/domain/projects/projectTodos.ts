@@ -165,6 +165,13 @@ export const mutateUser = Effect.fn("ProjectTodos.mutateUser")(function* (
   });
 });
 
+/** Keep automatic rows brief; the complete creation prompt remains in Pi. */
+function sessionDescription(brief: string, title: string): string {
+  const paragraph = (brief.trim().split(/\r?\n\s*\r?\n/, 1)[0] ?? "").replace(/\s+/g, " ");
+  const text = paragraph.split(/(?<=[.!?])\s+/, 2).join(" ") || `Continue work in ${title}.`;
+  return text.length > 320 ? `${text.slice(0, 319).trimEnd()}…` : text;
+}
+
 /** Creation bookkeeping, serialized by the same authority as manual edits.
  * Stable identity keeps retries idempotent even after an agent edits the links. */
 export const ensureSession = Effect.fn("ProjectTodos.ensureSession")(function* (
@@ -176,7 +183,7 @@ export const ensureSession = Effect.fn("ProjectTodos.ensureSession")(function* (
   const hash = createHash("sha256").update(`cake:session-todo:${sessionId}`).digest("hex");
   const id = `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-8${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
   const name = title.trim().slice(0, 512).trim() || "New Project Session";
-  const description = brief.trim().slice(0, 2048).trim() || `Continue work in ${name}.`;
+  const description = sessionDescription(brief, name);
   yield* change(projectPath, (value) => {
     if (
       value.items.some(
