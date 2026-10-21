@@ -6,6 +6,10 @@ import { sessionListGuidance, sessionListResult } from "../project-sessions/agen
 import { Schema } from "effect";
 import { CakeControlTool } from "../cake-chats/cake-chat-data";
 import { BackendAgentInvocation } from "./backend-agent-control";
+import {
+  agentScheduleGuidance,
+  agentScheduleSummary,
+} from "../scheduled-messages/agent-scheduled-messages";
 
 /** Data-only discovery. These operations execute in the backend, never in the window gateway. */
 const definitions = [
@@ -354,6 +358,45 @@ const definitions = [
       topic: "sessions",
       summary:
         "Close the current coordination thread. Further replies are rejected; late arrivals remain attributed to the closed exchange.",
+    },
+  },
+  {
+    command: "sessions.schedule",
+    scope: "global",
+    discovery: {
+      topic: "sessions",
+      summary: agentScheduleSummary,
+      guidance: agentScheduleGuidance,
+      examples: [
+        { input: { text: "Check the PR status.", repeatEverySeconds: 180 } },
+        { input: { text: "Remind me to review the build.", delaySeconds: 15 } },
+      ],
+    },
+  },
+  {
+    command: "sessions.scheduled",
+    scope: "global",
+    discovery: {
+      topic: "sessions",
+      summary:
+        "List bounded scheduled-message IDs, destinations, send times, repeat intervals and short labels; filter session/query before offset/limit pagination.",
+    },
+  },
+  {
+    command: "sessions.scheduled-info",
+    scope: "global",
+    discovery: {
+      topic: "sessions",
+      summary:
+        "Read one scheduled message by exact ID in bounded text slices (maxChars up to 20000).",
+    },
+  },
+  {
+    command: "sessions.cancel-scheduled",
+    scope: "global",
+    discovery: {
+      topic: "sessions",
+      summary: "Cancel one scheduled or recurring message by its ID.",
     },
   },
   {

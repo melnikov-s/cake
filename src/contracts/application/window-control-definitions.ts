@@ -14,10 +14,6 @@ import {
   AgentPendingListInput,
   AgentPendingReadInput,
 } from "../conversations/agent-pending-messages";
-import {
-  AgentScheduledListInput,
-  AgentScheduledReadInput,
-} from "../scheduled-messages/agent-scheduled-messages";
 
 const bounded = (min: number, max: number) =>
   Schema.String.check(Schema.isMinLength(min), Schema.isMaxLength(max));
@@ -294,49 +290,6 @@ export const windowControlDefinitions = {
       ...createDraftSessionArgs.fields,
       model: Schema.optionalKey(CakeModelSelection),
     }),
-  },
-  "sessions.schedule": {
-    command: "sessions.schedule",
-    args: Schema.Struct({
-      ...sessionIdTargetSchema.fields,
-      text: trimmed(1, 100000),
-      sendAt: bounded(1, 64),
-    }),
-    scope: "global",
-    discovery: {
-      topic: "sessions",
-      summary:
-        "Schedule a message for one explicitly targeted Project Session at an ISO timestamp.",
-    },
-  },
-  "sessions.scheduled": {
-    command: "sessions.scheduled",
-    args: AgentScheduledListInput,
-    scope: "global",
-    discovery: {
-      topic: "sessions",
-      summary:
-        "List bounded scheduled-message IDs, destinations, send times and short labels; filter session/query before offset/limit pagination.",
-    },
-  },
-  "sessions.scheduled-info": {
-    command: "sessions.scheduled-info",
-    args: AgentScheduledReadInput,
-    scope: "global",
-    discovery: {
-      topic: "sessions",
-      summary:
-        "Read one scheduled message by exact ID in bounded text slices (maxChars up to 20000).",
-    },
-  },
-  "sessions.cancel-scheduled": {
-    command: "sessions.cancel-scheduled",
-    args: Schema.Struct({ id: bounded(1, 256) }),
-    scope: "global",
-    discovery: {
-      topic: "sessions",
-      summary: "Cancel one scheduled message by its ID.",
-    },
   },
   "sessions.abort": {
     command: "sessions.abort",

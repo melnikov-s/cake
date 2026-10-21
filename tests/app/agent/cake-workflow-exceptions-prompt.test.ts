@@ -26,6 +26,10 @@ describe.each([
     );
     expect(guide).toContain("including when completion events do not wake the coordinator");
     expect(guide).toContain("Use durable scheduling when available at the requested interval");
+    expect(guide).toContain(
+      "`sessions.schedule` with `sessionId` omitted targets your own conversation (Cake Chat, a Project Chat or a Project Session)",
+    );
+    expect(guide).toContain("`sessions.cancel-scheduled` stops one");
     expect(guide).toContain("keep at most one pending check-in for the coordinator task");
     expect(guide).toContain(
       "stop scheduling when the task finishes or the user asks to pause or stop",

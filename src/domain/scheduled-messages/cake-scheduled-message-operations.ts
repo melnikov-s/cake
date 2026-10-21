@@ -1,7 +1,10 @@
 import { Schema } from "effect";
 import {
+  AgentScheduleInput,
   AgentScheduledListInput,
   AgentScheduledReadInput,
+  agentScheduleGuidance,
+  agentScheduleSummary,
 } from "../../contracts/scheduled-messages/agent-scheduled-messages";
 
 import { type JsonObject } from "../../contracts/serialization/json-contract";
@@ -23,13 +26,18 @@ export function createScheduledMessageOperations(
       command: "sessions.schedule",
       requires: "invokeAppControl",
       topic: "sessions",
-      summary: "Schedule a message to an explicitly targeted Project Session at an ISO timestamp.",
-      inputSchema: Schema.Struct({
-        sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
-        text: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100_000))),
-        sendAt: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
-      }),
+      summary: agentScheduleSummary,
+      guidance: agentScheduleGuidance,
+      inputSchema: AgentScheduleInput,
       examples: [
+        {
+          input: { text: "Check the PR status and report progress.", repeatEverySeconds: 180 },
+          description: "Recurring self check-in every 3 minutes until cancelled.",
+        },
+        {
+          input: { text: "Remind me to review the build.", delaySeconds: 15 },
+          description: "One-off self-reminder.",
+        },
         {
           input: {
             sessionId: "target-session-id",
@@ -39,14 +47,15 @@ export function createScheduledMessageOperations(
         },
       ],
       result:
-        "Scheduled message ID, destination, send time and confirmation; no repeated message body.",
+        "Scheduled message ID, destination, send time, optional repeat and confirmation; no repeated message body.",
       execute: invokeAppControl("sessions.schedule"),
     },
     {
       command: "sessions.scheduled",
       requires: "invokeAppControl",
       topic: "sessions",
-      summary: "List durable scheduled messages, optionally for one Project Session.",
+      summary:
+        "List durable scheduled messages, optionally for one target (cake-chat, project-chat:<hash> or a Project Session).",
       inputSchema: AgentScheduledListInput,
       examples: [{}],
       result:
@@ -68,7 +77,7 @@ export function createScheduledMessageOperations(
       command: "sessions.cancel-scheduled",
       requires: "invokeAppControl",
       topic: "sessions",
-      summary: "Cancel one scheduled message by ID.",
+      summary: "Cancel one scheduled or recurring message by ID.",
       inputSchema: Schema.Struct({
         id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
       }),

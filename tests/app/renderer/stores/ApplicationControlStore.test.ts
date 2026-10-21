@@ -66,7 +66,7 @@ interface ProjectReply {
 // placement. These regressions specifically cover correlation, accepted-request
 // replay, failed delivery and disposal rather than repeating those GUI journeys.
 describe("Application control transport integration", () => {
-  it("discovers bounded queue/schedule summaries and reads exact text only on demand", async () => {
+  it("discovers bounded queue summaries and reads exact text only on demand", async () => {
     const pending = Array.from({ length: 61 }, (_, index) => ({
       itemId: requestId(index + 100),
       partId: `queued-${index}`,
@@ -75,16 +75,7 @@ describe("Application control transport integration", () => {
       state: "queued",
       text: `Job ${index} ${"x".repeat(10_000)}`,
     }));
-    const scheduled = pending.map((item) => ({
-      id: item.itemId,
-      targetSessionId: "parent",
-      text: item.text,
-      sendAt: "2030-01-01T00:00:00.000Z",
-      createdAt: fixtureTimestamp,
-    }));
     const replies: ProjectReply[] = [];
-    const firstScheduled = scheduled[0];
-    if (!firstScheduled) throw new Error("Expected scheduled fixture");
     using fixture = createControlFixture({
       projectSessions: {
         respondControl: async (sessionId, controlRequestId, result) => {
@@ -98,7 +89,6 @@ describe("Application control transport integration", () => {
           followUp: ["a".repeat(100_000)],
         }),
       },
-      scheduledMessages: { list: async () => scheduled, schedule: async () => firstScheduled },
     });
     let requestNumber = 1000;
     const invoke = async (command: string, input: Record<string, JsonValue>) => {
@@ -155,33 +145,6 @@ describe("Application control transport integration", () => {
       command: "sessions.reorder",
       queue: { steeringCount: 1, followUpCount: 1 },
     });
-    const scheduledPage = await invoke("sessions.scheduled", {
-      sessionId: "parent",
-      query: "Job 1 ",
-      limit: 1,
-    });
-    expect(scheduledPage).toEqual({
-      ok: true,
-      command: "sessions.scheduled",
-      total: 1,
-      offset: 0,
-      nextOffset: null,
-      messages: [
-        {
-          id: requestId(101),
-          targetSessionId: "parent",
-          sendAt: scheduled[1]?.sendAt,
-          label: `${pending[1]?.text.slice(0, 255)}…`,
-        },
-      ],
-    });
-    expect(
-      await invoke("sessions.scheduled-info", { id: requestId(101), offset: 2, maxChars: 10 }),
-    ).toMatchObject({ message: { text: pending[1]?.text.slice(2, 12), nextOffset: 12 } });
-    expect(await invoke("sessions.scheduled-info", { id: requestId(999) })).toMatchObject({
-      ok: false,
-    });
-    expect(await invoke("sessions.scheduled", { limit: 51 })).toMatchObject({ ok: false });
   });
   it("correlates the real app projection and accepts a Project request only once, including during response delivery", async () => {
     const delivery = deferred<void>();

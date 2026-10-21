@@ -238,20 +238,6 @@ export function createRootApplicationControlHost(
           { sessionId, itemId, position },
           { signal: capabilities.signal },
         ),
-      scheduleMessage: (input) =>
-        capabilities
-          .applicationControlStore()
-          .runOperation(() =>
-            capabilities.client.scheduledMessages.schedule(input, { signal: capabilities.signal }),
-          ),
-      listScheduledMessages: (sessionId) =>
-        capabilities.client.scheduledMessages.list(sessionId, { signal: capabilities.signal }),
-      cancelScheduledMessage: (id) =>
-        capabilities
-          .applicationControlStore()
-          .runOperation(() =>
-            capabilities.client.scheduledMessages.cancel(id, { signal: capabilities.signal }),
-          ),
       listPendingMessages: async (sessionId) => {
         await capabilities.prepareProjectSessionChat(sessionId);
         return capabilities.client.sessionChats.listQueuedMessages(

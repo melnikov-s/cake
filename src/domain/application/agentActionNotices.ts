@@ -1,4 +1,5 @@
 import { Effect, Option, Schema } from "effect";
+import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import type { AgentActionNotice } from "../../contracts/application/agent-action-notice";
 import type { JsonValue } from "../../contracts/serialization/json-contract";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
@@ -11,6 +12,7 @@ const Result = Schema.Struct({
   target: Schema.optionalKey(Schema.Struct({ sessionId: Schema.String })),
   targetTitle: Schema.optionalKey(Schema.String),
   messageId: Schema.optionalKey(Schema.String),
+  id: Schema.optionalKey(Schema.String),
   messageNumber: Schema.optionalKey(Schema.Number),
   maxMessages: Schema.optionalKey(Schema.Number),
   status: Schema.optionalKey(Schema.String),
@@ -61,6 +63,15 @@ export const present = Effect.fn("AgentActionNotices.present")(function* (
         targetKind: "project-session",
         coalesceKey: `send:${result.messageId}:${result.status}`,
       };
+    if (result.command === "sessions.schedule" && result.target && result.targetTitle)
+      notice = {
+        message: `Scheduled a message for “${result.targetTitle}”`,
+        targetSessionId: result.target.sessionId,
+        targetKind: isCakeChatSessionId(result.target.sessionId) ? "cake-chat" : "project-session",
+        coalesceKey: `schedule:${result.target.sessionId}`,
+      };
+    if (result.command === "sessions.cancel-scheduled" && result.id)
+      notice = { message: "Cancelled a scheduled message", coalesceKey: `cancel:${result.id}` };
     if (result.command === "sessions.close-thread" && result.thread)
       notice = {
         message: `Closed session exchange after ${result.thread.messageCount} messages`,

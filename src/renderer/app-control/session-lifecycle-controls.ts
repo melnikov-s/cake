@@ -6,10 +6,6 @@ import type { AppControlResult } from "./app-control-data";
 
 import { defineControl, defineSessionControl } from "./control-definition";
 import { toStrictJson } from "./control-json";
-import {
-  agentScheduledPage,
-  agentScheduledRead,
-} from "../../contracts/scheduled-messages/agent-scheduled-messages";
 
 export const sessionLifecycleControls = [
   defineControl({
@@ -49,70 +45,6 @@ export const sessionLifecycleControls = [
         sessionId: created.sessionId,
         title: input.name,
         status: "saved-draft",
-      };
-    },
-  }),
-  defineSessionControl({
-    ...windowControlDefinitions["sessions.schedule"],
-    run: async (input, { host }, command, known): Promise<AppControlResult> => {
-      const { sessionId } = input;
-
-      const workspacePath = known.workingDirectory;
-      const target = { workspacePath, sessionId };
-      const scheduledMessage = await host.sessions.scheduleMessage({
-        targetSessionId: sessionId,
-        text: input.text,
-        sendAt: input.sendAt,
-      });
-      return {
-        ok: true,
-        command,
-        target,
-        scheduledMessage: {
-          id: scheduledMessage.id,
-          targetSessionId: scheduledMessage.targetSessionId,
-          sendAt: scheduledMessage.sendAt,
-        },
-        status: "scheduled",
-      };
-    },
-  }),
-  defineControl({
-    ...windowControlDefinitions["sessions.scheduled"],
-    run: async (input, { host }, command): Promise<AppControlResult> => {
-      let sessionId = input.sessionId;
-      if (sessionId !== undefined) {
-        const resolved = resolveSessionReference(
-          sessionId,
-          host.state.sessions().map((session) => session.sessionId),
-        );
-        if (!resolved.ok) return { ok: false, command, error: resolved.error };
-        sessionId = resolved.sessionId;
-      }
-      return {
-        ok: true,
-        command,
-        ...agentScheduledPage(await host.sessions.listScheduledMessages(sessionId), input),
-      };
-    },
-  }),
-  defineControl({
-    ...windowControlDefinitions["sessions.scheduled-info"],
-    run: async (input, { host }, command): Promise<AppControlResult> => ({
-      ok: true,
-      command,
-      message: agentScheduledRead(await host.sessions.listScheduledMessages(), input),
-    }),
-  }),
-  defineControl({
-    ...windowControlDefinitions["sessions.cancel-scheduled"],
-    run: async (input, { host }, command): Promise<AppControlResult> => {
-      await host.sessions.cancelScheduledMessage(input.id);
-      return {
-        ok: true,
-        command,
-        id: input.id,
-        status: "cancelled",
       };
     },
   }),

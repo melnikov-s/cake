@@ -111,13 +111,6 @@ function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
         (async () => {
           throw new Error("Unexpected reorderQueuedMessage");
         }),
-      scheduleMessage:
-        overrides.scheduleMessage ??
-        (async () => {
-          throw new Error("not used");
-        }),
-      listScheduledMessages: overrides.listScheduledMessages ?? (async () => []),
-      cancelScheduledMessage: overrides.cancelScheduledMessage ?? (async () => undefined),
       listPendingMessages:
         overrides.listPendingMessages ?? (async () => ({ steering: [], followUp: [] })),
       dequeuePendingMessages:
@@ -991,50 +984,6 @@ describe("AppControlBridge", () => {
         targetSessionId: "draft-1",
       }),
     );
-  });
-
-  it("schedules messages for sessions in another project", async () => {
-    const scheduleSessionMessage = vi.fn(async (input) => ({
-      id: "8de1a807-dc99-49ee-8d35-7a3ed20bef06",
-      ...input,
-      createdAt: "2026-09-04T12:00:00.000Z",
-    }));
-    const host = createHost({
-      sessions: () => [
-        {
-          workingDirectory: "/projects/other",
-          projectName: "Other",
-          sessionId: "session-2",
-          title: "Other project session",
-          modifiedAt: "2026-09-04T12:00:00.000Z",
-          messageCount: 2,
-          resolved: false,
-          draft: false,
-        },
-      ],
-      scheduleMessage: scheduleSessionMessage,
-    });
-    const bridge = new AppControlBridge(host);
-    await expect(
-      bridge.invoke({
-        name: "sessions.schedule",
-        arguments: {
-          sessionId: "session-2",
-          text: "Review this",
-          sendAt: "2030-01-01T12:00:00.000Z",
-        },
-      }),
-    ).resolves.toMatchObject({
-      ok: true,
-      command: "sessions.schedule",
-      status: "scheduled",
-      scheduledMessage: { targetSessionId: "session-2", sendAt: "2030-01-01T12:00:00.000Z" },
-    });
-    expect(scheduleSessionMessage).toHaveBeenCalledWith({
-      targetSessionId: "session-2",
-      text: "Review this",
-      sendAt: "2030-01-01T12:00:00.000Z",
-    });
   });
 
   it("stops an active explicitly targeted session", async () => {

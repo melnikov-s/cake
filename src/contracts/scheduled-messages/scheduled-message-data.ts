@@ -5,7 +5,15 @@ const isoTimestamp = Schema.String.check(
   Schema.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/),
 );
 
-/** Cake-owned intent waiting to become an ordinary Pi user message. */
+/** A recurring interval is between one minute and one week. */
+export const ScheduleRepeatSeconds = Schema.Int.check(
+  Schema.isBetween({ minimum: 60, maximum: 604_800 }),
+);
+
+/** Cake-owned intent waiting to become an ordinary Pi user message. The target is a
+ * Project Session or a permanent chat (global Cake Chat or a Project Chat). A recurring
+ * message keeps its ID and advances `sendAt` after each delivery until cancelled or
+ * past `repeatUntil`. */
 export const ScheduledMessage = Schema.Struct({
   id: Schema.String.check(Schema.isUUID(4)),
   targetSessionId: boundedId,
@@ -13,6 +21,8 @@ export const ScheduledMessage = Schema.Struct({
   sendAt: isoTimestamp,
   createdAt: isoTimestamp,
   createdBySessionId: Schema.optionalKey(boundedId),
+  repeatEverySeconds: Schema.optionalKey(ScheduleRepeatSeconds),
+  repeatUntil: Schema.optionalKey(isoTimestamp),
 });
 export interface ScheduledMessage extends Schema.Schema.Type<typeof ScheduledMessage> {}
 
@@ -39,6 +49,8 @@ export const ScheduleMessageInput = Schema.Struct({
   text: ScheduledMessage.fields.text,
   sendAt: isoTimestamp,
   createdBySessionId: Schema.optionalKey(boundedId),
+  repeatEverySeconds: Schema.optionalKey(ScheduleRepeatSeconds),
+  repeatUntil: Schema.optionalKey(isoTimestamp),
 });
 export interface ScheduleMessageInput extends Schema.Schema.Type<typeof ScheduleMessageInput> {}
 

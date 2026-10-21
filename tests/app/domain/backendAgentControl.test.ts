@@ -70,6 +70,11 @@ import {
   snapshot,
 } from "../helpers/piRuntimeFixture";
 import { makeHeadlessProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
+import type { ScheduledMessage } from "../../../src/contracts/scheduled-messages/scheduled-message-data";
+import { parseScheduledMessage } from "../../../src/contracts/conversations/scheduled-message-envelope";
+import * as scheduledMessages from "../../../src/domain/scheduled-messages/scheduledMessages";
+import { ScheduledMessages } from "../../../src/services/scheduled-messages/ScheduledMessages";
+import { ScheduledMessageStorage } from "../../../src/services/storage/ScheduledMessageStorage";
 
 const source = "00000000-0000-4000-8000-000000000011";
 const target = "00000000-0000-4000-8000-000000000022";
@@ -301,8 +306,20 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
         };
       }),
   }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
+  let storedSchedules: readonly ScheduledMessage[] = [];
   const dependencies = Layer.mergeAll(
     WorkflowTestLive,
+    ScheduledMessages.layer.pipe(
+      Layer.provide(
+        Layer.succeed(ScheduledMessageStorage, {
+          load: () => Effect.sync(() => storedSchedules),
+          save: (messages) =>
+            Effect.sync(() => {
+              storedSchedules = [...messages];
+            }),
+        }),
+      ),
+    ),
     withChats
       ? Layer.succeed(CakeChatConfiguration, {
           location: { workingDirectory: "/chat", sessionDirectory: "/chats" },
@@ -441,6 +458,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
   assert.ok(invoke);
   return {
     context,
+    storedSchedules: () => storedSchedules,
     compactions,
     compactFailures,
     compactStarted,
@@ -2670,6 +2688,151 @@ it.effect("Cake Chat keeps report policy and protected-task redaction without a 
     expect(parseCrossSessionMessage((yield* Queue.take(f.prompts)).text)?.metadata).toMatchObject({
       expectsResponse: false,
     });
+    expect(f.requestCalls).toEqual([]);
+  }),
+);
+
+it.effect(
+  "a Project Chat schedules to itself and other chats, lists, cancels and is woken by its schedule",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture(true);
+      const projectChat = projectChatSessionId("/project");
+      const chat = yield* cakeChatRuntime
+        .acquireOptions({
+          configuration: {
+            location: { workingDirectory: "/project", sessionDirectory: "/chats/project" },
+            agentDirectory: "/agent",
+          },
+          target: { sessionId: projectChat, tools: [] },
+          newSession: false,
+        })
+        .pipe(Effect.provide(f.context));
+      const control = chat.runtime.globalControl;
+      assert.ok(control);
+      const call = (name: string, input: JsonObject) =>
+        Effect.promise(() => control.invoke({ name, arguments: input }, signal()));
+      yield* scheduledMessages.initialize().pipe(Effect.provide(f.context));
+
+      // Omitting sessionId targets the calling chat; a recurring check-in needs no sendAt.
+      expect(
+        yield* call("sessions.schedule", { text: "Check the PR status", repeatEverySeconds: 180 }),
+      ).toMatchObject({
+        ok: true,
+        command: "sessions.schedule",
+        targetTitle: "Project / Project Chat",
+        scheduledMessage: { sendAt: "1970-01-01T00:03:00.000Z", repeatEverySeconds: 180 },
+        status: "scheduled",
+      });
+      // Every chat address form resolves, including the forms that previously failed.
+      for (const sessionId of [projectChat, projectChat.slice("project-chat:".length)])
+        expect(
+          yield* call("sessions.schedule", { sessionId, text: "hi", delaySeconds: 15 }),
+        ).toMatchObject({ ok: true, targetTitle: "Project / Project Chat" });
+      expect(
+        yield* call("sessions.schedule", {
+          sessionId: "cake-chat",
+          text: "Tell Cake Chat",
+          sendAt: "1970-01-01T01:00:00Z",
+        }),
+      ).toMatchObject({
+        ok: true,
+        targetTitle: "Cake Chat",
+        scheduledMessage: { sendAt: "1970-01-01T01:00:00.000Z" },
+      });
+      // The chat gateway rejects addresses outside the registered roster before scheduling.
+      expect(
+        yield* call("sessions.schedule", {
+          sessionId: projectChatSessionId("/unregistered"),
+          text: "Nobody",
+          delaySeconds: 15,
+        }).pipe(Effect.exit),
+      ).toMatchObject({ _tag: "Failure" });
+      expect(
+        yield* call("sessions.schedule", { text: "Both", delaySeconds: 1, sendAt: "2030-01-01" }),
+      ).toMatchObject({ ok: false, error: "Provide sendAt or delaySeconds, not both." });
+      expect(
+        yield* call("sessions.schedule", { text: "Past", sendAt: "1960-01-01T00:00:00Z" }),
+      ).toMatchObject({ ok: false, error: "Scheduled send time must be in the future" });
+
+      const stored = f.storedSchedules();
+      expect(stored.map((item) => item.targetSessionId)).toEqual([
+        projectChat,
+        projectChat,
+        projectChat,
+        CAKE_CHAT_SESSION_ID,
+      ]);
+      expect(stored.every((item) => item.createdBySessionId === projectChat)).toBe(true);
+      const [first, second, recurring] = stored;
+      assert.ok(first && second && recurring);
+      expect(recurring).toMatchObject({ repeatEverySeconds: 180 });
+
+      const page = yield* call("sessions.scheduled", { sessionId: projectChat });
+      expect(page).toMatchObject({ ok: true, total: 3, nextOffset: null });
+      expect(page).toMatchObject({
+        messages: expect.arrayContaining([
+          expect.objectContaining({ id: recurring.id, repeatEverySeconds: 180 }),
+        ]),
+      });
+      expect(
+        yield* call("sessions.scheduled-info", { id: recurring.id, maxChars: 5 }),
+      ).toMatchObject({ ok: true, message: { text: "Check", totalChars: 19, nextOffset: 5 } });
+      expect(yield* call("sessions.cancel-scheduled", { id: second.id })).toEqual({
+        ok: true,
+        command: "sessions.cancel-scheduled",
+        id: second.id,
+        status: "cancelled",
+      });
+      expect(yield* call("sessions.cancel-scheduled", { id: second.id })).toMatchObject({
+        ok: false,
+      });
+
+      // The due message wakes the Project Chat as an ordinary input carrying its origin.
+      // SAFETY: the fixture context provides the worker's chat and Project Session services.
+      const worker = yield* Effect.forkScoped(
+        scheduledMessages.runWorker.pipe(Effect.provide(f.context)) as Effect.Effect<never>,
+      );
+      yield* TestClock.adjust("16 seconds");
+      const woken = yield* Queue.take(f.prompts);
+      expect(woken.sessionId).toBe(projectChat);
+      expect(parseScheduledMessage(woken.text)).toMatchObject({
+        text: "hi",
+        origin: { id: first.id, createdBySessionId: projectChat },
+      });
+      yield* Fiber.interrupt(worker);
+      expect(yield* Queue.size(f.prompts)).toBe(0);
+      expect(f.storedSchedules().map((item) => item.id)).toEqual([recurring.id, stored[3]?.id]);
+
+      yield* call("sessions.cancel-scheduled", { id: recurring.id });
+      expect(yield* call("sessions.scheduled", { sessionId: projectChat })).toMatchObject({
+        total: 0,
+      });
+      expect(f.requestCalls).toEqual([]);
+    }),
+);
+
+it.effect("a Project Session schedules to itself when it omits sessionId", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    yield* scheduledMessages.initialize().pipe(Effect.provide(f.context));
+    expect(
+      yield* f.call("sessions.schedule", { text: "Re-run the flaky test", delaySeconds: 60 }),
+    ).toMatchObject({
+      ok: true,
+      scheduledMessage: { sendAt: "1970-01-01T00:01:00.000Z" },
+      status: "scheduled",
+    });
+    expect(f.storedSchedules()).toMatchObject([
+      { targetSessionId: source, createdBySessionId: source, text: "Re-run the flaky test" },
+    ]);
+    expect(
+      yield* f.direct("sessions.schedule", {
+        sessionId: projectChatSessionId("/unregistered"),
+        text: "Nobody",
+        delaySeconds: 15,
+      }),
+    ).toMatchObject({ ok: false, command: "sessions.schedule" });
+    expect(f.storedSchedules()).toHaveLength(1);
     expect(f.requestCalls).toEqual([]);
   }),
 );

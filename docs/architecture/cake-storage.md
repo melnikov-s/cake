@@ -260,11 +260,16 @@ Project and Working Directory bindings, and creation correlation are Cake-owned
 and stored in `state/session-families.json`. The document never stores messages,
 assignments, transcript history, or a competing resolved-state list.
 
-Scheduled Project Session messages are Cake-owned delivery intents stored in
-`state/scheduled-messages.json`. They remain visible and cancellable until their
-deadline. Once Cake submits one through the normal Project Session prompt or
-follow-up operation, it removes the intent and Pi owns the resulting user
-message and turn.
+Scheduled messages are Cake-owned delivery intents stored in
+`state/scheduled-messages.json`. A target is a Project Session or a permanent chat
+(global Cake Chat or a Project Chat); an agent that omits the target schedules to its
+own conversation. They remain visible and cancellable until their deadline. Once Cake
+submits one through the target's normal prompt or follow-up operation, Pi owns the
+resulting user message and turn. A one-off intent is then removed. A recurring intent
+keeps its ID and advances to the first interval boundary after the delivery,
+skipping boundaries missed while Cake was closed, until it is cancelled or passes
+its optional end time. Scheduled delivery is not user input: it never carries
+passive notices waiting for the user's next message.
 
 ### Primary-session restart recovery
 

@@ -21,6 +21,11 @@ import { jsonObjectSchema } from "../serialization/json-contract";
 import { AgentListInput } from "../agent/agent-list-data";
 import { AgentSessionListInput } from "../project-sessions/agent-session-list";
 import { AgentProjectInfoInput } from "../projects/agent-projects";
+import {
+  AgentScheduleInput,
+  AgentScheduledListInput,
+  AgentScheduledReadInput,
+} from "../scheduled-messages/agent-scheduled-messages";
 
 const bounded = (min: number, max: number) =>
   Schema.String.check(Schema.isMinLength(min), Schema.isMaxLength(max));
@@ -125,6 +130,10 @@ export const BackendAgentInvocation = Schema.Union([
   operation("sessions.completions.update", CompletionInboxUpdate),
   operation("sessions.thread", Schema.Struct({ threadId: Schema.optionalKey(id) })),
   operation("sessions.close-thread", Schema.Struct({ threadId: Schema.optionalKey(id) })),
+  operation("sessions.schedule", AgentScheduleInput),
+  operation("sessions.scheduled", AgentScheduledListInput),
+  operation("sessions.scheduled-info", AgentScheduledReadInput),
+  operation("sessions.cancel-scheduled", Schema.Struct({ id: bounded(1, 256) })),
 ]);
 export type BackendAgentInvocation = Schema.Schema.Type<typeof BackendAgentInvocation>;
 
@@ -163,4 +172,8 @@ export const backendAgentCommands: ReadonlySet<string> = new Set([
   "sessions.reports.acknowledge",
   "sessions.completions",
   "sessions.completions.update",
+  "sessions.schedule",
+  "sessions.scheduled",
+  "sessions.scheduled-info",
+  "sessions.cancel-scheduled",
 ]);

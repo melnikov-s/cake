@@ -16,7 +16,6 @@ import {
 import { type CakeChatSummary } from "../../contracts/cake-chats/cake-chat-data";
 import type { SessionSummary } from "../models/SessionSummary";
 import type { WorktreeRecord } from "../../contracts/worktrees/managed-worktree-data";
-import type { ScheduledMessage } from "../../contracts/scheduled-messages/scheduled-message-data";
 import { type EditorLocation } from "../../contracts/editor/editor-location";
 import type { VscodeEditorAction } from "../../contracts/vscode/vscode-editor-action";
 import type {
@@ -196,13 +195,6 @@ export interface AppControlHost {
       itemId: string,
       position: number,
     ): Promise<QueuedConversationMessages>;
-    scheduleMessage(input: {
-      targetSessionId: string;
-      text: string;
-      sendAt: string;
-    }): Promise<ScheduledMessage>;
-    listScheduledMessages(sessionId?: string): Promise<readonly ScheduledMessage[]>;
-    cancelScheduledMessage(id: string): Promise<void>;
     listPendingMessages(sessionId: string): Promise<QueuedConversationMessages>;
     dequeuePendingMessages(sessionId: string): Promise<QueuedConversationMessages>;
     removeQueuedMessage(sessionId: string, partId: string): Promise<QueuedConversationMessages>;
@@ -423,27 +415,6 @@ type AppControlSuccess =
       command: "sessions.reorder";
       queue: { steeringCount: number; followUpCount: number };
     }
-  | {
-      ok: true;
-      command: "sessions.schedule";
-      target: SessionTarget;
-      scheduledMessage: Pick<ScheduledMessage, "id" | "targetSessionId" | "sendAt">;
-      status: "scheduled";
-    }
-  | {
-      ok: true;
-      command: "sessions.scheduled";
-      messages: Array<{ id: string; targetSessionId: string; sendAt: string; label: string }>;
-      total: number;
-      offset: number;
-      nextOffset: number | null;
-    }
-  | {
-      ok: true;
-      command: "sessions.scheduled-info";
-      message: ScheduledMessage & { totalChars: number; offset: number; nextOffset: number | null };
-    }
-  | { ok: true; command: "sessions.cancel-scheduled"; id: string; status: "cancelled" }
   | { ok: true; command: "sessions.pending" | "sessions.pending-info"; result: JsonValue }
   | {
       ok: true;

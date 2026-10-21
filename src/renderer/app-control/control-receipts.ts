@@ -15,8 +15,6 @@ const crossSessionCommands = new Set<SuccessfulResult["command"]>([
   "sessions.send",
   "sessions.reply",
   "sessions.close-thread",
-  "sessions.schedule",
-  "sessions.cancel-scheduled",
   "sessions.abort",
   "sessions.rename",
   "sessions.set-labels",
@@ -141,14 +139,6 @@ export function agentActionReceipt(
       message: `Closed session exchange after ${result.thread.messageCount} messages`,
       coalesceKey: `thread-close:${result.thread.threadId}`,
     };
-  if (result.command === "sessions.schedule")
-    return {
-      message: `Scheduled a message for “${projectTitle(result.target.sessionId)}”`,
-      ...projectTarget(result.target.sessionId),
-      coalesceKey: `schedule:${result.target.sessionId}`,
-    };
-  if (result.command === "sessions.cancel-scheduled")
-    return { message: "Cancelled a scheduled message", coalesceKey: `cancel:${result.id}` };
   if (result.command === "sessions.abort")
     return {
       message: `Stopped “${projectTitle(result.target.sessionId)}”`,

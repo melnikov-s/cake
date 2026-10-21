@@ -41,6 +41,7 @@ import * as agentSettings from "./agentSettings";
 import * as pendingReports from "../conversations/pendingReports";
 import * as completionInbox from "../conversations/completionInbox";
 import * as agentSessionMessaging from "./agentSessionMessaging";
+import * as scheduledMessageControl from "../scheduled-messages/scheduledMessageControl";
 import * as agentActionNotices from "./agentActionNotices";
 import { AgentControlError } from "./agentSettings";
 import * as metadata from "../project-sessions/projectSessionMetadata";
@@ -558,6 +559,11 @@ export const invoke: (
           return yield* (yield* SessionCoordination).withAdmission(
             agentSessionMessaging.invoke(invocation, caller),
           );
+        case "sessions.schedule":
+        case "sessions.scheduled":
+        case "sessions.scheduled-info":
+        case "sessions.cancel-scheduled":
+          return yield* scheduledMessageControl.invoke(invocation, caller);
         default: {
           const sessionId = yield* sessionReferences.resolve(invocation.arguments.sessionId);
           if (isCakeChatSessionId(sessionId)) {

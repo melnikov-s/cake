@@ -1,6 +1,14 @@
 import { DateTime, Effect, Schedule, Stream } from "effect";
+import {
+  CAKE_CHAT_SESSION_ID,
+  isCakeChatSessionId,
+} from "../../contracts/cake-chats/cake-chat-identity";
 import * as projectSessionMetadata from "../project-sessions/projectSessionMetadata";
 import * as projectSessionOperations from "../project-sessions/projectSessionOperations";
+import * as cakeChatTargets from "../cake-chats/cakeChatTargets";
+import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
+import { deliverWhenAvailable } from "../conversations/conversations";
+import { ApplicationState } from "../../services/storage/ApplicationState";
 import {
   ScheduledMessageError,
   type ScheduleMessageInput,
@@ -35,17 +43,37 @@ export const list = Effect.fn("ScheduledMessages.list")(function* (targetSession
     : snapshot.messages;
 });
 
+/** Permanent chats have stable addresses rather than Project Session transcripts. A Project
+ * Chat is a valid destination only while its project is registered. */
+const validateTarget = Effect.fn("ScheduledMessages.validateTarget")(function* (
+  targetSessionId: string,
+) {
+  if (targetSessionId === CAKE_CHAT_SESSION_ID) return;
+  if (isCakeChatSessionId(targetSessionId)) {
+    const projects = (yield* ApplicationState).snapshot().projects;
+    if (projects.some((project) => projectChatSessionId(project.path) === targetSessionId)) return;
+    return yield* new ScheduledMessageError({
+      operation: "schedule",
+      message: "Project Chat belongs to no registered project",
+    });
+  }
+  yield* projectSessionMetadata.inspect({ sessionId: targetSessionId }).pipe(asError("schedule"));
+});
+
 export const schedule = Effect.fn("ScheduledMessages.schedule")(function* (
   input: ScheduleMessageInput,
 ) {
-  yield* projectSessionMetadata
-    .inspect({ sessionId: input.targetSessionId })
-    .pipe(asError("schedule"));
+  yield* validateTarget(input.targetSessionId);
   const now = DateTime.formatIso(yield* DateTime.now);
   if (input.sendAt <= now)
     return yield* new ScheduledMessageError({
       operation: "schedule",
       message: "Scheduled send time must be in the future",
+    });
+  if (input.repeatUntil !== undefined && Date.parse(input.repeatUntil) < Date.parse(input.sendAt))
+    return yield* new ScheduledMessageError({
+      operation: "schedule",
+      message: "repeatUntil must not be earlier than the first send time",
     });
   const message: ScheduledMessage = {
     id: crypto.randomUUID(),
@@ -56,6 +84,10 @@ export const schedule = Effect.fn("ScheduledMessages.schedule")(function* (
   };
   if (input.createdBySessionId !== undefined)
     Object.assign(message, { createdBySessionId: input.createdBySessionId });
+  if (input.repeatEverySeconds !== undefined)
+    Object.assign(message, { repeatEverySeconds: input.repeatEverySeconds });
+  if (input.repeatEverySeconds !== undefined && input.repeatUntil !== undefined)
+    Object.assign(message, { repeatUntil: input.repeatUntil });
   const messages = yield* ScheduledMessages;
   yield* messages
     .transact((current) => Effect.succeed([...current, message]))
@@ -126,16 +158,53 @@ export const observe = Effect.fn("ScheduledMessages.observe")(function* (targetS
   );
 });
 
+/** The first interval boundary after `now`, skipping boundaries missed while Cake was closed. */
+const nextSendAt = (message: ScheduledMessage, now: number) => {
+  if (message.repeatEverySeconds === undefined) return undefined;
+  const interval = message.repeatEverySeconds * 1_000;
+  const previous = Date.parse(message.sendAt);
+  const next = previous + (Math.floor(Math.max(0, now - previous) / interval) + 1) * interval;
+  if (message.repeatUntil !== undefined && next > Date.parse(message.repeatUntil)) return undefined;
+  return new Date(next).toISOString();
+};
+
+/** A scheduled message is not user input: it starts or follows the target's work directly and
+ * never carries passive notices that wait for the user's next message. */
+const deliverToChat = Effect.fn("ScheduledMessages.deliverToChat")(function* (
+  sessionId: string,
+  text: string,
+) {
+  yield* Effect.scoped(
+    Effect.gen(function* () {
+      const handle = yield* cakeChatTargets.acquireAvailable(sessionId);
+      yield* deliverWhenAvailable(Effect.succeed(handle), text, [], false);
+      yield* handle.publishSessionChanged();
+    }),
+  );
+});
+
 const deliverOne = Effect.fn("ScheduledMessages.deliverOne")(function* (message: ScheduledMessage) {
-  yield* projectSessionOperations.sendAutomatically({
-    sessionId: message.targetSessionId,
-    text: encodeScheduledMessage(message.text, scheduledMessageOrigin(message)),
-    attachments: [],
-    renderUserMessageAsMarkdown: false,
-  });
+  const text = encodeScheduledMessage(message.text, scheduledMessageOrigin(message));
+  if (isCakeChatSessionId(message.targetSessionId))
+    yield* deliverToChat(message.targetSessionId, text);
+  else
+    yield* projectSessionOperations.sendAutomatically({
+      sessionId: message.targetSessionId,
+      text,
+      attachments: [],
+      renderUserMessageAsMarkdown: false,
+    });
+  const next = nextSendAt(message, DateTime.toEpochMillis(yield* DateTime.now));
   const messages = yield* ScheduledMessages;
+  // A cancellation during delivery removed the message; a repeat never re-adds it.
   yield* messages
-    .transact((current) => Effect.succeed(current.filter((item) => item.id !== message.id)))
+    .transact((current) =>
+      Effect.succeed(
+        current.flatMap((item) =>
+          item.id !== message.id ? [item] : next ? [{ ...item, sendAt: next }] : [],
+        ),
+      ),
+    )
     .pipe(asError("deliver"));
 });
 

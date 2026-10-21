@@ -676,6 +676,8 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
                   "sessions.set-labels",
                 ].includes(invocation.name) &&
                 args.sessionId !== undefined &&
+                // A chat's own task inputs never hide its own schedules or metadata from it.
+                args.sessionId !== target.sessionId &&
                 (yield* inputs.isRecipient(args.sessionId))
               )
                 return {
