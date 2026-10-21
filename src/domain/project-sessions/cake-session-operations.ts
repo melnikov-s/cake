@@ -174,6 +174,7 @@ export function createProjectSessionOperations(
         "Singular session.* operations use the calling session identity and never accept a sessionId.",
         "Family members inherit resolution from the root. A family lifecycle request requires every member to be inactive and is never deferred.",
         "For standalone sessions, resolving during an active response is scheduled for the moment that response settles.",
+        "Committed resolution completes linked Project Chat to-dos once all actual session associations are resolved. Restore never reopens to-dos; to-do completion never resolves sessions.",
       ],
       inputSchema: Schema.Struct({ resolved: Schema.Boolean }),
       examples: [{ input: { resolved: true } }],

@@ -1,4 +1,5 @@
 import { homedir } from "node:os";
+import * as projectTodoResolution from "../domain/projects/projectTodoResolution";
 import { join } from "node:path";
 import { makeVsCodeServerLive } from "../services/vscode/VsCodeServerLive";
 import { companionAssets } from "../services/vscode/companion-assets";
@@ -279,6 +280,7 @@ export const makeBackendLive = <HostServices, HostError>(
     Layer.provide(SessionWorkflowsLive),
   );
   const BackgroundWorkersLive = Layer.mergeAll(
+    Layer.effectDiscard(projectTodoResolution.initialize()),
     Layer.effectDiscard(
       Effect.gen(function* () {
         yield* scheduledMessages.initialize().pipe(Effect.orDie);

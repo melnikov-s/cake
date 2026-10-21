@@ -14,7 +14,7 @@ import * as sessionReferences from "../project-sessions/sessionReferences";
 import * as messageReferences from "../conversations/messageReferences";
 import * as todos from "./projectTodos";
 import { agentListPage } from "../../contracts/agent/agent-list-data";
-import { join } from "./projectTodoResolution";
+import { join, completeLinked } from "./projectTodoResolution";
 
 const asError = <A, E, R>(operation: Effect.Effect<A, E, R>) =>
   operation.pipe(
@@ -88,7 +88,6 @@ export const list = Effect.fn("ProjectTodos.listForAgent")(function* (
     ...page,
     items: joined.map(({ item, sessions }) => ({
       ...summary(item),
-      completionPolicy: item.completionPolicy ?? ("manual" as const),
       sessions,
     })),
   };
@@ -115,19 +114,11 @@ export const updateMany = Effect.fn("ProjectTodos.updateManyWithAssociations")(f
         : input;
     }),
   );
-  const changesWork = canonical.filter(
-    (input) =>
-      input.state === undefined &&
-      (input.associations !== undefined || input.completionPolicy !== undefined),
-  );
+  const changesWork = canonical.filter((input) => input.state === undefined);
   const current = changesWork.length ? (yield* todos.list(projectPath)).items : [];
   const candidates = changesWork.flatMap((input) => {
     const item = current.find((item) => item.id === input.id);
-    return item &&
-      (input.completionPolicy ?? item.completionPolicy) === "linked" &&
-      item.state === "open"
-      ? [{ ...item, ...input }]
-      : [];
+    return item?.state === "open" ? [{ ...item, ...input }] : [];
   });
   const joined = yield* join(projectPath, candidates);
   const resolved = new Set(
@@ -137,7 +128,9 @@ export const updateMany = Effect.fn("ProjectTodos.updateManyWithAssociations")(f
       )
       .map(({ item }) => item.id),
   );
-  return yield* todos.updateMany(projectPath, canonical, false, resolved);
+  yield* todos.updateMany(projectPath, canonical, false, resolved);
+  yield* completeLinked(projectPath);
+  return yield* Effect.forEach(canonical, (input) => todos.read(projectPath, input.id));
 });
 
 export const create = Effect.fn("ProjectTodos.createWithAssociations")(function* (
@@ -146,23 +139,22 @@ export const create = Effect.fn("ProjectTodos.createWithAssociations")(function*
 ) {
   const input = yield* Schema.decodeUnknownEffect(ProjectTodoCreate)(request).pipe(asError);
   const associations = yield* validate(projectPath, input.associations ?? []);
-  const [joined] =
-    (input.completionPolicy ?? "linked") === "linked"
-      ? yield* join(projectPath, [
-          {
-            ...input,
-            associations,
-            id: "00000000-0000-4000-8000-000000000000",
-            state: "open",
-            revision: 0,
-            status: input.status ?? "",
-          },
-        ])
-      : [];
+  const [joined] = yield* join(projectPath, [
+    {
+      ...input,
+      associations,
+      id: "00000000-0000-4000-8000-000000000000",
+      state: "open",
+      revision: 0,
+      status: input.status ?? "",
+    },
+  ]);
   const resolved = Boolean(
     joined?.sessions.length && joined.sessions.every((session) => session.resolved === true),
   );
-  return yield* todos.create(projectPath, { ...input, associations }, resolved);
+  const item = yield* todos.create(projectPath, { ...input, associations }, resolved);
+  yield* completeLinked(projectPath);
+  return yield* todos.read(projectPath, item.id);
 });
 export const update = Effect.fn("ProjectTodos.updateWithAssociations")(function* (
   projectPath: string,

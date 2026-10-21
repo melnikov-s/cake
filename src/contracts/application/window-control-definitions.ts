@@ -379,6 +379,9 @@ export const windowControlDefinitions = {
     discovery: {
       topic: "sessions",
       summary: "Idempotently resolve or restore explicit Project Session targets.",
+      guidance: [
+        "Resolving all actual session associations automatically completes linked Project Chat to-dos. Source/report links do not block completion; source-only items stay open. Restore never reopens to-dos, and marking a to-do done never resolves sessions.",
+      ],
     },
   },
   "sessions.open": {

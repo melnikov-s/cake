@@ -113,6 +113,7 @@ it.effect(
           status: "PRIVATE_PROGRESS",
           associations: [
             link(a),
+            link(b),
             {
               kind: "source",
               ref: `cake://session/${b}?message=report`,
@@ -159,93 +160,6 @@ it.effect(
           { sessionId: b, resolved: true },
         ],
       });
-    }).pipe(Effect.provide(f.layer));
-  },
-);
-
-it.effect(
-  "all linked work must resolve; report sources count, external context does not block, manual and historical reopen intent survive",
-  () => {
-    const f = fixture();
-    return Effect.gen(function* () {
-      yield* upsertProject(project, "Project");
-      const item = yield* todos.create(project, {
-        title: "Combined",
-        description: "Work.",
-        associations: [
-          link(a),
-          link(b),
-          { kind: "source", ref: "docs/design.md", title: "Context" },
-        ],
-      });
-      const source = yield* todos.create(project, {
-        title: "Report work",
-        description: "Work.",
-        associations: [
-          { kind: "source", ref: `cake://session/${a}?message=report`, title: "Report" },
-        ],
-      });
-      const manual = yield* todos.create(project, {
-        title: "Review",
-        description: "Review.",
-        completionPolicy: "manual",
-        associations: [link(a)],
-      });
-      const external = yield* todos.create(project, {
-        title: "Discuss",
-        description: "Discuss.",
-        associations: [{ kind: "source", ref: "https://example.com", title: "Web" }],
-      });
-      const reopened = yield* todos.create(project, {
-        title: "Reopened",
-        description: "Work.",
-        associations: [link(a)],
-      });
-      yield* todos.update(project, { id: reopened.id, expectedRevision: 0, state: "open" });
-      const historical = yield* todos.create(project, {
-        title: "Historical",
-        description: "Work.",
-        associations: [link(a)],
-      });
-      yield* (yield* ApplicationState).transact((state) =>
-        Effect.succeed({
-          ...state,
-          projects: state.projects.map((project) => ({
-            ...project,
-            todos: project.todos
-              ? {
-                  ...project.todos,
-                  items: project.todos.items.map((item) => {
-                    if (item.id !== historical.id) return item;
-                    const old = { ...item };
-                    delete old.completionPolicy;
-                    return old;
-                  }),
-                }
-              : project.todos,
-          })),
-        }),
-      );
-      f.resolved.add(a);
-      yield* completeLinked(project);
-      expect((yield* todos.read(project, item.id)).state).toBe("open");
-      expect((yield* todos.read(project, source.id)).state).toBe("done");
-      f.resolved.add(root);
-      yield* completeLinked(project);
-      expect((yield* todos.read(project, item.id)).state).toBe("done");
-      for (const id of [manual.id, reopened.id, historical.id, external.id])
-        expect((yield* todos.read(project, id)).state).toBe("open");
-      // Explicit revision-checked adoption of historical work can close it immediately.
-      expect(
-        yield* controls.update(project, {
-          id: historical.id,
-          expectedRevision: 0,
-          completionPolicy: "linked",
-        }),
-      ).toMatchObject({ state: "done", revision: 1 });
-      f.resolved.clear();
-      yield* completeLinked(project);
-      expect((yield* todos.read(project, item.id)).state).toBe("done");
     }).pipe(Effect.provide(f.layer));
   },
 );
@@ -325,7 +239,6 @@ it.effect("a reopen during the metadata join wins over automatic completion", ()
     yield* Fiber.join(fiber);
     expect(yield* todos.read(project, item.id)).toMatchObject({
       state: "open",
-      completionPolicy: "manual",
       revision: 1,
     });
   }).pipe(Effect.provide(f.layer));
@@ -423,7 +336,7 @@ it.effect(
       });
       expect(batch.structuredContent).toEqual({
         command: "todos.update-many",
-        result: { receipts: [{ revision: 3, committed: true, completionPolicy: "manual" }] },
+        result: { receipts: [{ revision: 3, committed: true }] },
       });
       expect(registry.help()).toContain("todos");
     }).pipe(Effect.provide(f.layer));

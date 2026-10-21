@@ -348,9 +348,16 @@ describe("SessionArchiveStorage", () => {
                 [storage.resolve("session-1", project), storage.resolve("session-1", chat)],
                 { concurrency: "unbounded" },
               );
+              expect(Object.values((yield* storage.resolutionSnapshot()).directories)).toEqual([
+                ["session-1"],
+                ["session-1"],
+              ]);
               expect([...(yield* storage.resolvedIds(project))]).toEqual(["session-1"]);
               expect([...(yield* storage.resolvedIds(chat))]).toEqual(["session-1"]);
               yield* storage.restore("session-1", project);
+              expect(
+                Object.values((yield* storage.resolutionSnapshot()).directories).flat(),
+              ).toEqual(["session-1"]);
               expect([...(yield* storage.resolvedIds(project))]).toEqual([]);
               expect([...(yield* storage.resolvedIds(chat))]).toEqual(["session-1"]);
             }),

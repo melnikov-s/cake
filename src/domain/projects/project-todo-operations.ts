@@ -18,9 +18,9 @@ export function createProjectTodoOperations(
   const guidance = [
     "Lightweight Project Chat commitments. Actual new Project Sessions receive one linked item; update rather than duplicate it. No polling/wakes merely for open items.",
     "Default list is title/id/state/revision only. For reconciliation use ONE todos.list with state=open, view=reconciliation (max 50), then ONE todos.update-many with expectedRevision per item. Page with nextOffset. No transcript reads or per-session inspection needed.",
-    "Reconciliation sessions contain canonical work IDs and authoritative effective resolved (null means unknown), not execution done/stopped. Session and cake://session message/report links count as work; external/artifact/workspace links are context and do not block work. All work must resolve before linked-policy auto-closure. Reports/run completion never close items.",
-    "Explicit state updates switch completionPolicy to manual; restore never reopens items. Use manual for review threads. Historical missing policies are manual (past reopen intent is unknown); adopt linked explicitly with expectedRevision only after checking intent. To-do edits never resolve/restore sessions.",
-    "Read details by ID only when needed. On revision conflict reread; preserve explicit user closure/reopen. Association updates replace the complete merged list. Mutations return compact committed receipts; detail=true opts into content.",
+    "Reconciliation sessions contain canonical required session IDs and authoritative effective resolved (null means unknown), not execution done/stopped. All actual session associations must resolve before automatic closure, including historical items and late associations. Source/report links are context: they never veto completion and source-only discussion items remain open. Reports/run completion never close items.",
+    "Restore never reopens items. Explicit user done is preserved. To-do edits never resolve/restore, stop, delete or merge sessions. Cake reconciles linked Open items automatically; no assistant update, report acknowledgment, polling or wake is required.",
+    "Read details by ID only when needed. Pass expectedRevision; on revision conflict reread; preserve explicit user closure/reopen. Association updates replace the complete merged list. Mutations return compact committed receipts; detail=true opts into content.",
     "Only on a user compaction request, collect the requested items’ session associations (including session IDs in cake://session source/message/report links) and use sessions.compact-batch. Report unlinked items and per-session outcomes. Done is not session resolution and never automatically triggers compaction.",
   ] as const;
   const detail = Schema.optionalKey(Schema.Boolean);
@@ -28,7 +28,6 @@ export function createProjectTodoOperations(
     item: ProjectTodo,
     input: {
       associations?: ProjectTodo["associations"];
-      completionPolicy?: "linked" | "manual";
       state?: "open" | "done";
     },
     includeDetail: boolean | undefined,
@@ -40,16 +39,12 @@ export function createProjectTodoOperations(
     committed: true as const,
     ...(input.state === undefined &&
     item.state === "done" &&
-    (created || input.completionPolicy === "linked" || input.associations !== undefined)
+    (created || input.associations !== undefined)
       ? { state: item.state }
       : null),
     ...(input.associations &&
     JSON.stringify(input.associations) !== JSON.stringify(item.associations)
       ? { associations: item.associations }
-      : null),
-    ...(item.completionPolicy !== input.completionPolicy &&
-    (input.state !== undefined || input.completionPolicy !== undefined)
-      ? { completionPolicy: item.completionPolicy }
       : null),
     ...(includeDetail ? { detail: await control.read(item.id, signal) } : null),
   });
@@ -63,7 +58,7 @@ export function createProjectTodoOperations(
       outputSchema: ProjectTodoList,
       examples: [{ input: {} }, { input: { state: "open", view: "reconciliation", limit: 50 } }],
       result:
-        "Bounded id/title/state/revision rows and pagination; reconciliation adds policy and work session lifecycle only.",
+        "Bounded id/title/state/revision rows and pagination; reconciliation adds required work session lifecycle only.",
       execute: async (input, context) =>
         control.list(
           await Schema.decodeUnknownPromise(ProjectTodoListInput)(input),
@@ -96,7 +91,7 @@ export function createProjectTodoOperations(
       summary: "Create a commitment with a short durable brief.",
       guidance: [
         guidance[0],
-        "Defaults to linked completion; already-resolved work closes on creation. Choose completionPolicy=manual for review threads. Returns new id/revision; detail=true opts into content.",
+        "Already-resolved associated session work closes on creation. Source-only review threads remain open. Returns new id/revision; detail=true opts into content.",
       ],
       inputSchema: Schema.Struct({ ...ProjectTodoCreate.fields, detail }),
       outputSchema: ProjectTodoReceipt,
@@ -125,7 +120,7 @@ export function createProjectTodoOperations(
     {
       command: "todos.update",
       topic: "todos",
-      summary: "Revision-checked to-do edit, done/reopen or completion policy.",
+      summary: "Revision-checked to-do edit or explicit done/reopen.",
       guidance: [guidance[3], guidance[4]],
       inputSchema: Schema.Struct({ ...ProjectTodoUpdate.fields, detail }),
       outputSchema: ProjectTodoReceipt,
@@ -154,7 +149,7 @@ export function createProjectTodoOperations(
       summary: "Atomically commit up to 50 revision-checked edits; any conflict writes nothing.",
       guidance: [
         "Use one todos.list view=reconciliation read, then this call. Every update requires expectedRevision. All-or-none; stale errors identify the conflict/current revision. Receipts follow input order without echoing IDs.",
-        "Explicit state changes switch to manual completion. Historical/manual items require an explicit revision-checked linked-policy adoption for automatic closure; never assume old open rows were not reopened.",
+        "All actual session associations resolved automatically completes linked Open items, including legacy and late associations. Restore never reopens items; marking a to-do done never resolves sessions.",
       ],
       inputSchema: Schema.Struct({ updates: ProjectTodoUpdates }),
       outputSchema: Schema.Struct({ receipts: Schema.Array(ProjectTodoReceipt) }),

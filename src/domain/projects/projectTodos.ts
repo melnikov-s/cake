@@ -73,7 +73,6 @@ export const create = Effect.fn("ProjectTodos.create")(function* (
     ...input,
     status: input.status ?? "",
     associations: input.associations ?? [],
-    completionPolicy: input.completionPolicy ?? ("linked" as const),
     id: randomUUID(),
     state: resolved ? ("done" as const) : ("open" as const),
     revision: 0,
@@ -123,11 +122,6 @@ export const updateMany = Effect.fn("ProjectTodos.updateMany")(function* (
             input.state ??
             (resolved.has(item.id) && item.state === "open" ? ("done" as const) : item.state),
           associations: input.associations ?? item.associations,
-          ...(input.state !== undefined
-            ? { completionPolicy: "manual" as const }
-            : input.completionPolicy !== undefined
-              ? { completionPolicy: input.completionPolicy }
-              : {}),
           revision: item.revision + 1,
         };
         result = {
@@ -149,26 +143,33 @@ export const updateMany = Effect.fn("ProjectTodos.updateMany")(function* (
   return inputs.flatMap((input) => next.items.filter((item) => item.id === input.id));
 });
 
-/** Resolution is monotonic for to-dos. Revision checks preserve edits/reopens made during the join. */
+/** Persist automatic completion through the same authority/projection as explicit user edits.
+ * No write/publication for a repeated reconciliation with no candidates.
+ */
 export const completeResolved = Effect.fn("ProjectTodos.completeResolved")(function* (
   projectPath: string,
   candidates: readonly Pick<ProjectTodo, "id" | "revision">[],
 ) {
   if (!candidates.length) return;
-  yield* change(projectPath, (value) =>
-    Effect.succeed({
-      ...value,
-      items: value.items.map((item) =>
-        item.state === "open" &&
-        item.completionPolicy === "linked" &&
-        candidates.some(
-          (candidate) => candidate.id === item.id && candidate.revision === item.revision,
-        )
-          ? { ...item, state: "done" as const, revision: item.revision + 1 }
-          : item,
-      ),
-    }),
-  );
+  yield* change(projectPath, (value) => {
+    let result = value;
+    for (const candidate of candidates) {
+      const item = result.items.find((item) => item.id === candidate.id);
+      if (!item || item.state !== "open" || item.revision !== candidate.revision) continue;
+      const updated = { ...item, state: "done" as const, revision: item.revision + 1 };
+      result = enqueue(
+        { ...result, items: result.items.map((other) => (other.id === item.id ? updated : other)) },
+        {
+          _tag: "ItemState",
+          id: item.id,
+          title: item.title,
+          state: "done",
+          sequence: result.sequence + 1,
+        },
+      );
+    }
+    return Effect.succeed(result);
+  });
 });
 
 const changeKey = (entry: ProjectTodoUserChange) =>
@@ -252,7 +253,6 @@ export const ensureSession = Effect.fn("ProjectTodos.ensureSession")(function* (
           description,
           status: "",
           state: "open" as const,
-          completionPolicy: "linked" as const,
           revision: 0,
           associations: [{ kind: "session" as const, sessionId, title: name }],
         },
@@ -261,7 +261,7 @@ export const ensureSession = Effect.fn("ProjectTodos.ensureSession")(function* (
   });
 });
 
-/** Call only after a native lifecycle authority confirms an actual user transition. */
+/** Call only after native lifecycle authority confirms an actual transition (UI or tool). */
 export const recordSessionChange = Effect.fn("ProjectTodos.recordSessionChange")(function* (
   projectPath: string,
   sessionId: string,

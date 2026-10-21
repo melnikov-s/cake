@@ -204,7 +204,6 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
                     status: "Landed; awaiting session resolution",
                     state: "open",
                     revision: 1,
-                    completionPolicy: "linked",
                     associations: [
                       {
                         kind: "session",
@@ -446,7 +445,7 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
     await expect(panel.getByRole("button", { name: "Reopen: Compaction follow-up" })).toBeVisible();
     await expect(
       panel.getByRole("button", { name: "Review conversations", exact: true }),
-    ).toBeVisible(); // Explicit user reopen preserved manual review, despite resolved source work.
+    ).toBeVisible(); // Source-only discussion stays open, despite resolved source work.
     const persisted = JSON.parse(
       await readFile(join(cakeHome, "state", "application.json"), "utf8"),
     );
@@ -454,12 +453,16 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
     expect(
       committedTodos.items.find((item: { id: string }) => item.id === standaloneTodoId),
     ).toMatchObject({ state: "done", revision: 2 });
-    expect(committedTodos.sequence).toBe(beforeToolResolve); // Tool resolution is not a user-context delta.
+    expect(committedTodos.sequence).toBeGreaterThan(beforeToolResolve);
+    expect(
+      committedTodos.items.filter((item: { state: string }) => item.state === "open"),
+    ).toHaveLength(1);
     const changes = committedTodos.pending;
-    // Only the actual user transition is a user delta, not the agent's second resolution.
-    expect(changes.filter((change: { _tag: string }) => change._tag === "SessionState")).toEqual(
-      [],
-    ); // consumed on RESOLVE_LINKED
+    // Tool resolution advances the same durable context as UI resolution, without a wake.
+    // The resolving call occurs after RESOLVE_LINKED was admitted, so its delta remains pending.
+    expect(changes.filter((change: { _tag: string }) => change._tag === "SessionState")).toEqual([
+      expect.objectContaining({ sessionId: standaloneSessionId, resolved: true }),
+    ]);
     const resolveRequest = requests.find((request) =>
       latestUser(request).includes("RESOLVE_LINKED"),
     );

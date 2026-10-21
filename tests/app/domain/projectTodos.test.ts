@@ -225,7 +225,7 @@ describe("Project Chat to-do authority", () => {
   );
 
   it.effect(
-    "session transitions are contextual deltas, never item state transitions or wakes; failed persistence publishes nothing",
+    "unlinked session context does not close unrelated items or wake; failed persistence publishes nothing",
     () => {
       const f = fixture();
       return Effect.gen(function* () {
