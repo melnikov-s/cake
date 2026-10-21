@@ -7,7 +7,11 @@ import * as projectTodos from "../../../src/domain/projects/projectTodos";
 import { upsertProject } from "../../../src/domain/application/application";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
-import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import {
+  defaultApplicationState,
+  type ProjectRecord,
+} from "../../../src/contracts/application/application-data";
+import { emptyProjectTodos } from "../../../src/contracts/projects/project-todos";
 import { applyProjectCatalogUpdate } from "../../../src/renderer/reducers/CatalogReducer";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -49,7 +53,13 @@ afterEach(() => {
   Reflect.deleteProperty(SVGElement.prototype, "getBBox");
 });
 
-async function fixture(mutateTodos?: Client["projectTodos"]["mutateUser"]) {
+async function fixture(
+  mutateTodos?: Client["projectTodos"]["mutateUser"],
+  projects: readonly ProjectRecord[] = [
+    projectRecord({ path: "/zombies", name: "zombies" }),
+    projectRecord({ path: "/finance", name: "finance" }),
+  ],
+) {
   const browserState = (sessionId: string) => ({
     sessionId,
     url: "https://example.com/",
@@ -69,10 +79,7 @@ async function fixture(mutateTodos?: Client["projectTodos"]["mutateUser"]) {
     async () => undefined,
   );
   const f = createRendererStoreFixture({
-    projects: [
-      projectRecord({ path: "/zombies", name: "zombies" }),
-      projectRecord({ path: "/finance", name: "finance" }),
-    ],
+    projects,
     sessions: [
       sessionSummary({
         sessionId: "task",
@@ -161,8 +168,8 @@ async function fixture(mutateTodos?: Client["projectTodos"]["mutateUser"]) {
   };
 }
 
-it("toggles Project Chat to-dos in the existing side pane, selects/deselects, completes/reopens and navigates titled work links", async () => {
-  const runtime = ManagedRuntime.make(
+function createTodoRuntime() {
+  return ManagedRuntime.make(
     ApplicationState.layer.pipe(
       Layer.provide(
         Layer.succeed(
@@ -175,6 +182,143 @@ it("toggles Project Chat to-dos in the existing side pane, selects/deselects, co
       ),
     ),
   );
+}
+
+it.each(
+  (["Replaced", "Upserted"] as const).flatMap((eventTag) =>
+    [false, true].map((alreadyOpen) => ({ eventTag, alreadyOpen })),
+  ),
+)(
+  "opens only on first live to-do creation ($eventTag, already open: $alreadyOpen)",
+  async ({ eventTag, alreadyOpen }) => {
+    const runtime = createTodoRuntime();
+    try {
+      await runtime.runPromise(upsertProject("/zombies", "zombies"));
+      await runtime.runPromise(upsertProject("/finance", "finance"));
+      using f = await fixture();
+      await f.user.click(screen.getByRole("button", { name: "Open Project Chat for zombies" }));
+      const panel = () => screen.queryByRole("complementary", { name: "To-do" });
+      let revision = 0;
+      const publish = async () => {
+        const projects = await runtime.runPromise(
+          Effect.map(ApplicationState, (state) => state.snapshot().projects),
+        );
+        act(() => {
+          if (eventTag === "Replaced")
+            applyProjectCatalogUpdate(f.models.projects, {
+              _tag: "Event",
+              revision: ++revision,
+              event: { _tag: "Replaced", projects },
+            });
+          else
+            for (const project of projects)
+              applyProjectCatalogUpdate(f.models.projects, {
+                _tag: "Event",
+                revision: ++revision,
+                event: { _tag: "Upserted", project },
+              });
+        });
+      };
+      // A different project's creation must not open the visible Project Chat's pane.
+      await runtime.runPromise(projectTodos.create("/finance", { title: "Budget", status: "" }));
+      await publish();
+      expect(panel()).toBeNull();
+      if (alreadyOpen) await f.user.click(screen.getByRole("button", { name: "To-do" }));
+      const first = await runtime.runPromise(
+        projectTodos.create("/zombies", { title: "First commitment", status: "Investigating" }),
+      );
+      await publish();
+      expect(within(panel()!).getByText(first.title)).toBeTruthy();
+      expect(screen.getByRole("button", { name: "To-do" }).getAttribute("aria-pressed")).toBe(
+        "true",
+      );
+      await f.user.click(screen.getByRole("button", { name: "Close To-do" }));
+      // Closing remains respected across later creation, status and lifecycle changes.
+      const second = await runtime.runPromise(
+        projectTodos.create("/zombies", { title: "Second commitment", status: "" }),
+      );
+      await publish();
+      expect(panel()).toBeNull();
+      for (const item of [first, second]) {
+        await runtime.runPromise(
+          projectTodos.update("/zombies", { id: item.id, expectedRevision: 0, state: "done" }),
+        );
+      }
+      await publish();
+      expect(panel()).toBeNull();
+      await runtime.runPromise(
+        projectTodos.update("/zombies", {
+          id: first.id,
+          expectedRevision: 1,
+          state: "open",
+          status: "Following up",
+        }),
+      );
+      await publish();
+      expect(panel()).toBeNull();
+      await runtime.runPromise(
+        projectTodos.update("/zombies", { id: first.id, expectedRevision: 2, state: "done" }),
+      );
+      await publish();
+      await runtime.runPromise(
+        projectTodos.create("/zombies", { title: "New work after Done", status: "" }),
+      );
+      await publish();
+      expect(panel()).toBeNull(); // Done history means the list is not empty.
+      await f.user.click(screen.getByRole("button", { name: "To-do" }));
+      expect(within(panel()!).getByText("New work after Done")).toBeTruthy();
+      await f.user.click(screen.getByRole("button", { name: "To-do" }));
+      expect(panel()).toBeNull();
+    } finally {
+      await runtime.dispose();
+    }
+  },
+);
+
+it.each(["initial load", "snapshot hydration"] as const)(
+  "does not auto-open existing to-dos on %s",
+  async (mode) => {
+    const projects = [
+      {
+        ...projectRecord({ path: "/zombies", name: "zombies" }),
+        todos: {
+          ...emptyProjectTodos(),
+          items: [
+            {
+              id: "00000000-0000-4000-8000-000000000001",
+              title: "Existing commitment",
+              status: "Awaiting review",
+              state: "open" as const,
+              revision: 0,
+              associations: [],
+            },
+          ],
+        },
+      },
+    ];
+    using f = await fixture(undefined, mode === "initial load" ? projects : undefined);
+    await f.user.click(screen.getByRole("button", { name: "Open Project Chat for zombies" }));
+    if (mode === "snapshot hydration")
+      act(() =>
+        applyProjectCatalogUpdate(f.models.projects, { _tag: "Snapshot", revision: 1, projects }),
+      );
+    expect(screen.queryByRole("complementary", { name: "To-do" })).toBeNull();
+    // Unrelated live updates after hydration cannot turn it into a creation event.
+    act(() =>
+      applyProjectCatalogUpdate(f.models.projects, {
+        _tag: "Event",
+        revision: 2,
+        event: { _tag: "Upserted", project: { ...projects[0]!, name: "Renamed" } },
+      }),
+    );
+    expect(screen.queryByRole("complementary", { name: "To-do" })).toBeNull();
+    await f.user.click(screen.getByRole("button", { name: "To-do" }));
+    expect(screen.getByText("Existing commitment")).toBeTruthy();
+  },
+);
+
+it("toggles Project Chat to-dos in the existing side pane, selects/deselects, completes/reopens and navigates titled work links", async () => {
+  const runtime = createTodoRuntime();
   try {
     await runtime.runPromise(upsertProject("/zombies", "zombies"));
     await runtime.runPromise(upsertProject("/finance", "finance"));

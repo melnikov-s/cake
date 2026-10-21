@@ -21,20 +21,35 @@ export function applyProjectCatalogUpdate(model: ProjectCatalog, update: Project
       projects.map((project) => project.path),
       "Project path",
     );
-    applySnapshot(model, { projects: [...projects] });
+    const createdProjects =
+      change._tag === "Replaced"
+        ? projects.filter((project) => startsTodoList(model.find(project.path), project))
+        : [];
+    batch(() => {
+      applySnapshot(model, { projects: [...projects] });
+      for (const project of createdProjects) model.find(project.path)!.todoCreationRevision += 1;
+    });
     return;
   }
   const event = change;
   batch(() => {
     if (event._tag === "Upserted") {
       const existing = model.find(event.project.path);
-      if (existing) applySnapshot(existing, event.project);
-      else model.projects.push(Project.create(event.project));
+      if (existing) {
+        const created = startsTodoList(existing, event.project);
+        applySnapshot(existing, event.project);
+        if (created) existing.todoCreationRevision += 1;
+      } else model.projects.push(Project.create(event.project));
     } else {
       const index = model.projects.findIndex((project) => project.path === event.path);
       if (index >= 0) model.projects.splice(index, 1);
     }
   });
+}
+
+/** Done items still belong to the list. Only an addition to a known empty list qualifies. */
+function startsTodoList(existing: Project | undefined, incoming: { todos?: Project["todos"] }) {
+  return existing?.todos.items.length === 0 && (incoming.todos?.items.length ?? 0) > 0;
 }
 
 export function applySessionCatalogGroupUpdate(

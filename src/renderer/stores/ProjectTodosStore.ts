@@ -13,6 +13,16 @@ export class ProjectTodosStore extends Store<{
   busy = false;
   error: string | undefined;
 
+  constructor(props: ProjectTodosStore["props"]) {
+    super(props);
+    this.reaction(
+      () => this.project?.todoCreationRevision ?? 0,
+      (revision, previous) => {
+        if (revision > previous) this.open();
+      },
+    );
+  }
+
   get project() {
     return this.props.project();
   }
@@ -31,7 +41,10 @@ export class ProjectTodosStore extends Store<{
 
   toggle() {
     if (this.visible) this.props.sidePanel().close();
-    else if (this.project)
+    else this.open();
+  }
+  open() {
+    if (this.project)
       this.props.sidePanel().open({
         key: "project-todos",
         title: "To-do",

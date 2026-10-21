@@ -1,5 +1,5 @@
 import { emptyProjectTodos, type ProjectTodos } from "../../contracts/projects/project-todos";
-import { Model, id } from "r-state-tree";
+import { Model, id, transient } from "r-state-tree";
 import {
   defaultProjectSettings,
   defaultProjectWorkflow,
@@ -15,4 +15,6 @@ export class Project extends Model {
   settings: ProjectSettings = defaultProjectSettings();
   workflow: ProjectWorkflow = defaultProjectWorkflow();
   todos: ProjectTodos = emptyProjectTodos();
+  /** Live empty-list creation marker; snapshots/hydration never advance it. */
+  @transient todoCreationRevision = 0;
 }
