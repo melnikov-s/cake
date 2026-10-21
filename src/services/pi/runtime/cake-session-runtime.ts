@@ -6,6 +6,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { existsSync } from "node:fs";
+import type { IdleCompactionResult } from "../../../contracts/project-sessions/session-compaction";
 import { internalInputEntryType } from "./internal-input-projection";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -277,6 +278,7 @@ export interface CakeSessionRuntime {
   ): Promise<void>;
   setUserMessageMarkdown(entryId: string, renderAsMarkdown: boolean): Promise<void>;
   compact(instructions?: string): Promise<void>;
+  compactIfIdle?(instructions?: string): Promise<IdleCompactionResult>;
   queueCommand(command: string, onSettled?: () => void): Promise<QueuedSessionCommandReceipt>;
   inspectSession(query: SessionInspectionQuery): Promise<JsonValue>;
   /** `stop` attributes a deliberate stop; omitted, the abort reads as an interruption. */
@@ -851,7 +853,7 @@ export async function createCakeSessionRuntime(
       return session.sessionFile ?? "";
     },
     get streaming() {
-      return session.isStreaming;
+      return session.isStreaming || session.isCompacting || turnController.idleCompactionActive();
     },
     getReviewParentContext() {
       if (!session.sessionFile) throw new Error("The parent session is not persisted");
@@ -1040,6 +1042,7 @@ export async function createCakeSessionRuntime(
       }
     },
     compact: turnController.compact,
+    compactIfIdle: turnController.compactIfIdle,
     async queueCommand(command, onSettled) {
       const name = command.slice(1).split(/\s/, 1)[0];
       if (

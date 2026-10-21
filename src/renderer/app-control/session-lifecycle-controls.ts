@@ -53,17 +53,6 @@ export const sessionLifecycleControls = [
     },
   }),
   defineSessionControl({
-    ...windowControlDefinitions["sessions.compact"],
-    run: async (input, { host }, command, known): Promise<AppControlResult> => {
-      const { sessionId } = input;
-
-      const workspacePath = known.workingDirectory;
-      const target = { workspacePath, sessionId };
-      await host.sessions.compact(sessionId, input.instructions);
-      return { ok: true, command, target, status: "compacted" };
-    },
-  }),
-  defineSessionControl({
     ...windowControlDefinitions["sessions.schedule"],
     run: async (input, { host }, command, known): Promise<AppControlResult> => {
       const { sessionId } = input;

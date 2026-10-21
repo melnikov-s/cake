@@ -1,4 +1,5 @@
 import type { TurnStop } from "../../contracts/conversations/turn-stop";
+import type { IdleCompactionResult } from "../../contracts/project-sessions/session-compaction";
 import { sessionDigestReceiptIds } from "../../contracts/cake-chats/session-digest-reminder";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import {
@@ -251,6 +252,9 @@ export interface CakeSessionHandle {
     options: { readonly summarize: boolean; readonly customInstructions?: string },
   ) => Effect.Effect<void, PiSessionError>;
   readonly compact: (instructions?: string) => Effect.Effect<void, PiSessionError>;
+  readonly compactIfIdle: (
+    instructions?: string,
+  ) => Effect.Effect<IdleCompactionResult, PiSessionError>;
   readonly rename: (name: string, onlyIfUnnamed?: boolean) => Effect.Effect<void, PiSessionError>;
   readonly fork: (
     entryId: string,
@@ -1457,6 +1461,15 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
           navigate: (entryId, options) =>
             call("navigate", (runtime) => runtime.navigate(entryId, options)),
           compact: (instructions) => call("compact", (runtime) => runtime.compact(instructions)),
+          compactIfIdle: Effect.fn("CakeSessionRuntimes.compactIfIdle")(function* (instructions) {
+            // Accepted work can precede the runtime's asynchronous preparation.
+            if ((yield* Ref.get(shared.activeTurns)).size > 0) return { status: "busy" as const };
+            return yield* call("compactIfIdle", (runtime) => {
+              if (!runtime.compactIfIdle)
+                throw new Error("Idle-only compaction is unavailable for this runtime");
+              return runtime.compactIfIdle(instructions);
+            }).pipe(Effect.uninterruptible);
+          }),
           rename: (name, onlyIfUnnamed) =>
             call("rename", (runtime) => runtime.rename(name, onlyIfUnnamed)),
           fork: (entryId, title) => call("fork", (runtime) => runtime.fork(entryId, title)),

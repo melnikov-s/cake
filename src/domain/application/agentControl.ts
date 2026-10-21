@@ -42,6 +42,7 @@ import { AgentControlError } from "./agentSettings";
 import * as metadata from "../project-sessions/projectSessionMetadata";
 import * as sessionReferences from "../project-sessions/sessionReferences";
 import * as projectSessions from "../project-sessions/projectSessionOperations";
+import * as sessionCompaction from "../project-sessions/sessionCompaction";
 import * as savedDrafts from "../project-sessions/savedDrafts";
 import * as projects from "../projects/projects";
 import { ProjectAccess } from "../../services/projects/ProjectAccess";
@@ -607,6 +608,22 @@ export const invoke: (
             command,
             ...(yield* completionInbox.update(caller.sessionId, invocation.arguments)),
           });
+        case "sessions.compact":
+        case "sessions.compact-batch": {
+          const input = invocation.arguments;
+          const results = yield* sessionCompaction.compact(
+            "sessionIds" in input ? input.sessionIds : [input.sessionId],
+            input.instructions,
+            caller,
+          );
+          return toJsonValue({
+            ok: results.every(
+              (result) => result.status === "compacted" || result.status === "unchanged",
+            ),
+            command,
+            results,
+          });
+        }
         case "sessions.send":
         case "sessions.reply":
         case "sessions.thread":

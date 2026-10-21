@@ -56,6 +56,84 @@ const adapter = (
 
 describe("CakeSessionRuntimes", () => {
   it.effect(
+    "retains an idle-compaction runtime until Pi settles even when its caller is interrupted",
+    () =>
+      Effect.gen(function* () {
+        const started = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        const finalized = yield* Deferred.make<void>();
+        let finalizations = 0;
+        const layer = makeCakeSessionRuntimesLayer({
+          sessionIds: () => Stream.empty,
+          catalog: () => Stream.empty,
+          catalogEntry: () => Effect.succeed(undefined),
+          inspect: () => Effect.succeed(undefined),
+          changelog: () => Effect.succeed(""),
+          createRuntime: (runtimeOptions) =>
+            Effect.succeed({
+              ...fakeRuntime(runtimeOptions, () => {
+                finalizations += 1;
+                Deferred.doneUnsafe(finalized, Effect.void);
+              }),
+              compactIfIdle: async () => {
+                Deferred.doneUnsafe(started, Effect.void);
+                await Effect.runPromise(Deferred.await(release));
+                return { status: "compacted" };
+              },
+            }),
+        }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
+        const context = yield* Layer.build(layer);
+        const sessions = Context.get(context, CakeSessionRuntimes);
+        const operation = yield* Effect.scoped(
+          Effect.gen(function* () {
+            const handle = yield* sessions.acquire(options());
+            return yield* handle.compactIfIdle();
+          }),
+        ).pipe(Effect.forkScoped);
+        yield* Deferred.await(started);
+        const interruption = yield* Fiber.interrupt(operation).pipe(Effect.forkScoped);
+        assert.equal(finalizations, 0);
+        assert.equal(operation.pollUnsafe(), undefined);
+        yield* Deferred.succeed(release, undefined);
+        yield* Fiber.join(interruption);
+        yield* Deferred.await(finalized);
+        assert.equal(finalizations, 1);
+      }),
+  );
+
+  it.effect(
+    "idle-only compaction rejects accepted work before streaming and fails unsupported runtimes truthfully",
+    () =>
+      Effect.gen(function* () {
+        const started = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        const layer = makeCakeSessionRuntimesLayer({
+          sessionIds: () => Stream.empty,
+          catalog: () => Stream.empty,
+          catalogEntry: () => Effect.succeed(undefined),
+          inspect: () => Effect.succeed(undefined),
+          changelog: () => Effect.succeed(""),
+          createRuntime: (runtimeOptions) =>
+            Effect.succeed({
+              ...fakeRuntime(runtimeOptions, () => undefined),
+              prompt: async () => {
+                Deferred.doneUnsafe(started, Effect.void);
+                await Effect.runPromise(Deferred.await(release));
+              },
+            }),
+        }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
+        const context = yield* Layer.build(layer);
+        const handle = yield* Context.get(context, CakeSessionRuntimes).acquire(options());
+        const unsupported = yield* Effect.flip(handle.compactIfIdle());
+        assert.match(unsupported.message, /Idle-only compaction is unavailable/);
+        yield* handle.prompt("Preparing work");
+        yield* Deferred.await(started);
+        assert.deepEqual(yield* handle.compactIfIdle(), { status: "busy" });
+        yield* Deferred.succeed(release, undefined);
+      }),
+  );
+
+  it.effect(
     "keeps saved conversations readable with an actionable repair notice when recovery metadata is corrupt",
     () =>
       Effect.gen(function* () {

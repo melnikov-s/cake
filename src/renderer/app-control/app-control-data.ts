@@ -189,7 +189,6 @@ export interface AppControlHost {
       model?: ChatConfiguration;
     }): Promise<{ workspacePath: string; sessionId: string }>;
 
-    compact(sessionId: string, instructions?: string): Promise<void>;
     query(sessionId: string, query: SessionInspectionQuery): Promise<JsonValue>;
     queueCommand(sessionId: string, command: string): Promise<QueuedSessionCommandReceipt>;
     reorderQueuedMessage(
@@ -399,7 +398,6 @@ type AppControlSuccess =
     }
   | { ok: true; command: "sessions.thread"; thread: CoordinationThreadView }
   | { ok: true; command: "sessions.close-thread"; thread: CoordinationThreadView; status: "closed" }
-  | { ok: true; command: "sessions.compact"; target: SessionTarget; status: "compacted" }
   | {
       ok: true;
       command:

@@ -1,5 +1,9 @@
 import { Schema } from "effect";
 import {
+  SessionCompactionOutput,
+  sessionCompactionDefinitions,
+} from "../../contracts/project-sessions/session-compaction";
+import {
   CakeModelSelection,
   type ExplicitCakeModelSelection,
 } from "../../contracts/model-presets/cake-model-selection";
@@ -25,6 +29,9 @@ export function createGlobalControlOperations(
         guidance: tool.guidance,
         inputSchema: jsonObjectSchema,
         inputJsonSchema: tool.parameters,
+        ...(sessionCompactionDefinitions.some((definition) => definition.command === tool.command)
+          ? { outputSchema: SessionCompactionOutput }
+          : null),
         examples: tool.examples ?? [],
         result: tool.result ?? "A bounded result from Cake's authoritative application control.",
         limitations: tool.limitations,

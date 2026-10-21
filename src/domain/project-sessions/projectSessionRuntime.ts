@@ -103,7 +103,9 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   location,
   sessionId,
   newSession,
+  preserveResolution = false,
 }: {
+  readonly preserveResolution?: boolean;
   readonly location: ProjectSessionLocation;
   readonly sessionId: string;
   readonly newSession: boolean;
@@ -199,6 +201,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   // Clear former per-member resolution metadata without changing inherited
   // family resolution. Storage migrates any old archived transcript in place.
   if (
+    !preserveResolution &&
     isChild &&
     !newSession &&
     (yield* archive
@@ -866,7 +869,11 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
             { signal },
           ),
         invokeAppControl: async (command, input, signal) => {
-          if (backendAgentControl.handles(command) && Schema.is(Schema.String)(input.sessionId))
+          if (
+            command !== "sessions.compact" &&
+            backendAgentControl.handles(command) &&
+            Schema.is(Schema.String)(input.sessionId)
+          )
             input = {
               ...input,
               sessionId: await run(sessionReferences.resolve(input.sessionId), { signal }),

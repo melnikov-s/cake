@@ -117,6 +117,8 @@ const CAKE_CHAT_OPERATIONS = [
   "context.compact",
   "sessions.list",
   "sessions.info",
+  "sessions.compact",
+  "sessions.compact-batch",
   "sessions.open",
   "sessions.create",
   "sessions.send",
@@ -627,7 +629,10 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
               const argumentsObject = yield* Schema.decodeUnknownEffect(jsonObjectSchema)(
                 invocation.arguments,
               );
-              if (Schema.is(Schema.String)(argumentsObject.sessionId))
+              if (
+                invocation.name !== "sessions.compact" &&
+                Schema.is(Schema.String)(argumentsObject.sessionId)
+              )
                 invocation = {
                   ...invocation,
                   arguments: {
@@ -659,6 +664,8 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
                   "sessions.send",
                   "sessions.open",
                   "sessions.abort",
+                  "sessions.compact",
+                  "sessions.compact-batch",
                   "sessions.rename",
                   "sessions.resolve",
                   "sessions.set-labels",
@@ -705,6 +712,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
                         kind: "cake-chat",
                         sessionId: target.sessionId,
                         title,
+                        ...(project ? { projectPath: project.path } : null),
                       }),
                     )) ??
                     (yield* rendererRequests.requestCakeChatControl(

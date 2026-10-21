@@ -67,6 +67,89 @@ function createFixture(overrides: Partial<AgentSession> = {}) {
 }
 
 describe("CakeSessionRuntime turn controller", () => {
+  it("idle-only compaction reserves before preparation, waits for Pi, and releases held inputs", async () => {
+    const gate = deferred();
+    const started = deferred();
+    const { controller, session } = createFixture({
+      compact: vi.fn(async () => {
+        started.resolve();
+        await gate.promise;
+        return {
+          summary: "Summary",
+          firstKeptEntryId: "entry",
+          tokensBefore: 100,
+          estimatedTokensAfter: 20,
+        };
+      }),
+    });
+    const operation = controller.compactIfIdle("Keep decisions");
+    expect(controller.idleCompactionActive()).toBe(true);
+    expect(await controller.compactIfIdle()).toEqual({ status: "busy" });
+    await started.promise;
+    const prompt = controller.prompt("Next user input", "prompt", []);
+    // Drain the explicit preparation Promise, not a wall-clock delay.
+    await Promise.resolve();
+    expect(session.prompt).not.toHaveBeenCalled();
+    expect(session.abort).not.toHaveBeenCalled();
+    expect(session.compact).toHaveBeenCalledWith("Keep decisions");
+    gate.resolve();
+    expect(await operation).toEqual({ status: "compacted" });
+    await prompt;
+    expect(session.prompt).toHaveBeenCalledOnce();
+    expect(controller.idleCompactionActive()).toBe(false);
+    controller.dispose();
+  });
+
+  it("idle-only compaction refuses active, compacting, shell and queued sessions without calling Pi", async () => {
+    for (const overrides of [
+      { isStreaming: true },
+      { isCompacting: true },
+      { isBashRunning: true },
+      { getFollowUpMessages: () => ["queued"] },
+      { getSteeringMessages: () => ["steering"] },
+    ]) {
+      const { controller, session } = createFixture(overrides);
+      expect(await controller.compactIfIdle()).toEqual({ status: "busy" });
+      expect(session.compact).not.toHaveBeenCalled();
+      expect(session.abort).not.toHaveBeenCalled();
+      controller.dispose();
+    }
+  });
+
+  it("idle-only compaction refuses a prompt still preparing before Pi begins streaming", async () => {
+    const gate = deferred();
+    const { controller, session } = createFixture({
+      prompt: vi.fn(async () => gate.promise),
+    });
+    const prompt = controller.prompt("Preparing", "prompt", []);
+    expect(await controller.compactIfIdle()).toEqual({ status: "busy" });
+    expect(session.compact).not.toHaveBeenCalled();
+    gate.resolve();
+    await prompt;
+    controller.dispose();
+  });
+
+  it("returns unchanged only for Pi no-op outcomes and preserves actual failures", async () => {
+    for (const message of [
+      "Already compacted",
+      "Nothing to compact (session too small)",
+      "Provider failed",
+      "Compaction cancelled",
+    ]) {
+      const { controller, session } = createFixture({
+        compact: vi.fn(async () => {
+          throw new Error(message);
+        }),
+      });
+      if (message === "Already compacted" || message.startsWith("Nothing to compact"))
+        expect(await controller.compactIfIdle()).toEqual({ status: "unchanged" });
+      else await expect(controller.compactIfIdle()).rejects.toThrow(message);
+      expect(controller.idleCompactionActive()).toBe(false);
+      expect(session.abort).not.toHaveBeenCalled();
+      controller.dispose();
+    }
+  });
+
   it("binds identical user steering and internal follow-up text to their own admission identities", async () => {
     const queues = { steering: [] as string[], followUp: [] as string[] };
     const { controller } = createFixture({

@@ -238,14 +238,6 @@ export function createRootApplicationControlHost(
           { sessionId, itemId, position },
           { signal: capabilities.signal },
         ),
-      compact: (sessionId, instructions) =>
-        capabilities.applicationControlStore().runOperation(async () => {
-          await capabilities.prepareProjectSessionChat(sessionId);
-          return capabilities.client.sessionChats.compact(
-            { sessionId, instructions },
-            { signal: capabilities.signal },
-          );
-        }),
       scheduleMessage: (input) =>
         capabilities
           .applicationControlStore()

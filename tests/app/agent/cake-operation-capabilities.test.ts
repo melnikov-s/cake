@@ -140,6 +140,8 @@ describe("Project Session operation capabilities", () => {
       "session-labels.list",
       "notifications.send",
       "sessions.list",
+      "sessions.compact",
+      "sessions.compact-batch",
       "sessions.open",
       "sessions.history",
       "sessions.cancel-queued",
@@ -213,7 +215,9 @@ describe("Project Session operation capabilities", () => {
 
   it("uses capability metadata rather than command names or prefixes", () => {
     const create = projectSessionOperations.createProjectSessionOperations(bridge.api)[0];
-    const info = createConversationOperations(bridge.api)[0];
+    const info = createConversationOperations(bridge.api).find(
+      (operation) => operation.command === "session.info",
+    );
     if (!create || !info) throw new Error("Expected real create and info definitions");
     vi.spyOn(projectSessionOperations, "createProjectSessionOperations").mockReturnValue([
       { ...create, command: "app.renamed-create" },

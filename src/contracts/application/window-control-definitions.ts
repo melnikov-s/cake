@@ -294,19 +294,6 @@ export const windowControlDefinitions = {
       model: Schema.optionalKey(CakeModelSelection),
     }),
   },
-  "sessions.compact": {
-    command: "sessions.compact",
-    args: Schema.Struct({
-      ...sessionIdTargetSchema.fields,
-      instructions: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(262144))),
-    }),
-    scope: "global",
-    discovery: {
-      topic: "sessions",
-      summary:
-        "Compact one explicitly targeted Project Session through Pi's normal compaction mechanism.",
-    },
-  },
   "sessions.schedule": {
     command: "sessions.schedule",
     args: Schema.Struct({

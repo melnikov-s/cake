@@ -16,7 +16,11 @@ import type { SessionContextMetadata } from "../../../src/contracts/conversation
 import { CakeChatConfiguration } from "../../../src/services/pi-durable/CakeChatConfiguration";
 import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
-import { messageReference } from "../../../src/contracts/conversations/message-reference";
+import {
+  messageReference,
+  parseSessionLink,
+} from "../../../src/contracts/conversations/message-reference";
+import * as projectTodos from "../../../src/domain/projects/projectTodos";
 import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
 import type { SavedDraft } from "../../../src/contracts/project-sessions/saved-draft-data";
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
@@ -94,6 +98,12 @@ const summary = (id: string) => ({
 });
 
 const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChats = false) {
+  const compactions: Array<{ sessionId: string; instructions?: string }> = [];
+  const compactFailures = new Set<string>();
+  const compacted = new Set<string>();
+  const compactStarted = yield* Deferred.make<void>();
+  const compactRelease = yield* Deferred.make<void>();
+  let pauseCompaction = false;
   const prompts = yield* Queue.unbounded<{
     sessionId: string;
     text: string;
@@ -142,6 +152,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
     branch: string;
     baseBranch: string;
     createdAt: string;
+    state?: "active" | "landed" | "resolved" | "discarded" | "missing";
   }> = [];
   const contextBySession = new Map<string, SessionContextMetadata>();
   const requestCalls: unknown[] = [];
@@ -249,6 +260,18 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
             if (pauseMessage) await Effect.runPromise(Deferred.await(messageRelease));
             if (failedTurns.has(sessionId)) throw new Error("Model failed after admission");
           },
+          compactIfIdle: async (instructions) => {
+            compactions.push({
+              sessionId,
+              ...(instructions === undefined ? null : { instructions }),
+            });
+            Deferred.doneUnsafe(compactStarted, Effect.void);
+            if (pauseCompaction) await Effect.runPromise(Deferred.await(compactRelease));
+            if (compactFailures.has(sessionId)) throw new Error("Compaction provider failed");
+            if (compacted.has(sessionId)) return { status: "unchanged" };
+            compacted.add(sessionId);
+            return { status: "compacted" };
+          },
           inspectSession: async (query): Promise<JsonValue> => {
             queries.push(query);
             if (query.kind === "messages-list") {
@@ -340,6 +363,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
     }),
     Layer.mock(SessionArchiveStorage, {
       resolvedProjectEntry: (id) => Effect.succeed(archivedEntries.get(id)),
+      resolvedEntry: (id) => Effect.succeed(summary(id)),
       resolvedProjects: (path) =>
         Stream.fromIterable(
           [...archivedEntries.values()].filter((entry) => entry.projectPath === path),
@@ -352,7 +376,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
       locate: (id, at) => {
         listReads.locate++;
         return Effect.succeed(
-          at.cwd !== "/project"
+          !sessionsByDirectory.get(at.cwd)?.includes(id)
             ? undefined
             : resolved && id === target
               ? ("resolved" as const)
@@ -421,6 +445,13 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
   assert.ok(invoke);
   return {
     context,
+    compactions,
+    compactFailures,
+    compactStarted,
+    compactRelease,
+    pauseCompaction: () => {
+      pauseCompaction = true;
+    },
     drafts,
     deny: (path: string) => deniedPaths.add(path),
     active,
@@ -473,6 +504,307 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
     protectedSessions,
   };
 });
+
+it.effect(
+  "compacts an authorized target through backend controls and awaits runtime completion",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      f.pauseCompaction();
+      const operation = yield* f
+        .call("sessions.compact", { sessionId: "00000022", instructions: "Keep decisions" })
+        .pipe(Effect.forkScoped);
+      yield* Deferred.await(f.compactStarted);
+      expect(operation.pollUnsafe()).toBeUndefined();
+      expect(f.compactions).toEqual([{ sessionId: target, instructions: "Keep decisions" }]);
+      yield* Deferred.succeed(f.compactRelease, undefined);
+      expect(yield* Fiber.join(operation)).toMatchObject({
+        ok: true,
+        command: "sessions.compact",
+        results: [{ reference: "00000022", sessionId: target, status: "compacted" }],
+      });
+      expect(yield* f.call("sessions.compact", { sessionId: target })).toMatchObject({
+        ok: true,
+        results: [{ status: "unchanged" }],
+      });
+      expect(f.requestCalls).toEqual([]);
+      expect(f.restored()).toBe(0);
+      expect(f.saveCount()).toBe(0);
+    }),
+);
+
+it.effect(
+  "bulk compaction preserves order, deduplicates aliases and retains partial failures",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      f.compactFailures.add(third);
+      const sessionIds = [target, "00000022", "not-a-session", third, third, source];
+      expect(yield* f.call("sessions.compact-batch", { sessionIds })).toMatchObject({
+        ok: false,
+        results: [
+          { reference: target, sessionId: target, status: "compacted" },
+          { reference: "00000022", sessionId: target, status: "compacted", duplicateOf: 0 },
+          { reference: "not-a-session", status: "invalid" },
+          {
+            reference: third,
+            sessionId: third,
+            status: "failed",
+            message: "Compaction provider failed",
+          },
+          { reference: third, status: "failed", duplicateOf: 3 },
+          { reference: source, status: "compacted" },
+        ],
+      });
+      expect(f.compactions.map((item) => item.sessionId)).toEqual([target, third, source]);
+      expect(f.requestCalls).toEqual([]);
+    }),
+);
+
+it.effect("skips busy targets and compacts accessible resolved history without restore", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    yield* f.direct("sessions.context", { sessionId: target });
+    f.active.add(target);
+    expect(yield* f.call("sessions.compact", { sessionId: target })).toMatchObject({
+      ok: false,
+      results: [{ status: "busy" }],
+    });
+    f.active.delete(target);
+    f.resolve();
+    expect(yield* f.call("sessions.compact", { sessionId: target })).toMatchObject({
+      ok: true,
+      results: [{ status: "compacted" }],
+    });
+    expect(f.compactions).toEqual([{ sessionId: target }]);
+    expect(f.restored()).toBe(0);
+    expect(f.saveCount()).toBe(0);
+  }),
+);
+
+it.effect(
+  "Project Chat compaction is project-scoped; global Cake Chat still requires path authorization",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture(true);
+      const project = f.state().projects[0];
+      assert.ok(project);
+      yield* Context.get(f.context, ApplicationState).transact((state) =>
+        Effect.succeed({
+          ...state,
+          projects: [...state.projects, { ...project, path: "/other", name: "Other" }],
+        }),
+      );
+      f.sessionsByDirectory.set("/other", [third]);
+      f.sessionsByDirectory.set("/project", [source, target]);
+      const projectChat = {
+        kind: "cake-chat" as const,
+        sessionId: projectChatSessionId("/project"),
+        title: "Project Chat",
+      };
+      for (const sender of [
+        caller,
+        projectChat,
+        { ...projectChat, sessionId: projectChatSessionId("/unknown") },
+      ]) {
+        expect(
+          yield* f.direct("sessions.compact-batch", { sessionIds: [third, target] }, sender),
+        ).toMatchObject({
+          ok: false,
+          results: [
+            { status: "unauthorized" },
+            {
+              status:
+                sender.sessionId === projectChatSessionId("/unknown")
+                  ? "unauthorized"
+                  : sender === caller
+                    ? "compacted"
+                    : "unchanged",
+            },
+          ],
+        });
+      }
+      const global = {
+        kind: "cake-chat" as const,
+        sessionId: CAKE_CHAT_SESSION_ID,
+        title: "Cake Chat",
+      };
+      f.deny("/other");
+      expect(yield* f.direct("sessions.compact", { sessionId: third }, global)).toMatchObject({
+        ok: false,
+        results: [{ status: "unauthorized" }],
+      });
+      expect(f.compactions.every((item) => item.sessionId === target)).toBe(true);
+      // A different, authorized project is reachable only from the global caller.
+      f.sessionsByDirectory.set("/third-project", [third]);
+      f.sessionsByDirectory.delete("/other");
+      yield* Context.get(f.context, ApplicationState).transact((state) =>
+        Effect.succeed({
+          ...state,
+          projects: [...state.projects, { ...project, path: "/third-project", name: "Third" }],
+        }),
+      );
+      expect(yield* f.direct("sessions.compact", { sessionId: third }, global)).toMatchObject({
+        ok: true,
+        results: [{ status: "compacted" }],
+      });
+    }),
+);
+
+it.effect("compacts resolved family child history without migrating its resolution metadata", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    yield* Context.get(f.context, SessionFamilyStorage).addChild({
+      familyId: crypto.randomUUID(),
+      parentSessionId: target,
+      parentWorkingDirectory: "/project",
+      childSessionId: third,
+      childWorkingDirectory: "/project",
+      requestId: crypto.randomUUID(),
+      projectPath: "/project",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    f.resolve();
+    const archive = Context.get(f.context, SessionArchiveStorage);
+    const result = yield* agentControl
+      .invoke("sessions.compact", { sessionId: third }, caller)
+      .pipe(
+        Effect.provideService(SessionArchiveStorage, {
+          ...archive,
+          locate: (id, at) =>
+            id === third ? Effect.succeed("resolved" as const) : archive.locate(id, at),
+        }),
+        Effect.provide(f.context),
+      );
+    expect(result).toMatchObject({
+      ok: true,
+      results: [{ sessionId: third, status: "compacted" }],
+    });
+    expect(f.restored()).toBe(0);
+  }),
+);
+
+it.effect(
+  "retired worktrees and saved drafts are unavailable without any runtime acquisition",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      f.worktreeRecords.push({
+        worktreePath: "/retired",
+        projectPath: "/project",
+        branch: "agent/retired",
+        baseBranch: "main",
+        createdAt: "2026-01-01",
+        state: "resolved",
+      });
+      f.sessionsByDirectory.set("/project", [source, third]);
+      f.sessionsByDirectory.set("/retired", [target]);
+      f.archivedEntries.set(target, {
+        version: 2,
+        sessionId: target,
+        projectPath: "/project",
+        projectName: "Project",
+        workingDirectory: "/retired",
+        activeRoot: "/cake/sessions",
+        resolvedRoot: "/cake/resolved",
+        createdAt: "2026-01-01",
+        modifiedAt: "2026-01-01",
+        worktreeName: "retired",
+      });
+      f.drafts.push({
+        sessionId: "00000000-0000-4000-8000-00000000abcd",
+        projectPath: "/project",
+        workingDirectory: "/project",
+        title: "Saved",
+        text: "Not activated",
+        attachments: [],
+        labelIds: [],
+        resolved: false,
+        createdAt: "2026-01-01",
+        modifiedAt: "2026-01-01",
+        revision: 1,
+        status: "saved",
+      });
+      expect(
+        yield* f.call("sessions.compact-batch", {
+          sessionIds: [target, "0000abcd", "00000000-0000-4000-8000-00000000ffff"],
+        }),
+      ).toMatchObject({
+        ok: false,
+        results: [{ status: "unavailable" }, { status: "unavailable" }, { status: "invalid" }],
+      });
+      expect(f.runtimeCreates).toEqual([source]);
+      expect(f.compactions).toEqual([]);
+      expect(f.restored()).toBe(0);
+    }),
+);
+
+it.effect(
+  "completed to-do associations can drive an explicit batch without automatic compaction or lifecycle edits",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const created = yield* projectTodos
+        .create("/project", {
+          title: "Completed work",
+          description: "A completed user request.",
+          associations: [
+            { kind: "session", sessionId: target, title: "Implementation" },
+            { kind: "source", ref: messageReference(third, "entry"), title: "Report" },
+          ],
+        })
+        .pipe(Effect.provide(f.context));
+      yield* projectTodos
+        .update("/project", { id: created.id, expectedRevision: 0, state: "done" })
+        .pipe(Effect.provide(f.context));
+      const todos = yield* projectTodos.list("/project").pipe(Effect.provide(f.context));
+      const sessionIds = todos.items
+        .filter((item) => item.state === "done")
+        .flatMap((item) =>
+          item.associations.flatMap((link) => {
+            const id =
+              link.kind === "session" ? link.sessionId : parseSessionLink(link.ref)?.sessionId;
+            return id ? [id] : [];
+          }),
+        );
+      expect(sessionIds).toEqual([target, third]);
+      expect(f.compactions).toEqual([]);
+      const saveCount = f.saveCount();
+      const projectChat = {
+        kind: "cake-chat" as const,
+        sessionId: projectChatSessionId("/project"),
+        title: "Project Chat",
+      };
+      expect(yield* f.direct("sessions.compact-batch", { sessionIds }, projectChat)).toMatchObject({
+        ok: true,
+        results: [
+          { sessionId: target, status: "compacted" },
+          { sessionId: third, status: "compacted" },
+        ],
+      });
+      expect(yield* projectTodos.list("/project").pipe(Effect.provide(f.context))).toEqual(todos);
+      expect(f.saveCount()).toBe(saveCount);
+      expect(f.restored()).toBe(0);
+    }),
+);
+
+it.effect("compaction is discoverable in permanent chat tools with bounded bulk inputs", () =>
+  Effect.gen(function* () {
+    const tools = backendAgentTools();
+    for (const command of ["sessions.compact", "sessions.compact-batch"]) {
+      const tool = tools.find((item) => item.command === command);
+      expect(tool?.guidance?.join(" ")).toContain("todos.list/read");
+      expect(tool?.guidance?.join(" ")).toContain("never aborted or queued");
+      expect(tool?.examples?.length).toBeGreaterThan(0);
+    }
+    const f = yield* fixture();
+    for (const sessionIds of [[], Array.from({ length: 101 }, () => target)]) {
+      const result = yield* f.direct("sessions.compact-batch", { sessionIds }).pipe(Effect.result);
+      expect(result._tag).toBe("Failure");
+    }
+    expect(f.compactions).toEqual([]);
+  }),
+);
 
 it.effect(
   "routes scoped report discovery, bounded reads and explicit handling through real agent controls",

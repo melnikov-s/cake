@@ -111,7 +111,6 @@ function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
         (async () => {
           throw new Error("Unexpected reorderQueuedMessage");
         }),
-      compact: overrides.compact ?? (async () => undefined),
       scheduleMessage:
         overrides.scheduleMessage ??
         (async () => {
@@ -994,8 +993,7 @@ describe("AppControlBridge", () => {
     );
   });
 
-  it("compacts and schedules messages for sessions in another project", async () => {
-    const compactSession = vi.fn(async () => undefined);
+  it("schedules messages for sessions in another project", async () => {
     const scheduleSessionMessage = vi.fn(async (input) => ({
       id: "8de1a807-dc99-49ee-8d35-7a3ed20bef06",
       ...input,
@@ -1014,16 +1012,9 @@ describe("AppControlBridge", () => {
           draft: false,
         },
       ],
-      compact: compactSession,
       scheduleMessage: scheduleSessionMessage,
     });
     const bridge = new AppControlBridge(host);
-    await expect(
-      bridge.invoke({
-        name: "sessions.compact",
-        arguments: { sessionId: "session-2", instructions: "Keep decisions" },
-      }),
-    ).resolves.toMatchObject({ ok: true, command: "sessions.compact", status: "compacted" });
     await expect(
       bridge.invoke({
         name: "sessions.schedule",
@@ -1039,7 +1030,6 @@ describe("AppControlBridge", () => {
       status: "scheduled",
       scheduledMessage: { targetSessionId: "session-2", sendAt: "2030-01-01T12:00:00.000Z" },
     });
-    expect(compactSession).toHaveBeenCalledWith("session-2", "Keep decisions");
     expect(scheduleSessionMessage).toHaveBeenCalledWith({
       targetSessionId: "session-2",
       text: "Review this",

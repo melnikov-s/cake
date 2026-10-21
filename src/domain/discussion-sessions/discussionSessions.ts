@@ -314,7 +314,10 @@ const sessionAssistantConfiguration = Effect.fn("DiscussionSessions.sessionAssis
                 const argumentsObject = yield* Schema.decodeUnknownEffect(jsonObjectSchema)(
                   invocation.arguments,
                 );
-                if (Schema.is(Schema.String)(argumentsObject.sessionId))
+                if (
+                  invocation.name !== "sessions.compact" &&
+                  Schema.is(Schema.String)(argumentsObject.sessionId)
+                )
                   invocation = {
                     ...invocation,
                     arguments: {

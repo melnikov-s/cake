@@ -1,3 +1,4 @@
+import { sessionCompactionDefinitions } from "../project-sessions/session-compaction";
 import { resultDeliveryGuidance } from "../conversations/result-delivery";
 import { compactDiscoveryGuidance } from "../agent/discovery-result-text";
 import { sessionListGuidance, sessionListResult } from "../project-sessions/agent-session-list";
@@ -7,6 +8,13 @@ import { BackendAgentInvocation } from "./backend-agent-control";
 
 /** Data-only discovery. These operations execute in the backend, never in the window gateway. */
 const definitions = [
+  ...sessionCompactionDefinitions.map(
+    ({ command, topic, summary, guidance, examples, result }) => ({
+      command,
+      scope: "global",
+      discovery: { topic, summary, guidance, examples, result },
+    }),
+  ),
   {
     command: "settings.sections",
     scope: "global",

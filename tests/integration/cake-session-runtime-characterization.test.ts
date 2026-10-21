@@ -166,6 +166,56 @@ afterEach(async () => {
 });
 
 describe("CakeSessionRuntime characterization", () => {
+  it("idle-only targeted compaction completes through real Pi and preserves original history", async () => {
+    const directory = await createTemporaryDirectory();
+    await registerFixtureProvider(directory, (_index, response) =>
+      finishTextResponse(response, "Settled response"),
+    );
+    await mkdir(join(directory, "agent"), { recursive: true });
+    await writeFile(
+      join(directory, "agent", "settings.json"),
+      JSON.stringify({
+        compaction: { enabled: false, keepRecentTokens: 1, reserveTokens: 128 },
+      }),
+    );
+    await writeFile(
+      join(directory, ".pi", "extensions", "compaction.ts"),
+      `export default function (pi) {
+      pi.on("session_before_compact", (event) => ({ compaction: {
+        summary: "Summary: " + event.customInstructions,
+        firstKeptEntryId: event.preparation.firstKeptEntryId,
+        tokensBefore: event.preparation.tokensBefore,
+      } }));
+    }`,
+    );
+    const events: CakeSessionRuntimeEvent[] = [];
+    const runtime = await createFixtureRuntime(directory, events);
+    await runtime.prompt("ORIGINAL_TARGET_HISTORY", "prompt", []);
+    await runtime.prompt("Keep the decision", "prompt", []);
+    const identity = runtime.sessionId;
+    const file = runtime.sessionFile;
+    const originalIds = SessionManager.open(file)
+      .getBranch()
+      .map((entry) => entry.id);
+    expect(runtime.compactIfIdle).toBeTypeOf("function");
+    expect(await runtime.compactIfIdle?.("Preserve decisions")).toEqual({ status: "compacted" });
+    expect(runtime.sessionId).toBe(identity);
+    expect(runtime.sessionFile).toBe(file);
+    const entries = SessionManager.open(file).getEntries();
+    expect(entries.filter((entry) => originalIds.includes(entry.id))).toHaveLength(
+      originalIds.length,
+    );
+    expect(entries).toContainEqual(
+      expect.objectContaining({ type: "compaction", summary: "Summary: Preserve decisions" }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: "part-removed", partId: "active-compaction" }),
+    );
+    const count = entries.length;
+    expect(await runtime.compactIfIdle?.()).toEqual({ status: "unchanged" });
+    expect(SessionManager.open(file).getEntries()).toHaveLength(count);
+  });
+
   it("keeps a regular Project Session's prefix after elapsed cache lifetime without adding an expiry compaction trigger", async () => {
     const directory = await createTemporaryDirectory();
     const requests: Record<string, unknown>[] = [];

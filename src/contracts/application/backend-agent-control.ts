@@ -1,3 +1,7 @@
+import {
+  SessionCompactInput,
+  SessionCompactBatchInput,
+} from "../project-sessions/session-compaction";
 import { PendingReportAcknowledge, PendingReportRead } from "../conversations/pending-report";
 import { CompletionInboxUpdate } from "../conversations/completion-inbox";
 import { ResultDelivery } from "../conversations/result-delivery";
@@ -76,6 +80,8 @@ export const BackendAgentInvocation = Schema.Union([
   ),
   operation("sessions.list", AgentSessionListInput),
   operation("sessions.info", Schema.Struct(target)),
+  operation("sessions.compact", SessionCompactInput),
+  operation("sessions.compact-batch", SessionCompactBatchInput),
   operation("sessions.list-family", AgentListInput),
   operation(
     "sessions.set-labels",
@@ -138,6 +144,8 @@ export const backendAgentCommands: ReadonlySet<string> = new Set([
   "sessions.list-family",
   "sessions.set-labels",
   "sessions.info",
+  "sessions.compact",
+  "sessions.compact-batch",
   "sessions.history",
   "sessions.compactions",
   "sessions.tree",

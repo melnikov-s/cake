@@ -147,6 +147,38 @@ live Pi Session Runtime, while discovery information belongs to
 Pi Session observation reconstructs durable state through Pi from JSONL and
 then emits live runtime events. Cake does not read or mutate JSONL directly.
 
+## Agent-requested targeted compaction
+
+`sessions.compact` and `sessions.compact-batch` execute in backend domain control,
+including permanent Project Chat. They use Cake identity resolution, per-project
+caller scope and ProjectAccess authorization before acquiring the target's shared
+regular-Pi runtime. Bulk targets are bounded to 100, deduplicated by canonical
+identity within the call, and return ordered outcomes even after individual failures.
+The assistant can collect to-do associations through existing `todos.list/read`;
+to-do completion never schedules compaction or changes session resolution.
+
+The regular-Pi adapter exposes `compactIfIdle` separately from existing
+self-compaction. Pi's public `AgentSession.compact(customInstructions)` aborts
+first, so Cake must reject active/preparing/queued/compacting targets before calling
+it. The turn controller reserves the existing command/held-input lane synchronously,
+holds new normal input until compaction settles, and exposes maintenance activity to
+runtime lifecycle checks. The service also checks accepted turns before dispatch.
+Once started, the operation is uninterruptible at the Effect Promise boundary,
+retaining the scoped runtime until Pi completes; stopping the caller cannot dispose
+a runtime underneath an in-flight compaction. This is not a queued request receipt.
+
+Pi persists the compaction and keeps original transcript entries. Only its exact
+already-compacted and too-small errors become `unchanged`; provider failures and
+extension cancellation remain failures. Retries are not automatic or durably
+deduplicated across calls: unchanged history is a Pi no-op; later history can be
+compacted again. Existing `context.compact` and explicit queued slash commands
+retain their behavior.
+
+Maintenance acquisition may load resolved history in an available checkout, but
+skips legacy child-resolution migration and never restores a retired worktree.
+Drafts and retired/missing checkouts return unavailable. No direct JSONL rewrites,
+history deletion, session resolution, or to-do mutations are involved.
+
 ## Special commands
 
 Pi's `/changelog` is an interactive-mode command rather than an

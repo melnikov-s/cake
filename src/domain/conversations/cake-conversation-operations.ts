@@ -1,5 +1,9 @@
 import { Schema } from "effect";
 import {
+  sessionCompactionDefinitions,
+  SessionCompactionOutput,
+} from "../../contracts/project-sessions/session-compaction";
+import {
   sessionListGuidance,
   sessionListResult,
   AgentSessionListInput,
@@ -39,6 +43,12 @@ export function createConversationOperations(
       return api().invokeAppControl(command, input as JsonObject, context.signal);
     };
   return [
+    ...sessionCompactionDefinitions.map((definition): CakeOperationDefinition => ({
+      ...definition,
+      requires: "invokeAppControl",
+      outputSchema: SessionCompactionOutput,
+      execute: invokeAppControl(definition.command),
+    })),
     {
       command: "session.info",
       topic: "sessions",
@@ -355,19 +365,6 @@ export function createConversationOperations(
       ],
       result: "The target session and its committed ordered labels.",
       execute: invokeAppControl("sessions.set-labels"),
-    },
-    {
-      command: "sessions.compact",
-      requires: "invokeAppControl",
-      topic: "sessions",
-      summary: "Compact an explicitly targeted Project Session.",
-      inputSchema: Schema.Struct({
-        sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
-        instructions: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(262_144))),
-      }),
-      examples: [{ input: { sessionId: "target-session-id" } }],
-      result: "A completed compaction status.",
-      execute: invokeAppControl("sessions.compact"),
     },
     {
       command: "session.usage",

@@ -57,6 +57,22 @@ export const acquireTarget = Effect.fn("ProjectSessions.acquireTarget")(function
   return yield* acquireConversation(sessions, options).pipe(asError("acquire"));
 });
 
+/** Maintenance may load resolved history but must never restore a retired checkout
+ * or migrate legacy child resolution as a side effect of acquisition.
+ */
+export const acquireMaintenanceTarget = Effect.fn("ProjectSessions.acquireMaintenanceTarget")(
+  function* (location: ProjectSessionLocation, sessionId: string) {
+    yield* (yield* ManagedWorktrees).awaitSetup(location.workingDirectory).pipe(asError("acquire"));
+    const options = yield* acquireOptions({
+      location,
+      sessionId,
+      newSession: false,
+      preserveResolution: true,
+    }).pipe(asError("acquire"));
+    return yield* acquireConversation(yield* CakeSessionRuntimes, options).pipe(asError("acquire"));
+  },
+);
+
 const acquireExistingTarget = Effect.fn("ProjectSessions.acquireExistingTarget")(function* (
   target: ProjectSessionTarget,
 ) {

@@ -31,6 +31,8 @@ import {
   shellCommandPart,
 } from "./session-projection";
 
+import type { IdleCompactionResult } from "../../../contracts/project-sessions/session-compaction";
+
 interface TurnRecoveryHooks {
   readonly onUserInput: () => void;
   readonly onAbort: () => void;
@@ -40,6 +42,7 @@ export interface CakeSessionRuntimeTurnController {
   readonly compactionQueuedMessages: () => readonly string[];
   readonly queuedParts: () => UiPart[];
   readonly handoffActive: () => boolean;
+  readonly idleCompactionActive: () => boolean;
   readonly pendingRecoveryInputs: () => ReadonlyArray<{
     turnId: string;
     delivery: "steer" | "follow-up";
@@ -64,6 +67,7 @@ export interface CakeSessionRuntimeTurnController {
     responseMode?: ConversationResponseMode,
   ) => Promise<void>;
   readonly compact: (instructions?: string) => Promise<void>;
+  readonly compactIfIdle: (instructions?: string) => Promise<IdleCompactionResult>;
   readonly queueCommand: (
     command: string,
     onSettled?: () => void,
@@ -168,6 +172,8 @@ export function createCakeSessionRuntimeTurnController(input: {
   let restoringRun = false;
   let pausedAfterRestart = false;
   let commandRunning = false;
+  let promptOperations = 0;
+  let idleCompactionActive = false;
   let rebuildingQueue = false;
   let handingOff = false;
   let abortGeneration = 0;
@@ -755,6 +761,7 @@ export function createCakeSessionRuntimeTurnController(input: {
   return {
     compactionQueuedMessages: () => compactionQueue.map((item) => item.text),
     handoffActive: () => handingOff,
+    idleCompactionActive: () => idleCompactionActive,
     queuedParts: () => {
       const queues = queuedForStop();
       const parts = projectQueuedMessages(
@@ -798,9 +805,56 @@ export function createCakeSessionRuntimeTurnController(input: {
       });
     },
     executingTurnIds: () => turnCompletions.executingIds(),
-    prompt,
+    async prompt(...args) {
+      // Include asynchronous preparation before Pi exposes isStreaming.
+      promptOperations += 1;
+      try {
+        await prompt(...args);
+      } finally {
+        promptOperations -= 1;
+      }
+    },
     editMessage,
     compact: (instructions) => runCompact(instructions),
+    async compactIfIdle(instructions) {
+      assertActive();
+      if (
+        promptOperations > 0 ||
+        session.isStreaming ||
+        session.isCompacting ||
+        session.isBashRunning ||
+        commandRunning ||
+        restoringRun ||
+        rebuildingQueue ||
+        handingOff ||
+        flushingHeldQueue ||
+        compactionQueue.length > 0 ||
+        session.getSteeringMessages().length > 0 ||
+        session.getFollowUpMessages().length > 0
+      )
+        return { status: "busy" };
+      // Reserve synchronously before the first await. New normal inputs use the
+      // existing held-input lane until this operation settles. Pi compact()
+      // aborts first, so never call it on an active/preparing/queued turn.
+      commandRunning = true;
+      idleCompactionActive = true;
+      try {
+        await runCompact(instructions);
+        return { status: "compacted" };
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          (error.message === "Already compacted" ||
+            error.message === "Nothing to compact (session too small)")
+        )
+          return { status: "unchanged" };
+        throw error;
+      } finally {
+        commandRunning = false;
+        idleCompactionActive = false;
+        void flushCompactionQueue();
+      }
+    },
     async queueCommand(command, onSettled) {
       assertActive();
       const itemId = randomUUID();
