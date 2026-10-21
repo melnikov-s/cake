@@ -386,19 +386,15 @@ for (const scenario of [
           await expect(selected).toContainText("Still reading.");
           await paintFrames(page, 6);
           expect(await transcript.evaluate((element) => element.scrollTop)).toBe(readingTop);
-          // Only Down past newest returns to the full bottom and stream following.
+          // Down past newest returns focus to writing; only sending scrolls down.
           await composer.press("ArrowDown");
           await expect(selected).toHaveCount(0);
           await expect(composer).toBeFocused();
           for (let index = 0; index < 3; index++) {
-            stream.send(`Following update ${index}. ${"More streaming. ".repeat(40)}\n\n`);
-            await expect(transcript).toContainText(`Following update ${index}.`);
+            stream.send(`Later update ${index}. ${"More streaming. ".repeat(40)}\n\n`);
+            await expect(transcript).toContainText(`Later update ${index}.`);
             await paintFrames(page, 6);
-            expect(
-              await transcript.evaluate(
-                (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
-              ),
-            ).toBeLessThanOrEqual(1);
+            expect(await transcript.evaluate((element) => element.scrollTop)).toBe(readingTop);
           }
           stream.finish();
           await expect(firstSession.locator('[aria-label="Running"]')).toHaveCount(0);

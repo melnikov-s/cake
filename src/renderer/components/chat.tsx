@@ -1,11 +1,4 @@
-import {
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type ReactNode,
-} from "react";
+import { useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import { cn } from "@/lib/utils";
 import { AnnotationSummary } from "@/components/annotation-summary";
@@ -17,7 +10,6 @@ import { useComposerEnterContinuation } from "../hooks/use-composer-enter-contin
 import { ChatSubmitAction } from "@/components/chat-submit-action";
 import { ImagePreview } from "@/components/image-preview";
 import { ChatTranscript, type ChatTranscriptBehavior } from "@/components/chat-transcript";
-import { ChatTranscriptControlsContext } from "@/components/chat-transcript-controls-context";
 import { ChatConversationControls } from "./chat-conversation-controls";
 import { QueuedPrompts } from "@/components/queued-prompts";
 import { ScheduledPrompts } from "@/components/scheduled-prompts";
@@ -189,10 +181,6 @@ export const Chat = observer(function Chat({
   const composerVisible = store.composerVisible;
   const composerConfiguration = store.modelPickerVisible ? store.configuration : undefined;
   const activatingDraft = store.isDraftSession && !store.editingMessage;
-  const transcriptControls = useMemo(
-    () => ({ scrollToBottom: () => transcriptRef.current?.scrollToBottom() }),
-    [],
-  );
   useComposerEnterContinuation(
     store,
     composerVisible && !activatingDraft && composerFocusEnabled,
@@ -201,8 +189,8 @@ export const Chat = observer(function Chat({
   );
   const submitMessage = async (value?: string) => {
     const canSend = store.canSubmitValue(value) && !store.editingMessage;
-    // Sending is an explicit request to return to the newest content.
-    if (canSend) transcriptRef.current?.scrollToBottom();
+    // Sending a message is the only time the transcript scrolls to the bottom.
+    if (canSend) transcriptRef.current?.scrollToBottomForSentMessage();
     const focusAtSubmit = document.activeElement;
     const continuation =
       canSend && composerFocusRef.current?.shouldParkFocus()
@@ -263,8 +251,7 @@ export const Chat = observer(function Chat({
     event.preventDefault();
     event.stopPropagation();
     if (action === "select-next" && interaction.selectedMessageId === undefined) {
-      // Leaving the newest message returns to writing.
-      transcriptRef.current?.scrollToBottom();
+      // Leaving the newest message returns focus to writing without scrolling.
       if (document.activeElement !== composerInputRef.current)
         composerFocusRef.current?.requestFocus();
     }
@@ -440,41 +427,39 @@ export const Chat = observer(function Chat({
     </div>
   );
   return (
-    <ChatTranscriptControlsContext.Provider value={transcriptControls}>
-      <div
-        ref={layoutRef}
-        data-slot="chat"
-        onKeyDownCapture={handleMessageSelectionKey}
-        className={cn(
-          "relative grid h-full w-full max-w-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden",
-          compact && "chat-layout-compact",
-          className,
-        )}
+    <div
+      ref={layoutRef}
+      data-slot="chat"
+      onKeyDownCapture={handleMessageSelectionKey}
+      className={cn(
+        "relative grid h-full w-full max-w-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden",
+        compact && "chat-layout-compact",
+        className,
+      )}
+    >
+      <ContentTransition
+        contentKey={store.id}
+        requestedKey={transcriptTransition?.requestedKey}
+        ready={transcriptTransition?.ready}
+        enabled={Boolean(transcriptTransition)}
       >
-        <ContentTransition
-          contentKey={store.id}
-          requestedKey={transcriptTransition?.requestedKey}
-          ready={transcriptTransition?.ready}
-          enabled={Boolean(transcriptTransition)}
-        >
-          <ChatTranscript
-            store={store}
-            behavior={transcriptBehavior}
-            empty={empty}
-            footer={footer}
-            error={error}
-            virtualized={!compact}
-            key={store.id}
-            ref={transcriptRef}
-          />
-        </ContentTransition>
-        {!composerVisible && store.scheduledMessageInteraction.messages.length > 0 && (
-          <div className="border-t border-border bg-background px-6 py-2 max-[620px]:px-2.5">
-            <ScheduledPrompts store={store.scheduledMessageInteraction} />
-          </div>
-        )}
-        {composer}
-      </div>
-    </ChatTranscriptControlsContext.Provider>
+        <ChatTranscript
+          store={store}
+          behavior={transcriptBehavior}
+          empty={empty}
+          footer={footer}
+          error={error}
+          virtualized={!compact}
+          key={store.id}
+          ref={transcriptRef}
+        />
+      </ContentTransition>
+      {!composerVisible && store.scheduledMessageInteraction.messages.length > 0 && (
+        <div className="border-t border-border bg-background px-6 py-2 max-[620px]:px-2.5">
+          <ScheduledPrompts store={store.scheduledMessageInteraction} />
+        </div>
+      )}
+      {composer}
+    </div>
   );
 });

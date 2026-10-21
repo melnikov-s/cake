@@ -79,6 +79,9 @@ const fixture = createRendererStoreFixture({
   sessions: [sessionSummary({ sessionId: "ownership", projectPath: "/project" })],
 });
 const session = fixture.root.sessionRegistry.load("ownership", "/project");
+// The active session can send from its composer (the one scroll-to-bottom exception).
+fixture.root.navigationStore.selectProjectSession("ownership");
+fixture.root.projectWorkbenchStore.showLoadedSession("ownership");
 const store = session.conversationSessionStore.chatStore;
 let revision = 0;
 if (widget) fixture.models.artifacts.upsertRevision(widgetRevision);
@@ -165,10 +168,11 @@ export interface TranscriptOwnershipFixture {
   arrive(): void;
   activity(): void;
   insert(): void;
-  jump(): void;
   navigate(): void;
   /** Projects a longer version of an existing message (content growth in place). */
   grow(messageId: string): void;
+  /** The id of the newest transcript part. */
+  newestId(): string | undefined;
 }
 Reflect.set(window, "transcriptFixture", {
   update() {
@@ -207,6 +211,9 @@ Reflect.set(window, "transcriptFixture", {
     publish();
     render();
   },
+  newestId() {
+    return parts.at(-1)?.id;
+  },
   grow(messageId) {
     parts = parts.map((part) =>
       part.id === messageId && part.kind === "text"
@@ -234,7 +241,7 @@ Reflect.set(window, "transcriptFixture", {
     render();
   },
   insert() {
-    handle?.scrollToBottom();
+    handle?.scrollToBottomForSentMessage();
     parts = [
       ...parts,
       {
@@ -247,9 +254,6 @@ Reflect.set(window, "transcriptFixture", {
     ];
     publish();
     render();
-  },
-  jump() {
-    handle?.scrollToBottom();
   },
   navigate() {
     store.transcriptInteraction.navigateToMessage("message-5");

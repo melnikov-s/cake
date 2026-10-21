@@ -87,9 +87,11 @@ projections needed by a surface. References do not transfer ownership.
   still. Anchors are stored in content coordinates, so compensation cannot undo
   a native scroll whose event is still queued. Following stops as soon as the
   reader moves up (wheel, touch, keys, scrollbar, or any other upward movement)
-  and resumes only when the reader returns to the bottom or explicitly jumps or
-  sends a message. Keyboard or linked message selection reveals its message once
-  by stable item key, pauses following, and is otherwise ordinary reading. The
+  and resumes only when the reader returns to the bottom. Sending a message is
+  the single programmatic scroll to the bottom; no other action (worktree
+  commands, leaving keyboard selection, arriving content) may jump there.
+  Keyboard or linked message selection reveals its message once by stable item
+  key, pauses following, and is otherwise ordinary reading. The
   pinned Virtuoso patch keeps upward size compensation disabled
   (`skipUpwardScrollCompensation`) and exposes `cancelScrollToIndex` so reader
   input or a completed reveal stops index-navigation retries. Do not add

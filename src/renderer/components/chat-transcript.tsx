@@ -54,8 +54,11 @@ export {
 } from "./chat-transcript-parts";
 
 export interface ChatTranscriptHandle {
-  /** Explicitly return to the newest content and follow it. */
-  scrollToBottom(): void;
+  /**
+   * Sending a message is the only time the transcript scrolls to the bottom
+   * for the reader. Nothing else may call this.
+   */
+  scrollToBottomForSentMessage(): void;
 }
 
 const defaultTranscriptBehavior: ChatTranscriptBehavior = {};
@@ -131,8 +134,13 @@ export const ChatTranscript = observer(function ChatTranscript({
     };
   }, [initiallyFollowing, scroller]);
   const reconcileScroll = useCallback(() => scrollOwner.current?.reconcile(), []);
-  const scrollToBottom = useCallback(() => scrollOwner.current?.scrollToBottom(), []);
-  useImperativeHandle(ref, () => ({ scrollToBottom }), [scrollToBottom]);
+  const scrollToBottomForSentMessage = useCallback(
+    () => scrollOwner.current?.scrollToBottomForSentMessage(),
+    [],
+  );
+  useImperativeHandle(ref, () => ({ scrollToBottomForSentMessage }), [
+    scrollToBottomForSentMessage,
+  ]);
   const parts = store.parts;
   // Read disclosure state in this observer's render. VirtualizedConversation invokes
   // itemContent from its own render, outside this component's reactive tracking.

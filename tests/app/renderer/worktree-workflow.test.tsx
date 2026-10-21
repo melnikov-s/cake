@@ -11,10 +11,6 @@ import type { WorktreeLandingOperation } from "../../../src/contracts/worktrees/
 import type { WorktreeStatus } from "../../../src/contracts/worktrees/worktree-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { QuakeTerminal } from "../../../src/renderer/components/quake-terminal";
-import {
-  ChatTranscriptControlsContext,
-  type ChatTranscriptControls,
-} from "../../../src/renderer/components/chat-transcript-controls-context";
 import { ToastHost } from "../../../src/renderer/components/toast-host";
 import { WorktreePill } from "../../../src/renderer/components/worktree-pill";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
@@ -71,7 +67,6 @@ function renderWorktree(
     resolved?: boolean;
     child?: boolean;
     record?: WorktreeRecord;
-    transcriptControls?: ChatTranscriptControls;
     client?: TestClientOverrides;
   } = {},
 ) {
@@ -169,11 +164,7 @@ function renderWorktree(
       </section>
     );
   });
-  const view = render(
-    <ChatTranscriptControlsContext.Provider value={options.transcriptControls}>
-      <Surface />
-    </ChatTranscriptControlsContext.Provider>,
-  );
+  const view = render(<Surface />);
   return {
     user: userEvent.setup(),
     landing,
@@ -247,27 +238,6 @@ describe("Worktree operation workflows", () => {
     });
   });
 
-  // Narrow retained native-presentation seam: this proves a command requests
-  // transcript following, not actual layout/scrolling. The latter needs Electron.
-  // Unlike the old component test, the command runs through the real Root/Stores.
-  it("requests transcript following while submitting a worktree command", async () => {
-    const scrollToBottom = vi.fn<ChatTranscriptControls["scrollToBottom"]>();
-    const startLanding = vi.fn<Client["managedWorktrees"]["startLanding"]>(async () =>
-      operation("waiting"),
-    );
-    using fixture = renderWorktree({
-      transcriptControls: { scrollToBottom },
-      client: { managedWorktrees: { startLanding } },
-    });
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Merge" })).toHaveProperty("disabled", false),
-    );
-    await fixture.user.click(screen.getByRole("button", { name: "Merge" }));
-    expect(startLanding).toHaveBeenCalledWith(
-      expect.objectContaining({ workspacePath: "/worktree", sessionId: "session-1" }),
-    );
-    expect(scrollToBottom).toHaveBeenCalledOnce();
-  });
   it("retains catalog controls during continuation loading and prefers a newly landed catalog record over stale live status", async () => {
     const response = gate<Awaited<ReturnType<Client["managedWorktrees"]["landing"]>>>();
     const landing = vi.fn<Client["managedWorktrees"]["landing"]>(() => response.promise);

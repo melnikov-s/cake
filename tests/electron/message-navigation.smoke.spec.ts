@@ -250,29 +250,22 @@ for (const surface of ["Project Session", "Cake Chat", "Project Chat"] as const)
       await composer.press("ArrowDown");
       await expect(selected).toContainText("Answer 6.");
       await expectRevealed(transcript, selected);
-      // Clearing past newest supersedes any virtualizer retry for an earlier target.
+      // Clearing past newest returns focus to writing without scrolling, and
+      // supersedes any virtualizer retry for an earlier target.
       for (let index = 0; index < 13; index++) await composer.press("ArrowDown");
       await expect(selected).toHaveCount(0);
       await expect(composer).toBeFocused();
-      await expect
-        .poll(() =>
-          transcript.evaluate(
-            (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
-          ),
-        )
-        .toBeLessThanOrEqual(1);
       // Let Virtuoso's measurement-retry frames run; an obsolete target must not
-      // pull the transcript away from the writing position after it reaches bottom.
-      expect(
-        await transcript.evaluate(async (element) => {
-          const gaps: number[] = [];
-          for (let frame = 0; frame < 20; frame++) {
-            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-            gaps.push(element.scrollHeight - element.clientHeight - element.scrollTop);
-          }
-          return Math.max(...gaps);
-        }),
-      ).toBeLessThanOrEqual(1);
+      // move the transcript after the selection ends.
+      const tops = await transcript.evaluate(async (element) => {
+        const tops: number[] = [];
+        for (let frame = 0; frame < 20; frame++) {
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+          tops.push(element.scrollTop);
+        }
+        return tops;
+      });
+      expect(new Set(tops).size).toBe(1);
       const behaviors = await page.evaluate(
         () => Reflect.get(window, "messageNavigationBehaviors") as string[],
       );

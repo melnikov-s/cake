@@ -132,7 +132,10 @@ export default function Widget() {
 const gap = (transcript: Locator) =>
   transcript.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop);
 const top = (transcript: Locator) => transcript.evaluate((element) => element.scrollTop);
-const command = (page: Page, operation: Exclude<keyof TranscriptOwnershipFixture, "grow">) =>
+const command = (
+  page: Page,
+  operation: Exclude<keyof TranscriptOwnershipFixture, "grow" | "newestId">,
+) =>
   page.evaluate((operation) => {
     (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture)[operation]();
   }, operation);
@@ -373,7 +376,7 @@ test("user input supersedes navigation measurement retries", async ({ fixturePag
 for (const chatMode of ["virtualized", "compact"]) {
   test.describe(`${chatMode} keyboard navigation`, () => {
     test.use({ chatMode });
-    test("pauses streaming follow until Down past the newest message", async ({
+    test("pauses streaming follow during navigation; leaving it never scrolls", async ({
       fixturePage: page,
     }) => {
       const transcript = page.locator(".transcript");
@@ -405,10 +408,17 @@ for (const chatMode of ["virtualized", "compact"]) {
         await command(page, "stream");
         await expect.poll(() => top(transcript)).toBe(readingTop);
       }
+      // Down past the newest message returns focus to writing, not the viewport.
       await composer.press("ArrowDown");
       await expect(selected).toHaveCount(0);
       await expect(composer).toBeFocused();
-      await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+      for (let step = 0; step < 4; step++) {
+        await command(page, "stream");
+        await settle(page);
+        expect(await top(transcript)).toBe(readingTop);
+      }
+      // The reader returning to the bottom resumes following.
+      await wheel(page, transcript, 10_000);
       for (let step = 0; step < 4; step++) {
         await command(page, "stream");
         await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
@@ -476,7 +486,7 @@ test.describe("inline widget reading position", () => {
     await wheel(page, transcript, initialTop - (await top(transcript)));
     await expect(content.getByRole("heading", { name: "Saved widget content" })).toBeVisible();
     await expect(disclosure.locator('[data-widget-view-ready="true"]')).toHaveCount(1);
-    await command(page, "jump");
+    await command(page, "insert");
     for (let step = 0; step < 4; step++) {
       await command(page, "stream");
       await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
@@ -528,7 +538,7 @@ test.describe("reader away from the bottom", () => {
     // A scrollbar drag (overlay scrollbars included), find-in-page or a focus
     // scroll moves the viewport without any wheel/touch/key event.
     for (const pointer of [true, false]) {
-      await command(page, "jump");
+      if ((await gap(transcript)) > 1) await wheel(page, transcript, 10_000);
       await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
       await settle(page);
       await transcript.evaluate((element, pointer) => {
@@ -635,10 +645,32 @@ for (const chatMode of ["virtualized", "compact"]) {
       await expect(selected).toHaveAttribute("data-transcript-anchor-id", "message-44");
       await composer.press("ArrowDown");
       await expect(selected).toHaveAttribute("data-transcript-anchor-id", "message-45");
-      // Leaving the newest message returns to writing and following.
-      for (let press = 0; press < 12 && (await selected.count()) > 0; press++)
+      // Leaving the newest message returns focus to writing without scrolling.
+      // Down to the newest message (each press may reveal its message), then
+      // read slightly above the bottom before leaving the selection.
+      const newest = await page.evaluate(() =>
+        (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).newestId(),
+      );
+      for (let press = 0; press < 12; press++) {
+        if ((await selected.getAttribute("data-transcript-anchor-id")) === newest) break;
         await composer.press("ArrowDown");
+      }
+      await expect(selected).toHaveAttribute("data-transcript-anchor-id", newest!);
+      await wheel(page, transcript, -300);
+      const beforeLeaving = await top(transcript);
+      expect(await gap(transcript)).toBeGreaterThan(100);
+      // Leaving the newest message returns focus to writing, never to the bottom.
+      await composer.press("ArrowDown");
       await expect(selected).toHaveCount(0);
+      await expect(composer).toBeFocused();
+      await settle(page);
+      expect(await top(transcript)).toBe(beforeLeaving);
+      await command(page, "arrive");
+      await settle(page);
+      expect(await top(transcript)).toBe(beforeLeaving);
+      // Sending a message is the one exception: it scrolls to the bottom and follows.
+      await composer.fill("Send from the middle");
+      await composer.press("Enter");
       await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
       await command(page, "arrive");
       await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);

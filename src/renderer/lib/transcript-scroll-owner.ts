@@ -9,9 +9,9 @@
  *   viewport resizes) are compensated so the row at the top of the viewport
  *   keeps its exact on-screen position.
  *
- * Only the reader may start following again, by scrolling back to the bottom,
- * or an explicit request (jump to bottom, sending a message). Revealing a
- * message the reader selected with the keyboard (or a link) is the one other
+ * Only the reader may start following again, by scrolling back to the bottom.
+ * The one programmatic jump to the bottom is sending a message. Revealing a
+ * message the reader selected with the keyboard (or a link) is the only other
  * movement, and it stops following.
  *
  * Every layout trigger calls `reconcile()`. Nothing else in the renderer writes
@@ -27,8 +27,8 @@ const rowSelector = "[data-transcript-item-key]";
 export interface TranscriptScrollOwner {
   /** Layout changed: pin the bottom while following, otherwise hold the reader's anchor still. */
   reconcile(): void;
-  /** Explicit request to return to the newest content and follow it. */
-  scrollToBottom(): void;
+  /** The reader sent a message: the one programmatic jump to the bottom. */
+  scrollToBottomForSentMessage(): void;
   /**
    * Reveals the row with this stable item key. An unrendered virtual row is
    * reached through `scrollToIndex`; the reveal completes once it renders.
@@ -299,7 +299,7 @@ export function createTranscriptScrollOwner(
 
   return {
     reconcile,
-    scrollToBottom() {
+    scrollToBottomForSentMessage() {
       cancelReveal();
       following = true;
       pin();
