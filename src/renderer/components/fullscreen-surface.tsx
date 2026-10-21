@@ -53,7 +53,8 @@ export function FullscreenSurface({
     return () => {
       document.removeEventListener("keydown", onKeyDown);
       document.body.style.overflow = previousOverflow;
-      if (previouslyFocused?.isConnected) previouslyFocused.focus();
+      // Returning focus to a transcript control must not scroll the transcript.
+      if (previouslyFocused?.isConnected) previouslyFocused.focus({ preventScroll: true });
     };
   }, []);
 

@@ -267,7 +267,7 @@ export function PopoverContent({
       if (event.key !== "Escape") return;
       event.preventDefault();
       setOpenRef.current(false);
-      effectiveAnchorRef.current?.focus();
+      effectiveAnchorRef.current?.focus({ preventScroll: true });
     };
     const reposition = () => updatePositionRef.current();
     document.addEventListener("pointerdown", dismiss, true);

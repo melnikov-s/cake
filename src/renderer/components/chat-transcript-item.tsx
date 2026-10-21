@@ -11,6 +11,8 @@ import type { CanonicalTranscriptBehavior } from "./chat-message";
 import type { TranscriptItem } from "./chat-transcript-items";
 
 interface ChatTranscriptItemProps {
+  /** Stable row identity (the React/Virtuoso key) used for scroll anchoring and reveals. */
+  itemKey: string;
   item: TranscriptItem;
   index: number;
   errorFollowsUser: boolean;
@@ -41,6 +43,7 @@ function sameItem(left: TranscriptItem, right: TranscriptItem) {
 /** Keeps collection-level streaming updates from re-rendering unchanged transcript items. */
 export const ChatTranscriptItem = memo(
   function ChatTranscriptItem({
+    itemKey,
     item,
     index,
     errorFollowsUser,
@@ -56,6 +59,7 @@ export const ChatTranscriptItem = memo(
       <div
         data-slot="transcript-item"
         data-transcript-item-index={index}
+        data-transcript-item-key={itemKey}
         data-transcript-anchor-id={
           item.kind === "activity-group" ||
           item.kind === "source-group" ||
@@ -110,6 +114,7 @@ export const ChatTranscriptItem = memo(
     );
   },
   (previous, next) =>
+    previous.itemKey === next.itemKey &&
     previous.index === next.index &&
     previous.selected === next.selected &&
     previous.errorFollowsUser === next.errorFollowsUser &&

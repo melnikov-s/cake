@@ -23,7 +23,7 @@ index 3f3e89acde46438e1b3f4889343ebf32a0281b33..e94264a113d99730cb703533814967a2
       */
      skipAnimationFrameInResizeObserver?: boolean;
 +    /** Disable total-height-based upward compensation when an external owner anchors scrolling. */
-+    skipUpwardScrollCompensation?: boolean | (() => boolean);
++    skipUpwardScrollCompensation?: boolean;
      /**
       * Called when the user scrolls to the start of the list.
       */
@@ -136,7 +136,7 @@ index b1ccd3a27eeabe74abd770b5e2d03bf8552942b8..19cad314ca1df1db4ae5d5bdbeae4077
 +        $(o, l, n, r, I, w, skipUpwardScrollCompensation),
 +        // External scroll owners preserve their own visible anchor. Total-height
 +        // deltas include tail growth, not just changes above that anchor.
-+        P(([, f, a, S, , , H, skip]) => !(typeof skip === "function" ? skip() : skip) && !H && !S && f !== 0 && a === ue),
++        P(([, f, a, S, , , H, skip]) => !skip && !H && !S && f !== 0 && a === ue),
          B(([[f], , , , , a]) => (a("Upward scrolling compensation", { amount: f }, ft.DEBUG), f))
        )
      );

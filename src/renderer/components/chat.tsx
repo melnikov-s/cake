@@ -201,7 +201,8 @@ export const Chat = observer(function Chat({
   );
   const submitMessage = async (value?: string) => {
     const canSend = store.canSubmitValue(value) && !store.editingMessage;
-    if (canSend) transcriptRef.current?.scrollToBottom({ forMessageInsertion: true });
+    // Sending is an explicit request to return to the newest content.
+    if (canSend) transcriptRef.current?.scrollToBottom();
     const focusAtSubmit = document.activeElement;
     const continuation =
       canSend && composerFocusRef.current?.shouldParkFocus()
@@ -263,7 +264,7 @@ export const Chat = observer(function Chat({
     event.stopPropagation();
     if (action === "select-next" && interaction.selectedMessageId === undefined) {
       // Leaving the newest message returns to writing.
-      transcriptRef.current?.scrollToBottom({ fromMessageNavigation: true });
+      transcriptRef.current?.scrollToBottom();
       if (document.activeElement !== composerInputRef.current)
         composerFocusRef.current?.requestFocus();
     }

@@ -84,7 +84,7 @@ export function AnnotationDraftPopover({
       cancelAnimationFrame(focusFrame);
       document.removeEventListener("pointerdown", dismiss);
       document.removeEventListener("keydown", keydown);
-      if (previouslyFocused?.isConnected) previouslyFocused.focus();
+      if (previouslyFocused?.isConnected) previouslyFocused.focus({ preventScroll: true });
     };
   }, [onClose]);
 

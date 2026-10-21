@@ -103,7 +103,7 @@ export const AnnotationItemPopover = observer(function AnnotationItemPopover({
     return () => {
       document.removeEventListener("pointerdown", dismiss);
       document.removeEventListener("keydown", keydown);
-      if (previouslyFocused?.isConnected) previouslyFocused.focus();
+      if (previouslyFocused?.isConnected) previouslyFocused.focus({ preventScroll: true });
     };
   }, [isEditing, onClose, annotation.comment]);
 

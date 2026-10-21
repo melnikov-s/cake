@@ -8,7 +8,6 @@ import {
   useState,
   type ComponentProps,
   type ForwardedRef,
-  type AriaRole,
   type Key,
   type ReactElement,
   type ReactNode,
@@ -46,16 +45,10 @@ export interface VirtualizedConversationProps<Item, Context = unknown> {
   itemContent: (index: number, item: Item) => ReactNode;
   components?: VirtuosoProps<Item, Context>["components"];
   customScrollParent?: HTMLElement;
-  atBottomStateChange?: (atBottom: boolean) => void;
   followOutput?: FollowOutput;
   /** The consumer owns reading anchors; do not also compensate total-height deltas. */
-  skipUpwardScrollCompensation?: boolean | (() => boolean);
-  totalListHeightChanged?: (height: number) => void;
+  skipUpwardScrollCompensation?: boolean;
   initialTopMostItemIndex?: IndexLocationWithAlign | number;
-  rangeChanged?: VirtuosoProps<Item, unknown>["rangeChanged"];
-  scrollerRef?: VirtuosoProps<Item, unknown>["scrollerRef"];
-  role?: AriaRole;
-  "aria-label"?: string;
 }
 
 function VirtualizedConversationInner<Item, Context>(
@@ -67,15 +60,9 @@ function VirtualizedConversationInner<Item, Context>(
     itemContent,
     components,
     customScrollParent,
-    atBottomStateChange,
     followOutput,
     skipUpwardScrollCompensation,
-    totalListHeightChanged,
     initialTopMostItemIndex,
-    rangeChanged,
-    scrollerRef,
-    role,
-    "aria-label": ariaLabel,
   }: VirtualizedConversationProps<Item, Context>,
   ref: ForwardedRef<VirtualizedConversationHandle>,
 ) {
@@ -92,15 +79,9 @@ function VirtualizedConversationInner<Item, Context>(
       increaseViewportBy={{ top: 320, bottom: 480 }}
       {...(components === undefined ? {} : { components })}
       {...(customScrollParent === undefined ? {} : { customScrollParent })}
-      {...(atBottomStateChange === undefined ? {} : { atBottomStateChange })}
       {...(followOutput === undefined ? {} : { followOutput })}
       {...(skipUpwardScrollCompensation === undefined ? {} : { skipUpwardScrollCompensation })}
-      {...(totalListHeightChanged === undefined ? {} : { totalListHeightChanged })}
       {...(initialLocation === undefined ? {} : { initialTopMostItemIndex: initialLocation })}
-      {...(rangeChanged === undefined ? {} : { rangeChanged })}
-      {...(scrollerRef === undefined ? {} : { scrollerRef })}
-      {...(role === undefined ? {} : { role })}
-      {...(ariaLabel === undefined ? {} : { "aria-label": ariaLabel })}
     />
   );
 }

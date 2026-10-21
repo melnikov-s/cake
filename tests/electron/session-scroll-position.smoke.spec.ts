@@ -377,7 +377,7 @@ for (const scenario of [
           }
           // Navigating to an older message and back must not resume following.
           await composer.press("ArrowUp");
-          await expect(selected).toContainText("transcript item 47");
+          await expect(selected).toContainText("Stream without jumping");
           await composer.press("ArrowDown");
           await expect(selected).toContainText("Initial streaming paragraph.");
           await paintFrames(page, 6);

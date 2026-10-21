@@ -333,69 +333,8 @@ describe("Transcript rendering and virtualizer adapter contracts", () => {
       align: "end",
     });
     expect(virtualizedProps.current?.followOutput).toBe(false);
-    expect((virtualizedProps.current?.skipUpwardScrollCompensation as () => boolean)()).toBe(true);
-  });
-
-  it("aligns bottom synchronously and detaches on upward intent until moving back down", () => {
-    const parts: UiPart[] = [
-      { id: "assistant-1", kind: "text", role: "assistant", text: "Latest", status: "complete" },
-    ];
-    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith(parts)} />));
-    const transcript = container.querySelector<HTMLDivElement>(".transcript")!;
-    let height = 1_000;
-    let top = 800;
-    Object.defineProperties(transcript, {
-      clientHeight: { configurable: true, value: 200 },
-      scrollHeight: { configurable: true, get: () => height },
-      scrollTop: {
-        configurable: true,
-        get: () => top,
-        set: (value: number) => {
-          top = Math.min(height - 200, Math.max(0, value));
-        },
-      },
-    });
-    const grow = () => {
-      height += 100;
-      act(() => {
-        (virtualizedProps.current?.totalListHeightChanged as (height: number) => void)(height);
-      });
-    };
-    grow();
-    expect(top).toBe(900);
-
-    // A queued native bottom event can arrive after upward intent, before the
-    // wheel has moved even one pixel. It must not silently re-enable following.
-    act(() => {
-      (virtualizedProps.current?.totalListHeightChanged as (height: number) => void)(height);
-      transcript.dispatchEvent(new WheelEvent("wheel", { deltaY: -1, bubbles: true }));
-      transcript.dispatchEvent(new Event("scroll"));
-    });
-    grow();
-    expect(top).toBe(900);
-    grow();
-    expect(top).toBe(900);
-    expect(scrollToIndex).not.toHaveBeenCalled();
-
-    act(() => {
-      transcript.dispatchEvent(new WheelEvent("wheel", { deltaY: 500, bubbles: true }));
-      transcript.scrollTop = height;
-      transcript.dispatchEvent(new Event("scroll"));
-      transcript.dispatchEvent(new Event("scrollend"));
-    });
-    grow();
-    expect(top).toBe(height - 200);
-
-    // Dragging the scrollbar also detaches without a wheel event.
-    act(() => {
-      transcript.dispatchEvent(new MouseEvent("pointerdown"));
-      transcript.scrollTop -= 100;
-      transcript.dispatchEvent(new Event("scroll"));
-    });
-    act(() => window.dispatchEvent(new MouseEvent("pointerup")));
-    const readingTop = top;
-    grow();
-    expect(top).toBe(readingTop);
+    // The transcript scroll owner anchors the reader instead of Virtuoso.
+    expect(virtualizedProps.current?.skipUpwardScrollCompensation).toBe(true);
   });
 
   it("lays consecutive sources out together in a wrapping horizontal group", () => {
@@ -606,114 +545,6 @@ describe("Transcript rendering and virtualizer adapter contracts", () => {
     expect(message).not.toBeNull();
   });
 
-  it("uses immediate virtualized scrolling for every keyboard revision, including direction changes", () => {
-    const parts: UiPart[] = [1, 2].map((turn) => ({
-      id: `assistant-${turn}`,
-      kind: "text",
-      role: "assistant",
-      text: `Answer ${turn}`,
-      status: "complete",
-    }));
-    const render = (messageSelection?: MessageSelection) =>
-      root.render(
-        <Transcript
-          parts={parts}
-          sessionId="session-1"
-          isStreaming={false}
-          messageSelection={messageSelection}
-        />,
-      );
-    act(() => render());
-    scrollToIndex.mockClear();
-    for (const [index, messageId] of ["assistant-2", "assistant-1", "assistant-2"].entries()) {
-      act(() => render({ messageId, origin: "keyboard", revision: index + 1 }));
-    }
-    expect(scrollToIndex.mock.calls.map(([location]) => location)).toEqual([
-      { index: 1, align: "start", behavior: "auto", offset: -16 },
-      { index: 0, align: "start", behavior: "auto", offset: -16 },
-      { index: 1, align: "start", behavior: "auto", offset: -16 },
-    ]);
-  });
-
-  it("reconciles offscreen selection geometry through measurement commits until user scroll intent", () => {
-    const parts: UiPart[] = [1, 2].map((turn) => ({
-      id: `assistant-${turn}`,
-      kind: "text",
-      role: "assistant",
-      text: `Answer ${turn}`,
-      status: "complete",
-    }));
-    const render = (messageSelection?: MessageSelection) =>
-      root.render(
-        <Transcript
-          parts={parts}
-          sessionId="virtual"
-          isStreaming={false}
-          messageSelection={messageSelection}
-        />,
-      );
-    act(() => render());
-    const scroller = container.querySelector<HTMLElement>(".transcript")!;
-    scroller.getBoundingClientRect = () => ({ top: 0, bottom: 600, height: 600 }) as DOMRect;
-    const itemTops = [1200, 2400];
-    container
-      .querySelectorAll<HTMLElement>('[data-slot="transcript-item"]')
-      .forEach((item, index) => {
-        item.getBoundingClientRect = () => {
-          const top = itemTops[index]! - scroller.scrollTop;
-          return { top, bottom: top + 900, height: 900 } as DOMRect;
-        };
-      });
-    scroller.scrollTo = vi.fn((options?: ScrollToOptions | number) => {
-      if (typeof options === "object") scroller.scrollTop = options.top!;
-    });
-    const query = scroller.querySelector.bind(scroller);
-    let rendered = false;
-    vi.spyOn(scroller, "querySelector").mockImplementation((selector) =>
-      rendered ? query(selector) : null,
-    );
-    const rangeChanged = () => act(() => (virtualizedProps.current?.rangeChanged as () => void)());
-    act(() => render({ messageId: "assistant-1", origin: "keyboard", revision: 1 }));
-    const skipsCompensation = virtualizedProps.current
-      ?.skipUpwardScrollCompensation as () => boolean;
-    expect(skipsCompensation()).toBe(false); // Explicit navigation owns measurement corrections.
-    rangeChanged(); // The estimated jump has not rendered its target yet.
-    expect(scrollToIndex).toHaveBeenLastCalledWith({
-      index: 0,
-      align: "start",
-      behavior: "auto",
-      offset: -16,
-    });
-    expect(scroller.scrollTo).not.toHaveBeenCalled();
-    // A new revision supersedes the previous unrendered target.
-    act(() => render({ messageId: "assistant-2", origin: "keyboard", revision: 2 }));
-    expect(scrollToIndex).toHaveBeenLastCalledWith({
-      index: 1,
-      align: "start",
-      behavior: "auto",
-      offset: -16,
-    });
-    scrollToIndex.mockClear();
-    rendered = true;
-    rangeChanged();
-    expect(scroller.scrollTop).toBe(2384);
-    itemTops[1]! += 280;
-    act(() => (virtualizedProps.current?.totalListHeightChanged as () => void)());
-    expect(scroller.scrollTop).toBe(2664);
-    expect(scrollToIndex).not.toHaveBeenCalled(); // No competing logical jump or retry.
-
-    // Explicit scroll intent cancels measurement-driven selection correction.
-    scrollToIndex.mockClear();
-    scroller.scrollTo = vi.fn();
-    act(() => scroller.dispatchEvent(new WheelEvent("wheel", { deltaY: 100, bubbles: true })));
-    expect(skipsCompensation()).toBe(true); // Revoked synchronously, without another render.
-    itemTops[1]! += 100;
-    rangeChanged();
-    expect(scroller.scrollTop).toBe(2664);
-    expect(scrollToIndex).not.toHaveBeenCalled();
-    expect(scroller.scrollTo).not.toHaveBeenCalled();
-  });
-
   it("immediately reveals a compact selection above the composer without animating", () => {
     const parts: UiPart[] = [
       { id: "assistant-1", kind: "text", role: "assistant", text: "Answer", status: "complete" },
@@ -734,9 +565,8 @@ describe("Transcript rendering and virtualizer adapter contracts", () => {
     scroller.getBoundingClientRect = () => ({ top: 0, bottom: 600, height: 600 }) as DOMRect;
     scroller.style.setProperty("--composer-dock-height", "100px");
     item.getBoundingClientRect = () => ({ top: 900, bottom: 1000, height: 100 }) as DOMRect;
-    scroller.scrollTo = vi.fn();
     act(() => render({ messageId: "assistant-1", origin: "keyboard", revision: 1 }));
-    expect(scroller.scrollTo).toHaveBeenCalledWith({ top: 516, behavior: "instant" });
+    expect(scroller.scrollTop).toBe(516);
   });
 
   it("indicates when Pi is busy before the first turn part appears", () => {
@@ -1342,6 +1172,10 @@ describe("Transcript rendering and virtualizer adapter contracts", () => {
       });
       transcript.getBoundingClientRect = () => ({ top: 0 }) as DOMRect;
       item.getBoundingClientRect = () => ({ top: -40, bottom: 60 }) as DOMRect;
+      // The reader leaves the bottom, then rests mid-transcript.
+      transcript.scrollTop = 600;
+      transcript.dispatchEvent(new Event("scroll"));
+      transcript.dispatchEvent(new WheelEvent("wheel", { deltaY: -1, bubbles: true }));
       transcript.scrollTop = 240;
       transcript.dispatchEvent(new Event("scroll"));
     });

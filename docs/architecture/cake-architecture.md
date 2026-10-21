@@ -78,21 +78,23 @@ projections needed by a surface. References do not transfer ownership.
 
 - Every materialized Cake Session has exactly one Conversation backed by exactly
   one Pi Session. Releasing a runtime or observation does not delete it.
-- Transcript scroll ownership belongs to the reader. Shared `ChatTranscript`
-  follows updates only while already bottom-pinned. User submission is an explicit
-  insertion exception, never an override of an ongoing gesture; streaming chunks,
-  activity, tools, notices, reports, artifacts, and layout changes grant no jump
-  permission. Explicit navigation and jump controls remain available. Bottom
-  ownership cannot be inferred from proximity after remeasurement. A saved reading
-  anchor may correct layout only at its captured scroll offset and outside active
-  scrolling (including touch inertia); otherwise it would undo native movement or
-  duplicate virtualizer compensation. Native `scrollend`, not a quiet-time timer,
-  ends a gesture. The pinned Virtuoso patch exposes
-  `skipUpwardScrollCompensation` for this external owner: its default total-height
-  compensation includes tail growth and must not compete with transcript anchors.
-  Only explicit navigation lends measurement compensation back to the virtualizer.
-  User gestures revoke that lease synchronously and cancel pending index retries
-  (`cancelScrollToIndex`) as well as Cake's selection callback, without another render.
+- Transcript scroll ownership belongs to the reader. One owner,
+  `src/renderer/lib/transcript-scroll-owner.ts`, is the only writer of a shared
+  `ChatTranscript`'s scroll position. It follows new content only while the
+  reader is at the bottom; anywhere else it never scrolls for the reader and
+  compensates every layout change (streaming, arriving messages, tools, cards,
+  virtual measurement, resizes) so the row at the top of the viewport stays
+  still. Anchors are stored in content coordinates, so compensation cannot undo
+  a native scroll whose event is still queued. Following stops as soon as the
+  reader moves up (wheel, touch, keys, scrollbar, or any other upward movement)
+  and resumes only when the reader returns to the bottom or explicitly jumps or
+  sends a message. Keyboard or linked message selection reveals its message once
+  by stable item key, pauses following, and is otherwise ordinary reading. The
+  pinned Virtuoso patch keeps upward size compensation disabled
+  (`skipUpwardScrollCompensation`) and exposes `cancelScrollToIndex` so reader
+  input or a completed reveal stops index-navigation retries. Do not add
+  another scroll writer; route new layout triggers through the owner's
+  `reconcile()`.
 - Regular-Pi display history is the complete active branch from
   `SessionManager.getBranch()`, not compacted model input from
   `buildContextEntries()`. Permanent Cake Chat presents original-history pages

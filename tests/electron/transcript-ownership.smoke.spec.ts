@@ -98,7 +98,12 @@ export default function Widget() {
       const opened = application.waitForEvent("window");
       await application.evaluate(
         async ({ BrowserWindow }, { html, messageCount, chatMode, widget }) => {
-          const window = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
+          // Match the application window: a hidden window must not throttle
+          // animation frames, or Virtuoso never finishes initial positioning.
+          const window = new BrowserWindow({
+            show: false,
+            webPreferences: { sandbox: true, backgroundThrottling: false },
+          });
           await window.loadFile(html, {
             search: `?count=${messageCount}&chatMode=${chatMode}&widget=${encodeURIComponent(JSON.stringify(widget))}`,
           });
@@ -112,6 +117,8 @@ export default function Widget() {
       await expect(transcript.locator('[data-slot="transcript-item"]').last()).toContainText(
         `Message ${messageCount - 1}`,
       );
+      // Virtuoso hides the list until its initial position settles.
+      await expect(transcript.locator('[aria-label="Conversation"]')).toBeVisible();
       await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
       await use(page);
       expect(errors).toEqual([]);
@@ -125,7 +132,7 @@ export default function Widget() {
 const gap = (transcript: Locator) =>
   transcript.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop);
 const top = (transcript: Locator) => transcript.evaluate((element) => element.scrollTop);
-const command = (page: Page, operation: keyof TranscriptOwnershipFixture) =>
+const command = (page: Page, operation: Exclude<keyof TranscriptOwnershipFixture, "grow">) =>
   page.evaluate((operation) => {
     (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture)[operation]();
   }, operation);
@@ -220,7 +227,7 @@ test("layout commits never undo user movement before its scroll event", async ({
   }
 });
 
-test("touch inertia owns scrolling and insertion cannot interrupt it", async ({
+test("touch scrolling and its inertia stop following; sending returns to the bottom", async ({
   fixturePage: page,
 }) => {
   const transcript = page.locator(".transcript");
@@ -230,18 +237,24 @@ test("touch inertia owns scrolling and insertion cannot interrupt it", async ({
     element.dispatchEvent(new TouchEvent("touchstart", { touches: [touch(200)], bubbles: true }));
     element.dispatchEvent(new TouchEvent("touchmove", { touches: [touch(260)], bubbles: true }));
     element.scrollTop -= 120;
+    const dragged = element.scrollTop;
+    fixture.stream();
+    const afterDrag = element.scrollTop;
+    element.dispatchEvent(new TouchEvent("touchend", { touches: [], bubbles: true }));
+    // Native inertia continues after the finger lifts, without further input.
+    element.scrollTop -= 60;
     const intended = element.scrollTop;
     fixture.stream();
-    element.dispatchEvent(new TouchEvent("touchend", { touches: [], bubbles: true }));
-    fixture.insert(); // Finger released, but native inertia has not ended.
-    return { intended, actual: element.scrollTop };
+    return { dragged, afterDrag, intended, actual: element.scrollTop };
   });
+  expect(result.afterDrag).toBe(result.dragged);
   expect(result.actual).toBe(result.intended);
   await expect.poll(() => top(transcript)).toBe(result.intended);
   const saved = await anchor(transcript);
   await command(page, "activity");
   await expect.poll(() => anchor(transcript)).toEqual(saved);
-  await command(page, "jump");
+  // Sending a message is an explicit request to return to the newest content.
+  await command(page, "insert");
   await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
   for (let step = 0; step < 4; step++) {
     await command(page, "stream");
@@ -489,3 +502,153 @@ test.describe("short transcript", () => {
     }
   });
 });
+
+// Regression contract for the recurring "transcript scrolls while I am reading"
+// bug: away from the bottom, nothing but the reader moves the viewport.
+test.describe("reader away from the bottom", () => {
+  test("streaming, arriving messages and tool output never move the viewport", async ({
+    fixturePage: page,
+  }) => {
+    const transcript = page.locator(".transcript");
+    await wheel(page, transcript, -400);
+    const savedTop = await top(transcript);
+    const savedAnchor = await anchor(transcript);
+    for (const operation of ["stream", "arrive", "activity", "stream", "arrive"] as const) {
+      await command(page, operation);
+      await settle(page);
+      expect(await anchor(transcript)).toEqual(savedAnchor);
+      expect(await top(transcript)).toBe(savedTop);
+    }
+  });
+
+  test("scrolling away without wheel, touch or keys stops following", async ({
+    fixturePage: page,
+  }) => {
+    const transcript = page.locator(".transcript");
+    // A scrollbar drag (overlay scrollbars included), find-in-page or a focus
+    // scroll moves the viewport without any wheel/touch/key event.
+    for (const pointer of [true, false]) {
+      await command(page, "jump");
+      await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+      await settle(page);
+      await transcript.evaluate((element, pointer) => {
+        if (pointer) element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+        element.scrollTop -= 300;
+      }, pointer);
+      await settle(page);
+      if (pointer) await page.evaluate(() => window.dispatchEvent(new PointerEvent("pointerup")));
+      const savedTop = await top(transcript);
+      const savedAnchor = await anchor(transcript);
+      expect(await gap(transcript)).toBeGreaterThan(250);
+      for (const operation of ["stream", "arrive", "activity"] as const) {
+        await command(page, operation);
+        await settle(page);
+        expect(await top(transcript)).toBe(savedTop);
+        expect(await anchor(transcript)).toEqual(savedAnchor);
+      }
+    }
+  });
+
+  test("content growth above the viewport keeps the visible content still", async ({
+    fixturePage: page,
+  }) => {
+    const transcript = page.locator(".transcript");
+    await wheel(page, transcript, -600);
+    const savedAnchor = await anchor(transcript);
+    const savedTop = await top(transcript);
+    const above = await transcript.evaluate((element) => {
+      const viewportTop = element.getBoundingClientRect().top;
+      return [...element.querySelectorAll<HTMLElement>("[data-transcript-anchor-id]")]
+        .filter((row) => row.getBoundingClientRect().bottom < viewportTop)
+        .at(-1)?.dataset.transcriptAnchorId;
+    });
+    expect(above).toBeDefined();
+    await page.evaluate((messageId) => {
+      (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).grow(messageId!);
+    }, above);
+    await settle(page);
+    expect(await anchor(transcript)).toEqual(savedAnchor);
+    // The viewport moved by exactly the growth above it, so nothing visible moved.
+    expect(await top(transcript)).toBeGreaterThan(savedTop + 100);
+  });
+
+  test("following stops on a slight upward scroll and resumes only at the bottom", async ({
+    fixturePage: page,
+  }) => {
+    const transcript = page.locator(".transcript");
+    for (const operation of ["stream", "arrive", "activity"] as const) {
+      await command(page, operation);
+      await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+    }
+    await wheel(page, transcript, -40);
+    const savedTop = await top(transcript);
+    for (const operation of ["stream", "arrive"] as const) {
+      await command(page, operation);
+      await settle(page);
+      expect(await top(transcript)).toBe(savedTop);
+    }
+    await wheel(page, transcript, 10_000);
+    for (const operation of ["stream", "arrive", "activity"] as const) {
+      await command(page, operation);
+      await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+    }
+  });
+});
+
+for (const chatMode of ["virtualized", "compact"]) {
+  test.describe(`${chatMode} keyboard selection while messages arrive`, () => {
+    test.use({ chatMode });
+    test("keeps the selected message and the viewport; arrows continue from it", async ({
+      fixturePage: page,
+    }) => {
+      const transcript = page.locator(".transcript");
+      const selected = transcript.locator('[data-slot="transcript-item"][aria-current="true"]');
+      const composer = page.getByRole("combobox", { name: "Message", exact: true });
+      const selectedOffset = () =>
+        selected.evaluate((row) => {
+          const scroller = row.closest<HTMLElement>(".transcript")!;
+          return row.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+        });
+      await composer.focus();
+      for (let press = 0; press < 3; press++) await composer.press("ArrowUp");
+      await expect(selected).toHaveAttribute("data-transcript-anchor-id", "message-45");
+      await settle(page);
+      const savedTop = await top(transcript);
+      const savedOffset = await selectedOffset();
+      for (const operation of ["arrive", "stream", "activity", "stream", "arrive"] as const) {
+        await command(page, operation);
+        await settle(page);
+        await expect(selected).toHaveAttribute("data-transcript-anchor-id", "message-45");
+        expect(await top(transcript)).toBe(savedTop);
+        expect(await selectedOffset()).toBe(savedOffset);
+      }
+      // Content above the selection may change height too (a settled or
+      // highlighted message, a late image); the selected message stays put.
+      await page.evaluate(() => {
+        (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).grow("message-43");
+      });
+      await settle(page);
+      await expect(selected).toHaveAttribute("data-transcript-anchor-id", "message-45");
+      expect(await selectedOffset()).toBe(savedOffset);
+      // Arrow keys move relative to the selected message's identity.
+      await composer.press("ArrowUp");
+      await expect(selected).toHaveAttribute("data-transcript-anchor-id", "message-44");
+      await composer.press("ArrowDown");
+      await expect(selected).toHaveAttribute("data-transcript-anchor-id", "message-45");
+      // Leaving the newest message returns to writing and following.
+      for (let press = 0; press < 12 && (await selected.count()) > 0; press++)
+        await composer.press("ArrowDown");
+      await expect(selected).toHaveCount(0);
+      await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+      await command(page, "arrive");
+      await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+    });
+  });
+}
+
+async function settle(page: Page) {
+  await page.evaluate(async () => {
+    for (let frame = 0; frame < 4; frame++)
+      await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+  });
+}

@@ -161,10 +161,14 @@ render();
 export interface TranscriptOwnershipFixture {
   update(): void;
   stream(): void;
+  /** A complete assistant message arrives without any user action. */
+  arrive(): void;
   activity(): void;
   insert(): void;
   jump(): void;
   navigate(): void;
+  /** Projects a longer version of an existing message (content growth in place). */
+  grow(messageId: string): void;
 }
 Reflect.set(window, "transcriptFixture", {
   update() {
@@ -189,6 +193,29 @@ Reflect.set(window, "transcriptFixture", {
     publish(true);
     render();
   },
+  arrive() {
+    parts = [
+      ...parts,
+      {
+        kind: "text",
+        id: `arrival-${revision}`,
+        role: "assistant",
+        status: "complete",
+        text: `Arrival ${revision}. ${"Arriving content. ".repeat(25)}`,
+      },
+    ];
+    publish();
+    render();
+  },
+  grow(messageId) {
+    parts = parts.map((part) =>
+      part.id === messageId && part.kind === "text"
+        ? { ...part, text: `${part.text}\n\n${"Grown paragraph. ".repeat(40)}` }
+        : part,
+    );
+    publish();
+    render();
+  },
   activity() {
     const toolIndex = parts.findIndex((part) => part.id === "tool");
     const tool: UiPart = {
@@ -207,7 +234,7 @@ Reflect.set(window, "transcriptFixture", {
     render();
   },
   insert() {
-    handle?.scrollToBottom({ forMessageInsertion: true });
+    handle?.scrollToBottom();
     parts = [
       ...parts,
       {

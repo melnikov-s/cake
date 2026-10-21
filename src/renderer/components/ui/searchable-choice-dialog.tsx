@@ -90,7 +90,8 @@ export function SearchableChoiceDialog<Choice extends SearchableChoice>({
     inputRef.current?.focus();
     return () => {
       document.removeEventListener("focusin", containFocus);
-      if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
+      if (previous instanceof HTMLElement && previous.isConnected)
+        previous.focus({ preventScroll: true });
     };
   }, []);
 

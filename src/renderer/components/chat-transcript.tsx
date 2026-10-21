@@ -40,6 +40,10 @@ import {
 } from "./chat-transcript-parts";
 import { ChatTranscriptItem } from "./chat-transcript-item";
 import { transcriptItemKeys } from "./chat-transcript-items";
+import {
+  createTranscriptScrollOwner,
+  type TranscriptScrollOwner,
+} from "../lib/transcript-scroll-owner";
 
 export {
   captureMessageSelection,
@@ -50,54 +54,12 @@ export {
 } from "./chat-transcript-parts";
 
 export interface ChatTranscriptHandle {
-  scrollToBottom(options?: {
-    fromMessageNavigation?: boolean;
-    forMessageInsertion?: boolean;
-  }): void;
+  /** Explicitly return to the newest content and follow it. */
+  scrollToBottom(): void;
 }
 
 const defaultTranscriptBehavior: ChatTranscriptBehavior = {};
 const selectionRevealMargin = 16;
-
-/**
- * Scrolls a keyboard-selected item into the visible transcript area above the
- * composer dock. Tall items align their top; items that fit move the minimum
- * distance. An unrendered virtualized item is reached through Virtuoso.
- */
-function revealSelectedItem(
-  scroller: HTMLElement,
-  item: HTMLElement | null,
-  scrollToIndex: (location: { align: "start"; behavior: "auto"; offset: number }) => void,
-  virtualized: boolean,
-) {
-  if (!item) {
-    scrollToIndex({ align: "start", behavior: "auto", offset: -selectionRevealMargin });
-    return;
-  }
-  const viewport = scroller.getBoundingClientRect();
-  const dockInset =
-    Number.parseFloat(getComputedStyle(scroller).getPropertyValue("--composer-dock-height")) || 0;
-  const top = viewport.top + selectionRevealMargin;
-  const bottom = viewport.bottom - dockInset - selectionRevealMargin;
-  const rect = item.getBoundingClientRect();
-  const delta =
-    rect.top < top || rect.height > bottom - top
-      ? rect.top - top
-      : rect.bottom > bottom
-        ? rect.bottom - bottom
-        : 0;
-  if (virtualized) {
-    // Always use the same scrolling authority, even for an already rendered row.
-    // A new scrollToIndex cancels Virtuoso's measurement retries for the previous
-    // selection, so rapid direction changes cannot jump back to a stale target.
-    scrollToIndex({
-      align: "start",
-      behavior: "auto",
-      offset: delta - (rect.top - viewport.top),
-    });
-  } else if (Math.abs(delta) >= 1)
-    scroller.scrollTo?.({ top: scroller.scrollTop + delta, behavior: "instant" });
-}
 
 function captureScrollPosition(scroller: HTMLElement): TranscriptScrollPosition | undefined {
   if (scroller.clientHeight <= 0) return undefined;
@@ -152,72 +114,24 @@ export const ChatTranscript = observer(function ChatTranscript({
     [store],
   );
   const [annotationDraft, setAnnotationDraft] = useState<TranscriptSelectionCapture>();
-  const atBottom = useRef(!restoredScrollPosition || restoredScrollPosition.kind === "bottom");
-  // Following is ownership, not a property to rediscover after remeasurement.
-  // Only a downward gesture against unchanged geometry can reacquire it.
-  const allowFollowing = useRef<{ height: number; viewport: number } | undefined>(undefined);
-  const userScrolling = useRef(false);
-  const readingAnchor = useRef<
-    (Extract<TranscriptScrollPosition, { kind: "message" }> & { scrollTop: number }) | undefined
-  >(undefined);
-  const pendingSelectionReveal = useRef<(() => void) | undefined>(undefined);
-  const handleRangeChanged = useCallback(() => pendingSelectionReveal.current?.(), []);
-  const handleTotalHeightChange = useCallback(() => {
-    pendingSelectionReveal.current?.();
-    if (!atBottom.current || userScrolling.current || !scroller) return;
-    // Never defer a bottom correction to another frame. Virtuoso's logical
-    // height can arrive before its DOM commit; the observer below also aligns
-    // the committed geometry, including footer and viewport changes.
-    scroller.scrollTop = scroller.scrollHeight;
-  }, [scroller]);
-  const reconcileScrollGeometry = useCallback(() => {
-    handleTotalHeightChange();
-    if (!scroller || userScrolling.current || atBottom.current || !readingAnchor.current) return;
-    const saved = readingAnchor.current;
-    // Native/compositor scrolling and Virtuoso compensation can move scrollTop
-    // before their scroll event. The saved offset belongs ONLY to its captured
-    // scrollTop: treating that movement as a row resize undoes the user's scroll.
-    if (scroller.scrollTop !== saved.scrollTop) return;
-    const anchor = Array.from(
-      scroller.querySelectorAll<HTMLElement>("[data-transcript-anchor-id]"),
-    ).find((item) => item.dataset.transcriptAnchorId === saved.messageId);
-    if (!anchor || getComputedStyle(anchor).visibility === "hidden") return;
-    const delta =
-      anchor.getBoundingClientRect().top - scroller.getBoundingClientRect().top - saved.offset;
-    if (Math.abs(delta) >= 1) {
-      scroller.scrollTop += delta;
-      saved.scrollTop = scroller.scrollTop;
-    }
-  }, [handleTotalHeightChange, scroller]);
+  // One owner decides every transcript scroll; see transcript-scroll-owner.ts.
+  const scrollOwner = useRef<TranscriptScrollOwner | undefined>(undefined);
+  const initiallyFollowing = !restoredScrollPosition || restoredScrollPosition.kind === "bottom";
   useLayoutEffect(() => {
     const content = contentRef.current;
     if (!scroller || !content) return;
-    // Both layouts share one following authority. A separate compact scroll
-    // helper can mistake a selection reveal for permission to follow again.
-    const observer = new ResizeObserver(reconcileScrollGeometry);
-    observer.observe(content);
-    observer.observe(scroller);
-    return () => observer.disconnect();
-  }, [reconcileScrollGeometry, scroller]);
-  const scrollToBottom = useCallback(
-    (options?: { fromMessageNavigation?: boolean; forMessageInsertion?: boolean }) => {
-      // Sending is insertion permission, not permission to interrupt an active
-      // gesture. Explicit navigation/jump controls remain deliberate overrides.
-      if (options?.forMessageInsertion && userScrolling.current) return;
-      userScrolling.current = false;
-      pendingSelectionReveal.current = undefined;
-      virtuosoRef.current?.cancelScrollToIndex();
-      readingAnchor.current = undefined;
-      // Returning to writing must also supersede an offscreen selection's pending
-      // measurement retry, not just move the native scrollbar for one frame.
-      if (virtualized && options?.fromMessageNavigation)
-        virtuosoRef.current?.scrollToIndex({ index: "LAST", align: "end", behavior: "auto" });
-      allowFollowing.current = undefined;
-      atBottom.current = true;
-      handleTotalHeightChange();
-    },
-    [handleTotalHeightChange, virtualized],
-  );
+    const owner = createTranscriptScrollOwner(scroller, content, {
+      following: initiallyFollowing,
+      cancelVirtualNavigation: () => virtuosoRef.current?.cancelScrollToIndex(),
+    });
+    scrollOwner.current = owner;
+    return () => {
+      owner.dispose();
+      scrollOwner.current = undefined;
+    };
+  }, [initiallyFollowing, scroller]);
+  const reconcileScroll = useCallback(() => scrollOwner.current?.reconcile(), []);
+  const scrollToBottom = useCallback(() => scrollOwner.current?.scrollToBottom(), []);
   useImperativeHandle(ref, () => ({ scrollToBottom }), [scrollToBottom]);
   const parts = store.parts;
   // Read disclosure state in this observer's render. VirtualizedConversation invokes
@@ -311,47 +225,28 @@ export const ChatTranscript = observer(function ChatTranscript({
     // Later height changes reconcile committed geometry before paint.
     return { index: "LAST" as const, align: "end" as const };
   }, [navigationItemIndex, restoredMessageItemIndex, restoredScrollPosition]);
+  const selecting = selectedMessageId !== undefined;
+  useLayoutEffect(() => scrollOwner.current?.setSelecting(selecting), [scroller, selecting]);
+  // The selection is identified by its stable item key, never by its index, so
+  // arriving or streaming messages cannot retarget a reveal.
+  const selectedItemKey = selectedItemIndex >= 0 ? itemKeys[selectedItemIndex] : undefined;
   useLayoutEffect(() => {
-    if (!messageSelection || selectedItemIndex < 0 || !scroller) return;
+    const owner = scrollOwner.current;
+    if (!owner || !messageSelection || selectedItemKey === undefined) return;
     if (revealedSelectionRevision.current === messageSelection.revision) return;
     // Virtuoso is mounted in the commit after the scroller; wait for its handle.
     if (virtualized && !virtuosoRef.current) return;
     revealedSelectionRevision.current = messageSelection.revision;
-    readingAnchor.current = undefined;
-    allowFollowing.current = undefined;
-    atBottom.current = false;
-    const item = scroller.querySelector<HTMLElement>(
-      `[data-transcript-item-index="${selectedItemIndex}"]`,
+    // Revealing a selection is the only movement besides the reader's own.
+    owner.reveal(selectedItemKey, () =>
+      virtuosoRef.current?.scrollToIndex({
+        index: selectedItemIndex,
+        align: "start",
+        behavior: "auto",
+        offset: -selectionRevealMargin,
+      }),
     );
-    const reveal = (element: HTMLElement | null) =>
-      revealSelectedItem(
-        scroller,
-        element,
-        (location) => {
-          virtuosoRef.current?.scrollToIndex({ index: selectedItemIndex, ...location });
-        },
-        virtualized,
-      );
-    reveal(item);
-    if (!virtualized) return;
-    // Even a rendered (overscanned) row can have unsettled sizes above it.
-    // Reconcile this explicit selection after range/measurement commits, not
-    // only when the target was absent at the start of the jump.
-    // This callback belongs only to this selection revision; rapid keys or clear
-    // cancel it before it can move the viewport to an obsolete target.
-    const reconcileSelection = () => {
-      const rendered = scroller.querySelector<HTMLElement>(
-        `[data-transcript-item-index="${selectedItemIndex}"]`,
-      );
-      // Keep the existing navigation path for an initially unrendered target.
-      // Already-rendered targets need no competing native coordinate writer.
-      if (!item && rendered) revealSelectedItem(scroller, rendered, () => {}, false);
-    };
-    pendingSelectionReveal.current = reconcileSelection;
-    return () => {
-      pendingSelectionReveal.current = undefined;
-    };
-  }, [messageSelection, scroller, selectedItemIndex, virtualized]);
+  }, [messageSelection, scroller, selectedItemIndex, selectedItemKey, virtualized]);
   // Clicking anywhere outside the selected message ends the selection; clicks
   // inside it are left for actions on that message.
   useEffect(() => {
@@ -369,163 +264,27 @@ export const ChatTranscript = observer(function ChatTranscript({
     document.addEventListener("pointerdown", handlePointerDown, true);
     return () => document.removeEventListener("pointerdown", handlePointerDown, true);
   }, [scroller, selectedMessageId, store]);
+  // Persist the reading position for session switches. This only records; the
+  // scroll owner alone moves the viewport.
   useLayoutEffect(() => {
     if (!scroller) return;
-    let pendingPosition = untracked(() => store.transcriptInteraction.transcriptScrollPosition);
+    let savedPosition = untracked(() => store.transcriptInteraction.transcriptScrollPosition);
     let saveTimer: ReturnType<typeof setTimeout> | undefined;
-    let draggingScrollbar = false;
-    let dragGeometry: typeof allowFollowing.current;
-    let touchY: number | undefined;
-    let previousTop = scroller.scrollTop;
-    const cancelNavigation = () => {
-      pendingSelectionReveal.current = undefined;
-      virtuosoRef.current?.cancelScrollToIndex();
-    };
-    const pauseFollowing = () => {
-      cancelNavigation();
-      readingAnchor.current = undefined;
-      allowFollowing.current = undefined;
-      atBottom.current = false;
-    };
     const commitScrollPosition = () => {
       saveTimer = undefined;
-      // The scroll event can precede Virtuoso replacing its rendered range.
-      // Save the current DOM anchor, keeping the last capture if geometry is unavailable.
-      pendingPosition = captureScrollPosition(scroller) ?? pendingPosition;
-      if (pendingPosition) store.transcriptInteraction.setTranscriptScrollPosition(pendingPosition);
+      // Keep the last capture while geometry is unavailable (hidden or positioning).
+      savedPosition = captureScrollPosition(scroller) ?? savedPosition;
+      if (savedPosition) store.transcriptInteraction.setTranscriptScrollPosition(savedPosition);
     };
-    const captureAndSchedule = () => {
-      pendingPosition = captureScrollPosition(scroller);
-      if (draggingScrollbar) {
-        if (scroller.scrollTop < previousTop) pauseFollowing();
-        else if (scroller.scrollTop > previousTop) allowFollowing.current = dragGeometry;
-        // Downward dragging uses the geometry captured at pointerdown, not
-        // geometry newly clamped to the bottom by a measurement.
-      }
-      // A selected message has its own scrollToIndex measurement retries. Do
-      // not give passive reading anchoring a competing target during navigation.
-      readingAnchor.current =
-        pendingPosition?.kind === "message" && !store.transcriptInteraction.selectedMessageId
-          ? { ...pendingPosition, scrollTop: scroller.scrollTop }
-          : undefined;
-      previousTop = scroller.scrollTop;
-      // A queued bottom event can arrive after upward input. Only a subsequent
-      // downward gesture or an explicit request may enable following again.
-      // Scroll events alone are ambiguous: Virtuoso also moves during measurement.
-      const permission = allowFollowing.current;
-      if (
-        pendingPosition?.kind === "bottom" &&
-        permission?.height === scroller.scrollHeight &&
-        permission.viewport === scroller.clientHeight
-      )
-        atBottom.current = true;
-      if (!pendingPosition) return;
+    const handleScroll = () => {
+      // The scroll event can precede Virtuoso replacing its rendered range.
+      savedPosition = captureScrollPosition(scroller) ?? savedPosition;
       if (saveTimer !== undefined) clearTimeout(saveTimer);
       saveTimer = setTimeout(commitScrollPosition, 100);
     };
-    const handleScrollIntent = (target: EventTarget | null, direction: number) => {
-      if (direction === 0) return;
-      if (!(target instanceof Element)) return;
-      let ancestor: Element | null = target;
-      while (ancestor && ancestor !== scroller) {
-        if (ancestor instanceof HTMLElement) {
-          const style = getComputedStyle(ancestor);
-          if (["auto", "scroll"].includes(style.overflowY)) {
-            const canScroll =
-              direction < 0
-                ? ancestor.scrollTop > 0
-                : ancestor.scrollTop + ancestor.clientHeight < ancestor.scrollHeight;
-            // An uncontained nested scroller at its boundary chains to the
-            // transcript; that gesture must cancel outer following too.
-            if (canScroll || ["contain", "none"].includes(style.overscrollBehaviorY)) return;
-          }
-        }
-        ancestor = ancestor.parentElement;
-      }
-      readingAnchor.current = undefined;
-      const gap = scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop;
-      if (direction < 0 ? scroller.scrollTop > 0 : gap > 1) userScrolling.current = true;
-      if (direction < 0) pauseFollowing();
-      else {
-        cancelNavigation();
-        allowFollowing.current = { height: scroller.scrollHeight, viewport: scroller.clientHeight };
-        if (gap <= 1) atBottom.current = true;
-      }
-    };
-    const handleWheel = (event: WheelEvent) => handleScrollIntent(event.target, event.deltaY);
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (
-        event.defaultPrevented ||
-        !(event.target instanceof Element) ||
-        event.target.closest('input, textarea, select, [contenteditable="true"]')
-      )
-        return;
-      if (
-        ["ArrowUp", "PageUp", "Home"].includes(event.key) ||
-        (event.key === " " && event.shiftKey)
-      )
-        handleScrollIntent(event.target, -1);
-      else if (["ArrowDown", "PageDown", "End", " "].includes(event.key))
-        handleScrollIntent(event.target, 1);
-    };
-    const handlePointerDown = (event: PointerEvent) => {
-      if (event.target !== scroller) return;
-      const x = event.clientX - scroller.getBoundingClientRect().left;
-      if (x >= scroller.clientLeft && x < scroller.clientLeft + scroller.clientWidth) return;
-      draggingScrollbar = true;
-      previousTop = scroller.scrollTop;
-      pauseFollowing();
-      userScrolling.current = true;
-      dragGeometry = { height: scroller.scrollHeight, viewport: scroller.clientHeight };
-    };
-    const handleScrollEnd = (event?: Event) => {
-      if (event && event.target !== scroller) return;
-      if (draggingScrollbar || touchY !== undefined) return;
-      userScrolling.current = false;
-      captureAndSchedule();
-      allowFollowing.current = undefined;
-    };
-    const handlePointerUp = () => {
-      if (!draggingScrollbar) return;
-      draggingScrollbar = false;
-      handleScrollEnd();
-    };
-    const handleTouchStart = (event: TouchEvent) => {
-      touchY = event.touches[0]?.clientY;
-    };
-    const handleTouchMove = (event: TouchEvent) => {
-      const nextY = event.touches[0]?.clientY;
-      if (touchY !== undefined && nextY !== undefined)
-        handleScrollIntent(event.target, touchY - nextY);
-      touchY = nextY;
-    };
-    const handleTouchEnd = () => {
-      touchY = undefined;
-      // Do not end ownership here: touch inertia ends at native scrollend.
-    };
-    scroller.addEventListener("wheel", handleWheel, { passive: true });
-    scroller.addEventListener("scrollend", handleScrollEnd);
-    scroller.addEventListener("touchstart", handleTouchStart, { passive: true });
-    scroller.addEventListener("touchmove", handleTouchMove, { passive: true });
-    scroller.addEventListener("touchend", handleTouchEnd);
-    scroller.addEventListener("touchcancel", handleTouchEnd);
-    scroller.addEventListener("keydown", handleKeyDown);
-    scroller.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("pointerup", handlePointerUp);
-    window.addEventListener("pointercancel", handlePointerUp);
-    scroller.addEventListener("scroll", captureAndSchedule, { passive: true });
+    scroller.addEventListener("scroll", handleScroll, { passive: true });
     return () => {
-      scroller.removeEventListener("wheel", handleWheel);
-      scroller.removeEventListener("scrollend", handleScrollEnd);
-      scroller.removeEventListener("touchstart", handleTouchStart);
-      scroller.removeEventListener("touchmove", handleTouchMove);
-      scroller.removeEventListener("touchend", handleTouchEnd);
-      scroller.removeEventListener("touchcancel", handleTouchEnd);
-      scroller.removeEventListener("keydown", handleKeyDown);
-      scroller.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("pointerup", handlePointerUp);
-      window.removeEventListener("pointercancel", handlePointerUp);
-      scroller.removeEventListener("scroll", captureAndSchedule);
+      scroller.removeEventListener("scroll", handleScroll);
       if (saveTimer !== undefined) clearTimeout(saveTimer);
       commitScrollPosition();
     };
@@ -601,6 +360,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   const renderItem = (item: TranscriptItem, index: number) => (
     <ChatTranscriptItem
       key={itemKeys[index]}
+      itemKey={itemKeys[index] ?? item.id}
       item={item}
       index={index}
       errorFollowsUser={errorNoticeFollowsUser(items, index)}
@@ -662,16 +422,13 @@ export const ChatTranscript = observer(function ChatTranscript({
                 ref={virtuosoRef}
                 customScrollParent={scroller}
                 data={items}
-                context={{ footer, error, onLayout: reconcileScrollGeometry }}
+                context={{ footer, error, onLayout: reconcileScroll }}
                 computeItemKey={(index, item) => itemKeys[index] ?? item.id}
                 initialTopMostItemIndex={openingItemLocation}
                 followOutput={false}
-                // Reading belongs to this transcript. Only explicit navigation
-                // lends size compensation to Virtuoso; a gesture revokes that
-                // lease synchronously, without waiting for another React render.
-                skipUpwardScrollCompensation={() => !pendingSelectionReveal.current}
-                totalListHeightChanged={handleTotalHeightChange}
-                rangeChanged={handleRangeChanged}
+                // The transcript scroll owner anchors the reader. Virtuoso's
+                // total-height compensation would also react to tail growth.
+                skipUpwardScrollCompensation
                 components={{
                   List: TranscriptList,
                   Footer: ChatTranscriptFooter,
