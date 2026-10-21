@@ -13,7 +13,9 @@ import { StoreProvider } from "r-state-tree/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
+import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import { App } from "../../../src/renderer/components/app";
+import { isMacPlatform } from "../../../src/renderer/lib/platform";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import type { Client } from "../../../src/renderer/client/Client";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
@@ -63,6 +65,9 @@ async function fixture(mutateTodos?: Client["projectTodos"]["mutateUser"]) {
     terminalId: "terminal-1",
     shell: "zsh",
   }));
+  const setFullscreenSurfaceOpen = vi.fn<Client["electron"]["setFullscreenSurfaceOpen"]>(
+    async () => undefined,
+  );
   const f = createRendererStoreFixture({
     projects: [
       projectRecord({ path: "/zombies", name: "zombies" }),
@@ -76,6 +81,7 @@ async function fixture(mutateTodos?: Client["projectTodos"]["mutateUser"]) {
       }),
     ],
     client: {
+      electron: { setFullscreenSurfaceOpen },
       cakeChats: { open: async () => undefined, setUnread: async () => undefined },
       projectSessions: { open: async () => undefined },
       projectTodos: mutateTodos ? { mutateUser: mutateTodos } : {},
@@ -102,22 +108,23 @@ async function fixture(mutateTodos?: Client["projectTodos"]["mutateUser"]) {
     ],
   });
   f.root.sessionRegistry.load("task", "/zombies");
-  for (const id of [CAKE_CHAT_SESSION_ID, projectId, otherId, "task"]) {
+  let revision = 0;
+  const publish = (id: string, parts: UiPart[] = [], streaming = false) => {
     const model =
       id === "task"
         ? f.models.projectConversation(id, "/zombies")
         : f.models.cakeChatConversation(id);
     applyConversationUpdate(model, {
       _tag: "Snapshot",
-      revision: 1,
+      revision: ++revision,
       snapshot: {
         sessionId: id,
         sessionFile: id === "task" ? "/sessions/task.jsonl" : `/chats/${id}/coordinator.sqlite`,
-        parts: [],
+        parts,
         models: [],
         thinkingLevel: "off",
         availableThinkingLevels: ["off"],
-        streaming: false,
+        streaming,
         diagnostics: [],
         commands: [],
         compatibility: { resources: [], diagnostics: [] },
@@ -125,18 +132,25 @@ async function fixture(mutateTodos?: Client["projectTodos"]["mutateUser"]) {
         tree: [],
       },
     });
-  }
+  };
+  for (const id of [CAKE_CHAT_SESSION_ID, projectId, otherId, "task"]) publish(id);
   await f.root.cakeChatCollectionStore.initialize();
   f.root.terminalStore.readyForEvents();
   f.root.navigationStore.selectCakeChat(CAKE_CHAT_SESSION_ID);
   const view = render(
     <StoreProvider store={f.root}>
-      <App />
+      <StoreProvider store={f.root.fullscreenSurfaceStore}>
+        <App />
+      </StoreProvider>
     </StoreProvider>,
   );
   return {
     ...f,
     user: userEvent.setup(),
+    publish(id: string, parts: UiPart[], streaming: boolean) {
+      act(() => publish(id, parts, streaming));
+    },
+    setFullscreenSurfaceOpen,
     browserOpen,
     editorOpen,
     terminalOpen,
@@ -235,6 +249,57 @@ it("toggles Project Chat to-dos in the existing side pane, selects/deselects, co
     await runtime.dispose();
   }
 });
+
+it.each([projectId, CAKE_CHAT_SESSION_ID, "task"])(
+  "keeps the latest-response fullscreen reader on its completed message in %s",
+  async (id) => {
+    using f = await fixture();
+    const live: UiPart = {
+      id: "entry-live-task-text-0",
+      kind: "text",
+      role: "assistant",
+      renderKey: "assistant-1234-text-0",
+      text: "An answer still streaming. ".repeat(24),
+      status: "streaming",
+    };
+    f.publish(id, [live], true);
+    if (id === "task") {
+      await f.user.click(screen.getByRole("button", { name: /^task(?: |$)/ }));
+    } else if (id === projectId) {
+      await f.user.click(screen.getByRole("button", { name: "Open Project Chat for zombies" }));
+    }
+    // App's no-hover shortcut is distinct from the transcript-message affordance.
+    // Native keyboard/hover routing is also covered by streaming-response-fullscreen.smoke.
+    await f.user.keyboard(isMacPlatform ? "{Meta>}{Enter}{/Meta}" : "{Alt>}{Enter}{/Alt}");
+    const reader = screen.getByRole("dialog", { name: "Cake" });
+    const settled: UiPart = {
+      ...live,
+      id: "entry-persisted-text-0",
+      entryId: "persisted",
+      text: `${live.text}Final completed answer.`,
+      status: "complete",
+    };
+    f.publish(id, [settled], false);
+    expect(screen.getByRole("dialog", { name: "Cake" })).toBe(reader);
+    expect(reader.textContent).toContain("Final completed answer.");
+    expect(f.setFullscreenSurfaceOpen.mock.calls.map(([, open]) => open)).toEqual([true]);
+    // Later activity must neither replace the selected answer nor dismiss the reader.
+    f.publish(
+      id,
+      [
+        settled,
+        { ...live, id: "next", renderKey: "assistant-5678-text-0", text: "A later answer." },
+      ],
+      true,
+    );
+    expect(screen.getByRole("dialog", { name: "Cake" })).toBe(reader);
+    expect(reader.textContent).not.toContain("A later answer.");
+    await f.user.click(within(reader).getByRole("button", { name: "Exit fullscreen Cake" }));
+    expect(screen.queryByRole("dialog", { name: "Cake" })).toBeNull();
+    f.publish(id, [settled], false);
+    expect(screen.queryByRole("dialog", { name: "Cake" })).toBeNull();
+  },
+);
 
 it("opens Project Chat from its collapsed project header with VS Code and Terminal at the registered project root", async () => {
   using f = await fixture();

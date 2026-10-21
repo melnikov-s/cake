@@ -44,7 +44,12 @@ export function useAppHotkeys(
         const part = current?.conversationSessionStore.chatStore.parts.findLast(
           (part) => part.kind === "text" && part.role === "assistant" && Boolean(part.text),
         );
-        if (current && part) onOpenResponse({ sessionId: current.sessionId, partId: part.id });
+        if (current && part?.kind === "text")
+          onOpenResponse({
+            sessionId: current.sessionId,
+            partId: part.id,
+            renderKey: part.renderKey,
+          });
       } else root.commands.execute(action);
     };
     const runHotkey = (event: globalThis.KeyboardEvent) => {
