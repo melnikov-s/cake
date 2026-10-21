@@ -1801,7 +1801,7 @@ const projectChatSidebar: VisualCaptureScenario = {
 const projectChatTodos: VisualCaptureScenario = {
   name: "project-chat-todos",
   description: "Project Chat toolbar to-do accessory, selection and completed disclosure",
-  states: ["open", "done"],
+  states: ["open", "done", "empty", "unselected"],
   async seed(paths, theme) {
     await assistantMarkdownCode.seed(paths, theme);
     const file = join(paths.cakeHome, "state", "application.json");
@@ -1810,7 +1810,7 @@ const projectChatTodos: VisualCaptureScenario = {
     await writeFile(
       file,
       JSON.stringify({
-        version: 8,
+        version: 9,
         data: {
           ...defaultApplicationState(),
           ...state,
@@ -1825,6 +1825,7 @@ const projectChatTodos: VisualCaptureScenario = {
                 {
                   id: selectedId,
                   title: "Startup investigation",
+                  description: "Find the startup bottleneck and recommend a focused fix.",
                   status: "Report delivered; awaiting your review",
                   state: "open",
                   revision: 0,
@@ -1839,6 +1840,7 @@ const projectChatTodos: VisualCaptureScenario = {
                 {
                   id: "00000000-0000-4000-8000-000000000012",
                   title: "Improve project navigation",
+                  description: "Make it easier to move between ongoing project conversations.",
                   status: "Implementation in progress",
                   state: "open",
                   revision: 0,
@@ -1847,6 +1849,7 @@ const projectChatTodos: VisualCaptureScenario = {
                 {
                   id: "00000000-0000-4000-8000-000000000013",
                   title: "Discuss the next milestone",
+                  description: "Agree on the next milestone’s scope and priorities.",
                   status: "Decision recorded",
                   state: "done",
                   revision: 0,
@@ -1870,6 +1873,13 @@ const projectChatTodos: VisualCaptureScenario = {
     await input.fill("Let’s revisit the startup investigation.");
     await page.getByRole("button", { name: "To-do", exact: true }).click();
     await expect(page.getByRole("complementary", { name: "To-do" })).toBeVisible();
+    if (state === "unselected" || state === "empty")
+      await page.getByRole("button", { name: "Clear to-do context" }).click();
+    if (state === "empty") {
+      const panel = page.getByRole("complementary", { name: "To-do" });
+      await panel.getByRole("button", { name: "Mark done: Startup investigation" }).click();
+      await panel.getByRole("button", { name: "Mark done: Improve project navigation" }).click();
+    }
     if (state === "done") await page.getByRole("button", { name: "Done (1)" }).click();
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.mouse.move(1, 1);

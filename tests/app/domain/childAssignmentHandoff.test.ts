@@ -19,6 +19,8 @@ import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamil
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
+import { projectTodoLayer } from "../helpers/projectTodoHarness";
+import * as todos from "../../../src/domain/projects/projectTodos";
 import { messageBoardHarness } from "../helpers/messageBoardHarness";
 import {
   fakeRuntime,
@@ -62,6 +64,7 @@ const fixture = Effect.fn("ChildAssignmentTest.fixture")(function* (
   const core = yield* Layer.build(
     Layer.mergeAll(
       family.layer,
+      projectTodoLayer(),
       board.layer,
       SessionCatalogChanges.layer,
       Layer.mock(PiModels, { resolve: (model) => Effect.succeed(model) }),
@@ -240,6 +243,9 @@ describe("assignment-first child handoff", () => {
         assert.equal(result.launch.status, "accepted", JSON.stringify(result.launch));
         yield* Deferred.await(f.firstRead);
         assert.equal(result.assignment?.sequence, 1);
+        const items = (yield* f.provide(todos.list("/project"))).items;
+        assert.equal(items.length, 1);
+        assert.equal(items[0]?.description, input.assignment.description);
         assert.equal(f.starts(), 1);
         const message = parseCrossSessionMessage(f.bootstrap());
         assert.equal(message?.metadata.expectsResponse, false);
@@ -283,6 +289,7 @@ describe("assignment-first child handoff", () => {
       assert.equal(failed.launch.status, "failed");
       assert.equal(failed.launch.stage, "admission");
       assert.equal(f.starts(), 0);
+      assert.equal((yield* f.provide(todos.list("/project"))).items.length, 0);
       const retry = yield* f.launch();
       assert.equal(retry.childSessionId, failed.childSessionId);
       assert.deepEqual(retry.assignment, failed.assignment);
@@ -328,6 +335,7 @@ describe("assignment-first child handoff", () => {
         const again = yield* f.launch();
         assert.equal(again.launch.status, "already-admitted");
         assert.equal(f.starts(), 1);
+        assert.equal((yield* f.provide(todos.list("/project"))).items.length, 1);
         assert.deepEqual(a.assignment, b.assignment);
       }),
   );

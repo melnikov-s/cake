@@ -1,4 +1,5 @@
-import { Context, Effect, FileSystem, Layer, Path, Schema, Semaphore } from "effect";
+import { Context, Effect, FileSystem, Layer, Path, Schema, Semaphore, Struct } from "effect";
+import { ProjectTodo, ProjectTodos } from "../../contracts/projects/project-todos";
 import {
   ApplicationState,
   CakeChatPreferences,
@@ -20,7 +21,7 @@ import {
   ApplicationWriteError,
 } from "../../contracts/storage/application-storage-errors";
 
-const APPLICATION_DOCUMENT_VERSION = 8;
+const APPLICATION_DOCUMENT_VERSION = 9;
 export const APPLICATION_DOCUMENT_NAME = "application.json";
 
 class ApplicationReadError extends Schema.TaggedError<ApplicationReadError>()(
@@ -140,8 +141,24 @@ const ApplicationStateV2 = Schema.Struct({
 });
 type ApplicationStateV2 = typeof ApplicationStateV2.Type;
 
+const ProjectTodoV8 = Schema.Struct(Struct.omit(ProjectTodo.fields, ["description"]));
+const ProjectRecordV8 = Schema.Struct({
+  ...ProjectRecord.fields,
+  todos: Schema.optionalKey(
+    Schema.Struct({
+      ...ProjectTodos.fields,
+      items: Schema.Array(ProjectTodoV8).check(Schema.isMaxLength(1000)),
+    }),
+  ),
+});
+const ApplicationStateV8 = Schema.Struct({
+  ...ApplicationState.fields,
+  projects: Schema.Array(ProjectRecordV8),
+});
+type ApplicationStateV8 = typeof ApplicationStateV8.Type;
+
 const ApplicationStateV3 = Schema.Struct({
-  projects: Schema.Array(ProjectRecord),
+  projects: Schema.Array(ProjectRecordV8),
   globalSessionLabels: Schema.Array(SessionLabel),
   unreadSessionIds: Schema.Array(Schema.String),
   trustedProjectPaths: Schema.Array(Schema.String),
@@ -163,7 +180,7 @@ type ApplicationStateV4 = typeof ApplicationStateV4.Type;
 // Versions five and six stored the Cake Chat summarization model as a bare utility-style
 // model; version seven stores a model choice shared with the Subagent default model.
 const ApplicationStateV6 = Schema.Struct({
-  ...ApplicationState.fields,
+  ...ApplicationStateV8.fields,
   cakeChatPreferences: Schema.optionalKey(
     Schema.Struct({
       ...CakeChatPreferences.fields,
@@ -321,9 +338,9 @@ const migrateVersionSix = Effect.fn("ApplicationStorage.migrateVersionSix")((
   state: ApplicationStateV6,
 ) => {
   const { cakeChatPreferences, ...rest } = state;
-  if (!cakeChatPreferences) return Effect.succeed<ApplicationStateValue>(rest);
+  if (!cakeChatPreferences) return Effect.succeed<ApplicationStateV8>(rest);
   const { summarizationModel, ...preferences } = cakeChatPreferences;
-  return Effect.succeed<ApplicationStateValue>({
+  return Effect.succeed<ApplicationStateV8>({
     ...rest,
     cakeChatPreferences: summarizationModel
       ? {
@@ -341,8 +358,8 @@ const migrateVersionSix = Effect.fn("ApplicationStorage.migrateVersionSix")((
 // v7 stored no provenance: explicit 128k and a copied default are indistinguishable.
 // Preserve every other budget/field; v8 saves may explicitly select 128k again.
 const migrateVersionSeven = Effect.fn("ApplicationStorage.migrateVersionSeven")(
-  (state: ApplicationStateValue) =>
-    Effect.succeed<ApplicationStateValue>(
+  (state: ApplicationStateV8) =>
+    Effect.succeed<ApplicationStateV8>(
       state.cakeChatPreferences?.memoryViewBytes === 128_000
         ? {
             ...state,
@@ -350,6 +367,27 @@ const migrateVersionSeven = Effect.fn("ApplicationStorage.migrateVersionSeven")(
           }
         : state,
     ),
+);
+
+const migrateVersionEight = Effect.fn("ApplicationStorage.migrateVersionEight")(
+  (state: ApplicationStateV8) =>
+    Effect.succeed({
+      ...state,
+      projects: state.projects.map((project) =>
+        project.todos
+          ? {
+              ...project,
+              todos: {
+                ...project.todos,
+                items: project.todos.items.map((item) => ({
+                  ...item,
+                  description: item.status.trim().slice(0, 2048).trim() || item.title,
+                })),
+              },
+            }
+          : project,
+      ),
+    }),
 );
 
 const writeError = (stage: AtomicFileStage, cause: unknown) =>
@@ -506,7 +544,7 @@ export const makeApplicationStorageLive = (userDataDirectory: string) =>
             );
             data = yield* migrateVersionSix(previous);
           } else if (version === 7) {
-            const previous = yield* Schema.decodeUnknownEffect(ApplicationState)(data).pipe(
+            const previous = yield* Schema.decodeUnknownEffect(ApplicationStateV8)(data).pipe(
               Effect.mapError(
                 (cause) =>
                   new ApplicationMigrationError({
@@ -516,6 +554,14 @@ export const makeApplicationStorageLive = (userDataDirectory: string) =>
               ),
             );
             data = yield* migrateVersionSeven(previous);
+          } else if (version === 8) {
+            const previous = yield* Schema.decodeUnknownEffect(ApplicationStateV8)(data).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ApplicationMigrationError({ fromVersion: 8, message: cause.message }),
+              ),
+            );
+            data = yield* migrateVersionEight(previous);
           } else
             return yield* new ApplicationMigrationError({
               fromVersion: version,

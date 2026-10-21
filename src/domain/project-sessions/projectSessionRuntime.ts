@@ -696,6 +696,8 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                     entryId: input.entryId,
                     destinationWorkingDirectory,
                     resolveSource: input.resolveSource,
+                    title: input.title,
+                    prompt: input.prompt,
                   }),
                 ),
                 Effect.provideService(ArtifactStorage, artifactStorage.value),

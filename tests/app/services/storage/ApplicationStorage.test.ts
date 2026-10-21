@@ -193,7 +193,7 @@ describe("ApplicationStorage", () => {
   );
 
   it.effect("loads a current version envelope", () =>
-    withStorage({ [documentPath]: JSON.stringify({ version: 8, data: current }) }, (storage) =>
+    withStorage({ [documentPath]: JSON.stringify({ version: 9, data: current }) }, (storage) =>
       Effect.gen(function* () {
         const loaded = yield* storage.load();
         assert.strictEqual(loaded.source, "current");
@@ -206,7 +206,7 @@ describe("ApplicationStorage", () => {
     withStorage(
       {
         [documentPath]: JSON.stringify({
-          version: 8,
+          version: 9,
           data: {
             ...current,
             globalCustomInstructions: undefined,
@@ -407,7 +407,7 @@ describe("ApplicationStorage", () => {
                 );
                 const persisted = controls.files.get(documentPath);
                 assert.ok(persisted);
-                assert.deepEqual(JSON.parse(persisted), { version: 8, data: expected });
+                assert.deepEqual(JSON.parse(persisted), { version: 9, data: expected });
                 assert.deepEqual(yield* storage.load(), { source: "current", state: expected });
 
                 // An explicit choice after the one-time transition must not be remapped.
@@ -457,7 +457,7 @@ describe("ApplicationStorage", () => {
               );
               const persistedText = controls.files.get(documentPath);
               assert.ok(persistedText);
-              assert.equal(JSON.parse(persistedText).version, 8);
+              assert.equal(JSON.parse(persistedText).version, 9);
               assert.equal((yield* storage.load()).source, "current");
             }),
         );
@@ -469,7 +469,7 @@ describe("ApplicationStorage", () => {
     withStorage(
       {
         [documentPath]: JSON.stringify({
-          version: 8,
+          version: 9,
           data: {
             ...current,
             cakePrompts: {
@@ -536,6 +536,7 @@ describe("ApplicationStorage", () => {
             yield* upsertProject("/project", "Project");
             const item = yield* projectTodos.create("/project", {
               title: "Follow up",
+              description: "Follow up.",
               status: "Report delivered; awaiting your review",
             });
             yield* projectTodos.mutateUser("/project", { _tag: "Select", selectedId: item.id });
@@ -552,6 +553,70 @@ describe("ApplicationStorage", () => {
       }),
   );
 
+  it.effect(
+    "migrates v8 to-do descriptions without losing progress, selection, links or pending context",
+    () => {
+      const id = "00000000-0000-4000-8000-000000000011";
+      const token = "00000000-0000-4000-8000-000000000012";
+      const items = [
+        {
+          id,
+          title: "Startup",
+          status: "Report delivered; awaiting review",
+          state: "done",
+          revision: 3,
+          associations: [{ kind: "session", sessionId: "worker", title: "Worker" }],
+        },
+        {
+          id: "00000000-0000-4000-8000-000000000013",
+          title: "Discuss next steps",
+          status: "",
+          state: "open",
+          revision: 0,
+          associations: [],
+        },
+      ];
+      const todos = {
+        items,
+        selectedId: id,
+        sequence: 2,
+        deliveryToken: token,
+        pending: [{ _tag: "Selection", sequence: 2, selectedId: id }],
+      };
+      return withStorage(
+        {
+          [documentPath]: JSON.stringify({
+            version: 8,
+            data: {
+              ...current,
+              projects: [
+                {
+                  path: "/project",
+                  name: "Project",
+                  addedAt: "2026-01-01T00:00:00Z",
+                  lastOpenedAt: "2026-01-01T00:00:00Z",
+                  todos,
+                },
+              ],
+            },
+          }),
+        },
+        (storage, controls) =>
+          Effect.gen(function* () {
+            const loaded = yield* storage.load();
+            assert.equal(loaded.source, "migrated");
+            const expected = {
+              ...todos,
+              items: items.map((item) => ({ ...item, description: item.status || item.title })),
+            };
+            assert.deepEqual(loaded.state.projects[0]?.todos, expected);
+            assert.equal(JSON.parse(controls.files.get(documentPath) ?? "{}").version, 9);
+            assert.deepEqual((yield* storage.load()).state.projects[0]?.todos, expected);
+          }),
+      );
+    },
+  );
+
   it.effect("migrates recognized legacy and version-zero documents", () =>
     Effect.gen(function* () {
       for (const input of [legacy, { version: 0, data: legacy }]) {
@@ -563,7 +628,7 @@ describe("ApplicationStorage", () => {
             const persistedText = controls.files.get(documentPath);
             assert.ok(persistedText);
             const persisted = JSON.parse(persistedText);
-            assert.strictEqual(persisted.version, 8);
+            assert.strictEqual(persisted.version, 9);
             assert.ok(!("schemaVersion" in persisted.data));
           }),
         );
@@ -623,10 +688,10 @@ describe("ApplicationStorage", () => {
         ["{", ApplicationMalformedDocumentError],
         [JSON.stringify({ nope: true }), ApplicationMalformedDocumentError],
         [
-          JSON.stringify({ version: 8, data: { ...current, projects: "invalid" } }),
+          JSON.stringify({ version: 9, data: { ...current, projects: "invalid" } }),
           ApplicationDecodeError,
         ],
-        [JSON.stringify({ version: 9, data: current }), ApplicationUnsupportedVersionError],
+        [JSON.stringify({ version: 10, data: current }), ApplicationUnsupportedVersionError],
         [
           JSON.stringify({ version: 0, data: { schemaVersion: 1, projects: "invalid" } }),
           ApplicationMigrationError,

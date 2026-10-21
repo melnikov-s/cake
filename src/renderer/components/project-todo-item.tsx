@@ -1,9 +1,12 @@
 import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
-import { Link } from "@/components/ui/link";
-import { sessionLink, parseSessionLink } from "../../contracts/conversations/message-reference";
+import { MarkdownLink } from "./ai-elements/markdown";
+import { editorLocationFromPath } from "../../contracts/editor/editor-location";
+import { sessionLink } from "../../contracts/conversations/message-reference";
 import { projectTodoAssociationKey } from "../../contracts/projects/project-todos";
 import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/icon-button";
+import { CircleIcon, CheckIcon, LinkIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 import type { ProjectTodo } from "../../contracts/projects/project-todos";
 import type { ProjectTodosStore } from "../stores/ProjectTodosStore";
@@ -20,8 +23,9 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
   return (
     <li
       className={cn(
-        "rounded-md border border-transparent p-2",
-        selected && "border-border bg-sidebar-active",
+        "relative rounded-md border border-transparent px-3 py-3",
+        selected &&
+          "border-border bg-muted/50 before:absolute before:inset-y-3 before:left-0 before:w-0.5 before:rounded-full before:bg-accent",
       )}
       data-todo-id={item.id}
     >
@@ -29,55 +33,62 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
         <Button
           variant="ghost"
           size="sm"
-          className="h-auto min-w-0 flex-1 justify-start whitespace-normal px-1 py-1 text-left"
+          className={cn(
+            "h-auto min-w-0 flex-1 justify-start whitespace-normal p-0 text-left text-[13px] font-medium leading-relaxed text-foreground hover:bg-transparent hover:text-accent",
+            item.state === "done" && "text-muted-foreground",
+          )}
           aria-pressed={selected}
           disabled={store.busy}
           onClick={() => void store.select(item)}
         >
           {item.title}
         </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="shrink-0"
+        <IconButton
+          className="-mr-1 -mt-1 size-7"
           disabled={store.busy}
-          aria-label={`${item.state === "done" ? "Reopen" : "Mark done"}: ${item.title}`}
+          tooltip={`${item.state === "done" ? "Reopen" : "Mark done"}: ${item.title}`}
           onClick={() => void store.setDone(item)}
         >
-          {item.state === "done" ? "Reopen" : "Done"}
-        </Button>
+          {item.state === "done" ? <CheckIcon /> : <CircleIcon />}
+        </IconButton>
       </div>
-      {item.status && (
-        <p className="whitespace-pre-wrap break-words px-1 pb-1 text-xs leading-relaxed text-muted-foreground">
+      {item.description !== item.title && (
+        <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground">
+          {item.description}
+        </p>
+      )}
+      {item.status && item.status !== item.description && item.status !== item.title && (
+        <p className="mt-1 whitespace-pre-wrap break-words text-[11px] leading-relaxed text-muted-foreground">
           {item.status}
         </p>
       )}
       {item.associations.length > 0 && (
         <ul
           aria-label={`Work for ${item.title}`}
-          className="space-y-1 px-1 pb-1 text-xs text-muted-foreground"
+          className="mt-2 space-y-1 text-[11px] text-muted-foreground"
         >
-          {item.associations.map((association) => {
-            const href =
-              association.kind === "session" ? sessionLink(association.sessionId) : association.ref;
-            return (
-              <li key={projectTodoAssociationKey(association)}>
-                <Link
-                  href={href}
-                  title={association.title}
-                  className="inline-block max-w-full truncate align-bottom"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    const target = parseSessionLink(href);
-                    if (target)
-                      void root.navigationStore.openSessionLink(target.sessionId, target.messageId);
-                  }}
-                >
-                  {association.title}
-                </Link>
-              </li>
-            );
-          })}
+          {item.associations.map((association) => (
+            <li key={projectTodoAssociationKey(association)} className="flex items-start gap-1.5">
+              <span className="mt-0.5 shrink-0">
+                <LinkIcon />
+              </span>
+              <MarkdownLink
+                href={
+                  association.kind === "session"
+                    ? sessionLink(association.sessionId)
+                    : association.ref
+                }
+                className="min-w-0 break-words font-normal no-underline hover:text-foreground hover:underline"
+                onOpenSourceLocation={(location) =>
+                  void root.projectWorkbenchStore.presentationStore.openFile(
+                    editorLocationFromPath(location),
+                  )
+                }
+              >
+                {association.title}
+              </MarkdownLink>
+            </li>
+          ))}
         </ul>
       )}
     </li>

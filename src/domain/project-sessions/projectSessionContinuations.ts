@@ -1,4 +1,5 @@
 import { inheritTaskInputProtection } from "../conversations/taskInputs";
+import { ensureSession as ensureSessionTodo } from "../projects/projectTodos";
 import { Effect, Schema, Stream } from "effect";
 import type { ArtifactPointer } from "../../contracts/artifacts/artifact-contract";
 import {
@@ -58,6 +59,8 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
   readonly entryId: string;
   readonly destinationWorkingDirectory?: string;
   readonly resolveSource?: boolean;
+  readonly title?: string;
+  readonly prompt?: string;
 }) {
   const family = yield* Effect.flatMap(SessionFamilyStorage, (storage) =>
     storage.familyForMember(input.target.sessionId),
@@ -130,7 +133,8 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
           asError("fork"),
           Effect.map((entry) => entry?.title ?? input.target.sessionId),
         );
-      const forkTitle = nextCopyTitle(sourceTitle, new Set(catalogTitles.flat()));
+      const forkTitle =
+        input.title?.trim() || nextCopyTitle(sourceTitle, new Set(catalogTitles.flat()));
 
       let sessionId: string;
       let artifactPointers: ReadonlyArray<ArtifactPointer>;
@@ -152,6 +156,12 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
         sessionId = result.sessionId;
         artifactPointers = result.artifactPointers;
       }
+      yield* ensureSessionTodo(
+        source.projectPath,
+        sessionId,
+        forkTitle,
+        input.prompt ?? `Continue the work from ${sourceTitle}.`,
+      ).pipe(asError("fork"));
       yield* inheritTaskInputProtection(input.target.sessionId, sessionId).pipe(asError("fork"));
       const artifactStorage = yield* ArtifactStorage;
       yield* Effect.forEach(

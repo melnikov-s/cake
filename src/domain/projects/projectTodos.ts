@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { ProjectTodoContextReceipt } from "../../contracts/projects/project-todo-context";
 import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
 import { Effect, Schema } from "effect";
@@ -68,6 +68,7 @@ export const create = Effect.fn("ProjectTodos.create")(function* (
   const input = yield* Schema.decodeUnknownEffect(ProjectTodoCreate)(request).pipe(mapError);
   const item = {
     ...input,
+    status: input.status ?? "",
     associations: input.associations ?? [],
     id: randomUUID(),
     state: "open" as const,
@@ -96,6 +97,7 @@ export const update = Effect.fn("ProjectTodos.update")(function* (
       const updated = {
         ...item,
         title: input.title ?? item.title,
+        description: input.description ?? item.description,
         status: input.status ?? item.status,
         state: input.state ?? item.state,
         associations: input.associations ?? item.associations,
@@ -163,26 +165,44 @@ export const mutateUser = Effect.fn("ProjectTodos.mutateUser")(function* (
   });
 });
 
-/** Native lifecycle facts are read by the association workflow, never inferred from worker completion.
- * Closing does not call any session operation, and reopening a session never reopens a to-do. */
-export const completeLinked = Effect.fn("ProjectTodos.completeLinked")(function* (
+/** Creation bookkeeping, serialized by the same authority as manual edits.
+ * Stable identity keeps retries idempotent even after an agent edits the links. */
+export const ensureSession = Effect.fn("ProjectTodos.ensureSession")(function* (
   projectPath: string,
-  resolvedSessionIds: readonly string[],
+  sessionId: string,
+  title: string,
+  brief: string,
 ) {
-  const resolved = new Set(resolvedSessionIds);
-  yield* change(projectPath, (value) =>
-    Effect.succeed({
+  const hash = createHash("sha256").update(`cake:session-todo:${sessionId}`).digest("hex");
+  const id = `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-8${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
+  const name = title.trim().slice(0, 512).trim() || "New Project Session";
+  const description = brief.trim().slice(0, 2048).trim() || `Continue work in ${name}.`;
+  yield* change(projectPath, (value) => {
+    if (
+      value.items.some(
+        (item) =>
+          item.id === id ||
+          item.associations.some((link) => link.kind === "session" && link.sessionId === sessionId),
+      )
+    )
+      return Effect.succeed(value);
+    if (value.items.length >= 1000) return Effect.fail(error("To-do list is full"));
+    return Effect.succeed({
       ...value,
-      items: value.items.map((item) => {
-        const links = item.associations;
-        return item.state === "open" &&
-          links.length > 0 &&
-          links.every((link) => link.kind === "session" && resolved.has(link.sessionId))
-          ? { ...item, state: "done" as const, revision: item.revision + 1 }
-          : item;
-      }),
-    }),
-  );
+      items: [
+        ...value.items,
+        {
+          id,
+          title: name,
+          description,
+          status: "",
+          state: "open" as const,
+          revision: 0,
+          associations: [{ kind: "session" as const, sessionId, title: name }],
+        },
+      ],
+    });
+  });
 });
 
 /** Call only after a native lifecycle authority confirms an actual user transition. */

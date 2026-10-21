@@ -1,5 +1,4 @@
 import { Effect, Stream } from "effect";
-import { reconcileResolved as completeLinkedTodos } from "../projects/projectTodoAssociations";
 import {
   ResolutionRejected,
   ResolutionCleanupFailed,
@@ -138,7 +137,6 @@ const archiveAuthority = Effect.fn("ProjectSessions.archiveAuthority")(function*
     yield* setSessionUnread(sessionId, false).pipe(asError(operation));
     if (publish) yield* publishCatalogStatus(sessionId, location, true).pipe(asError(operation));
     if (afterCommit) yield* afterCommit;
-    yield* completeLinkedTodos(location.projectPath, sessionId).pipe(asError(operation));
   }).pipe(Effect.uninterruptible);
 });
 

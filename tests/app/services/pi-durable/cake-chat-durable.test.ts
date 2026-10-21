@@ -189,6 +189,7 @@ it("delivers Project Chat context only on consumed originals, not preparation, c
       {
         id,
         title: "Follow up",
+        description: "Follow up.",
         status: "Awaiting review",
         state: "open",
         revision: 0,

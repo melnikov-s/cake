@@ -220,6 +220,11 @@ export const ForkIcon = () => (
     <path d="M6 7v2a4 4 0 0 0 4 4h2M18 7v2a4 4 0 0 1-4 4h-2v4" />
   </Icon>
 );
+export const CircleIcon = () => (
+  <Icon size={15}>
+    <circle cx="12" cy="12" r="8" />
+  </Icon>
+);
 export const CheckIcon = () => (
   <Icon size={15}>
     <path d="m5 12 4 4L19 6" />

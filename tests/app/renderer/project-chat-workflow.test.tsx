@@ -19,6 +19,7 @@ import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-cha
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import { App } from "../../../src/renderer/components/app";
+import { MarkdownLinkProvider } from "../../../src/renderer/components/ai-elements/markdown";
 import { isMacPlatform } from "../../../src/renderer/lib/platform";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import type { Client } from "../../../src/renderer/client/Client";
@@ -147,7 +148,15 @@ async function fixture(
   const view = render(
     <StoreProvider store={f.root}>
       <StoreProvider store={f.root.fullscreenSurfaceStore}>
-        <App />
+        <MarkdownLinkProvider
+          actions={{
+            openSession: (id, messageId, attachmentId) =>
+              void f.root.navigationStore.openSessionLink(id, messageId, attachmentId),
+            openExternalUrl: () => undefined,
+          }}
+        >
+          <App />
+        </MarkdownLinkProvider>
       </StoreProvider>
     </StoreProvider>,
   );
@@ -220,12 +229,22 @@ it.each(
         });
       };
       // A different project's creation must not open the visible Project Chat's pane.
-      await runtime.runPromise(projectTodos.create("/finance", { title: "Budget", status: "" }));
+      await runtime.runPromise(
+        projectTodos.create("/finance", {
+          title: "Budget",
+          description: "Review the finance budget.",
+          status: "",
+        }),
+      );
       await publish();
       expect(panel()).toBeNull();
       if (alreadyOpen) await f.user.click(screen.getByRole("button", { name: "To-do" }));
       const first = await runtime.runPromise(
-        projectTodos.create("/zombies", { title: "First commitment", status: "Investigating" }),
+        projectTodos.create("/zombies", {
+          title: "First commitment",
+          description: "Investigate the first commitment.",
+          status: "Investigating",
+        }),
       );
       await publish();
       expect(within(panel()!).getByText(first.title)).toBeTruthy();
@@ -235,7 +254,11 @@ it.each(
       await f.user.click(screen.getByRole("button", { name: "Close To-do" }));
       // Closing remains respected across later creation, status and lifecycle changes.
       const second = await runtime.runPromise(
-        projectTodos.create("/zombies", { title: "Second commitment", status: "" }),
+        projectTodos.create("/zombies", {
+          title: "Second commitment",
+          description: "Follow up on the second commitment.",
+          status: "",
+        }),
       );
       await publish();
       expect(panel()).toBeNull();
@@ -261,7 +284,11 @@ it.each(
       );
       await publish();
       await runtime.runPromise(
-        projectTodos.create("/zombies", { title: "New work after Done", status: "" }),
+        projectTodos.create("/zombies", {
+          title: "New work after Done",
+          description: "Track new work after earlier commitments finish.",
+          status: "",
+        }),
       );
       await publish();
       expect(panel()).toBeNull(); // Done history means the list is not empty.
@@ -287,6 +314,7 @@ it.each(["initial load", "snapshot hydration"] as const)(
             {
               id: "00000000-0000-4000-8000-000000000001",
               title: "Existing commitment",
+              description: "Review the existing commitment.",
               status: "Awaiting review",
               state: "open" as const,
               revision: 0,
@@ -325,12 +353,17 @@ it("toggles Project Chat to-dos in the existing side pane, selects/deselects, co
     const item = await runtime.runPromise(
       projectTodos.create("/zombies", {
         title: "Investigate startup",
+        description: "Find startup bottlenecks and recommend a focused fix.",
         status: "Report delivered; awaiting your review",
         associations: [{ kind: "session", sessionId: "task", title: "Startup investigation" }],
       }),
     );
     const completed = await runtime.runPromise(
-      projectTodos.create("/zombies", { title: "Earlier question", status: "Answered" }),
+      projectTodos.create("/zombies", {
+        title: "Earlier question",
+        description: "Earlier question.",
+        status: "Answered",
+      }),
     );
     await runtime.runPromise(
       projectTodos.update("/zombies", { id: completed.id, expectedRevision: 0, state: "done" }),
@@ -369,8 +402,12 @@ it("toggles Project Chat to-dos in the existing side pane, selects/deselects, co
     const select = within(panel).getByRole("button", { name: item.title });
     await f.user.click(select);
     await waitFor(() => expect(select.getAttribute("aria-pressed")).toBe("true"));
-    await f.user.click(select);
+    expect(screen.getByLabelText("Next message context").textContent).toContain(item.title);
+    expect(f.models.cakeChatConversation(projectId).parts).toHaveLength(0);
+    await f.user.click(screen.getByRole("button", { name: "Clear to-do context" }));
     await waitFor(() => expect(select.getAttribute("aria-pressed")).toBe("false"));
+    expect(screen.queryByLabelText("Next message context")).toBeNull();
+    expect(f.models.cakeChatConversation(projectId).parts).toHaveLength(0);
     await f.user.click(within(panel).getByRole("button", { name: `Mark done: ${item.title}` }));
     await waitFor(() =>
       expect(

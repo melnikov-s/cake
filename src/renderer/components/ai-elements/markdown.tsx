@@ -309,6 +309,41 @@ function linkAnchor(allProps: AnchorProps, actions?: MarkdownLinkActions) {
   );
 }
 
+/** Structured links reuse exactly the same destination handling as conversation Markdown. */
+export function MarkdownLink({
+  onOpenSourceLocation,
+  ...allProps
+}: AnchorProps & {
+  onOpenSourceLocation?(location: SourceLocation): void;
+}) {
+  const actions = useMarkdownLinkActions();
+  const phone = usePhoneLayout();
+  const href = allProps.href;
+  const reference = href ? sourceReferenceFromHref(href) : undefined;
+  const location = reference ? parseSourceLocation(reference) : undefined;
+  if (
+    !onOpenSourceLocation ||
+    !href ||
+    !location ||
+    (nonPathHref.test(href) && !href.startsWith(workspacePathPrefix))
+  )
+    return linkAnchor(allProps, actions);
+  // Keep source references readable, without an editor entry point on phones.
+  if (phone) return <span>{allProps.children}</span>;
+  const props = { ...allProps, href: reference };
+  delete props.node;
+  return (
+    <Link
+      {...props}
+      title={reference}
+      onClick={(event) => {
+        event.preventDefault();
+        onOpenSourceLocation(location);
+      }}
+    />
+  );
+}
+
 const configuredPlugins = {
   code: syntaxHighlighter,
   renderers: [
@@ -523,7 +558,6 @@ function MarkdownRenderer({
   ...props
 }: MarkdownProps & { richPlugins?: RichMarkdownPlugins }) {
   const colorTheme = useResolvedColorTheme();
-  const phone = usePhoneLayout();
   const linkActions = useContext(MarkdownLinkContext);
   const [fullscreenMermaid, setFullscreenMermaid] = useState<string>();
   const [fullscreenTable, setFullscreenTable] = useState<ReactNode>();
@@ -606,28 +640,7 @@ function MarkdownRenderer({
         return <p {...paragraphProps}>{children}</p>;
       },
       a(allProps: AnchorProps) {
-        if (!openSourceLocation) return linkAnchor(allProps, linkActions);
-        const href = allProps.href;
-        if (!href) return linkAnchor(allProps, linkActions);
-        const reference = sourceReferenceFromHref(href);
-        if (!reference) return linkAnchor(allProps, linkActions);
-        const location = parseSourceLocation(reference);
-        if (!location || (nonPathHref.test(href) && !href.startsWith(workspacePathPrefix)))
-          return linkAnchor(allProps, linkActions);
-        // Keep source references readable, without an editor entry point on phones.
-        if (phone) return <span>{allProps.children}</span>;
-        const props = { ...allProps, href: reference };
-        delete props.node;
-        return (
-          <Link
-            {...props}
-            title={reference}
-            onClick={(event) => {
-              event.preventDefault();
-              openSourceLocation(location);
-            }}
-          />
-        );
+        return <MarkdownLink {...allProps} onOpenSourceLocation={openSourceLocation} />;
       },
       img(allProps: ImageProps) {
         if (!renderImages) return <span>[Image: {allProps.alt || "unnamed"} — not loaded]</span>;
@@ -648,7 +661,7 @@ function MarkdownRenderer({
         );
       },
     };
-  }, [linkActions, omitArtifactEmbeds, renderImages, onOpenSourceLocation, phone]);
+  }, [linkActions, omitArtifactEmbeds, renderImages, onOpenSourceLocation]);
   return (
     <>
       <div className="contents" onClickCapture={openMermaidFullscreen}>

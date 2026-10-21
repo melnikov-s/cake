@@ -3,12 +3,11 @@ import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { it } from "@effect/vitest";
 import { Effect, Layer, Stream } from "effect";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
-import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import { projectTodoLayer } from "../helpers/projectTodoHarness";
 import {
   makeCakeSessionRuntimesLayer,
   type CakeSessionRuntimesAdapter,
 } from "../../../src/services/pi/CakeSessionRuntimes";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
@@ -58,14 +57,7 @@ it.effect("creates independent Pi-backed Project Session without any renderer", 
       Layer.provide(makeRuntimeRecoveryStorageTestLayer()),
     ),
     SessionCatalogChanges.layer,
-    Layer.mock(ApplicationState, {
-      snapshot: () => ({
-        ...defaultApplicationState(),
-        projects: [
-          { path: "/project", name: "Project", addedAt: "2026-01-01", lastOpenedAt: "2026-01-01" },
-        ],
-      }),
-    }),
+    projectTodoLayer(),
     Layer.mock(SessionFamilyStorage, {
       familyForMember: () => Effect.succeed(undefined),
       withMemberLock: (_sessionId, effect) => effect,

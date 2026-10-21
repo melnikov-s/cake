@@ -5,6 +5,7 @@ import { cakeChatTranscriptBehaviorFor } from "../lib/cake-chat-transcript-behav
 import { WorkspaceFrame } from "./workspace-frame";
 import { CakeChatWorkspaceControls } from "./cake-chat-workspace-controls";
 import { ConversationActivity } from "./conversation-activity";
+import { ProjectTodoComposerContext } from "./project-todo-composer-context";
 
 export const CakeChatWorkspaceSurface = observer(function CakeChatWorkspaceSurface({
   session,
@@ -22,12 +23,15 @@ export const CakeChatWorkspaceSurface = observer(function CakeChatWorkspaceSurfa
         session={session}
         mode={mode}
         projectComposerHeader={
-          <ConversationActivity
-            placement="composer"
-            sessionId={session.sessionId}
-            subagents={session.subagentActivityStore}
-            sideChat={session.conversationSessionStore.sideChatStore}
-          />
+          <>
+            <ProjectTodoComposerContext store={session.todos} />
+            <ConversationActivity
+              placement="composer"
+              sessionId={session.sessionId}
+              subagents={session.subagentActivityStore}
+              sideChat={session.conversationSessionStore.sideChatStore}
+            />
+          </>
         }
         headerActions={
           <CakeChatWorkspaceControls session={session} mode={mode} browserMode={browserMode} />

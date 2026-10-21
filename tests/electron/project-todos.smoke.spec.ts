@@ -12,7 +12,7 @@ type Request = { messages: Array<{ role: string; content: string | object[] | nu
 const latestUser = (request: Request) =>
   JSON.stringify(request.messages.findLast((message) => message.role === "user")?.content);
 
-test("Project Chat toolbar side pane, durable context, titled work links and native multi-session closure", async () => {
+test("Project Chat side pane, context, titled links and independent session lifecycle", async () => {
   test.setTimeout(90_000);
   const directory = await mkdtemp(join(tmpdir(), "cake-project-todos-"));
   const project = join(directory, "project");
@@ -34,6 +34,7 @@ test("Project Chat toolbar side pane, durable context, titled work links and nat
             command: "todos.create",
             input: {
               title: "Implement startup improvement",
+              description: "Implement startup improvement.",
               status: "Working across two sessions",
               associations: [
                 { kind: "session", sessionId: "linked-a", title: "First implementation" },
@@ -175,7 +176,7 @@ test("Project Chat toolbar side pane, durable context, titled work links and nat
     await writeFile(
       join(cakeHome, "state", "application.json"),
       JSON.stringify({
-        version: 8,
+        version: 9,
         data: {
           ...defaultApplicationState(),
           projects: [
@@ -190,6 +191,7 @@ test("Project Chat toolbar side pane, durable context, titled work links and nat
                   {
                     id: reviewId,
                     title: "Review conversations",
+                    description: "Review conversations.",
                     status: "Report delivered; awaiting your review",
                     state: "open",
                     revision: 0,
@@ -318,7 +320,7 @@ test("Project Chat toolbar side pane, durable context, titled work links and nat
     await send("RESOLVE_LINKED");
     await toggle.click();
     await expect(
-      panel.getByRole("button", { name: "Reopen: Implement startup improvement" }),
+      panel.getByRole("button", { name: "Mark done: Implement startup improvement" }),
     ).toBeVisible();
     await expect(
       panel.getByRole("button", { name: "Review conversations", exact: true }),

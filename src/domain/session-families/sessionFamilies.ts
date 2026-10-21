@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { ensureSession as ensureSessionTodo } from "../projects/projectTodos";
 import { describeTurnStop, type TurnStop } from "../../contracts/conversations/turn-stop";
 import { appendMessageReferences } from "../../contracts/conversations/message-reference-forwarding";
 import type { ResultDelivery } from "../../contracts/conversations/result-delivery";
@@ -288,7 +289,13 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(
         // A runtime or transcript alone is not evidence of initial-turn admission.
         // Any durable journal (including stopped/canceled work) forbids relaunch.
         const record = yield* (yield* RuntimeRecoveryStorage).get(child.sessionId);
-        if (record)
+        if (record) {
+          yield* ensureSessionTodo(
+            location.projectPath,
+            child.sessionId,
+            input.title,
+            assignment.description,
+          );
           return {
             family,
             child,
@@ -297,6 +304,7 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(
             assignmentReceipt: assigned.success,
             admissionState: record.state,
           };
+        }
         const archived = yield* archive.locate(
           child.sessionId,
           archiveLocation(childLocation.workingDirectory),
@@ -371,7 +379,21 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(
         },
       },
     );
-    const launched = yield* Effect.result(prepared.handle.prompt(initialMessage, [], false));
+    const handle = prepared.handle;
+    const launched = yield* Effect.result(
+      Effect.uninterruptibleMask((restore) =>
+        Effect.gen(function* () {
+          const turnId = yield* restore(handle.prompt(initialMessage, [], false));
+          yield* ensureSessionTodo(
+            location.projectPath,
+            prepared.child.sessionId,
+            input.title,
+            input.assignment.description,
+          );
+          return turnId;
+        }),
+      ),
+    );
     if (launched._tag === "Failure") {
       return {
         ...identity,

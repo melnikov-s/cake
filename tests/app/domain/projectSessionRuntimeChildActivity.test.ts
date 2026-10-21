@@ -4,10 +4,9 @@ import { it } from "@effect/vitest";
 import { Effect, Layer, Schema, Stream } from "effect";
 import { expect, vi } from "vitest";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
-import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import { projectTodoLayer } from "../helpers/projectTodoHarness";
 import { makeCakeSessionRuntimesLayer } from "../../../src/services/pi/CakeSessionRuntimes";
 import { PiModels } from "../../../src/services/pi/PiModels";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
@@ -59,7 +58,7 @@ it.effect.each([
     familyStorageHarness().layer,
     messageBoardHarness().layer,
     Layer.mock(PiModels, { resolve: (selection) => Effect.succeed(selection) }),
-    Layer.mock(ApplicationState, { snapshot: () => defaultApplicationState() }),
+    projectTodoLayer(),
     Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed(undefined) }),
     Layer.mock(ManagedWorktrees, {
       records: () => Effect.succeed([]),

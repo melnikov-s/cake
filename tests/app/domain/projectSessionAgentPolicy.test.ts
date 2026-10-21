@@ -2,12 +2,11 @@ import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Effect, Layer, Stream } from "effect";
 import { describe } from "vitest";
-import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import { projectTodoLayer } from "../helpers/projectTodoHarness";
 import * as policy from "../../../src/domain/project-sessions/projectSessionAgentPolicy";
 import { fork } from "../../../src/domain/project-sessions/projectSessionContinuations";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import { makeCakeSessionRuntimesLayer } from "../../../src/services/pi/CakeSessionRuntimes";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
@@ -49,19 +48,7 @@ const environment = (forked: string[] = []) =>
     familyStorageHarness().layer,
     makeProjectSessionRuntimeMechanismTestLayer(),
     SessionCatalogChanges.layer,
-    Layer.mock(ApplicationState, {
-      snapshot: () => ({
-        ...defaultApplicationState(),
-        projects: [
-          {
-            path: "/project",
-            name: "Project",
-            addedAt: "2026-01-01T00:00:00.000Z",
-            lastOpenedAt: "2026-01-01T00:00:00.000Z",
-          },
-        ],
-      }),
-    }),
+    projectTodoLayer(),
     Layer.mock(ArtifactStorage, {}),
     Layer.mock(SessionArchiveStorage, {
       locate: () => Effect.succeed("active" as const),

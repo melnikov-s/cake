@@ -29,6 +29,12 @@ export class ProjectTodosStore extends Store<{
   get value() {
     return this.project?.todos;
   }
+  get selectedItem() {
+    return this.value?.items.find((item) => item.id === this.value?.selectedId);
+  }
+  clearSelection() {
+    return this.mutate({ _tag: "Select", selectedId: null });
+  }
   get openItems() {
     return this.value?.items.filter((item) => item.state === "open") ?? [];
   }

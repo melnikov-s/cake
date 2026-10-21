@@ -1930,53 +1930,49 @@ describe("Project Sessions domain", () => {
     }).pipe(Effect.provide(makeLayer(undefined, { sessionExists: false }))),
   );
 
-  it.effect(
-    "user resolve/reopen reuses native authority, completes linked to-dos and never auto-reopens them",
-    () => {
-      const transitions: string[] = [];
-      return Effect.gen(function* () {
-        const item = yield* projectTodos.create("/project", {
-          title: "Review report",
-          status: "Awaiting review",
-          associations: [{ kind: "session", sessionId: "session-1", title: "Session one" }],
-        });
-        yield* projectSessionUserLifecycle.setResolved({ sessionId: "session-1" }, true);
-        let current = yield* projectTodos.list("/project");
-        assert.equal(current.items[0]?.state, "done");
-        assert.deepEqual(
-          current.pending.map((change) => change._tag),
-          ["SessionState"],
-        );
-        assert.ok(current.pending[0]?._tag === "SessionState" && current.pending[0].resolved);
-        const receipt = current.sequence;
-        yield* projectSessionUserLifecycle.setResolved({ sessionId: "session-1" }, true);
-        assert.equal((yield* projectTodos.list("/project")).sequence, receipt);
-        assert.equal((yield* projectTodos.read("/project", item.id)).revision, 1);
-        yield* projectSessionUserLifecycle.setResolved({ sessionId: "session-1" }, false);
-        current = yield* projectTodos.list("/project");
-        assert.equal(current.items[0]?.state, "done");
-        assert.ok(
-          current.pending.some(
-            (change) =>
-              change._tag === "SessionState" &&
-              change.sessionId === "session-1" &&
-              !change.resolved,
-          ),
-        );
-        assert.deepEqual(transitions, ["resolve:session-1", "restore:session-1"]);
-      }).pipe(
-        Effect.provide(
-          makeLayer(undefined, {
-            onArchive: (id) => transitions.push(`resolve:${id}`),
-            onRestore: (id) => transitions.push(`restore:${id}`),
-          }),
+  it.effect("user resolve/reopen records context without changing linked to-dos", () => {
+    const transitions: string[] = [];
+    return Effect.gen(function* () {
+      const item = yield* projectTodos.create("/project", {
+        title: "Review report",
+        description: "Review report.",
+        status: "Awaiting review",
+        associations: [{ kind: "session", sessionId: "session-1", title: "Session one" }],
+      });
+      yield* projectSessionUserLifecycle.setResolved({ sessionId: "session-1" }, true);
+      let current = yield* projectTodos.list("/project");
+      assert.equal(current.items[0]?.state, "open");
+      assert.deepEqual(
+        current.pending.map((change) => change._tag),
+        ["SessionState"],
+      );
+      assert.ok(current.pending[0]?._tag === "SessionState" && current.pending[0].resolved);
+      const receipt = current.sequence;
+      yield* projectSessionUserLifecycle.setResolved({ sessionId: "session-1" }, true);
+      assert.equal((yield* projectTodos.list("/project")).sequence, receipt);
+      assert.equal((yield* projectTodos.read("/project", item.id)).revision, 0);
+      yield* projectSessionUserLifecycle.setResolved({ sessionId: "session-1" }, false);
+      current = yield* projectTodos.list("/project");
+      assert.equal(current.items[0]?.state, "open");
+      assert.ok(
+        current.pending.some(
+          (change) =>
+            change._tag === "SessionState" && change.sessionId === "session-1" && !change.resolved,
         ),
       );
-    },
-  );
+      assert.deepEqual(transitions, ["resolve:session-1", "restore:session-1"]);
+    }).pipe(
+      Effect.provide(
+        makeLayer(undefined, {
+          onArchive: (id) => transitions.push(`resolve:${id}`),
+          onRestore: (id) => transitions.push(`restore:${id}`),
+        }),
+      ),
+    );
+  });
 
   it.effect(
-    "agent/native resolution closes only once all linked Project Sessions are resolved; source/mixed review threads stay open",
+    "agent/native resolution and restoration preserve open session-only and mixed to-dos",
     () =>
       Effect.gen(function* () {
         const associations = [
@@ -1985,11 +1981,13 @@ describe("Project Sessions domain", () => {
         ];
         const item = yield* projectTodos.create("/project", {
           title: "Combined implementation",
+          description: "Combined implementation.",
           status: "In progress",
           associations,
         });
         const mixed = yield* projectTodos.create("/project", {
           title: "Discuss report",
+          description: "Discuss report.",
           status: "Awaiting review",
           associations: [
             ...associations,
@@ -2003,15 +2001,15 @@ describe("Project Sessions domain", () => {
         yield* projectSessionLifecycle.resolve({ sessionId: "session-1" });
         assert.equal((yield* projectTodos.read("/project", item.id)).state, "open");
         yield* projectSessionLifecycle.resolve({ sessionId: "session-2" });
-        assert.equal((yield* projectTodos.read("/project", item.id)).state, "done");
+        assert.equal((yield* projectTodos.read("/project", item.id)).state, "open");
         assert.equal((yield* projectTodos.read("/project", mixed.id)).state, "open");
         assert.equal((yield* projectTodos.list("/project")).pending.length, 0); // agent/native changes are not labeled user actions
         yield* projectSessionLifecycle.restore({ sessionId: "session-1" });
-        assert.equal((yield* projectTodos.read("/project", item.id)).state, "done");
+        assert.equal((yield* projectTodos.read("/project", item.id)).state, "open");
       }).pipe(Effect.provide(makeLayer())),
   );
 
-  it.effect("native family-parent resolution completes links to its child work", () => {
+  it.effect("to-do state and native family-parent lifecycle stay independent", () => {
     const family = {
       familyId: "linked-family",
       parentSessionId: "parent-1",
@@ -2025,6 +2023,7 @@ describe("Project Sessions domain", () => {
     return Effect.gen(function* () {
       const item = yield* projectTodos.create("/project", {
         title: "Family implementation",
+        description: "Family implementation.",
         status: "Report available; still open",
         associations: [
           { kind: "session", sessionId: "parent-1", title: "Parent" },
@@ -2048,11 +2047,35 @@ describe("Project Sessions domain", () => {
         state: "open",
       });
       yield* projectSessionLifecycle.resolve({ sessionId: "parent-1" });
-      assert.equal((yield* projectTodos.read("/project", item.id)).state, "done");
+      assert.equal((yield* projectTodos.read("/project", item.id)).state, "open");
       yield* projectSessionLifecycle.restore({ sessionId: "parent-1" });
-      assert.equal((yield* projectTodos.read("/project", item.id)).state, "done");
+      assert.equal((yield* projectTodos.read("/project", item.id)).state, "open");
     }).pipe(Effect.provide(makeLayer(undefined, { family })));
   });
+
+  it.effect(
+    "canonicalizes launched session suffixes and keeps optional useful non-session links",
+    () => {
+      const sessionId = "86778ccd-a805-4ff4-8767-93b5a558842c";
+      return Effect.gen(function* () {
+        const item = yield* projectTodoAssociations.create("/project", {
+          title: "Startup",
+          description: "Find the startup bottleneck.",
+          associations: [
+            { kind: "session", sessionId: "a558842c", title: "Implementation" },
+            { kind: "source", ref: "cake://artifact/startup@r2", title: "Design" },
+            { kind: "source", ref: "https://example.com/report", title: "Reference" },
+            { kind: "source", ref: "docs/startup.md#L2", title: "Notes" },
+          ],
+        });
+        assert.equal(
+          item.associations[0]?.kind === "session" && item.associations[0].sessionId,
+          sessionId,
+        );
+        assert.equal(item.associations.length, 4);
+      }).pipe(Effect.provide(makeLayer(undefined, { sessionIds: () => Stream.make(sessionId) })));
+    },
+  );
 
   it.effect("rejects session and source associations belonging to another project", () =>
     Effect.gen(function* () {
@@ -2067,6 +2090,7 @@ describe("Project Sessions domain", () => {
         const failure = yield* projectTodoAssociations
           .create("/other", {
             title: "Wrong project",
+            description: "Wrong project.",
             status: "",
             associations: [association],
           })
@@ -2955,6 +2979,12 @@ describe("Project Sessions domain", () => {
       });
 
       assert.equal(forkTitle, "Renamed source (3)");
+      const items = (yield* projectTodos.list("/project")).items;
+      assert.equal(items.length, 1);
+      assert.equal(items[0]?.title, forkTitle);
+      assert.deepEqual(items[0]?.associations, [
+        { kind: "session", sessionId: "forked", title: forkTitle },
+      ]);
       assert.deepEqual(activeCatalogs, ["/project"]);
       assert.deepEqual(resolvedCatalogs, ["/project"]);
     }).pipe(
@@ -2986,6 +3016,20 @@ describe("Project Sessions domain", () => {
       ),
     );
   });
+
+  it.effect("uses the agent fork title and continuation prompt for its linked to-do", () =>
+    Effect.gen(function* () {
+      yield* projectSessionContinuations.fork({
+        target: { sessionId: "session-1", workingDirectory: "/project" },
+        entryId: "assistant-entry",
+        title: "Implement startup fix",
+        prompt: "Implement the measured startup improvement and verify it.",
+      });
+      const [item] = (yield* projectTodos.list("/project")).items;
+      assert.equal(item?.title, "Implement startup fix");
+      assert.equal(item?.description, "Implement the measured startup improvement and verify it.");
+    }).pipe(Effect.provide(makeLayer())),
+  );
 
   it.effect("associates only the fork runtime's reachable artifact revisions", () => {
     const pointer: ArtifactPointer = {
@@ -4398,6 +4442,12 @@ describe("Project Sessions domain", () => {
       const project = (yield* getState()).projects.find(
         (candidate) => candidate.path === "/project",
       );
+      assert.equal(project?.todos?.items.length, 1);
+      assert.equal(project?.todos?.items[0]?.title, "First message");
+      assert.equal(project?.todos?.items[0]?.description, "First message");
+      assert.deepEqual(project?.todos?.items[0]?.associations, [
+        { kind: "session", sessionId: "session-1", title: "First message" },
+      ]);
       assert.deepEqual(project?.workflow?.assignments, [
         {
           sessionId: "session-1",

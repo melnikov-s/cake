@@ -12,9 +12,9 @@ export function createProjectTodoOperations(
   control: ProjectTodoControl,
 ): CakeOperationDefinition[] {
   const guidance = [
-    "Only this permanent Project Chat's lightweight user commitments, not a session/task mirror. Create with judgment when taking on open-ended work; do not import history or create one per question, tool, or worker.",
-    "State is only open/done; status is freeform. Reports can remain open awaiting review; worker completion is NOT session resolution. Session-only items complete when ALL linked Project Sessions are actually resolved (user or agent). Mixed session/source items require explicit conclusion. Closing a to-do never resolves sessions. Never auto-reopen a user-closed item. No polling or wakes for open items.",
-    "Strongly prefer attaching the work you launch with associations (multiple titled Project Sessions or exact source/report message refs). Undelegated discussion may have no links. Investigator handles/private Pi IDs are not navigable: use an actual launch/report message ref in its parent, discoverable with messages.list/read. Never invent a subagent-session route.",
+    "This permanent Project Chat's lightweight commitments. Each actual new Project Session automatically gets one linked to-do; read/update it rather than creating a duplicate. Other open-ended work and private subagents are discretionary. Do not bulk-import history or create one per question/tool.",
+    "Set a clear title and short durable description in one or two sentences. Optional status is freeform latest progress, not lifecycle. State is only open/done. Report delivery and session resolve/restore NEVER change to-do state; done/reopen NEVER resolves/restores sessions. Preserve user closure. No polling or wakes for open items.",
+    "Associations are optional titled useful links; omit them when nothing useful exists. One or multiple sessions, exact messages/reports, artifacts, web URLs or workspace source links are supported. Session references accept canonical identities or discovered suffixes. Private investigator handles are not navigable: link an actual launch/report message instead.",
     "Read before updating and pass expectedRevision. On conflict, reread; preserve explicit user decisions, especially closure. Update associations with the complete merged list, preserving unrelated work links.",
   ];
   return [
@@ -52,7 +52,15 @@ export function createProjectTodoOperations(
       guidance,
       inputSchema: ProjectTodoCreate,
       outputSchema: ProjectTodo,
-      examples: [{ input: { title: "Investigate slow startup", status: "Investigating" } }],
+      examples: [
+        {
+          input: {
+            title: "Investigate slow startup",
+            description: "Find what delays startup and recommend a focused fix.",
+            status: "Investigating",
+          },
+        },
+      ],
       result: "The committed open item with stable identity.",
       execute: async (input, context) =>
         control.create(await Schema.decodeUnknownPromise(ProjectTodoCreate)(input), context.signal),
@@ -60,7 +68,7 @@ export function createProjectTodoOperations(
     {
       command: "todos.update",
       topic: "todos",
-      summary: "Update a to-do's title/status/reference or explicitly mark done/reopen.",
+      summary: "Update a to-do's title/description/status/links or explicitly mark done/reopen.",
       guidance,
       inputSchema: ProjectTodoUpdate,
       outputSchema: ProjectTodo,

@@ -147,6 +147,11 @@ in the shared fullscreen preview; non-image attachments retain labels. Thumbnail
 are renderer presentation only: Cake Chat still admits opaque input references,
 not image payloads, to its model context.
 
+Structured work/source links reuse `MarkdownLink` from
+[`Markdown`](../../src/renderer/components/ai-elements/markdown.tsx), the same destination
+handler as conversation prose (sessions/messages/attachments, artifact references,
+web URLs and workspace source locations). `Link` remains the visual anchor primitive.
+
 [`icons.tsx`](../../src/renderer/components/ui/icons.tsx) is the sole icon authority.
 Inspect [`components/ai-elements/`](../../src/renderer/components/ai-elements/)
 for existing conversation, Markdown, code, tool and source surfaces.

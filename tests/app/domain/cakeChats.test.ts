@@ -226,7 +226,14 @@ describe("permanent Cake Chat", () => {
         if (!todoControl) throw new Error("Expected Project Chat to-do controls");
         const todoSignal = new AbortController().signal;
         const todo = yield* Effect.promise(() =>
-          todoControl.create({ title: "Project commitment", status: "Investigating" }, todoSignal),
+          todoControl.create(
+            {
+              title: "Project commitment",
+              description: "Project commitment.",
+              status: "Investigating",
+            },
+            todoSignal,
+          ),
         );
         expect(prompt()).toContain(todo.id);
         expect(prompt()).toContain("Project commitment");

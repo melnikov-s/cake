@@ -10,18 +10,25 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
   store: ProjectTodosStore;
 }) {
   return (
-    <div className="h-full overflow-y-auto p-3">
-      <p className="mb-3 px-1 text-xs leading-relaxed text-muted-foreground">
-        Open threads and commitments. Select one to give your next message context; select again to
-        clear.
-      </p>
+    <div className="h-full overflow-y-auto px-3 pb-4 pt-4">
+      <div className="mb-3 px-3">
+        <h2 className="text-xs font-semibold">
+          Open{" "}
+          <span className="ml-1 font-normal tabular-nums text-muted-foreground">
+            {store.openItems.length}
+          </span>
+        </h2>
+        <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+          Select a thread to give your next message context.
+        </p>
+      </div>
       {store.error && (
         <Callout variant="error" role="alert">
           {store.error}
         </Callout>
       )}
       {store.openItems.length ? (
-        <ul aria-label="Open to-dos" className="space-y-1">
+        <ul aria-label="Open to-dos" className="space-y-2">
           {store.openItems.map((item) => (
             <ProjectTodoItem key={item.id} item={item} store={store} />
           ))}
@@ -32,7 +39,7 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
         </p>
       )}
       {store.doneItems.length > 0 && (
-        <section className="mt-4 border-t border-border pt-3">
+        <section className="mt-4 border-t border-border px-1 pt-2">
           <DisclosureTrigger
             title={`Done (${store.doneItems.length})`}
             open={store.doneExpanded}

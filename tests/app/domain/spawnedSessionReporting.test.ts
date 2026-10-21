@@ -17,7 +17,8 @@ import {
   isCakeChatSessionId,
 } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import type { ResultDelivery } from "../../../src/contracts/conversations/result-delivery";
-import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import { projectTodoLayer } from "../helpers/projectTodoHarness";
+import * as projectTodos from "../../../src/domain/projects/projectTodos";
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import type { Attachment } from "../../../src/contracts/conversations/session-contract";
 import type { PiTurnResult } from "../../../src/contracts/pi/turn-result-data";
@@ -25,7 +26,6 @@ import {
   encodeCrossSessionMessage,
   parseCrossSessionMessage,
 } from "../../../src/contracts/conversations/cross-session-message";
-import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
@@ -123,15 +123,7 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
     makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
     messageBoardHarness().layer,
     harness.layer,
-    Layer.mock(ApplicationState, {
-      snapshot: () => ({
-        ...defaultApplicationState(),
-        trustedProjectPaths: ["/project"],
-        projects: [
-          { path: "/project", name: "Project", addedAt: "2026-01-01", lastOpenedAt: "2026-01-01" },
-        ],
-      }),
-    }),
+    projectTodoLayer(),
     Layer.mock(ManagedWorktrees, {
       records: () => Effect.succeed([]),
       awaitSetup: () => Effect.void,
@@ -1330,6 +1322,11 @@ describe("automatic spawned-session reporting", () => {
             } else yield* createPrompted({ ...createArgs, projectPath: "/project" });
             const entered = yield* Deferred.await(f.entered);
             assert.equal(entered.text, createArgs.initialPrompt);
+            const todos = (yield* projectTodos.list("/project")).items;
+            assert.equal(todos.length, 1);
+            assert.equal(todos[0]?.title, createArgs.name);
+            assert.equal(todos[0]?.description, createArgs.initialPrompt);
+            assert.equal(todos[0]?.associations[0]?.kind, "session");
             assert.equal((yield* f.storage.state()).spawnedSessions.length, 0);
             assert.equal((yield* f.storage.state()).turns.length, 0);
             yield* Deferred.succeed(f.finish, { stopReason: "stop", text: resultText });

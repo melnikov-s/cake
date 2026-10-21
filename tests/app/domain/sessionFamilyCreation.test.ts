@@ -15,6 +15,8 @@ import { SessionCatalogChanges } from "../../../src/services/session-catalogs/Se
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
 import { messageBoardHarness } from "../helpers/messageBoardHarness";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
+import { projectTodoLayer } from "../helpers/projectTodoHarness";
+import * as todos from "../../../src/domain/projects/projectTodos";
 import {
   makeRuntimeRecoveryStorageTestLayer,
   fakeRuntime,
@@ -67,6 +69,7 @@ describe("Session Family creation", () => {
       assert.ok(yield* storage.familyForMember(result.childSessionId));
     }).pipe(
       Effect.provide(messageBoardHarness().layer),
+      Effect.provide(projectTodoLayer()),
       Effect.provide(
         Layer.mergeAll(
           familyStorageHarness().layer,
@@ -99,6 +102,7 @@ describe("Session Family creation", () => {
       assert.equal((yield* (yield* SessionFamilyStorage).list())[0]?.children.length, 1);
     }).pipe(
       Effect.provide(messageBoardHarness().layer),
+      Effect.provide(projectTodoLayer()),
       Effect.provide(
         Layer.mergeAll(
           familyStorageHarness().layer,
@@ -180,6 +184,7 @@ describe("Session Family creation", () => {
       assert.equal((yield* artifacts.read(lineage.id))?.snapshot.title, "Editor isolation");
     }).pipe(
       Effect.provide(messageBoardHarness().layer),
+      Effect.provide(projectTodoLayer()),
       Effect.provide(
         Layer.mergeAll(
           familyStorageHarness().layer,
@@ -257,6 +262,13 @@ describe("Session Family creation", () => {
         assert.equal(second.familyChildOrder, 0);
         assert.equal(second.launch.status, "already-admitted");
         assert.equal(launches, 1);
+        const items = (yield* todos.list("/project")).items;
+        assert.equal(items.length, 1);
+        assert.equal(items[0]?.title, input.title);
+        assert.equal(items[0]?.description, input.assignment.description);
+        assert.deepEqual(items[0]?.associations, [
+          { kind: "session", sessionId: first.childSessionId, title: input.title },
+        ]);
         assert.deepEqual(parseCrossSessionMessage(initialMessage ?? ""), {
           text: parseCrossSessionMessage(initialMessage ?? "")?.text,
           metadata: {
@@ -278,6 +290,7 @@ describe("Session Family creation", () => {
         });
       }).pipe(
         Effect.provide(messageBoardHarness().layer),
+        Effect.provide(projectTodoLayer()),
         Effect.provide(
           Layer.mergeAll(
             familyStorageHarness().layer,

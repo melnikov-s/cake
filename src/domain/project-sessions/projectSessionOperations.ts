@@ -1,4 +1,6 @@
 import { Effect, Schedule, Stream } from "effect";
+import { ensureSession as ensureSessionTodo } from "../projects/projectTodos";
+import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import type { JsonObject } from "../../contracts/serialization/json-contract";
 import { SESSION_TITLE_MAX_LENGTH } from "../../contracts/conversations/session-contract";
 import { setProjectSessionLabels } from "../application/application";
@@ -88,16 +90,26 @@ export const start = Effect.fn("ProjectSessions.start")(function* (
   if (input.configuration)
     yield* handle.applyConfiguration(input.configuration).pipe(asError("start"));
   if (input.name?.trim()) yield* handle.rename(input.name.trim()).pipe(asError("start"));
-  const turnId = TurnId.make(
-    yield* handle
-      .prompt(
-        input.text,
-        projectAttachments(attachments),
-        input.renderUserMessageAsMarkdown,
-        input.presentationMode,
-        input.automaticTitle,
-      )
-      .pipe(asError("start")),
+  const brief = parseCrossSessionMessage(input.text)?.text ?? input.text;
+  const turnId = yield* Effect.uninterruptibleMask((restore) =>
+    Effect.gen(function* () {
+      const accepted = yield* restore(
+        handle.prompt(
+          input.text,
+          projectAttachments(attachments),
+          input.renderUserMessageAsMarkdown,
+          input.presentationMode,
+          input.automaticTitle,
+        ),
+      ).pipe(asError("start"));
+      yield* ensureSessionTodo(
+        location.projectPath,
+        input.sessionId,
+        input.name ?? brief.trim().split("\n")[0]?.slice(0, 120) ?? "New Project Session",
+        brief,
+      ).pipe(asError("start"));
+      return TurnId.make(accepted);
+    }),
   );
   // The runtime publishes its initial catalog change at Pi's first durable
   // message, even if this caller disconnects after the turn was accepted.

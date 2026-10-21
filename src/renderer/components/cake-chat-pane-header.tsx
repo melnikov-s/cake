@@ -1,5 +1,6 @@
 import { observer, useStore } from "r-state-tree/react";
 import { IconButton } from "@/components/ui/icon-button";
+import { Button } from "@/components/ui/button";
 import {
   BrowserIcon,
   CheckIcon,
@@ -73,8 +74,14 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
         />
       )}
       {paneSession.todos.project && !overlay && (
-        <IconButton
-          tooltip="To-do"
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="To-do"
+          className={cn(
+            "gap-1.5 px-2 font-normal",
+            paneSession.todos.visible && "bg-muted text-foreground",
+          )}
           aria-pressed={paneSession.todos.visible}
           onClick={() => {
             root.navigationStore.focusCakeChatPane(pane.paneId);
@@ -82,7 +89,11 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
           }}
         >
           <CheckIcon />
-        </IconButton>
+          <span>To-do</span>
+          <span className="text-[10px] tabular-nums text-muted-foreground">
+            {paneSession.todos.openItems.length}
+          </span>
+        </Button>
       )}
       <SideChatsMenu
         store={paneSession}

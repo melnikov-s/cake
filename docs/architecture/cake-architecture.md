@@ -351,10 +351,12 @@ is a refactoring signal, not precedent.
   the existing Project catalog into `Project.todos`; `ProjectTodosStore` owns only
   local edits, disclosure and side-pane interaction. The To-do toolbar toggle selects
   the same accessory slot/width as side chat, with its existing narrow replacement
-  and composer-focus restoration. No session, worker or tool deterministically creates
-  an item. Multiple titled session/exact-message associations support a commitment.
-  Native session resolution completes session-only items once all links are resolved;
-  source/mixed items require explicit conclusion. To-do edits never drive session lifecycle.
+  and composer-focus restoration. Actual new Project Sessions get one linked item at
+  start/child/fork boundaries, idempotent by canonical session identity; drafts and private
+  subagents do not. Items have a title, short durable description and freeform progress
+  status. Optional titled session, message, artifact, web and workspace associations use
+  shared conversation navigation. To-do done/reopen and session resolve/restore are
+  independent. Selection is removable next-message context, never a send action.
   User context deltas coalesce in the Project record; read-only send preparation copies
   them into the existing recoverable input. A bound receipt is acknowledged only after
   Pi Durable has placed that input in originals, not on preparation or queue admission.
