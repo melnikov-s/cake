@@ -259,8 +259,26 @@ test("Project Chat side pane, context, titled links and independent session life
       requests.at(-1)?.messages.findLast((message) => message.role === "tool")?.content,
     ).toContain("cake://session/linked-a?message=report");
     const toggle = page.getByRole("button", { name: "To-do", exact: true });
-    await toggle.click();
+    await expect(toggle).toHaveText("2");
+    await expect(toggle.locator("svg")).toHaveAttribute("aria-hidden", "true");
+    await toggle.hover();
+    await expect(page.getByRole("tooltip", { name: "To-do", exact: true })).toBeVisible();
+    await input.hover();
+    await expect(page.getByRole("tooltip", { name: "To-do", exact: true })).toBeHidden();
+    await toggle.focus();
+    await expect(toggle).toBeFocused();
+    await toggle.press("Enter");
     const panel = page.getByRole("complementary", { name: "To-do", exact: true });
+    await expect(panel).toBeVisible();
+    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+    await toggle.focus();
+    await toggle.press("Space");
+    await expect(panel).toBeHidden();
+    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await toggle.focus();
+    await toggle.press("Space");
+    await expect(panel).toBeVisible();
+    await expect(toggle).toHaveAttribute("aria-pressed", "true");
     const layout = page.locator('[data-slot="side-chat-layout"]');
     await expect(layout).toHaveAttribute("data-presentation", "side-by-side");
     await expect(
@@ -303,8 +321,10 @@ test("Project Chat side pane, context, titled links and independent session life
     await page.setViewportSize({ width: 1500, height: 900 });
     await toggle.click();
     await panel.getByRole("button", { name: "Mark done: Review conversations" }).click();
+    await expect(toggle).toHaveText("1");
     await panel.getByRole("button", { name: "Done (1)" }).click();
     await panel.getByRole("button", { name: "Reopen: Review conversations" }).click();
+    await expect(toggle).toHaveText("2");
     await expect(
       panel
         .getByRole("list", { name: "Open to-dos" })

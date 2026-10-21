@@ -238,6 +238,7 @@ it.each(
       );
       await publish();
       expect(panel()).toBeNull();
+      expect(screen.getByRole("button", { name: "To-do" }).textContent).toBe("0");
       if (alreadyOpen) await f.user.click(screen.getByRole("button", { name: "To-do" }));
       const first = await runtime.runPromise(
         projectTodos.create("/zombies", {
@@ -394,6 +395,9 @@ it("toggles Project Chat to-dos in the existing side pane, selects/deselects, co
     );
     await f.user.click(screen.getByRole("button", { name: "Open Project Chat for zombies" }));
     const toggle = screen.getByRole("button", { name: "To-do" });
+    // Count only open items, with the label reserved for accessibility and the tooltip.
+    expect(toggle.textContent).toBe("1");
+    expect(toggle.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
     await f.user.click(toggle);
     const panel = screen.getByRole("complementary", { name: "To-do" });
     expect(toggle.getAttribute("aria-pressed")).toBe("true");
@@ -416,12 +420,15 @@ it("toggles Project Chat to-dos in the existing side pane, selects/deselects, co
         ),
       ).toBeTruthy(),
     );
+    expect(toggle.textContent).toBe("0");
     await f.user.click(within(panel).getByRole("button", { name: "Done (2)" }));
     await f.user.click(within(panel).getByRole("button", { name: `Reopen: ${item.title}` }));
     await waitFor(() =>
       expect(within(panel).getByRole("list", { name: "Open to-dos" })).toBeTruthy(),
     );
+    expect(toggle.textContent).toBe("1");
     await f.user.click(screen.getByRole("button", { name: "Close To-do" }));
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
     expect(screen.getByRole("combobox", { name: "Message Project Chat" })).toBeTruthy();
     await f.user.click(toggle);
     await f.user.click(screen.getByRole("link", { name: "Startup investigation" }));
