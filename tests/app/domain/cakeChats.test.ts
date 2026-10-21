@@ -1,3 +1,4 @@
+import { cakeChatControlTools } from "../../../src/contracts/application/window-control-definitions";
 import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
 import { it } from "@effect/vitest";
 import { WorkflowTestLive } from "../helpers/workflowFixture";
@@ -186,7 +187,7 @@ describe("permanent Cake Chat", () => {
             ...configuration,
             location: yield* chatLocations.resolve(location, sessionId),
           },
-          target: { sessionId, tools: [] },
+          target: { sessionId, tools: cakeChatControlTools() },
           newSession: false,
         });
         const configured = configureCakeSessionRuntime({
@@ -222,6 +223,16 @@ describe("permanent Cake Chat", () => {
         expect(prompt()).not.toContain("Coding only.");
         expect(options.runtime.allowedCakeOperations).toContain("settings.project-chat.update");
         expect(options.runtime.allowedCakeOperations).not.toContain("settings.cake-chat.update");
+        // Project Chats can inspect and change every user setting the Settings UI offers.
+        for (const command of [
+          "settings.list",
+          "settings.get",
+          "settings.update",
+          "settings.pi.update",
+          "settings.window.update",
+          "settings.speech.set-voice",
+        ])
+          expect(commands).toContain(command);
         expect(options.runtime.cakeChatInstructions).toBeUndefined();
         const todoControl = options.runtime.projectTodos;
         if (!todoControl) throw new Error("Expected Project Chat to-do controls");

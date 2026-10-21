@@ -408,6 +408,16 @@ These application preferences remain shared by permanent chats, separate from pe
 guidance. Only global Cake Chat exposes the shared-instruction writer, so Project Chat
 cannot mistake it for a project save.
 
+The other preferences (active context limit, history-view budget and both model
+choices) are keys in the agent settings catalog (`settings.list/get/update`,
+`src/contracts/application/settings-catalog.ts`). A catalog update changes one field
+inside the same application-state transaction the Settings page uses, so other
+preferences are preserved and every window's Settings Stores observe the commit. The
+context limit and memory budget accept only the values the Settings menus offer
+(shared constants in `cake-chat-preferences.ts`); choosing a model setting's default
+source stores nothing, matching the Settings control. Pi settings in the catalog go
+through `PiSettings` and its reload/broadcast, never by writing Pi's file directly.
+
 Each registered Project separately owns `settings.projectChatInstructions`. The
 Project settings dialog labels it **Project Chat instructions**, while the existing
 `settings.customInstructions` remains **Project Session instructions** for coding

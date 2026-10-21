@@ -112,6 +112,16 @@ export const setCakeChatPreferences = Effect.fn("Application.setCakeChatPreferen
   return yield* update((current) => ({ ...current, cakeChatPreferences: preferences }));
 });
 
+/** Change part of the Cake Chat preferences without replacing fields edited elsewhere. */
+export const updateCakeChatPreferences = Effect.fn("Application.updateCakeChatPreferences")(
+  function* (change: (current: CakeChatPreferences) => CakeChatPreferences) {
+    return yield* update((current) => ({
+      ...current,
+      cakeChatPreferences: change(current.cakeChatPreferences ?? defaultCakeChatPreferences()),
+    }));
+  },
+);
+
 export const getCakeChatInstructions = Effect.fn("Application.getCakeChatInstructions")(
   function* () {
     const owner = yield* ApplicationStateOwner;
@@ -403,6 +413,17 @@ export const revokeProjectTrust = Effect.fn("Application.revokeProjectTrust")(fu
   return yield* update((current) => ({
     ...current,
     trustedProjectPaths: current.trustedProjectPaths.filter((trusted) => trusted !== path),
+  }));
+});
+
+/** Customize one workflow prompt; null restores its default text. */
+export const setCakePrompt = Effect.fn("Application.setCakePrompt")(function* (
+  key: keyof CakePromptOverrides,
+  value: string | null,
+) {
+  return yield* update((current) => ({
+    ...current,
+    cakePrompts: normalizeCakePromptOverrides({ ...current.cakePrompts, [key]: value ?? "" }),
   }));
 });
 

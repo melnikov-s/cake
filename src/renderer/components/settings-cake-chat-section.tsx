@@ -3,6 +3,14 @@ import type { SettingsStore } from "../stores/SettingsStore";
 import { Select } from "./ui/select";
 import { SettingsPromptField } from "./settings/settings-prompt-field";
 import { SettingsModelChoiceField } from "./settings-model-choice-field";
+import {
+  CAKE_CHAT_CONTEXT_LIMIT_CHOICES,
+  CAKE_CHAT_MEMORY_VIEW_CHOICES,
+  DEFAULT_CAKE_CHAT_CONTEXT_LIMIT_TOKENS,
+  defaultCakeChatPreferences,
+} from "../../contracts/cake-chats/cake-chat-preferences";
+
+const defaultMemoryViewBytes = defaultCakeChatPreferences().memoryViewBytes;
 
 export const SettingsCakeChatSection = observer(function SettingsCakeChatSection({
   settings,
@@ -28,12 +36,15 @@ export const SettingsCakeChatSection = observer(function SettingsCakeChatSection
           <Select
             aria-label="Cake Chat active context limit"
             className="h-8 w-44 rounded-sm text-xs"
-            value={String(store.preferences.contextLimitTokens ?? 300_000)}
+            value={String(
+              store.preferences.contextLimitTokens ?? DEFAULT_CAKE_CHAT_CONTEXT_LIMIT_TOKENS,
+            )}
             onChange={(event) => void store.setContextLimit(Number(event.target.value))}
           >
-            {[32_000, 64_000, 128_000, 200_000, 300_000, 500_000, 1_000_000].map((tokens) => (
+            {CAKE_CHAT_CONTEXT_LIMIT_CHOICES.map((tokens) => (
               <option key={tokens} value={tokens}>
-                {tokens.toLocaleString()} tokens{tokens === 300_000 ? " (default)" : ""}
+                {tokens.toLocaleString()} tokens
+                {tokens === DEFAULT_CAKE_CHAT_CONTEXT_LIMIT_TOKENS ? " (default)" : ""}
               </option>
             ))}
           </Select>
@@ -52,9 +63,9 @@ export const SettingsCakeChatSection = observer(function SettingsCakeChatSection
             value={String(store.preferences.memoryViewBytes)}
             onChange={(event) => void store.setBudget(Number(event.target.value))}
           >
-            {[5_000, 10_000, 20_000, 40_000, 80_000, 128_000].map((bytes) => (
+            {CAKE_CHAT_MEMORY_VIEW_CHOICES.map((bytes) => (
               <option key={bytes} value={bytes}>
-                {bytes / 1_000} KB{bytes === 40_000 ? " (default)" : ""}
+                {bytes / 1_000} KB{bytes === defaultMemoryViewBytes ? " (default)" : ""}
               </option>
             ))}
           </Select>

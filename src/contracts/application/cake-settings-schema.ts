@@ -52,3 +52,26 @@ export const CakeSettingsUpdateInput = Schema.Union([
   Schema.Struct({ section: Schema.Literal("editor"), changes: EditorChanges }),
   Schema.Struct({ section: Schema.Literal("hotkeys"), changes: HotkeyChanges }),
 ]);
+
+export const windowSettingsGetHelp = {
+  topic: "settings",
+  summary:
+    "Read one per-window settings section (appearance, editor, hotkeys) in the Cake window showing the calling chat.",
+};
+
+export const windowSettingsUpdateHelp = {
+  topic: "settings",
+  summary:
+    "Patch one per-window settings section in the Cake window showing the calling chat and return its committed settings.",
+  guidance: [
+    "Call settings.window.get before updating a section. Unspecified fields remain unchanged.",
+    "For hotkeys, null restores the default binding and an empty string disables the shortcut.",
+    "Backend and Pi settings use settings.list/get/update instead.",
+  ],
+  examples: [
+    {
+      input: { section: "appearance", changes: { theme: "dark" } },
+      description: "Use Cake's dark appearance in this window.",
+    },
+  ],
+};

@@ -2,7 +2,18 @@ import { ResultDelivery, resultDeliveryGuidance } from "../conversations/result-
 import { Effect, Schema } from "effect";
 import { CakeControlTool } from "../cake-chats/cake-chat-data";
 import { backendAgentTools } from "./backend-agent-tools";
-import { backendAgentSettingsTools } from "./agent-settings-tools";
+import {
+  agentSettingsTool,
+  backendAgentSettingsTools,
+  isBackendAgentSetting,
+} from "./agent-settings-tools";
+import { agentSettingsOperations } from "./agent-settings-schema";
+import {
+  CakeSettingsGetInput,
+  CakeSettingsUpdateInput,
+  windowSettingsGetHelp,
+  windowSettingsUpdateHelp,
+} from "./cake-settings-schema";
 import { QueuedSessionCommand } from "../conversations/session-query-data";
 import { SESSION_TITLE_MAX_LENGTH, thinkingLevelSchema } from "../conversations/session-contract";
 import { messageRefsSchema } from "../conversations/message-reference";
@@ -61,6 +72,18 @@ const createDraftSessionArgs = Schema.Struct({
 });
 /** Data-only window controls shared by chat runtime discovery and renderer execution. */
 export const windowControlDefinitions = {
+  "settings.window.get": {
+    command: "settings.window.get",
+    args: CakeSettingsGetInput,
+    scope: "global",
+    discovery: windowSettingsGetHelp,
+  },
+  "settings.window.update": {
+    command: "settings.window.update",
+    args: CakeSettingsUpdateInput,
+    scope: "global",
+    discovery: windowSettingsUpdateHelp,
+  },
   "app.state": {
     command: "app.state",
     args: emptyArgumentsSchema,
@@ -350,6 +373,10 @@ export function cakeChatControlTools(): CakeControlTool[] {
   return [
     ...backendAgentTools(),
     ...backendAgentSettingsTools(),
+    // Device settings run in the Cake window showing the calling permanent chat.
+    ...agentSettingsOperations
+      .filter((definition) => !isBackendAgentSetting(definition.command))
+      .map(agentSettingsTool),
     ...Object.values(windowControlDefinitions).map((definition) =>
       Schema.decodeUnknownSync(CakeControlTool)({
         examples: [],

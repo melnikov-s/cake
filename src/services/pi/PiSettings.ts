@@ -1,4 +1,4 @@
-import type { SettingsManager } from "@earendil-works/pi-coding-agent";
+import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { Context, Effect, Layer, Schema, Semaphore } from "effect";
 import {
   piSettingsSchema,
@@ -16,6 +16,8 @@ export class PiSettings extends Context.Service<
   PiSettings,
   {
     readonly load: () => Effect.Effect<PiSettingsValue, PiSettingsError>;
+    /** What each setting resolves to when the user has not stored a value. */
+    readonly defaults: () => Effect.Effect<PiSettingsValue, PiSettingsError>;
     readonly update: (update: PiSettingUpdate) => Effect.Effect<PiSettingsValue, PiSettingsError>;
     readonly extensions: () => Effect.Effect<ReadonlyArray<PiExtensionSetting>, PiSettingsError>;
     readonly setExtensionEnabled: (
@@ -157,6 +159,11 @@ export const makePiSettingsLayer = (
             }),
           ),
       );
-      return PiSettings.of({ load, update, extensions, setExtensionEnabled });
+      const defaults = Effect.fn("PiSettings.defaults")(() =>
+        Schema.decodeUnknownEffect(piSettingsSchema)(
+          projectPiSettings(SettingsManager.inMemory()),
+        ).pipe(Effect.mapError((cause) => settingsError("defaults", cause))),
+      );
+      return PiSettings.of({ load, defaults, update, extensions, setExtensionEnabled });
     }),
   );

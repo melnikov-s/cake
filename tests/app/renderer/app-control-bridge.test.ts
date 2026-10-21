@@ -272,8 +272,14 @@ describe("AppControlBridge", () => {
     expect(target.tools.some((tool) => tool.command === "sessions.create-draft")).toBe(true);
     expect(target.tools.some((tool) => tool.command === "notifications.send")).toBe(true);
     expect(target.tools.some((tool) => tool.command === "settings.sections")).toBe(true);
-    expect(target.tools.some((tool) => tool.command === "settings.get")).toBe(true);
-    expect(target.tools.some((tool) => tool.command === "settings.update")).toBe(true);
+    for (const command of [
+      "settings.list",
+      "settings.get",
+      "settings.update",
+      "settings.window.get",
+      "settings.window.update",
+    ])
+      expect(target.tools.filter((tool) => tool.command === command)).toHaveLength(1);
     expect(target.tools.some((tool) => tool.command === "projects.settings.get")).toBe(true);
     expect(target.tools.some((tool) => tool.command === "projects.settings.update")).toBe(true);
     expect(target.tools.some((tool) => tool.command === "project.settings.get")).toBe(false);
@@ -607,17 +613,17 @@ describe("AppControlBridge", () => {
     const bridge = new AppControlBridge(createHost({ settings: { get, update } }));
 
     await expect(
-      bridge.invoke({ name: "settings.get", arguments: { section: "appearance" } }),
+      bridge.invoke({ name: "settings.window.get", arguments: { section: "appearance" } }),
     ).resolves.toMatchObject({
       ok: true,
-      command: "settings.get",
+      command: "settings.window.get",
       scope: "window",
       section: "appearance",
       settings: { theme: "system" },
     });
     await expect(
       bridge.invoke({
-        name: "settings.update",
+        name: "settings.window.update",
         arguments: {
           section: "appearance",
           changes: { theme: "dark", sidebarCharactersEnabled: true },
@@ -625,7 +631,7 @@ describe("AppControlBridge", () => {
       }),
     ).resolves.toMatchObject({
       ok: true,
-      command: "settings.update",
+      command: "settings.window.update",
       scope: "window",
       section: "appearance",
       settings: { theme: "dark", sidebarCharactersEnabled: true },
@@ -638,13 +644,13 @@ describe("AppControlBridge", () => {
 
     await expect(
       bridge.invoke({
-        name: "settings.update",
+        name: "settings.window.update",
         arguments: { section: "appearance", changes: {} },
       }),
     ).rejects.toThrow();
     await expect(
       bridge.invoke({
-        name: "settings.update",
+        name: "settings.window.update",
         arguments: { section: "editor", changes: { sidebarAutoHideWidth: 900 } },
       }),
     ).rejects.toThrow();

@@ -4,6 +4,12 @@ import type { AgentActionNotice } from "../../contracts/application/agent-action
 import type { JsonValue } from "../../contracts/serialization/json-contract";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 
+const SettingChange = Schema.Struct({
+  ok: Schema.Literal(true),
+  command: Schema.Literal("settings.update"),
+  value: Schema.Struct({ key: Schema.String, label: Schema.String }),
+});
+
 const Result = Schema.Struct({
   ok: Schema.Literal(true),
   command: Schema.String,
@@ -28,6 +34,7 @@ export const present = Effect.fn("AgentActionNotices.present")(function* (
   value: JsonValue | undefined,
   source: AgentActionNotice["source"],
 ) {
+  const setting = Schema.decodeUnknownOption(SettingChange)(value);
   const decoded = Schema.decodeUnknownOption(Result)(value);
   if (Option.isNone(decoded)) return;
   const result = decoded.value;
@@ -37,6 +44,11 @@ export const present = Effect.fn("AgentActionNotices.present")(function* (
     notice = {
       message: "Updated Cake Project settings",
       coalesceKey: `project-settings:${result.projectPath}`,
+    };
+  if (Option.isSome(setting))
+    notice = {
+      message: `Updated setting “${setting.value.value.label}”`,
+      coalesceKey: `setting:${setting.value.value.key}`,
     };
   if (result.label) {
     const action = {

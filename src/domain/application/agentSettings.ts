@@ -3,7 +3,6 @@ import type { AgentSettingsInvocation } from "../../contracts/application/agent-
 import {
   defaultCakePrompts,
   resolveCakePrompts,
-  normalizeCakePromptOverrides,
 } from "../../contracts/application/cake-prompt-defaults";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import { PiModels } from "../../services/pi/PiModels";
@@ -12,6 +11,7 @@ import { PiSettings } from "../../services/pi/PiSettings";
 import { WidgetPackages } from "../../services/widgets/WidgetPackages";
 import * as application from "./application";
 import * as piSettings from "./piSettings";
+import * as settingsCatalog from "./settingsCatalog";
 import * as modelPresets from "../model-presets/modelPresets";
 import { updateNonChatModelPreference } from "../model-preferences/non-chat-model-preferences";
 import { loadMcpSettings, mutateMcpSettings } from "../mcp/mcp-settings";
@@ -164,18 +164,15 @@ export const invoke = Effect.fn("AgentSettings.invoke")(function* (
       }
       case "settings.prompts.update": {
         const { key, value } = invocation.arguments;
-        const owner = yield* ApplicationState;
-        const state = yield* owner.transact((current) =>
-          Effect.succeed({
-            ...current,
-            cakePrompts: normalizeCakePromptOverrides({
-              ...current.cakePrompts,
-              [key]: value ?? "",
-            }),
-          }),
-        );
+        const state = yield* application.setCakePrompt(key, value);
         return { prompts: resolveCakePrompts(state.cakePrompts) };
       }
+      case "settings.list":
+        return yield* settingsCatalog.list(invocation.arguments);
+      case "settings.get":
+        return yield* settingsCatalog.get(invocation.arguments);
+      case "settings.update":
+        return yield* settingsCatalog.update(invocation.arguments);
       case "settings.labels.get":
         return (yield* ApplicationState).snapshot().globalSessionLabels;
       case "settings.labels.update":

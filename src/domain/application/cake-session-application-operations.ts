@@ -5,6 +5,8 @@ import { type JsonObject } from "../../contracts/serialization/json-contract";
 import {
   CakeSettingsGetInput,
   CakeSettingsUpdateInput,
+  windowSettingsGetHelp,
+  windowSettingsUpdateHelp,
 } from "../../contracts/application/cake-settings-schema";
 
 import { SessionLabelColor } from "../../contracts/application/application-data";
@@ -93,30 +95,26 @@ export function createSessionApplicationOperations(
       execute: invokeAppControl("settings.sections"),
     },
     {
-      command: "settings.get",
+      command: "settings.window.get",
       requires: "invokeAppControl",
       topic: "settings",
-      summary: "Read the effective settings for one Cake settings section in this window.",
+      summary: windowSettingsGetHelp.summary,
       inputSchema: CakeSettingsGetInput,
       examples: [{ input: { section: "appearance" } }],
       result: "The section's effective current settings and window scope.",
-      execute: invokeAppControl("settings.get"),
+      execute: invokeAppControl("settings.window.get"),
     },
     {
-      command: "settings.update",
+      command: "settings.window.update",
       requires: "invokeAppControl",
       topic: "settings",
-      summary:
-        "Patch one Cake settings section in this window and return its committed effective settings.",
-      guidance: [
-        "Call settings.get before updating a section. Unspecified fields remain unchanged.",
-        "For hotkeys, null restores the default binding and an empty string disables the shortcut.",
-      ],
+      summary: windowSettingsUpdateHelp.summary,
+      guidance: windowSettingsUpdateHelp.guidance,
       inputSchema: CakeSettingsUpdateInput,
-      examples: [{ input: { section: "appearance", changes: { theme: "dark" } } }],
+      examples: windowSettingsUpdateHelp.examples,
       result:
         "The section's committed effective settings after window-state persistence completes.",
-      execute: invokeAppControl("settings.update"),
+      execute: invokeAppControl("settings.window.update"),
     },
     {
       command: "session-labels.list",

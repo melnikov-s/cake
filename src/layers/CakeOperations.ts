@@ -37,6 +37,7 @@ import { createProjectSessionOperations } from "../domain/project-sessions/cake-
 import { createGlobalControlOperations } from "../domain/application/cake-global-control-operations";
 import { createAgentControlOperations } from "../domain/subagents/cake-subagent-operations";
 import { createCoordinatorOperations } from "../domain/cake-chats/cake-coordinator-operations";
+import { withChatContextLimit } from "../domain/cake-chats/cake-chat-context-limit-setting";
 import { createProjectTodoOperations } from "../domain/projects/project-todo-operations";
 import { createProjectChatInstructionOperations } from "../domain/projects/project-chat-instruction-operations";
 import { createCakeChatInstructionOperations } from "../domain/cake-chats/cake-chat-instruction-operations";
@@ -168,7 +169,10 @@ export function coordinatorCakeOperations(
   if (!control) throw new Error("The coordinator control is unavailable");
   return (bridge) => {
     return [
-      ...createGlobalControlOperations(control, bridge.resolveModel),
+      ...withChatContextLimit(
+        createGlobalControlOperations(control, bridge.resolveModel),
+        bridge.contextStatus,
+      ),
       ...(options.messageReferenceControl
         ? createMessageOperations(options.messageReferenceControl)
         : []),

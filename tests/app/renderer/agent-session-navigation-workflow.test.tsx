@@ -342,7 +342,7 @@ describe("Agent session navigation workflow", () => {
     // No permission field is accepted by an agent-writable Settings section.
     await expect(
       restored.root.applicationControlStore.invoke({
-        name: "settings.update",
+        name: "settings.window.update",
         arguments: { section: "agentNavigation", changes: { enabled: true } },
       }),
     ).rejects.toThrow();

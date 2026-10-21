@@ -26,6 +26,14 @@ import { cakeSettingsSections } from "./cake-settings-data";
 import { TurnId } from "../conversations/conversation-data";
 import { SpeechOutputSettings, SpeechOutputVoice } from "../speech/speech-output-data";
 import { AgentListInput } from "../agent/agent-list-data";
+import {
+  SettingsGetInput,
+  SettingsGetOutput,
+  SettingsListInput,
+  SettingsListOutput,
+  SettingsUpdateInput,
+  SettingsUpdateOutput,
+} from "./settings-catalog";
 
 const empty = Schema.Struct({});
 const scope = Schema.Literals(["backend", "project"]);
@@ -139,7 +147,45 @@ export const widgetPackageSettingsOperations = [
   ),
 ] as const;
 
+const catalogGuidance = [
+  "One key per user setting, executed through the same backend authority as the Settings UI (Cake application state or Pi's settings file); changes apply live and the Settings UI updates.",
+  "settings.list also names the dedicated operations for collections (presets, labels, MCP, providers, widgets), per-window settings (settings.window.*), and device settings, plus settings agents cannot change.",
+];
+
+const settingsCatalogOperations = [
+  setting(
+    "settings.list",
+    SettingsListInput,
+    "Discover user settings: key, Settings page, label, value shape, current value and default. Filter by page or query.",
+    { query: "context" },
+    SettingsListOutput,
+    [...catalogGuidance, "Long text values are previewed; read them in full with settings.get."],
+  ),
+  setting(
+    "settings.get",
+    SettingsGetInput,
+    "Read one setting by key with its description, JSON Schema, current value, default and effective result.",
+    { key: "cakeChat.contextLimitTokens" },
+    SettingsGetOutput,
+    catalogGuidance,
+  ),
+  setting(
+    "settings.update",
+    SettingsUpdateInput,
+    "Change one setting by key; returns previous, new and effective values. Validated with the Settings UI's limits.",
+    { key: "cakeChat.contextLimitTokens", value: 500_000 },
+    SettingsUpdateOutput,
+    [
+      ...catalogGuidance,
+      "Change settings only when the user asks. Use settings.list or settings.get for the key and allowed values; invalid values fail without changing anything.",
+      "cakeChat.contextLimitTokens accepts only the limits offered in Settings. Its effective result reports the configured limit; in a permanent chat it also reports that chat's actual limit after the model-window minimum.",
+      "Read back with settings.get before claiming success when the effective result is unclear.",
+    ],
+  ),
+] as const;
+
 export const agentSettingsOperations = [
+  ...settingsCatalogOperations,
   ...widgetPackageSettingsOperations,
   setting(
     "settings.pi.get",
@@ -474,7 +520,18 @@ export const AgentSettingsInvocation = Schema.Union(
 export type AgentSettingsInvocation = typeof AgentSettingsInvocation.Type;
 
 export const agentSettingsSections = [
-  ...cakeSettingsSections,
+  {
+    id: "catalog",
+    scope: "backend",
+    writable: true,
+    description:
+      "Every scalar user setting by key: Cake Chat context limit/memory/models, model defaults, Pi agent/execution/network, instructions, prompts and experimental features. Start here",
+    commands: ["settings.list", "settings.get", "settings.update"],
+  },
+  ...cakeSettingsSections.map((section) => ({
+    ...section,
+    commands: ["settings.window.get", "settings.window.update"],
+  })),
   {
     id: "widgets",
     scope: "backend",
@@ -569,7 +626,7 @@ export const agentSettingsSections = [
 ] as const;
 
 export const agentSettingsGuidance = [
-  "Backend settings execute on the selected backend through the same domain/services as manual Settings, without requiring a connected window. Native/device interactions still target the originating Cake window; appearance/editor/hotkeys remain window-local via settings.get/update.",
-  "Use settings.sections for coverage and scope, then exact settings.<operation>.help for schemas. Current chat model uses session.set-model, not an image/classifier preference.",
+  "Backend settings execute on the selected backend through the same domain/services as manual Settings, without requiring a connected window. Native/device interactions still target the originating Cake window; appearance/editor/hotkeys remain window-local via settings.window.get/update.",
+  "Start with settings.list (every setting by key, plus where the rest live), then exact settings.<operation>.help for schemas. Current chat model uses session.set-model, not an image/classifier preference.",
   "Cancellation does not undo a setting already saved. Interactive credentials and permissions remain user-owned; stored credentials are never returned.",
 ];

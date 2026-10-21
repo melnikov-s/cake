@@ -288,7 +288,7 @@ type AppControlSuccess =
   | { ok: true; command: "settings.sections"; sections: typeof agentSettingsSections }
   | {
       ok: true;
-      command: "settings.get" | "settings.update";
+      command: "settings.window.get" | "settings.window.update";
       scope: "window";
       section: CakeSettingsSectionId;
       settings: CakeSettingsSectionView["settings"];

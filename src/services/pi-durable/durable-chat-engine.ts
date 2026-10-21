@@ -1,3 +1,4 @@
+import { DEFAULT_CAKE_CHAT_CONTEXT_LIMIT_TOKENS } from "../../contracts/cake-chats/cake-chat-preferences";
 import {
   awaitWithContext,
   BACKGROUND_CONTEXT,
@@ -256,7 +257,7 @@ export async function openDurableChatEngine(options: {
             : undefined;
         const { limit, reserve } = durableAdmission(
           model,
-          options.contextLimitTokens?.() ?? 300_000,
+          options.contextLimitTokens?.() ?? DEFAULT_CAKE_CHAT_CONTEXT_LIMIT_TOKENS,
           streamOptions?.maxTokens,
         );
         const before = durableContextBreakdown(active.messages);
@@ -680,7 +681,8 @@ export async function openDurableChatEngine(options: {
           active.head?.id === boundary?.marker
             ? active.head?.model?.find((message) => message.role === "user")
             : undefined;
-        const configuredLimitTokens = options.contextLimitTokens?.() ?? 300_000;
+        const configuredLimitTokens =
+          options.contextLimitTokens?.() ?? DEFAULT_CAKE_CHAT_CONTEXT_LIMIT_TOKENS;
         const cache =
           policy?.requestHead === (active.head?.id ?? null) &&
           policy.requestSystem === durableSystemFingerprint(active.messages) &&

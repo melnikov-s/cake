@@ -1,4 +1,5 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { DEFAULT_CAKE_CHAT_CONTEXT_LIMIT_TOKENS } from "../../contracts/cake-chats/cake-chat-preferences";
 import { ModelRuntime, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
 import {
@@ -356,7 +357,8 @@ export async function createDurableCakeChatRuntime(
       tools,
       instructions: instructions(),
     },
-    contextLimitTokens: () => preferences.preferences().contextLimitTokens ?? 300_000,
+    contextLimitTokens: () =>
+      preferences.preferences().contextLimitTokens ?? DEFAULT_CAKE_CHAT_CONTEXT_LIMIT_TOKENS,
     onInputConsumed: options.onCakeChatInputConsumed,
     memory: {
       budget: () => preferences.preferences().memoryViewBytes,

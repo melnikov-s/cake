@@ -94,7 +94,7 @@ export function agentActionReceipt(
           : `current:${result.action}:${result.detail ?? ""}`,
     };
   }
-  if (result.command === "settings.update")
+  if (result.command === "settings.window.update")
     return {
       message: `Updated Cake ${result.section} settings`,
       coalesceKey: `settings:${result.section}`,

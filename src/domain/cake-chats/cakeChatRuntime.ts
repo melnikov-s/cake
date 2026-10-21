@@ -1,4 +1,5 @@
 import { messageReference } from "../../contracts/conversations/message-reference";
+import { agentSettingsOperations } from "../../contracts/application/agent-settings-schema";
 import { makeVscodeControl } from "../../services/pi/VscodeControlAdapter";
 import { VsCodeServer } from "../../services/vscode/VsCodeServer";
 import { cakeRpcPayloadSchemas } from "../../contracts/application/cake-rpc-contract";
@@ -104,6 +105,11 @@ const CAKE_CHAT_OPERATIONS = [
   "settings.cake-chat.update",
   "settings.project-chat.get",
   "settings.project-chat.update",
+  // Every user setting the Settings UI offers, through the same authorities.
+  "settings.sections",
+  "settings.window.get",
+  "settings.window.update",
+  ...agentSettingsOperations.map((operation) => operation.command),
   "todos.list",
   "todos.read",
   "todos.create",
