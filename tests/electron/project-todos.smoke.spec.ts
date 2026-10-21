@@ -12,7 +12,7 @@ type Request = { messages: Array<{ role: string; content: string | object[] | nu
 const latestUser = (request: Request) =>
   JSON.stringify(request.messages.findLast((message) => message.role === "user")?.content);
 
-test("Project Chat side pane, context, titled links and independent session lifecycle", async () => {
+test("Project Chat side pane, context, titled links and tool-resolved linked work closure", async () => {
   test.setTimeout(90_000);
   const directory = await mkdtemp(join(tmpdir(), "cake-project-todos-"));
   const project = join(directory, "project");
@@ -20,6 +20,8 @@ test("Project Chat side pane, context, titled links and independent session life
   const userData = join(directory, "user-data");
   const requests: Request[] = [];
   const reviewId = "00000000-0000-4000-8000-000000000011";
+  const standaloneTodoId = "038a885a-659d-46fb-8630-73b8701c1793";
+  const standaloneSessionId = "00000000-0000-4000-8000-000025fa8baa";
   const server = createServer(async (request, response) => {
     let body = "";
     for await (const chunk of request) body += chunk;
@@ -38,7 +40,7 @@ test("Project Chat side pane, context, titled links and independent session life
               status: "Working across two sessions",
               associations: [
                 { kind: "session", sessionId: "linked-a", title: "First implementation" },
-                { kind: "session", sessionId: "linked-b", title: "Second implementation" },
+                { kind: "session", sessionId: standaloneSessionId, title: "Second implementation" },
               ],
             },
           }
@@ -60,7 +62,7 @@ test("Project Chat side pane, context, titled links and independent session life
           : marker === "RESOLVE_LINKED"
             ? {
                 command: "sessions.resolve",
-                input: { targets: [{ kind: "project", sessionId: "linked-b" }], resolved: true },
+                input: { targets: [{ kind: "project", sessionId: "25fa8baa" }], resolved: true },
               }
             : undefined;
     const tool = command && input.messages.at(-1)?.role === "user";
@@ -130,7 +132,7 @@ test("Project Chat side pane, context, titled links and independent session life
     await mkdir(sessions, { recursive: true });
     for (const [id, title] of [
       ["linked-a", "First implementation"],
-      ["linked-b", "Second implementation"],
+      [standaloneSessionId, "Second implementation"],
     ]) {
       await writeFile(
         join(sessions, `2026-01-01T00-00-00-000Z_${id}.jsonl`),
@@ -188,6 +190,22 @@ test("Project Chat side pane, context, titled links and independent session life
               todos: {
                 ...emptyProjectTodos(),
                 items: [
+                  {
+                    id: standaloneTodoId,
+                    title: "Compaction follow-up",
+                    description: "Finish the childless compaction session.",
+                    status: "Landed; awaiting session resolution",
+                    state: "open",
+                    revision: 1,
+                    completionPolicy: "linked",
+                    associations: [
+                      {
+                        kind: "session",
+                        sessionId: standaloneSessionId,
+                        title: "Second implementation",
+                      },
+                    ],
+                  },
                   {
                     id: reviewId,
                     title: "Review conversations",
@@ -253,11 +271,11 @@ test("Project Chat side pane, context, titled links and independent session life
     await send("CREATE_LINKED");
     expect(
       requests.at(-1)?.messages.findLast((message) => message.role === "tool")?.content,
-    ).toContain("Implement startup improvement");
+    ).toContain('"committed": true');
     await send("LINK_SOURCE");
     expect(
       requests.at(-1)?.messages.findLast((message) => message.role === "tool")?.content,
-    ).toContain("cake://session/linked-a?message=report");
+    ).toContain('"revision": 1');
     const toggle = page.getByRole("button", { name: "To-do", exact: true });
     await expect(toggle).toHaveText("2");
     await expect(toggle.locator("svg")).toHaveAttribute("aria-hidden", "true");
@@ -337,18 +355,35 @@ test("Project Chat side pane, context, titled links and independent session life
       panel.getByRole("button", { name: "Implement startup improvement", exact: true }),
     ).toBeVisible(); // second session still open
     await page.getByRole("button", { name: "Close To-do" }).click();
+    const beforeToolResolve = JSON.parse(
+      await readFile(join(cakeHome, "state", "application.json"), "utf8"),
+    ).data.projects[0].todos.sequence;
     await send("RESOLVE_LINKED");
+    const resolveReceipt = requests
+      .at(-1)
+      ?.messages.findLast((message) => message.role === "tool")?.content;
+    expect(resolveReceipt).toContain('"resolved": true');
+    expect(resolveReceipt).toContain('"sessionCount": 1');
     await toggle.click();
+    const done = panel.getByRole("button", { name: "Done (2)" });
+    await expect(done).toBeVisible();
+    if ((await done.getAttribute("aria-expanded")) !== "true") await done.click();
     await expect(
-      panel.getByRole("button", { name: "Mark done: Implement startup improvement" }),
+      panel.getByRole("button", { name: "Reopen: Implement startup improvement" }),
     ).toBeVisible();
+    await expect(panel.getByRole("button", { name: "Reopen: Compaction follow-up" })).toBeVisible();
     await expect(
       panel.getByRole("button", { name: "Review conversations", exact: true }),
-    ).toBeVisible(); // source report is NOT resolution
+    ).toBeVisible(); // Explicit user reopen preserved manual review, despite resolved source work.
     const persisted = JSON.parse(
       await readFile(join(cakeHome, "state", "application.json"), "utf8"),
     );
-    const changes = persisted.data.projects[0].todos.pending;
+    const committedTodos = persisted.data.projects[0].todos;
+    expect(
+      committedTodos.items.find((item: { id: string }) => item.id === standaloneTodoId),
+    ).toMatchObject({ state: "done", revision: 2 });
+    expect(committedTodos.sequence).toBe(beforeToolResolve); // Tool resolution is not a user-context delta.
+    const changes = committedTodos.pending;
     // Only the actual user transition is a user delta, not the agent's second resolution.
     expect(changes.filter((change: { _tag: string }) => change._tag === "SessionState")).toEqual(
       [],
