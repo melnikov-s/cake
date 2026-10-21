@@ -43,29 +43,71 @@ describe("Markdown rendering integration", () => {
         "<script>window.compromised = true</script>",
         '<img src="x" onerror="window.compromised = true">',
         "[Danger](javascript:alert%281%29)",
+        "[Data](data:text/html,unsafe)",
+        "[Script](vbscript:unsafe)",
         "[Website](https://example.com)",
       ].join("\n\n"),
     );
     expect(screen.getByText("safe").getAttribute("data-streamdown")).toBe("strong");
     expect(fixture.container.querySelector("script, [onerror]")).toBeNull();
-    expect(fixture.container.querySelector('a[href^="javascript:"]')).toBeNull();
+    expect(
+      fixture.container.querySelector(
+        'a[href^="javascript:"], a[href^="data:"], a[href^="vbscript:"]',
+      ),
+    ).toBeNull();
     expect(screen.getByRole("link", { name: "Website" }).getAttribute("href")).toBe(
       "https://example.com/",
     );
   });
 
-  it("routes actual website links through the typed desktop boundary", async () => {
-    const openExternalUrl = vi.fn<Client["electron"]["openExternalUrl"]>(async () => undefined);
-    using fixture = renderMarkdown('[Example](https://example.com "Authored title")', {
-      client: { electron: { openExternalUrl } },
-    });
-    const link = screen.getByRole("link", { name: "Example" });
-    expect(link.getAttribute("aria-description")).toBe("https://example.com/");
-    expect(link.getAttribute("target")).toBe("_blank");
-    await fixture.user.click(link);
-    expect(openExternalUrl).toHaveBeenCalledWith("https://example.com/", {
-      signal: expect.any(AbortSignal),
-    });
+  it.each(["https", "http"])(
+    "routes %s website links through the typed desktop boundary",
+    async (scheme) => {
+      const openExternalUrl = vi.fn<Client["electron"]["openExternalUrl"]>(async () => undefined);
+      using fixture = renderMarkdown(`[Example](${scheme}://example.com "Authored title")`, {
+        client: { electron: { openExternalUrl } },
+      });
+      const link = screen.getByRole("link", { name: "Example" });
+      expect(link.getAttribute("aria-description")).toBe(`${scheme}://example.com/`);
+      expect(link.getAttribute("target")).toBe("_blank");
+      await fixture.user.click(link);
+      expect(openExternalUrl).toHaveBeenCalledWith(`${scheme}://example.com/`, {
+        signal: expect.any(AbortSignal),
+      });
+    },
+  );
+
+  it.each([
+    "![Preview](https://example.com/preview.png)",
+    "**![Preview](https://example.com/preview.png)**",
+  ])("preserves code spans and linked images (%s) while adorning text links", (imageLabel) => {
+    using fixture = renderMarkdown(
+      [
+        "[**Website**](https://example.com/docs)",
+        "[`source.ts`](src/source.ts#L2)",
+        "[Worker](cake://session/session-123?message=entry-42)",
+        "[Report](cake://artifact/report-1@r2)",
+        `[${imageLabel}](https://example.com/full.png)`,
+        "![Standalone](https://example.com/standalone.png)",
+        "`[not a link](https://example.com)`",
+      ].join(" · "),
+      { props: { onOpenSourceLocation: () => undefined } },
+    );
+    for (const name of ["Website", "source.ts", "Worker", "Report"]) {
+      const link = screen.getByRole("link", { name });
+      expect(link.querySelectorAll('svg[aria-hidden="true"]')).toHaveLength(1);
+      expect(link.getAttribute("tabindex")).toBeNull();
+    }
+    expect(screen.getByText("source.ts").tagName).toBe("CODE");
+    expect(screen.getByText("[not a link](https://example.com)").tagName).toBe("CODE");
+    const image = screen.getByRole("img", { name: "Preview" });
+    expect(image.getAttribute("src")).toBe("https://example.com/preview.png");
+    expect(image.closest("a")?.getAttribute("href")).toBe("https://example.com/full.png");
+    expect(image.closest("a")?.querySelector("svg")).toBeNull();
+    expect(screen.getByRole("img", { name: "Standalone" }).getAttribute("src")).toBe(
+      "https://example.com/standalone.png",
+    );
+    expect(fixture.container.querySelectorAll("a")).toHaveLength(5);
   });
 
   it("routes source ranges, changes and heading citations from real parsed anchors", async () => {

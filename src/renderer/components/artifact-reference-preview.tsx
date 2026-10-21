@@ -24,6 +24,7 @@ export const ArtifactReferencePreview = observer(function ArtifactReferencePrevi
   const parsed = parseArtifactRef(reference);
   return (
     <Link
+      showIcon
       data-artifact-reference={reference}
       href={reference}
       onClick={(event) => {

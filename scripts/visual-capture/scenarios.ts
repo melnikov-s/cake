@@ -1025,7 +1025,7 @@ const inlineLinks: VisualCaptureScenario = {
           "",
           "Created [Collaboration requirements](cake://artifact/visual-link-report), with confirmed requirements and open decisions.",
           "",
-          "Review [the implementation](src/main.ts#L12-L24), read [the website](https://example.com/docs), or return to [this session](cake://session/visual-assistant-markdown-code).",
+          "Review [the implementation](src/main.ts#L12-L24), read [the website](https://example.com/docs) or [HTTP documentation](http://example.com/docs), or return to [this session](cake://session/visual-assistant-markdown-code).",
           "",
           "Open [this request](cake://session/visual-assistant-markdown-code?message=user-1) or inspect [an original request](cake://session/visual-assistant-markdown-code?message=original-source) from a previous branch.",
           "",

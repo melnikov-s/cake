@@ -1,8 +1,12 @@
 import type { ComponentProps } from "react";
 import { cn } from "@/lib/utils";
 import { TooltipBubble, useTooltip } from "./tooltip";
+import { LinkIcon } from "./icons";
 
-export type LinkProps = ComponentProps<"a">;
+export type LinkProps = ComponentProps<"a"> & {
+  /** A quiet affordance for navigable prose, without changing inline wrapping. */
+  showIcon?: boolean;
+};
 
 /** Shared inline navigation, independent of the destination's owning surface. */
 export function Link({
@@ -10,12 +14,14 @@ export function Link({
   href,
   title,
   children,
+  showIcon = false,
   onMouseEnter,
   onMouseLeave,
   onMouseDown,
   onFocus,
   onBlur,
   onClick,
+  onKeyDown,
   ...props
 }: LinkProps) {
   const { anchor, hide, show } = useTooltip();
@@ -55,10 +61,24 @@ export function Link({
           hide();
           onClick?.(event);
         }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") hide();
+          onKeyDown?.(event);
+        }}
       >
         {children}
+        {showIcon && href && (
+          <LinkIcon className="ms-0.5 inline size-[0.75em] align-[-0.125em] opacity-60" />
+        )}
       </a>
-      {destination && anchor && <TooltipBubble label={destination} anchor={anchor} wrap />}
+      {destination && anchor && (
+        <TooltipBubble
+          label={destination}
+          anchor={anchor}
+          wrap
+          className="[overflow-wrap:anywhere]"
+        />
+      )}
     </>
   );
 }

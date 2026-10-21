@@ -34,7 +34,7 @@ import { parseSessionLink, sessionLink } from "../../../contracts/conversations/
 import { parseSourceLocation } from "../../../utils/source-location";
 import { resolveSessionLinkReference } from "../../../contracts/project-sessions/session-reference";
 import { sessionDisplayId } from "../../lib/session-display-id";
-import { Link } from "../ui/link";
+import { Link, type LinkProps } from "../ui/link";
 import { MarkdownTable } from "../ui/markdown-table";
 import { FullscreenSurface } from "../fullscreen-surface";
 import { MermaidFullscreen } from "../mermaid-fullscreen";
@@ -52,7 +52,7 @@ const bareSourceReference =
 const bareArtifactReference =
   /(^|[\s(])(cake:\/\/artifact\/[A-Za-z0-9][A-Za-z0-9._:-]*(?:@r[1-9][0-9]*)?)(?=$|[\s),.;!?])/g;
 
-type AnchorProps = ComponentProps<"a"> & { node?: unknown };
+type AnchorProps = LinkProps & { node?: unknown };
 type ImageProps = ComponentProps<"img"> & { node?: unknown };
 
 type MarkdownLinkActions = {
@@ -240,7 +240,7 @@ function normalizeLatexMathDelimiters(markdown: string) {
 }
 
 function linkAnchor(allProps: AnchorProps, actions?: MarkdownLinkActions) {
-  const props = { ...allProps };
+  const props = { showIcon: true, ...allProps };
   delete props.node;
   const href = props.href;
   const artifactReference = href ? artifactReferenceFromHref(href) : undefined;
@@ -330,7 +330,7 @@ export function MarkdownLink({
     return linkAnchor(allProps, actions);
   // Keep source references readable, without an editor entry point on phones.
   if (phone) return <span>{allProps.children}</span>;
-  const props = { ...allProps, href: reference };
+  const props = { showIcon: true, ...allProps, href: reference };
   delete props.node;
   return (
     <Link
@@ -639,8 +639,22 @@ function MarkdownRenderer({
         }
         return <p {...paragraphProps}>{children}</p>;
       },
-      a(allProps: AnchorProps) {
-        return <MarkdownLink {...allProps} onOpenSourceLocation={openSourceLocation} />;
+      a({ node, ...allProps }) {
+        // Linked images keep their image presentation, not a text-link adornment.
+        const containsImage = (children: NonNullable<typeof node>["children"]): boolean =>
+          children.some(
+            (child) =>
+              child.type === "element" &&
+              (child.tagName === "img" || containsImage(child.children)),
+          );
+        const hasImage = node && containsImage(node.children);
+        return (
+          <MarkdownLink
+            {...allProps}
+            showIcon={!hasImage}
+            onOpenSourceLocation={openSourceLocation}
+          />
+        );
       },
       img(allProps: ImageProps) {
         if (!renderImages) return <span>[Image: {allProps.alt || "unnamed"} — not loaded]</span>;

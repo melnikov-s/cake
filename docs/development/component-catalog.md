@@ -154,7 +154,10 @@ not image payloads, to its model context.
 Structured work/source links reuse `MarkdownLink` from
 [`Markdown`](../../src/renderer/components/ai-elements/markdown.tsx), the same destination
 handler as conversation prose (sessions/messages/attachments, artifact references,
-web URLs and workspace source locations). `Link` remains the visual anchor primitive.
+web URLs and workspace source locations). `Link` remains the visual anchor primitive;
+its `showIcon` option adds a decorative inline link affordance without changing prose
+wrapping. Markdown text links and artifact references use it; linked images do not.
+Destination tooltips appear on hover or keyboard focus and dismiss with Escape.
 
 [`icons.tsx`](../../src/renderer/components/ui/icons.tsx) is the sole icon authority.
 Inspect [`components/ai-elements/`](../../src/renderer/components/ai-elements/)

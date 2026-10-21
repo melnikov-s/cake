@@ -30,11 +30,23 @@ for (const theme of ["light", "dark"] as const) {
     });
     try {
       const page = await application.firstWindow();
+      // Replace only the OS boundary: real Markdown, Store, Client, RPC and URL validation run.
+      await application.evaluate(({ shell }) => {
+        const urls: string[] = [];
+        Object.assign(globalThis, { cakeTestExternalUrls: urls });
+        Object.defineProperty(shell, "openExternal", {
+          configurable: true,
+          value: async (url: string) => {
+            urls.push(url);
+          },
+        });
+      });
       await scenario.prepare(page, "default");
       const destinations = [
         ["Collaboration requirements", "cake://artifact/visual-link-report"],
         ["the implementation", "src/main.ts#L12-L24"],
         ["the website", "https://example.com/docs"],
+        ["HTTP documentation", "http://example.com/docs"],
         ["this session", "cake://session/visual-assistant-markdown-code"],
       ];
       let linkColor: string | undefined;
@@ -42,6 +54,7 @@ for (const theme of ["light", "dark"] as const) {
         const link = page.getByRole("link", { name: label, exact: true });
         await link.hover();
         await expect(link).toHaveAttribute("href", destination);
+        await expect(link.locator('svg[aria-hidden="true"]')).toHaveCount(1);
         await expect(link).toHaveAccessibleDescription(destination);
         await expect(page.getByRole("tooltip")).toBeVisible();
         await expect(page.getByRole("tooltip")).toHaveText(destination);
@@ -53,6 +66,7 @@ for (const theme of ["light", "dark"] as const) {
             weight: style.fontWeight,
             decoration: style.textDecorationLine,
             thickness: style.textDecorationThickness,
+            display: style.display,
           };
         });
         linkColor ??= presentation.color;
@@ -61,6 +75,7 @@ for (const theme of ["light", "dark"] as const) {
         expect(presentation.weight).toBe("600");
         expect(presentation.decoration).toBe("underline");
         expect(presentation.thickness).toBe("2px");
+        if (label !== "this session") expect(presentation.display).toBe("inline");
       }
       await page.mouse.move(1, 1);
       await expect(page.getByRole("tooltip")).not.toBeAttached();
@@ -74,6 +89,29 @@ for (const theme of ["light", "dark"] as const) {
       await page.keyboard.press("Shift+Tab");
       await expect(artifact).toBeFocused();
       await expect(page.getByRole("tooltip")).toHaveText("cake://artifact/visual-link-report");
+      await artifact.press("Escape");
+      await expect(artifact).toBeFocused();
+      await expect(page.getByRole("tooltip")).not.toBeAttached();
+      for (const label of ["the website", "HTTP documentation"]) {
+        const website = page.getByRole("link", { name: label, exact: true });
+        await website.focus();
+        await expect(page.getByRole("tooltip")).toHaveText(
+          (await website.getAttribute("href")) ?? "",
+        );
+        if (label === "the website") await website.press("Enter");
+        else await website.click();
+        await expect(page.getByRole("tooltip")).not.toBeAttached();
+      }
+      await expect
+        .poll(() =>
+          application.evaluate(
+            () =>
+              (globalThis as typeof globalThis & { cakeTestExternalUrls: string[] })
+                .cakeTestExternalUrls,
+          ),
+        )
+        .toEqual(["https://example.com/docs", "http://example.com/docs"]);
+      await expect(page.getByRole("link", { name: "this session", exact: true })).toBeVisible();
       await artifact.press("Enter");
       await expect(page.getByRole("tooltip")).not.toBeAttached();
       await expect(page.getByLabel("Search artifact library")).toBeVisible();
