@@ -104,7 +104,10 @@ export const WidgetArtifact = observer(function WidgetArtifact({
         return;
       }
       if (Option.isNone(parsed) || parsed.value.token !== state.compiled.token) return;
-      if (parsed.value.type === "ready") setReadyToken(state.compiled.token);
+      if (parsed.value.type === "ready") {
+        inlineWidgets.browserViewReady(id, state.compiled.token);
+        setReadyToken(state.compiled.token);
+      }
       if (parsed.value.type === "height")
         setHeight(Math.max(120, Math.min(1_200, Math.ceil(parsed.value.value))));
       if (parsed.value.type === "error")
@@ -156,8 +159,20 @@ export const WidgetArtifact = observer(function WidgetArtifact({
     return () => window.removeEventListener("message", receive);
   }, [id, inlineWidgets, state?.compiled]);
 
-  if (!inlineWidgets || state?.status === "error")
-    return <Markdown>{artifact.fallback.markdown}</Markdown>;
+  if (!inlineWidgets) return <Markdown>{artifact.fallback.markdown}</Markdown>;
+  if (state?.status === "error")
+    return (
+      <div>
+        <Callout variant="error" role="alert">
+          <strong>Widget view unavailable</strong>
+          {state.diagnostic}
+          <Button size="sm" variant="outline" onClick={() => inlineWidgets.retryBrowserView(id)}>
+            Retry view
+          </Button>
+        </Callout>
+        <Markdown>{artifact.fallback.markdown}</Markdown>
+      </div>
+    );
   if (!state?.compiled) return <div className="min-h-55" aria-busy="true" />;
   const identity: WidgetViewIdentity = {
     exactRef: `cake://artifact/${artifact.id}@r${artifact.revision}`,

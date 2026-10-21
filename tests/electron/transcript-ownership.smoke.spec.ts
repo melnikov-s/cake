@@ -11,12 +11,20 @@ import {
   type Page,
 } from "@playwright/test";
 import type { TranscriptOwnershipFixture } from "./transcript-ownership-fixture";
+import { callRpcHarness, openRpcHarness } from "./rpc-harness";
+import type { CompiledInlineWidget } from "../../src/contracts/widgets/inline-widget-contract";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
-const test = base.extend<{ fixturePage: Page; messageCount: number; chatMode: string }>({
+const test = base.extend<{
+  fixturePage: Page;
+  messageCount: number;
+  chatMode: string;
+  withWidget: boolean;
+}>({
+  withWidget: [false, { option: true }],
   messageCount: [48, { option: true }],
   chatMode: ["", { option: true }],
-  fixturePage: async ({ messageCount, chatMode }, use) => {
+  fixturePage: async ({ messageCount, chatMode, withWidget }, use) => {
     const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-transcript-ownership-"));
     const cakeHome = join(temporaryRoot, "cake-home");
     await mkdir(cakeHome);
@@ -69,13 +77,33 @@ const test = base.extend<{ fixturePage: Page; messageCount: number; chatMode: st
     });
     try {
       await application.firstWindow();
+      const widget = withWidget
+        ? (
+            await callRpcHarness<{ widget: CompiledInlineWidget }>(
+              await openRpcHarness(application, "scroll-widget"),
+              "invokeNative",
+              {
+                type: "compile-inline-widget",
+                language: "react",
+                capability: "artifact",
+                source: `import { useArtifactState } from "@cake/artifact-sdk";
+export default function Widget() {
+  const { hydrated, value } = useArtifactState({ title: "seed" });
+  return <main style={{height:"100%",background:"var(--background)",color:"var(--foreground)"}}><h1>{hydrated ? value.title : "Hydrating widget"}</h1><button onClick={e => e.currentTarget.textContent = "Local state retained"}>Widget interaction</button></main>;
+}`,
+              },
+            )
+          ).widget
+        : null;
       const opened = application.waitForEvent("window");
       await application.evaluate(
-        async ({ BrowserWindow }, { html, messageCount, chatMode }) => {
+        async ({ BrowserWindow }, { html, messageCount, chatMode, widget }) => {
           const window = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
-          await window.loadFile(html, { search: `?count=${messageCount}&chatMode=${chatMode}` });
+          await window.loadFile(html, {
+            search: `?count=${messageCount}&chatMode=${chatMode}&widget=${encodeURIComponent(JSON.stringify(widget))}`,
+          });
         },
-        { html, messageCount, chatMode },
+        { html, messageCount, chatMode, widget },
       );
       const page = await opened;
       const errors: string[] = [];
@@ -375,6 +403,73 @@ for (const chatMode of ["virtualized", "compact"]) {
     });
   });
 }
+
+test.describe("inline widget reading position", () => {
+  test.use({ withWidget: true });
+
+  test("scrolling over the widget pauses outer bottom following", async ({ fixturePage: page }) => {
+    const transcript = page.locator(".transcript");
+    const iframe = transcript.locator("iframe");
+    await expect(transcript.locator('[data-widget-view-ready="true"]')).toHaveCount(1);
+    const bounds = (await iframe.boundingBox())!;
+    const viewport = (await transcript.boundingBox())!;
+    await page.mouse.move(bounds.x + bounds.width / 2, Math.max(viewport.y, bounds.y) + 30);
+    const before = await top(transcript);
+    await page.mouse.wheel(0, -200);
+    await expect.poll(() => top(transcript)).toBeLessThan(before - 100);
+    const saved = await top(transcript);
+    const savedAnchor = await anchor(transcript);
+    await command(page, "stream");
+    await expect.poll(() => top(transcript)).toBe(saved);
+    await expect.poll(() => anchor(transcript)).toEqual(savedAnchor);
+  });
+
+  test("widget remains rendered during away-from-bottom streaming, reopen and virtual range changes", async ({
+    fixturePage: page,
+  }) => {
+    const transcript = page.locator(".transcript");
+    const disclosure = transcript.locator('[data-slot="artifact-disclosure"]');
+    const iframe = disclosure.locator("iframe");
+    const content = iframe.contentFrame();
+    await expect(disclosure.locator('[data-widget-view-ready="true"]')).toHaveCount(1);
+    await wheel(page, transcript, -500);
+    await expect(content.getByRole("heading", { name: "Saved widget content" })).toBeVisible();
+    await expect(disclosure.locator('[data-widget-view-ready="true"]')).toHaveCount(1);
+    const saved = await anchor(transcript);
+    const initialTop = await top(transcript);
+    const originalSrc = await iframe.getAttribute("src");
+    for (let step = 0; step < 12; step++) {
+      await command(page, step % 3 === 0 ? "activity" : "stream");
+      await expect.poll(() => anchor(transcript)).toEqual(saved);
+      // Record both native scrolling and item coordinates: a virtual padding
+      // shift can move the reader even when scrollTop has not changed.
+      expect(await top(transcript)).toBe(initialTop);
+      await expect(content.getByRole("heading", { name: "Saved widget content" })).toBeVisible();
+      expect(await iframe.getAttribute("src")).toBe(originalSrc);
+    }
+    const collapse = disclosure.getByRole("button", { name: "Scroll widget Collapse" });
+    await collapse.focus();
+    await collapse.press("Enter");
+    await expect(iframe).toHaveCount(0);
+    const expand = disclosure.getByRole("button", { name: "Scroll widget Expand" });
+    await expand.focus();
+    await expand.press("Enter");
+    await expect(content.getByRole("heading", { name: "Saved widget content" })).toBeVisible();
+    await expect(disclosure.locator('[data-widget-view-ready="true"]')).toHaveCount(1);
+    // Leave the virtual range entirely, then return via a user gesture. A new
+    // mount must hydrate and paint without requiring an extra corrective scroll.
+    await wheel(page, transcript, -10000);
+    await expect(iframe).toHaveCount(0);
+    await wheel(page, transcript, initialTop - (await top(transcript)));
+    await expect(content.getByRole("heading", { name: "Saved widget content" })).toBeVisible();
+    await expect(disclosure.locator('[data-widget-view-ready="true"]')).toHaveCount(1);
+    await command(page, "jump");
+    for (let step = 0; step < 4; step++) {
+      await command(page, "stream");
+      await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+    }
+  });
+});
 
 test.describe("short transcript", () => {
   test.use({ messageCount: 2 });

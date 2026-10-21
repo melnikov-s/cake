@@ -1,8 +1,9 @@
 /** @vitest-environment jsdom */
-import { act, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { CakeArtifactV1 } from "../../../src/contracts/artifacts/artifact-contract";
 import type { CompiledInlineWidget } from "../../../src/contracts/widgets/inline-widget-contract";
+import type { Client } from "../../../src/renderer/client/Client";
 import { WidgetArtifact } from "../../../src/renderer/components/widget-artifact";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
@@ -29,6 +30,89 @@ const publication = (sequence: number): CompiledInlineWidget => {
 };
 
 describe("mounted widget publication lifetime", () => {
+  it("reports a silent browser startup failure and retries the same saved output with a fresh capability", async () => {
+    vi.useFakeTimers();
+    let sequence = 0;
+    const open = vi.fn<Client["inlineWidgets"]["open"]>(async () => publication(++sequence));
+    const release = vi.fn(async () => {});
+    const fixture = createRendererStoreFixture({ client: { inlineWidgets: { open, release } } });
+    const view = render(
+      <WidgetArtifact artifact={artifact()} inlineWidgets={fixture.root.inlineWidgetStore} />,
+    );
+    try {
+      await act(async () => {});
+      const firstFrame = view.container.querySelector("iframe")!;
+      expect(firstFrame).not.toBeNull();
+      // A ready message from another window cannot mask a failed navigation.
+      act(() =>
+        window.dispatchEvent(
+          new MessageEvent("message", {
+            source: window,
+            data: {
+              source: "cake-inline-widget",
+              token: publication(1).token,
+              type: "ready",
+              value: true,
+            },
+          }),
+        ),
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000);
+      });
+      expect(view.getByText("Widget view unavailable")).toBeDefined();
+      expect(view.getByText(/did not finish loading/)).toBeDefined();
+      expect(view.getByText("Widget fallback")).toBeDefined();
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "Retry view" }));
+      });
+      const currentFrame = view.container.querySelector("iframe")!;
+      expect(currentFrame.getAttribute("src")).toContain(publication(2).token);
+      expect(open.mock.calls.map((args) => args[0])).toEqual([
+        artifact().payload.browser,
+        artifact().payload.browser,
+      ]);
+      expect(release).toHaveBeenCalledExactlyOnceWith(publication(1).token);
+      // A stale frame/token cannot complete this new mount either.
+      act(() =>
+        window.dispatchEvent(
+          new MessageEvent("message", {
+            source: firstFrame.contentWindow,
+            data: {
+              source: "cake-inline-widget",
+              token: publication(1).token,
+              type: "ready",
+              value: true,
+            },
+          }),
+        ),
+      );
+      expect(view.container.querySelector('[data-widget-view-ready="true"]')).toBeNull();
+      act(() =>
+        window.dispatchEvent(
+          new MessageEvent("message", {
+            source: currentFrame.contentWindow,
+            data: {
+              source: "cake-inline-widget",
+              token: publication(2).token,
+              type: "ready",
+              value: true,
+            },
+          }),
+        ),
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(view.container.querySelector('[data-widget-view-ready="true"]')).not.toBeNull();
+      expect(view.queryByText("Widget view unavailable")).toBeNull();
+    } finally {
+      view.unmount();
+      fixture[Symbol.dispose]();
+      vi.useRealTimers();
+    }
+  });
+
   it("releases a pending result after the Store tree and its Context have been disposed", async () => {
     let complete: ((value: CompiledInlineWidget) => void) | undefined;
     const open = vi.fn(

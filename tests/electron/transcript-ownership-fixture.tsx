@@ -14,14 +14,74 @@ import type {
   UiPart,
 } from "../../src/contracts/conversations/session-contract";
 
+import type { CompiledInlineWidget } from "../../src/contracts/widgets/inline-widget-contract";
+import { decodeArtifactLineageId } from "../../src/contracts/artifacts/artifact-lineage";
+import type { ArtifactRevision } from "../../src/contracts/artifacts/artifact-lineage";
+
+const parameters = new URLSearchParams(location.search);
+const widget = JSON.parse(parameters.get("widget") ?? "null") as CompiledInlineWidget | null;
+const widgetRevision: ArtifactRevision = {
+  lineageId: decodeArtifactLineageId("scroll-widget"),
+  metadata: {
+    revision: 1,
+    digest: "a".repeat(64),
+    kind: "widget",
+    publishedAt: new Date(0).toISOString(),
+    publishedBySessionId: "ownership",
+    workingDirectory: "/project",
+  },
+  snapshot: {
+    protocol: "cake.artifact/v1",
+    id: "scroll-widget",
+    sessionId: "ownership",
+    revision: 1,
+    kind: "widget",
+    title: "Scroll widget",
+    payload: {
+      language: "react",
+      source: "",
+      brief: "Scroll fixture",
+      generationSessionId: "fixture",
+      browser: { digest: "a".repeat(64) },
+    },
+    fallback: { markdown: "Scroll widget fallback" },
+    interaction: { mode: "present" },
+  },
+};
 const fixture = createRendererStoreFixture({
+  client: widget
+    ? {
+        inlineWidgets: { open: async () => widget },
+        artifacts: {
+          stateRead: async () => ({
+            lineageId: widgetRevision.lineageId,
+            version: 1,
+            value: { title: "Saved widget content" },
+          }),
+          referenceMetadata: async () => ({
+            lineage: {
+              id: widgetRevision.lineageId,
+              title: "Scroll widget",
+              createdAt: widgetRevision.metadata.publishedAt,
+              latestRevision: 1,
+              latest: widgetRevision.metadata,
+              stableRef: "cake://artifact/scroll-widget",
+            },
+            revision: widgetRevision.metadata,
+            links: [],
+            stableRef: "cake://artifact/scroll-widget",
+            exactRef: "cake://artifact/scroll-widget@r1",
+          }),
+        },
+      }
+    : undefined,
   projects: [projectRecord({ path: "/project", name: "Project" })],
   sessions: [sessionSummary({ sessionId: "ownership", projectPath: "/project" })],
 });
 const session = fixture.root.sessionRegistry.load("ownership", "/project");
 const store = session.conversationSessionStore.chatStore;
 let revision = 0;
-const parameters = new URLSearchParams(location.search);
+if (widget) fixture.models.artifacts.upsertRevision(widgetRevision);
 const count = Number(parameters.get("count") ?? 48);
 const chatMode = parameters.get("chatMode");
 let parts: UiPart[] = Array.from({ length: count }, (_, index) => ({
@@ -31,6 +91,17 @@ let parts: UiPart[] = Array.from({ length: count }, (_, index) => ({
   status: "complete",
   text: `Message ${index}. ${"Reading context. ".repeat(20)}`,
 }));
+if (widget)
+  parts.splice(count - 2, 0, {
+    kind: "tool",
+    id: "widget-publication",
+    name: "cake",
+    input: "widgets.present",
+    state: "success",
+    output: "Published",
+    artifactId: "scroll-widget",
+    artifactReference: "cake://artifact/scroll-widget@r1",
+  });
 const snapshot: ConversationSnapshot = {
   sessionId: "ownership",
   workspacePath: "/project",
@@ -65,6 +136,14 @@ function render() {
         ) : (
           <ChatTranscript
             store={store}
+            behavior={
+              widget
+                ? {
+                    inlineWidgets: fixture.root.inlineWidgetStore,
+                    inlineArtifactPreviews: fixture.root.inlineArtifactPreviewStore,
+                  }
+                : undefined
+            }
             ref={(value) => {
               handle = value;
             }}

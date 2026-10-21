@@ -30,6 +30,7 @@ export class InlineWidgetStore extends Store {
       return () => {
         for (const [id, state] of Object.entries(this.states)) {
           if (state.compiled) void widgets.release(state.compiled.token).catch(() => undefined);
+          this.clearBrowserReadyDeadline(id);
           delete this.states[id];
         }
         this.revisions.clear();
@@ -43,6 +44,7 @@ export class InlineWidgetStore extends Store {
 
   /** Each mounted surface owns its compilation, including any still-pending result. */
   release(id: string) {
+    this.clearBrowserReadyDeadline(id);
     this.releaseCompiled(this.states[id]?.compiled);
     delete this.states[id];
     this.revisions.delete(id);
@@ -152,6 +154,25 @@ export class InlineWidgetStore extends Store {
 
   readonly states: Record<string, InlineWidgetState> = observable({});
   private readonly revisions = new Map<string, number>();
+  private readonly browserReadyDeadlines = new Map<string, ReturnType<typeof setTimeout>>();
+
+  private clearBrowserReadyDeadline(id: string) {
+    clearTimeout(this.browserReadyDeadlines.get(id));
+    this.browserReadyDeadlines.delete(id);
+  }
+
+  /** Only the owning frame's authenticated ready message completes a browser mount. */
+  browserViewReady(id: string, token: string) {
+    if (this.states[id]?.compiled?.token === token) this.clearBrowserReadyDeadline(id);
+  }
+
+  /** Retry the accepted immutable browser output, never regenerate or recompile source. */
+  retryBrowserView(id: string) {
+    const browser = this.states[id]?.browser;
+    if (!browser) return;
+    this.release(id);
+    this.prepareBrowser(id, browser);
+  }
 
   state(id: string) {
     return this.states[id];
@@ -162,6 +183,7 @@ export class InlineWidgetStore extends Store {
     for (const [id, state] of Object.entries(this.states)) {
       const revision = (this.revisions.get(id) ?? 0) + 1;
       this.revisions.set(id, revision);
+      this.clearBrowserReadyDeadline(id);
       this.releaseCompiled(state.compiled);
       state.compiled = undefined;
       state.diagnostic = undefined;
@@ -212,6 +234,7 @@ export class InlineWidgetStore extends Store {
   reportRuntimeError(id: string, diagnostic: string) {
     const state = this.states[id];
     if (!state) return;
+    this.clearBrowserReadyDeadline(id);
     state.status = "error";
     state.diagnostic = diagnostic;
   }
@@ -237,6 +260,20 @@ export class InlineWidgetStore extends Store {
       state.compiled = compiled;
       state.status = "ready";
       state.diagnostic = undefined;
+      if (state.browser) {
+        // A successful open publishes a URL, not proof that its iframe loaded.
+        // Navigation failures do not necessarily emit a widget runtime error.
+        this.browserReadyDeadlines.set(
+          id,
+          setTimeout(() => {
+            if (this.states[id] === state && state.compiled?.token === compiled.token)
+              this.reportRuntimeError(
+                id,
+                "The widget did not finish loading. Retry this view to open the same saved revision again.",
+              );
+          }, 15_000),
+        );
+      }
     } catch (error) {
       if (this.signal.aborted || this.revisions.get(id) !== revision || this.states[id] !== state)
         return;
