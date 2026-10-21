@@ -1,8 +1,12 @@
 import { useId } from "react";
 import { observer } from "r-state-tree/react";
 import type { MessageReferencePreviewStore } from "../stores/MessageReferencePreviewStore";
-import { messageNavigationTarget } from "../../contracts/conversations/message-reference";
-import { Markdown, useMarkdownLinkActions } from "./ai-elements/markdown";
+import {
+  attachmentLink,
+  messageNavigationTarget,
+} from "../../contracts/conversations/message-reference";
+import { Markdown, MarkdownLinkProvider, useMarkdownLinkActions } from "./ai-elements/markdown";
+import { MarkdownImage } from "./markdown-image";
 import { Button } from "./ui/button";
 import { Callout } from "./ui/callout";
 import { CopyButton } from "./ui/copy-button";
@@ -10,7 +14,7 @@ import { DisclosureTrigger } from "./ui/disclosure-trigger";
 import { Link } from "./ui/link";
 import { LoadingState } from "./ui/loading-state";
 
-/** A reference to Pi's original, never a second transcript or an attachment read. */
+/** A user-expanded reference to Pi's original, never a second transcript. */
 export const InlineMessageSource = observer(function InlineMessageSource({
   store,
 }: {
@@ -74,16 +78,37 @@ export const InlineMessageSource = observer(function InlineMessageSource({
             </Callout>
           ) : page ? (
             <>
-              <Markdown renderImages={false}>{page.text || "No textual content."}</Markdown>
-              {(page.message.hasImages || page.message.inputRefs.length > 0) && (
+              <MarkdownLinkProvider
+                actions={{
+                  openExternalUrl: (url) => actions?.openExternalUrl(url),
+                  openSession: (sessionId, messageId, attachmentId) =>
+                    actions?.openSession(sessionId, messageId, attachmentId),
+                  ...actions,
+                  loadWorkspaceImage: store.loadWorkspaceImage,
+                  loadAttachmentImage: store.loadAttachmentImage,
+                }}
+              >
+                <Markdown>{page.text || "No textual content."}</Markdown>
+              </MarkdownLinkProvider>
+              {page.message.inputRefs.map((input) =>
+                ["image/png", "image/jpeg", "image/gif", "image/webp"].includes(input.mimeType) ? (
+                  <MarkdownImage
+                    key={input.id}
+                    alt={input.name}
+                    resourcePath={attachmentLink(page.message.sessionId, input.id)}
+                    loadImage={store.loadAttachmentImage}
+                    caption={input.name}
+                  />
+                ) : (
+                  <div key={input.id} className="break-words text-xs text-muted-foreground">
+                    {input.name} · {input.mimeType} · {input.byteLength} bytes
+                  </div>
+                ),
+              )}
+              {page.message.hasImages && page.message.inputRefs.length === 0 && (
                 <Callout>
-                  <strong>Attachment metadata only</strong>
-                  Images and attachments are not loaded or inspected by this view.
-                  {page.message.inputRefs.map((input) => (
-                    <div key={input.id} className="break-words">
-                      {input.name} · {input.mimeType} · {input.byteLength} bytes
-                    </div>
-                  ))}
+                  Embedded image pixels are not available from this source reader. Open the original
+                  message to view them.
                 </Callout>
               )}
               {(page.offset > 0 || page.nextOffset !== null) && (

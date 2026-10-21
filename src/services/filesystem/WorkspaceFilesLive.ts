@@ -94,11 +94,8 @@ export const makeWorkspaceFilesLive = (agentDirectory: string) =>
       const readWorkspaceImage = Effect.fn("WorkspaceFiles.readImage")(
         function* (_connectionId, request) {
           yield* requireAllowed(request.workspacePath);
-          if (isAbsolute(request.path))
-            return yield* new WorkspaceFileError({
-              operation: "readImage",
-              message: "Workspace image path must be relative",
-            });
+          // Reports may use absolute screenshot paths. They still must resolve
+          // inside this authorized source workspace, including through symlinks.
           const image = yield* Effect.tryPromise({
             try: async () => {
               const workspace = await realpath(request.workspacePath);

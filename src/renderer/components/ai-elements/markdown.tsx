@@ -64,6 +64,10 @@ type MarkdownLinkActions = {
     path: string,
     signal: AbortSignal,
   ): Promise<{ readonly data: string; readonly mimeType: string }>;
+  loadAttachmentImage?(
+    reference: string,
+    signal: AbortSignal,
+  ): Promise<{ readonly data: string; readonly mimeType: string }>;
   renderArtifactReference?(reference: string, label?: ReactNode): ReactNode;
   renderArtifactEmbed?(reference: string, label?: string, surfaceId?: string): ReactNode;
 };
@@ -137,7 +141,7 @@ function artifactReferenceFromHref(href: string) {
 }
 
 /** Makes Cake session links and workspace source references parseable and clickable. */
-function prepareMarkdownLinks(markdown: string, sourceLinks: boolean) {
+function prepareMarkdownLinks(markdown: string, sourceLinks: boolean, workspaceImages: boolean) {
   return markdown
     .split(protectedMarkdown)
     .map((segment, index) => {
@@ -151,7 +155,12 @@ function prepareMarkdownLinks(markdown: string, sourceLinks: boolean) {
             const artifactReference = artifactReferenceFromHref(target);
             if (artifactReference)
               return `](${artifactPathPrefix}${encodeURIComponent(artifactReference)})`;
-            return sourceLinks && parseSourceLocation(target) ? `](${sourceHref(target)})` : match;
+            // Streamdown blocks bare relative image URLs before our renderer sees
+            // them. Rewrite only workspace paths handled by Cake's authorized reader.
+            return (sourceLinks || (workspaceImages && segment.startsWith("!["))) &&
+              parseSourceLocation(target)
+              ? `](${sourceHref(target)})`
+              : match;
           },
         );
       }
@@ -472,8 +481,6 @@ export type MarkdownProps = Omit<
   normalizeLatexDelimiters?: boolean;
   /** Exact references already rendered at their publication position in this conversation. */
   omitArtifactEmbeds?: readonly string[];
-  /** Exact-source evidence must not resolve image paths against the viewing conversation. */
-  renderImages?: boolean;
   /** Invoked when the reader selects a workspace source reference. */
   onOpenSourceLocation?(location: SourceLocation): void;
 };
@@ -552,7 +559,6 @@ function MarkdownRenderer({
   mutableCode = false,
   normalizeLatexDelimiters = true,
   omitArtifactEmbeds,
-  renderImages = true,
   onOpenSourceLocation,
   richPlugins,
   ...props
@@ -577,6 +583,7 @@ function MarkdownRenderer({
   const source = prepareMarkdownLinks(
     normalizeLatexDelimiters ? normalizeLatexMathDelimiters(children) : children,
     Boolean(onOpenSourceLocation),
+    Boolean(linkActions?.loadWorkspaceImage),
   );
   // Streaming updates are lower priority than scrolling and other input. Keeping
   // Streamdown on its previous source during the urgent render also lets React
@@ -622,7 +629,6 @@ function MarkdownRenderer({
         // images mixed with text retain their ordinary inline link behavior.
         const image = node?.children.length === 1 ? node.children[0] : undefined;
         if (
-          renderImages &&
           image?.type === "element" &&
           image.tagName === "img" &&
           linkActions?.renderArtifactEmbed
@@ -657,25 +663,33 @@ function MarkdownRenderer({
         );
       },
       img(allProps: ImageProps) {
-        if (!renderImages) return <span>[Image: {allProps.alt || "unnamed"} — not loaded]</span>;
         const props = { ...allProps };
         delete props.node;
         const src = props.src;
         const artifactReference = src ? artifactReferenceFromHref(src) : undefined;
         const workspacePath = src ? workspaceImagePathFromSrc(src) : undefined;
+        const attachment = src ? sessionTargetFromHref(src) : undefined;
+        const attachmentReference = attachment?.attachmentId
+          ? sessionLink(attachment.sessionId, undefined, attachment.attachmentId)
+          : undefined;
         return (
           <MarkdownImage
             {...props}
             key={src}
             artifactReference={artifactReference}
-            workspacePath={workspacePath}
-            loadWorkspaceImage={linkActions?.loadWorkspaceImage}
+            resourcePath={attachmentReference ?? workspacePath}
+            caption={workspacePath}
+            loadImage={
+              attachmentReference
+                ? linkActions?.loadAttachmentImage
+                : linkActions?.loadWorkspaceImage
+            }
             renderArtifactReference={linkActions?.renderArtifactReference}
           />
         );
       },
     };
-  }, [linkActions, omitArtifactEmbeds, renderImages, onOpenSourceLocation]);
+  }, [linkActions, omitArtifactEmbeds, onOpenSourceLocation]);
   return (
     <>
       <div className="contents" onClickCapture={openMermaidFullscreen}>

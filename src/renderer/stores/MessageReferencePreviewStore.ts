@@ -3,6 +3,7 @@ import {
   decodeMessageReadResult,
   messageNavigationTarget,
   messageReference,
+  parseSessionLink,
   type MessageReadResult,
 } from "../../contracts/conversations/message-reference";
 import { ClientContext } from "./context/ClientContext";
@@ -40,6 +41,29 @@ export class MessageReferencePreviewStore extends Store<{
       throw new Error("The source reader returned a different message or page");
     return page;
   }
+
+  /** Resolve against the producer, including sources absent from the viewer's catalog. */
+  loadWorkspaceImage = async (path: string, signal: AbortSignal) => {
+    const sessionId = this.page?.message.sessionId;
+    if (!sessionId) throw new Error("No original message is loaded");
+    const client = ClientContext.consume(this)!;
+    const source = await client.projectSessions.lookup({ sessionId }, { signal });
+    signal.throwIfAborted();
+    return client.filesystem.readImage(source.workingDirectory, path, { signal });
+  };
+
+  loadAttachmentImage = async (reference: string, signal: AbortSignal) => {
+    const target = parseSessionLink(reference);
+    const sessionId = this.page?.message.sessionId;
+    if (!sessionId || target?.sessionId !== sessionId || !target.attachmentId)
+      throw new Error("Image attachment must belong to the original session");
+    const content = await ClientContext.consume(this)!.sessionChats.readAttachment(
+      { sessionId, reference: target.attachmentId },
+      { signal },
+    );
+    if (content.kind !== "image") throw new Error("Attachment is not a supported image");
+    return content;
+  };
 
   /** Read the complete original without moving the reader's current page. */
   async textForCopy() {

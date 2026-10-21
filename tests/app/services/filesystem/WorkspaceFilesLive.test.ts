@@ -80,13 +80,30 @@ describe("WorkspaceFilesLive", () => {
           });
           expect(image).toEqual({ data: "AQID", mimeType: "image/png" });
 
-          const escaped = yield* Effect.result(
-            files.readImage(1, {
+          expect(
+            yield* files.readImage(1, {
               workspacePath: workspace,
-              path: ".visual-captures/external.png",
+              path: join(workspace, ".visual-captures", "capture.png"),
             }),
+          ).toEqual(image);
+          yield* Effect.promise(() => writeFile(join(workspace, "script.svg"), "<svg/>"));
+          yield* Effect.promise(() =>
+            writeFile(join(workspace, "huge.png"), Buffer.alloc(8 * 1_024 * 1_024 + 1)),
           );
-          expect(escaped._tag).toBe("Failure");
+          for (const path of [
+            ".visual-captures/external.png",
+            join(workspace, ".visual-captures", "external.png"),
+            "../outside.png",
+            outside,
+            "script.svg",
+            "huge.png",
+            "missing.png",
+          ]) {
+            const escaped = yield* Effect.result(
+              files.readImage(1, { workspacePath: workspace, path }),
+            );
+            expect(escaped._tag, path).toBe("Failure");
+          }
         }).pipe(Effect.provide(workspaceFilesLayer)),
       (root) => Effect.promise(() => rm(root, { recursive: true, force: true })),
     ),

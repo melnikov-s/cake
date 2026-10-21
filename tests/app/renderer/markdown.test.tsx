@@ -343,6 +343,24 @@ describe("Markdown rendering integration", () => {
     expect(signal?.aborted).toBe(true);
   });
 
+  it("resolves workspace images without requiring an editor action, but never rewrites schemes as filesystem paths", async () => {
+    const loadWorkspaceImage = vi.fn(async () => ({ data: "AQID", mimeType: "image/png" }));
+    using fixture = renderMarkdown(
+      "![Screenshot](.visual-captures/report.png)\n\n![Local file](file:///private/image.png)\n\n![Script](javascript:alert)\n\n![Unknown](custom:private.png)",
+      { actions: { loadWorkspaceImage } },
+    );
+    expect((await fixture.findByRole("img", { name: "Screenshot" })).getAttribute("src")).toBe(
+      "data:image/png;base64,AQID",
+    );
+    expect(loadWorkspaceImage).toHaveBeenCalledExactlyOnceWith(
+      ".visual-captures/report.png",
+      expect.any(AbortSignal),
+    );
+    expect(screen.queryByRole("img", { name: "Local file" })).toBeNull();
+    expect(screen.queryByRole("img", { name: "Script" })).toBeNull();
+    expect(screen.queryByRole("img", { name: "Unknown" })).toBeNull();
+  });
+
   it("keeps parsed fullscreen table cells and link actions when streaming settles", async () => {
     const openExternalUrl = vi.fn<Client["electron"]["openExternalUrl"]>(async () => undefined);
     const source = "| Content |\n| --- |\n| **Formatted** [Source](https://example.com/source) |";

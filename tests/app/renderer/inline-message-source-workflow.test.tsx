@@ -6,7 +6,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMessageOperations } from "../../../src/domain/conversations/cake-message-operations";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { readMessageReference } from "../../../src/services/pi/runtime/message-references";
-import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
+import {
+  projectSessionEntries,
+  promptText,
+} from "../../../src/services/pi/runtime/session-projection";
+import { attachmentLink } from "../../../src/contracts/conversations/message-reference";
+import type { Client } from "../../../src/renderer/client/Client";
 import { messageNavigationTarget } from "../../../src/contracts/conversations/message-reference";
 import {
   encodeCrossSessionMessage,
@@ -35,6 +40,157 @@ const usage = {
 };
 
 describe("exact response presentation", () => {
+  it("loads report images lazily in the producer's workspace and attachment context, including after reopening", async () => {
+    const source = SessionManager.inMemory("/producer-worktree");
+    const attachment = {
+      kind: "input" as const,
+      id: crypto.randomUUID(),
+      name: "Attached evidence.png",
+      mimeType: "image/png",
+      byteLength: 3,
+    };
+    const deniedId = crypto.randomUUID();
+    const entryId = source.appendMessage({
+      role: "user",
+      timestamp: 1,
+      content: promptText(
+        [
+          "## Image evidence",
+          "![Screenshot](.visual-captures/screen.png)",
+          "![Absolute screenshot](/producer-worktree/screen.png)",
+          "![Missing](missing.png)",
+          `![Linked attachment](${attachmentLink(source.getSessionId(), attachment.id)})`,
+          `![Denied attachment](${attachmentLink(source.getSessionId(), deniedId)})`,
+          `![Wrong session](${attachmentLink("viewer", attachment.id)})`,
+        ].join("\n\n"),
+        [attachment],
+      ),
+    });
+    const original = readMessageReference(source, { entryId });
+    const parent = SessionManager.inMemory("/viewer");
+    parent.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: `[Report](${original.message.ref})` }],
+      api: "openai-responses",
+      provider: "openai",
+      model: "fixture",
+      timestamp: 2,
+      usage,
+      stopReason: "stop",
+    });
+    const lookup = vi.fn<Client["projectSessions"]["lookup"]>(async () =>
+      sessionSummary({
+        sessionId: source.getSessionId(),
+        projectPath: "/project",
+        workingDirectory: "/producer-worktree",
+      }),
+    );
+    const readImage = vi.fn<Client["filesystem"]["readImage"]>(async (_directory, path) => {
+      if (path === "missing.png") throw new Error("Screenshot no longer exists");
+      return { data: "AQID", mimeType: "image/png" };
+    });
+    const readAttachment = vi.fn<Client["sessionChats"]["readAttachment"]>(
+      async ({ reference }) => {
+        if (reference !== attachment.id) throw new Error("Attachment unavailable or unauthorized");
+        return { kind: "image", reference: attachment, data: "BAUG", mimeType: "image/png" };
+      },
+    );
+    using fixture = createRendererStoreFixture({
+      projects: [projectRecord({ path: "/project" })],
+      sessions: [
+        sessionSummary({
+          sessionId: "viewer",
+          projectPath: "/project",
+          workingDirectory: "/viewer",
+        }),
+      ],
+      client: {
+        projectSessions: { lookup },
+        filesystem: { readImage },
+        sessionChats: { inspect: async () => original, readAttachment },
+      },
+    });
+    const session = fixture.root.sessionRegistry.load("viewer", "/viewer");
+    applyConversationUpdate(session.model, {
+      _tag: "Snapshot",
+      revision: 1,
+      snapshot: {
+        sessionId: "viewer",
+        sessionFile: "/viewer.jsonl",
+        parts: projectSessionEntries(parent.getEntries()),
+        models: [],
+        thinkingLevel: "off",
+        availableThinkingLevels: ["off"],
+        streaming: false,
+        diagnostics: [],
+        commands: [],
+        compatibility: { resources: [], diagnostics: [] },
+        extensionUi: { statuses: [] },
+        tree: [],
+      },
+    });
+    const view = render(
+      <Chat
+        store={session.conversationSessionStore.chatStore}
+        compact
+        composerFocusEnabled={false}
+      />,
+    );
+    const user = userEvent.setup();
+    const disclosure = screen.getByRole("button", { name: /Full agent response/ });
+    expect(readImage).not.toHaveBeenCalled();
+    expect(readAttachment).not.toHaveBeenCalled();
+    for (let opening = 0; opening < 2; opening++) {
+      await user.click(disclosure);
+      expect(await screen.findByRole("heading", { name: "Image evidence" })).toBeTruthy();
+      for (const name of [
+        "Screenshot",
+        "Absolute screenshot",
+        "Linked attachment",
+        attachment.name,
+      ])
+        expect((await screen.findByRole("img", { name })).getAttribute("src")).toMatch(
+          /^data:image\/png;base64,/,
+        );
+      expect(await screen.findByText("Image not available: Missing")).toHaveProperty(
+        "title",
+        "Screenshot no longer exists",
+      );
+      expect(await screen.findByText("Image not available: Denied attachment")).toHaveProperty(
+        "title",
+        "Attachment unavailable or unauthorized",
+      );
+      expect(await screen.findByText("Image not available: Wrong session")).toHaveProperty(
+        "title",
+        "Image attachment must belong to the original session",
+      );
+      await user.click(disclosure);
+      expect(screen.queryByRole("img", { name: "Screenshot" })).toBeNull();
+    }
+    const readsBeforeUnavailableSource = readImage.mock.calls.length;
+    lookup.mockRejectedValue(new Error("Producer workspace unavailable"));
+    await user.click(disclosure);
+    expect(await screen.findByText("Image not available: Screenshot")).toHaveProperty(
+      "title",
+      "Producer workspace unavailable",
+    );
+    expect(readImage).toHaveBeenCalledTimes(readsBeforeUnavailableSource);
+    expect(lookup).toHaveBeenCalledWith(
+      { sessionId: source.getSessionId() },
+      { signal: expect.any(AbortSignal) },
+    );
+    expect(readImage.mock.calls.every(([directory]) => directory === "/producer-worktree")).toBe(
+      true,
+    );
+    expect(
+      readAttachment.mock.calls.every(([request]) => request.sessionId === source.getSessionId()),
+    ).toBe(true);
+    expect(readAttachment.mock.calls.some(([request]) => request.reference === deniedId)).toBe(
+      true,
+    );
+    view.unmount();
+  });
+
   it("persists only source metadata, lazily renders original formatting and pages without opening the producer", async () => {
     const source = SessionManager.inMemory("/producer");
     const originalText =
@@ -174,8 +330,7 @@ describe("exact response presentation", () => {
     await user.click(screen.getAllByRole("button", { name: /Full agent response/ })[0]!);
     expect(await screen.findByRole("heading", { name: "Detailed result" })).toBeTruthy();
     expect(screen.getByText("Original substance").getAttribute("data-streamdown")).toBe("strong");
-    expect(await screen.findByText(/Image.*source image/)).toBeTruthy();
-    expect(screen.queryByRole("img")).toBeNull();
+    expect(await screen.findByRole("img", { name: "source image" })).toBeTruthy();
     expect(inspect).toHaveBeenLastCalledWith(
       expect.objectContaining({ entryId, maxChars: 20_000, offset: 0 }),
       expect.anything(),

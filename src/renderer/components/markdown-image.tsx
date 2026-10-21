@@ -4,8 +4,9 @@ import { ImagePreview } from "@/components/image-preview";
 type MarkdownImageProps = Omit<ComponentProps<"img">, "src"> & {
   src?: string;
   artifactReference?: string;
-  workspacePath?: string;
-  loadWorkspaceImage?(
+  resourcePath?: string;
+  caption?: string;
+  loadImage?(
     path: string,
     signal: AbortSignal,
   ): Promise<{ readonly data: string; readonly mimeType: string }>;
@@ -15,42 +16,53 @@ type MarkdownImageProps = Omit<ComponentProps<"img">, "src"> & {
 export function MarkdownImage({
   alt = "Image",
   artifactReference,
-  loadWorkspaceImage,
+  loadImage,
   renderArtifactReference,
   src,
-  workspacePath,
+  resourcePath,
+  caption,
 }: MarkdownImageProps) {
   const [resolvedSrc, setResolvedSrc] = useState<string>();
-  const [unavailable, setUnavailable] = useState(false);
+  const [error, setError] = useState<string>();
 
   useEffect(() => {
-    if (!workspacePath || !loadWorkspaceImage) return;
+    setResolvedSrc(undefined);
+    setError(undefined);
+    if (!resourcePath) return;
+    if (!loadImage) {
+      setError("No image source is available");
+      return;
+    }
     const controller = new AbortController();
-    void loadWorkspaceImage(workspacePath, controller.signal).then(
+    void loadImage(resourcePath, controller.signal).then(
       ({ data, mimeType }) => {
         if (!controller.signal.aborted) setResolvedSrc(`data:${mimeType};base64,${data}`);
       },
-      () => {
-        if (!controller.signal.aborted) setUnavailable(true);
+      (cause) => {
+        if (!controller.signal.aborted)
+          setError(cause instanceof Error ? cause.message : String(cause));
       },
     );
     return () => controller.abort();
-  }, [loadWorkspaceImage, workspacePath]);
+  }, [loadImage, resourcePath]);
 
   if (artifactReference && renderArtifactReference)
     return renderArtifactReference(artifactReference, alt);
-  if (unavailable)
+  if (error)
     return (
-      <span className="inline-flex rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+      <span
+        title={error}
+        className="inline-flex rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
+      >
         Image not available: {alt}
       </span>
     );
-  const displaySrc = workspacePath ? resolvedSrc : src;
+  const displaySrc = resourcePath ? resolvedSrc : src;
   if (!displaySrc)
     return (
       <span className="inline-flex rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
         Loading image…
       </span>
     );
-  return <ImagePreview src={displaySrc} alt={alt} caption={workspacePath} />;
+  return <ImagePreview src={displaySrc} alt={alt} caption={caption} />;
 }

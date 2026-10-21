@@ -112,8 +112,10 @@ supplies the addressable session identity. Original-message previews reuse `Full
 [`InlineMessageSource`](../../src/renderer/components/inline-message-source.tsx) composes
 `DisclosureTrigger`, shared Markdown and pagination for lazy **Full agent response**
 access within the parent conversation. It reuses `MessageReferencePreviewStore`;
-only the exact reference persists in Pi, never the retrieved body. Images stay unloaded
-and attachment metadata is explicitly uninspected.
+only the exact reference persists in Pi, never the retrieved body. Expanding loads supported
+Markdown and attachment images through the producer's authorized Working Directory and
+attachment context, never the viewer's active project. Other attachments remain metadata;
+inline Pi image blocks without vault references show an explicit source-reader limitation.
 [`AttachmentReference`](../../src/renderer/components/ui/attachment-reference.tsx) presents
 a metadata-only file/input link with the same copy affordance; previews fetch the
 original through the session-authorized attachment boundary, never a backend path.

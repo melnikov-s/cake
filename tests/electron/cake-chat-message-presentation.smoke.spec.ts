@@ -10,8 +10,8 @@ import { createModels } from "@earendil-works/pi-durable-ai";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { _electron as electron, expect, test } from "@playwright/test";
-import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
@@ -49,14 +49,51 @@ for (const [delivery, theme] of [
     let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
     try {
       await findVisualCaptureScenario("assistant-markdown-code")!.seed(paths, theme);
+      // The producer is not the viewer's active project/workspace.
+      const producer = join(root, "producer-workspace");
+      await mkdir(join(producer, ".visual-captures"), { recursive: true });
+      const applicationPath = join(paths.cakeHome, "state", "application.json");
+      const state = JSON.parse(await readFile(applicationPath, "utf8"));
+      state.projects.push({ ...state.projects[0], path: producer, name: "Producer" });
+      state.trustedProjectPaths.push(producer);
+      await writeFile(applicationPath, JSON.stringify(state));
+      const pixels =
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=";
+      const screenshot = join(producer, ".visual-captures", "report.png");
+      await writeFile(screenshot, Buffer.from(pixels, "base64"));
       const source = SessionManager.create(
-        paths.project,
-        cakeWorkspaceSessionDirectory(paths.project, join(paths.cakeHome, "pi", "sessions")),
+        producer,
+        cakeWorkspaceSessionDirectory(producer, join(paths.cakeHome, "pi", "sessions")),
+      );
+      const imageId = randomUUID();
+      const vault = join(paths.cakeHome, "state", "task-inputs", "inputs");
+      await mkdir(join(vault, imageId), { recursive: true });
+      const reference = {
+        kind: "input",
+        id: imageId,
+        name: "Attached report.png",
+        mimeType: "image/png",
+        byteLength: Buffer.from(pixels, "base64").length,
+      };
+      await writeFile(
+        join(vault, `${imageId}.json`),
+        JSON.stringify({ ownerSessionId: source.getSessionId(), reference }),
+      );
+      await writeFile(
+        join(vault, imageId, "payload.json"),
+        JSON.stringify({
+          kind: "image",
+          name: reference.name,
+          mimeType: "image/png",
+          data: pixels,
+          inputReference: reference,
+        }),
       );
       source.appendSessionInfo("Detailed delegated review");
       source.appendMessage({ role: "user", content: "Review the subsystem", timestamp: 1 });
       const originalText =
         "## Original detailed findings\n\n**Substance stays in Pi.**\n\n```ts\nconst evidence = 'original';\n```\n\n" +
+        `![Relative screenshot](.visual-captures/report.png)\n\n![Absolute screenshot](${screenshot})\n\n![Attachment pixels](cake://session/${source.getSessionId()}?attachment=${imageId})\n\n![Missing screenshot](missing.png)\n\n` +
         "Detailed review. ".repeat(1400) +
         "\n\nLast original finding.";
       const entryId = source.appendMessage({
@@ -243,6 +280,22 @@ for (const [delivery, theme] of [
           "const evidence",
         );
         await expect(first).toHaveAttribute("data-message-reference", metadata.ref);
+        const verifyImages = async () => {
+          for (const name of ["Relative screenshot", "Absolute screenshot", "Attachment pixels"]) {
+            const image = first.getByRole("img", { name, exact: true });
+            await expect(image).toHaveAttribute("src", `data:image/png;base64,${pixels}`);
+            await expect
+              .poll(() => image.evaluate((node: HTMLImageElement) => node.naturalWidth))
+              .toBe(1);
+          }
+          await expect(first.getByText("Image not available: Missing screenshot")).toBeVisible();
+        };
+        await verifyImages();
+        // Collapse unmounts image reads; reopening must resolve in the same source context.
+        await first.getByRole("button", { name: /Full agent response/ }).click();
+        await expect(first.getByRole("img")).toHaveCount(0);
+        await first.getByRole("button", { name: /Full agent response/ }).click();
+        await verifyImages();
         await first.getByRole("button", { name: "Next", exact: true }).click();
         await expect(first.getByText(/Last original finding/)).toBeVisible();
         await first.getByRole("button", { name: "Copy message", exact: true }).click();
