@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  useRef,
   type ButtonHTMLAttributes,
   type HTMLAttributes,
   type MouseEventHandler,
@@ -17,10 +18,19 @@ export interface NavItemProps extends Omit<HTMLAttributes<HTMLDivElement>, "onCl
   disabled?: boolean;
   /** Springy title movement on hover/selection and press; respects reduced motion. */
   motionFeedback?: boolean;
+  /** Select from non-interactive row content while keeping nested controls independent. */
+  wholeRowAction?: boolean;
   /** Action semantics for composite controls such as a searchable listbox. */
   actionProps?: Pick<
     ButtonHTMLAttributes<HTMLButtonElement>,
-    "id" | "role" | "aria-selected" | "tabIndex" | "onMouseDown"
+    | "id"
+    | "role"
+    | "aria-selected"
+    | "aria-pressed"
+    | "aria-label"
+    | "aria-disabled"
+    | "tabIndex"
+    | "onMouseDown"
   >;
   onClick?: MouseEventHandler<HTMLButtonElement>;
 }
@@ -36,6 +46,7 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
     active = false,
     disabled = false,
     motionFeedback = false,
+    wholeRowAction = false,
     actionProps,
     onClick,
     onContextMenu,
@@ -45,6 +56,7 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
   },
   ref,
 ) {
+  const actionRef = useRef<HTMLButtonElement>(null);
   return (
     <div
       ref={ref}
@@ -53,27 +65,61 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
         active
           ? "bg-sidebar-active text-primary font-semibold"
           : "text-muted-foreground hover:bg-sidebar-hover hover:text-foreground",
+        wholeRowAction && "relative",
+        wholeRowAction && !disabled && "cursor-pointer",
         disabled && "opacity-40 cursor-default hover:bg-transparent hover:text-muted-foreground",
         className,
       )}
+      onClick={
+        wholeRowAction
+          ? (event) => {
+              if (
+                disabled ||
+                actionProps?.["aria-disabled"] === true ||
+                event.defaultPrevented ||
+                !(event.target instanceof Element)
+              )
+                return;
+              if (
+                event.target.closest(
+                  "button, a, input, select, textarea, summary, [role=button], [role=link], [contenteditable=true]",
+                )
+              )
+                return;
+              actionRef.current?.focus();
+              actionRef.current?.click();
+            }
+          : undefined
+      }
       onMouseEnter={onMouseEnter}
       onContextMenu={onContextMenu}
       {...props}
     >
       <button
+        ref={actionRef}
         {...actionProps}
         type="button"
         disabled={disabled}
-        aria-current={active && actionProps?.role !== "option" ? "page" : undefined}
-        className="group/nav-action flex min-w-0 flex-1 items-center gap-2 text-left bg-transparent border-0 p-0 text-inherit cursor-pointer disabled:cursor-default outline-none"
-        onClick={onClick}
+        aria-current={
+          active && actionProps?.role !== "option" && actionProps?.["aria-pressed"] === undefined
+            ? "page"
+            : undefined
+        }
+        className={cn(
+          "group/nav-action flex min-w-0 flex-1 items-center gap-2 text-left bg-transparent border-0 p-0 text-inherit cursor-pointer disabled:cursor-default outline-none",
+          wholeRowAction &&
+            "after:pointer-events-none after:absolute after:inset-0 after:rounded-md focus-visible:after:ring-2 focus-visible:after:ring-ring focus-visible:after:ring-offset-2",
+        )}
+        onClick={(event) => {
+          if (actionProps?.["aria-disabled"] !== true) onClick?.(event);
+        }}
       >
         {icon && <span className="shrink-0 text-inherit">{icon}</span>}
         <div className="flex min-w-0 flex-1 flex-col justify-center">
           <div className="flex items-center gap-1.5">
             <span
               className={cn(
-                "truncate",
+                wholeRowAction ? "whitespace-normal break-words" : "truncate",
                 motionFeedback &&
                   !disabled &&
                   "origin-left motion-safe:transition-transform motion-safe:duration-300 motion-safe:ease-[cubic-bezier(0.22,1.12,0.36,1)] motion-safe:group-hover/nav-item:translate-x-0.5 motion-safe:group-active/nav-action:translate-y-px motion-safe:group-active/nav-action:scale-[0.985] motion-safe:group-active/nav-action:duration-75",

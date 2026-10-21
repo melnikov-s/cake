@@ -153,6 +153,11 @@ in the shared fullscreen preview; non-image attachments retain labels. Thumbnail
 are renderer presentation only: Cake Chat still admits opaque input references,
 not image payloads, to its model context.
 
+`NavItem.wholeRowAction` extends the primary action to non-interactive row content
+and whitespace without nesting controls. It retains the native action button for
+keyboard activation and focus, and supports `aria-pressed` selection and temporary
+`aria-disabled` busy states that do not blur the action.
+
 Structured work/source links reuse `MarkdownLink` from
 [`Markdown`](../../src/renderer/components/ai-elements/markdown.tsx), the same destination
 handler as conversation prose (sessions/messages/attachments, artifact references,

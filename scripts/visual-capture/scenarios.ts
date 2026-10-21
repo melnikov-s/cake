@@ -1829,8 +1829,9 @@ const projectChatHeader: VisualCaptureScenario = {
 
 const projectChatTodos: VisualCaptureScenario = {
   name: "project-chat-todos",
-  description: "Project Chat to-do accessory with compact destination-specific work links",
-  states: ["open", "done", "empty", "unselected", "links-hover", "links-focus"],
+  description:
+    "Project Chat to-do selection, session readiness and compact destination-specific work links",
+  states: ["open", "hover", "done", "empty", "unselected", "links-hover", "links-focus"],
   async seed(paths, theme) {
     await assistantMarkdownCode.seed(paths, theme);
     await writeFile(join(paths.project, "README.md"), "# Startup investigation\n");
@@ -1852,6 +1853,41 @@ const projectChatTodos: VisualCaptureScenario = {
     const file = join(paths.cakeHome, "state", "application.json");
     const state = JSON.parse(await readFile(file, "utf8"));
     const selectedId = "00000000-0000-4000-8000-000000000011";
+    const sessionDirectory = workspaceSessionDirectory(
+      paths.project,
+      join(paths.cakeHome, "pi", "sessions"),
+    );
+    const original = await readFile(
+      join(sessionDirectory, "1970-01-01T00-00-00-000Z_visual-assistant-markdown-code.jsonl"),
+      "utf8",
+    );
+    await writeFile(
+      join(sessionDirectory, "1970-01-01T00-00-00-000Z_visual-todo-waiting.jsonl"),
+      original.replaceAll("visual-assistant-markdown-code", "visual-todo-waiting"),
+    );
+    const recoveryDirectory = join(paths.cakeHome, "state", "recovery-intents");
+    await mkdir(recoveryDirectory, { recursive: true });
+    for (const [sessionId, workState] of [
+      ["visual-assistant-markdown-code", "complete"],
+      ["visual-todo-waiting", "blocked"],
+    ] as const) {
+      await writeFile(
+        join(recoveryDirectory, `${createHash("sha256").update(sessionId).digest("hex")}.json`),
+        JSON.stringify({
+          version: 1,
+          data: {
+            sessionId,
+            workingDirectory: paths.project,
+            sessionDirectory,
+            profile: "ProjectSession",
+            transcriptPersisted: true,
+            inputs: [],
+            state: workState,
+            ...(workState === "blocked" ? { issue: "Choose the navigation approach" } : {}),
+          },
+        }),
+      );
+    }
     await writeFile(
       file,
       JSON.stringify({
@@ -1903,10 +1939,16 @@ const projectChatTodos: VisualCaptureScenario = {
                   id: "00000000-0000-4000-8000-000000000012",
                   title: "Improve project navigation",
                   description: "Make it easier to move between ongoing project conversations.",
-                  status: "Implementation in progress",
+                  status: "Waiting for your input",
                   state: "open",
                   revision: 0,
-                  associations: [],
+                  associations: [
+                    {
+                      kind: "session",
+                      sessionId: "visual-todo-waiting",
+                      title: "Navigation session",
+                    },
+                  ],
                 },
                 {
                   id: "00000000-0000-4000-8000-000000000013",
@@ -1948,7 +1990,9 @@ const projectChatTodos: VisualCaptureScenario = {
     const report = page.getByRole("link", { name: "Exact investigation report", exact: true });
     if (state === "links-hover") await report.hover();
     if (state === "links-focus") {
-      await page.getByRole("link", { name: "Startup investigation session", exact: true }).focus();
+      await page
+        .getByRole("button", { name: "Mark done: Startup investigation", exact: true })
+        .focus();
       await page.keyboard.press("Tab");
       await expect(report).toBeFocused();
     }
@@ -1956,6 +2000,12 @@ const projectChatTodos: VisualCaptureScenario = {
       await expect(page.getByRole("tooltip")).toHaveText(
         "cake://session/visual-assistant-markdown-code?message=assistant-1",
       );
+    if (state === "hover") {
+      const row = page.locator('[data-todo-id="00000000-0000-4000-8000-000000000012"]');
+      await row.hover();
+      await expect(row.getByRole("img", { name: "Needs your input" })).toBeVisible();
+      await expect(page.getByRole("img", { name: "Ready for review", exact: true })).toBeVisible();
+    }
   },
   region: (page) => page.locator('[data-slot="side-chat-layout"]'),
 };

@@ -53,7 +53,7 @@ for (const theme of ["light", "dark"] as const) {
         await expect(link).toHaveCSS("font-weight", "400");
         await expect(link).toHaveCSS("line-height", "16px");
         await expect(link).toHaveCSS("text-decoration-line", "none");
-        const icon = link.locator("..").locator("svg");
+        const icon = link.locator("..").locator(":scope > span > svg");
         await expect(icon).toHaveAttribute("aria-hidden", "true");
         await expect(icon).toHaveCSS("width", "12px");
         await expect(icon).toHaveCSS("height", "12px");
@@ -70,6 +70,10 @@ for (const theme of ["light", "dark"] as const) {
         exact: true,
       });
       await session.focus();
+      await page.keyboard.press("Tab");
+      await expect(
+        panel.getByRole("button", { name: "Mark done: Startup investigation", exact: true }),
+      ).toBeFocused();
       for (const [title, href] of destinations.slice(1)) {
         await page.keyboard.press("Tab");
         const link = panel.getByRole("link", { name: title, exact: true });

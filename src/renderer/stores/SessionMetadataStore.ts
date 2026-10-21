@@ -2,7 +2,7 @@ import { computed, Store } from "r-state-tree";
 import { isActiveSessionActivity } from "../lib/session-activity";
 import type { SessionLabel } from "../../contracts/application/application-data";
 import type { WorktreeOperationCatalog } from "../models/WorktreeOperationCatalog";
-import type { SessionActivity } from "../lib/session-activity";
+import type { SessionActivity, SessionWorkActivity } from "../lib/session-activity";
 import type { ProjectCatalogStore } from "./ProjectCatalogStore";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
@@ -89,6 +89,16 @@ export class SessionMetadataStore extends Store<{
         ids.add(operation.sessionId);
     }
     return ids;
+  }
+
+  /** To-do readiness must survive read acknowledgement and resolve/restore. */
+  sessionWorkActivity(sessionId: string): SessionWorkActivity | undefined {
+    const activity = this.sessionActivity(sessionId);
+    if (activity && activity !== "unread") return activity;
+    const summary = this.props.catalog.find(sessionId);
+    const outcome =
+      summary && "latestTurnOutcome" in summary ? summary.latestTurnOutcome : undefined;
+    return outcome === "complete" ? "ready" : undefined;
   }
 
   sessionActivity(sessionId: string): SessionActivity | undefined {

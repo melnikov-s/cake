@@ -1,9 +1,17 @@
-import { sessionActivityDotStatus, type SessionActivity } from "../lib/session-activity";
+import {
+  sessionActivityDotStatus,
+  type SessionActivity,
+  type SessionWorkActivity,
+} from "../lib/session-activity";
 import { cn } from "../lib/utils";
 import { StatusDot } from "./ui/status-dot";
 
 /** Established session activity language, shared by Project Sessions and the coordinator. */
-export function SessionActivityIndicator({ activity }: { activity: SessionActivity | undefined }) {
+export function SessionActivityIndicator({
+  activity,
+}: {
+  activity: SessionActivity | SessionWorkActivity | undefined;
+}) {
   const status = activity && sessionActivityDotStatus[activity];
   if (!status) return null;
   const label =
@@ -17,7 +25,9 @@ export function SessionActivityIndicator({ activity }: { activity: SessionActivi
             ? "Error"
             : activity === "stopped"
               ? "Stopped"
-              : "Ready, unread";
+              : activity === "ready"
+                ? "Ready for review"
+                : "Ready, unread";
   return (
     <StatusDot
       status={status}
@@ -26,7 +36,9 @@ export function SessionActivityIndicator({ activity }: { activity: SessionActivi
         activity === "blocked" && "ring-2 ring-attention/20",
         activity === "waiting" && "session-status-waiting ring-2 ring-attention/20",
         activity === "running" && "session-status-running",
-        activity === "unread" && "session-status-unread ring-2 ring-success/20",
+        (activity === "unread" || activity === "ready") && "ring-2 ring-success/20",
+        activity === "unread" && "session-status-unread",
+        activity === "ready" && "session-status-ready",
         activity === "error" && "session-status-error ring-2 ring-destructive/20",
       )}
       role="img"

@@ -7,15 +7,19 @@ import { TURN_STOPPED_NOTICE_TITLE } from "../../contracts/conversations/turn-st
  */
 export type SessionActivity = "waiting" | "running" | "blocked" | "unread" | "error" | "stopped";
 
+/** Work readiness is independent of whether the user has read a session. */
+export type SessionWorkActivity = Exclude<SessionActivity, "unread"> | "ready";
+
 /** Chat activity never uses the generic StatusDot's gray default/pending treatment. */
 export const sessionActivityDotStatus = {
   waiting: "attention",
   blocked: "attention",
   running: "running",
   unread: "success",
+  ready: "success",
   error: "error",
   stopped: undefined,
-} as const satisfies Record<SessionActivity, string | undefined>;
+} as const satisfies Record<SessionActivity | SessionWorkActivity, string | undefined>;
 
 /** Shared settlement policy; read/selection acknowledgement remains with each owner. */
 export function settledSessionActivity(
