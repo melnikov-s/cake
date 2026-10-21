@@ -361,7 +361,6 @@ export const Chat = observer(function Chat({
           </>
         }
       >
-        {!activatingDraft && <ScheduledPrompts store={store.scheduledMessageInteraction} />}
         {!activatingDraft && <QueuedPrompts store={store} />}
         {!activatingDraft && store.rewording && (
           <div className="px-2 pb-2 text-xs text-muted-foreground" role="status">

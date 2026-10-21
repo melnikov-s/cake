@@ -22,6 +22,7 @@ import {
 } from "@earendil-works/pi-durable-ai/utils/transcript";
 import { CompletionChat } from "../../contracts/pi/model-data";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
+import { parseScheduledMessage } from "../../contracts/conversations/scheduled-message-envelope";
 import {
   MEMORY_COMPACTOR_PROMPT,
   MEMORY_INPUT_BYTES,
@@ -150,6 +151,10 @@ function durableMessageText(message: Message): string {
         : (input?.body ?? rawText);
   if (input?.subagentReport)
     return `work: received worker report ${JSON.stringify(input.subagentReport)}; receipt does not establish user-facing communication: ${text}`;
+  // A schedule the agent or user set earlier fired; it is not something the user just said.
+  const scheduled = parseScheduledMessage(text);
+  if (scheduled)
+    return `work: scheduled message fired (set ${scheduled.origin.createdAt}): ${scheduled.text}`;
   const context = splitContextReminders(text);
   if (context.reminders.length) {
     const work = context.reminders

@@ -20,6 +20,7 @@ import {
 } from "../../../../src/services/pi-durable/durable-chat-memory";
 import { durableMemoryWork } from "../../../../src/services/pi-durable/durable-memory-work";
 import { MEMORY_INPUT_BYTES } from "../../../../src/services/pi-durable/durable-memory-policy";
+import { encodeScheduledMessage } from "../../../../src/contracts/conversations/scheduled-message-envelope";
 import { durableAnswer, durableModels } from "../../../fixtures/durable-chat";
 
 const cleanup: Array<() => Promise<unknown>> = [];
@@ -182,6 +183,26 @@ it("advances across pages of tool-only entries and indexes subsequent dialogue e
   expect(await f.view()).toMatchObject({ sourceCount: 2, complete: true });
   expect((await f.memory.zoom(1, 1, signal())).text).toContain("user: Second request");
   expect(f.summarize).not.toHaveBeenCalled();
+});
+
+it("remembers a fired schedule as work, not as something the user said", async () => {
+  const f = await fixture();
+  await f.append("Check in every 3 minutes until the PR merges.");
+  await f.append(
+    encodeScheduledMessage("Check the PR status", {
+      version: 1,
+      id: "8de1a807-dc99-49ee-8d35-7a3ed20bef06",
+      createdAt: "2026-10-21T22:00:00.000Z",
+      sendAt: "2026-10-21T22:03:00.000Z",
+    }),
+  );
+  expect(await f.view()).toMatchObject({ sourceCount: 2, complete: true });
+  const zoomed = (await f.memory.zoom(1, 1, signal())).text;
+  expect(zoomed).toContain(
+    "work: scheduled message fired (set 2026-10-21T22:00:00.000Z): Check the PR status",
+  );
+  expect(zoomed).not.toContain("user: ");
+  expect(zoomed).not.toContain("cake-scheduled-message");
 });
 
 it("persists one-original slices, indexes only new raw input, and merges existing summaries", async () => {

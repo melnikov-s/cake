@@ -763,6 +763,60 @@ describe("Discussion sidecar retention", () => {
 });
 
 describe("Cake Chat composition observer", () => {
+  it("projects scheduled messages addressed to a Cake Chat and clears them when it unloads", async () => {
+    const observed: string[] = [];
+    const message = {
+      id: "8de1a807-dc99-49ee-8d35-7a3ed20bef06",
+      targetSessionId: "cake-chat-1",
+      text: "Check the PR status",
+      sendAt: "2030-01-01T12:00:00.000Z",
+      createdAt: "2030-01-01T11:57:00.000Z",
+      repeatEverySeconds: 180,
+    };
+    const client = baseClient({
+      cakeChats: {
+        observeCatalog: () => Stream.never,
+        observeSideChats: () => Stream.never,
+        observeControls: () => Stream.never,
+      },
+      scheduledMessages: {
+        observe: (targetSessionId: string) => {
+          observed.push(targetSessionId);
+          return Stream.make({ _tag: "Snapshot" as const, revision: 1, messages: [message] }).pipe(
+            Stream.concat(Stream.never),
+          );
+        },
+      },
+    });
+    const projection = RootProjection.create();
+    const observer = createModelObserver(runtimeFor(client));
+    const schedules = projection.scheduledMessageCatalog("cake-chat-1");
+    observer.sync({
+      projects: projection.projects,
+      sessionCatalog: projection.sessionCatalog,
+      cakeChatCatalog: projection.cakeChatCatalog,
+      projectSessions: [],
+      cakeChats: [
+        {
+          target: { sessionId: "cake-chat-1", tools: [] },
+          conversation: projection.cakeChatConversation("cake-chat-1"),
+          controls: projection.controlsForCakeChat("cake-chat-1"),
+          subagents: projection.subagentCatalog("cake-chat-1"),
+          schedules,
+          sideChats: projection.discussionCatalog("cake-chat-1"),
+        },
+      ],
+    });
+    await vi.waitFor(() =>
+      expect(schedules.messages.map((item) => item.repeatEverySeconds)).toEqual([180]),
+    );
+    expect(observed).toEqual(["cake-chat-1"]);
+    projection.removeCakeChatProjections("cake-chat-1");
+    expect(projection.scheduledMessageCatalogs).toEqual([]);
+    observer.stop();
+    projection[Symbol.dispose]();
+  });
+
   it("clears stopped controls and replays only current pending requests on re-entry", async () => {
     const controls = await Effect.runPromise(Queue.unbounded<CakeChatControlUpdate>());
     let currentRequests: CakeChatControlUpdate["requests"] = [];
@@ -790,6 +844,7 @@ describe("Cake Chat composition observer", () => {
           conversation: projection.cakeChatConversation("cake-chat-1"),
           controls: controlModel,
           subagents: projection.subagentCatalog("cake-chat-1"),
+          schedules: projection.scheduledMessageCatalog("cake-chat-1"),
           sideChats: projection.discussionCatalog("cake-chat-1"),
         },
       ],
@@ -827,6 +882,7 @@ describe("Cake Chat composition observer", () => {
           conversation: projection.cakeChatConversation("cake-chat-1"),
           controls: controlModel,
           subagents: projection.subagentCatalog("cake-chat-1"),
+          schedules: projection.scheduledMessageCatalog("cake-chat-1"),
           sideChats: projection.discussionCatalog("cake-chat-1"),
         },
       ],
@@ -856,6 +912,7 @@ describe("Cake Chat composition observer", () => {
           conversation: projection.cakeChatConversation("cake-chat-1"),
           controls: controlModel,
           subagents: projection.subagentCatalog("cake-chat-1"),
+          schedules: projection.scheduledMessageCatalog("cake-chat-1"),
           sideChats: projection.discussionCatalog("cake-chat-1"),
         },
       ],

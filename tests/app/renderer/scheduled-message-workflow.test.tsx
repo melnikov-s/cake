@@ -9,6 +9,7 @@ import { applyConversationUpdate } from "../../../src/renderer/reducers/Conversa
 import { applyScheduledMessageUpdate } from "../../../src/renderer/reducers/ScheduledMessageReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { queuePart, queueSessionId, renderQueue } from "./prompt-queue-workflow-fixture";
 
 const sessionId = "session-one";
 const messageId = "8de1a807-dc99-49ee-8d35-7a3ed20bef06";
@@ -112,9 +113,14 @@ describe("Scheduled message workflow", () => {
     using fixture = renderScheduled();
     await fixture.user.type(screen.getByRole("combobox"), "/schedule 2m Check the build");
     await fixture.user.click(screen.getByRole("button", { name: "Send" }));
-    const list = await screen.findByRole("list", { name: "Scheduled messages" });
+    // With nothing steering or queued, the scheduled group sits in the pending list expanded.
+    const list = await screen.findByRole("group", { name: "Scheduled" });
+    expect(within(list).getByRole("button", { name: /1 scheduled/ })).toMatchObject({
+      ariaExpanded: "true",
+    });
+    expect(within(list).getByText("next in 2:00")).toBeDefined();
     expect(within(list).getByText("Check the build")).toBeDefined();
-    expect(within(list).getByText("sends in 2m")).toBeDefined();
+    expect(within(list).getByText("in 2:00")).toBeDefined();
     expect(screen.getByRole<HTMLTextAreaElement>("combobox").value).toBe("");
     expect(fixture.schedule).toHaveBeenCalledWith(
       {
@@ -126,13 +132,11 @@ describe("Scheduled message workflow", () => {
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     await act(async () => vi.advanceTimersByTime(60_000));
-    expect(within(list).getByText("sends in 1m")).toBeDefined();
+    expect(within(list).getByText("in 1:00")).toBeDefined();
     await fixture.user.click(
       screen.getByRole("button", { name: "Cancel scheduled message: Check the build" }),
     );
-    await waitFor(() =>
-      expect(screen.queryByRole("list", { name: "Scheduled messages" })).toBeNull(),
-    );
+    await waitFor(() => expect(screen.queryByRole("group", { name: "Scheduled" })).toBeNull());
     expect(fixture.cancel).toHaveBeenCalledWith(
       messageId,
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
@@ -145,13 +149,11 @@ describe("Scheduled message workflow", () => {
       screen.getByRole("button", { name: "Cancel scheduled message: Check the build" }),
     );
     expect(await screen.findByText("Scheduling service unavailable")).toBeDefined();
-    expect(screen.getByRole("list", { name: "Scheduled messages" })).toBeDefined();
+    expect(screen.getByRole("group", { name: "Scheduled" })).toBeDefined();
     await fixture.user.click(
       screen.getByRole("button", { name: "Cancel scheduled message: Check the build" }),
     );
-    await waitFor(() =>
-      expect(screen.queryByRole("list", { name: "Scheduled messages" })).toBeNull(),
-    );
+    await waitFor(() => expect(screen.queryByRole("group", { name: "Scheduled" })).toBeNull());
     expect(screen.queryByText("Scheduling service unavailable")).toBeNull();
     expect(fixture.cancel).toHaveBeenCalledTimes(2);
   });
@@ -188,5 +190,61 @@ describe("Scheduled message workflow", () => {
       reject(new Error("offline"));
       await pending.catch(() => undefined);
     });
+  });
+
+  it("lists schedules after steering and queued items, collapsed until the user expands them", async () => {
+    using fixture = renderQueue(
+      [
+        queuePart(1, "Also check the failing lint job.", { lane: "steering" }),
+        queuePart(2, "Then rebase onto main."),
+      ],
+      {},
+    );
+    act(() =>
+      applyScheduledMessageUpdate(fixture.models.scheduledMessageCatalog(queueSessionId), {
+        _tag: "Snapshot",
+        revision: 1,
+        messages: [
+          {
+            ...scheduled,
+            id: "6f0e3c43-9d0a-4f4e-8a55-0d5a3b7c2a11",
+            targetSessionId: queueSessionId,
+            text: "Check the PR status",
+            sendAt: "2026-09-04T12:02:41.000Z",
+            repeatEverySeconds: 180,
+          },
+          {
+            ...scheduled,
+            targetSessionId: queueSessionId,
+            text: "Review the build output",
+            sendAt: "2026-09-04T12:00:15.000Z",
+          },
+        ],
+      }),
+    );
+    const pending = screen.getByRole("list", { name: "Queued prompts" });
+    expect(
+      within(pending)
+        .getAllByRole("group")
+        .map((group) => group.ariaLabel),
+    ).toEqual(["Steering", "Queued", "Scheduled"]);
+    const group = within(pending).getByRole("group", { name: "Scheduled" });
+    const summary = within(group).getByRole("button", { name: /2 scheduled/ });
+    expect(summary.ariaExpanded).toBe("false");
+    expect(summary.textContent).toBe("2 scheduled·next in 0:15·1 repeating");
+    expect(within(group).queryByRole("listitem")).toBeNull();
+
+    await fixture.user.click(summary);
+    expect(summary.ariaExpanded).toBe("true");
+    const rows = within(group).getAllByRole("listitem");
+    expect(rows.map((row) => row.textContent)).toEqual([
+      "Review the build outputin 0:15",
+      "Check the PR statusevery 3min 2:41",
+    ]);
+    await act(async () => vi.advanceTimersByTime(15_000));
+    expect(rows[0]?.textContent).toBe("Review the build outputSending…");
+    expect(summary.textContent).toContain("sending…");
+    await fixture.user.click(summary);
+    expect(within(group).queryByRole("listitem")).toBeNull();
   });
 });

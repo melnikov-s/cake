@@ -64,6 +64,7 @@ export function renderChatSurface(
   );
   return {
     user: userEvent.setup(),
+    models: fixture.models,
     publish(parts: UiPart[], streaming = false) {
       act(() => {
         snapshot = { ...snapshot, parts, streaming };

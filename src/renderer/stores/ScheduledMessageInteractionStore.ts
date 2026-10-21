@@ -6,11 +6,14 @@ export interface ScheduledMessageCapabilities {
   cancel?(id: string): Promise<void>;
 }
 
-/** Owns scheduled-message countdown presentation, cancellation state, and its timer resource. */
+/** Owns scheduled-message countdown presentation, disclosure, cancellation state, and its timer
+ * resource. Scheduled items sit below steering and queued items in the pending list. */
 export class ScheduledMessageInteractionStore extends Store<{
   capabilities?: ScheduledMessageCapabilities;
 }> {
   error: string | undefined;
+  /** The user's explicit disclosure choice; undefined follows the default. */
+  private expandedChoice: boolean | undefined;
   private now = Date.now();
   private tickInterval: ReturnType<typeof setInterval> | undefined;
 
@@ -24,8 +27,24 @@ export class ScheduledMessageInteractionStore extends Store<{
     this.effect(() => () => this.stopTick());
   }
 
+  /** Pending schedules in send order. */
   get messages(): readonly ScheduledMessage[] {
-    return this.props.capabilities?.messages() ?? [];
+    return (this.props.capabilities?.messages() ?? []).toSorted((left, right) =>
+      left.sendAt.localeCompare(right.sendAt),
+    );
+  }
+
+  get repeatingCount() {
+    return this.messages.filter((message) => message.repeatEverySeconds !== undefined).length;
+  }
+
+  /** Expanded by default only when no steering or queued items compete for the space. */
+  isExpanded(othersPending: boolean) {
+    return this.expandedChoice ?? !othersPending;
+  }
+
+  toggleExpanded(othersPending: boolean) {
+    this.expandedChoice = !this.isExpanded(othersPending);
   }
 
   get canCancel() {

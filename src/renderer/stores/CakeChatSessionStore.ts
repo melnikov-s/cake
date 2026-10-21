@@ -17,6 +17,7 @@ import type { CakeChatTarget } from "../../contracts/cake-chats/cake-chat-data";
 import type { CakeChatControls } from "../models/CakeChatControls";
 import type { WorkflowCatalog } from "../models/WorkflowCatalog";
 import type { SubagentCatalog } from "../models/SubagentCatalog";
+import type { ScheduledMessageCatalog } from "../models/ScheduledMessageCatalog";
 import { SubagentActivityStore } from "./SubagentActivityStore";
 import { WorkflowRunStore } from "./WorkflowRunStore";
 import { workflowOwnerReferences } from "../../utils/workflow-references";
@@ -34,6 +35,8 @@ export interface CakeChatSessionStoreProps {
   artifactModel: ArtifactCatalog;
   controls: CakeChatControls;
   subagentCatalog: SubagentCatalog;
+  /** Durable scheduled messages addressed to this chat, including its own check-ins. */
+  scheduledMessageCatalog: ScheduledMessageCatalog;
   workflowCatalog(sessionId: string): WorkflowCatalog;
   /** Side chats branched from this Cake Chat's messages. */
   discussionCatalog: DiscussionCatalog;
@@ -291,6 +294,10 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         inputLabel: () =>
           this.sessionId.startsWith("project-chat:") ? "Message Project Chat" : "Message Cake Chat",
         conversationMode: this.conversationMode,
+        scheduledMessages: {
+          messages: () => this.props.scheduledMessageCatalog.messages,
+          cancel: (id) => this.client.scheduledMessages.cancel(id, { signal: this.signal }),
+        },
         isDraftSession: () =>
           this.props.pendingSessions.conversation(this.sessionId)?.isDraft ?? false,
       },

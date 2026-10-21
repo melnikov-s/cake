@@ -134,6 +134,7 @@ type ModelInput = {
     conversation: Conversation;
     controls: CakeChatControls;
     subagents: SubagentCatalog;
+    schedules: ScheduledMessageCatalog;
     /** Side chats branched from this Cake Chat's messages. */
     sideChats: DiscussionCatalog;
   }>;
@@ -395,7 +396,14 @@ export const createModelObserver = (
       );
     }
 
-    for (const { target, conversation, controls, subagents, sideChats } of input.cakeChats) {
+    for (const {
+      target,
+      conversation,
+      controls,
+      subagents,
+      schedules,
+      sideChats,
+    } of input.cakeChats) {
       assertSessionIdentity(conversation, target.sessionId);
       observe(
         `cake-chat-side-chats:${target.sessionId}`,
@@ -416,6 +424,12 @@ export const createModelObserver = (
         subagents,
         (client) => client.subagents.observe(target.sessionId),
         (update: SubagentUpdate) => applySubagentUpdate(subagents, target.sessionId, update),
+      );
+      observe(
+        `scheduled-messages:${target.sessionId}`,
+        schedules,
+        (client) => client.scheduledMessages.observe(target.sessionId),
+        (update: ScheduledMessageUpdate) => applyScheduledMessageUpdate(schedules, update),
       );
       observe(
         `cake-chat-controls:${target.sessionId}`,
@@ -524,6 +538,7 @@ export const createModelObserver = (
         conversation: source.projection.cakeChatConversation(target.sessionId),
         controls: source.projection.controlsForCakeChat(target.sessionId),
         subagents: source.projection.subagentCatalog(target.sessionId),
+        schedules: source.projection.scheduledMessageCatalog(target.sessionId),
         sideChats: source.projection.discussionCatalog(target.sessionId),
       }));
       const liveThreads = [

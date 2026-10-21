@@ -5,15 +5,18 @@ import { Button } from "@/components/ui/button";
 import { ChatIcon, ClockIcon, EditIcon, RemoveIcon } from "@/components/ui/icons";
 import { IconButton } from "@/components/ui/icon-button";
 import { ReorderControls } from "@/components/ui/reorder-controls";
+import { ScheduledGroup } from "@/components/scheduled-prompts";
 import { cn } from "@/lib/utils";
 import type { ChatStore } from "../stores/ChatStore";
 import { describeScheduledOrigin } from "../../utils/scheduled-message-time";
 
-/** One sender-neutral queue, grouped by Pi delivery lane above the composer. */
+/** One sender-neutral pending list above the composer: steering, then queued Pi delivery
+ * lanes, then Cake-owned scheduled messages. */
 export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store: ChatStore }) {
   const [fullscreenPromptId, setFullscreenPromptId] = useState<string>();
   const fullscreenPrompt = store.queuedPrompts.find((entry) => entry.id === fullscreenPromptId);
-  if (store.queuedPrompts.length === 0) return null;
+  const scheduled = store.scheduledMessageInteraction;
+  if (store.queuedPrompts.length === 0 && scheduled.messages.length === 0) return null;
   return (
     <>
       <div
@@ -173,6 +176,7 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
             </div>
           );
         })}
+        <ScheduledGroup store={scheduled} othersPending={store.queuedPrompts.length > 0} />
       </div>
       {fullscreenPrompt && (
         <FullscreenMessage

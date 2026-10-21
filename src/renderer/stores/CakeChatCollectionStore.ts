@@ -23,6 +23,7 @@ import {
 } from "./CakeChatPendingSessionsStore";
 import { CakeChatRegistryStore } from "./CakeChatRegistryStore";
 import { ClientContext } from "./context/ClientContext";
+import type { ScheduledMessageCatalog } from "../models/ScheduledMessageCatalog";
 import { SessionLayoutStore } from "./SessionLayoutStore";
 import { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 
@@ -33,6 +34,7 @@ export interface CakeChatCollectionStoreProps {
   sessionModel(sessionId: string): Conversation;
   controlsModel(sessionId: string): CakeChatControls;
   subagentCatalog(sessionId: string): SubagentCatalog;
+  scheduledMessageCatalog(sessionId: string): ScheduledMessageCatalog;
   workflowCatalog(sessionId: string): WorkflowCatalog;
   discussionCatalog(sessionId: string): DiscussionCatalog;
   discussionSessionModel(
@@ -88,6 +90,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
       artifactModel: this.props.artifactModel,
       controlsModel: this.props.controlsModel,
       subagentCatalog: this.props.subagentCatalog,
+      scheduledMessageCatalog: this.props.scheduledMessageCatalog,
       workflowCatalog: this.props.workflowCatalog,
       discussionCatalog: this.props.discussionCatalog,
       discussionSessionModel: this.props.discussionSessionModel,

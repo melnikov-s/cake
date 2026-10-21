@@ -54,6 +54,7 @@ export function renderQueue(parts: QueuePart[], client: TestClientOverrides) {
   const fixture = renderChatSurface({ parts, snapshot: { streaming: true }, client });
   return {
     user: fixture.user,
+    models: fixture.models,
     publish(parts: QueuePart[]): QueuedConversationMessages {
       act(() => fixture.publish(parts, true));
       return {

@@ -142,6 +142,7 @@ export class RootProjection extends Model {
   removeCakeChatProjections(sessionId: string) {
     removeBySessionId(this.cakeChatConversations, sessionId);
     removeBySessionId(this.cakeChatControls, sessionId);
+    removeBySessionId(this.scheduledMessageCatalogs, sessionId);
     this.removeDiscussionProjections(sessionId);
   }
 

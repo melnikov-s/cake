@@ -20,6 +20,40 @@ export function describeScheduledOrigin(
   };
 }
 
+/** Live countdown: `0:12`, `2:41`, then `1h 20m` from one hour. */
+export function formatCountdown(milliseconds: number) {
+  const seconds = Math.max(0, Math.ceil(milliseconds / 1_000));
+  if (seconds >= 3_600) {
+    const hours = Math.floor(seconds / 3_600);
+    const minutes = Math.floor((seconds % 3_600) / 60);
+    return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+/** Compact recurring interval: `90s`, `3m`, `2h`, `7d`. */
+export function formatRepeatInterval(seconds: number) {
+  if (seconds % 86_400 === 0) return `${seconds / 86_400}d`;
+  if (seconds % 3_600 === 0) return `${seconds / 3_600}h`;
+  if (seconds % 60 === 0) return `${seconds / 60}m`;
+  return `${seconds}s`;
+}
+
+/** Hover text for a pending schedule: its absolute send time and any repeat. */
+export function describeScheduledSend(message: {
+  readonly sendAt: string;
+  readonly repeatEverySeconds?: number | undefined;
+  readonly repeatUntil?: string | undefined;
+}) {
+  const at = new Date(message.sendAt).toLocaleString();
+  if (message.repeatEverySeconds === undefined) return `Sends at ${at}`;
+  const until = message.repeatUntil
+    ? `until ${new Date(message.repeatUntil).toLocaleString()}`
+    : "until cancelled";
+  return `Sends at ${at}, then every ${formatRepeatInterval(message.repeatEverySeconds)} ${until}`;
+}
+
 export interface ParsedScheduledMessage {
   sendAt: string;
   text: string;

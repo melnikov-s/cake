@@ -3192,6 +3192,69 @@ const queuedPromptsScenario: VisualCaptureScenario = {
       : page.locator("body"),
 };
 
+const scheduledPromptsScenario: VisualCaptureScenario = {
+  name: "scheduled-prompts",
+  description:
+    "Cake Chat's own scheduled and recurring check-ins as the last pending-list group (states: idle, running, running-expanded)",
+  states: ["idle", "running", "running-expanded"],
+  async seed(paths, theme) {
+    await cakeChatScenario.seed(paths, theme);
+    // Durable schedules relative to launch; countdown digits vary by a few seconds per run.
+    const now = Date.now();
+    const at = (milliseconds: number) => new Date(now + milliseconds).toISOString();
+    await writeFile(
+      join(paths.cakeHome, "state", "scheduled-messages.json"),
+      `${JSON.stringify({
+        version: 1,
+        data: [
+          {
+            id: "6f0e3c43-9d0a-4f4e-8a55-0d5a3b7c2a11",
+            targetSessionId: CAKE_CHAT_SESSION_ID,
+            text: "Check the PR status and report progress.",
+            sendAt: at(10 * 60_000),
+            createdAt: at(0),
+            createdBySessionId: CAKE_CHAT_SESSION_ID,
+            repeatEverySeconds: 600,
+          },
+          {
+            id: "8de1a807-dc99-49ee-8d35-7a3ed20bef06",
+            targetSessionId: CAKE_CHAT_SESSION_ID,
+            text: "Post the daily summary to the Workboard.",
+            sendAt: at(80 * 60_000),
+            createdAt: at(0),
+            createdBySessionId: CAKE_CHAT_SESSION_ID,
+          },
+        ],
+      })}\n`,
+    );
+    return openRequestInspectorFixture(paths, { holdResponse: true });
+  },
+  async prepare(page, state) {
+    await cakeChatScenario.prepare(page, "default");
+    const group = page.getByRole("group", { name: "Scheduled" });
+    await expect(group.getByRole("button", { name: /2 scheduled/ })).toBeVisible();
+    if (state !== "idle") {
+      const input = page.getByRole("combobox", { name: "Message Cake Chat", exact: true });
+      await input.fill("Review the implementation while I queue follow-up instructions.");
+      await page.getByRole("button", { name: "Send", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
+      await input.fill("Then rebase onto main and rerun the focused tests.");
+      await page.getByRole("button", { name: "Send", exact: true }).click();
+      // Input sent while the agent runs waits as steering; schedules follow it, collapsed.
+      await expect(page.getByRole("group", { name: "Steering" }).getByRole("listitem")).toHaveCount(
+        1,
+      );
+      await expect(group.getByRole("listitem")).toHaveCount(0);
+      if (state === "running-expanded")
+        await group.getByRole("button", { name: /2 scheduled/ }).click();
+    }
+    await expect(group.getByRole("listitem")).toHaveCount(state === "running" ? 0 : 2);
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator(".workbench-composer"),
+};
+
 const taskInputAttachmentsScenario: VisualCaptureScenario = {
   name: "task-input-attachments",
   description: "Shared screenshot and large-paste attachments with a private text preview",
@@ -4065,6 +4128,7 @@ export const visualCaptureScenarios = [
   cakeChatArtifactScenario,
   contextOutlineScenario,
   queuedPromptsScenario,
+  scheduledPromptsScenario,
   taskInputAttachmentsScenario,
   cakeChatSidebarUnread,
   projectChatSidebar,

@@ -2799,6 +2799,13 @@ it.effect(
         text: "hi",
         origin: { id: first.id, createdBySessionId: projectChat },
       });
+      // Admission precedes the commit that removes the delivered one-off; await that commit.
+      yield* Context.get(f.context, ScheduledMessages)
+        .changes()
+        .pipe(
+          Stream.filter((snapshot) => snapshot.messages.length === 2),
+          Stream.runHead,
+        );
       yield* Fiber.interrupt(worker);
       expect(yield* Queue.size(f.prompts)).toBe(0);
       expect(f.storedSchedules().map((item) => item.id)).toEqual([recurring.id, stored[3]?.id]);

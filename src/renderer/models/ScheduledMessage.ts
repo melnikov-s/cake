@@ -8,4 +8,6 @@ export class ScheduledMessage extends Model {
   sendAt = "";
   createdAt = "";
   createdBySessionId: string | undefined;
+  repeatEverySeconds: number | undefined;
+  repeatUntil: string | undefined;
 }

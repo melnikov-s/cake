@@ -342,6 +342,14 @@ export const ClockIcon = () => (
     <path d="M12 7v5l3 2" />
   </Icon>
 );
+export const RepeatIcon = ({ size = 13 }: { size?: number } = {}) => (
+  <Icon size={size} strokeWidth={2}>
+    <path d="m17 2 4 4-4 4" />
+    <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+    <path d="m7 22-4-4 4-4" />
+    <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+  </Icon>
+);
 export const StopIcon = () => (
   <Icon>
     <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none" />
