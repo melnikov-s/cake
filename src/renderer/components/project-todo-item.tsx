@@ -20,7 +20,7 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
   store: ProjectTodosStore;
 }) {
   const root = useStore(RootStore);
-  const selected = store.value?.selectedId === item.id;
+  const selected = store.selectedItem?.id === item.id;
   const sessions = item.associations.filter((association) => association.kind === "session");
   const resources = item.associations.filter((association) => association.kind !== "session");
   return (
@@ -33,7 +33,7 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
         actionProps={{
           "aria-pressed": selected,
           "aria-label": item.title,
-          "aria-disabled": store.busy,
+          "aria-disabled": store.busy || item.state === "done",
         }}
         onClick={() => void store.select(item)}
         className="flex-wrap items-start gap-y-0 px-3 py-3 text-[13px] leading-relaxed"

@@ -554,7 +554,67 @@ describe("ApplicationStorage", () => {
   );
 
   it.effect(
-    "migrates v8 to-do descriptions without losing progress, selection, links or pending context",
+    "repairs a current-version persisted done selection before publication and durably keeps it cleared on reload",
+    () =>
+      withStorage({}, (storage, controls) => {
+        const id = "00000000-0000-4000-8000-000000000011";
+        const token = "00000000-0000-4000-8000-000000000012";
+        const todos = {
+          items: [
+            {
+              id,
+              title: "Completed work",
+              description: "Original brief.",
+              status: "Finished",
+              state: "done",
+              revision: 2,
+              associations: [],
+            },
+          ],
+          selectedId: id,
+          sequence: 4,
+          deliveryToken: token,
+          pending: [{ _tag: "Selection", sequence: 4, selectedId: id }],
+        };
+        controls.files.set(
+          documentPath,
+          JSON.stringify({
+            version: 9,
+            data: {
+              ...current,
+              projects: [
+                {
+                  path: "/project",
+                  name: "Project",
+                  addedAt: "2026-01-01T00:00:00Z",
+                  lastOpenedAt: "2026-01-01T00:00:00Z",
+                  todos,
+                },
+              ],
+            },
+          }),
+        );
+        return Effect.gen(function* () {
+          const loaded = yield* storage.load();
+          const repaired = loaded.state.projects[0]?.todos;
+          assert.equal(repaired?.selectedId, null);
+          assert.equal(repaired?.sequence, 5);
+          assert.notEqual(repaired?.deliveryToken, token);
+          assert.deepEqual(repaired?.items, todos.items);
+          assert.deepEqual(repaired?.pending, [
+            { _tag: "Selection", sequence: 5, selectedId: null },
+          ]);
+          assert.deepEqual(
+            JSON.parse(controls.files.get(documentPath) ?? "{}").data.projects[0].todos,
+            repaired,
+          );
+          assert.deepEqual((yield* storage.load()).state.projects[0]?.todos, repaired);
+        });
+      }),
+  );
+
+  it.effect(
+    "migrates v8 to-do descriptions and repairs a completed selection without losing progress or links",
     () => {
       const id = "00000000-0000-4000-8000-000000000011";
       const token = "00000000-0000-4000-8000-000000000012";
@@ -609,9 +669,16 @@ describe("ApplicationStorage", () => {
               ...todos,
               items: items.map((item) => ({ ...item, description: item.status || item.title })),
             };
-            assert.deepEqual(loaded.state.projects[0]?.todos, expected);
+            const recovered = loaded.state.projects[0]?.todos;
+            assert.deepEqual(recovered?.items, expected.items);
+            assert.equal(recovered?.selectedId, null);
+            assert.equal(recovered?.sequence, 3);
+            assert.notEqual(recovered?.deliveryToken, token);
+            assert.deepEqual(recovered?.pending, [
+              { _tag: "Selection", sequence: 3, selectedId: null },
+            ]);
             assert.equal(JSON.parse(controls.files.get(documentPath) ?? "{}").version, 9);
-            assert.deepEqual((yield* storage.load()).state.projects[0]?.todos, expected);
+            assert.deepEqual((yield* storage.load()).state.projects[0]?.todos, recovered);
           }),
       );
     },

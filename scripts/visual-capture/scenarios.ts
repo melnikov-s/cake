@@ -1978,7 +1978,7 @@ const projectChatTodos: VisualCaptureScenario = {
     await page.getByRole("button", { name: "To-do", exact: true }).click();
     await expect(page.getByRole("complementary", { name: "To-do" })).toBeVisible();
     if (state === "unselected" || state === "empty")
-      await page.getByRole("button", { name: "Clear to-do context" }).click();
+      await page.getByRole("button", { name: "Startup investigation", exact: true }).click();
     if (state === "empty") {
       const panel = page.getByRole("complementary", { name: "To-do" });
       await panel.getByRole("button", { name: "Mark done: Startup investigation" }).click();

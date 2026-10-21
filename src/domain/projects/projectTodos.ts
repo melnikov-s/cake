@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { clearCompletedProjectTodoSelection } from "../../utils/project-todo-selection";
 import type { ProjectTodoContextReceipt } from "../../contracts/projects/project-todo-context";
 import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
 import { Effect, Schema } from "effect";
@@ -37,7 +38,10 @@ const change = Effect.fn("ProjectTodos.change")(function* (
       Effect.gen(function* () {
         const project = current.projects.find((item) => item.path === projectPath);
         if (!project) return yield* error("Unknown registered project");
-        const todos = yield* transition(project.todos ?? emptyProjectTodos());
+        const todos = clearCompletedProjectTodoSelection(
+          yield* transition(project.todos ?? emptyProjectTodos()),
+          randomUUID,
+        );
         return {
           ...current,
           projects: current.projects.map((item) =>
@@ -201,8 +205,11 @@ export const mutateUser = Effect.fn("ProjectTodos.mutateUser")(function* (
     return yield* list(projectPath);
   }
   return yield* change(projectPath, (value) => {
-    if (input.selectedId !== null && !value.items.some((item) => item.id === input.selectedId))
-      return Effect.fail(error("Unknown to-do in this project"));
+    if (
+      input.selectedId !== null &&
+      !value.items.some((item) => item.id === input.selectedId && item.state === "open")
+    )
+      return Effect.fail(error("Select an open to-do in this project"));
     return Effect.succeed(
       value.selectedId === input.selectedId
         ? value

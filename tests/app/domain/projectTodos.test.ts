@@ -70,6 +70,49 @@ const create = () =>
   });
 
 describe("Project Chat to-do authority", () => {
+  it.effect.each(["user", "agent", "automatic"] as const)(
+    "clears selection atomically on %s completion, invalidates in-flight receipts and does not reselect on reopen",
+    (source) => {
+      const f = fixture();
+      return Effect.gen(function* () {
+        yield* upsertProject(project, "Project");
+        const item = yield* create();
+        yield* todos.mutateUser(project, { _tag: "Select", selectedId: item.id });
+        yield* todos.update(project, {
+          id: item.id,
+          expectedRevision: 0,
+          status: "Report delivered",
+        });
+        expect((yield* todos.list(project)).selectedId).toBe(item.id);
+        const before = yield* todos.prepareUserContext(project, "Review");
+        if (source === "user")
+          yield* todos.mutateUser(project, {
+            _tag: "SetState",
+            id: item.id,
+            expectedRevision: 1,
+            state: "done",
+          });
+        else if (source === "agent")
+          yield* todos.update(project, { id: item.id, expectedRevision: 1, state: "done" });
+        else yield* todos.completeResolved(project, [{ id: item.id, revision: 1 }]);
+        const completed = yield* todos.list(project);
+        expect(completed.selectedId).toBeNull();
+        expect(completed.pending).toContainEqual(
+          expect.objectContaining({ _tag: "Selection", selectedId: null }),
+        );
+        yield* todos.acknowledge(project, receipt(before.text));
+        expect((yield* todos.list(project)).pending).toEqual(completed.pending);
+        expect(
+          (yield* todos
+            .mutateUser(project, { _tag: "Select", selectedId: item.id })
+            .pipe(Effect.result))._tag,
+        ).toBe("Failure");
+        yield* todos.update(project, { id: item.id, expectedRevision: 2, state: "open" });
+        expect((yield* todos.list(project)).selectedId).toBeNull();
+      }).pipe(Effect.provide(f.layer));
+    },
+  );
+
   it.effect(
     "creates/reads/updates stable items, keeps freeform status open after report delivery, and isolates projects",
     () => {
@@ -160,7 +203,10 @@ describe("Project Chat to-do authority", () => {
         expect(projectTodoReceipt(first.text)?.sequence).toBe(1);
         // Simulate successful consumption of that exact durable input, then normal unchanged turns.
         yield* todos.acknowledge(project, receipt(first.text));
-        expect((yield* todos.prepareUserContext(project, "Continue")).text).toBe("Continue");
+        const unchanged = yield* todos.prepareUserContext(project, "Continue");
+        expect(splitProjectTodoReminder(unchanged.text).text).toBe("Continue");
+        expect(unchanged.text).toContain(`"selection":{"title":`);
+        expect(projectTodoReceipt(unchanged.text)).toBeUndefined();
         yield* todos.mutateUser(project, { _tag: "Select", selectedId: null });
         yield* todos.mutateUser(project, {
           _tag: "SetState",
@@ -286,7 +332,10 @@ it.effect(
       expect(projectTodoReceipt(text)?.sequence).toBe(1);
       const split = splitContextReminders(text);
       expect(split.text).toBe("Hello");
-      expect(split.reminders.map((item) => item.title)).toContain("Cake · Project Chat changes");
+      expect(split.reminders.map((entry) => entry.title)).toContain(`To-do · ${item.title}`);
+      expect(
+        split.reminders.find((entry) => entry.title.startsWith("To-do ·"))?.text,
+      ).not.toContain("<system-reminder>");
       expect(prepared.text).not.toContain("</system-reminder> Not guidance");
       expect(projectTodoBaseline(yield* todos.list(project))).toContain("\\u003c");
       expect(

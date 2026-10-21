@@ -101,6 +101,7 @@ it.effect(
           expectedRevision: 0,
           state: "done",
         });
+        yield* todos.mutateUser(project, { _tag: "Select", selectedId: canonical.id });
         return { canonical: canonical.id, suffix: suffix.id, source: source.id, closed: closed.id };
       }).pipe(Effect.provide(f.app, { local: true }));
       f.resolved.add(a);
@@ -133,6 +134,8 @@ it.effect(
         yield* initialize(); // Same startup path as BackendLive, no Project Chat or Pi runtime loaded.
         yield* Deferred.await(updated);
         expect(store.openItems.map((item) => item.id)).toEqual([ids.source]);
+        expect(store.selectedItem).toBeUndefined();
+        expect(f.persisted().projects[0]?.todos?.selectedId).toBeNull();
         expect(store.doneItems.map((item) => item.id)).toEqual([
           ids.canonical,
           ids.suffix,
@@ -158,6 +161,7 @@ it.effect(
         yield* (yield* ApplicationState).initialize();
         yield* initialize();
         expect((yield* todos.read(project, ids.canonical)).state).toBe("done");
+        expect((yield* todos.list(project)).selectedId).toBeNull();
         expect((yield* todos.read(project, ids.source)).state).toBe("open");
         expect((yield* todos.list(project)).pending).toEqual([]);
       }).pipe(Effect.provide(f.app, { local: true }));

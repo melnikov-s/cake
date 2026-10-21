@@ -365,13 +365,16 @@ is a refactoring signal, not precedent.
   identity enumeration per directory, never per item.
   Tools default to title/id/state/revision rows and compact mutation receipts; content is
   disclosed by exact detail or opt-in detail only. Selection is removable next-message
-  context, never a send action.
+  context, never a send action. Completion clears selection atomically; reload repairs
+  stale completed selections. The pane highlight is the only pre-send indicator.
   User context deltas coalesce in the Project record; read-only send preparation copies
   them into the existing recoverable input. A bound receipt is acknowledged only after
   Pi Durable has placed that input in originals, not on preparation or queue admission.
   Newer concurrent edits invalidate an older receipt and remain pending (at-least-once
-  context delivery, not exactly-once prose). A bounded baseline in Project Chat’s live
-  system context survives recreation/reset without repeated per-message selection blocks.
+  context delivery, not exactly-once prose). Each input sent with an open selection includes
+  its snapshot in that same context block; the shared transcript projects one compact pill
+  from the durable input, independent of later selection or lifecycle changes. A bounded
+  baseline in Project Chat’s live system context also survives recreation/reset.
 - **Conversation navigation**: pane layouts own the focused session and pane-local
   histories within the Project Session and Cake Chat/Project Chat workspaces.
   `AppShellStore` owns the selected workspace and optional Settings/artifact-library

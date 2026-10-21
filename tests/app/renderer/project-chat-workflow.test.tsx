@@ -458,12 +458,12 @@ it("toggles Project Chat to-dos in the existing side pane, selects/deselects, co
     const select = within(panel).getByRole("button", { name: item.title });
     await f.user.click(select);
     await waitFor(() => expect(select.getAttribute("aria-pressed")).toBe("true"));
-    expect(screen.getByLabelText("Next message context").textContent).toContain(item.title);
     expect(f.models.cakeChatConversation(projectId).parts).toHaveLength(0);
-    await f.user.click(screen.getByRole("button", { name: "Clear to-do context" }));
+    await f.user.click(select);
     await waitFor(() => expect(select.getAttribute("aria-pressed")).toBe("false"));
-    expect(screen.queryByLabelText("Next message context")).toBeNull();
     expect(f.models.cakeChatConversation(projectId).parts).toHaveLength(0);
+    await f.user.click(select);
+    await waitFor(() => expect(select.getAttribute("aria-pressed")).toBe("true"));
     await f.user.click(within(panel).getByRole("button", { name: `Mark done: ${item.title}` }));
     await waitFor(() =>
       expect(
@@ -479,6 +479,9 @@ it("toggles Project Chat to-dos in the existing side pane, selects/deselects, co
       expect(within(panel).getByRole("list", { name: "Open to-dos" })).toBeTruthy(),
     );
     expect(toggle.textContent).toBe("1");
+    expect(
+      within(panel).getByRole("button", { name: item.title }).getAttribute("aria-pressed"),
+    ).toBe("false");
     await f.user.click(screen.getByRole("button", { name: "Close To-do" }));
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     expect(screen.getByRole("combobox", { name: "Message Project Chat" })).toBeTruthy();

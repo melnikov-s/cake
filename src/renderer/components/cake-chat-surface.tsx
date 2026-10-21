@@ -8,7 +8,6 @@ import type { CakeChatSessionStore } from "../stores/CakeChatSessionStore";
 import { CakeChatPaneHeader, type CakeChatOverlayChrome } from "./cake-chat-pane-header";
 import { SessionArtifactPane } from "./session-artifact-pane";
 import { ConversationActivity } from "./conversation-activity";
-import { ProjectTodoComposerContext } from "./project-todo-composer-context";
 import { ProjectChatHeaderLink } from "./project-chat-header-link";
 
 export const CakeChatSurface = observer(function CakeChatSurface({
@@ -27,15 +26,12 @@ export const CakeChatSurface = observer(function CakeChatSurface({
   const sidebarCollapsed = !root.sidebarStore.visible;
   const cakeChatProps = (paneSession: CakeChatSessionStore) => ({
     composerHeader: (
-      <>
-        <ProjectTodoComposerContext store={paneSession.todos} />
-        <ConversationActivity
-          placement="composer"
-          sessionId={paneSession.sessionId}
-          subagents={paneSession.subagentActivityStore}
-          sideChat={paneSession.conversationSessionStore.sideChatStore}
-        />
-      </>
+      <ConversationActivity
+        placement="composer"
+        sessionId={paneSession.sessionId}
+        subagents={paneSession.subagentActivityStore}
+        sideChat={paneSession.conversationSessionStore.sideChatStore}
+      />
     ),
     parkComposerFocusWhileDictating: !overlay,
     transcriptTransition: {

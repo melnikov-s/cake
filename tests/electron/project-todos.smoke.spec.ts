@@ -321,12 +321,18 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
     await separator.focus();
     await separator.press("ArrowLeft");
     await expect(separator).toHaveAttribute("aria-valuenow", String(width + 16));
+    const requestsBeforeSelection = requests.length;
     const review = panel.locator(`[data-todo-id="${reviewId}"]`);
     const reviewTitle = review.getByRole("button", { name: "Review conversations", exact: true });
     await review.getByText("Report delivered; awaiting your review").click();
     await expect(reviewTitle).toBeFocused();
     await expect(reviewTitle).toHaveAttribute("aria-pressed", "true");
     await expect(reviewTitle).toHaveAttribute("aria-disabled", "false");
+    await expect(page.getByLabel("Next message context")).toHaveCount(0);
+    await expect(
+      page.locator('[data-slot="context-pill"]').filter({ hasText: "To-do ·" }),
+    ).toHaveCount(0);
+    expect(requests.length).toBe(requestsBeforeSelection);
     await reviewTitle.press("Space");
     await expect(reviewTitle).toHaveAttribute("aria-pressed", "false");
     await expect(reviewTitle).toHaveAttribute("aria-disabled", "false");
@@ -356,10 +362,24 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
     const selected = requests.find((request) => latestUser(request).includes("INPUT_SELECTED"));
     expect(selected && latestUser(selected)).toContain("Project Chat user changes");
     expect(selected && latestUser(selected)).toContain(reviewId);
+    const reviewPills = page.getByRole("button", {
+      name: "To-do · Review conversations",
+      exact: true,
+    });
+    await expect(reviewPills).toHaveCount(1);
     await send("INPUT_UNCHANGED");
     const unchanged = requests.find((request) => latestUser(request).includes("INPUT_UNCHANGED"));
-    expect(unchanged && latestUser(unchanged)).not.toContain("Project Chat user changes");
+    expect(unchanged && latestUser(unchanged)).toContain("Project Chat user changes");
+    expect(unchanged && latestUser(unchanged)).toContain(reviewId);
+    await expect(reviewPills).toHaveCount(2);
     await toggle.click();
+    const requestsBeforeDeselection = requests.length;
+    await reviewTitle.click();
+    await expect(reviewTitle).toHaveAttribute("aria-pressed", "false");
+    await expect(reviewPills).toHaveCount(2);
+    expect(requests.length).toBe(requestsBeforeDeselection);
+    await reviewTitle.click();
+    await expect(reviewTitle).toHaveAttribute("aria-pressed", "true");
     await page.setViewportSize({ width: 780, height: 800 });
     await expect(layout).toHaveAttribute("data-presentation", "replacement");
     await expect(panel).toBeVisible();
@@ -379,7 +399,8 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
         .getByRole("list", { name: "Open to-dos" })
         .getByText("Review conversations", { exact: true }),
     ).toBeVisible();
-    await expect(reviewTitle).toHaveAttribute("aria-pressed", "true");
+    await expect(reviewTitle).toHaveAttribute("aria-pressed", "false");
+    await expect(reviewPills).toHaveCount(2);
     const linked = panel
       .locator("[data-todo-id]")
       .filter({ has: page.getByRole("link", { name: "First implementation", exact: true }) });
@@ -387,6 +408,8 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
       name: "Implement startup improvement",
       exact: true,
     });
+    await linkedTitle.click();
+    await expect(linkedTitle).toHaveAttribute("aria-pressed", "true");
     const selectedBeforeLink = await linkedTitle.getAttribute("aria-pressed");
     await linked.getByRole("link", { name: "First implementation", exact: true }).click();
     await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible();
@@ -443,6 +466,14 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
       panel.getByRole("button", { name: "Reopen: Implement startup improvement" }),
     ).toBeVisible();
     await expect(panel.getByRole("button", { name: "Reopen: Compaction follow-up" })).toBeVisible();
+    await expect(linkedTitle).toHaveAttribute("aria-pressed", "false");
+    await expect(linkedTitle).toHaveAttribute("aria-disabled", "true");
+    await linkedTitle.click({ force: true });
+    await expect(linkedTitle).toHaveAttribute("aria-pressed", "false");
+    await expect(
+      page.getByRole("button", { name: "To-do · Implement startup improvement", exact: true }),
+    ).toHaveCount(1);
+    await expect(reviewPills).toHaveCount(2);
     await expect(
       panel.getByRole("button", { name: "Review conversations", exact: true }),
     ).toBeVisible(); // Source-only discussion stays open, despite resolved source work.
@@ -454,6 +485,7 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
       committedTodos.items.find((item: { id: string }) => item.id === standaloneTodoId),
     ).toMatchObject({ state: "done", revision: 2 });
     expect(committedTodos.sequence).toBeGreaterThan(beforeToolResolve);
+    expect(committedTodos.selectedId).toBeNull();
     expect(
       committedTodos.items.filter((item: { state: string }) => item.state === "open"),
     ).toHaveLength(1);
@@ -471,7 +503,29 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
     await panel.getByRole("link", { name: "Investigation report" }).click();
     await expect(page.getByText("Implementation report", { exact: true })).toBeVisible();
     await returnToTodos();
-    await expect(reviewTitle).toHaveAttribute("aria-pressed", "true");
+    await expect(reviewTitle).toHaveAttribute("aria-pressed", "false");
+    // Sent context is reconstructed from Pi Durable originals, not today’s selection/state.
+    const requestsBeforeReload = requests.length;
+    await page.reload();
+    await returnToTodos();
+    const restoredDone = panel.getByRole("button", { name: "Done (2)" });
+    if ((await restoredDone.getAttribute("aria-expanded")) !== "true") await restoredDone.click();
+    await expect(linkedTitle).toHaveAttribute("aria-pressed", "false");
+    await expect(reviewTitle).toHaveAttribute("aria-pressed", "false");
+    await expect(reviewPills).toHaveCount(2);
+    const linkedPill = page.getByRole("button", {
+      name: "To-do · Implement startup improvement",
+      exact: true,
+    });
+    await expect(linkedPill).toHaveCount(1);
+    await expect(page.getByLabel("Next message context")).toHaveCount(0);
+    expect(requests.length).toBe(requestsBeforeReload);
+    await linkedPill.click();
+    const context = page.locator(`#${await linkedPill.getAttribute("aria-controls")}`);
+    await expect(context).toContainText('"state": "open"');
+    await expect(context).toContainText("Implement startup improvement.");
+    await expect(context).not.toContainText("<system-reminder>");
+    await linkedPill.click();
     await emitRendererEvent(app, {
       type: "interview-requested",
       requestId: randomUUID(),

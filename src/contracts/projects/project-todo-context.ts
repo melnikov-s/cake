@@ -1,6 +1,7 @@
 import { Option, Schema } from "effect";
 import { splitReferenceNotifications } from "../conversations/reference-notification";
 import { splitSessionDigestReminder } from "../cake-chats/session-digest-reminder";
+import { ProjectTodo, ProjectTodoUserChange } from "./project-todos";
 
 const block =
   /^<system-reminder>\nProject Chat user changes\. [^\n]*\n([^\n]*)\n<\/system-reminder>(?:\n\n|$)/;
@@ -12,6 +13,23 @@ export function splitProjectTodoReminder(text: string) {
     ? { text: text.slice(match[0].length), reminder: match[0].trimEnd() }
     : { text, reminder: undefined };
 }
+const ProjectTodoSentContext = Schema.Struct({
+  selection: Schema.NullOr(ProjectTodo),
+  changes: Schema.Array(ProjectTodoUserChange),
+});
+
+/** Project only the snapshot in this durable input, never the current Project selection. */
+export function projectTodoContextPresentation(reminder: string) {
+  const payload = block.exec(reminder)?.[1];
+  const parsed = Schema.decodeUnknownOption(Schema.fromJsonString(ProjectTodoSentContext))(payload);
+  if (Option.isNone(parsed)) return { title: "Cake · Project Chat changes", text: reminder };
+  const { selection, changes } = parsed.value;
+  return {
+    title: selection ? `To-do · ${selection.title}` : "Cake · Project Chat changes",
+    text: `\`\`\`json\n${JSON.stringify({ selection, changes }, null, 2)}\n\`\`\``,
+  };
+}
+
 export const ProjectTodoContextReceipt = Schema.Struct({
   sequence: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   token: Schema.String.check(Schema.isUUID(4)),
