@@ -2,6 +2,7 @@ import { Schema } from "effect";
 import { TaskInputReference } from "../conversations/task-input";
 import { MessageListResult } from "../conversations/message-reference";
 import type { JsonValue } from "../serialization/json-contract";
+import { SettingsListOutput } from "../application/settings-catalog";
 
 export const compactDiscoveryGuidance =
   "Text uses tab-separated metadata rows: 1/0 booleans, - absent. Cells with tabs/newlines/quotes/backslashes are JSON-quoted. next=N continues with offset; after=ID with after. Declared structured results stay unchanged.";
@@ -61,6 +62,7 @@ const attachments = Schema.Struct({
   ),
   nextAfter: Schema.NullOr(TaskInputReference.fields.id),
 });
+const settingsList = Schema.Struct({ value: SettingsListOutput });
 const error = Schema.Struct({ ok: Schema.Literal(false) });
 
 type Cell = string | number | boolean | undefined | null;
@@ -72,6 +74,13 @@ function cell(value: Cell): string {
   if (value === false) return "0";
   const text = String(value);
   return /[\t\r\n"\\]/.test(text) || text === "" || text === "-" ? JSON.stringify(text) : text;
+}
+
+/** Setting values stay literal: true/false and null, objects as compact JSON. */
+function valueCell(value: JsonValue | undefined): string {
+  if (value === undefined) return "-";
+  if (Schema.is(Schema.String)(value)) return cell(value);
+  return JSON.stringify(value);
 }
 
 const row = (cells: readonly Cell[]) => cells.map(cell).join("\t");
@@ -162,6 +171,25 @@ export function discoveryResultText(command: string, value: JsonValue): string |
           lines.push(row(["input", input.id, input.mimeType, input.byteLength, input.name]));
       }
       return lines.join("\n");
+    }
+    case "settings.list": {
+      const result = Schema.decodeUnknownSync(settingsList)(value).value;
+      if ("categories" in result)
+        return [
+          `${result.categories.length} categories. settings.list {"category":"…"} lists one; {"query":"…"} searches all.`,
+          row(["category", "settings", "changed"]),
+          ...result.categories.map((item) => row([item.category, item.settings, item.changed])),
+          "Elsewhere:",
+          ...result.elsewhere.map(([area, operations]) => row([area, operations])),
+          `Not agent-writable: ${result.notAgentWritable}`,
+        ].join("\n");
+      return [
+        `${result.settings.length} settings; default shown only when changed; settings.get for full text`,
+        ...(result.settings.length ? [row(["key", "value", "default", "type"])] : []),
+        ...result.settings.map((item) =>
+          [item.key, valueCell(item.value), valueCell(item.default), item.type].join("\t"),
+        ),
+      ].join("\n");
     }
     default:
       return undefined;

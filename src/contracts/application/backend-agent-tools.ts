@@ -20,15 +20,6 @@ const definitions = [
       discovery: { topic, summary, guidance, examples, result },
     }),
   ),
-  {
-    command: "settings.sections",
-    scope: "global",
-    discovery: {
-      topic: "settings",
-      summary:
-        "List the Cake settings sections available to agents, including scope and writability.",
-    },
-  },
   { command: "projects.list", scope: "internal" },
   { command: "projects.info", scope: "internal" },
   {

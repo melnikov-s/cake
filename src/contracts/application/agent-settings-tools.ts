@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import { CakeControlTool } from "../cake-chats/cake-chat-data";
-import { agentSettingsGuidance, agentSettingsOperations } from "./agent-settings-schema";
+import { agentSettingsOperations, settingsOperationGuidance } from "./agent-settings-schema";
 
 const deviceSetting = (name: string) =>
   ["settings.mcp.native", "settings.providers.login"].includes(name) ||
@@ -25,7 +25,7 @@ export function agentSettingsTool(
     parameters: Schema.toStandardJSONSchemaV1(definition.input)["~standard"].jsonSchema.input({
       target: "draft-07",
     }),
-    guidance: [...agentSettingsGuidance, ...definition.guidance],
+    guidance: settingsOperationGuidance(definition),
     examples: [{ input: definition.example }],
     result: "The existing Settings service's result; credentials remain masked.",
   });

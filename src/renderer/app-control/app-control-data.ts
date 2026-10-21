@@ -2,10 +2,7 @@ import {
   type SessionInspectionQuery,
   type QueuedSessionCommandReceipt,
 } from "../../contracts/conversations/session-query-data";
-import type {
-  AgentSettingsInvocation,
-  agentSettingsSections,
-} from "../../contracts/application/agent-settings-schema";
+import type { AgentSettingsInvocation } from "../../contracts/application/agent-settings-schema";
 import type { AgentSessionStatus } from "../../contracts/project-sessions/agent-session-list";
 import type { TurnStop } from "../../contracts/conversations/turn-stop";
 import { type JsonValue } from "../../contracts/serialization/json-contract";
@@ -285,7 +282,6 @@ interface CoordinationThreadView {
 type AppControlSuccess =
   | { ok: true; command: "app.state"; state: AppControlState }
   | { ok: true; command: "app.user-selection"; text: string | null }
-  | { ok: true; command: "settings.sections"; sections: typeof agentSettingsSections }
   | {
       ok: true;
       command: "settings.window.get" | "settings.window.update";

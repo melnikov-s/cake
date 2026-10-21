@@ -142,87 +142,104 @@ async function fixture() {
   };
 }
 
-const ListResult = Schema.Struct({
+const Overview = Schema.Struct({
+  categories: Schema.Array(
+    Schema.Struct({ category: Schema.String, settings: Schema.Int, changed: Schema.Int }),
+  ),
+  elsewhere: Schema.Array(Schema.Tuple([Schema.String, Schema.String])),
+  notAgentWritable: Schema.String,
+});
+const Rows = Schema.Struct({
   settings: Schema.Array(
     Schema.Struct({
       key: Schema.String,
-      page: Schema.String,
-      label: Schema.String,
-      type: Schema.String,
       value: Schema.Unknown,
-      default: Schema.Unknown,
-      customized: Schema.Boolean,
+      default: Schema.optionalKey(Schema.Unknown),
+      type: Schema.String,
     }),
   ),
-  otherSettings: Schema.Array(Schema.Struct({ area: Schema.String })),
-  unavailable: Schema.Array(Schema.Struct({ setting: Schema.String, reason: Schema.String })),
 });
 
 describe("settings catalog through the cake tool", () => {
-  it("lists every catalog setting with value, type and default, plus where the rest live", async () => {
+  it("discloses progressively: categories first, then one category's compact rows", async () => {
     await using h = await fixture();
     await h.call("settings.update", {
       key: "instructions.global",
       value: "Prefer tests. ".repeat(40),
     });
-    const listed = Schema.decodeUnknownSync(ListResult)(await h.call("settings.list"));
-    expect(listed.settings.map((setting) => setting.key)).toEqual(
-      settingsCatalog.map((setting) => setting.key),
-    );
-    expect(listed.settings).toContainEqual({
-      key: "cakeChat.contextLimitTokens",
-      page: "Cake Chat",
-      label: "Active context limit",
-      type: "32000 | 64000 | 128000 | 200000 | 300000 | 500000 | 1000000",
-      value: 300_000,
-      default: 300_000,
-      customized: false,
-    });
-    expect(listed.settings).toContainEqual(
-      expect.objectContaining({
-        key: "pi.autoCompact",
-        page: "Agent",
-        type: "boolean",
-        value: true,
-        default: true,
-      }),
-    );
-    // Long prompt text is previewed so one list call stays bounded.
-    const instructions = listed.settings.find((setting) => setting.key === "instructions.global");
-    expect(instructions).toMatchObject({ customized: true, default: "" });
-    expect(instructions?.value).toEqual(expect.stringContaining("[559 chars; read in full"));
-    expect(listed.otherSettings.map((pointer) => pointer.area)).toEqual(
-      expect.arrayContaining(["Provider accounts", "MCP servers", "Model presets"]),
-    );
-    expect(listed.unavailable.map((entry) => entry.setting).join("\n")).toContain("API keys");
 
-    const filtered = Schema.decodeUnknownSync(ListResult)(
+    const overview = Schema.decodeUnknownSync(Overview)(await h.call("settings.list"));
+    expect(overview.categories).toContainEqual({ category: "Cake Chat", settings: 4, changed: 0 });
+    expect(overview.categories).toContainEqual({
+      category: "Instructions & prompts",
+      settings: 7,
+      changed: 1,
+    });
+    expect(overview.categories.reduce((total, item) => total + item.settings, 0)).toBe(
+      settingsCatalog.length,
+    );
+    expect(overview.elsewhere.map(([area]) => area).join("\n")).toContain("Provider accounts");
+    expect(overview.notAgentWritable).toContain("API keys");
+
+    // The model sees compact tab-separated text, not pretty-printed JSON.
+    const text = (
+      await h.registry.invoke(
+        { command: "settings.list", input: {} },
+        { signal: new AbortController().signal, toolCallId: "text", runtime: {} },
+      )
+    ).text;
+    expect(text).toContain("Cake Chat\t4\t0");
+    expect(text.length).toBeLessThan(1_500);
+
+    const chat = Schema.decodeUnknownSync(Rows)(
+      await h.call("settings.list", { category: "Cake Chat" }),
+    );
+    expect(chat.settings.map((setting) => setting.key)).toEqual([
+      "cakeChat.contextLimitTokens",
+      "cakeChat.memoryViewBytes",
+      "cakeChat.summarizationModel",
+      "cakeChat.subagentDefaultModel",
+    ]);
+    // Unchanged settings omit their default.
+    expect(chat.settings[0]).toEqual({
+      key: "cakeChat.contextLimitTokens",
+      value: 300_000,
+      type: "32000|64000|128000|200000|300000|500000|1000000",
+    });
+
+    const prompts = Schema.decodeUnknownSync(Rows)(
+      await h.call("settings.list", { category: "Instructions & prompts" }),
+    );
+    const instructions = prompts.settings.find((setting) => setting.key === "instructions.global");
+    // Changed settings show their default; long text is previewed.
+    expect(instructions).toMatchObject({ default: "" });
+    expect(instructions?.value).toEqual(expect.stringContaining("… (559 chars)"));
+
+    const search = Schema.decodeUnknownSync(Rows)(
       await h.call("settings.list", { query: "context" }),
     );
-    expect(filtered.settings.map((setting) => setting.key)).toContain(
-      "cakeChat.contextLimitTokens",
-    );
-    expect(filtered.settings.every((setting) => setting.page !== "Network & privacy")).toBe(true);
+    expect(search.settings.map((setting) => setting.key)).toContain("cakeChat.contextLimitTokens");
+    expect(search.settings.map((setting) => setting.key)).not.toContain("pi.transport");
   });
 
-  it("gets one setting with its schema, default and effective result", async () => {
+  it("gets one setting with description, type, full value and default", async () => {
     await using h = await fixture();
-    expect(await h.call("settings.get", { key: "cakeChat.contextLimitTokens" })).toMatchObject({
+    expect(await h.call("settings.get", { key: "cakeChat.contextLimitTokens" })).toEqual({
       key: "cakeChat.contextLimitTokens",
+      category: "Cake Chat",
+      label: "Active context limit",
       description: expect.stringContaining("model window"),
-      schema: {
-        type: "number",
-        enum: [32_000, 64_000, 128_000, 200_000, 300_000, 500_000, 1_000_000],
-      },
+      type: "32000|64000|128000|200000|300000|500000|1000000",
       value: 300_000,
       default: 300_000,
       effective: { configuredLimitTokens: 300_000 },
     });
+    // effective appears only when it says more than the value.
+    expect(await h.call("settings.get", { key: "pi.transport" })).not.toHaveProperty("effective");
     expect(await h.call("settings.get", { key: "pi.transport" })).toMatchObject({
-      type: '"sse" | "websocket" | "websocket-cached" | "auto"',
+      type: "sse|websocket|websocket-cached|auto",
       value: "auto",
       default: "auto",
-      effective: { value: "auto", reloadPending: false },
     });
   });
 
@@ -241,7 +258,7 @@ describe("settings catalog through the cake tool", () => {
       label: "Active context limit",
       previous: 300_000,
       value: 500_000,
-      effective: { configuredLimitTokens: 500_000, rule: expect.stringContaining("smaller") },
+      effective: { configuredLimitTokens: 500_000 },
     });
     expect(h.saved().cakeChatPreferences?.contextLimitTokens).toBe(500_000);
     await waitFor(() => expect(limit.value).toBe("500000"));
@@ -260,10 +277,11 @@ describe("settings catalog through the cake tool", () => {
 
   it("updates Pi, model-choice, prompt and experimental settings through their own authorities", async () => {
     await using h = await fixture();
-    expect(await h.call("settings.update", { key: "pi.autoCompact", value: false })).toMatchObject({
+    expect(await h.call("settings.update", { key: "pi.autoCompact", value: false })).toEqual({
+      key: "pi.autoCompact",
+      label: "Auto-compact",
       previous: true,
       value: false,
-      effective: { value: false },
     });
     expect(h.manager.getCompactionEnabled()).toBe(false);
     expect(h.reloads).toEqual(["all"]);
@@ -328,11 +346,12 @@ describe("settings catalog through the cake tool", () => {
 
   it("never exposes credentials as setting keys or accepts them as values", async () => {
     await using h = await fixture();
-    const listed = Schema.decodeUnknownSync(ListResult)(await h.call("settings.list"));
-    for (const setting of listed.settings)
+    for (const setting of settingsCatalog)
       expect(setting.key).not.toMatch(/api.?key|secret|password|credential|oauth|token(?!s$)/i);
-    for (const key of ["speech.elevenLabsApiKey", "providers.anthropic.oauth", "mcp.env"])
-      await expect(h.call("settings.get", { key })).rejects.toThrow();
+    for (const key of ["speech.elevenLabsApiKey", "providers.anthropic.oauth", "mcp.env"]) {
+      await expect(h.call("settings.get", { key })).rejects.toThrow(/Unknown setting/);
+      await expect(h.call("settings.update", { key, value: "secret" })).rejects.toThrow();
+    }
     expect(h.registry.operationHelp("settings.update")).toContain("cakeChat.contextLimitTokens");
   });
 

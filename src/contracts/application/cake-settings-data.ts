@@ -1,27 +1,6 @@
 export const cakeSettingsSectionIds = ["appearance", "editor", "hotkeys"] as const;
 export type CakeSettingsSectionId = (typeof cakeSettingsSectionIds)[number];
 
-export const cakeSettingsSections = [
-  {
-    id: "appearance",
-    scope: "window",
-    writable: true,
-    description: "Theme, avatars, and work-log presentation",
-  },
-  {
-    id: "editor",
-    scope: "window",
-    writable: true,
-    description: "Embedded VS Code presentation",
-  },
-  {
-    id: "hotkeys",
-    scope: "window",
-    writable: true,
-    description: "Application keyboard shortcuts",
-  },
-] as const;
-
 export const cakeHotkeyActionIds = [
   "new-session",
   "toggle-agent-editor",

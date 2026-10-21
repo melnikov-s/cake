@@ -106,7 +106,6 @@ const CAKE_CHAT_OPERATIONS = [
   "settings.project-chat.get",
   "settings.project-chat.update",
   // Every user setting the Settings UI offers, through the same authorities.
-  "settings.sections",
   "settings.window.get",
   "settings.window.update",
   ...agentSettingsOperations.map((operation) => operation.command),

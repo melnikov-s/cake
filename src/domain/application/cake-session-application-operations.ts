@@ -84,17 +84,6 @@ export function createSessionApplicationOperations(
       execute: invokeAppControl("app.split"),
     },
     {
-      command: "settings.sections",
-      requires: "invokeAppControl",
-      topic: "settings",
-      summary:
-        "List the Cake settings sections available to agents, including scope and writability.",
-      inputSchema: empty,
-      examples: [{}],
-      result: "The available settings section IDs, descriptions, scopes, and writability.",
-      execute: invokeAppControl("settings.sections"),
-    },
-    {
       command: "settings.window.get",
       requires: "invokeAppControl",
       topic: "settings",

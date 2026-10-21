@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 import {
   agentSettingsOperations,
-  agentSettingsGuidance,
+  settingsOperationGuidance,
 } from "../../contracts/application/agent-settings-schema";
 import {
   jsonObjectSchema,
@@ -21,7 +21,7 @@ export function createCakeSettingsOperations(
     requires: "invokeAppControl",
     topic: "settings",
     summary: operation.summary,
-    guidance: [...agentSettingsGuidance, ...operation.guidance],
+    guidance: settingsOperationGuidance(operation),
     inputSchema: operation.input,
     outputSchema: Schema.Union([
       Schema.Struct({

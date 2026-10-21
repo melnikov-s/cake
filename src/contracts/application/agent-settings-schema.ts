@@ -4,25 +4,16 @@ import {
   WidgetPackageRemove,
   WidgetPackageName,
 } from "../widgets/widget-packages";
-import {
-  piSettingUpdateSchema,
-  piSettingsSchema,
-  modelOptionSchema,
-} from "../conversations/session-contract";
+import { piSettingsSchema, modelOptionSchema } from "../conversations/session-contract";
 import { jsonValueSchema } from "../serialization/json-contract";
 import { ModelPreset, UtilityModel, SessionLabelMutation, SessionLabel } from "./application-data";
-import { CakePrompts } from "./cake-prompt-data";
-import {
-  NonChatModelPreferenceUpdate,
-  NonChatModelPreferences,
-} from "../models/non-chat-model-data";
+import { NonChatModelPreferences } from "../models/non-chat-model-data";
 import { McpSettingsSnapshot, McpSettingsMutation } from "../pi/mcp-settings-data";
 import { PiNonChatModel } from "../pi/model-data";
 import { DictationState, TextProcessingMode } from "../dictation/dictation-data";
 import { DesktopSharingInput, DesktopSharingState } from "../desktop/desktop-sharing-data";
 import { DesktopHostSelection } from "../desktop/desktop-host-data";
 import { NativeMcpConfigEdit } from "../pi/mcp-config-validation";
-import { cakeSettingsSections } from "./cake-settings-data";
 import { TurnId } from "../conversations/conversation-data";
 import { SpeechOutputSettings, SpeechOutputVoice } from "../speech/speech-output-data";
 import { AgentListInput } from "../agent/agent-list-data";
@@ -39,7 +30,6 @@ const empty = Schema.Struct({});
 const scope = Schema.Literals(["backend", "project"]);
 const id = Schema.String.check(Schema.isUUID(4));
 const provider = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
-const text = Schema.String.check(Schema.isMaxLength(16_384));
 const presetProjection = Schema.Struct({
   presets: Schema.Array(ModelPreset),
   defaultPresetId: Schema.optionalKey(id),
@@ -147,39 +137,37 @@ export const widgetPackageSettingsOperations = [
   ),
 ] as const;
 
-const catalogGuidance = [
-  "One key per user setting, executed through the same backend authority as the Settings UI (Cake application state or Pi's settings file); changes apply live and the Settings UI updates.",
-  "settings.list also names the dedicated operations for collections (presets, labels, MCP, providers, widgets), per-window settings (settings.window.*), and device settings, plus settings agents cannot change.",
-];
+/** Catalog operations carry their own short guidance instead of the shared settings guidance. */
+const settingsCatalogCommands: ReadonlySet<string> = new Set([
+  "settings.list",
+  "settings.get",
+  "settings.update",
+]);
 
 const settingsCatalogOperations = [
   setting(
     "settings.list",
     SettingsListInput,
-    "Discover user settings: key, Settings page, label, value shape, current value and default. Filter by page or query.",
-    { query: "context" },
+    "Start here. No input: setting categories with counts, plus where other settings live. category or query: that category's keys, values, types and changed defaults.",
+    { category: "Cake Chat" },
     SettingsListOutput,
-    [...catalogGuidance, "Long text values are previewed; read them in full with settings.get."],
   ),
   setting(
     "settings.get",
     SettingsGetInput,
-    "Read one setting by key with its description, JSON Schema, current value, default and effective result.",
+    "Read one setting by key: description, type, full value, default.",
     { key: "cakeChat.contextLimitTokens" },
     SettingsGetOutput,
-    catalogGuidance,
   ),
   setting(
     "settings.update",
     SettingsUpdateInput,
-    "Change one setting by key; returns previous, new and effective values. Validated with the Settings UI's limits.",
+    "Change one setting by key, live, through the Settings UI's own authority and limits. Returns previous and new values.",
     { key: "cakeChat.contextLimitTokens", value: 500_000 },
     SettingsUpdateOutput,
     [
-      ...catalogGuidance,
-      "Change settings only when the user asks. Use settings.list or settings.get for the key and allowed values; invalid values fail without changing anything.",
-      "cakeChat.contextLimitTokens accepts only the limits offered in Settings. Its effective result reports the configured limit; in a permanent chat it also reports that chat's actual limit after the model-window minimum.",
-      "Read back with settings.get before claiming success when the effective result is unclear.",
+      "Only when the user asks. Invalid values fail without changes. Prompts accept null to restore the default.",
+      "cakeChat.contextLimitTokens returns effective; in a permanent chat effective.thisChat is its real limit (min of the setting and model window minus output reserve). Pi changes reload sessions when idle.",
     ],
   ),
 ] as const;
@@ -187,24 +175,6 @@ const settingsCatalogOperations = [
 export const agentSettingsOperations = [
   ...settingsCatalogOperations,
   ...widgetPackageSettingsOperations,
-  setting(
-    "settings.pi.get",
-    empty,
-    "Read backend Pi behavior, defaults, execution, resources and network settings.",
-    {},
-    piSettingsSchema,
-  ),
-  setting(
-    "settings.pi.update",
-    piSettingUpdateSchema,
-    "Update one validated backend Pi setting using the manual Settings persistence and reload policy.",
-    { key: "defaultTools", value: ["+codemode", "+tool_search"] },
-    piSettingsSchema,
-    [
-      "defaultTools: null restores Cake defaults (Pi’s ordinary tools plus codemode), [] disables built-ins, plain names replace defaults, +name adds and -name removes. Both codemode and tool_search are native entries.",
-      "Reload may be queued while sessions run. Removing a tool does not disable it in an already-started session; restart that session. Enabling tools never invokes a billed model.",
-    ],
-  ),
   setting(
     "settings.pi.reload",
     empty,
@@ -218,23 +188,6 @@ export const agentSettingsOperations = [
     "Inspect model presets/default, utility model, and backend image/classifier preferences.",
     {},
     modelsView,
-  ),
-  setting(
-    "settings.models.set-utility",
-    Schema.Struct({ model: Schema.NullOr(UtilityModel) }),
-    "Set or clear the backend utility model; null disables background utility calls.",
-    { model: null },
-    Schema.Struct({ utilityModel: Schema.NullOr(UtilityModel) }),
-  ),
-  setting(
-    "settings.models.set-non-chat",
-    NonChatModelPreferenceUpdate,
-    "Set or clear an advisory backend image/classifier model preference.",
-    { type: "image", preference: null },
-    NonChatModelPreferences,
-    [
-      "Use native models.select-non-chat in eligible Project Session codemode to consume this preference. Explicit requested models override it; unavailable selections fail without substitution.",
-    ],
   ),
   setting(
     "settings.presets.create",
@@ -274,13 +227,6 @@ export const agentSettingsOperations = [
     Schema.Struct({ id }),
     "Remove a preset.",
     {},
-    presetProjection,
-  ),
-  setting(
-    "settings.presets.set-default",
-    Schema.Struct({ id: Schema.NullOr(id) }),
-    "Set the default preset for new Cake chats; null restores Pi's default.",
-    { id: null },
     presetProjection,
   ),
   setting(
@@ -374,37 +320,6 @@ export const agentSettingsOperations = [
       "Omit sessionId to target the calling Project Session. The calling agent is busy during a tool call; Cake Chat can name an explicitly targeted idle Project Session instead. Requires its existing Project access/trust and built-in MCP command.",
       "Submission is not authorization: follow Pi's existing dialogs/notices. No stored credentials or live connection status are returned.",
     ],
-  ),
-  setting(
-    "settings.instructions.get",
-    empty,
-    "Read global custom instructions and all five worktree automation prompts/defaults.",
-    {},
-    Schema.Struct({ instructions: text, prompts: CakePrompts, defaults: CakePrompts }),
-  ),
-  setting(
-    "settings.instructions.update",
-    Schema.Struct({ instructions: text }),
-    "Set global personal Project Session instructions; empty text clears them.",
-    { instructions: "" },
-    Schema.Struct({ instructions: text }),
-  ),
-  setting(
-    "settings.prompts.update",
-    Schema.Struct({
-      key: Schema.Literals([
-        "worktreeCommit",
-        "worktreeRebaseConflict",
-        "worktreePreserveConflict",
-        "worktreeSquashConflict",
-        "worktreeSquashMessage",
-        "dictationCleanup",
-      ]),
-      value: Schema.NullOr(CakePrompts.fields.worktreeCommit),
-    }),
-    "Update one worktree automation prompt; null restores its default.",
-    { key: "worktreeCommit", value: null },
-    Schema.Struct({ prompts: CakePrompts }),
   ),
   setting(
     "settings.labels.get",
@@ -519,114 +434,17 @@ export const AgentSettingsInvocation = Schema.Union(
 );
 export type AgentSettingsInvocation = typeof AgentSettingsInvocation.Type;
 
-export const agentSettingsSections = [
-  {
-    id: "catalog",
-    scope: "backend",
-    writable: true,
-    description:
-      "Every scalar user setting by key: Cake Chat context limit/memory/models, model defaults, Pi agent/execution/network, instructions, prompts and experimental features. Start here",
-    commands: ["settings.list", "settings.get", "settings.update"],
-  },
-  ...cakeSettingsSections.map((section) => ({
-    ...section,
-    commands: ["settings.window.get", "settings.window.update"],
-  })),
-  {
-    id: "widgets",
-    scope: "backend",
-    writable: true,
-    description:
-      "Shared user-installed widget dependencies; installation requires explicit user approval",
-    commands: ["settings.widgets.list", "settings.widgets.install", "settings.widgets.remove"],
-  },
-  {
-    id: "speech",
-    scope: "originating-desktop",
-    writable: true,
-    description: "Speech settings, persisted voices, refresh and default voice selection",
-    commands: ["settings.speech.*"],
-  },
-  {
-    id: "models",
-    scope: "backend",
-    writable: true,
-    description:
-      "Presets/default, utility model, image/classifier preferences; current chat uses session.set-model",
-    commands: [
-      "settings.models.get",
-      "settings.models.set-utility",
-      "settings.models.set-non-chat",
-      "settings.presets.*",
-      "session.set-model",
-    ],
-  },
-  {
-    id: "providers",
-    scope: "backend",
-    writable: true,
-    description:
-      "Catalog refresh and interactive API-key/OAuth login/logout; stored credentials are never returned",
-    commands: ["settings.providers.*"],
-  },
-  {
-    id: "pi",
-    scope: "backend",
-    writable: true,
-    description:
-      "Agent, execution/resources, codemode/tool-search, default agent model/reasoning, network/privacy and reload",
-    commands: ["settings.pi.*"],
-  },
-  {
-    id: "mcp",
-    scope: "backend-or-calling-working-directory",
-    writable: true,
-    description:
-      "Masked native MCP configuration and scope-aware reload. Project trust/access required",
-    commands: ["settings.mcp.get", "settings.mcp.update", "settings.mcp.native"],
-    limitations: [
-      "Stored-secret reveal intentionally unavailable",
-      "Native MCP login/logout/reconnect require an idle Project Session; a calling agent is busy. Cake Chat can target an explicitly named idle Project Session; submission does not confirm authorization",
-    ],
-  },
-  {
-    id: "instructions",
-    scope: "backend",
-    writable: true,
-    description:
-      "Global custom instructions, worktree automation prompts and speech cleanup prompt/reset",
-    commands: ["settings.instructions.*", "settings.prompts.update"],
-  },
-  {
-    id: "labels",
-    scope: "backend",
-    writable: true,
-    description: "Global labels: add/edit/color/reorder/delete",
-    commands: ["settings.labels.*"],
-  },
-  {
-    id: "desktop",
-    scope: "originating-desktop",
-    writable: true,
-    description: "Host selection/reload/reconnect and local-host browser sharing",
-    commands: ["settings.desktop.*"],
-    limitations: [
-      "Browser clients unavailable; host switching may disconnect before receipt",
-      "Sharing matches manual local-host-only availability",
-    ],
-  },
-  {
-    id: "dictation",
-    scope: "originating-desktop",
-    writable: true,
-    description:
-      "Mode, microphone, install/cancel, native model folder/remove; permission remains interactive",
-    commands: ["settings.dictation.*"],
-  },
-] as const;
+/** Shared settings guidance, except for catalog operations whose help stays short. */
+export const settingsOperationGuidance = (operation: {
+  readonly command: string;
+  readonly guidance: readonly string[];
+}) =>
+  settingsCatalogCommands.has(operation.command)
+    ? operation.guidance
+    : [...agentSettingsGuidance, ...operation.guidance];
 
-export const agentSettingsGuidance = [
+const agentSettingsGuidance = [
   "Backend settings execute on the selected backend through the same domain/services as manual Settings, without requiring a connected window. Native/device interactions still target the originating Cake window; appearance/editor/hotkeys remain window-local via settings.window.get/update.",
-  "Start with settings.list (every setting by key, plus where the rest live), then exact settings.<operation>.help for schemas. Current chat model uses session.set-model, not an image/classifier preference.",
+  "Scalar settings (Pi, model defaults, instructions, prompts, Cake Chat) change with settings.update; find keys with settings.list. Current chat model uses session.set-model.",
   "Cancellation does not undo a setting already saved. Interactive credentials and permissions remain user-owned; stored credentials are never returned.",
 ];

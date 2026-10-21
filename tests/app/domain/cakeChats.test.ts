@@ -228,7 +228,7 @@ describe("permanent Cake Chat", () => {
           "settings.list",
           "settings.get",
           "settings.update",
-          "settings.pi.update",
+          "settings.pi.reload",
           "settings.window.update",
           "settings.speech.set-voice",
         ])

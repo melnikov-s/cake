@@ -1,19 +1,13 @@
 import { Effect, Schema, Struct } from "effect";
 import type { AgentSettingsInvocation } from "../../contracts/application/agent-settings-schema";
-import {
-  defaultCakePrompts,
-  resolveCakePrompts,
-} from "../../contracts/application/cake-prompt-defaults";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import { PiModels } from "../../services/pi/PiModels";
-import { PiSettings } from "../../services/pi/PiSettings";
 
 import { WidgetPackages } from "../../services/widgets/WidgetPackages";
 import * as application from "./application";
 import * as piSettings from "./piSettings";
 import * as settingsCatalog from "./settingsCatalog";
 import * as modelPresets from "../model-presets/modelPresets";
-import { updateNonChatModelPreference } from "../model-preferences/non-chat-model-preferences";
 import { loadMcpSettings, mutateMcpSettings } from "../mcp/mcp-settings";
 import { toJsonValue } from "../../utils/to-json-value";
 import { agentListLabel, agentListPage } from "../../contracts/agent/agent-list-data";
@@ -49,10 +43,6 @@ export const invoke = Effect.fn("AgentSettings.invoke")(function* (
       case "settings.widgets.remove":
         yield* (yield* WidgetPackages).remove(invocation.arguments.name);
         return { removed: true, name: invocation.arguments.name };
-      case "settings.pi.get":
-        return yield* (yield* PiSettings).load();
-      case "settings.pi.update":
-        return yield* piSettings.update(invocation.arguments);
       case "settings.pi.reload":
         return yield* piSettings.reload();
       case "settings.models.get": {
@@ -64,12 +54,6 @@ export const invoke = Effect.fn("AgentSettings.invoke")(function* (
           nonChatPreferences: state.nonChatModelPreferences ?? {},
         };
       }
-      case "settings.models.set-utility": {
-        const state = yield* application.setUtilityModel(invocation.arguments.model ?? undefined);
-        return { utilityModel: state.utilityModel ?? null };
-      }
-      case "settings.models.set-non-chat":
-        return yield* updateNonChatModelPreference(invocation.arguments);
       case "settings.presets.create":
         return yield* modelPresets.create(invocation.arguments);
       case "settings.presets.update":
@@ -78,8 +62,6 @@ export const invoke = Effect.fn("AgentSettings.invoke")(function* (
         return yield* modelPresets.reorder(invocation.arguments);
       case "settings.presets.remove":
         return yield* modelPresets.remove(invocation.arguments.id);
-      case "settings.presets.set-default":
-        return yield* modelPresets.setDefault(invocation.arguments.id ?? undefined);
       case "settings.providers.list": {
         const { chat, nonChat } = yield* catalog();
         const input = invocation.arguments;
@@ -147,25 +129,6 @@ export const invoke = Effect.fn("AgentSettings.invoke")(function* (
           });
         const mutation = Struct.omit(invocation.arguments, ["scope"]);
         return yield* mutateMcpSettings({ ...mutation, ...(projectPath ? { projectPath } : null) });
-      }
-      case "settings.instructions.get": {
-        const state = (yield* ApplicationState).snapshot();
-        return {
-          instructions: state.globalCustomInstructions,
-          prompts: resolveCakePrompts(state.cakePrompts),
-          defaults: defaultCakePrompts(),
-        };
-      }
-      case "settings.instructions.update": {
-        const state = yield* application.setGlobalCustomInstructions(
-          invocation.arguments.instructions,
-        );
-        return { instructions: state.globalCustomInstructions };
-      }
-      case "settings.prompts.update": {
-        const { key, value } = invocation.arguments;
-        const state = yield* application.setCakePrompt(key, value);
-        return { prompts: resolveCakePrompts(state.cakePrompts) };
       }
       case "settings.list":
         return yield* settingsCatalog.list(invocation.arguments);

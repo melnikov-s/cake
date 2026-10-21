@@ -52,7 +52,6 @@ export const SessionLabelListInput = Schema.Struct({
 
 /** Shared decoding for backend-owned application controls. Window selection/layout is deliberately absent. */
 export const BackendAgentInvocation = Schema.Union([
-  operation("settings.sections", Schema.Struct({})),
   operation("projects.list", AgentListInput),
   operation("projects.info", AgentProjectInfoInput),
   operation("project.settings.get", CurrentProjectSettingsGetInput),
@@ -138,7 +137,6 @@ export const BackendAgentInvocation = Schema.Union([
 export type BackendAgentInvocation = Schema.Schema.Type<typeof BackendAgentInvocation>;
 
 export const backendAgentCommands: ReadonlySet<string> = new Set([
-  "settings.sections",
   "projects.list",
   "projects.info",
   "project.settings.get",

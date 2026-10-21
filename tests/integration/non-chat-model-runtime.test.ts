@@ -16,7 +16,10 @@ import {
   projectNonChatModelCatalog,
 } from "../../src/services/pi/live/PiModelsLive";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
-import type { NonChatModelPreferences } from "../../src/contracts/models/non-chat-model-data";
+import {
+  NonChatModelReference,
+  type NonChatModelPreferences,
+} from "../../src/contracts/models/non-chat-model-data";
 import { nativeNonChatScript, nonChatProviderSource } from "../fixtures/non-chat-provider";
 
 const directories: string[] = [];
@@ -223,14 +226,29 @@ describe("Native non-chat model settings contract", () => {
             { name: command, arguments: input },
             { onExcessProperty: "error" },
           );
-          if (invocation.name !== "settings.models.set-non-chat")
+          if (
+            invocation.name !== "settings.update" ||
+            invocation.arguments.key !== "models.classifierPreference"
+          )
             throw new Error("Unexpected fixture operation");
-          const { type, preference } = invocation.arguments;
+          const previous = preferences.classifier ?? null;
+          const preference = Schema.decodeUnknownSync(Schema.NullOr(NonChatModelReference))(
+            invocation.arguments.value,
+          );
           const next = { ...preferences };
-          if (preference === null) delete next[type];
-          else next[type] = preference;
+          if (preference === null) delete next.classifier;
+          else next.classifier = preference;
           preferences = next;
-          return { ok: true, command, value: preferences };
+          return {
+            ok: true,
+            command,
+            value: {
+              key: "models.classifierPreference",
+              label: "Preferred classifier model",
+              previous,
+              value: preference,
+            },
+          };
         },
       },
     });
@@ -244,7 +262,7 @@ describe("Native non-chat model settings contract", () => {
     await runtime.prompt(`SCRIPT:${nativeNonChatScript("image", "image-b")}`, "prompt", []);
     // Native codemode consumes a real structured settings operation before selecting a model.
     await runtime.prompt(
-      `SCRIPT:const saved = await tools.cake({command:"settings.models.set-non-chat", input:{type:"classifier", preference:{provider:"non-chat-fixture", modelId:"classifier-b"}}}); if (!saved.result.ok) throw new Error("Settings failed"); ${nativeNonChatScript("classifier")}`,
+      `SCRIPT:const saved = await tools.cake({command:"settings.update", input:{key:"models.classifierPreference", value:{provider:"non-chat-fixture", modelId:"classifier-b"}}}); if (!saved.result.ok) throw new Error("Settings failed"); ${nativeNonChatScript("classifier")}`,
       "prompt",
       [],
     );
@@ -303,8 +321,8 @@ describe("Native non-chat model settings contract", () => {
     expect(
       JSON.stringify(
         await restricted.callCakeOperation?.(
-          "settings.pi.update",
-          { key: "defaultTools", value: ["+codemode"] },
+          "settings.update",
+          { key: "pi.defaultTools", value: ["+codemode"] },
           new AbortController().signal,
         ),
       ),

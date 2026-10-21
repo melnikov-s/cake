@@ -271,7 +271,6 @@ describe("AppControlBridge", () => {
     expect(target.tools.some((tool) => tool.command === "app.split")).toBe(true);
     expect(target.tools.some((tool) => tool.command === "sessions.create-draft")).toBe(true);
     expect(target.tools.some((tool) => tool.command === "notifications.send")).toBe(true);
-    expect(target.tools.some((tool) => tool.command === "settings.sections")).toBe(true);
     for (const command of [
       "settings.list",
       "settings.get",

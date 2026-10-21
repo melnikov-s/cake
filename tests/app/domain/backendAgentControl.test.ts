@@ -1277,15 +1277,9 @@ it.effect("session info rejects canonical identity location collisions before in
 it.effect("executes settings, label lifecycle, and authoritative inspection with no renderer", () =>
   Effect.gen(function* () {
     const f = yield* fixture();
-    expect(yield* f.call("settings.sections")).toMatchObject({
-      ok: true,
-      sections: expect.arrayContaining([
-        expect.objectContaining({ id: "mcp", scope: "backend-or-calling-working-directory" }),
-      ]),
-    });
     expect(
-      yield* f.call("settings.instructions.update", { instructions: " Backend-owned " }),
-    ).toMatchObject({ ok: true, value: { instructions: "Backend-owned" } });
+      yield* f.call("settings.update", { key: "instructions.global", value: " Backend-owned " }),
+    ).toMatchObject({ ok: true, value: { previous: "", value: "Backend-owned" } });
     expect(
       yield* f.call("project.settings.update", {
         changes: { customInstructions: "Project-owned", projectChatInstructions: "Chat-owned" },
@@ -2648,8 +2642,8 @@ it.effect("Cake Chat keeps report policy and protected-task redaction without a 
     const call = (name: string, input: JsonObject) =>
       Effect.promise(() => control.invoke({ name, arguments: input }, signal()));
     expect(
-      yield* call("settings.instructions.update", { instructions: "Coordinator-owned" }),
-    ).toMatchObject({ ok: true, value: { instructions: "Coordinator-owned" } });
+      yield* call("settings.update", { key: "instructions.global", value: "Coordinator-owned" }),
+    ).toMatchObject({ ok: true, value: { value: "Coordinator-owned" } });
     f.protect();
     expect(yield* call("sessions.info", { sessionId: target })).toMatchObject({
       ok: true,

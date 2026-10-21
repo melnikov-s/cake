@@ -11,10 +11,7 @@ import { CakeChatConfiguration } from "../../services/pi-durable/CakeChatConfigu
 import * as chatMetadata from "../cake-chats/cakeChatMetadata";
 import * as chatTargets from "../cake-chats/cakeChatTargets";
 import { isBackendAgentSetting } from "../../contracts/application/agent-settings-tools";
-import {
-  AgentSettingsInvocation,
-  agentSettingsSections,
-} from "../../contracts/application/agent-settings-schema";
+import { AgentSettingsInvocation } from "../../contracts/application/agent-settings-schema";
 import {
   BackendAgentInvocation,
   backendAgentCommands,
@@ -162,8 +159,6 @@ export const invoke: (
       });
       const fail = (error: string) => toJsonValue({ ok: false, command, error });
       switch (invocation.name) {
-        case "settings.sections":
-          return toJsonValue({ ok: true, command, sections: agentSettingsSections });
         case "projects.list":
           return toJsonValue({
             ok: true,

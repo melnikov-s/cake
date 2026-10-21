@@ -1,11 +1,11 @@
 import { Effect, Schema } from "effect";
 import {
   CakePromptKey,
-  settingJsonSchema,
   settingTypeSummary,
   settingsCatalog,
-  settingsCatalogPointers,
-  settingsCatalogUnavailable,
+  settingsCategories,
+  settingsElsewhere,
+  settingsNotAgentWritable,
   type SettingDefinition,
   type SettingsGetInput,
   type SettingsListInput,
@@ -46,13 +46,19 @@ export class SettingsCatalogError extends Schema.TaggedError<SettingsCatalogErro
   { message: Schema.String },
 ) {}
 
-const LIST_TEXT_LIMIT = 160;
+/** Long text is previewed in list rows and update echoes; settings.get returns it in full. */
+const LIST_TEXT_LIMIT = 60;
+const ECHO_TEXT_LIMIT = 200;
 
 const definitionFor = (key: string): Effect.Effect<SettingDefinition, SettingsCatalogError> => {
   const definition = settingsCatalog.find((candidate) => candidate.key === key);
   return definition
     ? Effect.succeed(definition)
-    : Effect.fail(new SettingsCatalogError({ message: `Unknown setting: ${key}` }));
+    : Effect.fail(
+        new SettingsCatalogError({
+          message: `Unknown setting: ${key}. Find keys with settings.list (categories) or settings.list {query}.`,
+        }),
+      );
 };
 
 /** Narrow an already-validated value to the authority's own type, without casts. */
@@ -146,60 +152,64 @@ const snapshot = Effect.fn("SettingsCatalog.snapshot")(function* (keys: readonly
   };
 });
 
-const preview = (value: JsonValue): JsonValue =>
-  Schema.is(Schema.String)(value) && value.length > LIST_TEXT_LIMIT
-    ? `${value.slice(0, LIST_TEXT_LIMIT)}… [${value.length} chars; read in full with settings.get]`
+const preview = (value: JsonValue, limit: number): JsonValue =>
+  Schema.is(Schema.String)(value) && value.length > limit
+    ? `${value.slice(0, limit)}… (${value.length} chars)`
     : value;
 
-function effectiveValue(key: string, value: JsonValue, reloadPending: boolean): JsonValue {
-  if (key === "cakeChat.contextLimitTokens")
-    return {
-      configuredLimitTokens: value,
-      rule: "Each permanent chat summarizes at the smaller of this limit and its model window minus the output reserve. context.status in a chat reports its exact limit.",
-    };
-  if (key.startsWith("pi."))
-    return {
-      value,
-      reloadPending,
-      appliesTo:
-        "All Pi sessions. Busy sessions reload when idle; a removed tool stays in already-started sessions until restarted.",
-    };
-  return value;
+const same = (left: JsonValue, right: JsonValue) => JSON.stringify(left) === JSON.stringify(right);
+
+/** Only where the effective result says more than the stored value. */
+function effectiveValue(key: string, value: JsonValue, reloadPending: boolean) {
+  if (key === "cakeChat.contextLimitTokens") return { effective: { configuredLimitTokens: value } };
+  if (key.startsWith("pi.") && reloadPending) return { effective: { reloadPending: true } };
+  return null;
 }
 
-const matches = (text: readonly string[], query: string | undefined) =>
-  !query || text.some((part) => part.toLowerCase().includes(query.toLowerCase()));
-
-export const list = Effect.fn("SettingsCatalog.list")(function* (input: SettingsListInput) {
-  const selected = settingsCatalog.filter(
-    (definition) =>
-      (!input.page || definition.page === input.page) &&
-      matches(
-        [definition.key, definition.label, definition.description, definition.page],
-        input.query,
-      ),
+const matches = (definition: SettingDefinition, query: string) =>
+  [definition.key, definition.label, definition.description, definition.category].some((part) =>
+    part.toLowerCase().includes(query.toLowerCase()),
   );
+
+/** Without arguments: categories and where other settings live. With category/query: rows. */
+export const list = Effect.fn("SettingsCatalog.list")(function* (input: SettingsListInput) {
+  const { category, query } = input;
+  const selected =
+    category === undefined && query === undefined
+      ? settingsCatalog
+      : settingsCatalog.filter(
+          (definition) =>
+            (category === undefined || definition.category === category) &&
+            (query === undefined || matches(definition, query)),
+        );
   const values = yield* snapshot(selected.map((definition) => definition.key));
+  const changed = (definition: SettingDefinition) =>
+    !same(values.value(definition.key), values.defaultValue(definition.key));
+  if (category === undefined && query === undefined)
+    return {
+      categories: settingsCategories.map((name) => {
+        const members = selected.filter((definition) => definition.category === name);
+        return {
+          category: name,
+          settings: members.length,
+          changed: members.filter(changed).length,
+        };
+      }),
+      elsewhere: settingsElsewhere,
+      notAgentWritable: settingsNotAgentWritable,
+    };
   return {
     settings: selected.map((definition) => {
       const value = values.value(definition.key);
-      const defaultSetting = values.defaultValue(definition.key);
       return {
         key: definition.key,
-        page: definition.page,
-        label: definition.label,
+        value: preview(value, LIST_TEXT_LIMIT),
+        ...(changed(definition)
+          ? { default: preview(values.defaultValue(definition.key), LIST_TEXT_LIMIT) }
+          : null),
         type: settingTypeSummary(definition),
-        value: preview(value),
-        default: preview(defaultSetting),
-        customized: JSON.stringify(value) !== JSON.stringify(defaultSetting),
       };
     }),
-    otherSettings: settingsCatalogPointers.filter(
-      (pointer) =>
-        (!input.page || pointer.page.includes(input.page)) &&
-        matches([pointer.area, pointer.page, ...pointer.operations], input.query),
-    ),
-    unavailable: input.page || input.query ? [] : settingsCatalogUnavailable,
   };
 });
 
@@ -209,14 +219,13 @@ export const get = Effect.fn("SettingsCatalog.get")(function* (input: SettingsGe
   const value = values.value(definition.key);
   return {
     key: definition.key,
-    page: definition.page,
+    category: definition.category,
     label: definition.label,
     description: definition.description,
     type: settingTypeSummary(definition),
-    schema: toJsonValue(settingJsonSchema(definition)),
     value,
     default: values.defaultValue(definition.key),
-    effective: effectiveValue(definition.key, value, values.reloadPending),
+    ...effectiveValue(definition.key, value, values.reloadPending),
   };
 });
 
@@ -338,8 +347,8 @@ export const update = Effect.fn("SettingsCatalog.update")(function* (input: Sett
   return {
     key: definition.key,
     label: definition.label,
-    previous,
-    value: next,
-    effective: effectiveValue(definition.key, next, committed.reloadPending),
+    previous: preview(previous, ECHO_TEXT_LIMIT),
+    value: preview(next, ECHO_TEXT_LIMIT),
+    ...effectiveValue(definition.key, next, committed.reloadPending),
   };
 });

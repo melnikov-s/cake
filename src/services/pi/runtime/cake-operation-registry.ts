@@ -93,6 +93,7 @@ const cakeTopics = [
   {
     name: "settings",
     summary: "Inspect and configure Cake/Pi Settings through their existing authorities.",
+    guidance: ["Start with settings.list (categories), then settings.list {category}."],
   },
   { name: "interview", summary: "Gather requirements through structured user interviews." },
   {

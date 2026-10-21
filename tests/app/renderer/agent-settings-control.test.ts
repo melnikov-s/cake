@@ -543,7 +543,7 @@ describe("Agent Settings through the real application-control/Client/domain boun
           () => ({ provider: "fixture", modelId: "chat", thinkingLevel: "off", fastMode: false }),
         ),
       );
-      expect(cakeChat.operationHelp("settings.models.set-non-chat")).toContain("preference");
+      expect(cakeChat.operationHelp("settings.update")).toContain("contextLimitTokens");
       expect(
         (
           await cakeChat.invoke(
@@ -556,7 +556,7 @@ describe("Agent Settings through the real application-control/Client/domain boun
         result: { ok: true, value: { nonChatPreferences: {} } },
       });
       h.dispatch.mockClear();
-      expect(h.registry.operationHelp("settings.pi.update")).toContain("codemodeInlineBudget");
+      expect(h.registry.operationHelp("settings.list")).toContain("category");
       expect(h.registry.operationHelp("settings.mcp.update")).toContain("callbackPort");
       expect(h.registry.operationHelp("settings.providers.login")).toContain("user interaction");
       expect(
@@ -568,8 +568,6 @@ describe("Agent Settings through the real application-control/Client/domain boun
         expect.arrayContaining(listAppControlTools()),
       );
       for (const [command, input] of [
-        ["settings.pi.update", { key: "codemodeInlineBudget", value: -1 }],
-        ["settings.pi.update", { key: "unknown", value: true }],
         ["settings.mcp.get", { scope: "project", projectPath: "/arbitrary" }],
         ["settings.mcp.get", { scope: "backend", revealSecrets: true }],
         [
@@ -582,7 +580,6 @@ describe("Agent Settings through the real application-control/Client/domain boun
             config: { command: "server", timeout: -1 },
           },
         ],
-        ["settings.models.set-non-chat", { type: "chat", preference: null }],
         [
           "settings.providers.login",
           { provider: "fixture", authType: "token", apiKey: "never-store-in-transcript" },
@@ -590,6 +587,17 @@ describe("Agent Settings through the real application-control/Client/domain boun
       ] as const)
         await expect(h.call(command, input)).rejects.toThrow();
       expect(h.dispatch).not.toHaveBeenCalled();
+      // Catalog values are validated per key by the backend, before any write.
+      const before = h.saved();
+      for (const input of [
+        { key: "pi.codemodeInlineBudget", value: -1 },
+        { key: "pi.unknown", value: true },
+        { key: "models.chatPreference", value: null },
+      ])
+        await expect(h.call("settings.update", input)).rejects.toThrow();
+      expect(h.saved()).toBe(before);
+      expect(h.document()).toEqual({});
+      h.dispatch.mockClear();
       await expect(
         h.root.root.applicationControlStore.invoke({
           name: "settings.mcp.get",
@@ -604,8 +612,10 @@ describe("Agent Settings through the real application-control/Client/domain boun
   it("publishes authoritative Pi settings after backend update/reload for observing windows", async () => {
     const h = await fixture();
     try {
-      await h.call("settings.pi.update", { key: "autoCompact", value: false });
-      const current = value(await h.call("settings.pi.get"));
+      await h.call("settings.update", { key: "pi.autoCompact", value: false });
+      const current = await h.runtime.runPromise(
+        Effect.flatMap(PiSettings, (settings) => settings.load()),
+      );
       expect(h.piEvents).toEqual([{ type: "pi-settings-changed", settings: current }]);
       await h.call("settings.pi.reload");
       expect(h.piEvents).toEqual([
@@ -621,12 +631,12 @@ describe("Agent Settings through the real application-control/Client/domain boun
   it("persists codemode/tool-search/native settings, presets, utility, instructions and every automation prompt through their existing authorities", async () => {
     const h = await fixture();
     try {
-      await h.call("settings.pi.update", {
-        key: "defaultTools",
+      await h.call("settings.update", {
+        key: "pi.defaultTools",
         value: ["+codemode", "+tool_search"],
       });
-      await h.call("settings.pi.update", { key: "codemodeInlineBudget", value: 0 });
-      await h.call("settings.pi.update", { key: "shellPath", value: "/bin/fixture" });
+      await h.call("settings.update", { key: "pi.codemodeInlineBudget", value: 0 });
+      await h.call("settings.update", { key: "pi.shellPath", value: "/bin/fixture" });
       expect(h.manager.getDefaultTools()).toContain("codemode");
       expect(h.manager.getDefaultTools()).toContain("tool_search");
       expect(h.document()).toMatchObject({
@@ -634,7 +644,7 @@ describe("Agent Settings through the real application-control/Client/domain boun
         codemode: { inlineBudget: 0 },
         shellPath: "/bin/fixture",
       });
-      await h.call("settings.pi.update", { key: "defaultTools", value: null });
+      await h.call("settings.update", { key: "pi.defaultTools", value: null });
       expect(h.document()).toHaveProperty("defaultTools", ["+codemode"]);
       const created = Schema.decodeUnknownSync(
         Schema.Struct({ presets: Schema.Array(Schema.Struct({ id: Schema.String })) }),
@@ -649,7 +659,10 @@ describe("Agent Settings through the real application-control/Client/domain boun
           }),
         ),
       );
-      await h.call("settings.presets.set-default", { id: created.presets[0]!.id });
+      await h.call("settings.update", {
+        key: "models.defaultPreset",
+        value: created.presets[0]!.id,
+      });
       await h.call("settings.presets.reorder", { ids: [created.presets[0]!.id] });
       expect(h.saved().defaultModelPresetId).toBe(created.presets[0]!.id);
       await h.call("settings.presets.update", {
@@ -678,23 +691,28 @@ describe("Agent Settings through the real application-control/Client/domain boun
       ).toMatchObject({ id: labelId, name: "Renamed fixture", color: "mint" });
       await h.call("settings.labels.update", { mutation: { _tag: "DeleteLabel", labelId } });
       expect(h.saved().globalSessionLabels.some((label) => label.id === labelId)).toBe(false);
-      await h.call("settings.models.set-utility", {
-        model: { provider: "fixture", modelId: "utility", thinkingLevel: "off" },
+      await h.call("settings.update", {
+        key: "models.utility",
+        value: { provider: "fixture", modelId: "utility", thinkingLevel: "off" },
       });
       expect(h.saved().utilityModel?.modelId).toBe("utility");
-      await h.call("settings.models.set-utility", { model: null });
+      await h.call("settings.update", { key: "models.utility", value: null });
       expect(h.saved().utilityModel).toBeUndefined();
-      await h.call("settings.instructions.update", {
-        instructions: "  Personal fixture instructions  ",
+      await h.call("settings.update", {
+        key: "instructions.global",
+        value: "  Personal fixture instructions  ",
       });
       expect(h.saved().globalCustomInstructions).toBe("Personal fixture instructions");
       for (const key of Object.keys(defaultCakePrompts())) {
-        await h.call("settings.prompts.update", { key, value: "Customized fixture prompt" });
+        await h.call("settings.update", {
+          key: `prompts.${key}`,
+          value: "Customized fixture prompt",
+        });
         expect(h.saved().cakePrompts).toHaveProperty(key, "Customized fixture prompt");
-        await h.call("settings.prompts.update", { key, value: null });
+        await h.call("settings.update", { key: `prompts.${key}`, value: null });
         expect(h.saved().cakePrompts).toEqual({});
-        expect(value(await h.call("settings.instructions.get"))).toMatchObject({
-          prompts: defaultCakePrompts(),
+        expect(value(await h.call("settings.get", { key: `prompts.${key}` }))).toMatchObject({
+          value: Object.entries(defaultCakePrompts()).find(([name]) => name === key)?.[1],
         });
       }
       expect(h.login).not.toHaveBeenCalled();
@@ -786,13 +804,13 @@ describe("Agent Settings through the real application-control/Client/domain boun
   it("persists independent non-chat preferences consumed by the native selector, with explicit overrides and no substitution", async () => {
     const h = await fixture();
     try {
-      await h.call("settings.models.set-non-chat", {
-        type: "image",
-        preference: { provider: "fixture", modelId: "image-a" },
+      await h.call("settings.update", {
+        key: "models.imagePreference",
+        value: { provider: "fixture", modelId: "image-a" },
       });
-      await h.call("settings.models.set-non-chat", {
-        type: "classifier",
-        preference: { provider: "fixture", modelId: "classifier-a" },
+      await h.call("settings.update", {
+        key: "models.classifierPreference",
+        value: { provider: "fixture", modelId: "classifier-a" },
       });
       const available: { [Type in ModelType]: readonly ModelTypeMap[Type][] } = {
         chat: [],
@@ -829,12 +847,12 @@ describe("Agent Settings through the real application-control/Client/domain boun
         (await select({ type: "image", requested: { provider: "fixture", modelId: "image-b" } }))
           .structuredContent,
       ).toMatchObject({ result: { source: "requested", model: { id: "image-b" } } });
-      await h.call("settings.models.set-non-chat", {
-        type: "image",
-        preference: { provider: "fixture", modelId: "missing" },
+      await h.call("settings.update", {
+        key: "models.imagePreference",
+        value: { provider: "fixture", modelId: "missing" },
       });
       await expect(select({ type: "image" })).rejects.toThrow("unavailable");
-      await h.call("settings.models.set-non-chat", { type: "image", preference: null });
+      await h.call("settings.update", { key: "models.imagePreference", value: null });
       expect(h.saved().nonChatModelPreferences?.classifier?.modelId).toBe("classifier-a");
       expect((await select({ type: "image" })).structuredContent).toMatchObject({
         result: { source: "agent", model: null },
@@ -1073,7 +1091,7 @@ describe("Agent Settings through the real application-control/Client/domain boun
       controller.abort();
       const calls = h.dispatch.mock.calls.length;
       await expect(
-        h.call("settings.pi.update", { key: "autoCompact", value: false }, controller.signal),
+        h.call("settings.update", { key: "pi.autoCompact", value: false }, controller.signal),
       ).rejects.toThrow();
       expect(h.dispatch).toHaveBeenCalledTimes(calls);
       await expect(h.call("settings.desktop.get")).rejects.toThrow("originating Cake desktop");
