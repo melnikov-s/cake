@@ -9,6 +9,7 @@ import { CakeChatPaneHeader, type CakeChatOverlayChrome } from "./cake-chat-pane
 import { SessionArtifactPane } from "./session-artifact-pane";
 import { ConversationActivity } from "./conversation-activity";
 import { ProjectTodoComposerContext } from "./project-todo-composer-context";
+import { ProjectChatHeaderLink } from "./project-chat-header-link";
 
 export const CakeChatSurface = observer(function CakeChatSurface({
   overlay,
@@ -72,6 +73,13 @@ export const CakeChatSurface = observer(function CakeChatSurface({
         cakeChatCollection.summaries.find((summary) => summary.sessionId === sessionId)?.title ??
         "New chat"
       }
+      titleLeading={(sessionId) => (
+        <ProjectChatHeaderLink
+          projectPath={
+            cakeChatCollection.summaries.find((chat) => chat.sessionId === sessionId)?.projectPath
+          }
+        />
+      )}
       loadingLabel="Opening Cake Chat"
       headerClassName={(pane) =>
         // The frameless overlay has no traffic lights or sidebar toggle to make room for.

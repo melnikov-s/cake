@@ -60,6 +60,7 @@ async function fixture(
     projectRecord({ path: "/zombies", name: "zombies" }),
     projectRecord({ path: "/finance", name: "finance" }),
   ],
+  taskWorkingDirectory = "/zombies",
 ) {
   const browserState = (sessionId: string) => ({
     sessionId,
@@ -79,18 +80,20 @@ async function fixture(
   const setFullscreenSurfaceOpen = vi.fn<Client["electron"]["setFullscreenSurfaceOpen"]>(
     async () => undefined,
   );
+  const chatOpen = vi.fn<Client["cakeChats"]["open"]>(async () => undefined);
   const f = createRendererStoreFixture({
     projects,
     sessions: [
       sessionSummary({
         sessionId: "task",
         projectPath: "/zombies",
+        workingDirectory: taskWorkingDirectory,
         modifiedAt: "2026-01-03T00:00:00Z",
       }),
     ],
     client: {
       electron: { setFullscreenSurfaceOpen },
-      cakeChats: { open: async () => undefined, setUnread: async () => undefined },
+      cakeChats: { open: chatOpen, setUnread: async () => undefined },
       projectSessions: { open: async () => undefined },
       projectTodos: mutateTodos ? { mutateUser: mutateTodos } : {},
       browser: {
@@ -115,12 +118,12 @@ async function fixture(
       chatSummary(otherId, "/finance"),
     ],
   });
-  f.root.sessionRegistry.load("task", "/zombies");
+  f.root.sessionRegistry.load("task", taskWorkingDirectory);
   let revision = 0;
   const publish = (id: string, parts: UiPart[] = [], streaming = false) => {
     const model =
       id === "task"
-        ? f.models.projectConversation(id, "/zombies")
+        ? f.models.projectConversation(id, taskWorkingDirectory)
         : f.models.cakeChatConversation(id);
     applyConversationUpdate(model, {
       _tag: "Snapshot",
@@ -167,6 +170,7 @@ async function fixture(
       act(() => publish(id, parts, streaming));
     },
     setFullscreenSurfaceOpen,
+    chatOpen,
     browserOpen,
     editorOpen,
     terminalOpen,
@@ -176,6 +180,54 @@ async function fixture(
     },
   };
 }
+
+it.each(["/zombies", "/managed/task-worktree"])(
+  "opens the session header's owning Project Chat from %s, not the globally selected project",
+  async (workingDirectory) => {
+    using f = await fixture(undefined, undefined, workingDirectory);
+    await act(async () => f.root.navigationStore.openCakeChat(otherId));
+    await f.user.click(screen.getByRole("button", { name: /^task(?: |$)/ }));
+    act(() => f.root.projectWorkbenchStore.projectOpenStore.activate("/finance"));
+    const header = document.querySelector<HTMLElement>(
+      '[data-slot="session-pane"][data-session-id="task"] [data-slot="workspace-header"]',
+    )!;
+    const link = within(header).getByRole("button", { name: "Go to Project Chat for zombies" });
+    expect(link.querySelector('[data-slot="avatar"]')).toBeTruthy();
+    await f.user.click(link);
+    await waitFor(() =>
+      expect(
+        document.querySelector(`[data-slot="session-pane"][data-session-id="${projectId}"]`),
+      ).toBeTruthy(),
+    );
+    expect(screen.getByRole("combobox", { name: "Message Project Chat" })).toBeTruthy();
+    expect(f.chatOpen).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sessionId: projectId }),
+      expect.anything(),
+    );
+  },
+);
+
+it("shows the owning project artwork in Project Chat and reuses the chat and pane on activation", async () => {
+  using f = await fixture();
+  await f.user.click(screen.getByRole("button", { name: "Open Project Chat for zombies" }));
+  const pane = document.querySelector<HTMLElement>(
+    `[data-slot="session-pane"][data-session-id="${projectId}"]`,
+  )!;
+  const header = pane.querySelector<HTMLElement>('[data-slot="workspace-header"]')!;
+  const link = within(header).getByRole("button", { name: "Go to Project Chat for zombies" });
+  expect(link.querySelector('[data-slot="avatar"] img')).toBeTruthy();
+  const input = screen.getByRole("combobox", { name: "Message Project Chat" });
+  await f.user.type(input, "Keep my project draft");
+  f.chatOpen.mockClear();
+  await f.user.click(link);
+  expect(document.querySelectorAll('[data-slot="session-pane"]')).toHaveLength(1);
+  expect(document.querySelector('[data-slot="session-pane"]')).toBe(pane);
+  expect(screen.getByRole("combobox", { name: "Message Project Chat" })).toHaveProperty(
+    "value",
+    "Keep my project draft",
+  );
+  expect(f.chatOpen).not.toHaveBeenCalled();
+});
 
 function createTodoRuntime() {
   return ManagedRuntime.make(

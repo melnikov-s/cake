@@ -1,5 +1,5 @@
 import { observer, useStore } from "r-state-tree/react";
-import { Avatar } from "@/components/ui/avatar";
+import { ProjectChatHeaderLink } from "./project-chat-header-link";
 import { ErrorNotice } from "@/components/error-notice";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ConversationSplitLayout } from "@/components/conversation-split-layout";
@@ -111,25 +111,11 @@ export const ProjectConversationSurface = observer(function ProjectConversationS
       findSession={(sessionId) => store.sessionRegistry.findSession(sessionId)}
       chatProps={projectChatProps}
       title={(sessionId) => root.sessionCatalogStore.find(sessionId)?.title ?? "New chat"}
-      titleLeading={(sessionId) => {
-        const summary = root.sessionCatalogStore.find(sessionId);
-        const projectPath = summary?.projectPath ?? projectOpen.projectPath;
-        const projectName = projectPath
-          ? root.projectCatalogStore.nameForPath(projectPath)
-          : projectOpen.projectName;
-        return (
-          <Avatar
-            kind="project"
-            seed={projectName}
-            customIcon={
-              projectPath ? root.projectCatalogStore.find(projectPath)?.settings.icon : undefined
-            }
-            className="size-5"
-            title={projectName}
-            aria-hidden="true"
-          />
-        );
-      }}
+      titleLeading={(sessionId) => (
+        <ProjectChatHeaderLink
+          projectPath={root.sessionCatalogStore.find(sessionId)?.projectPath}
+        />
+      )}
       loadingLabel="Opening session"
       headerClassName={(pane) =>
         root.sessionLayoutStore.panes[0]?.paneId === pane.paneId

@@ -73,6 +73,10 @@ worktree tools beneath it when present. Empty caps collapse without reserved spa
 | [SidePanel](../../src/renderer/components/ui/side-panel.tsx), [ResizeHandle](../../src/renderer/components/ui/resize-handle.tsx)             | Shared panel and resizing presentation.                                                   |
 | [WorkspacePanelToggle](../../src/renderer/components/ui/workspace-panel-toggle.tsx)                                                          | Workspace sidebar/chat visibility controls.                                               |
 
+[`ProjectChatHeaderLink`](../../src/renderer/components/project-chat-header-link.tsx) composes
+`IconButton` and `Avatar` for header navigation to the owning registered Project's existing
+Project Chat, shared by Project Sessions and Project Chat itself.
+
 [`SessionListItem`](../../src/renderer/components/ui/session-list-item.tsx) is the authoritative
 session row shared by the sidebar, screenshot destination picker, and session search: identity, labels,
 family depth, worktree context, relative time and activity. Callers own ordering and actions.

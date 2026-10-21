@@ -1798,6 +1798,35 @@ const projectChatSidebar: VisualCaptureScenario = {
       : page.locator('[data-slot="sidebar"]'),
 };
 
+const projectChatHeader: VisualCaptureScenario = {
+  name: "project-chat-header",
+  description: "Owning Project Chat navigation beside session and Project Chat titles",
+  states: ["session", "project", "hover"],
+  seed: projectChatSidebar.seed,
+  async prepare(page, state) {
+    await assistantMarkdownCode.prepare(page, "default");
+    const link = () =>
+      page.locator('[data-slot="workspace-header"]').getByRole("button", {
+        name: "Go to Project Chat for cake",
+        exact: true,
+      });
+    await expect(link()).toBeEnabled();
+    if (state !== "session") {
+      await link().click();
+      await expect(page.getByRole("combobox", { name: "Message Project Chat" })).toBeVisible();
+      await expect(link()).toBeVisible();
+    }
+    if (state === "hover") {
+      await link().hover();
+      await expect(
+        page.getByRole("tooltip", { name: "Go to Project Chat for cake" }),
+      ).toBeVisible();
+    } else await page.mouse.move(1, 1);
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+  },
+  region: (page) => page.locator('[data-slot="workspace-header"]'),
+};
+
 const projectChatTodos: VisualCaptureScenario = {
   name: "project-chat-todos",
   description: "Project Chat toolbar to-do accessory, selection and completed disclosure",
@@ -3942,6 +3971,7 @@ export const visualCaptureScenarios = [
   taskInputAttachmentsScenario,
   cakeChatSidebarUnread,
   projectChatSidebar,
+  projectChatHeader,
   projectChatTodos,
   activeSidebarSessions,
   dictationInputScenario,
