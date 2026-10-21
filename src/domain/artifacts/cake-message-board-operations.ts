@@ -25,8 +25,8 @@ export const createMessageBoardOperations = (
     summary:
       "Append a substantive finding, decision, question, blocker, or result to the workgroup's Workboard.",
     guidance: [
-      "Every new post routes to explicit recipients plus the unique family root, once each and never the author. Broadcasts automatically reach only the root. Idle recipients receive coalesced durable wakes; active/queued recipients receive context-only reminders at before_agent_start/turn_end, with durable idle fallback. No event or wakeup wording is required. Never abort, force send-now or steer unrelated user work. Tool retries use requestId (default tool-call ID). Inspect delivery status, not posting alone; stop/cancel/resolve authority remains intact.",
-      "Declare event: completion or blocker for an addressed result, and resultKind: ready or investigation. These typed facts retain quiet completion decisions; default board delivery needs no continuation grant; prose/links and read receipts never imply intent. Never duplicate a board result with a private report.",
+      "Family-only: posts route to explicit recipients plus the unique root, never their author. Routine findings/completions are passive until the recipient’s next actual user input. Declare event: assignment for necessary dependent work or blocker for unblocking; only these retain durable idle execution and active-context intake. Never steer unrelated user work or acknowledge posts. Tool retries use requestId; inspect execution status, not posting alone. Stop/cancel/resolve remains authoritative.",
+      "Declare event: completion for a quiet result, blocker only for necessary unblocking, and resultKind: ready or investigation. Typed completion facts retain quiet decisions. Never duplicate a board result with a private report.",
     ],
     inputSchema: BoardAppendInput,
     outputSchema: Schema.Struct({
@@ -53,7 +53,7 @@ export const createMessageBoardOperations = (
       "Entries are immutable. Use topic plus supersedes: [sequence, ...] for corrections within the same topic (untagged originals may acquire a topic through a correction). Supersession is recipient-specific; include everyone affected by the old decision. Agent decisions are not user authorization.",
       "Establish types, signatures, file ownership, dependencies and acceptance criteria before dependent implementation. Post changes/discoveries, not repeated contract negotiation.",
       "By default family assignments and their substantive results belong exclusively on this board, not in sessions.send/reply or private side channels. Include the assignment entry, outcome, commit, contract delta, integration action and verification limits; do not duplicate private completion notifications.",
-      "Discover members with sessions.list-family. sessions.create-child requires assignment: { description, body } and persists it addressed to the new child before launch; resultDelivery defaults to ignore. Post later coordination and results here. No separate board-create/join operations exist.",
+      "Discover members with sessions.list-family. sessions.create-child requires assignment: { description, body } and persists it addressed to the new child before launch; resultDelivery defaults to notification. Post later coordination and results here. No separate board-create/join operations exist.",
       "All posts use default addressed/root delivery; no post clears existing private report obligations. Current explicit user exceptions override Cake communication defaults, including injected policies; genuine platform limits and tool capabilities still apply. Use supported tools and execution evidence, not a blanket harness refusal.",
     ],
     execute: (input, context) => {

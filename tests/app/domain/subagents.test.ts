@@ -549,7 +549,7 @@ describe("subagent exact message references", () => {
           const receipt = Schema.decodeUnknownSync(subagents.SubagentStartReceipt)(
             yield* Effect.promise(() =>
               control.start(
-                { task: "Assess this exact source", messageRefs: [first] },
+                { continuation: "resume", task: "Assess this exact source", messageRefs: [first] },
                 caller.parentSessionId,
                 new AbortController().signal,
               ),
@@ -651,7 +651,11 @@ describe("subagent attachment references", () => {
           })(() => caller.options, caller.workingDirectory);
           yield* Effect.promise(() =>
             control.start(
-              { task: "Inspect selected diagram", inputRefs: [imageReference.id] },
+              {
+                continuation: "resume",
+                task: "Inspect selected diagram",
+                inputRefs: [imageReference.id],
+              },
               caller.parentSessionId,
               new AbortController().signal,
             ),
@@ -683,6 +687,7 @@ describe("subagent attachment references", () => {
         yield* Effect.gen(function* () {
           yield* subagents.start(
             {
+              continuation: "resume",
               task: "Inspect this diagram",
               projectPath: "/project",
               inputRefs: [imageReference.id],
@@ -747,10 +752,13 @@ describe("subagent attachment references", () => {
         const attachments = makeAttachmentFixture();
         yield* Effect.gen(function* () {
           const caller = { ...cakeChatParent(fixture), attachments: attachments.factory };
-          const first = yield* subagents.start({ task: "General question" }, caller);
+          const first = yield* subagents.start(
+            { continuation: "resume", task: "General question" },
+            caller,
+          );
           const firstId = yield* Queue.take(fixture.childStarted);
           const second = yield* subagents.start(
-            { task: "Read notes", inputRefs: [textReference.id] },
+            { continuation: "resume", task: "Read notes", inputRefs: [textReference.id] },
             caller,
           );
           const secondId = yield* Queue.take(fixture.childStarted);
@@ -806,7 +814,7 @@ describe("subagent attachment references", () => {
       );
       const caller = { ...cakeChatParent(fixture), attachments: attachments.factory };
       const error = yield* subagents
-        .start({ task: "Inspect", inputRefs: [imageReference.id] }, caller)
+        .start({ continuation: "resume", task: "Inspect", inputRefs: [imageReference.id] }, caller)
         .pipe(Effect.flip, Effect.provide(fixture.layer));
       assert.equal(error._tag, "SubagentError");
       assert.equal(error.message, "Grant failed: reference expired");
@@ -822,15 +830,21 @@ describe("subagent attachment references", () => {
         yield* Effect.gen(function* () {
           const caller = { ...cakeChatParent(fixture), attachments: attachments.factory };
           const denied = yield* subagents
-            .start({ task: "Inspect", inputRefs: ["missing"] }, caller)
+            .start({ continuation: "resume", task: "Inspect", inputRefs: ["missing"] }, caller)
             .pipe(Effect.flip);
           assert.match(denied.message, /not authorized/);
           assert.equal(yield* Ref.get(fixture.constructions), 0);
           const unavailable = yield* subagents
-            .start({ task: "Inspect", inputRefs: [imageReference.id] }, cakeChatParent(fixture))
+            .start(
+              { continuation: "resume", task: "Inspect", inputRefs: [imageReference.id] },
+              cakeChatParent(fixture),
+            )
             .pipe(Effect.flip);
           assert.match(unavailable.message, /unavailable/);
-          const receipt = yield* subagents.start({ task: "Inspect" }, caller);
+          const receipt = yield* subagents.start(
+            { continuation: "resume", task: "Inspect" },
+            caller,
+          );
           const id = yield* Queue.take(fixture.childStarted);
           yield* completeChild(fixture, id);
           yield* Queue.take(fixture.reports);
@@ -863,7 +877,10 @@ describe("Cake Chat project investigators", () => {
       Effect.gen(function* () {
         const fixture = yield* makeFixture(true);
         yield* Effect.gen(function* () {
-          yield* subagents.start({ task: "Cannot start" }, cakeChatParent(fixture));
+          yield* subagents.start(
+            { continuation: "resume", task: "Cannot start" },
+            cakeChatParent(fixture),
+          );
           const report = Schema.decodeUnknownSync(subagents.SubagentResult)(
             yield* Queue.take(fixture.reports),
           );
@@ -883,7 +900,11 @@ describe("Cake Chat project investigators", () => {
         yield* Effect.gen(function* () {
           const caller = { ...cakeChatParent(fixture), workingDirectory: "/unrelated-repository" };
           const receipt = yield* subagents.start(
-            { task: "Compare Godot and Three.js", instructions: "Cite actually inspected sources" },
+            {
+              continuation: "resume",
+              task: "Compare Godot and Three.js",
+              instructions: "Cite actually inspected sources",
+            },
             caller,
           );
           const sessionId = yield* Queue.take(fixture.childStarted);
@@ -936,6 +957,7 @@ describe("Cake Chat project investigators", () => {
         yield* Effect.gen(function* () {
           yield* subagents.start(
             {
+              continuation: "resume",
               task: "Kill the orphaned quick-serve Node servers",
               projectPath: "/another",
               instructions: "Report every PID you kill",
@@ -961,7 +983,7 @@ describe("Cake Chat project investigators", () => {
           yield* Queue.take(fixture.reports);
 
           yield* subagents.start(
-            { task: "Remove a stale temp directory", allowMutations: true },
+            { continuation: "resume", task: "Remove a stale temp directory", allowMutations: true },
             cakeChatParent(fixture),
           );
           const researchSession = yield* Queue.take(fixture.childStarted);
@@ -981,7 +1003,10 @@ describe("Cake Chat project investigators", () => {
           yield* Queue.take(fixture.reports);
 
           const wrongCaller = yield* subagents
-            .start({ task: "Kill processes", allowMutations: true }, parent(fixture))
+            .start(
+              { continuation: "resume", task: "Kill processes", allowMutations: true },
+              parent(fixture),
+            )
             .pipe(Effect.flip);
           assert.match(wrongCaller.message, /allowMutations is available only to Cake Chat/);
         }).pipe(Effect.provide(fixture.layer));
@@ -999,7 +1024,7 @@ describe("Cake Chat project investigators", () => {
             ),
           );
         const receipt = yield* subagents.start(
-          { task: "Long architecture audit", projectPath: "/another" },
+          { continuation: "resume", task: "Long architecture audit", projectPath: "/another" },
           cakeChatParent(fixture),
         );
         const sessionId = yield* Queue.take(fixture.childStarted);
@@ -1030,7 +1055,10 @@ describe("Cake Chat project investigators", () => {
       const fixture = yield* makeFixture();
       yield* Effect.gen(function* () {
         const coordinator = yield* SubagentCoordinator;
-        const receipt = yield* subagents.start({ task: "Initial pass" }, cakeChatParent(fixture));
+        const receipt = yield* subagents.start(
+          { continuation: "resume", task: "Initial pass" },
+          cakeChatParent(fixture),
+        );
         const sessionId = yield* Queue.take(fixture.childStarted);
         yield* completeChild(fixture, sessionId);
         yield* Queue.take(fixture.reports);
@@ -1069,14 +1097,21 @@ describe("Cake Chat project investigators", () => {
           assert.ok(
             (yield* subagents
               .start(
-                { task: "Inspect config", ...(projectPath ? { projectPath } : {}) },
+                {
+                  continuation: "resume",
+                  task: "Inspect config",
+                  ...(projectPath ? { projectPath } : {}),
+                },
                 cakeChatParent(fixture),
               )
               .pipe(Effect.flip)) instanceof subagents.SubagentError,
           );
         assert.equal(yield* Ref.get(fixture.constructions), 0);
         const wrongCaller = yield* subagents
-          .start({ task: "Inspect", projectPath: "/another" }, parent(fixture))
+          .start(
+            { continuation: "resume", task: "Inspect", projectPath: "/another" },
+            parent(fixture),
+          )
           .pipe(Effect.flip);
         assert.match(wrongCaller.message, /only to Cake Chat/);
       }).pipe(Effect.provide(fixture.layer));
@@ -1088,7 +1123,7 @@ describe("Cake Chat project investigators", () => {
       const fixture = yield* makeFixture();
       yield* Effect.gen(function* () {
         const first = yield* subagents.start(
-          { task: "First investigation", projectPath: "/another" },
+          { continuation: "resume", task: "First investigation", projectPath: "/another" },
           cakeChatParent(fixture),
         );
         const firstSession = yield* Queue.take(fixture.childStarted);
@@ -1097,7 +1132,7 @@ describe("Cake Chat project investigators", () => {
         const blockers: string[] = [];
         for (let i = 0; i < 4; i++) {
           yield* subagents.start(
-            { task: `Occupy slot ${i}`, projectPath: "/another" },
+            { continuation: "resume", task: `Occupy slot ${i}`, projectPath: "/another" },
             cakeChatParent(fixture),
           );
           blockers.push(yield* Queue.take(fixture.childStarted));
@@ -1132,6 +1167,7 @@ describe("Cake Chat project investigators", () => {
         yield* Effect.gen(function* () {
           const receipt = yield* subagents.start(
             {
+              continuation: "resume",
               task: "Inspect config",
               projectPath: "/another",
               instructions: "Also explain the defaults",
@@ -1313,14 +1349,14 @@ describe("Subagents", () => {
       { chat, reference: "Research complete: the existing queue already serializes parent work." },
     ]),
   )(
-    "retains a report-only result without waking its $chat Cake Chat parent: $reference",
+    "defaults to a quiet report without waking its $chat Cake Chat parent: $reference",
     ({ chat, reference }) =>
       Effect.gen(function* () {
         const fixture = yield* makeFixture(false, [], reference);
         yield* Effect.gen(function* () {
           const caller = chat ? cakeChatParent(fixture) : parent(fixture);
           const started = yield* subagents.start(
-            { task: "Investigate", model: { prefer: "current" }, continuation: "none" },
+            { task: "Investigate", model: { prefer: "current" } },
             caller,
           );
           const childId = yield* Queue.take(fixture.childStarted);
@@ -1475,7 +1511,10 @@ describe("Subagents", () => {
     Effect.gen(function* () {
       const fixture = yield* makeFixture();
       const program = Effect.gen(function* () {
-        const receipt = yield* subagents.start({ task: "Audit the boundary" }, parent(fixture));
+        const receipt = yield* subagents.start(
+          { continuation: "resume", task: "Audit the boundary" },
+          parent(fixture),
+        );
         const childSessionId = yield* Queue.take(fixture.childStarted);
         assert.equal(JSON.stringify(receipt).includes(childSessionId), false);
         assert.match(receipt.handleId, /^[0-9a-f-]{36}$/i);
@@ -1491,7 +1530,10 @@ describe("Subagents", () => {
     Effect.gen(function* () {
       const fixture = yield* makeFixture();
       const program = Effect.gen(function* () {
-        const receipt = yield* subagents.start({ task: "Inspect callers" }, parent(fixture));
+        const receipt = yield* subagents.start(
+          { continuation: "resume", task: "Inspect callers" },
+          parent(fixture),
+        );
         const childSessionId = yield* Queue.take(fixture.childStarted);
         const first = yield* subagents.wait("parent", receipt.handleId).pipe(Effect.forkChild);
         const second = yield* subagents.wait("parent", receipt.handleId).pipe(Effect.forkChild);
@@ -1514,7 +1556,10 @@ describe("Subagents", () => {
     Effect.gen(function* () {
       const fixture = yield* makeFixture();
       const program = Effect.gen(function* () {
-        const receipt = yield* subagents.start({ task: "Background race" }, parent(fixture));
+        const receipt = yield* subagents.start(
+          { continuation: "resume", task: "Background race" },
+          parent(fixture),
+        );
         const childSessionId = yield* Queue.take(fixture.childStarted);
         const waiter = yield* subagents.wait("parent", receipt.handleId).pipe(Effect.forkChild);
         const coordinator = yield* SubagentCoordinator;
@@ -1536,7 +1581,10 @@ describe("Subagents", () => {
     Effect.gen(function* () {
       const fixture = yield* makeFixture();
       const program = Effect.gen(function* () {
-        yield* subagents.start({ task: "Background audit" }, parent(fixture));
+        yield* subagents.start(
+          { continuation: "resume", task: "Background audit" },
+          parent(fixture),
+        );
         const childSessionId = yield* Queue.take(fixture.childStarted);
         yield* completeChild(fixture, childSessionId);
         while ((yield* Ref.get(fixture.completions)).length === 0) yield* Effect.yieldNow;
@@ -1632,14 +1680,18 @@ describe("Subagents", () => {
       const program = Effect.gen(function* () {
         yield* Effect.forEach(
           Array.from({ length: 4 }, (_, index) => index),
-          (index) => subagents.start({ task: `Project task ${index + 1}` }, parent(fixture)),
+          (index) =>
+            subagents.start(
+              { continuation: "resume", task: `Project task ${index + 1}` },
+              parent(fixture),
+            ),
           { concurrency: "unbounded", discard: true },
         );
         const projectIds = yield* Effect.forEach([0, 1, 2, 3], () =>
           Queue.take(fixture.childStarted),
         );
         yield* subagents.start(
-          { task: "Other directory" },
+          { continuation: "resume", task: "Other directory" },
           parent(fixture, "parent-other", "/other"),
         );
         const otherId = yield* Queue.take(fixture.childStarted);
@@ -1656,7 +1708,10 @@ describe("Subagents", () => {
     Effect.gen(function* () {
       const fixture = yield* makeFixture();
       const program = Effect.gen(function* () {
-        const receipt = yield* subagents.start({ task: "Review the boundary" }, parent(fixture));
+        const receipt = yield* subagents.start(
+          { continuation: "resume", task: "Review the boundary" },
+          parent(fixture),
+        );
         const childId = yield* Queue.take(fixture.childStarted);
         const childOptions = (yield* Ref.get(fixture.constructedOptions)).find(
           (options) => options.sessionId === childId,
@@ -1734,7 +1789,11 @@ describe("Subagents", () => {
           const signal = new AbortController().signal;
           const receipt = Schema.decodeUnknownSync(subagents.SubagentStartReceipt)(
             yield* Effect.promise(() =>
-              control.start({ task: "Investigate" }, caller.parentSessionId, signal),
+              control.start(
+                { continuation: "resume", task: "Investigate" },
+                caller.parentSessionId,
+                signal,
+              ),
             ),
           );
           const child = yield* Queue.take(fixture.childStarted);
@@ -1758,7 +1817,10 @@ describe("Subagents", () => {
     Effect.gen(function* () {
       const fixture = yield* makeFixture();
       const program = Effect.gen(function* () {
-        const receipt = yield* subagents.start({ task: "Initial turn" }, parent(fixture));
+        const receipt = yield* subagents.start(
+          { continuation: "resume", task: "Initial turn" },
+          parent(fixture),
+        );
         const childId = yield* Queue.take(fixture.childStarted);
         yield* completeChild(fixture, childId);
         while ((yield* Ref.get(fixture.completions)).length === 0) yield* Effect.yieldNow;
@@ -1785,7 +1847,10 @@ describe("Subagents", () => {
     Effect.gen(function* () {
       const fixture = yield* makeFixture();
       const program = Effect.gen(function* () {
-        const receipt = yield* subagents.start({ task: "Self-healing audit" }, parent(fixture));
+        const receipt = yield* subagents.start(
+          { continuation: "resume", task: "Self-healing audit" },
+          parent(fixture),
+        );
         const childId = yield* Queue.take(fixture.childStarted);
         const waiter = yield* subagents.wait("parent", receipt.handleId).pipe(Effect.forkChild);
         yield* TestClock.adjust("6 hours");
@@ -1818,7 +1883,10 @@ describe("Subagents", () => {
     Effect.gen(function* () {
       const fixture = yield* makeFixture();
       const program = Effect.gen(function* () {
-        const receipt = yield* subagents.start({ task: "Keep partial work" }, parent(fixture));
+        const receipt = yield* subagents.start(
+          { continuation: "resume", task: "Keep partial work" },
+          parent(fixture),
+        );
         const childId = yield* Queue.take(fixture.childStarted);
         const childOptions = (yield* Ref.get(fixture.constructedOptions)).find(
           (options) => options.sessionId === childId,
@@ -1859,7 +1927,10 @@ describe("Subagents", () => {
     Effect.gen(function* () {
       const fixture = yield* makeFixture();
       const program = Effect.gen(function* () {
-        const receipt = yield* subagents.start({ task: "Keep this result" }, parent(fixture));
+        const receipt = yield* subagents.start(
+          { continuation: "resume", task: "Keep this result" },
+          parent(fixture),
+        );
         const childId = yield* Queue.take(fixture.childStarted);
         yield* completeChild(fixture, childId);
         while ((yield* Ref.get(fixture.completions)).length === 0) yield* Effect.yieldNow;
@@ -1879,7 +1950,10 @@ describe("Subagents", () => {
     Effect.gen(function* () {
       const fixture = yield* makeFixture();
       const program = Effect.gen(function* () {
-        const receipt = yield* subagents.start({ task: "Observe me" }, parent(fixture));
+        const receipt = yield* subagents.start(
+          { continuation: "resume", task: "Observe me" },
+          parent(fixture),
+        );
         yield* Queue.take(fixture.childStarted);
         const updates = yield* subagents.observe("parent");
         const first = yield* Stream.runHead(updates);
@@ -1902,7 +1976,10 @@ describe("Subagents", () => {
     Effect.gen(function* () {
       const fixture = yield* makeFixture();
       const program = Effect.gen(function* () {
-        const receipt = yield* subagents.start({ task: "Persistent child" }, parent(fixture));
+        const receipt = yield* subagents.start(
+          { continuation: "resume", task: "Persistent child" },
+          parent(fixture),
+        );
         yield* Queue.take(fixture.childStarted);
         yield* subagents.releaseParent("parent");
         const coordinator = yield* SubagentCoordinator;
@@ -1919,7 +1996,10 @@ describe("Subagents", () => {
     Effect.gen(function* () {
       const fixture = yield* makeFixture();
       const program = Effect.gen(function* () {
-        const receipt = yield* subagents.start({ task: "Audit" }, parent(fixture));
+        const receipt = yield* subagents.start(
+          { continuation: "resume", task: "Audit" },
+          parent(fixture),
+        );
         const error = yield* Effect.flip(subagents.wait("another-parent", receipt.handleId));
         assert.equal(error._tag, "SubagentError");
         assert.match(error.message, /does not belong/);

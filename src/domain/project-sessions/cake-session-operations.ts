@@ -56,7 +56,7 @@ export function createProjectSessionOperations(
       result:
         "The started session ID, actual Working Directory, and managed-worktree record when one was requested.",
       limitations: [
-        "This creates an independent Project Session, not a Session Family child.",
+        "This creates an independent Project Session, not a Session Family child. Its initial completion defaults to notification for the creator; reply is an explicit dependent-work choice, ignore owes nothing. No acknowledgment is required.",
         "An active Project Session cannot be relocated to the newly created worktree.",
       ],
       execute: (input, context) => {

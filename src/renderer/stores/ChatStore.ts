@@ -78,7 +78,7 @@ export interface ChatStoreProps {
   canSubmit(draft: string): boolean;
   submit(
     draft: string,
-    options?: { renderUserMessageAsMarkdown?: boolean },
+    options?: { renderUserMessageAsMarkdown?: boolean; delivery?: "prompt" | "steer" },
   ): Promise<boolean | void | { turnId: string }>;
   userMessagePresentation?: UserMessagePresentationCapabilities;
   activateDraft?(choice?: WorktreeDraftChoice): Promise<boolean>;
@@ -485,6 +485,7 @@ export class ChatStore extends Store<ChatStoreProps> {
     options?: {
       renderUserMessageAsMarkdown?: boolean;
       enterContinuation?: number;
+      delivery?: "prompt" | "steer";
     },
   ) {
     // A cleared in-flight draft or an unread image is not an intentional empty
@@ -519,6 +520,7 @@ export class ChatStore extends Store<ChatStoreProps> {
     const submittedRevision = this.draftRevision;
     try {
       const submitted = await this.props.submit(value, {
+        delivery: options?.delivery,
         renderUserMessageAsMarkdown:
           options?.renderUserMessageAsMarkdown ?? shouldRenderMarkdown(value),
       });

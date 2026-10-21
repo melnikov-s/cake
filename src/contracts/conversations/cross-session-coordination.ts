@@ -1,7 +1,8 @@
-export type CrossSessionDelivery = "prompt" | "queue" | "steer";
+export type CrossSessionDelivery = "fyi" | "prompt" | "queue" | "steer";
 
 export type CrossSessionDeliveryStatus =
   | "accepted"
+  | "deferred"
   | "queued"
   | "delivered"
   | "processing"

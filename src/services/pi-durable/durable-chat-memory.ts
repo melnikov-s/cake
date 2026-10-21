@@ -132,7 +132,8 @@ function durableMessageText(message: Message): string {
         .join("\n")
     : message.content;
   const input = message.role === "user" ? durableInputPresentation(rawText) : undefined;
-  const text = input?.body ?? rawText;
+  const text =
+    input?.internal?._tag === "UserWithReminders" ? input.internal.text : (input?.body ?? rawText);
   if (input?.subagentReport)
     return `work: received worker report ${JSON.stringify(input.subagentReport)}; receipt does not establish user-facing communication: ${text}`;
   const context = splitContextReminders(text);

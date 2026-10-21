@@ -122,7 +122,7 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
     return Boolean(this.deliveryStore.editingEntryId || this.pendingSessionDraftStore.editing);
   }
 
-  async submit(deliveryOverride?: "steer", renderUserMessageAsMarkdown = false) {
+  async submit(deliveryOverride?: "prompt" | "steer", renderUserMessageAsMarkdown = false) {
     if (!this.props.canSubmit()) return;
     this.clearError();
     const text = this.draftStore.text.trim();
@@ -164,7 +164,7 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
       return this.deliveryStore.send(
         text,
         attachments,
-        deliveryOverride ?? "prompt",
+        deliveryOverride ?? (this.props.isStreaming() ? "steer" : "prompt"),
         true,
         renderUserMessageAsMarkdown,
       );

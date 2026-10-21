@@ -80,6 +80,7 @@ import {
   SessionArchiveStorage,
   SessionArchiveStorageError,
 } from "../../../src/services/storage/SessionArchiveStorage";
+import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { SessionFamilyStorageError } from "../../../src/contracts/storage/session-family-storage-errors";
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
@@ -448,6 +449,8 @@ const makeLayer = (
     application,
     catalogChanges,
     Layer.succeed(SessionFamilyStorage, {
+      deferPassiveNotice: () => Effect.void,
+      markPassiveNoticeAdmission: () => Effect.void,
       recordBoardDelivery: () => Effect.void,
       updateBoardDelivery: () => Effect.void,
       setBoardDeliveryPaused: () => Effect.void,
@@ -1948,10 +1951,34 @@ describe("Project Sessions domain", () => {
   );
 
   it.effect(
-    "UI resolve persists linked completion and context once; restore preserves completion",
+    "UI resolve completes linked to-dos and cancels passive context without agent turns; restore preserves completion",
     () => {
       const transitions: string[] = [];
       return Effect.gen(function* () {
+        const storage = yield* SessionFamilyStorage;
+        const noticeId = "49300a23-59d8-4dd5-b680-0e8694240a79";
+        yield* storage.recordBoardDelivery({
+          boardId: "family-board",
+          sequences: [1],
+          through: 1,
+          recipientSessionId: "session-1",
+          turnId: noticeId,
+          status: "deferred",
+        });
+        yield* storage.deferPassiveNotice({
+          id: noticeId,
+          recipientSessionId: "session-1",
+          text: "Optional review.",
+          crossSession: {
+            version: 1,
+            messageId: noticeId,
+            threadId: noticeId,
+            sequence: 1,
+            expectsResponse: false,
+            resultDelivery: "ignore",
+            sender: { sessionId: "session-2", title: "Review", kind: "project-session" },
+          },
+        });
         const item = yield* projectTodos.create("/project", {
           title: "Review report",
           description: "Review report.",
@@ -1986,12 +2013,20 @@ describe("Project Sessions domain", () => {
           ),
         );
         assert.deepEqual(transitions, ["resolve:session-1", "restore:session-1"]);
+        assert.equal((yield* storage.state()).boardDeliveries?.[0]?.status, "canceled");
+        assert.equal((yield* storage.state()).passiveNotices?.[0]?.text, "");
+        assert.equal((yield* storage.state()).passiveNotices?.[0]?.delivered, true);
       }).pipe(
         Effect.provide(
-          makeLayer(undefined, {
-            onArchive: (id) => transitions.push(`resolve:${id}`),
-            onRestore: (id) => transitions.push(`restore:${id}`),
-          }),
+          Layer.merge(
+            makeLayer(undefined, {
+              onArchive: (id) => transitions.push(`resolve:${id}`),
+              onRestore: (id) => transitions.push(`restore:${id}`),
+              onCreateRuntime: () =>
+                assert.fail("Resolution must not start or wake an agent for acknowledgment"),
+            }),
+            familyStorageHarness().layer,
+          ),
         ),
       );
     },

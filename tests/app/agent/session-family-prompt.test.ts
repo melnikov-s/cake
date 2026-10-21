@@ -30,7 +30,7 @@ describe("Project Session family communication policy", () => {
     expect(project).toContain(
       "User-facing replies, Cake Chat and unrelated sessions are outside this rule",
     );
-    expect(project).toContain("resultDelivery: ignore");
+    expect(project).toContain("resultDelivery: notification");
     expect(project).toContain("Cake posts it before launch");
     expect(project).toContain("Posts never clear runtime-managed report obligations");
     expect(project).toContain("no private workaround or extra report");
@@ -39,8 +39,8 @@ describe("Project Session family communication policy", () => {
       "Every board post routes to explicit recipients plus the family root",
     );
     expect(project).toContain("Launch asynchronously; block only at the user");
-    expect(project).toContain("Idle recipients get coalesced durable wakes");
-    expect(project).toContain("context-only reminders at before_agent_start/turn_end");
+    expect(project).toContain("Only actionable assignments/blockers wake idle family recipients");
+    expect(project).toContain("Routine findings/completions wait as passive reminders");
     expect(project).toContain("No board: disclose, never invent/fallback");
   });
 
@@ -94,7 +94,7 @@ describe("Project Session family communication policy", () => {
     });
     const guidance = (command: string) =>
       operations.find((operation) => operation.command === command)?.guidance?.join("\n");
-    expect(guidance("sessions.create-child")).toContain('resultDelivery: "ignore"');
+    expect(guidance("sessions.create-child")).toContain('resultDelivery: "notification"');
     expect(guidance("sessions.create-child")).toContain(
       "persists its addressed Workboard assignment before its first turn can run",
     );

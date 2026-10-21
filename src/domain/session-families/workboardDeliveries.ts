@@ -97,6 +97,25 @@ const processRecipient = Effect.fn("WorkboardDeliveries.processRecipient")(funct
       const records = (state.boardDeliveries ?? []).filter(
         (item) => item.boardId === id && item.recipientSessionId === recipient,
       );
+      for (const record of records) {
+        if (record.status !== "deferred") continue;
+        const location = yield* findLocation({ sessionId: recipient });
+        const namespace = yield* resolutionNamespace(recipient, {
+          cwd: location.workingDirectory,
+          activeRoot: location.sessionDirectory,
+          resolvedRoot: location.resolvedSessionDirectory,
+        });
+        if (namespace !== "active" || state.boardDeliveryPaused?.includes(recipient))
+          yield* storage.updateBoardDelivery(
+            record.turnId,
+            "canceled",
+            "Stopped or resolved; this passive batch will not replay",
+          );
+        else if (
+          state.passiveNotices?.some((notice) => notice.id === record.turnId && notice.delivered)
+        )
+          yield* storage.updateBoardDelivery(record.turnId, "notified");
+      }
       let delivery = records.find(
         (item) => item.status === "pending" || item.status === "admitted",
       );
@@ -120,6 +139,10 @@ const processRecipient = Effect.fn("WorkboardDeliveries.processRecipient")(funct
         if (state.boardDeliveryPaused?.includes(recipient)) return;
       }
       const current = delivery;
+      const batchEntries = entries.filter((entry) => current.sequences.includes(entry.sequence));
+      const actionable = batchEntries.some(
+        (entry) => entry.event === "assignment" || entry.event === "blocker",
+      );
       const cancel = (issue: string) =>
         storage.updateBoardDelivery(current.turnId, "canceled", issue);
       const location = yield* findLocation({ sessionId: recipient });
@@ -143,6 +166,33 @@ const processRecipient = Effect.fn("WorkboardDeliveries.processRecipient")(funct
         // board-delivery metadata existed. Later user input must not replay these posts.
         if (!state.boardDeliveryPaused?.includes(recipient))
           yield* storage.setBoardDeliveryPaused(recipient, true);
+        return;
+      }
+      if (!actionable && !state.boardDeliveryPaused?.includes(recipient)) {
+        const deferred = state.passiveNotices?.find((notice) => notice.id === current.turnId);
+        if (deferred?.delivered) {
+          yield* storage.updateBoardDelivery(current.turnId, "notified");
+          return;
+        }
+        yield* storage.deferPassiveNotice({
+          id: current.turnId,
+          recipientSessionId: recipient,
+          text: `Workboard ${id}: ${batchEntries.map((entry) => `#${entry.sequence} from ${entry.authorSessionId}: ${entry.description}`).join("\n")}\nRead exact bodies with boards.read only when useful. No acknowledgment required.`,
+          crossSession: {
+            version: 1,
+            messageId: current.turnId,
+            threadId: current.turnId,
+            sequence: 1,
+            expectsResponse: false,
+            resultDelivery: "ignore",
+            sender: {
+              sessionId: batchEntries[0]?.authorSessionId ?? family.parentSessionId,
+              title: "Family Workboard",
+              kind: "project-session",
+            },
+          },
+        });
+        yield* storage.updateBoardDelivery(current.turnId, "deferred");
         return;
       }
       // Intake at Pi's request boundary is sufficient to avoid an extra wake, but never

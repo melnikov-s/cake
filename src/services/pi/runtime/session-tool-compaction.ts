@@ -19,17 +19,23 @@ import {
 } from "./tool-compaction-provenance";
 
 import { internalInputOrigins } from "./internal-input-projection";
+import {
+  withoutPassiveNotices,
+  type InternalInput,
+} from "../../../contracts/conversations/internal-input";
 import { splitContextReminders } from "./session-context-reminders";
 import { parseCrossSessionMessage } from "../../../contracts/conversations/cross-session-message";
 
 /** The sole replay policy: user-authored input and assistant text, no injected context. */
 export function toolCompactDialogueMessage(
   entry: SessionEntry,
+  internal?: InternalInput,
 ): UserMessage | AssistantMessage | undefined {
-  if (entry.type !== "message") return undefined;
+  if (entry.type !== "message" || internal?._tag === "WorkboardDelivery") return undefined;
   const message = entry.message;
   if (message.role === "user") {
-    const clean = (text: string) => splitContextReminders(text).text;
+    const clean = (text: string) =>
+      splitContextReminders(withoutPassiveNotices(text, internal)).text;
     const rawText =
       typeof message.content === "string"
         ? message.content
@@ -146,8 +152,7 @@ export function appendToolCompactedBranch(
 
   const internalInputs = internalInputOrigins(branch);
   for (const entry of branch) {
-    if (internalInputs.has(entry.id)) continue;
-    const message = toolCompactDialogueMessage(entry);
+    const message = toolCompactDialogueMessage(entry, internalInputs.get(entry.id));
     if (!message) continue;
     mappings.push({ sourceEntryId: entry.id, replayedEntryId: session.appendMessage(message) });
   }

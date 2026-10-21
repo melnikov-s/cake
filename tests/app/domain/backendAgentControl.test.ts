@@ -1403,7 +1403,7 @@ it.effect(
       expect(reply).toMatchObject({
         ok: true,
         replyToMessageId: receipt.messageId,
-        expectsResponse: false,
+        expectsResponse: true,
         target: { sessionId: source },
       });
       expect(
@@ -2550,7 +2550,7 @@ it.effect(
     }),
 );
 
-it.effect("backend batches choose prompt for idle and follow-up for busy recipients", () =>
+it.effect("backend corrections start idle recipients and steer busy recipients by default", () =>
   Effect.gen(function* () {
     const f = yield* fixture();
     f.active.add(third);
@@ -2566,18 +2566,18 @@ it.effect("backend batches choose prompt for idle and follow-up for busy recipie
         status: "complete",
         outcomes: [
           { sessionId: target, delivery: "prompt", status: "accepted" },
-          { sessionId: third, delivery: "queue", status: "queued" },
+          { sessionId: third, delivery: "steer", status: "accepted" },
         ],
       },
     });
     expect(yield* Queue.take(f.prompts)).toMatchObject({ sessionId: target, delivery: "prompt" });
-    expect(yield* Queue.take(f.prompts)).toMatchObject({ sessionId: third, delivery: "follow-up" });
+    expect(yield* Queue.take(f.prompts)).toMatchObject({ sessionId: third, delivery: "steer" });
     // Accepted turns bridge admission to the first streaming event.
     expect(
       yield* f.call("sessions.send", { sessionId: target, text: "While preparing" }),
     ).toMatchObject({
-      delivery: "queue",
-      status: "queued",
+      delivery: "steer",
+      status: "accepted",
     });
     yield* Deferred.succeed(f.messageRelease, undefined);
   }),

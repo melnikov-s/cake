@@ -7,9 +7,10 @@ const Message = Schema.Struct({
   senderSessionId: Schema.String,
   targetSessionId: Schema.String,
   turnId: Schema.String,
-  delivery: Schema.Literals(["prompt", "queue", "steer"]),
+  delivery: Schema.Literals(["fyi", "prompt", "queue", "steer"]),
   status: Schema.Literals([
     "accepted",
+    "deferred",
     "queued",
     "delivered",
     "processing",
@@ -74,7 +75,7 @@ export const makeSessionCoordinationStorageLive = (documentPath: string) =>
           const envelope = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Envelope))(
             text,
           ).pipe(Effect.mapError((e) => failure("load", e)));
-          if (envelope.version !== 1)
+          if (envelope.version !== 1 && envelope.version !== 2)
             return yield* failure(
               "load",
               `Unsupported session coordination document version ${envelope.version}`,
@@ -91,7 +92,7 @@ export const makeSessionCoordinationStorageLive = (documentPath: string) =>
             fs,
             path,
             documentPath,
-            JSON.stringify({ version: 1, data: encoded }),
+            JSON.stringify({ version: 2, data: encoded }),
             failure,
           );
         }),

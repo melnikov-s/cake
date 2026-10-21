@@ -5,6 +5,8 @@ import {
   addResponseModeReminder,
   responseModeReminders,
 } from "../../../src/contracts/conversations/response-mode-reminders";
+import { withoutPassiveNotices } from "../../../src/contracts/conversations/internal-input";
+import { passiveNoticeContext } from "../../../src/contracts/conversations/passive-notice";
 import { internalInputEntryType } from "../../../src/services/pi/runtime/internal-input-projection";
 import { projectConversationDisplay } from "../../../src/services/pi/runtime/conversation-display-projection";
 import { forkDisplayProvenanceEntryType } from "../../../src/services/pi/runtime/fork-display-provenance";
@@ -71,6 +73,63 @@ function summarized(parts: ReturnType<typeof projectConversationDisplay>) {
 }
 
 describe("Conversation display projection after tool compaction", () => {
+  it("preserves actual user input and typed passive context across persistence and tool compaction", () => {
+    const id = "cd06817e-b37a-44f6-84bb-76c380a42e79";
+    const notice = {
+      id,
+      text: "Optional review ready.",
+      crossSession: {
+        version: 1 as const,
+        messageId: id,
+        threadId: id,
+        sequence: 1,
+        expectsResponse: false,
+        resultDelivery: "ignore" as const,
+        sender: { sessionId: "worker", title: "Review", kind: "project-session" as const },
+      },
+    };
+    const origin = {
+      _tag: "UserWithReminders" as const,
+      text: "Actual user question",
+      notices: [notice],
+    };
+    const suffix = `\n\n${passiveNoticeContext(origin.notices)}`;
+    const quoted = `The user quotes this context:${suffix}\nContinue the actual question.`;
+    expect(withoutPassiveNotices(quoted + suffix, origin)).toBe(quoted);
+    expect(withoutPassiveNotices(quoted, origin)).toBe(quoted);
+    const session = SessionManager.inMemory("/project");
+    session.appendCustomEntry(internalInputEntryType, { timestamp: 1, origin });
+    const retained = { ...notice, recipientSessionId: "recipient" };
+    session.appendMessage({
+      role: "user",
+      content: `${origin.text}\n\n${passiveNoticeContext([retained])}`,
+      timestamp: 1,
+    });
+    const leaf = session.appendMessage(assistant([{ type: "text", text: "The answer." }]));
+    const parts = projectConversationDisplay(session);
+    expect(parts.filter((part) => part.kind === "text" && part.role === "user")).toEqual([
+      expect.objectContaining({ text: origin.text }),
+    ]);
+    expect(parts).toContainEqual(
+      expect.objectContaining({
+        kind: "context",
+        title: "Cake · passive updates",
+        text: "Review: Optional review ready.",
+      }),
+    );
+    expect(JSON.stringify(parts)).not.toContain("Cake passive updates (agent-authored data");
+    appendToolCompactedBranch(session, leaf);
+    expect(
+      projectConversationDisplay(session).filter(
+        (part) => part.kind === "text" && part.role === "user",
+      ),
+    ).toEqual([expect.objectContaining({ text: origin.text })]);
+    const replayed = session
+      .getBranch()
+      .filter((entry) => entry.type === "message" && entry.message.role === "user");
+    expect(replayed).toHaveLength(1);
+    expect(JSON.stringify(replayed)).not.toContain(notice.text);
+  });
   it("keeps internal provenance one-use even for identical timestamps/text and strips only internal transport during tool compaction", () => {
     const session = SessionManager.inMemory("/project");
     const text =

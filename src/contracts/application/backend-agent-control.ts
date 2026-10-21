@@ -1,3 +1,4 @@
+import { SessionMessageDelivery } from "../conversations/session-message-delivery";
 import {
   SessionCompactInput,
   SessionCompactBatchInput,
@@ -30,7 +31,7 @@ const target = { sessionId: bounded(1, 256) };
 const message = {
   resultDelivery: Schema.optionalKey(ResultDelivery),
   text: trimmed(1, 100_000),
-  delivery: Schema.optionalKey(Schema.Literals(["prompt", "queue", "steer"])),
+  delivery: Schema.optionalKey(SessionMessageDelivery),
   threadId: Schema.optionalKey(id),
   replyToMessageId: Schema.optionalKey(id),
 };

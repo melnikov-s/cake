@@ -31,6 +31,15 @@ export function internalInputOrigins(entries: readonly SessionEntry[]) {
 }
 
 export function internalInputPart(origin: InternalInput, id: string): UiPart {
+  if (origin._tag === "UserWithReminders")
+    return {
+      id,
+      kind: "context",
+      title: "Cake · passive updates",
+      text: origin.notices
+        .map((notice) => `${notice.crossSession.sender.title}: ${notice.text}`)
+        .join("\n\n"),
+    };
   return {
     id,
     kind: "context",

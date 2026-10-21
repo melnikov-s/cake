@@ -121,8 +121,10 @@ describe("Pi 1.0.0 foundation contract", () => {
     expect(systemPrompt).toContain("communicate exclusively via Workboard");
     expect(systemPrompt).toContain("parents, children, siblings and recursive descendants");
     expect(systemPrompt).toContain("Create children with assignment: { description, body }");
-    expect(systemPrompt).toContain("Default resultDelivery: ignore");
-    expect(systemPrompt).toContain("Idle recipients get coalesced durable wakes");
+    expect(systemPrompt).toContain("Default resultDelivery: notification");
+    expect(systemPrompt).toContain(
+      "Only actionable assignments/blockers wake idle family recipients",
+    );
     expect(systemPrompt).toContain(
       "Every board post routes to explicit recipients plus the family root",
     );

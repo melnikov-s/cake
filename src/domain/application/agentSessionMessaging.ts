@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { immediateDelivery } from "../../contracts/conversations/session-message-delivery";
 import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import * as cakeChatTargets from "../cake-chats/cakeChatTargets";
 import type { AgentControlCaller } from "./agentControl";
@@ -14,6 +15,7 @@ import {
   type CoordinationMessage,
 } from "../../contracts/conversations/cross-session-coordination";
 import { SessionCoordination } from "../../services/session-catalogs/SessionCoordination";
+import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import * as metadata from "../project-sessions/projectSessionMetadata";
 import * as sessionReferences from "../project-sessions/sessionReferences";
@@ -36,6 +38,13 @@ const threadView = Effect.fn("AgentControl.threadView")(function* (thread: Coord
   const sessions = yield* CakeSessionRuntimes;
   const coordination = yield* SessionCoordination;
   for (const message of thread.messages) {
+    if (message.delivery === "fyi") {
+      const notice = (yield* (yield* SessionFamilyStorage).state()).passiveNotices?.find(
+        (item) => item.id === message.messageId,
+      );
+      message.status = notice?.delivered ? "delivered" : "deferred";
+      continue;
+    }
     if (message.status === "failed" || message.status === "canceled") continue;
     const outcome = yield* coordination.outcome(message);
     const current = yield* Effect.scoped(
@@ -186,9 +195,16 @@ export const invoke = Effect.fn("AgentSessionMessaging.invoke")(function* (
       ...(yield* metadata.findLocation({ sessionId: targetSessionId })),
       sessionId: targetSessionId,
     }));
-  const delivery = args.delivery ?? (status?.streaming ? "queue" : "prompt");
-  const resultDelivery =
-    args.resultDelivery ?? (caller.kind === "cake-chat" ? "notification" : "ignore");
+  const delivery = immediateDelivery(status?.streaming, args.delivery);
+  if (
+    delivery === "fyi" &&
+    (args.resultDelivery === "reply" ||
+      (invocation.name === "sessions.send" && invocation.arguments.inputRefs?.length))
+  )
+    return fail(
+      "A passive FYI cannot request continuation or forward attachments. Use message references, or an explicit immediate assignment instead.",
+    );
+  const resultDelivery = delivery === "fyi" ? "ignore" : (args.resultDelivery ?? "notification");
   const expectsResponse = resultDelivery !== "ignore";
   const messageId = crypto.randomUUID();
   const sequence = thread.messages.length + 1;
@@ -217,7 +233,7 @@ export const invoke = Effect.fn("AgentSessionMessaging.invoke")(function* (
     targetSessionId,
     turnId: messageId,
     delivery,
-    status: delivery === "queue" ? ("queued" as const) : ("accepted" as const),
+    status: delivery === "fyi" ? "deferred" : delivery === "queue" ? "queued" : "accepted",
   };
   yield* coordination.record(thread, message);
   const inputRefs =

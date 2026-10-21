@@ -7,7 +7,15 @@ export const BoardDelivery = Schema.Struct({
   through: Schema.Int,
   recipientSessionId: Schema.String,
   turnId: Schema.String.check(Schema.isUUID(4)),
-  status: Schema.Literals(["pending", "admitted", "notified", "consumed", "canceled", "failed"]),
+  status: Schema.Literals([
+    "pending",
+    "deferred",
+    "admitted",
+    "notified",
+    "consumed",
+    "canceled",
+    "failed",
+  ]),
   issue: Schema.optionalKey(Schema.String),
 });
 export interface BoardDelivery extends Schema.Schema.Type<typeof BoardDelivery> {}

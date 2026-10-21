@@ -45,8 +45,8 @@ describe("sessions.send-batch operation", () => {
         ok: true,
         command: "sessions.send-batch",
         status: "complete",
-        expectsResponse: false,
-        resultDelivery: "ignore",
+        expectsResponse: true,
+        resultDelivery: "notification",
         outcomes: ["a", "b"].map((sessionId) => ({
           sessionId,
           ok: true,
@@ -63,7 +63,12 @@ describe("sessions.send-batch operation", () => {
 
   it("accepts reference deferrals as successful admissions without inventing a parent turn", async () => {
     const result = await invoke(
-      registry(async () => ({ ...receipt("a"), status: "deferred" })),
+      registry(async () => ({
+        ...receipt("a"),
+        status: "deferred",
+        delivery: "fyi",
+        resultDelivery: "ignore",
+      })),
       {
         sessionIds: ["a"],
         text: "[Result](cake://session/worker?message=entry)",
@@ -73,7 +78,7 @@ describe("sessions.send-batch operation", () => {
       result: {
         status: "complete",
         expectsResponse: false,
-        outcomes: [{ sessionId: "a", ok: true, status: "deferred", delivery: "prompt" }],
+        outcomes: [{ sessionId: "a", ok: true, status: "deferred", delivery: "fyi" }],
       },
     });
     expect(result.structuredContent).not.toHaveProperty("result.outcomes.0.turnId");

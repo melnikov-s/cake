@@ -2,6 +2,7 @@ import {
   projectTodoReminder,
   emptyProjectTodos,
 } from "../../../../src/contracts/projects/project-todos";
+import { passiveNoticeContext } from "../../../../src/contracts/conversations/passive-notice";
 import { projectTodoReceipt } from "../../../../src/contracts/projects/project-todo-context";
 import { createDurableConversationQueue } from "../../../../src/services/pi-durable/durable-chat-queue";
 import type { UiPart } from "../../../../src/contracts/conversations/session-contract";
@@ -865,6 +866,66 @@ it("adds voice guidance only on transitions, recovering the mode from durable st
     "Background report",
     "Typed again",
   ]);
+});
+
+it("keeps passive FYIs beside the actual user message across durable queue and SQLite reload", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "cake-passive-input-"));
+  cleanup.push(() => rm(directory, { recursive: true, force: true }));
+  const database = join(directory, "chat.sqlite");
+  const id = "cd06817e-b37a-44f6-84bb-76c380a42e79";
+  const notice = {
+    id,
+    text: "Optional review ready.",
+    crossSession: {
+      version: 1 as const,
+      messageId: id,
+      threadId: id,
+      sequence: 1,
+      expectsResponse: false,
+      resultDelivery: "ignore" as const,
+      sender: { sessionId: "worker", title: "Review", kind: "project-session" as const },
+    },
+  };
+  const origin = {
+    _tag: "UserWithReminders" as const,
+    text: "Actual user question",
+    notices: [notice],
+  };
+  const encoded = durableInputText(
+    `${origin.text}\n\n${passiveNoticeContext(origin.notices)}`,
+    [],
+    false,
+    false,
+    undefined,
+    undefined,
+    origin,
+  );
+  const f = await fixture(undefined, 20_000, await openNodeSqliteStorage(database));
+  const submitted = await f.submit(encoded, "user-with-fyi");
+  await submitted.wait(BACKGROUND_CONTEXT);
+  const parts = (await readDurableOriginalPage(f.engine.root)).parts;
+  expect(parts.filter((part) => part.kind === "text" && part.role === "user")).toEqual([
+    expect.objectContaining({ text: origin.text }),
+  ]);
+  expect(parts).toContainEqual(
+    expect.objectContaining({
+      kind: "context",
+      title: "Cake · passive updates",
+      text: "Review: Optional review ready.",
+    }),
+  );
+  expect(
+    durableQueuedPart({ id: submitted.id, mode: "followUp", content: encoded }, "user-with-fyi"),
+  ).toMatchObject({
+    kind: "text",
+    role: "user",
+    text: origin.text,
+    queuedInput: { text: origin.text },
+  });
+  await f.engine.close();
+  cleanup.pop();
+  const reopened = await fixture(undefined, 20_000, await openNodeSqliteStorage(database));
+  expect((await readDurableOriginalPage(reopened.engine.root)).parts).toEqual(parts);
 });
 
 it("keeps typed Workboard delivery as application context across durable queues, SQLite reload, and user quotations", async () => {

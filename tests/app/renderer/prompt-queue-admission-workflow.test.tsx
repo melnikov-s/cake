@@ -70,7 +70,7 @@ describe.each(["project", "cake-chat", "project-chat"] as const)(
         await waitFor(() =>
           expect(screen.getByRole("button", { name: "View queued.png enlarged" })).toBeDefined(),
         );
-        await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+        await fixture.user.click(screen.getByRole("button", { name: "Queue for later" }));
         expect(prompt).toHaveBeenCalledOnce();
         expect(prompt.mock.calls[0]?.[0]).toMatchObject({
           text: "C",
@@ -126,7 +126,7 @@ describe.each(["project", "cake-chat", "project-chat"] as const)(
         await fixture.user.click(input);
         if (variant !== "text") await fixture.user.paste(log);
         if (text) await fixture.user.type(input, text);
-        await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+        await fixture.user.click(screen.getByRole("button", { name: "Queue for later" }));
         const label = text || "1 attachment";
         expect(labels()).toEqual(["B", label]);
         expect(

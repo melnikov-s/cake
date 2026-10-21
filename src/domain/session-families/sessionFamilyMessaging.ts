@@ -1,3 +1,7 @@
+import {
+  SessionMessageDelivery,
+  immediateDelivery,
+} from "../../contracts/conversations/session-message-delivery";
 import { ResultDelivery } from "../../contracts/conversations/result-delivery";
 import { messageRefsSchema } from "../../contracts/conversations/message-reference";
 import { appendMessageReferences } from "../../contracts/conversations/message-reference-forwarding";
@@ -37,7 +41,7 @@ export const FamilyMessageInput = Schema.Struct({
     Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
   ),
   text: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100_000)),
-  delivery: Schema.optionalKey(Schema.Literals(["prompt", "queue", "steer"])),
+  delivery: Schema.optionalKey(SessionMessageDelivery),
   threadId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
   maxMessages: Schema.optionalKey(
     Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(1_000)),
@@ -184,8 +188,10 @@ export const route: (
   const messageId = crypto.randomUUID();
   const threadId = pending?.threadId ?? input.threadId ?? crypto.randomUUID();
   const replyToMessageId = pending?.requestMessageId ?? input.replyToMessageId;
-  // Neither sends nor replies create a reply obligation unless the caller asks for one.
-  const resultDelivery = input.resultDelivery ?? "ignore";
+  const delivery = immediateDelivery(destinationSnapshot.streaming, input.delivery);
+  if (delivery === "fyi" && (input.resultDelivery === "reply" || input.inputRefs?.length))
+    return yield* routingError("A passive FYI cannot request continuation or forward attachments");
+  const resultDelivery = delivery === "fyi" ? "ignore" : (input.resultDelivery ?? "notification");
   const expectsResponse = resultDelivery !== "ignore";
   const messageMetadata = {
     version: 1 as const,
@@ -233,9 +239,24 @@ export const route: (
         ...(input.resultKind ? { resultKind: input.resultKind } : null),
         text: input.text,
       });
-  // Ordinary delivery starts an idle recipient or queues behind active work.
-  // An explicit steer deliberately interrupts and redirects the target.
-  const delivery = input.delivery ?? (destinationSnapshot.streaming ? "queue" : "prompt");
+  if (delivery === "fyi") {
+    yield* families.deferPassiveNotice({
+      id: messageId,
+      recipientSessionId: targetSessionId,
+      text: appendMessageReferences(input.text, input.messageRefs ?? []),
+      crossSession: messageMetadata,
+    });
+    return toJsonValue({
+      ok: true,
+      command,
+      status: "deferred",
+      messageId,
+      threadId,
+      delivery,
+      resultDelivery,
+      expectsResponse: false,
+    });
+  }
   const inputs = yield* TaskInputStorage;
   const refs = yield* inputs.authorizeForward(sessionId, input.inputRefs ?? [], targetSessionId);
   const attachments = yield* prepareTaskInputs(

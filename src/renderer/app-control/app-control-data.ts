@@ -387,7 +387,7 @@ type AppControlSuccess =
       threadId?: string;
       messageNumber?: number;
       maxMessages?: number;
-      delivery: "prompt" | "queue" | "steer";
+      delivery: "fyi" | "prompt" | "queue" | "steer";
       expectsResponse: boolean;
       /** Cake Chat senders only: how the requested result comes back. */
       resultDelivery?: ResultDelivery;

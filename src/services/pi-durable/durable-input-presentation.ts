@@ -1,5 +1,5 @@
 import { Option, Schema } from "effect";
-import { InternalInput } from "../../contracts/conversations/internal-input";
+import { InternalInput, withoutPassiveNotices } from "../../contracts/conversations/internal-input";
 import { internalInputPart } from "../pi/runtime/internal-input-projection";
 import type { Message } from "@earendil-works/pi-durable-ai";
 import {
@@ -172,7 +172,12 @@ export const durableQueuedText = (content: Blocks) => durableQueuedPresentation(
 
 /** Queued rows show the user's words, not Cake-owned model guidance such as a voice reminder. */
 export const durableQueuedDisplayText = (content: Blocks) =>
-  splitContextReminders(durableQueuedPresentation(content).text).text;
+  splitContextReminders(
+    withoutPassiveNotices(
+      durableQueuedPresentation(content).text,
+      durableQueuedPresentation(content).internal,
+    ),
+  ).text;
 
 /** One queue card for the whole input, never its model-only attachment envelope. */
 export function durableQueuedPart(
@@ -180,7 +185,7 @@ export function durableQueuedPart(
   id: string,
 ): UiPart {
   const internal = durableQueuedPresentation(item.content).internal;
-  if (internal) return internalInputPart(internal, `queued-${id}`);
+  if (internal?._tag === "WorkboardDelivery") return internalInputPart(internal, `queued-${id}`);
   const display = queuedUserMessageDisplay(durableQueuedDisplayText(item.content));
   const { subagentReport } = durableQueuedPresentation(item.content);
   return {
@@ -213,7 +218,7 @@ const durableQueuedInput = (item: Extract<InboxItem, { content: unknown }>, id: 
     itemId: id,
     turnId: id,
     // Workflow reminders are model context, not editable user text.
-    text: splitContextReminders(input.text).text,
+    text: splitContextReminders(withoutPassiveNotices(input.text, input.internal)).text,
     renderUserMessageAsMarkdown: input.markdown,
     attachments: [
       ...input.files,

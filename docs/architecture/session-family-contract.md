@@ -33,7 +33,7 @@ caller's current values apply only when no default preset is configured. Cake
 persists request correlation and child identity, then an addressed Workboard
 assignment, before admitting the initial bootstrap turn. `assignment: { description,
 body }` is required; bootstrap-first `initialPrompt` callers fail validation. Family
-creation defaults to resultDelivery ignore; current explicit user exceptions may select private result modes.
+creation defaults to resultDelivery notification; reply continuation is a deliberate dependent-work choice.
 Accepting that background turn completes creation; the parent never waits for
 settlement. The returned assignment receipt proves persistence, not execution;
 launch reports accepted, already-admitted with durable journal state, or failed
@@ -48,10 +48,10 @@ prove admission. Any existing durable journal, including stopped/canceled or
 settled work, prevents retry from relaunching the child. Every later board post uses one durable coalesced delivery cursor/batch per recipient:
 explicit audiences plus the unique family root, excluding the author. Nested
 immediate parents are not additional orchestrators. Broadcasts automatically
-wake only the root; explicitly target other owners. Event metadata does not gate
-delivery. Idle recipients receive one stable normal input; active/queued recipients
-use Pi's context-only before_agent_start/turn_end inbox and confirmed outgoing
-request receipts. If no request consumes a reminder, idle fallback admits the batch.
+reach only the root; explicitly target other owners. Only necessary assignment/blocker
+events permit automatic execution: idle recipients receive one stable input; active
+recipients use supported context boundaries. Routine findings/completions are durably
+deferred to the next actual user input, never an idle wake or active steering.
 No concurrent turn, abort, force-send-now or steering of unrelated user inputs occurs.
 
 Completion continuation grants are removed, with v9 storage dropping their
@@ -108,8 +108,8 @@ members have no distinct worktree to merge or discard.
 
 Family messages use ordinary validated cross-session messaging. Any family
 member may be addressed, while completion responsibility follows immediate
-parent links. By default, an idle recipient starts a normal turn immediately and
-an active recipient receives the message through Pi's follow-up queue. A sender
+parent links. By default, necessary immediate corrections start an idle recipient normally and
+an active recipient receives steering. Explicit queue delivery is reserved for deliberately ordered future work; FYI delivery never starts a turn. A sender
 may explicitly request `steer` to interrupt and redirect an active recipient.
 Accepted text becomes authoritative only in the destination Pi transcript; Cake
 metadata owns routing and correlation, not a second message copy. Pending input
@@ -119,8 +119,9 @@ follow-up input instead of discarding the message. Routing is main-process polic
 and must not depend on renderer visibility.
 
 Session launch/send chooses one `resultDelivery: "reply" | "notification" | "ignore"`.
-Cake Chat defaults to notification, Project Session sends/replies to ignore, and family
-creation to reply (Workboard-only children explicitly select ignore). Stable request/message
+Global Cake Chat, every Project Chat, Project Session send/reply, independent agent
+creation and family creation default to notification. Reply is deliberate dependent-work
+continuation; ignore is supported. Stable request/message
 correlation identifies the obligation; unrelated input never satisfies it. The envelope's
 expectsResponse flag is derived routing metadata, not another caller-selectable mode.
 
@@ -204,8 +205,8 @@ This does not reconstruct reports already removed by older admission-based deliv
 
 ### Workboard delivery and quiet decisions
 
-Default board delivery is defined above: explicit audience plus the unique root,
-coalesced durable idle wakes and non-disruptive active-request inbox reminders.
+Default board delivery is defined above: explicit audience plus the unique root.
+Routine updates are passive; necessary assignments/blockers retain durable execution.
 The retired completion-grant mechanism contributes neither a second wake nor an
 execution budget. Board content and intake never expand user authorization.
 
@@ -273,7 +274,7 @@ The first child reservation creates one **Workboard** (`message-board` artifact 
 
 `boards.read-new` discovers bounded relevant unread, non-superseded descriptions (including previously notified but deferred entries); `boards.read` retrieves selected bodies. `boards.current` pages current relevant descriptions, optionally by topic, regardless of existing receipts. Neither discovery query records body reads. A relevant successor explicitly supersedes its referenced entries for its recipients only; narrower audiences cannot hide decisions from other recipients. Superseded originals remain available through explicit reads, receipts and human browsing. Current denotes explicit relationships, not semantic agreement, verification or a uniquely authoritative proposal. Family-wide and explicitly addressed descriptions are eligible for notifications; authors do not receive notices of their own posts. Audience is routing, not privacy: family members may explicitly browse any entry. Entry and session receipt queries expose independent first-notified and first-read timestamps. Read means content supplied to a tool caller, not comprehension, agreement, action or memory after compaction. Human artifact browsing never records agent receipts.
 
-Pi's awaited `turn_end` boundary coalesces up to ten descriptions into an inspectable context-only custom reminder with `triggerTurn: false`. Normal prompt start also collects notices. No board post starts an idle turn, interrupts tools, or creates steering/follow-up inputs. Notification receipts are recorded only when the description is handed to Pi's public request stream after all context transformations. A reminder persisted after a final/terminated/aborted turn may remain unnotified until another genuine request. Persisted pending notices suppress duplicate staging; ordinary compaction retains external receipts and does not imply the model still remembers an entry. Direct messages and explicit steering remain necessary for assignments, urgent corrections and blocked-child wake-ups.
+Necessary assignment/blocker events use Pi's supported context-only boundaries and durable idle fallback. Routine descriptions/completions are not injected at active boundaries: the durable passive inbox attaches them to the next actual user input with typed provenance. Notification/read receipts are not understanding or execution evidence. Explicit stop, queue withdrawal and resolution remain authoritative; no acknowledgment or private relay is required.
 
 ## Lifecycle
 

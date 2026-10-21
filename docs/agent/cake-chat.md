@@ -38,7 +38,7 @@ Both are investigation-only unless started with allowMutations:true. Name exact 
 
 Use subagents.start for asynchronous work; run/parallel/wait deliberately block the parent and require an explicit request to do so. Workers cannot delegate recursively. Keep handles for related follow-ups until closed or expired after 30 idle minutes; active turns never expire. Handles, exact capability grants and Pi-owned history survive backend restart. Safe unfinished work resumes automatically; uncertain tool effects require review instead of replay. Follow-ups are asynchronous. Recheck evidence when the checkout may have changed.
 
-Choose `continuation: "none"` for a report-only worker result, or `"resume"` when you must inspect it and continue dependent work or explain failure. Both owe a result, including linked results. Subagents default to resume; follow-ups inherit unless overridden. Resume uses the normal parent queue, not steering or concurrent turns. Do not poll.
+Choose `continuation: "none"` for a report-only worker result, or `"resume"` when you must inspect it and continue dependent work or explain failure. Both owe a result, including linked results. Subagents default to none; follow-ups inherit unless overridden. Resume uses the normal parent queue, not steering or concurrent turns. Do not poll.
 
 ### Session reports
 

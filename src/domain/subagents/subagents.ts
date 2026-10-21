@@ -136,7 +136,7 @@ const normalizeTask = Effect.fn("Subagents.normalizeTask")(function* (input: Sub
   );
   const task: SubagentTask = {
     task: decoded.task,
-    continuation: decoded.continuation ?? "resume",
+    continuation: decoded.continuation ?? "none",
     model: decoded.model ?? { prefer: "current" },
     fastMode: decoded.fastMode ?? false,
     allowMutations: decoded.allowMutations ?? false,
@@ -1218,7 +1218,7 @@ export const restore = Effect.fn("Subagents.restore")(function* (
   if ((yield* SubscriptionRef.get(coordinator.state)).handles.has(record.handleId)) return;
   const input: SubagentTask = {
     task: record.task,
-    continuation: record.continuation ?? "resume",
+    continuation: record.continuation ?? "none",
     model: {
       prefer: "exact",
       provider: record.resolvedModel.provider,
@@ -1464,7 +1464,7 @@ export const prompt = Effect.fn("Subagents.prompt")(function* (
           completionId: crypto.randomUUID(),
           pendingInputs: [input],
           notifyOnCompletion: background ? true : value.recovery.notifyOnCompletion,
-          continuation: continuation ?? value.recovery.continuation ?? "resume",
+          continuation: continuation ?? value.recovery.continuation ?? "none",
         },
         completionDisposition: background ? "pending" : "waited",
         activityRevision: value.activityRevision + 1,
@@ -1516,7 +1516,7 @@ export const prompt = Effect.fn("Subagents.prompt")(function* (
       ),
     );
     return jsonValue({
-      continuation: continuation ?? handle.recovery.continuation ?? "resume",
+      continuation: continuation ?? handle.recovery.continuation ?? "none",
       handleId: handle.handleId,
       task: handle.task,
       projectPath: handle.projectPath,

@@ -1,3 +1,4 @@
+import { sessionMessageDeliveryGuidance } from "../conversations/session-message-delivery";
 import { sessionCompactionDefinitions } from "../project-sessions/session-compaction";
 import { resultDeliveryGuidance } from "../conversations/result-delivery";
 import { compactDiscoveryGuidance } from "../agent/discovery-result-text";
@@ -322,8 +323,9 @@ const definitions = [
         "Send, queue, or steer a correlated message to one explicitly targeted session. The result is a visible delivery receipt; optional maxMessages bounds the exchange.",
       guidance: [
         "sessionId is required from Cake Chat; Cake Chat cannot message itself. Project Sessions reach Cake Chat by omitting sessionId.",
-        "Cake Chat sends default to notification; Project Session sends and replies default to ignore.",
+        "Global Cake Chat, every Project Chat and Project Session default to notification. Choose reply only for genuinely dependent continuation; ignore is supported.",
         resultDeliveryGuidance,
+        sessionMessageDeliveryGuidance,
       ],
     },
   },

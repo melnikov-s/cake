@@ -29,6 +29,7 @@ export const present = Effect.fn("AgentActionNotices.present")(function* (
   const decoded = Schema.decodeUnknownOption(Result)(value);
   if (Option.isNone(decoded)) return;
   const result = decoded.value;
+  if (result.status === "deferred") return;
   let notice: Omit<AgentActionNotice, "source"> | undefined;
   if (result.command === "project.settings.update" || result.command === "projects.settings.update")
     notice = {

@@ -187,7 +187,7 @@ function renderDictation(
         ...options.client?.dictation,
       },
       workspaces: { postProcessDictation: async (text) => text, ...options.client?.workspaces },
-      sessionChats: { prompt, ...options.client?.sessionChats },
+      sessionChats: { prompt, steer: prompt, ...options.client?.sessionChats },
     },
   });
   const isCakeChat = options.surface === "project-chat" || options.surface === "cake-chat";
@@ -515,7 +515,7 @@ describe("Dictation writing-field workflow", () => {
       using f = renderDictation({
         composerFocusEnabled: true,
         client: {
-          sessionChats: { prompt, steerQueuedMessage, sendQueuedMessageNow },
+          sessionChats: { prompt, steer: prompt, steerQueuedMessage, sendQueuedMessageNow },
         },
       });
       f.publish({ _tag: "StreamingChanged", sessionId: "dictation-session", streaming: true });

@@ -1,4 +1,7 @@
-import type { InternalInput } from "../../../contracts/conversations/internal-input";
+import {
+  withoutPassiveNotices,
+  type InternalInput,
+} from "../../../contracts/conversations/internal-input";
 import { internalInputOrigins, internalInputPart } from "./internal-input-projection";
 import {
   parseSkillBlock,
@@ -351,6 +354,7 @@ function partsFromMessage(
   renderUserMessageAsMarkdown = false,
   streamingToolContentIndex?: number,
   abortPresentation: AbortPresentation = interruptedAbort,
+  internal?: InternalInput,
 ): UiPart[] {
   if (typeof message !== "object" || message === null) return [];
   const role = Reflect.get(message, "role");
@@ -363,7 +367,9 @@ function partsFromMessage(
     const timestamp = Reflect.get(message, "timestamp");
     const renderKey =
       typeof timestamp === "number" && Number.isFinite(timestamp) ? `user-${timestamp}` : undefined;
-    const context = splitContextReminders(textFromContent(content));
+    const context = splitContextReminders(
+      withoutPassiveNotices(textFromContent(content), internal),
+    );
     const envelope = parseUserMessageEnvelope(context.text);
     const reminderParts = context.reminders.map((reminder, index): UiPart => ({
       id: `${baseId}-context-${index}`,
@@ -371,6 +377,8 @@ function partsFromMessage(
       title: reminder.title,
       text: reminder.text,
     }));
+    if (internal?._tag === "UserWithReminders")
+      reminderParts.push(internalInputPart(internal, `${baseId}-passive`));
     const parsedContext = parseContextAttachmentBlocks(envelope.text);
     const text = parsedContext.text;
     const renderAsMarkdown =
@@ -750,13 +758,17 @@ export function createLiveMessageProjector(
   const project = (event: AgentSessionEvent): UiPart[] => {
     if (event.type === "message_start" && event.message.role === "user") {
       const internal = options.internalInput?.(textFromContent(event.message.content));
-      if (internal) return [internalInputPart(internal, `live-user-${++userIndex}-context`)];
+      if (internal?._tag === "WorkboardDelivery")
+        return [internalInputPart(internal, `live-user-${++userIndex}-context`)];
       return partsFromMessage(
         event.message,
         `live-user-${++userIndex}`,
         false,
         undefined,
         options.renderUserMessageAsMarkdown?.(event.message) ?? false,
+        undefined,
+        interruptedAbort,
+        internal,
       );
     }
     if (
@@ -1040,7 +1052,7 @@ export function projectSessionEntries(
   for (const entry of entries) {
     if (entry.type === "message") {
       const internal = internalInputs.get(entry.id);
-      if (internal) {
+      if (internal?._tag === "WorkboardDelivery") {
         append(internalInputPart(internal, `entry-${entry.id}-context`));
         continue;
       }
@@ -1062,6 +1074,7 @@ export function projectSessionEntries(
         userMessagePresentations.get(entry.id) === "markdown",
         undefined,
         abortPresentations.get(entry.message.timestamp),
+        internal,
       ))
         append(part);
       continue;

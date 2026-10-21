@@ -384,7 +384,10 @@ describe("Review side-chat workflow", () => {
       TurnId.make("10000000-0000-4000-8000-000000000002"),
     );
     const abort = vi.fn<Client["sessionChats"]["abort"]>(async () => undefined);
-    using fixture = renderReview({ sessionChats: { prompt, abort } }, { streaming: true });
+    using fixture = renderReview(
+      { sessionChats: { prompt, steer: prompt, abort } },
+      { streaming: true },
+    );
     await fixture.user.type(
       screen.getByRole("combobox", { name: "Reply to selection side chat" }),
       "And then?",

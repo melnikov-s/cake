@@ -248,8 +248,8 @@ describe("assignment-first child handoff", () => {
         assert.equal(items[0]?.description, input.assignment.description);
         assert.equal(f.starts(), 1);
         const message = parseCrossSessionMessage(f.bootstrap());
-        assert.equal(message?.metadata.expectsResponse, false);
-        assert.equal(message?.metadata.resultDelivery, "ignore");
+        assert.equal(message?.metadata.expectsResponse, true);
+        assert.equal(message?.metadata.resultDelivery, "notification");
         assert.ok(
           !message?.text.includes(input.assignment.body),
           "the private bootstrap contains no task copy",

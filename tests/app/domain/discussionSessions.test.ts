@@ -867,7 +867,7 @@ describe("Discussion Sessions domain", () => {
         );
         expect(result).toMatchObject({
           ok: true,
-          expectsResponse: false,
+          expectsResponse: true,
           target: { sessionId: recipient },
         });
         yield* Effect.yieldNow;

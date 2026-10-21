@@ -110,7 +110,7 @@ function validateReplay(
   const sourceBranch = session.getBranch(provenance.sourceLeafId);
   const internalInputs = internalInputOrigins(sourceBranch);
   const replayableSourceIds = sourceBranch.flatMap((entry) => {
-    return !internalInputs.has(entry.id) && toolCompactDialogueMessage(entry) ? [entry.id] : [];
+    return toolCompactDialogueMessage(entry, internalInputs.get(entry.id)) ? [entry.id] : [];
   });
   if (
     replayRange.length !== provenance.mappings.length ||

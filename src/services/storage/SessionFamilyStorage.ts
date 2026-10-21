@@ -1,4 +1,5 @@
 import { MessageReference } from "../../contracts/conversations/message-reference";
+import { StoredPassiveNotice } from "../../contracts/conversations/passive-notice";
 import { PendingReport, ReportHandlingReceipt } from "../../contracts/conversations/pending-report";
 import { BoardDelivery } from "../../contracts/artifacts/board-delivery";
 import {
@@ -33,7 +34,7 @@ import {
   SessionRequester,
 } from "../../contracts/project-sessions/session-reporting";
 
-const DOCUMENT_VERSION = 9;
+const DOCUMENT_VERSION = 10;
 const LegacyDelivery = {
   continuation: Schema.optionalKey(Schema.Literals(["none", "resume"])),
   reportPolicy: Schema.optionalKey(Schema.Literals(["digest", "interrupt"])),
@@ -207,6 +208,7 @@ export const SessionFamilyDocument = Schema.Struct({
   /** Cake Chat's inbox of digest-policy results, drained into its next user message. */
   coordinatorDigest: Schema.optionalKey(Schema.Array(CoordinatorDigestItem)),
   deferredReferences: Schema.optionalKey(Schema.Array(PendingReport)),
+  passiveNotices: Schema.optionalKey(Schema.Array(StoredPassiveNotice)),
   handledReports: Schema.optionalKey(Schema.Array(ReportHandlingReceipt)),
   boardDeliveries: Schema.optionalKey(Schema.Array(BoardDelivery)),
   boardDeliveryPaused: Schema.optionalKey(Schema.Array(BoundedId)),
@@ -289,6 +291,14 @@ export class SessionFamilyStorage extends Context.Service<
       item: CoordinatorDigestItem,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
     /** Atomically retains an exact notification and settles its optional report obligation. */
+    readonly deferPassiveNotice: (
+      item: StoredPassiveNotice,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
+    readonly markPassiveNoticeAdmission: (
+      ids: ReadonlyArray<string>,
+      turnId: string,
+      delivered?: boolean,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly deferReferenceNotice: (
       item: PendingReport,
       turnIds?: ReadonlyArray<string>,
@@ -414,7 +424,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         const envelope = yield* Schema.decodeUnknownEffect(StoredEnvelope)(parsed).pipe(
           Effect.mapError((cause) => storageError("load", cause)),
         );
-        if (![1, 2, 3, 4, 5, 6, 7, 8, DOCUMENT_VERSION].includes(envelope.version))
+        if (![1, 2, 3, 4, 5, 6, 7, 8, 9, DOCUMENT_VERSION].includes(envelope.version))
           return yield* storageError(
             "load",
             `Unsupported session family document version ${envelope.version}`,
@@ -662,7 +672,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
               parentSessionId: input.parentSessionId,
               requestId: input.requestId,
               workingDirectory: input.childWorkingDirectory,
-              resultDelivery: input.resultDelivery ?? "reply",
+              resultDelivery: input.resultDelivery ?? "notification",
               ...(input.assignmentTopic ? { assignmentTopic: input.assignmentTopic } : null),
               createdAt: input.createdAt,
             };
@@ -756,8 +766,17 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         (turnId: string, status: BoardDelivery["status"], issue?: string) =>
           update((document) => ({
             ...document,
+            passiveNotices:
+              status === "canceled"
+                ? (document.passiveNotices ?? []).map((notice) =>
+                    notice.id === turnId ? { ...notice, delivered: true, text: "" } : notice,
+                  )
+                : (document.passiveNotices ?? []),
             boardDeliveries: (document.boardDeliveries ?? []).map((item) => {
-              if (item.turnId !== turnId || !["pending", "admitted"].includes(item.status))
+              if (
+                item.turnId !== turnId ||
+                !["pending", "admitted", "deferred"].includes(item.status)
+              )
                 return item;
               return {
                 ...Struct.omit(item, ["issue"]),
@@ -771,11 +790,24 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         (sessionId: string, paused: boolean) =>
           update((document) => ({
             ...document,
+            passiveNotices: (document.passiveNotices ?? []).map((notice) =>
+              paused &&
+              document.boardDeliveries?.some(
+                (delivery) =>
+                  delivery.turnId === notice.id &&
+                  delivery.recipientSessionId === sessionId &&
+                  ["pending", "deferred"].includes(delivery.status),
+              )
+                ? { ...notice, delivered: true, text: "" }
+                : notice,
+            ),
             boardDeliveryPaused: paused
               ? [...new Set([...(document.boardDeliveryPaused ?? []), sessionId])]
               : (document.boardDeliveryPaused ?? []).filter((id) => id !== sessionId),
             boardDeliveries: (document.boardDeliveries ?? []).map((item) =>
-              paused && item.recipientSessionId === sessionId && item.status === "pending"
+              paused &&
+              item.recipientSessionId === sessionId &&
+              ["pending", "deferred"].includes(item.status)
                 ? {
                     ...item,
                     status: "canceled" as const,
@@ -1027,6 +1059,32 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             };
           }),
       );
+      const deferPassiveNotice = Effect.fn("SessionFamilyStorage.deferPassiveNotice")(
+        (item: StoredPassiveNotice) =>
+          update((document) => ({
+            ...document,
+            passiveNotices: document.passiveNotices?.some((notice) => notice.id === item.id)
+              ? document.passiveNotices
+              : [...(document.passiveNotices ?? []), item],
+          })),
+      );
+      const markPassiveNoticeAdmission = Effect.fn(
+        "SessionFamilyStorage.markPassiveNoticeAdmission",
+      )((ids: ReadonlyArray<string>, turnId: string, delivered = false) =>
+        update((document) => ({
+          ...document,
+          passiveNotices: (document.passiveNotices ?? []).map((notice) =>
+            ids.includes(notice.id)
+              ? {
+                  ...notice,
+                  admissionTurnId: turnId,
+                  delivered,
+                  ...(delivered ? { text: "" } : null),
+                }
+              : notice,
+          ),
+        })),
+      );
       const deferReferenceNotice = Effect.fn("SessionFamilyStorage.deferReferenceNotice")(
         (item: PendingReport, turnIds: ReadonlyArray<string> = []) =>
           update((document) => {
@@ -1202,6 +1260,8 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         completeNotice,
         digestNotice,
         deferReferenceNotice,
+        deferPassiveNotice,
+        markPassiveNoticeAdmission,
         markReferenceAdmissions,
         acknowledgeReports,
         recordLaunchReport,

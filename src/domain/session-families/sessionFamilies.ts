@@ -3,6 +3,10 @@ import { ensureSession as ensureSessionTodo } from "../projects/projectTodos";
 import { describeTurnStop, type TurnStop } from "../../contracts/conversations/turn-stop";
 import { appendMessageReferences } from "../../contracts/conversations/message-reference-forwarding";
 import type { ResultDelivery } from "../../contracts/conversations/result-delivery";
+import {
+  immediateDelivery,
+  type SessionMessageDelivery,
+} from "../../contracts/conversations/session-message-delivery";
 import { isReferenceNotification } from "../../contracts/conversations/reference-notification";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 import * as workboardDeliveries from "./workboardDeliveries";
@@ -113,7 +117,7 @@ export const admitTurn = Effect.fn("SessionFamilies.admitTurn")(function* <E, R>
           requestMessageId: request.metadata.messageId,
           threadId: request.metadata.threadId,
           reported: false,
-          resultDelivery: request.metadata.resultDelivery ?? "reply",
+          resultDelivery: request.metadata.resultDelivery ?? "notification",
         });
       yield* accept.pipe(
         Effect.onExit((exit) =>
@@ -207,7 +211,7 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(
           childSessionId,
           assignmentTopic: `child-${childSessionId}`,
           childWorkingDirectory: childLocation.workingDirectory,
-          resultDelivery: input.resultDelivery ?? "ignore",
+          resultDelivery: input.resultDelivery ?? "notification",
           requestId,
           projectPath: location.projectPath,
           createdAt: DateTime.formatIso(yield* DateTime.now),
@@ -349,7 +353,7 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(
         (child) => child.sessionId === prepared.child.sessionId,
       ),
       familyDepth: familyDepth(prepared.family, prepared.child.sessionId) ?? 0,
-      resultDelivery: prepared.child.resultDelivery ?? "ignore",
+      resultDelivery: prepared.child.resultDelivery ?? "notification",
       requestId: input.requestId,
       assignment: prepared.assignmentReceipt,
     };
@@ -458,7 +462,7 @@ export const initialize = Effect.fn("SessionFamilies.initialize")(function* <E, 
         requestMessageId: child.sessionId,
         threadId: family.familyId,
         reported: false,
-        resultDelivery: child.resultDelivery ?? "reply",
+        resultDelivery: child.resultDelivery ?? "notification",
         outcome: "failed",
       });
       yield* storage.removeUnmaterializedChild(child.sessionId);
@@ -483,7 +487,7 @@ export const initialize = Effect.fn("SessionFamilies.initialize")(function* <E, 
       threadId: spawn.sessionId,
       reported: false,
       outcome: "aborted",
-      resultDelivery: spawn.resultDelivery ?? "reply",
+      resultDelivery: spawn.resultDelivery ?? "notification",
     });
   }
   for (const turn of (yield* storage.state()).turns) {
@@ -754,7 +758,7 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
     input: {
       sessionId?: string;
       text: string;
-      delivery?: "prompt" | "queue" | "steer";
+      delivery?: SessionMessageDelivery;
       threadId?: string;
       replyToMessageId?: string;
       resultDelivery?: ResultDelivery;
@@ -768,7 +772,8 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
   ) {
     const storage = yield* SessionFamilyStorage;
     const state = yield* storage.state();
-    const expectsResponse = (input.resultDelivery ?? "ignore") !== "ignore";
+    const expectsResponse =
+      input.delivery !== "fyi" && (input.resultDelivery ?? "notification") !== "ignore";
     const spawn = state.spawnedSessions.find((item) => item.sessionId === sessionId);
     // A session Cake Chat did not launch still answers Cake Chat's own requests to it.
     const owedCoordinator =
@@ -796,7 +801,7 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
     const pending =
       command === "sessions.reply" ||
       input.replyToMessageId ||
-      (requesterId !== undefined && !expectsResponse)
+      (requesterId !== undefined && input.resultDelivery !== "reply")
         ? yield* storage.pendingResponseRequest(
             sessionId,
             executingIds,
@@ -808,12 +813,12 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
       !pending &&
       command === "sessions.reply" &&
       spawn?.reportDelivered &&
-      !expectsResponse &&
+      input.resultDelivery !== "reply" &&
       (input.threadId === undefined || input.threadId === spawn.sessionId) &&
       (input.replyToMessageId === undefined || input.replyToMessageId === spawn.sessionId)
     )
       return toJsonValue({ ok: true, command, status: "already-reported", expectsResponse: false });
-    if (pending && pending.outcome === undefined && !expectsResponse) {
+    if (pending && pending.outcome === undefined && input.resultDelivery !== "reply") {
       if (!substantiveTurnResult({ stopReason: "stop", text: input.text }))
         return yield* failure(
           "A result report must contain substantive findings, changes, or a blocker—not an acknowledgment",
@@ -842,7 +847,8 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
       threadId: pending?.threadId ?? input.threadId ?? spawn?.sessionId ?? crypto.randomUUID(),
       sequence: 1,
       expectsResponse,
-      resultDelivery: input.resultDelivery ?? "ignore",
+      resultDelivery:
+        input.delivery === "fyi" ? ("ignore" as const) : (input.resultDelivery ?? "notification"),
       ...(replyToMessageId ? { replyToMessageId } : null),
       ...(senderContext ? { context: senderContext } : null),
       sender: {
@@ -917,7 +923,28 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
         recipientContext: crossSessionContextSnapshot(snapshot.usage?.context),
       });
     }
-    const delivery = input.delivery ?? (snapshot.streaming ? "queue" : "prompt");
+    const delivery = immediateDelivery(snapshot.streaming, input.delivery);
+    if (delivery === "fyi") {
+      if (input.resultDelivery === "reply" || attachments.length)
+        return yield* failure("A passive FYI cannot request continuation or forward attachments");
+      const prepared = parseCrossSessionMessage(encoded);
+      yield* storage.deferPassiveNotice({
+        id: messageId,
+        recipientSessionId: targetId,
+        text: prepared?.text ?? input.text,
+        crossSession: metadata,
+      });
+      return toJsonValue({
+        ok: true,
+        command,
+        status: "deferred",
+        messageId,
+        threadId: metadata.threadId,
+        delivery,
+        resultDelivery: "ignore",
+        expectsResponse: false,
+      });
+    }
     const turnId =
       delivery === "steer"
         ? yield* destination.steer(encoded, attachments, false)

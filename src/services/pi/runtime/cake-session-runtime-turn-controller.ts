@@ -786,17 +786,22 @@ export function createCakeSessionRuntimeTurnController(input: {
       return parts.map((part) => {
         const item = payloads.get(part.id);
         const internal = item?.turnId ? turnCompletions.internalInputById(item.turnId) : undefined;
-        if (internal) return internalInputPart(internal, part.id);
+        if (internal?._tag === "WorkboardDelivery") return internalInputPart(internal, part.id);
         return part.kind === "text" && item
           ? {
               ...part,
-              text: part.crossSession || part.scheduled ? part.text : item.text,
+              text:
+                part.crossSession || part.scheduled
+                  ? part.text
+                  : internal?._tag === "UserWithReminders"
+                    ? internal.text
+                    : item.text,
               renderAs: item.renderUserMessageAsMarkdown ? ("markdown" as const) : part.renderAs,
               queuedInput: {
                 itemId: item.itemId,
                 ...(item.turnId ? { turnId: item.turnId } : null),
                 ...(item.command ? { command: item.command } : null),
-                text: item.text,
+                text: internal?._tag === "UserWithReminders" ? internal.text : item.text,
                 attachments: item.attachments,
                 renderUserMessageAsMarkdown: item.renderUserMessageAsMarkdown,
               },

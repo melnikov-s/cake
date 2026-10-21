@@ -276,8 +276,8 @@ describe("Session Family creation", () => {
             messageId: first.childSessionId,
             threadId: first.familyId,
             sequence: 1,
-            expectsResponse: false,
-            resultDelivery: "ignore",
+            expectsResponse: true,
+            resultDelivery: "notification",
             context: input.senderContext,
             sender: {
               sessionId: "parent",

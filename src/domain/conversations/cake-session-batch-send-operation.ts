@@ -1,3 +1,4 @@
+import { sessionMessageDeliveryGuidance } from "../../contracts/conversations/session-message-delivery";
 import { resultDeliveryGuidance } from "../../contracts/conversations/result-delivery";
 import { Option, Schema } from "effect";
 import {
@@ -23,8 +24,9 @@ export function createSessionSendBatchOperation(
       "By default do not target members of the calling Project Session's own Session Family; current explicit user exceptions override this Cake policy: intra-family communication belongs exclusively on its shared Workboard, including assignments, questions, urgent redirection and results. Cake Chat and unrelated independent sessions retain ordinary messaging rules.",
       "Supply 1–100 unique sessionIds and one text. Invalid arguments or duplicate IDs reject the whole batch before sending.",
       "Recipients are attempted sequentially in input order. Unknown targets and individual delivery failures do not stop later recipients; inspect every outcome.",
-      "Omit delivery to start idle targets or queue behind active targets; steer redirects active work. Cake Chat defaults to notification; Project Session sends default to ignore.",
+      "Omit delivery to start idle targets or queue behind active targets; steer redirects active work. Cake Chat defaults to notification; All caller kinds default to notification; reply continuation requires deliberate choice for dependent work.",
       resultDeliveryGuidance,
+      sessionMessageDeliveryGuidance,
       "Each recipient starts a separate exchange; maxMessages applies independently to each. Use sessions.send for an existing thread or a correlated reply.",
       "ok means the batch was processed, not that every delivery succeeded. status is complete, partial, or failed. Receipts are informational; no acknowledgment is needed.",
     ],
@@ -40,7 +42,8 @@ export function createSessionSendBatchOperation(
       {
         input: {
           sessionIds: ["first-session-id", "second-session-id"],
-          text: "The API review is complete; use the agreed contract.",
+          text: "The optional API review is complete.",
+          delivery: "fyi",
           resultDelivery: "ignore",
         },
       },
@@ -105,8 +108,8 @@ export function createSessionSendBatchOperation(
         status: accepted === outcomes.length ? "complete" : accepted === 0 ? "failed" : "partial",
         // The single-send authority applies the sender's defaults; echo what it accepted.
         expectsResponse:
-          (firstReceipt?.resultDelivery ?? input.resultDelivery ?? "ignore") !== "ignore",
-        resultDelivery: firstReceipt?.resultDelivery ?? input.resultDelivery ?? "ignore",
+          (firstReceipt?.resultDelivery ?? input.resultDelivery ?? "notification") !== "ignore",
+        resultDelivery: firstReceipt?.resultDelivery ?? input.resultDelivery ?? "notification",
         outcomes,
       };
     },

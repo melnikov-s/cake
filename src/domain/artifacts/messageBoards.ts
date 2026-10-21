@@ -186,6 +186,7 @@ export const readNew = Effect.fn("MessageBoards.readNew")(function* (
     .filter((entry) => {
       if (
         policy?.paused ||
+        (notificationOnly && entry.event !== "assignment" && entry.event !== "blocker") ||
         excluded.has(entry.sequence) ||
         entry.authorSessionId === sessionId ||
         !(notificationOnly

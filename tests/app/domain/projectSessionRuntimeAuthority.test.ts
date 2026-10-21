@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
 import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { it } from "@effect/vitest";
 import { Effect, Layer, Stream } from "effect";
@@ -67,6 +68,7 @@ it.effect("creates independent Pi-backed Project Session without any renderer", 
       withMemberLock: (_sessionId, effect) => effect,
       state: () => Effect.succeed({ families: [], turns: [], spawnedSessions: [] }),
       settleTurn: () => Effect.void,
+      recordTurn: () => Effect.void,
     }),
     Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
     Layer.mock(ManagedWorktrees, {
@@ -100,7 +102,11 @@ it.effect("creates independent Pi-backed Project Session without any renderer", 
     );
     assert.equal((result as { ok: boolean }).ok, true);
     yield* Effect.promise(() => promptCalled);
-    assert.deepEqual(prompts, [initialPrompt]);
+    assert.equal(parseCrossSessionMessage(prompts[0] ?? "")?.text, initialPrompt);
+    assert.equal(
+      parseCrossSessionMessage(prompts[0] ?? "")?.metadata.resultDelivery,
+      "notification",
+    );
     const items = (yield* projectTodos.list("/project")).items;
     assert.equal(items.length, 1);
     assert.equal(

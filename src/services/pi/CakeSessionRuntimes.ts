@@ -1161,7 +1161,11 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
           const record = yield* recoveryStorage
             .get(shared.runtime.sessionId)
             .pipe(sessionError(delivery));
-          if (record?.state === "blocked" && !internal && !parseCrossSessionMessage(text)) {
+          if (
+            record?.state === "blocked" &&
+            (!internal || internal._tag === "UserWithReminders") &&
+            !parseCrossSessionMessage(text)
+          ) {
             // Only a new local-user input may supersede the blocked run. Keep
             // unconsumed ordinary queue items; never replay an uncertain command.
             const queued = record.inputs.filter(

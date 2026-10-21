@@ -45,6 +45,7 @@ function makeBackend(events: ReturnType<typeof messageBoardEvents>) {
       Layer.merge(messageBoardHarness().layer, events.layer),
       Layer.mock(SessionFamilyStorage, {
         familyForMember: (id) => Effect.succeed(id === "other-parent" ? otherFamily : family),
+        state: () => Effect.succeed({ families: [family], turns: [], spawnedSessions: [] }),
         list: () => Effect.succeed([family, otherFamily]),
       }),
     ),

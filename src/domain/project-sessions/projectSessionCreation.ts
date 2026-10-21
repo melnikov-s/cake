@@ -26,8 +26,8 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
   readonly worktreeName?: string;
   readonly requester?: SessionRequester;
   /**
-   * How the initial result reaches a permanent-chat requester; defaults to notification.
-   * Ignore creates no obligation. Independent local creation has no requester relationship.
+   * How the initial result reaches its creator; defaults to notification.
+   * Ignore creates no obligation. Local user/UI creation without a source owes nothing.
    */
   readonly resultDelivery?: ResultDelivery;
   readonly markdown?: boolean;
@@ -62,6 +62,15 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
     input.requester?.kind === "cake-chat" && isCakeChatSessionId(input.requester.sessionId)
       ? input.requester
       : undefined;
+  const sender =
+    requester ??
+    (input.sourceSessionId
+      ? {
+          sessionId: input.sourceSessionId,
+          title: "Project Session",
+          kind: "project-session" as const,
+        }
+      : undefined);
   const resultDelivery = input.resultDelivery ?? "notification";
   const expectsResponse = resultDelivery !== "ignore";
   const storage = yield* SessionFamilyStorage;
@@ -78,7 +87,7 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
       // Without an initial obligation there is no handoff to wait for or recover.
       handoffSettled: !expectsResponse,
     });
-  const text = requester
+  const text = sender
     ? encodeCrossSessionMessage(input.initialPrompt, {
         version: 1,
         messageId: sessionId,
@@ -86,7 +95,7 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
         sequence: 1,
         expectsResponse,
         resultDelivery,
-        sender: { sessionId: requester.sessionId, title: requester.title, kind: requester.kind },
+        sender: { sessionId: sender.sessionId, title: sender.title, kind: sender.kind },
       })
     : input.initialPrompt;
   yield* projectSessionOperations
@@ -102,14 +111,14 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
     })
     .pipe(
       Effect.onExit((exit) =>
-        !requester || !expectsResponse || Exit.isSuccess(exit)
+        !sender || !expectsResponse || Exit.isSuccess(exit)
           ? Effect.void
           : Effect.gen(function* () {
               if ((yield* storage.state()).turns.some((turn) => turn.sessionId === sessionId))
                 return;
               yield* storage.recordTurn({
                 sessionId,
-                senderSessionId: requester.sessionId,
+                senderSessionId: sender.sessionId,
                 turnId: sessionId,
                 requestMessageId: sessionId,
                 threadId: sessionId,

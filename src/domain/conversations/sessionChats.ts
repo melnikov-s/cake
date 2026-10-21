@@ -1,4 +1,8 @@
 import { prepareForChat } from "../projects/projectTodos";
+import {
+  passiveNoticeContext,
+  type StoredPassiveNotice,
+} from "../../contracts/conversations/passive-notice";
 import { resumeAfterUserInput } from "../session-families/workboardDeliveries";
 import * as messageReferences from "./messageReferences";
 import { messageReference } from "../../contracts/conversations/message-reference";
@@ -96,7 +100,7 @@ export const bindRenderer = Effect.fn("SessionChats.bindRenderer")(function* (
 
 export const deliver = Effect.fn("SessionChats.deliver")(function* (
   input: SessionChatPromptInput,
-  delivery: "prompt" | "steer" | "follow-up",
+  delivery: "fyi" | "prompt" | "steer" | "follow-up",
 ) {
   const handle = yield* acquire(input.sessionId);
   const primary = handle.profile === "CakeChatSession" || handle.profile === "ProjectSession";
@@ -110,6 +114,23 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
       handle.profile === "CakeChatSession"
         ? yield* prepareCoordinatorMessage(input).pipe(asError("deliver"))
         : input;
+    if (delivery === "fyi") {
+      if (!storage || !message.crossSession || message.attachments.length)
+        return yield* new SessionChatError({
+          operation: "deliver",
+          message:
+            "FYIs require cross-session provenance and no attachments; forward message references in text instead",
+        });
+      yield* storage
+        .deferPassiveNotice({
+          id: message.crossSession.messageId,
+          recipientSessionId: input.sessionId,
+          text: message.text,
+          crossSession: message.crossSession,
+        })
+        .pipe(asError("deliver"));
+      return TurnId.make(message.crossSession.messageId);
+    }
     // Only passive source notifications wait; explicit questions and deliberate steering still run.
     if (
       storage &&
@@ -153,24 +174,70 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
       : addReferenceNotifications(preparedText, reportPage, references.length);
     if (storage && !message.crossSession)
       yield* resumeAfterUserInput(input.sessionId).pipe(asError("deliver"));
-    const turnId = TurnId.make(
-      yield* deliverConversation(
-        Effect.succeed(handle),
-        // Steering into the run that just yielded would have nothing left to steer.
-        userMessage?.interruptedReport && delivery === "steer" ? "follow-up" : delivery,
-        text,
-        projectAttachments(
-          yield* prepareTaskInputs(
-            input.sessionId,
-            handle.profile === "CakeChatSession",
-            message.attachments,
-          ).pipe(asError("deliver")),
-        ),
-        input.renderUserMessageAsMarkdown,
-        input.presentationMode,
-        input.responseMode,
+    const passive: StoredPassiveNotice[] = [];
+    if (storage && !message.crossSession && !/^[!/]/.test(message.text)) {
+      for (const notice of (yield* storage.state()).passiveNotices ?? []) {
+        if (notice.recipientSessionId !== input.sessionId || notice.delivered) continue;
+        const receipt =
+          notice.admissionTurnId && handle.inputReceipt
+            ? yield* handle.inputReceipt(notice.admissionTurnId).pipe(asError("deliver"))
+            : undefined;
+        if (receipt) {
+          // Includes canceled input: an explicit withdrawal must not rearm a notice.
+          yield* storage.markPassiveNoticeAdmission(
+            [notice.id],
+            notice.admissionTurnId ?? notice.id,
+            true,
+          );
+        } else passive.push(notice);
+      }
+    }
+    const attachments = projectAttachments(
+      yield* prepareTaskInputs(
+        input.sessionId,
+        handle.profile === "CakeChatSession",
+        message.attachments,
       ).pipe(asError("deliver")),
     );
+    const passiveTurnId = passive.length ? crypto.randomUUID() : undefined;
+    if (storage && passiveTurnId)
+      yield* storage.markPassiveNoticeAdmission(
+        passive.map((notice) => notice.id),
+        passiveTurnId,
+      );
+    const effectiveDelivery =
+      userMessage?.interruptedReport && delivery === "steer" ? "follow-up" : delivery;
+    const turnId = TurnId.make(
+      yield* (
+        passiveTurnId
+          ? handle.submit({
+              turnId: passiveTurnId,
+              delivery: effectiveDelivery,
+              text: `${text}\n\n${passiveNoticeContext(passive)}`,
+              attachments,
+              markdown: input.renderUserMessageAsMarkdown,
+              internal: { _tag: "UserWithReminders", text, notices: passive },
+              ...(input.presentationMode ? { presentationMode: input.presentationMode } : null),
+              ...(input.responseMode ? { responseMode: input.responseMode } : null),
+            })
+          : deliverConversation(
+              Effect.succeed(handle),
+              // Steering into the run that just yielded would have nothing left to steer.
+              userMessage?.interruptedReport && delivery === "steer" ? "follow-up" : delivery,
+              text,
+              attachments,
+              input.renderUserMessageAsMarkdown,
+              input.presentationMode,
+              input.responseMode,
+            )
+      ).pipe(asError("deliver")),
+    );
+    if (storage && passiveTurnId)
+      yield* storage.markPassiveNoticeAdmission(
+        passive.map((notice) => notice.id),
+        passiveTurnId,
+        true,
+      );
     if (userMessage?.digestIds.length)
       yield* (yield* SessionFamilyStorage)
         .removeDigest(userMessage.digestIds)

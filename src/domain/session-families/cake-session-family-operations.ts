@@ -1,3 +1,5 @@
+import { sessionMessageDeliveryGuidance } from "../../contracts/conversations/session-message-delivery";
+import { SessionMessageDelivery } from "../../contracts/conversations/session-message-delivery";
 import {
   ResultDelivery,
   resultDeliveryGuidance,
@@ -114,7 +116,7 @@ export function createSessionFamilyOperations(
         "The calling session becomes the child's immediate parent. Children may recursively create their own children.",
         "Omit worktreeName to share the caller's exact Working Directory. Supply worktreeName to create a Cake-managed worktree branched from the caller's current checkout.",
         "Returns accepted, already-admitted (with durable state), or failed launch status—not proof of work or completion. On failure retry with the returned requestId and unchanged assignment; the same ID never starts canceled or previously admitted work again. Do not wait or poll.",
-        'Family children default to resultDelivery: "ignore"; results belong on the Workboard unless the current user explicitly overrides Cake’s communication default. Cake supplies only the board-discovery bootstrap, never a private assignment.',
+        'Family children default to resultDelivery: "notification"; automatic result links stay quiet until the next user input. Substantive family coordination belongs on the Workboard unless the user explicitly overrides that default. Cake supplies only the board-discovery bootstrap, never a private assignment.',
         "Every later board post routes to explicit recipients and the family root, excluding the author. Idle recipients receive coalesced durable wakes; active recipients receive context-only reminders at supported prompt boundaries, with idle fallback. No event or continuation grant is required.",
         "Pane placement defaults to none. Set placement to right or down only when the child should be opened beside the parent.",
         "Omit model unless the user explicitly asks for a specific model. When omitted, the child uses the configured default model preset's complete settings (provider, model, thinking level, and Fast mode; see models.list), not the calling session's current model. Only when no default preset is configured does it use the calling session's current settings.",
@@ -200,9 +202,10 @@ export function createSessionFamilyOperations(
       guidance: [
         'Omit sessionId to reach Cake Chat. Cake Chat has no session ID; never pass the sender ID shown on Cake Chat\'s messages (it is labelled "cake-chat"). delivery, resultDelivery, threadId, and replyToMessageId mean the same as in sessions.reply to Cake Chat. To ask the user a question through Cake Chat, set resultDelivery: "reply"; to report a blocker on assigned work, prefer sessions.reply with outcome: "blocked".',
         "By default do not use sessions.send (including send-batch or steering) for intra-family communication. Current explicit user exceptions override this Cake policy; supported tool capabilities and genuine platform limits still apply. Parents, children, siblings and recursive descendants communicate exclusively through their shared Workboard. This does not restrict user-facing replies, Cake Chat or unrelated independent sessions.",
-        "Outside the family, set delivery to steer to interrupt and redirect a running target. Omit delivery for normal behavior: start an idle target or queue behind an active target.",
+        "Outside the family, necessary immediate corrections steer active work by default; idle sessions start normally. Use delivery: fyi for passive updates, queue only for deliberately ordered future work.",
         resultDeliveryGuidance,
-        "Project Session sends default to ignore.",
+        sessionMessageDeliveryGuidance,
+        "All caller kinds default to notification; reply continuation requires deliberate choice for dependent work.",
         "Set replyToMessageId when this message answers a specific request. A different or unrelated message never clears that request's response obligation.",
         "Send one substantive completion report. Never send acknowledgment-only messages or duplicate lifecycle reports; receiving a report or notification does not require a response.",
         "Delivery receipts are informational tool results. Never acknowledge a receipt; send another message only for substantive coordination.",
@@ -217,7 +220,7 @@ export function createSessionFamilyOperations(
         inputRefs: Schema.optionalKey(inputRefsSchema),
         messageRefs: Schema.optionalKey(messageRefsSchema),
         text: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100_000))),
-        delivery: Schema.optionalKey(Schema.Literals(["prompt", "queue", "steer"])),
+        delivery: Schema.optionalKey(SessionMessageDelivery),
         threadId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
         maxMessages: Schema.optionalKey(
           Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(1_000)),
@@ -237,6 +240,7 @@ export function createSessionFamilyOperations(
           input: {
             sessionId: "target-session-id",
             text: "The review is complete.",
+            delivery: "fyi",
             resultDelivery: "ignore",
             replyToMessageId: "00000000-0000-4000-8000-000000000000",
           },
@@ -267,7 +271,7 @@ export function createSessionFamilyOperations(
         "Reply to the originating session in the current open exchange without carrying its session ID.",
       guidance: [
         "By default do not use sessions.reply for intra-family communication; current explicit user exceptions override this Cake policy; publish results, questions and blockers exclusively on the shared Workboard. User-facing replies, Cake Chat and unrelated independent sessions retain their ordinary reporting rules.",
-        "Replies default to resultDelivery: ignore because substantive results and informational responses do not request acknowledgment.",
+        "Replies default to resultDelivery: notification; ordinary reports never request an acknowledgment or continuation.",
         "Provide replyToMessageId when more than one request may be pending. Cake otherwise selects the latest matching request in the thread.",
         "A Project Session answering Cake Chat (including one Cake Chat launched) replies to its originating Cake Chat or Project Chat without needing to repeat its address. Optional outcome declares completed, blocked, or failed; a terminal report is delivered after the executing turn settles.",
         'Expect notification keeps final results quiet: it is shown to the user with their next message and never interrupts them. outcome: "blocked" always reaches Cake Chat immediately; use it only when you cannot continue without a user decision.',
@@ -275,7 +279,7 @@ export function createSessionFamilyOperations(
       ],
       inputSchema: Schema.Struct({
         text: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100_000))),
-        delivery: Schema.optionalKey(Schema.Literals(["prompt", "queue", "steer"])),
+        delivery: Schema.optionalKey(SessionMessageDelivery),
         threadId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
         resultDelivery: Schema.optionalKey(ResultDelivery),
         replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),

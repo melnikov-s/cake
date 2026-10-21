@@ -5,7 +5,7 @@ export const ResultDelivery = Schema.Literals(["reply", "notification", "ignore"
 export type ResultDelivery = typeof ResultDelivery.Type;
 
 export const resultDeliveryGuidance =
-  'Choose resultDelivery: "reply" (Expect reply: application-confirmed completion automatically starts or queues a normal parent turn), "notification" (Expect notification: retain a compact result-message link for the next user message; no completion-only turn), or "ignore" (no result obligation or notification). Completion transport is application-owned; workers need not call sessions.reply. Active parent work is never steered or run concurrently. Artifact/link-only results follow the same choice. Immediate questions and explicit blockers are separate actionable messages, not final completion notifications. Durable transport is deduplicated; model explanation is not exactly-once prose.';
+  'Default to resultDelivery: notification. Deliberately choose "reply" (Expect reply: application-confirmed completion automatically starts or queues a normal parent turn), "notification" (Expect notification: retain a compact result-message link for the next user message; no completion-only turn), or "ignore" (no result obligation or notification). Completion transport is application-owned; workers need not call sessions.reply. Active parent work is never steered or run concurrently. Artifact/link-only results follow the same choice. Immediate questions and explicit blockers are separate actionable messages, not final completion notifications. Durable transport is deduplicated; model explanation is not exactly-once prose.';
 
 /** Storage/transcript migration only. New callers supply just resultDelivery. */
 export function migrateResultDelivery(input: {

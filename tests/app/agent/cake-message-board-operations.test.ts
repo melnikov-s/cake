@@ -62,9 +62,9 @@ describe("Workboard agent protocol", () => {
       "assignments and their substantive results belong exclusively on this board",
     );
     expect(appendHelp).toContain("not in sessions.send/reply or private side channels");
-    expect(appendHelp).toContain("resultDelivery defaults to ignore");
-    expect(appendHelp).toContain("Idle recipients receive coalesced durable wakes");
-    expect(appendHelp).toContain("No event or wakeup wording is required");
+    expect(appendHelp).toContain("resultDelivery defaults to notification");
+    expect(appendHelp).toContain("Routine findings/completions are passive");
+    expect(appendHelp).toContain("Declare event: assignment for necessary dependent work");
   });
   it("returns bounded typed current descriptions and relations without fetching bodies or recording reads", async () => {
     const { registry, current, read, recordIntake } = fixture();

@@ -41,6 +41,7 @@ describe("message-board artifact workflow", () => {
           Layer.merge(messageBoardHarness().layer, events.layer),
           Layer.mock(SessionFamilyStorage, {
             familyForMember: () => Effect.succeed(family),
+            state: () => Effect.succeed({ families: [family], turns: [], spawnedSessions: [] }),
             list: () => Effect.succeed([family]),
           }),
         ),

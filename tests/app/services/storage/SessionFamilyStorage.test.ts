@@ -72,7 +72,7 @@ describe("SessionFamilyStorage", () => {
           (yield* storage.state()).boardDeliveries?.map((item) => item.status),
           ["pending", "canceled"],
         );
-        assert.equal(JSON.parse(files.get("state/session-families.json")!).version, 9);
+        assert.equal(JSON.parse(files.get("state/session-families.json")!).version, 10);
       }).pipe(Effect.provide(familyStorageHarness(files).layer));
     },
   );
@@ -177,7 +177,7 @@ describe("SessionFamilyStorage", () => {
         assert.equal(reopened.turns.length, modes.length);
         assert.equal(reopened.turns[0]?.deliveryTurnId, "stable-admission");
         assert.deepEqual(reopened.coordinatorDigest, [digest]);
-        assert.equal(JSON.parse(files.get("state/session-families.json")!).version, 9);
+        assert.equal(JSON.parse(files.get("state/session-families.json")!).version, 10);
         assert.ok(
           !JSON.stringify(
             JSON.parse(files.get("state/session-families.json")!).data.turns,
@@ -325,7 +325,7 @@ describe("SessionFamilyStorage", () => {
         yield* storage.settleTurn("turn", "complete");
         const persisted = JSON.parse(files.get("state/session-families.json") ?? "{}");
         assert.deepEqual(persisted, {
-          version: 9,
+          version: 10,
           data: {
             families: [
               {
@@ -354,7 +354,7 @@ describe("SessionFamilyStorage", () => {
       yield* storage.settleTurn("turn", "complete");
       assert.deepEqual((yield* storage.state()).turns, []);
       assert.equal((yield* storage.list()).length, 1);
-      assert.equal(JSON.parse(files.get("state/session-families.json") ?? "{}").version, 9);
+      assert.equal(JSON.parse(files.get("state/session-families.json") ?? "{}").version, 10);
     }).pipe(Effect.provide(familyStorageHarness(files).layer));
   });
 
@@ -681,7 +681,7 @@ describe("SessionFamilyStorage", () => {
           workingDirectory: "/project/.cake-worktrees/feature",
           managedWorktreePath: "/project/.cake-worktrees/feature",
           createdAt: "2026-01-01T00:00:00.000Z",
-          resultDelivery: "reply",
+          resultDelivery: "notification",
         },
         {
           sessionId: "grandchild",
@@ -690,7 +690,7 @@ describe("SessionFamilyStorage", () => {
           workingDirectory: "/project/.cake-worktrees/grandchild",
           managedWorktreePath: "/project/.cake-worktrees/grandchild",
           createdAt: "2026-01-01T00:00:00.000Z",
-          resultDelivery: "reply",
+          resultDelivery: "notification",
         },
       ]);
     }).pipe(Effect.provide(testLayer())),

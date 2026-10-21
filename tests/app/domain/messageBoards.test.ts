@@ -88,6 +88,7 @@ describe("Workboard policy", () => {
             body: "Family evidence",
           });
           yield* boards.append("parent", {
+            event: "assignment",
             description: "Child only",
             body: "Child evidence",
             audience: ["child"],

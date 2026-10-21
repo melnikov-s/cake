@@ -135,6 +135,14 @@ const archiveAuthority = Effect.fn("ProjectSessions.archiveAuthority")(function*
   yield* Effect.gen(function* () {
     if (namespace === "active")
       yield* projectSessionLocations.archive(sessionId, location).pipe(asError(operation));
+    const families = yield* SessionFamilyStorage;
+    if (
+      (yield* families.state()).boardDeliveries?.some(
+        (item) =>
+          item.recipientSessionId === sessionId && ["pending", "deferred"].includes(item.status),
+      )
+    )
+      yield* families.setBoardDeliveryPaused(sessionId, true).pipe(asError(operation));
     yield* setSessionUnread(sessionId, false).pipe(asError(operation));
     if (publish) yield* publishCatalogStatus(sessionId, location, true).pipe(asError(operation));
     if (afterCommit) yield* afterCommit;

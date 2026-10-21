@@ -153,6 +153,7 @@ const fixture = Effect.fn("BoardDeliveryTest.fixture")(function* (
     provide(
       boards.append("parent", {
         requestId,
+        event: "assignment",
         audience: ["child"],
         description: "Begin work",
         body: "Implement the agreed slice; report on this board.",
@@ -177,6 +178,67 @@ const fixture = Effect.fn("BoardDeliveryTest.fixture")(function* (
 });
 
 describe("default board-driven execution", () => {
+  it.effect.each([false, true])(
+    "routine family completions stay passive while preserving assignment delivery (busy=%s)",
+    (busy) =>
+      Effect.gen(function* () {
+        const f = yield* fixture({ busy });
+        yield* f.provide(
+          boards.append("child", {
+            audience: ["parent"],
+            event: "completion",
+            description: "Optional review ready",
+            body: "No dependent work is waiting.",
+          }),
+        );
+        yield* f.provide(deliveries.runPass());
+        yield* f.provide(deliveries.runPass());
+        assert.deepEqual(f.lanes, []);
+        assert.equal((yield* f.state()).boardDeliveries?.[0]?.status, "deferred");
+        assert.equal((yield* f.state()).passiveNotices?.length, 1);
+        assert.deepEqual((yield* f.provide(boards.readNew("parent", {}, true))).entries, []);
+        assert.equal((yield* f.provide(boards.readNew("parent"))).entries.length, 1);
+        yield* f.post("necessary-follow-up");
+        yield* f.provide(deliveries.runPass());
+        if (!busy) {
+          yield* Deferred.await(f.started);
+          assert.deepEqual(f.recipients, ["child"]);
+        }
+      }),
+  );
+  it.effect.each([false, true])(
+    "reconciles passive admission and never replays a withdrawn board notice (stop=%s)",
+    (stop) =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        yield* f.provide(
+          boards.append("child", {
+            audience: ["parent"],
+            event: "completion",
+            description: "Optional review",
+            body: "Evidence.",
+          }),
+        );
+        yield* f.provide(deliveries.runPass());
+        const id = (yield* f.state()).boardDeliveries?.[0]?.turnId;
+        assert.ok(id);
+        yield* f.provide(
+          Effect.gen(function* () {
+            const storage = yield* SessionFamilyStorage;
+            if (stop) {
+              yield* storage.setBoardDeliveryPaused("parent", true);
+              yield* deliveries.resumeAfterUserInput("parent");
+            } else yield* storage.markPassiveNoticeAdmission([id], "actual-user-turn", true);
+          }),
+        );
+        yield* f.provide(deliveries.runPass());
+        const state = yield* f.state();
+        assert.equal(state.boardDeliveries?.[0]?.status, stop ? "canceled" : "notified");
+        assert.equal(state.passiveNotices?.[0]?.delivered, true);
+        assert.equal(state.passiveNotices?.[0]?.text, "");
+        assert.deepEqual(f.lanes, []);
+      }),
+  );
   it.effect(
     "preserves preexisting stopped journals across restart and future user resumption",
     () =>
@@ -214,6 +276,7 @@ describe("default board-driven execution", () => {
           f.provide(
             boards.append("parent", {
               requestId: "unchanged",
+              event: "assignment",
               audience: ["child"],
               description: "Begin work",
               body: "Implement the agreed slice; report on this board.",
@@ -224,7 +287,7 @@ describe("default board-driven execution", () => {
         assert.match(error.message, /requestId already belongs/);
       }).pipe(Effect.scoped),
   );
-  it.effect("leaves first child admission to create-child but delivers later ordinary posts", () =>
+  it.effect("leaves first child admission to create-child but delivers later assignments", () =>
     Effect.gen(function* () {
       const f = yield* fixture({ initialAssignment: true });
       yield* f.provide(
@@ -284,7 +347,7 @@ describe("default board-driven execution", () => {
     }).pipe(Effect.scoped),
   );
   it.effect(
-    "coalesces ordinary addressed posts into one durable idle wake and deduplicates append retries",
+    "coalesces necessary addressed assignments into one durable idle wake and deduplicates append retries",
     () =>
       Effect.gen(function* () {
         const f = yield* fixture();
@@ -347,6 +410,7 @@ describe("default board-driven execution", () => {
               createdAt: "2026-01-01",
             });
             yield* boards.append("grandchild", {
+              event: "assignment",
               audience: ["child", "parent"],
               description: "Update",
               body: "Evidence",
@@ -373,7 +437,7 @@ describe("default board-driven execution", () => {
         const rootInbox = yield* f.provide(boards.readNew("parent", {}, true));
         assert.deepEqual(
           rootInbox.entries.map((entry) => entry.sequence),
-          [1, 2],
+          [1],
         );
       }),
   );
@@ -473,6 +537,7 @@ describe("default board-driven execution", () => {
         yield* f.provide(
           boards.append("child", {
             audience: ["child"],
+            event: "assignment",
             description: "Self note",
             body: "Root still sees all",
           }),

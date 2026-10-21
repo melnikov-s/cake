@@ -1,8 +1,9 @@
+import { SessionMessageDelivery } from "./session-message-delivery";
 import { ResultDelivery } from "./result-delivery";
 import { Schema } from "effect";
 
 const sessionId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
-const delivery = Schema.Literals(["prompt", "queue", "steer"]);
+const delivery = SessionMessageDelivery;
 
 /** One message and shared options; every recipient starts its own exchange. */
 export const SessionSendBatchInput = Schema.Struct({

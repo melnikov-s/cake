@@ -260,7 +260,7 @@ describe.each(["project", "cake-chat"] as const)("%s shared conversation lifecyc
     expect(screen.queryByRole("list", { name: "Queued prompts" })).toBeNull();
     expect(removeQueuedMessage).toHaveBeenCalledTimes(2);
     await fixture.user.type(input(), " again");
-    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Queue for later" }));
     await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
     expect(prompt).toHaveBeenCalledWith(
       expect.objectContaining({

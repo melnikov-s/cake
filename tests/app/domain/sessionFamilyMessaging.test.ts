@@ -96,13 +96,13 @@ const environment = (
 // spawning association) is covered in spawnedSessionReporting.test.ts.
 it.effect.each([
   { streaming: false, delivery: undefined, expected: "prompt", lane: "prompt", ask: true },
-  { streaming: true, delivery: undefined, expected: "queue", lane: "follow-up", ask: true },
+  { streaming: true, delivery: undefined, expected: "steer", lane: "steer", ask: true },
   { streaming: true, delivery: "steer" as const, expected: "steer", lane: "steer", ask: true },
   { streaming: false, delivery: "queue" as const, expected: "queue", lane: "follow-up", ask: true },
-  // Omitting resultDelivery is informational: no reply obligation is recorded.
+  // Omitted resultDelivery retains a quiet completion, never automatic continuation.
   { streaming: true, delivery: "steer" as const, expected: "steer", lane: "steer", ask: false },
 ])(
-  "starts idle recipients, queues active recipients, and steers only when requested (%j)",
+  "starts idle corrections, steers active corrections by default, and retains explicit queues (%j)",
   (scenario) =>
     Effect.gen(function* () {
       const received = yield* Queue.unbounded<{ text: string; delivery: string }>();
@@ -195,8 +195,8 @@ it.effect.each([
         const delivered = yield* Queue.take(received);
         assert.equal(delivered.delivery, scenario.lane);
         assert.equal(decoded.delivery, scenario.expected);
-        assert.equal(decoded.expectsResponse, scenario.ask);
-        assert.equal(decoded.resultDelivery, scenario.ask ? "reply" : "ignore");
+        assert.equal(decoded.expectsResponse, true);
+        assert.equal(decoded.resultDelivery, scenario.ask ? "reply" : "notification");
         assert.equal(decoded.status, scenario.expected === "queue" ? "queued" : "accepted");
         const metadata = parseCrossSessionMessage(delivered.text)?.metadata;
         assert.equal(metadata?.messageId, decoded.messageId);
@@ -204,7 +204,7 @@ it.effect.each([
         assert.equal(metadata?.resultDelivery, decoded.resultDelivery);
         assert.deepEqual(metadata?.context, { usedTokens: 10, windowTokens: 100 });
         const turns = (yield* (yield* SessionFamilyStorage).state()).turns;
-        assert.equal(turns.length, scenario.ask ? 1 : 0);
+        assert.equal(turns.length, 1);
         if (scenario.ask) {
           assert.equal(turns[0]?.turnId, decoded.turnId);
           assert.equal(turns[0]?.requestMessageId, decoded.messageId);
@@ -283,15 +283,19 @@ it.effect.each([
         sessionId: "child",
         text,
         ...(scenario.mode === "question" ? { resultDelivery: "reply" as const } : null),
-        ...(scenario.mode === "steer" ? { delivery: "steer" as const } : null),
+        ...(scenario.mode === "steer"
+          ? { delivery: "steer" as const }
+          : scenario.mode === "reference"
+            ? { delivery: "fyi" as const }
+            : null),
         ...(scenario.mode === "blocked" ? { outcome: "blocked" as const } : null),
       });
       const state = yield* (yield* SessionFamilyStorage).state();
       if (scenario.mode === "reference") {
         const receipt = yield* Schema.decodeUnknownEffect(SessionSendBatchReceipt)(result);
         assert.equal(receipt.status, "deferred");
-        assert.equal(state.deferredReferences?.length, 1);
-        assert.ok(state.deferredReferences?.[0]?.text.includes(text));
+        assert.equal(state.passiveNotices?.length, 1);
+        assert.ok(state.passiveNotices?.[0]?.text.includes(text));
         assert.equal(yield* Queue.size(received), 0);
       } else {
         assert.equal(state.deferredReferences?.length ?? 0, 0);
