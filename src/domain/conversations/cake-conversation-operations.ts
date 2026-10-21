@@ -86,7 +86,7 @@ export function createConversationOperations(
       requires: "invokeAppControl",
       topic: "sessions",
       summary:
-        "List a bounded session roster with status and advisory context size/cache freshness.",
+        "List sessions with context/cache hints, or invoking-chat launches grouped by workflow.",
       guidance: [
         ...sessionListGuidance,
         "Use sessions.list-family when only the calling Project Session's family is needed.",

@@ -149,6 +149,9 @@ describe("RendererRequestCoordinator", () => {
           .pipe(Effect.forkChild);
         const event = yield* Queue.take(events);
         assert.equal(event.type, "interview-requested");
+        expect(yield* coordinator.pendingUserInputs()).toEqual([
+          { sessionId: "session", reason: "Choose" },
+        ]);
         const response = {
           requestId: event.requestId,
           interviewRequestId: event.interviewRequestId,
@@ -177,6 +180,7 @@ describe("RendererRequestCoordinator", () => {
         ).toBe("Failure");
         yield* coordinator.respondInterview(11, "session", response);
         expect(yield* Fiber.join(pending)).toEqual({ answer: true });
+        expect(yield* coordinator.pendingUserInputs()).toEqual([]);
         expect(
           (yield* coordinator.respondInterview(11, "session", response).pipe(Effect.exit))._tag,
         ).toBe("Failure");

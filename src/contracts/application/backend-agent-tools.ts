@@ -127,7 +127,7 @@ const definitions = [
     discovery: {
       topic: "sessions",
       summary:
-        "List a bounded session roster with advisory context size/cache freshness, newest first.",
+        "List sessions with context/cache hints, or invoking-chat launches grouped by workflow.",
       guidance: sessionListGuidance,
       result: sessionListResult,
       examples: [
@@ -136,7 +136,7 @@ const definitions = [
         },
         {
           input: {
-            launchedByCakeChat: true,
+            projection: "workflow",
           },
         },
       ],

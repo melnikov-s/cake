@@ -388,6 +388,34 @@ describe("SessionArchiveStorage", () => {
       ),
   );
 
+  it.effect("reads recorded resolution without migrating or reading legacy transcripts", () =>
+    withPlatform(
+      Effect.gen(function* () {
+        const metadataRoot = yield* makeMetadataRoot();
+        const location = yield* makeFixture();
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const directory = cakeWorkspaceSessionDirectory(location.cwd, location.resolvedRoot);
+        const archivedFile = path.join(directory, path.basename(location.sessionFile));
+        yield* fs.makeDirectory(directory, { recursive: true });
+        yield* fs.rename(location.sessionFile, archivedFile);
+        const before = yield* fs.readFileString(archivedFile);
+        const ids = yield* runArchive(metadataRoot, (storage) =>
+          storage.recordedResolvedIds(location),
+        );
+        expect([...ids]).toEqual([]);
+        expect(yield* fs.exists(path.join(metadataRoot, "resolution.json"))).toBe(false);
+        expect(yield* fs.exists(location.sessionFile)).toBe(false);
+        expect(yield* fs.readFileString(archivedFile)).toBe(before);
+        // Migration remains an explicit responsibility of the normal storage path.
+        yield* runArchive(metadataRoot, (storage) => storage.resolvedIds(location));
+        expect([
+          ...(yield* runArchive(metadataRoot, (storage) => storage.recordedResolvedIds(location))),
+        ]).toEqual(["session-1"]);
+      }),
+    ),
+  );
+
   it.effect(
     "retries legacy migration after resolution metadata commits but the file move fails",
     () =>

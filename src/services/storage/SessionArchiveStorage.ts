@@ -83,6 +83,10 @@ export class SessionArchiveStorage extends Context.Service<
       typeof SessionResolutionIndex.Type,
       SessionArchiveStorageError
     >;
+    /** Read the resolution index only; unlike resolvedIds, never migrates legacy files. */
+    readonly recordedResolvedIds: (
+      location: SessionArchiveLocation,
+    ) => Effect.Effect<ReadonlySet<string>, SessionArchiveStorageError>;
     /** One metadata read per listing; never reads transcript bodies. */
     readonly resolvedIds: (
       location: SessionArchiveLocation,

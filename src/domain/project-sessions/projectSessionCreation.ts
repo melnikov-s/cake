@@ -71,6 +71,7 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
       projectPath: input.projectPath,
       workingDirectory,
       requester,
+      title: input.name,
       reportDelivered: false,
       resultDelivery,
       launchedAt: DateTime.formatIso(yield* DateTime.now),

@@ -653,6 +653,7 @@ const makeLayer = (
               ],
             },
           }),
+        recordedResolvedIds: () => Effect.succeed(new Set(resolvedSessionIds)),
         resolvedIds: () =>
           Effect.succeed(
             new Set([

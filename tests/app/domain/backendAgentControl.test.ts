@@ -22,6 +22,7 @@ import {
 } from "../../../src/contracts/conversations/message-reference";
 import * as projectTodos from "../../../src/domain/projects/projectTodos";
 import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
+import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 import type { SavedDraft } from "../../../src/contracts/project-sessions/saved-draft-data";
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { SavedDraftStorage } from "../../../src/services/storage/SavedDraftStorage";
@@ -43,6 +44,7 @@ import { ApplicationWriteError } from "../../../src/contracts/storage/applicatio
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import {
   SessionArchiveStorage,
+  SessionArchiveStorageError,
   type ProjectSessionArchiveMetadata,
 } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
@@ -146,14 +148,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
   };
   const sessionsByDirectory = new Map<string, string[]>([["/project", [source, target, third]]]);
   const archivedEntries = new Map<string, ProjectSessionArchiveMetadata>();
-  const worktreeRecords: Array<{
-    worktreePath: string;
-    projectPath: string;
-    branch: string;
-    baseBranch: string;
-    createdAt: string;
-    state?: "active" | "landed" | "resolved" | "discarded" | "missing";
-  }> = [];
+  const worktreeRecords: WorktreeRecord[] = [];
   const contextBySession = new Map<string, SessionContextMetadata>();
   const requestCalls: unknown[] = [];
   const project = {
@@ -368,6 +363,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
         Stream.fromIterable(
           [...archivedEntries.values()].filter((entry) => entry.projectPath === path),
         ),
+      recordedResolvedIds: () => Effect.succeed(new Set(resolved ? [target] : [])),
       resolvedIds: (at) =>
         Effect.sync(() => {
           listReads.resolutions.push(at.cwd);
@@ -2076,6 +2072,380 @@ it.effect(
         "00000033 running active completed ? ? ? ? | Same title",
       );
       yield* Deferred.succeed(f.messageRelease, undefined);
+    }),
+);
+
+const workflowCaller = {
+  kind: "cake-chat" as const,
+  sessionId: CAKE_CHAT_SESSION_ID,
+  title: "Cake Chat",
+};
+const workflowLaunch = (sessionId: string, title = "Task session") => ({
+  sessionId,
+  title,
+  projectPath: "/project",
+  workingDirectory: "/project",
+  requester: { kind: "cake-chat" as const, sessionId: CAKE_CHAT_SESSION_ID, title: "Cake Chat" },
+  reportDelivered: true,
+  handoffSettled: true,
+  launchedAt: "2026-01-01",
+});
+
+it.effect(
+  "workflow roster preserves task-input names, deduplicates results and never loads content or wakes",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const storage = Context.get(f.context, SessionFamilyStorage);
+      f.protectedSessions.add(target);
+      f.protectedSessions.add(third);
+      yield* storage.registerSpawn(workflowLaunch(target, "Task session"));
+      yield* storage.registerSpawn(workflowLaunch(third, "New session"));
+      yield* storage.registerSpawn(workflowLaunch(source, "Retained launch label"));
+      yield* storage.registerSpawn(
+        workflowLaunch("00000000-0000-4000-8000-000000000088", "Untitled"),
+      );
+      yield* Context.get(f.context, ApplicationState).transact((state) =>
+        Effect.succeed({
+          ...state,
+          projects: state.projects.map((project) => ({
+            ...project,
+            todos: {
+              items: [
+                {
+                  id: "00000000-0000-4000-8000-000000000099",
+                  title: "Repair launch roster",
+                  description: "A durable task label.",
+                  status: "",
+                  state: "open" as const,
+                  revision: 0,
+                  associations: [
+                    { kind: "session" as const, sessionId: target, title: "Task session" },
+                  ],
+                },
+              ],
+              selectedId: null,
+              sequence: 0,
+              deliveryToken: null,
+              pending: [],
+            },
+          })),
+        }),
+      );
+      for (const [id, reportedAt, title] of [
+        ["old", "2026-01-01", "Old result"],
+        ["new", "2026-01-02", "Inspect auth routing"],
+      ] as const)
+        yield* storage.recordCompletion({
+          id,
+          reportedAt,
+          title,
+          sessionId: third,
+          coordinatorSessionId: CAKE_CHAT_SESSION_ID,
+          summary: "Investigation finished",
+          resultMessageRef: messageReference(third, "result"),
+          kind: "investigation",
+          state: "pending",
+          decisions: ["review", "next-step"],
+        });
+      const before = yield* storage.state();
+      const invoke = yield* batchRegistry(f);
+      const response = yield* invoke("sessions.list", { projection: "workflow", limit: 50 });
+      const text = response.text;
+      expect(text).toContain("4 launches");
+      expect(text).toContain("Retained launch label");
+      expect(text).toContain("Unnamed task (title unknown)");
+      expect(text).toContain("Repair launch roster");
+      expect(text).toContain("Inspect auth routing");
+      expect(text).toContain(messageReference(third, "result"));
+      expect(text).toContain(`cake://session/${target}`);
+      expect(text).toContain("readiness unknown");
+      expect(yield* storage.state()).toEqual(before);
+      expect(f.inspections).toEqual([]);
+      expect(f.queries).toEqual([]);
+      expect(f.listReads.titles).toEqual([]);
+      expect(f.listReads.ids).toEqual([]);
+      expect(f.runtimeCreates).toEqual([source]);
+      expect(f.grants).toEqual([]);
+      expect(yield* Queue.size(f.prompts)).toBe(0);
+    }),
+);
+
+it.effect(
+  "workflow roster separates execution done, lifecycle resolution, and handled review decisions",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const storage = Context.get(f.context, SessionFamilyStorage);
+      for (const id of [source, target, third])
+        yield* storage.registerSpawn({
+          ...workflowLaunch(
+            id,
+            id === source
+              ? "Execution only"
+              : id === target
+                ? "Resolved task"
+                : "Explicit ready result",
+          ),
+          lastReport: { status: "completed", summary: "Work finished", reportedAt: "2026-01-02" },
+        });
+      yield* storage.recordCompletion({
+        id: "ready",
+        sessionId: third,
+        coordinatorSessionId: CAKE_CHAT_SESSION_ID,
+        title: "Explicit ready result",
+        summary: "Tests passed; review requested",
+        reportedAt: "2026-01-02",
+        kind: "ready",
+        state: "handled",
+        decisions: ["review", "merge", "resolve"],
+      });
+      f.resolve();
+      const current = yield* f.direct("sessions.list", { projection: "workflow" }, workflowCaller);
+      assert.equal(typeof current, "string");
+      expect(current).toContain(
+        `working\tExecution only\tcake://session/${source}\topen\tcompleted`,
+      );
+      expect(current).toContain(
+        `ready-for-review/merge\tExplicit ready result\tcake://session/${third}\topen\tcompleted`,
+      );
+      expect(current).toContain("\thandled\tnone\tunknown\treview result; verify merge");
+      expect(current).not.toContain("Resolved task");
+      const history = yield* f.direct(
+        "sessions.list",
+        { projection: "workflow", includeResolved: true },
+        workflowCaller,
+      );
+      expect(history).toContain(
+        `resolved\tResolved task\tcake://session/${target}\tresolved\tcompleted`,
+      );
+      expect(history).toContain("3 launches");
+      expect(
+        yield* f.direct(
+          "sessions.list",
+          { projection: "workflow", status: "resolved" },
+          workflowCaller,
+        ),
+      ).toContain("1 launches");
+      expect(
+        yield* f.direct(
+          "sessions.list",
+          { projection: "workflow", status: "done" },
+          workflowCaller,
+        ),
+      ).toContain("2 launches");
+    }),
+);
+
+it.effect(
+  "workflow roster reports stopped and blocked reasons without treating completion as readiness",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const storage = Context.get(f.context, SessionFamilyStorage);
+      for (const [id, status, summary] of [
+        [target, "blocked", "Need repository credentials"],
+        [third, "stopped", "Stopped by user"],
+        [source, "failed", "Typecheck failed"],
+      ] as const)
+        yield* storage.registerSpawn({
+          ...workflowLaunch(id, status),
+          lastReport: { status, summary, reportedAt: "2026-01-02" },
+        });
+      const result = yield* f.direct("sessions.list", { projection: "workflow" }, workflowCaller);
+      expect(result).toContain("blocked/stopped=3");
+      expect(result).toContain("Need repository credentials");
+      expect(result).toContain("Stopped by user");
+      expect(result).toContain("Typecheck failed");
+      expect(result).toContain("\tunknown\tinspect blocker/stop");
+      expect(result).toContain("ready-for-review/merge=0");
+    }),
+);
+
+it.effect(
+  "workflow roster exposes live pending user input before running and removes the wait on cancellation",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      yield* Context.get(f.context, SessionFamilyStorage).registerSpawn(
+        workflowLaunch(source, "Choose deployment"),
+      );
+      f.active.add(source);
+      yield* f.requests.bind({ _tag: "ProjectSession", sessionId: source }, 11);
+      const uiEvents = yield* Queue.unbounded<void>();
+      const uiReady = yield* Deferred.make<void>();
+      yield* Context.get(f.context, ClientEvents)
+        .artifacts(11)
+        .pipe(
+          Stream.runForEach((event) =>
+            event.type === "renderer-events-ready"
+              ? Deferred.succeed(uiReady, undefined)
+              : event.type === "ui-request"
+                ? Queue.offer(uiEvents, undefined)
+                : Effect.void,
+          ),
+          Effect.forkScoped,
+        );
+      yield* Deferred.await(uiReady);
+      const request = yield* f.requests
+        .requestUi(source, {
+          kind: "text",
+          title: "Which region?",
+          message: "Do not expose this full input body",
+        })
+        .pipe(Effect.forkChild);
+      yield* Queue.take(uiEvents);
+      const waiting = yield* f.direct("sessions.list", { projection: "workflow" }, workflowCaller);
+      expect(waiting).toContain(
+        `waiting-for-input\tChoose deployment\tcake://session/${source}\topen\twaiting\tWhich region?`,
+      );
+      expect(waiting).toContain("answer input");
+      expect(waiting).not.toContain("Do not expose");
+      yield* Fiber.interrupt(request);
+      const running = yield* f.direct("sessions.list", { projection: "workflow" }, workflowCaller);
+      expect(running).toContain(
+        `working\tChoose deployment\tcake://session/${source}\topen\trunning`,
+      );
+      expect(f.inspections).toEqual([]);
+      expect(f.runtimeCreates).toEqual([source]);
+    }),
+);
+
+it.effect(
+  "workflow roster preserves unknown lifecycle on index failure and exposes recovery blockers",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      yield* Context.get(f.context, SessionFamilyStorage).registerSpawn(
+        workflowLaunch(target, "Recover interrupted work"),
+      );
+      const archive = Context.get(f.context, SessionArchiveStorage);
+      const runtimes = Context.get(f.context, CakeSessionRuntimes);
+      const result = yield* agentControl
+        .invoke("sessions.list", { projection: "workflow" }, workflowCaller)
+        .pipe(
+          Effect.provideService(SessionArchiveStorage, {
+            ...archive,
+            recordedResolvedIds: () =>
+              Effect.fail(
+                new SessionArchiveStorageError({
+                  operation: "recordedResolvedIds",
+                  sessionId: "",
+                  message: "Index unavailable",
+                }),
+              ),
+          }),
+          Effect.provideService(CakeSessionRuntimes, {
+            ...runtimes,
+            currentStatus: () =>
+              Effect.succeed({
+                streaming: false,
+                pending: false,
+                persisted: true,
+                recoveryIssue: "Unfinished tool requires user review",
+              }),
+          }),
+          Effect.provide(f.context),
+        );
+      expect(result).toContain(
+        `blocked/stopped\tRecover interrupted work\tcake://session/${target}\tunknown\tblocked\tUnfinished tool requires user review`,
+      );
+      expect(result).toContain("\tunknown\tinspect blocker/stop");
+      expect(f.inspections).toEqual([]);
+      expect(f.runtimeCreates).toEqual([source]);
+    }),
+);
+
+it.effect(
+  "workflow roster uses recorded landing state and never suggests merging already-landed work",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const storage = Context.get(f.context, SessionFamilyStorage);
+      yield* storage.registerSpawn({ ...workflowLaunch(target), workingDirectory: "/managed" });
+      f.worktreeRecords.push({
+        projectPath: "/project",
+        worktreePath: "/managed",
+        branch: "agent/launch-roster",
+        baseBranch: "main",
+        createdAt: "2026-01-01",
+        state: "resolved",
+        resolvedFrom: "landed",
+        landedSourceCommit: "abc123",
+        baseCommit: "base123",
+      });
+      const result = yield* f.direct("sessions.list", { projection: "workflow" }, workflowCaller);
+      expect(result).toContain("Worktree: launch-roster");
+      expect(result).toContain("landed-source=abc123; head/dirty=unknown");
+      expect(result).toContain("already-landed\treview/resolve; already landed");
+      expect(result).toContain("\topen\tunknown");
+      expect(f.listReads.titles).toEqual([]);
+    }),
+);
+
+it.effect(
+  "workflow roster scopes exact invoking-chat launches before filtering and bounded pagination",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const storage = Context.get(f.context, SessionFamilyStorage);
+      const projectChat = { ...workflowCaller, sessionId: projectChatSessionId("/project") };
+      for (let i = 0; i < 55; i++)
+        yield* storage.registerSpawn({
+          ...workflowLaunch(
+            `00000000-0000-4000-8000-${String(i + 1000).padStart(12, "0")}`,
+            `Task ${i}`,
+          ),
+          requester: { kind: "cake-chat", sessionId: projectChat.sessionId, title: "Project Chat" },
+        });
+      yield* storage.registerSpawn(workflowLaunch(target, "Global chat task"));
+      yield* storage.registerSpawn({
+        ...workflowLaunch(third, "Foreign project launch"),
+        projectPath: "/other",
+        requester: { kind: "cake-chat", sessionId: projectChat.sessionId, title: "Project Chat" },
+      });
+      const first = yield* f.direct(
+        "sessions.list",
+        { projection: "workflow", limit: 50 },
+        projectChat,
+      );
+      expect(first).toContain("55 launches; next=50");
+      expect(first).not.toContain("Global chat task");
+      expect(first).not.toContain("Foreign project launch");
+      const second = yield* f.direct(
+        "sessions.list",
+        { projection: "workflow", limit: 50, offset: 50 },
+        projectChat,
+      );
+      expect(second).toContain("55 launches |");
+      assert.ok(typeof second === "string");
+      expect(second.split("\n").filter((line) => line.startsWith("working\t"))).toHaveLength(5);
+      expect(
+        yield* f.direct(
+          "sessions.list",
+          { projection: "workflow", query: "Task 54", limit: 1 },
+          projectChat,
+        ),
+      ).toContain("1 launches |");
+      expect(
+        yield* f.direct(
+          "sessions.list",
+          { projection: "workflow", projectPath: "/other" },
+          projectChat,
+        ),
+      ).toContain("0 launches");
+      expect(
+        yield* f.direct("sessions.list", { projection: "workflow" }, workflowCaller),
+      ).toContain("1 launches");
+      expect(yield* f.direct("sessions.list", { projection: "workflow" })).toMatchObject({
+        ok: false,
+      });
+      expect(
+        yield* f
+          .direct("sessions.list", { projection: "workflow", limit: 51 }, projectChat)
+          .pipe(Effect.exit),
+      ).toMatchObject({ _tag: "Failure" });
+      expect(f.listReads.ids).toEqual([]);
     }),
 );
 

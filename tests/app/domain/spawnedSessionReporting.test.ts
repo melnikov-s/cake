@@ -1243,6 +1243,7 @@ describe("automatic spawned-session reporting", () => {
             const state = yield* f.storage.state();
             assert.equal(state.families.length, 0);
             assert.equal(state.spawnedSessions[0]?.requester.sessionId, CAKE_CHAT_SESSION_ID);
+            assert.equal(state.spawnedSessions[0]?.title, createArgs.name);
             assert.equal(state.turns.length, 1);
             // Admission/ordinary idle is not completion; no successful report exists before Pi settles.
             yield* families.deliver(yield* onlyTurn());
@@ -1281,6 +1282,7 @@ describe("automatic spawned-session reporting", () => {
         yield* Effect.gen(function* () {
           const state = yield* (yield* SessionFamilyStorage).state();
           assert.equal(state.spawnedSessions[0]?.requester.kind, "cake-chat");
+          assert.equal(state.spawnedSessions[0]?.title, createArgs.name);
           assert.equal(state.spawnedSessions[0]?.reportDelivered, true);
           assert.equal(state.turns.length, 0);
         }).pipe(Effect.provide(familyStorageHarness(f.harness.files).layer));

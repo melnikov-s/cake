@@ -5,6 +5,7 @@ import {
 } from "../../contracts/cake-chats/cake-chat-identity";
 import { projectChatSessionId, projectLocation } from "../cake-chats/cakeChatLocations";
 import { sessionRoster } from "./sessionRoster";
+import { launchWorkflowRoster } from "./launchWorkflowRoster";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 import { CakeChatConfiguration } from "../../services/pi-durable/CakeChatConfiguration";
 import * as chatMetadata from "../cake-chats/cakeChatMetadata";
@@ -361,6 +362,10 @@ export const invoke: (
           });
         }
         case "sessions.list": {
+          if (invocation.arguments.projection === "workflow")
+            return yield* launchWorkflowRoster(invocation.arguments, caller);
+          if (invocation.arguments.includeResolved !== undefined)
+            return fail('includeResolved requires projection: "workflow".');
           const startedAt = yield* Clock.currentTimeMillis;
           const global = caller.kind === "cake-chat" && caller.sessionId === CAKE_CHAT_SESSION_ID;
           const scope = global

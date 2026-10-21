@@ -60,6 +60,7 @@ type PendingRequest =
       readonly _tag: "Ui";
       readonly targetKind?: SessionTarget["_tag"];
       readonly workflowChoice: boolean;
+      readonly title: string;
       readonly signal?: AbortSignal;
       readonly sessionId: string;
       readonly connectionId: number;
@@ -111,6 +112,13 @@ class RendererRequestCoordinatorError extends Schema.TaggedError<RendererRequest
 export interface RendererRequestCoordinatorService {
   /** Best-effort presentation only; never creates a pending request or controls admission. */
   readonly presentAgentAction: (notice: AgentActionNotice) => Effect.Effect<void>;
+  /** Live user-response waits only, without reading Pi or creating requests. */
+  readonly pendingUserInputs: () => Effect.Effect<
+    ReadonlyArray<{
+      readonly sessionId: string;
+      readonly reason: string;
+    }>
+  >;
   readonly registerProjectSession: (
     sessionId: string,
     workingDirectory: string,
@@ -701,6 +709,7 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
           _tag: "Ui",
           targetKind,
           workflowChoice: request.kind === "workflow-choice",
+          title: request.title,
           signal: request.signal,
           sessionId: requestScopeId,
           connectionId,
@@ -1094,6 +1103,17 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
     );
 
     return RendererRequestCoordinator.of({
+      pendingUserInputs: Effect.fn("RendererRequestCoordinator.pendingUserInputs")(() =>
+        Effect.sync(() =>
+          [...pending.values()].flatMap((entry) =>
+            entry._tag === "Interview"
+              ? [{ sessionId: entry.sessionId, reason: entry.record.request.title }]
+              : entry._tag === "Ui" && entry.targetKind !== "CakeChatSession"
+                ? [{ sessionId: entry.sessionId, reason: entry.title }]
+                : [],
+          ),
+        ),
+      ),
       registerProjectSession,
       bind,
       requestUi,

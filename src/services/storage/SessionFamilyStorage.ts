@@ -140,6 +140,8 @@ const LegacyFamilyTurn = Schema.Struct({
 });
 const SpawnedSession = Schema.Struct({
   sessionId: BoundedId,
+  /** Launch label retained independently of Pi content for metadata-only discovery. */
+  title: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(500))),
   projectPath: BoundedPath,
   workingDirectory: BoundedPath,
   requester: SessionRequester,
