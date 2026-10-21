@@ -15,6 +15,8 @@ import {
   type ProjectTodo,
   projectTodoReminder,
   ProjectTodoCreate,
+  projectTodoCompletionSummary,
+  type ProjectTodoCompletion,
   type ProjectTodoUpdate,
   ProjectTodoUserMutation,
   type ProjectTodos,
@@ -26,6 +28,43 @@ const mapError = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   effect.pipe(
     Effect.mapError((cause) => error(cause instanceof Error ? cause.message : String(cause))),
   );
+
+/** Commit one revision. Entering done records who completed it at this revision; staying done
+ * keeps the original record, so any later content edit makes the completion no longer latest. */
+function commit(
+  item: ProjectTodo,
+  changes: Partial<
+    Pick<ProjectTodo, "title" | "description" | "status" | "state" | "associations">
+  >,
+  by: ProjectTodoCompletion["by"],
+): ProjectTodo {
+  const { completion, ...rest } = item;
+  const next = { ...rest, ...changes, revision: item.revision + 1 };
+  if (next.state !== "done") return next;
+  if (item.state === "done") return completion ? { ...next, completion } : next;
+  return { ...next, completion: { revision: next.revision, by } };
+}
+
+/** The only change since the caller's read was the completion it is also asking for. */
+const onlyCompletedSince = (item: ProjectTodo, expectedRevision: number) =>
+  item.state === "done" &&
+  item.completion?.revision === item.revision &&
+  expectedRevision === item.revision - 1;
+
+function conflict(item: ProjectTodo, input: ProjectTodoUpdate) {
+  const current = `current revision ${item.revision}`;
+  if (input.state === "done" && item.state === "done")
+    return error(
+      `Atomic update rejected: to-do ${item.id} is already done (${projectTodoCompletionSummary(item)}) and was also edited after your revision ${input.expectedRevision} (${current}); no state change is needed. Reread it before re-applying title/description/status/association edits; no items committed`,
+    );
+  const completed =
+    item.state === "done" && item.completion && input.expectedRevision < item.completion.revision
+      ? `; ${projectTodoCompletionSummary(item)} at revision ${item.completion.revision}`
+      : "";
+  return error(
+    `Atomic update rejected: to-do ${item.id} changed (${current}${completed}); no items committed`,
+  );
+}
 
 /** All edits serialize against the existing ApplicationStorage authority; no parallel queue/file. */
 const change = Effect.fn("ProjectTodos.change")(function* (
@@ -80,6 +119,7 @@ export const create = Effect.fn("ProjectTodos.create")(function* (
     id: randomUUID(),
     state: resolved ? ("done" as const) : ("open" as const),
     revision: 0,
+    ...(resolved ? { completion: { revision: 0, by: "sessions" as const } } : null),
   };
   yield* change(projectPath, (value) =>
     value.items.length >= 1000
@@ -113,21 +153,35 @@ export const updateMany = Effect.fn("ProjectTodos.updateMany")(function* (
       for (const input of inputs) {
         const item = result.items.find((item) => item.id === input.id);
         if (!item) return yield* error("Unknown to-do in this project");
-        if (item.revision !== input.expectedRevision)
-          return yield* error(
-            `Atomic update rejected: to-do ${input.id} changed (current revision ${item.revision}); no items committed`,
-          );
-        const updated = {
-          ...item,
-          title: input.title ?? item.title,
-          description: input.description ?? item.description,
-          status: input.status ?? item.status,
-          state:
-            input.state ??
-            (resolved.has(item.id) && item.state === "open" ? ("done" as const) : item.state),
-          associations: input.associations ?? item.associations,
-          revision: item.revision + 1,
-        };
+        // Only a redundant done is special: a redundant open still commits a revision, so an
+        // explicit "keep open" beats a racing automatic completion.
+        const alreadyDone = input.state === "done" && item.state === "done";
+        const edits =
+          input.title !== undefined ||
+          input.description !== undefined ||
+          input.status !== undefined ||
+          input.associations !== undefined;
+        // Already done and nothing else changes: idempotent, no new revision.
+        if (alreadyDone && !edits) continue;
+        // A completion changes only state. A stale "done" edit that raced exactly that completion
+        // agrees with it, so its other fields overwrite nothing newer; anything else conflicts.
+        if (
+          item.revision !== input.expectedRevision &&
+          !(alreadyDone && onlyCompletedSince(item, input.expectedRevision))
+        )
+          return yield* conflict(item, input);
+        const automatic = input.state === undefined && resolved.has(item.id);
+        const updated = commit(
+          item,
+          {
+            title: input.title ?? item.title,
+            description: input.description ?? item.description,
+            status: input.status ?? item.status,
+            state: input.state ?? (automatic && item.state === "open" ? "done" : item.state),
+            associations: input.associations ?? item.associations,
+          },
+          automatic ? "sessions" : user ? "user" : "agent",
+        );
         result = {
           ...result,
           items: result.items.map((candidate) => (candidate.id === item.id ? updated : candidate)),
@@ -160,7 +214,7 @@ export const completeResolved = Effect.fn("ProjectTodos.completeResolved")(funct
     for (const candidate of candidates) {
       const item = result.items.find((item) => item.id === candidate.id);
       if (!item || item.state !== "open" || item.revision !== candidate.revision) continue;
-      const updated = { ...item, state: "done" as const, revision: item.revision + 1 };
+      const updated = commit(item, { state: "done" }, "sessions");
       result = enqueue(
         { ...result, items: result.items.map((other) => (other.id === item.id ? updated : other)) },
         {

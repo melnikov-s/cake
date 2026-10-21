@@ -9,6 +9,8 @@ import {
   ProjectTodoUpdate,
   ProjectTodoUpdates,
   ProjectTodoReceipt,
+  PROJECT_TODO_AUTO_COMPLETION_RULE,
+  projectTodoCompletionSummary,
   type ProjectTodoControl,
 } from "../../contracts/projects/project-todos";
 
@@ -16,20 +18,38 @@ export function createProjectTodoOperations(
   control: ProjectTodoControl,
 ): CakeOperationDefinition[] {
   const guidance = [
+    `${PROJECT_TODO_AUTO_COMPLETION_RULE} Run sessions.resolve, then edit only title/description/status if needed.`,
     "Lightweight Project Chat commitments. Actual new Project Sessions receive one linked item; update rather than duplicate it. No polling/wakes merely for open items.",
     "Default list is title/id/state/revision only. For reconciliation use ONE todos.list with state=open, view=reconciliation (max 50), then ONE todos.update-many with expectedRevision per item. Page with nextOffset. No transcript reads or per-session inspection needed.",
     "Reconciliation sessions contain canonical required session IDs and authoritative effective resolved (null means unknown), not execution done/stopped. All actual session associations must resolve before automatic closure, including historical items and late associations. Source/report links are context: they never veto completion and source-only discussion items remain open. Reports/run completion never close items.",
     "Restore never reopens items. Explicit user done is preserved. To-do edits never resolve/restore, stop, delete or merge sessions. Cake reconciles linked Open items automatically; no assistant update, report acknowledgment, polling or wake is required.",
-    "Read details by ID only when needed. Pass expectedRevision; on revision conflict reread; preserve explicit user closure/reopen. Association updates replace the complete merged list. Mutations return compact committed receipts; detail=true opts into content.",
+    "Read details by ID only when needed. Pass expectedRevision; on revision conflict reread; preserve explicit user closure/reopen. state=done on an already-done item is a no-op for state: alone it commits nothing; other edits still apply, including when the only change since your revision was that completion (for example by sessions.resolve). The receipt note says why it was already done; any other intervening change is a conflict. Association updates replace the complete merged list. Mutations return compact committed receipts; detail=true opts into content.",
     "Only on a user compaction request, collect the requested items’ session associations (including session IDs in cake://session source/message/report links) and use sessions.compact-batch. Report unlinked items and per-session outcomes. Done is not session resolution and never automatically triggers compaction.",
   ] as const;
   const detail = Schema.optionalKey(Schema.Boolean);
+  // Was the item already done before this call? It was completed by this call only if an
+  // agent completed it exactly at the next revision.
+  const alreadyDoneNote = (
+    item: ProjectTodo,
+    input: Partial<ProjectTodoUpdate>,
+  ): { note: string } | undefined => {
+    if (input.state !== "done" || item.state !== "done" || input.expectedRevision === undefined)
+      return undefined;
+    if (item.completion?.by === "agent" && item.completion.revision === input.expectedRevision + 1)
+      return undefined;
+    const why = projectTodoCompletionSummary(item);
+    const edits = [input.title, input.description, input.status, input.associations].some(
+      (value) => value !== undefined,
+    );
+    return {
+      note: edits
+        ? `Already done (${why}); state unchanged and your other edits were applied.`
+        : `Already done (${why}); nothing changed.`,
+    };
+  };
   const receipt = async (
     item: ProjectTodo,
-    input: {
-      associations?: ProjectTodo["associations"];
-      state?: "open" | "done";
-    },
+    input: Partial<ProjectTodoUpdate>,
     includeDetail: boolean | undefined,
     signal: AbortSignal,
     created = false,
@@ -46,6 +66,7 @@ export function createProjectTodoOperations(
     JSON.stringify(input.associations) !== JSON.stringify(item.associations)
       ? { associations: item.associations }
       : null),
+    ...(alreadyDoneNote(item, input) ?? null),
     ...(includeDetail ? { detail: await control.read(item.id, signal) } : null),
   });
   return [
@@ -53,7 +74,7 @@ export function createProjectTodoOperations(
       command: "todos.list",
       topic: "todos",
       summary: "List compact to-dos; opt into a joined lifecycle reconciliation view.",
-      guidance: [guidance[1], guidance[2]],
+      guidance: [guidance[2], guidance[3]],
       inputSchema: ProjectTodoListInput,
       outputSchema: ProjectTodoList,
       examples: [{ input: {} }, { input: { state: "open", view: "reconciliation", limit: 50 } }],
@@ -71,7 +92,7 @@ export function createProjectTodoOperations(
       summary: "Read exact to-do content and associated work lifecycle by ID.",
       guidance: [
         "Exact details by ID; use todos.list for cheap discovery and reconciliation.",
-        guidance[5],
+        guidance[6],
       ],
       inputSchema: Schema.Struct({ id: ProjectTodo.fields.id }),
       outputSchema: ProjectTodoDetail,
@@ -90,7 +111,7 @@ export function createProjectTodoOperations(
       topic: "todos",
       summary: "Create a commitment with a short durable brief.",
       guidance: [
-        guidance[0],
+        guidance[1],
         "Already-resolved associated session work closes on creation. Source-only review threads remain open. Returns new id/revision; detail=true opts into content.",
       ],
       inputSchema: Schema.Struct({ ...ProjectTodoCreate.fields, detail }),
@@ -121,7 +142,7 @@ export function createProjectTodoOperations(
       command: "todos.update",
       topic: "todos",
       summary: "Revision-checked to-do edit or explicit done/reopen.",
-      guidance: [guidance[3], guidance[4]],
+      guidance: [guidance[0], guidance[4], guidance[5]],
       inputSchema: Schema.Struct({ ...ProjectTodoUpdate.fields, detail }),
       outputSchema: ProjectTodoReceipt,
       examples: [
@@ -149,7 +170,8 @@ export function createProjectTodoOperations(
       summary: "Atomically commit up to 50 revision-checked edits; any conflict writes nothing.",
       guidance: [
         "Use one todos.list view=reconciliation read, then this call. Every update requires expectedRevision. All-or-none; stale errors identify the conflict/current revision. Receipts follow input order without echoing IDs.",
-        "All actual session associations resolved automatically completes linked Open items, including legacy and late associations. Restore never reopens items; marking a to-do done never resolves sessions.",
+        guidance[0],
+        "All actual session associations resolved automatically completes linked Open items, including legacy and late associations. state=done on an already-done item follows the same no-op rules as todos.update. Restore never reopens items; marking a to-do done never resolves sessions.",
       ],
       inputSchema: Schema.Struct({ updates: ProjectTodoUpdates }),
       outputSchema: Schema.Struct({ receipts: Schema.Array(ProjectTodoReceipt) }),

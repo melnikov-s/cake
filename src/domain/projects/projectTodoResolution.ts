@@ -1,6 +1,9 @@
 import { Effect, Stream } from "effect";
 import { resolveSessionReference } from "../../contracts/project-sessions/session-reference";
-import type { ProjectTodo } from "../../contracts/projects/project-todos";
+import {
+  projectTodoSessionIds as workReferences,
+  type ProjectTodo,
+} from "../../contracts/projects/project-todos";
 import { ProjectError } from "../../contracts/projects/project-error";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { ApplicationState } from "../../services/storage/ApplicationState";
@@ -11,11 +14,9 @@ import { ProjectSessionConfiguration } from "../../services/project-sessions/Pro
 import * as locations from "../project-sessions/projectSessionLocations";
 import * as todos from "./projectTodos";
 
-// Source/message/report links are context, not required work. Only actual session associations count.
-const workReferences = (item: ProjectTodo) =>
-  item.associations.flatMap((link) => (link.kind === "session" ? [link.sessionId] : []));
-
-/** Metadata only: one resolution-index snapshot and filename-only identity enumeration.
+/** Source/message/report links are context, not required work; only session associations count.
+ *
+ * Metadata only: one resolution-index snapshot and filename-only identity enumeration.
  * Include all projects in suffix ambiguity checks, plus retained resolved identities whose
  * checkout has been retired. Never acquire a runtime or inspect a transcript/catalog.
  * Children inherit their root's resolution, not their own transcript namespace.

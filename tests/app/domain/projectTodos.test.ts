@@ -9,6 +9,7 @@ import {
   defaultApplicationState,
 } from "../../../src/contracts/application/application-data";
 import {
+  PROJECT_TODO_AUTO_COMPLETION_RULE,
   projectTodoBaseline,
   ProjectTodo,
   ProjectTodos,
@@ -499,4 +500,202 @@ it("exposes exact Project Chat controls and conflict-safe lifecycle help", () =>
   expect(operations.find((item) => item.command === "todos.update")?.guidance?.join(" ")).toContain(
     "expectedRevision",
   );
+});
+
+describe("session-linked auto-completion", () => {
+  const linked = (sessionId: string) =>
+    Effect.gen(function* () {
+      yield* todos.ensureSession(project, sessionId, `Work ${sessionId}`, "Do the work.");
+      const item = (yield* todos.list(project)).items.find((candidate) =>
+        candidate.associations.some(
+          (link) => link.kind === "session" && link.sessionId === sessionId,
+        ),
+      );
+      if (!item) throw new Error("Expected linked item");
+      return item;
+    });
+
+  it.effect("lists linked session IDs per open item in the bounded baseline", () => {
+    const f = fixture();
+    return Effect.gen(function* () {
+      yield* upsertProject(project, "Project");
+      const session = yield* linked("d857f23c");
+      const plain = yield* create();
+      const baseline = projectTodoBaseline(yield* todos.list(project));
+      expect(baseline).toContain(PROJECT_TODO_AUTO_COMPLETION_RULE);
+      const data = JSON.parse(baseline.slice(baseline.indexOf("{"))) as {
+        open: { id: string; sessions?: string[] }[];
+      };
+      expect(data.open.find((item) => item.id === session.id)?.sessions).toEqual(["d857f23c"]);
+      expect(data.open.find((item) => item.id === plain.id)).not.toHaveProperty("sessions");
+    }).pipe(Effect.provide(f.layer));
+  });
+
+  it.effect(
+    "treats a redundant done as a no-op and keeps a status note that raced only the completion",
+    () => {
+      const f = fixture();
+      return Effect.gen(function* () {
+        yield* upsertProject(project, "Project");
+        const first = yield* linked("d857f23c");
+        const second = yield* linked("a1b2c3d4");
+        // sessions.resolve completes both items before the agent's batch lands.
+        yield* todos.completeResolved(project, [first, second]);
+        const pending = (yield* todos.list(project)).pending;
+
+        const noOp = yield* todos.update(project, {
+          id: first.id,
+          expectedRevision: 0,
+          state: "done",
+        });
+        expect(noOp).toMatchObject({ state: "done", revision: 1 });
+        expect(
+          (yield* todos.update(project, { id: first.id, expectedRevision: 1, state: "done" }))
+            .revision,
+        ).toBe(1);
+
+        const [merged, other] = yield* todos.updateMany(project, [
+          { id: first.id, expectedRevision: 0, state: "done", status: "Merged as 39ab5aa2" },
+          { id: second.id, expectedRevision: 0, state: "done", status: "Merged as 77aa00bb" },
+        ]);
+        expect(merged).toMatchObject({
+          state: "done",
+          status: "Merged as 39ab5aa2",
+          revision: 2,
+          completion: { revision: 1, by: "sessions" },
+        });
+        expect(other).toMatchObject({ status: "Merged as 77aa00bb", revision: 2 });
+        // Redundant state never enqueues a fake user-visible state change.
+        expect((yield* todos.list(project)).pending).toEqual(pending);
+      }).pipe(Effect.provide(f.layer));
+    },
+  );
+
+  it.effect("applies a stale done edit after user closure too, but not a stale reopen", () => {
+    const f = fixture();
+    return Effect.gen(function* () {
+      yield* upsertProject(project, "Project");
+      const item = yield* create();
+      yield* todos.mutateUser(project, {
+        _tag: "SetState",
+        id: item.id,
+        expectedRevision: 0,
+        state: "done",
+      });
+      const reopen = yield* todos
+        .update(project, { id: item.id, expectedRevision: 0, state: "open", status: "Retry" })
+        .pipe(Effect.flip);
+      expect(reopen.message).toContain("marked done by the user at revision 1");
+      const updated = yield* todos.update(project, {
+        id: item.id,
+        expectedRevision: 0,
+        state: "done",
+        status: "Shipped",
+      });
+      expect(updated).toMatchObject({
+        status: "Shipped",
+        revision: 2,
+        completion: { revision: 1, by: "user" },
+      });
+    }).pipe(Effect.provide(f.layer));
+  });
+
+  it.effect(
+    "still rejects genuine concurrent edits atomically with an explanation of the completion",
+    () => {
+      const f = fixture();
+      return Effect.gen(function* () {
+        yield* upsertProject(project, "Project");
+        const item = yield* linked("d857f23c");
+        const fresh = yield* create();
+        yield* todos.completeResolved(project, [item]);
+        yield* todos.update(project, { id: item.id, expectedRevision: 1, status: "Human note" });
+
+        const stale = yield* todos
+          .updateMany(project, [
+            { id: fresh.id, expectedRevision: 0, status: "Would commit" },
+            { id: item.id, expectedRevision: 0, state: "done", status: "Merged as 39ab5aa2" },
+          ])
+          .pipe(Effect.flip);
+        expect(stale.message).toContain(
+          "already done (completed automatically when session d857f23c was resolved)",
+        );
+        expect(stale.message).toContain("no items committed");
+        expect((yield* todos.read(project, item.id)).status).toBe("Human note");
+        expect((yield* todos.read(project, fresh.id)).revision).toBe(0);
+
+        // Edits without a matching done are not rebased across the completion.
+        const statusOnly = yield* todos
+          .update(project, { id: item.id, expectedRevision: 0, status: "Late" })
+          .pipe(Effect.flip);
+        expect(statusOnly.message).toContain(
+          "changed (current revision 2; completed automatically when session d857f23c was resolved at revision 1)",
+        );
+        // Reopening keeps no stale completion record.
+        const reopened = yield* todos.update(project, {
+          id: item.id,
+          expectedRevision: 2,
+          state: "open",
+        });
+        expect(reopened).not.toHaveProperty("completion");
+      }).pipe(Effect.provide(f.layer));
+    },
+  );
+});
+
+it("explains redundant state in compact update receipts", async () => {
+  const done: ProjectTodo = {
+    id: "00000000-0000-4000-8000-000000000001",
+    title: "Merge",
+    description: "Merge the branch.",
+    status: "Merged as 39ab5aa2",
+    state: "done",
+    revision: 2,
+    associations: [{ kind: "session", sessionId: "d857f23c", title: "Merge" }],
+    completion: { revision: 1, by: "sessions" },
+  };
+  const unused = async () => {
+    throw new Error("Unused");
+  };
+  const update = createProjectTodoOperations({
+    list: unused,
+    read: unused,
+    create: unused,
+    update: async (input) =>
+      input.title === "Agent completes"
+        ? { ...done, revision: 1, completion: { revision: 1, by: "agent" } }
+        : input.status === undefined
+          ? { ...done, status: "", revision: 1 }
+          : done,
+    updateMany: unused,
+  }).find((item) => item.command === "todos.update");
+  const context = {
+    signal: new AbortController().signal,
+    toolCallId: "call",
+    runtime: {} as never,
+  };
+  expect(
+    await update?.execute(
+      { id: done.id, expectedRevision: 0, state: "done", status: "Merged as 39ab5aa2" },
+      context,
+    ),
+  ).toEqual({
+    revision: 2,
+    committed: true,
+    note: "Already done (completed automatically when session d857f23c was resolved); state unchanged and your other edits were applied.",
+  });
+  expect(
+    await update?.execute({ id: done.id, expectedRevision: 0, state: "done" }, context),
+  ).toEqual({
+    revision: 1,
+    committed: true,
+    note: "Already done (completed automatically when session d857f23c was resolved); nothing changed.",
+  });
+  expect(
+    await update?.execute(
+      { id: done.id, expectedRevision: 0, state: "done", title: "Agent completes" },
+      context,
+    ),
+  ).toEqual({ revision: 1, committed: true });
+  expect(update?.guidance?.join(" ")).toContain(PROJECT_TODO_AUTO_COMPLETION_RULE);
 });

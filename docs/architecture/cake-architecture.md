@@ -364,7 +364,11 @@ is a refactoring signal, not precedent.
   One metadata-index snapshot and family snapshot join a bounded page, with filename-only
   identity enumeration per directory, never per item.
   Tools default to title/id/state/revision rows and compact mutation receipts; content is
-  disclosed by exact detail or opt-in detail only. Selection is removable next-message
+  disclosed by exact detail or opt-in detail only. Each item records its latest completion
+  (revision and user/agent/sessions source). Requesting `done` on a done item is a no-op
+  for state; a stale `done` edit whose only intervening change was that completion
+  still applies its other fields, while any other intervening edit stays a revision
+  conflict. Selection is removable next-message
   context, never a send action. Completion clears selection atomically; reload repairs
   stale completed selections. The pane highlight is the only pre-send indicator.
   User context deltas coalesce in the Project record; read-only send preparation copies

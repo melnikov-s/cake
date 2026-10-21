@@ -9,6 +9,7 @@ import { messageRefsSchema } from "../conversations/message-reference";
 import { inputRefsSchema } from "../conversations/task-input";
 import { CakeModelSelection } from "../model-presets/cake-model-selection";
 import { SessionNavigationInput, sessionNavigationHelp } from "./session-navigation";
+import { PROJECT_TODO_AUTO_COMPLETION_RULE } from "../projects/project-todos";
 import {
   AgentPendingListInput,
   AgentPendingReadInput,
@@ -380,7 +381,7 @@ export const windowControlDefinitions = {
       topic: "sessions",
       summary: "Idempotently resolve or restore explicit Project Session targets.",
       guidance: [
-        "Resolving all actual session associations automatically completes linked Project Chat to-dos. Source/report links do not block completion; source-only items stay open. Restore never reopens to-dos, and marking a to-do done never resolves sessions.",
+        `${PROJECT_TODO_AUTO_COMPLETION_RULE} Resolving all actual session associations completes linked Project Chat to-dos. Source/report links do not block completion; source-only items stay open. Restore never reopens to-dos, and marking a to-do done never resolves sessions.`,
       ],
     },
   },
