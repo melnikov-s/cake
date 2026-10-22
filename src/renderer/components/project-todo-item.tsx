@@ -35,7 +35,7 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
           "aria-disabled": store.busy || item.state === "done",
         }}
         onClick={() => void store.select(item)}
-        className="flex-wrap items-start gap-y-0 px-3 py-3 text-[13px] leading-relaxed"
+        className="flex-wrap items-start gap-y-0 px-3 py-3 text-[13px] leading-relaxed [&_a>svg]:hidden"
         label={
           <span
             className={cn(

@@ -93,6 +93,7 @@ for (const theme of ["light", "dark"] as const) {
       for (const [title, href] of destinations) {
         const link = panel.getByRole("link", { name: title, exact: true });
         await expect(link).toHaveAttribute("href", href);
+        await expect(link.locator(":scope > svg")).toBeHidden();
         await expect(link).toHaveAccessibleDescription(href!);
         await expect(link).toHaveCSS("font-size", "11px");
         await expect(link).toHaveCSS("font-weight", "400");
@@ -100,6 +101,7 @@ for (const theme of ["light", "dark"] as const) {
         await expect(link).toHaveCSS("text-decoration-line", "none");
         const icon = link.locator("..").locator(":scope > span > svg");
         await expect(icon).toHaveAttribute("aria-hidden", "true");
+        await expect(icon).toBeVisible();
         await expect(icon).toHaveCSS("width", "12px");
         await expect(icon).toHaveCSS("height", "12px");
         icons.push(await icon.innerHTML());

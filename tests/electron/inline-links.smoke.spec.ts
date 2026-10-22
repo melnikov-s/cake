@@ -55,6 +55,7 @@ for (const theme of ["light", "dark"] as const) {
         await link.hover();
         await expect(link).toHaveAttribute("href", destination);
         await expect(link.locator('svg[aria-hidden="true"]')).toHaveCount(1);
+        await expect(link.locator('svg[aria-hidden="true"]')).toBeVisible();
         await expect(link).toHaveAccessibleDescription(destination);
         await expect(page.getByRole("tooltip")).toBeVisible();
         await expect(page.getByRole("tooltip")).toHaveText(destination);
