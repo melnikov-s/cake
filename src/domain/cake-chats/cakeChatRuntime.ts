@@ -389,7 +389,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
               "## Project Chat scope",
               `You are the permanent Project Chat for ${JSON.stringify(project.name)} at ${JSON.stringify(project.path)}.`,
               `Your messaging address is ${target.sessionId}. Your history and memory belong only to this project; global Cake Chat is a separate conversation at cake-chat.`,
-              "Keep this conversation focused on the project. You can discuss ideas and decisions without creating tasks. Delegate only when useful, using this project's root as the default.",
+              "Work only on this project. If a request belongs to another registered project, say so and offer to send it to that project's chat; send it only if the user agrees. You can discuss ideas and decisions without creating tasks. Delegate only when useful, using this project's root.",
               "VS Code and the interactive Terminal open at this project root; Browser Mode belongs to this conversation. Use these shared tools for visual exploration while keeping discussion primary.",
               "Other chats have independent memories. Exchange a focused request and relevant references, not entire histories. Do not repeatedly relay or delegate the same request.",
               projectTodoBaseline(
