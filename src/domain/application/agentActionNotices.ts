@@ -63,6 +63,9 @@ export const present = Effect.fn("AgentActionNotices.present")(function* (
         coalesceKey: `label:${result.command.slice("session-labels.".length)}:${result.label.id}`,
       };
   }
+  // Scheduling onto the caller's own conversation is something the user asked that
+  // conversation to do, so only schedules that reach another target are announced.
+  const targetsCaller = result.target?.sessionId === source.sessionId;
   if (source.kind !== "cake-chat") {
     if (
       (result.command === "sessions.send" || result.command === "sessions.reply") &&
@@ -75,14 +78,19 @@ export const present = Effect.fn("AgentActionNotices.present")(function* (
         targetKind: "project-session",
         coalesceKey: `send:${result.messageId}:${result.status}`,
       };
-    if (result.command === "sessions.schedule" && result.target && result.targetTitle)
+    if (
+      result.command === "sessions.schedule" &&
+      result.target &&
+      result.targetTitle &&
+      !targetsCaller
+    )
       notice = {
         message: `Scheduled a message for “${result.targetTitle}”`,
         targetSessionId: result.target.sessionId,
         targetKind: isCakeChatSessionId(result.target.sessionId) ? "cake-chat" : "project-session",
         coalesceKey: `schedule:${result.target.sessionId}`,
       };
-    if (result.command === "sessions.cancel-scheduled" && result.id)
+    if (result.command === "sessions.cancel-scheduled" && result.id && !targetsCaller)
       notice = { message: "Cancelled a scheduled message", coalesceKey: `cancel:${result.id}` };
     if (result.command === "sessions.close-thread" && result.thread)
       notice = {

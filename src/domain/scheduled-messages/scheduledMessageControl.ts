@@ -149,9 +149,21 @@ export const invoke = Effect.fn("ScheduledMessageControl.invoke")(
           }),
         });
       }
-      case "sessions.cancel-scheduled":
-        yield* scheduledMessages.cancel(invocation.arguments.id).pipe(provide);
-        return toJsonValue({ ok: true, command, id: invocation.arguments.id, status: "cancelled" });
+      case "sessions.cancel-scheduled": {
+        const { id } = invocation.arguments;
+        // The destination lets notices tell a self-cancel apart from cancelling another target's.
+        const cancelled = (yield* scheduledMessages.list().pipe(provide)).find(
+          (message) => message.id === id,
+        );
+        yield* scheduledMessages.cancel(id).pipe(provide);
+        return toJsonValue({
+          ok: true,
+          command,
+          id,
+          ...(cancelled ? { target: { sessionId: cancelled.targetSessionId } } : null),
+          status: "cancelled",
+        });
+      }
     }
   },
   (effect, invocation) =>

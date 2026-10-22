@@ -2838,6 +2838,7 @@ it.effect(
         ok: true,
         command: "sessions.cancel-scheduled",
         id: second.id,
+        target: { sessionId: projectChat },
         status: "cancelled",
       });
       expect(yield* call("sessions.cancel-scheduled", { id: second.id })).toMatchObject({
