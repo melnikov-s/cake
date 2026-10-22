@@ -76,9 +76,6 @@ export function ActivityMenu({
                 setOpen(false);
               }}
             >
-              <span className="flex w-[7px] shrink-0 justify-center">
-                {item.status && <StatusDot status={item.status} />}
-              </span>
               <span
                 role="img"
                 aria-label={item.iconLabel}
@@ -96,6 +93,9 @@ export function ActivityMenu({
               {item.action && (
                 <span className="shrink-0 text-[10px] font-normal">{item.action}</span>
               )}
+              <span className="flex w-[7px] shrink-0 justify-center">
+                {item.status && <StatusDot status={item.status} />}
+              </span>
             </Button>
           ))}
         </div>

@@ -229,6 +229,11 @@ test("background family children show running activity and only offer Mark as Un
     ).toBeVisible();
     await expect(activityMenu.getByRole("heading")).toHaveCount(0);
     await expect(activityMenu.getByRole("button")).toHaveCount(2);
+    for (const row of await activityMenu.getByRole("button").all()) {
+      const rowBounds = (await row.boundingBox())!;
+      const dotBounds = (await row.locator(".bg-accent").boundingBox())!;
+      expect(rowBounds.x + rowBounds.width - dotBounds.x - dotBounds.width).toBeLessThan(14);
+    }
     await expect(
       activityMenu.getByRole("img", { name: "Project Session", exact: true }),
     ).toBeVisible();

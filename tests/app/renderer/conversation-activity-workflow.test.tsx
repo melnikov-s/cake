@@ -342,7 +342,8 @@ it.each(["project", "cake-chat"] as const)(
       workerIcon.querySelector("path")?.getAttribute("d"),
     );
     for (const row of rows) {
-      expect(row.querySelector(".bg-accent")).not.toBeNull();
+      expect(row.lastElementChild?.querySelector(".bg-accent")).not.toBeNull();
+      expect(row.firstElementChild?.getAttribute("role")).toBe("img");
       expect(row.textContent).toContain("Running");
       expect(row.getAttribute("aria-description")).toMatch(/Project Session|Temporary subagent/);
     }
