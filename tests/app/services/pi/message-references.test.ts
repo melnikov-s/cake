@@ -122,6 +122,18 @@ describe("exact message references", () => {
     expect(() => readMessageReference(session, { entryId: custom })).toThrow(/does not exist/);
   });
 
+  it("keeps a retained findings ref pinned to the original after later unrelated responses", () => {
+    const { session, lastId } = fixture();
+    const retainedRef = listMessageReferences(session, { roles: ["assistant"] }).messages[0]!.ref;
+    const newerId = session.appendMessage(assistant("Later unrelated response"));
+    expect(newerId).not.toBe(lastId);
+    const target = messageNavigationTarget(retainedRef);
+    expect(readMessageReference(session, { entryId: target.messageId })).toMatchObject({
+      message: { ref: retainedRef, entryId: lastId },
+      text: "Exact assistant content",
+    });
+  });
+
   it("preserves original references across normal compaction, Tool Compact, and branch changes", () => {
     const { session, firstId, lastId } = fixture();
     const ref = messageReference(session.getSessionId(), firstId);
