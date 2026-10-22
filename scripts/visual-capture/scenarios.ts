@@ -2860,6 +2860,26 @@ const sessionMessageVariantsScenario: VisualCaptureScenario = {
   region: (page) => page.locator(".transcript"),
 };
 
+/** Start real work against the held local provider, then return to its owning conversation. */
+async function startActivityFixtureSession(page: Page, title: string) {
+  await page.getByRole("button", { name: "Search sessions", exact: true }).click();
+  const search = page.getByRole("dialog", { name: "Search sessions", exact: true });
+  await search.getByRole("combobox", { name: "Search session titles" }).fill(title);
+  await search.getByRole("option").filter({ hasText: title }).click();
+  await page.getByRole("button", { name: "Model configuration", exact: true }).click();
+  const changeModel = page.getByRole("button", { name: "Change model", exact: true });
+  if (await changeModel.isVisible()) await changeModel.click();
+  await page.getByLabel("Search presets and models").fill("Inspection fixture");
+  await page
+    .getByRole("button", { name: /Inspection fixture/ })
+    .first()
+    .click();
+  const input = page.getByRole("combobox", { name: "Message", exact: true });
+  await input.fill("Review the shared Activity UI components.");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
+}
+
 const cakeChatSessionUpdatesScenario: VisualCaptureScenario = {
   name: "cake-chat-session-updates",
   description:
@@ -2973,13 +2993,13 @@ const cakeChatSessionUpdatesScenario: VisualCaptureScenario = {
       await harness.close(BACKGROUND_CONTEXT);
       await storage.close(BACKGROUND_CONTEXT);
     }
+    return openRequestInspectorFixture(paths, { holdResponse: true });
   },
   async prepare(page, state) {
-    await cakeChatScenario.prepare(page, "default");
-    await expect(
-      page.getByRole("button", { name: "Cake · session updates", exact: true }),
-    ).toBeVisible();
-    const activity = page.getByRole("button", { name: "Activity · 1 needs attention" });
+    await assistantMarkdownCode.prepare(page, "default");
+    await startActivityFixtureSession(page, "docs-pass");
+    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+    const activity = page.getByRole("button", { name: "Activity · 1 running" });
     await expect(activity).toBeVisible();
     if (state === "open") {
       await activity.click();
@@ -2998,7 +3018,8 @@ const activityWorktreeScenario: VisualCaptureScenario = {
   description: "Attached activity band above real worktree tools and the shared composer",
   states: ["default", "open"],
   async seed(paths, theme) {
-    await cakeChatSessionUpdatesScenario.seed(paths, theme);
+    const cleanup = await cakeChatSessionUpdatesScenario.seed(paths, theme);
+    if (cleanup) await cleanup();
     const worktreePath = resolve(paths.project, "../worktree");
     const git = (args: string[]) => promisify(execFile)("git", args, { cwd: paths.project });
     await git(["init", "-b", "main"]);
@@ -3013,16 +3034,6 @@ const activityWorktreeScenario: VisualCaptureScenario = {
     await git(["commit", "-m", "advance target"]);
     await assistantMarkdownCode.seed({ ...paths, project: worktreePath }, theme);
     const timestamp = new Date(0).toISOString();
-    await writeFile(
-      join(paths.cakeHome, "state", "application.json"),
-      JSON.stringify({
-        schemaVersion: 1,
-        projects: [
-          { path: paths.project, name: "Cake", addedAt: timestamp, lastOpenedAt: timestamp },
-        ],
-        trustedProjectPaths: [paths.project],
-      }),
-    );
     await writeFile(
       join(paths.cakeHome, "state", "worktrees.json"),
       JSON.stringify({
@@ -3061,12 +3072,17 @@ const activityWorktreeScenario: VisualCaptureScenario = {
       },
     ];
     await writeFile(familyPath, JSON.stringify(families));
+    return openRequestInspectorFixture(paths, { holdResponse: true });
   },
   async prepare(page, state) {
     await assistantMarkdownCode.prepare(page, "default");
+    await startActivityFixtureSession(page, "fix-x");
+    await page
+      .locator('.session-item[data-session-id="visual-assistant-markdown-code"] .session-row')
+      .click();
     const cap = page.getByTestId("worktree-pill");
     await expect(cap.getByRole("button", { name: "Rebase", exact: true })).toBeVisible();
-    const activity = cap.getByRole("button", { name: "Activity · 1 needs attention" });
+    const activity = cap.getByRole("button", { name: "Activity · 1 running" });
     await expect(activity).toBeVisible();
     if (state === "open") {
       await activity.click();

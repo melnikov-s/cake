@@ -227,6 +227,17 @@ test("background family children show running activity and only offer Mark as Un
     await expect(
       activityMenu.getByRole("button", { name: "Open session: Background worker" }),
     ).toBeVisible();
+    await expect(activityMenu.getByRole("heading")).toHaveCount(0);
+    await expect(activityMenu.getByRole("button")).toHaveCount(2);
+    await expect(
+      activityMenu.getByRole("img", { name: "Project Session", exact: true }),
+    ).toBeVisible();
+    await expect(
+      activityMenu.getByRole("img", { name: "Temporary subagent", exact: true }),
+    ).toBeVisible();
+    await expect(
+      activityMenu.getByRole("button", { name: "Open session: Background worker" }),
+    ).toHaveAttribute("aria-description", /Project Session · Running/);
     await activityMenu.press("Escape");
     await expect(activityMenu).toHaveCount(0);
     await expect(activity).toBeFocused();

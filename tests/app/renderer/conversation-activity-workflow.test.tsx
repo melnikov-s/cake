@@ -19,6 +19,10 @@ import {
 } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import { workerActivity } from "./subagent-activity-workflow-fixture";
+import {
+  SubagentHandleId,
+  type SubagentActivity,
+} from "../../../src/contracts/subagents/subagent-data";
 
 const parentId = "10000000-0000-4000-8000-000000000010";
 const childId = "10000000-0000-4000-8000-000000000011";
@@ -116,11 +120,22 @@ function renderActivity(
     </StoreProvider>,
   );
   let revision = 0;
+  const publishWorkers = (activities: SubagentActivity[]) =>
+    act(() =>
+      applySubagentUpdate(catalog, ownerId, {
+        _tag: "Snapshot",
+        revision: ++revision,
+        parentSessionId: ownerId,
+        activities,
+        backgroundActive: activities.some((activity) => activity.status === "running"),
+      }),
+    );
   return {
     fixture,
     openSession,
     user: userEvent.setup(),
-    publishWorker(status?: "queued" | "running" | "complete", released = false) {
+    publishWorkers,
+    publishWorker(status?: SubagentActivity["status"], released = false) {
       const activity = workerActivity({
         parentSessionId: ownerId,
         status: status ?? "complete",
@@ -166,11 +181,13 @@ function renderActivity(
 }
 
 it.each(["project", "cake-chat"] as const)(
-  "%s composer cap tracks queued/running subagents, inspects their chat, and disappears on release",
+  "%s composer cap shows running but not queued subagents, inspects their chat, and disappears on release",
   async (kind) => {
     using view = renderActivity(kind);
     expect(screen.queryByRole("button", { name: /^Activity ·/ })).toBeNull();
     view.publishWorker("queued");
+    expect(screen.queryByRole("button", { name: /^Activity ·/ })).toBeNull();
+    view.publishWorker("running");
     const trigger = screen.getByRole("button", { name: "Activity · 1 running" });
     expect(trigger.closest(".workbench-composer")).not.toBeNull();
     expect(trigger.getAttribute("data-slot")).toBe("composer-activity");
@@ -179,14 +196,12 @@ it.each(["project", "cake-chat"] as const)(
     expect(trigger.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await view.user.click(trigger);
     const menu = screen.getByRole("dialog", { name: "Conversation activity" });
-    expect(within(menu).queryByRole("region", { name: "Sessions" })).toBeNull();
-    expect(within(menu).getByText("Queued · Temporary subagent")).toBeTruthy();
+    expect(within(menu).getByRole("img", { name: "Temporary subagent" })).toBeTruthy();
     expect(
       within(menu)
         .getByRole("button", { name: "Inspect subagent: Inspect the boundary" })
         .querySelector(".bg-accent"),
     ).not.toBeNull();
-    view.publishWorker("running");
     expect(within(menu).getByText("Running · Temporary subagent")).toBeTruthy();
     await view.user.click(
       within(menu).getByRole("button", { name: "Inspect subagent: Inspect the boundary" }),
@@ -230,7 +245,7 @@ it("keeps worktree tools beneath the activity band when workers appear and finis
   expect(screen.queryByRole("dialog", { name: "Conversation activity" })).toBeNull();
 });
 
-it("regular sessions show only direct children, keep idle children discoverable while busy, and open the selected session", async () => {
+it("regular sessions show only running direct children and open the selected session", async () => {
   using view = renderActivity("project", [
     child(),
     child({ sessionId: otherId, title: "Idle child", running: false }),
@@ -243,12 +258,7 @@ it("regular sessions show only direct children, keep idle children discoverable 
     within(menu)
       .getAllByRole("button")
       .map((button) => button.getAttribute("aria-label")),
-  ).toEqual(["Open session: Activity UI review", "Open session: Idle child"]);
-  expect(
-    within(menu)
-      .getByRole("button", { name: "Open session: Idle child" })
-      .querySelector(".rounded-full"),
-  ).toBeNull();
+  ).toEqual(["Open session: Activity UI review"]);
   await view.user.click(
     within(menu).getByRole("button", { name: "Open session: Activity UI review" }),
   );
@@ -261,45 +271,128 @@ it("regular sessions show only direct children, keep idle children discoverable 
   ).not.toBeNull();
 });
 
-it("Cake Chat combines launched sessions and workers, prioritizes attention, and hides when only idle/completed work remains", async () => {
-  const launched = child({
-    familyParentSessionId: undefined,
-    running: false,
-    cakeChatLaunch: {
-      requesterSessionId: CAKE_CHAT_SESSION_ID,
-      launchedAt: "2026-01-01T00:00:00Z",
-      lastReport: {
-        status: "blocked",
-        summary: "Choose the activity placement",
-        reportedAt: "2026-01-01T00:01:00Z",
-      },
-    },
-  });
-  using view = renderActivity("cake-chat", [
-    launched,
-    child({ sessionId: otherId, title: "Not launched by Cake Chat" }),
-  ]);
-  view.publishWorker("running");
-  await view.user.click(screen.getByRole("button", { name: "Activity · 1 needs attention" }));
-  const menu = screen.getByRole("dialog", { name: "Conversation activity" });
-  expect(within(menu).getByRole("region", { name: "Sessions" })).toBeTruthy();
-  expect(within(menu).getByRole("region", { name: "Subagents for this chat" })).toBeTruthy();
-  expect(within(menu).getByText(/Choose the activity placement/)).toBeTruthy();
-  expect(within(menu).queryByText("Not launched by Cake Chat")).toBeNull();
-  view.publishSessions([
-    {
-      ...launched,
+it.each(["project", "cake-chat"] as const)(
+  "%s counts only running rows in mixed states and distinguishes work type from status",
+  async (kind) => {
+    const launch =
+      kind === "cake-chat"
+        ? {
+            requesterSessionId: CAKE_CHAT_SESSION_ID,
+            launchedAt: "2026-01-01T00:00:00Z",
+          }
+        : undefined;
+    const running = child({ cakeChatLaunch: launch });
+    const nonRunning = (
+      ["completed", "stopped", "failed", "interrupted", "blocked", undefined] as const
+    ).map((status, index) =>
+      child({
+        sessionId: `settled-${index}`,
+        title: `Non-running session ${index}`,
+        running: false,
+        cakeChatLaunch: {
+          requesterSessionId: CAKE_CHAT_SESSION_ID,
+          launchedAt: "2026-01-01T00:00:00Z",
+          ...(status
+            ? {
+                lastReport: {
+                  status,
+                  summary: "Still unresolved",
+                  reportedAt: "2026-01-01T00:01:00Z",
+                },
+              }
+            : {}),
+        },
+      }),
+    );
+    using view = renderActivity(kind, [
+      running,
+      ...nonRunning,
+      child({
+        sessionId: otherId,
+        title: "Outside scope",
+        familyParentSessionId: "another-parent",
+      }),
+    ]);
+    const statuses = ["running", "queued", "complete", "aborted", "error"] as const;
+    view.publishWorkers(
+      statuses.map((status, index) =>
+        workerActivity({
+          parentSessionId: kind === "cake-chat" ? CAKE_CHAT_SESSION_ID : parentId,
+          handleId: SubagentHandleId.make(`20000000-0000-4000-8000-00000000000${index}`),
+          task: `Worker ${status}`,
+          status,
+          streaming: status === "running",
+        }),
+      ),
+    );
+    await view.user.click(screen.getByRole("button", { name: "Activity · 2 running" }));
+    const menu = screen.getByRole("dialog", { name: "Conversation activity" });
+    const rows = within(menu).getAllByRole("button");
+    expect(rows.map((row) => row.getAttribute("aria-label"))).toEqual([
+      "Open session: Activity UI review",
+      "Inspect subagent: Worker running",
+    ]);
+    // Type is conveyed without headings and independently of each running status dot.
+    expect(within(menu).queryByRole("heading")).toBeNull();
+    const sessionIcon = within(rows[0]!).getByRole("img", { name: "Project Session" });
+    const workerIcon = within(rows[1]!).getByRole("img", { name: "Temporary subagent" });
+    expect(sessionIcon.getAttribute("title")).toBe("Project Session");
+    expect(workerIcon.getAttribute("title")).toBe("Temporary subagent");
+    expect(sessionIcon.querySelector("path")?.getAttribute("d")).not.toBe(
+      workerIcon.querySelector("path")?.getAttribute("d"),
+    );
+    for (const row of rows) {
+      expect(row.querySelector(".bg-accent")).not.toBeNull();
+      expect(row.textContent).toContain("Running");
+      expect(row.getAttribute("aria-description")).toMatch(/Project Session|Temporary subagent/);
+    }
+    expect(within(rows[1]!).getByText("Inspect")).toBeTruthy();
+    view.publishSessions(nonRunning);
+    expect(screen.getByRole("button", { name: "Activity · 1 running" })).toBeTruthy();
+    expect(within(menu).getAllByRole("button")).toHaveLength(1);
+    view.publishWorker("complete");
+    expect(screen.queryByRole("button", { name: /^Activity ·/ })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Conversation activity" })).toBeNull();
+  },
+);
+
+it.each(
+  (["project", "cake-chat"] as const).flatMap((kind) =>
+    (["completed", "stopped", "failed", "interrupted", "blocked"] as const).map((status) => ({
+      kind,
+      status,
+    })),
+  ),
+)("unresolved $status sessions alone never keep $kind Activity visible", ({ kind, status }) => {
+  using view = renderActivity(kind, [
+    child({
+      running: false,
       cakeChatLaunch: {
         requesterSessionId: CAKE_CHAT_SESSION_ID,
         launchedAt: "2026-01-01T00:00:00Z",
+        lastReport: { status, summary: "Still unresolved", reportedAt: "2026-01-01T00:01:00Z" },
       },
-    },
+    }),
   ]);
+  expect(screen.queryByRole("button", { name: /^Activity ·/ })).toBeNull();
+  view.publishWorker("running");
   expect(screen.getByRole("button", { name: "Activity · 1 running" })).toBeTruthy();
   view.publishWorker("complete");
   expect(screen.queryByRole("button", { name: /^Activity ·/ })).toBeNull();
-  expect(screen.queryByRole("dialog", { name: "Conversation activity" })).toBeNull();
 });
+
+it.each(["complete", "aborted", "error"] as const)(
+  "a %s subagent alone does not keep Activity visible",
+  (status) => {
+    using view = renderActivity("project");
+    view.publishWorker(status);
+    expect(screen.queryByRole("button", { name: /^Activity ·/ })).toBeNull();
+    view.publishWorker("running");
+    expect(screen.getByRole("button", { name: "Activity · 1 running" })).toBeTruthy();
+    view.publishWorker(status);
+    expect(screen.queryByRole("button", { name: /^Activity ·/ })).toBeNull();
+  },
+);
 
 it("an idle child alone does not keep Activity visible, and resolving active children removes their activity", async () => {
   using view = renderActivity("project", [child({ running: false })]);
@@ -349,64 +442,4 @@ it("workers belonging to another conversation do not appear in this session's ac
     ),
   );
   expect(screen.queryByRole("button", { name: /^Activity ·/ })).toBeNull();
-});
-
-it("a deliberate stop reads as neutral Stopped, while interruptions and failures still need attention", async () => {
-  const launched = (status: "stopped" | "interrupted") =>
-    child({
-      familyParentSessionId: undefined,
-      running: false,
-      cakeChatLaunch: {
-        requesterSessionId: CAKE_CHAT_SESSION_ID,
-        launchedAt: "2026-01-01T00:00:00Z",
-        lastReport: {
-          status,
-          summary: status === "stopped" ? "Stopped by Cake Chat" : "canceled or interrupted",
-          reportedAt: "2026-01-01T00:01:00Z",
-        },
-      },
-    });
-  using view = renderActivity("cake-chat", [launched("stopped")]);
-  const settle = (ending: ConversationSnapshot["parts"][number]) =>
-    act(() => {
-      const session = view.fixture.root.sessionRegistry.load(childId, "/project");
-      applyConversationSnapshot(session.model, {
-        ...snapshot(childId),
-        parts: [...snapshot(childId).parts, ending],
-      });
-      session.model.settledTurnRevision += 1;
-    });
-  settle({
-    id: "stopped",
-    kind: "notice",
-    tone: "info",
-    title: "Stopped",
-    detail: "Stopped by Cake Chat",
-  });
-  const metadata = view.fixture.root.sessionMetadataStore;
-  expect(metadata.sessionActivity(childId)).toBe("stopped");
-  view.publishWorker("running");
-  // Not "needs attention": the stop was requested.
-  await view.user.click(screen.getByRole("button", { name: "Activity · 1 running" }));
-  const menu = screen.getByRole("dialog", { name: "Conversation activity" });
-  expect(within(menu).getByText(/^Stopped · project · Stopped by Cake Chat$/)).toBeTruthy();
-  expect(
-    within(menu)
-      .getByRole("button", { name: "Open session: Activity UI review" })
-      .querySelector(".rounded-full"),
-  ).toBeNull();
-
-  view.publishSessions([launched("interrupted")]);
-  expect(screen.getByRole("button", { name: "Activity · 1 needs attention" })).toBeTruthy();
-
-  view.publishSessions([launched("stopped")]);
-  settle({
-    id: "failed",
-    kind: "notice",
-    tone: "error",
-    title: "Model request failed",
-    detail: "Provider unavailable",
-  });
-  expect(metadata.sessionActivity(childId)).toBe("error");
-  expect(screen.getByRole("button", { name: "Activity · 1 needs attention" })).toBeTruthy();
 });

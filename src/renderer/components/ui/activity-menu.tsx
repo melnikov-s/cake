@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Button } from "./button";
 import { ChevronIcon } from "./icons";
 import { Popover, PopoverContent, PopoverTrigger } from "./popover";
@@ -10,28 +10,25 @@ interface ActivityMenuItem {
   title: string;
   description: string;
   status: StatusDotProps["status"];
+  icon: ReactNode;
+  iconLabel: string;
   action?: string;
   accessibleLabel: string;
   onSelect(): void;
 }
 
-export interface ActivityMenuGroup {
-  label: string;
-  items: readonly ActivityMenuItem[];
-}
-
-/** Compact entry and grouped disclosure for a conversation's delegated work. */
+/** Compact entry and disclosure for a conversation's delegated work. */
 export function ActivityMenu({
   summary,
   status,
-  groups,
+  items,
   onOpen,
   side = "bottom",
   presentation = "pill",
 }: {
   summary: string;
   status: StatusDotProps["status"];
-  groups: readonly ActivityMenuGroup[];
+  items: readonly ActivityMenuItem[];
   onOpen?(): void;
   side?: "top" | "bottom";
   presentation?: "pill" | "strip";
@@ -65,44 +62,42 @@ export function ActivityMenu({
         className="w-[min(24rem,calc(100vw-24px))] p-2"
         aria-label="Conversation activity"
       >
-        <div className="grid max-h-80 gap-2 overflow-y-auto">
-          {groups
-            .filter((group) => group.items.length > 0)
-            .map((group) => (
-              <section key={group.label} aria-label={group.label}>
-                <h3 className="px-2 py-1 text-[11px] font-medium text-muted-foreground">
-                  {group.label}
-                </h3>
-                <div className="grid gap-1">
-                  {group.items.map((item) => (
-                    <Button
-                      key={item.id}
-                      variant="ghost"
-                      className="h-auto min-w-0 justify-start gap-2 px-2.5 py-2 text-left"
-                      aria-label={item.accessibleLabel}
-                      title={`${item.title} — ${item.description}`}
-                      onClick={() => {
-                        item.onSelect();
-                        setOpen(false);
-                      }}
-                    >
-                      <span className="flex w-[7px] shrink-0 justify-center">
-                        {item.status && <StatusDot status={item.status} />}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-xs font-medium">{item.title}</span>
-                        <span className="block truncate font-mono text-[10px] font-normal text-muted-foreground">
-                          {item.description}
-                        </span>
-                      </span>
-                      {item.action && (
-                        <span className="shrink-0 text-[10px] font-normal">{item.action}</span>
-                      )}
-                    </Button>
-                  ))}
-                </div>
-              </section>
-            ))}
+        <div className="grid max-h-80 gap-1 overflow-y-auto">
+          {items.map((item) => (
+            <Button
+              key={item.id}
+              variant="ghost"
+              className="h-auto min-w-0 justify-start gap-2 px-2.5 py-2 text-left"
+              aria-label={item.accessibleLabel}
+              aria-description={`${item.iconLabel} · ${item.description}`}
+              title={`${item.iconLabel}: ${item.title} — ${item.description}`}
+              onClick={() => {
+                item.onSelect();
+                setOpen(false);
+              }}
+            >
+              <span className="flex w-[7px] shrink-0 justify-center">
+                {item.status && <StatusDot status={item.status} />}
+              </span>
+              <span
+                role="img"
+                aria-label={item.iconLabel}
+                title={item.iconLabel}
+                className="flex shrink-0 text-muted-foreground"
+              >
+                {item.icon}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-xs font-medium">{item.title}</span>
+                <span className="block truncate font-mono text-[10px] font-normal text-muted-foreground">
+                  {item.description}
+                </span>
+              </span>
+              {item.action && (
+                <span className="shrink-0 text-[10px] font-normal">{item.action}</span>
+              )}
+            </Button>
+          ))}
         </div>
       </PopoverContent>
     </Popover>

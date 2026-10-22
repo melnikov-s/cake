@@ -219,7 +219,7 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
     await activity.press("Enter");
     const activityMenu = page.getByRole("dialog", { name: "Conversation activity" });
     await expect(
-      activityMenu.getByRole("region", { name: "Subagents for this chat" }),
+      activityMenu.getByRole("img", { name: "Temporary subagent", exact: true }),
     ).toBeVisible();
     await activityMenu.press("Escape");
     await expect(activityMenu).toHaveCount(0);

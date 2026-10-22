@@ -47,9 +47,10 @@ Admission identity, not text or queue position, links the receipt to the runtime
 
 [`ActivityMenu`](../../src/renderer/components/ui/activity-menu.tsx) composes the shared
 Popover, Button and StatusDot into a compact pill or attached composer strip with
-labeled groups and inspect/open rows. Conversation owners supply the summary and
-actions, and omit the menu when no work is running or needs attention. The strip
-opens upward above the composer. Rows without activity omit the dot but retain its alignment slot.
+a flat list of inspect/open rows. Per-row type icons have accessible labels and
+tooltips, separate from status dots. Conversation owners supply only currently
+running work and derive the summary/count from those same rows, omitting the menu
+when none remain. The strip opens upward above the composer.
 
 [`ComposerCap`](../../src/renderer/components/ui/composer-cap.tsx) frames supporting
 controls attached above the shared composer. Activity occupies its top band, with
