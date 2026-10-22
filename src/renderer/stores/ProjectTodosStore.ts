@@ -30,9 +30,7 @@ export class ProjectTodosStore extends Store<{
     return this.project?.todos;
   }
   get selectedItem() {
-    return this.value?.items.find(
-      (item) => item.id === this.value?.selectedId && item.state === "open",
-    );
+    return this.project?.selectedTodo;
   }
   get openItems() {
     return this.value?.items.filter((item) => item.state === "open") ?? [];

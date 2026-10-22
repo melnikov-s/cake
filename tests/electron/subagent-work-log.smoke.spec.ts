@@ -2,6 +2,9 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
+import { defaultApplicationState } from "../../src/contracts/application/application-data";
+import { emptyProjectTodos } from "../../src/contracts/projects/project-todos";
+import { subagentLink } from "../../src/contracts/subagents/subagent-reference";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
 
@@ -114,9 +117,39 @@ test("opens completed historical subagent results in a read-only side chat", asy
   await writeFile(
     join(cakeHome, "state", "application.json"),
     JSON.stringify({
-      schemaVersion: 1,
-      projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
-      trustedProjectPaths: [],
+      version: 9,
+      data: {
+        ...defaultApplicationState(),
+        projects: [
+          {
+            path: project,
+            name: "project",
+            addedAt: timestamp,
+            lastOpenedAt: timestamp,
+            todos: {
+              ...emptyProjectTodos(),
+              items: [
+                {
+                  id: "10000000-0000-4000-8000-000000000011",
+                  title: "Review joke",
+                  description: "Review the delegated result.",
+                  status: "Report ready",
+                  state: "open",
+                  revision: 0,
+                  associations: [
+                    {
+                      kind: "subagent",
+                      parentSessionId: sessionId,
+                      handleId,
+                      title: "Joke worker",
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+      },
     }),
   );
   await writeFile(
@@ -256,6 +289,30 @@ test("opens completed historical subagent results in a read-only side chat", asy
     await sideChat.getByRole("button", { name: "Close Subagent" }).click();
 
     await expect(page.getByRole("button", { name: /^Activity ·/ })).toHaveCount(0);
+    await page
+      .getByRole("button", { name: /^Open Project Chat for / })
+      .first()
+      .click();
+    await page.getByRole("button", { name: "To-do", exact: true }).click();
+    const todos = page.getByRole("complementary", { name: "To-do", exact: true });
+    const todo = todos.getByRole("button", { name: "Review joke", exact: true });
+    await todo.click();
+    await expect(todo).toBeFocused();
+    await expect(todo).toHaveAttribute("aria-pressed", "true");
+    await expect(todo.locator("..")).toHaveCSS("outline-style", "dashed");
+    const link = todos.getByRole("link", { name: "Joke worker", exact: true });
+    await expect(link).toHaveAttribute("href", subagentLink(sessionId, handleId));
+    await link.click();
+    const report = page.getByRole("complementary", { name: request.task, exact: true });
+    await expect(report).toContainText("The loop opened a bakery because it knew how to roll.");
+    await expect(report.getByRole("combobox")).toHaveCount(0);
+    const workLog = page.locator('[data-slot="activity-group"]');
+    if ((await workLog.getAttribute("open")) === null)
+      await workLog.locator(":scope > summary").click();
+    await expect(workLog.locator(`[data-subagent-handle="${handleId}"]`)).toHaveAttribute(
+      "data-associated",
+      "true",
+    );
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

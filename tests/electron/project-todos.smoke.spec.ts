@@ -526,6 +526,10 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
     await expect(context).toContainText("Implement startup improvement.");
     await expect(context).not.toContainText("<system-reminder>");
     await linkedPill.click();
+    // A real interview comes from a loaded producer. Reload may release the resolved
+    // session; opening its existing report re-establishes that observation without a turn.
+    await linked.getByRole("link", { name: "First implementation", exact: true }).click();
+    await returnToTodos();
     await emitRendererEvent(app, {
       type: "interview-requested",
       requestId: randomUUID(),

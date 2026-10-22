@@ -5,7 +5,7 @@ import { editorLocationFromPath } from "../../contracts/editor/editor-location";
 import { projectTodoAssociationDestination } from "../lib/project-todo-association";
 import { projectTodoAssociationKey } from "../../contracts/projects/project-todos";
 import { NavItem } from "@/components/ui/nav-item";
-import { ProjectTodoSessionLink } from "./project-todo-session-link";
+import { ProjectTodoWorkLink } from "./project-todo-work-link";
 import { IconButton } from "@/components/ui/icon-button";
 import { CircleIcon, CheckIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
@@ -21,14 +21,14 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
 }) {
   const root = useStore(RootStore);
   const selected = store.selectedItem?.id === item.id;
-  const sessions = item.associations.filter((association) => association.kind === "session");
-  const resources = item.associations.filter((association) => association.kind !== "session");
+  const sessions = item.associations.filter((association) => association.kind !== "source");
+  const resources = item.associations.filter((association) => association.kind === "source");
   return (
     <li data-todo-id={item.id}>
       <NavItem
         wholeRowAction
         motionFeedback
-        active={selected}
+        associated={selected}
         aria-busy={store.busy}
         actionProps={{
           "aria-pressed": selected,
@@ -47,10 +47,9 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
             {sessions.length > 0 && (
               <span className="flex max-w-36 flex-col gap-1 pt-0.5">
                 {sessions.map((association) => (
-                  <ProjectTodoSessionLink
-                    key={association.sessionId}
-                    sessionId={association.sessionId}
-                    title={association.title}
+                  <ProjectTodoWorkLink
+                    key={projectTodoAssociationKey(association)}
+                    association={association}
                   />
                 ))}
               </span>

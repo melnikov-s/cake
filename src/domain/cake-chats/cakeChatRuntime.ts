@@ -60,7 +60,8 @@ import type { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes"
 import type { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { RendererRequestCoordinator as RendererRequests } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
-import type { SubagentCoordinator } from "../../services/subagents/SubagentCoordinator";
+import { SubagentStorage } from "../../services/storage/SubagentStorage";
+import { SubagentCoordinator } from "../../services/subagents/SubagentCoordinator";
 import type { SubagentEnvironment } from "../../services/subagents/SubagentEnvironment";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
@@ -216,7 +217,11 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
   const models = yield* PiModels;
   const catalogs = yield* SessionCatalogChanges;
   const rendererRequests = yield* RendererRequests;
-  const context = yield* Effect.context<CakeChatRuntimeServices>();
+  const context = Context.add(
+    yield* Effect.context<CakeChatRuntimeServices>(),
+    SubagentStorage,
+    (yield* SubagentCoordinator).storage,
+  );
   const landingCoordinator = yield* Effect.serviceOption(WorktreeLandingCoordinator);
   const landingAgent = yield* Effect.serviceOption(WorktreeLandingAgent);
   const landingCompletion = yield* Effect.serviceOption(WorktreeLandingCompletion);

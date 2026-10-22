@@ -507,7 +507,7 @@ const makeLayer = (
     makeCakeSessionRuntimesLayer(adapter).pipe(
       Layer.provideMerge(makeRuntimeRecoveryStorageTestLayer()),
     ),
-    SubagentCoordinatorLive.pipe(Layer.provide(makeSubagentStorageTestLayer())),
+    SubagentCoordinatorLive.pipe(Layer.provideMerge(makeSubagentStorageTestLayer())),
     Layer.mock(RendererRequestCoordinator, {}),
     Layer.succeed(ProjectSessionConfiguration, {
       agentDirectory: "/agent",

@@ -1,3 +1,5 @@
+import { cn } from "../../lib/utils";
+import { associationHighlightClassName } from "../ui/nav-item";
 import { useContext, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import type { UiPart } from "../../../contracts/conversations/session-contract";
@@ -130,7 +132,12 @@ export const SubagentTool = observer(function SubagentTool({
               key={run.key}
               data-slot="subagent-call"
               data-status={runOutcome(run)}
-              className="flex min-w-0 items-center gap-2 rounded-lg border border-border/60 bg-background/50 px-2.5 py-2"
+              data-subagent-handle={run.handleId}
+              data-associated={subagents?.isAssociated(run.key) ? "true" : undefined}
+              className={cn(
+                "flex min-w-0 items-center gap-2 rounded-lg border border-border/60 bg-background/50 px-2.5 py-2",
+                subagents?.isAssociated(run.key) && associationHighlightClassName,
+              )}
             >
               <StatusDot
                 status={

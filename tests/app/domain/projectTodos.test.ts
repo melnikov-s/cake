@@ -31,6 +31,47 @@ import {
 import { addReferenceNotifications } from "../../../src/contracts/conversations/reference-notification";
 import { createProjectTodoOperations } from "../../../src/domain/projects/project-todo-operations";
 
+it.effect(
+  "persists first-class subagent associations, exposes them in context and keeps public identities type-scoped",
+  () => {
+    const f = fixture();
+    const association = {
+      kind: "subagent" as const,
+      parentSessionId: "project-chat:/project",
+      handleId: "10000000-0000-4000-8000-000000000001",
+      title: "Investigation worker",
+    };
+    return Effect.gen(function* () {
+      const id = yield* Effect.gen(function* () {
+        yield* upsertProject(project, "Project");
+        const item = yield* todos.create(project, {
+          title: "Review worker",
+          description: "Inspect the report.",
+          associations: [
+            association,
+            { kind: "session", sessionId: association.handleId, title: "A distinct session" },
+          ],
+        });
+        yield* todos.mutateUser(project, { _tag: "Select", selectedId: item.id });
+        expect(projectTodoBaseline(yield* todos.list(project))).toContain(
+          '"subagents":[{"parentSessionId":"project-chat:/project"',
+        );
+        expect((yield* todos.prepareUserContext(project, "Review")).text).toContain(
+          '"kind":"subagent"',
+        );
+        return item.id;
+      }).pipe(Effect.provide(f.layer));
+      yield* Effect.gen(function* () {
+        yield* (yield* ApplicationState).initialize();
+        const item = yield* todos.read(project, id);
+        expect(item.associations[0]).toEqual(association);
+        expect((yield* todos.list(project)).selectedId).toBe(id);
+        expect(item.state).toBe("open");
+      }).pipe(Effect.provide(f.layer));
+    });
+  },
+);
+
 function fixture() {
   let persisted = JSON.stringify(defaultApplicationState());
   let fail = false;

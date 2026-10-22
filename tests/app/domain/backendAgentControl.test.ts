@@ -777,7 +777,11 @@ it.effect(
         .flatMap((item) =>
           item.associations.flatMap((link) => {
             const id =
-              link.kind === "session" ? link.sessionId : parseSessionLink(link.ref)?.sessionId;
+              link.kind === "session"
+                ? link.sessionId
+                : link.kind === "source"
+                  ? parseSessionLink(link.ref)?.sessionId
+                  : undefined;
             return id ? [id] : [];
           }),
         );

@@ -156,6 +156,14 @@ in the shared fullscreen preview; non-image attachments retain labels. Thumbnail
 are renderer presentation only: Cake Chat still admits opaque input references,
 not image payloads, to its model context.
 
+`NavItem.associated` and `SessionListItem.associated` share a faint tinted, dashed-outline
+relationship cue for the selected Project Chat to-do and its linked sidebar sessions.
+This is not navigation selection: active/selected rows keep their stronger treatment,
+while association leaves action semantics, hover and keyboard focus intact. Subagent work links
+use `cake://subagent/<encoded-parent>/<public-handle>` and the shared Markdown navigation to
+open the existing worker chat/report under its parent. Private Pi IDs are never session links.
+Subagent call rows use the same advisory cue; worker completion/release is not to-do resolution.
+
 `NavItem.wholeRowAction` extends the primary action to non-interactive row content
 and whitespace without nesting controls. It retains the native action button for
 keyboard activation and focus, and supports `aria-pressed` selection and temporary

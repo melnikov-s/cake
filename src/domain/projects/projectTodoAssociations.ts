@@ -1,3 +1,6 @@
+import { SubagentStorage } from "../../services/storage/SubagentStorage";
+import { SubagentHandleId } from "../../contracts/subagents/subagent-data";
+import { parseSubagentLink, subagentLink } from "../../contracts/subagents/subagent-reference";
 import { Effect, Schema } from "effect";
 import { parseSessionLink, sessionLink } from "../../contracts/conversations/message-reference";
 import {
@@ -34,6 +37,34 @@ const validate = Effect.fn("ProjectTodos.validateAssociations")(function* (
 ) {
   const result: ProjectTodoAssociation[] = [];
   for (const link of links) {
+    const worker =
+      link.kind === "subagent"
+        ? link
+        : link.kind === "source"
+          ? parseSubagentLink(link.ref)
+          : undefined;
+    if (worker) {
+      const parentSessionId = yield* sessionReferences
+        .resolve(worker.parentSessionId)
+        .pipe(asError);
+      const record = yield* (yield* SubagentStorage)
+        .get(SubagentHandleId.make(worker.handleId))
+        .pipe(asError);
+      if (
+        !record ||
+        record.parentSessionId !== parentSessionId ||
+        (record.projectPath ?? record.parentWorkingDirectory) !== projectPath
+      )
+        return yield* new ProjectError({
+          operation: "projectTodoAssociations",
+          message:
+            "Unknown subagent handle, wrong parent, or subagent outside this Project Chat’s project",
+        });
+      if (link.kind === "subagent") result.push({ ...link, parentSessionId });
+      else if (link.kind === "source")
+        result.push({ ...link, ref: subagentLink(parentSessionId, worker.handleId) });
+      continue;
+    }
     const target = link.kind === "source" ? parseSessionLink(link.ref) : undefined;
     const reference = link.kind === "session" ? link.sessionId : target?.sessionId;
     if (!reference) {
@@ -50,7 +81,7 @@ const validate = Effect.fn("ProjectTodos.validateAssociations")(function* (
         });
     }
     if (link.kind === "session") result.push({ ...link, sessionId });
-    else {
+    else if (link.kind === "source") {
       const ref = sessionLink(sessionId, target?.messageId, target?.attachmentId);
       // Exact report/message references must point to accessible original content.
       if (target?.messageId)

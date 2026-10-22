@@ -160,6 +160,37 @@ export class NavigationStore extends Store<{
       );
   }
 
+  /** Inspect the public worker in its parent; never navigate to its private Pi session. */
+  async openSubagentLink(parentReference: string, handleId: string) {
+    const resolved = resolveSessionLinkReference(parentReference, [
+      ...this.props.catalog.sessions.map((session) => session.sessionId),
+      ...this.props.cakeChat().summaries.map((session) => session.sessionId),
+    ]);
+    if (!resolved.ok) throw new Error(resolved.error);
+    const parentSessionId = resolved.sessionId;
+    await this.openSessionLink(parentSessionId);
+    const parent = isCakeChatSessionId(parentSessionId)
+      ? this.props.cakeChat().registry.find(parentSessionId)
+      : this.props.registry.findSession(parentSessionId);
+    const subagents = parent?.subagentActivityStore;
+    const run = subagents?.run(handleId);
+    const chatStore = subagents?.chatStore(handleId);
+    if (!parent || !subagents || !run)
+      throw new Error("Cake could not find the linked subagent chat/report");
+    if (!chatStore) {
+      parent.conversationSessionStore.chatStore.transcriptInteraction.navigateToMessage(
+        run.anchorPartId,
+      );
+      return;
+    }
+    parent.conversationSessionStore.sideChatStore.open({
+      key: `subagent:${handleId}`,
+      title: run.task,
+      eyebrow: () => `Subagent · ${subagents.run(handleId)?.status ?? run.status}`,
+      chatStore,
+    });
+  }
+
   async createSession(workspacePath: string) {
     this.props.newSession().rememberProject(workspacePath);
     await this.workbench.startNewSession(workspacePath);

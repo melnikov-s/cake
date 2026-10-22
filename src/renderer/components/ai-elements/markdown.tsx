@@ -30,6 +30,7 @@ import {
 } from "@/lib/syntax-highlighter";
 import { cn } from "@/lib/utils";
 import type { SourceLocation } from "../../../contracts/editor/source-location";
+import { parseSubagentLink, subagentLink } from "../../../contracts/subagents/subagent-reference";
 import { parseSessionLink, sessionLink } from "../../../contracts/conversations/message-reference";
 import { parseSourceLocation } from "../../../utils/source-location";
 import { resolveSessionLinkReference } from "../../../contracts/project-sessions/session-reference";
@@ -46,6 +47,7 @@ const nonPathHref = /^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i;
 const workspacePathPrefix = "/__cake_workspace__/";
 const sessionPathPrefix = "/__cake_session__/";
 const artifactPathPrefix = "/__cake_artifact__/";
+const subagentPathPrefix = "/__cake_subagent__/";
 const protectedMarkdown = /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`|!?\[[^\]]*\]\([^)]+\))/g;
 const bareSourceReference =
   /(^|[\s(])((?:[^\s/:#()[\],]+\/)*[^\s/:#()[\],]+\.[a-z][a-z0-9._+-]*(?::\d+(?::\d+)?|#L\d+(?:-L?\d+)?(?:,L\d+(?:-L?\d+)?)*)?)(?=$|[\s),.;!?])/gi;
@@ -58,6 +60,7 @@ type ImageProps = ComponentProps<"img"> & { node?: unknown };
 type MarkdownLinkActions = {
   openExternalUrl(url: string): void;
   openSession(sessionId: string, messageId?: string, attachmentId?: string): void;
+  openSubagent?(parentSessionId: string, handleId: string): void;
   sessionTitle?(sessionId: string): string | undefined;
   sessionIds?(): readonly string[];
   loadWorkspaceImage?(
@@ -93,6 +96,14 @@ function sessionTargetFromHref(href: string) {
   return parseSessionLink(
     href.startsWith(sessionPathPrefix)
       ? `cake://session/${href.slice(sessionPathPrefix.length)}`
+      : href,
+  );
+}
+
+function subagentTargetFromHref(href: string) {
+  return parseSubagentLink(
+    href.startsWith(subagentPathPrefix)
+      ? `cake://subagent/${href.slice(subagentPathPrefix.length)}`
       : href,
   );
 }
@@ -149,6 +160,9 @@ function prepareMarkdownLinks(markdown: string, sourceLinks: boolean, workspaceI
         return segment.replace(
           /\]\(([^)\s]+)(?:\s+(?:"[^"]*"|'[^']*'))?\)$/,
           (match, target: string) => {
+            const subagent = subagentTargetFromHref(target);
+            if (subagent)
+              return `](${subagentPathPrefix}${subagentLink(subagent.parentSessionId, subagent.handleId).slice("cake://subagent/".length)})`;
             const session = sessionTargetFromHref(target);
             if (session)
               return `](${sessionPathPrefix}${sessionLink(session.sessionId, session.messageId, session.attachmentId).slice("cake://session/".length)})`;
@@ -258,6 +272,21 @@ function linkAnchor(allProps: AnchorProps, actions?: MarkdownLinkActions) {
       artifactReference,
       props.children === artifactReference ? undefined : props.children,
     );
+  const subagent = href ? subagentTargetFromHref(href) : undefined;
+  if (subagent) {
+    const reference = subagentLink(subagent.parentSessionId, subagent.handleId);
+    return (
+      <Link
+        {...props}
+        href={reference}
+        title={reference}
+        onClick={(event) => {
+          event.preventDefault();
+          actions?.openSubagent?.(subagent.parentSessionId, subagent.handleId);
+        }}
+      />
+    );
+  }
   const session = href ? sessionTargetFromHref(href) : undefined;
   if (session) {
     const ids = actions?.sessionIds?.() ?? [];

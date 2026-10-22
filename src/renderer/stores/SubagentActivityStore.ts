@@ -7,6 +7,7 @@ import {
   subagentHandleFromTool,
   type SubagentRun,
 } from "../../utils/subagent-runs";
+import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
 import { ClientContext } from "./context/ClientContext";
 import { ChatStore } from "./ChatStore";
 import { SubagentHandleId } from "../../contracts/subagents/subagent-data";
@@ -61,6 +62,21 @@ export class SubagentActivityStore extends Store<{
 
   run(key: string) {
     return this.runs.find((run) => run.key === key);
+  }
+
+  isAssociated(key: string) {
+    const run = this.run(key);
+    return Boolean(
+      run?.handleId &&
+      ProjectCatalogContext.consume(this)?.projects.some((project) =>
+        project.selectedTodo?.associations.some(
+          (association) =>
+            association.kind === "subagent" &&
+            association.parentSessionId === this.props.sessionId &&
+            association.handleId === run.handleId,
+        ),
+      ),
+    );
   }
 
   runsForTool(part: ToolPart, startPart?: ToolPart) {

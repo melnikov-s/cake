@@ -21,6 +21,7 @@ interface RendererRootProps {
   browserConnection?: BrowserConnectionStore;
   openExternalUrl(url: string): void;
   openSession(sessionId: string, messageId?: string, attachmentId?: string): void;
+  openSubagent(parentSessionId: string, handleId: string): void;
 }
 
 export const RendererRoot = observer(function RendererRoot({
@@ -29,6 +30,7 @@ export const RendererRoot = observer(function RendererRoot({
   browserConnection,
   openExternalUrl,
   openSession,
+  openSubagent,
 }: RendererRootProps) {
   const activeSessionId = rootStore.appShellStore.activeConversation?.sessionId;
   const sessionIds = rootStore.sessionCatalogStore.authoritativeSessionIds;
@@ -45,6 +47,7 @@ export const RendererRoot = observer(function RendererRoot({
                 actions={{
                   openExternalUrl,
                   openSession,
+                  openSubagent,
                   sessionIds: () => sessionIds,
                   sessionTitle: (sessionId) =>
                     rootStore.sessionCatalogStore.find(sessionId)?.title ??

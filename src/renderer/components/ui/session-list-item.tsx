@@ -13,7 +13,7 @@ import { DepthRails } from "./depth-rails";
 import { IconButton } from "./icon-button";
 import { CakeIcon, ChevronIcon, ResolveIcon, RestoreIcon } from "./icons";
 import { LabelSwatch } from "./label-swatch";
-import { NavItem, type NavItemProps } from "./nav-item";
+import { associationHighlightClassName, NavItem, type NavItemProps } from "./nav-item";
 
 export interface SessionListItemProps {
   session: {
@@ -28,6 +28,8 @@ export interface SessionListItemProps {
   };
   managedWorktree?: Pick<WorktreeRecord, "branch" | "baseBranch" | "parentWorktreePath" | "state">;
   selected: boolean;
+  /** Advisory to-do association; never replaces actual selection. */
+  associated?: boolean;
   paneNumber?: number;
   resolved: boolean;
   activity?: SessionActivity;
@@ -64,6 +66,7 @@ export const SessionListItem = observer(function SessionListItem({
   session,
   managedWorktree,
   selected,
+  associated = false,
   paneNumber,
   resolved,
   activity,
@@ -109,6 +112,7 @@ export const SessionListItem = observer(function SessionListItem({
       data-session-id={session.sessionId}
       data-navigation-item=""
       data-navigation-active={selected}
+      data-associated={associated && !selected ? "true" : undefined}
       data-family-role={isFamilyChild ? "child" : isFamilyParent ? "parent" : "root"}
       className={cn(
         "session-item group group/session relative grid min-h-11 w-full items-center rounded-md text-[13px] select-none transition-colors duration-200 ease-out motion-reduce:transition-none",
@@ -128,6 +132,11 @@ export const SessionListItem = observer(function SessionListItem({
           : "text-muted-foreground hover:text-foreground",
         actionProps?.role === "option" &&
           (selected ? "bg-sidebar-active" : "hover:bg-sidebar-hover"),
+        associated &&
+          !selected && [
+            associationHighlightClassName,
+            "hover:bg-sidebar-hover focus-within:bg-sidebar-hover",
+          ],
         canResolve && "can-resolve",
         selected && canResolve && "has-session-action",
       )}

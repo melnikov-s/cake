@@ -1,3 +1,8 @@
+import { applySnapshot } from "r-state-tree";
+import { StoreProvider } from "r-state-tree/react";
+import type { ProjectTodos } from "../../../src/contracts/projects/project-todos";
+import { ProjectTodosPanel } from "../../../src/renderer/components/project-todos-panel";
+import { MarkdownLinkProvider } from "../../../src/renderer/components/ai-elements/markdown";
 import { act, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { VirtuosoMockContext } from "react-virtuoso";
@@ -79,12 +84,40 @@ export function renderSubagentActivity(options: {
   client?: TestClientOverrides;
   activity?: SubagentActivity;
   parts: UiPart[];
+  todos?: ProjectTodos;
 }) {
+  let todos = options.todos;
   const fixture = createRendererStoreFixture({
-    client: options.client,
-    projects: [projectRecord({ path: "/project", name: "Project" })],
+    client: {
+      ...options.client,
+      ...(todos
+        ? {
+            projectTodos: {
+              mutateUser: async ({ mutation }) => {
+                if (!todos || mutation._tag !== "Select")
+                  throw new Error("Unexpected to-do mutation");
+                todos = { ...todos, selectedId: mutation.selectedId };
+                applySnapshot(fixture.models.projects, {
+                  projects: [{ ...projectRecord({ path: "/project", name: "Project" }), todos }],
+                });
+                return todos;
+              },
+            },
+          }
+        : {}),
+    },
+    projects: [
+      { ...projectRecord({ path: "/project", name: "Project" }), ...(todos ? { todos } : {}) },
+    ],
     sessions: [sessionSummary({ sessionId: parentSessionId, projectPath: "/project" })],
   });
+  if (todos)
+    applySnapshot(fixture.models.cakeChatCatalog, {
+      loaded: true,
+      sessions: [
+        { sessionId: "project-chat:/project", title: "Project Chat", projectPath: "/project" },
+      ],
+    });
   const session = fixture.root.sessionRegistry.load(parentSessionId, "/project");
   fixture.root.navigationStore.selectProjectSession(parentSessionId);
   fixture.root.projectWorkbenchStore.showLoadedSession(parentSessionId);
@@ -118,22 +151,46 @@ export function renderSubagentActivity(options: {
   ])
     chat.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" });
   const view = render(
-    <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
-      <SideChatLayout
-        store={session.conversationSessionStore.sideChatStore}
-        renderChat={(chat) => <Chat store={chat} embedded composerFocusEnabled={false} />}
+    <StoreProvider store={fixture.root}>
+      <MarkdownLinkProvider
+        actions={{
+          openExternalUrl: () => {
+            throw new Error("Unexpected external navigation");
+          },
+          openSession: (id) => {
+            void fixture.root.navigationStore.openSessionLink(id);
+          },
+          openSubagent: (parent, handle) => {
+            void fixture.root.navigationStore.openSubagentLink(parent, handle);
+          },
+        }}
       >
-        <Chat
-          store={session.conversationSessionStore.chatStore}
-          transcriptBehavior={{ subagents: session.subagentActivityStore }}
-          embedded
-          composerFocusEnabled={false}
-        />
-      </SideChatLayout>
-    </VirtuosoMockContext.Provider>,
+        <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
+          {todos && (
+            <ProjectTodosPanel
+              store={
+                fixture.root.cakeChatCollectionStore.registry.load("project-chat:/project").todos
+              }
+            />
+          )}
+          <SideChatLayout
+            store={session.conversationSessionStore.sideChatStore}
+            renderChat={(chat) => <Chat store={chat} embedded composerFocusEnabled={false} />}
+          >
+            <Chat
+              store={session.conversationSessionStore.chatStore}
+              transcriptBehavior={{ subagents: session.subagentActivityStore }}
+              embedded
+              composerFocusEnabled={false}
+            />
+          </SideChatLayout>
+        </VirtuosoMockContext.Provider>
+      </MarkdownLinkProvider>
+    </StoreProvider>,
   );
   return {
     user: userEvent.setup(),
+    container: view.container,
     publish(update: SubagentUpdate, parts?: UiPart[]) {
       act(() => {
         if (parts) applyConversationSnapshot(session.model, { ...snapshot, parts });

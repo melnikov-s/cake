@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { SubagentReference, parseSubagentLink } from "../subagents/subagent-reference";
 import { AgentListInput } from "../agent/agent-list-data";
 import { parseSessionLink } from "../conversations/message-reference";
 import { parseSourceLocation } from "../../utils/source-location";
@@ -10,7 +11,7 @@ export const ProjectTodoSourceReference = Schema.String.check(
   Schema.isTrimmed(),
   Schema.makeFilter(
     (ref) => {
-      if (parseSessionLink(ref)) return true;
+      if (parseSessionLink(ref) || parseSubagentLink(ref)) return true;
       if (/^cake:\/\/artifact\/[A-Za-z0-9][A-Za-z0-9._:-]*(?:@r[1-9][0-9]*)?$/.test(ref))
         return true;
       if (/^https?:\/\//i.test(ref)) {
@@ -22,7 +23,7 @@ export const ProjectTodoSourceReference = Schema.String.check(
       }
       return !/^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i.test(ref) && Boolean(parseSourceLocation(ref));
     },
-    { expected: "a supported session, artifact, web or workspace source link" },
+    { expected: "a supported session, subagent, artifact, web or workspace source link" },
   ),
 );
 
@@ -36,6 +37,11 @@ export const ProjectTodoAssociation = Schema.Union([
     title: text(512).check(Schema.isMinLength(1)),
   }),
   Schema.Struct({
+    kind: Schema.Literal("subagent"),
+    ...SubagentReference.fields,
+    title: text(512).check(Schema.isMinLength(1)),
+  }),
+  Schema.Struct({
     kind: Schema.Literal("source"),
     ref: ProjectTodoSourceReference,
     title: text(512).check(Schema.isMinLength(1)),
@@ -43,7 +49,11 @@ export const ProjectTodoAssociation = Schema.Union([
 ]);
 export type ProjectTodoAssociation = typeof ProjectTodoAssociation.Type;
 export const projectTodoAssociationKey = (link: ProjectTodoAssociation) =>
-  link.kind === "session" ? link.sessionId : link.ref;
+  link.kind === "session"
+    ? `session:${link.sessionId}`
+    : link.kind === "subagent"
+      ? `subagent:${JSON.stringify([link.parentSessionId, link.handleId])}`
+      : `source:${link.ref}`;
 const Associations = Schema.Array(ProjectTodoAssociation).check(
   Schema.isMaxLength(20),
   Schema.makeFilter(
@@ -58,7 +68,7 @@ export const PROJECT_TODO_AUTO_COMPLETION_RULE =
 
 /** Shared link-selection guidance for injected context and to-do mutation help. */
 export const PROJECT_TODO_LINK_GUIDANCE =
-  "Attach a few high-value, descriptively titled links when available and relevant: an existing PR/MR as the primary review destination for PR-based work; an issue/ticket for requirements or discussion; a usable preview, deployment or artifact to inspect the outcome; the exact useful report or code change/commit, especially for no-PR local merge workflows such as Cake; and the associated Cake session. Omit irrelevant or redundant links; never invent a PR/MR or create one merely to populate a to-do. Update links as work evolves, including adding a PR/MR once created. Session associations are required work (lifecycle); source links are context only and never affect automatic completion. Preserve required session associations when updating links; association updates replace the complete list.";
+  "Attach a few high-value, descriptively titled links when available and relevant: an existing PR/MR as the primary review destination for PR-based work; an issue/ticket for requirements or discussion; a usable preview, deployment or artifact to inspect the outcome; the exact useful report or code change/commit, especially for no-PR local merge workflows such as Cake; and the associated Cake session. Omit irrelevant or redundant links; never invent a PR/MR or create one merely to populate a to-do. Update links as work evolves, including adding a PR/MR once created. Use kind=subagent with its public handleId and parentSessionId to link a private worker, never its private Pi session ID. Subagent links open its existing chat/report. Subagents have no resolve lifecycle: completion, error, abort or release never automatically closes a to-do; subagent-only items require explicit done. Mixed items retain the existing all-Project-Sessions-resolved closure rule. Session associations are required work (lifecycle); source links are context only and never affect automatic completion. Preserve required session associations when updating links; association updates replace the complete list.";
 
 /** Latest open→done transition. Lets a stale `state: "done"` edit that raced only this
  * completion still apply its other fields, while any later edit remains a conflict. */
@@ -217,6 +227,7 @@ interface ProjectTodoContextData {
     statusPreview: string;
     revision: number;
     sessions?: readonly string[];
+    subagents?: readonly SubagentReference[];
   }>;
   readonly openCount?: number;
   readonly selected?: ProjectTodo | null;
@@ -226,6 +237,13 @@ interface ProjectTodoContextData {
   readonly changes?: readonly ProjectTodoUserChange[];
   readonly selection?: ProjectTodo | null;
 }
+const projectTodoSubagents = (item: Pick<ProjectTodo, "associations">) =>
+  item.associations.flatMap((link) =>
+    link.kind === "subagent"
+      ? [{ parentSessionId: link.parentSessionId, handleId: link.handleId }]
+      : [],
+  );
+
 export const projectTodoSessionIds = (item: Pick<ProjectTodo, "associations">) =>
   item.associations.flatMap((link) => (link.kind === "session" ? [link.sessionId] : []));
 
@@ -268,6 +286,7 @@ export function projectTodoBaseline(value: ProjectTodos): string {
           descriptionPreview: item.description.slice(0, 240),
           statusPreview: item.status.slice(0, 240),
           revision: item.revision,
+          ...(projectTodoSubagents(item).length ? { subagents: projectTodoSubagents(item) } : null),
           ...(projectTodoSessionIds(item).length
             ? { sessions: projectTodoSessionIds(item) }
             : null),

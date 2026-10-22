@@ -176,7 +176,12 @@ function renderSessionArtifacts(
   const view = render(
     <VirtuosoMockContext.Provider value={{ viewportHeight: 900, itemHeight: 160 }}>
       <StoreProvider store={fixture.root}>
-        <RendererRoot rootStore={fixture.root} openExternalUrl={vi.fn()} openSession={vi.fn()} />
+        <RendererRoot
+          rootStore={fixture.root}
+          openExternalUrl={vi.fn()}
+          openSession={vi.fn()}
+          openSubagent={vi.fn()}
+        />
       </StoreProvider>
     </VirtuosoMockContext.Provider>,
   );
@@ -869,7 +874,12 @@ it("does not load artifacts for unhydrated session identities restored from wind
   fixture.root.projectWorkbenchStore.showLoadedSession(ids[0]!);
   fixture.root.sessionLayoutStore.ensureSession(ids[0]!);
   const view = render(
-    <RendererRoot rootStore={fixture.root} openExternalUrl={vi.fn()} openSession={vi.fn()} />,
+    <RendererRoot
+      rootStore={fixture.root}
+      openExternalUrl={vi.fn()}
+      openSession={vi.fn()}
+      openSubagent={vi.fn()}
+    />,
   );
   try {
     expect(screen.getByText("Opening session")).toBeDefined();

@@ -199,6 +199,9 @@ export function renderArtifactReferences(
         openSession={() => {
           throw new Error("Unexpected session navigation");
         }}
+        openSubagent={() => {
+          throw new Error("Unexpected subagent navigation");
+        }}
       />
     </VirtuosoMockContext.Provider>,
   );

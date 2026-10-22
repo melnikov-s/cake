@@ -15,6 +15,12 @@ export class Project extends Model {
   settings: ProjectSettings = defaultProjectSettings();
   workflow: ProjectWorkflow = defaultProjectWorkflow();
   todos: ProjectTodos = emptyProjectTodos();
+  get selectedTodo() {
+    return this.todos.items.find(
+      (item) => item.id === this.todos.selectedId && item.state === "open",
+    );
+  }
+
   /** Live empty-list creation marker; snapshots/hydration never advance it. */
   @transient todoCreationRevision = 0;
 }

@@ -11,6 +11,7 @@ import {
   LinkIcon,
   MarkdownIcon,
   TreeIcon,
+  SparkleIcon,
 } from "../../../src/renderer/components/ui/icons";
 import { projectTodoAssociationDestination } from "../../../src/renderer/lib/project-todo-association";
 import type {
@@ -20,6 +21,11 @@ import type {
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
 const cases = [
+  {
+    title: "Subagent report",
+    ref: "cake://subagent/task/10000000-0000-4000-8000-000000000001",
+    Icon: SparkleIcon,
+  },
   { title: "Project Session", ref: "cake://session/task", Icon: TreeIcon },
   { title: "Exact report", ref: "cake://session/task?message=report%2F1", Icon: ChatIcon },
   {
@@ -56,6 +62,20 @@ it("classifies explicit session associations with the established Project Sessio
   ).toEqual({
     href: "cake://session/task",
     Icon: TreeIcon,
+  });
+});
+
+it("classifies explicit subagent associations by public handle and parent with a distinct icon", () => {
+  expect(
+    projectTodoAssociationDestination({
+      kind: "subagent",
+      parentSessionId: "task",
+      handleId: "10000000-0000-4000-8000-000000000001",
+      title: "Worker",
+    }),
+  ).toEqual({
+    href: "cake://subagent/task/10000000-0000-4000-8000-000000000001",
+    Icon: SparkleIcon,
   });
 });
 

@@ -363,7 +363,12 @@ is a refactoring signal, not precedent.
   shared conversation navigation. Backend lifecycle authority completes linked open items
   once all actual session associations are resolved (UI and tools alike). Metadata-only,
   idempotent reconciliation handles late associations and legacy open items at startup;
-  source/report links are context, not required work. Session restore never reopens items,
+  source/report links are context, not required work. First-class subagent associations use the public
+  handle plus canonical parent identity, never a private Pi session ID. They open the parent’s
+  existing worker chat/report and use a distinct type icon. Subagents have no resolve lifecycle:
+  reports, execution completion, abort and resource release do not close a subagent-only item;
+  explicitly mark it done after review. Mixed items retain the all-Project-Sessions-resolved rule.
+  Session restore never reopens items,
   and to-do completion never resolves, stops, deletes or merges sessions. ApplicationStorage
   publication drives the pane and Open count without loading/waking Project Chat.
   One metadata-index snapshot and family snapshot join a bounded page, with filename-only
@@ -375,7 +380,8 @@ is a refactoring signal, not precedent.
   still applies its other fields, while any other intervening edit stays a revision
   conflict. Selection is removable next-message
   context, never a send action. Completion clears selection atomically; reload repairs
-  stale completed selections. The pane highlight is the only pre-send indicator.
+  stale completed selections. A faint shared association cue on the selected to-do and its linked
+  session/worker rows is distinct from actual navigation selection and never navigates or wakes work.
   User context deltas coalesce in the Project record; read-only send preparation copies
   them into the existing recoverable input. A bound receipt is acknowledged only after
   Pi Durable has placed that input in originals, not on preparation or queue admission.

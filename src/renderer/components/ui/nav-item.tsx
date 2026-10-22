@@ -8,6 +8,10 @@ import {
 } from "react";
 import { cn } from "@/lib/utils";
 
+/** Advisory relationship cue, deliberately weaker than navigation selection and focus. */
+export const associationHighlightClassName =
+  "bg-sidebar-hover/35 outline outline-1 -outline-offset-1 outline-dashed outline-accent/25";
+
 export interface NavItemProps extends Omit<HTMLAttributes<HTMLDivElement>, "onClick"> {
   icon?: ReactNode;
   label: ReactNode;
@@ -15,6 +19,8 @@ export interface NavItemProps extends Omit<HTMLAttributes<HTMLDivElement>, "onCl
   badge?: ReactNode;
   trailing?: ReactNode;
   active?: boolean;
+  /** Related context, not navigation selection. Active always takes precedence. */
+  associated?: boolean;
   disabled?: boolean;
   /** Springy title movement on hover/selection and press; respects reduced motion. */
   motionFeedback?: boolean;
@@ -44,6 +50,7 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
     badge,
     trailing,
     active = false,
+    associated = false,
     disabled = false,
     motionFeedback = false,
     wholeRowAction = false,
@@ -60,11 +67,13 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
   return (
     <div
       ref={ref}
+      data-associated={associated && !active ? "true" : undefined}
       className={cn(
         "group group/nav-item flex w-full min-w-0 items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors select-none [app-region:no-drag]",
         active
           ? "bg-sidebar-active text-primary font-semibold"
           : "text-muted-foreground hover:bg-sidebar-hover hover:text-foreground",
+        associated && !active && associationHighlightClassName,
         wholeRowAction && "relative",
         wholeRowAction && !disabled && "cursor-pointer",
         disabled && "opacity-40 cursor-default hover:bg-transparent hover:text-muted-foreground",

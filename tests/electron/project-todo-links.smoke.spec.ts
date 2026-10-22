@@ -33,6 +33,51 @@ for (const theme of ["light", "dark"] as const) {
       await page.setViewportSize({ width: 1500, height: 900 });
       await scenario.prepare(page, "open");
       const panel = page.getByRole("complementary", { name: "To-do", exact: true });
+      const startup = panel.getByRole("button", { name: "Startup investigation", exact: true });
+      const navigation = panel.getByRole("button", {
+        name: "Improve project navigation",
+        exact: true,
+      });
+      const startupCue = startup.locator("..");
+      const startupSession = page.locator(
+        '.session-item[data-session-id="visual-assistant-markdown-code"]',
+      );
+      const navigationSession = page.locator(
+        '.session-item[data-session-id="visual-todo-waiting"]',
+      );
+      await expect(startupCue).toHaveAttribute("data-associated", "true");
+      await expect(startupCue).toHaveCSS("outline-style", "dashed");
+      await expect(startupSession).toHaveAttribute("data-associated", "true");
+      await expect(startupSession).toHaveCSS("outline-style", "dashed");
+      await expect
+        .poll(
+          async () =>
+            (await startupCue.evaluate((row) => getComputedStyle(row).backgroundColor)) ===
+            (await startupSession.evaluate((row) => getComputedStyle(row).backgroundColor)),
+        )
+        .toBe(true);
+      await expect(startup).not.toHaveAttribute("aria-current");
+      await startup.click();
+      await expect(startup).toHaveAttribute("aria-pressed", "false");
+      await expect(startupSession).not.toHaveAttribute("data-associated");
+      await navigation.click();
+      await expect(startupSession).not.toHaveAttribute("data-associated");
+      await expect(navigationSession).toHaveAttribute("data-associated", "true");
+      await startup.click();
+      await expect(startupSession).toHaveAttribute("data-associated", "true");
+      await expect(navigationSession).not.toHaveAttribute("data-associated");
+      await startupSession.locator(".session-row").hover();
+      await expect(startupSession).toHaveCSS("outline-style", "dashed");
+      const hover = page.locator('[data-slot="navigation-hover"]');
+      await expect(hover).toHaveAttribute("data-visible", "true");
+      await expect
+        .poll(
+          async () =>
+            (await startupSession.evaluate((row) => getComputedStyle(row).backgroundColor)) ===
+            (await hover.evaluate((layer) => getComputedStyle(layer).backgroundColor)),
+        )
+        .toBe(true);
+      await page.mouse.move(1, 1);
       const destinations = [
         ["Startup investigation session", "cake://session/visual-assistant-markdown-code"],
         [
@@ -88,6 +133,18 @@ for (const theme of ["light", "dark"] as const) {
       await expect(
         page.locator('[data-slot="transcript-item"][aria-current="true"]'),
       ).toContainText("Repository-owned visual checks");
+      // Navigation selection wins over the advisory cue without clearing the to-do context.
+      await expect(startupSession).toHaveAttribute("data-navigation-active", "true");
+      await expect(startupSession).not.toHaveAttribute("data-associated");
+      await expect(startupSession).toHaveCSS("outline-style", "none");
+      await expect(startupSession.locator(".session-row > button")).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+      await expect(page.locator('[data-slot="navigation-selection"]')).toHaveAttribute(
+        "data-visible",
+        "true",
+      );
     } finally {
       await app.close();
       await rm(directory, { recursive: true, force: true });

@@ -1,3 +1,10 @@
+import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
+import { SubagentHandleId } from "../../../src/contracts/subagents/subagent-data";
+import {
+  subagentLink,
+  parseSubagentLink,
+} from "../../../src/contracts/subagents/subagent-reference";
+import type { SubagentRecord } from "../../../src/services/storage/SubagentStorage";
 import { it } from "@effect/vitest";
 import { expect } from "vitest";
 import { Deferred, Effect, Fiber, Layer, Schema, Stream } from "effect";
@@ -28,7 +35,7 @@ const root = "00000000-0000-4000-8000-000000000033";
 const directory = sessionDirectoryPath({ workingDirectory: project, root: "/sessions" });
 const link = (sessionId: string) => ({ kind: "session" as const, sessionId, title: "Work" });
 
-function fixture() {
+function fixture(workers: readonly SubagentRecord[] = []) {
   let state = defaultApplicationState();
   const resolved = new Set<string>();
   const reads = { index: 0, family: 0, identities: 0, writes: 0 };
@@ -46,7 +53,9 @@ function fixture() {
   );
   const layer = Layer.mergeAll(
     app,
+    makeSubagentStorageTestLayer(workers),
     Layer.mock(SessionArchiveStorage, {
+      resolvedProjects: () => Stream.empty,
       resolutionSnapshot: () =>
         Effect.sync(() => {
           reads.index++;
@@ -99,6 +108,152 @@ function fixture() {
   );
   return { layer, resolved, reads };
 }
+
+const worker: SubagentRecord = {
+  handleId: SubagentHandleId.make("10000000-0000-4000-8000-000000000001"),
+  privateSessionId: "private-pi-session",
+  parentSessionId: a,
+  parentProfile: "ProjectSession",
+  parentWorkingDirectory: project,
+  parentSessionDirectory: directory,
+  anchorPartId: "worker-start",
+  workingDirectory: project,
+  projectPath: project,
+  task: "Investigate",
+  allowMutations: false,
+  resolvedModel: {
+    requested: "current",
+    source: "current",
+    provider: "test",
+    modelId: "test",
+    thinkingLevel: "off",
+    fallbacks: [],
+  },
+  fastMode: false,
+  tools: ["read"],
+  inputReferences: [],
+  messageReferences: [],
+  notifyOnCompletion: false,
+  completionId: "completion",
+  completionDisposition: "notified",
+  status: "complete",
+  pendingInputs: [],
+};
+
+it.effect(
+  "validates public subagent handles, canonical parent identity and project ownership without acquiring workers",
+  () => {
+    const f = fixture([worker]);
+    return Effect.gen(function* () {
+      yield* upsertProject(project, "Project");
+      const association = {
+        kind: "subagent" as const,
+        parentSessionId: "00000011",
+        handleId: worker.handleId,
+        title: "Investigation worker",
+      };
+      const item = yield* controls.create(project, {
+        title: "Investigate",
+        description: "Review the findings.",
+        associations: [association],
+      });
+      expect(item.associations).toEqual([{ ...association, parentSessionId: a }]);
+      const ref = subagentLink(a, worker.handleId);
+      expect(parseSubagentLink(ref)).toEqual({ parentSessionId: a, handleId: worker.handleId });
+      expect(parseSubagentLink(subagentLink(a, worker.privateSessionId))).toBeUndefined();
+      const source = yield* controls.update(project, {
+        id: item.id,
+        expectedRevision: 0,
+        associations: [
+          association,
+          {
+            kind: "source",
+            ref: subagentLink("00000011", worker.handleId),
+            title: "Worker report",
+          },
+        ],
+      });
+      expect(source.associations[1]).toEqual({ kind: "source", ref, title: "Worker report" });
+      for (const bad of [
+        { ...association, parentSessionId: b },
+        { ...association, handleId: SubagentHandleId.make("10000000-0000-4000-8000-000000000099") },
+        { ...association, handleId: worker.privateSessionId },
+      ]) {
+        expect(
+          (yield* controls
+            .create(project, { title: "Bad", description: "Invalid.", associations: [bad] })
+            .pipe(Effect.result))._tag,
+        ).toBe("Failure");
+      }
+      yield* upsertProject("/other", "Other");
+      expect(
+        (yield* controls
+          .create("/other", {
+            title: "Bad project",
+            description: "Invalid.",
+            associations: [association],
+          })
+          .pipe(Effect.result))._tag,
+      ).toBe("Failure");
+      // A complete report is not resolution. Mixed work retains existing session closure semantics.
+      yield* completeLinked(project);
+      expect((yield* todos.read(project, item.id)).state).toBe("open");
+      const mixed = yield* todos.create(project, {
+        title: "Mixed work",
+        description: "Review.",
+        associations: [{ ...association, parentSessionId: a }, link(a)],
+      });
+      f.resolved.add(a);
+      yield* completeLinked(project);
+      expect((yield* todos.read(project, mixed.id)).state).toBe("done");
+      expect((yield* todos.read(project, item.id)).state).toBe("open");
+    }).pipe(Effect.provide(f.layer));
+  },
+);
+
+it.effect(
+  "Cake tools accept subagent associations and return canonical identities while rejecting private IDs",
+  () => {
+    const f = fixture([worker]);
+    return Effect.gen(function* () {
+      yield* upsertProject(project, "Project");
+      const context = yield* Effect.context<Layer.Success<typeof f.layer>>();
+      const run = <A, E>(effect: Effect.Effect<A, E, Layer.Success<typeof f.layer>>) =>
+        Effect.runPromise(effect.pipe(Effect.provide(context)));
+      const registry = new CakeOperationRegistry(
+        createProjectTodoOperations({
+          list: (input) => run(controls.list(project, input)),
+          read: (id) => run(controls.read(project, id)),
+          create: (input) => run(controls.create(project, input)),
+          update: (input) => run(controls.update(project, input)),
+          updateMany: (input) => run(controls.updateMany(project, input)),
+        }),
+      );
+      const execute = (handleId: string) =>
+        registry.invoke(
+          {
+            command: "todos.create",
+            input: {
+              title: "Review worker",
+              description: "Review the report.",
+              detail: true,
+              associations: [
+                { kind: "subagent", parentSessionId: "00000011", handleId, title: "Investigator" },
+              ],
+            },
+          },
+          { signal: new AbortController().signal, toolCallId: "test", runtime: {} },
+        );
+      const result = yield* Effect.promise(() => execute(worker.handleId));
+      expect(JSON.stringify(result.structuredContent)).toContain(`"parentSessionId":"${a}"`);
+      expect(JSON.stringify(result.structuredContent)).toContain('"kind":"subagent"');
+      expect(
+        (yield* Effect.tryPromise(() => execute(worker.privateSessionId)).pipe(Effect.result))._tag,
+      ).toBe("Failure");
+      expect((yield* todos.list(project)).items).toHaveLength(1);
+    }).pipe(Effect.provide(f.layer));
+  },
+);
 
 it.effect(
   "one bounded joined page reads one lifecycle index/family snapshot, no per-item content or runtime inspection",
