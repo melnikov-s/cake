@@ -614,14 +614,16 @@ export async function createCakeSessionRuntime(
     if (
       event.type === "message_end" &&
       event.message.role === "assistant" &&
-      event.message.stopReason === "aborted"
+      (event.message.stopReason === "aborted" || event.message.stopReason === "error")
     ) {
       const presentation = abortPresentation();
+      // Aborting during a tool makes Pi's follow-up request end as `error` ("This operation
+      // was aborted"). Only a handoff claims that ending; a stop keeps today's presentation.
       if (presentation.kind === "handoff")
         session.sessionManager.appendCustomEntry(turnHandoffEntryType, {
           timestamp: event.message.timestamp,
         });
-      else if (presentation.kind === "stopped")
+      else if (presentation.kind === "stopped" && event.message.stopReason === "aborted")
         session.sessionManager.appendCustomEntry(turnStopEntryType, {
           timestamp: event.message.timestamp,
           stop: presentation.stop,

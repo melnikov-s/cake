@@ -11,6 +11,7 @@ import {
   type CakeSessionRuntimeEvent,
 } from "../../src/services/pi/runtime/cake-session-runtime";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
+import type { UiPart } from "../../src/contracts/conversations/session-contract";
 
 const temporaryDirectories: string[] = [];
 const servers: Server[] = [];
@@ -621,4 +622,127 @@ describe("response retry and recovery", () => {
       ),
     ).toEqual([]);
   });
+});
+
+describe("send-now handoff presentation", () => {
+  const failures = (parts: readonly UiPart[]) =>
+    parts.flatMap((part) =>
+      part.kind === "notice" && part.title === "Model request failed" ? [part.detail] : [],
+    );
+
+  /** Starts a turn whose bash tool is still running, the window where Pi's abort surfaces as an `error` stop. */
+  async function runningTool(replacement: "answers" | "fails") {
+    const directory = await createTemporaryDirectory();
+    await registerFixtureProvider(directory, (index, response) => {
+      if (index === 1) {
+        response.writeHead(200, { "content-type": "text/event-stream" });
+        response.write(
+          sseChunk({
+            role: "assistant",
+            tool_calls: [
+              {
+                index: 0,
+                id: "call_sleep",
+                type: "function",
+                function: { name: "bash", arguments: JSON.stringify({ command: "sleep 30" }) },
+              },
+            ],
+          }),
+        );
+        response.write(sseChunk({}, "tool_calls"));
+        response.end("data: [DONE]\n\n");
+        return;
+      }
+      if (replacement === "fails") {
+        response.writeHead(400, { "content-type": "application/json" });
+        response.end(JSON.stringify({ error: { message: "Invalid fixture request" } }));
+        return;
+      }
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.write(sseChunk({ role: "assistant", content: "Replacement done." }));
+      response.write(sseChunk({}, "stop"));
+      response.end("data: [DONE]\n\n");
+    });
+    const { runtime, onEvent } = await createFixtureRuntime(directory);
+    const active = runtime.prompt("Start work", "prompt", []).catch((error: unknown) => error);
+    await vi.waitFor(
+      async () =>
+        expect(
+          (await runtime.snapshot()).parts.some(
+            (part) => part.kind === "tool" && part.state === "running",
+          ),
+        ).toBe(true),
+      { timeout: 5_000 },
+    );
+    return { directory, runtime, onEvent, active };
+  }
+
+  async function sendNow(runtime: CakeSessionRuntime) {
+    const replacement = runtime.prompt("Replacement", "follow-up", []).catch(() => undefined);
+    let queuedId = "";
+    await vi.waitFor(async () => {
+      const queued = (await runtime.snapshot()).parts.find(
+        (part) => part.kind === "text" && part.deliveryState === "queued",
+      );
+      expect(queued).toBeDefined();
+      queuedId = queued!.id;
+    });
+    await runtime.sendQueuedMessageNow(queuedId);
+    await replacement;
+  }
+
+  it("hides the aborted request a send-now replaced, live and after reopen", async () => {
+    const { directory, runtime, onEvent, active } = await runningTool("answers");
+    await sendNow(runtime);
+    await active;
+
+    const stored = SessionManager.open(runtime.sessionFile).getBranch();
+    // The abort reached Pi's next request and surfaced as an `error` stop, not `aborted`.
+    expect(stored).toContainEqual(
+      expect.objectContaining({
+        message: expect.objectContaining({ role: "assistant", stopReason: "error" }),
+      }),
+    );
+    const parts = (await runtime.snapshot()).parts;
+    expect(failures(parts)).toEqual([]);
+    expect(parts.filter((part) => part.kind === "text").map((part) => part.text)).toEqual([
+      "Start work",
+      "Replacement",
+      "Replacement done.",
+    ]);
+    expect(
+      onEvent.mock.calls.some(
+        ([event]) => event?.type === "part-updated" && event.part?.title === "Model request failed",
+      ),
+    ).toBe(false);
+
+    await runtime.dispose();
+    const reopened = await createCakeSessionRuntime({
+      cwd: directory,
+      agentDir: join(directory, "agent"),
+      sessionDir: join(directory, "sessions"),
+      sessionId: runtime.sessionId,
+      trusted: true,
+      requestUi: async () => undefined,
+      onEvent: () => undefined,
+    });
+    runtimes.push(reopened);
+    expect(failures((await reopened.snapshot()).parts)).toEqual([]);
+  }, 15_000);
+
+  it("keeps showing the aborted request after an explicit Stop", async () => {
+    const { runtime, active } = await runningTool("answers");
+    await runtime.abort({ by: "user" });
+    await active;
+    expect(failures((await runtime.snapshot()).parts)).toEqual(["This operation was aborted"]);
+  }, 15_000);
+
+  it("still shows a genuine provider error from the replacement request", async () => {
+    const { runtime, active } = await runningTool("fails");
+    await sendNow(runtime);
+    await active;
+    const shown = failures((await runtime.snapshot()).parts);
+    expect(shown).toHaveLength(1);
+    expect(shown[0]).toContain("Invalid fixture request");
+  }, 15_000);
 });

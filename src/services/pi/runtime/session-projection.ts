@@ -59,7 +59,8 @@ const turnStopEntrySchema = Schema.Struct({ timestamp: Schema.Number, stop: Turn
 
 /**
  * How an aborted assistant message reads. `interrupted` is an unexpected cut-off and keeps the
- * failure presentation; a handoff hides it; a deliberate stop shows a neutral notice.
+ * failure presentation; a handoff hides it (even when the abort surfaced as an `error` stop);
+ * a deliberate stop shows a neutral notice.
  */
 export type AbortPresentation =
   | { readonly kind: "interrupted" }
@@ -536,8 +537,12 @@ function partsFromMessage(
             cacheWriteTokens: tokenCount("cacheWrite"),
           }
         : undefined;
+    const stopReason = Reflect.get(message, "stopReason");
+    // A send-now handoff also hides the `error` a run can end with when the abort lands
+    // between a cancelled tool and the next request: the handoff caused it.
     const deliberateAbort =
-      Reflect.get(message, "stopReason") === "aborted" && abortPresentation.kind !== "interrupted";
+      (stopReason === "aborted" && abortPresentation.kind !== "interrupted") ||
+      (stopReason === "error" && abortPresentation.kind === "handoff");
     const takeResponse = () => {
       const current = response;
       response = undefined;

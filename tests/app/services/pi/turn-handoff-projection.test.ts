@@ -73,11 +73,26 @@ describe("Intentional send-now handoff presentation", () => {
     expect(projectSessionEntries(entries("", false))).toEqual([
       expect.objectContaining({ title: "Model request failed", detail: "Request was aborted" }),
     ]);
-    const failed = entries("", true);
-    const entry = failed[0]!;
-    if (entry.type === "message" && entry.message.role === "assistant")
-      entry.message.stopReason = "error";
-    expect(projectSessionEntries(failed)).toEqual([expect.objectContaining({ tone: "error" })]);
+  });
+  it("hides the error stop an abort during a tool surfaces, only for a handoff", () => {
+    const abortedRequest = { ...assistant(), stopReason: "error" as const };
+    abortedRequest.errorMessage = "This operation was aborted";
+    expect(
+      createLiveMessageProjector({ abortPresentation: () => ({ kind: "handoff" }) })({
+        type: "message_end",
+        message: abortedRequest,
+      }),
+    ).toEqual([]);
+    const persisted = (handoff: boolean) => {
+      const projected = entries("", handoff);
+      const entry = projected[0]!;
+      if (entry.type === "message") entry.message = abortedRequest;
+      return projectSessionEntries(projected);
+    };
+    expect(persisted(true)).toEqual([]);
+    expect(persisted(false)).toEqual([
+      expect.objectContaining({ tone: "error", detail: "This operation was aborted" }),
+    ]);
   });
 });
 
