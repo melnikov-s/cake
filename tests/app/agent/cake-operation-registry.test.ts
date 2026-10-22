@@ -128,6 +128,38 @@ describe("Cake operation registry", () => {
     expect(missing.text).not.toContain("widgets —");
   });
 
+  it("names commonly requested capabilities in the top-level topic index", () => {
+    const fixture = (command: string, topic: string): CakeOperationDefinition => ({
+      command,
+      topic,
+      summary: "Fixture.",
+      inputSchema: Schema.Struct({}),
+      examples: [],
+      result: "Fixture.",
+      execute: async () => null,
+    });
+    const lines = new CakeOperationRegistry([
+      fixture("app.state", "app"),
+      fixture("projects.list", "projects"),
+      fixture("sessions.schedule", "sessions"),
+      fixture("models.list", "models"),
+      fixture("settings.list", "settings"),
+      fixture("worktrees.merge", "worktrees"),
+    ])
+      .help()
+      .split("\n");
+    const line = (topic: string) => lines.find((entry) => entry.startsWith(`${topic} — `)) ?? "";
+    expect(line("sessions")).toMatch(/schedule \(one-off or recurring .*check-ins\)/);
+    expect(line("sessions")).toContain("fork");
+    expect(line("app")).toContain("split panes");
+    expect(line("app")).toContain("highlighted text");
+    expect(line("projects")).toContain("configure");
+    expect(line("models")).toContain("session.set-model");
+    expect(line("settings")).toContain("MCP servers");
+    expect(line("settings")).toContain("provider logins");
+    expect(line("worktrees")).toContain("discard");
+  });
+
   it("discloses a deterministic selection catalog before the exact contract", async () => {
     const available = registry();
     const first = await available.invoke({ command: "context" }, context());

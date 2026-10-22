@@ -450,7 +450,9 @@ describe("Backend-owned Cake operation composition", () => {
       }),
     );
     expect(registry.definitions().map((operation) => operation.command)).toEqual(commands);
-    expect(registry.help()).toContain("projects — List, register (add), rename, and remove");
+    expect(registry.help()).toContain(
+      "projects — List, register (add), rename, configure, and remove",
+    );
     const help = registry.operationHelp("projects.add");
     expect(help).toContain("delegate it to an allowMutations worker first");
     expect(help).toContain("alreadyRegistered");

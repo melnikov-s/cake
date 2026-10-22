@@ -64,14 +64,19 @@ interface CakeTopicDefinition {
 }
 
 const cakeTopics = [
-  { name: "app", summary: "Inspect and arrange the Cake application." },
+  {
+    name: "app",
+    summary:
+      "Inspect and arrange the Cake window (layout, split panes) and read the user's highlighted text.",
+  },
   {
     name: "projects",
-    summary: "List, register (add), rename, and remove the Projects in Cake's sidebar.",
+    summary: "List, register (add), rename, configure, and remove the Projects in Cake's sidebar.",
   },
   {
     name: "sessions",
-    summary: "Create, inspect, message, steer, stop, and manage sessions.",
+    summary:
+      "Create, fork, inspect, message, steer, stop, schedule (one-off or recurring messages, reminders and check-ins), and manage sessions.",
     guidance: [
       "Target sessions by canonical ID or bare trailing hex (at least 8 characters). Emitted references use the shortest unique suffix (normally 8); unknown or ambiguous references fail before routing. Titles are labels, not routing identities.",
     ],
@@ -88,11 +93,16 @@ const cakeTopics = [
       "Discover compact Project Chat commitments, join lifecycle metadata, and commit revision-checked edits.",
   },
   { name: "context", summary: "Inspect context use or compact the current session." },
-  { name: "models", summary: "Discover and inspect configured model presets." },
+  {
+    name: "models",
+    summary:
+      "Discover configured model presets and pick image/classifier models; switch this session's model with session.set-model.",
+  },
   { name: "session-labels", summary: "Discover and manage session labels." },
   {
     name: "settings",
-    summary: "Inspect and configure Cake/Pi Settings through their existing authorities.",
+    summary:
+      "Inspect and configure Cake/Pi Settings, including model presets, provider logins, MCP servers, appearance, hotkeys, voice and dictation.",
     guidance: ["Start with settings.list (categories), then settings.list {category}."],
   },
   { name: "interview", summary: "Gather requirements through structured user interviews." },
@@ -129,7 +139,7 @@ const cakeTopics = [
   {
     name: "worktrees",
     summary:
-      "Land (merge) Cake-managed worktrees through Cake's native landing flow, or complete an active landing.",
+      "Land (merge) Cake-managed worktrees through Cake's native landing flow, complete an active landing, or discard a worktree.",
   },
 ] as const satisfies readonly CakeTopicDefinition[];
 

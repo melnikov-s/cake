@@ -767,7 +767,10 @@ describe("Discussion Sessions domain", () => {
           sidecar.additionalSystemPrompt ?? "",
           /standard read, search, edit, write, and shell tools/,
         );
-        assert.match(sidecar.additionalSystemPrompt ?? "", /sessions — Create, inspect, message/);
+        assert.match(
+          sidecar.additionalSystemPrompt ?? "",
+          /sessions — Create, fork, inspect, message/,
+        );
         assert.match(sidecar.additionalSystemPrompt ?? "", /<operation>\.help supplies input/);
         assert.deepEqual(fixture.modelSelections.at(-1), {
           provider: "google",
