@@ -23,12 +23,12 @@ afterEach(() => {
 // These prove real renderer policy, payloads and content. Native Escape, selection,
 // image paste and fullscreen/focus remain covered by the existing Electron suites.
 describe("Chat composition", () => {
-  it("steers a new correction without stopping the active response, then restores Stop", async () => {
+  it("queues a new draft instead of stopping the active response, then restores Stop", async () => {
     const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () => turnId);
     const abort = vi.fn<Client["sessionChats"]["abort"]>(async () => undefined);
     using fixture = renderChatSurface({
       snapshot: { streaming: true },
-      client: { sessionChats: { steer: prompt, abort } },
+      client: { sessionChats: { prompt, abort } },
     });
     expect(screen.getByRole("button", { name: "Stop" })).toBeDefined();
     expect(screen.getByLabelText("Churning in progress")).toBeDefined();

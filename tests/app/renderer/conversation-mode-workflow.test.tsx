@@ -129,7 +129,7 @@ function fixture(
         setSpeed,
         listVoices: async () => [{ id: "voice", name: "Fixture voice" }],
       },
-      sessionChats: { prompt, steer: prompt, abort },
+      sessionChats: { prompt, abort },
       workspaces: { postProcessDictation: options.postProcess ?? (async (text) => text) },
     },
   });
@@ -1017,7 +1017,7 @@ describe("Project Session conversation mode", () => {
     ]);
     expect(draft.text).toBe("");
   });
-  it("a busy agent retains its tools and receives immediate spoken corrections through steering", async () => {
+  it("a busy agent retains its tools and receives spoken input through its existing follow-up queue", async () => {
     using f = fixture({ streaming: true });
     await f.enter();
     await f.say();

@@ -83,6 +83,62 @@ describe.each(["project", "cake-chat"] as const)("%s shared conversation lifecyc
     expect(input.value).toBe("Rough wording");
   });
 
+  it("queues a busy Enter send first, then repeated Enter steers it and finally sends it now", async () => {
+    const queued = queuedUserPart("Correction");
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () => {
+      fixture.publish({ parts: [workingAssistantPart, queued] });
+      return TurnId.make("10000000-0000-4000-8000-000000000001");
+    });
+    const steer = vi.fn<Client["sessionChats"]["steer"]>();
+    const steerQueuedMessage = vi.fn<Client["sessionChats"]["steerQueuedMessage"]>(async () => {
+      fixture.publish({ parts: [workingAssistantPart, { ...queued, deliveryState: "steering" }] });
+      return { steering: [], followUp: [] };
+    });
+    const sendQueuedMessageNow = vi.fn<Client["sessionChats"]["sendQueuedMessageNow"]>(async () => {
+      fixture.publish({ parts: [workingAssistantPart] });
+      return { steering: [], followUp: [] };
+    });
+    using fixture = renderConversationSession(
+      profile,
+      { sessionChats: { prompt, steer, steerQueuedMessage, sendQueuedMessageNow } },
+      [workingAssistantPart],
+    );
+    expect(screen.getByRole("button", { name: "Stop" })).toBeDefined();
+    const input = screen.getByRole<HTMLTextAreaElement>("combobox", { name: fixture.inputLabel });
+    await fixture.user.type(input, "Correction");
+    await fixture.user.keyboard("{Enter}");
+    await waitFor(() =>
+      expect(prompt).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ sessionId: fixture.sessionId, text: "Correction" }),
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      ),
+    );
+    expect(
+      await screen.findByRole("button", { name: "View queued message: Correction" }),
+    ).toBeDefined();
+    expect(steerQueuedMessage).not.toHaveBeenCalled();
+    await fixture.user.keyboard("{Enter}");
+    await waitFor(() =>
+      expect(steerQueuedMessage).toHaveBeenCalledExactlyOnceWith(
+        { sessionId: fixture.sessionId, partId: "queued-part" },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      ),
+    );
+    expect(
+      await screen.findByRole("button", { name: "Cancel steering: Correction" }),
+    ).toBeDefined();
+    expect(sendQueuedMessageNow).not.toHaveBeenCalled();
+    await fixture.user.keyboard("{Enter}");
+    await waitFor(() =>
+      expect(sendQueuedMessageNow).toHaveBeenCalledExactlyOnceWith(
+        { sessionId: fixture.sessionId, partId: "queued-part" },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      ),
+    );
+    expect(prompt).toHaveBeenCalledOnce();
+    expect(steer).not.toHaveBeenCalled();
+  });
+
   it("steers the first queued prompt from the empty Chat input, then stops and sends that steering head without sending a fresh prompt", async () => {
     const first = queuedUserPart("First queued prompt");
     const later = {
@@ -260,7 +316,7 @@ describe.each(["project", "cake-chat"] as const)("%s shared conversation lifecyc
     expect(screen.queryByRole("list", { name: "Queued prompts" })).toBeNull();
     expect(removeQueuedMessage).toHaveBeenCalledTimes(2);
     await fixture.user.type(input(), " again");
-    await fixture.user.click(screen.getByRole("button", { name: "Queue for later" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
     expect(prompt).toHaveBeenCalledWith(
       expect.objectContaining({

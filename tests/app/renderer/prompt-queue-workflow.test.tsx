@@ -15,7 +15,7 @@ function queuedTexts() {
 }
 async function enqueue(fixture: ReturnType<typeof renderQueue>, text: string) {
   await fixture.user.type(screen.getByRole("combobox"), text);
-  await fixture.user.click(screen.getByRole("button", { name: "Queue for later" }));
+  await fixture.user.click(screen.getByRole("button", { name: "Send" }));
 }
 afterEach(cleanup);
 
@@ -55,7 +55,7 @@ describe("Prompt queue workflow", () => {
       await fixture.user.click(screen.getByRole("combobox"));
       await fixture.user.paste(log);
       await fixture.user.type(screen.getByRole("combobox"), text);
-      await fixture.user.click(screen.getByRole("button", { name: "Queue for later" }));
+      await fixture.user.click(screen.getByRole("button", { name: "Send" }));
       expect(prompt).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({
           text,
@@ -286,7 +286,7 @@ describe("Prompt queue workflow", () => {
     expect(screen.getByAltText("diagram.png")).toBeDefined();
     expect(queuedTexts()).toEqual(["Second"]);
     await fixture.user.type(screen.getByRole("combobox"), " revised");
-    await fixture.user.click(screen.getByRole("button", { name: "Queue for later" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
     expect(prompt).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -386,7 +386,7 @@ describe("Prompt queue workflow", () => {
     expect(await screen.findByText("Runtime unavailable")).toBeDefined();
     expect(screen.getByRole<HTMLTextAreaElement>("combobox").value).toBe("Retry this");
     expect(queuedTexts()).toEqual(["First"]);
-    await fixture.user.click(screen.getByRole("button", { name: "Queue for later" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(queuedTexts()).toEqual(["First", "Retry this"]));
     expect(prompt).toHaveBeenCalledTimes(2);
     await fixture.user.click(screen.getByRole("button", { name: "Move up: Retry this" }));
