@@ -316,6 +316,8 @@ export const uiPartSchema = Schema.Union([
     entryId: Schema.optional(stringRange(1, 256)),
     /** Presentation identity shared by a live streamed part and its settled durable projection. */
     renderKey: Schema.optional(stringRange(1, 256)),
+    /** Assistant message request time, shared by its live and settled projections. */
+    requestedAt: Schema.optional(Schema.Number.check(Schema.isGreaterThanOrEqualTo(0))),
     text: boundedText,
     status: Schema.Literals(["streaming", "complete", "error"]),
     renderAs: Schema.optional(Schema.Literal("markdown")),

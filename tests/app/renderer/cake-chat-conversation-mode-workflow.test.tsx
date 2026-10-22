@@ -11,6 +11,7 @@ import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
 import type { Microphone } from "../../../src/renderer/dictation/microphone";
 import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";
+import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
 import type { SpeechPlayback } from "../../../src/renderer/speech/playback";
 import { detectFixtureSpeech } from "../../helpers/speech-detection";
 import { speechOutputSettings } from "../../helpers/speech-output";
@@ -188,6 +189,55 @@ it("Cake Chat speaks only new assistant prose after spoken input, never its hist
   ]);
   await waitFor(() => expect(f.synthesize).toHaveBeenCalledOnce());
   expect(f.synthesize.mock.calls[0]?.[0]).toEqual({ text: "Two sessions are running." });
+});
+
+it("Cake Chat speaks a fast reply first published as its settled original, never older loaded history", async () => {
+  using f = cakeChatVoiceFixture();
+  await f.enter();
+  await f.say();
+  await waitFor(() => expect(f.prompt).toHaveBeenCalledOnce());
+  const now = Date.now();
+  const reply = (text: string, timestamp: number) => ({
+    role: "assistant" as const,
+    // Reasoning precedes the prose, so only the reasoning part carries cache `response` data.
+    content: [
+      { type: "thinking" as const, thinking: "Checking sessions." },
+      { type: "text" as const, text },
+    ],
+    api: "anthropic-messages" as const,
+    provider: "anthropic",
+    model: "fixture",
+    timestamp,
+    stopReason: "stop" as const,
+    usage: {
+      input: 1,
+      output: 1,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 2,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+  });
+  const entry = (id: string, message: { timestamp: number } & Record<string, unknown>) =>
+    ({
+      type: "message",
+      id,
+      parentId: null,
+      timestamp: new Date(message.timestamp).toISOString(),
+      message,
+    }) as Parameters<typeof projectSessionEntries>[0][number];
+  const input = entry("2", { role: "user", content: "What is running right now", timestamp: now });
+  const answer = entry("3", reply("Two sessions are running.", now + 1));
+  // Durable publishes whole snapshots; a fast reply may never appear as a live preview.
+  f.publish(projectSessionEntries([input, answer]));
+  await waitFor(() => expect(f.synthesize).toHaveBeenCalledOnce());
+  expect(f.synthesize.mock.calls[0]?.[0]).toEqual({ text: "Two sessions are running." });
+  // An older page loaded above the current turn is history requested before entry.
+  f.publish(
+    projectSessionEntries([entry("1", reply("An older answer.", now - 60_000)), input, answer]),
+  );
+  await act(async () => {});
+  expect(f.synthesize).toHaveBeenCalledOnce();
 });
 
 it("typed Cake Chat turns carry voice style only while voice mode is active", async () => {

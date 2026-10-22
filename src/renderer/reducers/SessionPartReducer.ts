@@ -32,6 +32,7 @@ export function messageSnapshots(
         piId: entryId,
         // Reused Models need an explicit reset when JSON omits presentation metadata.
         renderAs: part.renderAs,
+        requestedAt: part.requestedAt,
         // SAFETY: runtime-validated JSON; Snapshot distributes heterogeneous
         // JSON arrays into homogeneous arrays, but its codec preserves them.
         subagentReport: subagentReport as Snapshot<Message>["subagentReport"],

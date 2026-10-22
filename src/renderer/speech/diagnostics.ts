@@ -31,6 +31,7 @@ interface VoiceDiagnosticMetadata {
   state?: string;
   phase?: string;
   status?: string;
+  decision?: string;
   characters?: number;
   phrases?: number;
   chunks?: number;

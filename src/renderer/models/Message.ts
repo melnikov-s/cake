@@ -29,6 +29,7 @@ export class Message extends Model {
   /** Pi entry identity, when the display part carries one. */
   piId: string | undefined;
   renderKey: string | undefined;
+  requestedAt: number | undefined;
   text: string | undefined;
   content: string | undefined;
   status: PartStatus | undefined;
@@ -95,6 +96,7 @@ export class Message extends Model {
         this.role = part.role;
         this.piId = part.entryId;
         this.renderKey = part.renderKey;
+        this.requestedAt = part.requestedAt;
         this.text = part.text;
         this.status = part.status;
         this.deliveryState = part.deliveryState;
@@ -208,6 +210,7 @@ export class Message extends Model {
           role: this.role!,
           entryId: this.piId,
           renderKey: this.renderKey,
+          requestedAt: this.requestedAt,
           text: this.text!,
           status: this.status as TextStatus,
           deliveryState: this.deliveryState,

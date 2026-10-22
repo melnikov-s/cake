@@ -125,6 +125,8 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
   private users = new Set<string>();
   private liveReplies = new Set<string>();
   private outputEligible = false;
+  /** Wall-clock entry time; assistant messages requested later are new replies, not history. */
+  private enteredAt = Number.POSITIVE_INFINITY;
   private utterance: Utterance | undefined;
   private recognitionRunning = false;
   private finalizing: Utterance[] = [];
@@ -180,6 +182,7 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
     if (this.signal.aborted || !this.enabled) return false;
     const revision = ++this.revision;
     this.phase = "preparing";
+    this.enteredAt = Date.now();
     this.sessionId = target.sessionId;
     this.target = target;
     this.preferences = this.props.preferences.values;
@@ -649,22 +652,34 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       if (part.kind !== "text" || part.role !== "assistant") continue;
       const key = part.renderKey ?? part.id;
       const offset = this.cursors.get(key) ?? 0;
-      if (this.phase === "active" && !this.cursors.has(key))
-        recordVoiceDiagnostic("reply", {
-          status: part.status,
-          characters: part.text.length,
-          state: this.outputEligible ? "eligible" : "ineligible",
-        });
-      // Live completed messages have no durable entryId. A fast reply can reach
-      // us only as complete after projection coalescing; it is still a new reply.
-      // Durable history/reconnection snapshots and parts present at entry stay sealed.
+      const firstSeen = !this.cursors.has(key);
+      // A fast reply can first reach us already complete: plain Pi's live
+      // message_end has no entryId, and a Durable runtime may publish only the
+      // settled original. Either is new when requested after entry. Older
+      // history, reconnection snapshots and parts present at entry stay sealed.
       if (
         this.phase === "active" &&
         this.outputEligible &&
         (part.status === "streaming" ||
-          (part.status === "complete" && !part.entryId && !this.cursors.has(key)))
+          (part.status === "complete" &&
+            firstSeen &&
+            (!part.entryId || (part.requestedAt ?? -1) >= this.enteredAt)))
       )
         this.liveReplies.add(key);
+      if (this.phase === "active" && firstSeen)
+        recordVoiceDiagnostic("reply", {
+          status: part.status,
+          characters: part.text.length,
+          state: this.outputEligible ? "eligible" : "ineligible",
+          decision:
+            part.status === "error"
+              ? "error"
+              : !this.outputEligible
+                ? "ineligible"
+                : this.liveReplies.has(key)
+                  ? "speak"
+                  : "sealed-history",
+        });
       if (part.status === "complete" && !this.liveReplies.has(key)) {
         this.cursors.set(key, part.text.length);
         continue;

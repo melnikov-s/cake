@@ -566,6 +566,11 @@ function partsFromMessage(
               typeof requestedAt === "number" && Number.isFinite(requestedAt)
                 ? `assistant-${requestedAt}-text-${index}`
                 : undefined,
+            // Unlike `response`, every text part carries this, even after reasoning or tools.
+            requestedAt:
+              typeof requestedAt === "number" && Number.isFinite(requestedAt) && requestedAt >= 0
+                ? requestedAt
+                : undefined,
             text,
             status: streaming
               ? "streaming"
