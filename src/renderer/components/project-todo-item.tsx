@@ -27,7 +27,6 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
     <li data-todo-id={item.id}>
       <NavItem
         wholeRowAction
-        motionFeedback
         associated={selected}
         aria-busy={store.busy}
         actionProps={{
@@ -38,7 +37,12 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
         onClick={() => void store.select(item)}
         className="flex-wrap items-start gap-y-0 px-3 py-3 text-[13px] leading-relaxed"
         label={
-          <span className={cn("font-medium", item.state === "done" && "text-muted-foreground")}>
+          <span
+            className={cn(
+              "font-medium",
+              item.state === "done" ? "text-muted-foreground" : "text-foreground",
+            )}
+          >
             {item.title}
           </span>
         }
