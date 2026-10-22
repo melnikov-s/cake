@@ -2,6 +2,30 @@ import { Schema } from "effect";
 import { editorRevealOutcomeSchema } from "./editor-location";
 import { gitRevisionSchema, sourceLocationSchema, sourceRangeSchema } from "./source-location";
 
+/** Exact document identity and exclusive-end range captured from a native diff. */
+export const EditorDiffDocument = Schema.Struct({
+  uri: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(32_768)),
+  side: Schema.Literals(["before", "after"]),
+  range: Schema.Struct({
+    start: Schema.Struct({
+      line: sourceRangeSchema.fields.start.fields.line,
+      column: sourceRangeSchema.fields.start.fields.line,
+    }),
+    end: Schema.Struct({
+      line: sourceRangeSchema.fields.start.fields.line,
+      column: sourceRangeSchema.fields.start.fields.line,
+    }),
+  }),
+});
+export interface EditorDiffDocument extends Schema.Schema.Type<typeof EditorDiffDocument> {}
+
+/** Diff text must come from its TextDocument, never from working-tree line ranges. */
+export const EditorDiffSelection = Schema.Struct({
+  document: EditorDiffDocument,
+  selectedText: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(48_000)),
+});
+export interface EditorDiffSelection extends Schema.Schema.Type<typeof EditorDiffSelection> {}
+
 export const EditorSelectionId = Schema.String.check(
   Schema.isMinLength(1),
   Schema.isMaxLength(128),

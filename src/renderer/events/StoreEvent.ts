@@ -1,3 +1,4 @@
+import type { EditorDiffSelection } from "../../contracts/editor/editor-selection";
 import type { AgentAvailabilityEntry } from "../../contracts/pi/agent-availability-data";
 import type { InterviewRecord } from "../../contracts/interviews/interview";
 import type { CakeEvent } from "../../contracts/application/cake-rpc-contract";
@@ -67,6 +68,7 @@ export type StoreEvent =
       path: string;
       startLine: number;
       endLine: number;
+      diff?: EditorDiffSelection;
     }
   | { type: "embedded-editor-back-to-agent"; workspacePath: string }
   | {

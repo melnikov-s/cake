@@ -256,6 +256,92 @@ test("workspace changes use Source Control, committed files fall back to the fil
     await page.getByTitle("Open changes for src/app.ts").click();
     await expect.poll(activeVsCodeTab, { timeout: 20_000 }).toMatch(/app\.ts.+/);
 
+    // CDP targets the hidden workbench without focusing a native OS window.
+    const workbench = (source: string) =>
+      application.evaluate(async ({ webContents }, source) => {
+        for (const contents of webContents.getAllWebContents()) {
+          if (contents.getURL().startsWith("http://127.0.0.1:"))
+            return contents.executeJavaScript(source);
+        }
+        throw new Error("Missing embedded workbench");
+      }, source);
+    const key = (key: string, code: string, windowsVirtualKeyCode: number, modifiers = 0) =>
+      application.evaluate(
+        async ({ webContents }, input) => {
+          for (const contents of webContents.getAllWebContents()) {
+            if (!contents.getURL().startsWith("http://127.0.0.1:")) continue;
+            if (!contents.debugger.isAttached()) contents.debugger.attach("1.3");
+            await contents.debugger.sendCommand("Input.dispatchKeyEvent", {
+              ...input,
+              type: "keyDown",
+            });
+            await contents.debugger.sendCommand("Input.dispatchKeyEvent", {
+              ...input,
+              type: "keyUp",
+            });
+            return;
+          }
+          throw new Error("Missing embedded workbench");
+        },
+        { key, code, windowsVirtualKeyCode, modifiers },
+      );
+    const focusEditor = async (selector: string) => {
+      await expect
+        .poll(() =>
+          workbench(`(() => {
+        const input = document.querySelector(${JSON.stringify(selector)});
+        if (!input) return false;
+        input.focus();
+        return document.activeElement === input;
+      })()`),
+        )
+        .toBe(true);
+    };
+    const diffInput = (side: "original" | "modified") =>
+      `.monaco-diff-editor .editor.${side} [role="textbox"]`;
+    const select = async (selector: string) => {
+      await focusEditor(selector);
+      await key("ArrowLeft", "ArrowLeft", 37);
+      await key("a", "KeyA", 65, 4);
+    };
+    const checkContext = async (value: number) => {
+      await expect(page.getByRole("button", { name: /Remove.*src\/app\.ts/ })).toHaveCount(1);
+      await page.getByRole("button", { name: /^src\/app\.ts:1/ }).click();
+      await expect(page.getByText(`export const value = ${value};`, { exact: true })).toBeVisible();
+      await page.keyboard.press("Escape");
+    };
+    await select(diffInput("original"));
+    await checkContext(0);
+    await select(diffInput("modified"));
+    await checkContext(1);
+
+    await focusEditor(diffInput("modified"));
+    await key("p", "KeyP", 80, 12);
+    await application.evaluate(async ({ webContents }) => {
+      for (const contents of webContents.getAllWebContents()) {
+        if (!contents.getURL().startsWith("http://127.0.0.1:")) continue;
+        await contents.debugger.sendCommand("Input.insertText", { text: "Toggle Inline View" });
+      }
+    });
+    await expect
+      .poll(() =>
+        workbench(
+          `!![...document.querySelectorAll('.quick-input-list .monaco-list-row')].find(e => e.textContent.includes('Toggle Inline View'))`,
+        ),
+      )
+      .toBe(true);
+    await key("Enter", "Enter", 13);
+    await expect
+      .poll(() => workbench(`!!document.querySelector('.line-delete-selectable')`))
+      .toBe(true);
+    // Inline deleted view-zones use browser selections, not VS Code TextEditor events.
+    // The editable/modified inline pane still relays normal editor selections.
+    await select(diffInput("modified"));
+    await checkContext(1);
+    await focusEditor(diffInput("modified"));
+    await key("ArrowLeft", "ArrowLeft", 37);
+    await expect(page.getByRole("button", { name: /Remove.*src\/app\.ts/ })).toHaveCount(0);
+
     await emitRendererEvent(application, {
       type: "embedded-editor-back-to-agent",
       workspacePath: project,
@@ -268,6 +354,12 @@ test("workspace changes use Source Control, committed files fall back to the fil
 
     await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible();
     await expect.poll(activeVsCodeTab, { timeout: 20_000 }).toBe("app.ts");
+    await select('.part.editor .monaco-editor [role="textbox"]');
+    await expect(page.getByRole("button", { name: /Remove.*src\/app\.ts/ })).toHaveCount(1);
+    await page.getByRole("button", { name: /^src\/app\.ts:1/ }).click();
+    // Normal editors remain path/range-only context, not quoted diff snapshots.
+    await expect(page.getByText("export const value = 1;", { exact: true })).toHaveCount(0);
+    await page.keyboard.press("Escape");
 
     await emitRendererEvent(application, {
       type: "embedded-editor-back-to-agent",

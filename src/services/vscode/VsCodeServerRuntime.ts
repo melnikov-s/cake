@@ -8,6 +8,7 @@ import { dirname, join } from "node:path";
 import { applyEdits, modify, parse as parseJsonc, type ParseError } from "jsonc-parser";
 import type { EditorAnnotationSnapshot } from "../../contracts/editor/editor-annotation";
 import {
+  EditorDiffSelection,
   EditorSelectionReveal,
   type EditorSelectionHighlights,
 } from "../../contracts/editor/editor-selection";
@@ -97,6 +98,7 @@ const bridgeMessageSchema = Schema.Union([
     path: bounded(1, 8_192),
     startLine: nonNegativeInt,
     endLine: nonNegativeInt,
+    diff: Schema.optionalKey(EditorDiffSelection),
   }),
   Schema.Struct({
     type: Schema.Literal("add-annotation"),
@@ -137,6 +139,7 @@ interface BroadcastTarget {
           path: string;
           startLine: number;
           endLine: number;
+          diff?: EditorDiffSelection;
         }
       | { type: "embedded-editor-back-to-agent"; workspacePath: string }
       | {
@@ -872,6 +875,7 @@ export class VsCodeServerRuntime {
         path: message.value.path,
         startLine: message.value.startLine,
         endLine: message.value.endLine,
+        ...(message.value.diff ? { diff: message.value.diff } : null),
       });
       return;
     }

@@ -290,6 +290,19 @@ function fakeGitRepository(options: {
     },
   };
 }
+class FakeTextDiff {
+  constructor(
+    readonly original: FakeUri,
+    readonly modified: FakeUri,
+  ) {}
+}
+interface SelectionEvent {
+  textEditor: FakeEditor;
+  selections: FakeEditor["selection"][];
+  kind?: number;
+}
+let selectionListener: (event: SelectionEvent) => void = () => {};
+let activeEditorListener: () => void = () => {};
 let visibleTextEditorsListener: (editors: unknown[]) => void = () => {};
 const window = {
   activeTextEditor: undefined as FakeEditor | undefined,
@@ -307,11 +320,19 @@ const window = {
     visibleTextEditorsListener = listener;
     return { dispose() {} };
   },
-  onDidChangeTextEditorSelection: () => ({ dispose() {} }),
-  onDidChangeActiveTextEditor: () => ({ dispose() {} }),
+  tabGroups: { activeTabGroup: { activeTab: undefined as { input: FakeTextDiff } | undefined } },
+  onDidChangeTextEditorSelection: (listener: typeof selectionListener) => {
+    selectionListener = listener;
+    return { dispose() {} };
+  },
+  onDidChangeActiveTextEditor: (listener: typeof activeEditorListener) => {
+    activeEditorListener = listener;
+    return { dispose() {} };
+  },
 };
 const fakeVscode = {
   Uri: FakeUri,
+  TabInputTextDiff: FakeTextDiff,
   Position: FakePosition,
   Range: FakeRange,
   Selection: FakeSelection,
@@ -407,6 +428,8 @@ afterAll(async () => {
 });
 
 afterEach(async () => {
+  activeEditorListener();
+  window.tabGroups.activeTabGroup.activeTab = undefined;
   window.visibleTextEditors = [];
   visibleTextEditorsListener([]);
   posted.length = 0;
@@ -422,6 +445,141 @@ afterEach(async () => {
 });
 
 const lines = ["import a;", "", "export function run() {", "  return compute();", "}"];
+
+describe("automatic editor context", () => {
+  function select(editor: FakeEditor, kind: number | undefined = 1) {
+    selectionListener({ textEditor: editor, selections: [editor.selection], kind });
+  }
+  function flush() {
+    vi.advanceTimersByTime(75);
+  }
+
+  it("preserves normal editors' path-only context and whole-line exclusive ends", () => {
+    vi.useFakeTimers();
+    const editor = editorFor(FakeUri.file(`${WORKSPACE}/src/run.ts`), lines, [1, 2], [4, 0]);
+    select(editor);
+    flush();
+    expect(posted).toEqual([
+      {
+        type: "selection",
+        workspace: WORKSPACE,
+        path: "src/run.ts",
+        startLine: 1,
+        endLine: 3,
+      },
+    ]);
+    selectionListener({ textEditor: editor, selections: [editor.selection] });
+    flush();
+    expect(posted).toHaveLength(1);
+  });
+
+  it.each([false, true])(
+    "captures both diff documents when original editor is omitted from visibleTextEditors=%s",
+    (omitOriginal) => {
+      vi.useFakeTimers();
+      const originalUri = gitRevisionUri(`${WORKSPACE}/src/run.ts`, "HEAD~1");
+      const modifiedUri = gitRevisionUri(`${WORKSPACE}/src/run.ts`, "~");
+      const original = editorFor(
+        originalUri,
+        ["old first", "deleted source", "tail"],
+        [1, 2],
+        [2, 0],
+      );
+      const modified = editorFor(modifiedUri, ["new first", "replacement", "tail"], [1, 1], [1, 5]);
+      window.tabGroups.activeTabGroup.activeTab = {
+        input: new FakeTextDiff(originalUri, modifiedUri),
+      };
+      // Resolve from the event, not the active editor or visibleTextEditors.
+      window.visibleTextEditors = omitOriginal ? [modified] : [original, modified];
+      window.activeTextEditor = modified;
+      select(original);
+      flush();
+      expect(posted.at(-1)).toEqual({
+        type: "selection",
+        workspace: WORKSPACE,
+        path: "src/run.ts",
+        startLine: 1,
+        endLine: 1,
+        diff: {
+          document: {
+            uri: originalUri.toString(),
+            side: "before",
+            range: { start: { line: 1, column: 2 }, end: { line: 2, column: 0 } },
+          },
+          selectedText: "leted source\n",
+        },
+      });
+      activeEditorListener();
+      select(modified);
+      flush();
+      expect(posted.slice(-2)).toEqual([
+        { type: "selection-cleared", workspace: WORKSPACE },
+        {
+          type: "selection",
+          workspace: WORKSPACE,
+          path: "src/run.ts",
+          startLine: 1,
+          endLine: 1,
+          diff: {
+            document: {
+              uri: modifiedUri.toString(),
+              side: "after",
+              range: { start: { line: 1, column: 1 }, end: { line: 1, column: 5 } },
+            },
+            selectedText: "epla",
+          },
+        },
+      ]);
+      expect(openTextDocument).not.toHaveBeenCalled();
+    },
+  );
+
+  it("snapshots a file-backed modified diff and clears empty, unsupported and oversized selections", () => {
+    vi.useFakeTimers();
+    const uri = FakeUri.file(`${WORKSPACE}/src/run.ts`);
+    const editor = editorFor(uri, lines, [0, 0], [0, 6]);
+    window.tabGroups.activeTabGroup.activeTab = {
+      input: new FakeTextDiff(gitRevisionUri(uri.fsPath, "HEAD"), uri),
+    };
+    select(editor);
+    flush();
+    expect(posted.at(-1)).toMatchObject({
+      diff: { document: { uri: uri.toString(), side: "after" }, selectedText: "import" },
+    });
+    editor.selection.isEmpty = true;
+    select(editor);
+    flush();
+    expect(posted.at(-1)?.type).toBe("selection-cleared");
+    select(editorFor(new FakeUri("untitled", "scratch"), lines, [0, 0], [0, 1]));
+    flush();
+    expect(posted.at(-1)?.type).toBe("selection-cleared");
+    window.tabGroups.activeTabGroup.activeTab = undefined;
+    select(editorFor(gitRevisionUri(uri.fsPath, "HEAD"), lines, [0, 0], [0, 1]));
+    flush();
+    expect(posted.at(-1)?.type).toBe("selection-cleared");
+    window.tabGroups.activeTabGroup.activeTab = {
+      input: new FakeTextDiff(gitRevisionUri(uri.fsPath, "HEAD"), uri),
+    };
+    select(editorFor(uri, ["x".repeat(48_001)], [0, 0], [0, 48_001]));
+    flush();
+    expect(posted.at(-1)?.type).toBe("selection-cleared");
+  });
+
+  it("cancels pending selections on editor switches and ignores programmatic selection noise", () => {
+    vi.useFakeTimers();
+    const editor = editorFor(FakeUri.file(`${WORKSPACE}/src/run.ts`), lines, [0, 0], [0, 6]);
+    select(editor);
+    activeEditorListener();
+    flush();
+    expect(posted).toEqual([{ type: "selection-cleared", workspace: WORKSPACE }]);
+    posted.length = 0;
+    select(editor);
+    selectionListener({ textEditor: editor, selections: [editor.selection] });
+    flush();
+    expect(posted).toHaveLength(1);
+    expect(posted[0]?.type).toBe("selection");
+  });
+});
 
 describe("companion editor reveals", () => {
   it("opens an absolute local file without treating it as a workspace source location", async () => {

@@ -344,6 +344,44 @@ describe("VsCodeServerRuntime startup", () => {
     });
   });
 
+  it.each(["before", "after"] as const)(
+    "relays exact %s diff snapshots across workspace path mapping",
+    (side) => {
+      const sendTo = vi.fn();
+      runtime = createRuntime({ root: "/unused", sendTo });
+      seedLease(runtime, 17, "/real/project");
+      runtime["presentedWorkspacePaths"].set("/real/project", "/linked/project");
+      const diff = {
+        document: {
+          uri: "git:/real/project/src/main.ts?revision",
+          side,
+          range: { start: { line: 4, column: 2 }, end: { line: 9, column: 0 } },
+        },
+        selectedText: "source from the selected revision\n",
+      };
+      runtime["handleBridgeMessage"](
+        Buffer.from(
+          JSON.stringify({
+            type: "selection",
+            workspace: "/real/project",
+            path: "src/main.ts",
+            startLine: 4,
+            endLine: 8,
+            diff,
+          }),
+        ),
+      );
+      expect(sendTo).toHaveBeenCalledWith(17, {
+        type: "embedded-editor-selection",
+        workspacePath: "/linked/project",
+        path: "src/main.ts",
+        startLine: 4,
+        endLine: 8,
+        diff,
+      });
+    },
+  );
+
   it("relays explicit selection actions with their source and note to the renderer", () => {
     const sendTo = vi.fn();
     runtime = createRuntime({ root: "/unused", sendTo });

@@ -171,6 +171,9 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     this.activeContextAttachment = {
       kind: "source",
       name: event.path.slice(-512),
+      ...(event.diff
+        ? { document: event.diff.document, selectedText: event.diff.selectedText }
+        : null),
       location: {
         path: event.path,
         range: {

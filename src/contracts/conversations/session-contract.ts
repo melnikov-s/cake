@@ -1,3 +1,4 @@
+import { EditorDiffDocument } from "../editor/editor-selection";
 import { Effect, Schema } from "effect";
 import type { SessionContextMetadata } from "./session-context-metadata";
 import { CakeChatContextStatus } from "../cake-chats/context-policy";
@@ -224,7 +225,9 @@ export const attachmentSchema = Schema.Union([
     inputReference: Schema.optionalKey(TaskInputReference),
     name: stringMax(512),
     location: sourceAttachmentLocationSchema,
-    /** Present only for explicit user annotations; implicit editor context stays path-only. */
+    /** Diff selections retain their exact revision/side, independent of the working tree. */
+    document: Schema.optionalKey(EditorDiffDocument),
+    /** Explicit annotations and native diff context quote the selected TextDocument. */
     selectedText: Schema.optionalKey(ipcProjectionString(48_000).check(Schema.isMinLength(1))),
     comment: Schema.optionalKey(ipcProjectionString(16_000).check(Schema.isMinLength(1))),
   }),

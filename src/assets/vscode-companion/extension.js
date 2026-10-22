@@ -69,23 +69,61 @@ function workspaceRelative(filePath) {
   return relativePath.split(path.sep).join("/");
 }
 
-function sendUserSelection(event) {
+function sendUserSelection(vscode, event) {
   const editor = event.textEditor;
-  if (event.kind === undefined || editor.document.uri.scheme !== "file") return;
-  const relativePath = workspaceRelative(editor.document.uri.fsPath);
-  if (!relativePath || editor.selection.isEmpty) {
+  if (event.kind === undefined) return;
+  const uri = editor.document.uri;
+  const filePath = documentFilePath(uri);
+  const relativePath = filePath && workspaceRelative(filePath);
+  const selection = event.selections[0];
+  if (!relativePath || !selection || selection.isEmpty) {
     postBridge({ type: "selection-cleared" });
     return;
   }
+  const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+  const side =
+    input instanceof vscode.TabInputTextDiff
+      ? input.original.toString() === uri.toString()
+        ? "before"
+        : input.modified.toString() === uri.toString()
+          ? "after"
+          : undefined
+      : undefined;
+  // A standalone revision has no before/after identity. Never mistake it for a file.
+  if (uri.scheme !== "file" && !side) {
+    postBridge({ type: "selection-cleared" });
+    return;
+  }
+  let diff;
+  if (side) {
+    const selectedText = editor.document.getText(selection);
+    // Never substitute working-tree contents for an uncapturable revision.
+    if (!selectedText || selectedText.length > MAX_SELECTION_LENGTH) {
+      postBridge({ type: "selection-cleared" });
+      return;
+    }
+    diff = {
+      document: {
+        uri: uri.toString(),
+        side,
+        range: {
+          start: { line: selection.start.line, column: selection.start.character },
+          end: { line: selection.end.line, column: selection.end.character },
+        },
+      },
+      selectedText,
+    };
+  }
   const endLine =
-    editor.selection.end.character === 0 && editor.selection.end.line > editor.selection.start.line
-      ? editor.selection.end.line - 1
-      : editor.selection.end.line;
+    selection.end.character === 0 && selection.end.line > selection.start.line
+      ? selection.end.line - 1
+      : selection.end.line;
   postBridge({
     type: "selection",
     path: relativePath,
-    startLine: editor.selection.start.line,
+    startLine: selection.start.line,
     endLine,
+    ...(diff ? { diff } : null),
   });
 }
 
@@ -208,9 +246,11 @@ function askInSideChat(vscode, resource) {
   postBridge({ type: "ask-in-side-chat", ...selection });
 }
 
-function scheduleUserSelection(event) {
+function scheduleUserSelection(vscode, event) {
+  // Programmatic decoration/reveal events must not replace a pending user selection.
+  if (event.kind === undefined) return;
   if (selectionTimer) clearTimeout(selectionTimer);
-  selectionTimer = setTimeout(() => sendUserSelection(event), 75);
+  selectionTimer = setTimeout(() => sendUserSelection(vscode, event), 75);
   selectionTimer.unref?.();
 }
 
@@ -864,7 +904,7 @@ async function activate(context) {
       applyAnnotationDecorations(vscode);
       annotationEmitter.fire();
     }),
-    vscode.window.onDidChangeTextEditorSelection((event) => scheduleUserSelection(event)),
+    vscode.window.onDidChangeTextEditorSelection((event) => scheduleUserSelection(vscode, event)),
   );
 
   selectionSubscription = vscode.window.onDidChangeActiveTextEditor(() => {

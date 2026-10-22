@@ -485,6 +485,82 @@ describe("Embedded editor workflow", () => {
     expect(screen.getByRole("button", { name: "Open VS Code" })).toBeDefined();
   });
 
+  it("replaces diff-side context, preserves the document snapshot on send and clears it on editor changes", async () => {
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
+      TurnId.make("00000000-0000-4000-8000-000000000001"),
+    );
+    using fixture = renderEmbeddedEditor({
+      vscode: { open: async () => editorLease("a") },
+      sessionChats: { prompt },
+    });
+    await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+    await waitFor(() => expect(workspaceFrame()).not.toBeNull());
+    const before = {
+      document: {
+        uri: "git:/project/src/active.ts?HEAD",
+        side: "before" as const,
+        range: { start: { line: 2, column: 3 }, end: { line: 5, column: 0 } },
+      },
+      selectedText: "deleted revision text\n",
+    };
+    const after = {
+      document: {
+        uri: "file:///project/src/active.ts",
+        side: "after" as const,
+        range: { start: { line: 2, column: 1 }, end: { line: 4, column: 5 } },
+      },
+      selectedText: "modified unsaved text",
+    };
+    const select = (diff: typeof before | typeof after) =>
+      fixture.nativeEvent({
+        type: "embedded-editor-selection",
+        workspacePath: editorWorkingDirectory,
+        path: "src/active.ts",
+        startLine: 2,
+        endLine: 4,
+        diff,
+      });
+    const send = async (text: string) => {
+      await fixture.user.type(screen.getByRole("combobox", { name: "Message" }), text);
+      await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+    };
+    select(before);
+    select(after);
+    select(after);
+    expect(screen.getAllByRole("button", { name: /Remove.*active.ts/ })).toHaveLength(1);
+    await send("Explain the modified side");
+    await waitFor(() => expect(prompt).toHaveBeenCalledTimes(1));
+    expect(prompt.mock.calls[0]![0].attachments).toEqual([
+      {
+        kind: "source",
+        name: "src/active.ts",
+        document: after.document,
+        selectedText: after.selectedText,
+        location: { path: "src/active.ts", range: { start: { line: 2 }, end: { line: 4 } } },
+      },
+    ]);
+    expect(screen.queryByRole("alert")?.textContent).toBeUndefined();
+    expect(screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message" }).value).toBe("");
+    select(before);
+    await send("Explain the deleted side");
+    await waitFor(() => expect(prompt).toHaveBeenCalledTimes(2));
+    expect(prompt.mock.calls[1]![0].attachments).toEqual([
+      expect.objectContaining({
+        document: before.document,
+        selectedText: before.selectedText,
+      }),
+    ]);
+    select(after);
+    fixture.nativeEvent({
+      type: "embedded-editor-selection-cleared",
+      workspacePath: editorWorkingDirectory,
+    });
+    expect(screen.queryByRole("button", { name: /Remove.*active.ts/ })).toBeNull();
+    await send("No stale diff selection");
+    await waitFor(() => expect(prompt).toHaveBeenCalledTimes(3));
+    expect(prompt.mock.calls[2]![0].attachments).toEqual([]);
+  });
+
   it("projects an active session's discussion annotations into the opened editor", async () => {
     const updateAnnotations = vi.fn<Client["vscode"]["updateAnnotations"]>(async () => undefined);
     using fixture = renderEmbeddedEditor(

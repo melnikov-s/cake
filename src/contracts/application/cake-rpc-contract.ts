@@ -1,3 +1,4 @@
+import { EditorDiffSelection } from "../editor/editor-selection";
 import { Schema } from "effect";
 import { PrepareFileLocation, PreparedFileLocation } from "../filesystem/file-location";
 import { WidgetViewCapture } from "../widgets/widget-view-evidence";
@@ -253,6 +254,7 @@ const cakeEventSchemas = {
     path: ipcProjectionString(8_192),
     startLine: nonNegativeInt,
     endLine: nonNegativeInt,
+    diff: Schema.optionalKey(EditorDiffSelection),
   }),
   "embedded-editor-back-to-agent": Schema.Struct({
     type: Schema.Literal("embedded-editor-back-to-agent"),

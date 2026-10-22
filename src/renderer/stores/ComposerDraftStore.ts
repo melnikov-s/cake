@@ -202,4 +202,7 @@ const sameSourceAttachment = (
   left?.kind === "source" &&
   right?.kind === "source" &&
   left.location.path === right.location.path &&
+  left.document?.uri === right.document?.uri &&
+  left.document?.side === right.document?.side &&
+  JSON.stringify(left.document?.range) === JSON.stringify(right.document?.range) &&
   JSON.stringify(left.location.range) === JSON.stringify(right.location.range);
