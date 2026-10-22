@@ -1,3 +1,8 @@
+import type {
+  VocabularyChange,
+  VocabularyListInput,
+  VocabularyPage,
+} from "../../contracts/dictation/vocabulary";
 import { Context, type Effect, type Stream } from "effect";
 import type {
   DictationAudio,
@@ -11,6 +16,13 @@ export class Dictation extends Context.Service<
   Dictation,
   {
     readonly observeState: () => Stream.Stream<DictationState>;
+    readonly listVocabulary: (
+      input: typeof VocabularyListInput.Type,
+    ) => Effect.Effect<typeof VocabularyPage.Type, DictationError>;
+    readonly changeVocabulary: (
+      change: VocabularyChange,
+    ) => Effect.Effect<{ revision: number }, DictationError>;
+    readonly installVocabulary: () => Effect.Effect<void, DictationError>;
     readonly install: () => Effect.Effect<void, DictationError>;
     readonly setModelPath: (path: string) => Effect.Effect<void, DictationError>;
     readonly remove: () => Effect.Effect<void, DictationError>;

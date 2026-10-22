@@ -1,4 +1,4 @@
-import { snapshot, Store, untracked } from "r-state-tree";
+import { child, createStore, snapshot, Store, untracked } from "r-state-tree";
 import type {
   DictationState,
   TextProcessingMode,
@@ -10,6 +10,7 @@ import type { Client } from "../client/Client";
 import { encodePcm, type Microphone, type MicrophoneCapture } from "../dictation/microphone";
 import { openSpeechCapture } from "../dictation/speech-capture";
 import { createReusableMicrophone } from "../dictation/reusable-microphone";
+import { DictationVocabularyStore } from "./DictationVocabularyStore";
 import type { ProvisionalTextSpan } from "../dictation/provisional-text";
 
 export interface DictationTarget {
@@ -89,6 +90,13 @@ export class DictationStore extends Store<{
         this.endUtterance();
         this.installation?.abort();
       };
+    });
+  }
+
+  @child get vocabulary() {
+    return createStore(DictationVocabularyStore, {
+      client: this.props.client,
+      revision: this.state?.vocabularyRevision,
     });
   }
 
@@ -468,7 +476,7 @@ export class DictationStore extends Store<{
       if (!this.signal.aborted) this.reportError(error);
     }
   }
-  async install() {
+  async install(vocabulary = false) {
     if (this.busy) return;
     this.busy = true;
     await this.pauseForModelChange();
@@ -476,7 +484,8 @@ export class DictationStore extends Store<{
     const controller = new AbortController();
     this.installation = controller;
     try {
-      await this.props.client.install({ signal: controller.signal });
+      if (vocabulary) await this.props.client.installVocabulary({ signal: controller.signal });
+      else await this.props.client.install({ signal: controller.signal });
     } catch (error) {
       if (!controller.signal.aborted) this.reportError(error);
     } finally {

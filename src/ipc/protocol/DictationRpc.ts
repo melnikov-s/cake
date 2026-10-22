@@ -1,3 +1,8 @@
+import {
+  VocabularyChange,
+  VocabularyListInput,
+  VocabularyPage,
+} from "../../contracts/dictation/vocabulary";
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import {
@@ -8,6 +13,17 @@ import {
 } from "../../contracts/dictation/dictation-data";
 
 export const DictationRpc = RpcGroup.make(
+  Rpc.make("dictation.listVocabulary", {
+    payload: VocabularyListInput,
+    success: VocabularyPage,
+    error: DictationError,
+  }),
+  Rpc.make("dictation.changeVocabulary", {
+    payload: VocabularyChange,
+    success: Schema.Struct({ revision: Schema.Int }),
+    error: DictationError,
+  }),
+  Rpc.make("dictation.installVocabulary", { success: Schema.Void, error: DictationError }),
   Rpc.make("dictation.observeState", { success: DictationState, stream: true }),
   Rpc.make("dictation.install", { success: Schema.Void, error: DictationError }),
   Rpc.make("dictation.setModelPath", {

@@ -15,14 +15,40 @@ import { isAbsolute, join, dirname } from "node:path";
 import { createInterface } from "node:readline";
 import { Schema } from "effect";
 import manifest from "./parakeet-coreml-manifest.json";
+import ctcManifest from "./parakeet-ctc-manifest.json";
+import {
+  DictationVocabulary,
+  emptyVocabulary,
+  type VocabularyEntry,
+} from "../../contracts/dictation/vocabulary";
 import vadManifest from "../../../native/dictation/vad-manifest.json";
 import type {
   DictationAudio,
   SpeechDetectionAudio,
 } from "../../contracts/dictation/dictation-data";
 
-const modelBase = `https://huggingface.co/${manifest.repository}/resolve/${manifest.revision}`;
-const modelBytes = manifest.files.reduce((total, file) => total + file.bytes, 0);
+export async function loadVocabulary(root: string): Promise<DictationVocabulary> {
+  const path = join(root, "vocabulary.json");
+  if (!(await exists(path))) return emptyVocabulary();
+  return Schema.decodeUnknownPromise(DictationVocabulary)(JSON.parse(await readFile(path, "utf8")));
+}
+
+export async function saveVocabulary(root: string, vocabulary: DictationVocabulary) {
+  await mkdir(root, { recursive: true });
+  await writeFile(join(root, "vocabulary.json.tmp"), JSON.stringify(vocabulary));
+  await rename(join(root, "vocabulary.json.tmp"), join(root, "vocabulary.json"));
+}
+
+export async function vocabularyModelInstalled(root: string) {
+  return exists(join(root, "ctc", "installed.json"));
+}
+
+async function validateVocabularyModel(path: string) {
+  for (const file of ctcManifest.files) {
+    if ((await stat(join(path, file.path))).size !== file.bytes)
+      throw new Error(`Missing or incomplete vocabulary model file: ${file.path}`);
+  }
+}
 export interface InstallProgress {
   message: string;
   downloadedBytes: number;
@@ -30,6 +56,7 @@ export interface InstallProgress {
 }
 const WorkerReply = Schema.Union([
   Schema.Struct({ ready: Schema.Literal(true) }),
+  Schema.Struct({ prepared: Schema.Literal(true) }),
   Schema.Struct({ text: Schema.String }),
   Schema.Struct({ speech: Schema.Boolean }),
   Schema.Struct({ error: Schema.String }),
@@ -93,8 +120,12 @@ async function download(
   destination: string,
   signal: AbortSignal,
   progress: (bytes: number) => void,
+  assets: typeof manifest,
 ) {
-  const response = await fetch(`${modelBase}/${file.path}`, { signal });
+  const response = await fetch(
+    `https://huggingface.co/${assets.repository}/resolve/${assets.revision}/${file.path}`,
+    { signal },
+  );
   if (!response.ok || !response.body)
     throw new Error(`Model download failed: HTTP ${response.status}`);
   await mkdir(dirname(destination), { recursive: true });
@@ -125,35 +156,65 @@ async function download(
 }
 
 /** Download data only. The executable and frameworks are supplied by Cake and macOS. */
-export async function installParakeet(
+export const installParakeet = (
   root: string,
   signal: AbortSignal,
   progress: (value: InstallProgress) => void,
+) => installModel(root, signal, progress, manifest, "model", validateModel);
+export const installVocabularyModel = (
+  root: string,
+  signal: AbortSignal,
+  progress: (value: InstallProgress) => void,
+) => installModel(root, signal, progress, ctcManifest, "ctc", validateVocabularyModel);
+
+async function installModel(
+  root: string,
+  signal: AbortSignal,
+  progress: (value: InstallProgress) => void,
+  assets: typeof manifest,
+  name: string,
+  validate: (path: string) => Promise<void>,
 ) {
-  const staging = join(root, "model.download");
-  const model = join(root, "model");
-  const backup = join(root, "model.previous");
+  const modelBytes = assets.files.reduce((total, file) => total + file.bytes, 0);
+  const staging = join(root, `${name}.download`);
+  const model = join(root, name);
+  const backup = join(root, `${name}.previous`);
   await mkdir(root, { recursive: true });
   await rm(staging, { recursive: true, force: true });
   await mkdir(staging);
   let downloadedBytes = 0;
   try {
-    for (const file of manifest.files) {
+    for (const file of assets.files) {
       signal.throwIfAborted();
-      await download(file, join(staging, file.path), signal, (bytes) =>
-        progress({
-          message: "Downloading Parakeet Core ML…",
-          downloadedBytes: downloadedBytes + bytes,
-          totalBytes: modelBytes,
-        }),
+      await download(
+        file,
+        join(staging, file.path),
+        signal,
+        (bytes) =>
+          progress({
+            message:
+              name === "ctc"
+                ? "Downloading local vocabulary encoder…"
+                : "Downloading Parakeet Core ML…",
+            downloadedBytes: downloadedBytes + bytes,
+            totalBytes: modelBytes,
+          }),
+        assets,
       );
       downloadedBytes += file.bytes;
     }
-    await writeFile(
-      join(staging, "ATTRIBUTION.txt"),
-      "NVIDIA Parakeet TDT 0.6B v2. Core ML conversion by FluidInference.\nModel: https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v2-coreml\nBase model: https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2\nLicense: Creative Commons Attribution 4.0 International (CC BY 4.0)\nhttps://creativecommons.org/licenses/by/4.0/\nCake does not modify the downloaded model weights.\n",
-    );
-    await validateModel(staging);
+    if (name === "ctc")
+      await writeFile(
+        join(staging, "ATTRIBUTION.txt"),
+        "NVIDIA Parakeet CTC 110M. Core ML conversion by FluidInference.\nhttps://huggingface.co/FluidInference/parakeet-ctc-110m-coreml\nLicense: CC BY 4.0 https://creativecommons.org/licenses/by/4.0/\nCake does not modify the downloaded model weights.\n",
+      );
+    else
+      await writeFile(
+        join(staging, "ATTRIBUTION.txt"),
+        "NVIDIA Parakeet TDT 0.6B v2. Core ML conversion by FluidInference.\nModel: https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v2-coreml\nBase model: https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2\nLicense: Creative Commons Attribution 4.0 International (CC BY 4.0)\nhttps://creativecommons.org/licenses/by/4.0/\nCake does not modify the downloaded model weights.\n",
+      );
+    await validate(staging);
+    await writeFile(join(staging, "installed.json"), JSON.stringify({ revision: assets.revision }));
     signal.throwIfAborted();
     // Publish only a complete, verified directory; preserve the existing model if rename fails.
     const hadModel = await exists(model);
@@ -182,10 +243,14 @@ export class ParakeetWorker {
   private errors = "";
   readonly ready: Promise<void>;
 
-  constructor(executable: string, modelPath: string) {
-    this.process = spawn(executable, [modelPath, join(dirname(executable), vadManifest.model)], {
-      stdio: "pipe",
-    });
+  constructor(executable: string, modelPath: string, vocabularyPath: string) {
+    this.process = spawn(
+      executable,
+      [modelPath, join(dirname(executable), vadManifest.model), vocabularyPath],
+      {
+        stdio: "pipe",
+      },
+    );
     this.ready = this.response(180_000).then((reply) => {
       if (!("ready" in reply)) throw new Error("Invalid native dictation startup response");
     });
@@ -243,10 +308,19 @@ export class ParakeetWorker {
       };
     });
   }
-  async transcribe(audio: DictationAudio) {
+  async prepareVocabulary() {
+    if (this.failure) throw this.failure;
+    const response = this.response(180_000);
+    this.process.stdin.write(`${JSON.stringify({ operation: "prepareVocabulary" })}\n`);
+    const reply = await response;
+    if (!("prepared" in reply)) throw new Error("Invalid native vocabulary preparation response");
+  }
+  async transcribe(audio: DictationAudio, vocabulary: readonly VocabularyEntry[] = []) {
     if (this.failure) throw this.failure;
     const response = this.response(30_000);
-    this.process.stdin.write(`${JSON.stringify({ operation: "transcribe", ...audio })}\n`);
+    this.process.stdin.write(
+      `${JSON.stringify({ operation: "transcribe", ...audio, vocabulary })}\n`,
+    );
     const reply = await response;
     if (!("text" in reply)) throw new Error("Invalid native transcription response");
     return reply.text;

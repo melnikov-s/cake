@@ -217,6 +217,7 @@ struct ProtocolTests {
     try decodesMonoFloat32Audio()
     try rejectsMalformedOrUnboundedAudio()
     try rollingTranscriptTests()
+    try vocabularyTests()
     try gateIgnoresNoiseBeforeAndAfterSpeech()
     try gateRetainsInternalPausesAndFinalizesShortSpeech()
     try gateBoundsContinuousSpeech()

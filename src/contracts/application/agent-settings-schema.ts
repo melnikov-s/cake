@@ -10,6 +10,7 @@ import { ModelPreset, UtilityModel, SessionLabelMutation, SessionLabel } from ".
 import { NonChatModelPreferences } from "../models/non-chat-model-data";
 import { McpSettingsSnapshot, McpSettingsMutation } from "../pi/mcp-settings-data";
 import { PiNonChatModel } from "../pi/model-data";
+import { VocabularyChange, VocabularyListInput, VocabularyPage } from "../dictation/vocabulary";
 import { DictationState, TextProcessingMode } from "../dictation/dictation-data";
 import { DesktopSharingInput, DesktopSharingState } from "../desktop/desktop-sharing-data";
 import { DesktopHostSelection } from "../desktop/desktop-host-data";
@@ -397,9 +398,26 @@ export const agentSettingsOperations = [
     Schema.Struct({ voiceId: SpeechOutputVoice.fields.id }),
   ),
   setting(
+    "settings.dictation.vocabulary.list",
+    VocabularyListInput,
+    "Read local dictation vocabulary in bounded searchable pages with a revision for safe edits. Aliases discover acoustic candidates, never unconditional replacements.",
+    { limit: 20 },
+    VocabularyPage,
+  ),
+  setting(
+    "settings.dictation.vocabulary.change",
+    VocabularyChange,
+    "Add, update or remove one known word or phrase. Read vocabulary.list first and pass expectedRevision; stale edits fail. Does not download models or change raw/utility processing.",
+    { action: "add", expectedRevision: 0, text: "Binks", aliases: ["Banks"] },
+    Schema.Struct({ revision: Schema.Int }),
+    [
+      "3–80 characters per spelling/alias, at most 5 aliases and 100 entries. Case/spacing-equivalent or shared spellings/aliases are rejected. Entries activate on the next utterance after the local vocabulary encoder is installed via settings.dictation.update action install-vocabulary (103 MB). No context or LLM cleanup is used.",
+    ],
+  ),
+  setting(
     "settings.dictation.get",
     empty,
-    "Inspect originating desktop dictation installation, enablement and microphones; never audio.",
+    "Inspect originating desktop dictation installation, enablement, microphones and vocabulary count/revision/encoder availability; never audio. Read entries with settings.dictation.vocabulary.list.",
     {},
     dictationView,
   ),
@@ -413,7 +431,13 @@ export const agentSettingsOperations = [
         deviceId: Schema.String.check(Schema.isMaxLength(4096)),
       }),
       Schema.Struct({
-        action: Schema.Literals(["refresh-microphones", "install", "cancel-install", "remove"]),
+        action: Schema.Literals([
+          "refresh-microphones",
+          "install",
+          "install-vocabulary",
+          "cancel-install",
+          "remove",
+        ]),
       }),
       Schema.Struct({
         action: Schema.Literal("model-path"),
@@ -424,7 +448,7 @@ export const agentSettingsOperations = [
     { action: "enable", enabled: false },
     dictationView,
     [
-      "Desktop only. Enabling dictation can request microphone permission and record into the focused writing surface. Installing downloads the existing native model; model-path uses existing native manifest/path validation.",
+      "Desktop only. Enabling dictation can request microphone permission and record into the focused writing surface. Installing downloads the existing native model; install-vocabulary explicitly downloads a separate 103 MB local CTC encoder. cancel-install cancels either download. remove deletes Cake model data (including CTC) but preserves vocabulary. Empty vocabulary adds no inference. Active vocabulary adds a local CTC pass to each live revision; changes apply to the next utterance. model-path uses existing native manifest/path validation.",
     ],
   ),
 ] as const;

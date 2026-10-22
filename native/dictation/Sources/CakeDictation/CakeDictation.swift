@@ -15,6 +15,7 @@ private struct DetectionRequest: Decodable {
 private final class Recognition {
   private let engine: AsrManager
   private let detector: SpeechDetector
+  private let boosting: VocabularyBoosting
   private var transcript = RollingTranscript()
   private var newSamples = 0
   private var decodeDue = false
@@ -29,7 +30,8 @@ private final class Recognition {
   private var captureSpeech = false
   private let lookaheadSamples = 6_400
 
-  init(directory: URL, vadURL: URL) throws {
+  init(directory: URL, vadURL: URL, vocabularyURL: URL) throws {
+    boosting = VocabularyBoosting(directory: vocabularyURL)
     let models = try AsrModels.loadLocal(from: directory, version: .v2)
     engine = AsrManager(config: ASRConfig(tdtConfig: TdtConfig(blankId: 1024)), models: models)
     detector = try SpeechDetector(modelURL: vadURL)
@@ -41,6 +43,8 @@ private final class Recognition {
     _ = try await detector.classify(
       [Float](repeating: 0.00001, count: SpeechGate.frameSamples), state: .initial())
   }
+
+  func prepareVocabulary() async throws { try await boosting.prepare() }
 
   func detect(_ line: String) async throws -> Bool {
     guard line.utf8.count <= 23_000 else { throw ProtocolError.invalidRequest }
@@ -83,7 +87,9 @@ private final class Recognition {
         startSample: transcript.startSample + Int(word.startTime * 16_000),
         endSample: transcript.startSample + Int(word.endTime * 16_000))
     }
-    transcript.update(words, atCapacity: atCapacity)
+    let corrections = try await boosting.corrections(
+      text: result.text, timings: timings, audio: audio, words: words)
+    transcript.update(applyingVocabularyCorrections(corrections, to: words), atCapacity: atCapacity)
     newSamples = 0
     decodeDue = false
   }
@@ -123,6 +129,9 @@ private final class Recognition {
     let samples = try request.samples()
     let requestedSettings = request.settings ?? .standard
     if utteranceId != request.utteranceId {
+      // Vocabulary revisions take effect on the next utterance, never halfway through
+      // an already committed rolling transcript.
+      try await boosting.configure(request.vocabulary ?? [])
       utteranceId = request.utteranceId
       settings = requestedSettings
       gate = SpeechGate(settings: settings)
@@ -175,20 +184,24 @@ struct CakeDictation {
       if CommandLine.arguments.dropFirst() == ["--version"] {
         try reply([
           "engine": "FluidAudio/CoreML", "version": "0.17.4", "minimumMacOS": "14.0",
-          "protocolVersion": 2,
+          "protocolVersion": 3,
         ])
         return
       }
-      guard CommandLine.arguments.count == 3 else { throw ProtocolError.invalidRequest }
+      guard CommandLine.arguments.count == 4 else { throw ProtocolError.invalidRequest }
       let recognition = try Recognition(
         directory: URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true),
-        vadURL: URL(fileURLWithPath: CommandLine.arguments[2], isDirectory: true))
+        vadURL: URL(fileURLWithPath: CommandLine.arguments[2], isDirectory: true),
+        vocabularyURL: URL(fileURLWithPath: CommandLine.arguments[3], isDirectory: true))
       try await recognition.warmup()
       try reply(["ready": true])
       for try await line in FileHandle.standardInput.bytes.lines {
-        guard line.utf8.count <= 855_000 else { throw ProtocolError.invalidRequest }
+        guard line.utf8.count <= 1_100_000 else { throw ProtocolError.invalidRequest }
         let operation = try JSONDecoder().decode(Operation.self, from: Data(line.utf8))
         switch operation.operation {
+        case "prepareVocabulary":
+          try await recognition.prepareVocabulary()
+          try reply(["prepared": true])
         case "transcribe":
           try reply(["text": try await recognition.transcribe(AudioRequest.decode(line))])
         case "detectSpeech":

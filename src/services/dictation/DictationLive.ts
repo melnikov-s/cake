@@ -1,3 +1,9 @@
+import { randomUUID } from "node:crypto";
+import {
+  changeVocabulary,
+  listVocabulary,
+  type DictationVocabulary,
+} from "../../contracts/dictation/vocabulary";
 import { join } from "node:path";
 import { rm } from "node:fs/promises";
 import { Effect, Layer, Queue, Semaphore, Stream, SubscriptionRef } from "effect";
@@ -11,6 +17,10 @@ import { Dictation } from "./Dictation";
 import {
   helperAvailable,
   installParakeet,
+  installVocabularyModel,
+  loadVocabulary,
+  saveVocabulary,
+  vocabularyModelInstalled,
   loadModelPath,
   ParakeetWorker,
   saveModelPath,
@@ -32,11 +42,15 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
         status: "missing",
         managedModelPath,
         engineAvailable: false,
+        vocabularyRevision: 0,
+        vocabularyCount: 0,
+        vocabularyInstalled: false,
         downloadedBytes: 0,
         totalBytes: 0,
       });
       const lock = yield* Semaphore.make(1);
       let worker: ParakeetWorker | undefined;
+      let vocabulary: DictationVocabulary | undefined;
       const stop = () => {
         worker?.close();
         worker = undefined;
@@ -52,12 +66,23 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
         yield* patch({
           modelPath,
           engineAvailable,
+          vocabularyInstalled: yield* native(() => vocabularyModelInstalled(root)),
           status: modelPath && engineAvailable ? "installed" : "missing",
           message: undefined,
           downloadedBytes: 0,
           totalBytes: 0,
         });
       });
+      yield* native(() => loadVocabulary(root)).pipe(
+        Effect.flatMap((loaded) => {
+          vocabulary = loaded;
+          return patch({
+            vocabularyRevision: loaded.revision,
+            vocabularyCount: loaded.entries.length,
+          });
+        }),
+        Effect.catch((error) => patch({ status: "error", message: error.message })),
+      );
       yield* refresh().pipe(
         Effect.catch((error) => patch({ status: "error", message: error.message })),
       );
@@ -100,6 +125,58 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
       );
 
       return Dictation.of({
+        listVocabulary: Effect.fn("Dictation.listVocabulary")(function* (input) {
+          if (!vocabulary)
+            return yield* new DictationError({
+              message: "Vocabulary could not be loaded; edits are disabled.",
+            });
+          return listVocabulary(vocabulary, input);
+        }),
+        changeVocabulary: Effect.fn("Dictation.changeVocabulary")(function* (change) {
+          return yield* lock.withPermits(1)(
+            Effect.gen(function* () {
+              const current = vocabulary;
+              if (!current)
+                return yield* new DictationError({
+                  message: "Vocabulary could not be loaded; edits are disabled.",
+                });
+              const next = yield* Effect.try({
+                try: () => changeVocabulary(current, change, randomUUID()),
+                catch: failure,
+              });
+              // Publish the revision and observation together with the atomic file write.
+              yield* Effect.uninterruptible(
+                Effect.gen(function* () {
+                  yield* native(() => saveVocabulary(root, next));
+                  vocabulary = next;
+                  yield* patch({
+                    vocabularyRevision: next.revision,
+                    vocabularyCount: next.entries.length,
+                  });
+                }),
+              );
+              return { revision: next.revision };
+            }),
+          );
+        }),
+        installVocabulary: Effect.fn("Dictation.installVocabulary")(function* () {
+          yield* guarded(
+            Effect.gen(function* () {
+              yield* requireSupported();
+              stop();
+              yield* patch({
+                status: "installing",
+                message: "Preparing vocabulary encoder (103 MB)…",
+                downloadedBytes: 0,
+                totalBytes: 102802455,
+              });
+              yield* native((signal) =>
+                installVocabularyModel(root, signal, (value) => Queue.offerUnsafe(progress, value)),
+              );
+              yield* refresh();
+            }),
+          );
+        }),
         observeState: () => SubscriptionRef.changes(state),
         install: Effect.fn("Dictation.install")(function* () {
           yield* guarded(
@@ -139,6 +216,7 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
               yield* native(() =>
                 Promise.all([
                   rm(managedModelPath, { recursive: true, force: true }),
+                  rm(join(root, "ctc"), { recursive: true, force: true }),
                   rm(join(root, "settings.json"), { force: true }),
                 ]),
               );
@@ -150,20 +228,28 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
           yield* guarded(
             Effect.gen(function* () {
               yield* requireSupported();
-              if (worker) return;
               const current = yield* SubscriptionRef.get(state);
+              if (worker) {
+                if (current.vocabularyCount > 0 && current.vocabularyInstalled) {
+                  const active = worker;
+                  yield* native(() => active.prepareVocabulary());
+                }
+                return;
+              }
               if (!current.modelPath || !current.engineAvailable)
                 return yield* new DictationError({
                   message: "Install Parakeet in Settings → Voice & Dictation first.",
                 });
               yield* patch({ status: "loading", message: "Preparing dictation…" });
-              const next = new ParakeetWorker(helperPath, current.modelPath);
+              const next = new ParakeetWorker(helperPath, current.modelPath, join(root, "ctc"));
               worker = next;
               yield* native(async (signal) => {
                 const cancel = () => next.close();
                 signal.addEventListener("abort", cancel, { once: true });
                 try {
                   await next.ready;
+                  if (current.vocabularyCount > 0 && current.vocabularyInstalled)
+                    await next.prepareVocabulary();
                 } finally {
                   signal.removeEventListener("abort", cancel);
                 }
@@ -203,11 +289,12 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
                 return yield* new DictationError({
                   message: "The speech model is not ready. Enable dictation again to retry.",
                 });
+              const installed = (yield* SubscriptionRef.get(state)).vocabularyInstalled;
               return yield* native((signal) => {
                 const cancel = () => active.close();
                 signal.addEventListener("abort", cancel, { once: true });
                 return active
-                  .transcribe(audio)
+                  .transcribe(audio, installed && vocabulary ? vocabulary.entries : [])
                   .finally(() => signal.removeEventListener("abort", cancel));
               });
             }),

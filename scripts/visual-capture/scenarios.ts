@@ -3568,14 +3568,28 @@ const dictationInputScenario: VisualCaptureScenario = {
 const dictationSettingsScenario: VisualCaptureScenario = {
   name: "voice-dictation-settings",
   description:
-    "Shared voice/dictation recognition, processing mode and editable utility prompt settings",
-  states: ["default"],
+    "Shared voice/dictation recognition, processing mode and local custom vocabulary settings",
+  states: ["default", "vocabulary", "vocabulary-edit"],
   seed: assistantMarkdownCode.seed,
-  async prepare(page) {
+  async prepare(page, state) {
     await assistantMarkdownCode.prepare(page, "default");
     await page.getByRole("button", { name: "Open settings", exact: true }).click();
     await page.getByRole("button", { name: /Voice & Dictation/ }).click();
     await page.getByRole("heading", { name: "Voice & Dictation", exact: true }).waitFor();
+    if (state !== "default") {
+      await page.getByRole("button", { name: "Add word", exact: true }).click();
+      await page.getByLabel("Preferred spelling", { exact: true }).fill("Binks");
+      await page
+        .getByLabel("Aliases / common misrecognitions (optional)", { exact: true })
+        .fill("Banks");
+      if (state === "vocabulary") {
+        await page.getByRole("button", { name: "Save word", exact: true }).click();
+        await expect(page.getByRole("button", { name: "Edit Binks", exact: true })).toBeVisible();
+      }
+      await page
+        .locator("#setting-dictation-vocabulary")
+        .evaluate((element) => element.scrollIntoView({ block: "start" }));
+    }
     await page.waitForFunction(() => document.fonts.status === "loaded");
   },
   region: cakePromptsSettingsScenario.region,

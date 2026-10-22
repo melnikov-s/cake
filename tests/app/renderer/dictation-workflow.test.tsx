@@ -20,6 +20,11 @@ import { SettingsSpeechInputSection } from "../../../src/renderer/components/set
 import { WindowStatePersistence } from "../../../src/renderer/persistence/WindowStatePersistence";
 import type { TestClientOverrides } from "./test-client";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
+import {
+  changeVocabulary,
+  emptyVocabulary,
+  listVocabulary,
+} from "../../../src/contracts/dictation/vocabulary";
 import { installedDictationState } from "../../helpers/dictation";
 import { detectFixtureSpeech } from "../../helpers/speech-detection";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
@@ -180,6 +185,7 @@ function renderDictation(
     client: {
       ...options.client,
       dictation: {
+        listVocabulary: async () => ({ revision: 0, entries: [], total: 0, nextOffset: null }),
         prepare,
         release,
         transcribe,
@@ -289,6 +295,84 @@ afterEach(() => {
 });
 
 describe("Dictation writing-field workflow", () => {
+  it("refreshes the vocabulary projection when another window or Cake control publishes a new revision", async () => {
+    let words = emptyVocabulary();
+    using f = renderDictation({
+      client: { dictation: { listVocabulary: async (input) => listVocabulary(words, input) } },
+    });
+    await screen.findByText("No custom words yet. Add names or company terms you use.");
+    act(() => {
+      words = changeVocabulary(
+        words,
+        { action: "add", text: "Binks", aliases: ["Banks"], expectedRevision: 0 },
+        "review-agent",
+      );
+      f.root.dictationStore.applyState({
+        ...installedDictationState,
+        vocabularyRevision: 1,
+        vocabularyCount: 1,
+      });
+    });
+    await screen.findByRole("button", { name: "Edit Binks" });
+    expect(f.root.dictationStore.textProcessingMode).toBe("raw");
+  });
+
+  it("manages searchable preferred words and aliases through shared settings authority while retaining raw mode", async () => {
+    let words = emptyVocabulary();
+    const list = vi.fn<Client["dictation"]["listVocabulary"]>(async (input) =>
+      listVocabulary(words, input),
+    );
+    const change = vi.fn<Client["dictation"]["changeVocabulary"]>(async (input) => {
+      words = changeVocabulary(words, input, "review-agent");
+      return { revision: words.revision };
+    });
+    using f = renderDictation({
+      client: { dictation: { listVocabulary: list, changeVocabulary: change } },
+    });
+    await screen.findByText("No custom words yet. Add names or company terms you use.");
+    await f.user.click(screen.getByRole("button", { name: "Add word" }));
+    await f.user.click(screen.getByRole("button", { name: "Save word" }));
+    await screen.findByText(/Use 3–80 characters/);
+    await f.user.type(screen.getByLabelText("Preferred spelling"), "Binks");
+    const aliases = screen.getByLabelText("Aliases / common misrecognitions (optional)");
+    await f.user.type(aliases, "binks");
+    await f.user.click(screen.getByRole("button", { name: "Save word" }));
+    await screen.findByText(
+      "Preferred spelling and aliases must be distinct (ignoring case and spacing).",
+    );
+    await f.user.clear(aliases);
+    await f.user.type(aliases, "Banks");
+    await f.user.click(screen.getByRole("button", { name: "Save word" }));
+    await screen.findByRole("button", { name: "Edit Binks" });
+    expect(words.entries).toEqual([{ id: "review-agent", text: "Binks", aliases: ["Banks"] }]);
+    expect(screen.getByLabelText<HTMLSelectElement>("Text processing").value).toBe("raw");
+    await f.user.type(screen.getByLabelText("Search custom vocabulary"), "banks");
+    await screen.findByRole("button", { name: "Edit Binks" });
+    await f.user.click(screen.getByRole("button", { name: "Edit Binks" }));
+    await f.user.clear(screen.getByLabelText("Preferred spelling"));
+    await f.user.type(screen.getByLabelText("Preferred spelling"), "Binx");
+    // Another window/tool wins a concurrent edit. The visible draft keeps its old revision.
+    words = changeVocabulary(
+      words,
+      { action: "add", text: "Cake Labs", aliases: [], expectedRevision: 1 },
+      "company",
+    );
+    await f.user.click(screen.getByRole("button", { name: "Save word" }));
+    await screen.findByText("Vocabulary changed. Refresh and retry with the current revision.");
+    await f.user.click(screen.getByRole("button", { name: "Cancel word edit" }));
+    await waitFor(() => expect(f.root.dictationStore.vocabulary.page?.revision).toBe(2));
+    await f.user.click(screen.getByRole("button", { name: "Edit Binks" }));
+    await f.user.clear(screen.getByLabelText("Preferred spelling"));
+    await f.user.type(screen.getByLabelText("Preferred spelling"), "Binx");
+    await f.user.click(screen.getByRole("button", { name: "Save word" }));
+    await screen.findByRole("button", { name: "Remove Binx" });
+    await f.user.click(screen.getByRole("button", { name: "Remove Binx" }));
+    await screen.findByText("No matching words or aliases.");
+    expect(words.entries).toEqual([{ id: "company", text: "Cake Labs", aliases: [] }]);
+    expect(f.root.dictationStore.textProcessingMode).toBe("raw");
+    expect(list).toHaveBeenCalledWith(expect.objectContaining({ limit: 20 }), expect.anything());
+  });
+
   describe.each(["project-session", "project-chat", "cake-chat"] as const)(
     "%s slash-menu dictation boundary",
     (surface) => {
@@ -815,7 +899,7 @@ describe("Dictation writing-field workflow", () => {
       expect(save).toHaveBeenLastCalledWith(saved);
       expect(saved.children.dictationStore).toEqual({
         state: { enabled: true, deviceId: "usb-mic", textProcessingMode: "raw" },
-        children: {},
+        children: { vocabulary: { state: {}, children: {} } },
       });
     }
     {

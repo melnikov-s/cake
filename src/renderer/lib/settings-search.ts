@@ -230,6 +230,12 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
             keywords: "voice microphone speech Parakeet download model recognition local",
           },
           {
+            label: "Custom vocabulary",
+            targetId: "setting-dictation-vocabulary",
+            keywords:
+              "known words aliases company names spelling phrases local raw acoustic boosting CTC encoder",
+          },
+          {
             label: "Text processing",
             targetId: "setting-text-processing",
             keywords:

@@ -3,6 +3,7 @@ import { observer } from "r-state-tree/react";
 import type { DictationStore } from "../stores/DictationStore";
 import type { CakePromptSettingsStore } from "../stores/CakePromptSettingsStore";
 import { defaultCakePrompts } from "../../contracts/application/cake-prompt-defaults";
+import { SettingsDictationVocabulary } from "./settings-dictation-vocabulary";
 import { SettingsPromptField } from "./settings/settings-prompt-field";
 import { SettingsToggle } from "./settings/settings-toggle";
 import { Button } from "./ui/button";
@@ -119,6 +120,7 @@ export const SettingsDictationSection = observer(function SettingsDictationSecti
             </Button>
           </div>
         </div>
+        <SettingsDictationVocabulary store={store} />
         <div className="grid gap-1.5 px-3.5 py-2.5">
           <Textarea
             dictation

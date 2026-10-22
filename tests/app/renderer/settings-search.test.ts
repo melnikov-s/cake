@@ -2,6 +2,20 @@ import { describe, expect, it } from "vitest";
 import { searchSettings } from "../../../src/renderer/lib/settings-search";
 
 describe("settings search", () => {
+  it("discovers local custom vocabulary by aliases and acoustic recognition terms", () => {
+    for (const query of ["custom vocabulary", "known words", "aliases", "acoustic boosting"]) {
+      expect(searchSettings(query)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            page: "voice",
+            items: expect.arrayContaining([
+              expect.objectContaining({ targetId: "setting-dictation-vocabulary" }),
+            ]),
+          }),
+        ]),
+      );
+    }
+  });
   it("returns the matching setting under its page", () => {
     expect(searchSettings("auto-hide")).toEqual([
       {

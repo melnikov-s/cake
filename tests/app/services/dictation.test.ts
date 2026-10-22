@@ -1,14 +1,18 @@
 import { beforeEach, vi } from "vitest";
 import { expect, it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, Schema, Stream } from "effect";
+import type { DictationVocabulary } from "../../../src/contracts/dictation/vocabulary";
 import { DictationState } from "../../../src/contracts/dictation/dictation-data";
 import { Dictation } from "../../../src/services/dictation/Dictation";
 import { makeDictationLive } from "../../../src/services/dictation/DictationLive";
 
 const native = vi.hoisted(() => ({
   path: "/external/model" as string | undefined,
+  vocabulary: { revision: 0, entries: [] } as DictationVocabulary,
+  vocabularyInstalled: false,
   available: true,
   ready: () => Promise.resolve(),
+  prepareVocabulary: vi.fn(async () => {}),
   transcribe: vi.fn(async () => "hello"),
   detectSpeech: vi.fn(async () => true),
   constructed: vi.fn(),
@@ -21,6 +25,19 @@ const native = vi.hoisted(() => ({
 vi.mock("node:fs/promises", () => ({ rm: native.remove }));
 vi.mock("../../../src/services/dictation/local-parakeet", () => ({
   helperAvailable: async () => native.available,
+  loadVocabulary: async () => native.vocabulary,
+  saveVocabulary: async (_root: string, vocabulary: DictationVocabulary) => {
+    native.vocabulary = vocabulary;
+  },
+  vocabularyModelInstalled: async () => native.vocabularyInstalled,
+  installVocabularyModel: async (
+    root: string,
+    signal: AbortSignal,
+    progress: (value: unknown) => void,
+  ) => {
+    await native.install(root, signal, progress);
+    native.vocabularyInstalled = true;
+  },
   loadModelPath: async () => native.path,
   saveModelPath: async (_root: string, path: string) => {
     native.path = path;
@@ -31,10 +48,11 @@ vi.mock("../../../src/services/dictation/local-parakeet", () => ({
   installParakeet: native.install,
   ParakeetWorker: class {
     ready: Promise<void>;
-    constructor(executable: string, path: string) {
-      native.constructed(executable, path);
+    constructor(executable: string, path: string, vocabularyPath: string) {
+      native.constructed(executable, path, vocabularyPath);
       this.ready = native.ready();
     }
+    prepareVocabulary = native.prepareVocabulary;
     transcribe = native.transcribe;
     detectSpeech = native.detectSpeech;
     close = native.close;
@@ -44,6 +62,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   native.path = "/external/model";
   native.available = true;
+  native.vocabulary = { revision: 0, entries: [] };
+  native.vocabularyInstalled = false;
   native.ready = () => Promise.resolve();
   native.install.mockImplementation(async () => {});
   native.remove.mockImplementation(async () => {
@@ -58,6 +78,63 @@ const state = (service: Dictation["Service"]) =>
     Stream.runCollect,
     Effect.map((values) => values[0]!),
   );
+
+it.effect(
+  "vocabulary edits serialize with CAS, project revisions and reach the raw worker only after explicit encoder installation",
+  () =>
+    Effect.gen(function* () {
+      const service = yield* Dictation;
+      expect(yield* service.listVocabulary({})).toMatchObject({ revision: 0, entries: [] });
+      const attempts = yield* Effect.all(
+        [
+          service
+            .changeVocabulary({
+              action: "add",
+              expectedRevision: 0,
+              text: "Binks",
+              aliases: ["Banks"],
+            })
+            .pipe(Effect.result),
+          service
+            .changeVocabulary({
+              action: "add",
+              expectedRevision: 0,
+              text: "Cake Labs",
+              aliases: [],
+            })
+            .pipe(Effect.result),
+        ],
+        { concurrency: "unbounded" },
+      );
+      expect(attempts.filter((result) => result._tag === "Success")).toHaveLength(1);
+      expect(attempts.filter((result) => result._tag === "Failure")).toHaveLength(1);
+      expect((yield* state(service)).vocabularyCount).toBe(1);
+      expect((yield* state(service)).vocabularyRevision).toBe(1);
+      yield* service.prepare();
+      const audio = { utteranceId: "raw", pcm: "", final: true };
+      yield* service.transcribe(audio);
+      expect(native.transcribe).toHaveBeenLastCalledWith(audio, []);
+      expect(native.install).not.toHaveBeenCalled();
+      expect(native.prepareVocabulary).not.toHaveBeenCalled();
+      yield* service.installVocabulary();
+      expect((yield* state(service)).vocabularyInstalled).toBe(true);
+      yield* service.prepare();
+      expect(native.prepareVocabulary).toHaveBeenCalledTimes(1);
+      yield* service.transcribe(audio);
+      expect(native.transcribe).toHaveBeenLastCalledWith(audio, native.vocabulary.entries);
+      const saved = yield* service.listVocabulary({});
+      yield* service.changeVocabulary({
+        action: "remove",
+        expectedRevision: 1,
+        id: saved.entries[0]!.id,
+      });
+      yield* service.transcribe(audio);
+      expect(native.transcribe).toHaveBeenLastCalledWith(audio, []);
+      yield* service.remove();
+      expect(native.remove).not.toHaveBeenCalledWith("/fixture/vocabulary.json", expect.anything());
+      expect(yield* service.listVocabulary({})).toMatchObject({ revision: 2, entries: [] });
+    }).pipe(Effect.provide(live())),
+);
 
 it.effect("projects RPC-encodable state with independently bundled engine availability", () =>
   Effect.gen(function* () {
@@ -98,6 +175,7 @@ it.effect("concurrent prepare calls acquire one bundled worker and wait for warm
     expect(native.constructed).toHaveBeenCalledExactlyOnceWith(
       "/bundle/cake-dictation",
       "/external/model",
+      "/fixture/ctc",
     );
     expect((yield* state(service)).status).toBe("ready");
     expect(yield* service.transcribe({ utteranceId: "focus-1", pcm: "", final: true })).toBe(
@@ -127,7 +205,7 @@ it.effect("concurrent prepare calls acquire one bundled worker and wait for warm
       },
     };
     expect(yield* service.transcribe(configuredAudio)).toBe("hello");
-    expect(native.transcribe).toHaveBeenLastCalledWith(configuredAudio);
+    expect(native.transcribe).toHaveBeenLastCalledWith(configuredAudio, []);
     yield* service.release();
     expect(native.close).toHaveBeenCalledTimes(1);
     expect((yield* state(service)).status).toBe("installed");
@@ -184,6 +262,7 @@ it.effect(
       expect(native.constructed).toHaveBeenCalledWith(
         "/bundle/cake-dictation",
         "/external/another-model",
+        "/fixture/ctc",
       );
       yield* service.remove();
       expect(native.remove).toHaveBeenCalledWith("/fixture/model", {

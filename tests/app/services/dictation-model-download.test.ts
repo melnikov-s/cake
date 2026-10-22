@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { installParakeet, validateModel } from "../../../src/services/dictation/local-parakeet";
+import {
+  installParakeet,
+  installVocabularyModel,
+  vocabularyModelInstalled,
+  validateModel,
+} from "../../../src/services/dictation/local-parakeet";
 
 const fixture = vi.hoisted(() => ({
   content: "fixture model data\n",
@@ -29,6 +34,22 @@ vi.mock("../../../src/services/dictation/parakeet-coreml-manifest.json", async (
     },
   };
 });
+vi.mock("../../../src/services/dictation/parakeet-ctc-manifest.json", async () => {
+  const { createHash } = await import("node:crypto");
+  return {
+    default: {
+      repository: "fixture/ctc",
+      revision: "pinned-ctc-revision",
+      files: ["tokenizer.json", "vocab.json", "AudioEncoder.mlmodelc/weights/weight.bin"].map(
+        (path) => ({
+          path,
+          bytes: Buffer.byteLength(fixture.content),
+          sha256: createHash("sha256").update(fixture.content).digest("hex"),
+        }),
+      ),
+    },
+  };
+});
 let root: string;
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "cake-model-download-"));
@@ -48,6 +69,43 @@ async function existingModel() {
 }
 
 describe("native model installation", () => {
+  it("installs the separate CTC encoder only on request, with checksum/cancellation recovery and without touching vocabulary", async () => {
+    await writeFile(join(root, "vocabulary.json"), "user words");
+    expect(await vocabularyModelInstalled(root)).toBe(false);
+    const controller = new AbortController();
+    const fetch = vi.fn(async (url: string) => {
+      expect(url).toContain("fixture/ctc/resolve/pinned-ctc-revision/");
+      controller.abort();
+      return new Response(fixture.content);
+    });
+    vi.stubGlobal("fetch", fetch);
+    await expect(installVocabularyModel(root, controller.signal, () => {})).rejects.toThrow();
+    expect(await vocabularyModelInstalled(root)).toBe(false);
+    await expect(stat(join(root, "ctc.download"))).rejects.toMatchObject({ code: "ENOENT" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("invalid model data\n")),
+    );
+    await expect(
+      installVocabularyModel(root, new AbortController().signal, () => {}),
+    ).rejects.toThrow("checksum");
+    expect(await vocabularyModelInstalled(root)).toBe(false);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(fixture.content)),
+    );
+    const progress = vi.fn();
+    await installVocabularyModel(root, new AbortController().signal, progress);
+    expect(await vocabularyModelInstalled(root)).toBe(true);
+    expect(await readFile(join(root, "vocabulary.json"), "utf8")).toBe("user words");
+    expect(progress).toHaveBeenLastCalledWith(
+      expect.objectContaining({ message: "Downloading local vocabulary encoder…" }),
+    );
+    expect(await readFile(join(root, "ctc", "installed.json"), "utf8")).toContain(
+      "pinned-ctc-revision",
+    );
+  });
+
   it("downloads only pinned model data, verifies every file, and publishes the complete directory", async () => {
     const model = await existingModel();
     const fetch = vi.fn(async (url: string) => {

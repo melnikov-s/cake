@@ -3,6 +3,12 @@ import { Dictation } from "../../services/dictation/Dictation";
 import { DictationRpc } from "../protocol/DictationRpc";
 
 export const dictationHandlers = DictationRpc.of({
+  "dictation.listVocabulary": (input) =>
+    Effect.flatMap(Dictation, (service) => service.listVocabulary(input)),
+  "dictation.changeVocabulary": (input) =>
+    Effect.flatMap(Dictation, (service) => service.changeVocabulary(input)),
+  "dictation.installVocabulary": () =>
+    Effect.flatMap(Dictation, (service) => service.installVocabulary()),
   "dictation.observeState": () =>
     Stream.unwrap(Effect.map(Dictation, (service) => service.observeState())),
   "dictation.install": () => Effect.flatMap(Dictation, (service) => service.install()),

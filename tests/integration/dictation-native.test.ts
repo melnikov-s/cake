@@ -3,10 +3,12 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
+import type { VocabularyEntry } from "../../src/contracts/dictation/vocabulary";
 import { describe, expect, test } from "vitest";
 import { ParakeetWorker, validateModel } from "../../src/services/dictation/local-parakeet";
 
 const model = process.env.CAKE_DICTATION_TEST_MODEL;
+const ctc = process.env.CAKE_DICTATION_TEST_CTC;
 const run = promisify(execFile);
 
 async function syntheticSpeech(root: string, name: string, text: string) {
@@ -28,15 +30,23 @@ function generatedPcm(samples: number, sample: (index: number) => number) {
   for (let i = 0; i < samples; i++) pcm.writeFloatLE(sample(i), i * 4);
   return pcm;
 }
-async function stream(worker: ParakeetWorker, id: string, pcm: Buffer) {
+async function stream(
+  worker: ParakeetWorker,
+  id: string,
+  pcm: Buffer,
+  vocabulary: readonly VocabularyEntry[] = [],
+) {
   const partials: string[] = [];
   for (let offset = 0; offset < pcm.length; offset += 51_200)
     partials.push(
-      await worker.transcribe({
-        utteranceId: id,
-        pcm: pcm.subarray(offset, offset + 51_200).toString("base64"),
-        final: false,
-      }),
+      await worker.transcribe(
+        {
+          utteranceId: id,
+          pcm: pcm.subarray(offset, offset + 51_200).toString("base64"),
+          final: false,
+        },
+        vocabulary,
+      ),
     );
   return partials;
 }
@@ -44,7 +54,11 @@ async function fixture() {
   if (!model) throw new Error("CAKE_DICTATION_TEST_MODEL is required");
   await validateModel(model);
   const root = await mkdtemp(join(tmpdir(), "cake-native-dictation-"));
-  const worker = new ParakeetWorker(resolve("out/main/native/cake-dictation"), model);
+  const worker = new ParakeetWorker(
+    process.env.CAKE_DICTATION_TEST_HELPER ?? resolve("out/main/native/cake-dictation"),
+    model,
+    ctc ?? join(root, "ctc"),
+  );
   return {
     root,
     worker,
@@ -60,6 +74,51 @@ async function fixture() {
 describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !model)(
   "native speech input",
   () => {
+    // Both model paths are explicit opt-ins. This test never downloads or changes user data.
+    test.skipIf(!ctc)(
+      "acoustically corrects a known name while preserving legitimate banks, live revisions and raw finalization",
+      async () => {
+        await using f = await fixture();
+        await f.worker.ready;
+        const vocabulary = [{ id: "review-agent", text: "Binks", aliases: ["Banks", "Vinx"] }];
+        const pcm = await syntheticSpeech(f.root, "known-name", "Ask Binks to review the changes.");
+        await stream(f.worker, "default", pcm);
+        const baseline = await f.worker.transcribe({
+          utteranceId: "default",
+          pcm: "",
+          final: true,
+        });
+        await f.worker.prepareVocabulary();
+        const partials = await stream(f.worker, "boosted", pcm, vocabulary);
+        expect(partials.some((text) => /\bBinks\b/.test(text))).toBe(true);
+        // A settings change during this utterance must not discard its captured vocabulary.
+        const final = await f.worker.transcribe(
+          { utteranceId: "boosted", pcm: "", final: true },
+          [],
+        );
+        expect(final.match(/\bBinks\b/g)).toHaveLength(1);
+        expect(final.match(/review/g)).toHaveLength(1);
+        expect(final).not.toBe(baseline);
+        const banks = await syntheticSpeech(
+          f.root,
+          "ordinary-banks",
+          "The banks are closed on Sunday. The river banks are covered with flowers.",
+        );
+        await stream(f.worker, "banks", banks, vocabulary);
+        const ordinary = await f.worker.transcribe(
+          { utteranceId: "banks", pcm: "", final: true },
+          vocabulary,
+        );
+        expect(ordinary.match(/\bbanks\b/gi)).toHaveLength(2);
+        expect(ordinary).not.toMatch(/\bBinks\b/i);
+        await stream(f.worker, "empty-again", pcm);
+        expect(
+          await f.worker.transcribe({ utteranceId: "empty-again", pcm: "", final: true }),
+        ).toBe(baseline);
+      },
+      180_000,
+    );
+
     test("warms offline, revises streaming words, finalizes and isolates new focus", async () => {
       await using f = await fixture();
       await f.worker.ready;

@@ -160,6 +160,12 @@ async function executeAgentSettings(
       await client.speechOutput.setVoice(voiceId, options);
       return { voiceId };
     }
+    case "settings.dictation.vocabulary.list":
+      dictation();
+      return client.dictation.listVocabulary(invocation.arguments, options);
+    case "settings.dictation.vocabulary.change":
+      dictation();
+      return client.dictation.changeVocabulary(invocation.arguments, options);
     case "settings.dictation.get":
       return dictationView();
     case "settings.dictation.update": {
@@ -196,6 +202,9 @@ async function executeAgentSettings(
         }
         case "refresh-microphones":
           await store.refreshDevices();
+          break;
+        case "install-vocabulary":
+          await store.install(true);
           break;
         case "install":
           await store.install();

@@ -26,7 +26,13 @@ test("Cake dictation shows readiness, types into chat and annotations, and seals
     mkdir(project, { recursive: true }),
     mkdir(join(cakeHome, "state"), { recursive: true }),
     mkdir(model, { recursive: true }),
+    mkdir(join(dictation, "ctc"), { recursive: true }),
   ]);
+  // Fake native assets only. Never download speech models in an Electron workflow test.
+  await writeFile(
+    join(dictation, "ctc", "installed.json"),
+    JSON.stringify({ revision: "fixture" }),
+  );
   const control = join(model, "control.json");
   const configure = (value: {
     ready: boolean;
@@ -56,13 +62,14 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
   let count = fs.existsSync(requestPath) ? JSON.parse(fs.readFileSync(requestPath, 'utf8')).count : 0;
   for await (const line of readline.createInterface({ input: process.stdin })) {
     const request = JSON.parse(line);
+    if (request.operation === 'prepareVocabulary') { reply({ prepared: true }); continue; }
     if (request.operation === 'detectSpeech') {
       if (config().holdDetection) fs.writeFileSync(path.join(directory, 'detection.json'), JSON.stringify({ held: true }));
       await wait(value => !value.holdDetection);
       const data = Buffer.from(request.pcm, 'base64'); let energy = 0; for (let i = 0; i < data.length; i += 4) energy += data.readFloatLE(i) ** 2;
       reply({ speech: config().speech ?? (data.length > 0 && Math.sqrt(energy / (data.length / 4)) > 0.003) }); continue;
     }
-    fs.writeFileSync(path.join(directory, 'request.json'), JSON.stringify({ count: ++count, final: request.final, id: request.utteranceId }));
+    fs.writeFileSync(path.join(directory, 'request.json'), JSON.stringify({ count: ++count, final: request.final, id: request.utteranceId, vocabulary: request.vocabulary }));
     await wait(value => !value.hold); const value = config(); reply(value.error ? { error: value.error } : { text: request.final ? (value.finalText ?? value.text ?? '') : (value.text ?? '') });
   }
 })();
@@ -152,6 +159,40 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await page.getByRole("button", { name: /Voice & Dictation/ }).click();
     const postProcess = page.getByLabel("Text processing", { exact: true });
     await expect(postProcess).toHaveValue("raw");
+    const vocabulary = join(dictation, "vocabulary.json");
+    await expect(
+      page.getByText("No custom words yet. Add names or company terms you use."),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Add word", exact: true }).click();
+    const spelling = page.getByLabel("Preferred spelling", { exact: true });
+    await spelling.fill("Binks");
+    await page
+      .getByLabel("Aliases / common misrecognitions (optional)", { exact: true })
+      .fill("Banks");
+    await expect(spelling).toHaveValue("Binks");
+    await page.getByRole("button", { name: "Save word", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Edit Binks", exact: true })).toBeVisible();
+    await page.getByLabel("Search custom vocabulary").fill("banks");
+    await expect(page.getByRole("button", { name: "Edit Binks", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Edit Binks", exact: true }).click();
+    await spelling.fill("Binx");
+    await page.getByRole("button", { name: "Save word", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Remove Binx", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Remove Binx", exact: true }).click();
+    await expect(page.getByText("No matching words or aliases.")).toBeVisible();
+    await page.getByLabel("Search custom vocabulary").fill("");
+    await page.getByRole("button", { name: "Add word", exact: true }).click();
+    await spelling.fill("Binks");
+    await page
+      .getByLabel("Aliases / common misrecognitions (optional)", { exact: true })
+      .fill("Banks");
+    await page.getByRole("button", { name: "Save word", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Edit Binks", exact: true })).toBeVisible();
+    expect(JSON.parse(await readFile(vocabulary, "utf8"))).toMatchObject({
+      revision: 4,
+      entries: [{ text: "Binks", aliases: ["Banks"] }],
+    });
+    await expect(postProcess).toHaveValue("raw");
     // Optional cleanup still owns the gray pending-processing overlay.
     await postProcess.selectOption("utility");
     await page.getByRole("switch", { name: "Dictation mode" }).click();
@@ -182,6 +223,9 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
       timeout: 15_000,
     });
     await expect(sample).toHaveValue("Typed while loading. Dictation is ready");
+    expect(JSON.parse(await readFile(join(model, "request.json"), "utf8")).vocabulary).toEqual([
+      expect.objectContaining({ text: "Binks", aliases: ["Banks"] }),
+    ]);
     await expect(loadingControl).toHaveAttribute("aria-busy", "false");
     expect(
       await sample.evaluate((element) => {

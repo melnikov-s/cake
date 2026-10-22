@@ -9,6 +9,11 @@ import { describe, expect, it, vi } from "vitest";
 import { applySnapshot, toSnapshot, createStore, mount } from "r-state-tree";
 import { DesktopConnectionStore } from "../../../src/renderer/stores/DesktopConnectionStore";
 import type { DesktopSharingState } from "../../../src/contracts/desktop/desktop-sharing-data";
+import {
+  changeVocabulary,
+  emptyVocabulary,
+  listVocabulary,
+} from "../../../src/contracts/dictation/vocabulary";
 import { createTestClient } from "./test-client";
 import { speechOutputSettings } from "../../helpers/speech-output";
 import {
@@ -913,6 +918,81 @@ describe("Agent Settings through the real application-control/Client/domain boun
     } finally {
       await h.dispose();
     }
+  });
+
+  it("discovers bounded vocabulary controls and forwards revision-safe single-word edits without utility cleanup", async () => {
+    let words = emptyVocabulary();
+    const boundary = {
+      dictation: {
+        listVocabulary: vi.fn<Client["dictation"]["listVocabulary"]>(async (input) =>
+          listVocabulary(words, input),
+        ),
+        changeVocabulary: vi.fn<Client["dictation"]["changeVocabulary"]>(async (input) => {
+          words = changeVocabulary(words, input, "review-agent");
+          return { revision: words.revision };
+        }),
+      },
+    };
+    const client = createTestClient(boundary);
+    using connection = mount(
+      createStore(DesktopConnectionStore, {
+        host: { kind: "local" },
+        client: () => client,
+        connect: async () => {},
+      }),
+    );
+    using origin = createRendererStoreFixture({ client: boundary, desktopConnection: connection });
+    const call = (name: string, args: JsonObject = {}) =>
+      origin.root.applicationControlStore.invoke({ name, arguments: args });
+    expect(
+      listAppControlTools().some((tool) => tool.command === "settings.dictation.vocabulary.change"),
+    ).toBe(true);
+    expect(await call("settings.dictation.vocabulary.list", { limit: 1 })).toMatchObject({
+      value: { revision: 0, entries: [], nextOffset: null },
+    });
+    expect(
+      await call("settings.dictation.vocabulary.change", {
+        action: "add",
+        expectedRevision: 0,
+        text: "Binks",
+        aliases: ["Banks"],
+      }),
+    ).toMatchObject({ value: { revision: 1 } });
+    expect(
+      await call("settings.dictation.vocabulary.list", { query: "Banks", limit: 1 }),
+    ).toMatchObject({
+      value: { entries: [{ id: "review-agent", text: "Binks", aliases: ["Banks"] }] },
+    });
+    await expect(
+      call("settings.dictation.vocabulary.change", {
+        action: "remove",
+        expectedRevision: 0,
+        id: "review-agent",
+      }),
+    ).rejects.toThrow("Vocabulary changed");
+    await expect(call("settings.dictation.vocabulary.list", { limit: 51 })).rejects.toThrow();
+    await expect(
+      call("settings.dictation.vocabulary.change", {
+        action: "add",
+        expectedRevision: 1,
+        text: "",
+        aliases: [],
+      }),
+    ).rejects.toThrow();
+    await call("settings.dictation.vocabulary.change", {
+      action: "update",
+      expectedRevision: 1,
+      id: "review-agent",
+      text: "Binx",
+      aliases: [],
+    });
+    await call("settings.dictation.vocabulary.change", {
+      action: "remove",
+      expectedRevision: 2,
+      id: "review-agent",
+    });
+    expect(words.entries).toEqual([]);
+    expect(origin.root.dictationStore.textProcessingMode).toBe("raw");
   });
 
   it("targets native settings at the originating desktop and reuses its single-flight sharing and dictation controls", async () => {
