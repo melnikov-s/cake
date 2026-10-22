@@ -83,6 +83,22 @@ export function createTranscriptScrollOwner(
     const list = scroller.querySelector('[aria-label="Conversation"]');
     return list !== null && getComputedStyle(list).visibility === "hidden";
   };
+  // A range commit inserts real rows using estimated sizes first. Its padding
+  // is not authoritative until Virtuoso measures those rows. Compensating the
+  // intermediate geometry can move the range again and unmount our anchor.
+  const measuredRows = new WeakSet<HTMLElement>();
+  const measuring = () => {
+    let pending = false;
+    for (const element of scroller.querySelectorAll<HTMLElement>(
+      '[aria-label="Conversation"] > [data-known-size]',
+    )) {
+      if (element.offsetHeight === Number(element.dataset.knownSize)) measuredRows.add(element);
+      else if (!measuredRows.has(element)) pending = true;
+    }
+    // Resizes of already measured rows are real layout changes, not mount-time
+    // estimates. Compensate those immediately, before their next measurement.
+    return pending;
+  };
   const gap = () => scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop;
   const atBottom = () => gap() <= bottomThreshold;
   const write = (top: number) => {
@@ -159,10 +175,12 @@ export function createTranscriptScrollOwner(
 
   const reconcile = () => {
     if (!measurable()) return;
+    const pendingMeasurements = measuring();
     if (positioning()) {
       if (following) pin();
       return;
     }
+    if (!following && pendingMeasurements) return;
     if (following) pin();
     else holdAnchor();
     if (pendingReveal !== undefined) {
@@ -190,7 +208,8 @@ export function createTranscriptScrollOwner(
     // Someone else moved the viewport. First compensate any layout change that
     // has not been reconciled yet (content coordinates ignore the movement).
     const movedDown = top > knownTop;
-    if (!following) holdAnchor();
+    const pendingMeasurements = measuring();
+    if (!following && !pendingMeasurements) holdAnchor();
     knownTop = scroller.scrollTop;
     // Virtuoso's scrollToIndex moves for a pending reveal; that is not the reader.
     if (pendingReveal === undefined) {
@@ -204,7 +223,7 @@ export function createTranscriptScrollOwner(
         following = atBottom();
     }
     if (following) pin();
-    anchor = findAnchor();
+    if (!pendingMeasurements) anchor = findAnchor();
     knownHeight = scroller.scrollHeight;
   };
 

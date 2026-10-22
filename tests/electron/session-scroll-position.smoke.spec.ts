@@ -215,6 +215,7 @@ for (const scenario of [
   "keeps user ownership through repeated streaming gestures",
   "keeps every resize frame at the bottom",
   "preserves the reading anchor during row resize",
+  "scrolls upward through virtual range boundaries without resetting",
   "reopens a large loaded session",
   "restores session position",
   "follows the full bottom and isolates nested scrolling",
@@ -304,6 +305,71 @@ for (const scenario of [
           ),
         )
         .toBeLessThanOrEqual(1);
+
+      if (scenario === "scrolls upward through virtual range boundaries without resetting") {
+        await expect(transcript.locator('[data-slot="transcript-item"]').last()).toContainText(
+          "transcript item 47",
+        );
+        await paintFrames(page, 10);
+        expect(await transcript.locator('[data-slot="transcript-item"]').count()).toBeLessThan(48);
+        await page.evaluate(() => {
+          const errors: string[] = [];
+          Reflect.set(window, "scrollRendererErrors", errors);
+          window.addEventListener("error", (event) => errors.push(event.message));
+        });
+        await transcript.hover({ position: { x: 20, y: 200 } });
+        let reachedTop = false;
+        for (let step = 0; step < 140; step++) {
+          const before = await transcript.evaluate((element) => {
+            const top = element.getBoundingClientRect().top;
+            const row = Array.from(
+              element.querySelectorAll<HTMLElement>("[data-transcript-item-key]"),
+            ).find((row) => row.getBoundingClientRect().bottom > top + 1)!;
+            return {
+              key: row.dataset.transcriptItemKey!,
+              offset: row.getBoundingClientRect().top - top,
+              scrollTop: element.scrollTop,
+            };
+          });
+          if (before.scrollTop < 120) {
+            reachedTop = true;
+            break;
+          }
+          await page.mouse.wheel(0, -120);
+          const offsets = await transcript.evaluate(async (element, key) => {
+            const samples: Array<number | null> = [];
+            for (let frame = 0; frame < 10; frame++) {
+              await new Promise<void>((resolve) =>
+                requestAnimationFrame(() => setTimeout(resolve, 0)),
+              );
+              const row = Array.from(
+                element.querySelectorAll<HTMLElement>("[data-transcript-item-key]"),
+              ).find((row) => row.dataset.transcriptItemKey === key);
+              samples.push(
+                row ? row.getBoundingClientRect().top - element.getBoundingClientRect().top : null,
+              );
+            }
+            return samples;
+          }, before.key);
+          for (const offset of offsets) {
+            const context = `step ${step}: ${JSON.stringify(before)} -> ${offset}`;
+            expect(offset, context).not.toBeNull();
+            // Syntax highlighting can shrink a code row as it enters view.
+            // No paint opportunity may reset us backward or overshoot the gesture.
+            expect(offset! - before.offset, context).toBeGreaterThanOrEqual(0);
+            expect(offset! - before.offset, context).toBeLessThanOrEqual(121);
+          }
+        }
+        expect(reachedTop).toBe(true);
+        expect(await page.evaluate(() => Reflect.get(window, "scrollRendererErrors"))).toEqual([]);
+        await page.mouse.wheel(0, -120);
+        await expect.poll(() => transcript.evaluate((element) => element.scrollTop)).toBe(0);
+        await expect(transcript.locator('[data-slot="transcript-item"]').first()).toHaveAttribute(
+          "data-transcript-anchor-id",
+          "runtime-system-prompt-system",
+        );
+        return;
+      }
 
       if (scenario === "opens a restored transcript without renderer errors") {
         // Reload the real restored window after attaching the listener so it
