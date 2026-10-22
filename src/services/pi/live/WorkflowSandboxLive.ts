@@ -33,20 +33,25 @@ const pipeline = (items, callback) => batch(items, callback);
 const parallel = (tasks) => batch(tasks, (task) => task());
 const phase = (title) => tools.phase(title);
 const log = (message) => tools.log(message);
-(() => {
-  const OriginalDate = Date;
+// Pi 1.4 freezes VM intrinsics before user code. Keep workflow helpers lexical
+// instead of trying to rewrite Date.prototype or the global Math object.
+const { Date, Math } = (() => {
+  const OriginalDate = globalThis.Date;
   const denyClock = () => { throw new Error("Workflow clock/random access is disabled; pass timestamps through args."); };
-  OriginalDate.now = denyClock;
-  const SafeDate = new Proxy(OriginalDate, {
-    apply: denyClock,
-    construct: (target, values) => { if (!values.length) return denyClock(); return Reflect.construct(target, values); },
+  const SafeDate = function (...values) {
+    if (!new.target || !values.length) return denyClock();
+    return Reflect.construct(OriginalDate, values);
+  };
+  Object.defineProperties(SafeDate, {
+    now: { value: denyClock },
+    parse: { value: OriginalDate.parse },
+    UTC: { value: OriginalDate.UTC },
   });
-  Object.defineProperty(OriginalDate.prototype, "constructor", { value: SafeDate });
-  globalThis.Date = SafeDate;
-  Object.freeze(OriginalDate.prototype);
-  Object.freeze(OriginalDate);
-  Math.random = denyClock;
-  Object.freeze(Math);
+  const math = Object.create(null, {
+    ...Object.getOwnPropertyDescriptors(globalThis.Math),
+    random: { value: denyClock },
+  });
+  return { Date: Object.freeze(SafeDate), Math: Object.freeze(math) };
 })();
 `;
 
@@ -143,7 +148,45 @@ export const WorkflowSandboxLive = Layer.succeed(
       );
       const code = `const __workflowArgs = ${JSON.stringify(program.args) ?? "undefined"};\n${prelude}\n${parsed.body}`;
       const result = yield* Effect.tryPromise({
-        try: (signal) => sandbox.execute(code, { signal }),
+        try: async (parentSignal) => {
+          const calls = new AbortController();
+          const signal = AbortSignal.any([parentSignal, calls.signal]);
+          let sequence = 0;
+          // Pi owns the frozen globals. Fix the VM clock/seed too, so aliases
+          // that bypass the lexical workflow guards cannot read real time/randomness.
+          const execution = sandbox.start(code, {
+            startedAt: 0,
+            seed: 0,
+            signal,
+            tools: sandbox.tools,
+            onCall(call) {
+              const tool = sandbox.tools.find((entry) => entry.name === call.name);
+              void Promise.resolve()
+                .then(() => {
+                  if (!tool) throw new Error(`Unknown workflow helper: ${call.name}`);
+                  return tool.execute(call.args, { signal });
+                })
+                .then(
+                  (value) => {
+                    if (!execution.finished)
+                      execution.deliver(++sequence, 0, call.id, { ok: true, value });
+                  },
+                  (error: unknown) => {
+                    if (!execution.finished)
+                      execution.deliver(++sequence, 0, call.id, {
+                        ok: false,
+                        message: message(error),
+                      });
+                  },
+                );
+            },
+          });
+          try {
+            return await execution.result;
+          } finally {
+            calls.abort();
+          }
+        },
         catch: boundaryError,
       });
       if (!result.ok)

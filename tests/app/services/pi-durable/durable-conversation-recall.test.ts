@@ -65,14 +65,14 @@ async function fixture(
     async search(input: Parameters<(typeof tools)[0]["execute"]>[0] = {}) {
       const result = await tools[0].execute(input, api, BACKGROUND_CONTEXT);
       return JSON.parse(
-        result.content?.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("") ??
+        result.output?.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("") ??
           "null",
       );
     },
     async read(input: Parameters<(typeof tools)[1]["execute"]>[0]) {
       const result = await tools[1].execute(input, api, BACKGROUND_CONTEXT);
       return JSON.parse(
-        result.content?.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("") ??
+        result.output?.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("") ??
           "null",
       );
     },

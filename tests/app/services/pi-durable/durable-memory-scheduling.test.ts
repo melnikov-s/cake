@@ -383,6 +383,7 @@ it.each([1, 2])(
       kind: "cake.chat-memory-state",
       version,
       scope: "conversation",
+      checkpointWhen: () => false,
       history: "latest",
       fork: "initial",
       initial: () => ({

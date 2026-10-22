@@ -262,7 +262,7 @@ it("captures every real Durable tool-loop call after bounded-head reset and rema
     parameters: Type.Object({ command: Type.String() }),
     replay: "safe",
     async execute() {
-      return { content: [{ type: "text", text: "EXACT_TOOL_RESULT" }] };
+      return { output: [{ type: "text", text: "EXACT_TOOL_RESULT" }] };
     },
   });
   registry.install(defineExtension({ name: "cake", tools: [tool] }));

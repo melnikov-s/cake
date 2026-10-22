@@ -431,7 +431,7 @@ describe("Cake native MCP runtime contract", () => {
     if (Object.keys(restriction).length === 0) await h.session.prompt("/mcp");
     expect(h.entries).toHaveLength(Object.keys(restriction).length === 0 ? 1 : 0);
   });
-  it("activates deferred discovery without eagerly declaring tools and can rediscover after SDK resume", async () => {
+  it("restores loaded deferred declarations after SDK resume", async () => {
     const h = await openSession({
       exposure: "deferred",
       fixtures: [transportFixture(), transportFixture()],
@@ -457,10 +457,10 @@ describe("Cake native MCP runtime contract", () => {
     sessions.push(resumed.session);
     await resumed.session.bindExtensions({ mode: "rpc" });
     await resumed.session.prompt("/mcp");
-    // Pi 1.0 SDK constructs an explicit initial loadout, overriding transcript
-    // restoration. Do not add a Cake cache to compensate: rediscover as needed.
+    // Pi 1.3+ restores the recorded declaration loadout without a Cake cache.
     expect(resumed.session.getActiveToolNames()).toContain("tool_search");
     expect(resumed.session.getAllTools().map((tool) => tool.name)).toContain("mcp__fixture__echo");
+    expect(resumed.session.getActiveToolNames()).toContain("mcp__fixture__echo");
   });
   it("runs configured codemode in on mode with ordinary tools retained", async () => {
     const h = await openSession({ exposure: "codemode" });

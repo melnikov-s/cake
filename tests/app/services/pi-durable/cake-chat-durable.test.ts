@@ -108,7 +108,7 @@ async function fixture(
         input.n,
         context.abortSignal ?? new AbortController().signal,
       );
-      return { content: [{ type: "text", text: found.text }] };
+      return { output: [{ type: "text", text: found.text }] };
     },
   });
   registry.install(defineExtension({ name: "memory", tools: [zoom] }));

@@ -70,7 +70,7 @@ const settledResult = (events: readonly AgentSessionEvent[]) => {
   );
   for (const event of events) capture(event);
   capture(assistant(finalAnswer));
-  capture({ type: "agent_settled" });
+  capture({ type: "agent_settled", aborted: false });
   return results[0];
 };
 
@@ -84,7 +84,7 @@ describe("Pi run final-answer addressee", () => {
     );
     capture(fromSession(parent));
     capture(assistant("[Drawing](cake://artifact/drawing)"));
-    capture({ type: "agent_settled" });
+    capture({ type: "agent_settled", aborted: false });
     expect(results[0]).toMatchObject({ entryId: "pi-final-entry", respondsToSessionId: parent });
     expect(implicitTurnResultFor(results[0], parent)).toBe("[Drawing](cake://artifact/drawing)");
   });
@@ -147,10 +147,10 @@ describe("Pi run final-answer addressee", () => {
     );
     capture(fromSession(parent));
     capture(assistant(finalAnswer));
-    capture({ type: "agent_settled" });
+    capture({ type: "agent_settled", aborted: false });
     capture(fromSession(grandchild, { generatedNotice: true }));
     capture(assistant(finalAnswer));
-    capture({ type: "agent_settled" });
+    capture({ type: "agent_settled", aborted: false });
     expect(results.map((result) => result.respondsToSessionId)).toEqual([parent, undefined]);
   });
 });
@@ -166,10 +166,10 @@ describe("Pi run result evidence", () => {
     capture(assistant("Still working", "toolUse"));
     capture(assistant("Implemented the change; the focused regression suite passed."));
     expect(results).toEqual([]);
-    capture({ type: "agent_settled" });
+    capture({ type: "agent_settled", aborted: false });
     expect(results.map(([id]) => id)).toEqual(["initial", "steering"]);
     expect(results[0]?.[1].text).toContain("regression suite passed");
-    capture({ type: "agent_settled" });
+    capture({ type: "agent_settled", aborted: false });
     expect(results).toHaveLength(2);
   });
 
@@ -181,7 +181,7 @@ describe("Pi run result evidence", () => {
     );
     capture(assistant("Earlier work completed successfully."));
     capture(user);
-    capture({ type: "agent_settled" });
+    capture({ type: "agent_settled", aborted: false });
     expect(results).toEqual([]);
   });
 
@@ -197,7 +197,7 @@ describe("Pi run result evidence", () => {
       capture(
         assistant("A long partial result is not proof of successful completion.", stopReason),
       );
-      capture({ type: "agent_settled" });
+      capture({ type: "agent_settled", aborted: false });
       expect(results[0]?.stopReason).toBe(stopReason);
       expect(substantiveTurnResult(results[0])).toBeUndefined();
       if (stopReason === "error") expect(results[0]?.errorMessage).toBe("Provider failed");

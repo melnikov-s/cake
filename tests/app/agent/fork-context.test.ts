@@ -34,6 +34,7 @@ function event(
 ): BeforeAgentStartEvent {
   return {
     type: "before_agent_start",
+    messageType: "user",
     prompt: "Continue",
     images: undefined,
     systemPrompt: Object.values(sections).join("\n\n"),
@@ -41,6 +42,7 @@ function event(
       cwd,
       sections: {},
       selectedTools: [],
+      hiddenTools: [],
       toolSnippets: {},
       toolGuidelines: {},
       promptGuidelines: [],

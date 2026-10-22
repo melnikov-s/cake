@@ -121,7 +121,7 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
           toolCallId: api.callId,
           signal: ctx.abortSignal ?? new AbortController().signal,
         });
-        return { content: result.content, details: copyJson(result.details) };
+        return { output: result.content, details: copyJson(result.details) };
       },
     });
     registry.install(defineExtension({ name: "cake", tools: [tool] }));

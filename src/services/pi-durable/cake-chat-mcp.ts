@@ -363,11 +363,11 @@ export function createCakeChatMcpTool(mcp: CakeChatMcp) {
       };
       switch (args.action) {
         case "servers":
-          return { content: json(mcp.list()) };
+          return { output: json(mcp.list()) };
         case "search":
-          return { content: json(await mcp.search(args.query, args.server)) };
+          return { output: json(await mcp.search(args.query, args.server)) };
         case "describe":
-          return { content: json(await mcp.describe(required("server"), required("tool"))) };
+          return { output: json(await mcp.describe(required("server"), required("tool"))) };
         case "call": {
           const result = await mcp.call(
             required("server"),
@@ -375,7 +375,7 @@ export function createCakeChatMcpTool(mcp: CakeChatMcp) {
             args.arguments,
             context.abortSignal,
           );
-          return { content: result.content, isError: result.isError };
+          return { output: result.content, isError: result.isError };
         }
       }
     },

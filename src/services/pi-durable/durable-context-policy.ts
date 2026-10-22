@@ -20,6 +20,7 @@ export const ContextPolicyDoc = defineDoc<Schema.Schema.Type<typeof ContextPolic
   kind: "cake.chat-context-policy",
   version: 1,
   scope: "conversation",
+  checkpointWhen: () => false,
   history: "latest",
   fork: "initial",
   initial: () => ({ requestHead: null }),

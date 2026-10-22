@@ -236,7 +236,7 @@ describe("nested tool activity boundary", () => {
       h.send(start("waiting", "script"));
       h.send(start("cancelled", "script"));
       h.send(end("cancelled", "script", true, "Tool execution aborted"));
-      h.send({ type: "agent_settled" });
+      h.send({ type: "agent_settled", aborted: false });
       expect(h.tool().nestedCalls).toMatchObject({
         complete: false,
         calls: [{ state: "interrupted" }, { state: "error", output: "Tool execution aborted" }],

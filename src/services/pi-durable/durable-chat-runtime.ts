@@ -245,7 +245,7 @@ export async function createDurableCakeChatRuntime(
           void api.details(copyJson(value), context).catch(() => undefined);
         },
       });
-      return { content: result.content, details: copyJson(result.details) };
+      return { output: result.content, details: copyJson(result.details) };
     },
   });
   const zoom = defineTool({
@@ -261,7 +261,7 @@ export async function createDurableCakeChatRuntime(
         context.abortSignal ?? new AbortController().signal,
       );
       return {
-        content: [
+        output: [
           { type: "text", text: result.text },
           ...result.messages.flatMap((message) =>
             typeof message.content === "string"
@@ -285,7 +285,7 @@ export async function createDurableCakeChatRuntime(
       );
       const timestamp = original.messages.find((message) => "timestamp" in message)?.timestamp;
       if (timestamp === undefined) throw new Error("Original has no timestamp");
-      return { content: [{ type: "text", text: new Date(timestamp).toISOString() }] };
+      return { output: [{ type: "text", text: new Date(timestamp).toISOString() }] };
     },
   });
   await mkdir(dirname(sessionFile), { recursive: true });

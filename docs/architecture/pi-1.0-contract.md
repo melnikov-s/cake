@@ -107,11 +107,40 @@ awaits `session_shutdown` with reason `quit` before Pi invalidates contexts.
 Repeated disposal shares one Promise. Reload dispatches its own shutdown through
 Pi, without a duplicate Cake dispatch.
 
-Pi 1.0's SDK passes an explicit initial tool loadout when constructing a resumed
-session, overriding its transcript-based declaration restoration. Deferred tools
-remain searchable after resume, but must be rediscovered. Cake does not maintain
-a compensating tool-state cache. Nested script activity currently uses the
-existing flat tool projection; grouped nested presentation remains separate work.
+Cake now pins the regular-Pi and Durable packages (including Chord and both
+pi-ai import surfaces) to the 1.4.0 cohort. Pi restores the recorded active tool
+loadout on resume when Cake has not supplied an explicit selection. Newly
+registered extension tools retain Pi's default-active policy; opt-in tools remain
+inactive. Cake does not maintain a compensating tool-state cache. Nested script
+activity currently uses the existing flat tool projection; grouped nested
+presentation remains separate work.
+
+Pi owns recovery edits for output-truncated attempts, including omission of
+paired tool results, and provider prompt-cache declaration ordering. Cake keeps
+forwarding Pi's normalized context and its existing cache-lineage request options.
+Extension-triggered recovery runs now pass through `before_agent_start`, so Cake's
+prompt transformations also apply to those runs. Native codemode worker admission
+and concurrency limits remain entirely Pi-owned; Cake adds no worker queue or
+changes to process/global settings.
+
+For regular-Pi compaction, `reserveTokens` controls the trigger threshold, not a
+summary output cap. Compaction and branch summaries use Pi's model output defaults
+(subject to remaining context capacity). Cake delegates both and does not impose
+a replacement cap. The Durable coordinator's separate normal-request admission
+reserve is unchanged.
+
+Durable 1.4 requires explicit document checkpoint policies; Cake's documents keep
+ordinary mutations as deltas (`checkpointWhen: () => false`). Its tool adapter
+returns `output` rather than the removed `content` result field. Display-only
+writes persist immediately while a conversation is busy rather than remaining in
+its input queue. Opening Durable SQLite storage migrates it to schema version 2;
+back up coordinator databases before deployment because Pi 1.3 and earlier cannot
+open the migrated databases.
+
+Cake's standalone workflow sandbox uses Pi's deterministic execution API with a
+fixed clock and seed. Lexical Date/Math helpers preserve the workflow API's clock
+restrictions without attempting to mutate Pi's frozen VM intrinsics. Per-run host
+calls are aborted when the script ends, including unawaited calls.
 
 Use MCP commands in an established conversation. Pi does not persist
 command-only input in a new session, and Cake's staged-chat promotion currently

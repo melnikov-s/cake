@@ -58,6 +58,15 @@ describe("Standalone workflow sandbox", () => {
         }),
       ),
     ).toBe("2026-01-01T00:00:00.000Z");
+    // Cake fixes the backing VM too: aliases of Pi's immutable globals cannot
+    // introduce nondeterminism when they bypass the lexical workflow helpers.
+    const aliased = () =>
+      Effect.runPromise(
+        execute("return { now: globalThis.Date.now(), random: globalThis.Math.random() };"),
+      );
+    const first = await aliased();
+    expect(first).toMatchObject({ now: 0 });
+    expect(await aliased()).toEqual(first);
   });
   it("rejects a 4097-item helper input without silently truncating it", async () => {
     await expect(

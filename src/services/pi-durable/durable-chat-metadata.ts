@@ -13,6 +13,7 @@ export const ChatMetadataDoc = defineDoc<ChatMetadata>({
   kind: "cake.chat-metadata",
   version: 1,
   scope: "conversation",
+  checkpointWhen: () => false,
   history: "latest",
   fork: "initial",
   initial: () => ({

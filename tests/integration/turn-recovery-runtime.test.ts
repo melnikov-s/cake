@@ -271,16 +271,14 @@ describe("response retry and recovery", () => {
       await reopened.recoverInput?.(input);
       expect(provider.requestCount()).toBe(3);
       const transcript = await readFile(file, "utf8");
-      // Pi's custom recovery turn bypasses before_agent_start. Its first tool
-      // round restores default docs, a real model delta equivalent for Cake display.
+      // Pi 1.2+ runs before_agent_start for custom recovery too, retaining
+      // Cake instructions without a spurious default-docs delta.
       const branch = SessionManager.open(file).getBranch();
       const systemMessages = branch.flatMap((entry) =>
         entry.type === "message" && entry.message.role === "system" ? [entry.message] : [],
       );
-      expect(systemMessages).toHaveLength(2);
-      expect(Object.keys(systemMessages[1]!.sections ?? {})).toEqual(["docs"]);
+      expect(systemMessages).toHaveLength(1);
       expect(systemMessages[0]!.sections?.docs).not.toContain("docs/tui.md");
-      expect(systemMessages[1]!.sections?.docs).toContain("docs/tui.md");
       const recovery = branch.find(
         (entry) => entry.type === "custom_message" && entry.customType === "cake.restart-recovery",
       );
@@ -303,7 +301,7 @@ describe("response retry and recovery", () => {
         expect.objectContaining({ kind: "tool", name: "read", state: "success" }),
       );
       const browse = JSON.stringify(await reopened.inspectSession({ kind: "context-outline" }));
-      expect(browse).toContain("docs/tui.md");
+      expect(browse).toContain("docs/sdk.md");
       expect(browse).toContain("Keep real project instructions");
       if (recovery?.type !== "custom_message") throw new Error("Missing Pi recovery message");
       expect(browse).toContain(recovery.content as string);

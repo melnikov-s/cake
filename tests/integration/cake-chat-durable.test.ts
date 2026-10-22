@@ -764,7 +764,16 @@ it("uses production SQLite, existing credentials and exact originals across reop
   const offered = f.requests[0]?.messages.flatMap((message) =>
     message.role === "system" ? (message.toolsAdded?.map((tool) => tool.name) ?? []) : [],
   );
-  expect(offered).toEqual(["cake", "zoom", "date", "read", "bash", "mcp"]);
+  expect(offered).toEqual([
+    "cake",
+    "zoom",
+    "date",
+    "conversation_search",
+    "conversation_read",
+    "read",
+    "bash",
+    "mcp",
+  ]);
   expect(
     (await first.runtime.snapshot()).parts.some(
       (part) => part.kind === "text" && part.role === "user" && part.renderAs === "markdown",

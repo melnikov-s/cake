@@ -25,6 +25,7 @@ function fakeApi() {
     env,
     output: () => undefined,
     outputWindow: undefined,
+    retainedOutput: () => [],
     diagnostic: () => undefined,
   } as unknown as Parameters<ReturnType<typeof createCakeChatBashTool>["execute"]>[1];
   return { api, calls };

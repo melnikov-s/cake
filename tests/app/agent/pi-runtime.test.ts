@@ -3135,7 +3135,7 @@ describe("S1 Pi runtime", () => {
     });
   });
 
-  it("shows grouped live prompt sources and retains changed tool declarations after restoring a baseline", async () => {
+  it("retains historical tool-dependent rules when resume restores a narrower loadout", async () => {
     const directory = await createTemporaryDirectory();
     const options = {
       cwd: directory,
@@ -3182,9 +3182,16 @@ describe("S1 Pi runtime", () => {
     });
     runtimes.push(reopened);
     const parts = (await reopened.snapshot()).parts;
+    // Pi 1.3+ restores the recorded read tool plus Cake controls. That changes the generated
+    // rules, so the old baseline is genuine history, not a duplicate live prompt.
     expect(parts.filter((part) => part.kind === "context" && part.title === "System")).toEqual([
-      expect.objectContaining({ id: "runtime-system-prompt-system", text: prompt.text }),
+      expect.objectContaining({
+        id: "runtime-system-prompt-system",
+        text: expect.stringContaining("Use read"),
+      }),
+      expect.objectContaining({ text: prompt.text }),
     ]);
+    expect(reopened.getReviewParentContext!().activeTools).toEqual(["read", "cake"]);
     expect(parts).toContainEqual(
       expect.objectContaining({
         kind: "context",

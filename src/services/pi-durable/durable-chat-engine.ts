@@ -61,6 +61,7 @@ const BoundaryDoc = defineDoc<Boundary>({
   kind: "cake.chat-run-boundary",
   version: 1,
   scope: "conversation",
+  checkpointWhen: () => false,
   history: "latest",
   fork: "initial",
   initial: () => ({ input: -1, marker: -1 }),

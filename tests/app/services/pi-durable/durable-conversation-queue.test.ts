@@ -197,7 +197,8 @@ describe.each(["root", "side-chat"] as const)("Durable %s queue", (kind) => {
       "No request ID",
       correlated,
     ]);
-    expect((await f.queue.inbox()).some((item) => item.id === write.id)).toBe(true);
+    // Display-only writes commit immediately in Pi Durable 1.2+, even while busy.
+    expect(await write.wait(context)).toMatchObject({ status: "done" });
     expect((await f.live())?.run?.inputs).toEqual([f.active.id]);
   });
 
@@ -316,7 +317,7 @@ describe.each(["root", "side-chat"] as const)("Durable %s queue", (kind) => {
     const cleared = await f.submit("Clear me", "clear");
     await f.operations.clearQueue();
     expect(await cleared.wait(context)).toMatchObject({ status: "unanswered", reason: "aborted" });
-    expect((await f.queue.inbox()).map((entry) => entry.id)).toContain(write.id);
+    expect(await write.wait(context)).toMatchObject({ status: "done" });
     f.activeCall.finish();
     expect(await f.active.wait(context)).toMatchObject({ status: "done" });
   });

@@ -99,6 +99,7 @@ const StateDoc = defineDoc<State>({
   kind: "cake.chat-memory-state",
   version: 3,
   scope: "conversation",
+  checkpointWhen: () => false,
   history: "latest",
   fork: "initial",
   initial,

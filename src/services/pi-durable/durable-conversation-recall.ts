@@ -170,7 +170,7 @@ export function createDurableConversationRecallTools(options: {
         nextAfterEntryId: more ? after : null,
         complete: !more,
       };
-      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+      return { output: [{ type: "text", text: JSON.stringify(result) }] };
     },
   });
   const read = defineTool({
@@ -223,7 +223,7 @@ export function createDurableConversationRecallTools(options: {
         nextOffset,
         truncated: offset > 0 || nextOffset !== null,
       };
-      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+      return { output: [{ type: "text", text: JSON.stringify(result) }] };
     },
   });
   return [search, read] as const;
