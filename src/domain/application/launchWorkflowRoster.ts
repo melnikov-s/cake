@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { currentSessionOutcome } from "../../contracts/project-sessions/session-reporting";
 import { agentListPage } from "../../contracts/agent/agent-list-data";
 import type { AgentSessionListInput } from "../../contracts/project-sessions/agent-session-list";
 import type { CompletionInboxItem } from "../../contracts/conversations/completion-inbox";
@@ -129,13 +130,11 @@ export const launchWorkflowRoster = Effect.fn("AgentControl.launchWorkflowRoster
           ? `Worktree: ${brief(worktree.branch.replace(/^agent\//, ""), 80)}`
           : "Unnamed task (title unknown)");
       const wait = waits.find((item) => item.sessionId === spawn.sessionId);
-      const failed = runtime?.latestTurnOutcome === "failed" || report?.status === "failed";
-      const stopped =
-        runtime?.latestTurnOutcome === "aborted" ||
-        report?.status === "stopped" ||
-        report?.status === "interrupted";
+      const currentOutcome = currentSessionOutcome(runtime?.latestTurnOutcome, report?.status);
+      const failed = currentOutcome === "failed";
+      const stopped = currentOutcome === "stopped" || currentOutcome === "interrupted";
       const blocked =
-        runtime?.recoveryIssue || report?.status === "blocked" || currentResult?.kind === "blocked";
+        runtime?.recoveryIssue || currentOutcome === "blocked" || currentResult?.kind === "blocked";
       const busy = runtime?.streaming || runtime?.pending;
       const ready = currentResult?.kind === "ready" && !failed && !stopped && !blocked;
       const group: (typeof groups)[number] = resolved
@@ -161,7 +160,7 @@ export const launchWorkflowRoster = Effect.fn("AgentControl.launchWorkflowRoster
                 ? "failed"
                 : stopped
                   ? "stopped"
-                  : (report?.status ??
+                  : (currentOutcome ??
                     (currentResult
                       ? "completed"
                       : runtime?.latestTurnOutcome === "complete"

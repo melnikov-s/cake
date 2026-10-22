@@ -238,9 +238,15 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     if (this.interviewRequests.size > 0) return "waiting";
     // Accepted turns include preparation before Pi emits its first streaming event.
     if (this.isStreaming || this.model.activeTurnIds.length > 0) return "running";
+    const settled = settledSessionActivity(
+      this.model.settledTurns.at(-1)?.outcome,
+      this.model.parts,
+    );
+    // Reading acknowledges a response, not an unresolved execution failure.
+    if (settled === "error" || settled === "stopped") return settled;
     if (this.props.isActive() || this.model.settledTurnRevision <= this.readSettledTurnRevision)
       return undefined;
-    return settledSessionActivity(this.model.settledTurns.at(-1)?.outcome, this.model.parts);
+    return settled;
   }
 
   markRead() {

@@ -54,6 +54,7 @@ import * as sessionChats from "../conversations/sessionChats";
 import { toJsonValue } from "../../utils/to-json-value";
 import { agentListLabel, agentListPage } from "../../contracts/agent/agent-list-data";
 import type { AgentSessionStatus } from "../../contracts/project-sessions/agent-session-list";
+import { currentSessionOutcome } from "../../contracts/project-sessions/session-reporting";
 
 export interface AgentControlCaller {
   readonly kind: "project-session" | "cake-chat";
@@ -92,15 +93,14 @@ function sessionListStatus(session: AgentSessionSummary): AgentSessionStatus {
   if (session.resolved) return "resolved";
   if (session.savedDraft) return "draft";
   if (session.running) return "running";
-  const report = session.cakeChatLaunch?.lastReport;
-  if (report?.status === "blocked") return "needs-you";
-  if (
-    report?.status === "failed" ||
-    report?.status === "interrupted" ||
-    report?.status === "stopped"
-  )
-    return report.status;
-  if (report) return "done";
+  if (session.recoveryIssue) return "needs-you";
+  const outcome = currentSessionOutcome(
+    session.latestTurnOutcome,
+    session.cakeChatLaunch?.lastReport?.status,
+  );
+  if (outcome === "blocked") return "needs-you";
+  if (outcome === "failed" || outcome === "interrupted" || outcome === "stopped") return outcome;
+  if (outcome === "completed") return "done";
   return session.unread ? "unread" : "idle";
 }
 
@@ -410,7 +410,10 @@ export const invoke: (
               modifiedAt: session.modifiedAt,
               status: sessionListStatus(session),
               resolved: session.resolved,
-              outcome: session.cakeChatLaunch?.lastReport?.status ?? session.latestTurnOutcome,
+              outcome: currentSessionOutcome(
+                session.latestTurnOutcome,
+                session.cakeChatLaunch?.lastReport?.status,
+              ),
             }));
           const chatConfiguration = yield* Effect.serviceOption(CakeChatConfiguration);
           const chatEntries =
@@ -663,7 +666,7 @@ export const invoke: (
                     }
                   : null),
                 ...(report || runtime?.latestTurnOutcome
-                  ? { outcome: report?.status ?? runtime?.latestTurnOutcome }
+                  ? { outcome: currentSessionOutcome(runtime?.latestTurnOutcome, report?.status) }
                   : null),
               },
               status,

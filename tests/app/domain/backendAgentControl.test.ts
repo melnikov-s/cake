@@ -2108,6 +2108,65 @@ const workflowLaunch = (sessionId: string, title = "Task session") => ({
 });
 
 it.effect(
+  "all status projections prefer a current turn over a retained or late failure report",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const families = Context.get(f.context, SessionFamilyStorage);
+      yield* families.registerSpawn({
+        ...workflowLaunch(target, "Continued task"),
+        lastReport: { status: "failed", summary: "Historical failure", reportedAt: "2026-01-02" },
+      });
+      const original = Context.get(f.context, CakeSessionRuntimes);
+      let latestTurnOutcome: "failed" | "complete" = "failed";
+      let streaming = false;
+      const context = Context.add(f.context, CakeSessionRuntimes, {
+        ...original,
+        currentStatus: () =>
+          Effect.succeed({
+            streaming,
+            pending: false,
+            persisted: true,
+            latestTurnOutcome,
+          }),
+      });
+      const call = (command: string, input: JsonValue = {}) =>
+        agentControl.invoke(command, input, workflowCaller).pipe(Effect.provide(context));
+      expect(yield* call("sessions.list", { launchedByCakeChat: true })).toContain(
+        "00000022 failed active failed",
+      );
+      streaming = true;
+      expect(yield* call("sessions.list", { launchedByCakeChat: true })).toContain(
+        "00000022 running",
+      );
+      streaming = false;
+      latestTurnOutcome = "complete";
+      // Delivery time is not execution order: this historical notice arrives after success.
+      yield* families.recordLaunchReport(target, {
+        status: "failed",
+        summary: "Late historical failure",
+        reportedAt: "2026-01-04",
+      });
+      expect(yield* call("sessions.list", { launchedByCakeChat: true })).toContain(
+        "00000022 done active completed",
+      );
+      expect(yield* call("sessions.info", { sessionId: target })).toMatchObject({
+        session: { outcome: "completed" },
+      });
+      const roster = yield* call("sessions.list", { projection: "workflow" });
+      expect(roster).toContain("\topen\tcompleted\t-");
+      expect(roster).toContain("blocked/stopped=0");
+      latestTurnOutcome = "failed";
+      expect(yield* call("sessions.list", { launchedByCakeChat: true })).toContain(
+        "00000022 failed active failed",
+      );
+      expect((yield* families.state()).spawnedSessions[0]?.lastReport?.summary).toBe(
+        "Late historical failure",
+      );
+    }),
+);
+
+it.effect(
   "workflow roster preserves task-input names, deduplicates results and never loads content or wakes",
   () =>
     Effect.gen(function* () {

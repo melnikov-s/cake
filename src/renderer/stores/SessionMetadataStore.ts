@@ -103,16 +103,19 @@ export class SessionMetadataStore extends Store<{
 
   sessionActivity(sessionId: string): SessionActivity | undefined {
     const session = this.props.catalog.find(sessionId);
+    const activity = this.props.sessions.findSession(sessionId)?.activity;
+    if (activity === "waiting") return activity;
     // A blocked journal is authoritative even if a retained projection still has
     // the accepted turn id from before the restart.
     if (session && "recoveryIssue" in session && session.recoveryIssue && !session.running)
       return "blocked";
+    if (session?.running || activity === "running") return "running";
     if (session && "latestTurnOutcome" in session && !session.running) {
       if (session.latestTurnOutcome === "failed") return "error";
       if (session.latestTurnOutcome === "aborted") return "stopped";
+      if (session.latestTurnOutcome === "complete" && !this.activeSessionIds.has(sessionId))
+        return session.unread ? "unread" : undefined;
     }
-    const activity = this.props.sessions.findSession(sessionId)?.activity;
-    if (activity === "waiting" || activity === "running") return activity;
     if (this.activeSessionIds.has(sessionId)) return "running";
     return activity ?? (this.props.catalog.find(sessionId)?.unread ? "unread" : undefined);
   }

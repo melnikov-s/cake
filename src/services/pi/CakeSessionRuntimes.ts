@@ -547,7 +547,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
         yield* recoveryGate.withPermit(
           Effect.gen(function* () {
             const record = yield* recoveryStorage.get(sessionId);
-            if (!record) return;
+            if (!record?.inputs.some((item) => item.turnId === turnId)) return;
             const inputs = record.inputs.filter((item) => item.turnId !== turnId);
             const canceledInputIds =
               outcome === "aborted"
@@ -942,7 +942,13 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                 outcome: settledOutcome,
               };
               if (message !== undefined) Object.assign(event, { message });
+              // Settle the authoritative journal before callbacks can wait on
+              // report delivery while a newer turn runs and succeeds.
+              yield* removeRecoveryInput(retained.runtime.sessionId, turnId, settledOutcome).pipe(
+                Effect.orDie,
+              );
               yield* PubSub.publish(retained.events, event);
+              yield* key.options.onTurnActivityChanged ?? Effect.void;
               if (key.options.onTurnSettled)
                 yield* key.options.onTurnSettled({
                   sessionId: retained.runtime.sessionId,
@@ -951,10 +957,6 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                   ...(result ? { result } : null),
                   ...(message ? { message } : null),
                 });
-              yield* removeRecoveryInput(retained.runtime.sessionId, turnId, settledOutcome).pipe(
-                Effect.orDie,
-              );
-              yield* key.options.onTurnActivityChanged ?? Effect.void;
             }
             retained.settledInputIds.delete(turnId);
           });
@@ -1118,12 +1120,16 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
               Effect.gen(function* () {
                 shared.settledInputIds.delete(turnId);
                 shared.turnResults.delete(turnId);
+                yield* removeRecoveryInput(shared.runtime.sessionId, turnId, "aborted").pipe(
+                  sessionError("abort"),
+                );
                 yield* PubSub.publish(shared.events, {
                   type: "turn-settled",
                   sessionId: shared.runtime.sessionId,
                   turnId,
                   outcome: "aborted",
                 });
+                yield* options.onTurnActivityChanged ?? Effect.void;
                 if (options.onTurnSettled)
                   yield* options
                     .onTurnSettled({
@@ -1138,10 +1144,6 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                           new PiSessionError({ operation: "abort", message: String(cause) }),
                       ),
                     );
-                yield* removeRecoveryInput(shared.runtime.sessionId, turnId, "aborted").pipe(
-                  sessionError("abort"),
-                );
-                yield* options.onTurnActivityChanged ?? Effect.void;
               }),
             { discard: true },
           );

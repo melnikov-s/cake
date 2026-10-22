@@ -199,6 +199,30 @@ describe("Session catalog lifecycle workflows", () => {
     },
   );
 
+  it("restores a successful continuation without resurrecting its retained launch failure", async () => {
+    const completed = summary("continued", {
+      title: "Continued task",
+      latestTurnOutcome: "complete",
+      cakeChatLaunch: {
+        requesterSessionId: "chat",
+        lastReport: {
+          status: "failed",
+          summary: "Old failure retained for inspection",
+          reportedAt: "2026-01-02",
+        },
+      },
+    });
+    for (let reopen = 0; reopen < 2; reopen += 1) {
+      using fixture = await renderCatalog({ sessions: [completed] });
+      await fixture.publish([completed]);
+      const row = sidebar()
+        .getByRole("button", { name: /^Continued task(?: |$)/ })
+        .closest<HTMLElement>(".session-item")!;
+      expect(within(row).queryByRole("img", { name: "Error" })).toBeNull();
+      expect(within(row).queryByRole("img", { name: "Needs your input" })).toBeNull();
+    }
+  });
+
   it("clears a blocked recovery only on an authoritative retry update, then preserves normal unread settlement", async () => {
     using fixture = await renderCatalog({
       sessions: [

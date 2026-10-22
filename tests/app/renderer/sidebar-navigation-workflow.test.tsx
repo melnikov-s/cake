@@ -440,6 +440,44 @@ describe("Sidebar navigation workflow", () => {
     }
   });
 
+  it.each(["failed", "aborted"] as const)(
+    "shows the current turn after %s -> continue -> success, and a fresh failure reappears",
+    async (outcome) => {
+      const failed = sidebarSummary("retry", 1, { latestTurnOutcome: outcome });
+      using fixture = renderSidebarNavigation({
+        projects: [project],
+        sessions: [failed],
+        loadedIds: ["retry"],
+      });
+      if (outcome === "failed")
+        expect(within(row("retry")).getByRole("img", { name: "Error" })).toBeDefined();
+      // Viewing acknowledges unread content, never the current failure.
+      await fixture.user.click(rowButton("retry"));
+      if (outcome === "failed")
+        expect(within(row("retry")).getByRole("img", { name: "Error" })).toBeDefined();
+      // Live turn acceptance can reach the window before the catalog update.
+      await fixture.publishEvent({
+        _tag: "TurnAccepted",
+        sessionId: "retry",
+        turnId: TurnId.make("10000000-0000-4000-8000-000000000002"),
+        delivery: "prompt",
+      });
+      expect(within(row("retry")).getByRole("img", { name: "Running" })).toBeDefined();
+      await fixture.publishSessions([{ ...failed, running: true, latestTurnOutcome: undefined }]);
+      await fixture.publishEvent({
+        _tag: "TurnSettled",
+        sessionId: "retry",
+        turnId: TurnId.make("10000000-0000-4000-8000-000000000002"),
+        outcome: "complete",
+      });
+      await fixture.publishSessions([{ ...failed, latestTurnOutcome: "complete" }]);
+      expect(within(row("retry")).queryByRole("img", { name: "Error" })).toBeNull();
+      expect(within(row("retry")).queryByRole("img", { name: "Running" })).toBeNull();
+      await fixture.publishSessions([{ ...failed, latestTurnOutcome: "failed" }]);
+      expect(within(row("retry")).getByRole("img", { name: "Error" })).toBeDefined();
+    },
+  );
+
   it("restores window/list preferences and expands a collapsed project when entering focus", async () => {
     const menu = vi.fn<Client["electron"]["showProjectContextMenu"]>(async () => "sort-by-date");
     using fixture = renderSidebarNavigation({

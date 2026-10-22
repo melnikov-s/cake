@@ -421,6 +421,129 @@ describe("CakeSessionRuntimes", () => {
     }),
   );
 
+  it.effect(
+    "persists the latest successful turn before delayed failure reporting, including cold restoration",
+    () =>
+      Effect.gen(function* () {
+        const failedReporting = yield* Deferred.make<void>();
+        const releaseFailure = yield* Deferred.make<void>();
+        const failureReturned = yield* Deferred.make<void>();
+        const successReturned = yield* Deferred.make<void>();
+        const storageContext = yield* Layer.build(makeRuntimeRecoveryStorageTestLayer());
+        const storage = Context.get(storageContext, RuntimeRecoveryStorage);
+        const runtimeAdapter: CakeSessionRuntimesAdapter = {
+          sessionIds: () => Stream.empty,
+          catalog: () => Stream.empty,
+          catalogEntry: () => Effect.succeed(undefined),
+          inspect: () => Effect.succeed(undefined),
+          changelog: () => Effect.succeed(""),
+          createRuntime: (runtimeOptions) =>
+            Effect.succeed({
+              ...fakeRuntime(runtimeOptions, () => undefined),
+              prompt: async (text, _delivery, _attachments, _markdown, turnId) => {
+                if (turnId)
+                  runtimeOptions.onTurnResult?.(turnId, {
+                    stopReason: text === "fail" ? "error" : "stop",
+                    text: text === "fail" ? "" : "Recovered successfully",
+                  });
+              },
+            }),
+        };
+        const layer = makeCakeSessionRuntimesLayer(runtimeAdapter).pipe(
+          Layer.provide(Layer.succeed(RuntimeRecoveryStorage, storage)),
+        );
+        const context = yield* Layer.build(layer);
+        const sessions = Context.get(context, CakeSessionRuntimes);
+        const handle = yield* sessions.acquire({
+          ...options(),
+          onTurnSettled: (event) =>
+            event.outcome === "failed"
+              ? Deferred.succeed(failedReporting, undefined).pipe(
+                  Effect.andThen(Deferred.await(releaseFailure)),
+                  Effect.andThen(Deferred.succeed(failureReturned, undefined)),
+                )
+              : Deferred.succeed(successReturned, undefined),
+        });
+        const target = {
+          workingDirectory: "/project",
+          sessionDirectory: "/sessions",
+          sessionId: "session-1",
+        };
+        yield* handle.prompt("fail");
+        yield* Deferred.await(failedReporting);
+        assert.equal((yield* sessions.currentStatus(target))?.latestTurnOutcome, "failed");
+        yield* handle.prompt("continue");
+        yield* Deferred.await(successReturned);
+        assert.equal((yield* sessions.currentStatus(target))?.latestTurnOutcome, "complete");
+        yield* Deferred.succeed(releaseFailure, undefined);
+        yield* Deferred.await(failureReturned);
+        // A fresh service has no runtime or in-memory turn metadata: only the journal.
+        const restored = Context.get(yield* Layer.build(Layer.fresh(layer)), CakeSessionRuntimes);
+        assert.equal((yield* restored.currentStatus(target))?.latestTurnOutcome, "complete");
+        assert.equal((yield* storage.get("session-1"))?.state, "complete");
+      }),
+  );
+
+  it.effect(
+    "a stopped turn can continue successfully and a subsequent fresh failure is retained",
+    () =>
+      Effect.gen(function* () {
+        const started = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        const settled = yield* Queue.unbounded<string>();
+        const storageContext = yield* Layer.build(makeRuntimeRecoveryStorageTestLayer());
+        const storage = Context.get(storageContext, RuntimeRecoveryStorage);
+        let executing: string[] = [];
+        const context = yield* Layer.build(
+          makeCakeSessionRuntimesLayer({
+            sessionIds: () => Stream.empty,
+            catalog: () => Stream.empty,
+            catalogEntry: () => Effect.succeed(undefined),
+            inspect: () => Effect.succeed(undefined),
+            changelog: () => Effect.succeed(""),
+            createRuntime: (runtimeOptions) =>
+              Effect.succeed({
+                ...fakeRuntime(runtimeOptions, () => undefined),
+                executingTurnIds: () => executing,
+                prompt: async (text, _delivery, _attachments, _markdown, turnId) => {
+                  if (text === "stop me") {
+                    executing = turnId ? [turnId] : [];
+                    await Effect.runPromise(Deferred.succeed(started, undefined));
+                    await Effect.runPromise(Deferred.await(release));
+                  } else if (text === "fail again") throw new Error("Fresh failure");
+                },
+                abort: async () => {
+                  executing = [];
+                  Deferred.doneUnsafe(release, Effect.void);
+                },
+              }),
+          }).pipe(Layer.provide(Layer.succeed(RuntimeRecoveryStorage, storage))),
+        );
+        const sessions = Context.get(context, CakeSessionRuntimes);
+        const handle = yield* sessions.acquire({
+          ...options(),
+          onTurnSettled: (event) => Queue.offer(settled, event.outcome).pipe(Effect.asVoid),
+        });
+        const target = {
+          workingDirectory: "/project",
+          sessionDirectory: "/sessions",
+          sessionId: "session-1",
+        };
+        yield* handle.prompt("stop me");
+        yield* Deferred.await(started);
+        yield* handle.abort({ by: "user" });
+        assert.equal(yield* Queue.take(settled), "aborted");
+        assert.equal((yield* sessions.currentStatus(target))?.latestTurnOutcome, "aborted");
+        yield* handle.prompt("continue");
+        assert.equal(yield* Queue.take(settled), "complete");
+        assert.equal((yield* sessions.currentStatus(target))?.latestTurnOutcome, "complete");
+        yield* handle.prompt("fail again");
+        assert.equal(yield* Queue.take(settled), "failed");
+        assert.equal((yield* sessions.currentStatus(target))?.latestTurnOutcome, "failed");
+        assert.equal((yield* storage.get("session-1"))?.state, "failed");
+      }),
+  );
+
   it.effect("projects queued input and completed Pi runs as idle before bookkeeping settles", () =>
     Effect.gen(function* () {
       const started = yield* Deferred.make<void>();

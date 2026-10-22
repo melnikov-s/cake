@@ -1,5 +1,8 @@
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
-import type { CakeChatLaunchReport } from "../../contracts/project-sessions/session-reporting";
+import {
+  currentSessionOutcome,
+  type CakeChatLaunchReport,
+} from "../../contracts/project-sessions/session-reporting";
 import type { SessionActivity } from "./session-activity";
 
 export type LaunchedSessionStatus =
@@ -18,6 +21,7 @@ export interface LaunchedSessionSource {
   readonly modifiedAt: string;
   readonly resolved: boolean;
   readonly running: boolean;
+  readonly latestTurnOutcome?: "complete" | "failed" | "aborted" | undefined;
   readonly cakeChatLaunch?:
     | {
         readonly requesterSessionId: string;
@@ -43,11 +47,14 @@ export function launchedSessionStatus(
   const report = session.cakeChatLaunch?.lastReport;
   if (activity === "waiting" || activity === "blocked") return "needs-you";
   if (session.running || activity === "running") return "running";
-  if (report?.status === "blocked") return "needs-you";
-  if (report?.status === "failed" || activity === "error") return "failed";
-  if (report?.status === "interrupted") return "interrupted";
-  if (report?.status === "stopped" || activity === "stopped") return "stopped";
-  if (report?.status === "completed") return "done";
+  const outcome = currentSessionOutcome(session.latestTurnOutcome, report?.status);
+  if (activity === "error") return "failed";
+  if (activity === "stopped") return "stopped";
+  if (outcome === "blocked") return "needs-you";
+  if (outcome === "failed") return "failed";
+  if (outcome === "interrupted") return "interrupted";
+  if (outcome === "stopped") return "stopped";
+  if (outcome === "completed") return "done";
   return "idle";
 }
 

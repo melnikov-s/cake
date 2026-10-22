@@ -27,6 +27,22 @@ export const CakeChatLaunchStatus = Schema.Literals([
   "interrupted",
 ]);
 export type CakeChatLaunchStatus = typeof CakeChatLaunchStatus.Type;
+
+/**
+ * Execution failures/stops describe the latest turn, not the launch's historical report.
+ * Explicit task blockers are separate from successful model execution.
+ */
+export function currentSessionOutcome(
+  latestTurnOutcome: "complete" | "failed" | "aborted" | undefined,
+  reportedStatus: CakeChatLaunchStatus | undefined,
+): CakeChatLaunchStatus | undefined {
+  if (latestTurnOutcome === "failed") return "failed";
+  if (latestTurnOutcome === "aborted")
+    return reportedStatus === "interrupted" ? "interrupted" : "stopped";
+  if (latestTurnOutcome === "complete")
+    return reportedStatus === "blocked" ? "blocked" : "completed";
+  return reportedStatus;
+}
 export const CakeChatLaunchReport = Schema.Struct({
   status: CakeChatLaunchStatus,
   summary: Schema.String.check(Schema.isMaxLength(500)),

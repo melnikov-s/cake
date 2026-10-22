@@ -33,11 +33,16 @@ export function settledSessionActivity(
   }[],
 ): SessionActivity {
   if (outcome === "failed") return "error";
+  if (outcome === "complete") return "unread";
   for (let index = parts.length - 1; index >= 0; index -= 1) {
     const part = parts[index]!;
     if ((part.kind === "text" && part.role === "user") || part.kind === "skill") break;
-    if (part.kind === "text" && part.role === "assistant" && part.status === "error")
-      return "error";
+    if (part.kind === "text" && part.role === "assistant") {
+      if (part.status === "error") return "error";
+      // A later returned answer supersedes failures from a hidden continuation
+      // or retry, even when there is no new visible user message.
+      if (part.status === "complete") break;
+    }
     if (part.kind === "notice" && part.tone === "error" && part.title === "Model request failed")
       return "error";
     if (part.kind === "notice" && part.tone === "info" && part.title === TURN_STOPPED_NOTICE_TITLE)
