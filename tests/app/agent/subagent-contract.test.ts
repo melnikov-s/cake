@@ -66,9 +66,9 @@ describe("subagent contract", () => {
         }
       }
       const help = await registry.invoke({ command: "subagents.start.help" }, context);
-      expect(help.text).toContain("continuation");
-      expect(help.text).toContain("dependent work");
-      expect(help.text).toContain("resume");
+      expect(help.text).toContain('continuation: "resume" (default, reply)');
+      expect(help.text).toContain("Reply when the user is waiting on the answer");
+      expect(help.text).toContain("Then reply.");
     },
   );
 

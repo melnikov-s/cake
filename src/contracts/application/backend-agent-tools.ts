@@ -318,7 +318,6 @@ const definitions = [
         "Send, queue, or steer a correlated message to one explicitly targeted session. The result is a visible delivery receipt; optional maxMessages bounds the exchange.",
       guidance: [
         "sessionId is required from Cake Chat; Cake Chat cannot message itself. Project Sessions reach Cake Chat by omitting sessionId.",
-        "Global Cake Chat, every Project Chat and Project Session default to notification. Choose reply only for genuinely dependent continuation; ignore is supported.",
         resultDeliveryGuidance,
         sessionMessageDeliveryGuidance,
       ],

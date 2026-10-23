@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   ResultDelivery,
   migrateResultDelivery,
+  replyOrNotificationRule,
 } from "../../../src/contracts/conversations/result-delivery";
 import { BackendAgentInvocation } from "../../../src/contracts/application/backend-agent-control";
 import { windowControlDefinitions } from "../../../src/contracts/application/window-control-definitions";
@@ -51,5 +52,12 @@ describe("result delivery contract", () => {
     [{ expectsResponse: true }, "reply"],
   ] as const)("migrates persisted intent %j without losing its obligation", (input, expected) => {
     expect(migrateResultDelivery(input)).toBe(expected);
+  });
+
+  it("keeps notification as the session default while guiding user-waiting answers to reply", () => {
+    const guidance = windowControlDefinitions["sessions.create"].discovery.guidance?.join("\n");
+    expect(guidance).toContain("Default to resultDelivery: notification.");
+    expect(guidance).toContain(replyOrNotificationRule);
+    expect(guidance).not.toContain("dependent continuation");
   });
 });

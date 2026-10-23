@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { ParentContinuation } from "../../contracts/conversations/parent-continuation";
+import { replyOrNotificationRule } from "../../contracts/conversations/result-delivery";
 import { inputRefsSchema } from "../../contracts/conversations/task-input";
 import { messageRefsSchema } from "../../contracts/conversations/message-reference";
 import type {
@@ -41,7 +42,7 @@ export function createAgentControlOperations(
     projectAware
       ? "Use a project investigator when broader research, project-loaded resources or context isolation helps. Discover exact registered roots with projects.list, supply projectPath, and clarify ambiguous project identity before starting. Omit projectPath for general research unrelated to a registered repository; never choose an arbitrary project for external research. No separate delegation permission is needed for Cake Chat investigations."
       : "Use subagents only when the user explicitly requested delegation, subagents, or parallel agent work.",
-    'Use subagents.start for ordinary delegation. Choose continuation: "none" (default) for a report-only result without a parent LLM turn; choose "resume" explicitly when you must inspect the result and continue dependent work or explain failure. Both owe a result, including linked results. Resume queues behind active parent work, never steers it. Do not poll. Blocking run/parallel/wait return the result directly instead of adding a continuation. Follow-ups inherit the choice unless overridden; immediate message_parent blockers/questions are unchanged.',
+    `Use subagents.start for ordinary delegation. continuation: "resume" (default, reply) starts a queued parent turn with the result so you can answer the user; choose "none" (notification) for a quiet report without a parent LLM turn. ${replyOrNotificationRule} Both owe a result, including linked results. Resume queues behind active parent work, never steers it. Do not poll. Blocking run/parallel/wait return the result directly instead of adding a continuation. Follow-ups inherit the choice unless overridden; immediate message_parent blockers/questions are unchanged.`,
     "Use subagents.run, subagents.parallel, or subagents.wait only when the user explicitly requires the parent turn to block on delegated work.",
     projectAware
       ? "Project investigators use the registered project root and normal applicable instructions, skills, extensions and MCP. They omit edit/write tools. Without projectPath, general researchers receive only read, bash and message_parent, no repository instructions, skills, extensions or MCP. Public web retrieval through read-only shell requests is possible only if network access works; no browser/search tool is guaranteed. Disclose access limits and never invent retrieved evidence. By default both modes are investigation-only and refuse all mutations, including shell/MCP writes. Set allowMutations: true on subagents.start only when the user's request needs bounded operational changes such as running scripts, killing processes or installing packages; the worker then stays within the assignment, reports exactly what it changed and avoids shared-branch Git mutations unless explicitly instructed. Name the exact targets and limits in the task. The flag cannot be added to an existing handle. These are prompt policies, not a sandbox. Code implementation that needs review still belongs in a normal Project Session."
@@ -91,7 +92,7 @@ export function createAgentControlOperations(
       ? guidance
       : definition.command === "subagents.prompt" || definition.command === "subagents.follow-up"
         ? [
-            'Follow-ups are asynchronous on every caller surface and inherit the handle continuation choice. Override continuation with "none" for report-only or "resume" for dependent parent work; waiting requires an explicit user request and subagents.wait.',
+            'Follow-ups are asynchronous on every caller surface and inherit the handle continuation choice. Override with "resume" (reply) when the user is waiting on the answer or "none" (notification) for background work; waiting requires an explicit user request and subagents.wait.',
             ...guidance.slice(5, 8),
           ]
         : guidance.slice(5, 6),

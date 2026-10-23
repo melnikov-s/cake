@@ -4,8 +4,11 @@ import { Schema } from "effect";
 export const ResultDelivery = Schema.Literals(["reply", "notification", "ignore"]);
 export type ResultDelivery = typeof ResultDelivery.Type;
 
-export const resultDeliveryGuidance =
-  'Default to resultDelivery: notification. Deliberately choose "reply" (Expect reply: application-confirmed completion automatically starts or queues a normal parent turn), "notification" (Expect notification: a compact result-message link is batched: it rides along with the next user message or, if none arrives, joins one batched turn delivered within 5 minutes (sooner, just before the prompt cache is estimated to expire); never a per-result turn), or "ignore" (no result obligation or notification). Completion transport is application-owned; workers need not call sessions.reply. Active parent work is never steered or run concurrently. Artifact/link-only results follow the same choice. Immediate questions and explicit blockers are separate actionable messages, not final completion notifications. Durable transport is deduplicated; model explanation is not exactly-once prose.';
+/** Shared reply-vs-notification choice for Project Session results and private subagents. */
+export const replyOrNotificationRule =
+  "Reply when the user is waiting on the answer (questions, checks, investigations, diagnoses) or you will act on it next; use notification for background work the user will review later (implementation, long runs). Self-check: did you tell the user you would get back to them with an answer? Then reply.";
+
+export const resultDeliveryGuidance = `Default to resultDelivery: notification. ${replyOrNotificationRule} Modes: "reply" (Expect reply: application-confirmed completion automatically starts or queues a normal parent turn), "notification" (Expect notification: a compact result-message link is batched: it rides along with the next user message or, if none arrives, joins one batched turn delivered within 5 minutes (sooner, just before the prompt cache is estimated to expire); never a per-result turn), or "ignore" (no result obligation or notification). Completion transport is application-owned; workers need not call sessions.reply. Active parent work is never steered or run concurrently. Artifact/link-only results follow the same choice. Immediate questions and explicit blockers are separate actionable messages, not final completion notifications. Durable transport is deduplicated; model explanation is not exactly-once prose.`;
 
 /** Storage/transcript migration only. New callers supply just resultDelivery. */
 export function migrateResultDelivery(input: {

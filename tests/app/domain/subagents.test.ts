@@ -1381,14 +1381,14 @@ describe("Subagents", () => {
       { chat, reference: "Research complete: the existing queue already serializes parent work." },
     ]),
   )(
-    "defaults to a quiet report without waking its $chat Cake Chat parent: $reference",
+    "keeps an explicit none report quiet without waking its $chat Cake Chat parent: $reference",
     ({ chat, reference }) =>
       Effect.gen(function* () {
         const fixture = yield* makeFixture(false, [], reference);
         yield* Effect.gen(function* () {
           const caller = chat ? cakeChatParent(fixture) : parent(fixture);
           const started = yield* subagents.start(
-            { task: "Investigate", model: { prefer: "current" } },
+            { task: "Investigate", continuation: "none", model: { prefer: "current" } },
             caller,
           );
           const childId = yield* Queue.take(fixture.childStarted);
@@ -1448,6 +1448,32 @@ describe("Subagents", () => {
           assert.ok(delivered.includes(reference));
           assert.equal((yield* storage.state()).deferredReferences?.length, 1);
           assert.equal((yield* storage.state()).deferredReferences?.[0]?.admissions, 1);
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+  );
+
+  it.effect.each([false, true])(
+    "defaults an omitted continuation to resume, waking the chat=%s parent with the result",
+    (chat) =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture();
+        yield* Effect.gen(function* () {
+          const caller = chat ? cakeChatParent(fixture) : parent(fixture);
+          const started = yield* subagents.start({ task: "Is it checked in yet?" }, caller);
+          assert.equal(started.continuation, "resume");
+          const childId = yield* Queue.take(fixture.childStarted);
+          yield* completeChild(fixture, childId);
+          const result = Schema.decodeUnknownSync(subagents.SubagentResult)(
+            yield* Queue.take(fixture.reports),
+          );
+          assert.equal(result.handleId, started.handleId);
+          assert.equal(result.status, "complete");
+          const worker = (yield* (yield* SubagentCoordinator).storage.list())[0];
+          assert.equal(worker?.continuation, "resume");
+          assert.equal(
+            (yield* (yield* SessionFamilyStorage).state()).deferredReferences?.length ?? 0,
+            0,
+          );
         }).pipe(Effect.provide(fixture.layer));
       }),
   );

@@ -33,7 +33,7 @@ caller's current values apply only when no default preset is configured. Cake
 persists request correlation and child identity, then an addressed Workboard
 assignment, before admitting the initial bootstrap turn. `assignment: { description,
 body }` is required; bootstrap-first `initialPrompt` callers fail validation. Family
-creation defaults to resultDelivery notification; reply continuation is a deliberate dependent-work choice.
+creation defaults to resultDelivery notification; reply is chosen when the user is waiting on the answer.
 Accepting that background turn completes creation; the parent never waits for
 settlement. The returned assignment receipt proves persistence, not execution;
 launch reports accepted, already-admitted with durable journal state, or failed
@@ -120,8 +120,8 @@ and must not depend on renderer visibility.
 
 Session launch/send chooses one `resultDelivery: "reply" | "notification" | "ignore"`.
 Global Cake Chat, every Project Chat, Project Session send/reply, independent agent
-creation and family creation default to notification. Reply is deliberate dependent-work
-continuation; ignore is supported. Stable request/message
+creation and family creation default to notification. Reply when the user is waiting on the
+answer (questions, checks, investigations, diagnoses) or the parent acts on it next; ignore is supported. Stable request/message
 correlation identifies the obligation; unrelated input never satisfies it. The envelope's
 expectsResponse flag is derived routing metadata, not another caller-selectable mode.
 
@@ -172,7 +172,7 @@ Stable request/result/admission IDs, Pi consumption receipts and durable inbox r
 retry/restart transport. This guarantees durable delivery obligations, not exactly-once LLM prose
 or a guarantee that the model mentions every delivered notification. Quiet admission and explanation
 are distinct; explicit pending-report handling remains the separate private-worker contract below.
-Private subagents retain continuation:none/resume; Workboard grants remain independently authorized.
+Private subagents retain continuation:none/resume and default to resume; Workboard grants remain independently authorized.
 
 ### Quiet worker report handling
 

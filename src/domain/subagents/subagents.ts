@@ -138,7 +138,7 @@ const normalizeTask = Effect.fn("Subagents.normalizeTask")(function* (input: Sub
   );
   const task: SubagentTask = {
     task: decoded.task,
-    continuation: decoded.continuation ?? "none",
+    continuation: decoded.continuation ?? "resume",
     model: decoded.model ?? { prefer: "current" },
     fastMode: decoded.fastMode ?? false,
     allowMutations: decoded.allowMutations ?? false,

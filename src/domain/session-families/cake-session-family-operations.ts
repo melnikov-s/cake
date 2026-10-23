@@ -205,7 +205,6 @@ export function createSessionFamilyOperations(
         "Outside the family, necessary immediate corrections steer active work by default; idle sessions start normally. Use delivery: fyi for passive batched updates, queue only for deliberately ordered future work.",
         resultDeliveryGuidance,
         sessionMessageDeliveryGuidance,
-        "All caller kinds default to notification; reply continuation requires deliberate choice for dependent work.",
         "Set replyToMessageId when this message answers a specific request. A different or unrelated message never clears that request's response obligation.",
         "Send one substantive completion report. Never send acknowledgment-only messages or duplicate lifecycle reports; receiving a report or notification does not require a response.",
         "Delivery receipts are informational tool results. Never acknowledge a receipt; send another message only for substantive coordination.",
