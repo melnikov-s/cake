@@ -92,34 +92,33 @@ export class ProjectTodosStore extends Store<{
   }
 
   /**
-   * To-dos tracking a result message: open items, plus items the user closed so the message
-   * can show and undo that closure. Agent and automatic closures are not offered again.
+   * To-dos tracking a result message, open or done. These are the live list items, so the
+   * message shows whatever the pane shows, whoever (user, agent or session resolution)
+   * last changed them.
    */
   itemsForResult(origin: TodoResultOrigin): ProjectTodo[] {
     const sessions = new Set(origin.sessionIds ?? []);
     const message = origin.message;
-    return (this.value?.items ?? []).filter(
-      (item) =>
-        (item.state === "open" || item.completion?.by === "user") &&
-        item.associations.some((link) => {
-          if (link.kind === "session") return sessions.has(link.sessionId);
-          if (link.kind === "subagent")
-            return (
-              origin.subagent?.handleId === link.handleId &&
-              origin.subagent.parentSessionId === link.parentSessionId
-            );
-          const worker = parseSubagentLink(link.ref);
-          if (worker)
-            return (
-              origin.subagent?.handleId === worker.handleId &&
-              origin.subagent.parentSessionId === worker.parentSessionId
-            );
-          const target = parseSessionLink(link.ref);
-          if (!target || target.attachmentId) return false;
-          if (message && target.sessionId === message.sessionId)
-            return target.messageId === message.entryId;
-          return sessions.has(target.sessionId);
-        }),
+    return (this.value?.items ?? []).filter((item) =>
+      item.associations.some((link) => {
+        if (link.kind === "session") return sessions.has(link.sessionId);
+        if (link.kind === "subagent")
+          return (
+            origin.subagent?.handleId === link.handleId &&
+            origin.subagent.parentSessionId === link.parentSessionId
+          );
+        const worker = parseSubagentLink(link.ref);
+        if (worker)
+          return (
+            origin.subagent?.handleId === worker.handleId &&
+            origin.subagent.parentSessionId === worker.parentSessionId
+          );
+        const target = parseSessionLink(link.ref);
+        if (!target || target.attachmentId) return false;
+        if (message && target.sessionId === message.sessionId)
+          return target.messageId === message.entryId;
+        return sessions.has(target.sessionId);
+      }),
     );
   }
 

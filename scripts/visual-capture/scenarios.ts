@@ -2503,7 +2503,7 @@ const resultTodoNoticeSessionId = "5f6a7b8c-9d0e-4f1a-8b2c-3d4e5f6a7b82";
 const resultTodoDoneScenario: VisualCaptureScenario = {
   name: "result-todo-done",
   description:
-    "One-click Done on Cake Chat result messages linked to an open to-do, beside the To-do pane",
+    "Live Done checkbox on Cake Chat result messages linked to a to-do, beside the To-do pane",
   states: ["report", "session", "done", "pane"],
   async seed(paths, theme) {
     await subagentReportsScenario.seed(paths, theme);
@@ -2637,16 +2637,14 @@ const resultTodoDoneScenario: VisualCaptureScenario = {
     await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText("Cake Chat");
     const report = page.getByRole("article", { name: "Subagent complete", exact: true });
     await expect(report).toBeVisible({ timeout: 20_000 });
-    const done = page.getByRole("button", {
-      name: "Mark to-do done: Research the publication check",
+    const done = page.getByRole("checkbox", {
+      name: "Done: Research the publication check",
       exact: true,
     });
-    await expect(done).toBeVisible();
+    await expect(done).toHaveAttribute("aria-checked", "false");
     if (state === "done") {
       await done.click();
-      await expect(
-        page.getByRole("button", { name: "Reopen to-do: Research the publication check" }),
-      ).toHaveAttribute("aria-pressed", "true");
+      await expect(done).toHaveAttribute("aria-checked", "true");
     }
     if (state === "pane") {
       await page.getByRole("button", { name: "To-do", exact: true }).click();
@@ -2654,7 +2652,7 @@ const resultTodoDoneScenario: VisualCaptureScenario = {
     }
     if (state === "session" || state === "pane")
       await page
-        .getByRole("button", { name: "Mark to-do done: Draft the release notes" })
+        .getByRole("checkbox", { name: "Done: Draft the release notes" })
         .scrollIntoViewIfNeeded();
     else await report.scrollIntoViewIfNeeded();
     await page.waitForFunction(() => document.fonts.status === "loaded");

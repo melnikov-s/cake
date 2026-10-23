@@ -414,9 +414,11 @@ is a refactoring signal, not precedent.
   from the durable input, independent of later selection or lifecycle changes. A bounded
   baseline in Project Chat’s live system context also survives recreation/reset.
   Result messages (worker reports, Project Session replies/notices and compact completion
-  notices) whose session, subagent or exact-message source links match an open item show a
-  one-click Done chip that uses the same user done/reopen mutation as the pane; user-closed
-  items stay visible there as Done with reopen.
+  notices) whose session, subagent or exact-message source links match an item show a Done
+  checkbox on the latest such message. It renders the window's projected list item itself
+  (title and open/done, whether changed by the user, an agent tool or session resolution) and
+  toggles through the same user done/reopen mutation as the pane; an item that leaves the list
+  takes its control with it.
 - **Global Cake Chat to-dos** reuse the same schema, tools, baseline and pane, stored as one
   separate application-level list (`cakeChatTodos`, scope `CAKE_CHAT_TODO_SCOPE`) rather
   than inside any Project. Its links may target sessions, workers and messages in any

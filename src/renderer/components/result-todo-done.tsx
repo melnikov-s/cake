@@ -5,9 +5,11 @@ import { cn } from "@/lib/utils";
 import type { ProjectTodosStore } from "../stores/ProjectTodosStore";
 
 /**
- * A footer bar inside a result message for each to-do tracking it: "To-do · title" with a
- * one-click Done, through the same user done/reopen path as the To-do pane. Renders nothing
- * unless this is the latest result linked to an open (or user-closed) to-do.
+ * A footer bar inside a result message for each to-do tracking it: "To-do · title" with a Done
+ * checkbox. Title and checked state are read from the chat's live to-do list, the same items
+ * the To-do pane renders, so a change from the pane, an agent tool or session resolution shows
+ * here at once. Toggling goes through the pane's user done/reopen path. Renders nothing unless
+ * this is the latest result linked to a to-do that is still in the list.
  */
 export const ResultTodoFooter = observer(function ResultTodoFooter({
   partId,
@@ -30,7 +32,6 @@ export const ResultTodoFooter = observer(function ResultTodoFooter({
     >
       {items.map((item) => {
         const done = item.state === "done";
-        const label = `${done ? "Reopen to-do" : "Mark to-do done"}: ${item.title}`;
         return (
           <div key={item.id} className="flex min-w-0 items-center gap-3 text-xs">
             <span className="min-w-0 flex-1 truncate text-muted-foreground" title={item.title}>
@@ -39,9 +40,10 @@ export const ResultTodoFooter = observer(function ResultTodoFooter({
             <Button
               variant="ghost"
               size="sm"
-              aria-label={label}
-              aria-pressed={done}
-              title={label}
+              role="checkbox"
+              aria-checked={done}
+              aria-label={`Done: ${item.title}`}
+              title={`${done ? "Reopen" : "Mark done"}: ${item.title}`}
               disabled={todos.busy}
               className={cn(
                 "h-7 shrink-0 gap-1.5 px-2 font-medium [&_svg]:size-3.5",
@@ -51,7 +53,7 @@ export const ResultTodoFooter = observer(function ResultTodoFooter({
               onClick={() => void todos.setDone(item)}
             >
               {done ? <CheckIcon /> : <CircleIcon />}
-              {done ? "Done" : "Mark done"}
+              Done
             </Button>
           </div>
         );
