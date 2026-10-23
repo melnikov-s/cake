@@ -135,4 +135,43 @@ describe("Shared Chat surface workflows", () => {
     await fixture.user.click(screen.getByRole("button", { name: "Compact work logs" }));
     expect(groups.map((group) => group.open)).toEqual([false, true]);
   });
+
+  it("animates only live transcript arrivals, not initial history or streaming updates", () => {
+    const initial: UiPart = {
+      id: "initial",
+      kind: "text",
+      role: "assistant",
+      text: "Existing message",
+      status: "complete",
+    };
+    using fixture = renderChatSurface({ parts: [initial] });
+    expect(
+      screen.getByText("Existing message").closest('[data-slot="transcript-item"]')?.className,
+    ).not.toContain("motion-safe:animate-arrive");
+
+    const arriving: UiPart = {
+      id: "arriving",
+      renderKey: "turn-1:text:0",
+      kind: "text",
+      role: "assistant",
+      text: "Hello",
+      status: "streaming",
+    };
+    fixture.publish([initial, arriving], true);
+    expect(screen.getByText("Hello").closest('[data-slot="transcript-item"]')?.className).toContain(
+      "motion-safe:animate-arrive",
+    );
+    expect(
+      screen.getByText("Existing message").closest('[data-slot="transcript-item"]')?.className,
+    ).not.toContain("motion-safe:animate-arrive");
+
+    // Streaming growth and final settlement keep the same renderKey and entrance class.
+    fixture.publish([
+      initial,
+      { ...arriving, id: "settled", text: "Hello world", status: "complete" },
+    ]);
+    expect(
+      screen.getByText("Hello world").closest('[data-slot="transcript-item"]')?.className,
+    ).toContain("motion-safe:animate-arrive");
+  });
 });

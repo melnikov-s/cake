@@ -342,6 +342,42 @@
   }
 }
 
+/* Entrance motion: content that comes into existence originates from where it lands.
+   Fill mode is `backwards` so settled elements keep no animated transform. */
+@theme {
+  --animate-arrive: arrive 280ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  --animate-fade-in: fade-in 180ms ease-out backwards;
+  --animate-dialog-enter: dialog-enter 220ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  --animate-toast-enter: toast-enter 300ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+@keyframes arrive {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes dialog-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
+}
+
+@keyframes toast-enter {
+  from {
+    opacity: 0;
+    transform: translateX(16px) scale(0.98);
+  }
+}
+
 @keyframes status-pulse {
   50% {
     opacity: 0.38;

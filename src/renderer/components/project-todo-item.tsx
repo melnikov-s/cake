@@ -24,7 +24,7 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
   const sessions = item.associations.filter((association) => association.kind !== "source");
   const resources = item.associations.filter((association) => association.kind === "source");
   return (
-    <li data-todo-id={item.id}>
+    <li data-todo-id={item.id} data-animated-list-key={item.id}>
       <NavItem
         wholeRowAction
         associated={selected}

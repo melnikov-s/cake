@@ -1,4 +1,5 @@
 import { observer } from "r-state-tree/react";
+import { AnimatedList } from "@/components/ui/animated-list";
 import { Callout } from "@/components/ui/callout";
 import { DisclosureTrigger } from "@/components/ui/disclosure-trigger";
 import type { ProjectTodosStore } from "../stores/ProjectTodosStore";
@@ -28,11 +29,11 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
         </Callout>
       )}
       {store.openItems.length ? (
-        <ul aria-label="Open to-dos" className="space-y-2">
+        <AnimatedList as="ul" aria-label="Open to-dos" className="space-y-2">
           {store.openItems.map((item) => (
             <ProjectTodoItem key={item.id} item={item} store={store} />
           ))}
-        </ul>
+        </AnimatedList>
       ) : (
         <p className="px-1 py-4 text-sm text-muted-foreground">
           No open to-dos. Your agent can add a thread when taking on a commitment.
@@ -46,11 +47,11 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
             onClick={() => store.toggleDone()}
           />
           {store.doneExpanded && (
-            <ul aria-label="Done to-dos" className="mt-2 space-y-1">
+            <AnimatedList as="ul" aria-label="Done to-dos" className="mt-2 space-y-1">
               {store.doneItems.map((item) => (
                 <ProjectTodoItem key={item.id} item={item} store={store} />
               ))}
-            </ul>
+            </AnimatedList>
           )}
         </section>
       )}

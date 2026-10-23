@@ -134,12 +134,42 @@ describe("AnimatedList", () => {
     expect(lastAnimation.cancel).toHaveBeenCalledOnce();
   });
 
-  it("does not animate unchanged positions or newly inserted rows", () => {
+  it("does not animate unchanged positions or rows present at mount", () => {
+    itemTops.set("first", 0);
+    itemTops.set("second", 20);
+    renderItems(["first", "second"]);
+    renderItems(["first", "second"]);
+    expect(animate).not.toHaveBeenCalled();
+  });
+
+  it("lets rows inserted into a rendered list enter, without restarting on re-render", () => {
     itemTops.set("first", 0);
     renderItems(["first"]);
     itemTops.set("second", 20);
     renderItems(["first", "second"]);
+    expect(operations).toEqual([
+      "measure:first",
+      "measure:first",
+      "measure:second",
+      "animate:second",
+    ]);
+    expect(animate).toHaveBeenCalledWith(
+      [
+        { opacity: 0, transform: "translateY(-4px) scale(0.97)" },
+        { opacity: 1, transform: "none" },
+      ],
+      expect.objectContaining({ duration: 260 }),
+    );
+
+    // An unrelated update neither cancels nor re-measures the entering row.
+    operations.length = 0;
     renderItems(["first", "second"]);
+    expect(operations).toEqual(["measure:first"]);
+  });
+
+  it("treats a bulk insertion as a load rather than an arrival", () => {
+    renderItems(["first"]);
+    renderItems(["first", "a", "b", "c", "d", "e"]);
     expect(animate).not.toHaveBeenCalled();
   });
 

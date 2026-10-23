@@ -64,7 +64,7 @@ export function FullscreenSurface({
     // (e.g. a Mermaid diagram's own fullscreen view) stack on top of it.
     <div
       ref={surfaceRef}
-      className="fixed inset-0 z-45 flex flex-col bg-background text-foreground animate-in fade-in duration-150"
+      className="fixed inset-0 z-45 flex flex-col bg-background text-foreground motion-safe:animate-fade-in"
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}

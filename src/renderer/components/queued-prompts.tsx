@@ -53,7 +53,7 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
                 return (
                   <div
                     className={cn(
-                      "flex gap-1 rounded-md bg-muted/40 px-2 py-1.5 text-xs",
+                      "flex gap-1 rounded-md bg-muted/40 px-2 py-1.5 text-xs motion-safe:animate-arrive",
                       entry.state === "steering" ? "flex-col" : "items-center",
                     )}
                     role="listitem"

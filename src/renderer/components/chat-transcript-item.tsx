@@ -15,6 +15,8 @@ interface ChatTranscriptItemProps {
   itemKey: string;
   item: TranscriptItem;
   index: number;
+  /** Joined the live transcript just now; read on mount only (see memo comparison). */
+  arriving: boolean;
   errorFollowsUser: boolean;
   selected: boolean;
   parts: UiPart[];
@@ -46,6 +48,7 @@ export const ChatTranscriptItem = memo(
     itemKey,
     item,
     index,
+    arriving,
     errorFollowsUser,
     selected,
     parts,
@@ -71,6 +74,7 @@ export const ChatTranscriptItem = memo(
         className={cn(
           "mx-auto w-full max-w-3xl min-w-0 pb-5 has-[[data-slot=artifact-disclosure]]:max-w-6xl in-[.chat-layout-compact]:pb-3.5",
           errorFollowsUser && "pt-3",
+          arriving && "motion-safe:animate-arrive",
           // The selection ring outlines only the message bubble, not its label or
           // action row. Items without a bubble (tools, groups) ring the whole item.
           selected &&
@@ -113,6 +117,8 @@ export const ChatTranscriptItem = memo(
       </div>
     );
   },
+  // `arriving` is deliberately ignored: it only matters for the mount that starts the
+  // entrance, and a later re-render dropping the class must not cut the animation short.
   (previous, next) =>
     previous.itemKey === next.itemKey &&
     previous.index === next.index &&

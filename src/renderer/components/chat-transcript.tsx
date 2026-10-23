@@ -40,6 +40,7 @@ import {
 } from "./chat-transcript-parts";
 import { ChatTranscriptItem } from "./chat-transcript-item";
 import { transcriptItemKeys } from "./chat-transcript-items";
+import { useArrivals } from "../hooks/use-arrivals";
 import {
   createTranscriptScrollOwner,
   type TranscriptScrollOwner,
@@ -179,6 +180,7 @@ export const ChatTranscript = observer(function ChatTranscript({
     ...(showAssistantLoading ? [{ kind: "loading-state" as const, id: "loading-state" }] : []),
   ];
   const itemKeys = transcriptItemKeys(items);
+  const isArriving = useArrivals(itemKeys, store.id);
   const transcriptBehavior = useMemo<CanonicalTranscriptBehavior>(
     () => ({
       store,
@@ -371,6 +373,7 @@ export const ChatTranscript = observer(function ChatTranscript({
       itemKey={itemKeys[index] ?? item.id}
       item={item}
       index={index}
+      arriving={isArriving(itemKeys[index] ?? item.id)}
       errorFollowsUser={errorNoticeFollowsUser(items, index)}
       selected={index === selectedItemIndex}
       parts={parts}

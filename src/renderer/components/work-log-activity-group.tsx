@@ -12,6 +12,7 @@ import type { UiPart } from "../../contracts/conversations/session-contract";
 import { isCompactedWorkLogPart } from "../../utils/work-log-groups";
 import { cn } from "../lib/utils";
 import { combineSubagentWorkLogParts } from "../lib/subagent-work-log";
+import { useArrivals } from "../hooks/use-arrivals";
 import type { CanonicalTranscriptBehavior } from "./chat-message";
 import { TranscriptPart } from "./chat-transcript-part";
 
@@ -86,6 +87,10 @@ export const ActivityGroup = observer(function ActivityGroup({
     [diffScrollRef],
   );
   const workLogItems = useMemo(() => combineSubagentWorkLogParts(parts), [parts]);
+  const isArriving = useArrivals(
+    workLogItems.map((item) => item.id),
+    groupId,
+  );
   const tools = useMemo(
     () =>
       workLogItems.filter((part) => part.kind === "tool" || part.kind === "subagent-work-log")
@@ -140,7 +145,7 @@ export const ActivityGroup = observer(function ActivityGroup({
   const lastPartId = parts.at(-1)?.id;
   const live = behavior.store.liveWorkPossible;
   const renderWorkLogItem = (item: (typeof workLogItems)[number], omitToolDiff = false) => (
-    <div className="min-w-0">
+    <div className={cn("min-w-0", isArriving(item.id) && "motion-safe:animate-arrive")}>
       {item.kind === "subagent-work-log" ? (
         <TranscriptPart
           part={item.latest}
@@ -205,7 +210,12 @@ export const ActivityGroup = observer(function ActivityGroup({
         <span className="shrink-0">{compacted ? "Compacted work log" : "Work log"}</span>
         <small className="ml-1.5 min-w-0 truncate font-normal text-muted-foreground">
           {label}
-          {!open && latestAction ? ` · ${latestAction}` : null}
+          {!open && latestAction ? (
+            // Keyed so each new action fades in, making progress visible while collapsed.
+            <span key={latestAction} className="motion-safe:animate-fade-in">
+              {` · ${latestAction}`}
+            </span>
+          ) : null}
         </small>
       </summary>
       {open &&
