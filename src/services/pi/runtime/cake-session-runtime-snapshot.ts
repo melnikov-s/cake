@@ -13,7 +13,7 @@ import type {
   UiPart,
 } from "../../../contracts/conversations/session-contract";
 import {
-  piBuiltinSlashCommands,
+  builtinSlashCommands,
   slashCommandSchema,
 } from "../../../contracts/conversations/session-contract";
 import { supportsFastMode } from "../fast-mode";
@@ -92,7 +92,7 @@ export function projectCakeSessionRuntimeSnapshot(
     commands: input.auxiliary
       ? []
       : [
-          ...piBuiltinSlashCommands.filter(
+          ...builtinSlashCommands.filter(
             (command) => !input.slashCommands || input.slashCommands.includes(command.name),
           ),
           ...input.commands,

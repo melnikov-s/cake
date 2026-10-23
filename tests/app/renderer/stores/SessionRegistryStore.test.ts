@@ -1,6 +1,6 @@
 import { toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
-import { piBuiltinSlashCommands } from "../../../../src/contracts/conversations/session-contract";
+import { builtinSlashCommands } from "../../../../src/contracts/conversations/session-contract";
 import { applyConversationUpdate } from "../../../../src/renderer/reducers/ConversationReducer";
 import { createRendererStoreFixture } from "../renderer-store-fixture";
 import type { TestClientOverrides } from "../test-client";
@@ -30,7 +30,7 @@ function observe(
       availableThinkingLevels: ["off"],
       streaming,
       diagnostics: [],
-      commands: piBuiltinSlashCommands,
+      commands: builtinSlashCommands,
       compatibility: { resources: [], diagnostics: [] },
       extensionUi: { statuses: [] },
       tree: [],

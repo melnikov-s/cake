@@ -3,7 +3,7 @@ import { StoreProvider } from "r-state-tree/react";
 import { Chat } from "../../src/renderer/components/chat";
 import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-identity";
 import {
-  piBuiltinSlashCommands,
+  builtinSlashCommands,
   type ConversationSnapshot,
 } from "../../src/contracts/conversations/session-contract";
 import { applyConversationSnapshot } from "../../src/renderer/reducers/ConversationReducer";
@@ -75,7 +75,7 @@ const snapshot: ConversationSnapshot = {
   availableThinkingLevels: ["off"],
   streaming: false,
   diagnostics: [],
-  commands: piBuiltinSlashCommands,
+  commands: builtinSlashCommands,
   compatibility: { resources: [], diagnostics: [] },
   extensionUi: { statuses: [] },
   tree: [],

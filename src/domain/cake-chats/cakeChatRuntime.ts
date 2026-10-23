@@ -1,4 +1,5 @@
 import { messageReference } from "../../contracts/conversations/message-reference";
+import { cakeChatBuiltinSlashCommands } from "../../contracts/conversations/session-contract";
 import { agentSettingsOperations } from "../../contracts/application/agent-settings-schema";
 import { makeVscodeControl } from "../../services/pi/VscodeControlAdapter";
 import { VsCodeServer } from "../../services/vscode/VsCodeServer";
@@ -565,7 +566,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
             },
           })
         : undefined,
-      slashCommands: ["compact", "model"],
+      slashCommands: cakeChatBuiltinSlashCommands.map((command) => command.name),
       requestUi: async () => undefined,
       modelPresets,
       resolveModelSelection: (selection, caller, launch) =>

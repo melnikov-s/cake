@@ -1,4 +1,5 @@
 import type { Project } from "../models/Project";
+import { parseScheduledMessage } from "../../utils/scheduled-message-time";
 import { ProjectTodosStore } from "./ProjectTodosStore";
 import { Store, child, createStore, snapshot } from "r-state-tree";
 import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
@@ -255,6 +256,19 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       startSession: (input) => this.startSession(input),
       ensureSessionActive: () => true,
       composer: {
+        scheduleMessage: async (sessionId, args) => {
+          const scheduled = parseScheduledMessage(args);
+          await this.client.scheduledMessages.schedule(
+            {
+              targetSessionId: sessionId,
+              text: scheduled.text,
+              sendAt: scheduled.sendAt,
+              createdBySessionId: sessionId,
+            },
+            { signal: this.signal },
+          );
+          return !this.signal.aborted;
+        },
         presentationMode: () => this.presentationMode,
         draftSessionPrompt: (sessionId) =>
           this.props.pendingSessions.conversation(sessionId)?.draftPrompt,

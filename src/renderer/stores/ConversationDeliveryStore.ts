@@ -1,6 +1,6 @@
 import { Store, child, createStore } from "r-state-tree";
 import type { Attachment, UiPart } from "../../contracts/conversations/session-contract";
-import { parsePiBuiltinCommand } from "../../contracts/conversations/session-contract";
+import { parseBuiltinCommand } from "../../contracts/conversations/session-contract";
 import type { StoreEvent } from "../events/StoreEvent";
 import { describeError } from "../lib/error-details";
 import { OptimisticUserMessagesStore } from "./OptimisticUserMessagesStore";
@@ -69,7 +69,7 @@ export class ConversationDeliveryStore extends Store<ConversationDeliveryStorePr
     const sessionId = this.props.sessionId();
     if (!sessionId || (!text && attachments.length === 0)) return false;
     this.clearError();
-    const builtin = parsePiBuiltinCommand(text);
+    const builtin = parseBuiltinCommand(text);
     if (builtin?.name === "compact")
       return this.compact(sessionId, builtin.args || undefined, text, attachments, restoreOnError);
 

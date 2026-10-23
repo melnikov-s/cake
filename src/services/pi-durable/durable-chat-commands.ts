@@ -8,7 +8,7 @@ import {
 import { readFile } from "node:fs/promises";
 import { Option, Schema } from "effect";
 import {
-  piBuiltinSlashCommands,
+  cakeChatBuiltinSlashCommands,
   slashCommandSchema,
 } from "../../contracts/conversations/session-contract";
 import { compatibilityCatalog } from "../pi/live/PiCompatibilityProjection";
@@ -18,8 +18,8 @@ import {
   splitSessionDigestReminder,
 } from "../../contracts/cake-chats/session-digest-reminder";
 
-/** Durable has no AgentSession command processor. Keep discovery Pi-owned while
- * admitting only text skills, not Project Session extensions, tools or prompts. */
+/** Durable has no AgentSession command processor. Advertise supported conversation
+ * commands plus Pi-discovered text skills, not Project Session extensions or prompts. */
 export async function createDurableChatCommands(
   cwd: string,
   agentDir: string,
@@ -41,9 +41,7 @@ export async function createDurableChatCommands(
     instructions: () => formatSkillsForPrompt(loader.getSkills().skills),
     compatibility: () => compatibilityCatalog(loader, settingsManager, cwd, agentDir),
     catalog: () => [
-      ...piBuiltinSlashCommands.filter(
-        (command) => command.name === "compact" || command.name === "model",
-      ),
+      ...cakeChatBuiltinSlashCommands,
       ...loader.getSkills().skills.flatMap((skill) => {
         const command = Schema.decodeUnknownOption(slashCommandSchema)({
           name: `skill:${skill.name}`,

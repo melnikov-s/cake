@@ -7,8 +7,9 @@ import {
 } from "../../../src/contracts/application/application-data";
 import {
   applicationStateSchema,
-  parsePiBuiltinCommand,
-  piBuiltinSlashCommands,
+  parseBuiltinCommand,
+  builtinSlashCommands,
+  cakeChatBuiltinSlashCommands,
 } from "../../../src/contracts/conversations/session-contract";
 
 it("uses the domain-owned renderer application schema at the IPC boundary", () => {
@@ -37,31 +38,57 @@ it("rejects invalid model-preset invariants at the application projection wire b
   ).toThrow(/unique Project, Model Preset, and session-label identities with valid references/);
 });
 
-describe("parsePiBuiltinCommand", () => {
+describe("parseBuiltinCommand", () => {
   it("parses builtin commands with and without arguments", () => {
-    expect(parsePiBuiltinCommand("/compact")).toEqual({ name: "compact", args: "" });
-    expect(parsePiBuiltinCommand("/compact  Keep the API details ")).toEqual({
+    expect(parseBuiltinCommand("/compact")).toEqual({ name: "compact", args: "" });
+    expect(parseBuiltinCommand("/compact  Keep the API details ")).toEqual({
       name: "compact",
       args: "Keep the API details",
     });
-    expect(parsePiBuiltinCommand(" /MODEL")).toEqual({ name: "model", args: "" });
-    expect(parsePiBuiltinCommand("/toolcompact Implement the plan")).toEqual({
+    expect(parseBuiltinCommand(" /MODEL")).toEqual({ name: "model", args: "" });
+    expect(parseBuiltinCommand("/toolcompact Implement the plan")).toEqual({
       name: "toolcompact",
       args: "Implement the plan",
     });
-    expect(parsePiBuiltinCommand("/sidechat Compare approaches")).toEqual({
+    expect(parseBuiltinCommand("/sidechat Compare approaches")).toEqual({
       name: "sidechat",
       args: "Compare approaches",
     });
+    expect(parseBuiltinCommand("/schedule 5m Check progress")).toEqual({
+      name: "schedule",
+      args: "5m Check progress",
+    });
+  });
+
+  it("attributes Pi and Cake commands separately and scopes the chat catalog", () => {
     expect(
-      piBuiltinSlashCommands.find((command) => command.name === "sidechat")?.sourceInfo,
-    ).toEqual(expect.objectContaining({ source: "Cake", path: "builtin:cake" }));
+      builtinSlashCommands.map((command) => [command.name, command.sourceInfo.source]),
+    ).toEqual([
+      ["compact", "Pi CLI"],
+      ["model", "Pi CLI"],
+      ["name", "Pi CLI"],
+      ["sidechat", "Cake"],
+      ["schedule", "Cake"],
+      ["toolcompact", "Cake"],
+    ]);
+    expect(cakeChatBuiltinSlashCommands.map((command) => command.name)).toEqual([
+      "compact",
+      "model",
+      "schedule",
+    ]);
+    expect(
+      cakeChatBuiltinSlashCommands.find((command) => command.name === "schedule"),
+    ).toMatchObject({
+      source: "builtin",
+      sourceInfo: { path: "builtin:cake", source: "Cake" },
+      argumentHint: "<10s|5m|2h|1d|ISO time> <message>",
+    });
   });
 
   it("ignores non-commands and unknown commands", () => {
-    expect(parsePiBuiltinCommand("fix the /compact handling")).toBeUndefined();
-    expect(parsePiBuiltinCommand("/definitely-not-a-pi-builtin")).toBeUndefined();
-    expect(parsePiBuiltinCommand("compact")).toBeUndefined();
-    expect(parsePiBuiltinCommand("")).toBeUndefined();
+    expect(parseBuiltinCommand("fix the /compact handling")).toBeUndefined();
+    expect(parseBuiltinCommand("/definitely-not-a-pi-builtin")).toBeUndefined();
+    expect(parseBuiltinCommand("compact")).toBeUndefined();
+    expect(parseBuiltinCommand("")).toBeUndefined();
   });
 });

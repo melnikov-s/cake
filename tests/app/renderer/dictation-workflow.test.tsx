@@ -12,7 +12,7 @@ import type {
   DictationAudio,
   DictationState,
 } from "../../../src/contracts/dictation/dictation-data";
-import { piBuiltinSlashCommands } from "../../../src/contracts/conversations/session-contract";
+import { builtinSlashCommands } from "../../../src/contracts/conversations/session-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
 import { SettingsDictationSection } from "../../../src/renderer/components/settings-dictation-section";
@@ -227,7 +227,7 @@ function renderDictation(
       availableThinkingLevels: ["off"],
       streaming: false,
       diagnostics: [],
-      commands: options.slashCommands ? piBuiltinSlashCommands : [],
+      commands: options.slashCommands ? builtinSlashCommands : [],
       compatibility: { resources: [], diagnostics: [] },
       extensionUi: { statuses: [] },
       tree: [],

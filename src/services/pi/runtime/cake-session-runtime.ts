@@ -57,7 +57,7 @@ import { inspectSessionHistory } from "./session-inspection";
 import { projectContextInspection, projectMemoryDetail } from "./project-context-inspection";
 import { runtimeSystemTools } from "./system-context-projection";
 import { listMessageReferences, readMessageReference } from "./message-references";
-import { piBuiltinSlashCommands } from "../../../contracts/conversations/session-contract";
+import { builtinSlashCommands } from "../../../contracts/conversations/session-contract";
 import { SubagentResult as subagentResultSchema } from "../../../contracts/subagents/subagent-data";
 import { subagentFinalAnswer } from "../../../contracts/subagents/subagent-report";
 import {
@@ -1094,7 +1094,7 @@ export async function createCakeSessionRuntime(
         return Schema.decodeUnknownSync(jsonValueSchema)(await turnController.pendingMessages());
       if (query.kind === "commands")
         return Schema.decodeUnknownSync(jsonValueSchema)({
-          commands: [...piBuiltinSlashCommands, ...resources.commandCatalog()].map((command) => ({
+          commands: [...builtinSlashCommands, ...resources.commandCatalog()].map((command) => ({
             name: command.name,
             description: command.description,
             source: command.source,

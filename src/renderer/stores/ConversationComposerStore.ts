@@ -1,6 +1,6 @@
 import { Store, child, computed, createStore } from "r-state-tree";
 import type { Attachment, UiPart } from "../../contracts/conversations/session-contract";
-import { parsePiBuiltinCommand } from "../../contracts/conversations/session-contract";
+import { parseBuiltinCommand } from "../../contracts/conversations/session-contract";
 import { shouldRenderMarkdown } from "../../utils/markdown";
 import type { StoreEvent } from "../events/StoreEvent";
 import { describeError } from "../lib/error-details";
@@ -215,7 +215,7 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
   private isApplicationCommand(text: string) {
     const command = text.toLocaleLowerCase();
     if (command === "/tree" || command === "/resources" || command === "/changelog") return true;
-    const name = parsePiBuiltinCommand(text)?.name;
+    const name = parseBuiltinCommand(text)?.name;
     return (
       name === "toolcompact" ||
       (name === "sidechat" && Boolean(this.props.createSideChat)) ||
@@ -239,7 +239,7 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
       );
       return { handled: true, result: true };
     }
-    const builtin = parsePiBuiltinCommand(text);
+    const builtin = parseBuiltinCommand(text);
     if (builtin?.name === "toolcompact") {
       const assistantPart = this.props
         .canonicalParts()

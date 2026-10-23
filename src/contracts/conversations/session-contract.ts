@@ -584,10 +584,19 @@ const cakeBuiltinSourceInfo = {
   scope: "temporary",
   origin: "top-level",
 } as const;
-export const piBuiltinSlashCommands = [
+const piBuiltinSlashCommands = [
   { name: "compact", description: "Manually compact the session context" },
   { name: "model", description: "Switch model", argumentHint: "<provider/model>" },
   { name: "name", description: "Rename the current session" },
+].map((command) =>
+  Schema.decodeUnknownSync(slashCommandSchema)({
+    ...command,
+    source: "builtin",
+    sourceInfo: builtinSourceInfo,
+  }),
+);
+
+const cakeBuiltinSlashCommands = [
   {
     name: "sidechat",
     description: "Start a side chat",
@@ -595,7 +604,7 @@ export const piBuiltinSlashCommands = [
   },
   {
     name: "schedule",
-    description: "Schedule a message to this session",
+    description: "Schedule a message to this conversation",
     argumentHint: "<10s|5m|2h|1d|ISO time> <message>",
   },
   {
@@ -607,20 +616,27 @@ export const piBuiltinSlashCommands = [
   Schema.decodeUnknownSync(slashCommandSchema)({
     ...command,
     source: "builtin",
-    sourceInfo: command.name === "sidechat" ? cakeBuiltinSourceInfo : builtinSourceInfo,
+    sourceInfo: cakeBuiltinSourceInfo,
   }),
 );
 
+export const builtinSlashCommands = [...piBuiltinSlashCommands, ...cakeBuiltinSlashCommands];
+
+/** Commands supported by both global Cake Chat and Project Chat. */
+export const cakeChatBuiltinSlashCommands = builtinSlashCommands.filter((command) =>
+  ["compact", "model", "schedule"].includes(command.name),
+);
+
 /** Pi commands Cake can execute before a Pi Session Runtime exists. */
-export const stagedSessionSlashCommands = piBuiltinSlashCommands.filter(
+export const stagedSessionSlashCommands = builtinSlashCommands.filter(
   (command) => command.name === "model" || command.name === "name",
 );
 
-export function parsePiBuiltinCommand(text: string): { name: string; args: string } | undefined {
+export function parseBuiltinCommand(text: string): { name: string; args: string } | undefined {
   const match = /^\/([^\s]+)(?:\s+([\s\S]*))?$/.exec(text.trim());
   if (!match) return undefined;
   const name = match[1]!.toLocaleLowerCase();
-  if (!piBuiltinSlashCommands.some((command) => command.name === name)) return undefined;
+  if (!builtinSlashCommands.some((command) => command.name === name)) return undefined;
   return { name, args: match[2]?.trim() ?? "" };
 }
 

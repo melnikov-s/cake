@@ -62,6 +62,11 @@ it("discovers Pi project and global skills without loading project executable ex
       expect.objectContaining({ name: "compact", source: "builtin" }),
       expect.objectContaining({ name: "model", source: "builtin" }),
       expect.objectContaining({
+        name: "schedule",
+        source: "builtin",
+        sourceInfo: expect.objectContaining({ source: "Cake" }),
+      }),
+      expect.objectContaining({
         name: "skill:local-fixture",
         source: "skill",
         sourceInfo: expect.objectContaining({ path: f.skillFile, scope: "project" }),
@@ -73,7 +78,9 @@ it("discovers Pi project and global skills without loading project executable ex
   expect(
     commands
       .catalog()
-      .every((item) => item.source === "skill" || item.name === "model" || item.name === "compact"),
+      .every(
+        (item) => item.source === "skill" || ["model", "compact", "schedule"].includes(item.name),
+      ),
   ).toBe(true);
   expect(existsSync(marker)).toBe(false);
   expect(commands.instructions()).toContain(f.skillFile);

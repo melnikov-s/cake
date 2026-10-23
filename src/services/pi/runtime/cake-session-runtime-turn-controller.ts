@@ -10,7 +10,7 @@ import {
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { Attachment, UiPart } from "../../../contracts/conversations/session-contract";
 import type { ProjectSessionPresentationMode } from "../../../contracts/project-sessions/project-session-presentation";
-import { parsePiBuiltinCommand } from "../../../contracts/conversations/session-contract";
+import { parseBuiltinCommand } from "../../../contracts/conversations/session-contract";
 import { parseCrossSessionMessage } from "../../../contracts/conversations/cross-session-message";
 import type {
   PiPendingMessageReorder,
@@ -392,7 +392,7 @@ export function createCakeSessionRuntimeTurnController(input: {
     const generation = abortGeneration;
     input.recovery.onUserInput();
     if (!parseCrossSessionMessage(text)) pausedAfterRestart = false;
-    const builtin = parsePiBuiltinCommand(text);
+    const builtin = parseBuiltinCommand(text);
     if (builtin?.name === "compact") {
       await runCompact(builtin.args || undefined, generation);
       return;

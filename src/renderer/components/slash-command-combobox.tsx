@@ -432,7 +432,7 @@ export function SlashCommandCombobox({
                   label={command.description ?? command.name}
                   description={
                     command.source === "builtin"
-                      ? "Pi CLI"
+                      ? command.sourceInfo.source
                       : `${command.source} · ${command.sourceInfo.scope}`
                   }
                 />

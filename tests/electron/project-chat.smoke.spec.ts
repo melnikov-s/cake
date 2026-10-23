@@ -160,6 +160,44 @@ test("Project Chat isolates history and restores its root workspace, while globa
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     await input.press("Enter");
     await expect(page.getByText("Reply 1", { exact: true })).toBeVisible();
+    const verifySchedule = async (label: string) => {
+      const requestCount = requests.length;
+      await input.click();
+      await expect(input).toBeFocused();
+      await input.fill("/");
+      await expect(page.getByRole("option", { name: /compact Manually/ })).toBeVisible();
+      await expect(page.getByRole("option", { name: /model .*Switch model Pi CLI/ })).toBeVisible();
+      await expect(
+        page.getByRole("option", {
+          name: /schedule .*Schedule a message to this conversation Cake/,
+        }),
+      ).toBeVisible();
+      await input.fill("/sch");
+      await input.press("Tab");
+      await expect(input).toBeFocused();
+      await expect(input).toHaveValue("/schedule ");
+      await input.pressSequentially(`1d ${label}`);
+      await expect(input).toHaveValue(`/schedule 1d ${label}`);
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+      await input.press("Enter");
+      await expect(input).toHaveValue("");
+      const scheduled = page.getByRole("group", { name: "Scheduled", exact: true });
+      await expect(scheduled.getByText(label, { exact: true })).toBeVisible();
+      expect(requests).toHaveLength(requestCount);
+      await scheduled.getByRole("button", { name: `Cancel scheduled message: ${label}` }).click();
+      await expect(scheduled).toHaveCount(0);
+      await input.fill("/schedule 0s Invalid reminder");
+      await input.press("Enter");
+      await expect(
+        page.getByText("Schedule time must be a valid future duration or ISO timestamp", {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(input).toHaveValue("/schedule 0s Invalid reminder");
+      expect(requests).toHaveLength(requestCount);
+      await input.fill("");
+    };
+    await verifySchedule("Global scheduled follow-up");
     await input.fill("/");
     await expect(page.getByRole("listbox", { name: "Slash commands" })).toBeVisible();
     await expect(page.getByRole("option", { name: /skill:global-fixture/ })).toBeVisible();
@@ -219,6 +257,7 @@ test("Project Chat isolates history and restores its root workspace, while globa
     await expect(page.getByRole("button", { name: "Remove Screenshot.png" })).toHaveCount(0);
     await expect(transcript()).toContainText("Screenshot.png");
     await expect(transcript()).not.toContainText("GLOBAL_PRIVATE");
+    await verifySchedule("Project scheduled follow-up");
 
     const header = page.locator(`[data-slot="project-header"][data-session-id="${projectId}"]`);
     const status = header.locator('[data-slot="project-chat-status"]');
