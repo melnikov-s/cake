@@ -20,6 +20,15 @@ export function toolImageCaption(part: ToolPart) {
     : undefined;
 }
 
+/**
+ * Script `image()` output and widget/artifact previews are results shown to the user, so they
+ * stay visible beneath a collapsed work log. Other tool images (file and attachment reads,
+ * browser screenshots) are inspection details shown inside the expanded tool entry.
+ */
+export function toolImagesAreConversationResults(part: ToolPart) {
+  return part.name === "codemode" || toolImageCaption(part) !== undefined;
+}
+
 export function toolOperationName(part: ToolPart) {
   if (part.name !== "cake") return part.name;
   if (part.command) return part.command;

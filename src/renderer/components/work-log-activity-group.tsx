@@ -4,7 +4,7 @@ import { observer } from "r-state-tree/react";
 import { VirtualizedConversation } from "@/components/ai-elements/conversation";
 import { WorkLogDiff } from "@/components/ai-elements/work-log-diff";
 import { ImagePreview } from "@/components/image-preview";
-import { toolImageCaption } from "../../utils/cake-tool";
+import { toolImageCaption, toolImagesAreConversationResults } from "../../utils/cake-tool";
 import { StatusDot } from "@/components/ui/status-dot";
 import { WorkLogActivityTrigger } from "@/components/work-log-activity-trigger";
 import { toolDisplayTitle } from "@/lib/tool-presentation";
@@ -296,8 +296,8 @@ export const ActivityGroup = observer(function ActivityGroup({
   return (
     <>
       {workLog}
-      {/* Images are conversation results, not execution details. Keep their Pi part identity. */}
-      {toolParts.flatMap(
+      {/* Result images stay visible outside the log with their Pi part identity; inspection images render inside their tool entry. */}
+      {toolParts.filter(toolImagesAreConversationResults).flatMap(
         (part) =>
           part.outputContent?.flatMap((item, index) =>
             item.type === "image"

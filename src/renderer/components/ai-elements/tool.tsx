@@ -55,6 +55,7 @@ function toolOutputContent(
   language: string,
   streaming: boolean,
   omitImages: boolean,
+  imageAlt: string | undefined,
 ) {
   return content.map((item, index) =>
     item.type === "text" ? (
@@ -73,7 +74,8 @@ function toolOutputContent(
       >
         <ImagePreview
           src={`data:${item.mimeType};base64,${item.data}`}
-          alt={`Tool output image ${index + 1}`}
+          alt={imageAlt ?? `Tool output image ${index + 1}`}
+          imageClassName="max-h-96 w-auto"
         />
       </figure>
     ),
@@ -87,8 +89,17 @@ function toolOutput(
   streaming: boolean,
   omitImages: boolean,
 ) {
-  if (part.outputContent && part.outputContent.length > 0)
-    return toolOutputContent(part.outputContent, className, language, streaming, omitImages);
+  if (part.outputContent && part.outputContent.length > 0) {
+    const path = part.name === "read" ? toolPath(part) : undefined;
+    return toolOutputContent(
+      part.outputContent,
+      className,
+      language,
+      streaming,
+      omitImages,
+      path?.split(/[\\/]/).at(-1),
+    );
+  }
   if (part.output === undefined) return null;
   return toolText(part.output, className, language, streaming);
 }
@@ -167,7 +178,7 @@ export const Tool = observer(function Tool({
   /** True while this conversation's runtime may still be producing subagent work. */
   live?: boolean;
   omitDiff?: boolean;
-  /** The conversation renders these images outside the collapsed work log. */
+  /** The conversation renders this tool's result images beneath the collapsed work log. */
   omitOutputImages?: boolean;
   /** Project root used only to shorten displayed in-project paths. */
   workspacePath?: string;

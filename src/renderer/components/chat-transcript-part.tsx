@@ -15,6 +15,7 @@ import { ArtifactHost } from "@/components/artifact-host";
 import { InlineArtifactPreview } from "./inline-artifact-preview";
 import { CompactionMessage } from "@/components/compaction-message";
 import { ImagePreview } from "@/components/image-preview";
+import { toolImagesAreConversationResults } from "../../utils/cake-tool";
 import type { UiPart } from "../../contracts/conversations/session-contract";
 import {
   AssistantTextMessage,
@@ -236,7 +237,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         subagents={behavior.subagents}
         live={live}
         omitDiff={omitToolDiff}
-        omitOutputImages={workLogItem}
+        omitOutputImages={workLogItem && toolImagesAreConversationResults(part)}
         workspacePath={behavior.workspacePath}
         nestedExpansion={
           workLogItem

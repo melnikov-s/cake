@@ -90,6 +90,73 @@ describe("Work-log presentation workflow", () => {
     expect(screen.getAllByRole("img")).toHaveLength(2);
   });
 
+  it.each([
+    {
+      label: "image file reads",
+      tool: {
+        id: "read-image",
+        kind: "tool",
+        name: "read",
+        input: JSON.stringify({ path: "captures/screen.png" }),
+        filePath: "captures/screen.png",
+        state: "success",
+        output: "Read image file [image/png]",
+        outputContent: [
+          { type: "text", text: "Read image file [image/png]" },
+          { type: "image", mimeType: "image/png", data: "AA==" },
+        ],
+      },
+      entry: /^read captures\/screen\.png/,
+      alt: "screen.png",
+    },
+    {
+      label: "browser screenshots",
+      tool: {
+        id: "browser-screenshot",
+        kind: "tool",
+        name: "cake",
+        command: "browser.cdp",
+        input: JSON.stringify({
+          command: "browser.cdp",
+          input: { method: "Page.captureScreenshot" },
+        }),
+        state: "success",
+        outputContent: [
+          { type: "text", text: '{"captured":true}' },
+          { type: "image", mimeType: "image/png", data: "AA==" },
+        ],
+      },
+      entry: /^browser\.cdp/,
+      alt: "Tool output image 2",
+    },
+  ] satisfies {
+    label: string;
+    tool: Extract<UiPart, { kind: "tool" }>;
+    entry: RegExp;
+    alt: string;
+  }[])(
+    "shows $label inside the expanded tool entry instead of beneath the log",
+    async ({ tool, entry, alt }) => {
+      using fixture = renderWorkLog([tool]);
+      const { summary, group } = workLog();
+      expect(group.open).toBe(false);
+      expect(screen.queryByRole("img")).toBeNull();
+      expect(document.querySelector("[data-slot=tool-output-image]")).toBeNull();
+      await fixture.user.click(summary);
+      expect(screen.queryByRole("img")).toBeNull();
+      const button = screen.getByRole("button", { name: entry });
+      await fixture.user.click(button);
+      const image = await screen.findByRole("img", { name: alt });
+      expect(image.getAttribute("src")).toBe("data:image/png;base64,AA==");
+      expect(image.closest("[data-slot=tool-details]")).not.toBeNull();
+      expect(image.closest("[data-slot=activity-group]")).toBe(group);
+      expect(screen.getAllByRole("img")).toHaveLength(1);
+      expect(document.querySelector("[data-slot=tool-output-image]")).toBeNull();
+      await fixture.user.click(button);
+      expect(screen.queryByRole("img")).toBeNull();
+    },
+  );
+
   it("discloses compacted history separately from current work without treating that history as running", async () => {
     const historical = { ...readFile("historical"), origin: "compacted" as const };
     using fixture = renderWorkLog([historical, readFile("current", "running")], {

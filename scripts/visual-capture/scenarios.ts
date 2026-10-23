@@ -4102,6 +4102,94 @@ const nestedToolActivityScenario: VisualCaptureScenario = {
   },
 };
 
+const readImageToolScenario: VisualCaptureScenario = {
+  ...assistantMarkdownCode,
+  name: "read-image-tool",
+  description: "Image file read shown inside its expanded work-log entry, not beneath the log",
+  states: ["collapsed", "expanded"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    const sessionId = "visual-assistant-markdown-code";
+    const timestamp = new Date(0).toISOString();
+    const sessionDirectory = workspaceSessionDirectory(
+      paths.project,
+      join(paths.cakeHome, "pi", "sessions"),
+    );
+    const data = (await readFile(resolve("src/assets/cake.png"))).toString("base64");
+    const imagePath = join(paths.project, ".visual-captures", "cake.png");
+    await writeFile(
+      join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
+      `${[
+        { type: "session", version: 3, id: sessionId, timestamp, cwd: paths.project },
+        {
+          type: "message",
+          id: "user-1",
+          parentId: null,
+          timestamp,
+          message: { role: "user", content: "Check the captured image.", timestamp: 0 },
+        },
+        {
+          type: "message",
+          id: "assistant",
+          parentId: "user-1",
+          timestamp,
+          message: {
+            ...nestedAssistant,
+            content: [
+              { type: "toolCall", id: "read-image", name: "read", arguments: { path: imagePath } },
+            ],
+          },
+        },
+        {
+          type: "message",
+          id: "result",
+          parentId: "assistant",
+          timestamp,
+          message: {
+            role: "toolResult",
+            toolCallId: "read-image",
+            toolName: "read",
+            content: [
+              { type: "text", text: "Read image file [image/png]" },
+              { type: "image", data, mimeType: "image/png" },
+            ],
+            isError: false,
+            timestamp: 2,
+          },
+        },
+        {
+          type: "message",
+          id: "final",
+          parentId: "result",
+          timestamp,
+          message: {
+            ...nestedAssistant,
+            content: [{ type: "text", text: "The capture shows the Cake icon." }],
+            stopReason: "stop",
+            timestamp: 3,
+          },
+        },
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n")}\n`,
+    );
+  },
+  async prepare(page, state) {
+    const log = page.locator('[data-slot="activity-group"]');
+    await expect(log).toBeVisible();
+    await log.locator(":scope > summary").click();
+    if (state === "expanded") {
+      await log.getByRole("button", { name: /^read/ }).click();
+      await expect(log.getByRole("img", { name: "cake.png" })).toBeVisible();
+    }
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await log.scrollIntoViewIfNeeded();
+  },
+  region(page) {
+    return page.locator("body");
+  },
+};
+
 const rendererCrash: VisualCaptureScenario = {
   ...assistantMarkdownCode,
   name: "renderer-crash",
@@ -4211,6 +4299,7 @@ export const visualCaptureScenarios = [
   workflowChoiceScenario,
   workflowProgressScenario,
   nestedToolActivityScenario,
+  readImageToolScenario,
   vscodeTerminalScenario,
   sourceSelectionScenario,
   sessionPluginsScenario,
