@@ -1,4 +1,4 @@
-import { Store, child, createStore } from "r-state-tree";
+import { Store, child, createStore, effect as reactiveEffect } from "r-state-tree";
 import type { SubagentCatalog } from "../models/SubagentCatalog";
 import type { UiPart } from "../../contracts/conversations/session-contract";
 import { toolOperationName } from "../../utils/cake-tool";
@@ -28,9 +28,19 @@ export class SubagentActivityStore extends Store<{
     const runs = new Map(
       historicalSubagentRuns(this.props.parts()).map((run) => [run.key, run] as const),
     );
-    for (const run of runs.values())
+    for (const run of runs.values()) {
       if (run.handleId && this.props.model.releasedHandleIds.includes(run.handleId))
         run.released = true;
+      // Parent reports establish navigation/labels, never a substitute transcript.
+      if (run.handleId && !run.failurePhase) {
+        run.parts = [];
+        run.error =
+          this.props.model.observationError ??
+          (this.props.model.loaded
+            ? "The full subagent conversation is unavailable: Cake has no retained handle-to-Pi mapping for this worker. A parent report cannot safely recover its identity."
+            : "The saved subagent conversation is still loading.");
+      }
+    }
     for (const activity of this.props.model.activities) {
       runs.set(activity.handleId, {
         key: activity.handleId,
@@ -58,6 +68,31 @@ export class SubagentActivityStore extends Store<{
     return this.runs.filter(
       (run) => run.available && (run.status === "queued" || run.status === "running"),
     );
+  }
+
+  /** Deep links can arrive before this parent's independent worker projection. */
+  ready(): Promise<void> {
+    if (this.props.model.observationError)
+      return Promise.reject(new Error(this.props.model.observationError));
+    if (this.props.model.loaded) return Promise.resolve();
+    if (this.signal.aborted) return Promise.reject(new Error("Subagent navigation was canceled"));
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (error?: string) => {
+        if (settled) return;
+        settled = true;
+        this.signal.removeEventListener("abort", abort);
+        dispose();
+        if (error) reject(new Error(error));
+        else resolve();
+      };
+      const abort = () => finish("Subagent navigation was canceled");
+      this.signal.addEventListener("abort", abort, { once: true });
+      const dispose = reactiveEffect(() => {
+        const { loaded, observationError } = this.props.model;
+        if (observationError || loaded) queueMicrotask(() => finish(observationError));
+      });
+    });
   }
 
   run(key: string) {

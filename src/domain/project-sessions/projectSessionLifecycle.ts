@@ -494,9 +494,11 @@ export const deleteResolved = Effect.fn("ProjectSessions.deleteResolved")(functi
   const archive = yield* SessionArchiveStorage;
   const entry = yield* archive.resolvedProjectEntry(sessionId).pipe(asError(operation));
   if (!entry) return yield* error(operation, "Only resolved project sessions can be deleted");
+  yield* subagents.releaseParent(sessionId).pipe(asError(operation));
   yield* archive.deleteResolvedProject(sessionId).pipe(asError(operation));
   const garbageCollector = yield* ArtifactGarbageCollector;
   yield* Effect.gen(function* () {
+    yield* subagents.deleteOwned(sessionId).pipe(asError(operation));
     yield* (yield* CakeSessionRuntimes).forgetRecovery(sessionId).pipe(asError(operation));
     yield* artifacts.deleteSession(entry.workingDirectory, sessionId).pipe(asError(operation));
     yield* reviews.deleteSession(entry.workingDirectory, sessionId).pipe(asError(operation));
@@ -554,6 +556,7 @@ export const deleteProjectSessions = Effect.fn("ProjectSessions.deleteProjectSes
                 resolvedRoot: configuration.resolvedSessionDirectory,
               })
               .pipe(asError(operation));
+            yield* subagents.deleteOwned(session.id).pipe(asError(operation));
             yield* deleteRelated(workingDirectory, session.id).pipe(
               Effect.ensuring(garbageCollector.request()),
             );
@@ -567,6 +570,7 @@ export const deleteProjectSessions = Effect.fn("ProjectSessions.deleteProjectSes
       Effect.gen(function* () {
         yield* subagents.releaseParent(entry.sessionId).pipe(asError(operation));
         yield* archive.deleteResolvedProject(entry.sessionId).pipe(asError(operation));
+        yield* subagents.deleteOwned(entry.sessionId).pipe(asError(operation));
         yield* deleteRelated(entry.workingDirectory, entry.sessionId).pipe(
           Effect.ensuring(garbageCollector.request()),
         );

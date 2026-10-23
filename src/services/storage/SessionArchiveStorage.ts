@@ -70,6 +70,12 @@ export class SessionArchiveStorage extends Context.Service<
       sessionId: string,
       location: SessionArchiveLocation,
     ) => Effect.Effect<void, SessionArchiveStorageError>;
+    /** Exact Pi transcript deletion for owned auxiliary sessions, which have no resolution namespace.
+     * Missing originals are idempotent; ownership metadata is removed by the caller afterward. */
+    readonly deleteAuxiliary: (
+      sessionId: string,
+      location: Pick<SessionArchiveLocation, "cwd" | "activeRoot" | "direct">,
+    ) => Effect.Effect<void, SessionArchiveStorageError>;
     readonly delete: (
       sessionId: string,
       location: SessionArchiveLocation,

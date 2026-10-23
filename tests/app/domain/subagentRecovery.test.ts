@@ -32,6 +32,7 @@ import {
   snapshot,
 } from "../helpers/piRuntimeFixture";
 import { WorkflowTestLive } from "../helpers/workflowFixture";
+import { subagentHistoryFixture } from "../helpers/subagentStorageFixture";
 import { makeHeadlessProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
 
 const configuration = {
@@ -44,9 +45,9 @@ const cases = ["global", "project"].flatMap((scope) =>
 );
 
 describe("private worker restart recovery", () => {
-  it.effect.each(cases)(
-    "reopens and messages $scope chat after recovering a $disposition worker without an ID collision",
-    ({ scope, disposition }) => {
+  it.effect.each(cases.flatMap((item) => [false, true].map((released) => ({ ...item, released }))))(
+    "recovers $scope $disposition workers without identity collisions or resurrecting released capabilities (released=$released)",
+    ({ scope, disposition, released }) => {
       const sessionId =
         scope === "global" ? CAKE_CHAT_SESSION_ID : chatLocations.projectChatSessionId("/project");
       const location =
@@ -138,7 +139,23 @@ describe("private worker restart recovery", () => {
         // Keep continuations paused, just like backend initialization, while opening the pane.
         const coordinator = yield* SubagentCoordinator;
         yield* coordinator.storage.update(record);
+        if (released)
+          yield* coordinator.storage.history.update(
+            subagentHistoryFixture({
+              handleId: record.handleId,
+              privateSessionId: record.privateSessionId,
+              parentSessionId: record.parentSessionId,
+              parentWorkingDirectory: record.parentWorkingDirectory,
+            }),
+          );
         yield* initialize();
+        if (released) {
+          assert.equal((yield* SubscriptionRef.get(coordinator.state)).handles.size, 0);
+          assert.equal(constructions.length, 0);
+          assert.deepEqual(yield* coordinator.storage.list(), []);
+          assert.equal((yield* coordinator.storage.history.list()).length, 1);
+          return;
+        }
         assert.equal((yield* SubscriptionRef.get(coordinator.state)).handles.size, 1);
         if (disposition === "notified") {
           assert.equal(constructions.length, 0);

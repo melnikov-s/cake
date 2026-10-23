@@ -16,6 +16,7 @@ import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
 import { ReviewStorage } from "../../../src/services/storage/ReviewStorage";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
+import { SubagentEnvironment } from "../../../src/services/subagents/SubagentEnvironment";
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
 import { Terminal } from "../../../src/services/terminal/Terminal";
 import { ClientWorkspaces } from "../../../src/services/clients/ClientWorkspaces";
@@ -149,6 +150,7 @@ describe("portable Project operations", () => {
           },
         }),
         SubagentCoordinatorLive.pipe(Layer.provide(makeSubagentStorageTestLayer())),
+        Layer.mock(SubagentEnvironment, {}),
       );
       return Effect.gen(function* () {
         yield* initialize;

@@ -1,4 +1,5 @@
 import {
+  Cache,
   Cause,
   Deferred,
   Effect,
@@ -69,7 +70,8 @@ import {
   type SubagentEnvironmentError,
 } from "../../services/subagents/SubagentEnvironment";
 import { subagentErrorMessage } from "./subagent-error-message";
-import type { SubagentRecord } from "../../services/storage/SubagentStorage";
+import type { SubagentRecord, SubagentHistory } from "../../services/storage/SubagentStorage";
+import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
 import type { RuntimeRecoveryInput } from "../../services/storage/RuntimeRecoveryStorage";
 
 export * from "../../contracts/subagents/subagent-data";
@@ -433,6 +435,12 @@ const requireHandle = Effect.fn("Subagents.requireHandle")(function* (
   );
   const coordinator = yield* SubagentCoordinator;
   const handle = (yield* SubscriptionRef.get(coordinator.state)).handles.get(decoded);
+  const released = yield* coordinator.storage.history.get(decoded);
+  if (released?.parentSessionId === parentSessionId)
+    return yield* new SubagentError({
+      operation: "handle",
+      message: "This subagent has been released. Its saved conversation is read-only.",
+    });
   if (!handle) {
     // A failed startup preflight retains saved handles instead of pretending
     // they never existed. Surface storage repair evidence to the caller too.
@@ -948,7 +956,7 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
             .catalogEntry(
               {
                 workingDirectory: location.workingDirectory,
-                sessionDirectory: location.sessionDirectory,
+                sessionDirectory: restored?.privateSessionDirectory ?? location.sessionDirectory,
               },
               recipientSessionId,
             )
@@ -960,7 +968,7 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
         cwd: location.workingDirectory,
         trusted: location.trusted,
         agentDir: location.agentDirectory,
-        sessionDir: location.sessionDirectory,
+        sessionDir: restored?.privateSessionDirectory ?? location.sessionDirectory,
         newSession: !lazy && persisted === undefined && !transcriptExpected,
         sessionId: recipientSessionId,
         auxiliary: true,
@@ -1052,6 +1060,7 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
       recovery: restored ?? {
         handleId,
         privateSessionId: recipientSessionId,
+        privateSessionDirectory: location.sessionDirectory,
         parentSessionId: prepared.parent.parentSessionId,
         parentProfile:
           prepared.parent.options.profile._tag === "CakeChatSession"
@@ -1606,10 +1615,33 @@ const releaseHandle = Effect.fn("Subagents.releaseHandle")(function* (
   );
   yield* coordinator.checkpoints.withPermit(
     Effect.gen(function* () {
+      // Commit the permanent identity before dropping any recovery/capability evidence.
+      const current =
+        (yield* SubscriptionRef.get(coordinator.state)).handles.get(handle.handleId) ?? handle;
+      const history: SubagentHistory = {
+        handleId: current.handleId,
+        privateSessionId: current.recovery.privateSessionId,
+        parentSessionId: current.parentSessionId,
+        parentWorkingDirectory: current.recovery.parentWorkingDirectory,
+        anchorPartId: current.anchorPartId,
+        workingDirectory: current.runtimeOptions.runtime.cwd,
+        sessionDirectory: current.runtimeOptions.runtime.sessionDir,
+        task: current.task,
+        status:
+          current.status === "queued" || current.status === "running" ? "aborted" : current.status,
+        resolvedModel: current.resolvedModel,
+        fastMode: current.fastMode,
+      };
+      if (current.projectPath) Object.assign(history, { projectPath: current.projectPath });
+      if (current.error !== undefined) Object.assign(history, { error: current.error });
+      if (current.failurePhase !== undefined)
+        Object.assign(history, { failurePhase: current.failurePhase });
+      yield* coordinator.storage.history.update(history);
       yield* coordinator.storage.remove(handle.handleId);
-      yield* SubscriptionRef.update(coordinator.state, (state) =>
-        removeHandle(state, handle.handleId),
-      );
+      yield* SubscriptionRef.update(coordinator.state, (state) => ({
+        ...removeHandle(state, handle.handleId),
+        revision: state.revision + 1,
+      }));
     }),
   );
   yield* FiberMap.remove(coordinator.fibers, handle.handleId);
@@ -1692,6 +1724,91 @@ export const releaseParent = Effect.fn("Subagents.releaseParent")(function* (
   });
 });
 
+/** Explicit ownership traversal only. Resolution/release never calls this operation. */
+export const deleteOwned = Effect.fn("Subagents.deleteOwned")(function* (parentSessionId: string) {
+  const coordinator = yield* SubagentCoordinator;
+  const sessions = yield* CakeSessionRuntimes;
+  const archive = yield* SessionArchiveStorage;
+  const environment = yield* SubagentEnvironment;
+  const visited = new Set<string>([parentSessionId]);
+  const removeChildren = Effect.fn("Subagents.deleteOwnedChildren")(function* (
+    parentId: string,
+  ): Effect.fn.Return<void, SubagentError, SubagentCoordinator | CakeSessionRuntimes> {
+    yield* releaseParent(parentId);
+    // Include recovery records that could not be restored (unavailable parent/trust, etc.).
+    const owned = new Map(
+      (yield* coordinator.storage.history.list())
+        .filter((record) => record.parentSessionId === parentId)
+        .map((record) => [record.handleId, record] as const),
+    );
+    for (const record of yield* coordinator.storage.list()) {
+      if (record.parentSessionId !== parentId || owned.has(record.handleId)) continue;
+      const sessionDirectory =
+        record.privateSessionDirectory ??
+        (yield* environment.location(record.workingDirectory).pipe(asError("deleteOwned")))
+          .sessionDirectory;
+      owned.set(record.handleId, { ...record, sessionDirectory });
+    }
+    for (const record of owned.values()) {
+      if (visited.has(record.privateSessionId))
+        return yield* new SubagentError({
+          operation: "deleteOwned",
+          message: "Invalid cyclic private-worker ownership; no identity was guessed.",
+        });
+      visited.add(record.privateSessionId);
+      yield* removeChildren(record.privateSessionId);
+      yield* archive
+        .deleteAuxiliary(record.privateSessionId, {
+          cwd: record.workingDirectory,
+          activeRoot: record.sessionDirectory,
+        })
+        .pipe(asError("deleteOwned"));
+      yield* sessions.forgetRecovery(record.privateSessionId).pipe(asError("deleteOwned"));
+      yield* coordinator.storage.remove(record.handleId);
+      yield* coordinator.storage.history.remove(record.handleId);
+    }
+  });
+  yield* removeChildren(parentSessionId);
+});
+
+const historyActivity = Effect.fn("Subagents.historyActivity")(function* (record: SubagentHistory) {
+  const sessions = yield* CakeSessionRuntimes;
+  const preview = yield* sessions
+    .inspect(
+      {
+        workingDirectory: record.workingDirectory,
+        sessionDirectory: record.sessionDirectory,
+        sessionId: record.privateSessionId,
+      },
+      { includeParts: true },
+    )
+    .pipe(Effect.result);
+  const activity: SubagentActivity = {
+    parentSessionId: record.parentSessionId,
+    anchorPartId: record.anchorPartId,
+    handleId: record.handleId,
+    revision: 0,
+    task: record.task,
+    status: record.status,
+    resolvedModel: record.resolvedModel,
+    fastMode: record.fastMode,
+    streaming: false,
+    released: true,
+    parts: preview._tag === "Success" ? preview.success.parts.map(jsonValue) : [],
+  };
+  if (record.projectPath) Object.assign(activity, { projectPath: record.projectPath });
+  if (record.failurePhase) Object.assign(activity, { failurePhase: record.failurePhase });
+  if (preview._tag === "Failure")
+    Object.assign(activity, {
+      error: boundedError(
+        `The saved subagent conversation could not be loaded: ${preview.failure.message}. Its handle mapping is retained; restore the Pi transcript to read it.`,
+      ),
+    });
+  else if (record.error !== undefined)
+    Object.assign(activity, { error: boundedError(record.error) });
+  return activity;
+});
+
 const parentActivities = (state: SubagentCoordinatorState, parentSessionId: string) =>
   [...state.handles.values()]
     .filter((handle) => handle.parentSessionId === parentSessionId)
@@ -1704,6 +1821,8 @@ export const observe = Effect.fn("Subagents.observe")(function* (parentSessionId
   const coordinator = yield* SubagentCoordinator;
   return Stream.unwrap(
     Effect.gen(function* () {
+      // A scoped projection cache only: Pi remains the transcript authority and no runtime is acquired.
+      const history = yield* Cache.make({ capacity: 1000, lookup: historyActivity });
       const handles = (yield* SubscriptionRef.get(coordinator.state)).handles.values();
       yield* Effect.forEach(
         [...handles].filter(
@@ -1721,8 +1840,23 @@ export const observe = Effect.fn("Subagents.observe")(function* (parentSessionId
         let previous: ReadonlyMap<SubagentHandleId, SubagentActivity> | undefined;
         let previousBackground = false;
         return SubscriptionRef.changes(coordinator.state).pipe(
-          Stream.flatMap((state) => {
-            const activities = parentActivities(state, parentSessionId);
+          Stream.mapEffect((state) =>
+            Effect.gen(function* () {
+              const live = parentActivities(state, parentSessionId);
+              const released = (yield* coordinator.storage.history.list()).filter(
+                (record) =>
+                  record.parentSessionId === parentSessionId && !state.handles.has(record.handleId),
+              );
+              const activities = [
+                ...live,
+                ...(yield* Effect.forEach(released, (record) => Cache.get(history, record), {
+                  concurrency: 4,
+                })),
+              ];
+              return { state, activities };
+            }),
+          ),
+          Stream.flatMap(({ state, activities }) => {
             const current = new Map(
               activities.map((activity) => [activity.handleId, activity] as const),
             );
@@ -1740,7 +1874,10 @@ export const observe = Effect.fn("Subagents.observe")(function* (parentSessionId
             }
             const updates: SubagentUpdate[] = [];
             for (const activity of activities) {
-              if (previous.get(activity.handleId)?.revision !== activity.revision)
+              if (
+                previous.get(activity.handleId)?.revision !== activity.revision ||
+                previous.get(activity.handleId)?.released !== activity.released
+              )
                 updates.push({
                   _tag: "Activity",
                   revision: state.revision,

@@ -222,6 +222,16 @@ projections needed by a surface. References do not transfer ownership.
   parent continuations, then resumes safe work using Pi's saved branch. Unfinished
   tools require review rather than replay. Completion receipts suppress duplicate
   parent reports. Completion status is distinct from resource disposal.
+  Closing/expiring a worker commits minimal durable handle → private Pi Session →
+  parent ownership separately from recovery intents and capability grants. Released
+  history is projected read-only from Pi's complete persisted branch without acquiring
+  a runtime. Parent resolution preserves these identities and links; explicit parent
+  or Project Session deletion removes owned transcripts and metadata recursively,
+  never workers belonging to another parent. Missing originals or erased historical
+  mappings are explicit failures, not empty chats or reconstructed parent reports.
+  Identity repair requires retained exact routing evidence (recovery metadata/backups,
+  or a pending completion notice's handle/private-session/recipient tuple plus a verified
+  transcript location); task text, model, timestamps and final reports are not identity.
   Reports retain Cake-authored structured provenance for Markdown response
   presentation, without changing model-facing input roles.
 - Session launch/send uses one canonical `resultDelivery: "reply" | "notification" | "ignore"`.

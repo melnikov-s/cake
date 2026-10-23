@@ -1,5 +1,6 @@
 import { Deferred, Effect } from "effect";
 import { SubagentCoordinator } from "../../services/subagents/SubagentCoordinator";
+import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { RuntimeRecoveryStorage } from "../../services/storage/RuntimeRecoveryStorage";
 import { CakeChatConfiguration } from "../../services/pi-durable/CakeChatConfiguration";
 import { makePiCallbackExecutor } from "../../services/pi/PiCallbackAdapter";
@@ -23,6 +24,12 @@ export const initialize = Effect.fn("SubagentRecovery.initialize")(function* () 
   for (const record of yield* coordinator.storage.list()) {
     const result = yield* Effect.result(
       Effect.gen(function* () {
+        // A committed release wins over recovery records left by an interrupted close.
+        if (yield* coordinator.storage.history.get(record.handleId)) {
+          yield* (yield* CakeSessionRuntimes).forgetRecovery(record.privateSessionId);
+          yield* coordinator.storage.remove(record.handleId);
+          return;
+        }
         const options =
           record.parentProfile === "CakeChatSession"
             ? yield* Effect.gen(function* () {

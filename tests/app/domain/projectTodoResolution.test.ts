@@ -1,10 +1,16 @@
-import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
+import {
+  makeSubagentStorageTestLayer,
+  subagentHistoryFixture,
+} from "../helpers/subagentStorageFixture";
 import { SubagentHandleId } from "../../../src/contracts/subagents/subagent-data";
 import {
   subagentLink,
   parseSubagentLink,
 } from "../../../src/contracts/subagents/subagent-reference";
-import type { SubagentRecord } from "../../../src/services/storage/SubagentStorage";
+import type {
+  SubagentRecord,
+  SubagentHistory,
+} from "../../../src/services/storage/SubagentStorage";
 import { it } from "@effect/vitest";
 import { expect } from "vitest";
 import { Deferred, Effect, Fiber, Layer, Schema, Stream } from "effect";
@@ -35,7 +41,10 @@ const root = "00000000-0000-4000-8000-000000000033";
 const directory = sessionDirectoryPath({ workingDirectory: project, root: "/sessions" });
 const link = (sessionId: string) => ({ kind: "session" as const, sessionId, title: "Work" });
 
-function fixture(workers: readonly SubagentRecord[] = []) {
+function fixture(
+  workers: readonly SubagentRecord[] = [],
+  history: readonly SubagentHistory[] = [],
+) {
   let state = defaultApplicationState();
   const resolved = new Set<string>();
   const reads = { index: 0, family: 0, identities: 0, writes: 0 };
@@ -53,7 +62,7 @@ function fixture(workers: readonly SubagentRecord[] = []) {
   );
   const layer = Layer.mergeAll(
     app,
-    makeSubagentStorageTestLayer(workers),
+    makeSubagentStorageTestLayer(workers, history),
     Layer.mock(SessionArchiveStorage, {
       resolvedProjects: () => Stream.empty,
       resolutionSnapshot: () =>
@@ -140,10 +149,12 @@ const worker: SubagentRecord = {
   pendingInputs: [],
 };
 
-it.effect(
-  "validates public subagent handles, canonical parent identity and project ownership without acquiring workers",
-  () => {
-    const f = fixture([worker]);
+it.effect.each([false, true])(
+  "validates public subagent handles, parent and project ownership without acquiring workers (released=%s)",
+  (released) => {
+    const f = released
+      ? fixture([], [subagentHistoryFixture({ ...worker, sessionDirectory: "/private-sessions" })])
+      : fixture([worker]);
     return Effect.gen(function* () {
       yield* upsertProject(project, "Project");
       const association = {

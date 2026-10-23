@@ -47,9 +47,11 @@ const validate = Effect.fn("ProjectTodos.validateAssociations")(function* (
       const parentSessionId = yield* sessionReferences
         .resolve(worker.parentSessionId)
         .pipe(asError);
-      const record = yield* (yield* SubagentStorage)
-        .get(SubagentHandleId.make(worker.handleId))
-        .pipe(asError);
+      const storage = yield* SubagentStorage;
+      const handleId = SubagentHandleId.make(worker.handleId);
+      const record =
+        (yield* storage.get(handleId).pipe(asError)) ??
+        (yield* storage.history.get(handleId).pipe(asError));
       if (
         !record ||
         record.parentSessionId !== parentSessionId ||

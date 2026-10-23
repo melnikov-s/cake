@@ -1,4 +1,7 @@
-import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
+import {
+  makeSubagentStorageTestLayer,
+  subagentHistoryFixture,
+} from "../helpers/subagentStorageFixture";
 import { makeRuntimeRecoveryStorageTestLayer } from "../helpers/piRuntimeFixture";
 import assert from "node:assert/strict";
 import { toJsonValue } from "../../../src/utils/to-json-value";
@@ -83,7 +86,10 @@ import {
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { SessionFamilyStorageError } from "../../../src/contracts/storage/session-family-storage-errors";
-import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
+import {
+  SubagentCoordinatorLive,
+  SubagentCoordinator,
+} from "../../../src/services/subagents/SubagentCoordinator";
 import { Terminal } from "../../../src/services/terminal/Terminal";
 import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
@@ -97,6 +103,7 @@ import type {
   PiSessionSummary,
 } from "../../../src/contracts/conversations/session-contract";
 import type { ConversationUpdate } from "../../../src/contracts/conversations/conversation-data";
+import { SubagentHandleId as subagentsHandleId } from "../../../src/contracts/subagents/subagent-data";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 
 const snapshot: ConversationSnapshot = {
@@ -625,6 +632,7 @@ const makeLayer = (
         resolve: () => Effect.succeed(false),
         restore: () => Effect.succeed(false),
         deleteResolved: () => Effect.void,
+        deleteAuxiliary: (sessionId) => Effect.sync(() => hooks.onDeleteArchive?.(sessionId)),
         delete: (sessionId) =>
           hooks.archiveDeleteErrorSessionId === sessionId
             ? Effect.fail(
@@ -3711,12 +3719,76 @@ describe("Project Sessions domain", () => {
     );
   });
 
+  it.effect(
+    "resolution preserves owned worker history, while explicit parent deletion removes only that ownership",
+    () => {
+      const deleted: string[] = [];
+      return Effect.gen(function* () {
+        const storage = (yield* SubagentCoordinator).storage;
+        const owned = subagentHistoryFixture();
+        const unrelated = subagentHistoryFixture({
+          handleId: Schema.decodeUnknownSync(subagentsHandleId)(
+            "00000000-0000-4000-8000-000000000002",
+          ),
+          privateSessionId: "other-private",
+          parentSessionId: "other-parent",
+        });
+        yield* storage.history.update(owned);
+        yield* storage.history.update(unrelated);
+        yield* projectSessionLifecycle.resolve({ sessionId: "session-1" });
+        assert.equal((yield* storage.history.list()).length, 2);
+        assert.deepEqual(deleted, []);
+        yield* projectSessionLifecycle.deleteResolved("session-1");
+        assert.deepEqual(yield* storage.history.list(), [unrelated]);
+        assert.deepEqual(deleted, ["session-1", owned.privateSessionId]);
+      }).pipe(Effect.provide(makeLayer(undefined, { onDeleteArchive: (id) => deleted.push(id) })));
+    },
+  );
+
+  it.effect(
+    "project deletion cleans released workers owned by both active and resolved parents",
+    () => {
+      const deleted: string[] = [];
+      return Effect.gen(function* () {
+        const storage = (yield* SubagentCoordinator).storage;
+        const owned = subagentHistoryFixture();
+        const resolved = subagentHistoryFixture({
+          handleId: Schema.decodeUnknownSync(subagentsHandleId)(
+            "00000000-0000-4000-8000-000000000002",
+          ),
+          privateSessionId: "resolved-private",
+          parentSessionId: "resolved-parent",
+        });
+        yield* storage.history.update(owned);
+        yield* storage.history.update(resolved);
+        yield* projectSessionLifecycle.deleteProjectSessions("/project", []);
+        assert.deepEqual(yield* storage.history.list(), []);
+        assert.ok(deleted.includes(owned.privateSessionId));
+        assert.ok(deleted.includes(resolved.privateSessionId));
+      }).pipe(
+        Effect.provide(
+          makeLayer(undefined, {
+            initialResolvedSessionIds: ["resolved-parent"],
+            resolvedProjectEntries: [
+              { sessionId: "resolved-parent", modifiedAt: "2026-01-02T00:00:00.000Z" },
+            ],
+            onDeleteArchive: (id) => deleted.push(id),
+          }),
+        ),
+      );
+    },
+  );
+
   it.effect("preserves direct artifact links when resolved transcript deletion fails", () => {
     const removedArtifactTargets: ArtifactLinkTarget[] = [];
     let garbageCollections = 0;
     return Effect.gen(function* () {
+      const workers = (yield* SubagentCoordinator).storage;
+      const owned = subagentHistoryFixture();
+      yield* workers.history.update(owned);
       const failure = yield* projectSessionLifecycle.deleteResolved("session-1").pipe(Effect.flip);
       assert.match(failure.message, /Cannot delete session-1/);
+      assert.deepEqual(yield* workers.history.list(), [owned]);
       assert.deepEqual(removedArtifactTargets, []);
       assert.equal(garbageCollections, 0);
     }).pipe(

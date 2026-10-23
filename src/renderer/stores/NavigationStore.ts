@@ -173,10 +173,14 @@ export class NavigationStore extends Store<{
       ? this.props.cakeChat().registry.find(parentSessionId)
       : this.props.registry.findSession(parentSessionId);
     const subagents = parent?.subagentActivityStore;
-    const run = subagents?.run(handleId);
-    const chatStore = subagents?.chatStore(handleId);
-    if (!parent || !subagents || !run)
-      throw new Error("Cake could not find the linked subagent chat/report");
+    if (!parent || !subagents) throw new Error("Cake could not open the subagent's parent");
+    await subagents.ready();
+    const run = subagents.run(handleId);
+    const chatStore = subagents.chatStore(handleId);
+    if (!run)
+      throw new Error(
+        "The linked subagent conversation is unavailable: no retained handle-to-Pi mapping was found. Cake cannot safely infer a private session from a parent report.",
+      );
     if (!chatStore) {
       parent.conversationSessionStore.chatStore.transcriptInteraction.navigateToMessage(
         run.anchorPartId,

@@ -20,6 +20,8 @@ export function applySubagentUpdate(
     throw new Error(`Subagent parent identity collision: ${sessionId}`);
   batch(() => {
     if (update._tag === "Snapshot") {
+      model.loaded = true;
+      model.observationError = undefined;
       assertUnique(
         update.activities.map((activity) => activity.handleId),
         "Subagent handle ID",
@@ -28,16 +30,12 @@ export function applySubagentUpdate(
       for (let index = model.activities.length - 1; index >= 0; index -= 1)
         if (!retained.has(model.activities[index]!.handleId)) model.activities.splice(index, 1);
       for (const activity of update.activities) upsertSubagentActivity(model, activity);
-      for (let index = model.releasedHandleIds.length - 1; index >= 0; index -= 1)
-        if (retained.has(model.releasedHandleIds[index]!)) model.releasedHandleIds.splice(index, 1);
       model.backgroundActive = update.backgroundActive;
     } else if (update._tag === "Activity") {
       upsertSubagentActivity(model, update.activity);
-      const releasedIndex = model.releasedHandleIds.indexOf(update.activity.handleId);
-      if (releasedIndex >= 0) model.releasedHandleIds.splice(releasedIndex, 1);
     } else if (update._tag === "Removed") {
       // Resource disposal does not erase the last observed outcome or live history.
-      // The next authoritative snapshot drops process-local activity as usual.
+      // A later authoritative snapshot supplies Pi-backed released history.
       if (!model.releasedHandleIds.includes(update.handleId))
         model.releasedHandleIds.push(update.handleId);
     } else model.backgroundActive = update.active;
@@ -45,6 +43,10 @@ export function applySubagentUpdate(
 }
 
 function upsertSubagentActivity(model: SubagentCatalog, activity: SubagentActivityValue) {
+  const releasedIndex = model.releasedHandleIds.indexOf(activity.handleId);
+  if (activity.released && releasedIndex < 0) model.releasedHandleIds.push(activity.handleId);
+  else if (!activity.released && releasedIndex >= 0)
+    model.releasedHandleIds.splice(releasedIndex, 1);
   let target = model.activities.find((item) => item.handleId === activity.handleId);
   if (!target) {
     target = SubagentActivity.create({ handleId: activity.handleId });

@@ -88,6 +88,8 @@ export const SubagentParent = Schema.Struct({
 export interface SubagentParent extends Schema.Schema.Type<typeof SubagentParent> {}
 
 export const SubagentActivity = Schema.Struct({
+  /** History remains readable after runtime/capability disposal. */
+  released: Schema.optionalKey(Schema.Boolean),
   parentSessionId: SubagentParent.fields.parentSessionId,
   anchorPartId: nonEmptyBoundedString(256),
   handleId: SubagentHandleId,
@@ -98,7 +100,7 @@ export const SubagentActivity = Schema.Struct({
   resolvedModel: ResolvedAgentModel,
   fastMode: Schema.Boolean,
   streaming: Schema.Boolean,
-  parts: Schema.Array(Schema.Json).check(Schema.isMaxLength(10_000)),
+  parts: Schema.Array(Schema.Json),
   usage: Schema.optionalKey(Schema.Json),
   error: Schema.optionalKey(boundedString(16_384)),
   failurePhase: Schema.optionalKey(Schema.Literal("start")),

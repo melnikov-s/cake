@@ -170,7 +170,7 @@ export const SubagentTool = observer(function SubagentTool({
                         ? "Waiting for the start result"
                         : "No worker was created"
                       : !run.available && run.parts.length === 0
-                        ? "Detailed history was not retained"
+                        ? "Conversation unavailable — see error"
                         : undefined,
                   ]
                     .filter(Boolean)
@@ -178,31 +178,27 @@ export const SubagentTool = observer(function SubagentTool({
                 </p>
               </div>
               {run.error && <p className="text-xs text-destructive">{run.error}</p>}
-              {run.handleId &&
-                !run.failurePhase &&
-                (run.available || run.parts.length > 0) &&
-                subagents &&
-                sideChat && (
-                  <IconButton
-                    tooltip="Open subagent chat"
-                    aria-label="Open subagent chat"
-                    onClick={() => {
-                      const chatStore = subagents.chatStore(run.key);
-                      if (!chatStore) return;
-                      sideChat.open({
-                        key: `subagent:${run.key}`,
-                        title: "Subagent",
-                        eyebrow: () => {
-                          const current = subagents.run(run.key);
-                          return `${runOutcome(current ?? run).replaceAll("-", " ")}${current?.released ? " · Resources released" : ""}`;
-                        },
-                        chatStore,
-                      });
-                    }}
-                  >
-                    <ChatIcon />
-                  </IconButton>
-                )}
+              {run.handleId && !run.failurePhase && subagents && sideChat && (
+                <IconButton
+                  tooltip="Open subagent chat"
+                  aria-label="Open subagent chat"
+                  onClick={() => {
+                    const chatStore = subagents.chatStore(run.key);
+                    if (!chatStore) return;
+                    sideChat.open({
+                      key: `subagent:${run.key}`,
+                      title: "Subagent",
+                      eyebrow: () => {
+                        const current = subagents.run(run.key);
+                        return `${runOutcome(current ?? run).replaceAll("-", " ")}${current?.released ? " · Resources released" : ""}`;
+                      },
+                      chatStore,
+                    });
+                  }}
+                >
+                  <ChatIcon />
+                </IconButton>
+              )}
             </div>
           );
         })}

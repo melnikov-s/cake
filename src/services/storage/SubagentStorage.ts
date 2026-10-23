@@ -14,6 +14,8 @@ import { makeRecoveryRecordFiles } from "./internal/recoveryRecordFiles";
 export const SubagentRecord = Schema.Struct({
   handleId: SubagentHandleId,
   privateSessionId: Schema.String,
+  /** Older recovery records use the configured worker root. */
+  privateSessionDirectory: Schema.optionalKey(Schema.String),
   parentSessionId: Schema.String,
   parentProfile: Schema.Literals(["ProjectSession", "CakeChatSession"]),
   parentWorkingDirectory: Schema.String,
@@ -41,9 +43,38 @@ export const SubagentRecord = Schema.Struct({
 });
 export interface SubagentRecord extends Schema.Schema.Type<typeof SubagentRecord> {}
 
+/** Released identity/ownership only: no transcript, execution intent or capability grants. */
+export const SubagentHistory = Schema.Struct({
+  handleId: SubagentHandleId,
+  privateSessionId: Schema.String,
+  parentSessionId: Schema.String,
+  parentWorkingDirectory: Schema.String,
+  anchorPartId: Schema.String,
+  workingDirectory: Schema.String,
+  sessionDirectory: Schema.String,
+  projectPath: Schema.optionalKey(Schema.String),
+  task: Schema.String,
+  status: SubagentStatus,
+  resolvedModel: ResolvedAgentModel,
+  fastMode: Schema.Boolean,
+  error: Schema.optionalKey(Schema.String),
+  failurePhase: Schema.optionalKey(Schema.Literal("start")),
+});
+export interface SubagentHistory extends Schema.Schema.Type<typeof SubagentHistory> {}
+
+interface HistoryRecords {
+  readonly list: () => Effect.Effect<readonly SubagentHistory[], SubagentError>;
+  readonly get: (
+    handleId: SubagentHandleId,
+  ) => Effect.Effect<SubagentHistory | undefined, SubagentError>;
+  readonly update: (record: SubagentHistory) => Effect.Effect<void, SubagentError>;
+  readonly remove: (handleId: SubagentHandleId) => Effect.Effect<void, SubagentError>;
+}
+
 export class SubagentStorage extends Context.Service<
   SubagentStorage,
   {
+    readonly history: HistoryRecords;
     readonly list: () => Effect.Effect<readonly SubagentRecord[], SubagentError>;
     readonly get: (
       handleId: SubagentHandleId,
@@ -75,7 +106,25 @@ export const makeSubagentStorageLive = (stateDirectory: string) =>
             message: `Cannot ${operation} private-worker metadata at ${file}: ${String(cause)}. Restore this file and restart to recover the worker; its Pi transcript has not been replaced.`,
           }),
       });
+      const HistoryDocument = Schema.fromJsonString(
+        Schema.Struct({ version: Schema.Literal(1), data: SubagentHistory }),
+      );
+      const history = yield* makeRecoveryRecordFiles({
+        directory: path.join(stateDirectory, "private-worker-history"),
+        idOf: (record: SubagentHistory) => record.handleId,
+        decode: (content) =>
+          Schema.decodeUnknownEffect(HistoryDocument)(content).pipe(
+            Effect.map((document) => document.data),
+          ),
+        encode: (record) => Schema.encodeEffect(HistoryDocument)({ version: 1, data: record }),
+        onError: (operation, file, cause) =>
+          new SubagentError({
+            operation: `history.${operation}`,
+            message: `Cannot ${operation} private-worker ownership at ${file}: ${String(cause)}. Restore this metadata to access or delete the owned Pi transcript.`,
+          }),
+      });
       return SubagentStorage.of({
+        history,
         list: records.list,
         get: records.get,
         update: records.update,

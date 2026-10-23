@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { emptyProjectTodos } from "../../../src/contracts/projects/project-todos";
 import type { Client } from "../../../src/renderer/client/Client";
 import {
   handleId,
@@ -91,7 +92,87 @@ describe("Subagent activity workflow", () => {
     expect(within(panel).queryByRole("button", { name: "Send" })).toBeNull();
   });
 
-  it("opens a read-only reconstructed worker chat from saved parent tool results", async () => {
+  it("opens a released worker from its persisted authority snapshot, not the parent report", async () => {
+    const saved = workerActivity({
+      released: true,
+      status: "complete",
+      streaming: false,
+      parts: [
+        {
+          id: "original-request",
+          kind: "text",
+          role: "user",
+          text: "Original worker request",
+          status: "complete",
+        },
+        {
+          id: "original-tool",
+          kind: "tool",
+          name: "read",
+          input: "config.ts",
+          output: "Saved tool result",
+          state: "success",
+        },
+        {
+          id: "answer",
+          kind: "text",
+          role: "assistant",
+          text: "Original final answer",
+          status: "complete",
+        },
+      ],
+    });
+    using fixture = renderSubagentActivity({ activity: saved, parts: workerTranscript() });
+    const panel = await openWorkerChat(fixture.user);
+    expect(await within(panel).findByText("Original worker request")).toBeDefined();
+    expect(within(panel).getByText("Original final answer")).toBeDefined();
+    expect(within(panel).queryByRole("combobox", { name: "Message subagent" })).toBeNull();
+    fixture.publish({
+      _tag: "Snapshot",
+      revision: 2,
+      parentSessionId,
+      activities: [saved],
+      backgroundActive: false,
+    });
+    expect(within(panel).getByText("Original worker request")).toBeDefined();
+  });
+
+  it("a deep link waits for the independent persisted-worker snapshot, even without a parent tool/report", async () => {
+    using fixture = renderSubagentActivity({
+      parts: [],
+      catalogReady: false,
+      todos: {
+        ...emptyProjectTodos(),
+        items: [
+          {
+            id: "00000000-0000-4000-8000-000000000099",
+            title: "Inspect saved worker",
+            description: "",
+            state: "open",
+            status: "",
+            revision: 0,
+            associations: [
+              { kind: "subagent", parentSessionId, handleId, title: "Saved worker deep link" },
+            ],
+          },
+        ],
+      },
+    });
+    await fixture.user.click(await screen.findByRole("link", { name: "Saved worker deep link" }));
+    expect(screen.queryByRole("complementary", { name: "Inspect the boundary" })).toBeNull();
+    fixture.publish({
+      _tag: "Snapshot",
+      revision: 2,
+      parentSessionId,
+      activities: [workerActivity({ released: true, status: "complete", streaming: false })],
+      backgroundActive: false,
+    });
+    const panel = await screen.findByRole("complementary", { name: "Inspect the boundary" });
+    expect(await within(panel).findByText("Inspecting now")).toBeDefined();
+    expect(within(panel).queryByRole("combobox", { name: "Message subagent" })).toBeNull();
+  });
+
+  it("explains a lost mapping instead of presenting the parent report as a worker conversation", async () => {
     const historical = workerActivity({
       status: "complete",
       streaming: false,
@@ -107,7 +188,7 @@ describe("Subagent activity workflow", () => {
     });
     using fixture = renderSubagentActivity({ parts: workerTranscript(historical) });
     const panel = await openWorkerChat(fixture.user);
-    expect(await within(panel).findByText("A historical boundary report.")).toBeDefined();
+    expect(await within(panel).findByText(/no retained handle-to-Pi mapping/)).toBeDefined();
     expect(within(panel).getByText("complete")).toBeDefined();
     expect(within(panel).queryByRole("combobox", { name: "Message subagent" })).toBeNull();
     expect(within(panel).queryByRole("button", { name: "Stop" })).toBeNull();

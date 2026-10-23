@@ -338,6 +338,15 @@ export const createModelObserver = (
         subagents,
         (client) => client.subagents.observe(target.sessionId),
         (update: SubagentUpdate) => applySubagentUpdate(subagents, target.sessionId, update),
+        {
+          clear: () => {
+            subagents.loaded = false;
+            subagents.observationError = undefined;
+          },
+          failed: (error) => {
+            subagents.observationError = error instanceof Error ? error.message : String(error);
+          },
+        },
       );
     }
 
@@ -424,6 +433,15 @@ export const createModelObserver = (
         subagents,
         (client) => client.subagents.observe(target.sessionId),
         (update: SubagentUpdate) => applySubagentUpdate(subagents, target.sessionId, update),
+        {
+          clear: () => {
+            subagents.loaded = false;
+            subagents.observationError = undefined;
+          },
+          failed: (error) => {
+            subagents.observationError = error instanceof Error ? error.message : String(error);
+          },
+        },
       );
       observe(
         `scheduled-messages:${target.sessionId}`,

@@ -886,6 +886,21 @@ export const makeSessionArchiveStorageLive = (
             ),
           ),
         ),
+        deleteAuxiliary: Effect.fn("SessionArchiveStorage.deleteAuxiliary")((sessionId, location) =>
+          withUpdateLock(
+            locatorPath(sessionId),
+            Effect.gen(function* () {
+              const source = yield* Effect.tryPromise(() =>
+                findSessionFileById(sessionId, {
+                  workingDirectory: location.cwd,
+                  root: location.activeRoot,
+                  direct: location.direct,
+                }),
+              );
+              if (source) yield* fileSystem.remove(source);
+            }),
+          ).pipe(Effect.mapError((cause) => archiveError("deleteAuxiliary", sessionId, cause))),
+        ),
         delete: Effect.fn("SessionArchiveStorage.delete")((sessionId, location) =>
           migrateLocation(location).pipe(
             Effect.andThen(

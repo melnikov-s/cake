@@ -85,6 +85,7 @@ export function renderSubagentActivity(options: {
   activity?: SubagentActivity;
   parts: UiPart[];
   todos?: ProjectTodos;
+  catalogReady?: boolean;
 }) {
   let todos = options.todos;
   const fixture = createRendererStoreFixture({
@@ -144,6 +145,7 @@ export function renderSubagentActivity(options: {
     activities: options.activity ? [options.activity] : [],
     backgroundActive: false,
   });
+  if (options.catalogReady === false) catalog.loaded = false;
   // Content proof only: jsdom cannot settle Virtuoso's native bottom alignment.
   for (const chat of [
     session.conversationSessionStore.chatStore,
@@ -195,6 +197,8 @@ export function renderSubagentActivity(options: {
       act(() => {
         if (parts) applyConversationSnapshot(session.model, { ...snapshot, parts });
         applySubagentUpdate(catalog, parentSessionId, update);
+        for (const chat of session.subagentActivityStore.chatStores)
+          chat.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" });
       });
     },
     [Symbol.dispose]() {

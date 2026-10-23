@@ -1,5 +1,9 @@
 import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
-import type { SubagentRecord } from "../../../src/services/storage/SubagentStorage";
+import type {
+  SubagentRecord,
+  SubagentHistory,
+} from "../../../src/services/storage/SubagentStorage";
+import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { makeRuntimeRecoveryStorageTestLayer } from "../helpers/piRuntimeFixture";
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
@@ -129,6 +133,7 @@ interface Fixture {
   >;
   readonly parentOptions: CakeSessionRuntimeAcquireOptions;
   readonly childStarted: Queue.Queue<string>;
+  readonly persisted: Map<string, () => ConversationSnapshot>;
   readonly childGates: Ref.Ref<ReadonlyMap<string, Deferred.Deferred<void>>>;
   readonly constructions: Ref.Ref<number>;
   readonly constructedOptions: Ref.Ref<ReadonlyArray<CakeSessionRuntimeSetup>>;
@@ -144,7 +149,10 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
   failStart = false,
   initialWorkers: readonly SubagentRecord[] = [],
   finalAnswer?: string,
+  initialHistory: readonly SubagentHistory[] = [],
+  savedTranscripts = new Map<string, () => ConversationSnapshot>(),
 ): Effect.fn.Return<Fixture> {
+  const persisted = savedTranscripts;
   const childStarted = yield* Queue.unbounded<string>();
   const childGates = yield* Ref.make<ReadonlyMap<string, Deferred.Deferred<void>>>(new Map());
   const constructions = yield* Ref.make(0);
@@ -211,6 +219,7 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
             : [],
       streaming,
     });
+    persisted.set(sessionId, snapshot);
     return {
       sessionId,
       sessionFile: `/sessions/${sessionId}.jsonl`,
@@ -303,7 +312,17 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
     sessionIds: () => Stream.empty,
     catalog: () => Stream.empty,
     catalogEntry: () => Effect.succeed(undefined),
-    inspect: () => Effect.succeed(undefined),
+    inspect: (target) =>
+      Effect.sync(() => {
+        const saved = persisted.get(target.sessionId)?.();
+        return saved
+          ? {
+              ...saved,
+              workspacePath: target.workingDirectory,
+              sessionFile: saved.sessionFile ?? "/sessions/fixture.jsonl",
+            }
+          : undefined;
+      }),
     createRuntime: (options) =>
       Ref.update(constructedOptions, (values) => [...values, options]).pipe(
         Effect.andThen(
@@ -330,7 +349,9 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
     makeCakeSessionRuntimesLayer(adapter).pipe(
       Layer.provide(makeRuntimeRecoveryStorageTestLayer()),
     ),
-    SubagentCoordinatorLive.pipe(Layer.provide(makeSubagentStorageTestLayer(initialWorkers))),
+    SubagentCoordinatorLive.pipe(
+      Layer.provide(makeSubagentStorageTestLayer(initialWorkers, initialHistory)),
+    ),
     familyStorageHarness().layer,
     makeSubagentEnvironmentLayer({
       location: (workingDirectory) =>
@@ -357,6 +378,7 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
     layer,
     parentOptions,
     childStarted,
+    persisted,
     childGates,
     constructions,
     constructedOptions,
@@ -1046,6 +1068,16 @@ describe("Cake Chat project investigators", () => {
           Stream.runHead,
         );
         assert.equal(yield* handleOf(receipt.handleId), undefined);
+        const history = yield* subagents.observe("parent-cake-chat");
+        const released = yield* history.pipe(
+          Stream.filter((update) =>
+            update._tag === "Snapshot"
+              ? update.activities.some((activity) => activity.released)
+              : update._tag === "Activity" && update.activity.released === true,
+          ),
+          Stream.runHead,
+        );
+        assert.match(JSON.stringify(released), /PRIVATE_TOOL_OUTPUT/);
       }).pipe(Effect.provide(fixture.layer));
     }),
   );
@@ -1235,7 +1267,7 @@ describe("Cake Chat project investigators", () => {
           const closed = yield* subagents
             .prompt("parent-cake-chat", receipt.handleId, "Again", "follow-up", true)
             .pipe(Effect.flip);
-          assert.match(closed.message, /does not belong/);
+          assert.match(closed.message, /released.*read-only/);
         }).pipe(Effect.provide(fixture.layer));
       }),
   );
@@ -1970,6 +2002,120 @@ describe("Subagents", () => {
       });
       yield* program.pipe(Effect.provide(fixture.layer));
     }),
+  );
+
+  it.effect(
+    "completed release reopens full Pi messages/tools read-only, including after a new coordinator",
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture();
+        const saved = yield* Effect.gen(function* () {
+          const receipt = yield* subagents.start(
+            { continuation: "resume", task: "Read the full investigation" },
+            cakeChatParent(fixture),
+          );
+          const sessionId = yield* Queue.take(fixture.childStarted);
+          yield* completeChild(fixture, sessionId);
+          yield* Queue.take(fixture.reports);
+          yield* subagents.close("parent-cake-chat", receipt.handleId);
+          const coordinator = yield* SubagentCoordinator;
+          assert.deepEqual(yield* coordinator.storage.list(), []);
+          const records = yield* coordinator.storage.history.list();
+          assert.equal(records.length, 1);
+          assert.equal(records[0]?.privateSessionId, sessionId);
+          assert.equal("pendingInputs" in records[0]!, false);
+          const constructions = yield* Ref.get(fixture.constructions);
+          const stream = yield* subagents.observe("parent-cake-chat");
+          const first = yield* stream.pipe(Stream.runHead);
+          assert.equal(first._tag, "Some");
+          if (first._tag === "Some" && first.value._tag === "Snapshot") {
+            assert.equal(first.value.activities[0]?.released, true);
+            assert.match(JSON.stringify(first.value.activities[0]?.parts), /PRIVATE_TOOL_OUTPUT/);
+            assert.match(JSON.stringify(first.value.activities[0]?.parts), /config.ts:12/);
+          } else assert.fail("Missing released history snapshot");
+          assert.equal(yield* Ref.get(fixture.constructions), constructions);
+          const denied = yield* subagents
+            .prompt("parent-cake-chat", receipt.handleId, "Cannot resume", "prompt")
+            .pipe(Effect.flip);
+          assert.match(denied.message, /released.*read-only/);
+          return records;
+        }).pipe(Effect.provide(fixture.layer));
+        const restarted = yield* makeFixture(false, [], undefined, saved, fixture.persisted);
+        yield* Effect.gen(function* () {
+          const coordinator = yield* SubagentCoordinator;
+          assert.equal((yield* SubscriptionRef.get(coordinator.state)).handles.size, 0);
+          const stream = yield* subagents.observe("parent-cake-chat");
+          const first = yield* stream.pipe(Stream.runHead);
+          assert.equal(first._tag, "Some");
+          if (first._tag === "Some" && first.value._tag === "Snapshot")
+            assert.match(JSON.stringify(first.value.activities[0]?.parts), /PRIVATE_TOOL_OUTPUT/);
+          else assert.fail("Missing restarted history snapshot");
+          assert.equal(yield* Ref.get(restarted.constructions), 0);
+        }).pipe(Effect.provide(restarted.layer));
+      }),
+  );
+
+  it.effect(
+    "parent deletion removes released, live and descendant transcripts but not another parent's workers",
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture();
+        const deleted: string[] = [];
+        yield* Effect.gen(function* () {
+          const released = yield* subagents.start({ task: "Completed child" }, parent(fixture));
+          const firstId = yield* Queue.take(fixture.childStarted);
+          yield* completeChild(fixture, firstId);
+          yield* subagents.wait("parent", released.handleId);
+          yield* subagents.close("parent", released.handleId);
+          const coordinator = yield* SubagentCoordinator;
+          const ancestor = (yield* coordinator.storage.history.list())[0]!;
+          const descendantId = crypto.randomUUID();
+          const descendant = {
+            ...ancestor,
+            handleId: subagents.SubagentHandleId.make(crypto.randomUUID()),
+            privateSessionId: descendantId,
+            parentSessionId: firstId,
+          };
+          yield* coordinator.storage.history.update(descendant);
+          fixture.persisted.set(descendantId, fixture.persisted.get(firstId)!);
+          const live = yield* subagents.start({ task: "Live child" }, parent(fixture));
+          const liveId = yield* Queue.take(fixture.childStarted);
+          const other = yield* subagents.start(
+            { task: "Other owner's child" },
+            parent(fixture, "parent-other"),
+          );
+          const otherId = yield* Queue.take(fixture.childStarted);
+          yield* subagents.deleteOwned("parent");
+          assert.deepEqual(new Set(deleted), new Set([firstId, descendantId, liveId]));
+          assert.equal(fixture.persisted.has(otherId), true);
+          assert.equal(
+            (yield* SubscriptionRef.get(coordinator.state)).handles.has(other.handleId),
+            true,
+          );
+          assert.equal(
+            (yield* SubscriptionRef.get(coordinator.state)).handles.has(live.handleId),
+            false,
+          );
+          assert.deepEqual(yield* coordinator.storage.history.list(), []);
+          assert.deepEqual(
+            (yield* coordinator.storage.list()).map((record) => record.handleId),
+            [other.handleId],
+          );
+          yield* subagents.close("parent-other", other.handleId);
+        }).pipe(
+          Effect.provide(fixture.layer),
+          Effect.provide(
+            Layer.mock(SessionArchiveStorage, {
+              deleteAuxiliary: (id, location) =>
+                Effect.sync(() => {
+                  assert.equal(location.activeRoot, "/private-sessions");
+                  deleted.push(id);
+                  fixture.persisted.delete(id);
+                }),
+            }),
+          ),
+        );
+      }),
   );
 
   it.effect("parent release closes subagents", () =>
