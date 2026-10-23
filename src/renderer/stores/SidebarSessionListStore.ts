@@ -55,9 +55,9 @@ export class SidebarSessionListStore extends Store<{
     this.effect(() => {
       untracked(() => this.syncActiveSortTimes(this.sortEntries()));
     });
-    // Reveal a newly selected family descendant, whatever opened it (click, link, control).
-    // Tracks selection and family structure, never collapse state, so collapsing the
-    // selected session's parent afterwards still sticks.
+    // Reveal a newly selected session, whatever opened it (click, link, control).
+    // Tracks selection, Project and family structure, never collapse state, so collapsing
+    // the selected session's Project or parent afterwards still sticks.
     this.reaction(
       () => this.selectedSessionAncestorKey(),
       () => this.revealSelectedSession(),
@@ -175,10 +175,12 @@ export class SidebarSessionListStore extends Store<{
     this.collapsedFamilies[parentSessionId] = !this.isFamilyCollapsed(parentSessionId);
   }
 
-  /** Expands each collapsed ancestor exactly as a manual expand would, so it persists. */
+  /** Expands the active Project group and each collapsed ancestor as manual expands would, so they persist. */
   private revealSelectedSession() {
     const selected = this.props.selectedConversation?.();
     if (selected?.kind !== "project-session") return;
+    const session = this.props.catalog.find(selected.sessionId);
+    if (session && !session.resolved) this.expandActiveGroup(session.projectPath);
     for (const ancestorId of this.sidebarAncestorIds(selected.sessionId))
       delete this.collapsedFamilies[ancestorId];
   }
@@ -186,7 +188,13 @@ export class SidebarSessionListStore extends Store<{
   private selectedSessionAncestorKey() {
     const selected = this.props.selectedConversation?.();
     if (selected?.kind !== "project-session") return undefined;
-    return [selected.sessionId, ...this.sidebarAncestorIds(selected.sessionId)].join("\n");
+    const session = this.props.catalog.find(selected.sessionId);
+    return [
+      selected.sessionId,
+      session?.projectPath,
+      session?.resolved,
+      ...this.sidebarAncestorIds(selected.sessionId),
+    ].join("\n");
   }
 
   /** Parents that nest this session in the sidebar: same Project and lane, else it is a root. */

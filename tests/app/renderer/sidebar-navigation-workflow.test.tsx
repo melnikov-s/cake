@@ -921,20 +921,28 @@ describe("Sidebar navigation workflow", () => {
         client: { projectSessions: { open: async () => undefined } },
         snapshot,
       });
-    const collapsed = (collapsedFamilies: Record<string, boolean>) => ({
+    const collapsed = (collapsedFamilies: Record<string, boolean>, projectCollapsed = false) => ({
       state: {},
       children: {
         sidebarStore: {
           state: {},
-          children: { sessionListStore: { state: { collapsedFamilies }, children: {} } },
+          children: {
+            sessionListStore: {
+              state: {
+                collapsedFamilies,
+                expandedActiveGroups: { "cake-chat": true, "/cake": !projectCollapsed },
+              },
+              children: {},
+            },
+          },
         },
       },
     });
 
-    it("expands every collapsed ancestor of a linked grandchild, persists it, and scrolls the row into view", async () => {
+    it("expands the collapsed Project and every collapsed ancestor of a linked grandchild, persists it, and scrolls the row into view", async () => {
       const saved = await (async () => {
-        using fixture = renderFamily(collapsed({ root: true, planner: true }));
-        expect(order()).toEqual(["root", "standalone"]);
+        using fixture = renderFamily(collapsed({ root: true, planner: true }, true));
+        expect(order()).toEqual([]);
         await fixture.openSessionLink("worker");
         expect(order()).toEqual(["root", "planner", "worker", "sibling", "standalone"]);
         expect(row("worker").getAttribute("data-navigation-active")).toBe("true");
@@ -945,12 +953,14 @@ describe("Sidebar navigation workflow", () => {
       // Like a manual expand, the reveal persists with window presentation…
       using fixture = renderFamily(saved);
       expect(order()).toEqual(["root", "planner", "worker", "sibling", "standalone"]);
-      // …and is one-time: collapsing the selected row's parent afterwards sticks.
+      // …and is one-time: collapsing the selected row's parent or Project afterwards sticks.
       await fixture.openSessionLink("worker");
       await fixture.user.click(
         screen.getByRole("button", { name: "Collapse children of planner" }),
       );
       expect(order()).toEqual(["root", "planner", "sibling", "standalone"]);
+      await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
+      expect(order()).toEqual([]);
     });
 
     it("expands only the ancestors of a linked child, leaving its own children collapsed", async () => {
@@ -961,12 +971,14 @@ describe("Sidebar navigation workflow", () => {
       expect(screen.getByRole("button", { name: "Expand children of planner" })).toBeDefined();
     });
 
-    it("leaves expansion alone when the selected child is already visible or a top-level session", async () => {
+    it("leaves family expansion alone for a visible child or top-level session, revealing only its collapsed Project", async () => {
       using fixture = renderFamily(collapsed({ planner: true }));
       await fixture.user.click(rowButton("sibling"));
       expect(row("sibling").getAttribute("data-navigation-active")).toBe("true");
       expect(order()).toEqual(["root", "planner", "sibling", "standalone"]);
       await fixture.user.click(screen.getByRole("button", { name: "Collapse children of root" }));
+      await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
+      expect(order()).toEqual([]);
       await fixture.openSessionLink("standalone");
       expect(row("standalone").getAttribute("data-navigation-active")).toBe("true");
       expect(order()).toEqual(["root", "standalone"]);
