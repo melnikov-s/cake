@@ -11,7 +11,7 @@ import {
   type RefObject,
 } from "react";
 import { observer } from "r-state-tree/react";
-import { Markdown } from "@/components/ai-elements/markdown";
+import { isStandaloneDiagram, Markdown } from "@/components/ai-elements/markdown";
 import { cakeHotkeyEventName } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 import { rangeAtOffsets, useMessageHighlights } from "@/lib/message-highlights";
@@ -340,7 +340,9 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
     ? behavior.store.messageSources.filter((source) => source.props.partId === part.id)
     : [];
   const canOpenFullscreen =
-    !part.crossSession && part.text.length >= ASSISTANT_FULLSCREEN_MIN_CHARACTERS;
+    !part.crossSession &&
+    part.text.length >= ASSISTANT_FULLSCREEN_MIN_CHARACTERS &&
+    !isStandaloneDiagram(part.text);
   const openFullscreen = useCallback(() => {
     if (canOpenFullscreen) setFullscreen(true);
   }, [canOpenFullscreen]);

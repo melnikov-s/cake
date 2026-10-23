@@ -414,6 +414,13 @@ type FenceLocation = {
 };
 
 const markdownParser = unified().use(remarkParse);
+
+/** A lone diagram already owns its fullscreen action in the diagram toolbar. */
+export function isStandaloneDiagram(markdown: string): boolean {
+  const { children } = markdownParser.parse(markdown);
+  return children.length === 1 && children[0]?.type === "code" && children[0].lang === "mermaid";
+}
+
 const closingFenceLine = /^(?:(?: {0,3}>[ \t]?)*[ \t]*)(`+|~+)[ \t]*$/;
 const listMarkerAtEnd = /(?:[-+*]|\d+[.)])[ \t]+$/;
 

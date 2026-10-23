@@ -7,8 +7,11 @@ import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-for (const theme of ["light", "dark"] as const) {
-  test(`Pele diagrams resize, zoom, virtualize and stack above the reader (${theme})`, async () => {
+for (const { theme, standalone } of (["light", "dark"] as const).flatMap((theme) => [
+  { theme, standalone: false },
+  { theme, standalone: true },
+])) {
+  test(`Pele diagrams resize, zoom, virtualize and fullscreen (${theme}, ${standalone ? "standalone" : "mixed response"})`, async () => {
     const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-diagram-rendering-smoke-"));
     const userData = join(temporaryRoot, "user-data");
     const project = join(temporaryRoot, "project");
@@ -19,19 +22,17 @@ for (const theme of ["light", "dark"] as const) {
       join(cakeHome, "pi", "sessions"),
     );
     const timestamp = new Date(0).toISOString();
-    const assistantMarkdown = [
-      "Here is the pipeline:",
-      "",
+    const diagramMarkdown = [
       "```mermaid",
       "graph TD",
+      `%% ${"A detailed pipeline description. ".repeat(20)}`,
       "  A[Cake application] --> B[Pi agent engine]",
       "  B --> C[Renderer presentation] --> D[SVG output]",
       "```",
-      "",
-      "Each stage builds on the previous one. The surrounding response is intentionally long enough to offer Cake's response reader so the diagram can be verified inside both transcript and fullscreen surfaces. ".repeat(
-        4,
-      ),
     ].join("\n");
+    const assistantMarkdown = standalone
+      ? diagramMarkdown
+      : `Here is the pipeline:\n\n${diagramMarkdown}\n\nEach stage builds on the previous one.`;
     await Promise.all([
       mkdir(userData, { recursive: true }),
       mkdir(project, { recursive: true }),
@@ -128,9 +129,39 @@ for (const theme of ["light", "dark"] as const) {
       await expect(diagram).toBeVisible({ timeout: 20_000 });
       await expect(diagram).toHaveAttribute("tabindex", "0");
 
+      // Hover exposes the outer response control, so hidden duplicates also fail.
+      const message = page.locator('[data-slot="message"]').filter({ has: diagram });
+      await message.hover();
+      await expect(message.getByRole("button", { name: /View .*fullscreen/ })).toHaveCount(
+        standalone ? 1 : 2,
+      );
+      await expect(message.getByRole("button", { name: "View response fullscreen" })).toHaveCount(
+        standalone ? 0 : 1,
+      );
+      // Hidden windows cannot use the OS clipboard; capture only that boundary.
+      await page.evaluate(() => {
+        let copied = "";
+        Object.defineProperty(navigator, "clipboard", {
+          configurable: true,
+          value: {
+            writeText: async (text: string) => {
+              copied = text;
+            },
+            readText: async () => copied,
+          },
+        });
+      });
+      await message.getByRole("button", { name: "Copy Code", exact: true }).click();
+      await expect
+        .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+        .toBe(diagramMarkdown.slice("```mermaid\n".length, -"```".length));
+
       const fitBox = await diagram.getAttribute("viewBox");
       await page.getByRole("button", { name: "Zoom in", exact: true }).click();
       await expect(diagram).not.toHaveAttribute("viewBox", fitBox!);
+      const zoomedBox = await diagram.getAttribute("viewBox");
+      await page.getByRole("button", { name: "Zoom out", exact: true }).click();
+      await expect(diagram).not.toHaveAttribute("viewBox", zoomedBox!);
       await page.getByRole("button", { name: "Reset zoom", exact: true }).click();
       await expect(diagram).toHaveAttribute("viewBox", fitBox!);
       await diagram.focus();
@@ -186,11 +217,13 @@ for (const theme of ["light", "dark"] as const) {
       await expect(diagram).toBeVisible();
       await expect(diagram).toHaveAttribute("tabindex", "0");
 
-      await page.getByRole("button", { name: "View response fullscreen" }).click({ force: true });
       const reader = page.getByRole("dialog", { name: "Cake" });
-      await expect(reader).toBeVisible();
+      if (!standalone) {
+        await page.getByRole("button", { name: "View response fullscreen" }).click({ force: true });
+        await expect(reader).toBeVisible();
+      }
 
-      const diagramBlock = reader.locator('[data-diagram="pele"]');
+      const diagramBlock = (standalone ? message : reader).locator('[data-diagram="pele"]');
       await expect(diagramBlock.locator("svg.pele")).toBeVisible();
       await diagramBlock.getByRole("button", { name: "View diagram fullscreen" }).click();
 
@@ -209,10 +242,13 @@ for (const theme of ["light", "dark"] as const) {
 
       await page.keyboard.press("Escape");
       await expect(overlay).toHaveCount(0);
-      await expect(reader).toBeVisible();
-
-      await page.keyboard.press("Escape");
-      await expect(reader).toHaveCount(0);
+      if (!standalone) {
+        await expect(reader).toBeVisible();
+        await page.keyboard.press("Escape");
+        await expect(reader).toHaveCount(0);
+      } else {
+        await expect(message.getByRole("button", { name: /View .*fullscreen/ })).toHaveCount(1);
+      }
     } finally {
       await application.close();
       await rm(temporaryRoot, { recursive: true, force: true });

@@ -2,7 +2,11 @@
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
-import { fencedCode, type Markdown } from "../../../src/renderer/components/ai-elements/markdown";
+import {
+  fencedCode,
+  isStandaloneDiagram,
+  type Markdown,
+} from "../../../src/renderer/components/ai-elements/markdown";
 import { installDiagramMeasurement } from "./diagram-browser-fixture";
 import type { Client } from "../../../src/renderer/client/Client";
 import {
@@ -28,6 +32,20 @@ afterEach(() => {
 });
 
 describe("Markdown rendering integration", () => {
+  it.each([
+    ["```mermaid\ngraph TD\nA --> B\n```", true],
+    ["\n  ~~~mermaid title\n  graph TD\n  A --> B\n  ~~~\n", true],
+    ["````mermaid\ngraph TD\nA --> B\n````", true],
+    ["```mermaid\ngraph TD\nA --> B", true],
+    ["A diagram:\n\n```mermaid\ngraph TD\nA --> B\n```", false],
+    ["```mermaid\ngraph TD\nA --> B\n```\n\nExplanation.", false],
+    ["```ts\nconst language = 'mermaid';\n```", false],
+    ["> ```mermaid\n> graph TD\n> A --> B\n> ```", false],
+    ["```mermaid\ngraph TD\nA --> B\n```\n\n```mermaid\ngraph TD\nB --> C\n```", false],
+  ])("identifies a lone diagram without treating mixed content as one (%s)", (source, expected) => {
+    expect(isStandaloneDiagram(source)).toBe(expected);
+  });
+
   it("renders prose, a highlighted fence and an escaped fence containing backticks", async () => {
     const code = "const sample = `nested`; // ```";
     using fixture = renderMarkdown(

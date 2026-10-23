@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, screen, within } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { updateStore } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
@@ -7,6 +7,7 @@ import type { Client } from "../../../src/renderer/client/Client";
 import { renderTranscriptRendering } from "./transcript-rendering-workflow-fixture";
 import * as messageHighlights from "../../../src/renderer/lib/message-highlights";
 import { ChatStore } from "../../../src/renderer/stores/ChatStore";
+import { DiagramTestWorker, installDiagramMeasurement } from "./diagram-browser-fixture";
 
 const user: Extract<UiPart, { kind: "text" }> = {
   id: "user",
@@ -27,6 +28,7 @@ const answer: Extract<UiPart, { kind: "text" }> = {
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
@@ -265,6 +267,34 @@ describe("Projected transcript rendering workflows", () => {
     await fixture.user.click(trigger);
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
     expect(await screen.findByText("hello")).toBeDefined();
+  });
+
+  it("uses only the diagram toolbar fullscreen for a lone diagram, but retains the response reader for mixed content", async () => {
+    installDiagramMeasurement();
+    vi.stubGlobal("Worker", DiagramTestWorker);
+    const code = `graph TD\n%% ${"Pipeline details. ".repeat(40)}\nA[Start] --> B[Finish]`;
+    const text = `\`\`\`mermaid\n${code}\n\`\`\``;
+    expect(text.length).toBeGreaterThan(500);
+    using fixture = renderTranscriptRendering([{ ...answer, text }], {
+      client: { electron: { setFullscreenSurfaceOpen: async () => undefined } },
+    });
+    await waitFor(() => expect(fixture.container.querySelector("svg.pele")).not.toBeNull());
+    expect(screen.getAllByRole("button", { name: /View .*fullscreen/ })).toHaveLength(1);
+    const copy = vi.spyOn(navigator.clipboard, "writeText");
+    await fixture.user.click(screen.getByRole("button", { name: "Copy Code" }));
+    expect(copy).toHaveBeenCalledWith(`${code}\n`);
+    await fixture.user.click(screen.getByRole("button", { name: "View diagram fullscreen" }));
+    const fullscreen = screen.getByRole("dialog", { name: "Diagram" });
+    await waitFor(() => expect(fullscreen.querySelector("svg.pele")).not.toBeNull());
+    await fixture.user.click(
+      within(fullscreen).getByRole("button", { name: "Exit fullscreen Diagram" }),
+    );
+    fixture.publish([{ ...answer, text: `Here is the pipeline:\n\n${text}` }]);
+    expect(screen.getByRole("button", { name: "View response fullscreen" })).toBeDefined();
+    fixture.publish([{ ...answer, text }]);
+    await waitFor(() =>
+      expect(screen.getAllByRole("button", { name: /View .*fullscreen/ })).toHaveLength(1),
+    );
   });
 
   it("retains an open response reader when live content settles to its persisted identity, and copies the completed response", async () => {

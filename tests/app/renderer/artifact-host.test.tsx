@@ -80,6 +80,10 @@ describe("ArtifactHost rendering integration", () => {
       document.documentElement.dataset.theme = "dark";
     });
     expect(fixture.container.querySelector("svg.pele")).toBe(svg);
+    expect(screen.getAllByRole("button", { name: /View .*fullscreen/ })).toHaveLength(1);
+    const copy = vi.spyOn(navigator.clipboard, "writeText");
+    await fixture.user.click(screen.getByRole("button", { name: "Copy Code" }));
+    expect(copy).toHaveBeenCalledWith("graph LR\nA[Start] --> B[Finish]\n");
     await fixture.user.click(screen.getByRole("button", { name: "View diagram fullscreen" }));
     const fullscreen = screen.getByRole("dialog", { name: "Diagram" });
     await waitFor(() =>

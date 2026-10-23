@@ -4166,7 +4166,47 @@ const assistantDiagrams: VisualCaptureScenario = {
       : page.locator(".transcript"),
 };
 
+const assistantStandaloneDiagram: VisualCaptureScenario = {
+  name: "assistant-standalone-diagram",
+  description: "A long diagram-only response with one fullscreen action, beside Copy",
+  states: ["default", "fullscreen"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    const file = join(
+      workspaceSessionDirectory(paths.project, join(paths.cakeHome, "pi", "sessions")),
+      "1970-01-01T00-00-00-000Z_visual-assistant-markdown-code.jsonl",
+    );
+    const transcript = await readFile(file, "utf8");
+    const diagram = [
+      "```mermaid",
+      "flowchart LR",
+      `%% ${"Detailed pipeline description. ".repeat(20)}`,
+      "A[Draft] --> B[Review] --> C[Build] --> D[Test] --> E[Publish]",
+      "```",
+    ].join("\n");
+    await writeFile(
+      file,
+      transcript.replace(JSON.stringify(assistantMarkdown), JSON.stringify(diagram)),
+    );
+  },
+  async prepare(page, state) {
+    const message = page.locator('[data-slot="message"]').filter({ has: page.locator("svg.pele") });
+    await expect(message.locator("svg.pele")).toBeVisible();
+    await message.hover();
+    await expect(message.getByRole("button", { name: /View .*fullscreen/ })).toHaveCount(1);
+    if (state === "fullscreen") {
+      await message.getByRole("button", { name: "View diagram fullscreen" }).click();
+      await expect(page.getByRole("dialog", { name: "Diagram" }).locator("svg.pele")).toBeVisible();
+    }
+  },
+  region: (page, state) =>
+    state === "fullscreen"
+      ? page.getByRole("dialog", { name: "Diagram" })
+      : page.locator('[data-slot="message"]').filter({ has: page.locator("svg.pele") }),
+};
+
 export const visualCaptureScenarios = [
+  assistantStandaloneDiagram,
   rendererCrash,
   workflowChoiceScenario,
   workflowProgressScenario,
