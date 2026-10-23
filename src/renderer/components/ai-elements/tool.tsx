@@ -90,9 +90,15 @@ function toolOutput(
   omitImages: boolean,
 ) {
   if (part.outputContent && part.outputContent.length > 0) {
-    const path = part.name === "read" ? toolPath(part) : undefined;
+    const read = part.name === "read";
+    const path = read ? toolPath(part) : undefined;
+    // An image read's text only restates "Read image file [mime]"; the image is the result.
+    const content =
+      read && part.outputContent.some((item) => item.type === "image")
+        ? part.outputContent.filter((item) => item.type === "image")
+        : part.outputContent;
     return toolOutputContent(
-      part.outputContent,
+      content,
       className,
       language,
       streaming,

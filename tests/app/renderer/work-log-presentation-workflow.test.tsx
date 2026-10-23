@@ -108,6 +108,7 @@ describe("Work-log presentation workflow", () => {
       },
       entry: /^read captures\/screen\.png/,
       alt: "screen.png",
+      hiddenText: "Read image file [image/png]",
     },
     {
       label: "browser screenshots",
@@ -128,15 +129,18 @@ describe("Work-log presentation workflow", () => {
       },
       entry: /^browser\.cdp/,
       alt: "Tool output image 2",
+      visibleText: '{"captured":true}',
     },
   ] satisfies {
     label: string;
     tool: Extract<UiPart, { kind: "tool" }>;
     entry: RegExp;
     alt: string;
+    hiddenText?: string;
+    visibleText?: string;
   }[])(
     "shows $label inside the expanded tool entry instead of beneath the log",
-    async ({ tool, entry, alt }) => {
+    async ({ tool, entry, alt, hiddenText, visibleText }) => {
       using fixture = renderWorkLog([tool]);
       const { summary, group } = workLog();
       expect(group.open).toBe(false);
@@ -151,6 +155,8 @@ describe("Work-log presentation workflow", () => {
       expect(image.closest("[data-slot=tool-details]")).not.toBeNull();
       expect(image.closest("[data-slot=activity-group]")).toBe(group);
       expect(screen.getAllByRole("img")).toHaveLength(1);
+      if (hiddenText) expect(screen.queryByText(hiddenText)).toBeNull();
+      if (visibleText) expect(screen.getByText(visibleText)).toBeDefined();
       expect(document.querySelector("[data-slot=tool-output-image]")).toBeNull();
       await fixture.user.click(button);
       expect(screen.queryByRole("img")).toBeNull();

@@ -155,8 +155,8 @@ previews—appear directly in the shared Chat transcript beneath their work-log
 group, even when the log is collapsed. Script, arguments and text output remain
 inspectable in the log; opening it does not duplicate the images. Inspection
 images from every other tool (image file reads, attachment reads, browser
-screenshots) render only inside their expanded tool entry, beside its text
-output, never as a separate transcript item. The model receives the same image
+screenshots) render only inside their expanded tool entry, never as a separate transcript
+item. An image read shows only the image, omitting Pi's "Read image file" text. The model receives the same image
 blocks either way. Fullscreen preview uses the existing shared image surface.
 This is a renderer presentation of Pi-owned tool output, retaining the original
 part identity for selection and replay—not a second transcript or an automatic
