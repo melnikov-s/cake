@@ -24,12 +24,17 @@ export interface AttachmentReferenceControl {
   read(input: AttachmentReadInput, signal: AbortSignal): Promise<CakeOperationResult>;
 }
 
+/** Image types the attachment reader returns as pixels. */
+const attachmentImageMimeTypes = ["image/png", "image/jpeg", "image/gif", "image/webp"] as const;
+export const isAttachmentImageMimeType = (mimeType: string) =>
+  attachmentImageMimeTypes.some((supported) => supported === mimeType);
+
 export const AttachmentContent = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("image"),
     reference: TaskInputReference,
     data: Schema.String.check(Schema.isMaxLength(Math.ceil(8_000_000 / 3) * 4)),
-    mimeType: Schema.Literals(["image/png", "image/jpeg", "image/gif", "image/webp"]),
+    mimeType: Schema.Literals(attachmentImageMimeTypes),
   }),
   Schema.Struct({
     kind: Schema.Literal("text"),

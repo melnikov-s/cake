@@ -20,6 +20,7 @@ import {
 } from "./ScheduledMessageInteractionStore";
 import { PromptCacheStore } from "./PromptCacheStore";
 import type { ContextInspectorStore } from "./ContextInspectorStore";
+import type { TranscriptAttachmentImagesStore } from "./TranscriptAttachmentImagesStore";
 import {
   TranscriptInteractionStore,
   type TranscriptScrollPosition,
@@ -66,6 +67,8 @@ export interface ChatStoreProps {
   };
   id(): string;
   parts(): UiPart[];
+  /** Display pixels for vaulted image inputs; surfaces without it show reference links only. */
+  attachmentImages?(): TranscriptAttachmentImagesStore;
   streaming(): boolean;
   submitting(): boolean;
   stoppable?(): boolean;
@@ -287,6 +290,9 @@ export class ChatStore extends Store<ChatStoreProps> {
 
   get id() {
     return this.props.id();
+  }
+  get attachmentImages() {
+    return this.props.attachmentImages?.();
   }
   get draft() {
     return this.props.draft?.() ?? this.localDraft;

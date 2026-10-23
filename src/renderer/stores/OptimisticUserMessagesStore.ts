@@ -1,9 +1,10 @@
-import { Store, computed, observable } from "r-state-tree";
+import { Store, computed, observable, untracked } from "r-state-tree";
 import type {
   Annotation,
   Attachment,
   UiPart,
 } from "../../contracts/conversations/session-contract";
+import type { TranscriptAttachmentImagesStore } from "./TranscriptAttachmentImagesStore";
 
 interface PendingUserMessage {
   id: string;
@@ -25,6 +26,8 @@ export interface OptimisticQueuedUserMessage {
 
 export interface OptimisticUserMessagesStoreProps {
   canonicalParts(): UiPart[];
+  /** Receives a sent image's pixels under the saved reference that replaces it. */
+  attachmentImages?(): TranscriptAttachmentImagesStore;
 }
 
 /** Owns optimistic user-message projection until the canonical transcript contains it. */
@@ -34,10 +37,11 @@ export class OptimisticUserMessagesStore extends Store<OptimisticUserMessagesSto
   constructor(props: OptimisticUserMessagesStore["props"]) {
     super(props);
     this.effect(() => {
-      const reconciledIds = this.pending
-        .filter((message) => this.isReconciled(message))
-        .map((message) => message.id);
-      for (const id of reconciledIds) this.remove(id);
+      const reconciled = this.pending.filter((message) => this.isReconciled(message));
+      for (const message of reconciled) {
+        untracked(() => this.handOffImages(message));
+        this.remove(message.id);
+      }
     });
   }
 
@@ -234,6 +238,29 @@ export class OptimisticUserMessagesStore extends Store<OptimisticUserMessagesSto
 
   clear() {
     this.pending.splice(0);
+  }
+
+  /** Cake Chat saves an image as a named vault reference without pixels. Hand the
+   * sent pixels to that reference so the image stays visible across reconciliation. */
+  private handOffImages(message: PendingUserMessage) {
+    const images = this.props.attachmentImages?.();
+    if (!images) return;
+    const canonical = this.props.canonicalParts();
+    for (const attachment of message.attachments) {
+      if (attachment.kind !== "image") continue;
+      const candidates = canonical.flatMap((part, index) =>
+        part.kind === "attachment" &&
+        !part.data &&
+        part.inputReference?.name === attachment.name &&
+        part.inputReference.mimeType === attachment.mimeType &&
+        !images.has(part.inputReference.id)
+          ? [{ index, id: part.inputReference.id }]
+          : [],
+      );
+      const match =
+        candidates.find(({ index }) => index >= message.canonicalPartCount) ?? candidates.at(-1);
+      if (match) images.remember(match.id, attachment.mimeType, attachment.data);
+    }
   }
 
   private replacementRange(parts: readonly UiPart[], entryId: string) {

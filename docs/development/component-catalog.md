@@ -123,6 +123,11 @@ inline Pi image blocks without vault references show an explicit source-reader l
 [`AttachmentReference`](../../src/renderer/components/ui/attachment-reference.tsx) presents
 a metadata-only file/input link with the same copy affordance; previews fetch the
 original through the session-authorized attachment boundary, never a backend path.
+[`TranscriptImageAttachment`](../../src/renderer/components/transcript-image-attachment.tsx)
+shows a user's image in one fixed frame whether it is pending, saved with pixels, or a
+vaulted Cake Chat reference; the caption becomes the `AttachmentReference` once saved.
+Vaulted pixels come from the conversation's renderer-only `TranscriptAttachmentImagesStore`:
+a sent image hands its pixels to the saved reference, older ones load for display only.
 
 [`SessionIdLink`](../../src/renderer/components/ui/session-id-link.tsx) displays a bare,
 collision-aware session suffix while retaining the canonical UUID in its link and

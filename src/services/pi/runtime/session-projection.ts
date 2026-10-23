@@ -17,6 +17,7 @@ import {
   type ArtifactPointer,
 } from "../../../contracts/artifacts/artifact-contract";
 import { MessageMetadata } from "../../../contracts/conversations/message-reference";
+import type { TaskInputReference } from "../../../contracts/conversations/task-input";
 import { ArtifactProjectionMetadata } from "../../../contracts/artifacts/artifact-projection-data";
 import {
   InterviewEntry,
@@ -423,7 +424,45 @@ function partsFromMessage(
         crossSession: envelope.crossSession,
         scheduled: envelope.scheduled,
       });
+    // Project Sessions send each image as pixels plus a file tag naming its pinned
+    // original. Present the pair as one named image, as the composer showed it.
+    const imageBlocks = Array.isArray(content)
+      ? content.flatMap((item, index) =>
+          typeof item === "object" && item !== null && Reflect.get(item, "type") === "image"
+            ? [{ item, index }]
+            : [],
+        )
+      : [];
+    const imageOriginals = parsedContext.attachments.filter(
+      (attachment) =>
+        attachment.kind === "file" && attachment.inputReference?.mimeType.startsWith("image/"),
+    );
+    const pairedImages =
+      imageBlocks.length > 0 && imageOriginals.length === imageBlocks.length
+        ? new Map(imageOriginals.map((attachment, index) => [attachment, imageBlocks[index]!]))
+        : undefined;
+    const imagePart = (
+      { item, index }: { item: object; index: number },
+      name: string,
+      inputReference?: TaskInputReference,
+    ): UiPart => {
+      const data = Reflect.get(item, "data");
+      return {
+        id: `${baseId}-attachment-${index}`,
+        kind: "attachment",
+        name,
+        ...(inputReference ? { inputReference } : null),
+        mediaType: String(Reflect.get(item, "mimeType") ?? "image").slice(0, 128),
+        attachmentKind: "image",
+        data: typeof data === "string" && data.length <= 20_000_000 ? data : undefined,
+      };
+    };
     parsedContext.attachments.forEach((attachment, index) => {
+      const pairedImage = pairedImages?.get(attachment);
+      if (pairedImage && attachment.kind === "file") {
+        parts.push(imagePart(pairedImage, attachment.name, attachment.inputReference));
+        return;
+      }
       if (attachment.kind === "input" || attachment.kind === "file") {
         parts.push({
           id: `${baseId}-input-${index}`,
@@ -471,21 +510,8 @@ function partsFromMessage(
         ...(attachment.comment !== undefined ? { comment: attachment.comment } : null),
       });
     });
-    if (Array.isArray(content)) {
-      content.forEach((item, index) => {
-        if (typeof item === "object" && item !== null && Reflect.get(item, "type") === "image") {
-          const data = Reflect.get(item, "data");
-          parts.push({
-            id: `${baseId}-attachment-${index}`,
-            kind: "attachment",
-            name: `Image ${index + 1}`,
-            mediaType: String(Reflect.get(item, "mimeType") ?? "image").slice(0, 128),
-            attachmentKind: "image",
-            data: typeof data === "string" && data.length <= 20_000_000 ? data : undefined,
-          });
-        }
-      });
-    }
+    if (!pairedImages)
+      for (const block of imageBlocks) parts.push(imagePart(block, `Image ${block.index + 1}`));
     if (
       entryId &&
       parts.length > 0 &&

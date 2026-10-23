@@ -7,6 +7,7 @@ import {
 } from "../../contracts/conversations/message-reference";
 import { Markdown, MarkdownLinkProvider, useMarkdownLinkActions } from "./ai-elements/markdown";
 import { MarkdownImage } from "./markdown-image";
+import { isAttachmentImageMimeType } from "../../contracts/conversations/attachment-reference-control";
 import { Button } from "./ui/button";
 import { Callout } from "./ui/callout";
 import { CopyButton } from "./ui/copy-button";
@@ -135,7 +136,7 @@ export const InlineMessageSource = observer(function InlineMessageSource({
                 <Markdown>{page.text || "No textual content."}</Markdown>
               </MarkdownLinkProvider>
               {page.message.inputRefs.map((input) =>
-                ["image/png", "image/jpeg", "image/gif", "image/webp"].includes(input.mimeType) ? (
+                isAttachmentImageMimeType(input.mimeType) ? (
                   <MarkdownImage
                     key={input.id}
                     alt={input.name}

@@ -14,7 +14,8 @@ import { Interview } from "@/components/interview";
 import { ArtifactHost } from "@/components/artifact-host";
 import { InlineArtifactPreview } from "./inline-artifact-preview";
 import { CompactionMessage } from "@/components/compaction-message";
-import { ImagePreview } from "@/components/image-preview";
+import { TranscriptImageAttachment } from "./transcript-image-attachment";
+import { isAttachmentImageMimeType } from "../../contracts/conversations/attachment-reference-control";
 import { toolImagesAreConversationResults } from "../../utils/cake-tool";
 import type { UiPart } from "../../contracts/conversations/session-contract";
 import {
@@ -310,17 +311,16 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         }}
         onOpen={behavior.openSourceLocation}
       />
-    ) : part.attachmentKind === "image" && part.data ? (
-      <figure className="my-1 mb-2 ml-auto w-[min(76%,34rem)] overflow-hidden rounded-[14px] border border-border bg-card">
-        <ImagePreview
-          src={`data:${part.mediaType};base64,${part.data}`}
-          alt={part.name}
-          caption={part.name}
-        />
-        <figcaption className="truncate px-2.5 py-1.5 font-mono text-[10px] text-muted-foreground">
-          {part.name}
-        </figcaption>
-      </figure>
+    ) : (part.attachmentKind === "image" && part.data) ||
+      (part.inputReference &&
+        behavior.messageReferenceSessionId &&
+        behavior.store.attachmentImages &&
+        isAttachmentImageMimeType(part.inputReference.mimeType)) ? (
+      <TranscriptImageAttachment
+        part={part}
+        sessionId={behavior.messageReferenceSessionId}
+        images={behavior.store.attachmentImages}
+      />
     ) : part.attachmentKind === "browser" ? (
       <Badge variant="mono" className="w-fit">
         <BrowserIcon />

@@ -4,6 +4,7 @@ import { parseBuiltinCommand } from "../../contracts/conversations/session-contr
 import type { StoreEvent } from "../events/StoreEvent";
 import { describeError } from "../lib/error-details";
 import { OptimisticUserMessagesStore } from "./OptimisticUserMessagesStore";
+import { TranscriptAttachmentImagesStore } from "./TranscriptAttachmentImagesStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
 import type { ConversationResponseMode } from "../../contracts/conversations/response-mode-reminders";
@@ -48,7 +49,13 @@ export class ConversationDeliveryStore extends Store<ConversationDeliveryStorePr
   get optimisticUserMessages(): OptimisticUserMessagesStore {
     return createStore(OptimisticUserMessagesStore, {
       canonicalParts: this.props.canonicalParts,
+      attachmentImages: () => this.attachmentImages,
     });
+  }
+
+  @child
+  get attachmentImages(): TranscriptAttachmentImagesStore {
+    return createStore(TranscriptAttachmentImagesStore, { sessionId: this.props.sessionId });
   }
 
   get activeOperations() {

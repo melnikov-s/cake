@@ -222,6 +222,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
         capabilities.leadingParts
           ? [...capabilities.leadingParts(), ...this.composerStore.parts]
           : this.composerStore.parts,
+      attachmentImages: () => this.composerStore.deliveryStore.attachmentImages,
       streaming: () => this.streaming,
       draft: () => this.composerStore.draftStore.text,
       setDraft: (value) => this.composerStore.draftStore.setText(value),
