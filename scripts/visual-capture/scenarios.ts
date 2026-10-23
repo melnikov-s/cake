@@ -2520,6 +2520,171 @@ const subagentReportsScenario: VisualCaptureScenario = {
         }),
 };
 
+const resultTodoSessionId = "3d4e5f6a-7b8c-4d9e-8f01-2a3b4c5d6e71";
+const resultTodoNoticeSessionId = "5f6a7b8c-9d0e-4f1a-8b2c-3d4e5f6a7b82";
+
+const resultTodoDoneScenario: VisualCaptureScenario = {
+  name: "result-todo-done",
+  description:
+    "One-click Done on Cake Chat result messages linked to an open to-do, beside the To-do pane",
+  states: ["report", "session", "done", "pane"],
+  async seed(paths, theme) {
+    await subagentReportsScenario.seed(paths, theme);
+    const threadId = "8358c2b7-bd3c-42ee-9fec-fcb726b66c18";
+    const reply = encodeCrossSessionMessage(
+      formatCrossSessionReportText(
+        resultTodoSessionId,
+        "completed",
+        "## Build fixed\n\nThe flaky `pnpm test` step now waits for the server port. Three clean CI runs in a row.",
+      ),
+      {
+        version: 1,
+        messageId: "4c5d6e7f-8a9b-4c0d-9e1f-2a3b4c5d6e7f",
+        threadId,
+        replyToMessageId: threadId,
+        sequence: 2,
+        expectsResponse: false,
+        sender: {
+          sessionId: resultTodoSessionId,
+          title: "Fix the flaky build",
+          kind: "project-session",
+          projectName: "Cake",
+        },
+      },
+    );
+    const notice = formatSessionDigestReminder({
+      lines: [
+        {
+          reference: "s:5f6a7b82",
+          sessionId: resultTodoNoticeSessionId,
+          title: "Draft the release notes",
+          status: "completed",
+          summary: "Draft ready for review",
+        },
+      ],
+      running: 0,
+      interruptedReport: false,
+    });
+    const storage = await openNodeSqliteStorage(
+      join(paths.cakeHome, "pi", "global-chat", "coordinator.sqlite"),
+    );
+    const harness = await Harness.open(
+      storage,
+      { models: createModels(), registry: createRegistry() },
+      BACKGROUND_CONTEXT,
+    );
+    try {
+      const root = await harness.root(BACKGROUND_CONTEXT);
+      await root.commit(async (tx) => {
+        await tx.appendEntry(UserEntry, root.id, {
+          model: [{ role: "user", content: reply, timestamp: 20 }],
+        });
+        await tx.appendEntry(UserEntry, root.id, {
+          model: [
+            {
+              role: "user",
+              content: addSessionDigestReminder("What else is left this week?", notice),
+              timestamp: 21,
+            },
+          ],
+        });
+      }, BACKGROUND_CONTEXT);
+    } finally {
+      await harness.close(BACKGROUND_CONTEXT);
+      await storage.close(BACKGROUND_CONTEXT);
+    }
+    const file = join(paths.cakeHome, "state", "application.json");
+    const state = JSON.parse(await readFile(file, "utf8"));
+    const todo = (id: string, title: string, description: string, associations: unknown[]) => ({
+      id,
+      title,
+      description,
+      status: "Report delivered; awaiting your review",
+      state: "open",
+      revision: 0,
+      associations,
+    });
+    await writeFile(
+      file,
+      JSON.stringify({
+        version: 9,
+        data: {
+          ...defaultApplicationState(),
+          ...state,
+          cakeChatTodos: {
+            selectedId: null,
+            sequence: 0,
+            deliveryToken: null,
+            pending: [],
+            items: [
+              todo(
+                "00000000-0000-4000-8000-000000000021",
+                "Research the publication check",
+                "Find out whether the release session actually published its findings.",
+                [
+                  {
+                    kind: "subagent",
+                    parentSessionId: CAKE_CHAT_SESSION_ID,
+                    handleId: investigatorOrigin.handleId,
+                    title: "Investigator",
+                  },
+                ],
+              ),
+              todo(
+                "00000000-0000-4000-8000-000000000022",
+                "Fix the flaky build",
+                "Make the CI test step reliable again.",
+                [{ kind: "session", sessionId: resultTodoSessionId, title: "Build fix session" }],
+              ),
+              todo(
+                "00000000-0000-4000-8000-000000000023",
+                "Draft the release notes",
+                "Write the release notes for this week's changes.",
+                [
+                  {
+                    kind: "session",
+                    sessionId: resultTodoNoticeSessionId,
+                    title: "Release notes session",
+                  },
+                ],
+              ),
+            ],
+          },
+        },
+      }),
+    );
+  },
+  async prepare(page, state) {
+    await assistantMarkdownCode.prepare(page, "default");
+    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+    await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText("Cake Chat");
+    const report = page.getByRole("article", { name: "Subagent complete", exact: true });
+    await expect(report).toBeVisible({ timeout: 20_000 });
+    const done = page.getByRole("button", {
+      name: "Mark to-do done: Research the publication check",
+    });
+    await expect(done).toBeVisible();
+    if (state === "done") {
+      await done.click();
+      await expect(
+        page.getByRole("button", { name: "Reopen to-do: Research the publication check" }),
+      ).toHaveAttribute("aria-pressed", "true");
+    }
+    if (state === "pane") {
+      await page.getByRole("button", { name: "To-do", exact: true }).click();
+      await expect(page.getByRole("complementary", { name: "To-do" })).toBeVisible();
+    }
+    if (state === "session" || state === "pane")
+      await page
+        .getByRole("button", { name: "Mark to-do done: Draft the release notes" })
+        .scrollIntoViewIfNeeded();
+    else await report.scrollIntoViewIfNeeded();
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator("body"),
+};
+
 const cakeChatArtifactScenario: VisualCaptureScenario = {
   name: "cake-chat-artifact",
   description: "Cake Chat session-scoped artifacts opening in an isolated side pane",
@@ -4334,6 +4499,7 @@ export const visualCaptureScenarios = [
   cakeChatConversationScenario,
   cakeChatOverlayScenario,
   subagentReportsScenario,
+  resultTodoDoneScenario,
   cakeChatArtifactScenario,
   contextOutlineScenario,
   queuedPromptsScenario,
