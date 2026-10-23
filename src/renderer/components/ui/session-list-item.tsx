@@ -1,4 +1,4 @@
-import { useRef, type MouseEventHandler, type ReactNode } from "react";
+import { useEffect, useRef, type MouseEventHandler, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import type { ProjectIcon, SessionLabel } from "../../../contracts/application/application-data";
 import type { WorktreeRecord } from "../../../contracts/worktrees/managed-worktree-data";
@@ -28,6 +28,8 @@ export interface SessionListItemProps {
   };
   managedWorktree?: Pick<WorktreeRecord, "branch" | "baseBranch" | "parentWorktreePath" | "state">;
   selected: boolean;
+  /** Scroll the row into view when it becomes (or mounts) selected; navigation lists opt in. */
+  revealWhenSelected?: boolean;
   /** Advisory to-do association; never replaces actual selection. */
   associated?: boolean;
   paneNumber?: number;
@@ -66,6 +68,7 @@ export const SessionListItem = observer(function SessionListItem({
   session,
   managedWorktree,
   selected,
+  revealWhenSelected = false,
   associated = false,
   paneNumber,
   resolved,
@@ -90,6 +93,10 @@ export const SessionListItem = observer(function SessionListItem({
 }: SessionListItemProps) {
   const rowRef = useRef<HTMLDivElement>(null);
   const navigationRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    // "nearest" leaves an already visible row exactly where it is.
+    if (selected && revealWhenSelected) rowRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [selected, revealWhenSelected]);
   const avatarVariant = charactersEnabled ? "artwork" : "square";
   const avatarInteraction = charactersEnabled
     ? { target: rowRef, activationTarget: navigationRef }

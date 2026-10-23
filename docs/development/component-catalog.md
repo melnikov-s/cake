@@ -80,7 +80,8 @@ Project Chat, shared by Project Sessions and Project Chat itself.
 
 [`SessionListItem`](../../src/renderer/components/ui/session-list-item.tsx) is the authoritative
 session row shared by the sidebar, screenshot destination picker, and session search: identity, labels,
-family depth, worktree context, relative time and activity. Callers own ordering and actions.
+family depth, worktree context, relative time and activity. Callers own ordering and actions;
+the sidebar opts into `revealWhenSelected` so a newly selected row scrolls into view if needed.
 Its shared [`SessionActivityIndicator`](../../src/renderer/components/session-activity-indicator.tsx)
 is also used by Project Chat entries: blue while running (including when selected), green for
 unread completion, amber while waiting, red for errors, and no dot for idle/read or deliberately

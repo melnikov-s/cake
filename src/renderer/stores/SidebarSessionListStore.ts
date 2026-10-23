@@ -55,6 +55,13 @@ export class SidebarSessionListStore extends Store<{
     this.effect(() => {
       untracked(() => this.syncActiveSortTimes(this.sortEntries()));
     });
+    // Reveal a newly selected family descendant, whatever opened it (click, link, control).
+    // Tracks selection and family structure, never collapse state, so collapsing the
+    // selected session's parent afterwards still sticks.
+    this.reaction(
+      () => this.selectedSessionAncestorKey(),
+      () => this.revealSelectedSession(),
+    );
   }
 
   projectSessionSort(path: string): "date" | "label" {
@@ -166,6 +173,40 @@ export class SidebarSessionListStore extends Store<{
 
   toggleFamilyCollapsed(parentSessionId: string) {
     this.collapsedFamilies[parentSessionId] = !this.isFamilyCollapsed(parentSessionId);
+  }
+
+  /** Expands each collapsed ancestor exactly as a manual expand would, so it persists. */
+  private revealSelectedSession() {
+    const selected = this.props.selectedConversation?.();
+    if (selected?.kind !== "project-session") return;
+    for (const ancestorId of this.sidebarAncestorIds(selected.sessionId))
+      delete this.collapsedFamilies[ancestorId];
+  }
+
+  private selectedSessionAncestorKey() {
+    const selected = this.props.selectedConversation?.();
+    if (selected?.kind !== "project-session") return undefined;
+    return [selected.sessionId, ...this.sidebarAncestorIds(selected.sessionId)].join("\n");
+  }
+
+  /** Parents that nest this session in the sidebar: same Project and lane, else it is a root. */
+  private sidebarAncestorIds(sessionId: string) {
+    const ancestors: string[] = [];
+    let session = this.props.catalog.find(sessionId);
+    while (session?.familyParentSessionId && session.familyParentSessionId !== session.sessionId) {
+      const parent = this.props.catalog.find(session.familyParentSessionId);
+      if (
+        !parent ||
+        parent.projectPath !== session.projectPath ||
+        parent.resolved !== session.resolved ||
+        parent.sessionId === sessionId ||
+        ancestors.includes(parent.sessionId)
+      )
+        break;
+      ancestors.push(parent.sessionId);
+      session = parent;
+    }
+    return ancestors;
   }
 
   cakeChatSessions(resolved = false) {

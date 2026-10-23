@@ -900,6 +900,81 @@ describe("Sidebar navigation workflow", () => {
     expect(order()).toEqual(["root", "planner", "worker", "sibling", "standalone"]);
   });
 
+  describe("revealing a selected family descendant", () => {
+    let scrollIntoView: ReturnType<typeof vi.fn>;
+    beforeEach(() => {
+      scrollIntoView = vi.fn();
+      Object.defineProperty(Element.prototype, "scrollIntoView", {
+        configurable: true,
+        value: scrollIntoView,
+      });
+    });
+    afterEach(() => {
+      Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+    });
+    const familySessions = [...sidebarFamily, sidebarSummary("standalone", 3)];
+    const renderFamily = (snapshot: Parameters<typeof renderSidebarNavigation>[0]["snapshot"]) =>
+      renderSidebarNavigation({
+        projects: [project],
+        sessions: familySessions,
+        loadedIds: familySessions.map((session) => session.sessionId),
+        client: { projectSessions: { open: async () => undefined } },
+        snapshot,
+      });
+    const collapsed = (collapsedFamilies: Record<string, boolean>) => ({
+      state: {},
+      children: {
+        sidebarStore: {
+          state: {},
+          children: { sessionListStore: { state: { collapsedFamilies }, children: {} } },
+        },
+      },
+    });
+
+    it("expands every collapsed ancestor of a linked grandchild, persists it, and scrolls the row into view", async () => {
+      const saved = await (async () => {
+        using fixture = renderFamily(collapsed({ root: true, planner: true }));
+        expect(order()).toEqual(["root", "standalone"]);
+        await fixture.openSessionLink("worker");
+        expect(order()).toEqual(["root", "planner", "worker", "sibling", "standalone"]);
+        expect(row("worker").getAttribute("data-navigation-active")).toBe("true");
+        expect(scrollIntoView.mock.contexts).toContain(row("worker"));
+        expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+        return fixture.snapshot();
+      })();
+      // Like a manual expand, the reveal persists with window presentation…
+      using fixture = renderFamily(saved);
+      expect(order()).toEqual(["root", "planner", "worker", "sibling", "standalone"]);
+      // …and is one-time: collapsing the selected row's parent afterwards sticks.
+      await fixture.openSessionLink("worker");
+      await fixture.user.click(
+        screen.getByRole("button", { name: "Collapse children of planner" }),
+      );
+      expect(order()).toEqual(["root", "planner", "sibling", "standalone"]);
+    });
+
+    it("expands only the ancestors of a linked child, leaving its own children collapsed", async () => {
+      using fixture = renderFamily(collapsed({ root: true, planner: true }));
+      await fixture.openSessionLink("planner");
+      expect(order()).toEqual(["root", "planner", "sibling", "standalone"]);
+      expect(row("planner").getAttribute("data-navigation-active")).toBe("true");
+      expect(screen.getByRole("button", { name: "Expand children of planner" })).toBeDefined();
+    });
+
+    it("leaves expansion alone when the selected child is already visible or a top-level session", async () => {
+      using fixture = renderFamily(collapsed({ planner: true }));
+      await fixture.user.click(rowButton("sibling"));
+      expect(row("sibling").getAttribute("data-navigation-active")).toBe("true");
+      expect(order()).toEqual(["root", "planner", "sibling", "standalone"]);
+      await fixture.user.click(screen.getByRole("button", { name: "Collapse children of root" }));
+      await fixture.openSessionLink("standalone");
+      expect(row("standalone").getAttribute("data-navigation-active")).toBe("true");
+      expect(order()).toEqual(["root", "standalone"]);
+      await fixture.user.click(screen.getByRole("button", { name: "Expand children of root" }));
+      expect(screen.getByRole("button", { name: "Expand children of planner" })).toBeDefined();
+    });
+  });
+
   it("reacts to nested work and completion on collapsed Projects without changing expanded activity or selection", async () => {
     using fixture = renderSidebarNavigation({
       projects: [project],

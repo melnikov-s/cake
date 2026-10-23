@@ -153,6 +153,10 @@ export function renderSidebarNavigation(
         }),
       );
     },
+    async openSessionLink(sessionId: string) {
+      // Main delivers cake://session links and notification clicks as this navigation request.
+      await act(async () => fixture.root.navigationStore.openSessionLink(sessionId));
+    },
     hostToggleSidebar() {
       // VS Code owns this toolbar control. Deliver its documented host event;
       // this is not proof of Electron/native-toolbar event delivery.
