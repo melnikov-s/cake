@@ -211,8 +211,8 @@ export const ActivityGroup = observer(function ActivityGroup({
         <small className="ml-1.5 min-w-0 truncate font-normal text-muted-foreground">
           {label}
           {!open && latestAction ? (
-            // Keyed so each new action fades in, making progress visible while collapsed.
-            <span key={latestAction} className="motion-safe:animate-fade-in">
+            // Fade for a new action, not for each chunk of its streamed arguments.
+            <span key={latestPart?.id} className="motion-safe:animate-fade-in">
               {` · ${latestAction}`}
             </span>
           ) : null}

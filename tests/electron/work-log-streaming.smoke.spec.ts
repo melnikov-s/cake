@@ -8,7 +8,12 @@ import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("streaming work logs keep their DOM and follow their own bottom", async () => {
+for (const theme of ["dark", "light"] as const) {
+  test(`streaming work logs keep their DOM and follow their own bottom (${theme})`, () =>
+    verifyStreamingWorkLog(theme));
+}
+
+async function verifyStreamingWorkLog(theme: "dark" | "light") {
   test.setTimeout(60_000);
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-work-log-streaming-"));
   const userData = join(temporaryRoot, "user-data");
@@ -73,7 +78,7 @@ test("streaming work logs keep their DOM and follow their own bottom", async () 
       },
     }),
   );
-  await writeFile(join(userData, "window-state.json"), windowState({ project, theme: "dark" }));
+  await writeFile(join(userData, "window-state.json"), windowState({ project, theme }));
   await writeFile(
     join(cakeHome, "state", "application.json"),
     JSON.stringify({
@@ -103,6 +108,7 @@ test("streaming work logs keep their DOM and follow their own bottom", async () 
   });
   try {
     const page = await application.firstWindow();
+    if (theme === "light") await page.setViewportSize({ width: 900, height: 800 });
     await page.getByRole("button", { name: "Model configuration" }).click({ timeout: 20_000 });
     await page.getByLabel("Search presets and models").fill("Stream fixture");
     await page
@@ -123,7 +129,18 @@ test("streaming work logs keep their DOM and follow their own bottom", async () 
     );
     const log = page.locator('[data-slot="activity-group"]');
     await expect(log).toContainText("Reasoning");
-    await log.locator(":scope > summary").click();
+    const summary = log.locator(":scope > summary");
+    const action = summary.locator("small > span");
+    await expect(action).toHaveText(" · Thinking…");
+    const reasoningAction = await action.elementHandle();
+    for (let index = 0; index < 3; index += 1) {
+      sendReasoning(`Collapsed reasoning update ${index}.\n\n`);
+      await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
+      await page.waitForTimeout(100);
+      expect(await reasoningAction?.evaluate((element) => element.isConnected)).toBe(true);
+      await expect(action).toHaveText(" · Thinking…");
+    }
+    await summary.click();
     const content = log.locator('[data-slot="work-log-content"]');
     await expect(content).toBeVisible();
     await content.getByRole("button", { name: "Thinking…", exact: true }).click();
@@ -357,6 +374,96 @@ test("streaming work logs keep their DOM and follow their own bottom", async () 
     await expect.poll(() => settledFileDiff.locator(".syntax-token").count()).toBeGreaterThan(0);
     await expect(streamingFileDiff.locator(".syntax-token")).toHaveCount(0);
 
+    // A long command's displayed title is truncated, but its streamed arguments
+    // keep changing. Those text updates must not remount/restart the entrance.
+    await summary.click();
+    sendDelta({
+      tool_calls: [
+        {
+          index: 2,
+          id: "stream-bash",
+          type: "function",
+          function: {
+            name: "bash",
+            arguments:
+              "{\"command\":\"printf '%s' 'A long streamed command " + "argument ".repeat(30),
+          },
+        },
+      ],
+    });
+    await expect(action).toContainText("bash");
+    const commandAction = await action.elementHandle();
+    if (!commandAction) throw new Error("Missing collapsed command action");
+    expect(await action.evaluate((element) => getComputedStyle(element).animationName)).toBe(
+      "fade-in",
+    );
+    await commandAction.evaluate(async (element) => {
+      await Promise.all(element.getAnimations().map((animation) => animation.finished));
+    });
+    const actionContinuity = await summary.evaluateHandle((root) => {
+      const original = root.querySelector("small > span");
+      if (!original) throw new Error("Missing current action");
+      let stopped = false;
+      let samples = 0;
+      let lostOpacity = false;
+      let restarts = 0;
+      const sample = () => {
+        samples += 1;
+        if (!original.isConnected || getComputedStyle(original).opacity !== "1") lostOpacity = true;
+      };
+      const frame = () => {
+        sample();
+        if (!stopped) requestAnimationFrame(frame);
+      };
+      const animationStarted = (event: AnimationEvent) => {
+        if (event.target === root.querySelector("small > span")) restarts += 1;
+      };
+      root.addEventListener("animationstart", animationStarted);
+      const observer = new MutationObserver(sample);
+      observer.observe(root, { childList: true, characterData: true, subtree: true });
+      requestAnimationFrame(frame);
+      return {
+        stop() {
+          stopped = true;
+          observer.disconnect();
+          root.removeEventListener("animationstart", animationStarted);
+          return { samples, lostOpacity, restarts };
+        },
+      };
+    });
+    for (let index = 0; index < 5; index += 1) {
+      sendDelta({ tool_calls: [{ index: 2, function: { arguments: `chunk-${index} ` } }] });
+      await expect(action).toContainText(`chunk-${index}`);
+      expect(await commandAction.evaluate((element) => element.isConnected)).toBe(true);
+      expect(await action.evaluate((element) => getComputedStyle(element).opacity)).toBe("1");
+    }
+    sendDelta({ tool_calls: [{ index: 2, function: { arguments: "'\"}" } }] });
+    await expect(action).toContainText("chunk-4 '");
+    expect(await commandAction.evaluate((element) => element.isConnected)).toBe(true);
+    const actionContinuityResult = await actionContinuity.evaluate((tracker) => tracker.stop());
+    expect(actionContinuityResult.samples).toBeGreaterThan(0);
+    expect(actionContinuityResult.lostOpacity).toBe(false);
+    expect(actionContinuityResult.restarts).toBe(0);
+
+    // A genuinely new action retains its entrance, and reduced motion removes
+    // that motion without hiding or freezing the current activity.
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    sendDelta({
+      tool_calls: [
+        {
+          index: 3,
+          id: "stream-read",
+          type: "function",
+          function: { name: "read", arguments: '{"path":"fixture.ts"}' },
+        },
+      ],
+    });
+    await expect(action).toHaveText(" · read fixture.ts");
+    expect(await commandAction.evaluate((element) => element.isConnected)).toBe(false);
+    expect(await action.evaluate((element) => element.getAnimations().length)).toBe(0);
+    await summary.click();
+    await expect(diff).toBeVisible();
+
     response?.write(
       `data: ${JSON.stringify({ id: "stream-fixture", object: "chat.completion.chunk", created: 0, model: "fixture-model", choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] })}\n\ndata: [DONE]\n\n`,
     );
@@ -377,4 +484,4 @@ test("streaming work logs keep their DOM and follow their own bottom", async () 
     server.close();
     await rm(temporaryRoot, { recursive: true, force: true });
   }
-});
+}

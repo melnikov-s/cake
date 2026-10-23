@@ -112,6 +112,51 @@ describe("Work-log presentation workflow", () => {
     expect(workLog().summary.textContent).not.toContain("read current");
   });
 
+  it("keeps a collapsed action mounted through streamed arguments and output, then transitions to the next action", () => {
+    let tool: Extract<UiPart, { kind: "tool" }> = {
+      id: "stream-bash",
+      kind: "tool",
+      name: "bash",
+      input: '{"command":"printf',
+      inputStreaming: true,
+      state: "running",
+    };
+    using fixture = renderWorkLog([tool], { streaming: true });
+    const { summary, group } = workLog();
+    const action = summary.querySelector("small > span");
+    expect(action).not.toBeNull();
+    for (const chunk of [" streaming", " command", " arguments"]) {
+      tool = { ...tool, input: tool.input + chunk };
+      fixture.publish([tool], true);
+      expect(workLog().group).toBe(group);
+      expect(group.open).toBe(false);
+      expect(summary.querySelector("small > span")).toBe(action);
+      expect(action?.textContent).toContain(chunk.trim());
+    }
+    tool = {
+      ...tool,
+      input: tool.input + '"}',
+      inputStreaming: false,
+      output: "Streaming output",
+    };
+    fixture.publish([tool], true);
+    expect(summary.querySelector("small > span")).toBe(action);
+    const title = action?.textContent;
+    tool = { ...tool, output: "More output", state: "success" };
+    fixture.publish([tool], true);
+    expect(summary.querySelector("small > span")).toBe(action);
+    expect(action?.textContent).toBe(title);
+
+    fixture.publish([tool, readFile("next", "running")], true);
+    const nextAction = summary.querySelector("small > span");
+    expect(nextAction).not.toBe(action);
+    expect(nextAction?.textContent).toBe(" · read next.ts");
+    expect(nextAction?.className).toContain("motion-safe:animate-fade-in");
+    fixture.publish([tool, readFile("next")]);
+    expect(summary.querySelector("small > span")).toBeNull();
+    expect(summary.textContent).toContain("2 tool calls");
+  });
+
   it("keeps the last tool active between streamed parts, then settles the group even when an individual call failed", async () => {
     const tool = readFile("current");
     using fixture = renderWorkLog([tool], { streaming: true });
