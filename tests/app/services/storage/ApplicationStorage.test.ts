@@ -524,7 +524,7 @@ describe("ApplicationStorage", () => {
   );
 
   it.effect(
-    "round-trips Project Chat to-dos, selection and undelivered user changes through typed atomic storage",
+    "round-trips Project Chat to-dos and undelivered user changes, and clears the panel-scoped selection on restart",
     () =>
       withStorage({}, (storage) => {
         const owner = ApplicationState.layer.pipe(
@@ -546,8 +546,11 @@ describe("ApplicationStorage", () => {
             yield* (yield* ApplicationState).initialize();
             const recovered = yield* projectTodos.list("/project");
             assert.deepEqual(recovered.items, [created]);
-            assert.equal(recovered.selectedId, created.id);
-            assert.equal(recovered.pending.length, 1);
+            // No to-do panel is open at startup, so the agent learns the selection ended.
+            assert.equal(recovered.selectedId, null);
+            assert.deepEqual(recovered.pending, [
+              { _tag: "Selection", sequence: 2, selectedId: null },
+            ]);
           }).pipe(Effect.provide(owner, { local: true }));
         });
       }),

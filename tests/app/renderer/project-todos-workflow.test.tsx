@@ -6,6 +6,7 @@ import { StoreProvider } from "r-state-tree/react";
 import { expect, it } from "vitest";
 import {
   emptyProjectTodos,
+  projectTodoBaseline,
   type ProjectTodos,
 } from "../../../src/contracts/projects/project-todos";
 import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-project-group";
@@ -14,7 +15,9 @@ import { applySessionCatalogGroupUpdate } from "../../../src/renderer/reducers/C
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
-function renderTodos(withSidebar = false, selectedSession = "first") {
+const projectChat = "project-chat:/cake";
+
+function renderTodos(withSidebar = false) {
   let todos: ProjectTodos = {
     ...emptyProjectTodos(),
     items: [
@@ -81,9 +84,10 @@ function renderTodos(withSidebar = false, selectedSession = "first") {
     loaded: true,
     sessions: [{ sessionId: "project-chat:/cake", title: "Project Chat", projectPath: "/cake" }],
   });
-  const store = fixture.root.cakeChatCollectionStore.registry.load("project-chat:/cake").todos;
+  const store = fixture.root.cakeChatCollectionStore.registry.load(projectChat).todos;
   const { root } = fixture;
-  if (withSidebar) root.navigationStore.selectProjectSession(selectedSession);
+  root.navigationStore.selectCakeChat(projectChat);
+  store.open();
   const view = render(
     <StoreProvider store={fixture.root}>
       <ProjectTodosPanel store={store} />
@@ -115,6 +119,14 @@ function renderTodos(withSidebar = false, selectedSession = "first") {
   return {
     user: userEvent.setup(),
     container: view.container,
+    root,
+    store,
+    todos: () => todos,
+    associated: () =>
+      Array.from(
+        view.container.querySelectorAll("[data-session-id][data-associated=true]"),
+        (row) => row.getAttribute("data-session-id"),
+      ),
     async status(changes: Partial<(typeof sessions)[number]>) {
       await act(async () =>
         applySnapshot(fixture.models.sessionCatalog, {
@@ -190,19 +202,12 @@ it("keeps each associated session link and projects readiness across read, new w
 });
 
 it("highlights every linked session, including sessions in a managed worktree", async () => {
-  using fixture = renderTodos(true, "third");
+  using fixture = renderTodos(true);
   await fixture.user.click(screen.getByRole("button", { name: "Investigate startup" }));
+  expect(fixture.associated()).toEqual(["first", "second"]);
   expect(
-    Array.from(
-      fixture.container.querySelectorAll("[data-session-id][data-associated=true]"),
-      (row) => row.getAttribute("data-session-id"),
-    ),
-  ).toEqual(["first", "second"]);
-  expect(
-    fixture.container
-      .querySelector('[data-session-id="third"]')
-      ?.getAttribute("data-navigation-active"),
-  ).toBe("true");
+    fixture.container.querySelectorAll("[data-session-id][data-navigation-active=true]"),
+  ).toHaveLength(0);
 });
 
 it("shares a weak association cue across all linked rows, updates and clears it without changing navigation", async () => {
@@ -210,25 +215,17 @@ it("shares a weak association cue across all linked rows, updates and clears it 
   const row = (id: string) => fixture.container.querySelector(`[data-session-id="${id}"]`)!;
   const todo = (title: string) => screen.getByRole("button", { name: title });
   const cue = (title: string) => todo(title).parentElement!;
-  const associated = () =>
-    Array.from(
-      fixture.container.querySelectorAll("[data-session-id][data-associated=true]"),
-      (item) => item.getAttribute("data-session-id"),
-    );
   const expectNavigationUnchanged = () => {
-    expect(row("first").getAttribute("data-navigation-active")).toBe("true");
-    expect(row("second").getAttribute("data-navigation-active")).toBe("false");
-    expect(row("third").getAttribute("data-navigation-active")).toBe("false");
-    expect(row("first").className).not.toContain("outline-dashed");
-    expect(
-      within(row("first") as HTMLElement)
-        .getByRole("button", { name: /^first / })
-        .getAttribute("aria-current"),
-    ).toBe("page");
+    expect(fixture.root.appShellStore.selection).toEqual({
+      kind: "cake-chat",
+      sessionId: projectChat,
+    });
+    for (const id of ["first", "second", "third"])
+      expect(row(id).getAttribute("data-navigation-active")).toBe("false");
   };
-  expect(associated()).toEqual([]);
+  expect(fixture.associated()).toEqual([]);
   await fixture.user.click(todo("Investigate startup"));
-  expect(associated()).toEqual(["second"]);
+  expect(fixture.associated()).toEqual(["first", "second"]);
   expect(cue("Investigate startup").getAttribute("data-associated")).toBe("true");
   expect(cue("Investigate startup").className).toContain("outline-dashed");
   expect(cue("Investigate startup").className).toContain("bg-sidebar-hover/35");
@@ -240,15 +237,48 @@ it("shares a weak association cue across all linked rows, updates and clears it 
   // A source URL pointing at a session is not a work association.
   expect(row("third").hasAttribute("data-associated")).toBe(false);
   await fixture.user.click(todo("Follow up"));
-  expect(associated()).toEqual(["third"]);
+  expect(fixture.associated()).toEqual(["third"]);
   expect(cue("Investigate startup").hasAttribute("data-associated")).toBe(false);
   expect(cue("Follow up").getAttribute("data-associated")).toBe("true");
   expectNavigationUnchanged();
   await fixture.user.click(todo("Follow up"));
-  expect(associated()).toEqual([]);
+  expect(fixture.associated()).toEqual([]);
   expect(cue("Follow up").hasAttribute("data-associated")).toBe(false);
   await fixture.user.click(todo("Investigate startup"));
   await fixture.user.click(screen.getByRole("button", { name: "Mark done: Investigate startup" }));
-  expect(associated()).toEqual([]);
+  expect(fixture.associated()).toEqual([]);
   expectNavigationUnchanged();
+});
+
+it("closing the to-do panel clears the selection for the sidebar and the agent context", async () => {
+  using fixture = renderTodos(true);
+  await fixture.user.click(screen.getByRole("button", { name: "Investigate startup" }));
+  expect(fixture.associated()).toEqual(["first", "second"]);
+  expect(fixture.todos().selectedId).toBe("00000000-0000-4000-8000-000000000011");
+  await act(async () => fixture.store.toggle());
+  expect(fixture.store.visible).toBe(false);
+  expect(fixture.associated()).toEqual([]);
+  expect(fixture.todos().selectedId).toBeNull();
+  const baseline = projectTodoBaseline(fixture.todos());
+  expect(baseline).toContain('"selectedId":null');
+  expect(baseline).toContain('"selected":null');
+  await act(async () => fixture.store.open());
+  expect(
+    screen.getByRole("button", { name: "Investigate startup" }).getAttribute("aria-pressed"),
+  ).toBe("false");
+});
+
+it("hides the sidebar cue while another conversation is focused and restores it on return", async () => {
+  using fixture = renderTodos(true);
+  await fixture.user.click(screen.getByRole("button", { name: "Investigate startup" }));
+  expect(fixture.associated()).toEqual(["first", "second"]);
+  act(() => fixture.root.navigationStore.selectProjectSession("third"));
+  expect(fixture.associated()).toEqual([]);
+  act(() => fixture.root.navigationStore.selectCakeChat("cake-chat"));
+  expect(fixture.associated()).toEqual([]);
+  // Leaving the chat keeps its panel open, so the selection still counts there.
+  expect(fixture.store.visible).toBe(true);
+  expect(fixture.todos().selectedId).toBe("00000000-0000-4000-8000-000000000011");
+  act(() => fixture.root.navigationStore.selectCakeChat(projectChat));
+  expect(fixture.associated()).toEqual(["first", "second"]);
 });

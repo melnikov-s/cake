@@ -97,6 +97,7 @@ it("opens the original findings from a to-do after another topic and a newer res
   });
   root.navigationStore.selectProjectSession("other-topic");
   const store = root.cakeChatCollectionStore.registry.load("project-chat:/cake").todos;
+  store.open();
   const view = render(
     <StoreProvider store={root}>
       <StoreProvider store={root.fullscreenSurfaceStore}>

@@ -107,24 +107,17 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     return this.props.catalog.managedWorktree(workingDirectory);
   }
 
+  /** A to-do selection is shown only while its Project Chat is focused with the to-do panel open. */
   isSessionAssociatedWithSelectedTodo(sessionId: string) {
-    const session = this.props.catalog.find(sessionId);
-    const selected = session && this.projects.find(session.projectPath)?.selectedTodo;
+    const conversation = this.props.selectedConversation?.();
+    const selected =
+      conversation?.kind === "cake-chat"
+        ? this.props.cakeChat().registry.find(conversation.sessionId)?.todos.selectedItem
+        : undefined;
     return (
       selected?.associations.some(
         (association) => association.kind === "session" && association.sessionId === sessionId,
       ) ?? false
-    );
-  }
-
-  isSubagentAssociatedWithSelectedTodo(parentSessionId: string, handleId: string) {
-    return this.projects.projects.some((project) =>
-      project.selectedTodo?.associations.some(
-        (association) =>
-          association.kind === "subagent" &&
-          association.parentSessionId === parentSessionId &&
-          association.handleId === handleId,
-      ),
     );
   }
 

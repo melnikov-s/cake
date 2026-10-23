@@ -21,6 +21,16 @@ export class ProjectTodosStore extends Store<{
         if (revision > previous) this.open();
       },
     );
+    // A selection lives only while this panel shows it. Closing the panel clears it, once any
+    // in-flight edit settles. Tracking only this store's own state keeps another window, whose
+    // panel is closed, from clearing a selection made here.
+    this.reaction(
+      () => this.visible || this.busy,
+      (holding) => {
+        if (!holding && this.value?.selectedId)
+          void this.mutate({ _tag: "Select", selectedId: null });
+      },
+    );
   }
 
   get project() {
@@ -29,8 +39,9 @@ export class ProjectTodosStore extends Store<{
   get value() {
     return this.project?.todos;
   }
+  /** The selected open to-do, only while the to-do panel is open. */
   get selectedItem() {
-    return this.project?.selectedTodo;
+    return this.visible ? this.project?.selectedTodo : undefined;
   }
   get openItems() {
     return this.value?.items.filter((item) => item.state === "open") ?? [];

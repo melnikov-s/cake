@@ -356,8 +356,7 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
     await expect(
       panel.getByRole("button", { name: "Review conversations", exact: true }),
     ).toHaveAttribute("aria-pressed", "true");
-    await page.getByRole("button", { name: "Close To-do" }).click();
-    await expect(input).toBeFocused();
+    // A selection counts only while the panel is open, so send beside it.
     await send("INPUT_SELECTED");
     const selected = requests.find((request) => latestUser(request).includes("INPUT_SELECTED"));
     expect(selected && latestUser(selected)).toContain("Project Chat user changes");
@@ -372,7 +371,7 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
     expect(unchanged && latestUser(unchanged)).toContain("Project Chat user changes");
     expect(unchanged && latestUser(unchanged)).toContain(reviewId);
     await expect(reviewPills).toHaveCount(2);
-    await toggle.click();
+    await expect(panel).toBeVisible();
     const requestsBeforeDeselection = requests.length;
     await reviewTitle.click();
     await expect(reviewTitle).toHaveAttribute("aria-pressed", "false");
@@ -387,8 +386,17 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
     await page.getByRole("button", { name: "Close To-do" }).click();
     await expect(input).toBeVisible();
     await expect(input).toBeFocused();
+    // Closing the panel ends the selection for the agent as well as the panel.
+    await expect
+      .poll(
+        async () =>
+          JSON.parse(await readFile(join(cakeHome, "state", "application.json"), "utf8")).data
+            .projects[0].todos.selectedId,
+      )
+      .toBeNull();
     await page.setViewportSize({ width: 1500, height: 900 });
     await toggle.click();
+    await expect(reviewTitle).toHaveAttribute("aria-pressed", "false");
     await panel.getByRole("button", { name: "Mark done: Review conversations" }).click();
     await expect(toggle).toHaveText("2");
     await panel.getByRole("button", { name: "Done (1)" }).click();
@@ -425,8 +433,14 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
       if (!(await panel.isVisible())) await toggle.click();
       await expect(panel).toBeVisible();
     };
+    const linkedRow = page.locator('.session-item[data-session-id="linked-a"]');
+    // Another conversation is focused, so its sidebar row shows no selection cue.
+    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+    await expect(linkedRow).not.toHaveAttribute("data-associated", "true");
     await returnToTodos();
+    // The Project Chat's panel stayed open, so its selection still counts on return.
     await expect(linkedTitle).toHaveAttribute("aria-pressed", selectedBeforeLink!);
+    await expect(linkedRow).toHaveAttribute("data-associated", "true");
     await expect(linked.getByRole("img", { name: "Ready for review" })).toBeVisible();
     await linked.getByRole("link", { name: "First implementation", exact: true }).click();
     await expect(page.getByText("Finished INPUT_READY", { exact: true })).toBeVisible();
@@ -448,7 +462,6 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
     await expect(
       panel.getByRole("button", { name: "Implement startup improvement", exact: true }),
     ).toBeVisible(); // second session still open
-    await page.getByRole("button", { name: "Close To-do" }).click();
     const beforeToolResolve = JSON.parse(
       await readFile(join(cakeHome, "state", "application.json"), "utf8"),
     ).data.projects[0].todos.sequence;
@@ -458,7 +471,6 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
       ?.messages.findLast((message) => message.role === "tool")?.content;
     expect(resolveReceipt).toContain('"resolved": true');
     expect(resolveReceipt).toContain('"sessionCount": 1');
-    await toggle.click();
     const done = panel.getByRole("button", { name: "Done (2)" });
     await expect(done).toBeVisible();
     if ((await done.getAttribute("aria-expanded")) !== "true") await done.click();

@@ -1,15 +1,11 @@
 import type { ProjectTodos } from "../contracts/projects/project-todos";
 
-/** Repair both live completions and old persisted selections without touching session lifecycle. */
-export function clearCompletedProjectTodoSelection(
+/** Clear the selection and tell the agent it changed, without touching session lifecycle. */
+export function clearProjectTodoSelection(
   value: ProjectTodos,
   newDeliveryToken: () => string,
 ): ProjectTodos {
-  if (
-    value.selectedId === null ||
-    value.items.some((item) => item.id === value.selectedId && item.state === "open")
-  )
-    return value;
+  if (value.selectedId === null) return value;
   const sequence = value.sequence + 1;
   return {
     ...value,
@@ -21,4 +17,14 @@ export function clearCompletedProjectTodoSelection(
       { _tag: "Selection", selectedId: null, sequence },
     ],
   };
+}
+
+/** A completed to-do can no longer be selected. */
+export function clearCompletedProjectTodoSelection(
+  value: ProjectTodos,
+  newDeliveryToken: () => string,
+): ProjectTodos {
+  return value.items.some((item) => item.id === value.selectedId && item.state === "open")
+    ? value
+    : clearProjectTodoSelection(value, newDeliveryToken);
 }

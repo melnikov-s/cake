@@ -389,9 +389,12 @@ is a refactoring signal, not precedent.
   for state; a stale `done` edit whose only intervening change was that completion
   still applies its other fields, while any other intervening edit stays a revision
   conflict. Selection is removable next-message
-  context, never a send action. Completion clears selection atomically; reload repairs
-  stale completed selections. A faint shared association cue on the selected to-do and its linked
-  session/worker rows is distinct from actual navigation selection and never navigates or wakes work.
+  context, never a send action, and exists only while that Project Chat's To-do panel is open:
+  closing the panel clears it (a recorded user change), and app startup clears any persisted
+  selection because no panel is open then. Completion also clears selection atomically. A faint
+  shared association cue on the selected to-do and its linked session/worker rows shows only while
+  that Project Chat is the focused conversation with its panel open; it is distinct from actual
+  navigation selection and never navigates or wakes work.
   User context deltas coalesce in the Project record; read-only send preparation copies
   them into the existing recoverable input. A bound receipt is acknowledged only after
   Pi Durable has placed that input in originals, not on preparation or queue admission.

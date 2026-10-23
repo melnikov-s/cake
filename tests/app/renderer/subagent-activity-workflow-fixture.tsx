@@ -86,8 +86,11 @@ export function renderSubagentActivity(options: {
   parts: UiPart[];
   todos?: ProjectTodos;
   catalogReady?: boolean;
+  /** Render the transcript of this Project Chat (with its to-do panel open) instead of a Project Session. */
+  projectChat?: boolean;
 }) {
   let todos = options.todos;
+  const parent = options.projectChat ? "project-chat:/project" : parentSessionId;
   const fixture = createRendererStoreFixture({
     client: {
       ...options.client,
@@ -119,12 +122,19 @@ export function renderSubagentActivity(options: {
         { sessionId: "project-chat:/project", title: "Project Chat", projectPath: "/project" },
       ],
     });
-  const session = fixture.root.sessionRegistry.load(parentSessionId, "/project");
-  fixture.root.navigationStore.selectProjectSession(parentSessionId);
-  fixture.root.projectWorkbenchStore.showLoadedSession(parentSessionId);
+  const session = options.projectChat
+    ? fixture.root.cakeChatCollectionStore.registry.load(parent)
+    : fixture.root.sessionRegistry.load(parent, "/project");
+  if (options.projectChat) {
+    fixture.root.navigationStore.selectCakeChat(parent);
+    fixture.root.cakeChatCollectionStore.registry.find(parent)!.todos.open();
+  } else {
+    fixture.root.navigationStore.selectProjectSession(parent);
+    fixture.root.projectWorkbenchStore.showLoadedSession(parent);
+  }
   const snapshot: ConversationSnapshot = {
-    sessionId: parentSessionId,
-    sessionFile: `/project/${parentSessionId}.jsonl`,
+    sessionId: parent,
+    sessionFile: `/project/${parent}.jsonl`,
     parts: options.parts,
     models: [],
     thinkingLevel: "off",
@@ -137,11 +147,11 @@ export function renderSubagentActivity(options: {
     tree: [],
   };
   applyConversationSnapshot(session.model, snapshot);
-  const catalog = fixture.models.subagentCatalog(parentSessionId);
-  applySubagentUpdate(catalog, parentSessionId, {
+  const catalog = fixture.models.subagentCatalog(parent);
+  applySubagentUpdate(catalog, parent, {
     _tag: "Snapshot",
     revision: 1,
-    parentSessionId,
+    parentSessionId: parent,
     activities: options.activity ? [options.activity] : [],
     backgroundActive: false,
   });
@@ -168,7 +178,7 @@ export function renderSubagentActivity(options: {
         }}
       >
         <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
-          {todos && (
+          {todos && !options.projectChat && (
             <ProjectTodosPanel
               store={
                 fixture.root.cakeChatCollectionStore.registry.load("project-chat:/project").todos
@@ -193,10 +203,13 @@ export function renderSubagentActivity(options: {
   return {
     user: userEvent.setup(),
     container: view.container,
+    root: fixture.root,
+    /** The persisted to-do document as the domain last committed it. */
+    todos: () => todos,
     publish(update: SubagentUpdate, parts?: UiPart[]) {
       act(() => {
         if (parts) applyConversationSnapshot(session.model, { ...snapshot, parts });
-        applySubagentUpdate(catalog, parentSessionId, update);
+        applySubagentUpdate(catalog, parent, update);
         for (const chat of session.subagentActivityStore.chatStores)
           chat.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" });
       });

@@ -7,7 +7,7 @@ import {
   subagentHandleFromTool,
   type SubagentRun,
 } from "../../utils/subagent-runs";
-import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
+import type { ProjectTodo } from "../../contracts/projects/project-todos";
 import { ClientContext } from "./context/ClientContext";
 import { ChatStore } from "./ChatStore";
 import { SubagentHandleId } from "../../contracts/subagents/subagent-data";
@@ -19,6 +19,8 @@ export class SubagentActivityStore extends Store<{
   sessionId: string;
   model: SubagentCatalog;
   parts(): readonly UiPart[];
+  /** The owning Project Chat's to-do selection while its panel is open; absent elsewhere. */
+  selectedTodo?(): ProjectTodo | undefined;
 }> {
   get client() {
     return ClientContext.consume(this)!;
@@ -103,14 +105,14 @@ export class SubagentActivityStore extends Store<{
     const run = this.run(key);
     return Boolean(
       run?.handleId &&
-      ProjectCatalogContext.consume(this)?.projects.some((project) =>
-        project.selectedTodo?.associations.some(
+      this.props
+        .selectedTodo?.()
+        ?.associations.some(
           (association) =>
             association.kind === "subagent" &&
             association.parentSessionId === this.props.sessionId &&
             association.handleId === run.handleId,
         ),
-      ),
     );
   }
 

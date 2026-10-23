@@ -1,7 +1,7 @@
 import { Context, Effect, FileSystem, Layer, Path, Schema, Semaphore, Struct } from "effect";
 import { randomUUID } from "node:crypto";
 import { ProjectTodo, ProjectTodos } from "../../contracts/projects/project-todos";
-import { clearCompletedProjectTodoSelection } from "../../utils/project-todo-selection";
+import { clearProjectTodoSelection } from "../../utils/project-todo-selection";
 import {
   ApplicationState,
   CakeChatPreferences,
@@ -581,7 +581,8 @@ export const makeApplicationStorageLive = (userDataDirectory: string) =>
           ...decoded,
           projects: decoded.projects.map((project) => {
             if (!project.todos) return project;
-            const todos = clearCompletedProjectTodoSelection(project.todos, randomUUID);
+            // A selection lives only while a to-do panel is open, and none is open at startup.
+            const todos = clearProjectTodoSelection(project.todos, randomUUID);
             if (todos === project.todos) return project;
             repaired = true;
             return { ...project, todos };

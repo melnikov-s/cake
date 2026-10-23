@@ -18,6 +18,7 @@ import { observeCatalog } from "../../../src/domain/projects/projects";
 import { ProjectCatalog } from "../../../src/renderer/models/ProjectCatalog";
 import { applyProjectCatalogUpdate } from "../../../src/renderer/reducers/CatalogReducer";
 import { ProjectTodosStore } from "../../../src/renderer/stores/ProjectTodosStore";
+import { SideChatStore } from "../../../src/renderer/stores/SideChatStore";
 
 const project = "/project";
 const a = "00000000-0000-4000-8000-000000000011";
@@ -109,12 +110,11 @@ it.effect(
       yield* Effect.gen(function* () {
         yield* (yield* ApplicationState).initialize();
         using catalog = ProjectCatalog.create({ projects: [] });
+        using sidePanel = mount(createStore(SideChatStore, {}));
         using store = mount(
           createStore(ProjectTodosStore, {
             project: () => catalog.find(project),
-            sidePanel: () => {
-              throw new Error("Reconciliation must not open a pane");
-            },
+            sidePanel: () => sidePanel,
           }),
         );
         const ready = yield* Deferred.make<void>();
@@ -135,6 +135,7 @@ it.effect(
         yield* Deferred.await(updated);
         expect(store.openItems.map((item) => item.id)).toEqual([ids.source]);
         expect(store.selectedItem).toBeUndefined();
+        expect(sidePanel.target).toBeUndefined(); // Reconciliation never opens a pane.
         expect(f.persisted().projects[0]?.todos?.selectedId).toBeNull();
         expect(store.doneItems.map((item) => item.id)).toEqual([
           ids.canonical,
