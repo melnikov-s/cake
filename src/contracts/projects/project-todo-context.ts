@@ -4,7 +4,7 @@ import { splitSessionDigestReminder } from "../cake-chats/session-digest-reminde
 import { ProjectTodo, ProjectTodoUserChange } from "./project-todos";
 
 const block =
-  /^<system-reminder>\nProject Chat user changes\. [^\n]*\n([^\n]*)\n<\/system-reminder>(?:\n\n|$)/;
+  /^<system-reminder>\n(?:Project|Cake) Chat user changes\. [^\n]*\n([^\n]*)\n<\/system-reminder>(?:\n\n|$)/;
 
 /** Only the exact application-owned leading boundary is recognized. */
 export function splitProjectTodoReminder(text: string) {
@@ -22,10 +22,13 @@ const ProjectTodoSentContext = Schema.Struct({
 export function projectTodoContextPresentation(reminder: string) {
   const payload = block.exec(reminder)?.[1];
   const parsed = Schema.decodeUnknownOption(Schema.fromJsonString(ProjectTodoSentContext))(payload);
-  if (Option.isNone(parsed)) return { title: "Cake · Project Chat changes", text: reminder };
+  const fallback = reminder.startsWith("<system-reminder>\nCake Chat")
+    ? "Cake · Cake Chat changes"
+    : "Cake · Project Chat changes";
+  if (Option.isNone(parsed)) return { title: fallback, text: reminder };
   const { selection, changes } = parsed.value;
   return {
-    title: selection ? `To-do · ${selection.title}` : "Cake · Project Chat changes",
+    title: selection ? `To-do · ${selection.title}` : fallback,
     text: `\`\`\`json\n${JSON.stringify({ selection, changes }, null, 2)}\n\`\`\``,
   };
 }

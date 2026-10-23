@@ -25,6 +25,7 @@ import {
 import type { ResultDelivery } from "../../../src/contracts/conversations/result-delivery";
 import { projectTodoLayer } from "../helpers/projectTodoHarness";
 import * as projectTodos from "../../../src/domain/projects/projectTodos";
+import { CAKE_CHAT_TODO_SCOPE } from "../../../src/contracts/projects/project-todos";
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import type { Attachment } from "../../../src/contracts/conversations/session-contract";
 import type { PiTurnResult } from "../../../src/contracts/pi/turn-result-data";
@@ -1473,6 +1474,20 @@ describe("automatic spawned-session reporting", () => {
             assert.equal(state.spawnedSessions[0]?.requester.sessionId, CAKE_CHAT_SESSION_ID);
             assert.equal(state.spawnedSessions[0]?.title, createArgs.name);
             assert.equal(state.turns.length, 1);
+            // Global Cake Chat tracks its launch in its own list; the Project keeps its own item.
+            assert.deepEqual(
+              (yield* projectTodos.list(CAKE_CHAT_TODO_SCOPE)).items.map((item) => [
+                item.title,
+                item.associations,
+              ]),
+              [
+                [
+                  createArgs.name,
+                  [{ kind: "session", sessionId: created.sessionId, title: createArgs.name }],
+                ],
+              ],
+            );
+            assert.equal((yield* projectTodos.list("/project")).items.length, 1);
             // Admission/ordinary idle is not completion; no successful report exists before Pi settles.
             yield* families.deliver(yield* onlyTurn());
             assert.equal(f.deliveries.length, 0);
@@ -1565,6 +1580,8 @@ describe("automatic spawned-session reporting", () => {
             assert.equal(todos[0]?.title, createArgs.name);
             assert.equal(todos[0]?.description, createArgs.initialPrompt);
             assert.equal(todos[0]?.associations[0]?.kind, "session");
+            // Only global Cake Chat's own launches enter its separate list.
+            assert.equal((yield* projectTodos.list(CAKE_CHAT_TODO_SCOPE)).items.length, 0);
             assert.equal((yield* f.storage.state()).spawnedSessions.length, 0);
             assert.equal((yield* f.storage.state()).turns.length, origin === "manual" ? 0 : 1);
             yield* Deferred.succeed(f.finish, { stopReason: "stop", text: resultText });

@@ -8,10 +8,12 @@ import {
   ProjectTodoUpdate,
   ProjectTodoListInput,
   ProjectTodoUpdates,
+  isCakeChatTodoScope,
   type ProjectTodoAssociation,
 } from "../../contracts/projects/project-todos";
 import { ProjectError } from "../../contracts/projects/project-error";
 import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
+import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import { lookup } from "../project-sessions/projectSessionMetadata";
 import * as sessionReferences from "../project-sessions/sessionReferences";
 import * as messageReferences from "../conversations/messageReferences";
@@ -30,11 +32,14 @@ const asError = <A, E, R>(operation: Effect.Effect<A, E, R>) =>
     ),
   );
 
-/** Canonicalize the same roster references accepted by session controls before storage. */
+/** Canonicalize the same roster references accepted by session controls before storage.
+ * A Project list accepts only its own Project's work; global Cake Chat's list accepts work in
+ * any registered Project and messages in any permanent chat. */
 const validate = Effect.fn("ProjectTodos.validateAssociations")(function* (
-  projectPath: string,
+  scope: string,
   links: readonly ProjectTodoAssociation[],
 ) {
+  const global = isCakeChatTodoScope(scope);
   const result: ProjectTodoAssociation[] = [];
   for (const link of links) {
     const worker =
@@ -55,7 +60,7 @@ const validate = Effect.fn("ProjectTodos.validateAssociations")(function* (
       if (
         !record ||
         record.parentSessionId !== parentSessionId ||
-        (record.projectPath ?? record.parentWorkingDirectory) !== projectPath
+        (!global && (record.projectPath ?? record.parentWorkingDirectory) !== scope)
       )
         return yield* new ProjectError({
           operation: "projectTodoAssociations",
@@ -74,9 +79,12 @@ const validate = Effect.fn("ProjectTodos.validateAssociations")(function* (
       continue;
     }
     const sessionId = yield* sessionReferences.resolve(reference).pipe(asError);
-    if (sessionId !== projectChatSessionId(projectPath)) {
+    const ownChat = global
+      ? isCakeChatSessionId(sessionId)
+      : sessionId === projectChatSessionId(scope);
+    if (!ownChat) {
       const session = yield* lookup({ sessionId }).pipe(asError);
-      if (session.projectPath !== projectPath)
+      if (!global && session.projectPath !== scope)
         return yield* new ProjectError({
           operation: "projectTodoAssociations",
           message: "Associated work must belong to this Project Chat's project",
@@ -95,12 +103,12 @@ const validate = Effect.fn("ProjectTodos.validateAssociations")(function* (
 });
 
 export const list = Effect.fn("ProjectTodos.listForAgent")(function* (
-  projectPath: string,
+  scope: string,
   request: ProjectTodoListInput,
 ) {
   const input = yield* Schema.decodeUnknownEffect(ProjectTodoListInput)(request).pipe(asError);
   const query = input.query?.toLowerCase();
-  const value = yield* todos.list(projectPath);
+  const value = yield* todos.list(scope);
   const page = agentListPage(
     value.items.filter(
       (item) =>
@@ -116,7 +124,7 @@ export const list = Effect.fn("ProjectTodos.listForAgent")(function* (
     revision: item.revision,
   });
   if (input.view !== "reconciliation") return { ...page, items: page.items.map(summary) };
-  const joined = yield* join(projectPath, page.items);
+  const joined = yield* join(scope, page.items);
   return {
     ...page,
     items: joined.map(({ item, sessions }) => ({
@@ -126,34 +134,31 @@ export const list = Effect.fn("ProjectTodos.listForAgent")(function* (
   };
 });
 
-export const read = Effect.fn("ProjectTodos.readForAgent")(function* (
-  projectPath: string,
-  id: string,
-) {
-  const item = yield* todos.read(projectPath, id);
-  const [joined] = yield* join(projectPath, [item]);
+export const read = Effect.fn("ProjectTodos.readForAgent")(function* (scope: string, id: string) {
+  const item = yield* todos.read(scope, id);
+  const [joined] = yield* join(scope, [item]);
   return { ...item, sessions: joined?.sessions ?? [] };
 });
 
 export const updateMany = Effect.fn("ProjectTodos.updateManyWithAssociations")(function* (
-  projectPath: string,
+  scope: string,
   request: readonly ProjectTodoUpdate[],
 ) {
   const inputs = yield* Schema.decodeUnknownEffect(ProjectTodoUpdates)(request).pipe(asError);
   const canonical = yield* Effect.forEach(inputs, (input) =>
     Effect.gen(function* () {
       return input.associations
-        ? { ...input, associations: yield* validate(projectPath, input.associations) }
+        ? { ...input, associations: yield* validate(scope, input.associations) }
         : input;
     }),
   );
   const changesWork = canonical.filter((input) => input.state === undefined);
-  const current = changesWork.length ? (yield* todos.list(projectPath)).items : [];
+  const current = changesWork.length ? (yield* todos.list(scope)).items : [];
   const candidates = changesWork.flatMap((input) => {
     const item = current.find((item) => item.id === input.id);
     return item?.state === "open" ? [{ ...item, ...input }] : [];
   });
-  const joined = yield* join(projectPath, candidates);
+  const joined = yield* join(scope, candidates);
   const resolved = new Set(
     joined
       .filter(
@@ -161,18 +166,18 @@ export const updateMany = Effect.fn("ProjectTodos.updateManyWithAssociations")(f
       )
       .map(({ item }) => item.id),
   );
-  yield* todos.updateMany(projectPath, canonical, false, resolved);
-  yield* completeLinked(projectPath);
-  return yield* Effect.forEach(canonical, (input) => todos.read(projectPath, input.id));
+  yield* todos.updateMany(scope, canonical, false, resolved);
+  yield* completeLinked(scope);
+  return yield* Effect.forEach(canonical, (input) => todos.read(scope, input.id));
 });
 
 export const create = Effect.fn("ProjectTodos.createWithAssociations")(function* (
-  projectPath: string,
+  scope: string,
   request: ProjectTodoCreate,
 ) {
   const input = yield* Schema.decodeUnknownEffect(ProjectTodoCreate)(request).pipe(asError);
-  const associations = yield* validate(projectPath, input.associations ?? []);
-  const [joined] = yield* join(projectPath, [
+  const associations = yield* validate(scope, input.associations ?? []);
+  const [joined] = yield* join(scope, [
     {
       ...input,
       associations,
@@ -185,16 +190,16 @@ export const create = Effect.fn("ProjectTodos.createWithAssociations")(function*
   const resolved = Boolean(
     joined?.sessions.length && joined.sessions.every((session) => session.resolved === true),
   );
-  const item = yield* todos.create(projectPath, { ...input, associations }, resolved);
-  yield* completeLinked(projectPath);
-  return yield* todos.read(projectPath, item.id);
+  const item = yield* todos.create(scope, { ...input, associations }, resolved);
+  yield* completeLinked(scope);
+  return yield* todos.read(scope, item.id);
 });
 export const update = Effect.fn("ProjectTodos.updateWithAssociations")(function* (
-  projectPath: string,
+  scope: string,
   request: ProjectTodoUpdate,
 ) {
   const input = yield* Schema.decodeUnknownEffect(ProjectTodoUpdate)(request).pipe(asError);
-  const [item] = yield* updateMany(projectPath, [input]);
+  const [item] = yield* updateMany(scope, [input]);
   if (!item)
     return yield* new ProjectError({
       operation: "projectTodoAssociations",

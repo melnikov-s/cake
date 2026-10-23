@@ -113,7 +113,10 @@ it.effect(
         using sidePanel = mount(createStore(SideChatStore, {}));
         using store = mount(
           createStore(ProjectTodosStore, {
-            project: () => catalog.find(project),
+            list: () => {
+              const owner = catalog.find(project);
+              return owner && { scope: project, chat: "Project Chat" as const, owner };
+            },
             sidePanel: () => sidePanel,
           }),
         );

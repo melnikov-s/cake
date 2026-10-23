@@ -26,10 +26,18 @@ import { sessionDirectoryPath } from "../../../src/services/storage/session-file
 import { upsertProject } from "../../../src/domain/application/application";
 import * as todos from "../../../src/domain/projects/projectTodos";
 import * as controls from "../../../src/domain/projects/projectTodoAssociations";
-import { completeLinked, join } from "../../../src/domain/projects/projectTodoResolution";
+import {
+  completeLinked,
+  completeLinkedForProject,
+  join,
+  recordLifecycle,
+} from "../../../src/domain/projects/projectTodoResolution";
+import { splitProjectTodoReminder } from "../../../src/contracts/projects/project-todo-context";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { createProjectTodoOperations } from "../../../src/domain/projects/project-todo-operations";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import {
+  CAKE_CHAT_TODO_SCOPE,
   ProjectTodoList,
   type ProjectTodoControl,
 } from "../../../src/contracts/projects/project-todos";
@@ -72,6 +80,7 @@ function fixture(
         }),
     }),
     Layer.mock(SessionFamilyStorage, {
+      familyForMember: () => Effect.succeed(undefined),
       state: () =>
         Effect.sync(() => {
           reads.family++;
@@ -505,6 +514,75 @@ it.effect(
         result: { receipts: [{ revision: 3, committed: true }] },
       });
       expect(registry.help()).toContain("todos");
+    }).pipe(Effect.provide(f.layer));
+  },
+);
+
+it.effect(
+  "global Cake Chat keeps its own list, links work in any project and closes it on resolution",
+  () => {
+    const f = fixture([worker]);
+    return Effect.gen(function* () {
+      yield* upsertProject(project, "Project");
+      yield* upsertProject("/other", "Other");
+      // A worker owned by a Project is accepted in the global list with its canonical parent.
+      const reviewed = yield* controls.create(CAKE_CHAT_TODO_SCOPE, {
+        title: "Review worker",
+        description: "Review the worker report.",
+        associations: [
+          {
+            kind: "subagent",
+            parentSessionId: "00000011",
+            handleId: worker.handleId,
+            title: "Investigator",
+          },
+        ],
+      });
+      expect(reviewed.associations[0]).toMatchObject({ kind: "subagent", parentSessionId: a });
+      const child = yield* todos.create(CAKE_CHAT_TODO_SCOPE, {
+        title: "Child work",
+        description: "Finish the child session.",
+        associations: [link(b)],
+      });
+      const elsewhere = yield* todos.create("/other", {
+        title: "Not this project's family",
+        description: "A Project list only counts its own families.",
+        associations: [link(b)],
+      });
+      expect((yield* todos.list(project)).items).toEqual([]);
+      expect((yield* controls.list(CAKE_CHAT_TODO_SCOPE, {})).items.map((i) => i.title)).toEqual([
+        "Review worker",
+        "Child work",
+      ]);
+
+      // Resolving the family root in /project closes the global item, not a foreign Project's.
+      f.resolved.add(root);
+      yield* completeLinkedForProject(project);
+      yield* completeLinked("/other");
+      expect((yield* todos.read(CAKE_CHAT_TODO_SCOPE, child.id)).completion?.by).toBe("sessions");
+      expect((yield* todos.read(CAKE_CHAT_TODO_SCOPE, reviewed.id)).state).toBe("open");
+      expect((yield* todos.read("/other", elsewhere.id)).state).toBe("open");
+
+      // The global list hears lifecycle changes only for sessions it links.
+      const sessionChanges = (scope: string) =>
+        todos
+          .list(scope)
+          .pipe(
+            Effect.map((value) =>
+              value.pending.flatMap((entry) =>
+                entry._tag === "SessionState" ? [entry.sessionId] : [],
+              ),
+            ),
+          );
+      yield* recordLifecycle(project, a, true);
+      yield* recordLifecycle(project, b, true);
+      expect(yield* sessionChanges(project)).toEqual([a, b]);
+      expect(yield* sessionChanges(CAKE_CHAT_TODO_SCOPE)).toEqual([b]);
+
+      // Its user-change reminder is labelled for Cake Chat and stays an application boundary.
+      const prepared = yield* todos.prepareForChat(CAKE_CHAT_SESSION_ID, "Continue");
+      expect(prepared.startsWith("<system-reminder>\nCake Chat user changes.")).toBe(true);
+      expect(splitProjectTodoReminder(prepared).text).toBe("Continue");
     }).pipe(Effect.provide(f.layer));
   },
 );

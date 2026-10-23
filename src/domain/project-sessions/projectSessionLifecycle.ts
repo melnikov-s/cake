@@ -1,5 +1,5 @@
 import { Effect, Stream } from "effect";
-import { completeLinked, recordLifecycle } from "../projects/projectTodoResolution";
+import { completeLinkedForProject, recordLifecycle } from "../projects/projectTodoResolution";
 import {
   ResolutionRejected,
   ResolutionCleanupFailed,
@@ -148,7 +148,7 @@ const archiveAuthority = Effect.fn("ProjectSessions.archiveAuthority")(function*
     if (afterCommit) yield* afterCommit;
     if (namespace === "active")
       yield* recordLifecycle(location.projectPath, sessionId, true).pipe(asError(operation));
-    yield* completeLinked(location.projectPath).pipe(asError(operation));
+    yield* completeLinkedForProject(location.projectPath).pipe(asError(operation));
   }).pipe(Effect.uninterruptible);
 });
 

@@ -6,7 +6,8 @@ import { ProjectError } from "../../contracts/projects/project-error";
 export const ProjectTodoRpc = RpcGroup.make(
   Rpc.make("projectTodos.mutateUser", {
     payload: Schema.Struct({
-      projectPath: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4096)),
+      /** A registered Project path, or CAKE_CHAT_TODO_SCOPE for global Cake Chat's own list. */
+      scope: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4096)),
       mutation: ProjectTodoUserMutation,
     }),
     success: ProjectTodos,

@@ -577,8 +577,13 @@ export const makeApplicationStorageLive = (userDataDirectory: string) =>
           Effect.mapError((cause) => new ApplicationDecodeError({ message: cause.message })),
         );
         let repaired = false;
+        // A selection lives only while a to-do panel is open, and none is open at startup.
+        const cakeChatTodos =
+          decoded.cakeChatTodos && clearProjectTodoSelection(decoded.cakeChatTodos, randomUUID);
+        if (cakeChatTodos !== decoded.cakeChatTodos) repaired = true;
         const state = {
           ...decoded,
+          ...(cakeChatTodos ? { cakeChatTodos } : null),
           projects: decoded.projects.map((project) => {
             if (!project.todos) return project;
             // A selection lives only while a to-do panel is open, and none is open at startup.

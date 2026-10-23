@@ -107,7 +107,7 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     return this.props.catalog.managedWorktree(workingDirectory);
   }
 
-  /** A to-do selection is shown only while its Project Chat is focused with the to-do panel open. */
+  /** A to-do selection is shown only while its chat (a Project Chat or global Cake Chat) is focused with the to-do panel open. */
   isSessionAssociatedWithSelectedTodo(sessionId: string) {
     const conversation = this.props.selectedConversation?.();
     const selected =

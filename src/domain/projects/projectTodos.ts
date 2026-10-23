@@ -8,9 +8,14 @@ import {
   splitSessionDigestReminder,
 } from "../../contracts/cake-chats/session-digest-reminder";
 import { ApplicationState } from "../../services/storage/ApplicationState";
+import type { ApplicationState as ApplicationStateValue } from "../../contracts/application/application-data";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import { ProjectError } from "../../contracts/projects/project-error";
 import {
+  CAKE_CHAT_TODO_SCOPE,
   emptyProjectTodos,
+  isCakeChatTodoScope,
+  todoChatForScope,
   ProjectTodoUpdates,
   type ProjectTodo,
   projectTodoReminder,
@@ -66,48 +71,59 @@ function conflict(item: ProjectTodo, input: ProjectTodoUpdate) {
   );
 }
 
-/** All edits serialize against the existing ApplicationStorage authority; no parallel queue/file. */
+/** The stored list for a scope: a registered Project's list or global Cake Chat's own list. */
+function stored(state: ApplicationStateValue, scope: string) {
+  if (isCakeChatTodoScope(scope)) return state.cakeChatTodos ?? emptyProjectTodos();
+  return state.projects.find((item) => item.path === scope)?.todos;
+}
+
+/** All edits serialize against the existing ApplicationStorage authority; no parallel queue/file.
+ * `scope` is a registered Project path or CAKE_CHAT_TODO_SCOPE for global Cake Chat. */
 const change = Effect.fn("ProjectTodos.change")(function* (
-  projectPath: string,
+  scope: string,
   transition: (todos: ProjectTodos) => Effect.Effect<ProjectTodos, ProjectError>,
 ) {
   const application = yield* ApplicationState;
   const next = yield* application
     .transact((current) =>
       Effect.gen(function* () {
-        const project = current.projects.find((item) => item.path === projectPath);
-        if (!project) return yield* error("Unknown registered project");
+        const global = isCakeChatTodoScope(scope);
+        if (!global && !current.projects.some((item) => item.path === scope))
+          return yield* error("Unknown registered project");
         const todos = clearCompletedProjectTodoSelection(
-          yield* transition(project.todos ?? emptyProjectTodos()),
+          yield* transition(stored(current, scope) ?? emptyProjectTodos()),
           randomUUID,
         );
-        return {
-          ...current,
-          projects: current.projects.map((item) =>
-            item.path === projectPath ? { ...item, todos } : item,
-          ),
-        };
+        return global
+          ? { ...current, cakeChatTodos: todos }
+          : {
+              ...current,
+              projects: current.projects.map((item) =>
+                item.path === scope ? { ...item, todos } : item,
+              ),
+            };
       }),
     )
     .pipe(mapError);
-  return next.projects.find((item) => item.path === projectPath)?.todos ?? emptyProjectTodos();
+  return stored(next, scope) ?? emptyProjectTodos();
 });
 
-export const list = Effect.fn("ProjectTodos.list")(function* (projectPath: string) {
+export const list = Effect.fn("ProjectTodos.list")(function* (scope: string) {
   const application = yield* ApplicationState;
-  const project = application.snapshot().projects.find((item) => item.path === projectPath);
-  if (!project) return yield* error("Unknown registered project");
-  return project.todos ?? emptyProjectTodos();
+  const state = application.snapshot();
+  if (!isCakeChatTodoScope(scope) && !state.projects.some((item) => item.path === scope))
+    return yield* error("Unknown registered project");
+  return stored(state, scope) ?? emptyProjectTodos();
 });
 
-export const read = Effect.fn("ProjectTodos.read")(function* (projectPath: string, id: string) {
-  const item = (yield* list(projectPath)).items.find((item) => item.id === id);
-  if (!item) return yield* error("Unknown to-do in this project");
+export const read = Effect.fn("ProjectTodos.read")(function* (scope: string, id: string) {
+  const item = (yield* list(scope)).items.find((item) => item.id === id);
+  if (!item) return yield* error("Unknown to-do in this list");
   return item;
 });
 
 export const create = Effect.fn("ProjectTodos.create")(function* (
-  projectPath: string,
+  scope: string,
   request: ProjectTodoCreate,
   resolved = false,
 ) {
@@ -121,7 +137,7 @@ export const create = Effect.fn("ProjectTodos.create")(function* (
     revision: 0,
     ...(resolved ? { completion: { revision: 0, by: "sessions" as const } } : null),
   };
-  yield* change(projectPath, (value) =>
+  yield* change(scope, (value) =>
     value.items.length >= 1000
       ? Effect.fail(error("To-do list is full"))
       : Effect.succeed({ ...value, items: [...value.items, item] }),
@@ -130,29 +146,29 @@ export const create = Effect.fn("ProjectTodos.create")(function* (
 });
 
 export const update = Effect.fn("ProjectTodos.update")(function* (
-  projectPath: string,
+  scope: string,
   request: ProjectTodoUpdate,
   user = false,
 ) {
-  const [item] = yield* updateMany(projectPath, [request], user);
-  if (!item) return yield* error("Unknown to-do in this project");
+  const [item] = yield* updateMany(scope, [request], user);
+  if (!item) return yield* error("Unknown to-do in this list");
   return item;
 });
 
 /** Validate and commit the whole bounded batch in one storage transaction, or write nothing. */
 export const updateMany = Effect.fn("ProjectTodos.updateMany")(function* (
-  projectPath: string,
+  scope: string,
   requests: readonly ProjectTodoUpdate[],
   user = false,
   resolved: ReadonlySet<string> = new Set(),
 ) {
   const inputs = yield* Schema.decodeUnknownEffect(ProjectTodoUpdates)(requests).pipe(mapError);
-  const next = yield* change(projectPath, (value) =>
+  const next = yield* change(scope, (value) =>
     Effect.gen(function* () {
       let result = value;
       for (const input of inputs) {
         const item = result.items.find((item) => item.id === input.id);
-        if (!item) return yield* error("Unknown to-do in this project");
+        if (!item) return yield* error("Unknown to-do in this list");
         // Only a redundant done is special: a redundant open still commits a revision, so an
         // explicit "keep open" beats a racing automatic completion.
         const alreadyDone = input.state === "done" && item.state === "done";
@@ -205,11 +221,11 @@ export const updateMany = Effect.fn("ProjectTodos.updateMany")(function* (
  * No write/publication for a repeated reconciliation with no candidates.
  */
 export const completeResolved = Effect.fn("ProjectTodos.completeResolved")(function* (
-  projectPath: string,
+  scope: string,
   candidates: readonly Pick<ProjectTodo, "id" | "revision">[],
 ) {
   if (!candidates.length) return;
-  yield* change(projectPath, (value) => {
+  yield* change(scope, (value) => {
     let result = value;
     for (const candidate of candidates) {
       const item = result.items.find((item) => item.id === candidate.id);
@@ -246,24 +262,24 @@ function enqueue(value: ProjectTodos, entry: ProjectTodoUserChange): ProjectTodo
 }
 
 export const mutateUser = Effect.fn("ProjectTodos.mutateUser")(function* (
-  projectPath: string,
+  scope: string,
   request: ProjectTodoUserMutation,
 ) {
   const input = yield* Schema.decodeUnknownEffect(ProjectTodoUserMutation)(request).pipe(mapError);
   if (input._tag === "SetState") {
     yield* update(
-      projectPath,
+      scope,
       { id: input.id, expectedRevision: input.expectedRevision, state: input.state },
       true,
     );
-    return yield* list(projectPath);
+    return yield* list(scope);
   }
-  return yield* change(projectPath, (value) => {
+  return yield* change(scope, (value) => {
     if (
       input.selectedId !== null &&
       !value.items.some((item) => item.id === input.selectedId && item.state === "open")
     )
-      return Effect.fail(error("Select an open to-do in this project"));
+      return Effect.fail(error("Select an open to-do in this list"));
     return Effect.succeed(
       value.selectedId === input.selectedId
         ? value
@@ -285,7 +301,7 @@ function sessionDescription(brief: string, title: string): string {
 /** Creation bookkeeping, serialized by the same authority as manual edits.
  * Stable identity keeps retries idempotent even after an agent edits the links. */
 export const ensureSession = Effect.fn("ProjectTodos.ensureSession")(function* (
-  projectPath: string,
+  scope: string,
   sessionId: string,
   title: string,
   brief: string,
@@ -294,7 +310,7 @@ export const ensureSession = Effect.fn("ProjectTodos.ensureSession")(function* (
   const id = `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-8${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
   const name = title.trim().slice(0, 512).trim() || "New Project Session";
   const description = sessionDescription(brief, name);
-  yield* change(projectPath, (value) => {
+  yield* change(scope, (value) => {
     if (
       value.items.some(
         (item) =>
@@ -324,12 +340,12 @@ export const ensureSession = Effect.fn("ProjectTodos.ensureSession")(function* (
 
 /** Call only after native lifecycle authority confirms an actual transition (UI or tool). */
 export const recordSessionChange = Effect.fn("ProjectTodos.recordSessionChange")(function* (
-  projectPath: string,
+  scope: string,
   sessionId: string,
   title: string,
   resolved: boolean,
 ) {
-  yield* change(projectPath, (value) =>
+  yield* change(scope, (value) =>
     Effect.succeed(
       enqueue(value, {
         _tag: "SessionState",
@@ -344,11 +360,11 @@ export const recordSessionChange = Effect.fn("ProjectTodos.recordSessionChange")
 
 /** Read-only preparation. Only consumed durable originals can acknowledge this receipt. */
 export const prepareUserContext = Effect.fn("ProjectTodos.prepareUserContext")(function* (
-  projectPath: string,
+  scope: string,
   text: string,
 ) {
-  const value = yield* list(projectPath);
-  const reminder = projectTodoReminder(value);
+  const value = yield* list(scope);
+  const reminder = projectTodoReminder(value, todoChatForScope(scope));
   const digest = splitSessionDigestReminder(text);
   return {
     text: addSessionDigestReminder(
@@ -359,28 +375,36 @@ export const prepareUserContext = Effect.fn("ProjectTodos.prepareUserContext")(f
   };
 });
 
-export const prepareForChat = Effect.fn("ProjectTodos.prepareForChat")(function* (
-  sessionId: string,
-  text: string,
-) {
-  if (!sessionId.startsWith("project-chat:")) return text;
+/** The to-do list owned by a permanent chat, if that chat keeps one. */
+const scopeForChat = Effect.fn("ProjectTodos.scopeForChat")(function* (sessionId: string) {
+  if (sessionId === CAKE_CHAT_SESSION_ID) return CAKE_CHAT_TODO_SCOPE;
+  if (!sessionId.startsWith("project-chat:")) return undefined;
   const application = yield* ApplicationState;
   const project = application
     .snapshot()
     .projects.find((item) => projectChatSessionId(item.path) === sessionId);
   if (!project) return yield* error("Unknown Project Chat");
-  return (yield* prepareUserContext(project.path, text)).text;
+  return project.path;
+});
+
+export const prepareForChat = Effect.fn("ProjectTodos.prepareForChat")(function* (
+  sessionId: string,
+  text: string,
+) {
+  const scope = yield* scopeForChat(sessionId);
+  if (scope === undefined) return text;
+  return (yield* prepareUserContext(scope, text)).text;
 });
 
 export const acknowledge = Effect.fn("ProjectTodos.acknowledge")(function* (
-  projectPath: string,
+  scope: string,
   receipt: ProjectTodoContextReceipt,
 ) {
   const matches = (value: ProjectTodos) =>
     value.deliveryToken === receipt.token && value.sequence === receipt.sequence;
-  const value = yield* list(projectPath);
+  const value = yield* list(scope);
   if (!value.pending.length || !matches(value)) return;
-  yield* change(projectPath, (current) =>
+  yield* change(scope, (current) =>
     Effect.succeed(matches(current) ? { ...current, pending: [], deliveryToken: null } : current),
   );
 });

@@ -14,6 +14,7 @@ import { WorkflowCatalog } from "./WorkflowCatalog";
 import { ScheduledMessageCatalog } from "./ScheduledMessageCatalog";
 import { CakeChatControls } from "./CakeChatControls";
 import { ExperimentalFeatures } from "./ExperimentalFeatures";
+import { CakeChatTodoList } from "./CakeChatTodoList";
 
 /** Owns the authoritative data projections currently loaded in one renderer window. */
 export class RootProjection extends Model {
@@ -21,6 +22,7 @@ export class RootProjection extends Model {
   @child(Resource) resources: Resource[] = observable([]);
   @child(ProjectCatalog) projects = ProjectCatalog.create();
   @child(ExperimentalFeatures) experimentalFeatures = ExperimentalFeatures.create();
+  @child(CakeChatTodoList) cakeChatTodos = CakeChatTodoList.create();
   @child(SessionCatalog) sessionCatalog = SessionCatalog.create();
   @child(WorktreeCatalog) worktrees = WorktreeCatalog.create();
   @child(WorktreeOperationCatalog) worktreeOperations = WorktreeOperationCatalog.create();

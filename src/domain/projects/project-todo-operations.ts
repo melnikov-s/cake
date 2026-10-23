@@ -10,6 +10,8 @@ import {
   ProjectTodoUpdates,
   ProjectTodoReceipt,
   PROJECT_TODO_AUTO_COMPLETION_RULE,
+  PROJECT_TODO_CLOSING_RULE,
+  PROJECT_TODO_CREATION_RULE,
   PROJECT_TODO_LINK_GUIDANCE,
   projectTodoCompletionSummary,
   type ProjectTodoControl,
@@ -20,10 +22,10 @@ export function createProjectTodoOperations(
 ): CakeOperationDefinition[] {
   const guidance = [
     `${PROJECT_TODO_AUTO_COMPLETION_RULE} Run sessions.resolve, then edit only title/description/status if needed.`,
-    "Lightweight Project Chat commitments. Actual new Project Sessions receive one linked item; update rather than duplicate it. No polling/wakes merely for open items.",
+    `${PROJECT_TODO_CREATION_RULE} No polling/wakes merely for open items.`,
     "Default list is title/id/state/revision only. For reconciliation use ONE todos.list with state=open, view=reconciliation (max 50), then ONE todos.update-many with expectedRevision per item. Page with nextOffset. No transcript reads or per-session inspection needed.",
     "Reconciliation sessions contain canonical required session IDs and authoritative effective resolved (null means unknown), not execution done/stopped. All actual session associations must resolve before automatic closure, including historical items and late associations. Source/report links are context: they never veto completion and source-only discussion items remain open. Reports/run completion never close items.",
-    "Restore never reopens items. Explicit user done is preserved. To-do edits never resolve/restore, stop, delete or merge sessions. Cake reconciles linked Open items automatically; no assistant update, report acknowledgment, polling or wake is required.",
+    `${PROJECT_TODO_CLOSING_RULE} Restore never reopens items. Explicit user done is preserved. To-do edits never resolve/restore, stop, delete or merge sessions. Cake reconciles linked Open items automatically; no assistant update, report acknowledgment, polling or wake is required.`,
     "Read details by ID only when needed. Pass expectedRevision; on revision conflict reread; preserve explicit user closure/reopen. state=done on an already-done item is a no-op for state: alone it commits nothing; other edits still apply, including when the only change since your revision was that completion (for example by sessions.resolve). The receipt note says why it was already done; any other intervening change is a conflict. Association updates replace the complete merged list. Mutations return compact committed receipts; detail=true opts into content.",
     "Only on a user compaction request, collect the requested items’ session associations (including session IDs in cake://session source/message/report links) and use sessions.compact-batch. Report unlinked items and per-session outcomes. Done is not session resolution and never automatically triggers compaction.",
   ] as const;
@@ -110,7 +112,7 @@ export function createProjectTodoOperations(
     {
       command: "todos.create",
       topic: "todos",
-      summary: "Create a commitment with a short durable brief.",
+      summary: "Track a request not settled in the same reply, with a short durable brief.",
       guidance: [
         guidance[1],
         PROJECT_TODO_LINK_GUIDANCE,

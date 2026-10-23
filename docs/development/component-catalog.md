@@ -158,7 +158,8 @@ are renderer presentation only: Cake Chat still admits opaque input references,
 not image payloads, to its model context.
 
 `NavItem.associated` and `SessionListItem.associated` share a faint tinted, dashed-outline
-relationship cue for the selected Project Chat to-do and its linked sidebar sessions.
+relationship cue for the selected Project Chat or global Cake Chat to-do and its linked
+sidebar sessions.
 This is not navigation selection: active/selected rows keep their stronger treatment,
 while association leaves action semantics, hover and keyboard focus intact. Subagent work links
 use `cake://subagent/<encoded-parent>/<public-handle>` and the shared Markdown navigation to

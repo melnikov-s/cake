@@ -38,6 +38,7 @@ import type { InterviewStore } from "../stores/InterviewStore";
 import type { InlineArtifactPreviewStore } from "../stores/InlineArtifactPreviewStore";
 import type { MessageCommentsStore, MessageSelectionAnchor } from "../stores/MessageCommentsStore";
 import type { SubagentActivityStore } from "../stores/SubagentActivityStore";
+import type { ProjectTodosStore } from "../stores/ProjectTodosStore";
 import type { SideChatTarget } from "../stores/SideChatStore";
 import type { MessageCommentAnchorRect } from "./message-comment-anchor";
 import { describeScheduledOrigin } from "../../utils/scheduled-message-time";
@@ -297,6 +298,8 @@ export interface ChatTranscriptBehavior {
   interviews?: readonly InterviewStore[];
   messageComments?: MessageCommentsStore;
   subagents?: SubagentActivityStore;
+  /** The chat's to-do list; result messages offer a one-click Done for linked open to-dos. */
+  todos?: ProjectTodosStore;
   /** Hides the response fullscreen affordance for compact, transient chats. */
   showAssistantFullscreen?: boolean;
   showSelectionContextMenu?(input: {

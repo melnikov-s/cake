@@ -1,4 +1,7 @@
 import type { Project } from "../models/Project";
+import type { CakeChatTodoList } from "../models/CakeChatTodoList";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
+import { CAKE_CHAT_TODO_SCOPE } from "../../contracts/projects/project-todos";
 import { parseScheduledMessage } from "../../utils/scheduled-message-time";
 import { ProjectTodosStore } from "./ProjectTodosStore";
 import { Store, child, createStore, snapshot } from "r-state-tree";
@@ -32,6 +35,8 @@ import { ConversationModeContext, conversationModeTarget } from "./ConversationM
 export interface CakeChatSessionStoreProps {
   sessionId: string;
   project?(): Project | undefined;
+  /** Global Cake Chat's own to-do list; only the global chat uses it. */
+  cakeChatTodos?(): CakeChatTodoList | undefined;
   model: Conversation;
   artifactModel: ArtifactCatalog;
   controls: CakeChatControls;
@@ -163,8 +168,16 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
   @child
   get todos(): ProjectTodosStore {
     return createStore(ProjectTodosStore, {
-      project: () =>
-        this.sessionId.startsWith("project-chat:") ? this.props.project?.() : undefined,
+      list: () => {
+        if (this.sessionId === CAKE_CHAT_SESSION_ID) {
+          const owner = this.props.cakeChatTodos?.();
+          return owner && { scope: CAKE_CHAT_TODO_SCOPE, chat: "Cake Chat" as const, owner };
+        }
+        const project = this.sessionId.startsWith("project-chat:")
+          ? this.props.project?.()
+          : undefined;
+        return project && { scope: project.path, chat: "Project Chat" as const, owner: project };
+      },
       sidePanel: () => this.conversationSessionStore.sideChatStore,
     });
   }

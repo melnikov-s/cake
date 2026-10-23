@@ -18,7 +18,11 @@ import * as sessionReferences from "../project-sessions/sessionReferences";
 import * as projects from "../projects/projects";
 import * as projectTodoAssociations from "../projects/projectTodoAssociations";
 import * as projectTodos from "../projects/projectTodos";
-import { emptyProjectTodos, projectTodoBaseline } from "../../contracts/projects/project-todos";
+import {
+  CAKE_CHAT_TODO_SCOPE,
+  emptyProjectTodos,
+  projectTodoBaseline,
+} from "../../contracts/projects/project-todos";
 import { projectTodoReceipt } from "../../contracts/projects/project-todo-context";
 import { splitSessionDigestReminder } from "../../contracts/cake-chats/session-digest-reminder";
 import * as projectChatInstructions from "../projects/projectChatInstructions";
@@ -276,6 +280,8 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
         target.sessionId !== CAKE_CHAT_SESSION_ID,
     );
   const title = project ? `${project.name} / Project Chat` : "Cake Chat";
+  /** Project Chat edits its Project's to-do list; global Cake Chat keeps its own list. */
+  const todoScope = project?.path ?? CAKE_CHAT_TODO_SCOPE;
   const modelPresets = () => cakeModelCatalog(application.snapshot());
   const getRuntimeOptions = () => runtimeOptions;
   const browserRequest = async (
@@ -381,14 +387,12 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
     }),
     runtime: {
       cwd: configuration.location.workingDirectory,
-      onCakeChatInputConsumed: project
-        ? (text, signal) => {
-            const receipt = projectTodoReceipt(splitSessionDigestReminder(text).text);
-            return receipt === undefined
-              ? Promise.resolve()
-              : run(projectTodos.acknowledge(project.path, receipt), { signal });
-          }
-        : undefined,
+      onCakeChatInputConsumed: (text, signal) => {
+        const receipt = projectTodoReceipt(splitSessionDigestReminder(text).text);
+        return receipt === undefined
+          ? Promise.resolve()
+          : run(projectTodos.acknowledge(todoScope, receipt), { signal });
+      },
       cakeChatSystemPrompt: project
         ? () =>
             [
@@ -407,7 +411,11 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
             ]
               .filter(Boolean)
               .join("\n\n")
-        : undefined,
+        : () =>
+            projectTodoBaseline(
+              application.snapshot().cakeChatTodos ?? emptyProjectTodos(),
+              "Cake Chat",
+            ),
       sessionReferences: {
         resolve: (reference, signal) => run(sessionReferences.resolve(reference), { signal }),
         project: (value, signal) => run(sessionReferences.project(value), { signal }),
@@ -498,19 +506,17 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
             get: (signal) => run(getCakeChatInstructions(), { signal }),
             update: (input, signal) => run(updateCakeChatInstructions(input), { signal }),
           },
-      projectTodos: project
-        ? {
-            list: (input, signal) =>
-              run(projectTodoAssociations.list(project.path, input), { signal }),
-            read: (id, signal) => run(projectTodoAssociations.read(project.path, id), { signal }),
-            create: (input, signal) =>
-              run(projectTodoAssociations.create(project.path, input), { signal }),
-            update: (input, signal) =>
-              run(projectTodoAssociations.update(project.path, input), { signal }),
-            updateMany: (input, signal) =>
-              run(projectTodoAssociations.updateMany(project.path, input), { signal }),
-          }
-        : undefined,
+      // Project Chat keeps its Project's list; global Cake Chat keeps its own separate list.
+      projectTodos: {
+        list: (input, signal) => run(projectTodoAssociations.list(todoScope, input), { signal }),
+        read: (id, signal) => run(projectTodoAssociations.read(todoScope, id), { signal }),
+        create: (input, signal) =>
+          run(projectTodoAssociations.create(todoScope, input), { signal }),
+        update: (input, signal) =>
+          run(projectTodoAssociations.update(todoScope, input), { signal }),
+        updateMany: (input, signal) =>
+          run(projectTodoAssociations.updateMany(todoScope, input), { signal }),
+      },
       projectChatInstructions: {
         get: (input, signal) => run(projectChatInstructions.get(input, project?.path), { signal }),
         update: (input, signal) =>

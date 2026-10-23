@@ -425,7 +425,7 @@ it("toggles Project Chat to-dos in the existing side pane, selects/deselects, co
       runtime.runPromise(Effect.map(ApplicationState, (state) => state.snapshot().projects));
     using f = await fixture(async (request) => {
       const value = await runtime.runPromise(
-        projectTodos.mutateUser(request.projectPath, request.mutation),
+        projectTodos.mutateUser(request.scope, request.mutation),
       );
       const projects = await projectSnapshot();
       act(() =>

@@ -3,6 +3,8 @@ import chatGuide from "../../../docs/agent/cake-chat.md?raw";
 import {
   emptyProjectTodos,
   PROJECT_TODO_AUTO_COMPLETION_RULE,
+  PROJECT_TODO_CLOSING_RULE,
+  PROJECT_TODO_CREATION_RULE,
   PROJECT_TODO_LINK_GUIDANCE,
   projectTodoBaseline,
 } from "../../../src/contracts/projects/project-todos";
@@ -87,5 +89,77 @@ describe("application-owned to-do link guidance", () => {
     expect(baseline).toContain(
       "Source/report links do not block completion; source-only items remain open",
     );
+  });
+});
+
+describe("when to-dos are created and closed", () => {
+  const globalBaseline = projectTodoBaseline(emptyProjectTodos(), "Cake Chat");
+
+  it.each([
+    ["Project Chat baseline", baseline],
+    ["global Cake Chat baseline", globalBaseline],
+    ["todos.create.help", registry.operationHelp("todos.create")],
+    ["todos.update.help", registry.operationHelp("todos.update")],
+  ])("%s carries the creation and/or closing rules", (surface, guidance) => {
+    if (surface !== "todos.update.help") expect(guidance).toContain(PROJECT_TODO_CREATION_RULE);
+    if (surface !== "todos.create.help") expect(guidance).toContain(PROJECT_TODO_CLOSING_RULE);
+  });
+
+  it("tracks every unsettled request, including delegated work and brainstorms", () => {
+    for (const requirement of [
+      "Every user request that isn't fully settled in the same reply gets a to-do, created before or as the work starts.",
+      "delegated work of any kind (subagents, background lookups, sessions)",
+      "brainstorms and open-ended discussions",
+      '"look into", "find out", "research" or "come back to me"',
+      "The only exceptions are quick factual answers fully given inline and casual conversation.",
+      "A follow-up on an existing topic updates that item instead of creating a new one.",
+    ]) {
+      expect(PROJECT_TODO_CREATION_RULE).toContain(requirement);
+      expect(chatGuide).toContain(requirement);
+    }
+  });
+
+  it("keeps research open until the user reviewed it, while session-linked items close on resolve", () => {
+    for (const requirement of [
+      "Close a to-do yourself when the work is actually done: the change merged or shipped, the requested operation finished and was checked, or the user said they're satisfied with the outcome.",
+      "Research, investigations, brainstorms and lookups stay open after the report arrives.",
+      'Set the status to "Report delivered; awaiting your review", link the report, and close the to-do only after the user has read it and either said they\'re satisfied or moved on without follow-ups.',
+      "Closing automatically when the linked session is resolved still applies",
+    ]) {
+      expect(PROJECT_TODO_CLOSING_RULE).toContain(requirement);
+      expect(chatGuide).toContain(requirement);
+    }
+    expect(PROJECT_TODO_CLOSING_RULE).toContain(
+      "resolve the session rather than marking the item done by hand",
+    );
+    expect(chatGuide).toContain(PROJECT_TODO_AUTO_COMPLETION_RULE);
+  });
+
+  it("drops the old judgment-based creation guidance everywhere agents read it", () => {
+    for (const surface of [
+      baseline,
+      globalBaseline,
+      chatGuide,
+      ...["todos.list", "todos.create", "todos.update", "todos.update-many"].map((command) =>
+        registry.operationHelp(command),
+      ),
+    ]) {
+      expect(surface).not.toMatch(/discretionary/i);
+      expect(surface).not.toContain("not one per question");
+      expect(surface).not.toContain("one item per question");
+      expect(surface).not.toContain("do not require items");
+      expect(surface).not.toContain("todos.create/update when useful");
+    }
+  });
+
+  it("gives global Cake Chat its own list and documents it", () => {
+    expect(globalBaseline).toContain("## Cake Chat to-dos (application context)");
+    expect(globalBaseline).toContain("separate from every Project Chat's list");
+    expect(baseline).toContain("## Project Chat to-dos (application context)");
+    expect(baseline).not.toContain("separate from every Project Chat's list");
+    expect(chatGuide).toContain(
+      "Project Chat and global Cake Chat (not coding sessions) have `todos.list`",
+    );
+    expect(chatGuide).not.toContain("Project Chat (not global Cake Chat");
   });
 });

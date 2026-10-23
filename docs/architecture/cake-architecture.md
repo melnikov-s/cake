@@ -367,8 +367,10 @@ is a refactoring signal, not precedent.
   local edits, disclosure and side-pane interaction. The To-do toolbar toggle selects
   the same accessory slot/width as side chat, with its existing narrow replacement
   and composer-focus restoration. Actual new Project Sessions get one linked item at
-  start/child/fork boundaries, idempotent by canonical session identity; drafts and private
-  subagents do not. Items have a title, short durable description and freeform progress
+  start/child/fork boundaries, idempotent by canonical session identity. Agent guidance
+  requires an item for every request not settled in the same reply (including subagent work,
+  lookups and brainstorms); research stays open after its report until the user has reviewed
+  it. Items have a title, short durable description and freeform progress
   status. Optional titled session, message, artifact, web and workspace associations use
   shared conversation navigation. Backend lifecycle authority completes linked open items
   once all actual session associations are resolved (UI and tools alike). Metadata-only,
@@ -403,6 +405,18 @@ is a refactoring signal, not precedent.
   its snapshot in that same context block; the shared transcript projects one compact pill
   from the durable input, independent of later selection or lifecycle changes. A bounded
   baseline in Project Chat’s live system context also survives recreation/reset.
+  Result messages (worker reports, Project Session replies/notices and compact completion
+  notices) whose session, subagent or exact-message source links match an open item show a
+  one-click Done chip that uses the same user done/reopen mutation as the pane; user-closed
+  items stay visible there as Done with reopen.
+- **Global Cake Chat to-dos** reuse the same schema, tools, baseline and pane, stored as one
+  separate application-level list (`cakeChatTodos`, scope `CAKE_CHAT_TODO_SCOPE`) rather
+  than inside any Project. Its links may target sessions, workers and messages in any
+  registered Project; its resolution join uses each family's root regardless of Project.
+  Sessions it creates get one linked item in its list in addition to their Project's
+  automatic item. Session resolution reconciles both the session's Project list and this
+  list; lifecycle user-change reminders reach it only for sessions it links. The renderer
+  projects it from the application-state stream into `CakeChatTodoList`.
 - **Conversation navigation**: pane layouts own the focused session and pane-local
   histories within the Project Session and Cake Chat/Project Chat workspaces.
   `AppShellStore` owns the selected workspace and optional Settings/artifact-library

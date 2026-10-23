@@ -245,6 +245,8 @@ const RendererApplicationFields = {
   defaultModelPresetId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
   cakePrompts: CakePromptOverrides,
   cakeChatPreferences: Schema.optionalKey(CakeChatPreferences),
+  /** Global Cake Chat's own to-do list, separate from every Project's list. */
+  cakeChatTodos: Schema.optionalKey(ProjectTodos),
   experimentalFeatures: Schema.optionalKey(ExperimentalFeatures),
   globalCustomInstructions: boundedString(16_384).pipe(
     Schema.withDecodingDefaultKey(Effect.succeed("")),

@@ -1,4 +1,5 @@
 import type { Project } from "../models/Project";
+import type { CakeChatTodoList } from "../models/CakeChatTodoList";
 import { Store, child, createStore, observable } from "r-state-tree";
 import { settledSessionActivity, type SessionActivity } from "../lib/session-activity";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
@@ -31,6 +32,8 @@ export interface CakeChatCollectionStoreProps {
   catalog: CakeChatCatalog;
   artifactModel: ArtifactCatalog;
   projectForChat?(sessionId: string): Project | undefined;
+  /** Global Cake Chat's own to-do list projection. */
+  cakeChatTodos?(): CakeChatTodoList;
   sessionModel(sessionId: string): Conversation;
   controlsModel(sessionId: string): CakeChatControls;
   subagentCatalog(sessionId: string): SubagentCatalog;
@@ -86,6 +89,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
   get registry(): CakeChatRegistryStore {
     return createStore(CakeChatRegistryStore, {
       projectForChat: this.props.projectForChat,
+      cakeChatTodos: this.props.cakeChatTodos,
       sessionModel: this.props.sessionModel,
       artifactModel: this.props.artifactModel,
       controlsModel: this.props.controlsModel,

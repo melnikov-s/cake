@@ -1,4 +1,5 @@
 import type { Project } from "../models/Project";
+import type { CakeChatTodoList } from "../models/CakeChatTodoList";
 import { Store, child, createStore, observable, snapshot } from "r-state-tree";
 import type { CakeChatTarget } from "../../contracts/cake-chats/cake-chat-data";
 import type { ModelPreset } from "../../contracts/conversations/session-contract";
@@ -16,6 +17,7 @@ import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordin
 
 export interface CakeChatRegistryStoreProps {
   projectForChat?(sessionId: string): Project | undefined;
+  cakeChatTodos?(): CakeChatTodoList;
   sessionModel(sessionId: string): Conversation;
   artifactModel: ArtifactCatalog;
   controlsModel(sessionId: string): CakeChatControls;
@@ -49,6 +51,7 @@ export class CakeChatRegistryStore extends Store<CakeChatRegistryStoreProps> {
         key: sessionId,
         sessionId,
         project: () => this.props.projectForChat?.(sessionId),
+        cakeChatTodos: () => this.props.cakeChatTodos?.(),
         model: this.props.sessionModel(sessionId),
         artifactModel: this.props.artifactModel,
         controls: this.props.controlsModel(sessionId),

@@ -90,7 +90,7 @@ const cakeTopics = [
   {
     name: "todos",
     summary:
-      "Discover compact Project Chat commitments, join lifecycle metadata, and commit revision-checked edits.",
+      "Track every unsettled request in this chat's to-do list (Project Chat or global Cake Chat), join lifecycle metadata, and commit revision-checked edits.",
   },
   { name: "context", summary: "Inspect context use or compact the current session." },
   {

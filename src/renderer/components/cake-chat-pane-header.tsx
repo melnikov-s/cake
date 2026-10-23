@@ -72,7 +72,7 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
           onOpen={() => root.navigationStore.focusCakeChatPane(pane.paneId)}
         />
       )}
-      {paneSession.todos.project && !overlay && (
+      {paneSession.todos.available && !overlay && (
         <IconButton
           tooltip="To-do"
           pressedAppearance="subtle"

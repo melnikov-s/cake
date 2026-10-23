@@ -806,6 +806,7 @@ export class RootStore extends Store<{
         )?.projectPath;
         return path ? this.projectCatalogModel.find(path) : undefined;
       },
+      cakeChatTodos: () => this.props.projection.cakeChatTodos,
       artifactModel: this.props.projection.artifacts,
       isSelected: () => this.appShellStore.selection.kind === "cake-chat",
       sessionModel: (sessionId) => this.props.projection.cakeChatConversation(sessionId),

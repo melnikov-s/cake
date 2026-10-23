@@ -9,6 +9,10 @@ import * as metadata from "../../../src/domain/cake-chats/cakeChatMetadata";
 import { configureCakeSessionRuntime } from "../../../src/layers/CakeOperations";
 import { acquireOptions } from "../../../src/domain/cake-chats/cakeChatRuntime";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
+import {
+  PROJECT_TODO_CLOSING_RULE,
+  PROJECT_TODO_CREATION_RULE,
+} from "../../../src/contracts/projects/project-todos";
 import { defaultCakeChatPreferences } from "../../../src/contracts/cake-chats/cake-chat-preferences";
 import { defaultProjectSettings } from "../../../src/contracts/application/application-data";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
@@ -287,9 +291,36 @@ describe("permanent Cake Chat", () => {
           target: { sessionId: CAKE_CHAT_SESSION_ID, tools: [] },
           newSession: false,
         });
-        expect(global.runtime.cakeChatSystemPrompt).toBeUndefined();
-        expect(global.runtime.projectTodos).toBeUndefined();
-        expect(global.runtime.onCakeChatInputConsumed).toBeUndefined();
+        // Global Cake Chat keeps its own to-do list, separate from every Project's list.
+        const globalPrompt = () => global.runtime.cakeChatSystemPrompt?.() ?? "";
+        expect(globalPrompt()).toContain("## Cake Chat to-dos (application context)");
+        expect(globalPrompt()).toContain("separate from every Project Chat's list");
+        expect(globalPrompt()).toContain(PROJECT_TODO_CREATION_RULE);
+        expect(globalPrompt()).toContain(PROJECT_TODO_CLOSING_RULE);
+        expect(globalPrompt()).not.toContain("Project commitment");
+        expect(global.runtime.allowedCakeOperations).toContain("todos.update-many");
+        expect(global.runtime.onCakeChatInputConsumed).toBeDefined();
+        const globalTodos = global.runtime.projectTodos;
+        if (!globalTodos) throw new Error("Expected global Cake Chat to-do controls");
+        const globalTodo = yield* Effect.promise(() =>
+          globalTodos.create(
+            { title: "Global commitment", description: "Global commitment." },
+            todoSignal,
+          ),
+        );
+        expect(globalPrompt()).toContain(globalTodo.id);
+        expect(prompt()).not.toContain("Global commitment");
+        expect(f.state().cakeChatTodos?.items.map((item) => item.title)).toEqual([
+          "Global commitment",
+        ]);
+        expect(f.state().projects[0]?.todos?.items.map((item) => item.title)).toEqual([
+          "Project commitment",
+        ]);
+        expect(
+          (yield* Effect.promise(() => globalTodos.list({}, todoSignal))).items.map(
+            (item) => item.title,
+          ),
+        ).toEqual(["Global commitment"]);
         expect(global.runtime.additionalSystemPrompt).toBeUndefined();
         expect(global.runtime.cakeChatInstructions).toBeDefined();
       }).pipe(Effect.provide(f.layer));

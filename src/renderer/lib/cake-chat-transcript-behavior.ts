@@ -17,6 +17,7 @@ export function cakeChatTranscriptBehaviorFor(
     messageComments: session.messageCommentsStore,
     showSelectionContextMenu: (input) => root.showTranscriptSelectionContextMenu(input),
     subagents: session.subagentActivityStore,
+    todos: session.todos,
     inlineWidgets: root.inlineWidgetStore,
     inlineArtifactPreviews: root.inlineArtifactPreviewStore,
     openSourceLocation: (location) => {
