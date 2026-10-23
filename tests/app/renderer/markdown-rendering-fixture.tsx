@@ -4,6 +4,8 @@ import type { ComponentProps } from "react";
 import { StoreProvider } from "r-state-tree/react";
 import { createHighlighter } from "shiki";
 import { vi } from "vitest";
+import type { DiagramRequest } from "../../../src/renderer/lib/diagram-contract";
+import { renderDiagram } from "../../../src/renderer/lib/diagram-engine";
 import {
   Markdown,
   MarkdownLinkProvider,
@@ -29,8 +31,20 @@ export async function installMarkdownWorker() {
     themes: [...syntaxThemes],
   });
   class InProcessWorker extends EventTarget {
-    postMessage(request: SyntaxHighlightRequest) {
+    private name: string;
+    private stopped = false;
+    constructor(_url: URL, options: WorkerOptions) {
+      super();
+      this.name = options.name ?? "";
+    }
+    postMessage(request: SyntaxHighlightRequest | DiagramRequest) {
       queueMicrotask(() => {
+        if (this.stopped) return;
+        if (this.name === "cake-diagram" && "source" in request) {
+          this.dispatchEvent(new MessageEvent("message", { data: renderDiagram(request) }));
+          return;
+        }
+        if (!("language" in request)) throw new Error("Unexpected worker request");
         const response: SyntaxHighlightResponse = {
           id: request.id,
           result: highlighter.codeToTokens(request.code, {
@@ -41,7 +55,9 @@ export async function installMarkdownWorker() {
         this.dispatchEvent(new MessageEvent("message", { data: response }));
       });
     }
-    terminate() {}
+    terminate() {
+      this.stopped = true;
+    }
   }
   vi.stubGlobal("Worker", InProcessWorker);
   return {

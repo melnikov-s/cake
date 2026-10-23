@@ -32,7 +32,7 @@ describe("Cake-owned conversation components", () => {
     expect(html).toContain("<pre");
   });
 
-  it("loads math and Mermaid rendering through the shared Markdown path", async () => {
+  it("loads math and Pele diagrams through the shared Markdown path", async () => {
     const stream = await renderToReadableStream(
       <Markdown>{"$$\nE = mc^2\n$$\n\n```mermaid\ngraph LR\n  A --> B\n```"}</Markdown>,
     );
@@ -40,7 +40,7 @@ describe("Cake-owned conversation components", () => {
     const html = await new Response(stream).text();
 
     expect(html).toContain("katex");
-    expect(html).toContain('data-streamdown="mermaid-block"');
+    expect(html).toContain('data-diagram="pele"');
   });
 
   it("renders Cake reasoning, tool, and composer props without AI SDK types", () => {

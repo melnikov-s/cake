@@ -4117,6 +4117,55 @@ const rendererCrash: VisualCaptureScenario = {
   region: (page) => page.getByRole("dialog", { name: "Cake encountered an error", exact: true }),
 };
 
+const assistantDiagrams: VisualCaptureScenario = {
+  name: "assistant-diagrams",
+  description: "Pele diagrams in the real virtualized transcript, with zoom and fullscreen",
+  states: ["default", "fullscreen"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    const file = join(
+      workspaceSessionDirectory(paths.project, join(paths.cakeHome, "pi", "sessions")),
+      "1970-01-01T00-00-00-000Z_visual-assistant-markdown-code.jsonl",
+    );
+    const transcript = await readFile(file, "utf8");
+    const diagrams = [
+      "## A review pipeline",
+      "",
+      "```mermaid",
+      "flowchart LR",
+      "A[Draft] --> B[Review] --> C[Build] --> D[Test] --> E[Publish]",
+      "```",
+      "",
+      "Pele keeps Mermaid source syntax, with its own layout and Cake's live theme.",
+      "",
+      "```mermaid",
+      "sequenceDiagram",
+      "participant User",
+      "participant Cake",
+      "User->>Cake: Review diagram",
+      "Cake-->>User: Ready",
+      "```",
+    ].join("\n");
+    await writeFile(
+      file,
+      transcript.replace(JSON.stringify(assistantMarkdown), JSON.stringify(diagrams)),
+    );
+  },
+  async prepare(page, state) {
+    await expect(page.locator("svg.pele")).toHaveCount(2);
+    await page.locator(".transcript").evaluate((element) => element.scrollTo(0, 0));
+    await expect(page.getByRole("heading", { name: "A review pipeline" })).toBeVisible();
+    if (state === "fullscreen") {
+      await page.getByRole("button", { name: "View diagram fullscreen" }).first().click();
+      await expect(page.getByRole("dialog", { name: "Diagram" }).locator("svg.pele")).toBeVisible();
+    }
+  },
+  region: (page, state) =>
+    state === "fullscreen"
+      ? page.getByRole("dialog", { name: "Diagram" })
+      : page.locator(".transcript"),
+};
+
 export const visualCaptureScenarios = [
   rendererCrash,
   workflowChoiceScenario,
@@ -4126,6 +4175,7 @@ export const visualCaptureScenarios = [
   sourceSelectionScenario,
   sessionPluginsScenario,
   assistantMarkdownCode,
+  assistantDiagrams,
   contextPillsScenario,
   sessionMessagesScenario,
   sessionMessageVariantsScenario,

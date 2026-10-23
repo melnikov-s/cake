@@ -61,7 +61,7 @@ export function FullscreenSurface({
   return createPortal(
     // z-45 keeps the surface above all workbench content while staying below
     // the shared z-50 overlay band, so overlays opened from within this surface
-    // (e.g. a Mermaid diagram's own fullscreen view) stack on top of it.
+    // (e.g. a diagram's own fullscreen view) stack on top of it.
     <div
       ref={surfaceRef}
       className="fixed inset-0 z-45 flex flex-col bg-background text-foreground motion-safe:animate-fade-in"

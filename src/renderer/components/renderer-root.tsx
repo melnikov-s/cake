@@ -46,6 +46,14 @@ export const RendererRoot = observer(function RendererRoot({
               <MarkdownLinkProvider
                 actions={{
                   openExternalUrl,
+                  openArtifact: (reference) => {
+                    const { lineageId, revision } = parseArtifactRef(reference);
+                    rootStore.navigationStore.showArtifactLibrary(
+                      activeSessionId,
+                      lineageId,
+                      revision,
+                    );
+                  },
                   openSession,
                   openSubagent,
                   sessionIds: () => sessionIds,

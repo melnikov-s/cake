@@ -6,7 +6,7 @@ import type { CakeArtifactV1 } from "../../../src/contracts/artifacts/artifact-c
 import { decodeArtifactLineageId } from "../../../src/contracts/artifacts/artifact-lineage";
 import { artifactBase as base, renderArtifactHost } from "./artifact-host-rendering-fixture";
 
-let restoreSvgMeasurement: () => void;
+import { DiagramTestWorker, installDiagramMeasurement } from "./diagram-browser-fixture";
 beforeEach(() => {
   // jsdom adapter; native iframe retention is verified in Electron.
   Object.defineProperty(Element.prototype, "moveBefore", {
@@ -15,21 +15,12 @@ beforeEach(() => {
       this.insertBefore(node, child);
     },
   });
-  // Browser API adapter only: no Mermaid/parser replacement and no geometry
-  // assertions. SVG layout and iframe sandbox enforcement require Electron.
-  const original = Object.getOwnPropertyDescriptor(SVGElement.prototype, "getBBox");
-  Object.defineProperty(SVGElement.prototype, "getBBox", {
-    configurable: true,
-    value: () => new DOMRect(0, 0, 100, 30),
-  });
-  restoreSvgMeasurement = () => {
-    if (original) Object.defineProperty(SVGElement.prototype, "getBBox", original);
-    else Reflect.deleteProperty(SVGElement.prototype, "getBBox");
-  };
+  installDiagramMeasurement();
+  vi.stubGlobal("Worker", DiagramTestWorker);
 });
 afterEach(() => {
   cleanup();
-  restoreSvgMeasurement();
+  vi.unstubAllGlobals();
   delete document.documentElement.dataset.theme;
   vi.restoreAllMocks();
 });
@@ -70,7 +61,7 @@ function postWidgetMessage(
 }
 
 describe("ArtifactHost rendering integration", () => {
-  it("renders actual Mermaid into an isolated themed document and rerenders when theme changes", async () => {
+  it("renders real Pele SVG with live theme variables through the shared Markdown path", async () => {
     document.documentElement.dataset.theme = "light";
     using fixture = renderArtifactHost({
       ...base,
@@ -79,50 +70,40 @@ describe("ArtifactHost rendering integration", () => {
       title: "Flow",
       payload: { source: "graph LR\nA[Start] --> B[Finish]" },
     });
-    await waitFor(() => expect(fixture.container.querySelector("iframe")).not.toBeNull());
-    const frame = fixture.container.querySelector("iframe")!;
-    const light = documentIn(frame);
-    expect(light.querySelector("svg")).not.toBeNull();
-    expect(light.body.textContent).toContain("Start");
-    expect(light.body.textContent).toContain("Finish");
-    expect(frame.getAttribute("sandbox")).toBe("");
-    expect(
-      light.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute("content"),
-    ).toContain("default-src 'none'");
-    expect(light.querySelector("script, [onclick]")).toBeNull();
-    expect(light.head.textContent).toContain("color-scheme:light");
-    expect(light.querySelector("svg style")?.textContent).toContain("fill:#eee");
+    await waitFor(() => expect(fixture.container.querySelector("svg.pele")).not.toBeNull());
+    const svg = fixture.container.querySelector("svg.pele")!;
+    expect(svg.textContent).toContain("Start");
+    expect(svg.textContent).toContain("Finish");
+    expect(svg.getAttribute("style")).toContain("var(--pele-fg");
+    expect(svg.querySelector("script, image, foreignObject, [onclick]")).toBeNull();
     await act(async () => {
       document.documentElement.dataset.theme = "dark";
     });
+    expect(fixture.container.querySelector("svg.pele")).toBe(svg);
+    await fixture.user.click(screen.getByRole("button", { name: "View diagram fullscreen" }));
+    const fullscreen = screen.getByRole("dialog", { name: "Diagram" });
     await waitFor(() =>
-      expect(fixture.container.querySelector("iframe")?.getAttribute("srcdoc")).toContain(
-        "color-scheme:dark",
-      ),
+      expect(fullscreen.querySelector("svg.pele")?.textContent).toContain("Finish"),
     );
-    const dark = documentIn(fixture.container.querySelector("iframe")!);
-    expect(dark.querySelector("svg style")?.textContent).toContain("fill:#1f2020");
   });
 
-  it("reports real Mermaid parse errors and recovers for a corrected artifact revision", async () => {
+  it("reports real Pele parse errors and recovers for a corrected artifact revision", async () => {
     using fixture = renderArtifactHost({
       ...base,
       kind: "diagram",
       payload: { source: "this is not a diagram" },
     });
     expect(await screen.findByText("Diagram could not render")).toBeDefined();
-    expect(fixture.container.querySelector("iframe")).toBeNull();
     await fixture.update({
       ...base,
       revision: 2,
       kind: "diagram",
       payload: { source: "graph TD\nA[Recovered] --> B[Done]" },
     });
-    await waitFor(() => expect(fixture.container.querySelector("iframe")).not.toBeNull());
-    expect(screen.queryByText("Diagram could not render")).toBeNull();
-    expect(documentIn(fixture.container.querySelector("iframe")!).body.textContent).toContain(
-      "Recovered",
+    await waitFor(() =>
+      expect(fixture.container.querySelector("svg.pele")?.textContent).toContain("Recovered"),
     );
+    expect(screen.queryByText("Diagram could not render")).toBeNull();
   });
 
   it("sorts in both directions and filters rendered table rows", async () => {

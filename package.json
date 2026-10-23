@@ -56,7 +56,6 @@
     "@shikijs/langs": "3.23.0",
     "@shikijs/themes": "3.23.0",
     "@streamdown/math": "^1.0.2",
-    "@streamdown/mermaid": "^1.0.2",
     "@tailwindcss/vite": "4.3.3",
     "@types/node": "26.1.2",
     "@types/react": "19.2.18",
@@ -68,12 +67,13 @@
     "ajv": "8.17.1",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
+    "dompurify": "3.4.17",
     "effect": "4.0.0-rc.111",
     "esbuild": "0.28.1",
     "jsonc-parser": "^3.3.1",
     "katex": "^0.18.3",
-    "mermaid": "11.12.2",
     "node-pty": "^1.1.0",
+    "pele": "1.9.0",
     "r-state-tree": "0.10.2",
     "react": "19.2.8",
     "react-dom": "19.2.8",
@@ -113,6 +113,9 @@
   },
   "packageManager": "pnpm@10.17.1",
   "pnpm": {
+    "overrides": {
+      "streamdown>mermaid": "-"
+    },
     "onlyBuiltDependencies": [
       "@google/genai",
       "electron",

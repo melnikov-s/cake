@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Markdown } from "@/components/ai-elements/markdown";
+import { Markdown, fencedCode } from "@/components/ai-elements/markdown";
 import { FullscreenSurface } from "@/components/fullscreen-surface";
 import { FullscreenButton } from "@/components/ui/fullscreen-button";
 import { ResizableSurface } from "@/components/ui/resizable-surface";
@@ -9,7 +9,6 @@ import type { SourceLocation } from "../../contracts/editor/source-location";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
 import { WidgetArtifact } from "./widget-artifact";
 import { WidgetInitialPreview } from "./widget-initial-preview";
-import { DiagramArtifact } from "./diagram-artifact";
 import { FileArtifact } from "./file-artifact";
 import { HtmlArtifact } from "./html-artifact";
 import { MediaArtifact } from "./media-artifact";
@@ -52,7 +51,11 @@ export const ArtifactHost = observer(function ArtifactHost({
         <Markdown onOpenSourceLocation={onOpenSourceLocation}>{artifact.payload.markdown}</Markdown>
       ) : null}
       {artifact.kind === "table" ? <TableArtifact artifact={artifact} /> : null}
-      {artifact.kind === "diagram" ? <DiagramArtifact artifact={artifact} /> : null}
+      {artifact.kind === "diagram" ? (
+        <Markdown onOpenSourceLocation={onOpenSourceLocation}>
+          {fencedCode(artifact.payload.source, "mermaid")}
+        </Markdown>
+      ) : null}
       {artifact.kind === "media" ? <MediaArtifact artifact={artifact} /> : null}
       {artifact.kind === "diff" ? (
         <pre className="overflow-x-auto font-mono text-[11px] leading-relaxed">
@@ -70,11 +73,13 @@ export const ArtifactHost = observer(function ArtifactHost({
       data-artifact-id={artifact.id}
       data-artifact-kind={artifact.kind}
     >
-      <FullscreenButton
-        className="absolute top-0 right-0 z-10 bg-background/85"
-        label={`View ${title} fullscreen`}
-        onClick={() => setFullscreen(true)}
-      />
+      {artifact.kind !== "diagram" && (
+        <FullscreenButton
+          className="absolute top-0 right-0 z-10 bg-background/85"
+          label={`View ${title} fullscreen`}
+          onClick={() => setFullscreen(true)}
+        />
+      )}
       {artifact.kind === "widget" ? (
         <ResizableSurface
           label={title}

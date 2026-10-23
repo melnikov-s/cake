@@ -11,7 +11,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import type { ComponentProps, MouseEvent, ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import type { Code, Root, RootContent } from "mdast";
 import remarkParse from "remark-parse";
 import {
@@ -22,7 +22,7 @@ import {
 } from "streamdown";
 import { unified } from "unified";
 import { usePhoneLayout } from "../../lib/phone-layout";
-import { useResolvedColorTheme } from "@/lib/resolved-color-theme";
+import { DiagramContext } from "../../lib/diagram-context";
 import {
   supportsSyntaxHighlightLanguage,
   syntaxHighlighter,
@@ -38,7 +38,7 @@ import { sessionDisplayId } from "../../lib/session-display-id";
 import { Link, type LinkProps } from "../ui/link";
 import { MarkdownTable } from "../ui/markdown-table";
 import { FullscreenSurface } from "../fullscreen-surface";
-import { MermaidFullscreen } from "../mermaid-fullscreen";
+import { PeleDiagram } from "../pele-diagram";
 import { MarkdownImage } from "../markdown-image";
 import { MarkdownCodeBlock, streamingCodeMarker } from "./markdown-code-block";
 
@@ -59,6 +59,7 @@ type ImageProps = ComponentProps<"img"> & { node?: unknown };
 
 type MarkdownLinkActions = {
   openExternalUrl(url: string): void;
+  openArtifact?(reference: string): void;
   openSession(sessionId: string, messageId?: string, attachmentId?: string): void;
   openSubagent?(parentSessionId: string, handleId: string): void;
   sessionTitle?(sessionId: string): string | undefined;
@@ -385,6 +386,7 @@ export function MarkdownLink({
 const configuredPlugins = {
   code: syntaxHighlighter,
   renderers: [
+    { component: PeleDiagram, language: "mermaid" },
     {
       component: MarkdownCodeBlock,
       language: syntaxHighlightLanguageNames,
@@ -396,19 +398,10 @@ const markdownControls = {
     copy: true,
     download: false,
   },
-  mermaid: {
-    copy: true,
-    download: false,
-    fullscreen: true,
-    panZoom: false,
-  },
 };
 
 const codeBlockPresentation =
   "[&_[data-streamdown=code-block]]:relative [&_[data-streamdown=code-block]]:gap-0 [&_[data-streamdown=code-block]]:rounded-none [&_[data-streamdown=code-block]]:border-0 [&_[data-streamdown=code-block]]:bg-transparent [&_[data-streamdown=code-block]]:p-0 [&_[data-streamdown=code-block-header]]:hidden [&_[data-streamdown=code-block-actions]]:!absolute [&_[data-streamdown=code-block-actions]]:!top-2 [&_[data-streamdown=code-block-actions]]:!right-2 [&_[data-streamdown=code-block-actions]]:!mt-0 [&_[data-streamdown=code-block-actions]]:!h-auto [&_[data-streamdown=code-block-actions]]:opacity-0 [&_[data-streamdown=code-block-actions]]:transition-opacity [&_[data-streamdown=code-block-actions]>div]:!border-0 [&_[data-streamdown=code-block-actions]>div]:!bg-transparent [&_[data-streamdown=code-block-actions]>div]:!p-0 [&_[data-streamdown=code-block-actions]>div]:!backdrop-blur-none [&_[data-streamdown=code-block]:hover_[data-streamdown=code-block-actions]]:opacity-100 [&_[data-streamdown=code-block]:focus-within_[data-streamdown=code-block-actions]]:opacity-100";
-
-const richBlockPresentation =
-  "[&_[data-streamdown=mermaid-block]]:border-0 [&_[data-streamdown=mermaid-block]]:bg-transparent [&_[data-streamdown=mermaid-block]]:p-0 [&_[data-streamdown=mermaid-block-actions]]:border-0 [&_[data-streamdown=mermaid-block-actions]]:bg-transparent [&_[data-streamdown=mermaid-block-actions]]:p-0 [&_[data-streamdown=mermaid-block-actions]]:backdrop-blur-none [&_[data-streamdown=mermaid-block-actions]>button:last-child]:opacity-0 [&_[data-streamdown=mermaid-block-actions]>button:last-child]:transition-opacity [&_[data-streamdown=mermaid-block]:hover_[data-streamdown=mermaid-block-actions]>button:last-child]:opacity-100 [&_[data-streamdown=mermaid-block]:focus-within_[data-streamdown=mermaid-block-actions]>button:last-child]:opacity-100";
 
 type FenceLocation = {
   contentStart: number;
@@ -443,7 +436,7 @@ function lastFence(markdown: string): FenceLocation | undefined {
     openingStart === undefined ||
     codeEnd === undefined ||
     !language ||
-    !supportsSyntaxHighlightLanguage(language)
+    (!supportsSyntaxHighlightLanguage(language) && language.toLowerCase() !== "mermaid")
   )
     return undefined;
 
@@ -497,6 +490,7 @@ export type MarkdownProps = Omit<
   | "components"
   | "isAnimating"
   | "mode"
+  | "mermaid"
   | "parseMarkdownIntoBlocksFn"
   | "plugins"
   | "skipHtml"
@@ -514,9 +508,7 @@ export type MarkdownProps = Omit<
   onOpenSourceLocation?(location: SourceLocation): void;
 };
 
-type RichMarkdownPlugins = Partial<
-  Pick<NonNullable<StreamdownProps["plugins"]>, "math" | "mermaid">
->;
+type RichMarkdownPlugins = Partial<Pick<NonNullable<StreamdownProps["plugins"]>, "math">>;
 
 const MathMarkdown = lazy(async () => {
   const [{ math }] = await Promise.all([
@@ -528,51 +520,19 @@ const MathMarkdown = lazy(async () => {
   };
 });
 
-const MermaidMarkdown = lazy(async () => {
-  const { createMermaidPlugin } = await import("@streamdown/mermaid");
-  const mermaid = createMermaidPlugin({ config: { securityLevel: "strict" } });
-  return {
-    default: (props: MarkdownProps) => <MarkdownRenderer {...props} richPlugins={{ mermaid }} />,
-  };
-});
-
-const MathAndMermaidMarkdown = lazy(async () => {
-  const [{ math }, { createMermaidPlugin }] = await Promise.all([
-    import("@streamdown/math"),
-    import("@streamdown/mermaid"),
-    import("katex/dist/katex.min.css"),
-  ]);
-  const richPlugins: RichMarkdownPlugins = {
-    math,
-    mermaid: createMermaidPlugin({ config: { securityLevel: "strict" } }),
-  };
-  return {
-    default: (props: MarkdownProps) => <MarkdownRenderer {...props} richPlugins={richPlugins} />,
-  };
-});
-
 function richMarkdownFeatures(source: string, normalizeLatexDelimiters = true) {
   return {
     math: /\$\$/.test(source) || (normalizeLatexDelimiters && /\\\(|\\\[/.test(source)),
-    mermaid: /(?:^|\n)[^\n]*(?:`{3,}|~{3,})\s*mermaid\b/i.test(source),
   };
 }
 
 export function Markdown(props: MarkdownProps) {
-  // Streaming content defers LaTeX normalization until it settles, but plugin
-  // selection must not change at that moment: swapping renderers would remount
-  // the Markdown and dismiss an open Mermaid fullscreen view.
+  // Keep math plugin selection stable as streaming settles.
   const features = richMarkdownFeatures(
     props.children,
     props.streaming || props.normalizeLatexDelimiters !== false,
   );
-  const RichMarkdown = features.math
-    ? features.mermaid
-      ? MathAndMermaidMarkdown
-      : MathMarkdown
-    : features.mermaid
-      ? MermaidMarkdown
-      : undefined;
+  const RichMarkdown = features.math ? MathMarkdown : undefined;
   if (!RichMarkdown) return <MarkdownRenderer {...props} />;
   return (
     <Suspense fallback={<MarkdownRenderer {...props} />}>
@@ -592,22 +552,12 @@ function MarkdownRenderer({
   richPlugins,
   ...props
 }: MarkdownProps & { richPlugins?: RichMarkdownPlugins }) {
-  const colorTheme = useResolvedColorTheme();
   const linkActions = useContext(MarkdownLinkContext);
-  const [fullscreenMermaid, setFullscreenMermaid] = useState<string>();
+  const [fullscreenDiagram, setFullscreenDiagram] = useState<string>();
   const [fullscreenTable, setFullscreenTable] = useState<ReactNode>();
   const plugins = useMemo(
     () => (richPlugins ? { ...configuredPlugins, ...richPlugins } : configuredPlugins),
     [richPlugins],
-  );
-  const mermaidOptions = useMemo<NonNullable<StreamdownProps["mermaid"]>>(
-    () => ({
-      config: {
-        securityLevel: "strict",
-        theme: colorTheme === "dark" ? "dark" : "neutral",
-      },
-    }),
-    [colorTheme],
   );
   const source = prepareMarkdownLinks(
     normalizeLatexDelimiters ? normalizeLatexMathDelimiters(children) : children,
@@ -625,26 +575,49 @@ function MarkdownRenderer({
   const renderedSource = streaming
     ? markChangingFence(deferredRenderedSource, mutableCode)
     : deferredRenderedSource;
-  const openMermaidFullscreen = useCallback((event: MouseEvent<HTMLDivElement>) => {
-    const target = event.target;
-    if (!(target instanceof Element)) return;
-    const button = target.closest<HTMLButtonElement>('button[title="View fullscreen"]');
-    const block = button?.closest<HTMLElement>('[data-streamdown="mermaid-block"]');
-    // The block's action bar (with icon SVGs) precedes the chart, so select the
-    // rendered diagram explicitly rather than the first SVG in the block.
-    const svg = block?.querySelector<SVGSVGElement>(
-      '[data-streamdown="mermaid"] [role="img"] > svg',
-    );
-    if (!button || !block || !svg) return;
-
-    // Streamdown owns its fullscreen state inside the parsed Markdown block. A
-    // block may be replaced when a stream settles, which used to dismiss an
-    // open diagram without user input. Intercept that action and hoist the
-    // rendered diagram above the parser lifecycle instead.
-    event.preventDefault();
-    event.stopPropagation();
-    setFullscreenMermaid(svg.outerHTML);
-  }, []);
+  const navigateDiagram = useCallback(
+    (href: string) => {
+      const artifact = artifactReferenceFromHref(href);
+      if (artifact) {
+        linkActions?.openArtifact?.(artifact);
+        return;
+      }
+      const session = sessionTargetFromHref(href);
+      if (session) {
+        const resolved = resolveSessionLinkReference(
+          session.sessionId,
+          linkActions?.sessionIds?.() ?? [],
+        );
+        linkActions?.openSession(
+          resolved.ok ? resolved.sessionId : session.sessionId,
+          session.messageId,
+          session.attachmentId,
+        );
+        return;
+      }
+      const subagent = subagentTargetFromHref(href);
+      if (subagent) {
+        linkActions?.openSubagent?.(subagent.parentSessionId, subagent.handleId);
+        return;
+      }
+      const location = sourceReferenceFromHref(href);
+      const source =
+        location && !nonPathHref.test(location) ? parseSourceLocation(location) : undefined;
+      if (source) {
+        onOpenSourceLocation?.(source);
+        return;
+      }
+      if (/^https?:\/\//i.test(href)) linkActions?.openExternalUrl(href);
+    },
+    [linkActions, onOpenSourceLocation],
+  );
+  const diagramActions = useMemo(
+    () => ({
+      openFullscreen: setFullscreenDiagram,
+      navigate: navigateDiagram,
+    }),
+    [navigateDiagram],
+  );
   const components = useMemo<Components>(() => {
     const openSourceLocation = onOpenSourceLocation;
     return {
@@ -721,19 +694,17 @@ function MarkdownRenderer({
   }, [linkActions, omitArtifactEmbeds, onOpenSourceLocation]);
   return (
     <>
-      <div className="contents" onClickCapture={openMermaidFullscreen}>
+      <DiagramContext value={diagramActions}>
         <Streamdown
           {...props}
           components={components}
           className={cn(
             "markdown-content min-w-0 max-w-full break-words [overflow-wrap:anywhere] [&_[data-streamdown=code-block-body]]:overflow-x-hidden [&_[data-streamdown=code-block-body]_pre]:whitespace-pre-wrap [&_[data-streamdown=code-block-body]_pre]:[overflow-wrap:anywhere]",
             codeBlockPresentation,
-            richBlockPresentation,
             className,
           )}
           controls={markdownControls}
           isAnimating={false}
-          mermaid={mermaidOptions}
           mode="streaming"
           parseMarkdownIntoBlocksFn={parseMarkdownIntoBlocks}
           plugins={plugins}
@@ -741,7 +712,7 @@ function MarkdownRenderer({
         >
           {renderedSource}
         </Streamdown>
-      </div>
+      </DiagramContext>
       {fullscreenTable && (
         <FullscreenSurface
           eyebrow="Table"
@@ -751,11 +722,17 @@ function MarkdownRenderer({
           {fullscreenTable}
         </FullscreenSurface>
       )}
-      {fullscreenMermaid && (
-        <MermaidFullscreen
-          svg={fullscreenMermaid}
-          onClose={() => setFullscreenMermaid(undefined)}
-        />
+      {fullscreenDiagram && (
+        <FullscreenSurface
+          eyebrow="Diagram"
+          mode="canvas"
+          title="Diagram"
+          onClose={() => setFullscreenDiagram(undefined)}
+        >
+          <DiagramContext value={diagramActions}>
+            <PeleDiagram code={fullscreenDiagram} fullscreen />
+          </DiagramContext>
+        </FullscreenSurface>
       )}
     </>
   );

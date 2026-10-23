@@ -1,8 +1,9 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
 import { fencedCode, type Markdown } from "../../../src/renderer/components/ai-elements/markdown";
+import { installDiagramMeasurement } from "./diagram-browser-fixture";
 import type { Client } from "../../../src/renderer/client/Client";
 import {
   codeBodies,
@@ -16,6 +17,10 @@ beforeAll(async () => {
   worker = await installMarkdownWorker();
 });
 afterAll(() => worker[Symbol.dispose]());
+let diagramMeasurement: ReturnType<typeof installDiagramMeasurement>;
+beforeEach(() => {
+  diagramMeasurement = installDiagramMeasurement();
+});
 afterEach(() => {
   cleanup();
   delete document.documentElement.dataset.theme;
@@ -395,7 +400,6 @@ describe("Markdown rendering integration", () => {
     expect(fixture.container.querySelector(".katex-display")).not.toBeNull();
     expect(screen.getByText("\\(inline code\\)").tagName).toBe("CODE");
     expect(codeBodies(fixture.container)[0]!.textContent).toContain("\\[fenced code\\]");
-    expect(fixture.container.querySelector('[data-streamdown="mermaid"]')).toBeNull();
   });
 
   it("can defer math normalization for an incomplete streaming response", () => {
@@ -406,80 +410,97 @@ describe("Markdown rendering integration", () => {
     expect(fixture.container.querySelector(".katex")).toBeNull();
   });
 
-  it("keeps an actual Mermaid diagram fullscreen when streaming settles", async () => {
-    // jsdom has no SVG layout; this supplies only browser measurement, not a
-    // diagram renderer. Real Mermaid parsing, sanitization and SVG run here.
-    const original = Object.getOwnPropertyDescriptor(SVGElement.prototype, "getBBox");
-    const originalObserver = Object.getOwnPropertyDescriptor(globalThis, "IntersectionObserver");
-    class VisibleIntersectionObserver implements IntersectionObserver {
-      readonly root = null;
-      readonly rootMargin = "0px";
-      readonly thresholds = [0];
-      constructor(private callback: IntersectionObserverCallback) {}
-      takeRecords(): IntersectionObserverEntry[] {
-        return [];
-      }
-      observe(target: Element) {
-        queueMicrotask(() =>
-          this.callback(
-            [
-              {
-                target,
-                isIntersecting: true,
-                intersectionRatio: 1,
-                time: 0,
-                boundingClientRect: new DOMRect(),
-                intersectionRect: new DOMRect(),
-                rootBounds: null,
-              },
-            ],
-            this,
-          ),
-        );
-      }
-      unobserve() {}
-      disconnect() {}
-    }
-    Object.defineProperty(globalThis, "IntersectionObserver", {
-      configurable: true,
-      value: VisibleIntersectionObserver,
+  it("keeps a Pele diagram fullscreen when streaming settles and routes diagram links", async () => {
+    const openExternalUrl = vi.fn<Client["electron"]["openExternalUrl"]>(async () => undefined);
+    const source =
+      '```mermaid\ngraph LR\nA[Start] --> B[Finish]\nclick A "https://example.com/docs"\n```';
+    using fixture = renderMarkdown(source, {
+      props: { streaming: true },
+      client: { electron: { openExternalUrl } },
     });
-    Object.defineProperty(SVGElement.prototype, "getBBox", {
-      configurable: true,
-      value: () => new DOMRect(0, 0, 100, 30),
+    await waitFor(() => expect(fixture.container.querySelector("svg.pele")).not.toBeNull());
+    await fixture.user.click(fixture.container.querySelector("svg a")!);
+    expect(openExternalUrl).toHaveBeenCalledWith("https://example.com/docs", {
+      signal: expect.any(AbortSignal),
     });
-    try {
-      document.documentElement.dataset.theme = "dark";
-      const source = "```mermaid\ngraph LR\nA[Start] --> B[Finish]\n```";
-      using fixture = renderMarkdown(source, { props: { streaming: true } });
-      await waitFor(
-        () =>
-          expect(
-            fixture.container.querySelector('[data-streamdown="mermaid"] [role="img"] > svg'),
-          ).not.toBeNull(),
-        { timeout: 5000 },
-      );
-      expect(
-        fixture.container.querySelector('[data-streamdown="mermaid"] svg style')?.textContent,
-      ).toContain("fill:#1f2020");
-      await fixture.user.click(screen.getByRole("button", { name: "View fullscreen" }));
-      const fullscreen = screen.getByRole("dialog", { name: "Mermaid" });
-      expect(fullscreen.querySelector("svg")).not.toBeNull();
-      expect(fullscreen.textContent).toContain("Start");
-      expect(fullscreen.textContent).toContain("Finish");
-      await fixture.update(source, { streaming: false });
-      expect(screen.getByRole("dialog", { name: "Mermaid" })).toBe(fullscreen);
-      await fixture.user.click(
-        within(fullscreen).getByRole("button", { name: "Exit fullscreen Mermaid" }),
-      );
-      expect(screen.queryByRole("dialog")).toBeNull();
-    } finally {
-      if (originalObserver)
-        Object.defineProperty(globalThis, "IntersectionObserver", originalObserver);
-      else Reflect.deleteProperty(globalThis, "IntersectionObserver");
-      if (original) Object.defineProperty(SVGElement.prototype, "getBBox", original);
-      else Reflect.deleteProperty(SVGElement.prototype, "getBBox");
-    }
+    await fixture.user.click(screen.getByRole("button", { name: "View diagram fullscreen" }));
+    const fullscreen = screen.getByRole("dialog", { name: "Diagram" });
+    await waitFor(() => expect(fullscreen.querySelector("svg.pele")).not.toBeNull());
+    expect(fullscreen.textContent).toContain("Start");
+    expect(fullscreen.textContent).toContain("Finish");
+    await fixture.update(source, { streaming: false });
+    expect(screen.getByRole("dialog", { name: "Diagram" })).toBe(fullscreen);
+    await fixture.user.click(
+      within(fullscreen).getByRole("button", { name: "Exit fullscreen Diagram" }),
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("routes SVG session, artifact and workspace links through Cake actions", async () => {
+    const openSession = vi.fn();
+    const openArtifact = vi.fn();
+    const onOpenSourceLocation = vi.fn();
+    using fixture = renderMarkdown(
+      [
+        "```mermaid",
+        "flowchart LR",
+        "A[Session] --> B[Artifact] --> C[Source]",
+        'click A "cake://session/session-123?message=entry-42"',
+        'click B "cake://artifact/report-1@r2"',
+        'click C "src/model.ts#L3"',
+        "```",
+      ].join("\n"),
+      { actions: { openSession, openArtifact }, props: { onOpenSourceLocation } },
+    );
+    await waitFor(() => expect(fixture.container.querySelectorAll("svg.pele a")).toHaveLength(3));
+    const links = fixture.container.querySelectorAll("svg.pele a");
+    await fixture.user.click(links[0]!);
+    expect(openSession).toHaveBeenCalledWith("session-123", "entry-42", undefined);
+    await fixture.user.click(links[1]!);
+    expect(openArtifact).toHaveBeenCalledWith("cake://artifact/report-1@r2");
+    await fixture.user.click(links[2]!);
+    expect(onOpenSourceLocation).toHaveBeenCalledWith({
+      path: "src/model.ts",
+      range: { start: { line: 2 }, end: { line: 2 } },
+    });
+  });
+
+  it("waits for incomplete and synthetically closed mutable diagrams, then renders corrected content", async () => {
+    using fixture = renderMarkdown("```mermaid\nflowchart LR\nA[Draft", {
+      props: { streaming: true },
+    });
+    expect(await screen.findByText("Waiting for diagram…")).toBeDefined();
+    expect(screen.queryByText("Diagram could not render")).toBeNull();
+    await fixture.update("```mermaid\nflowchart LR\nA[Draft] --> B\n```", {
+      streaming: true,
+      mutableCode: true,
+    });
+    expect(screen.getByText("Waiting for diagram…")).toBeDefined();
+    await fixture.update("```mermaid\nflowchart LR\nA[Done] --> B\n```", {
+      streaming: false,
+    });
+    await waitFor(() =>
+      expect(fixture.container.querySelector("svg.pele")?.textContent).toContain("Done"),
+    );
+  });
+
+  it("adapts Pele layout to resizing and survives a virtualized row remount", async () => {
+    const source =
+      "```mermaid\nflowchart LR\nA[Start] --> B[Review] --> C[Build] --> D[Test] --> E[Finish]\n```";
+    using fixture = renderMarkdown(source);
+    await waitFor(() => expect(fixture.container.querySelector("svg.pele")).not.toBeNull());
+    const wideViewBox = fixture.container.querySelector("svg.pele")!.getAttribute("viewBox");
+    await act(async () => diagramMeasurement.resize(320));
+    await waitFor(() =>
+      expect(fixture.container.querySelector("svg.pele")?.getAttribute("viewBox")).not.toBe(
+        wideViewBox,
+      ),
+    );
+    await fixture.update("Offscreen row placeholder.");
+    await fixture.update(source);
+    await waitFor(() =>
+      expect(fixture.container.querySelector("svg.pele")?.textContent).toContain("Finish"),
+    );
   });
 
   it("retains dual-theme highlighted tokens across a live color theme change", async () => {

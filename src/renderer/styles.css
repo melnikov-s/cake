@@ -2,7 +2,6 @@
 @source "./";
 @source "../../node_modules/streamdown/dist/*.js";
 @source "../../node_modules/@streamdown/math/dist/*.js";
-@source "../../node_modules/@streamdown/mermaid/dist/*.js";
 
 /* Phone-only presentation; keep in sync with lib/phone-layout.ts. */
 @custom-variant phone {
@@ -200,6 +199,31 @@
     Arial, sans-serif;
   --font-mono:
     "SF Mono", "SFMono-Regular", ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+/* Pele's SVG and gesture layer inherit Cake's live theme without re-layout. */
+[data-diagram="pele"] {
+  --pele-bg: var(--background);
+  --pele-fg: var(--foreground);
+  --pele-muted: var(--muted-foreground);
+  --pele-line: var(--muted-foreground);
+  --pele-surface: var(--card);
+  --pele-surface-alt: var(--secondary);
+  --pele-border: var(--border);
+  --pele-accent: var(--accent);
+  --pele-critical: var(--destructive);
+  --pele-error: var(--destructive);
+  --pele-font: var(--font-sans);
+  --pele-font-mono: var(--font-mono);
+  --pele-radius: var(--radius);
+  --pele-series-1: var(--accent);
+  --pele-series-2: var(--warning);
+  --pele-series-3: var(--success);
+  --pele-series-4: var(--destructive);
+  --pele-series-5: var(--attention);
+  --pele-series-6: var(--muted-foreground);
+  --pele-series-7: var(--foreground);
+  --pele-series-8: var(--ring);
 }
 
 @layer base {
