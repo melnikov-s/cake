@@ -258,3 +258,43 @@ describe("Chat optional presentation capability", () => {
     }
   });
 });
+
+// Sending is the one time the transcript scrolls for the reader, whichever
+// composer path sends (typed or voice conversation mode).
+describe("Sent message transcript signal", () => {
+  function chatStore(options: { canSubmit: boolean; editing?: boolean }) {
+    return mount(
+      createStore(ChatStore, {
+        id: () => "sent-message",
+        parts: () => [],
+        streaming: () => false,
+        submitting: () => false,
+        configuration: () => undefined,
+        commands: () => [],
+        placeholder: () => "Message",
+        inputLabel: () => "Message",
+        canSubmit: () => options.canSubmit,
+        submit: async () => true,
+        editingMessage: () => options.editing ?? false,
+      }),
+    );
+  }
+
+  it("counts each accepted send and opens a later transcript at the bottom", async () => {
+    using store = chatStore({ canSubmit: true });
+    store.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" });
+    await store.submit("First");
+    await store.submit("Second");
+    expect(store.transcriptInteraction.sentMessageRevision).toBe(2);
+    expect(store.transcriptInteraction.transcriptScrollPosition).toEqual({ kind: "bottom" });
+  });
+
+  it("does not move the transcript for rejected sends or edits of an earlier message", async () => {
+    using rejected = chatStore({ canSubmit: false });
+    await rejected.submit("Not sendable");
+    expect(rejected.transcriptInteraction.sentMessageRevision).toBe(0);
+    using editing = chatStore({ canSubmit: true, editing: true });
+    await editing.submit("Rewritten");
+    expect(editing.transcriptInteraction.sentMessageRevision).toBe(0);
+  });
+});

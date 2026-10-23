@@ -515,6 +515,9 @@ export class ChatStore extends Store<ChatStoreProps> {
         this.cancelEnterContinuation();
       return false;
     }
+    // Sending a message is the only time the transcript scrolls to the bottom.
+    // Editing an earlier message rewrites history in place instead.
+    if (!this.editingMessage) this.transcriptInteraction.noteSentMessage();
     this.submittingLocally = true;
     const submittedRevision = this.draftRevision;
     try {

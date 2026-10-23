@@ -115,3 +115,122 @@ describe("transcript scroll owner measurement boundaries", () => {
     expect(scroller.scrollTop).toBe(3_700);
   });
 });
+
+// The reader's rule: follow only while at the very bottom; any upward movement
+// away from it is the reader's, whether or not the transcript saw any input.
+describe("transcript scroll owner following", () => {
+  let scroller: HTMLDivElement;
+  let owner: ReturnType<typeof createTranscriptScrollOwner>;
+  let contentHeight: number;
+
+  beforeEach(() => {
+    contentHeight = 4_000;
+    scroller = document.createElement("div");
+    const content = document.createElement("div");
+    const row = document.createElement("div");
+    row.dataset.transcriptItemKey = "row";
+    row.getBoundingClientRect = () =>
+      ({
+        top: -scroller.scrollTop,
+        bottom: contentHeight - scroller.scrollTop,
+        height: contentHeight,
+      }) as DOMRect;
+    content.append(row);
+    scroller.append(content);
+    document.body.append(scroller);
+    let scrollTop = 0;
+    Object.defineProperties(scroller, {
+      clientHeight: { value: 600 },
+      scrollHeight: { get: () => contentHeight },
+      scrollTop: {
+        get: () => scrollTop,
+        set: (value: number) => {
+          scrollTop = Math.max(0, Math.min(value, contentHeight - 600));
+        },
+      },
+    });
+    scroller.getBoundingClientRect = () => ({ top: 0, bottom: 600 }) as DOMRect;
+    owner = createTranscriptScrollOwner(scroller, content, {
+      following: true,
+      cancelVirtualNavigation: vi.fn(),
+    });
+    owner.reconcile();
+  });
+
+  afterEach(() => {
+    owner.dispose();
+    scroller.remove();
+  });
+
+  const grow = (pixels: number) => {
+    contentHeight += pixels;
+    owner.reconcile();
+  };
+
+  it("follows growth while at the bottom", () => {
+    expect(scroller.scrollTop).toBe(3_400);
+    grow(200);
+    expect(scroller.scrollTop).toBe(3_600);
+  });
+
+  it("keeps an upward movement whose scroll event is still queued behind a commit", () => {
+    scroller.scrollTop -= 120;
+    grow(200);
+    expect(scroller.scrollTop).toBe(3_280);
+    scroller.dispatchEvent(new Event("scroll"));
+    grow(200);
+    expect(scroller.scrollTop).toBe(3_280);
+  });
+
+  it("keeps an upward movement that arrives together with unreconciled growth", () => {
+    scroller.scrollTop -= 120;
+    contentHeight += 200;
+    scroller.dispatchEvent(new Event("scroll"));
+    expect(scroller.scrollTop).toBe(3_280);
+    grow(200);
+    expect(scroller.scrollTop).toBe(3_280);
+  });
+
+  it("treats a one-pixel upward movement as leaving the bottom", () => {
+    scroller.scrollTop -= 1;
+    scroller.dispatchEvent(new Event("scroll"));
+    grow(200);
+    expect(scroller.scrollTop).toBe(3_399);
+  });
+
+  it("keeps following through a browser clamp when content shrinks", () => {
+    contentHeight -= 300;
+    scroller.scrollTop = contentHeight; // the browser clamps to the new end
+    scroller.dispatchEvent(new Event("scroll"));
+    grow(200);
+    expect(scroller.scrollTop).toBe(3_300);
+  });
+
+  it("resumes following only when the reader returns to the bottom", () => {
+    scroller.scrollTop -= 400;
+    scroller.dispatchEvent(new Event("scroll"));
+    scroller.scrollTop += 200;
+    scroller.dispatchEvent(new Event("scroll"));
+    grow(200);
+    expect(scroller.scrollTop).toBe(3_200);
+    scroller.scrollTop = contentHeight;
+    scroller.dispatchEvent(new Event("scroll"));
+    grow(200);
+    expect(scroller.scrollTop).toBe(contentHeight - 600);
+  });
+
+  it("stops following on upward wheel input before its scroll event", () => {
+    scroller.dispatchEvent(new WheelEvent("wheel", { deltaY: -40 }));
+    grow(200);
+    expect(scroller.scrollTop).toBe(3_400);
+  });
+
+  it("returns to the bottom for a sent message", () => {
+    scroller.scrollTop -= 800;
+    scroller.dispatchEvent(new Event("scroll"));
+    owner.scrollToBottomForSentMessage();
+    expect(scroller.scrollTop).toBe(3_400);
+    grow(200);
+    expect(scroller.scrollTop).toBe(3_600);
+  });
+});

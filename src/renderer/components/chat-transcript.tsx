@@ -2,13 +2,11 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useImperativeHandle,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
-  type Ref,
 } from "react";
 import { untracked } from "r-state-tree";
 import { observer } from "r-state-tree/react";
@@ -54,14 +52,6 @@ export {
   type TranscriptSelectionCapture,
 } from "./chat-transcript-parts";
 
-export interface ChatTranscriptHandle {
-  /**
-   * Sending a message is the only time the transcript scrolls to the bottom
-   * for the reader. Nothing else may call this.
-   */
-  scrollToBottomForSentMessage(): void;
-}
-
 const defaultTranscriptBehavior: ChatTranscriptBehavior = {};
 const selectionRevealMargin = 16;
 
@@ -94,7 +84,6 @@ export const ChatTranscript = observer(function ChatTranscript({
   footer,
   error: errorOverride,
   virtualized = true,
-  ref,
 }: {
   store: ChatStore;
   behavior?: ChatTranscriptBehavior;
@@ -102,7 +91,6 @@ export const ChatTranscript = observer(function ChatTranscript({
   footer?: ReactNode;
   error?: { message: string; details?: string; title?: string };
   virtualized?: boolean;
-  ref?: Ref<ChatTranscriptHandle>;
 }) {
   useEffect(
     () => behavior.inlineArtifactPreviews?.observeConversation(store.id, () => store.parts),
@@ -135,13 +123,15 @@ export const ChatTranscript = observer(function ChatTranscript({
     };
   }, [initiallyFollowing, scroller]);
   const reconcileScroll = useCallback(() => scrollOwner.current?.reconcile(), []);
-  const scrollToBottomForSentMessage = useCallback(
-    () => scrollOwner.current?.scrollToBottomForSentMessage(),
-    [],
-  );
-  useImperativeHandle(ref, () => ({ scrollToBottomForSentMessage }), [
-    scrollToBottomForSentMessage,
-  ]);
+  // Sending a message (from any composer path) is the only time the transcript
+  // scrolls to the bottom for the reader.
+  const sentMessageRevision = store.transcriptInteraction.sentMessageRevision;
+  const scrolledForSentMessage = useRef(sentMessageRevision);
+  useLayoutEffect(() => {
+    if (scrolledForSentMessage.current === sentMessageRevision) return;
+    scrolledForSentMessage.current = sentMessageRevision;
+    scrollOwner.current?.scrollToBottomForSentMessage();
+  }, [sentMessageRevision]);
   const parts = store.parts;
   // Read disclosure state in this observer's render. VirtualizedConversation invokes
   // itemContent from its own render, outside this component's reactive tracking.

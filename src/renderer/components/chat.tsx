@@ -19,7 +19,6 @@ import { AttachmentTile } from "@/components/ui/attachment-tile";
 import { TextAttachment } from "./ui/text-attachment";
 import { ContentTransition } from "@/components/ui/content-transition";
 import { TooltipBubble, useTooltip } from "@/components/ui/tooltip";
-import type { ChatTranscriptHandle } from "./chat-transcript";
 import { messageSelectionKeyAction } from "../lib/message-selection-keys";
 import type { ChatStore } from "../stores/ChatStore";
 
@@ -171,7 +170,6 @@ export const Chat = observer(function Chat({
   const composerDockRef = useRef<HTMLDivElement>(null);
   const composerInputRef = useRef<HTMLTextAreaElement>(null);
   const composerFocusRef = useRef<ComposerFocusHandle>(null);
-  const transcriptRef = useRef<ChatTranscriptHandle>(null);
   const [promptedSelection, setPromptedSelection] = useState<{
     draft: string;
     start: number;
@@ -189,8 +187,6 @@ export const Chat = observer(function Chat({
   );
   const submitMessage = async (value?: string) => {
     const canSend = store.canSubmitValue(value) && !store.editingMessage;
-    // Sending a message is the only time the transcript scrolls to the bottom.
-    if (canSend) transcriptRef.current?.scrollToBottomForSentMessage();
     const focusAtSubmit = document.activeElement;
     const continuation =
       canSend && composerFocusRef.current?.shouldParkFocus()
@@ -450,7 +446,6 @@ export const Chat = observer(function Chat({
           error={error}
           virtualized={!compact}
           key={store.id}
-          ref={transcriptRef}
         />
       </ContentTransition>
       {!composerVisible && store.scheduledMessageInteraction.messages.length > 0 && (

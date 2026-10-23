@@ -203,16 +203,22 @@ test("layout commits never undo user movement before its scroll event", async ({
       };
       if (step % 2) fixture.stream();
       else fixture.update(); // A context/footer commit with no height change also reproduced it.
+      // The commit may measure rows and change virtual padding above the reader;
+      // compensating that is allowed. What the reader sees must be their movement.
+      const committedRow = element.querySelector<HTMLElement>(
+        `[data-transcript-anchor-id="${intendedAnchor.id}"]`,
+      )!;
       return {
         before,
         intended,
         intendedAnchor,
+        committedOffset: committedRow.getBoundingClientRect().top - viewportTop,
         actual: element.scrollTop,
         height: element.scrollHeight,
         viewport: element.clientHeight,
       };
     }, step);
-    expect(result.actual, JSON.stringify(result)).toBe(result.intended);
+    expect(result.committedOffset, JSON.stringify(result)).toBe(result.intendedAnchor.offset);
     await expect
       .poll(async () => ({
         anchor: await anchor(transcript),
@@ -505,6 +511,12 @@ test.describe("short transcript", () => {
       await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
     }
     await wheel(page, transcript, -180);
+    // The streamed message's entrance animation is paint, not a reading position.
+    await page.waitForFunction(() =>
+      [...document.querySelectorAll<HTMLElement>("[data-transcript-item-key]")].every(
+        (row) => row.getAnimations().length === 0,
+      ),
+    );
     const saved = await anchor(transcript);
     for (let step = 0; step < 4; step++) {
       await command(page, "stream");
@@ -684,3 +696,165 @@ async function settle(page: Page) {
       await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
   });
 }
+
+const live = (page: Page, mode: "text" | "text+tool+arrive" | false) =>
+  page.evaluate((mode) => {
+    const fixture = Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture;
+    if (mode) fixture.startLive(16, mode);
+    else fixture.stopLive();
+  }, mode);
+
+// The reader's own upward scroll is the only signal that matters. Nothing the
+// transcript does in response to content may pull it back down.
+test.describe("reader scrolling up while content streams", () => {
+  test("a native upward scroll is kept when a commit lands before its scroll event", async ({
+    fixturePage: page,
+  }) => {
+    const transcript = page.locator(".transcript");
+    // A scroll over an iframe, a scrollbar drag or find-in-page moves the viewport
+    // without any wheel/key/touch event in the transcript. A streaming commit can
+    // reconcile layout before that movement's scroll event is dispatched.
+    const result = await transcript.evaluate((element) => {
+      const fixture = Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture;
+      element.scrollTop -= 120;
+      const intended = element.scrollTop;
+      fixture.stream();
+      return { intended, actual: element.scrollTop };
+    });
+    expect(result.actual).toBe(result.intended);
+    await settle(page);
+    const savedTop = await top(transcript);
+    const savedAnchor = await anchor(transcript);
+    expect(await gap(transcript)).toBeGreaterThan(120);
+    for (const operation of ["stream", "arrive", "activity"] as const) {
+      await command(page, operation);
+      await settle(page);
+      expect(await top(transcript)).toBe(savedTop);
+      expect(await anchor(transcript)).toEqual(savedAnchor);
+    }
+  });
+
+  test("a native upward scroll is kept when content grew before its scroll event", async ({
+    fixturePage: page,
+  }) => {
+    const transcript = page.locator(".transcript");
+    await settle(page);
+    // Scroll events run before ResizeObservers in a frame, so the owner sees the
+    // movement together with content growth it has not reconciled yet.
+    const intended = await transcript.evaluate((element) => {
+      element.scrollTop -= 120;
+      const intended = element.scrollTop;
+      const footer = [...element.querySelectorAll<HTMLElement>("div")].find((candidate) =>
+        candidate.textContent?.startsWith("Activity revision"),
+      )!;
+      footer.style.paddingBottom = "200px";
+      return intended;
+    });
+    await settle(page);
+    expect(await top(transcript)).toBe(intended);
+    const savedAnchor = await anchor(transcript);
+    for (const operation of ["stream", "stream", "arrive"] as const) {
+      await command(page, operation);
+      await settle(page);
+      expect(await top(transcript)).toBe(intended);
+      expect(await anchor(transcript)).toEqual(savedAnchor);
+    }
+  });
+
+  test("a one-pixel upward scroll away from the bottom is not undone", async ({
+    fixturePage: page,
+  }) => {
+    const transcript = page.locator(".transcript");
+    await settle(page);
+    const intended = await transcript.evaluate((element) => {
+      element.scrollTop = element.scrollHeight - element.clientHeight - 1;
+      return element.scrollTop;
+    });
+    await settle(page);
+    expect(await top(transcript)).toBe(intended);
+    for (let step = 0; step < 3; step++) {
+      await command(page, "stream");
+      await settle(page);
+      expect(await top(transcript)).toBe(intended);
+    }
+  });
+
+  for (const mode of ["text", "text+tool+arrive"] as const)
+    test(`wheeling up during live ${mode} updates detaches at once and never moves back down`, async ({
+      fixturePage: page,
+    }) => {
+      const transcript = page.locator(".transcript");
+      await transcript.hover({ position: { x: 300, y: 150 } });
+      await live(page, mode);
+      await page.waitForTimeout(400);
+      // Following: a sample may land between a commit and its reconcile.
+      await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+      await page.mouse.wheel(0, -40);
+      await settle(page);
+      const tops = [await top(transcript)];
+      expect(await gap(transcript)).toBeGreaterThanOrEqual(39);
+      for (let step = 0; step < 20; step++) {
+        await page.mouse.wheel(0, -40);
+        await page.waitForTimeout(16);
+        tops.push(await top(transcript));
+      }
+      await page.waitForTimeout(300);
+      tops.push(await top(transcript));
+      await live(page, false);
+      const downward = tops.slice(1).filter((value, index) => value > tops[index]!);
+      expect(downward, JSON.stringify(tops)).toEqual([]);
+      expect(tops[0]! - tops.at(-1)!).toBeGreaterThanOrEqual(20 * 40 - 1);
+    });
+});
+
+test.describe("reader scrolling over an inline widget while content streams", () => {
+  test.use({ withWidget: true });
+
+  test("the first upward gesture over the iframe detaches and is never undone", async ({
+    fixturePage: page,
+  }) => {
+    const transcript = page.locator(".transcript");
+    const iframe = transcript.locator("iframe");
+    await expect(transcript.locator('[data-widget-view-ready="true"]')).toHaveCount(1);
+    const bounds = (await iframe.boundingBox())!;
+    const viewport = (await transcript.boundingBox())!;
+    // Wheel events over the iframe belong to its document: the transcript sees
+    // only the chained scroll, never the input.
+    await page.mouse.move(bounds.x + bounds.width / 2, Math.max(viewport.y, bounds.y) + 30);
+    await live(page, "text");
+    await page.waitForTimeout(200);
+    const tops: number[] = [];
+    for (let step = 0; step < 10; step++) {
+      await page.mouse.wheel(0, -40);
+      await page.waitForTimeout(30);
+      tops.push(await top(transcript));
+    }
+    const finalGap = await gap(transcript);
+    await live(page, false);
+    const downward = tops.slice(1).filter((value, index) => value > tops[index]!);
+    expect(downward, JSON.stringify(tops)).toEqual([]);
+    expect(finalGap).toBeGreaterThanOrEqual(10 * 40 - 1);
+  });
+});
+
+test("a live arrival's entrance animation never shifts the reader's anchor", async ({
+  fixturePage: page,
+}) => {
+  const transcript = page.locator(".transcript");
+  // Read with the newest message straddling the top edge, so the next arrival's
+  // entrance transform is the nearest candidate for an anchor.
+  await wheel(page, transcript, -120);
+  const saved = await anchor(transcript);
+  const offsets = await transcript.evaluate(async (element, id) => {
+    const fixture = Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture;
+    fixture.arrive();
+    const samples: number[] = [];
+    for (let frame = 0; frame < 30; frame++) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+      const row = element.querySelector<HTMLElement>(`[data-transcript-anchor-id="${id}"]`)!;
+      samples.push(row.getBoundingClientRect().top - element.getBoundingClientRect().top);
+    }
+    return samples;
+  }, saved.id);
+  expect(new Set(offsets)).toEqual(new Set([saved.offset]));
+});

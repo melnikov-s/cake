@@ -14,13 +14,24 @@
  * message the reader selected with the keyboard (or a link) is the only other
  * movement, and it stops following.
  *
+ * Any upward movement that leaves the very end is the reader, whatever caused
+ * it: wheel, keys, touch, a scrollbar drag, find-in-page, or a gesture over an
+ * iframe that never reaches this document as input. Following stops before
+ * anything can pin over it. Only a browser clamp (content shrank) moves up and
+ * still lands exactly at the end.
+ *
  * Every layout trigger calls `reconcile()`. Nothing else in the renderer writes
  * this scroller's `scrollTop`; the virtualizer only moves it for an explicit
  * reveal of an unrendered row, and its own size compensation is disabled.
  */
 
-/** Distance from the bottom, in CSS pixels, that still counts as "at the bottom". */
+/** Distance from the bottom, in CSS pixels, at which moving down resumes following. */
 const bottomThreshold = 2;
+/**
+ * A pinned scroller can sit a fraction of a pixel short of its maximum (fractional
+ * device pixels). Any upward movement of a pixel or more is the reader's.
+ */
+const endTolerance = 1;
 const revealMargin = 16;
 const rowSelector = "[data-transcript-item-key]";
 
@@ -66,15 +77,10 @@ export function createTranscriptScrollOwner(
   let selecting = false;
   let anchor: Anchor | undefined;
   let pendingReveal: string | undefined;
-  // The last scrollTop this owner wrote or observed. A scroll event at any other
-  // position was caused by someone else: the reader, or the browser clamping.
+  // The last scrollTop this owner wrote or observed. Any other position was
+  // caused by someone else: the reader, or the browser clamping.
   let knownTop = scroller.scrollTop;
-  // The content height when this owner last looked. A different height at a
-  // scroll event means layout changed since (possibly a browser clamp).
-  let knownHeight = scroller.scrollHeight;
   let touchY: number | undefined;
-  // A pointer pressed inside the transcript (scrollbar drag, selection autoscroll).
-  let pointerHeld = false;
 
   const measurable = () => scroller.isConnected && scroller.clientHeight > 0;
   // Virtuoso hides the list while it settles the initial position. Its moves
@@ -101,6 +107,7 @@ export function createTranscriptScrollOwner(
   };
   const gap = () => scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop;
   const atBottom = () => gap() <= bottomThreshold;
+  const atEnd = () => gap() < endTolerance;
   const write = (top: number) => {
     scroller.scrollTop = top;
     knownTop = scroller.scrollTop;
@@ -108,17 +115,29 @@ export function createTranscriptScrollOwner(
   const rows = () => scroller.querySelectorAll<HTMLElement>(rowSelector);
   const row = (key: string) =>
     Array.from(rows()).find((candidate) => candidate.dataset.transcriptItemKey === key);
+  /**
+   * A row's layout top in viewport coordinates. A live arrival's entrance
+   * animation translates its row for a moment; that is paint, not layout, and
+   * must not be "compensated" into a scroll.
+   */
+  const layoutTop = (element: HTMLElement) => {
+    const top = element.getBoundingClientRect().top;
+    const transform = getComputedStyle(element).transform;
+    return !transform || transform === "none" ? top : top - new DOMMatrixReadOnly(transform).m42;
+  };
   const contentTop = (element: HTMLElement) =>
-    element.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+    layoutTop(element) - scroller.getBoundingClientRect().top + scroller.scrollTop;
 
   /** The row crossing the top edge of the viewport. */
   const findAnchor = (): Anchor | undefined => {
     const viewportTop = scroller.getBoundingClientRect().top;
     for (const candidate of rows()) {
-      const rect = candidate.getBoundingClientRect();
       const key = candidate.dataset.transcriptItemKey;
-      if (key && rect.height > 0 && rect.bottom > viewportTop + 1)
-        return { key, top: rect.top - viewportTop + scroller.scrollTop };
+      const height = candidate.getBoundingClientRect().height;
+      if (!key || height <= 0) continue;
+      const top = layoutTop(candidate);
+      if (top + height > viewportTop + 1)
+        return { key, top: top - viewportTop + scroller.scrollTop };
     }
     return undefined;
   };
@@ -173,13 +192,32 @@ export function createTranscriptScrollOwner(
     options.cancelVirtualNavigation();
   };
 
+  /**
+   * Someone else moved the viewport since this owner last looked: the reader, or
+   * a browser clamp. Classify it before anything can pin over it.
+   */
+  const observeMovement = (pendingMeasurements: boolean) => {
+    const movedDown = scroller.scrollTop > knownTop;
+    // First compensate any layout change that has not been reconciled yet
+    // (content coordinates ignore the movement itself).
+    if (!following && !pendingMeasurements) holdAnchor();
+    knownTop = scroller.scrollTop;
+    // Virtuoso's scrollToIndex moves for a pending reveal; that is not the reader.
+    if (pendingReveal === undefined) following = movedDown ? following || atBottom() : atEnd();
+    if (!pendingMeasurements) anchor = findAnchor();
+  };
+
   const reconcile = () => {
     if (!measurable()) return;
     const pendingMeasurements = measuring();
     if (positioning()) {
+      knownTop = scroller.scrollTop;
       if (following) pin();
       return;
     }
+    // A native movement whose scroll event is still queued (layout commits and
+    // ResizeObservers can run first) must not be pinned over.
+    if (scroller.scrollTop !== knownTop) observeMovement(pendingMeasurements);
     if (!following && pendingMeasurements) return;
     if (following) pin();
     else holdAnchor();
@@ -194,37 +232,16 @@ export function createTranscriptScrollOwner(
       }
     }
     if (!anchor) anchor = findAnchor();
-    knownHeight = scroller.scrollHeight;
   };
 
   const handleScroll = () => {
     if (!measurable()) return;
-    const top = scroller.scrollTop;
-    if (top === knownTop || positioning()) {
-      knownTop = top;
+    if (scroller.scrollTop === knownTop || positioning()) {
       reconcile();
       return;
     }
-    // Someone else moved the viewport. First compensate any layout change that
-    // has not been reconciled yet (content coordinates ignore the movement).
-    const movedDown = top > knownTop;
-    const pendingMeasurements = measuring();
-    if (!following && !pendingMeasurements) holdAnchor();
-    knownTop = scroller.scrollTop;
-    // Virtuoso's scrollToIndex moves for a pending reveal; that is not the reader.
-    if (pendingReveal === undefined) {
-      if (movedDown) following ||= atBottom();
-      // Moving up away from the bottom stops following. The one exception is a
-      // browser clamp: content shrank (and may have regrown) before this event,
-      // which the changed height reveals. A held pointer (scrollbar drag,
-      // selection autoscroll) is always the reader. Wheel, touch and keys have
-      // already stopped following in `intent`, before their scroll events.
-      else if (following && (pointerHeld || scroller.scrollHeight === knownHeight))
-        following = atBottom();
-    }
+    observeMovement(measuring());
     if (following) pin();
-    if (!pendingMeasurements) anchor = findAnchor();
-    knownHeight = scroller.scrollHeight;
   };
 
   /** An uncontained nested scroller that can still move consumes the gesture itself. */
@@ -250,7 +267,8 @@ export function createTranscriptScrollOwner(
   /**
    * Reader input acts before its scroll event so a layout change in between
    * cannot pin the reader back down. Upward input stops following at once;
-   * downward input at the bottom (which may not move) resumes it.
+   * downward input at the bottom (which may not move) resumes it. Movement
+   * without such input is classified by `observeMovement`.
    */
   const intent = (target: EventTarget | null, direction: number) => {
     if (direction === 0 || positioning() || nestedScrollerConsumes(target, direction)) return;
@@ -286,17 +304,6 @@ export function createTranscriptScrollOwner(
   const handleTouchEnd = () => {
     touchY = undefined;
   };
-  const handlePointerDown = () => {
-    pointerHeld = true;
-  };
-  const handlePointerUp = () => {
-    pointerHeld = false;
-  };
-  // A scrollbar drag may not deliver pointerup to the page; any later movement
-  // without pressed buttons ends the press as well.
-  const handlePointerMove = (event: PointerEvent) => {
-    if (event.buttons === 0) pointerHeld = false;
-  };
 
   const abort = new AbortController();
   const listen = { signal: abort.signal, passive: true };
@@ -307,10 +314,6 @@ export function createTranscriptScrollOwner(
   scroller.addEventListener("touchmove", handleTouchMove, listen);
   scroller.addEventListener("touchend", handleTouchEnd, listen);
   scroller.addEventListener("touchcancel", handleTouchEnd, listen);
-  scroller.addEventListener("pointerdown", handlePointerDown, listen);
-  window.addEventListener("pointerup", handlePointerUp, listen);
-  window.addEventListener("pointercancel", handlePointerUp, listen);
-  window.addEventListener("pointermove", handlePointerMove, listen);
   // Row, footer, composer-dock and viewport size changes all land here before paint.
   const observer = new ResizeObserver(reconcile);
   observer.observe(content);

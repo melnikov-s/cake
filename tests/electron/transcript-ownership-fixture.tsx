@@ -1,10 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { StoreProvider } from "r-state-tree/react";
-import {
-  ChatTranscript,
-  type ChatTranscriptHandle,
-} from "../../src/renderer/components/chat-transcript";
+import { ChatTranscript } from "../../src/renderer/components/chat-transcript";
 import { Chat } from "../../src/renderer/components/chat";
 import { createRendererStoreFixture } from "../app/renderer/renderer-store-fixture";
 import { projectRecord, sessionSummary } from "../app/renderer/fixtures/catalog-fixtures";
@@ -129,7 +126,7 @@ function publish(streaming = false) {
 }
 publish();
 const root = createRoot(document.getElementById("root")!);
-let handle: ChatTranscriptHandle | null = null;
+let liveTimer: ReturnType<typeof setInterval> | undefined;
 function render() {
   flushSync(() =>
     root.render(
@@ -147,9 +144,6 @@ function render() {
                   }
                 : undefined
             }
-            ref={(value) => {
-              handle = value;
-            }}
             footer={<div>Activity revision {revision}</div>}
           />
         )}
@@ -169,6 +163,9 @@ export interface TranscriptOwnershipFixture {
   activity(): void;
   insert(): void;
   navigate(): void;
+  /** Starts app-like live updates: commits are scheduled by the observer, not flushed. */
+  startLive(intervalMs: number, mode: string): void;
+  stopLive(): void;
   /** Projects a longer version of an existing message (content growth in place). */
   grow(messageId: string): void;
   /** The id of the newest transcript part. */
@@ -241,7 +238,7 @@ Reflect.set(window, "transcriptFixture", {
     render();
   },
   insert() {
-    handle?.scrollToBottomForSentMessage();
+    store.transcriptInteraction.noteSentMessage();
     parts = [
       ...parts,
       {
@@ -258,5 +255,57 @@ Reflect.set(window, "transcriptFixture", {
   navigate() {
     store.transcriptInteraction.navigateToMessage("message-5");
     render();
+  },
+  startLive(intervalMs, mode) {
+    let tick = 0;
+    liveTimer = setInterval(() => {
+      tick++;
+      if (mode.includes("tool") && tick % 3 === 0) {
+        const toolIndex = parts.findIndex((part) => part.id === "live-tool");
+        const tool: UiPart = {
+          kind: "tool",
+          id: "live-tool",
+          name: "bash",
+          input: "build",
+          state: "running",
+          output: `Live ${tick}.\n${"Output line.\n".repeat(tick)}`,
+        };
+        parts =
+          toolIndex >= 0
+            ? parts.map((part, index) => (index === toolIndex ? tool : part))
+            : [...parts, tool];
+      } else if (mode.includes("arrive") && tick % 7 === 0) {
+        parts = [
+          ...parts,
+          {
+            kind: "text",
+            id: `live-arrival-${tick}`,
+            role: "assistant",
+            status: "complete",
+            text: `Live arrival ${tick}. ${"Arriving. ".repeat(30)}`,
+          },
+        ];
+      } else {
+        const last = parts.at(-1);
+        parts =
+          last?.kind === "text" && last.status === "streaming"
+            ? [...parts.slice(0, -1), { ...last, text: last.text + "word ".repeat(6) }]
+            : [
+                ...parts,
+                {
+                  kind: "text",
+                  id: `live-${tick}`,
+                  role: "assistant",
+                  status: "streaming",
+                  text: "word ",
+                },
+              ];
+      }
+      // No render(): the observer schedules its own commit, as live projections do.
+      publish(true);
+    }, intervalMs);
+  },
+  stopLive() {
+    clearInterval(liveTimer);
   },
 } satisfies TranscriptOwnershipFixture);

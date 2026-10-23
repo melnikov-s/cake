@@ -58,6 +58,11 @@ export class TranscriptInteractionStore extends Store<TranscriptInteractionStore
   messageSelection: MessageSelection | undefined;
   changedFilesOpen = false;
   userMessagePresentationError: string | undefined;
+  /**
+   * Counts the reader's own sends. Sending a message is the only time the
+   * transcript scrolls to the bottom for the reader; it reacts to each change.
+   */
+  sentMessageRevision = 0;
   private messageSelectionRevision = 0;
   private changedFilesChurning: boolean | undefined;
 
@@ -139,6 +144,13 @@ export class TranscriptInteractionStore extends Store<TranscriptInteractionStore
 
   setTranscriptScrollPosition(position: TranscriptScrollPosition | undefined) {
     this.transcriptScrollPosition = position;
+  }
+
+  /** The reader sent a message from the composer (typed or voice conversation mode). */
+  noteSentMessage() {
+    this.sentMessageRevision++;
+    // A transcript mounted later opens at the bottom too.
+    this.transcriptScrollPosition = { kind: "bottom" };
   }
 
   /** Selects and reveals a linked message, superseding any saved scroll anchor. */

@@ -87,9 +87,17 @@ projections needed by a surface. References do not transfer ownership.
   still. Anchors are stored in content coordinates, so compensation cannot undo
   a native scroll whose event is still queued. Following stops as soon as the
   reader moves up (wheel, touch, keys, scrollbar, or any other upward movement)
-  and resumes only when the reader returns to the bottom. Sending a message is
-  the single programmatic scroll to the bottom; no other action (worktree
-  commands, leaving keyboard selection, arriving content) may jump there.
+  and resumes only when the reader returns to the bottom. Any upward movement
+  of a pixel or more away from the end is the reader's, even without input the
+  transcript saw (a gesture over an iframe, a scrollbar drag, find-in-page) and
+  even when a commit or resize lands before its scroll event; only a browser
+  clamp moves up and still lands at the end. Anchors use layout positions, so
+  a live arrival's entrance transform is never compensated. Sending a message is
+  the single programmatic scroll to the bottom: typed and voice-mode sends
+  both go through `ChatStore.submit`, which bumps
+  `TranscriptInteractionStore.sentMessageRevision`, and the transcript reacts to
+  that. No other action (worktree commands, leaving keyboard selection,
+  arriving content) may jump there.
   Keyboard or linked message selection reveals its message once by stable item
   key, pauses following, and is otherwise ordinary reading. The
   pinned Virtuoso patch keeps upward size compensation disabled
