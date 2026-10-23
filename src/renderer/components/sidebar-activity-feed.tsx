@@ -86,17 +86,28 @@ export const SidebarActivityFeed = observer(function SidebarActivityFeed({
           </h2>
           <AnimatedList className="flex flex-col space-y-0.5 pl-2">
             {group.map((entry) => {
-              if (entry.kind === "project-chat")
+              if (entry.kind === "project-chat") {
+                const projectPath = entry.summary.projectPath;
                 return (
                   <SidebarProjectChatItem
                     key={entry.summary.sessionId}
                     summary={entry.summary}
+                    project={
+                      projectPath === undefined
+                        ? undefined
+                        : {
+                            name: projects.nameForPath(projectPath),
+                            customIcon: projects.find(projectPath)?.settings?.icon,
+                            showAvatar: appearance.projectAvatarsEnabled,
+                          }
+                    }
                     cakeChat={cakeChat}
                     shell={shell}
                     now={store.now}
                     onOpen={onOpenCakeChat}
                   />
                 );
+              }
               return (
                 <div
                   key={`project-family:${entry.family.rootSessionId}`}

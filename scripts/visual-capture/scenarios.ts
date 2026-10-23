@@ -37,6 +37,7 @@ import {
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { createModels } from "@earendil-works/pi-durable-ai";
 import { durableInputText } from "../../src/services/pi-durable/durable-input-presentation.ts";
+import { ChatMetadataDoc } from "../../src/services/pi-durable/durable-chat-metadata.ts";
 import { investigatorOrigin, investigatorMarkdown } from "../../tests/fixtures/subagent-report.ts";
 import { expect, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import type { VisualCaptureTheme } from "./arguments.ts";
@@ -2012,10 +2013,27 @@ const projectChatTodos: VisualCaptureScenario = {
 
 const activeSidebarSessions: VisualCaptureScenario = {
   name: "active-sidebar-sessions",
-  description: "Active sidebar rows omit all timestamps while retaining inactive metadata",
+  description:
+    "Active sidebar rows omit all timestamps while retaining inactive metadata, beside an unread Project Chat in Activity",
   states: ["projects", "activity"],
   async seed(paths, theme) {
     await projectChatSidebar.seed(paths, theme);
+    // An unread Project Chat with history joins the Activity feed beside Project Sessions.
+    const file = join(paths.cakeHome, "state", "application.json");
+    const state = JSON.parse(await readFile(file, "utf8"));
+    const projectPath: string = state.projects[0].path;
+    const hash = createHash("sha256").update(projectPath).digest("hex");
+    await seedDurableChat(join(paths.cakeHome, "pi", "project-chats", hash), [
+      "Which sidebar rows still need alignment?",
+      "Project Chat rows now share the session status column.",
+    ]);
+    await writeFile(
+      file,
+      JSON.stringify({
+        ...state,
+        unreadSessionIds: [...state.unreadSessionIds, `project-chat:${hash}`],
+      }),
+    );
     const sessions = workspaceSessionDirectory(
       paths.project,
       join(paths.cakeHome, "pi", "sessions"),
@@ -2062,8 +2080,12 @@ const activeSidebarSessions: VisualCaptureScenario = {
       await expect(row.getByRole("img", { name: "Waiting for your answer" })).toBeVisible();
       await expect(row.locator("time")).toHaveCount(0);
     }
-    if (state === "activity")
+    if (state === "activity") {
       await page.getByRole("button", { name: "Show activity", exact: true }).click();
+      await expect(
+        page.locator('[data-slot="project-chat-item"]').getByRole("img", { name: "Ready, unread" }),
+      ).toBeVisible();
+    }
     await expect(
       page.locator('.session-item[data-session-id="visual-sidebar-inactive"] time'),
     ).toBeVisible();
@@ -2112,57 +2134,12 @@ const cakeChatScenario: VisualCaptureScenario = {
   ],
   async seed(paths, theme) {
     await assistantMarkdownCode.seed(paths, theme);
-    const directory = join(paths.cakeHome, "pi", "global-chat");
-    await mkdir(directory, { recursive: true });
-    const texts = [
+    await seedDurableChat(join(paths.cakeHome, "pi", "global-chat"), [
       "I prefer coding tasks to run in their own worktrees.",
       "I'll coordinate the work here and use independent Project Sessions for implementation.",
       "Will I still see my original conversation history?",
       "Yes. Your original messages and replies remain visible here. The summary tree is used behind the scenes to give the model a smaller history view.",
-    ];
-    const storage = await openNodeSqliteStorage(join(directory, "coordinator.sqlite"));
-    const harness = await Harness.open(
-      storage,
-      { models: createModels(), registry: createRegistry() },
-      BACKGROUND_CONTEXT,
-    );
-    try {
-      const root = await harness.root(BACKGROUND_CONTEXT);
-      await root.commit(async (tx) => {
-        for (const [index, text] of texts.entries()) {
-          if (index % 2 === 0) {
-            await tx.appendEntry(UserEntry, root.id, {
-              model: [{ role: "user", content: [{ type: "text", text }], timestamp: index }],
-            });
-          } else {
-            await tx.appendEntry(AssistantEntry, root.id, {
-              model: [
-                {
-                  role: "assistant",
-                  content: [{ type: "text", text }],
-                  timestamp: index,
-                  api: "anthropic-messages",
-                  provider: "anthropic",
-                  model: "visual-fixture",
-                  stopReason: "stop",
-                  usage: {
-                    input: 0,
-                    output: 0,
-                    cacheRead: 0,
-                    cacheWrite: 0,
-                    totalTokens: 0,
-                    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-                  },
-                },
-              ],
-            });
-          }
-        }
-      }, BACKGROUND_CONTEXT);
-    } finally {
-      await harness.close(BACKGROUND_CONTEXT);
-      await storage.close(BACKGROUND_CONTEXT);
-    }
+    ]);
   },
   async prepare(page, state) {
     await assistantMarkdownCode.prepare(page, "default");
@@ -4518,6 +4495,57 @@ export const visualCaptureScenarios = [
 
 export function findVisualCaptureScenario(name: string) {
   return visualCaptureScenarios.find((scenario) => scenario.name === name);
+}
+
+/** Seeds a Pi Durable chat (Cake Chat or a Project Chat) with alternating user/assistant text. */
+async function seedDurableChat(directory: string, texts: readonly string[]) {
+  await mkdir(directory, { recursive: true });
+  const storage = await openNodeSqliteStorage(join(directory, "coordinator.sqlite"));
+  const harness = await Harness.open(
+    storage,
+    { models: createModels(), registry: createRegistry() },
+    BACKGROUND_CONTEXT,
+  );
+  try {
+    const root = await harness.root(BACKGROUND_CONTEXT);
+    await root.commit(async (tx) => {
+      // Catalog rows read advisory metadata rather than counting transcript entries.
+      const metadata = await tx.doc(ChatMetadataDoc, root.id);
+      metadata.messageCount = texts.length;
+      for (const [index, text] of texts.entries()) {
+        if (index % 2 === 0) {
+          await tx.appendEntry(UserEntry, root.id, {
+            model: [{ role: "user", content: [{ type: "text", text }], timestamp: index }],
+          });
+        } else {
+          await tx.appendEntry(AssistantEntry, root.id, {
+            model: [
+              {
+                role: "assistant",
+                content: [{ type: "text", text }],
+                timestamp: index,
+                api: "anthropic-messages",
+                provider: "anthropic",
+                model: "visual-fixture",
+                stopReason: "stop",
+                usage: {
+                  input: 0,
+                  output: 0,
+                  cacheRead: 0,
+                  cacheWrite: 0,
+                  totalTokens: 0,
+                  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+                },
+              },
+            ],
+          });
+        }
+      }
+    }, BACKGROUND_CONTEXT);
+  } finally {
+    await harness.close(BACKGROUND_CONTEXT);
+    await storage.close(BACKGROUND_CONTEXT);
+  }
 }
 
 /** Mirrors Cake/Pi's per-working-directory session layout for an isolated fixture. */

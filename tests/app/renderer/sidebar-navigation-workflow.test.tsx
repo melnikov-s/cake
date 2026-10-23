@@ -716,6 +716,51 @@ describe("Sidebar navigation workflow", () => {
     expect(order()).toEqual(["alpha", "beta"]);
   });
 
+  it("marks Activity Project Chats with their Project's icon in the session status column", async () => {
+    const iconProject = projectRecord({
+      path: "/cake",
+      settings: {
+        ...project.settings!,
+        icon: { mimeType: "image/png", data: "aWNvbg==" },
+      },
+    });
+    using fixture = renderSidebarNavigation({
+      projects: [iconProject],
+      sessions: [sidebarSummary("session", 1)],
+      loadedIds: ["session"],
+    });
+    const chat = (unread: boolean) => ({
+      sessionId: "project-chat",
+      title: "cake",
+      projectPath: "/cake",
+      createdAt: sidebarSummary("unused", 1).modifiedAt,
+      modifiedAt: sidebarSummary("unused", 2).modifiedAt,
+      messageCount: 2,
+      resolved: false,
+      unread,
+    });
+    await fixture.publishProjectChats([chat(false)]);
+    await fixture.publishProjectChatStreaming("project-chat", true);
+    await fixture.user.click(screen.getByRole("button", { name: "Show activity" }));
+    const chatRow = document.querySelector<HTMLElement>('[data-slot="project-chat-item"]')!;
+    const leading = chatRow.querySelector('[data-slot="project-chat-leading"]')!;
+    expect(leading.querySelector("img")?.getAttribute("src")).toBe(
+      "data:image/png;base64,aWNvbg==",
+    );
+    const status = chatRow.querySelector<HTMLElement>('[data-slot="project-chat-status"]')!;
+    expect(within(status).getByRole("img", { name: "Running" })).toBeDefined();
+
+    await fixture.publishProjectChatStreaming("project-chat", false);
+    expect(chatRow.querySelector('[data-slot="project-chat-status"]')).toBeNull();
+    await fixture.publishProjectChats([chat(true)]);
+    expect(
+      within(chatRow.querySelector<HTMLElement>('[data-slot="project-chat-status"]')!).getByRole(
+        "img",
+        { name: "Ready, unread" },
+      ),
+    ).toBeDefined();
+  });
+
   it("keeps running Project Chats stable against sessions in the mixed Activity feed", async () => {
     const sessions = [sidebarSummary("newest", 4), sidebarSummary("oldest", 1)];
     using fixture = renderSidebarNavigation({
