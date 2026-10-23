@@ -2,29 +2,24 @@ import { observer } from "r-state-tree/react";
 import { Button } from "@/components/ui/button";
 import { CheckIcon, CircleIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
-import type { UiPart } from "../../contracts/conversations/session-contract";
 import type { ProjectTodosStore } from "../stores/ProjectTodosStore";
-import { resultTodoOrigin } from "../lib/result-todo-origin";
 
 /**
  * A footer bar inside a result message for each to-do tracking it: "To-do · title" with a
  * one-click Done, through the same user done/reopen path as the To-do pane. Renders nothing
- * unless the message is a result linked to an open (or user-closed) to-do.
+ * unless this is the latest result linked to an open (or user-closed) to-do.
  */
 export const ResultTodoFooter = observer(function ResultTodoFooter({
-  part,
+  partId,
   todos,
-  chatSessionId,
   className,
 }: {
-  part: UiPart;
+  partId: string;
   todos?: ProjectTodosStore;
-  chatSessionId?: string;
   /** Aligns the bar with the host message's own horizontal padding. */
   className?: string;
 }) {
-  const origin = todos?.available ? resultTodoOrigin(part, chatSessionId) : undefined;
-  const items = origin && todos ? todos.itemsForResult(origin) : [];
+  const items = todos?.itemsForPart(partId) ?? [];
   if (!todos || !items.length) return null;
   return (
     <div

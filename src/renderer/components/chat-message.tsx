@@ -450,14 +450,7 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
       contentRef={contentRef}
       onOpenSourceLocation={behavior.openSourceLocation}
       omitArtifactEmbeds={publishedArtifactReferences}
-      footer={
-        <ResultTodoFooter
-          part={part}
-          todos={behavior.todos}
-          chatSessionId={behavior.messageReferenceSessionId}
-          className="mx-5 mb-1"
-        />
-      }
+      footer={<ResultTodoFooter partId={part.id} todos={behavior.todos} className="mx-5 mb-1" />}
       sourceResponse={
         sources.length
           ? sources.map((source) => (

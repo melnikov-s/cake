@@ -70,13 +70,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
       <ChatTextMessage
         part={part}
         onOpenSourceLocation={behavior.openSourceLocation}
-        footer={
-          <ResultTodoFooter
-            part={part}
-            todos={behavior.todos}
-            chatSessionId={behavior.messageReferenceSessionId}
-          />
-        }
+        footer={<ResultTodoFooter partId={part.id} todos={behavior.todos} />}
       />
     );
   if (part.kind === "text")
@@ -283,18 +277,11 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
     const notification = sessionNotificationMarkdown(part.text);
     if (notification)
       return (
-        <div className="flex min-w-0 flex-col gap-3">
+        <div className="flex w-full min-w-0 basis-full flex-col gap-3">
           <SessionResultNotice
             text={notification}
             onOpenSourceLocation={behavior.openSourceLocation}
-            footer={
-              <ResultTodoFooter
-                part={part}
-                todos={behavior.todos}
-                chatSessionId={behavior.messageReferenceSessionId}
-                className="mt-1"
-              />
-            }
+            footer={<ResultTodoFooter partId={part.id} todos={behavior.todos} className="mt-1" />}
           />
           {behavior.store.messageSources
             .filter((source) => source.props.partId === part.id)

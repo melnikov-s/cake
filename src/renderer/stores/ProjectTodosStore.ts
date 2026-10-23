@@ -1,4 +1,6 @@
-import { Store } from "r-state-tree";
+import { Store, computed } from "r-state-tree";
+import type { UiPart } from "../../contracts/conversations/session-contract";
+import { resultTodoOrigin } from "../lib/result-todo-origin";
 import {
   type ProjectTodo,
   type ProjectTodos,
@@ -38,6 +40,8 @@ export interface TodoResultOrigin {
 export class ProjectTodosStore extends Store<{
   list(): TodoListSource | undefined;
   sidePanel(): SideChatStore;
+  /** The owning chat's transcript, for placing Done controls on result messages. */
+  transcript?(): { readonly chatSessionId: string; readonly parts: readonly UiPart[] };
 }> {
   doneExpanded = false;
   busy = false;
@@ -117,6 +121,33 @@ export class ProjectTodosStore extends Store<{
           return sessions.has(target.sessionId);
         }),
     );
+  }
+
+  /**
+   * Which result message shows each to-do's Done control: only the latest linked result in
+   * the transcript, so a session's earlier progress updates don't repeat the control.
+   */
+  @computed
+  get resultControls(): ReadonlyMap<string, readonly ProjectTodo[]> {
+    const transcript = this.props.transcript?.();
+    const controls = new Map<string, ProjectTodo[]>();
+    if (!transcript || !this.available) return controls;
+    const placed = new Set<string>();
+    for (let index = transcript.parts.length - 1; index >= 0; index--) {
+      const part = transcript.parts[index]!;
+      const origin = resultTodoOrigin(part, transcript.chatSessionId);
+      if (!origin) continue;
+      const items = this.itemsForResult(origin).filter((item) => !placed.has(item.id));
+      if (!items.length) continue;
+      for (const item of items) placed.add(item.id);
+      controls.set(part.id, items);
+    }
+    return controls;
+  }
+
+  /** The to-dos whose Done control belongs on this transcript part, if any. */
+  itemsForPart(partId: string): readonly ProjectTodo[] {
+    return this.resultControls.get(partId) ?? [];
   }
 
   toggle() {

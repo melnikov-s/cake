@@ -77,6 +77,16 @@ const parts: UiPart[] = [
     subagentReport: { ...researchOrigin, handleId: unlinkedWorker },
   },
   {
+    id: "session-progress",
+    kind: "text",
+    role: "user",
+    entryId: "session-progress",
+    text: "Halfway there: the port wait is in, CI is still running.",
+    status: "complete",
+    renderAs: "markdown",
+    crossSession: crossSession(sessionA, "Build fix", "f6debbbd-ced1-4a12-b0f7-fb60c292c623"),
+  },
+  {
     id: "session-reply",
     kind: "text",
     role: "user",
@@ -207,6 +217,8 @@ it("offers Done only on result messages linked to an open to-do in global Cake C
   expect(f.groupFor("worker-report")?.textContent).toBe("To-do · Research optionsMark done");
   expect(f.groupFor("session-reply")?.textContent).toBe("To-do · Fix the buildMark done");
   expect(f.groupFor("notice")?.textContent).toBe("To-do · Benchmark startupMark done");
+  // Only the latest result from a linked session carries its control.
+  expect(f.groupFor("session-progress")).toBeNull();
   // Unlinked results and a linked session's request are not results to close.
   expect(f.groupFor("unlinked-report")).toBeNull();
   expect(f.groupFor("session-request")).toBeNull();
