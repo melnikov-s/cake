@@ -31,8 +31,7 @@ import { SkillMessage } from "./skill-message";
 import { SourceAttachment } from "./source-attachment";
 import { InlineMessageSource } from "./inline-message-source";
 import { crossSessionPresentation } from "../lib/cross-session-presentation";
-import { resultTodoOrigin } from "../lib/result-todo-origin";
-import { ResultTodoDone } from "./result-todo-done";
+import { ResultTodoFooter } from "./result-todo-done";
 
 const artifactReferenceInText =
   /(?:^|\s)cake:\/\/artifact\/[A-Za-z0-9][A-Za-z0-9._:-]*(?:@r[1-9][0-9]*)?(?=$|[\s),.;!?])/;
@@ -67,7 +66,19 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
     part.kind === "text" && part.role === "user" && artifactReferenceInText.test(part.text);
   const userMessageDisplaysAsMarkdown = userMessageRendersAsMarkdown || hasArtifactReference;
   if (part.kind === "text" && part.subagentReport)
-    return <ChatTextMessage part={part} onOpenSourceLocation={behavior.openSourceLocation} />;
+    return (
+      <ChatTextMessage
+        part={part}
+        onOpenSourceLocation={behavior.openSourceLocation}
+        footer={
+          <ResultTodoFooter
+            part={part}
+            todos={behavior.todos}
+            chatSessionId={behavior.messageReferenceSessionId}
+          />
+        }
+      />
+    );
   if (part.kind === "text")
     return part.role === "assistant" || part.crossSession ? (
       <AssistantTextMessage part={part} behavior={behavior} />
@@ -276,6 +287,14 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
           <SessionResultNotice
             text={notification}
             onOpenSourceLocation={behavior.openSourceLocation}
+            footer={
+              <ResultTodoFooter
+                part={part}
+                todos={behavior.todos}
+                chatSessionId={behavior.messageReferenceSessionId}
+                className="mt-1"
+              />
+            }
           />
           {behavior.store.messageSources
             .filter((source) => source.props.partId === part.id)
@@ -339,22 +358,6 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
   return <RetryNotice part={part} />;
 });
 
-/** One-click Done for the chat's open to-dos linked to this result message, if any. */
-const ResultTodoControl = observer(function ResultTodoControl({
-  part,
-  behavior,
-}: {
-  part: UiPart;
-  behavior: CanonicalTranscriptBehavior;
-}) {
-  const origin = behavior.todos?.available
-    ? resultTodoOrigin(part, behavior.messageReferenceSessionId)
-    : undefined;
-  return origin && behavior.todos ? (
-    <ResultTodoDone store={behavior.todos} origin={origin} />
-  ) : null;
-});
-
 /** Marks every rendered transcript part in the DOM so right-click selection
  *  capture can resolve any selectable surface back to its conversation part.
  *  The wrapper is layout-invisible via `display: contents`. */
@@ -373,7 +376,6 @@ export const TranscriptPart = observer(function TranscriptPart(props: {
     >
       <div className="contents" data-part-id={props.part.id}>
         <TranscriptPartContent {...props} />
-        <ResultTodoControl part={props.part} behavior={props.behavior} />
         {props.part.kind === "text" &&
           !(
             props.part.crossSession &&

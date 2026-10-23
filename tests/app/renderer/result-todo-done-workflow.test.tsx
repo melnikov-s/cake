@@ -204,13 +204,17 @@ function renderGlobalChat() {
 it("offers Done only on result messages linked to an open to-do in global Cake Chat", async () => {
   using f = renderGlobalChat();
   await f.ready();
-  expect(f.groupFor("worker-report")?.textContent).toBe("DoneResearch options");
-  expect(f.groupFor("session-reply")?.textContent).toBe("DoneFix the build");
-  expect(f.groupFor("notice")?.textContent).toBe("DoneBenchmark startup");
+  expect(f.groupFor("worker-report")?.textContent).toBe("To-do · Research optionsMark done");
+  expect(f.groupFor("session-reply")?.textContent).toBe("To-do · Fix the buildMark done");
+  expect(f.groupFor("notice")?.textContent).toBe("To-do · Benchmark startupMark done");
   // Unlinked results and a linked session's request are not results to close.
   expect(f.groupFor("unlinked-report")).toBeNull();
   expect(f.groupFor("session-request")).toBeNull();
   expect(screen.getAllByRole("group", { name: "Linked to-dos" })).toHaveLength(3);
+  // The bar is part of each message, so every result type shares one layout.
+  expect(f.groupFor("worker-report")?.closest('[data-slot="message-content"]')).not.toBeNull();
+  expect(f.groupFor("session-reply")?.closest('[data-slot="session-message"]')).not.toBeNull();
+  expect(f.groupFor("notice")?.closest('[aria-label="Session results"]')).not.toBeNull();
 });
 
 it("marks the linked to-do done through the user path, shows it done and can reopen it", async () => {
@@ -271,7 +275,7 @@ it("hides the control once an agent or session resolution closed the to-do", asy
   );
   expect(f.groupFor("worker-report")).toBeNull();
   expect(f.groupFor("session-reply")).toBeNull();
-  expect(f.groupFor("notice")?.textContent).toBe("DoneBenchmark startup");
+  expect(f.groupFor("notice")?.textContent).toBe("To-do · Benchmark startupMark done");
 });
 
 it("gives global Cake Chat its own To-do pane", async () => {

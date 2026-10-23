@@ -2662,6 +2662,7 @@ const resultTodoDoneScenario: VisualCaptureScenario = {
     await expect(report).toBeVisible({ timeout: 20_000 });
     const done = page.getByRole("button", {
       name: "Mark to-do done: Research the publication check",
+      exact: true,
     });
     await expect(done).toBeVisible();
     if (state === "done") {

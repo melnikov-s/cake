@@ -46,6 +46,7 @@ import { SubagentReportHeader } from "./subagent-report-header";
 import { subagentReportFindings, subagentReportHeading } from "../lib/subagent-report-presentation";
 import { crossSessionPresentation } from "../lib/cross-session-presentation";
 import { InlineMessageSource } from "./inline-message-source";
+import { ResultTodoFooter } from "./result-todo-done";
 
 export function chatWorkIsActive(
   parts: UiPart[],
@@ -82,6 +83,8 @@ export const ChatTextMessage = forwardRef<
     onOpenSourceLocation?(location: SourceLocation): void;
     omitArtifactEmbeds?: readonly string[];
     sourceResponse?: ReactNode;
+    /** Rendered inside the message container, after its content (e.g. linked to-do bar). */
+    footer?: ReactNode;
   }
 >(function ChatTextMessage(
   {
@@ -93,6 +96,7 @@ export const ChatTextMessage = forwardRef<
     onOpenSourceLocation,
     omitArtifactEmbeds,
     sourceResponse,
+    footer,
   },
   ref,
 ) {
@@ -144,6 +148,7 @@ export const ChatTextMessage = forwardRef<
       ) : (
         text
       )}
+      {report && footer}
     </MessageContent>
   ) : null;
   return (
@@ -187,6 +192,7 @@ export const ChatTextMessage = forwardRef<
               )}
             </div>
           )}
+          {footer}
         </SessionMessage>
       ) : (
         content
@@ -444,6 +450,14 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
       contentRef={contentRef}
       onOpenSourceLocation={behavior.openSourceLocation}
       omitArtifactEmbeds={publishedArtifactReferences}
+      footer={
+        <ResultTodoFooter
+          part={part}
+          todos={behavior.todos}
+          chatSessionId={behavior.messageReferenceSessionId}
+          className="mx-5 mb-1"
+        />
+      }
       sourceResponse={
         sources.length
           ? sources.map((source) => (

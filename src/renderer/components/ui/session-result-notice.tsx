@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Markdown } from "../ai-elements/markdown";
 import { Callout } from "./callout";
 import type { SourceLocation } from "../../../contracts/editor/source-location";
@@ -6,13 +7,17 @@ import type { SourceLocation } from "../../../contracts/editor/source-location";
 export function SessionResultNotice({
   text,
   onOpenSourceLocation,
+  footer,
 }: {
   text: string;
   onOpenSourceLocation?(location: SourceLocation): void;
+  /** Rendered inside the notice, after its links (e.g. linked to-do bar). */
+  footer?: ReactNode;
 }) {
   return (
     <Callout role="status" aria-label="Session results" className="w-full min-w-0">
       <Markdown onOpenSourceLocation={onOpenSourceLocation}>{text}</Markdown>
+      {footer}
     </Callout>
   );
 }
