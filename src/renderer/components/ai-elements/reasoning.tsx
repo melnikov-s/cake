@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { DisclosureTrigger } from "../ui/disclosure-trigger";
-import { StatusDot } from "../ui/status-dot";
+import { StatusDot, statusDotGapClassName } from "../ui/status-dot";
+import { cn } from "@/lib/utils";
 
 export function Reasoning({
   open,
@@ -35,7 +36,10 @@ export function Reasoning({
         </>
       ) : (
         <div
-          className="flex items-center gap-2 font-mono text-xs font-semibold text-foreground"
+          className={cn(
+            "flex items-center font-mono text-xs font-semibold text-foreground",
+            statusDotGapClassName,
+          )}
           role="status"
         >
           <StatusDot status={streaming ? "running" : "complete"} />

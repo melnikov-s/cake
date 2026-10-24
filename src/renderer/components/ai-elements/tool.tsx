@@ -23,6 +23,7 @@ import type { SubagentActivityStore } from "../../stores/SubagentActivityStore";
 import { ImagePreview } from "@/components/image-preview";
 import { CopyFilePathButton } from "@/components/copy-file-path-button";
 import { parseToolInput, toolDisplayTitle, toolPath } from "@/lib/tool-presentation";
+import { cn } from "@/lib/utils";
 
 // A drag over selectable button text must not also navigate or toggle details.
 // Keyboard activation (detail === 0) still works with a selection present.
@@ -260,7 +261,7 @@ export const Tool = observer(function Tool({
       <div className="flex items-center justify-between gap-3 min-w-0">
         <div className="group/path flex min-w-0 flex-1 items-center gap-2">
           <DisclosureTrigger
-            className="flex-1 select-text"
+            className={cn("flex-1 select-text", path && "min-w-max")}
             title={title}
             subtitle={part.nestedCalls ? `${part.nestedCalls.calls.length} tool calls` : undefined}
             showChevron={false}

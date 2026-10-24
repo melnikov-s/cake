@@ -5,7 +5,7 @@ import { VirtualizedConversation } from "@/components/ai-elements/conversation";
 import { WorkLogDiff } from "@/components/ai-elements/work-log-diff";
 import { ImagePreview } from "@/components/image-preview";
 import { toolImageCaption, toolImagesAreConversationResults } from "../../utils/cake-tool";
-import { StatusDot } from "@/components/ui/status-dot";
+import { StatusDot, statusDotGapClassName } from "@/components/ui/status-dot";
 import { WorkLogActivityTrigger } from "@/components/work-log-activity-trigger";
 import { toolDisplayTitle } from "@/lib/tool-presentation";
 import type { UiPart } from "../../contracts/conversations/session-contract";
@@ -173,7 +173,8 @@ export const ActivityGroup = observer(function ActivityGroup({
         data-slot="activity-group"
         data-origin={compacted ? "compacted" : "current"}
         className={cn(
-          "flex items-center gap-2 rounded-xl border border-border/80 bg-muted/45 px-3.5 py-2.5 font-mono text-xs font-semibold text-muted-foreground",
+          "flex items-center rounded-xl border border-border/80 bg-muted/45 px-3.5 py-2.5 font-mono text-xs font-semibold text-muted-foreground",
+          statusDotGapClassName,
           compacted && "border-border/50 bg-muted/20 opacity-75",
         )}
         role="status"
@@ -198,7 +199,8 @@ export const ActivityGroup = observer(function ActivityGroup({
     >
       <summary
         className={cn(
-          "flex cursor-pointer select-none items-center gap-2 px-3.5 py-2.5 font-mono text-xs font-semibold text-foreground [&::-webkit-details-marker]:hidden",
+          "flex cursor-pointer select-none items-center px-3.5 py-2.5 font-mono text-xs font-semibold text-foreground [&::-webkit-details-marker]:hidden",
+          statusDotGapClassName,
           compacted && "text-muted-foreground",
         )}
         onClick={(event) => {

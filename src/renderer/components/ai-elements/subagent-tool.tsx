@@ -9,7 +9,7 @@ import type { SubagentActivityStore } from "../../stores/SubagentActivityStore";
 import { SideChatContext } from "../side-chat-context";
 import { IconButton } from "../ui/icon-button";
 import { ChatIcon } from "../ui/icons";
-import { StatusDot } from "../ui/status-dot";
+import { StatusDot, statusDotGapClassName } from "../ui/status-dot";
 
 type ToolPart = Extract<UiPart, { kind: "tool" }>;
 
@@ -92,7 +92,7 @@ export const SubagentTool = observer(function SubagentTool({
 
   return (
     <div className="rounded-xl border border-border bg-muted/35 px-3 py-2">
-      <div className="flex min-w-0 items-center gap-2 text-xs">
+      <div className={cn("flex min-w-0 items-center text-xs", statusDotGapClassName)}>
         <StatusDot
           status={
             activeCount > 0
@@ -135,7 +135,8 @@ export const SubagentTool = observer(function SubagentTool({
               data-subagent-handle={run.handleId}
               data-associated={subagents?.isAssociated(run.key) ? "true" : undefined}
               className={cn(
-                "flex min-w-0 items-center gap-2 rounded-lg border border-border/60 bg-background/50 px-2.5 py-2",
+                "flex min-w-0 items-center rounded-lg border border-border/60 bg-background/50 px-2.5 py-2",
+                statusDotGapClassName,
                 subagents?.isAssociated(run.key) && associationHighlightClassName,
               )}
             >

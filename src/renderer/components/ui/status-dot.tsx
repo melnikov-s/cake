@@ -2,6 +2,9 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { type HTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
+/** Shared dot-to-label spacing for compact status rows. */
+export const statusDotGapClassName = "gap-2";
+
 const statusDotVariants = cva("inline-block shrink-0 rounded-full", {
   variants: {
     status: {

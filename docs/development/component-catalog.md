@@ -26,6 +26,9 @@ See `AGENTS.md` for renderer implementation rules.
 
 [`SearchInput`](../../src/renderer/components/ui/search-input.tsx) composes `Input` with a search icon, accessible clear action and Escape-to-clear. Callers own the query and filtering.
 
+`StatusDot` exports `statusDotGapClassName` for the shared compact dot-to-label gap
+used by disclosure, tool, subagent, reasoning and work-log rows.
+
 `DisclosureTrigger` also supports leading disclosure triangles and wrapping titles
 for source outlines. Keep context expansion state and lazy provenance reads in the
 conversation's `ContextInspectorStore`, not in the shared control.

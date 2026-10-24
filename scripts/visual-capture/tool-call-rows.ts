@@ -9,7 +9,7 @@ import type { VisualCaptureTheme } from "./arguments";
 export const toolCallRowsScenario = {
   name: "tool-call-rows",
   description: "Selectable tool calls, spaced path links, home display and rounded durations",
-  states: ["default"],
+  states: ["default", "bottom"],
   async seed(
     paths: { cakeHome: string; project: string; userData: string },
     theme: VisualCaptureTheme,
@@ -49,6 +49,19 @@ export const toolCallRowsScenario = {
         durationMs: 0,
       },
       {
+        id: "long-home",
+        name: "read",
+        arguments: {
+          path: join(
+            homedir(),
+            ".pi/agent/cake-docs",
+            "1e810780e4d40e77da091adc3a7d2564e49fbf5b1db90775bfe5582bfa7b653f",
+            "sessions.md",
+          ),
+        },
+        durationMs: 0,
+      },
+      {
         id: "prefix",
         name: "read",
         arguments: { path: `${homedir()}-other/example.md` },
@@ -66,6 +79,21 @@ export const toolCallRowsScenario = {
         arguments: { command: "printf 'tool calls are selectable'" },
         durationMs: 1200,
       },
+      {
+        id: "custom",
+        name: "lookup_docs",
+        arguments: { query: "status spacing" },
+        durationMs: 0,
+      },
+      ...["todos.create", "todos.update", "subagents.start"].map((command) => ({
+        id: command,
+        name: "cake",
+        arguments: {
+          command,
+          input: command === "subagents.start" ? { task: "Check spacing" } : {},
+        },
+        durationMs: 0,
+      })),
     ];
     const entries: object[] = [
       { type: "session", version: 3, id: sessionId, timestamp, cwd: paths.project },
@@ -120,8 +148,21 @@ export const toolCallRowsScenario = {
           role: "toolResult",
           toolCallId: call.id,
           toolName: call.name,
-          content: [{ type: "text", text: "Tool result remains expandable." }],
-          isError: false,
+          content: [
+            {
+              type: "text",
+              text:
+                call.id === "subagents.start"
+                  ? JSON.stringify({
+                      task: "Check spacing",
+                      status: "error",
+                      failurePhase: "start",
+                      error: "Worker failed to start",
+                    })
+                  : "Tool result remains expandable.",
+            },
+          ],
+          isError: call.id === "subagents.start",
           timestamp: 2,
           durationMs: call.durationMs,
         },
@@ -133,13 +174,16 @@ export const toolCallRowsScenario = {
       entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n",
     );
   },
-  async prepare(page: Page) {
+  async prepare(page: Page, state = "default") {
     const group = page.locator('[data-slot="activity-group"]');
     await group.locator(":scope > summary").click();
     await expect(
       group.getByRole("button", { name: "~/.pi/agent/example.md", exact: true }),
     ).toBeVisible();
     await page.waitForFunction(() => document.fonts.status === "loaded");
+    await group.locator('[data-slot="work-log-content"]').evaluate((element, bottom) => {
+      element.scrollTop = bottom ? element.scrollHeight : 0;
+    }, state === "bottom");
   },
   region(page: Page) {
     return page.locator('[data-slot="activity-group"]');

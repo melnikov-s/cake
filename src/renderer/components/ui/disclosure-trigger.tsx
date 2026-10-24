@@ -1,7 +1,7 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { ChevronIcon } from "./icons";
-import { StatusDot, type StatusDotProps } from "./status-dot";
+import { StatusDot, statusDotGapClassName, type StatusDotProps } from "./status-dot";
 
 export interface DisclosureTriggerProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   open?: boolean;
@@ -52,7 +52,8 @@ export const DisclosureTrigger = forwardRef<HTMLButtonElement, DisclosureTrigger
       >
         <div
           className={cn(
-            "flex min-w-0 flex-1 gap-2",
+            "flex min-w-0 flex-1",
+            statusDotGapClassName,
             chevronPosition === "start" ? "items-start" : "items-center",
           )}
         >

@@ -18,8 +18,13 @@ async function dragText(page: Page, target: Locator) {
   await page.mouse.up();
 }
 
-for (const theme of ["light", "dark"] as const) {
-  test(`tool rows support native text selection, copy and activation in ${theme}`, async () => {
+for (const { theme, width } of [
+  { theme: "light", width: 1280 },
+  { theme: "dark", width: 1280 },
+  { theme: "light", width: 1000 },
+  { theme: "dark", width: 1000 },
+] as const) {
+  test(`tool rows preserve spacing, truncation, selection and activation in ${theme} at ${width}px`, async () => {
     test.setTimeout(90_000);
     const root = await mkdtemp(join(tmpdir(), "cake-tool-call-rows-"));
     const paths = {
@@ -44,6 +49,7 @@ for (const theme of ["light", "dark"] as const) {
     const previousClipboard = await app.evaluate(({ clipboard }) => clipboard.readText());
     try {
       const page = await app.firstWindow();
+      await page.setViewportSize({ width, height: 900 });
       await toolCallRowsScenario.prepare(page);
       const row = (id: string) => page.locator(`[data-part-id="tool-${id}"]`);
       const home = row("home");
@@ -59,11 +65,12 @@ for (const theme of ["light", "dark"] as const) {
       await expect(row("project").getByLabel("elapsed time")).toHaveText("0.1s");
       await expect(row("bash").getByLabel("elapsed time")).toHaveText("1.2s");
 
-      const spacing = await disclosure.evaluate((element) => {
-        const dot = element.querySelector('[aria-hidden="true"]')!;
-        const title = element.querySelector("span.truncate")!;
-        return title.getBoundingClientRect().left - dot.getBoundingClientRect().right;
-      });
+      const dotLabelSpacing = (target: Locator) =>
+        target.evaluate((element) => {
+          const dot = element.querySelector('[aria-hidden="true"]')!;
+          const label = dot.nextElementSibling!;
+          return label.getBoundingClientRect().left - dot.getBoundingClientRect().right;
+        });
       const referenceSpacing = await page
         .getByText("Reasoning details not exposed", { exact: true })
         .evaluate(
@@ -71,8 +78,58 @@ for (const theme of ["light", "dark"] as const) {
             label.getBoundingClientRect().left -
             label.previousElementSibling!.getBoundingClientRect().right,
         );
-      expect(spacing).toBe(referenceSpacing);
-      expect(spacing).toBeGreaterThan(0);
+      expect(referenceSpacing).toBe(8);
+      for (const id of [
+        "home",
+        "long-home",
+        "prefix",
+        "project",
+        "bash",
+        "custom",
+        "todos.create",
+        "todos.update",
+      ]) {
+        const trigger = row(id).locator("[aria-expanded]");
+        await trigger.scrollIntoViewIfNeeded();
+        expect(await dotLabelSpacing(trigger), id).toBe(referenceSpacing);
+        const title = trigger.locator("span.truncate");
+        expect(await title.evaluate((element) => element.clientWidth), id).toBeGreaterThan(0);
+      }
+      const subagent = row("subagents.start");
+      await expect(subagent.locator('[data-slot="subagent-call"]')).toHaveAttribute(
+        "data-status",
+        "failed-to-start",
+      );
+      expect(await dotLabelSpacing(subagent)).toBe(referenceSpacing);
+      expect(await dotLabelSpacing(subagent.locator('[data-slot="subagent-call"]'))).toBe(
+        referenceSpacing,
+      );
+      expect(await dotLabelSpacing(page.locator('[data-slot="activity-group"] > summary'))).toBe(
+        referenceSpacing,
+      );
+
+      // A long home path must shrink before the disclosure: otherwise its text
+      // disappears and the path crowds/overlaps the non-shrinking status dot.
+      const longHome = row("long-home");
+      await longHome.scrollIntoViewIfNeeded();
+      const longTrigger = longHome.locator("[aria-expanded]");
+      const longPath = longHome.getByRole("button", { name: /^~\/\.pi\/agent\/cake-docs\// });
+      const longTriggerBounds = await longTrigger.boundingBox();
+      const longPathBounds = await longPath.boundingBox();
+      expect(longPathBounds!.x - (longTriggerBounds!.x + longTriggerBounds!.width)).toBe(
+        referenceSpacing,
+      );
+      expect(
+        await longTrigger
+          .locator("span.truncate")
+          .evaluate((element) => element.clientWidth >= element.scrollWidth),
+      ).toBe(true);
+      expect(
+        await longPath
+          .locator("span")
+          .evaluate((element) => element.clientWidth < element.scrollWidth),
+      ).toBe(true);
+      await home.scrollIntoViewIfNeeded();
       const disclosureBounds = await disclosure.boundingBox();
       const pathBounds = await path.boundingBox();
       expect(pathBounds!.x - (disclosureBounds!.x + disclosureBounds!.width)).toBe(
@@ -92,6 +149,7 @@ for (const theme of ["light", "dark"] as const) {
 
       await page.evaluate(() => window.getSelection()?.removeAllRanges());
       const command = row("bash").locator("[aria-expanded]");
+      await command.scrollIntoViewIfNeeded();
       await dragText(page, command.locator("span.truncate"));
       await expect
         .poll(() => page.evaluate(() => window.getSelection()?.toString()))
@@ -110,6 +168,7 @@ for (const theme of ["light", "dark"] as const) {
       await page.evaluate(() => window.getSelection()?.removeAllRanges());
       await command.click();
       await expect(command).toHaveAttribute("aria-expanded", "false");
+      await home.scrollIntoViewIfNeeded();
       await home.hover();
       await home
         .getByRole("button", {
