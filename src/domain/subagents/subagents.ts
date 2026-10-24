@@ -24,6 +24,8 @@ import { getState } from "../application/application";
 import { TaskInputReference, inputRefsSchema } from "../../contracts/conversations/task-input";
 import { messageRefsSchema } from "../../contracts/conversations/message-reference";
 import type { ParentContinuation } from "../../contracts/conversations/parent-continuation";
+import { encodeCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
+import { PROJECT_CHAT_PREFIX } from "../../contracts/cake-chats/cake-chat-identity";
 import * as projectTodoUpdates from "../projects/projectTodoUpdates";
 import { subagentFinalAnswerPart } from "../../contracts/subagents/subagent-report";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
@@ -154,6 +156,47 @@ const normalizeTask = Effect.fn("Subagents.normalizeTask")(function* (input: Sub
 });
 
 const systemPrompt = (task: SubagentTask) => subagentSystemPrompt(task.instructions);
+
+/** Reuse ordinary attributed inbound messages; worker replies still use their handle. */
+const delegatedMessage = Effect.fn("Subagents.delegatedMessage")(function* (
+  text: string,
+  parentSessionId: string,
+  parentProfile: "ProjectSession" | "CakeChatSession",
+  workingDirectory: string,
+  sessionDirectory: string,
+) {
+  const sessions = yield* CakeSessionRuntimes;
+  const application = yield* getState();
+  const projectName = application.projects.find(
+    (project) => project.path === workingDirectory,
+  )?.name;
+  const cakeChat = parentProfile === "CakeChatSession";
+  const summary = cakeChat
+    ? undefined
+    : yield* sessions
+        .catalogEntry({ workingDirectory, sessionDirectory }, parentSessionId)
+        .pipe(Effect.catchTag("PiSessionError", () => Effect.succeed(undefined)));
+  const messageId = crypto.randomUUID();
+  return encodeCrossSessionMessage(text, {
+    version: 1,
+    messageId,
+    threadId: messageId,
+    sequence: 1,
+    expectsResponse: false,
+    resultDelivery: "ignore",
+    sender: {
+      sessionId: parentSessionId,
+      title: cakeChat
+        ? parentSessionId.startsWith(PROJECT_CHAT_PREFIX)
+          ? `${projectName ?? "Project"} / Project Chat`
+          : "Cake Chat"
+        : summary?.title || `Project Session ${parentSessionId}`,
+      kind: cakeChat ? "cake-chat" : "project-session",
+      ...(projectName ? { projectName } : null),
+      workingDirectory,
+    },
+  });
+});
 
 const forwardInputs = Effect.fn("Subagents.forwardInputs")(function* (
   access: SubagentAttachmentAccess | undefined,
@@ -1028,16 +1071,26 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
       prepared.parent.options.profile._tag === "CakeChatSession" && prepared.input.instructions
         ? `Assignment guidance (subject to your ${prepared.input.allowMutations ? "scoped mutation-mode" : "investigation-only"} system instructions):\n${prepared.input.instructions}\n\nTask:\n${prepared.input.task}`
         : prepared.input.task;
-    const initialInput: RuntimeRecoveryInput = {
-      turnId: crypto.randomUUID(),
-      text: withMessageReferences(
-        withInputReferences(assignment, inputReferences),
-        messageReferences,
-      ),
-      delivery: "prompt",
-      attachments: [],
-      markdown: false,
-    };
+    const initialInputs: readonly RuntimeRecoveryInput[] = restored?.pendingInputs ?? [
+      {
+        turnId: crypto.randomUUID(),
+        text: yield* delegatedMessage(
+          withMessageReferences(
+            withInputReferences(assignment, inputReferences),
+            messageReferences,
+          ),
+          prepared.parent.parentSessionId,
+          prepared.parent.options.profile._tag === "CakeChatSession"
+            ? "CakeChatSession"
+            : "ProjectSession",
+          prepared.parent.workingDirectory,
+          prepared.parent.options.runtime.sessionDir,
+        ),
+        delivery: "prompt",
+        attachments: [],
+        markdown: false,
+      },
+    ];
     const hydrate = lazy
       ? yield* Effect.cached(
           Effect.fn("Subagents.hydrate")(function* () {
@@ -1109,7 +1162,7 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
         completionId: crypto.randomUUID(),
         completionDisposition: notifyOnCompletion ? "pending" : "waited",
         status: "queued",
-        pendingInputs: [initialInput],
+        pendingInputs: initialInputs,
       },
       privateSessionId: recipientSessionId,
       parentSessionId: prepared.parent.parentSessionId,
@@ -1445,6 +1498,7 @@ export const prompt = Effect.fn("Subagents.prompt")(function* (
   inputRefs?: readonly string[],
   messageRefs?: readonly string[],
   continuation?: ParentContinuation,
+  author: "user" | "assistant" = "user",
 ) {
   const handle = yield* requireHandle(parentSessionId, rawHandleId);
   const normalized = text.trim();
@@ -1459,12 +1513,22 @@ export const prompt = Effect.fn("Subagents.prompt")(function* (
   const messageReferences = yield* forwardMessages(handle.messageAccess, messageRefs);
   const coordinator = yield* SubagentCoordinator;
   const completion = yield* Deferred.make<SubagentResult, SubagentError>();
+  const message = withMessageReferences(
+    withInputReferences(normalized, inputReferences),
+    messageReferences,
+  );
   const input: RuntimeRecoveryInput = {
     turnId: crypto.randomUUID(),
-    text: withMessageReferences(
-      withInputReferences(normalized, inputReferences),
-      messageReferences,
-    ),
+    text:
+      author === "assistant"
+        ? yield* delegatedMessage(
+            message,
+            parentSessionId,
+            handle.recovery.parentProfile,
+            handle.recovery.parentWorkingDirectory,
+            handle.recovery.parentSessionDirectory,
+          )
+        : message,
     delivery,
     attachments: [],
     markdown: false,

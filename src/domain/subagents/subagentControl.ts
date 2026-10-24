@@ -148,6 +148,7 @@ export const makeSubagentControl =
             input.inputRefs,
             input.messageRefs,
             input.continuation,
+            "assistant",
           ),
           signal,
         ).then((value) => Schema.decodeUnknownSync(jsonValueSchema)(value)),

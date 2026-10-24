@@ -51,7 +51,13 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
   const coordinatorRequests: unknown[] = [];
   const researchRequests: unknown[] = [];
   let researchAssigned = false;
+  let formattedFollowUp = false;
+  let workerHandle: string | undefined;
+  const assignment =
+    '# Markdown delivery test\n\nThis is **clearly Markdown**, with *emphasis* and `inline code`.\n\n## Test checklist\n\n- [ ] Receive this Markdown message.\n- [ ] Inspect config.ts.\n\n> This blockquote is part of the formatting test.\n\n```ts\nconst test = "markdown";\n```';
+  const followUp = "## Assistant follow-up\n\n**Recheck** the `limit`.\n\n- [ ] Confirm evidence";
   const gate = Promise.withResolvers<void>();
+  const followUpGate = Promise.withResolvers<void>();
   const server = createServer(async (request, response) => {
     let body = "";
     for await (const chunk of request) body += chunk;
@@ -65,21 +71,35 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
         reply(response, { name: "read", arguments: { path: "config.ts" } });
       else {
         if (workerRequests.length === 2) await gate.promise;
+        if (workerRequests.length === 3) await followUpGate.promise;
         reply(
           response,
           workerRequests.length === 2
             ? "config.ts:1 sets limit to 7."
-            : "Follow-up: config.ts:1 still sets limit to 7.",
+            : workerRequests.length === 3
+              ? "Assistant follow-up confirmed."
+              : "Follow-up: config.ts:1 still sets limit to 7.",
         );
       }
     } else {
       coordinatorRequests.push(parsed);
-      if (coordinatorRequests.length === 1)
+      workerHandle ??= /handleId[^0-9a-f]+([0-9a-f-]{36})/.exec(body)?.[1];
+      if (body.includes("Ask the worker for a formatted follow-up") && !formattedFollowUp) {
+        formattedFollowUp = true;
+        if (!workerHandle) throw new Error("Worker handle missing from tool result");
+        reply(response, {
+          name: "cake",
+          arguments: {
+            command: "subagents.follow-up",
+            input: { handleId: workerHandle, text: followUp },
+          },
+        });
+      } else if (coordinatorRequests.length === 1)
         reply(response, {
           name: "cake",
           arguments: {
             command: "subagents.start",
-            input: { projectPath: project, task: "Explain the limit using config.ts evidence" },
+            input: { projectPath: project, task: assignment },
           },
         });
       else if (
@@ -230,20 +250,80 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
     await expect(panel).toBeVisible();
     await expect.poll(() => workerRequests.length).toBe(2);
     await expect(panel.getByRole("combobox", { name: "Message subagent" })).toBeVisible();
+    const initialMessage = panel
+      .locator('[data-slot="session-message"]')
+      .filter({ has: page.getByRole("heading", { name: "Markdown delivery test", exact: true }) });
+    await expect(initialMessage).toBeVisible();
+    await expect(initialMessage.locator("header")).toContainText("Cake Chat");
+    await expect(initialMessage.locator('[data-streamdown="strong"]')).toHaveText(
+      "clearly Markdown",
+    );
+    await expect(initialMessage.locator("em")).toHaveText("emphasis");
+    await expect(initialMessage.locator("blockquote")).toContainText("formatting test");
+    await expect(initialMessage.getByRole("checkbox")).toHaveCount(2);
+    await expect(initialMessage.locator("code")).toContainText([
+      "inline code",
+      'const test = "markdown";',
+    ]);
     gate.resolve();
     await expect(panel).toContainText("config.ts:1 sets limit to 7.", { timeout: 20_000 });
     await expect(activity).toHaveCount(0);
     await expect(sidebarRunning).toHaveCount(0);
+    // A second assistant-authored delivery must retain the same provenance as launch.
+    await panel.getByRole("button", { name: "Close Subagent" }).click();
+    await composer.fill("Ask the worker for a formatted follow-up");
+    await page
+      .locator('[data-slot="composer-dock"]')
+      .filter({ has: composer })
+      .getByRole("button", { name: "Send", exact: true })
+      .click();
+    await expect(activity).toBeVisible({ timeout: 20_000 });
+    await activity.click();
+    await activityMenu.getByRole("button", { name: /^Inspect subagent:/ }).click();
+    await expect(panel).toBeVisible();
+    followUpGate.resolve();
+    await expect(panel).toContainText("Assistant follow-up confirmed.", { timeout: 20_000 });
+    const followUpMessage = panel
+      .locator('[data-slot="session-message"]')
+      .filter({ has: page.getByRole("heading", { name: "Assistant follow-up", exact: true }) });
+    await expect(followUpMessage.locator("header")).toContainText("Cake Chat");
+    await expect(followUpMessage.locator('[data-streamdown="strong"]')).toHaveText("Recheck");
+    await expect(followUpMessage.locator("code")).toHaveText("limit");
+    await expect(
+      panel.locator('[data-slot="message-label"]').filter({ hasText: /^You$/ }),
+    ).toHaveCount(0);
     const workerComposer = panel.getByRole("combobox", { name: "Message subagent" });
     await workerComposer.click();
-    await workerComposer.pressSequentially("Recheck the current default");
+    await workerComposer.pressSequentially("# Recheck the **current default**");
     await expect(workerComposer).toBeFocused();
-    await expect(workerComposer).toHaveValue("Recheck the current default");
+    await expect(workerComposer).toHaveValue("# Recheck the **current default**");
     await expect(panel.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     await panel.getByRole("button", { name: "Send", exact: true }).click();
     await expect(panel).toContainText("Follow-up: config.ts:1 still sets limit to 7.", {
       timeout: 20_000,
     });
+    await expect(
+      panel.locator('[data-slot="message-label"]').filter({ hasText: /^You$/ }),
+    ).toHaveCount(1);
+    await expect(
+      panel
+        .locator('[data-slot="message-content"]')
+        .filter({ hasText: /^# Recheck the \*\*current default\*\*$/ }),
+    ).toHaveText("# Recheck the **current default**");
+    await expect(panel.getByRole("heading", { name: "Recheck the current default" })).toHaveCount(
+      0,
+    );
+    await page.reload();
+    await expect(log).toBeVisible({ timeout: 20_000 });
+    await log.locator(":scope > summary").click();
+    await log.getByRole("button", { name: "Open subagent chat" }).first().click();
+    await expect(initialMessage).toBeVisible();
+    await expect(followUpMessage).toBeVisible();
+    await expect(initialMessage.locator("header")).toContainText("Cake Chat");
+    await expect(followUpMessage.locator("header")).toContainText("Cake Chat");
+    await expect(
+      panel.locator('[data-slot="message-label"]').filter({ hasText: /^You$/ }),
+    ).toHaveCount(1);
     await panel.getByRole("button", { name: "Close Subagent" }).click();
     await composer.click();
     await composer.pressSequentially("Research Godot and Three.js without a project");
@@ -277,7 +357,7 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
     );
     expect(JSON.stringify(researchRequests)).not.toContain("PROJECT_CONTEXT_SENTINEL");
     expect(JSON.stringify(researchRequests)).not.toContain("PRIVATE_TOOL_OUTPUT");
-    expect(JSON.stringify(researchRequests)).toContain("no guaranteed web/search access");
+    expect(JSON.stringify(researchRequests)).toContain("web/search access is not guaranteed");
     await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
     await page.reload();
     await expect(
@@ -303,6 +383,7 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
     expect(await SessionManager.list(project, join(cakeHome, "pi", "sessions"))).toEqual([]);
   } finally {
     gate.resolve();
+    followUpGate.resolve();
     await app.close();
     await new Promise<void>((done) => server.close(() => done()));
     await rm(root, { recursive: true, force: true });

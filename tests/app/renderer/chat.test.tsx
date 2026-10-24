@@ -4,6 +4,12 @@ import userEvent from "@testing-library/user-event";
 import { createStore, mount } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { encodeCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
+import {
+  projectSessionEntries,
+  userMessagePresentationEntryType,
+} from "../../../src/services/pi/runtime/session-projection";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
@@ -23,6 +29,52 @@ afterEach(() => {
 // These prove real renderer policy, payloads and content. Native Escape, selection,
 // image paste and fullscreen/focus remain covered by the existing Electron suites.
 describe("Chat composition", () => {
+  it.each(["project-session", "cake-chat"] as const)(
+    "attributes persisted %s messages in Project Sessions while preserving actual user plain/Markdown choices",
+    async (kind) => {
+      const session = SessionManager.inMemory("/project");
+      const text =
+        "# Delegated Markdown\n\n**Bold** and *emphasis* with `inline code`.\n\n- [ ] Check evidence\n\n> Quoted evidence\n\n```ts\nconst result = true;\n```";
+      session.appendMessage({
+        role: "user",
+        timestamp: 1,
+        content: encodeCrossSessionMessage(text, {
+          version: 1,
+          messageId: "10000000-0000-4000-8000-000000000001",
+          threadId: "10000000-0000-4000-8000-000000000002",
+          sequence: 1,
+          expectsResponse: false,
+          sender: { sessionId: "origin", title: "Originating assistant", kind },
+        }),
+      });
+      session.appendMessage({ role: "user", timestamp: 2, content: "# Literal user heading" });
+      const markdownId = session.appendMessage({
+        role: "user",
+        timestamp: 3,
+        content: "# User opted into Markdown",
+      });
+      session.appendCustomEntry(userMessagePresentationEntryType, {
+        targetId: markdownId,
+        renderAs: "markdown",
+      });
+      using fixture = renderChatSurface();
+      fixture.publish(projectSessionEntries(session.getBranch()));
+      const attributed = screen.getByLabelText("Message from another session");
+      expect(within(attributed).getByText("Originating assistant")).toBeDefined();
+      expect(within(attributed).getByRole("heading", { name: "Delegated Markdown" })).toBeDefined();
+      expect(attributed.querySelector('[data-streamdown="strong"]')?.textContent).toBe("Bold");
+      expect(attributed.querySelector("em")?.textContent).toBe("emphasis");
+      expect(attributed.querySelector("blockquote")?.textContent).toContain("Quoted evidence");
+      expect(within(attributed).getByRole("checkbox")).toBeDefined();
+      await waitFor(() =>
+        expect(attributed.querySelector("pre")?.textContent).toContain("const result = true;"),
+      );
+      expect(screen.getByText("# Literal user heading")).toBeDefined();
+      expect(screen.queryByRole("heading", { name: "Literal user heading" })).toBeNull();
+      expect(screen.getByRole("heading", { name: "User opted into Markdown" })).toBeDefined();
+      expect(screen.getAllByText("You", { exact: true })).toHaveLength(2);
+    },
+  );
   it("queues a new draft instead of stopping the active response, then restores Stop", async () => {
     const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () => turnId);
     const abort = vi.fn<Client["sessionChats"]["abort"]>(async () => undefined);

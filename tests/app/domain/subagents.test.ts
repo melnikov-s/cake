@@ -40,6 +40,13 @@ import * as pendingReports from "../../../src/domain/conversations/pendingReport
 import { subagentLink } from "../../../src/contracts/subagents/subagent-reference";
 import { splitContextReminders } from "../../../src/services/pi/runtime/session-context-reminders";
 import * as subagents from "../../../src/domain/subagents/subagents";
+import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
+import {
+  projectQueuedMessages,
+  projectSessionEntries,
+} from "../../../src/services/pi/runtime/session-projection";
+import { RuntimeRecoveryInput } from "../../../src/services/storage/RuntimeRecoveryStorage";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import {
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
@@ -314,7 +321,19 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
   const adapter: CakeSessionRuntimesAdapter = {
     sessionIds: () => Stream.empty,
     catalog: () => Stream.empty,
-    catalogEntry: () => Effect.succeed(undefined),
+    catalogEntry: (_query, id) =>
+      Effect.succeed(
+        id === "parent"
+          ? {
+              id,
+              title: "Parent assistant session",
+              created: "now",
+              modified: "now",
+              messageCount: 0,
+              resolved: false,
+            }
+          : undefined,
+      ),
     inspect: (target) =>
       Effect.sync(() => {
         const saved = persisted.get(target.sessionId)?.();
@@ -627,6 +646,11 @@ describe("subagent exact message references", () => {
           assert.equal(yield* Queue.take(fixture.childStarted), id);
           assert.equal(read.mock.calls.length, 1);
           const followUp = (yield* Ref.get(fixture.childPrompts)).at(-1)?.text ?? "";
+          assert.equal(
+            parseCrossSessionMessage(followUp)?.metadata.sender.sessionId,
+            caller.parentSessionId,
+          );
+          assert.equal(parseCrossSessionMessage(followUp)?.metadata.sender.kind, "cake-chat");
           assert.ok(followUp.includes(second));
           assert.ok(!followUp.includes("PRIVATE_SOURCE_TEXT"));
           yield* Effect.promise(() => invokeWorker(registry, "messages.read", { ref: second }));
@@ -1277,6 +1301,135 @@ describe("Cake Chat project investigators", () => {
 });
 
 describe("Subagents", () => {
+  it.effect.each(["session", "global-chat", "project-chat"] as const)(
+    "retains %s assistant provenance and detected Markdown through assignment, follow-up and recovery serialization, without relabeling user input",
+    (source) =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture();
+        yield* Effect.gen(function* () {
+          const caller =
+            source === "session"
+              ? parent(fixture)
+              : {
+                  ...cakeChatParent(fixture),
+                  parentSessionId:
+                    source === "global-chat"
+                      ? CAKE_CHAT_SESSION_ID
+                      : `project-chat:${"a".repeat(64)}`,
+                  workingDirectory: "/project",
+                };
+          const markdown =
+            '# Delegated assignment\n\n**Bold**, *emphasis*, `code`.\n\n- [ ] Check\n\n> Quote\n\n```ts\nconst test = "markdown";\n```';
+          const receipt = yield* subagents.start({ task: markdown }, caller);
+          const id = yield* Queue.take(fixture.childStarted);
+          const coordinator = yield* SubagentCoordinator;
+          const check = (input: RuntimeRecoveryInput, expectedText: string, markdown = true) => {
+            const reloaded = Schema.decodeUnknownSync(Schema.fromJsonString(RuntimeRecoveryInput))(
+              JSON.stringify(input),
+            );
+            assert.equal(reloaded.text, input.text);
+            const parsed = parseCrossSessionMessage(reloaded.text);
+            assert.ok(parsed);
+            assert.equal(parsed.text, expectedText);
+            assert.equal(parsed.metadata.sender.sessionId, caller.parentSessionId);
+            assert.equal(
+              parsed.metadata.sender.kind,
+              source === "session" ? "project-session" : "cake-chat",
+            );
+            assert.equal(
+              parsed.metadata.sender.title,
+              source === "session"
+                ? "Parent assistant session"
+                : source === "global-chat"
+                  ? "Cake Chat"
+                  : "project / Project Chat",
+            );
+            assert.equal(parsed.metadata.resultDelivery, "ignore");
+            const [queued] = projectQueuedMessages([], [reloaded.text]);
+            assert.ok(queued?.kind === "text");
+            assert.equal(queued.renderAs, markdown ? "markdown" : undefined);
+            assert.equal(queued.crossSession?.sender.sessionId, caller.parentSessionId);
+            // Rehydrated Pi entries use the same shared projection as live consumption.
+            const [persisted] = projectSessionEntries([
+              {
+                type: "message",
+                id: "assignment",
+                parentId: null,
+                timestamp: "now",
+                message: { role: "user", content: reloaded.text, timestamp: 1 },
+              },
+            ]);
+            assert.ok(persisted?.kind === "text");
+            assert.equal(persisted.text, expectedText);
+            assert.equal(persisted.role, "user");
+            assert.equal(persisted.renderAs, markdown ? "markdown" : undefined);
+            assert.deepEqual(persisted.crossSession, parsed.metadata);
+          };
+          let saved = (yield* coordinator.storage.list())[0];
+          assert.ok(saved?.pendingInputs[0]);
+          check(saved.pendingInputs[0], markdown);
+          assert.equal(
+            (yield* Ref.get(fixture.childPrompts)).at(-1)?.text,
+            saved.pendingInputs[0].text,
+          );
+          yield* completeChild(fixture, id);
+          yield* Queue.take(fixture.reports);
+          yield* subagents.prompt(
+            caller.parentSessionId,
+            receipt.handleId,
+            markdown,
+            "follow-up",
+            true,
+            undefined,
+            undefined,
+            undefined,
+            "assistant",
+          );
+          assert.equal(yield* Queue.take(fixture.childStarted), id);
+          saved = (yield* coordinator.storage.list())[0];
+          assert.ok(saved?.pendingInputs[0]);
+          check(saved.pendingInputs[0], markdown);
+          yield* completeChild(fixture, id);
+          yield* Queue.take(fixture.reports);
+          const plain = "Please confirm the evidence";
+          yield* subagents.prompt(
+            caller.parentSessionId,
+            receipt.handleId,
+            plain,
+            "follow-up",
+            true,
+            undefined,
+            undefined,
+            undefined,
+            "assistant",
+          );
+          assert.equal(yield* Queue.take(fixture.childStarted), id);
+          saved = (yield* coordinator.storage.list())[0];
+          assert.ok(saved?.pendingInputs[0]);
+          check(saved.pendingInputs[0], plain, false);
+          yield* completeChild(fixture, id);
+          yield* Queue.take(fixture.reports);
+          // The renderer RPC intentionally uses the user default, even for Markdown text.
+          yield* subagents.prompt(
+            caller.parentSessionId,
+            receipt.handleId,
+            markdown,
+            "prompt",
+            true,
+          );
+          assert.equal(yield* Queue.take(fixture.childStarted), id);
+          const userText = (yield* Ref.get(fixture.childPrompts)).at(-1)?.text;
+          assert.equal(userText, markdown);
+          assert.equal(parseCrossSessionMessage(userText), undefined);
+          const [user] = projectQueuedMessages([], [userText]);
+          assert.ok(user?.kind === "text");
+          assert.equal(user.renderAs, undefined);
+          assert.equal(user.crossSession, undefined);
+          yield* completeChild(fixture, id);
+          yield* Queue.take(fixture.reports);
+        }).pipe(Effect.provide(fixture.layer), Effect.scoped);
+      }),
+  );
   it.effect.each([false, true])(
     "resumes a %s Cake Chat parent once for a linked prerequisite, including recovery",
     (chat) =>
