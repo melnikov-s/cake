@@ -32,10 +32,10 @@ export const ActionCard = forwardRef<HTMLButtonElement, ActionCardProps>(functio
       type={type}
       disabled={disabled}
       className={cn(
-        "flex w-full min-w-0 items-center justify-between gap-3 rounded-xl border border-border bg-card p-3 text-left transition-all select-none",
+        "flex w-full min-w-0 items-center justify-between gap-3 rounded-lg border border-border/85 bg-card p-2.5 text-left shadow-2xs transition-all select-none",
         disabled
-          ? "opacity-40 cursor-default"
-          : "cursor-pointer hover:border-accent/40 hover:bg-card/85 hover:shadow-xs",
+          ? "opacity-40 cursor-default shadow-none"
+          : "cursor-pointer hover:border-accent/40 hover:bg-card/90 hover:shadow-xs active:scale-[0.995]",
         className,
       )}
       {...props}

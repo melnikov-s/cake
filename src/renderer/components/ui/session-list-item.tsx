@@ -122,8 +122,8 @@ export const SessionListItem = observer(function SessionListItem({
       data-associated={associated && !selected ? "true" : undefined}
       data-family-role={isFamilyChild ? "child" : isFamilyParent ? "parent" : "root"}
       className={cn(
-        "session-item group group/session relative grid min-h-11 w-full items-center rounded-md text-sm select-none transition-colors duration-200 ease-out motion-reduce:transition-none",
-        focusMode && "min-h-14 text-sm [&_svg]:size-5",
+        "session-item group group/session relative grid min-h-10 w-full items-center rounded-md text-sm tracking-[-0.005em] select-none transition-colors duration-200 ease-out motion-reduce:transition-none",
+        focusMode && "min-h-13 text-sm [&_svg]:size-5",
         focusMode && charactersEnabled && "[&_[data-slot=avatar]]:size-7",
         avatarsEnabled
           ? isFamilyChild
@@ -135,7 +135,7 @@ export const SessionListItem = observer(function SessionListItem({
               : "grid-cols-[1.5rem_minmax(0,1fr)]"
           : "grid-cols-[1.25rem_minmax(0,1fr)]",
         selected
-          ? "active text-primary font-semibold"
+          ? "active text-primary font-medium"
           : "text-muted-foreground hover:text-foreground",
         actionProps?.role === "option" &&
           (selected ? "bg-sidebar-active" : "hover:bg-sidebar-hover"),

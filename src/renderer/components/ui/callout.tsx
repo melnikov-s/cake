@@ -3,7 +3,7 @@ import { forwardRef, type HTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
 const calloutVariants = cva(
-  "grid gap-1.5 rounded-lg border-l-3 p-3.5 text-xs leading-relaxed transition-colors",
+  "grid gap-1.5 rounded-md border border-border/60 border-l-3 p-3 text-xs leading-relaxed transition-colors",
   {
     variants: {
       variant: {

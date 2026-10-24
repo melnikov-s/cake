@@ -16,7 +16,7 @@ import type { ProvisionalTextSpan } from "../../dictation/provisional-text";
 import { cn } from "@/lib/utils";
 
 const textareaVariants = cva(
-  "flex w-full min-w-0 rounded-lg border border-border bg-background text-foreground transition-colors placeholder:text-muted-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-50",
+  "flex w-full min-w-0 rounded-md border border-border bg-card text-foreground shadow-2xs transition-colors placeholder:text-muted-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-50",
   {
     variants: {
       size: {

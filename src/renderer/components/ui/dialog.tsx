@@ -20,7 +20,7 @@ export const DialogBackdrop = forwardRef<HTMLDivElement, DialogBackdropProps>(
           if (e.target === e.currentTarget) onClose?.();
         }}
         className={cn(
-          "fixed inset-0 z-50 grid place-items-center bg-foreground/10 p-6 backdrop-blur-xs motion-safe:animate-fade-in phone:p-2",
+          "fixed inset-0 z-50 grid place-items-center bg-black/25 dark:bg-black/45 p-6 backdrop-blur-[2px] motion-safe:animate-fade-in phone:p-2",
           className,
         )}
         {...props}
@@ -38,7 +38,7 @@ export const DialogContent = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivEl
       <div
         ref={ref}
         className={cn(
-          "w-full max-w-[34rem] rounded-xl border border-border bg-card p-6 text-card-foreground shadow-2xl motion-safe:animate-dialog-enter phone:max-h-[calc(100dvh-1rem)] phone:min-w-0 phone:overflow-y-auto phone:p-4",
+          "w-full max-w-[34rem] rounded-xl border border-border/85 bg-card/95 p-5 text-card-foreground shadow-2xl ring-1 ring-black/5 dark:ring-white/10 backdrop-blur-xl motion-safe:animate-dialog-enter phone:max-h-[calc(100dvh-1rem)] phone:min-w-0 phone:overflow-y-auto phone:p-4",
           className,
         )}
         {...props}
@@ -77,6 +77,6 @@ export const DialogDescription = forwardRef<
 
 export const DialogFooter = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
   function DialogFooter({ className, ...props }, ref) {
-    return <div ref={ref} className={cn("mt-6 flex justify-end gap-2.5", className)} {...props} />;
+    return <div ref={ref} className={cn("mt-5 flex justify-end gap-2", className)} {...props} />;
   },
 );

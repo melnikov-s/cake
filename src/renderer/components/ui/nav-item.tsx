@@ -69,9 +69,9 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
       ref={ref}
       data-associated={associated && !active ? "true" : undefined}
       className={cn(
-        "group group/nav-item flex w-full min-w-0 items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors select-none [app-region:no-drag]",
+        "group group/nav-item flex w-full min-w-0 items-center justify-between gap-2 rounded-md px-2 py-1 text-left text-xs tracking-[-0.005em] transition-colors select-none [app-region:no-drag]",
         active
-          ? "bg-sidebar-active text-primary font-semibold"
+          ? "bg-sidebar-active text-primary font-medium"
           : "text-muted-foreground hover:bg-sidebar-hover hover:text-foreground",
         associated && !active && associationHighlightClassName,
         wholeRowAction && "relative",

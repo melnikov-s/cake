@@ -66,7 +66,7 @@ export function TooltipBubble({
       ref={bubbleRef}
       role="tooltip"
       className={cn(
-        "pointer-events-none fixed z-[1000] max-w-[280px] overflow-hidden rounded-md bg-primary px-2 py-1 text-xs font-medium leading-tight text-primary-foreground shadow-md select-none",
+        "pointer-events-none fixed z-[1000] max-w-[280px] overflow-hidden rounded-md border border-border/80 bg-popover/95 px-2 py-1 text-xs font-medium leading-tight text-popover-foreground shadow-md backdrop-blur-md select-none",
         wrap ? "whitespace-normal" : "truncate whitespace-nowrap",
         className,
       )}

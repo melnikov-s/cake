@@ -21,9 +21,9 @@ export const Chip = forwardRef<HTMLButtonElement, ChipProps>(function Chip(
         "inline-flex h-6 min-w-0 shrink-0 items-center gap-1.5 rounded-full border px-2 text-xs font-medium transition-colors select-none",
         active
           ? "border-accent/40 bg-accent/15 text-accent font-semibold"
-          : "border-border/80 bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
+          : "border-border/85 bg-card text-muted-foreground shadow-2xs hover:bg-muted hover:text-foreground",
         disabled
-          ? "opacity-40 cursor-default hover:bg-card hover:text-muted-foreground"
+          ? "opacity-40 cursor-default shadow-none hover:bg-card hover:text-muted-foreground"
           : "cursor-pointer",
         className,
       )}

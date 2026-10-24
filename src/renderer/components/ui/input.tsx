@@ -3,18 +3,18 @@ import { forwardRef, type InputHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
 const inputVariants = cva(
-  "flex w-full min-w-0 rounded-lg border border-border bg-background text-foreground transition-colors placeholder:text-muted-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-50",
+  "flex w-full min-w-0 rounded-md border border-border bg-card text-foreground shadow-2xs transition-colors placeholder:text-muted-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-50",
   {
     variants: {
       size: {
-        default: "h-9 px-2.5 text-xs",
-        sm: "h-7.5 px-2 text-xs",
-        lg: "h-10 px-3 text-sm",
+        default: "h-8 px-2.5 text-xs",
+        sm: "h-7 px-2 text-xs",
+        lg: "h-9 px-3 text-sm",
       },
       variant: {
-        default: "bg-background",
+        default: "bg-card",
         ghost:
-          "border-transparent bg-transparent hover:bg-muted focus-visible:border-border focus-visible:bg-background",
+          "border-transparent bg-transparent shadow-none hover:bg-muted focus-visible:border-border focus-visible:bg-card",
       },
     },
     defaultVariants: {

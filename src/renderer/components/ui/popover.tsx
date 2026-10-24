@@ -301,7 +301,7 @@ export function PopoverContent({
       aria-hidden={!open || undefined}
       data-state={open ? "open" : "closed"}
       className={cn(
-        "fixed z-50 max-h-[calc(100vh-16px)] max-w-[calc(100vw-16px)] overflow-auto rounded-xl border border-border bg-card p-3 text-foreground shadow-2xl",
+        "fixed z-50 max-h-[calc(100vh-16px)] max-w-[calc(100vw-16px)] overflow-auto rounded-lg border border-border/85 bg-popover/95 p-2.5 text-popover-foreground shadow-xl ring-1 ring-black/5 dark:ring-white/10 backdrop-blur-xl",
         !open && "pointer-events-none",
         className,
       )}

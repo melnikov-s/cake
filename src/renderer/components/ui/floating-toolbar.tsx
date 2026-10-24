@@ -31,7 +31,7 @@ export function FloatingToolbar({ children, className, ...props }: HTMLAttribute
       {...props}
       ref={ref}
       className={cn(
-        "absolute z-20 flex max-w-[calc(100vw-16px)] items-center gap-1 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-xl",
+        "absolute z-20 flex max-w-[calc(100vw-16px)] items-center gap-1 rounded-lg border border-border/85 bg-popover/95 p-1 text-popover-foreground shadow-xl ring-1 ring-black/5 dark:ring-white/10 backdrop-blur-xl",
         !position && "top-4 left-1/2 -translate-x-1/2",
         className,
       )}

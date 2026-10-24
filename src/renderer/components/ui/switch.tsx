@@ -25,8 +25,8 @@ export const Switch = forwardRef<HTMLButtonElement, SwitchProps>(function Switch
         }
       }}
       className={cn(
-        "relative inline-flex h-[22px] w-[38px] shrink-0 cursor-pointer items-center rounded-full border border-border bg-background p-[2px] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50",
-        checked && "border-accent bg-accent/20",
+        "relative inline-flex h-[20px] w-[36px] shrink-0 cursor-pointer items-center rounded-full border border-border/85 bg-muted/80 p-[1.5px] shadow-inner transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50",
+        checked && "border-accent bg-accent",
         instant && "transition-none",
         className,
       )}
@@ -35,8 +35,8 @@ export const Switch = forwardRef<HTMLButtonElement, SwitchProps>(function Switch
       <span
         aria-hidden="true"
         className={cn(
-          "pointer-events-none block size-4 rounded-full bg-muted-foreground shadow-[0_1px_2px_oklch(0_0_0_/_0.18)] transition-transform",
-          checked && "translate-x-4 bg-accent",
+          "pointer-events-none block size-[15px] rounded-full bg-white shadow-[0_1px_2.5px_oklch(0_0_0_/_0.24)] transition-transform",
+          checked && "translate-x-4",
           instant && "transition-none",
         )}
       />

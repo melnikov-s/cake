@@ -15,8 +15,8 @@ export function SegmentedControlGroup({
     <div
       role="group"
       className={cn(
-        "inline-flex items-center gap-0.5 rounded-lg border border-border/80 bg-muted/50 p-0.5 select-none",
-        size === "sm" && "rounded-md p-0.5 gap-0.5",
+        "inline-flex items-center gap-0.5 rounded-md border border-border/75 bg-muted/65 p-0.5 shadow-inner select-none",
+        size === "sm" && "rounded-sm p-0.5 gap-0.5",
         className,
       )}
       {...props}
@@ -42,11 +42,11 @@ export const SegmentedControlButton = forwardRef<HTMLButtonElement, SegmentedCon
         type="button"
         aria-pressed={active}
         className={cn(
-          "inline-flex items-center justify-center rounded-md text-xs font-medium text-muted-foreground transition-all hover:bg-muted/80 hover:text-foreground",
+          "inline-flex items-center justify-center rounded-sm text-xs font-medium text-muted-foreground transition-all hover:bg-muted/80 hover:text-foreground",
           size === "sm" && "h-6 px-2 text-xs",
-          size === "default" && "h-7.5 px-3",
+          size === "default" && "h-7 px-2.5",
           active &&
-            "bg-card text-foreground font-semibold shadow-xs hover:bg-card hover:text-foreground",
+            "bg-card text-foreground font-medium shadow-xs ring-1 ring-border/50 hover:bg-card hover:text-foreground",
           className,
         )}
         {...props}
