@@ -77,6 +77,10 @@ function VirtualizedConversationInner<Item, Context>(
       computeItemKey={computeItemKey}
       itemContent={itemContent}
       increaseViewportBy={{ top: 320, bottom: 480 }}
+      // An external scroll owner compensates async row growth before paint.
+      // Measure in that same frame, before its scroll event can select a range
+      // using stale sizes and unmount the row that just grew (e.g. a diagram).
+      skipAnimationFrameInResizeObserver={skipUpwardScrollCompensation}
       {...(components === undefined ? {} : { components })}
       {...(customScrollParent === undefined ? {} : { customScrollParent })}
       {...(followOutput === undefined ? {} : { followOutput })}
