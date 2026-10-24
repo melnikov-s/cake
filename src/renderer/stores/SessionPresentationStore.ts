@@ -98,6 +98,7 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
   get browserStore(): BrowserStore {
     return createStore(BrowserStore, {
       sessionId: this.props.activeSessionId,
+      projectPath: this.props.projectPath,
       browserHost: this.props.browserHost,
       onBrowserUnavailable: this.props.onBrowserUnavailable,
       presentationMode: () => this.session?.presentationMode ?? "normal",

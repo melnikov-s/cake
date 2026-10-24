@@ -485,7 +485,12 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
         return execute(
           "browser.open-browser",
           (client) =>
-            client.browser["open-browser"]({ requestId, sessionId, ...(url ? { url } : null) }),
+            client.browser["open-browser"]({
+              requestId,
+              sessionId,
+              ...(url ? { url } : null),
+              ...(options?.startupUrl ? { startupUrl: options.startupUrl } : null),
+            }),
           options,
         );
       },

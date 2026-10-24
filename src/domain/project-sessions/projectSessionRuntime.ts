@@ -71,6 +71,7 @@ import { ProjectSessionConfiguration } from "../../services/project-sessions/Pro
 import * as projectSessionLifecycle from "./projectSessionLifecycle";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
 import { ApplicationState } from "../../services/storage/ApplicationState";
+import { browserStartupUrl } from "../../contracts/browser/browser-default-url";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
 import { ArtifactStorage } from "../../services/storage/ArtifactStorage";
 import { MessageBoardStorage } from "../../services/storage/MessageBoardStorage";
@@ -950,9 +951,19 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
       browserControl: Option.isSome(browser)
         ? {
             enter: (signal) =>
-              run(browser.value.enterProjectBrowser(sessionId, location.workingDirectory), {
-                signal,
-              }),
+              run(
+                browser.value.enterProjectBrowser(
+                  sessionId,
+                  location.workingDirectory,
+                  browserStartupUrl(
+                    application
+                      .snapshot()
+                      .projects.find((project) => project.path === location.projectPath)?.settings
+                      ?.browserDefaultUrl,
+                  ),
+                ),
+                { signal },
+              ),
             cdp: (method, params, signal) =>
               run(
                 browser.value.sendProjectCdp(sessionId, location.workingDirectory, method, params),

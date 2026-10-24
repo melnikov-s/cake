@@ -28,7 +28,7 @@ import type { BrowserActionResult } from "../../contracts/browser/browser-action
 export interface BrowserService {
   readonly open: (
     connectionId: number,
-    input: { readonly sessionId: string; readonly url?: string },
+    input: { readonly sessionId: string; readonly url?: string; readonly startupUrl?: string },
   ) => Effect.Effect<BrowserState, BrowserError>;
   readonly state: (
     connectionId: number,
@@ -57,6 +57,7 @@ export interface BrowserService {
     connectionId: number,
     sessionId: string,
     workingDirectory: string,
+    startupUrl?: string,
   ) => Effect.Effect<void, BrowserError>;
   readonly nativeCdp: (
     connectionId: number,
@@ -74,6 +75,7 @@ export interface BrowserService {
   readonly enterProjectBrowser: (
     sessionId: string,
     workingDirectory: string,
+    startupUrl?: string,
   ) => Effect.Effect<void, BrowserError>;
   readonly sendProjectCdp: (
     sessionId: string,

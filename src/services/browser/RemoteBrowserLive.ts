@@ -23,6 +23,7 @@ export const RemoteBrowserLive = Layer.effect(
       workingDirectory: string,
       command: "enter" | "cdp" | "events",
       fields: {
+        startupUrl?: string;
         method?: string;
         params?: typeof jsonValueSchema.Type;
         methods?: ReadonlyArray<string>;
@@ -68,8 +69,10 @@ export const RemoteBrowserLive = Layer.effect(
       nativeCdp: () => Effect.fail(unavailable("nativeCdp")),
       nativeEvents: () => Effect.fail(unavailable("nativeEvents")),
       enterProjectBrowser: Effect.fn("RemoteBrowser.enterProjectBrowser")(
-        function* (sessionId, workingDirectory) {
-          const result = yield* request(sessionId, workingDirectory, "enter", {});
+        function* (sessionId, workingDirectory, startupUrl) {
+          const result = yield* request(sessionId, workingDirectory, "enter", {
+            ...(startupUrl ? { startupUrl } : undefined),
+          });
           if (result.status !== "completed") return yield* unavailable("enterProjectBrowser");
         },
       ),

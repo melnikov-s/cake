@@ -95,6 +95,8 @@ export const ProjectIcon = Schema.Struct({
 export interface ProjectIcon extends Schema.Schema.Type<typeof ProjectIcon> {}
 
 export const ProjectSettings = Schema.Struct({
+  /** Empty or absent uses Google when creating a browser page. */
+  browserDefaultUrl: Schema.optionalKey(boundedString(16_384)),
   worktreeCreateCommand: boundedString(16_384),
   worktreeSetupCommands: boundedString(65_536),
   worktreeSetupInstructions: boundedString(16_384).pipe(

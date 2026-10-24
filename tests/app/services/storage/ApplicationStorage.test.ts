@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import * as projectTodos from "../../../../src/domain/projects/projectTodos";
-import { upsertProject } from "../../../../src/domain/application/application";
+import { upsertProject, setProjectSettings } from "../../../../src/domain/application/application";
 import { it } from "@effect/vitest";
 import { describe } from "vitest";
 import { Deferred, Effect, Fiber, FileSystem, Layer, Path, PlatformError, Schema } from "effect";
@@ -14,7 +14,11 @@ import {
   makeApplicationStorageLive,
 } from "../../../../src/services/storage/ApplicationStorage";
 import { ApplicationWriteError } from "../../../../src/contracts/storage/application-storage-errors";
-import { defaultApplicationState } from "../../../../src/contracts/application/application-data";
+import {
+  defaultApplicationState,
+  defaultProjectSettings,
+} from "../../../../src/contracts/application/application-data";
+import { browserStartupUrl } from "../../../../src/contracts/browser/browser-default-url";
 import { ApplicationState } from "../../../../src/services/storage/ApplicationState";
 import { defaultCakeChatPreferences } from "../../../../src/contracts/cake-chats/cake-chat-preferences";
 import { updateNonChatModelPreference } from "../../../../src/domain/model-preferences/non-chat-model-preferences";
@@ -145,6 +149,68 @@ const withStorage = <A, E>(
   });
 
 describe("ApplicationStorage", () => {
+  it.effect(
+    "persists per-project browser startup URLs across fresh owners and clearing restores Google",
+    () =>
+      withStorage({}, (storage) => {
+        const owner = ApplicationState.layer.pipe(
+          Layer.provide(Layer.succeed(ApplicationStorage)(storage)),
+        );
+        const readAfterRestart = Effect.gen(function* () {
+          const application = yield* ApplicationState;
+          yield* application.initialize();
+          return (yield* application.current()).projects;
+        });
+        return Effect.gen(function* () {
+          yield* Effect.gen(function* () {
+            yield* upsertProject("/one", "One");
+            yield* upsertProject("/two", "Two");
+            yield* upsertProject("/unset", "Unset");
+            yield* setProjectSettings("/one", {
+              ...defaultProjectSettings(),
+              browserDefaultUrl: "https://one.example/start",
+            });
+            yield* setProjectSettings("/two", {
+              ...defaultProjectSettings(),
+              browserDefaultUrl: "http://localhost:5173/",
+            });
+          }).pipe(Effect.provide(owner, { local: true }));
+          const restored = yield* readAfterRestart.pipe(Effect.provide(owner, { local: true }));
+          assert.equal(
+            restored.find((p) => p.path === "/one")?.settings?.browserDefaultUrl,
+            "https://one.example/start",
+          );
+          assert.equal(
+            restored.find((p) => p.path === "/two")?.settings?.browserDefaultUrl,
+            "http://localhost:5173/",
+          );
+          assert.equal(
+            browserStartupUrl(
+              restored.find((p) => p.path === "/unset")?.settings?.browserDefaultUrl,
+            ),
+            "https://www.google.com/",
+          );
+          yield* Effect.gen(function* () {
+            yield* (yield* ApplicationState).initialize();
+            yield* setProjectSettings("/one", {
+              ...defaultProjectSettings(),
+              browserDefaultUrl: "",
+            });
+          }).pipe(Effect.provide(owner, { local: true }));
+          const cleared = yield* readAfterRestart.pipe(Effect.provide(owner, { local: true }));
+          assert.equal(cleared.find((p) => p.path === "/one")?.settings?.browserDefaultUrl, "");
+          assert.equal(
+            browserStartupUrl(cleared.find((p) => p.path === "/one")?.settings?.browserDefaultUrl),
+            "https://www.google.com/",
+          );
+          assert.equal(
+            cleared.find((p) => p.path === "/two")?.settings?.browserDefaultUrl,
+            "http://localhost:5173/",
+          );
+        });
+      }),
+  );
+
   it.effect(
     "persists independent backend non-chat preferences, reloads references and leaves chat configuration unchanged",
     () =>

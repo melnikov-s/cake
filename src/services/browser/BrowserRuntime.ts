@@ -7,7 +7,10 @@ import {
 } from "../../contracts/serialization/json-contract";
 import type { BrowserAction, BrowserBounds, BrowserState } from "./Browser";
 
-const DEFAULT_URL = "http://localhost:3000";
+import {
+  browserStartupUrl,
+  DEFAULT_BROWSER_URL,
+} from "../../contracts/browser/browser-default-url";
 const inspectedElementSchema = Schema.Struct({
   tagName: Schema.String,
   selector: Schema.String,
@@ -58,6 +61,7 @@ export class BrowserRuntime {
     sessionId: string,
     url?: string,
     signal?: AbortSignal,
+    startupUrl?: string,
   ): Promise<BrowserState> {
     signal?.throwIfAborted();
     let entry = this.entries.get(sessionId);
@@ -88,10 +92,10 @@ export class BrowserRuntime {
       window.contentView.addChildView(view);
       view.setVisible(false);
       try {
-        await view.webContents.loadURL(normalizeUrl(url ?? DEFAULT_URL));
+        await view.webContents.loadURL(normalizeUrl(url ?? browserStartupUrl(startupUrl)));
       } catch {
         // Chromium still renders its navigation error page. Keep Browser Mode usable so
-        // the user can enter another URL even when the conventional local port is closed.
+        // the user can enter another URL even when the startup location is unavailable.
       }
       signal?.throwIfAborted();
     } else if (entry.ownerId !== ownerId) {
@@ -102,8 +106,13 @@ export class BrowserRuntime {
         this.activeByOwner.delete(entry.ownerId);
       entry.ownerId = ownerId;
       entry.window = window;
-    } else if (url && normalizeUrl(url) !== entry.view.webContents.getURL()) {
-      await entry.view.webContents.loadURL(normalizeUrl(url));
+    } else if (
+      (url && normalizeUrl(url) !== entry.view.webContents.getURL()) ||
+      (!entry.view.webContents.getURL() && !entry.view.webContents.isLoading())
+    ) {
+      // A default is not a navigation request. In particular, about:blank is an
+      // existing location and must survive mode changes just like any other page.
+      await entry.view.webContents.loadURL(normalizeUrl(url ?? browserStartupUrl(startupUrl)));
       signal?.throwIfAborted();
     }
 
@@ -287,7 +296,7 @@ export class BrowserRuntime {
     const contents = entry.view.webContents;
     return {
       sessionId: entry.sessionId,
-      url: contents.getURL() || DEFAULT_URL,
+      url: contents.getURL() || DEFAULT_BROWSER_URL,
       title: contents.getTitle(),
       loading: contents.isLoading(),
       canGoBack: contents.canGoBack(),
@@ -327,7 +336,7 @@ function hasGeometry(bounds: BrowserBounds) {
 
 function normalizeUrl(value: string) {
   const trimmed = value.trim();
-  if (!trimmed) return DEFAULT_URL;
+  if (!trimmed) return DEFAULT_BROWSER_URL;
   if (/^[a-z][a-z\d+.-]*:/i.test(trimmed)) return trimmed;
   return `http://${trimmed}`;
 }

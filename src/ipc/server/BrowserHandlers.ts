@@ -40,10 +40,10 @@ export const browserHandlers = BrowserRpc.middleware(RendererConnectionMiddlewar
     withConnection((connectionId) =>
       Effect.flatMap(Browser, (browser) => browser.inspect(connectionId, request.sessionId)),
     ),
-  "browser.native-browser-enter": ({ sessionId, workspacePath }) =>
+  "browser.native-browser-enter": ({ sessionId, workspacePath, startupUrl }) =>
     withConnection((connectionId) =>
       Effect.flatMap(Browser, (browser) =>
-        browser.nativeEnter(connectionId, sessionId, workspacePath),
+        browser.nativeEnter(connectionId, sessionId, workspacePath, startupUrl),
       ).pipe(Effect.as({})),
     ),
   "browser.native-browser-cdp": ({ sessionId, method, params }) =>

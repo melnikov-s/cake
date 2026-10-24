@@ -20,6 +20,7 @@ export class ProjectSettingsStore extends Store {
   worktreeSetupInstructions = "";
   customInstructions = "";
   projectChatInstructions = "";
+  browserDefaultUrl = "";
   icon: ProjectIcon | undefined;
   saving = false;
   choosingIcon = false;
@@ -62,6 +63,7 @@ export class ProjectSettingsStore extends Store {
     this.worktreeSetupInstructions = settings.worktreeSetupInstructions;
     this.customInstructions = settings.customInstructions;
     this.projectChatInstructions = settings.projectChatInstructions;
+    this.browserDefaultUrl = settings.browserDefaultUrl ?? "";
     this.icon = settings.icon;
     this.error = undefined;
   }
@@ -88,6 +90,10 @@ export class ProjectSettingsStore extends Store {
 
   setProjectChatInstructions(instructions: string) {
     this.projectChatInstructions = instructions;
+  }
+
+  setBrowserDefaultUrl(url: string) {
+    this.browserDefaultUrl = url;
   }
 
   async chooseIcon() {
@@ -209,6 +215,7 @@ export class ProjectSettingsStore extends Store {
       worktreeSetupInstructions: this.worktreeSetupInstructions.trim(),
       customInstructions: this.customInstructions,
       projectChatInstructions: this.projectChatInstructions,
+      browserDefaultUrl: this.browserDefaultUrl.trim(),
       ...(this.icon ? { icon: this.icon } : undefined),
     };
     this.saving = true;

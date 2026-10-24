@@ -1,4 +1,5 @@
 /** @vitest-environment jsdom */
+import { defaultProjectSettings } from "../../../src/contracts/application/application-data";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -23,13 +24,38 @@ const ready: BrowserStateSnapshot = {
   inspecting: false,
 };
 
-function renderBrowser(client: TestClientOverrides = {}, secondary = false) {
+function renderBrowser(
+  client: TestClientOverrides = {},
+  secondary = false,
+  browserDefaultUrl?: string,
+  secondaryProjectPath = "/project",
+) {
   const fixture = createRendererStoreFixture({
-    projects: [projectRecord({ path: "/project", name: "Project" })],
+    projects: [
+      ...(secondaryProjectPath === "/project"
+        ? []
+        : [
+            projectRecord({
+              path: secondaryProjectPath,
+              settings: {
+                ...defaultProjectSettings(),
+                browserDefaultUrl: "https://other.example/",
+              },
+            }),
+          ]),
+      projectRecord({
+        path: "/project",
+        name: "Project",
+        settings: {
+          ...defaultProjectSettings(),
+          ...(browserDefaultUrl === undefined ? {} : { browserDefaultUrl }),
+        },
+      }),
+    ],
     sessions: [sessionId, ...(secondary ? ["other-session"] : [])].map((id) =>
       sessionSummary({
         sessionId: id,
-        projectPath: "/project",
+        projectPath: id === sessionId ? "/project" : secondaryProjectPath,
         title: id === sessionId ? "Browser task" : "Other task",
       }),
     ),
@@ -43,8 +69,9 @@ function renderBrowser(client: TestClientOverrides = {}, secondary = false) {
     },
   });
   for (const id of [sessionId, ...(secondary ? ["other-session"] : [])]) {
-    fixture.root.sessionRegistry.load(id, "/project");
-    applyConversationUpdate(fixture.models.projectConversation(id, "/project"), {
+    const workspace = id === sessionId ? "/project" : secondaryProjectPath;
+    fixture.root.sessionRegistry.load(id, workspace);
+    applyConversationUpdate(fixture.models.projectConversation(id, workspace), {
       _tag: "Snapshot",
       revision: 1,
       snapshot: {
@@ -98,6 +125,52 @@ afterEach(() => {
 // These tests cover renderer workflows over a controlled native Browser Client, not Chromium
 // navigation, native focus/keyboard capture, or real viewport geometry.
 describe("Browser workspace workflow", () => {
+  it.each([
+    ["http://localhost:5173/start", "http://localhost:5173/start"],
+    [undefined, "https://www.google.com/"],
+    ["", "https://www.google.com/"],
+  ])("passes %j as startup only, never as a navigation request", async (configured, expected) => {
+    const open = vi.fn<Client["browser"]["open"]>(async () => ready);
+    using fixture = renderBrowser({ browser: { open } }, false, configured);
+    await fixture.user.click(screen.getByRole("button", { name: "Open Browser Mode" }));
+    await waitFor(() => expect(address().value).toBe(ready.url));
+    expect(open).toHaveBeenLastCalledWith(
+      sessionId,
+      undefined,
+      expect.objectContaining({ startupUrl: expected }),
+    );
+    await fixture.user.click(screen.getByRole("button", { name: "Back to agent" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Open Browser Mode" }));
+    await waitFor(() => expect(address().value).toBe(ready.url));
+    expect(open).toHaveBeenCalledTimes(2);
+    expect(open.mock.calls.every(([, url]) => url === undefined)).toBe(true);
+  });
+
+  it("uses each selected project's own default URL", async () => {
+    const open = vi.fn<Client["browser"]["open"]>(async (id) => ({ ...ready, sessionId: id }));
+    using fixture = renderBrowser(
+      { browser: { open } },
+      true,
+      "https://primary.example/",
+      "/other",
+    );
+    await fixture.user.click(screen.getByRole("button", { name: "Open Browser Mode" }));
+    await waitFor(() => expect(open).toHaveBeenCalledTimes(1));
+    expect(open).toHaveBeenLastCalledWith(
+      sessionId,
+      undefined,
+      expect.objectContaining({ startupUrl: "https://primary.example/" }),
+    );
+    await fixture.user.click(screen.getByRole("button", { name: /^Other task / }));
+    await fixture.user.click(screen.getByRole("button", { name: "Open Browser Mode" }));
+    await waitFor(() => expect(open).toHaveBeenCalledTimes(2));
+    expect(open).toHaveBeenLastCalledWith(
+      "other-session",
+      undefined,
+      expect.objectContaining({ startupUrl: "https://other.example/" }),
+    );
+  });
+
   it("does not present a late native open over another session and restores the original browser deliberately", async () => {
     let finish!: (state: BrowserStateSnapshot) => void;
     const pending = new Promise<BrowserStateSnapshot>((resolve) => {

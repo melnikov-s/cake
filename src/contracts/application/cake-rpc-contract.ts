@@ -293,6 +293,7 @@ const cakeEventSchemas = {
     sessionId: bounded(1, 256),
     operation: Schema.Literals(["enter", "cdp", "events"]),
     workspacePath: stringMax(4_096),
+    startupUrl: Schema.optionalKey(stringMax(16_384)),
     method: Schema.optionalKey(bounded(1, 256)),
     params: Schema.optionalKey(jsonValueSchema),
     methods: Schema.optionalKey(Schema.Array(bounded(1, 256)).check(Schema.isMaxLength(100))),
@@ -555,6 +556,7 @@ export const cakeRpcPayloadSchemas = {
     ...requestBase,
     sessionId: bounded(1, 256),
     url: Schema.optionalKey(stringMax(16_384)),
+    startupUrl: Schema.optionalKey(stringMax(16_384)),
   }),
   "get-browser-state": Schema.Struct({ sessionId: bounded(1, 256) }),
   "update-browser-bounds": Schema.Struct({
@@ -589,6 +591,7 @@ export const cakeRpcPayloadSchemas = {
   "native-browser-enter": Schema.Struct({
     sessionId: bounded(1, 256),
     workspacePath: stringMax(4_096),
+    startupUrl: Schema.optionalKey(stringMax(16_384)),
   }),
   "native-browser-cdp": Schema.Struct({
     sessionId: bounded(1, 256),

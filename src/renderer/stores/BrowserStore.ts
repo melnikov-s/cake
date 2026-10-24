@@ -1,4 +1,6 @@
 import { Store } from "r-state-tree";
+import { DEFAULT_BROWSER_URL } from "../../contracts/browser/browser-default-url";
+import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
 import type { Attachment } from "../../contracts/conversations/session-contract";
 import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
 import type { BrowserStateSnapshot } from "../client/Client";
@@ -9,6 +11,7 @@ import { TerminalTopInsetContext } from "./context/TerminalTopInsetContext";
 
 export interface BrowserStoreProps {
   sessionId(): string | undefined;
+  projectPath(): string | undefined;
   browserHost?: boolean;
   onBrowserUnavailable?(): void;
   presentationMode(): ProjectSessionPresentationMode;
@@ -33,7 +36,7 @@ const EMPTY_VIEWPORT: BrowserViewport = { x: 0, y: 0, width: 0, height: 0 };
 /** Owns Browser Mode presentation, navigation, inspection, and native-view geometry. */
 export class BrowserStore extends Store<BrowserStoreProps> {
   visible = false;
-  url = "http://localhost:3000";
+  url = DEFAULT_BROWSER_URL;
   address = this.url;
   title = "";
   loading = false;
@@ -104,7 +107,14 @@ export class BrowserStore extends Store<BrowserStoreProps> {
     this.error = undefined;
     this.errorDetails = undefined;
     try {
-      const state = await this.browser.open(sessionId, undefined, { signal: this.signal });
+      const projectPath = this.props.projectPath();
+      const startupUrl = projectPath
+        ? ProjectCatalogContext.consume(this)!.browserDefaultUrl(projectPath)
+        : DEFAULT_BROWSER_URL;
+      const state = await this.browser.open(sessionId, undefined, {
+        signal: this.signal,
+        startupUrl,
+      });
       if (this.signal.aborted || this.sessionId !== sessionId) return;
       this.openedSessionId = sessionId;
       this.applyState(state);

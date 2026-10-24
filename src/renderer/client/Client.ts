@@ -194,7 +194,7 @@ interface BrowserCommands {
   open(
     sessionId: string,
     url?: string,
-    options?: ClientCommandOptions,
+    options?: ClientCommandOptions & { startupUrl?: string },
   ): Promise<BrowserStateSnapshot>;
   state(sessionId: string, options?: ClientCommandOptions): Promise<BrowserStateSnapshot>;
   updateBounds(

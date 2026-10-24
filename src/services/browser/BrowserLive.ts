@@ -50,7 +50,14 @@ export const makeBrowserLive = (remote = false) =>
           if (!window)
             return yield* browserError("open", new Error("Browser window is unavailable"));
           return yield* native("open", (signal) =>
-            runtime.open(connectionId, window, input.sessionId, input.url, signal),
+            runtime.open(
+              connectionId,
+              window,
+              input.sessionId,
+              input.url,
+              signal,
+              input.startupUrl,
+            ),
           );
         }),
         state: Effect.fn("Browser.state")((connectionId, sessionId) =>
@@ -84,7 +91,7 @@ export const makeBrowserLive = (remote = false) =>
           }),
         ),
         nativeEnter: Effect.fn("Browser.nativeEnter")(
-          function* (connectionId, sessionId, workingDirectory) {
+          function* (connectionId, sessionId, workingDirectory, startupUrl) {
             const sender = yield* sync("nativeEnter", () =>
               electron.requireRendererConnection(connectionId),
             );
@@ -92,7 +99,7 @@ export const makeBrowserLive = (remote = false) =>
             if (!window)
               return yield* browserError("nativeEnter", new Error("Browser window is unavailable"));
             yield* native("nativeEnter", (signal) =>
-              runtime.open(connectionId, window, sessionId, undefined, signal),
+              runtime.open(connectionId, window, sessionId, undefined, signal, startupUrl),
             );
             clientEvents.sendTo(connectionId, {
               type: "browser-entered",
@@ -136,7 +143,7 @@ export const makeBrowserLive = (remote = false) =>
           },
         ),
         enterProjectBrowser: Effect.fn("Browser.enterProjectBrowser")(
-          function* (sessionId, workingDirectory) {
+          function* (sessionId, workingDirectory, startupUrl) {
             if (
               Option.isNone(projectAccess) ||
               !(yield* projectAccess.value.isAllowed(workingDirectory))
@@ -155,7 +162,7 @@ export const makeBrowserLive = (remote = false) =>
               );
             const [ownerId, window] = selected;
             yield* native("enterProjectBrowser", (signal) =>
-              runtime.open(ownerId, window, sessionId, undefined, signal),
+              runtime.open(ownerId, window, sessionId, undefined, signal, startupUrl),
             );
             clientEvents.sendTo(ownerId, {
               type: "browser-entered",

@@ -41,6 +41,45 @@ const setProjectSettings = () =>
 afterEach(cleanup);
 
 describe("Project settings workflow", () => {
+  it("loads, edits and clears the browser default URL without resetting it with worktree defaults", async () => {
+    let persisted: ProjectSettings = {
+      ...defaultProjectSettings(),
+      browserDefaultUrl: "http://localhost:5173/",
+    };
+    const save = vi.fn<Client["workspaces"]["setProjectSettings"]>(async (_path, settings) => {
+      persisted = settings;
+      return defaultApplicationState();
+    });
+    {
+      using fixture = renderProjectSettings(
+        { workspaces: { setProjectSettings: save } },
+        persisted,
+      );
+      const input = screen.getByRole("textbox", { name: "Browser default URL" });
+      expect(input).toHaveProperty("value", "http://localhost:5173/");
+      await fixture.user.clear(input);
+      await fixture.user.type(input, "  https://example.com/start  ");
+      await fixture.user.click(screen.getByRole("button", { name: "Restore worktree defaults" }));
+      expect(input).toHaveProperty("value", "  https://example.com/start  ");
+      await fixture.user.click(screen.getByRole("button", { name: "Save settings" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(persisted.browserDefaultUrl).toBe("https://example.com/start");
+    }
+    {
+      using fixture = renderProjectSettings(
+        { workspaces: { setProjectSettings: save } },
+        persisted,
+      );
+      const input = screen.getByRole("textbox", { name: "Browser default URL" });
+      expect(input).toHaveProperty("value", "https://example.com/start");
+      await fixture.user.clear(input);
+      expect(input).toHaveProperty("placeholder", "https://www.google.com/");
+      await fixture.user.click(screen.getByRole("button", { name: "Save settings" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(persisted.browserDefaultUrl).toBe("");
+    }
+  });
+
   it("saves edited Project Session instructions and closes the dialog", async () => {
     const save = setProjectSettings();
     using fixture = renderProjectSettings({ workspaces: { setProjectSettings: save } });

@@ -6,11 +6,14 @@ const native = vi.hoisted(() => {
   class FakeView {
     setVisible = vi.fn();
     setBounds = vi.fn();
+    url = "";
     webContents = {
       on: vi.fn(),
       setWindowOpenHandler: vi.fn(),
-      loadURL: vi.fn(async () => undefined),
-      getURL: () => "http://localhost:3000/",
+      loadURL: vi.fn(async (url: string) => {
+        this.url = url;
+      }),
+      getURL: () => this.url,
       getTitle: () => "Fixture",
       isLoading: () => false,
       canGoBack: () => false,
@@ -51,7 +54,8 @@ const fixture = () => {
   const window = windowFixture();
   return {
     runtime,
-    open: (owner = 7, session = "one") => runtime.open(owner, window as never, session),
+    open: (owner = 7, session = "one", startupUrl?: string, url?: string) =>
+      runtime.open(owner, window as never, session, url, undefined, startupUrl),
   };
 };
 const viewAt = (index = 0) => {
@@ -63,6 +67,55 @@ const viewAt = (index = 0) => {
 describe("BrowserRuntime fullscreen presentation", () => {
   afterEach(() => {
     native.views.length = 0;
+  });
+
+  it.each([undefined, "", "   "])(
+    "uses Google for an unset or cleared startup URL (%j)",
+    async (url) => {
+      const { open } = fixture();
+      const state = await open(7, "one", url);
+      expect(state.url).toBe("https://www.google.com/");
+      expect(viewAt().webContents.loadURL).toHaveBeenCalledExactlyOnceWith(
+        "https://www.google.com/",
+      );
+    },
+  );
+
+  it("keeps startup locations isolated and preserves navigation across mode/session/window switches", async () => {
+    const { runtime, open } = fixture();
+    expect((await open(7, "one", "http://localhost:5173/start")).url).toBe(
+      "http://localhost:5173/start",
+    );
+    await runtime.navigate(7, "one", "http://localhost:5173/current");
+    runtime.updateBounds(7, bounds("one", false));
+    expect((await open(7, "two", "https://example.com/")).url).toBe("https://example.com/");
+    expect((await open(7, "one", "https://changed.example/")).url).toBe(
+      "http://localhost:5173/current",
+    );
+    expect((await open(8, "one", "https://changed.example/")).url).toBe(
+      "http://localhost:5173/current",
+    );
+    expect(viewAt().webContents.loadURL).toHaveBeenCalledTimes(2);
+    // Explicit navigation retains its original meaning; it is not a default.
+    expect(
+      (await open(8, "one", "https://ignored.example/", "https://explicit.example/")).url,
+    ).toBe("https://explicit.example/");
+  });
+
+  it("fills a view without a location but preserves an intentional blank page", async () => {
+    const { runtime, open } = fixture();
+    await open();
+    viewAt().url = "";
+    expect((await open(7, "one", "https://example.com/")).url).toBe("https://example.com/");
+    await runtime.navigate(7, "one", "about:blank");
+    expect((await open(7, "one", "https://changed.example/")).url).toBe("about:blank");
+  });
+
+  it("prefers an explicit URL to a configured startup URL for a new browser", async () => {
+    const { open } = fixture();
+    expect(
+      (await open(7, "one", "https://default.example/", "https://explicit.example/")).url,
+    ).toBe("https://explicit.example/");
   });
 
   it("suppresses browser presentation until fullscreen closes without losing current bounds", async () => {

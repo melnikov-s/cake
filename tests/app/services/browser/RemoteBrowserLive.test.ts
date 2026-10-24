@@ -64,11 +64,12 @@ it.effect(
       yield* Queue.take(ready);
       yield* coordinator.bind({ _tag: "ProjectSession", sessionId: "session" }, desktop);
       const enter = yield* browser
-        .enterProjectBrowser("session", "/allowed")
+        .enterProjectBrowser("session", "/allowed", "https://project.example/")
         .pipe(Effect.forkChild({ startImmediately: true }));
       const request = yield* Queue.take(events);
       if (request.type !== "browser-native-requested") throw new Error("No browser request");
       expect(request.operation).toBe("enter");
+      expect(request.startupUrl).toBe("https://project.example/");
       yield* coordinator.respondBrowserNative(desktop, "session", request.requestId, {
         status: "completed",
         value: null,

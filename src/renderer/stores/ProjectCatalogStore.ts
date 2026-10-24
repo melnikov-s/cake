@@ -1,4 +1,5 @@
 import { Store, observable, snapshot } from "r-state-tree";
+import { browserStartupUrl } from "../../contracts/browser/browser-default-url";
 import type { ProjectCatalog } from "../models/ProjectCatalog";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 
@@ -15,6 +16,11 @@ export class ProjectCatalogStore extends Store<{
 
   find(path: string) {
     return this.props.model.find(path);
+  }
+
+  browserDefaultUrl(workingDirectory: string) {
+    const projectPath = this.props.sessions.projectPathFor(workingDirectory);
+    return browserStartupUrl(this.find(projectPath)?.settings.browserDefaultUrl);
   }
 
   nameFromPath(path: string) {

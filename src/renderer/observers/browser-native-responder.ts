@@ -15,6 +15,7 @@ export const respondBrowserNative = Effect.fn("Renderer.respondBrowserNative")(f
       yield* client.browser["native-browser-enter"]({
         sessionId: event.sessionId,
         workspacePath: event.workspacePath,
+        ...(event.startupUrl ? { startupUrl: event.startupUrl } : undefined),
       });
       return { status: "completed" as const, value: null };
     }

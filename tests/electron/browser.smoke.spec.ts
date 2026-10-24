@@ -128,18 +128,20 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
       .join("\n") + "\n",
   );
 
-  const application = await electron.launch({
-    args: [repositoryRoot],
-    cwd: repositoryRoot,
-    env: {
-      ...process.env,
-      CAKE_ELECTRON_SMOKE: "1",
-      CAKE_ELECTRON_USER_DATA: userData,
-      CAKE_HOME: cakeHome,
-      PI_CODING_AGENT_DIR: join(cakeHome, "pi"),
-      PI_CODING_AGENT_SESSION_DIR: "",
-    },
-  });
+  const launch = () =>
+    electron.launch({
+      args: [repositoryRoot],
+      cwd: repositoryRoot,
+      env: {
+        ...process.env,
+        CAKE_ELECTRON_SMOKE: "1",
+        CAKE_ELECTRON_USER_DATA: userData,
+        CAKE_HOME: cakeHome,
+        PI_CODING_AGENT_DIR: join(cakeHome, "pi"),
+        PI_CODING_AGENT_SESSION_DIR: "",
+      },
+    });
+  let application = await launch();
 
   try {
     const page = await application.firstWindow();
@@ -153,11 +155,19 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
     await expect(page.locator(".transcript").getByText("Other browser fixture")).toBeVisible();
     await page.locator(`.session-item[data-session-id="${sessionId}"]`).click();
     await expect(page.locator(".transcript").getByText("Test the app")).toBeVisible();
+    // Configure the project through the actual controlled Settings input before
+    // creating a page, so no external network is needed for startup verification.
+    await page.getByRole("button", { name: "Open settings for project" }).click();
+    const defaultUrl = page.getByRole("textbox", { name: "Browser default URL" });
+    await expect(defaultUrl).toHaveValue("");
+    await defaultUrl.fill(origin);
+    await expect(defaultUrl).toHaveValue(origin);
+    await page.getByRole("button", { name: "Save settings" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     await page.getByRole("button", { name: "Open Browser Mode" }).click();
     const addressInput = page.getByLabel("Browser address");
     await expect(addressInput).toBeVisible();
-    await addressInput.fill(origin);
-    await addressInput.press("Enter");
+    await expect(addressInput).toHaveValue(`${origin}/`);
 
     const workspace = page.getByRole("region", { name: "Browser workspace", exact: true });
     const chatToggle = workspace.locator('[data-slot="header-chat-toggle"]');
@@ -199,6 +209,15 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
     await addressInput.fill(`${origin}/second`);
     await addressInput.press("Enter");
     await expect.poll(browserState(`${origin}/second`)).toMatchObject({ title: "Second page" });
+    await page.getByRole("button", { name: "Back to agent" }).click();
+    await page.getByRole("button", { name: "Open settings for project" }).click();
+    await expect(defaultUrl).toHaveValue(origin);
+    await defaultUrl.fill(`${origin}/changed-default`);
+    await page.getByRole("button", { name: "Save settings" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await page.getByRole("button", { name: "Open Browser Mode" }).click();
+    await expect(addressInput).toHaveValue(`${origin}/second`);
+    await expect.poll(browserState(`${origin}/second`)).toMatchObject({ title: "Second page" });
 
     const toggleTerminal = () =>
       application.evaluate(({ Menu }) => {
@@ -210,8 +229,8 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
       });
     const nativeBrowserBounds = () =>
       application.evaluate(({ BrowserWindow }, expectedUrl) => {
-        const window = BrowserWindow.getAllWindows()[0];
-        return window.contentView.children
+        return BrowserWindow.getAllWindows()
+          .flatMap((window) => window.contentView.children)
           .find((child) => "webContents" in child && child.webContents.getURL() === expectedUrl)
           ?.getBounds();
       }, `${origin}/second`);
@@ -301,9 +320,9 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
 
     const nativeBrowserVisible = () =>
       application.evaluate(({ BrowserWindow }, expectedUrl) => {
-        const view = BrowserWindow.getAllWindows()[0]!.contentView.children.find(
-          (child) => "webContents" in child && child.webContents.getURL() === expectedUrl,
-        );
+        const view = BrowserWindow.getAllWindows()
+          .flatMap((window) => window.contentView.children)
+          .find((child) => "webContents" in child && child.webContents.getURL() === expectedUrl);
         return view?.getVisible() ?? false;
       }, `${origin}/second`);
     await expect.poll(nativeBrowserVisible).toBe(true);
@@ -394,6 +413,21 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
     await secondAddress.fill(origin);
     await secondAddress.press("Enter");
     await expect.poll(browserState(`${origin}/`)).toMatchObject({ title: "Local app" });
+
+    // Restart only this isolated smoke-test application, never the user's Cake.
+    // Pages are process-local; the project default must be loaded from disk.
+    await application.close();
+    application = await launch();
+    const restoredPage = await application.firstWindow();
+    const restoredAddress = restoredPage.getByLabel("Browser address");
+    if (!(await restoredAddress.isVisible()))
+      await restoredPage.getByRole("button", { name: "Open Browser Mode" }).click();
+    await expect(restoredAddress).toHaveValue(`${origin}/changed-default`, { timeout: 20_000 });
+    await restoredPage.getByRole("button", { name: "Back to agent" }).click();
+    await restoredPage.getByRole("button", { name: "Open settings for project" }).click();
+    await expect(restoredPage.getByRole("textbox", { name: "Browser default URL" })).toHaveValue(
+      `${origin}/changed-default`,
+    );
   } finally {
     await application.close();
     server.close();

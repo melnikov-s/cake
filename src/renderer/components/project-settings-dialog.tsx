@@ -11,6 +11,8 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { Textarea } from "./ui/textarea";
+import { Input } from "./ui/input";
+import { DEFAULT_BROWSER_URL } from "../../contracts/browser/browser-default-url";
 import { LabelSettings } from "./label-settings";
 import { Avatar } from "./ui/avatar";
 
@@ -46,11 +48,31 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
           <DialogHeader>
             <DialogTitle id="project-settings-title">{store.projectName} settings</DialogTitle>
             <DialogDescription id="project-settings-description">
-              Configure personal instructions, the project icon, labels, and managed worktrees.
+              Configure personal instructions, the browser, project icon, labels, and managed
+              worktrees.
             </DialogDescription>
           </DialogHeader>
 
           <div className="mt-5 grid gap-5">
+            <label className="grid gap-2">
+              <span className="text-xs font-semibold text-foreground">Browser default URL</span>
+              <Input
+                aria-label="Browser default URL"
+                maxLength={16_384}
+                spellCheck={false}
+                placeholder={DEFAULT_BROWSER_URL}
+                value={store.browserDefaultUrl}
+                onChange={(event) => store.setBrowserDefaultUrl(event.target.value)}
+                aria-describedby="project-browser-url-help"
+              />
+              <span
+                id="project-browser-url-help"
+                className="text-[11px] leading-relaxed text-muted-foreground"
+              >
+                Opens when this project’s browser has no page yet. Leave blank to use
+                https://www.google.com/. Existing pages are preserved when switching modes.
+              </span>
+            </label>
             <label className="grid gap-2">
               <span className="text-xs font-semibold text-foreground">
                 Project Chat instructions

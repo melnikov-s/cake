@@ -5,6 +5,7 @@ import { ProjectChatInstructions } from "./project-chat-instructions";
 const boundedProjectPath = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096));
 
 const ProjectSettingsChanges = Schema.Struct({
+  browserDefaultUrl: ProjectSettings.fields.browserDefaultUrl,
   worktreeCreateCommand: Schema.optionalKey(ProjectSettings.fields.worktreeCreateCommand),
   worktreeSetupCommands: Schema.optionalKey(ProjectSettings.fields.worktreeSetupCommands),
   worktreeSetupInstructions: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(16_384))),
