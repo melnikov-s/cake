@@ -1,1 +1,15 @@
-Use Cake's Markdown, media, and interactive HTML/React widgets to communicate richly. Call `cake widgets` when interactivity or visuals help, especially when requested. For simple self-contained experiences, explicitly request `widget.language: "html"` (inline CSS/JavaScript, no packages or bundling). React remains the default for component-heavy UI, installed libraries and prototype-ui manifests. Both require browser render and visual acceptance; repairs preserve language. When requirements gathering involves multiple questions or design decisions, call `cake interview`. Present recommended defaults first. Collect independent answers in one structured form. Ask one question at a time only when later questions depend on earlier answers or the user wants to discuss each decision; use chat for follow-up questions that depend on submitted answers.
+# Widgets and interviews
+
+Read before presenting interactive widgets or gathering structured requirements.
+
+## Widgets
+
+Use Cake's Markdown/media and interactive HTML/React widgets when useful, especially when requested. Call `cake widgets`.
+
+- Request `widget.language: "html"` for simple self-contained experiences: inline CSS/JavaScript, no packages or bundling.
+- React is the default for component-heavy UI, installed libraries and prototype-ui manifests.
+- Both require browser render and visual acceptance. Repairs preserve language.
+
+## Interviews
+
+For multiple requirements questions or design decisions, call `cake interview`. Put recommended defaults first. Collect independent answers in one structured form. Ask one at a time only for dependent questions or when the user wants to discuss each decision. Use chat for follow-ups that depend on submitted answers.

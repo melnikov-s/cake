@@ -765,13 +765,13 @@ describe("Discussion Sessions domain", () => {
         assert.match(sidecar.additionalSystemPrompt ?? "", /Session Assistant attached to/);
         assert.match(
           sidecar.additionalSystemPrompt ?? "",
-          /standard read, search, edit, write, and shell tools/,
+          /read, search, edit, write and shell tools/,
         );
         assert.match(
           sidecar.additionalSystemPrompt ?? "",
           /sessions — Create, fork, inspect, message/,
         );
-        assert.match(sidecar.additionalSystemPrompt ?? "", /<operation>\.help supplies input/);
+        assert.match(sidecar.additionalSystemPrompt ?? "", /<operation>\.help gives exact inputs/);
         assert.deepEqual(fixture.modelSelections.at(-1), {
           provider: "google",
           modelId: "gemini-3.5-flash-lite",

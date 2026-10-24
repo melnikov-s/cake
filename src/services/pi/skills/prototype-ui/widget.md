@@ -4,11 +4,11 @@ This file is for the widget specialist. Implement the parent brief as one React 
 
 ## Presentation
 
-Make the prototypes the main content. Provide a compact way to switch among all five alternatives and inspect each at a useful size, with "Choose this" available for each. Do not shrink five entire screens into unreadable thumbnails. A comparison overview can accompany a large active preview. Keep the outer controls modest; do not add a tutorial, repeated labels explaining what a prototype is, or a banner.
+Make prototypes the main content. Use compact controls to switch among five readable previews, each with "Choose this". An overview may accompany the large active preview; never shrink five screens to unreadable thumbnails. No tutorial, repeated prototype labels or banner.
 
 Switching the visible prototype does not choose it. "Choose this" saves that option's stable ID, and the saved choice remains apparent when switching views or reopening the widget.
 
-Reproduce the reference app's typography, colors, spacing, density, components, icons, and layout conventions inside the prototypes. Cake's semantic variables belong to the outer chooser, not to an unrelated app's design. Use the supplied app tokens inside the prototype frames. Keep all alternatives on comparable content and viewports. Match the platform shown in the brief rather than turning every app into a dashboard.
+Match the reference app's typography, colors, spacing, density, components, icons and layout. Cake variables style the outer chooser; supplied app tokens style prototype frames. Use comparable content/viewports. Match the brief's platform, not a generic dashboard.
 
 Vary meaningful design decisions while retaining the app's visual language. Each alternative should be substantial enough to evaluate the requested task and its important interactions. Use the five stable IDs supplied by the parent; preserve them through revisions.
 
@@ -63,7 +63,7 @@ Return one `cake-react` fence whose complete body is `export default <JSON>;`, w
 }
 ```
 
-The placeholders above describe the format, not runnable source: fill every source string with real TSX, JSON-escaping newlines and quotes. Cake compiles the chooser as the entry component and resolves each `cake:prototype/<id>` import to exactly that module. Keep all five options in this single artifact and generation branch. Source remains bounded by the artifact publication limit.
+Replace placeholders with real TSX, JSON-escaping newlines/quotes. Cake compiles the chooser entry and resolves each `cake:prototype/<id>` to that exact module. All five options stay in one artifact/generation branch, within the publication limit.
 
 IDs match `^[a-z][a-z0-9-]{0,63}$`, are unique across chooser/options/shared, and stay stable through revisions. Use the parent-supplied five option IDs. The `dependencies` array must exactly enumerate the distinct static import and re-export specifiers in that module (including packages and type-only imports). JSX automatic runtime needs no explicit dependency. No dynamic imports, require, relative paths or file imports. Packages must already be installed. Each option is a complete default-exported React component; the chooser imports all five options and default-exports the interactive chooser component.
 
@@ -80,6 +80,6 @@ Use `useArtifactState` from `@cake/artifact-sdk` with this exact initial value:
 }
 ```
 
-Wait for hydration before saving. Use the hydrated value as authoritative. On "Choose this", await `save({ ...value, selectedOptionId: option.id })`. Do not report a saved choice until that Promise succeeds. Keep navigation/hover state local; never overwrite a saved choice during mounting, switching previews, or visual review. Do not put the selected option only in React state or localStorage: the parent reads `value.selectedOptionId` with `artifacts.state.read`.
+Wait for hydration; its value is authoritative. On "Choose this", await `save({ ...value, selectedOptionId: option.id })` before reporting success. Keep navigation/hover local. Never overwrite saved choice during mounting, switching or visual review. React state/localStorage alone is insufficient: the parent reads `value.selectedOptionId` through `artifacts.state.read`.
 
 There is no parent-message capability in this artifact. Do not import the Session Plugin SDK or invent a submit callback. Preserve the state shape and option IDs when refining the source. If an option must be removed, tell the parent so it can deliberately clear or replace that choice.

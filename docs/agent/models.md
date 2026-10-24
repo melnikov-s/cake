@@ -1,7 +1,37 @@
-Call `cake models.list` for bounded preset names/defaults; use `models.info` with an exact name for provider, model ID, thinking level and Fast mode settings. Cake operations that accept a model take either a preset name string such as `"Sol"` or an explicit `{ provider, modelId, thinkingLevel, fastMode? }` configuration; strings are preset names, never raw model IDs. Omit the model when creating sessions, drafts, children, subagents, or workflow agents unless the user explicitly asks for a specific model. Omission for sessions, drafts, children, and workflow agents uses the configured default preset's complete settings, not your current model; omission for Project Session subagents also uses the default preset, while omission for Cake Chat subagents follows the user's Subagent default model setting (inherit Cake Chat's current model unless changed).
+# Models and generation
 
-For image generation, use Pi's native `models` API inside `codemode` when that tool is enabled. Read Pi's codemode documentation first and resolve Cake’s backend image preference with `tools.cake({ command: "models.select-non-chat", input: { type: "image" } })` inside codemode. Cake's structured tool return is `{ command, result }`: destructure `const { result: selected } = await tools.cake(...)` and pass `selected.model` to `models.generateImages`; if it is null (no preference), discover usable image models with `models.getAvailableOfType("image")`. An explicit user-requested model must be passed as `requested: { provider, modelId }`, overriding the preference. An unavailable preference/request produces an explicit error: report it and ask before substituting another billed model. This preference is advisory, not an enforced restriction. For native classifiers use the same selection operation with `type: "classifier"`, then `models.classify(model, { state, questions })`; never infer background classification or Auto routing from a preference. Do not select an image model as the conversation's chat model. Current built-in image models use OpenRouter credentials, not a ChatGPT subscription. Cake enables codemode by default in eligible Project Sessions. If it is unavailable, explain that explicit tool selections, disabled extensions, or a restricted chat may exclude it; Pi's `defaultTools: ["+codemode"]` setting enables it in an eligible Project Session; do not invent an image provider or claim that chat authentication enables generation.
+Read before model selection, image generation or classification. Also read Pi's codemode documentation before native generation.
 
-Generate with `models.generateImages(model, { input })`, passing text blocks and, only when supported, base64 image reference blocks. Existing file tools can read reference bytes (for example, `tools.bash` with Node's `readFileSync(...).toString("base64")`); check success and reject truncated output rather than forwarding incomplete bytes. Do not copy base64 through prose. Check `stopReason` and `errorMessage`, reporting provider errors or cancellation rather than success. Show generated blocks with `image(block)` and any accompanying text with `text(block.text)`. Do not print or store image data in codemode's JSON store.
+## Chat and worker models
 
-Generation alone must not save workspace files. When the user explicitly requests a saved image, decode the original generated block's base64 bytes through an existing filesystem tool in the same script, before returning the preview; use `tools.write` to stage base64 in a temporary file, then `tools.bash` with a small Node command to read/decode it, write the requested image, and remove the temporary file. Do not embed large base64 payloads in a shell command: they can exceed OS argument limits. Quote paths safely, respect the requested destination and overwrite intent, verify the tools succeeded, and display the saved image inline with Markdown image syntax using its workspace-relative path. Pi may resize images for conversation history: do not treat a later transcript preview as the original bytes or claim an unsaved original can be recovered. Never regenerate a billed image silently merely to save it.
+Call `cake models.list` for preset names/defaults; `models.info` with an exact name returns provider, model ID, thinking level and Fast mode. Model inputs accept a preset name such as `"Sol"` or `{ provider, modelId, thinkingLevel, fastMode? }`. Strings are preset names, never raw model IDs.
+
+Omit model overrides unless the user explicitly requests one:
+
+- Sessions, drafts, children and workflow agents use the configured default preset's complete settings, not your current model.
+- Project Session subagents also use that preset.
+- Cake Chat subagents use the user's Subagent default model setting: inherit Cake Chat's current model unless changed.
+
+## Select an image or classifier model
+
+Use Pi's native `models` API inside `codemode` when enabled. Resolve Cake's image preference with `tools.cake({ command: "models.select-non-chat", input: { type: "image" } })`.
+
+The structured return is `{ command, result }`: destructure `const { result: selected } = await tools.cake(...)`. Pass `selected.model` to `models.generateImages`. If null (no preference), discover models with `models.getAvailableOfType("image")`.
+
+Pass an explicit user request as `requested: { provider, modelId }`; it overrides the preference. If a request/preference is unavailable, report the error and ask before substituting another billed model. Preferences are advisory, not restrictions.
+
+For classifiers, select with `type: "classifier"`, then `models.classify(model, { state, questions })`. Never infer background classification or Auto routing from a preference. Do not select an image model as the conversation's chat model.
+
+Built-in image models use OpenRouter credentials, not a ChatGPT subscription. Eligible Project Sessions enable codemode by default. If unavailable, explain that explicit tool selections, disabled extensions or restricted chats may exclude it. Pi's `defaultTools: ["+codemode"]` enables it in eligible Project Sessions. Never invent providers or claim chat authentication enables generation.
+
+## Generate and display
+
+Call `models.generateImages(model, { input })` with text blocks and supported base64 reference-image blocks. Read reference bytes through file tools, for example `tools.bash` with Node's `readFileSync(...).toString("base64")`. Check success; reject truncated output. Never copy base64 through prose.
+
+Check `stopReason` and `errorMessage`; report errors/cancellation, not success. Show images with `image(block)` and accompanying text with `text(block.text)`. Never print or store image data in codemode's JSON store.
+
+## Save only when requested
+
+Generation alone must not save workspace files. For a requested save, decode the original generated block in the same script, before returning the preview. Stage base64 in a temporary file with `tools.write`; use `tools.bash` and Node to decode it, write the requested image, and remove the temporary file. Large base64 shell arguments can exceed OS limits; do not embed them in commands.
+
+Quote paths, honor destination/overwrite intent and verify success. Then display the saved image inline with Markdown image syntax using its workspace-relative path. Pi may resize transcript images; later previews are not original bytes, and an unsaved original may be unrecoverable. Never regenerate a billed image silently merely to save it.

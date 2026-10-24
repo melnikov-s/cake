@@ -942,7 +942,7 @@ describe("Cake Chat project investigators", () => {
             options.isolatedSystemPrompt ?? "",
             /no project instructions, skills, extensions or MCP/,
           );
-          assert.match(options.isolatedSystemPrompt ?? "", /no guaranteed web\/search access/);
+          assert.match(options.isolatedSystemPrompt ?? "", /web\/search access is not guaranteed/);
           assert.match(options.isolatedSystemPrompt ?? "", /Investigations only/);
           assert.doesNotMatch(options.isolatedSystemPrompt ?? "", /Mutation mode/);
           assert.equal(receipt.projectPath, undefined);

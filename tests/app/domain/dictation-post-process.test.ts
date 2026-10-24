@@ -68,9 +68,9 @@ describe("dictation light post-processing", () => {
       (input: BoundedCompletionInput) => {
         expect(input.selection).toEqual({ ...utilityModel, fastMode: false });
         expect(input.context).toContain("src/main.ts");
-        expect(input.instructions).toContain("When their scope is ambiguous, preserve the content");
+        expect(input.instructions).toContain("Preserve ambiguous content");
         expect(input.instructions).toContain("Do not summarize");
-        expect(input.instructions).toContain("quoted or discussed examples");
+        expect(input.instructions).toContain("quoted/discussed examples");
         expect(input.timeoutMs).toBe(10_000);
         expect(input.maximumOutputCharacters).toBe(32_000);
         return Effect.succeed(JSON.stringify({ text: "We need to do that. Keep src/main.ts." }));

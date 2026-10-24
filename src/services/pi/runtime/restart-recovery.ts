@@ -90,4 +90,4 @@ export class RestartRecoveryBlockedError extends Error {
 }
 
 export const restartResumePrompt =
-  "Cake restarted while this task was active. Continue from the saved conversation and tool results, without repeating completed actions. Verify current state before any further mutation. Do not repeat messages or reports already sent. If a prior action has an uncertain outcome, inspect it or ask the user rather than replaying it.";
+  "Cake restarted during this task. Continue from saved conversation/tool results. Never repeat completed actions, messages or reports. Verify current state before further mutations. Inspect uncertain outcomes or ask the user; never replay blindly.";

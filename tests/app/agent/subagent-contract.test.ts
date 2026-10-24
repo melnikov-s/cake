@@ -67,8 +67,8 @@ describe("subagent contract", () => {
       }
       const help = await registry.invoke({ command: "subagents.start.help" }, context);
       expect(help.text).toContain('continuation: "resume" (default, reply)');
-      expect(help.text).toContain("Reply when the user is waiting on the answer");
-      expect(help.text).toContain("Then reply.");
+      expect(help.text).toContain("Reply when the user awaits an answer");
+      expect(help.text).toContain("A promised answer means reply.");
     },
   );
 
@@ -386,9 +386,9 @@ describe("subagent contract", () => {
       "Use subagents only when the user explicitly requested delegation, subagents, or parallel agent work.",
     );
     expect(projectAware[0]?.guidance?.join("\n")).toContain(
-      "Use a project investigator when broader research, project-loaded resources or context isolation helps",
+      "Use a project investigator for deeper research, project resources or isolated context",
     );
-    expect(projectAware[0]?.guidance?.join("\n")).toContain("clarify ambiguous project identity");
+    expect(projectAware[0]?.guidance?.join("\n")).toContain("resolve ambiguous identity first");
     // Only Cake Chat (project-aware) subagents follow the Subagent default model setting.
     expect(projectAware[0]?.guidance?.join("\n")).toContain("Subagent default model setting");
     expect(ordinary[0]?.guidance?.join("\n")).not.toContain("Subagent default model setting");

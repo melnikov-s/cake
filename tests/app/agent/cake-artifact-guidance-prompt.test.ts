@@ -80,11 +80,11 @@ it("Project Session documentation preserves publication and child-assignment gui
     "Use these inline for ordinary conversation regardless of length or formatting",
   );
   expect(projectGuidance).toContain(
-    "When the user explicitly requests a text artifact or a spec qualifies as a shared, durable reference under the guidance above",
+    "When the user requests a text artifact or a spec qualifies as a shared durable reference",
   );
   expect(projectGuidance).toContain("publish Markdown directly with `artifacts.create`");
   expect(projectGuidance).toContain(
-    "revise it with `artifacts.update` for targeted Markdown edits",
+    "Revise it with `artifacts.update` for targeted Markdown edits",
   );
   expect(projectGuidance).toContain("Use `artifacts.replace` for full Markdown rewrites");
   expect(projectGuidance).toContain("Both require `expectedRevision`");

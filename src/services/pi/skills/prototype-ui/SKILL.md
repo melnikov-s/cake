@@ -5,24 +5,24 @@ description: Prototype UI faithful to an existing app, presenting five alternati
 
 # Prototype UI
 
-Build one interactive widget containing five distinct prototypes of the requested UI. The goal is to help the user choose a direction that belongs in their actual app, not to produce a generic design gallery.
+Build one interactive widget with five distinct prototypes of the requested UI. Help the user choose a direction for their app, not a generic design gallery.
 
 ## Gather the app's design context
 
-Do this in the parent Project Session before calling the widget specialist. If you are Cake Chat and the task concerns a registered project, delegate the prototyping task to that project.
+Gather context in the parent Project Session before calling the specialist. Cake Chat must delegate registered-project prototyping to that project.
 
 - Read applicable project instructions and `DESIGN.md` or `design.md` when present.
 - Inspect the relevant screens, shared components, theme tokens, typography, icons, spacing, and navigation patterns. Follow the app's existing implementation conventions.
 - Inspect existing screenshots or capture the relevant running app using its documented verification workflow when feasible. If the app cannot be run, use its source and any supplied screenshots; say briefly what reference is missing.
 - Gather the screen's purpose, representative content, important states, platform, theme, and intended viewport from the request and app. Ask only about information that materially changes the prototypes.
 
-Carry a concise design brief with concrete token values, component patterns, reference paths, and observed screen details into generation. Do not merely tell the specialist to "read the repo": it can read skill resources but has no arbitrary workspace or app-capture access. Ancestor context contains completed parent work, not unfinished tool calls.
+Supply a brief with concrete tokens, components, reference paths and observed screen details. Never merely say "read the repo": the specialist can read skill resources, not arbitrary workspace files or app captures. Ancestor context includes completed parent work, not unfinished tool calls.
 
 ## Choose the rendering approach
 
-Prefer interactive React recreations inside the widget. The app's implementation language is not the deciding factor: a Rust backend with a web UI is still web UI. A native SwiftUI, AppKit, or Rust UI can often be represented faithfully in React without compiling the native app. WebAssembly does not automatically turn native UI frameworks into browser UI, and Cake's widget pipeline currently compiles React/TSX rather than arbitrary applications.
+Prefer interactive React recreations. Implementation language is not decisive: a Rust backend can have a web UI; native SwiftUI/AppKit/Rust UI can often be recreated without native compilation. WebAssembly does not convert native UI frameworks to browser UI. Cake compiles React/TSX, not arbitrary applications.
 
-When a web recreation cannot convey the design well, use image generation with the app references. Read Cake's model guidance and Pi's codemode documentation and use the configured image-model selection workflow. Generation happens in the parent, not the restricted widget specialist. Supply images as self-contained widget data only when the complete artifact can fit Cake's publication limit; otherwise explain the constraint and offer inline images rather than pretending they are an interactive widget. Do not use images merely because the app is written in a native language.
+If web recreation cannot convey the design, generate images using app references. Read Cake's model guidance and Pi's codemode docs; follow configured image-model selection. Generate in the parent, not the restricted specialist. Embed images only if the complete self-contained artifact fits the publication limit. Otherwise explain the limit and offer inline images, not a claimed interactive widget. Native implementation alone is not a reason to use images.
 
 ## Present five alternatives in one widget
 
@@ -37,13 +37,13 @@ Read `widget.md` before preparing the brief. Request the `widgets` topic and use
 - The validated `cake.prototype-source/v1` module-bundle format in `widget.md`. Each option must be separately addressable; the chooser imports all five, while each option imports only its required shared modules/packages. Do not put all alternatives into one source module.
 - A short Markdown fallback describing the five directions.
 
-The specialist writes the React source. Give it the design intent, evidence, state contract, and interactions rather than writing the widget source yourself. All five prototypes live in this one generation branch. Keep subsequent refinements in the same artifact with `artifacts.replace`; revisions inherit its generation history rather than rediscovering the app. Pass new parent findings explicitly in revision instructions.
+The specialist writes React source; supply intent, evidence, state contract and interactions, not your own widget source. Keep all five prototypes in one generation branch. Refine the same artifact with `artifacts.replace`; revisions inherit generation history. Pass new parent findings explicitly.
 
 ## Read the choice and continue
 
 "Choose this" saves the chosen stable option ID under `selectedOptionId` using artifact-scoped state. This is the choice, not a separate confirmation form.
 
-When the user asks to continue, read the artifact with `artifacts.state.read`. Check that `value.schema` is `cake.prototype-ui/v1` and `value.selectedOptionId` identifies one of the current options. Do not infer a choice from whichever prototype is currently open. Saving state does not automatically start a parent turn; after publishing, ask the user to choose in the widget and tell you when to continue.
+When asked to continue, call `artifacts.state.read`. Require `value.schema` = `cake.prototype-ui/v1` and `value.selectedOptionId` naming a current option. The visible prototype is not the choice. Saving does not start a parent turn: after publication, ask the user to choose and tell you when to continue.
 
 For refinements, preserve the five IDs and saved choice.
 

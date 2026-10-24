@@ -23,7 +23,7 @@ describe("Cake Chat side chat context", () => {
       { entryId: "entry-1", selectedText: "", contextBefore: "", contextAfter: "" },
       "## assistant\n\nThe first task is larger.\n",
     );
-    expect(prompt).toContain("You cannot use tools or control Cake from this side chat.");
+    expect(prompt).toContain("You have no tools or Cake controls here.");
     expect(prompt).toContain("Branched from Cake Chat entry: entry-1");
     expect(prompt).toContain("branched from the whole final message");
     expect(prompt).toContain(

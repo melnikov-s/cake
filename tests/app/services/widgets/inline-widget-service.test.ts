@@ -23,16 +23,14 @@ describe("inline widget service", () => {
   });
 
   it("gives generation and repair agents one collision-free responsive layout contract", () => {
+    expect(inlineWidgetLayoutRequirements).toContain("from 320 CSS pixels to wide desktops");
     expect(inlineWidgetLayoutRequirements).toContain(
-      "from 320 CSS pixels through wide desktop sizes",
+      "structural text, controls, icons and navigation use wrapping/reflowing flex/grid, never absolute/fixed positioning",
     );
-    expect(inlineWidgetLayoutRequirements).toContain(
-      "do not use absolute or fixed positioning for structural text",
-    );
-    expect(inlineWidgetLayoutRequirements).toContain("No text or interactive control may overlap");
-    expect(inlineWidgetLayoutRequirements).toContain("user-resizable viewport");
+    expect(inlineWidgetLayoutRequirements).toContain("No text/control may overlap");
+    expect(inlineWidgetLayoutRequirements).toContain("Artifact viewports resize");
     expect(inlineWidgetLayoutRequirements).toContain("ResizeObserver");
-    expect(inlineWidgetLayoutRequirements).toContain("View geometry is not artifact document data");
+    expect(inlineWidgetLayoutRequirements).toContain("Geometry is not artifact document data");
   });
 
   it("bundles the narrow artifact SDK only in artifact widgets", async () => {
