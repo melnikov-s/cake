@@ -62,10 +62,10 @@ export const EmbeddedEditorPane = observer(function EmbeddedEditorPane({
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const theme = useResolvedColorTheme();
-  const endpoint = store.browserEditorEndpoint;
+  const ready = store.nativeViewReady;
   useEffect(() => {
-    if (endpoint) void store.updateBrowserTheme(theme);
-  }, [endpoint, store, theme]);
+    if (ready) void store.updateTheme(theme);
+  }, [ready, store, theme]);
 
   useLayoutEffect(() => {
     const element = containerRef.current;

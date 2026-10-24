@@ -35,7 +35,6 @@ const vscodeRpc = <Type extends VsCodeOperation>(type: Type) =>
   });
 
 export const VsCodeViewRpc = RpcGroup.make(
-  Rpc.make("vscodeViews.preferredTheme", { success: EditorTheme, error: VsCodeServerError }),
   Rpc.make("vscodeViews.open", { payload: EditorEndpoint, error: VsCodeServerError }),
   Rpc.make("vscodeViews.updateBounds", {
     payload: EditorBounds,
@@ -43,7 +42,6 @@ export const VsCodeViewRpc = RpcGroup.make(
   }),
   Rpc.make("vscodeViews.close", { error: VsCodeServerError }),
   Rpc.make("vscodeViews.focusCake", { error: VsCodeServerError }),
-  Rpc.make("vscodeViews.observeThemes", { success: EditorTheme, stream: true }),
   Rpc.make("vscodeViews.observeEvents", { success: embeddedEditorEventSchema, stream: true }),
 );
 

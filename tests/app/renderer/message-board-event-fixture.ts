@@ -34,8 +34,6 @@ export function messageBoardEvents() {
       if (message.tag === "artifacts.observeEvents") {
         requestId = message.id;
         emit({ type: "renderer-events-ready", channel: "artifacts" });
-      } else if (message.tag === "vscodeViews.observeThemes") {
-        respond({ _tag: "Exit", requestId: message.id, exit: { _tag: "Success", value: null } });
       } else throw new Error(`Unexpected event fixture request: ${message.tag}`);
     },
     subscribe(listener) {

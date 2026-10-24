@@ -18,7 +18,7 @@ import { makeDesktopHostLive } from "../services/electron/DesktopHostLive";
 import { makeDesktopSharingLive } from "../layers/DesktopSharingLive";
 import { NativeAttachmentsLive } from "../services/filesystem/NativeAttachmentsLive";
 import { makeWindowStateStorageLive } from "../services/storage/WindowStateStorage";
-import { makeVsCodeViewsLive } from "../services/vscode/VsCodeViewsLive";
+import { VsCodeViewsLive } from "../services/vscode/VsCodeViewsLive";
 import { RenderedWidgetCaptureLive } from "../services/widgets/RenderedWidgetCaptureLive";
 import { makeBackendLive } from "../backend/BackendLive";
 
@@ -30,8 +30,6 @@ export interface MainLiveOptions {
   readonly cakeIconPath: string;
   readonly annotationMenuIconPath: string;
   readonly chatMenuIconPath: string;
-  readonly preferredTheme: () => Promise<"light" | "dark">;
-  readonly onThemeUpdated: (listener: () => void) => () => void;
   readonly homeDirectory?: string;
 }
 
@@ -55,7 +53,7 @@ export const makeMainLive = (options: MainLiveOptions) => {
       rendererPath: join(import.meta.dirname, "../renderer/index.html"),
     }).pipe(Layer.provide(foundation));
     const HostFoundationLive = Layer.suspend(() => Layer.merge(foundation, ElectronLive));
-    const ViewsLive = makeVsCodeViewsLive(options).pipe(Layer.provide(HostFoundationLive));
+    const ViewsLive = VsCodeViewsLive.pipe(Layer.provide(HostFoundationLive));
     return Layer.mergeAll(
       ElectronLive,
       ViewsLive,

@@ -33,11 +33,7 @@ function harness(
       const respond = (response: FromServerEncoded) => {
         for (const listener of listeners) listener(response);
       };
-      // The runtime owns this permanent presentation observer. Let it finish
-      // without a theme update rather than substituting a fake runtime.
-      if (message.tag === "vscodeViews.observeThemes") {
-        respond({ _tag: "Exit", requestId: message.id, exit: { _tag: "Success", value: null } });
-      } else onRequest(message, respond);
+      onRequest(message, respond);
     },
     subscribe(listener) {
       listeners.add(listener);
@@ -48,10 +44,7 @@ function harness(
 }
 
 const requests = (messages: FromClientEncoded[]) =>
-  messages.filter(
-    (message): message is RequestEncoded =>
-      message._tag === "Request" && message.tag !== "vscodeViews.observeThemes",
-  );
+  messages.filter((message): message is RequestEncoded => message._tag === "Request");
 
 const presetId = "00000000-0000-4000-8000-000000000001";
 

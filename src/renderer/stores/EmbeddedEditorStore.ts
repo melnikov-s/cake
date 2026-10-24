@@ -455,8 +455,8 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
       this.error = "Connection lost. Return to agent and reopen VS Code after reconnecting.";
   }
 
-  async updateBrowserTheme(theme: "light" | "dark") {
-    if (!this.browserLeaseId) return;
+  async updateTheme(theme: "light" | "dark") {
+    if (!this.nativeViewReady) return;
     try {
       await this.vscode.setTheme(theme, { signal: this.signal });
     } catch {

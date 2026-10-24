@@ -24,7 +24,7 @@ import { RenderedWidgetCaptureLive } from "../services/widgets/RenderedWidgetCap
 import { NativeWidgetCaptureRpc } from "../ipc/protocol/WidgetCaptureRpc";
 import { nativeWidgetCaptureHandlers } from "../ipc/server/WidgetCaptureHandlers";
 import { vscodeViewHandlers } from "../ipc/server/VsCodeHandlers";
-import { makeVsCodeViewsLive } from "../services/vscode/VsCodeViewsLive";
+import { VsCodeViewsLive } from "../services/vscode/VsCodeViewsLive";
 import { Layer } from "effect";
 import { RpcServer } from "effect/unstable/rpc";
 import { ElectronRpc } from "../ipc/protocol/ElectronRpc";
@@ -103,7 +103,7 @@ export const makeRemoteMainLive = (
         Number.parseInt(release(), 10) >= 23,
       options.dictationHelperPath,
     ),
-    makeVsCodeViewsLive(options).pipe(Layer.provide(Layer.merge(Clients, Native))),
+    VsCodeViewsLive.pipe(Layer.provide(Layer.merge(Clients, Native))),
     makeDesktopHostLive(options.application, options.userData, host),
     NativeAttachmentsLive.pipe(Layer.provide(Native)),
     BrowserHost,

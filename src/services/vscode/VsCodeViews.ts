@@ -1,4 +1,4 @@
-import { Context, type Effect, type Stream } from "effect";
+import { Context, type Effect } from "effect";
 import type { VsCodeServerError } from "../../contracts/vscode/vs-code-server-errors";
 import type { VsCodeViewBounds, VsCodeViewEndpoint } from "./VsCodeViewsRuntime";
 
@@ -6,11 +6,6 @@ import type { VsCodeViewBounds, VsCodeViewEndpoint } from "./VsCodeViewsRuntime"
 export class VsCodeViews extends Context.Service<
   VsCodeViews,
   {
-    readonly preferredTheme: () => Effect.Effect<"light" | "dark", VsCodeServerError>;
-    readonly themeChanges: () => Stream.Stream<{
-      readonly connectionId: number;
-      readonly theme: "light" | "dark";
-    }>;
     readonly open: (
       connectionId: number,
       endpoint: VsCodeViewEndpoint,

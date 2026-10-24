@@ -282,9 +282,10 @@ test("separate Node backend serves a real leased code-server workbench to remote
     await expect
       .poll(() => readFile(join(project, "hello.ts"), "utf8"))
       .toContain("editedRemotely");
-    await app.evaluate(({ nativeTheme }) => {
-      nativeTheme.themeSource = "light";
-    });
+    await page.getByRole("complementary").getByLabel("Open settings", { exact: true }).click();
+    await page.getByRole("button", { name: /^Appearance/ }).click();
+    await page.getByLabel("Color theme", { exact: true }).selectOption("light");
+    await page.getByRole("button", { name: "Back to chat", exact: true }).click();
     await expect
       .poll(() =>
         editor.locator(".monaco-workbench").evaluate((element) => element.classList.contains("vs")),

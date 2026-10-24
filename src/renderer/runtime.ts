@@ -20,18 +20,8 @@ const makeRendererLayer = (transport: ElectronRpcTransport) =>
   CakeIpcClientLive.pipe(Layer.provide(makeElectronRpcClientProtocol(transport)));
 
 /** Shared native presentation policy for local and remote backend clients. */
-const withEditorPresentation = Effect.fn("Renderer.withEditorPresentation")(function* (
-  client: CakeIpcClientService,
-) {
-  yield* client.vscodeViews.observeThemes().pipe(
-    Stream.runForEach((theme) =>
-      client.vscode
-        .setTheme(theme)
-        .pipe(Effect.catch((error) => Effect.logWarning("Editor theme sync failed", error))),
-    ),
-    Effect.forkScoped,
-  );
-  return CakeIpcClient.of({
+const withEditorPresentation = (client: CakeIpcClientService) =>
+  CakeIpcClient.of({
     ...client,
     events: {
       ...client.events,
@@ -49,7 +39,6 @@ const withEditorPresentation = Effect.fn("Renderer.withEditorPresentation")(func
           ),
     },
   });
-});
 
 /** Window-owned execution boundary; the ManagedRuntime never escapes this module. */
 export const makeRuntime = (transport: ElectronRpcTransport) => {
@@ -57,7 +46,7 @@ export const makeRuntime = (transport: ElectronRpcTransport) => {
     CakeIpcClient,
     Effect.gen(function* () {
       const client = yield* CakeIpcClient;
-      return yield* withEditorPresentation(client);
+      return withEditorPresentation(client);
     }),
   ).pipe(Layer.provide(makeRendererLayer(transport)));
   const runtime = ManagedRuntime.make(layer);
@@ -285,7 +274,7 @@ export const makeRemoteRuntime = (
             Stream.merge(local.vscodeViews.observeEvents(), ready(remote.events.vscode())),
         },
       });
-      return yield* withEditorPresentation(client);
+      return withEditorPresentation(client);
     }),
   );
   const runtime = ManagedRuntime.make(layer);

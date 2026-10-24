@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { loadDesktopHost, installDesktopSocketOrigin } from "../services/electron/DesktopHostLive";
 import { makeRemoteMainLive } from "./RemoteMainLive";
 import { Cause, Context, Effect, Exit, ManagedRuntime, Schema } from "effect";
-import { app, nativeTheme } from "electron";
+import { app } from "electron";
 import { cakeEventSchema, type CakeEvent } from "../contracts/application/cake-rpc-contract";
 import { BoardAppendInput } from "../contracts/artifacts/message-board";
 import * as messageBoards from "../domain/artifacts/messageBoards";
@@ -83,12 +83,6 @@ function startMain() {
     cakeIconPath,
     annotationMenuIconPath,
     chatMenuIconPath,
-    preferredTheme: async (): Promise<"light" | "dark"> =>
-      nativeTheme.shouldUseDarkColors ? "dark" : "light",
-    onThemeUpdated: (listener: () => void) => {
-      nativeTheme.on("updated", listener);
-      return () => nativeTheme.off("updated", listener);
-    },
   };
   const MainLive =
     selectedHost.kind === "remote"

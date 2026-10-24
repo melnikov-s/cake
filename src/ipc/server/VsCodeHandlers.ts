@@ -13,8 +13,6 @@ const withConnection = <A, E, R>(operation: (connectionId: number) => Effect.Eff
 export const vscodeViewHandlers = VsCodeViewRpc.of({
   "vscodeViews.observeEvents": () =>
     Stream.unwrap(withConnection((id) => Effect.map(ClientEvents, (events) => events.vscode(id)))),
-  "vscodeViews.preferredTheme": () =>
-    Effect.flatMap(VsCodeViews, (views) => views.preferredTheme()),
   "vscodeViews.open": (request) => withConnection((id) => embeddedEditor.present(id, request)),
   "vscodeViews.updateBounds": (request) =>
     withConnection((id) => Effect.flatMap(VsCodeViews, (views) => views.updateBounds(id, request))),
@@ -27,17 +25,6 @@ export const vscodeViewHandlers = VsCodeViewRpc.of({
     ),
   "vscodeViews.focusCake": () =>
     withConnection((id) => Effect.flatMap(VsCodeViews, (views) => views.focusCake(id))),
-  "vscodeViews.observeThemes": () =>
-    Stream.unwrap(
-      withConnection((id) =>
-        Effect.map(VsCodeViews, (views) =>
-          views.themeChanges().pipe(
-            Stream.filter((event) => event.connectionId === id),
-            Stream.map((event) => event.theme),
-          ),
-        ),
-      ),
-    ),
 });
 
 export const vscodeHandlers = VsCodeRpc.of({
