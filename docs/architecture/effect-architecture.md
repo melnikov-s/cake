@@ -603,11 +603,23 @@ and recovery follow the [Durable storage contract](./cake-storage.md#permanent-c
 Neither adapter persists a second Cake transcript or duplicate durable event
 log, and Cake never tails or writes Pi JSONL directly.
 
-A Conversation observation begins with one coherent snapshot and continues with
-ordered typed events without a subscription gap:
+A live Conversation observation begins with one coherent snapshot and continues with
+ordered typed events without a subscription gap. Cold Project Session observations
+first emit a `Preview` of Pi-persisted history so messages can display before runtime
+initialization. Preview does not establish execution readiness; commands wait for
+the live snapshot. Already-acquired runtimes skip the disk preview. Resolved sessions
+emit history-only previews without initializing execution. Preview-to-live updates
+retain the same Conversation and message identities; observation Scope still owns
+the runtime lease. Cancelled observations release it after any uninterruptible
+resource acquisition finishes.
 
 ```ts
 type ConversationUpdate =
+  | {
+      readonly _tag: "Preview";
+      readonly revision: number;
+      readonly snapshot: ConversationSnapshot;
+    }
   | {
       readonly _tag: "Snapshot";
       readonly revision: number;

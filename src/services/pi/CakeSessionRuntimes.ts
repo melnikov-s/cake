@@ -342,6 +342,10 @@ export class CakeSessionRuntimes extends Context.Service<
     readonly acquireSession: (
       sessionId: string,
     ) => Effect.Effect<CakeSessionHandle, PiSessionError, Scope.Scope>;
+    /** Tests runtime presence without loading history, recovery state, or acquiring a lease. */
+    readonly hasCurrent: (
+      target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
+    ) => Effect.Effect<boolean>;
     /** Reads an already-acquired runtime without constructing or retaining one. */
     readonly currentStatus: (
       target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
@@ -1670,6 +1674,18 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
         return yield* acquire(options);
       });
 
+      const hasCurrent = Effect.fn("CakeSessionRuntimes.hasCurrent")(
+        (target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">) =>
+          Effect.sync(() =>
+            [...activeRuntimes].some(
+              (candidate) =>
+                candidate.workingDirectory === target.workingDirectory &&
+                candidate.sessionDirectory === target.sessionDirectory &&
+                candidate.runtime.sessionId === target.sessionId,
+            ),
+          ),
+      );
+
       const currentStatus = Effect.fn("CakeSessionRuntimes.currentStatus")(function* (
         target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
       ) {
@@ -1752,6 +1768,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
         acquire,
         acquireCurrent,
         acquireSession,
+        hasCurrent,
         currentStatus,
         currentModifiedAt,
         currentTurnIds,

@@ -226,7 +226,6 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
     records: () => Effect.succeed([]),
     observe: () => Stream.never,
     awaitSetup: () => Effect.void,
-    hasDeferredSetup: () => Effect.succeed(false),
   });
   const access = Layer.effect(
     ProjectAccess,

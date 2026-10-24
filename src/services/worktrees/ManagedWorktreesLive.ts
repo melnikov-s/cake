@@ -912,8 +912,6 @@ export const ManagedWorktreesLive: Layer.Layer<
           const completion = (yield* Ref.get(deferredSetups)).get(worktreePath);
           if (completion) yield* Deferred.await(completion);
         }),
-      hasDeferredSetup: (worktreePath) =>
-        Ref.get(deferredSetups).pipe(Effect.map((setups) => setups.has(worktreePath))),
       status: (worktreePath) =>
         mapError(
           "ManagedWorktrees.status",

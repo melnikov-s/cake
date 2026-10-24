@@ -20,11 +20,12 @@ import { applyConversationCatalog } from "./ConversationCatalogReducer";
 import { applyPartUpdate, messageSnapshots, removePart } from "./SessionPartReducer";
 
 export function applyConversationUpdate(model: Conversation, update: ConversationUpdate) {
-  if (update._tag === "Snapshot") {
+  if (update._tag === "Snapshot" || update._tag === "Preview") {
     assertConversationSnapshotIdentity(model, update.snapshot);
     batch(() => {
       applyConversationSnapshot(model, update.snapshot, false);
-      model.observedSnapshotRevision += 1;
+      model.historyOnly = update._tag === "Preview";
+      if (!model.historyOnly) model.observedSnapshotRevision += 1;
       model.observationError = undefined;
     });
     return;
@@ -67,6 +68,7 @@ export function unloadConversationProjection(model: Conversation) {
     model.historyCursor = undefined;
     model.earlierParts.splice(0);
     model.observedSnapshotRevision = 0;
+    model.historyOnly = false;
     model.observationError = undefined;
     model.settledTurnRevision = 0;
     model.settledTurns.splice(0);
@@ -88,6 +90,7 @@ export function applyDiscussionSessionUpdate(
     assertConversationSnapshotIdentity(model, update.snapshot.conversation);
     batch(() => {
       applyConversationSnapshot(model, update.snapshot.conversation, false);
+      model.historyOnly = false;
       model.observedSnapshotRevision += 1;
     });
     return;

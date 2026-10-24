@@ -401,28 +401,37 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
   private async activeSession() {
     const observedSnapshotRevision = this.model.observedSnapshotRevision;
     const active = this.props.ensureSessionActive();
-    if (active === true || active === false) return active;
+    if (active === false) return false;
+    if (active === true)
+      return this.model.historyOnly ? this.waitForActiveProjection(observedSnapshotRevision) : true;
     const restored = await active;
     return restored ? this.waitForActiveProjection(observedSnapshotRevision) : false;
   }
 
   /** Keeps pending interaction state visible until restored live observation is attached. */
   private waitForActiveProjection(afterRevision: number): Promise<boolean> {
-    if (this.model.observedSnapshotRevision > afterRevision) return Promise.resolve(true);
+    if (!this.model.historyOnly && this.model.observedSnapshotRevision > afterRevision)
+      return Promise.resolve(true);
     if (this.signal.aborted) return Promise.resolve(false);
-    return new Promise((resolve) => {
+    if (this.model.observationError) return Promise.reject(new Error(this.model.observationError));
+    return new Promise((resolve, reject) => {
       let settled = false;
-      const finish = (ready: boolean) => {
+      const finish = (ready: boolean, error?: string) => {
         if (settled) return;
         settled = true;
         this.signal.removeEventListener("abort", abort);
         dispose();
-        resolve(ready);
+        if (error) reject(new Error(error));
+        else resolve(ready);
       };
       const abort = () => finish(false);
       this.signal.addEventListener("abort", abort, { once: true });
       const dispose = reactiveEffect(() => {
-        if (this.model.observedSnapshotRevision > afterRevision) queueMicrotask(() => finish(true));
+        if (this.model.observationError) {
+          const error = this.model.observationError;
+          queueMicrotask(() => finish(false, error));
+        } else if (!this.model.historyOnly && this.model.observedSnapshotRevision > afterRevision)
+          queueMicrotask(() => finish(true));
       });
     });
   }

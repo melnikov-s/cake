@@ -488,7 +488,6 @@ describe("ManagedWorktrees Effect service", () => {
                 _tag: "Failure",
                 failure: { operation: "ManagedWorktrees.setup" },
               });
-              expect(yield* worktrees.hasDeferredSetup(created.worktreePath)).toBe(true);
               expect(yield* worktrees.records()).toEqual([created]);
               expect(calls.some((args) => args[1] === "remove")).toBe(false);
             } else {
@@ -1285,14 +1284,12 @@ describe("ManagedWorktrees Effect service", () => {
             true,
           );
           yield* Deferred.await(setupStarted);
-          expect(yield* worktrees.hasDeferredSetup(created.worktreePath)).toBe(true);
 
           const awaiting = yield* worktrees
             .awaitSetup(created.worktreePath)
             .pipe(Effect.forkScoped);
           yield* Deferred.succeed(finishSetup, undefined);
           yield* Fiber.join(awaiting);
-          expect(yield* worktrees.hasDeferredSetup(created.worktreePath)).toBe(false);
         }).pipe(Effect.provide(layer));
       }),
     ).pipe(Effect.provide(BootstrapLive)),

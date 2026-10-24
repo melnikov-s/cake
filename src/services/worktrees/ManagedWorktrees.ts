@@ -40,7 +40,6 @@ export interface ManagedWorktreesService {
   ) => Effect.Effect<WorktreeRecord, ManagedWorktreeError>;
   /** Blocks runtime acquisition and turns until deferred setup has completed. */
   readonly awaitSetup: (worktreePath: string) => Effect.Effect<void, ManagedWorktreeError>;
-  readonly hasDeferredSetup: (worktreePath: string) => Effect.Effect<boolean>;
   readonly status: (
     worktreePath: string,
   ) => Effect.Effect<WorktreeStatus | undefined, ManagedWorktreeError>;

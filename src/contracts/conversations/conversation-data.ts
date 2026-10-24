@@ -115,6 +115,8 @@ export const ConversationEvent = Schema.TaggedUnion({
 export type ConversationEvent = Schema.Schema.Type<typeof ConversationEvent>;
 
 export const ConversationUpdate = Schema.TaggedUnion({
+  /** Persisted history only; does not imply execution readiness. */
+  Preview: { revision: Schema.Int, snapshot: ConversationSnapshot },
   Snapshot: { revision: Schema.Int, snapshot: ConversationSnapshot },
   Event: { revision: Schema.Int, event: ConversationEvent },
 });

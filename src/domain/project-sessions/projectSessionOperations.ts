@@ -219,7 +219,7 @@ export const observeConversation = Effect.fn("ProjectSessions.observeConversatio
       resolved
         ? Stream.fromEffect(
             inspect(target).pipe(Effect.map((preview) => projectPreviewSnapshot(preview))),
-          ).pipe(Stream.map((snapshot) => ({ _tag: "Snapshot" as const, revision: 0, snapshot })))
+          ).pipe(Stream.map((snapshot) => ({ _tag: "Preview" as const, revision: 0, snapshot })))
         : Stream.unwrap(
             Effect.gen(function* () {
               const location = yield* findLocation(target);
@@ -255,17 +255,27 @@ export const observeConversation = Effect.fn("ProjectSessions.observeConversatio
                   ),
                 ),
               );
-              const worktrees = yield* ManagedWorktrees;
-              // A new identity has no disk preview; readiness must come from
-              // the live runtime, after checkout setup has completed.
+              const sessions = yield* CakeSessionRuntimes;
+              // New identities have no history. Already-live sessions must retain
+              // their current streaming/queue state rather than replaying disk history.
               if (
                 (allowCreate && !persisted) ||
-                !(yield* worktrees.hasDeferredSetup(location.workingDirectory))
+                (yield* sessions.hasCurrent({
+                  workingDirectory: location.workingDirectory,
+                  sessionDirectory: location.sessionDirectory,
+                  sessionId: target.sessionId,
+                }))
               )
                 return live;
-              const preview = yield* inspect(target);
+              const preview = yield* sessions
+                .inspect({
+                  workingDirectory: location.workingDirectory,
+                  sessionDirectory: location.sessionDirectory,
+                  sessionId: target.sessionId,
+                })
+                .pipe(asError("observe"));
               return Stream.succeed({
-                _tag: "Snapshot" as const,
+                _tag: "Preview" as const,
                 revision: 0,
                 snapshot: projectPreviewSnapshot(preview),
               }).pipe(Stream.concat(live));

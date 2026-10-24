@@ -48,6 +48,7 @@ export function renderConversationSession(
   profile: ConversationSessionProfile,
   client: TestClientOverrides,
   parts: UiPart[] = [originalUserPart, workingAssistantPart],
+  initialUpdate: "Snapshot" | "Preview" = "Snapshot",
 ) {
   const sessionId =
     profile === "project"
@@ -71,21 +72,26 @@ export function renderConversationSession(
     sessionFile: `/sessions/${sessionId}.jsonl`,
     parts,
     models: [],
-    model: { provider: "openai", id: "gpt-4.1", name: "GPT-4.1" },
+    ...(initialUpdate === "Snapshot"
+      ? { model: { provider: "openai", id: "gpt-4.1", name: "GPT-4.1" } }
+      : {}),
     thinkingLevel: "off",
     availableThinkingLevels: ["off"],
-    streaming: true,
+    streaming: initialUpdate === "Snapshot",
     diagnostics: [],
     commands: [],
     compatibility: { resources: [], diagnostics: [] },
     extensionUi: { statuses: [] },
     tree: [],
   };
-  const publish = (changes: Partial<ConversationSnapshot>) => {
+  const publish = (
+    changes: Partial<ConversationSnapshot>,
+    tag: "Snapshot" | "Preview" = "Snapshot",
+  ) => {
     snapshot = { ...snapshot, ...changes };
-    applyConversationUpdate(model, { _tag: "Snapshot", revision: ++revision, snapshot });
+    applyConversationUpdate(model, { _tag: tag, revision: ++revision, snapshot });
   };
-  publish({});
+  publish({}, initialUpdate);
   if (profile === "project") {
     fixture.root.navigationStore.selectProjectSession(sessionId);
     fixture.root.projectWorkbenchStore.showLoadedSession(sessionId);
@@ -117,6 +123,12 @@ export function renderConversationSession(
     user: userEvent.setup(),
     publish(changes: Partial<ConversationSnapshot>) {
       act(() => publish(changes));
+    },
+    failObservation(message: string) {
+      act(() => {
+        model.historyOnly = true;
+        model.observationError = message;
+      });
     },
     [Symbol.dispose]() {
       view.unmount();

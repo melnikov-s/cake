@@ -322,6 +322,7 @@ export const createModelObserver = (
         {
           clear: () => unloadConversationProjection(conversation),
           failed: (error) => {
+            conversation.historyOnly = true;
             conversation.observationError = error instanceof Error ? error.message : String(error);
           },
         },

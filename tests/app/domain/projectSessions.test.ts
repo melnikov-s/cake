@@ -266,6 +266,7 @@ const makeLayer = (
     locations?: ReadonlyArray<ProjectSessionLocation>;
     onRuntimeOptions?(newSession: boolean): void;
     runtime?(options: CakeSessionRuntimeOptions): CakeSessionRuntime;
+    createRuntime?: CakeSessionRuntimesAdapter["createRuntime"];
     prompt?(): Promise<void>;
     onToolCompact?(): void;
     onForkTitle?(title: string): void;
@@ -421,6 +422,7 @@ const makeLayer = (
         };
       }),
     createRuntime: (options) =>
+      hooks.createRuntime?.(options) ??
       Effect.sync(() => {
         hooks.onCreateRuntime?.();
         hooks.onRuntimeOptions?.(options.newSession ?? false);
@@ -812,7 +814,6 @@ const makeLayer = (
         );
       },
       awaitSetup: () => hooks.deferredWorktreeSetup ?? Effect.void,
-      hasDeferredSetup: () => Effect.succeed(hooks.deferredWorktreeSetup !== undefined),
       cleanupResolved: () =>
         hooks.cleanupFailure
           ? Effect.fail(
@@ -1662,8 +1663,9 @@ describe("Project Sessions domain", () => {
           Effect.forkScoped,
         );
         const childInitial = yield* Queue.take(childUpdates);
-        assert.equal(childInitial._tag, "Snapshot");
-        if (childInitial._tag === "Snapshot")
+        assert.equal(childInitial._tag, "Preview");
+        assert.equal((yield* Queue.take(childUpdates))._tag, "Snapshot");
+        if (childInitial._tag === "Preview")
           assert.equal(childInitial.snapshot.sessionId, "grandchild");
 
         yield* projectSessionLifecycle.resolve({ sessionId: "parent" });
@@ -1671,7 +1673,7 @@ describe("Project Sessions domain", () => {
         yield* Queue.take(received);
         assertFamily(true);
         const childResolved = yield* Queue.take(childUpdates);
-        assert.equal(childResolved._tag, "Snapshot");
+        assert.equal(childResolved._tag, "Preview");
         assert.deepEqual(archived, ["parent"]);
         for (const id of nestedFamilyIds)
           assert.equal((yield* projectSessionMetadata.inspect({ sessionId: id })).resolved, true);
@@ -1705,8 +1707,9 @@ describe("Project Sessions domain", () => {
         yield* Queue.take(received);
         assertFamily(false);
         const childRestored = yield* Queue.take(childUpdates);
-        assert.equal(childRestored._tag, "Snapshot");
-        if (childRestored._tag === "Snapshot")
+        assert.equal(childRestored._tag, "Preview");
+        assert.equal((yield* Queue.take(childUpdates))._tag, "Snapshot");
+        if (childRestored._tag === "Preview")
           assert.equal(childRestored.snapshot.sessionId, "grandchild");
         assert.deepEqual(restored, ["parent"]);
         for (const id of nestedFamilyIds)
@@ -1862,9 +1865,8 @@ describe("Project Sessions domain", () => {
               sessionId: "grandchild",
             });
             const [initial] = yield* updates.pipe(Stream.take(1), Stream.runCollect);
-            assert.equal(initial?._tag, "Snapshot");
-            if (initial?._tag === "Snapshot")
-              assert.equal(initial.snapshot.sessionId, "grandchild");
+            assert.equal(initial?._tag, "Preview");
+            if (initial?._tag === "Preview") assert.equal(initial.snapshot.sessionId, "grandchild");
           }
         }).pipe(
           Effect.provide(
@@ -4097,7 +4099,12 @@ describe("Project Sessions domain", () => {
 
           if (legacyActiveTranscript) {
             const observation = yield* projectSessionOperations.observeConversation(target);
-            yield* observation.pipe(Stream.take(1), Stream.runDrain, Effect.scoped);
+            yield* observation.pipe(
+              Stream.filter((update) => update._tag === "Snapshot"),
+              Stream.take(1),
+              Stream.runDrain,
+              Effect.scoped,
+            );
             assert.deepEqual(events.slice(0, 2), ["checkout", "runtime"]);
             events.length = 0;
           }
@@ -4119,8 +4126,8 @@ describe("Project Sessions domain", () => {
           yield* projectSessionMetadata.open({ sessionId: target.sessionId });
           const observation = yield* projectSessionOperations.observeConversation(target);
           const [reopened] = yield* observation.pipe(Stream.take(1), Stream.runCollect);
-          assert.equal(reopened?._tag, "Snapshot");
-          if (reopened?._tag === "Snapshot") {
+          assert.equal(reopened?._tag, "Preview");
+          if (reopened?._tag === "Preview") {
             assert.equal(reopened.snapshot.sessionId, target.sessionId);
             assert.deepEqual(reopened.snapshot.parts, snapshot.parts.map(toJsonValue));
           }
@@ -4300,7 +4307,7 @@ describe("Project Sessions domain", () => {
           Stream.runForEach((update) =>
             update._tag === "Snapshot"
               ? Deferred.succeed(ready, undefined)
-              : update.event._tag === "TurnSettled"
+              : update._tag === "Event" && update.event._tag === "TurnSettled"
                 ? Queue.offer(settled, undefined)
                 : Effect.void,
           ),
@@ -4419,14 +4426,217 @@ describe("Project Sessions domain", () => {
           { sessionId: "session-1" },
           true,
         );
-        const updates = yield* stream.pipe(Stream.take(1), Stream.runCollect);
+        const updates = yield* stream.pipe(Stream.take(2), Stream.runCollect);
         assert.deepEqual(modes, [false]);
-        if (updates[0]?._tag === "Snapshot")
-          assert.deepEqual(updates[0].snapshot.parts, JSON.parse(JSON.stringify(snapshot.parts)));
+        assert.deepEqual(
+          updates.map((update) => update._tag),
+          ["Preview", "Snapshot"],
+        );
+        for (const update of updates)
+          if (update._tag !== "Event")
+            assert.deepEqual(update.snapshot.parts, JSON.parse(JSON.stringify(snapshot.parts)));
       }).pipe(
         Effect.provide(makeLayer(undefined, { onRuntimeOptions: (mode) => modes.push(mode) })),
       );
     },
+  );
+
+  it.effect("displays persisted history while cold runtime initialization is blocked", () =>
+    Effect.gen(function* () {
+      const entered = yield* Deferred.make<void>();
+      const initialize = yield* Deferred.make<void>();
+      const received = yield* Queue.unbounded<ConversationUpdate>();
+      let constructions = 0;
+      let disposals = 0;
+      yield* Effect.gen(function* () {
+        const stream = yield* projectSessionOperations.observeConversation({
+          sessionId: "session-1",
+        });
+        const observation = yield* stream.pipe(
+          Stream.runForEach((update) => Queue.offer(received, update)),
+          Effect.forkChild,
+        );
+        const preview = yield* Queue.take(received);
+        assert.equal(preview._tag, "Preview");
+        if (preview._tag === "Preview")
+          assert.deepEqual(preview.snapshot.parts, snapshot.parts.map(toJsonValue));
+        yield* Deferred.await(entered);
+        assert.equal(constructions, 0);
+        yield* Deferred.succeed(initialize, undefined);
+        const live = yield* Queue.take(received);
+        assert.equal(live._tag, "Snapshot");
+        assert.equal(live.revision, 2);
+        assert.equal(constructions, 1);
+        assert.equal(disposals, 0);
+        yield* Fiber.interrupt(observation);
+        assert.equal(disposals, 1);
+      }).pipe(
+        Effect.provide(
+          makeLayer(undefined, {
+            createRuntime: (options) =>
+              Effect.gen(function* () {
+                yield* Deferred.succeed(entered, undefined);
+                yield* Deferred.await(initialize);
+                constructions += 1;
+                return {
+                  ...fakeRuntime(options),
+                  dispose: async () => {
+                    disposals += 1;
+                  },
+                };
+              }),
+          }),
+        ),
+      );
+    }),
+  );
+
+  it.effect("warm observation prefers the live runtime without inspecting disk history", () => {
+    let inspections = 0;
+    let constructions = 0;
+    return Effect.gen(function* () {
+      yield* projectSessionOperations.acquireTarget(
+        {
+          projectPath: "/project",
+          projectName: "Project",
+          workingDirectory: "/project",
+          sessionDirectory: "/sessions",
+          resolvedSessionDirectory: "/resolved-sessions",
+        },
+        "session-1",
+        false,
+      );
+      const stream = yield* projectSessionOperations.observeConversation({
+        sessionId: "session-1",
+      });
+      const [first] = yield* stream.pipe(Stream.take(1), Stream.runCollect);
+      assert.equal(first?._tag, "Snapshot");
+      if (first?._tag === "Snapshot") assert.equal(first.snapshot.streaming, true);
+      assert.equal(inspections, 0);
+      assert.equal(constructions, 1);
+    }).pipe(
+      Effect.provide(
+        makeLayer(undefined, {
+          onCreateRuntime: () => {
+            constructions += 1;
+          },
+          onInspect: () => {
+            inspections += 1;
+          },
+          runtime: (options) => ({
+            ...fakeRuntime(options),
+            snapshot: async () => ({ ...snapshot, streaming: true }),
+          }),
+        }),
+      ),
+    );
+  });
+
+  it.effect("releases a cold runtime when observation is cancelled during initialization", () =>
+    Effect.gen(function* () {
+      const entered = yield* Deferred.make<void>();
+      const initialize = yield* Deferred.make<void>();
+      const received: string[] = [];
+      let attempts = 0;
+      let disposals = 0;
+      yield* Effect.gen(function* () {
+        const stream = yield* projectSessionOperations.observeConversation({
+          sessionId: "session-1",
+        });
+        const observation = yield* stream.pipe(
+          Stream.runForEach((update) =>
+            Effect.sync(() => {
+              received.push(update._tag);
+            }),
+          ),
+          Effect.forkChild,
+        );
+        yield* Deferred.await(entered);
+        // Resource acquisition finishes uninterruptibly, then the cancelled
+        // observation releases its lease without publishing a live snapshot.
+        const cancellation = yield* Fiber.interrupt(observation).pipe(Effect.forkChild);
+        yield* Effect.yieldNow;
+        yield* Deferred.succeed(initialize, undefined);
+        yield* Fiber.join(cancellation);
+        assert.equal(disposals, 1);
+        assert.deepEqual(received, ["Preview"]);
+        const reopened = yield* projectSessionOperations.observeConversation({
+          sessionId: "session-1",
+        });
+        const updates = yield* reopened.pipe(Stream.take(2), Stream.runCollect);
+        assert.deepEqual(
+          updates.map((update) => update._tag),
+          ["Preview", "Snapshot"],
+        );
+        assert.equal(attempts, 2);
+        assert.equal(disposals, 2);
+      }).pipe(
+        Effect.provide(
+          makeLayer(undefined, {
+            createRuntime: (options) =>
+              Effect.gen(function* () {
+                attempts += 1;
+                if (attempts === 1) {
+                  yield* Deferred.succeed(entered, undefined);
+                  yield* Deferred.await(initialize);
+                }
+                return {
+                  ...fakeRuntime(options),
+                  dispose: async () => {
+                    disposals += 1;
+                  },
+                };
+              }),
+          }),
+        ),
+      );
+    }),
+  );
+
+  it.effect(
+    "reports initialization failure after preview and supports a fresh observation retry",
+    () =>
+      Effect.gen(function* () {
+        const initialize = yield* Deferred.make<void, Error>();
+        const received = yield* Queue.unbounded<ConversationUpdate>();
+        let attempts = 0;
+        yield* Effect.gen(function* () {
+          const stream = yield* projectSessionOperations.observeConversation({
+            sessionId: "session-1",
+          });
+          const observation = yield* stream.pipe(
+            Stream.runForEach((update) => Queue.offer(received, update)),
+            Effect.result,
+            Effect.forkChild,
+          );
+          assert.equal((yield* Queue.take(received))._tag, "Preview");
+          yield* Deferred.fail(initialize, new Error("Extension initialization failed"));
+          const failed = yield* Fiber.join(observation);
+          assert.equal(failed._tag, "Failure");
+          if (failed._tag === "Failure")
+            assert.match(failed.failure.message, /Extension initialization failed/);
+          const retry = yield* projectSessionOperations.observeConversation({
+            sessionId: "session-1",
+          });
+          const updates = yield* retry.pipe(Stream.take(2), Stream.runCollect);
+          assert.deepEqual(
+            updates.map((update) => update._tag),
+            ["Preview", "Snapshot"],
+          );
+          assert.equal(attempts, 2);
+        }).pipe(
+          Effect.provide(
+            makeLayer(undefined, {
+              createRuntime: (options) =>
+                Effect.gen(function* () {
+                  attempts += 1;
+                  if (attempts === 1) yield* Deferred.await(initialize);
+                  return fakeRuntime(options);
+                }),
+            }),
+          ),
+        );
+      }),
   );
 
   it.effect("emits a Cake snapshot and returns an accepted Turn ID", () =>
@@ -4434,7 +4644,11 @@ describe("Project Sessions domain", () => {
       const stream = yield* projectSessionOperations.observeConversation({
         sessionId: "session-1",
       });
-      const initial = yield* stream.pipe(Stream.take(1), Stream.runCollect);
+      const initial = yield* stream.pipe(
+        Stream.filter((update) => update._tag === "Snapshot"),
+        Stream.take(1),
+        Stream.runCollect,
+      );
       assert.equal(initial[0]?._tag, "Snapshot");
       yield* projectSessionOperations.acquireTarget(
         {
@@ -4469,32 +4683,27 @@ describe("Project Sessions domain", () => {
         const updates = yield* projectSessionOperations.observeConversation({
           sessionId: "session-1",
         });
-        const initialReady = yield* Deferred.make<void>();
-        const resolvedReady = yield* Deferred.make<void>();
+        const received = yield* Queue.unbounded<ConversationUpdate>();
         const fiber = yield* updates.pipe(
-          Stream.tap((update) =>
-            update.revision === 1
-              ? Deferred.succeed(initialReady, undefined)
-              : update.revision === 2
-                ? Deferred.succeed(resolvedReady, undefined)
-                : Effect.void,
-          ),
-          Stream.take(3),
+          Stream.tap((update) => Queue.offer(received, update)),
+          Stream.take(5),
           Stream.runCollect,
           Effect.forkChild,
         );
-        yield* Deferred.await(initialReady);
+        assert.equal((yield* Queue.take(received))._tag, "Preview");
+        assert.equal((yield* Queue.take(received))._tag, "Snapshot");
 
         yield* projectSessionLifecycle.resolve({ sessionId: "session-1" });
-        yield* Deferred.await(resolvedReady);
+        assert.equal((yield* Queue.take(received))._tag, "Preview");
         yield* projectSessionLifecycle.restore({ sessionId: "session-1" });
 
         const observed = Array.from(yield* Fiber.join(fiber));
-        assert.equal(observed[0]?._tag, "Snapshot");
-        assert.equal(observed[1]?._tag, "Snapshot");
-        assert.equal(observed[2]?._tag, "Snapshot");
+        assert.deepEqual(
+          observed.map((update) => update._tag),
+          ["Preview", "Snapshot", "Preview", "Preview", "Snapshot"],
+        );
         for (const update of observed) {
-          if (update._tag !== "Snapshot") continue;
+          if (update._tag === "Event") continue;
           assert.deepEqual(update.snapshot.parts[1], {
             id: "compacted-tool",
             kind: "tool",
@@ -4505,10 +4714,10 @@ describe("Project Sessions domain", () => {
             origin: "compacted",
           });
         }
-        if (observed[1]?._tag === "Snapshot") {
-          assert.equal(observed[1].revision, 2);
-          assert.equal(observed[1].snapshot.sessionId, "session-1");
-          assert.deepEqual(observed[1].snapshot.parts[0], {
+        if (observed[2]?._tag === "Preview") {
+          assert.equal(observed[2].revision, 3);
+          assert.equal(observed[2].snapshot.sessionId, "session-1");
+          assert.deepEqual(observed[2].snapshot.parts[0], {
             id: "user-message",
             kind: "text",
             role: "user",
@@ -4516,7 +4725,7 @@ describe("Project Sessions domain", () => {
             status: "complete",
           });
         }
-        assert.equal(inspections, 1);
+        assert.equal(inspections, 3);
         assert.equal(disposals, 2);
       }).pipe(
         Effect.provide(
@@ -4560,7 +4769,7 @@ describe("Project Sessions domain", () => {
           workingDirectory: "/worktree",
         });
         const initial = Array.from(yield* updates.pipe(Stream.take(1), Stream.runCollect));
-        assert.equal(initial[0]?._tag, "Snapshot");
+        assert.equal(initial[0]?._tag, "Preview");
         assert.equal(runtimeConstructions, 0);
 
         const turn = yield* projectSessionOperations
@@ -4776,7 +4985,11 @@ describe("Project Sessions domain", () => {
         sessionId: "session-1",
         workingDirectory: "/project",
       });
-      yield* stream.pipe(Stream.take(1), Stream.runDrain);
+      yield* stream.pipe(
+        Stream.filter((update) => update._tag === "Snapshot"),
+        Stream.take(1),
+        Stream.runDrain,
+      );
       assert.deepEqual(creationModes, [false]);
     }).pipe(
       Effect.provide(
@@ -4830,9 +5043,9 @@ describe("Project Sessions domain", () => {
         sessionId: "session-1",
       });
       const preview = Array.from(yield* updates.pipe(Stream.take(1), Stream.runCollect));
-      assert.equal(preview[0]?._tag, "Snapshot");
+      assert.equal(preview[0]?._tag, "Preview");
       const first = preview[0];
-      if (first?._tag === "Snapshot")
+      if (first?._tag === "Preview")
         assert.deepEqual(first.snapshot.parts[0], {
           id: "user-message",
           kind: "text",

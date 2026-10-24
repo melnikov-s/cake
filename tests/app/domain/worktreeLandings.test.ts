@@ -80,7 +80,6 @@ function services(options: {
     observe: () => Stream.never,
     createCheckout: () => Effect.fail(failure("createCheckout")),
     awaitSetup: () => Effect.void,
-    hasDeferredSetup: () => Effect.succeed(false),
     status: () => Effect.sync(options.status),
     setResolveAfterLanding: (_worktreePath, enabled) =>
       Effect.sync(() => options.events.push(`resolve-intent:${enabled}`)).pipe(

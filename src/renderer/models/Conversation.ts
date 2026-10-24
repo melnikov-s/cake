@@ -19,6 +19,8 @@ export class Conversation extends Model {
   sessionFile = "";
   /** Window-local marker for an active, complete Conversation snapshot. */
   @transient observedSnapshotRevision = 0;
+  /** Persisted history can be visible before the live agent is assembled. */
+  @transient historyOnly = false;
   /** Window-local observation failure; never persisted or owned by Pi. */
   @transient observationError: string | undefined;
   @child(Message) parts: Message[] = observable([]);

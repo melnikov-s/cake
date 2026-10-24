@@ -2,7 +2,7 @@ import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { it } from "@effect/vitest";
 import { createHash, randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
-import { Effect, FileSystem, Layer, Option, Path, Stream } from "effect";
+import { Effect, FileSystem, Layer, Path, Stream } from "effect";
 import { expect } from "vitest";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { resolveSessionReference } from "../../../src/contracts/project-sessions/session-reference";
@@ -213,7 +213,6 @@ it.effect.each([0, 1000, 5000])(
         Layer.mock(ManagedWorktrees, {
           records: () => Effect.succeed(f.records),
           awaitSetup: () => Effect.void,
-          hasDeferredSetup: () => Effect.succeed(false),
         }),
         makeCakeSessionRuntimesLayer({
           createRuntime: (options) =>
@@ -261,7 +260,14 @@ it.effect.each([0, 1000, 5000])(
                 query.sessionDirectory,
               ),
             ),
-          inspect: () => Effect.succeed(undefined),
+          inspect: (target) =>
+            Effect.promise(() =>
+              loadWorkspacePiSessionPreview(
+                target.workingDirectory,
+                target.sessionId,
+                target.sessionDirectory,
+              ),
+            ),
           changelog: () => Effect.succeed(""),
         }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
       );
@@ -278,15 +284,26 @@ it.effect.each([0, 1000, 5000])(
           yield* open(target);
           const validatedMs = performance.now() - start;
           const stream = yield* observeConversation(target);
-          const first = yield* Stream.runHead(stream);
+          let previewMs = 0;
+          const updates = yield* stream.pipe(
+            Stream.tap((update) =>
+              Effect.sync(() => {
+                if (update._tag === "Preview") previewMs = performance.now() - start;
+              }),
+            ),
+            Stream.take(2),
+            Stream.runCollect,
+          );
+          const first = updates[0];
           const totalMs = performance.now() - start;
           // Reproduce timings with --reporter=default --silent=false. Fixture creation
-          // and layer acquisition are outside this timed lookup-to-first-snapshot interval.
+          // and layer acquisition are outside these lookup-to-preview/live intervals.
           console.log(
             JSON.stringify({
               sessionId: sessionId === parent ? "parent" : "child",
               archivedCount,
               totalMs,
+              previewMs,
               lookupMs,
               validationMs: validatedMs - lookupMs,
               beforeRuntimeMs: runtimeStartMs - start,
@@ -295,17 +312,14 @@ it.effect.each([0, 1000, 5000])(
               directoryScans: scans.length,
             }),
           );
-          expect(Option.isSome(first)).toBe(true);
-          if (Option.isSome(first)) {
-            expect(first.value._tag).toBe("Snapshot");
-            if (first.value._tag === "Snapshot") {
-              expect(first.value.snapshot.sessionId).toBe(sessionId);
-              expect(first.value.snapshot.parts).toEqual(
-                expect.arrayContaining([
-                  expect.objectContaining({ role: "user", text: `History for ${sessionId}` }),
-                ]),
-              );
-            }
+          expect(updates.map((update) => update._tag)).toEqual(["Preview", "Snapshot"]);
+          if (first?._tag === "Preview") {
+            expect(first.snapshot.sessionId).toBe(sessionId);
+            expect(first.snapshot.parts).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({ role: "user", text: `History for ${sessionId}` }),
+              ]),
+            );
           }
           // A work-count budget, not a flaky wall-clock threshold. Independent of archive/location count.
           expect(scans).toHaveLength(0);
