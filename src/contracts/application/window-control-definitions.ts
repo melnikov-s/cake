@@ -1,3 +1,4 @@
+import { PresetContext } from "../model-presets/preset-context";
 import { ResultDelivery, resultDeliveryGuidance } from "../conversations/result-delivery";
 import { Effect, Schema } from "effect";
 import { CakeControlTool } from "../cake-chats/cake-chat-data";
@@ -41,6 +42,7 @@ const createSessionArgs = Schema.Struct({
   initialPrompt: trimmed(1, 100000),
   model: Schema.optionalKey(
     Schema.Struct({
+      preset: Schema.optionalKey(PresetContext),
       provider: trimmed(1, 256),
       modelId: trimmed(1, 512),
       thinkingLevel: thinkingLevelSchema.pipe(
@@ -61,6 +63,7 @@ const createDraftSessionArgs = Schema.Struct({
   initialPrompt: trimmed(1, 100000),
   model: Schema.optionalKey(
     Schema.Struct({
+      preset: Schema.optionalKey(PresetContext),
       provider: trimmed(1, 256),
       modelId: trimmed(1, 512),
       thinkingLevel: thinkingLevelSchema.pipe(

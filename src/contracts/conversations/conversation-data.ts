@@ -1,3 +1,4 @@
+import { PresetContext } from "../model-presets/preset-context";
 import { Schema } from "effect";
 import { attachmentSchema, uiPartSchema } from "./session-contract";
 import { ThinkingLevel } from "../pi/model-data";
@@ -20,6 +21,7 @@ export interface ConversationHistoryPage extends Schema.Schema.Type<
 > {}
 
 export const SessionChatConfiguration = Schema.Struct({
+  preset: Schema.optionalKey(PresetContext),
   provider: Schema.String,
   modelId: Schema.String,
   thinkingLevel: ThinkingLevel,
@@ -78,6 +80,7 @@ export const ConversationSnapshot = Schema.Struct({
   parts: Schema.Array(Schema.Json),
   historyCursor: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(8_192))),
   model: Schema.optionalKey(Schema.Json),
+  preset: Schema.optionalKey(PresetContext),
   fastMode: Schema.optionalKey(Schema.Boolean),
   fastModeAvailable: Schema.optionalKey(Schema.Boolean),
   models: Schema.Array(Schema.Json),

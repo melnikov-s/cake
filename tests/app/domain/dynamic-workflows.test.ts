@@ -105,6 +105,7 @@ describe("Dynamic workflow lifecycle", () => {
         const expected = {
           provider: "configured",
           modelId: "default-a",
+          preset: { id: first.id },
           thinkingLevel: "medium",
           fastMode: true,
         };

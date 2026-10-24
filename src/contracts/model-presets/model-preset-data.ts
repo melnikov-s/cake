@@ -5,6 +5,7 @@ export const ModelPresetCreateInput = Schema.Struct({
   name: Schema.String.check(Schema.isMaxLength(80)),
   provider: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
   modelId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
+  prompt: ModelPreset.fields.prompt,
   thinkingLevel: ModelPreset.fields.thinkingLevel,
   fastMode: Schema.Boolean,
 });

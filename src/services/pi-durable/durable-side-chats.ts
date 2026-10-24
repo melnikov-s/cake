@@ -1,3 +1,5 @@
+import type { PresetContext } from "../../contracts/model-presets/preset-context";
+import { PresetContextDoc } from "./durable-preset-context";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ModelRuntime, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
@@ -180,11 +182,18 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
         cursor,
       );
     const configure = async (change: {
+      readonly preset?: PresetContext;
       readonly model?: { readonly provider: string; readonly modelId: string };
       readonly thinkingLevel?: Parameters<CakeSessionRuntime["setThinkingLevel"]>[0];
     }) => {
       if (change.model && !host.catalog.getModel(change.model.provider, change.model.modelId))
         throw new Error(`Unknown model ${change.model.provider}/${change.model.modelId}`);
+      if (change.model)
+        await conversation.commit(async (tx) => {
+          const state = await tx.doc(PresetContextDoc, conversation.id);
+          if (change.preset) state.preset = change.preset;
+          else delete state.preset;
+        }, BACKGROUND_CONTEXT);
       const agent = await conversation.agent(BACKGROUND_CONTEXT);
       // The fork inherits Cake Chat's exact agent; an unchanged selection writes nothing,
       // so the system prompt and tools remain byte-identical to the parent's request.
@@ -234,6 +243,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
           const live = await tx.doc(LiveDoc, conversation.id);
           const agent = await tx.doc(AgentDoc, conversation.id);
           const usage = await tx.doc(UsageDoc, conversation.id);
+          const preset = (await tx.doc(PresetContextDoc, conversation.id)).preset;
           const items = (await tx.doc(InboxDoc, conversation.id)).items;
           streaming = live?.run !== undefined;
           activeTurnIds = await Promise.all(
@@ -297,6 +307,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
             availableThinkingLevels: selected ? getSupportedThinkingLevels(selected) : ["off"],
             streaming,
             // Durable shares one request pipeline; fast mode follows Cake Chat.
+            preset,
             fastMode: host.fastMode() && selected !== undefined && supportsFastMode(selected),
             fastModeAvailable: false,
             piSettings: projectPiSettings(host.settings),
@@ -361,6 +372,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
         configure({
           model: { provider: configuration.provider, modelId: configuration.modelId },
           thinkingLevel: configuration.thinkingLevel,
+          ...(configuration.preset ? { preset: configuration.preset } : null),
         }),
       async setPiSetting(update) {
         applyPiSetting(host.settings, update);

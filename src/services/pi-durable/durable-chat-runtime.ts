@@ -67,6 +67,8 @@ import {
 import { durableChatDatabase } from "./durable-chat-location";
 import { createDurableChatCatalog } from "./durable-chat-catalog";
 import { coordinatorSystemPrompt } from "./coordinator-system-prompt";
+import { ROOT_CONVERSATION_ID } from "@earendil-works/pi-durable";
+import { PresetContextDoc, presetContextSection, PresetState } from "./durable-preset-context";
 import { cakeAgentDocumentationDirectory } from "../pi/runtime/cake-agent-documentation";
 import { createDurableChatCommands } from "./durable-chat-commands";
 import { abortDurableActiveTurn, createDurableConversationQueue } from "./durable-chat-queue";
@@ -162,6 +164,7 @@ export async function createDurableCakeChatRuntime(
   let thinkingLevel: ThinkingLevel =
     preset?.thinkingLevel ?? settings.getDefaultThinkingLevel() ?? "off";
   let selected = defaultModel;
+  let activePreset: ChatConfiguration["preset"];
   let unavailableModel: { provider: string; modelId: string } | undefined;
   const projectModels = async () =>
     (await projectModelCatalog(catalogRuntime, getSupportedThinkingLevels)).map(
@@ -180,6 +183,7 @@ export async function createDurableCakeChatRuntime(
     modelId: selected.id,
     thinkingLevel,
     fastMode,
+    ...(activePreset ? { preset: activePreset } : null),
   });
   const resolveModel = (
     selection: CakeModelSelection | undefined,
@@ -300,7 +304,9 @@ export async function createDurableCakeChatRuntime(
     createCakeChatBashTool(),
     createCakeChatMcpTool(mcp),
   ];
-  registry.install(defineExtension({ name: "cake-coordinator", tools }));
+  registry.install(
+    defineExtension({ name: "cake-coordinator", tools, sections: [presetContextSection] }),
+  );
   let publishing: Promise<void> | undefined;
   let publishAgain = false;
   const publish = () => {
@@ -345,6 +351,7 @@ export async function createDurableCakeChatRuntime(
       return settings.getCompactionSettings(selected);
     },
   };
+  const newCoordinator = !(await storage.conversation(ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT));
   const engine = await openDurableChatEngine({
     storage,
     models,
@@ -408,6 +415,11 @@ export async function createDurableCakeChatRuntime(
       BACKGROUND_CONTEXT,
     );
   const configureAgent = async () => {
+    await engine.root.commit(async (tx) => {
+      const state = await tx.doc(PresetContextDoc, engine.root.id);
+      if (activePreset) state.preset = activePreset;
+      else delete state.preset;
+    }, BACKGROUND_CONTEXT);
     await engine.root.configure(
       {
         model: unavailableModel ?? { provider: selected.provider, modelId: selected.id },
@@ -608,6 +620,7 @@ export async function createDurableCakeChatRuntime(
           availableThinkingLevels: getSupportedThinkingLevels(selected),
           streaming,
           fastMode,
+          preset: activePreset,
           fastModeAvailable: supportsFastMode(selected),
           piSettings: projectPiSettings(settings),
           diagnostics: [...diagnostics],
@@ -706,6 +719,7 @@ export async function createDurableCakeChatRuntime(
       const model = catalogRuntime.getModel(provider, modelId);
       if (!model) throw new Error(`Unknown model ${provider}/${modelId}`);
       selected = model;
+      activePreset = undefined;
       unavailableModel = undefined;
       await configureAgent();
       publish();
@@ -721,6 +735,7 @@ export async function createDurableCakeChatRuntime(
         throw new Error(`Unknown model ${configuration.provider}/${configuration.modelId}`);
       selected = model;
       unavailableModel = undefined;
+      activePreset = configuration.preset;
       thinkingLevel = configuration.thinkingLevel;
       fastMode = configuration.fastMode;
       await options.fastMode?.set(fastMode);
@@ -794,6 +809,16 @@ export async function createDurableCakeChatRuntime(
     selected = saved ?? selected;
   }
   thinkingLevel = savedAgent.thinkingLevel ?? thinkingLevel;
+  const savedPreset = await engine.harness.snapshot(
+    PresetContextDoc,
+    engine.root.id,
+    BACKGROUND_CONTEXT,
+  );
+  activePreset = savedPreset
+    ? Schema.decodeUnknownSync(PresetState)(savedPreset).preset
+    : newCoordinator && preset
+      ? { id: preset.id, ...(preset.prompt === undefined ? null : { prompt: preset.prompt }) }
+      : undefined;
   await configureAgent();
   engine.harness.resume();
   return runtime;

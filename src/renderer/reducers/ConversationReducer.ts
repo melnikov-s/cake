@@ -47,6 +47,7 @@ export function unloadConversationProjection(model: Conversation) {
       sessionFile: "",
       parts: [],
       model: undefined,
+      preset: undefined,
       fastMode: false,
       fastModeAvailable: false,
       modelOptions: [],
@@ -215,6 +216,7 @@ function conversationSnapshot(parsed: RuntimeConversationSnapshot): Snapshot<Con
     historyCursor: parsed.historyCursor,
     parts: messageSnapshots(parsed.parts, parsed.sessionId),
     model: parsed.model ? { id: modelOptionKey(parsed.model) } : undefined,
+    preset: parsed.preset,
     fastMode: parsed.fastMode ?? false,
     fastModeAvailable: parsed.fastModeAvailable ?? false,
     modelOptions: parsed.models.map(({ provider, id, ...option }) => ({

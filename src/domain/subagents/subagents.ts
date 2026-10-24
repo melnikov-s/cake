@@ -141,6 +141,7 @@ const normalizeTask = Effect.fn("Subagents.normalizeTask")(function* (input: Sub
     continuation: decoded.continuation ?? "resume",
     model: decoded.model ?? { prefer: "current" },
     fastMode: decoded.fastMode ?? false,
+    ...(decoded.preset ? { preset: decoded.preset } : null),
     allowMutations: decoded.allowMutations ?? false,
   };
   if (decoded.instructions !== undefined)
@@ -843,7 +844,17 @@ const executeInitial = Effect.fn("Subagents.executeInitial")(function* (
           .setThinkingLevel(prepared.resolvedModel.thinkingLevel)
           .pipe(asError("start"));
       }
-      if (prepared.input.fastMode) yield* piHandle.setFastMode(true).pipe(asError("start"));
+      if (prepared.input.preset)
+        yield* piHandle
+          .applyConfiguration({
+            provider: prepared.resolvedModel.provider,
+            modelId: prepared.resolvedModel.modelId,
+            thinkingLevel: prepared.resolvedModel.thinkingLevel,
+            fastMode: prepared.input.fastMode,
+            preset: prepared.input.preset,
+          })
+          .pipe(asError("start"));
+      else if (prepared.input.fastMode) yield* piHandle.setFastMode(true).pipe(asError("start"));
       const assignment =
         prepared.parent.options.profile._tag === "CakeChatSession" && prepared.input.instructions
           ? `Assignment guidance (subject to your ${prepared.input.allowMutations ? "scoped mutation-mode" : "investigation-only"} system instructions):\n${prepared.input.instructions}\n\nTask:\n${prepared.input.task}`
@@ -1077,6 +1088,7 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
           : { instructions: prepared.input.instructions }),
         allowMutations: prepared.input.allowMutations,
         resolvedModel: prepared.resolvedModel,
+        ...(prepared.input.preset ? { preset: prepared.input.preset } : null),
         fastMode: prepared.input.fastMode,
         tools,
         inputReferences,
@@ -1235,6 +1247,7 @@ export const restore = Effect.fn("Subagents.restore")(function* (
       thinkingLevel: record.resolvedModel.thinkingLevel,
     },
     fastMode: record.fastMode,
+    ...(record.preset ? { preset: record.preset } : null),
     allowMutations: record.allowMutations,
     ...(record.instructions === undefined ? null : { instructions: record.instructions }),
     ...(record.projectPath === undefined ? null : { projectPath: record.projectPath }),

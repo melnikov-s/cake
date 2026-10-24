@@ -1,3 +1,4 @@
+import { PresetContext } from "../../contracts/model-presets/preset-context";
 import { Context, Effect, Layer, Path, Schema } from "effect";
 import { ParentContinuation } from "../../contracts/conversations/parent-continuation";
 import {
@@ -25,6 +26,7 @@ export const SubagentRecord = Schema.Struct({
   projectPath: Schema.optionalKey(Schema.String),
   task: Schema.String,
   instructions: Schema.optionalKey(Schema.String),
+  preset: Schema.optionalKey(PresetContext),
   allowMutations: Schema.Boolean,
   resolvedModel: ResolvedAgentModel,
   fastMode: Schema.Boolean,

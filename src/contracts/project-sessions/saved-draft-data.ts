@@ -1,7 +1,9 @@
+import { PresetContext } from "../model-presets/preset-context";
 import { Schema } from "effect";
 import { attachmentSchema, thinkingLevelSchema } from "../conversations/session-contract";
 
 export const SavedDraftConfiguration = Schema.Struct({
+  preset: Schema.optionalKey(PresetContext),
   provider: Schema.String,
   modelId: Schema.String,
   thinkingLevel: thinkingLevelSchema,

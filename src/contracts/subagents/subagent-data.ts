@@ -1,3 +1,4 @@
+import { PresetContext } from "../model-presets/preset-context";
 import { Schema } from "effect";
 import { ParentContinuation } from "../conversations/parent-continuation";
 import { ThinkingLevel } from "../pi/model-data";
@@ -52,6 +53,7 @@ export const ResolvedAgentModel = Schema.Struct({
 export interface ResolvedAgentModel extends Schema.Schema.Type<typeof ResolvedAgentModel> {}
 
 export const SubagentTaskInput = Schema.Struct({
+  preset: Schema.optionalKey(PresetContext),
   continuation: Schema.optionalKey(ParentContinuation),
   task: nonEmptyBoundedString(262_144),
   projectPath: Schema.optionalKey(nonEmptyBoundedString(4_096)),
@@ -65,6 +67,7 @@ export const SubagentTaskInput = Schema.Struct({
 export interface SubagentTaskInput extends Schema.Schema.Type<typeof SubagentTaskInput> {}
 
 export const SubagentTask = Schema.Struct({
+  preset: Schema.optionalKey(PresetContext),
   continuation: ParentContinuation,
   task: SubagentTaskInput.fields.task,
   projectPath: SubagentTaskInput.fields.projectPath,

@@ -1,3 +1,4 @@
+import { PresetContext } from "./preset-context";
 import { Effect, Schema } from "effect";
 import type { ModelPreset, UtilityModel } from "../application/application-data";
 import { ThinkingLevel } from "../pi/model-data";
@@ -7,6 +8,7 @@ const trimmed = (maximum: number) =>
 
 /** Cake tool input: a preset name or an execution-ready configuration. */
 export const ExplicitCakeModelSelection = Schema.Struct({
+  preset: Schema.optionalKey(PresetContext),
   provider: trimmed(256),
   modelId: trimmed(512),
   thinkingLevel: ThinkingLevel,

@@ -9,6 +9,7 @@ import { Button } from "./ui/button";
 import { IconButton } from "./ui/icon-button";
 import { GripIcon } from "./ui/icons";
 import { Input } from "./ui/input";
+import { Textarea } from "./ui/textarea";
 import { ErrorNotice } from "./error-notice";
 import type {
   ModelPresetResolutionStatus,
@@ -254,6 +255,17 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
                   fastMode,
                 });
               }}
+            />
+          </div>
+          <div className="grid gap-1.5 px-3.5 py-2.5">
+            <label htmlFor="model-preset-prompt" className="text-xs font-medium">
+              Prompt (optional; shared/project instructions take precedence)
+            </label>
+            <Textarea
+              id="model-preset-prompt"
+              value={draft.prompt ?? ""}
+              onChange={(event) => setDraft({ ...draft, prompt: event.target.value })}
+              rows={4}
             />
           </div>
           <div className="flex justify-end gap-2 px-3.5 py-2.5">

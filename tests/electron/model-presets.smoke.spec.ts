@@ -13,6 +13,7 @@ import { windowState } from "../fixtures/window-state";
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
 interface Preset {
+  prompt?: string;
   id: string;
   name: string;
   provider: string;
@@ -110,6 +111,7 @@ test("Model Presets use Effect RPC, persist transactionally, and preserve unreso
 
     const created = await call<Projection>(harness, "createModelPreset", {
       name: "Unavailable preset",
+      prompt: "Keep answers concise.",
       provider: "missing-provider",
       modelId: "missing-model",
       thinkingLevel: "high",
@@ -123,6 +125,7 @@ test("Model Presets use Effect RPC, persist transactionally, and preserve unreso
       name: "Unavailable but editable",
     });
     expect(updated.presets[0]!.name).toBe("Unavailable but editable");
+    expect(updated.presets[0]!.prompt).toBe("Keep answers concise.");
     expect(await call<string>(harness, "resolveModelPresetFailureTag", unavailable.id)).toBe(
       "UnknownPiModelError",
     );
@@ -196,6 +199,26 @@ test("Model Presets use Effect RPC, persist transactionally, and preserve unreso
     await expect(
       modelPresets.getByText("Model unavailable", { exact: true }).first(),
     ).toBeVisible();
+
+    const editable = modelPresets.locator(`[data-preset-id="${unavailable.id}"]`);
+    await editable.getByRole("button", { name: "Edit", exact: true }).click();
+    const promptField = modelPresets.getByRole("textbox", { name: /Prompt.*optional/ });
+    await expect(promptField).toHaveValue("Keep answers concise.");
+    await promptField.focus();
+    await expect(promptField).toBeFocused();
+    await promptField.fill("");
+    await promptField.pressSequentially("Explain deeply.");
+    await expect(promptField).toHaveValue("Explain deeply.");
+    await expect(modelPresets.getByRole("button", { name: "Save preset" })).toBeEnabled();
+    await modelPresets.getByRole("button", { name: "Save preset" }).click();
+    await expect
+      .poll(
+        async () =>
+          (await call<Projection>(restartedHarness, "listModelPresets")).presets.find(
+            (preset) => preset.id === unavailable.id,
+          )?.prompt,
+      )
+      .toBe("Explain deeply.");
 
     await modelPresets
       .getByRole("button", { name: "Drag to reorder Unavailable but editable" })

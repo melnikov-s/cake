@@ -75,6 +75,7 @@ describe("Cake session model operations", () => {
             modelId: "gpt-5.6-sol",
             thinkingLevel: "high",
             fastMode: true,
+            preset: { id: catalog.presets[1]!.id },
           },
         }),
       },
@@ -143,6 +144,7 @@ describe("Cake session model operations", () => {
         context,
       );
     const solFast = {
+      preset: { id: catalog.presets[1]!.id },
       provider: "openai-codex",
       modelId: "gpt-5.6-sol",
       thinkingLevel: "high",
@@ -170,7 +172,9 @@ describe("Cake session model operations", () => {
     );
     expect(invoke).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        arguments: expect.objectContaining({ model: { ...solFast, fastMode: false } }),
+        arguments: expect.objectContaining({
+          model: { ...solFast, fastMode: false, preset: { id: catalog.presets[0]!.id } },
+        }),
       }),
       context.signal,
     );

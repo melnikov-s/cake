@@ -1,3 +1,4 @@
+import type { PresetContext } from "../../contracts/model-presets/preset-context";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import { cn } from "@/lib/utils";
@@ -24,6 +25,7 @@ export interface ModelGroup {
 }
 
 interface ModelConfigurationValue {
+  preset?: PresetContext;
   provider: string;
   modelId: string;
   thinkingLevel?: ThinkingLevel;
@@ -40,6 +42,7 @@ export interface ModelPickerProps {
   presets?: readonly ModelPreset[];
   activePreset?: ModelPreset;
   onSelect(value: {
+    preset?: PresetContext;
     provider: string;
     modelId: string;
     thinkingLevel: ThinkingLevel;
@@ -310,6 +313,7 @@ export const ModelPicker = observer(function ModelPicker({
                           onSelect({
                             provider: configuration!.provider,
                             modelId: configuration!.modelId,
+                            ...(configuration?.preset ? { preset: configuration.preset } : null),
                             thinkingLevel: level,
                             fastMode: Boolean(configuration?.fastMode),
                           });
@@ -340,6 +344,7 @@ export const ModelPicker = observer(function ModelPicker({
                         modelId: configuration!.modelId,
                         thinkingLevel: configuration?.thinkingLevel ?? "off",
                         fastMode: enabled,
+                        ...(configuration?.preset ? { preset: configuration.preset } : null),
                       });
                     }}
                   />
@@ -387,13 +392,7 @@ export const ModelPicker = observer(function ModelPicker({
                   <section aria-label="Model presets" className="space-y-1">
                     <h3 className="px-2 py-1 text-xs font-medium text-muted-foreground">Presets</h3>
                     {filteredPresets.map((preset) => {
-                      const isActive =
-                        activePreset?.id === preset.id ||
-                        (!activePreset &&
-                          configuration?.provider === preset.provider &&
-                          configuration?.modelId === preset.modelId &&
-                          configuration?.thinkingLevel === preset.thinkingLevel &&
-                          Boolean(configuration?.fastMode) === Boolean(preset.fastMode));
+                      const isActive = activePreset?.id === preset.id;
                       return (
                         <NavItem
                           key={preset.id}
@@ -419,6 +418,12 @@ export const ModelPicker = observer(function ModelPicker({
                                 modelId: preset.modelId,
                                 thinkingLevel: preset.thinkingLevel,
                                 fastMode: preset.fastMode,
+                                preset: {
+                                  id: preset.id,
+                                  ...(preset.prompt === undefined
+                                    ? null
+                                    : { prompt: preset.prompt }),
+                                },
                               });
                           }}
                           trailing={

@@ -62,6 +62,7 @@ describe("Session model policy composition", () => {
           assert.ok(resolve);
           const first = resolve("Sol", inherited);
           assert.deepEqual(first, {
+            preset: { id: state.modelPresets[0]!.id },
             provider: "openai-codex",
             modelId: "gpt-5.6",
             thinkingLevel: "high",
@@ -80,6 +81,7 @@ describe("Session model policy composition", () => {
           // A configured default wins over the caller's model, and later changes are respected.
           state = { ...state, defaultModelPresetId: "00000000-0000-4000-8000-000000000001" };
           assert.deepEqual(resolve(undefined, inherited), {
+            preset: { id: state.modelPresets[0]!.id },
             provider: "openai-codex",
             modelId: "gpt-5.6",
             thinkingLevel: "high",
@@ -127,6 +129,7 @@ describe("Session model policy composition", () => {
             defaultModelPresetId: "00000000-0000-4000-8000-000000000002",
           };
           assert.deepEqual(resolve(undefined, inherited), {
+            preset: { id: state.modelPresets[1]!.id },
             provider: "anthropic",
             modelId: "claude-luna",
             thinkingLevel: "low",

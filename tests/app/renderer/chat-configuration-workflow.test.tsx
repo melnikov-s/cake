@@ -57,6 +57,56 @@ async function submit(user: ReturnType<typeof renderChatConfiguration>["user"], 
 afterEach(cleanup);
 
 describe("Chat configuration workflow", () => {
+  it("selects distinct same-model preset prompts and clears identity on a raw model selection", async () => {
+    const concise = { ...preset, name: "Concise", prompt: "Be concise." };
+    const detailed = {
+      ...concise,
+      id: "00000000-0000-4000-8000-000000000002",
+      name: "Detailed",
+      prompt: "Explain deeply.",
+    };
+    const catalog = [opus];
+    const applyConfiguration = vi.fn<Client["sessionChats"]["applyConfiguration"]>(
+      async ({ configuration }) => {
+        fixture.publish({
+          ...configurationSnapshot("first", catalog),
+          thinkingLevel: configuration.thinkingLevel,
+          fastMode: configuration.fastMode,
+          preset: configuration.preset,
+        });
+      },
+    );
+    using fixture = renderChatConfiguration({
+      models: catalog,
+      presets: [concise, detailed],
+      client: { sessionChats: { applyConfiguration } },
+    });
+    for (const selected of [concise, detailed]) {
+      await fixture.user.click(picker());
+      await fixture.user.click(screen.getByRole("button", { name: "Change model" }));
+      await fixture.user.click(
+        screen.getByRole("button", { name: `${selected.name} anthropic/claude-opus` }),
+      );
+      await waitFor(() => expect(picker().textContent).toContain(selected.name));
+      expect(applyConfiguration).toHaveBeenLastCalledWith(
+        {
+          sessionId: "first",
+          configuration: expect.objectContaining({
+            preset: { id: selected.id, prompt: selected.prompt },
+          }),
+        },
+        expect.anything(),
+      );
+    }
+    await fixture.user.click(picker());
+    await fixture.user.click(screen.getByRole("button", { name: "Change model" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Claude Opus claude-opus" }));
+    await fixture.user.click(screen.getByRole("button", { name: "High" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(applyConfiguration).toHaveBeenCalledTimes(3));
+    expect(applyConfiguration.mock.calls.at(-1)?.[0].configuration.preset).toBeUndefined();
+    expect(picker().textContent).toContain("Claude Opus");
+  });
   // In-process tests prove rendered availability and payloads, not native popover/focus behavior.
   it("offers authenticated models with per-conversation capabilities and follows authoritative replacements", async () => {
     const list = vi.fn<Client["models"]["list"]>(async () => []);
@@ -152,6 +202,7 @@ describe("Chat configuration workflow", () => {
           ]),
           thinkingLevel: configuration.thinkingLevel,
           fastMode: configuration.fastMode,
+          preset: configuration.preset,
         };
         fixture.publish(snapshot);
       },

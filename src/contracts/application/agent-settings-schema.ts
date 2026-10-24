@@ -196,6 +196,7 @@ export const agentSettingsOperations = [
       name: Schema.String.check(Schema.isMaxLength(80)),
       provider,
       modelId: ModelPreset.fields.modelId,
+      prompt: ModelPreset.fields.prompt,
       thinkingLevel: ModelPreset.fields.thinkingLevel,
       fastMode: Schema.Boolean,
     }),

@@ -25,7 +25,8 @@ const samePresetProjection = (left: ModelPresetProjection, right: ModelPresetPro
       preset.provider === candidate.provider &&
       preset.modelId === candidate.modelId &&
       preset.thinkingLevel === candidate.thinkingLevel &&
-      preset.fastMode === candidate.fastMode
+      preset.fastMode === candidate.fastMode &&
+      preset.prompt === candidate.prompt
     );
   });
 
@@ -106,6 +107,10 @@ export class ModelPresetSettingsStore extends Store {
         modelId: preset.modelId,
         thinkingLevel: preset.thinkingLevel,
         fastMode: preset.fastMode,
+        preset: {
+          id: preset.id,
+          ...(preset.prompt === undefined ? null : { prompt: preset.prompt }),
+        },
       } satisfies ChatConfiguration;
     return this.lastUsedConfiguration ? { ...this.lastUsedConfiguration } : undefined;
   }
@@ -118,7 +123,9 @@ export class ModelPresetSettingsStore extends Store {
       current.provider === configuration.provider &&
       current.modelId === configuration.modelId &&
       current.thinkingLevel === configuration.thinkingLevel &&
-      current.fastMode === configuration.fastMode
+      current.fastMode === configuration.fastMode &&
+      current.preset?.id === configuration.preset?.id &&
+      current.preset?.prompt === configuration.preset?.prompt
     )
       return;
     this.lastUsedConfiguration = { ...configuration };

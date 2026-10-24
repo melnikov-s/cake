@@ -3,9 +3,11 @@ import {
   type InlineExtension,
   type ModelRuntime,
   type SettingsManager,
+  type SessionManager,
 } from "@earendil-works/pi-coding-agent";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
 import { Option, Schema } from "effect";
+import { PresetContext, presetGuidance } from "../../../contracts/model-presets/preset-context";
 import {
   type CakeModelSelection,
   type ExplicitCakeModelSelection,
@@ -31,6 +33,9 @@ import { applyRuntimePiSetting } from "./settings-translation";
 
 export interface CakeSessionRuntimeConfigurationState {
   readonly fastModeExtension: InlineExtension;
+  attachSession(manager: SessionManager): void;
+  preset(): PresetContext | undefined;
+  setPreset(preset: PresetContext | undefined): void;
   enabledFastMode(): boolean;
   attachModel(model: FastModeModel | undefined): void;
   setFastMode(enabled: boolean): Promise<void>;
@@ -43,9 +48,30 @@ export function createCakeSessionRuntimeConfigurationState(
   let fastMode = fastModeControl?.get() ?? false;
   let currentModel: FastModeModel | undefined;
   const enabledFastMode = () => fastMode && supportsFastMode(currentModel);
+  let manager: SessionManager | undefined;
+  const preset = () => {
+    const entry = manager
+      ?.getBranch()
+      .findLast((entry) => entry.type === "custom" && entry.customType === "cake.model-preset");
+    if (!entry || entry.type !== "custom") return undefined;
+    const parsed = Schema.decodeUnknownOption(
+      Schema.Struct({ preset: Schema.optionalKey(PresetContext) }),
+    )(entry.data);
+    return Option.isSome(parsed) ? parsed.value.preset : undefined;
+  };
 
   return {
+    attachSession(sessionManager) {
+      manager = sessionManager;
+    },
+    preset,
+    setPreset(value) {
+      manager?.appendCustomEntry("cake.model-preset", value ? { preset: value } : {});
+    },
     fastModeExtension: (pi) => {
+      pi.on("before_agent_start", (event) => {
+        event.systemPromptOptions.sections.model_preset = presetGuidance(preset()) ?? "";
+      });
       // Requests in one session are sequential; track only the latest Fast request.
       let observeResponse: ReturnType<typeof observeFastModeResponse> | undefined;
       pi.on("before_provider_request", (event, context) => {
@@ -124,6 +150,7 @@ export function createCakeSessionRuntimeConfiguration(input: {
           modelId: session.model.id,
           thinkingLevel: session.thinkingLevel,
           fastMode: enabledFastMode(),
+          ...(state.preset() ? { preset: state.preset() } : null),
         }
       : undefined;
 
@@ -146,6 +173,7 @@ export function createCakeSessionRuntimeConfiguration(input: {
     const model = modelRuntime.getModel(provider, modelId);
     if (!model) throw new Error(`Unknown model ${provider}/${modelId}`);
     await session.setModel(model);
+    state.setPreset(undefined);
     updateModel();
     await emitSnapshot();
   };
@@ -167,6 +195,7 @@ export function createCakeSessionRuntimeConfiguration(input: {
     updateModel();
     session.setThinkingLevel(configuration.thinkingLevel);
     await setFastModeValue(configuration.fastMode);
+    state.setPreset(configuration.preset);
     await emitSnapshot();
     await reportAgentAction("set-model", `${configuration.provider}/${configuration.modelId}`);
     return configuration;
@@ -195,6 +224,7 @@ export function createCakeSessionRuntimeConfiguration(input: {
       if (!model)
         throw new Error(`Unknown model ${configuration.provider}/${configuration.modelId}`);
       await session.setModel(model);
+      state.setPreset(configuration.preset);
       updateModel();
       session.setThinkingLevel(configuration.thinkingLevel);
       if (!configuration.fastMode || supportsFastMode(model))

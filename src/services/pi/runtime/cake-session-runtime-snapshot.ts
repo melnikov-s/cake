@@ -1,3 +1,4 @@
+import type { PresetContext } from "../../../contracts/model-presets/preset-context";
 import type {
   AgentSession,
   SettingsManager,
@@ -37,6 +38,7 @@ export interface CakeSessionRuntimeSnapshotInput {
   readonly queuedParts: readonly UiPart[];
   readonly transientParts: readonly UiPart[];
   readonly fastMode: boolean;
+  readonly preset?: PresetContext;
   readonly commands: readonly SlashCommandInfo[];
   readonly slashCommands: readonly string[] | undefined;
   readonly usage: ConversationSnapshot["usage"];
@@ -75,6 +77,7 @@ export function projectCakeSessionRuntimeSnapshot(
       ? { provider: session.model.provider, id: session.model.id, name: session.model.name }
       : undefined,
     fastMode: input.fastMode,
+    preset: input.preset,
     fastModeAvailable: supportsFastMode(session.model),
     models: input.models,
     thinkingLevel: session.thinkingLevel,

@@ -76,6 +76,7 @@ const projectSnapshot = (snapshot: RuntimeConversationSnapshot): ConversationSna
     Object.assign(projected, { sessionListed: snapshot.sessionListed });
   if (snapshot.model !== undefined)
     Object.assign(projected, { model: toJsonValue(snapshot.model) });
+  if (snapshot.preset !== undefined) Object.assign(projected, { preset: snapshot.preset });
   if (snapshot.fastMode !== undefined) Object.assign(projected, { fastMode: snapshot.fastMode });
   if (snapshot.fastModeAvailable !== undefined)
     Object.assign(projected, { fastModeAvailable: snapshot.fastModeAvailable });

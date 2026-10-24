@@ -44,7 +44,7 @@ export function createCakeModelOperations(
       inputSchema: infoInput,
       examples: [{ input: { name: "Sol" } }],
       result:
-        "The preset's provider, model ID, thinking level, Fast mode and default flag, without credentials.",
+        "The preset's provider, model ID, thinking level, Fast mode, optional prompt and default flag, without credentials.",
       execute: async (raw) => {
         const { name } = Schema.decodeUnknownSync(infoInput)(raw);
         const state = readPresets();
@@ -57,6 +57,7 @@ export function createCakeModelOperations(
           modelId: preset.modelId,
           thinkingLevel: preset.thinkingLevel,
           fastMode: preset.fastMode,
+          ...(preset.prompt === undefined ? null : { prompt: preset.prompt }),
           default: preset.id === state.defaultPresetId,
         };
       },

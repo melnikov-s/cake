@@ -77,6 +77,47 @@ async function rename(user: ReturnType<typeof userEvent.setup>, name: string, ne
 afterEach(cleanup);
 
 describe("Model preset settings workflow", () => {
+  it("edits, copies, preserves on rename, and clears a preset prompt", async () => {
+    const original = { ...preset, prompt: "Be concise." };
+    const update = vi.fn<Client["modelPresets"]["update"]>(async (value) => ({ presets: [value] }));
+    const create = vi.fn<Client["modelPresets"]["create"]>(async (value) => ({
+      presets: [original, { ...value, id: "00000000-0000-4000-8000-000000000002" }],
+    }));
+    using fixture = await renderSettings({ modelPresets: { update, create } }, [original]);
+    await fixture.user.click(row(original.name).getByRole("button", { name: "Duplicate" }));
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ prompt: original.prompt }),
+        expect.anything(),
+      ),
+    );
+    await rename(fixture.user, original.name, "Renamed");
+    expect(update).toHaveBeenLastCalledWith(
+      expect.objectContaining({ prompt: original.prompt }),
+      expect.anything(),
+    );
+    await fixture.user.click(row("Renamed").getByRole("button", { name: "Edit" }));
+    const field = screen.getByRole("textbox", { name: /Prompt \(optional/ });
+    expect(field).toHaveProperty("value", original.prompt);
+    await fixture.user.clear(field);
+    await fixture.user.type(field, "Explain deeply.");
+    await fixture.user.click(screen.getByRole("button", { name: "Save preset" }));
+    await waitFor(() =>
+      expect(update).toHaveBeenLastCalledWith(
+        expect.objectContaining({ prompt: "Explain deeply." }),
+        expect.anything(),
+      ),
+    );
+    await fixture.user.click(row("Renamed").getByRole("button", { name: "Edit" }));
+    await fixture.user.clear(screen.getByRole("textbox", { name: /Prompt \(optional/ }));
+    await fixture.user.click(screen.getByRole("button", { name: "Save preset" }));
+    await waitFor(() =>
+      expect(update).toHaveBeenLastCalledWith(
+        expect.objectContaining({ prompt: "" }),
+        expect.anything(),
+      ),
+    );
+  });
   it("creates a named model configuration and edits its authoritative identity", async () => {
     const created = {
       ...preset,

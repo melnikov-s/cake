@@ -1,3 +1,4 @@
+import { PresetContext } from "../model-presets/preset-context";
 import { EditorDiffDocument } from "../editor/editor-selection";
 import { Effect, Schema } from "effect";
 import type { SessionContextMetadata } from "./session-context-metadata";
@@ -671,6 +672,7 @@ export const conversationSnapshotSchema = Schema.Struct({
   model: Schema.optional(
     Schema.Struct({ provider: Schema.String, id: Schema.String, name: Schema.String }),
   ),
+  preset: Schema.optional(PresetContext),
   fastMode: Schema.optional(Schema.Boolean),
   fastModeAvailable: Schema.optional(Schema.Boolean),
   models: ipcProjectionArray(modelOptionSchema, 5_000),
@@ -699,10 +701,12 @@ export type ThinkingLevel = typeof thinkingLevelSchema.Type;
 export type UtilityModel = typeof utilityModelSchema.Type;
 export type SessionUsage = typeof sessionUsageSchema.Type;
 export interface ModelPreset extends ChatConfiguration {
+  readonly prompt?: string;
   readonly id: string;
   readonly name: string;
 }
 export interface ChatConfiguration {
+  readonly preset?: PresetContext;
   readonly provider: string;
   readonly modelId: string;
   readonly thinkingLevel: ThinkingLevel;

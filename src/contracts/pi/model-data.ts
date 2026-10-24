@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { PresetContext } from "../model-presets/preset-context";
 
 const nonEmptyBoundedString = (maximum: number) =>
   Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(maximum));
@@ -63,6 +64,7 @@ export const PiNonChatModel = Schema.Struct({
 export interface PiNonChatModel extends Schema.Schema.Type<typeof PiNonChatModel> {}
 
 export const ModelSelection = Schema.Struct({
+  preset: Schema.optionalKey(PresetContext),
   provider: nonEmptyBoundedString(256),
   modelId: nonEmptyBoundedString(512),
   thinkingLevel: ThinkingLevel,

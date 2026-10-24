@@ -1,3 +1,4 @@
+import type { PresetContext } from "../../contracts/model-presets/preset-context";
 import { Model, child, computed, id, modelRef, observable, transient } from "r-state-tree";
 import type {
   ConversationSnapshot,
@@ -25,6 +26,7 @@ export class Conversation extends Model {
   /** Originals explicitly paged by the user, never persisted in window snapshots. */
   @transient earlierParts: UiPart[] = observable([]);
   @modelRef(LlmModel) model: LlmModel | undefined;
+  preset: PresetContext | undefined;
   fastMode = false;
   fastModeAvailable = false;
   @child(ModelOption) modelOptions: ModelOption[] = observable([]);

@@ -254,6 +254,7 @@ describe("ApplicationStorage", () => {
             yield* application.setVscodeServerPath("/custom/code-server");
             const presets = yield* modelPresets.create({
               name: "Persisted model",
+              prompt: "Keep the preset-specific guidance across restart.",
               provider: "example",
               modelId: "example-model",
               thinkingLevel: "high",

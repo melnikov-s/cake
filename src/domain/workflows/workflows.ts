@@ -331,6 +331,7 @@ const startPrepared = Effect.fn("Workflows.startPrepared")(function* (
         modelId: snapshot.model.id,
         thinkingLevel: snapshot.thinkingLevel,
         fastMode: snapshot.fastMode ?? false,
+        ...(snapshot.preset ? { preset: snapshot.preset } : null),
       },
     ),
     commonInstructions: [

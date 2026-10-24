@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
-import { Effect, Layer, Stream } from "effect";
+import { Effect, Layer, Schema, Stream } from "effect";
+import { ConversationUpdate } from "../../../src/contracts/conversations/conversation-data";
 import { describe, expect } from "vitest";
 import {
   deliver,
   deliverWhenAvailable,
+  observe,
   projectAttachments,
   projectQueuedMessages,
 } from "../../../src/domain/conversations/conversations";
@@ -76,6 +78,28 @@ const makeHandle = (deliveries: string[], isStreaming: () => boolean): CakeSessi
 });
 
 describe("conversation domain", () => {
+  it.effect("encodes snapshots with and without selected preset guidance across RPC", () =>
+    Effect.gen(function* () {
+      const preset = { id: "00000000-0000-4000-8000-000000000001", prompt: "Be concise." };
+      for (const selected of [undefined, preset]) {
+        const handle = {
+          ...makeHandle([], () => false),
+          updates: Stream.make({
+            _tag: "Snapshot" as const,
+            snapshot: { ...snapshot(false), preset: selected },
+          }),
+        };
+        const updates = yield* Stream.runCollect(observe(handle));
+        const update = updates[0]!;
+        yield* Schema.encodeEffect(ConversationUpdate)(update);
+        assert.equal(update._tag, "Snapshot");
+        if (update._tag === "Snapshot") {
+          assert.deepEqual(update.snapshot.preset, selected);
+          assert.equal(Object.hasOwn(update.snapshot, "preset"), selected !== undefined);
+        }
+      }
+    }),
+  );
   it("keeps a stored file's input reference so the transcript can reopen the original", () => {
     const inputReference = {
       kind: "input" as const,

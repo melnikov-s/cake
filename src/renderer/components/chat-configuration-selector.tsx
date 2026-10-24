@@ -17,6 +17,7 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
         modelId: selectedModel.modelId,
         thinkingLevel: session?.thinkingLevel,
         fastMode: configuration.fastMode,
+        preset: session?.preset,
       }
     : undefined;
   const effectiveConfiguration = configuration.deferred
@@ -52,9 +53,19 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
           next.provider === selectedModel.provider &&
           next.modelId === selectedModel.modelId &&
           next.fastMode === configuration.fastMode &&
+          next.preset?.id === session?.preset?.id &&
           next.thinkingLevel !== session?.thinkingLevel
         ) {
           void configuration.selectThinkingLevel(next.thinkingLevel);
+        } else if (
+          selectedModel &&
+          next.provider === selectedModel.provider &&
+          next.modelId === selectedModel.modelId &&
+          next.thinkingLevel === session?.thinkingLevel &&
+          next.preset?.id === session?.preset?.id &&
+          next.fastMode !== configuration.fastMode
+        ) {
+          void configuration.selectFastMode(next.fastMode);
         } else {
           void configuration.selectConfiguration(next);
         }

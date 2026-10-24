@@ -92,7 +92,11 @@ export const update = Effect.fn("ModelPresets.update")(function* (input: ModelPr
   return yield* transact((current) => {
     if (!current.modelPresets.some((preset) => preset.id === input.id))
       return Effect.fail(new ModelPresetNotFoundError({ id: input.id }));
-    return decodePreset({ ...input, name: input.name.trim() }).pipe(
+    return decodePreset({
+      ...current.modelPresets.find((preset) => preset.id === input.id),
+      ...input,
+      name: input.name.trim(),
+    }).pipe(
       Effect.map((preset) => ({
         ...current,
         modelPresets: current.modelPresets.map((candidate) =>
@@ -166,5 +170,6 @@ export const resolve = Effect.fn("ModelPresets.resolve")(function* (id: string) 
     modelId: preset.modelId,
     thinkingLevel: preset.thinkingLevel,
     fastMode: preset.fastMode,
+    preset: { id: preset.id, ...(preset.prompt === undefined ? null : { prompt: preset.prompt }) },
   } satisfies ModelSelection);
 });

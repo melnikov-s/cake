@@ -521,6 +521,7 @@ describe("Pi 1.0.0 foundation contract", () => {
           modelId: "gpt-5.6-sol",
           thinkingLevel: "xhigh",
           fastMode: true,
+          preset: { id: defaultPreset.id },
         },
       },
       expect.any(AbortSignal),
@@ -1103,6 +1104,7 @@ describe("Pi 1.0.0 foundation contract", () => {
     });
     runtimes.push(runtime);
 
+    const preset = { id: "00000000-0000-4000-8000-000000000001", prompt: "Be concise." };
     // A stale preset may request fast mode for a model that does not support it.
     // The configuration must still apply and emit exactly one snapshot.
     await expect(
@@ -1111,6 +1113,7 @@ describe("Pi 1.0.0 foundation contract", () => {
         modelId: "fixture-model",
         thinkingLevel: "high",
         fastMode: true,
+        preset,
       }),
     ).resolves.toBeUndefined();
 
@@ -1121,6 +1124,22 @@ describe("Pi 1.0.0 foundation contract", () => {
     });
     expect(snapshots[0]?.thinkingLevel).toBe("high");
     expect(snapshots[0]?.fastMode).toBe(false);
+    expect(snapshots[0]?.preset).toEqual(preset);
+    await runtime.setThinkingLevel("off");
+    expect((await runtime.snapshot()).preset).toEqual(preset);
+    const second = { id: "00000000-0000-4000-8000-000000000002", prompt: "Explain deeply." };
+    const configuration = {
+      provider: "fixture-provider",
+      modelId: "fixture-model",
+      thinkingLevel: "off" as const,
+      fastMode: false,
+    };
+    await runtime.applyConfiguration({ ...configuration, preset: second });
+    expect((await runtime.snapshot()).preset).toEqual(second);
+    await runtime.applyConfiguration({ ...configuration, preset: { ...second, prompt: "" } });
+    expect((await runtime.snapshot()).preset?.prompt).toBe("");
+    await runtime.setModel(configuration.provider, configuration.modelId);
+    expect((await runtime.snapshot()).preset).toBeUndefined();
 
     await expect(
       runtime.applyConfiguration({

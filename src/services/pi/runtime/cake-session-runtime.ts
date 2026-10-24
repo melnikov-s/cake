@@ -414,6 +414,7 @@ export async function createCakeSessionRuntime(
   };
   const cakeSessionId = session.sessionManager.getSessionId();
   configurationState.attachModel(session.model);
+  configurationState.attachSession(session.sessionManager);
   capabilities.setSessionId(cakeSessionId);
   // Ancestors of a Working Directory fork live under sibling workspace session
   // directories, so lineage resolution is bounded by the shared session root.
@@ -507,6 +508,7 @@ export async function createCakeSessionRuntime(
         ...recovery.transientParts(),
       ],
       fastMode: configurationState.enabledFastMode(),
+      preset: configurationState.preset(),
       commands: options.auxiliary ? [] : resources.commandCatalog(),
       slashCommands: options.slashCommands,
       usage: projection.currentUsage(),

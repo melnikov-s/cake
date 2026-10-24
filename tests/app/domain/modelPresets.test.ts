@@ -121,6 +121,33 @@ const createOne = Effect.gen(function* () {
 });
 
 describe("Model Presets domain", () => {
+  it.effect("preserves prompts through unrelated updates and supports explicit clearing", () => {
+    const { test, effect } = run(
+      Effect.gen(function* () {
+        const created = (yield* create({ ...input(), prompt: "Review carefully." })).presets[0]!;
+        const withoutPrompt = { id: created.id, ...input() };
+        const renamed = (yield* update({ ...withoutPrompt, name: "Renamed" })).presets[0]!;
+        assert.equal(renamed.prompt, "Review carefully.");
+        assert.deepEqual((yield* resolve(created.id)).preset, {
+          id: created.id,
+          prompt: "Review carefully.",
+        });
+        const copy = (yield* create({ ...renamed, name: "Copy" })).presets[1]!;
+        assert.equal(copy.prompt, renamed.prompt);
+        assert.notEqual(copy.id, created.id);
+        yield* update({ ...renamed, prompt: "" });
+        assert.equal((yield* list()).presets[0]?.prompt, "");
+      }),
+    );
+    return effect.pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          assert.equal(test.persisted().modelPresets[0]?.prompt, "");
+          assert.equal(test.persisted().modelPresets[1]?.prompt, "Review carefully.");
+        }),
+      ),
+    );
+  });
   it.effect("lists empty and populated presets and creates main-owned IDs", () => {
     const { effect } = run(
       Effect.gen(function* () {
@@ -266,6 +293,7 @@ describe("Model Presets domain", () => {
       Effect.gen(function* () {
         const known = yield* createOne;
         assert.deepEqual(yield* resolve(known.id), {
+          preset: { id: known.id },
           provider: known.provider,
           modelId: known.modelId,
           thinkingLevel: known.thinkingLevel,

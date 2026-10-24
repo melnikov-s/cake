@@ -68,6 +68,7 @@ export function createAgentControlOperations(
         thinkingLevel: model.thinkingLevel,
       },
       fastMode: model.fastMode,
+      ...(model.preset ? { preset: model.preset } : null),
     };
   };
   const operation = <Input>(definition: {

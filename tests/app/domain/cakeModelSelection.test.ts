@@ -31,15 +31,43 @@ const catalog: CakeModelPresetCatalog = {
   defaultPresetId: "00000000-0000-4000-8000-000000000001",
 };
 
+const preset = (index: number) => ({ id: catalog.presets[index]!.id });
 describe("Cake model selection", () => {
+  it("keeps different prompts on presets of the exact same model configuration", () => {
+    const first = { ...catalog.presets[0]!, prompt: "Be concise." };
+    const second = {
+      ...first,
+      id: catalog.presets[1]!.id,
+      name: "Detailed",
+      prompt: "Explain deeply.",
+    };
+    const choices = { presets: [first, second] };
+    assert.deepEqual(resolveCakeModelSelection(first.name, choices).preset, {
+      id: first.id,
+      prompt: first.prompt,
+    });
+    assert.deepEqual(resolveCakeModelSelection(second.name, choices).preset, {
+      id: second.id,
+      prompt: second.prompt,
+    });
+    const raw = {
+      provider: first.provider,
+      modelId: first.modelId,
+      thinkingLevel: first.thinkingLevel,
+      fastMode: first.fastMode,
+    };
+    assert.equal(resolveCakeModelSelection(raw, choices).preset, undefined);
+  });
   it("resolves preset names by their full configuration rather than model ID", () => {
     assert.deepEqual(resolveCakeModelSelection("Sol", catalog), {
+      preset: preset(0),
       provider: "openai-codex",
       modelId: "gpt-5.6-sol",
       thinkingLevel: "high",
       fastMode: false,
     });
     assert.deepEqual(resolveCakeModelSelection("Sol-Fast", catalog), {
+      preset: preset(1),
       provider: "openai-codex",
       modelId: "gpt-5.6-sol",
       thinkingLevel: "high",
@@ -98,6 +126,7 @@ describe("Cake model selection", () => {
     };
     const fastDefault = { ...catalog, defaultPresetId: catalog.presets[1]!.id };
     assert.deepEqual(resolveCakeModelSelection(undefined, fastDefault, caller), {
+      preset: preset(1),
       provider: "openai-codex",
       modelId: "gpt-5.6-sol",
       thinkingLevel: "high",
@@ -105,6 +134,7 @@ describe("Cake model selection", () => {
     });
     // Changing the configured default is respected at the next resolution.
     assert.deepEqual(resolveCakeModelSelection(undefined, catalog, caller), {
+      preset: preset(0),
       provider: "openai-codex",
       modelId: "gpt-5.6-sol",
       thinkingLevel: "high",
@@ -151,13 +181,17 @@ describe("Cake model selection", () => {
     };
     const cases: Array<[string, CakeModelChoice | undefined, ExplicitCakeModelSelection]> = [
       ["unset → caller (Inherit is the default)", undefined, caller],
-      ["default → default preset", { source: "default" }, { ...sol, fastMode: true }],
+      [
+        "default → default preset",
+        { source: "default" },
+        { ...sol, fastMode: true, preset: preset(1) },
+      ],
       ["inherit → caller", { source: "inherit" }, caller],
       ["utility → utility model", { source: "utility" }, { ...utilityModel, fastMode: false }],
       [
         "preset → that preset",
         { source: "preset", presetId: catalog.presets[0]!.id },
-        { ...sol, fastMode: false },
+        { ...sol, fastMode: false, preset: preset(0) },
       ],
       ["model → that model", { source: "model", model: freeform }, freeform],
     ];
@@ -169,6 +203,7 @@ describe("Cake model selection", () => {
         assert.notEqual(resolved, caller);
         // Session launches ignore the subagent setting.
         assert.deepEqual(resolveCakeModelSelection(undefined, configured, caller), {
+          preset: preset(1),
           ...sol,
           fastMode: true,
         });
@@ -186,6 +221,7 @@ describe("Cake model selection", () => {
     it("falls back between Inherit and Default but never substitutes a missing choice", () => {
       const inherit = { ...withDefault, subagentDefaultModel: { source: "inherit" as const } };
       assert.deepEqual(resolveCakeModelSelection(undefined, inherit, undefined, "subagent"), {
+        preset: preset(1),
         ...sol,
         fastMode: true,
       });

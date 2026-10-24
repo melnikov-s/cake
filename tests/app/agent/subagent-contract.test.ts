@@ -254,6 +254,7 @@ describe("subagent contract", () => {
     const preset = {
       id: "00000000-0000-4000-8000-000000000001",
       name: "Sol-Fast",
+      prompt: "Focus on evidence.",
       provider: "openai-codex",
       modelId: "gpt-5.6-sol",
       thinkingLevel: "high" as const,
@@ -285,6 +286,13 @@ describe("subagent contract", () => {
       },
     );
 
+    expect(run).toHaveBeenCalledWith(
+      expect.objectContaining({ preset: { id: preset.id, prompt: preset.prompt } }),
+      "parent",
+      expect.any(AbortSignal),
+      undefined,
+      "tool-call-1",
+    );
     const resolve = (
       selection: Parameters<typeof resolveCakeModelSelection>[0],
       launch: Parameters<typeof resolveCakeModelSelection>[3],

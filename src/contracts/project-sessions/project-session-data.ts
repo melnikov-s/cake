@@ -1,3 +1,4 @@
+import { PresetContext } from "../model-presets/preset-context";
 import { Schema } from "effect";
 import { SessionContextMetadata } from "../conversations/session-context-metadata";
 import { SESSION_TITLE_MAX_LENGTH } from "../conversations/session-contract";
@@ -95,6 +96,7 @@ export const ProjectSessionControlInvocation = Schema.TaggedUnion({
       Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9-]{0,62}$/)),
     ),
     model: Schema.Struct({
+      preset: Schema.optionalKey(PresetContext),
       provider: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
       modelId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
       thinkingLevel: ThinkingLevel,
@@ -106,6 +108,7 @@ export const ProjectSessionControlInvocation = Schema.TaggedUnion({
     initialPrompt: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100_000)),
     model: Schema.optionalKey(
       Schema.Struct({
+        preset: Schema.optionalKey(PresetContext),
         provider: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
         modelId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
         thinkingLevel: ThinkingLevel,

@@ -51,25 +51,8 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
     return this.props.presets();
   }
   get activePreset() {
-    const session = this.session;
-    if (this.deferred || !session?.model) {
-      const pending = this.effectiveConfiguration;
-      if (!pending) return undefined;
-      return this.presets.find(
-        (preset) =>
-          preset.provider === pending.provider &&
-          preset.modelId === pending.modelId &&
-          preset.thinkingLevel === pending.thinkingLevel &&
-          preset.fastMode === pending.fastMode,
-      );
-    }
-    return this.presets.find(
-      (preset) =>
-        preset.provider === session.model?.provider &&
-        preset.modelId === session.model.modelId &&
-        preset.thinkingLevel === session.thinkingLevel &&
-        preset.fastMode === this.fastMode,
-    );
+    const id = this.deferred ? this.effectiveConfiguration?.preset?.id : this.session?.preset?.id;
+    return this.presets.find((preset) => preset.id === id);
   }
   get activeOperations() {
     return this.props.operations.active(this.props.operationOwner);
@@ -134,8 +117,10 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
     // Deferred chats have no runtime. The owner persists saved Draft choices or
     // keeps unsaved choices locally for the first prompt.
     if (this.deferred) {
+      const base = this.effectiveConfiguration;
       await this.writePendingConfiguration({
-        ...(this.effectiveConfiguration ?? { thinkingLevel: "off", fastMode: false }),
+        thinkingLevel: base?.thinkingLevel ?? "off",
+        fastMode: base?.fastMode ?? false,
         provider,
         modelId,
       });
@@ -152,6 +137,7 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
         modelId: configuration.modelId,
         thinkingLevel: configuration.thinkingLevel,
         fastMode: configuration.fastMode,
+        ...(configuration.preset ? { preset: configuration.preset } : null),
       });
       return;
     }
@@ -162,7 +148,13 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
   }
 
   async selectPreset(preset: ModelPreset) {
-    await this.selectConfiguration(preset);
+    await this.selectConfiguration({
+      ...preset,
+      preset: {
+        id: preset.id,
+        ...(preset.prompt === undefined ? null : { prompt: preset.prompt }),
+      },
+    });
   }
 
   get canOpenPresetSettings() {
