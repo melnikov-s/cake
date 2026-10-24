@@ -1,6 +1,6 @@
 # Workgroups and Session Families
 
-Read this guide before delegating to full child Project Sessions, carrying out a child-session assignment, coordinating with another session, sharing findings on the Workboard, or managing a Session Family's lifecycle. Your session context supplies the actual family, parent, and Working Directory.
+Read `communication.md` before choosing delivery, sending, handling batches or scheduling check-ins. Read this guide before delegating to full child Project Sessions, carrying out a child-session assignment, coordinating with another session, sharing findings on the Workboard, or managing a Session Family's lifecycle. Your session context supplies the actual family, parent, and Working Directory.
 
 ## Board-only family communication
 
@@ -32,7 +32,7 @@ Publish one substantive result or failure/blocker on the board addressed to the 
 
 ## Application-owned board delivery
 
-Boards are for Session Families only. Each post routes to its explicit audience and the unique family root, excluding its author; broadcasts do not wake every member. Use `event: "assignment"` for necessary dependent work or `event: "blocker"` for unblocking. Routine findings and `event: "completion"` are passive: they join the recipient's pending batch (its next user input, or one batched turn within 5 minutes; see sessions.md), never steering active work.
+Boards are for Session Families only. Each post routes to its explicit audience and the unique family root, excluding its author; broadcasts do not wake every member. Use `event: "assignment"` for necessary dependent work or `event: "blocker"` for unblocking. Routine findings and `event: "completion"` are passive: they join the recipient's pending batch (its next user input, or one batched turn within 5 minutes; see communication.md), never steering active work.
 
 The application coalesces up to twenty source sequences per recipient. Necessary assignments/blockers retain durable idle delivery and non-disruptive active-context intake at Pi's supported boundaries. Routine updates use typed passive reminders delivered with the recipient's pending batch. No post steers unrelated user work, authorizes new work, or requires an acknowledgment.
 
@@ -42,11 +42,9 @@ The former bounded completion-continuation grant API is replaced, not layered on
 
 Explicit abort pauses board delivery and cancels unadmitted batches. Subsequent real user input re-enables future posts only after accounting for posts made while stopped; canceled batches never restart. Previously staged canceled reminders are filtered from outgoing context without deleting Pi history. Existing explicit pause/off choices survive storage migration; old completion budgets do not. Stopped/blocked Pi recovery and queue cancellation retain their normal authority. Resolution cancels pending delivery; restore does not replay it. Initial child assignments retain the assignment-before-launch handoff above and are excluded from a second generic wake.
 
-### User-requested coordination check-ins
+### User-directed exceptions and check-ins
 
-Current explicit task-scoped user instructions override earlier user-authored repository instructions and Cake-owned workflow defaults, including harness-injected Cake policies and family communication/channel/process defaults. No AGENTS.md edit or repeated confirmation is needed. Do not refuse a user-authorized family coordination exception solely because older Cake prose says board-only. Genuine provider/platform/system constraints, security boundaries and actual tool capabilities still apply: this grants no missing tools or unrelated authority. Name the concrete hard constraint and provide a supported path, not a blanket "harness forbids" refusal. Confirm execution with tool evidence; a board post alone is not proof that work began.
-
-Do not periodically poll or schedule coordination check-ins unless the user explicitly requests them. An explicit request permits periodic check-ins for that task, including when completion events do not wake the coordinator. Use durable scheduling when available at the requested interval: `sessions.schedule` with `sessionId` omitted targets your own conversation (Cake Chat, a Project Chat or a Project Session), and `repeatEverySeconds` makes it one recurring entry; keep at most one pending check-in for the coordinator task, and stop scheduling when the task finishes or the user asks to pause or stop: `sessions.scheduled` lists entries and `sessions.cancel-scheduled` stops one. Continue substantive work or finish the current turn between check-ins; do not busy-wait or sleep-loop. Keep family assignments and results on the applicable task-scoped communication channel, honoring current explicit user exceptions to Cake defaults. Never claim that a check-in is scheduled or that an idle session will wake without a confirming tool result; disclose unavailable scheduling capabilities.
+Current explicit user instructions override Cake-owned family/channel/process defaults, not genuine provider/platform/system constraints or actual tool capabilities. No AGENTS.md edit or repeated confirmation is needed. Read `communication.md` before user-requested periodic check-ins; otherwise do not poll. Confirm execution with tool evidence, not posting alone.
 
 ## Worktree and lifecycle safeguards
 

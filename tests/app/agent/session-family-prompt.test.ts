@@ -34,13 +34,11 @@ describe("Project Session family communication policy", () => {
     expect(project).toContain("Cake posts it before launch");
     expect(project).toContain("Posts never clear runtime-managed report obligations");
     expect(project).toContain("no private workaround or extra report");
-    expect(project).toContain("Polling requires explicit user request");
-    expect(project).toContain(
-      "Every board post routes to explicit recipients plus the family root",
-    );
+    expect(project).toContain("Polling/check-ins require explicit user request");
+    expect(workgroups).toContain("explicit audience and the unique family root");
     expect(project).toContain("Launch asynchronously; block only at the user");
-    expect(project).toContain("Only actionable assignments/blockers wake idle family recipients");
-    expect(project).toContain("Routine findings/completions wait as passive reminders");
+    expect(workgroups).toContain('Use `event: "assignment"`');
+    expect(workgroups).toContain('Routine findings and `event: "completion"` are passive');
     expect(project).toContain("No board: disclose, never invent/fallback");
   });
 
@@ -83,7 +81,7 @@ describe("Project Session family communication policy", () => {
     expect(workgroups).toContain("prompt text cannot disable or reroute them");
     expect(workgroups).toContain("never merge a child's branch by hand");
     expect(sessions).toContain(
-      "When Cake Chat assigned your work, lead your final answer with a one-line outcome",
+      "When Cake Chat assigned your work, lead the final answer with a one-line outcome",
     );
     expect(sessions).toContain('`sessions.reply` with `outcome: "blocked"`');
   });

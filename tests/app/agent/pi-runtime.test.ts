@@ -122,12 +122,7 @@ describe("Pi 1.0.0 foundation contract", () => {
     expect(systemPrompt).toContain("parents, children, siblings and recursive descendants");
     expect(systemPrompt).toContain("Create children with assignment: { description, body }");
     expect(systemPrompt).toContain("Default resultDelivery: notification");
-    expect(systemPrompt).toContain(
-      "Only actionable assignments/blockers wake idle family recipients",
-    );
-    expect(systemPrompt).toContain(
-      "Every board post routes to explicit recipients plus the family root",
-    );
+    expect(systemPrompt).toContain("`workgroups.md` AND `sessions.md` before child assignments");
     const docsDirectory = systemPrompt?.match(/Cake documentation directory: `([^`]+)`/)?.[1];
     if (!docsDirectory) throw new Error("Expected readable Cake documentation references");
     const modelDocs = await readFile(join(docsDirectory, "models.md"), "utf8");
@@ -138,8 +133,10 @@ describe("Pi 1.0.0 foundation contract", () => {
     );
     const sessionDocs = await readFile(join(docsDirectory, "sessions.md"), "utf8");
     expect(sessionDocs).toContain('"command":"sessions.create-child"');
-    expect(sessionDocs).toContain("never send acknowledgment-only or duplicate messages");
-    expect(sessionDocs).toContain("family members communicate exclusively through that board");
+    expect(sessionDocs).toContain("Report completion once");
+    expect(sessionDocs).toContain("For family work, read `workgroups.md` before assignment");
+    const deliveryDocs = await readFile(join(docsDirectory, "communication.md"), "utf8");
+    expect(deliveryDocs).toContain("Never acknowledge receipts, results or resolution");
     const workgroupDocs = await readFile(join(docsDirectory, "workgroups.md"), "utf8");
     expect(workgroupDocs).toContain("By default, all Session Family members");
     expect(workgroupDocs).toContain(

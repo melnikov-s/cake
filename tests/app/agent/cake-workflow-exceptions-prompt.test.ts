@@ -4,7 +4,7 @@ import { renderPromptTemplate } from "../../../src/services/pi/runtime/prompt-te
 import commonTemplate from "../../../src/services/pi/runtime/prompts/common.md?raw";
 import projectTemplate from "../../../src/services/pi/runtime/prompts/project.md?raw";
 import workgroups from "../../../docs/agent/workgroups.md?raw";
-import chatGuide from "../../../docs/agent/cake-chat.md?raw";
+import communication from "../../../docs/agent/communication.md?raw";
 import repoInstructions from "../../../AGENTS.md?raw";
 
 const projectPrompt = renderPromptTemplate(projectTemplate, {
@@ -13,59 +13,51 @@ const projectPrompt = renderPromptTemplate(projectTemplate, {
 });
 
 describe.each([
-  ["Project Session", projectPrompt, workgroups],
-  ["Cake Chat", coordinatorSystemPrompt("", "/cake/docs"), chatGuide],
-])("%s user-directed workflow guidance", (_, prompt, guide) => {
-  it("keeps polling opt-in with durable scheduling and truthful runtime limits in the required guide", () => {
+  ["Project Session", projectPrompt],
+  ["Cake Chat", coordinatorSystemPrompt("", "/cake/docs")],
+])("%s user-directed workflow guidance", (_, prompt) => {
+  it("keeps user override boundaries and opt-in polling in the shared core", () => {
     expect(prompt).toContain(
       "Current explicit user direction overrides earlier user-authored repo instructions",
     );
     expect(prompt).toContain("including harness-injected family/channel/process policies");
-    expect(guide).toContain(
-      "Do not periodically poll or schedule coordination check-ins unless the user explicitly requests them",
+    expect(prompt).toContain("No AGENTS edit or repeated confirmation is needed");
+    expect(prompt).toContain(
+      "Genuine provider/platform/system constraints, security boundaries and tool capabilities still apply",
     );
-    expect(guide).toContain("including when completion events do not wake the coordinator");
-    expect(guide).toContain("Use durable scheduling when available at the requested interval");
-    expect(guide).toContain(
-      "`sessions.schedule` with `sessionId` omitted targets your own conversation (Cake Chat, a Project Chat or a Project Session)",
+    expect(prompt).toContain('not "harness forbids"');
+    expect(prompt).toContain("Polling/check-ins require explicit user request");
+    expect(prompt).toContain(
+      "read `communication.md` before sending, selecting delivery or scheduling",
     );
-    expect(guide).toContain("`sessions.cancel-scheduled` stops one");
-    expect(guide).toContain("keep at most one pending check-in for the coordinator task");
-    expect(guide).toContain(
-      "stop scheduling when the task finishes or the user asks to pause or stop",
-    );
-    expect(guide).toContain("do not busy-wait or sleep-loop");
-    expect(guide).toContain("without a confirming tool result");
-  });
-
-  it("honors permitted user exceptions while preserving hard constraints and communication channels", () => {
-    expect(guide).toContain(
-      "Current explicit task-scoped user instructions override earlier user-authored repository instructions",
-    );
-    expect(guide).toContain("No AGENTS.md edit or repeated confirmation is needed");
-    expect(guide).toContain(
-      "including harness-injected Cake policies and family communication/channel/process defaults",
-    );
-    expect(guide).toContain(
-      "Genuine provider/platform/system constraints, security boundaries and actual tool capabilities still apply",
-    );
-    expect(guide).toContain('not a blanket "harness forbids" refusal');
-    expect(guide).toContain("Confirm execution with tool evidence");
   });
 });
 
-it("repository policy honors current user direction across Cake-injected defaults without claiming platform authority", () => {
+it("centralizes durable check-ins without losing cancellation or execution evidence", () => {
+  for (const rule of [
+    "including when completion events do not wake the coordinator",
+    "Use durable scheduling when available at the requested interval",
+    "`sessions.schedule` without `sessionId` targets your own conversation",
+    "`repeatEverySeconds` creates one recurring entry",
+    "Keep at most one pending check-in per coordinator task",
+    "`sessions.scheduled`",
+    "`sessions.cancel-scheduled` when finished or asked to pause/stop",
+    "never busy-wait/sleep-loop",
+    "without a confirming tool result",
+    "including explicit user exceptions",
+  ])
+    expect(communication).toContain(rule);
+  expect(workgroups).toContain("Read `communication.md` before user-requested periodic check-ins");
+  expect(workgroups).toContain(
+    "Current explicit user instructions override Cake-owned family/channel/process defaults",
+  );
+});
+
+it("repository policy honors user direction without claiming platform authority", () => {
   expect(repoInstructions).toContain("including Cake policies injected by the harness");
   expect(repoInstructions).toContain("without an AGENTS.md edit or repeated confirmation");
   expect(repoInstructions).toContain(
     "This does not override genuine provider/platform/system constraints",
   );
   expect(repoInstructions).toContain("grant missing tools, or authorize unrelated actions");
-});
-
-it("both role kernels permit the explicit polling exception without preloading the full guide", () => {
-  expect(projectPrompt).toContain("Polling requires explicit user request");
-  expect(coordinatorSystemPrompt("", "/cake/docs")).toContain(
-    "Polling/check-ins are off by default; user requests permit them per cake-chat.md",
-  );
 });

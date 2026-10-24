@@ -7,10 +7,9 @@ const projectGuidance = `${artifactDocumentation}\n\n${presentationDocumentation
 
 it("requires Cake Chat to read the exact-revision visual handoff rules before acting", () => {
   const prompt = coordinatorSystemPrompt("", "/cake/docs");
-  expect(prompt).toContain(
-    "Before artifact publication/sharing/design implementation read `artifacts.md`",
-  );
-  expect(prompt).toContain("read `presentation.md`");
+  expect(prompt).toContain("Read before acting");
+  expect(prompt).toContain("`artifacts.md` for publishing/sharing/design implementation");
+  expect(prompt).toContain("`presentation.md` for rich output/images/files/links/selected text");
 });
 
 describe("shared artifact guidance required by Project Sessions and Cake Chat", () => {

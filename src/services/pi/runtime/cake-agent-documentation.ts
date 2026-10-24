@@ -8,6 +8,14 @@ import artifacts from "../../../../docs/agent/artifacts.md?raw";
 import models from "../../../../docs/agent/models.md?raw";
 import presentation from "../../../../docs/agent/presentation.md?raw";
 import interactions from "../../../../docs/agent/interactions.md?raw";
+import application from "../../../../docs/agent/application.md?raw";
+import chatTodos from "../../../../docs/agent/chat-todos.md?raw";
+import delegation from "../../../../docs/agent/delegation.md?raw";
+import communication from "../../../../docs/agent/communication.md?raw";
+import reports from "../../../../docs/agent/reports.md?raw";
+import settings from "../../../../docs/agent/settings.md?raw";
+import sessionDiscovery from "../../../../docs/agent/session-discovery.md?raw";
+import sessionHistory from "../../../../docs/agent/session-history.md?raw";
 
 const documents = {
   sessions,
@@ -17,6 +25,14 @@ const documents = {
   presentation,
   interactions,
   "cake-chat": cakeChat,
+  application,
+  "chat-todos": chatTodos,
+  delegation,
+  communication,
+  reports,
+  settings,
+  "session-discovery": sessionDiscovery,
+  "session-history": sessionHistory,
 };
 
 /** Make bundled guidance readable with Pi's file tools in packaged and remote backends. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import chatGuide from "../../../docs/agent/cake-chat.md?raw";
+import chatGuide from "../../../docs/agent/chat-todos.md?raw";
 import {
   emptyProjectTodos,
   PROJECT_TODO_AUTO_COMPLETION_RULE,
@@ -27,7 +27,6 @@ const baseline = projectTodoBaseline(emptyProjectTodos());
 
 describe("application-owned to-do link guidance", () => {
   it.each([
-    ["injected baseline", baseline],
     ["shipped Cake Chat reference", chatGuide],
     ...["todos.create", "todos.update", "todos.update-many"].map((command) => [
       `${command}.help`,
@@ -35,6 +34,19 @@ describe("application-owned to-do link guidance", () => {
     ]),
   ])("shares the canonical link policy in %s", (_surface, guidance) => {
     expect(guidance).toContain(PROJECT_TODO_LINK_GUIDANCE);
+  });
+
+  it("loads detailed link policy on demand while preserving baseline lifecycle rules", () => {
+    expect(baseline).toContain("read `chat-todos.md`");
+    expect(baseline).toContain(
+      "Before starting unsettled work, reviewing findings or editing/reconciling items",
+    );
+    expect(baseline).toContain(
+      "Source/report links do not block completion; source-only items remain open",
+    );
+    expect(baseline).toContain("Restore never reopens a to-do");
+    expect(baseline).toContain("Open items never authorize polling or wakes");
+    expect(baseline.length).toBeLessThan(2_600);
   });
 
   it("prioritizes relevant review and outcome links, including no-PR local work", () => {

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -69,7 +69,21 @@ describe("role-specific prompt assembly", () => {
     const directory = await temporaryDirectory();
     const docs = await cakeAgentDocumentationDirectory(directory);
     expect(await cakeAgentDocumentationDirectory(directory)).toBe(docs);
-    expect(await readFile(join(docs, "cake-chat.md"), "utf8")).toContain("### Session reports");
+    const sourceDirectory = new URL("../../../docs/agent/", import.meta.url);
+    const names = (await readdir(sourceDirectory)).filter((name) => name.endsWith(".md"));
+    expect((await readdir(docs)).sort()).toEqual(names.sort());
+    for (const name of names) {
+      const content = await readFile(join(docs, name), "utf8");
+      expect(content, name).toBe(await readFile(new URL(name, sourceDirectory), "utf8"));
+      // Every local read trigger must resolve in the deployed bundle.
+      for (const [, reference] of content.matchAll(/`([a-z-]+\.md)`/g)) {
+        expect(names, `${name} -> ${reference}`).toContain(reference);
+      }
+    }
+    expect(await readFile(join(docs, "cake-chat.md"), "utf8")).toContain("Read the matching guide");
+    expect(await readFile(join(docs, "reports.md"), "utf8")).toContain(
+      "## Project Session decisions",
+    );
     expect(await readFile(join(docs, "artifacts.md"), "utf8")).toContain(
       "approved exact @rN preview",
     );
