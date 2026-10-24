@@ -5,6 +5,7 @@ import {
   PROJECT_TODO_AUTO_COMPLETION_RULE,
   PROJECT_TODO_CLOSING_RULE,
   PROJECT_TODO_CREATION_RULE,
+  PROJECT_TODO_DESCRIPTION_GUIDANCE,
   PROJECT_TODO_LINK_GUIDANCE,
   projectTodoBaseline,
 } from "../../../src/contracts/projects/project-todos";
@@ -46,7 +47,7 @@ describe("application-owned to-do link guidance", () => {
     );
     expect(baseline).toContain("Restore never reopens a to-do");
     expect(baseline).toContain("Open items never authorize polling or wakes");
-    expect(baseline.length).toBeLessThan(2_600);
+    expect(baseline.length).toBeLessThan(3_200);
   });
 
   it("prioritizes relevant review and outcome links, including no-PR local work", () => {
@@ -100,6 +101,55 @@ describe("application-owned to-do link guidance", () => {
     expect(baseline).toContain(PROJECT_TODO_AUTO_COMPLETION_RULE);
     expect(baseline).toContain(
       "Source/report links do not block completion; source-only items remain open",
+    );
+  });
+});
+
+describe("latest-update to-do writing guidance", () => {
+  it.each([
+    ["Project Chat system baseline", baseline],
+    ["global Cake Chat system baseline", projectTodoBaseline(emptyProjectTodos(), "Cake Chat")],
+    ["shipped operational reference", chatGuide],
+    ...["todos.create", "todos.update", "todos.update-many"].map((command) => [
+      `${command}.help`,
+      registry.operationHelp(command),
+    ]),
+  ])(
+    "shares the writing policy in %s without custom project instructions",
+    (_surface, guidance) => {
+      expect(guidance).toContain(PROJECT_TODO_DESCRIPTION_GUIDANCE);
+    },
+  );
+
+  it("requires concise, evidence-based updates as work changes without status polling", () => {
+    for (const requirement of [
+      "The title identifies the task; the description gives the latest update, not a restatement of the task",
+      "short and punchy, usually one or two short sentences",
+      "what happened or is happening, what was found (or not found), blockers and what remains pending",
+      "Keep descriptions current when meaningful progress, findings, completion, review/merge readiness or blockers change",
+      "using available events and evidence",
+      "Say when no findings or fix exist",
+      "never claim finished, merged or fixed without evidence",
+      "Do not poll, schedule timers or wake workers merely for status",
+      "preserve notification behavior",
+    ]) {
+      expect(PROJECT_TODO_DESCRIPTION_GUIDANCE).toContain(requirement);
+    }
+  });
+
+  it("shows the approved updates and keeps the description current even when status is used", () => {
+    for (const example of [
+      "Preset prompts implemented and committed. Review and merge still pending.",
+      "Startup delays first display, but the full ~500 ms remains unexplained. No fix implemented.",
+      "Live widget-theme fix is underway, including System mode. No findings reported yet.",
+    ]) {
+      expect(chatGuide).toContain(example);
+    }
+    expect(chatGuide).toContain(
+      "The required `description` carries this update even when optional freeform `status` is used",
+    );
+    expect(registry.operationHelp("todos.create")).toContain(
+      "Startup investigation is underway. No findings reported yet.",
     );
   });
 });

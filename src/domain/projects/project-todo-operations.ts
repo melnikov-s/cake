@@ -12,6 +12,7 @@ import {
   PROJECT_TODO_AUTO_COMPLETION_RULE,
   PROJECT_TODO_CLOSING_RULE,
   PROJECT_TODO_CREATION_RULE,
+  PROJECT_TODO_DESCRIPTION_GUIDANCE,
   PROJECT_TODO_LINK_GUIDANCE,
   projectTodoCompletionSummary,
   type ProjectTodoControl,
@@ -112,9 +113,10 @@ export function createProjectTodoOperations(
     {
       command: "todos.create",
       topic: "todos",
-      summary: "Track a request not settled in the same reply, with a short durable brief.",
+      summary: "Track an unsettled request with a short latest-update description.",
       guidance: [
         guidance[1],
+        PROJECT_TODO_DESCRIPTION_GUIDANCE,
         PROJECT_TODO_LINK_GUIDANCE,
         "Already-resolved associated session work closes on creation. Source-only review threads remain open. Returns new id/revision; detail=true opts into content.",
       ],
@@ -124,7 +126,7 @@ export function createProjectTodoOperations(
         {
           input: {
             title: "Investigate startup",
-            description: "Measure startup and recommend a fix.",
+            description: "Startup investigation is underway. No findings reported yet.",
           },
         },
       ],
@@ -146,7 +148,13 @@ export function createProjectTodoOperations(
       command: "todos.update",
       topic: "todos",
       summary: "Revision-checked to-do edit or explicit done/reopen.",
-      guidance: [guidance[0], guidance[4], guidance[5], PROJECT_TODO_LINK_GUIDANCE],
+      guidance: [
+        guidance[0],
+        guidance[4],
+        guidance[5],
+        PROJECT_TODO_DESCRIPTION_GUIDANCE,
+        PROJECT_TODO_LINK_GUIDANCE,
+      ],
       inputSchema: Schema.Struct({ ...ProjectTodoUpdate.fields, detail }),
       outputSchema: ProjectTodoReceipt,
       examples: [
@@ -175,6 +183,7 @@ export function createProjectTodoOperations(
       guidance: [
         "Use one todos.list view=reconciliation read, then this call. Every update requires expectedRevision. All-or-none; stale errors identify the conflict/current revision. Receipts follow input order without echoing IDs.",
         guidance[0],
+        PROJECT_TODO_DESCRIPTION_GUIDANCE,
         PROJECT_TODO_LINK_GUIDANCE,
         "All actual session associations resolved automatically completes linked Open items, including legacy and late associations. state=done on an already-done item follows the same no-op rules as todos.update. Restore never reopens items; marking a to-do done never resolves sessions.",
       ],
