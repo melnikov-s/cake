@@ -62,6 +62,43 @@ async function streamResult(stream: ReturnType<StreamFunction>) {
 }
 
 describe("ResponseRetryController", () => {
+  it.each([
+    ["error", "no healthy upstream", "Service unavailable: no healthy upstream"],
+    ["error", "  No Healthy Upstream\n", "Service unavailable:   No Healthy Upstream\n"],
+    ["error", "502 no healthy upstream", "502 no healthy upstream"],
+    ["error", "503 Service Unavailable", "503 Service Unavailable"],
+    ["error", "Invalid request: no healthy upstream", "Invalid request: no healthy upstream"],
+    ["error", "insufficient_quota", "insufficient_quota"],
+    ["aborted", "no healthy upstream", "no healthy upstream"],
+    ["stop", undefined, undefined],
+  ] as const)(
+    "normalizes only a bare upstream error (%s, %s)",
+    async (reason, original, expected) => {
+      const message = assistant(reason, original, [{ type: "text", text: "Keep output" }]);
+      const base = vi.fn<StreamFunction>(() => response(message));
+      const notices = vi.fn();
+      const controller = new ResponseRetryController({
+        enabled: () => false,
+        onRetry: notices,
+        onFinished: vi.fn(),
+      });
+      const options = { signal: new AbortController().signal };
+      const stream = await controller.wrap(base)(model, context, options);
+      const events = [];
+      for await (const event of stream) events.push(event);
+      const result = await stream.result();
+      expect(result).toMatchObject({ ...message, errorMessage: expected });
+      expect(message.errorMessage).toBe(original);
+      expect(events.at(-1)).toMatchObject(
+        reason === "stop"
+          ? { type: "done", message: result }
+          : { type: "error", reason, error: result },
+      );
+      expect(base).toHaveBeenCalledExactlyOnceWith(model, context, options);
+      expect(notices).not.toHaveBeenCalled();
+    },
+  );
+
   it("retries empty 429 responses with the configured schedule", async () => {
     const notices = vi.fn();
     const finished = vi.fn();

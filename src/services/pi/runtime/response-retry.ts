@@ -44,6 +44,19 @@ function retryPlan(delaysMs: readonly number[], maxElapsedMs: number) {
   return { delaysMs: usableDelays, maxAttempts };
 }
 
+/** Supply Pi's transient-error vocabulary without claiming an unknown HTTP status. */
+function normalizeUpstreamError(message: AssistantMessage): AssistantMessage {
+  if (
+    message.stopReason !== "error" ||
+    message.errorMessage?.trim().toLowerCase() !== "no healthy upstream"
+  )
+    return message;
+  return {
+    ...message,
+    errorMessage: `Service unavailable: ${message.errorMessage}`,
+  };
+}
+
 function isRateLimit(message: AssistantMessage) {
   return (
     isRetryableAssistantError(message) &&
@@ -140,7 +153,13 @@ export class ResponseRetryController {
       const source = await baseStream(model, context, streamOptions);
       let shouldRetry = false;
 
-      for await (const event of source) {
+      for await (const sourceEvent of source) {
+        // Normalize at the public stream boundary even when Cake's own retries are off.
+        // Pi alone owns retries for upstream failures.
+        const event =
+          sourceEvent.type === "error"
+            ? { ...sourceEvent, error: normalizeUpstreamError(sourceEvent.error) }
+            : sourceEvent;
         if (event.type === "start") {
           if (!forwardedStart) {
             output.push(event);
@@ -259,7 +278,7 @@ export class ResponseRetryController {
       }
 
       if (!shouldRetry) {
-        const final = await source.result();
+        const final = normalizeUpstreamError(await source.result());
         if (final.stopReason === "error" || final.stopReason === "aborted")
           output.push({ type: "error", reason: final.stopReason, error: final });
         else if (
