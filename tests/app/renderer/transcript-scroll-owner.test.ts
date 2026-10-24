@@ -167,6 +167,65 @@ describe("transcript scroll owner following", () => {
     owner.reconcile();
   };
 
+  function disclosure(expanded = false) {
+    const trigger = document.createElement("button");
+    trigger.dataset.slot = "response-disclosure";
+    trigger.setAttribute("aria-expanded", String(expanded));
+    scroller.firstElementChild!.append(trigger);
+    return trigger;
+  }
+
+  it("pauses following before the response click handler expands its body", () => {
+    const trigger = disclosure();
+    trigger.addEventListener("click", () => grow(1_800));
+    trigger.click();
+    expect(scroller.scrollTop).toBe(3_400);
+    // The original can load later; pausing is not limited to the first resize.
+    grow(600);
+    expect(scroller.scrollTop).toBe(3_400);
+  });
+
+  it("does not change a scrolled-up reading position on open or later user movement", () => {
+    scroller.scrollTop -= 400;
+    scroller.dispatchEvent(new Event("scroll"));
+    disclosure().click();
+    grow(1_800);
+    expect(scroller.scrollTop).toBe(3_000);
+    scroller.scrollTop += 200;
+    scroller.dispatchEvent(new Event("scroll"));
+    grow(200);
+    expect(scroller.scrollTop).toBe(3_200);
+  });
+
+  it("preserves following for collapse and unrelated disclosures", () => {
+    disclosure(true).click();
+    grow(200);
+    expect(scroller.scrollTop).toBe(3_600);
+    const unrelated = disclosure();
+    unrelated.removeAttribute("data-slot");
+    unrelated.click();
+    grow(200);
+    expect(scroller.scrollTop).toBe(3_800);
+  });
+
+  it("resumes following at the bottom and pauses again on reopen", () => {
+    const trigger = disclosure();
+    trigger.click();
+    grow(1_800);
+    scroller.scrollTop = contentHeight;
+    scroller.dispatchEvent(new Event("scroll"));
+    grow(200);
+    expect(scroller.scrollTop).toBe(5_400);
+    trigger.setAttribute("aria-expanded", "true");
+    trigger.click();
+    trigger.setAttribute("aria-expanded", "false");
+    trigger.click();
+    grow(1_000);
+    expect(scroller.scrollTop).toBe(5_400);
+    owner.scrollToBottomForSentMessage();
+    expect(scroller.scrollTop).toBe(6_400);
+  });
+
   it("follows growth while at the bottom", () => {
     expect(scroller.scrollTop).toBe(3_400);
     grow(200);

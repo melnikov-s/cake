@@ -4,6 +4,7 @@
  * The rule is deliberately small:
  *
  * - While the reader is at the bottom, the transcript follows new content.
+ * - Opening a response pauses following, preserving its header for reading.
  * - Anywhere else, the transcript never scrolls for the reader. Layout changes
  *   (streaming text, new messages, tool output, cards, virtual measurement,
  *   viewport resizes) are compensated so the row at the top of the viewport
@@ -305,8 +306,26 @@ export function createTranscriptScrollOwner(
     touchY = undefined;
   };
 
+  // Opening a response is a reading action, not new chat output. Capture before
+  // React expands it (including asynchronously loaded originals), so resize
+  // reconciliation preserves the visible header instead of pinning its bottom.
+  const handleDisclosureClick = (event: MouseEvent) => {
+    if (
+      !(event.target instanceof Element) ||
+      !event.target.closest('[data-slot="response-disclosure"][aria-expanded="false"]')
+    )
+      return;
+    cancelReveal();
+    following = false;
+    anchor = findAnchor();
+  };
+
   const abort = new AbortController();
   const listen = { signal: abort.signal, passive: true };
+  scroller.addEventListener("click", handleDisclosureClick, {
+    signal: abort.signal,
+    capture: true,
+  });
   scroller.addEventListener("scroll", handleScroll, listen);
   scroller.addEventListener("wheel", handleWheel, listen);
   scroller.addEventListener("keydown", handleKeyDown, { signal: abort.signal });

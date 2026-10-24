@@ -27,6 +27,7 @@ export const SessionUpdateEntry = observer(function SessionUpdateEntry({
       ) : (
         <>
           <DisclosureTrigger
+            data-slot="response-disclosure"
             title={entry.title}
             wrapTitle
             className="rounded-sm text-base leading-relaxed outline-none focus-visible:ring-2 focus-visible:ring-ring"

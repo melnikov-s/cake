@@ -290,6 +290,16 @@ for (const [delivery, theme] of [
           first.getByRole("button", { name: /(?:Expand|Collapse) response/ }),
         ).toHaveAttribute("aria-expanded", "false");
         await first.getByRole("button", { name: /(?:Expand|Collapse) response/ }).click();
+        await expect
+          .poll(() =>
+            first
+              .getByRole("button", { name: /(?:Expand|Collapse) response/ })
+              .evaluate((button) => {
+                const viewport = button.closest(".transcript")!.getBoundingClientRect();
+                return button.getBoundingClientRect().top - viewport.top;
+              }),
+          )
+          .toBeGreaterThanOrEqual(0);
         await expect(
           first.getByRole("heading", { name: "Original detailed findings" }),
         ).toBeVisible();

@@ -20,11 +20,13 @@ const test = base.extend<{
   messageCount: number;
   chatMode: string;
   withWidget: boolean;
+  withUpdates: boolean;
 }>({
+  withUpdates: [false, { option: true }],
   withWidget: [false, { option: true }],
   messageCount: [48, { option: true }],
   chatMode: ["", { option: true }],
-  fixturePage: async ({ messageCount, chatMode, withWidget }, use) => {
+  fixturePage: async ({ messageCount, chatMode, withWidget, withUpdates }, use) => {
     const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-transcript-ownership-"));
     const cakeHome = join(temporaryRoot, "cake-home");
     await mkdir(cakeHome);
@@ -97,7 +99,7 @@ export default function Widget() {
         : null;
       const opened = application.waitForEvent("window");
       await application.evaluate(
-        async ({ BrowserWindow }, { html, messageCount, chatMode, widget }) => {
+        async ({ BrowserWindow }, { html, messageCount, chatMode, widget, withUpdates }) => {
           // Match the application window: a hidden window must not throttle
           // animation frames, or Virtuoso never finishes initial positioning.
           const window = new BrowserWindow({
@@ -105,17 +107,17 @@ export default function Widget() {
             webPreferences: { sandbox: true, backgroundThrottling: false },
           });
           await window.loadFile(html, {
-            search: `?count=${messageCount}&chatMode=${chatMode}&widget=${encodeURIComponent(JSON.stringify(widget))}`,
+            search: `?count=${messageCount}&chatMode=${chatMode}&updates=${withUpdates}&widget=${encodeURIComponent(JSON.stringify(widget))}`,
           });
         },
-        { html, messageCount, chatMode, widget },
+        { html, messageCount, chatMode, widget, withUpdates },
       );
       const page = await opened;
       const errors: string[] = [];
       page.on("pageerror", (error) => errors.push(error.message));
       const transcript = page.locator(".transcript");
       await expect(transcript.locator('[data-slot="transcript-item"]').last()).toContainText(
-        `Message ${messageCount - 1}`,
+        withUpdates ? "Make widgets follow Cake theme live" : `Message ${messageCount - 1}`,
       );
       // Virtuoso hides the list until its initial position settles.
       await expect(transcript.locator('[aria-label="Conversation"]')).toBeVisible();
@@ -499,6 +501,106 @@ test.describe("inline widget reading position", () => {
     }
   });
 });
+
+for (const chatMode of ["full", "compact"]) {
+  test.describe(`${chatMode} response expansion`, () => {
+    test.use({ withUpdates: true, chatMode });
+
+    for (const position of ["bottom", "history"]) {
+      test(`preserves the response start at ${position}, then lets the reader scroll`, async ({
+        fixturePage: page,
+      }) => {
+        const transcript = page.locator(".transcript");
+        if (position === "history") {
+          await wheel(page, transcript, -40);
+          for (let index = 0; index < 6; index++) await command(page, "arrive");
+          await expect.poll(() => gap(transcript)).toBeGreaterThan(300);
+        }
+        const offset = (trigger: Locator) =>
+          trigger.evaluate(
+            (button) =>
+              button.getBoundingClientRect().top -
+              button.closest(".transcript")!.getBoundingClientRect().top,
+          );
+        const expectHeld = async (trigger: Locator, saved: number) => {
+          const samples = await trigger.evaluate(async (button) => {
+            const samples: number[] = [];
+            for (let frame = 0; frame < 12; frame++) {
+              await new Promise<void>((resolve) =>
+                requestAnimationFrame(() => setTimeout(resolve, 0)),
+              );
+              samples.push(
+                button.getBoundingClientRect().top -
+                  button.closest(".transcript")!.getBoundingClientRect().top,
+              );
+            }
+            return samples;
+          });
+          expect(
+            samples.every((sample) => Math.abs(sample - saved) <= 1),
+            JSON.stringify({ saved, samples, title: await trigger.textContent() }),
+          ).toBe(true);
+        };
+        const source = page.getByRole("button", {
+          name: "Sync open VS Code with Cake theme changes",
+          exact: true,
+        });
+        const fallback = page.getByRole("button", {
+          name: "Make widgets follow Cake theme live",
+          exact: true,
+        });
+        for (const [trigger, original] of [
+          [source, true],
+          [fallback, false],
+        ] as const) {
+          await trigger.scrollIntoViewIfNeeded();
+          await settle(page);
+          const saved = await offset(trigger);
+          expect(saved).toBeGreaterThanOrEqual(0);
+          await trigger.click();
+          await expect(trigger).toHaveAttribute("aria-expanded", "true");
+          if (original) {
+            await expect(page.getByText("Loading original response")).toBeVisible();
+            await expectHeld(trigger, saved);
+            await command(page, "loadReport");
+            await expect(page.getByRole("heading", { name: "Report start" })).toBeInViewport();
+          }
+          await expectHeld(trigger, saved);
+          // Later output still must not pull the opened report to the bottom.
+          await command(page, "stream");
+          await expectHeld(trigger, saved);
+          const body = page.locator(`[id="${await trigger.getAttribute("aria-controls")}"]`);
+          expect(await body.evaluate((element) => element.scrollHeight)).toBeGreaterThan(600);
+          if (original) {
+            // A wheel inside the bounded original scrolls its body, not the chat.
+            const bounds = await body.boundingBox();
+            await page.mouse.move(bounds!.x + 20, bounds!.y + 20);
+            await page.mouse.wheel(0, 180);
+            await expect
+              .poll(() => body.evaluate((element) => element.scrollTop))
+              .toBeGreaterThan(0);
+            await expectHeld(trigger, saved);
+          } else {
+            const before = await top(transcript);
+            await wheel(page, transcript, 180);
+            await expect.poll(() => top(transcript)).toBeGreaterThan(before + 100);
+          }
+          await trigger.scrollIntoViewIfNeeded();
+          await trigger.click();
+          await expect(trigger).toHaveAttribute("aria-expanded", "false");
+          const reopened = await offset(trigger);
+          // Keyboard activation must pause following too, and reopening starts at the top.
+          await trigger.focus();
+          await trigger.press("Enter");
+          await expect(trigger).toHaveAttribute("aria-expanded", "true");
+          await expectHeld(trigger, reopened);
+          if (original) expect(await body.evaluate((element) => element.scrollTop)).toBe(0);
+          await trigger.click();
+        }
+      });
+    }
+  });
+}
 
 test.describe("short transcript", () => {
   test.use({ messageCount: 2 });

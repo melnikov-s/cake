@@ -79,6 +79,7 @@ export const InlineMessageSource = observer(function InlineMessageSource({
         </div>
       )}
       <DisclosureTrigger
+        data-slot="response-disclosure"
         title={title ?? (store.expanded ? "Collapse response" : "Expand response")}
         subtitle={title || preview ? undefined : sourceTitle}
         wrapTitle={Boolean(title)}

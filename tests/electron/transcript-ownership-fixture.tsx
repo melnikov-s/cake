@@ -1,4 +1,5 @@
 import { createRoot } from "react-dom/client";
+import { formatSessionDigestReminder } from "../../src/contracts/cake-chats/session-digest-reminder";
 import { flushSync } from "react-dom";
 import { StoreProvider } from "r-state-tree/react";
 import { ChatTranscript } from "../../src/renderer/components/chat-transcript";
@@ -45,33 +46,68 @@ const widgetRevision: ArtifactRevision = {
     interaction: { mode: "present" },
   },
 };
+const withUpdates = parameters.get("updates") === "true";
+let releaseReport: (() => void) | undefined;
+const reportReady = new Promise<void>((resolve) => {
+  releaseReport = resolve;
+});
 const fixture = createRendererStoreFixture({
-  client: widget
+  client: withUpdates
     ? {
-        inlineWidgets: { open: async () => widget },
-        artifacts: {
-          stateRead: async () => ({
-            lineageId: widgetRevision.lineageId,
-            version: 1,
-            value: { title: "Saved widget content" },
-          }),
-          referenceMetadata: async () => ({
-            lineage: {
-              id: widgetRevision.lineageId,
-              title: "Scroll widget",
-              createdAt: widgetRevision.metadata.publishedAt,
-              latestRevision: 1,
-              latest: widgetRevision.metadata,
-              stableRef: "cake://artifact/scroll-widget",
-            },
-            revision: widgetRevision.metadata,
-            links: [],
-            stableRef: "cake://artifact/scroll-widget",
-            exactRef: "cake://artifact/scroll-widget@r1",
-          }),
+        sessionChats: {
+          inspect: async (input) => {
+            if (input.kind !== "messages-read") throw new Error("Expected original report read");
+            await reportReady;
+            const ref = `cake://session/${input.sessionId}?message=${input.entryId}`;
+            const text = "## Report start\n\n" + "Detailed finding. ".repeat(900);
+            return {
+              message: {
+                ref,
+                link: ref,
+                sessionId: input.sessionId,
+                entryId: input.entryId,
+                parentId: null,
+                timestamp: new Date(0).toISOString(),
+                role: "assistant",
+                active: true,
+                inputRefs: [],
+                hasImages: false,
+              },
+              text,
+              totalChars: text.length,
+              offset: 0,
+              nextOffset: null,
+              truncated: false,
+            };
+          },
         },
       }
-    : undefined,
+    : widget
+      ? {
+          inlineWidgets: { open: async () => widget },
+          artifacts: {
+            stateRead: async () => ({
+              lineageId: widgetRevision.lineageId,
+              version: 1,
+              value: { title: "Saved widget content" },
+            }),
+            referenceMetadata: async () => ({
+              lineage: {
+                id: widgetRevision.lineageId,
+                title: "Scroll widget",
+                createdAt: widgetRevision.metadata.publishedAt,
+                latestRevision: 1,
+                latest: widgetRevision.metadata,
+                stableRef: "cake://artifact/scroll-widget",
+              },
+              revision: widgetRevision.metadata,
+              links: [],
+              stableRef: "cake://artifact/scroll-widget",
+              exactRef: "cake://artifact/scroll-widget@r1",
+            }),
+          },
+        }
+      : undefined,
   projects: [projectRecord({ path: "/project", name: "Project" })],
   sessions: [sessionSummary({ sessionId: "ownership", projectPath: "/project" })],
 });
@@ -101,6 +137,41 @@ if (widget)
     output: "Published",
     artifactId: "scroll-widget",
     artifactReference: "cake://artifact/scroll-widget@r1",
+  });
+if (withUpdates)
+  parts.push({
+    kind: "context",
+    id: "session-updates",
+    title: "Session updates",
+    text: formatSessionDigestReminder({
+      lines: [
+        {
+          reference: "theme",
+          sessionId: "theme",
+          title: "Sync open VS Code with Cake theme changes",
+          status: "completed",
+          summary: "Ready",
+          resultMessageRef: "cake://session/theme?message=report",
+        },
+        {
+          reference: "online",
+          sessionId: "online",
+          title: "Keep online control beside sidebar toggle",
+          status: "completed",
+          summary: "Ready",
+          resultMessageRef: "cake://session/online?message=report",
+        },
+        {
+          reference: "widgets",
+          sessionId: "widgets",
+          title: "Make widgets follow Cake theme live",
+          status: "completed",
+          summary: "Detailed update. ".repeat(900),
+        },
+      ],
+      running: 0,
+      interruptedReport: false,
+    })!,
   });
 const snapshot: ConversationSnapshot = {
   sessionId: "ownership",
@@ -132,7 +203,11 @@ function render() {
     root.render(
       <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
         {chatMode ? (
-          <Chat store={store} compact={chatMode === "compact"} />
+          <Chat
+            store={store}
+            compact={chatMode === "compact"}
+            embedded={withUpdates && chatMode === "compact"}
+          />
         ) : (
           <ChatTranscript
             store={store}
@@ -156,6 +231,8 @@ render();
 // These entry points control only external projection delivery / React commit
 // ordering. DOM scrolling, measurements, Virtuoso and transcript policy are real.
 export interface TranscriptOwnershipFixture {
+  /** Release the external original-report read after opening its disclosure. */
+  loadReport(): void;
   update(): void;
   stream(): void;
   /** A complete assistant message arrives without any user action. */
@@ -172,6 +249,9 @@ export interface TranscriptOwnershipFixture {
   newestId(): string | undefined;
 }
 Reflect.set(window, "transcriptFixture", {
+  loadReport() {
+    releaseReport?.();
+  },
   update() {
     publish();
     render();
