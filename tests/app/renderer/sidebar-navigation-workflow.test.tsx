@@ -394,6 +394,20 @@ describe("Sidebar navigation workflow", () => {
     expect(within(row("failed")).getByRole("img", { name: "Merged worktree" })).toBeDefined();
     expect(within(row("failed")).getByText("fix")).toBeDefined();
     expect(within(row("failed")).getByText("base")).toBeDefined();
+    const worktreeMetadata = row("failed").querySelector('[data-slot="session-description"]')!;
+    expect(worktreeMetadata.firstElementChild?.tagName).toBe("TIME");
+    expect(
+      worktreeMetadata
+        .querySelector("time")!
+        .compareDocumentPosition(
+          within(row("failed")).getByRole("img", { name: "Merged worktree" }),
+        ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    const plainMetadata = document.querySelector(
+      '[data-session-id="main"] [data-slot="session-description"]',
+    )!;
+    expect(plainMetadata.firstElementChild?.tagName).toBe("TIME");
+    expect(plainMetadata.children).toHaveLength(1);
     expect(screen.getAllByRole("img", { name: /worktree$/ })).toHaveLength(1);
     await fixture.publishInterview({
       id: "interview-1",
@@ -436,7 +450,7 @@ describe("Sidebar navigation workflow", () => {
         expect(row(id).querySelector("time")?.dateTime).toBe(
           sessions.find((session) => session.sessionId === id)!.modifiedAt,
         );
-      } else expect(row(id).querySelector("time")).toBeNull();
+      } else expect(row(id).querySelector("time")?.textContent).toBe("Working");
     }
   });
 
@@ -564,156 +578,62 @@ describe("Sidebar navigation workflow", () => {
     },
   );
 
-  it("freezes only active recency through interleaved writes, selection, refresh and mode changes", async () => {
-    const sessions = [
-      sidebarSummary("newest", 3),
-      sidebarSummary("middle", 2),
-      sidebarSummary("oldest", 1),
-    ];
-    using fixture = renderSidebarNavigation({
-      projects: [project],
-      sessions,
-      loadedIds: sessions.map((session) => session.sessionId),
-      client: { projectSessions: { open: async () => undefined } },
-    });
-    expect(row("newest").querySelector("time")).not.toBeNull();
-    await fixture.publishStreaming(["newest", "oldest"], true);
-    await fixture.user.click(rowButton("oldest"));
-    for (const [id, day] of [
-      ["oldest", 6],
-      ["newest", 8],
-      ["oldest", 9],
-    ] as const) {
-      await fixture.publishSessions(
-        sessions.map((session) => (session.sessionId === id ? sidebarSummary(id, day) : session)),
+  it.each(["projects", "activity"] as const)(
+    "groups work first and follows live recency within both groups in %s",
+    async (mode) => {
+      const sessions = ["newest", "middle", "oldest", "idle"].map((id, index) =>
+        sidebarSummary(id, 4 - index),
       );
-      expect(order()).toEqual(["newest", "middle", "oldest"]);
+      using fixture = renderSidebarNavigation({
+        projects: [project],
+        sessions,
+        loadedIds: sessions.map((session) => session.sessionId),
+        client: { projectSessions: { open: async () => undefined } },
+      });
+      if (mode === "activity")
+        await fixture.user.click(screen.getByRole("button", { name: "Show activity" }));
+      await fixture.publishStreaming(["middle", "oldest"], true);
+      expect(order()).toEqual(["middle", "oldest", "newest", "idle"]);
+      await fixture.user.click(rowButton("oldest"));
+      await fixture.publishSessions([
+        sidebarSummary("oldest", 6),
+        sidebarSummary("middle", 5),
+        sidebarSummary("idle", 10),
+        sidebarSummary("newest", 4),
+      ]);
+      expect(order()).toEqual(["oldest", "middle", "idle", "newest"]);
       expect(row("oldest").dataset.navigationActive).toBe("true");
-      for (const active of ["newest", "oldest"]) {
-        expect(row(active).querySelector("time")).toBeNull();
-        expect(row(active).querySelector(".session-time")).toBeNull();
-        expect(within(row(active)).getByRole("img", { name: "Running" })).toBeDefined();
-      }
-      expect(row("middle").querySelector("time")).not.toBeNull();
-      await fixture.publishEvent({
-        _tag: "PartUpdated",
-        sessionId: id,
-        part: {
-          id: "tool-read",
-          kind: "tool",
-          name: "read",
-          input: "src/app.ts",
-          state: "running",
-          output: `bytes ${day}`,
-        },
-      });
-      await fixture.publishEvent({
-        _tag: "PartUpdated",
-        sessionId: id,
-        part: {
-          id: "assistant-message",
-          kind: "text",
-          role: "assistant",
-          text: `progress ${day}`,
-          status: "streaming",
-        },
-      });
-      expect(order()).toEqual(["newest", "middle", "oldest"]);
-    }
-    // Inactive rows still move immediately, without changing the active pair's order.
-    const refreshed = [
-      sidebarSummary("oldest", 9),
-      sidebarSummary("middle", 10),
-      sidebarSummary("newest", 8),
-    ];
-    await fixture.publishSessions(refreshed);
-    expect(order()).toEqual(["middle", "newest", "oldest"]);
-    await fixture.user.click(screen.getByRole("button", { name: "Show activity" }));
-    expect(order()).toEqual(["middle", "newest", "oldest"]);
-    await fixture.publishSessions([...refreshed].reverse());
-    expect(order()).toEqual(["middle", "newest", "oldest"]);
-    await fixture.user.click(screen.getByRole("button", { name: "Show projects" }));
-    expect(order()).toEqual(["middle", "newest", "oldest"]);
-    await fixture.user.click(rowButton("newest"));
-    expect(row("newest").dataset.navigationActive).toBe("true");
-    expect(order()).toEqual(["middle", "newest", "oldest"]);
-  });
+      expect(row("oldest").querySelector("time")?.textContent).toBe("Working");
+      await fixture.publishStreaming(["oldest"], false);
+      expect(order()).toEqual(["middle", "idle", "oldest", "newest"]);
+      expect(row("oldest").querySelector("time")?.dateTime).toBe(
+        sidebarSummary("oldest", 6).modifiedAt,
+      );
+      await fixture.publishStreaming(["middle"], false);
+      expect(order()).toEqual(["idle", "oldest", "middle", "newest"]);
+      await fixture.publishStreaming(["newest"], true);
+      expect(order()).toEqual(["newest", "idle", "oldest", "middle"]);
+    },
+  );
 
-  it("rejoins date order on completion and takes a fresh anchor on reactivation", async () => {
-    const sessions = ["newest", "middle", "oldest"].map((id, index) =>
-      sidebarSummary(id, 3 - index),
-    );
-    using fixture = renderSidebarNavigation({
-      projects: [project],
-      sessions,
-      loadedIds: ["newest", "middle", "oldest"],
-      client: { projectSessions: { open: async () => undefined } },
-    });
-    await fixture.publishStreaming(["newest", "middle"], true);
-    await fixture.publishSessions([
-      sidebarSummary("newest", 7),
-      sidebarSummary("middle", 8),
-      sidebarSummary("oldest", 1),
-    ]);
-    // Joining work uses its existing date position, not the last writer's position.
-    await fixture.publishStreaming(["oldest"], true);
-    await fixture.publishSessions([
-      sidebarSummary("oldest", 9),
-      sidebarSummary("middle", 8),
-      sidebarSummary("newest", 7),
-    ]);
-    expect(order()).toEqual(["newest", "middle", "oldest"]);
-    await fixture.user.click(rowButton("middle"));
-    await fixture.publishStreaming(["middle"], false);
-    expect(order()).toEqual(["middle", "newest", "oldest"]);
-    expect(row("middle").querySelector("time")?.dateTime).toBe(
-      sidebarSummary("middle", 8).modifiedAt,
-    );
-    expect(row("middle").dataset.navigationActive).toBe("true");
-    await fixture.publishStreaming(["middle"], true);
-    await fixture.publishSessions([
-      sidebarSummary("middle", 11),
-      sidebarSummary("oldest", 9),
-      sidebarSummary("newest", 7),
-    ]);
-    expect(order()).toEqual(["middle", "newest", "oldest"]);
-    expect(row("middle").querySelector("time")).toBeNull();
-    await fixture.publishStreaming(["newest", "oldest"], false);
-    expect(order()).toEqual(["oldest", "middle", "newest"]);
-    await fixture.publishStreaming(["middle"], false);
-    expect(order()).toEqual(["middle", "oldest", "newest"]);
-  });
-
-  it("restores active anchors across window remounts and breaks equal recency ties by identity", async () => {
+  it("breaks equal working and idle recency ties by identity across catalog refresh and remount", async () => {
     const sessions = [
-      sidebarSummary("alpha", 2, { running: true }),
       sidebarSummary("beta", 2, { running: true }),
+      sidebarSummary("alpha", 2, { running: true }),
+      sidebarSummary("delta", 3),
+      sidebarSummary("charlie", 3),
     ];
     const saved = await (async () => {
       using fixture = renderSidebarNavigation({ projects: [project], sessions });
-      expect(order()).toEqual(["alpha", "beta"]);
-      expect(row("alpha").querySelector("time")).toBeNull();
-      await fixture.publishSessions([
-        sidebarSummary("beta", 9, { running: true }),
-        sidebarSummary("alpha", 8, { running: true }),
-      ]);
-      expect(order()).toEqual(["alpha", "beta"]);
+      expect(order()).toEqual(["alpha", "beta", "charlie", "delta"]);
+      await fixture.publishSessions([...sessions].reverse());
+      expect(order()).toEqual(["alpha", "beta", "charlie", "delta"]);
       return fixture.snapshot();
     })();
-    using fixture = renderSidebarNavigation({
-      projects: [project],
-      snapshot: saved,
-      sessions: [
-        sidebarSummary("beta", 9, { running: true }),
-        sidebarSummary("alpha", 8, { running: true }),
-      ],
-    });
-    expect(order()).toEqual(["alpha", "beta"]);
-    await fixture.publishSessions([
-      sidebarSummary("beta", 11, { running: true }),
-      sidebarSummary("alpha", 10, { running: true }),
-    ]);
-    expect(order()).toEqual(["alpha", "beta"]);
+    using fixture = renderSidebarNavigation({ projects: [project], sessions, snapshot: saved });
+    expect(order()).toEqual(["alpha", "beta", "charlie", "delta"]);
+    await fixture.publishSessions([...sessions].reverse());
+    expect(order()).toEqual(["alpha", "beta", "charlie", "delta"]);
   });
 
   it("marks Activity Project Chats with their Project's icon in the session status column", async () => {
@@ -751,17 +671,20 @@ describe("Sidebar navigation workflow", () => {
     expect(within(status).getByRole("img", { name: "Running" })).toBeDefined();
 
     await fixture.publishProjectChatStreaming("project-chat", false);
-    expect(chatRow.querySelector('[data-slot="project-chat-status"]')).toBeNull();
+    expect(
+      document.querySelector('[data-slot="project-chat-item"] [data-slot="project-chat-status"]'),
+    ).toBeNull();
     await fixture.publishProjectChats([chat(true)]);
     expect(
-      within(chatRow.querySelector<HTMLElement>('[data-slot="project-chat-status"]')!).getByRole(
-        "img",
-        { name: "Ready, unread" },
-      ),
+      within(
+        document.querySelector<HTMLElement>(
+          '[data-slot="project-chat-item"] [data-slot="project-chat-status"]',
+        )!,
+      ).getByRole("img", { name: "Ready, unread" }),
     ).toBeDefined();
   });
 
-  it("keeps running Project Chats stable against sessions in the mixed Activity feed", async () => {
+  it("orders running Project Chats and sessions by live activity before idle entries", async () => {
     const sessions = [sidebarSummary("newest", 4), sidebarSummary("oldest", 1)];
     using fixture = renderSidebarNavigation({
       projects: [project],
@@ -791,9 +714,9 @@ describe("Sidebar navigation workflow", () => {
     expect(chatRow.textContent).toBe("Project ChatProject Chat");
     await fixture.publishProjectChats([chat(9)]);
     await fixture.publishSessions([sidebarSummary("oldest", 10), sidebarSummary("newest", 8)]);
-    expect(mixedOrder()).toEqual(["newest", "project-chat", "oldest"]);
+    expect(mixedOrder()).toEqual(["oldest", "project-chat", "newest"]);
     await fixture.publishProjectChatStreaming("project-chat", false);
-    expect(mixedOrder()).toEqual(["project-chat", "newest", "oldest"]);
+    expect(mixedOrder()).toEqual(["oldest", "newest", "project-chat"]);
     expect(document.querySelector('[data-slot="project-chat-item"]')!.textContent).not.toBe(
       "Project ChatProject Chat",
     );
@@ -878,17 +801,17 @@ describe("Sidebar navigation workflow", () => {
     await fixture.publishStreaming(["worker"], true);
     expect(within(row("root")).queryByRole("img", { name: "Running" })).toBeNull();
     expect(within(row("worker")).getByRole("img", { name: "Running" })).toBeDefined();
-    expect(row("worker").querySelector("time")).toBeNull();
+    expect(row("worker").querySelector("time")?.textContent).toBe("Working");
     expect(row("root").querySelector("time")).not.toBeNull();
     await fixture.user.click(screen.getByRole("button", { name: "Collapse children of planner" }));
     expect(order()).toEqual(["root", "planner", "sibling", "standalone"]);
     expect(within(row("planner")).getByRole("img", { name: "Running" })).toBeDefined();
-    expect(row("planner").querySelector("time")).toBeNull();
+    expect(row("planner").querySelector("time")?.textContent).toBe("Working");
     expect(within(row("root")).queryByRole("img", { name: "Running" })).toBeNull();
     await fixture.user.click(screen.getByRole("button", { name: "Collapse children of root" }));
     expect(order()).toEqual(["root", "standalone"]);
     expect(within(row("root")).getByRole("img", { name: "Running" })).toBeDefined();
-    expect(row("root").querySelector("time")).toBeNull();
+    expect(row("root").querySelector("time")?.textContent).toBe("Working");
     await fixture.user.click(screen.getByRole("button", { name: "Show activity" }));
     // The root's own timestamp is older: hidden descendants still determine family recency.
     expect(order()).toEqual(["root", "standalone"]);
@@ -1140,7 +1063,8 @@ describe("Sidebar navigation workflow", () => {
     await fixture.publishProjectChats([chat]);
     const status = () =>
       projectGroup("cake").querySelector('[data-slot="project-chat-status"] .session-status');
-    expect(order()).not.toContain("task-0");
+    expect(order()[0]).toBe("task-0");
+    expect(order()).not.toContain("task-1");
     expect(status()?.getAttribute("aria-label")).toBe("Ready, unread");
     await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
     expect(status()?.getAttribute("aria-label")).toBe("Running");

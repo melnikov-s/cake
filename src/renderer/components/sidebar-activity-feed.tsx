@@ -56,19 +56,27 @@ export const SidebarActivityFeed = observer(function SidebarActivityFeed({
     ...sessionList.activeProjectSessionFamilies.map((family) => ({
       kind: "family" as const,
       modifiedAt: family.latestModifiedAt,
+      working: family.working,
       family,
     })),
     ...sessionList.activeCakeChatSessions.map((summary) => ({
       kind: "project-chat" as const,
       modifiedAt: summary.modifiedAt,
+      working: summary.working,
       summary,
     })),
-  ].sort(compareSessionSummariesByActivity);
+  ].sort(
+    (left, right) =>
+      Number(right.working) - Number(left.working) ||
+      compareSessionSummariesByActivity(left, right) ||
+      (left.kind === "family" ? left.family.rootSessionId : left.summary.sessionId).localeCompare(
+        right.kind === "family" ? right.family.rootSessionId : right.summary.sessionId,
+      ),
+  );
   const groups = new Map<string, typeof entries>();
   for (const entry of entries) {
-    // Activity mode is purely chronological: drafts share day groups with
-    // regular sessions instead of being pinned above them.
-    const key = dayKey(entry.modifiedAt);
+    // Working family blocks lead; idle drafts share ordinary chronological day groups.
+    const key = entry.working ? "working" : dayKey(entry.modifiedAt);
     const group = groups.get(key) ?? [];
     group.push(entry);
     groups.set(key, group);
@@ -82,7 +90,7 @@ export const SidebarActivityFeed = observer(function SidebarActivityFeed({
       {[...groups.entries()].map(([key, group]) => (
         <section key={key}>
           <h2 className="px-2 pb-1.5 text-sm font-medium text-muted-foreground">
-            {dayLabel(group[0]!.modifiedAt, store.now)}
+            {key === "working" ? "Working" : dayLabel(group[0]!.modifiedAt, store.now)}
           </h2>
           <AnimatedList className="flex flex-col gap-1 pl-2">
             {group.map((entry) => {

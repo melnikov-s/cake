@@ -35,6 +35,8 @@ export const ProjectSessionSummary = Schema.Struct({
   resolved: Schema.Boolean,
   unread: Schema.Boolean,
   running: Schema.Boolean,
+  /** Runtime-owned start of this working stretch; absent when idle or unknown. */
+  workingStartedAt: Schema.optionalKey(Schema.Number),
   /** Recovery paused safely; this session needs fresh user input, not automatic replay. */
   recoveryIssue: Schema.optionalKey(boundedText),
   latestTurnOutcome: Schema.optionalKey(Schema.Literals(["complete", "failed", "aborted"])),

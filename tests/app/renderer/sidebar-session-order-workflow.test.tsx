@@ -8,6 +8,7 @@ import {
   type ConversationEvent,
   type ConversationSnapshot,
 } from "../../../src/contracts/conversations/conversation-data";
+import { applySessionCatalogGroupUpdate } from "../../../src/renderer/reducers/CatalogReducer";
 import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-project-group";
 import {
   applyConversationSnapshot,
@@ -102,6 +103,19 @@ function renderOrdering() {
         }),
       );
     },
+    publishActivity(running: boolean, workingStartedAt: number | null) {
+      act(() =>
+        applySessionCatalogGroupUpdate(
+          models.sessionCatalog,
+          { projectPath, resolved: false },
+          {
+            _tag: "Event",
+            revision: ++eventRevision,
+            event: { _tag: "ActivityChanged", sessionId: "previous", running, workingStartedAt },
+          },
+        ),
+      );
+    },
     resolve,
     finishResolve() {
       act(() => completeResolve());
@@ -126,7 +140,10 @@ function renderOrdering() {
   };
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 for (const kind of ["project-session"] as const) {
   describe(`${kind} sidebar order`, () => {
@@ -151,7 +168,7 @@ for (const kind of ["project-session"] as const) {
         expect(running()).toBeNull();
         fixture.publishEvent({ _tag: "TurnAccepted", sessionId, turnId, delivery: "prompt" });
         expect(running()).not.toBeNull();
-        expect(timestamp()).toBeNull();
+        expect(timestamp()?.textContent).toBe("Working");
         await fixture.user.click(screen.getByRole("button", { name: /^older / }));
         expect(running()).not.toBeNull();
         fixture.publishEvent({ _tag: "StreamingChanged", sessionId, streaming: true });
@@ -164,6 +181,43 @@ for (const kind of ["project-session"] as const) {
         expect(running()).toBeNull();
       },
     );
+
+    it("counts the authoritative working stretch across rerenders, restarts, completion and teardown", () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-01-05T00:00:00Z"));
+      const fixture = renderOrdering();
+      const baselineTimers = vi.getTimerCount();
+      const timestamp = () => document.querySelector('[data-session-id="previous"] time')!;
+      fixture.publishActivity(true, Date.now() - 65_000);
+      expect(timestamp().textContent).toBe("Working 1m 5.0s");
+      expect(fixture.order()[0]).toBe("previous");
+      expect(vi.getTimerCount()).toBe(baselineTimers + 1);
+      act(() => vi.advanceTimersByTime(2_000));
+      expect(timestamp().textContent).toBe("Working 1m 7.0s");
+      // Catalog refresh rerenders the row without changing the current stretch.
+      fixture.publish(
+        initialSessions.map((session) =>
+          session.sessionId === "previous"
+            ? { ...session, title: "Renamed", running: true, workingStartedAt: Date.now() - 67_000 }
+            : session,
+        ),
+      );
+      expect(timestamp().textContent).toBe("Working 1m 7.0s");
+      fixture.publishActivity(false, null);
+      expect(timestamp().getAttribute("datetime")).toBe(initialSessions[1]!.modifiedAt);
+      expect(timestamp().textContent).not.toContain("Working");
+      expect(fixture.order()).toEqual(["newer", "previous", "older", "oldest"]);
+      expect(vi.getTimerCount()).toBe(baselineTimers);
+      fixture.publishActivity(true, null);
+      expect(timestamp().textContent).toBe("Working");
+      expect(vi.getTimerCount()).toBe(baselineTimers);
+      fixture.publishActivity(true, Date.now());
+      expect(timestamp().textContent).toBe("Working 0.0s");
+      act(() => vi.advanceTimersByTime(1_000));
+      expect(timestamp().textContent).toBe("Working 1.0s");
+      fixture[Symbol.dispose]();
+      expect(vi.getTimerCount()).toBe(0);
+    });
 
     const timings = ["before", "after"] as const;
     it.each(timings)(

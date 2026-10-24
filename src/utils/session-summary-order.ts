@@ -2,13 +2,15 @@
 interface OrderableSessionSummary {
   modifiedAt: string;
   draft?: boolean;
+  working?: boolean;
 }
 
-/** Saved drafts are pinned first; sessions within each lane follow latest activity. */
+/** Working sessions lead; idle drafts remain pinned within the non-working lane. */
 export function compareSessionSummariesForSidebar(
   left: OrderableSessionSummary,
   right: OrderableSessionSummary,
 ): number {
+  if (Boolean(left.working) !== Boolean(right.working)) return left.working ? -1 : 1;
   if (Boolean(left.draft) !== Boolean(right.draft)) return left.draft ? -1 : 1;
   return compareSessionSummariesByActivity(left, right);
 }

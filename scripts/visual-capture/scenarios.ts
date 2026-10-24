@@ -2237,7 +2237,7 @@ const projectChatTodos: VisualCaptureScenario = {
 const activeSidebarSessions: VisualCaptureScenario = {
   name: "active-sidebar-sessions",
   description:
-    "Active sidebar rows omit all timestamps while retaining inactive metadata, beside an unread Project Chat in Activity",
+    "Working-first sidebar rows show activity time before worktree metadata, beside an unread Project Chat in Activity",
   states: ["projects", "activity"],
   async seed(paths, theme) {
     await projectChatSidebar.seed(paths, theme);
@@ -2301,7 +2301,7 @@ const activeSidebarSessions: VisualCaptureScenario = {
         },
       });
       await expect(row.getByRole("img", { name: "Waiting for your answer" })).toBeVisible();
-      await expect(row.locator("time")).toHaveCount(0);
+      await expect(row.locator("time")).toHaveText("Working");
     }
     if (state === "activity") {
       await page.getByRole("button", { name: "Show activity", exact: true }).click();

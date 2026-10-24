@@ -1,4 +1,4 @@
-import { Store, observable, snapshot, untracked } from "r-state-tree";
+import { Store, observable, snapshot } from "r-state-tree";
 import type { CakeChatCatalogQuery } from "../../contracts/cake-chats/cake-chat-data";
 import type { ProjectSessionCatalogQuery } from "../../contracts/project-sessions/project-session-data";
 import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
@@ -37,24 +37,10 @@ export class SidebarSessionListStore extends Store<{
   private readonly activatedResolvedCakeChatCatalogs: Record<string, boolean> = observable({});
   private readonly sessionLimits: Record<string, number> = observable({});
   @snapshot private readonly collapsedFamilies: Record<string, boolean> = observable({});
-  /**
-   * Freeze recency only for running/waiting rows (whole families stay parent-first).
-   * Entry uses the existing date/label lanes; completion immediately rejoins live recency.
-   * Persist anchors with window presentation so catalog refreshes/remounts cannot reshuffle work.
-   */
-  @snapshot private readonly activeSortTimes: Record<string, string> = observable({});
   resolvedLaneExpanded = false;
 
   constructor(props: SidebarSessionListStore["props"]) {
     super(props);
-    this.reaction(
-      () => this.sortEntries(),
-      (entries) => this.syncActiveSortTimes(entries),
-    );
-    // Context is available only once this Store is attached to its ownership tree.
-    this.effect(() => {
-      untracked(() => this.syncActiveSortTimes(this.sortEntries()));
-    });
     // Reveal a newly selected session, whatever opened it (click, link, control).
     // Tracks selection, Project and family structure, never collapse state, so collapsing
     // the selected session's Project or parent afterwards still sticks.
@@ -81,8 +67,6 @@ export class SidebarSessionListStore extends Store<{
         session.familyParentSessionId === session.sessionId ||
         !byId.has(session.familyParentSessionId),
     );
-    const latestActivity = (session: ProjectSession) =>
-      this.sortTime("project", session.sessionId, this.familyActivity(session, byId).modifiedAt);
     const flatten = (session: (typeof sessions)[number]): Array<(typeof sessions)[number]> => {
       if (!session.familyChildSessionIds?.length || this.isFamilyCollapsed(session.sessionId))
         return [session];
@@ -94,11 +78,13 @@ export class SidebarSessionListStore extends Store<{
     return roots
       .map((root) => ({
         rootSessionId: root.sessionId,
-        latestModifiedAt: latestActivity(root),
+        latestModifiedAt: this.familyActivity(root, byId).modifiedAt,
+        working: this.familyActivity(root, byId).active,
         sessions: flatten(root),
       }))
       .sort(
         (left, right) =>
+          Number(right.working) - Number(left.working) ||
           right.latestModifiedAt.localeCompare(left.latestModifiedAt) ||
           left.rootSessionId.localeCompare(right.rootSessionId),
       );
@@ -113,10 +99,11 @@ export class SidebarSessionListStore extends Store<{
       )
       .map((session) => ({
         ...session,
-        modifiedAt: this.sortTime("cake-chat", session.sessionId, session.modifiedAt),
+        working: isActiveSessionActivity(this.props.cakeChat().activityFor(session.sessionId)),
       }))
       .sort(
         (left, right) =>
+          Number(right.working) - Number(left.working) ||
           right.modifiedAt.localeCompare(left.modifiedAt) ||
           left.sessionId.localeCompare(right.sessionId),
       );
@@ -224,8 +211,14 @@ export class SidebarSessionListStore extends Store<{
     return sessions.sort(
       (left, right) =>
         compareSessionSummariesForSidebar(
-          { ...left, modifiedAt: this.sortTime("cake-chat", left.sessionId, left.modifiedAt) },
-          { ...right, modifiedAt: this.sortTime("cake-chat", right.sessionId, right.modifiedAt) },
+          {
+            ...left,
+            working: isActiveSessionActivity(this.props.cakeChat().activityFor(left.sessionId)),
+          },
+          {
+            ...right,
+            working: isActiveSessionActivity(this.props.cakeChat().activityFor(right.sessionId)),
+          },
         ) || left.sessionId.localeCompare(right.sessionId),
     );
   }
@@ -365,13 +358,25 @@ export class SidebarSessionListStore extends Store<{
         !byId.has(session.familyParentSessionId),
     );
     const latestActivity = (session: ProjectSession) =>
-      this.sortTime("project", session.sessionId, this.familyActivity(session, byId).modifiedAt);
+      this.familyActivity(session, byId).modifiedAt;
     const compareByDate = (left: (typeof roots)[number], right: (typeof roots)[number]) =>
       compareSessionSummariesForSidebar(
-        { modifiedAt: latestActivity(left), draft: left.draft },
-        { modifiedAt: latestActivity(right), draft: right.draft },
+        {
+          modifiedAt: latestActivity(left),
+          draft: left.draft,
+          working: this.familyActivity(left, byId).active,
+        },
+        {
+          modifiedAt: latestActivity(right),
+          draft: right.draft,
+          working: this.familyActivity(right, byId).active,
+        },
       ) || left.sessionId.localeCompare(right.sessionId);
     roots.sort((left, right) => {
+      const workingOrder =
+        Number(this.familyActivity(right, byId).active) -
+        Number(this.familyActivity(left, byId).active);
+      if (workingOrder) return workingOrder;
       if (this.projectSessionSort(projectPath) === "date") return compareByDate(left, right);
       const labelOrder = new Map(
         this.metadata.projectLabels(projectPath).map((label, index) => [label.id, index]),
@@ -399,36 +404,6 @@ export class SidebarSessionListStore extends Store<{
       active ||= activity.active;
     }
     return { modifiedAt, active };
-  }
-
-  private sortEntries() {
-    const sessions = this.props.catalog.sessions;
-    const byId = new Map(sessions.map((session) => [session.sessionId, session]));
-    return [
-      ...sessions.map((session) => ({
-        key: `project:${session.sessionId}`,
-        ...this.familyActivity(session, byId),
-      })),
-      ...this.props.cakeChat().summaries.map((session) => ({
-        key: `cake-chat:${session.sessionId}`,
-        modifiedAt: session.modifiedAt,
-        active: isActiveSessionActivity(this.props.cakeChat().activityFor(session.sessionId)),
-      })),
-    ];
-  }
-
-  private syncActiveSortTimes(
-    entries: ReadonlyArray<{ key: string; modifiedAt: string; active: boolean }>,
-  ) {
-    // An absent record may simply not have arrived in a refreshed catalog yet.
-    for (const entry of entries) {
-      if (entry.active) this.activeSortTimes[entry.key] ??= entry.modifiedAt;
-      else delete this.activeSortTimes[entry.key];
-    }
-  }
-
-  private sortTime(kind: "project" | "cake-chat", sessionId: string, modifiedAt: string) {
-    return this.activeSortTimes[`${kind}:${sessionId}`] ?? modifiedAt;
   }
 
   private limitKey(groupKey: string, resolved: boolean) {

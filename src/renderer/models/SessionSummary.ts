@@ -10,6 +10,7 @@ export class SessionSummary extends Model {
   resolved = false;
   unread = false;
   running = false;
+  workingStartedAt: number | undefined;
   recoveryIssue: string | undefined;
   latestTurnOutcome: ProjectSessionSummary["latestTurnOutcome"];
   projectPath = "";

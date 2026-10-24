@@ -73,6 +73,7 @@ const summary = (
   spawn?: SpawnedSession,
   recoveryIssue?: string,
   latestTurnOutcome?: ProjectSessionSummary["latestTurnOutcome"],
+  workingStartedAt?: number,
 ): ProjectSessionSummary => {
   const projected: ProjectSessionSummary = {
     sessionId: item.id,
@@ -93,6 +94,7 @@ const summary = (
     Object.assign(projected, {
       worktreeName: location.managedWorktree.branch.replace(/^agent\//, ""),
     });
+  if (workingStartedAt !== undefined && running) Object.assign(projected, { workingStartedAt });
   if (recoveryIssue !== undefined) Object.assign(projected, { recoveryIssue });
   if (latestTurnOutcome !== undefined) Object.assign(projected, { latestTurnOutcome });
   applyFamilySummary(projected, family);
@@ -336,6 +338,7 @@ const familyCatalog = Effect.fn("ProjectSessions.familyCatalog")(function* (
             metadata.spawns.get(sessionId),
             status?.recoveryIssue,
             status?.latestTurnOutcome,
+            status?.workingStartedAt,
           )
         : undefined;
     }),
@@ -457,6 +460,7 @@ const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
                     spawns.get(item.id),
                     status?.recoveryIssue,
                     status?.latestTurnOutcome,
+                    status?.workingStartedAt,
                   ),
                 ),
               ),
@@ -528,6 +532,7 @@ const discoverSessionAt = Effect.fn("ProjectSessions.discoverSessionAt")(functio
     (yield* spawnedSessions()).get(sessionId),
     status?.recoveryIssue,
     status?.latestTurnOutcome,
+    status?.workingStartedAt,
   );
 });
 
@@ -682,6 +687,7 @@ export const listing = Effect.fn("ProjectSessions.listing")(function* (
               spawns.get(sessionId),
               status?.recoveryIssue,
               status?.latestTurnOutcome,
+              status?.workingStartedAt,
             ),
           ),
           Effect.catch(() => Effect.succeed(undefined)),
@@ -773,6 +779,7 @@ const catalogEventForChange = Effect.fn("ProjectSessions.catalogEventForChange")
       _tag: "ActivityChanged",
       sessionId: change.sessionId,
       running: status?.streaming ?? false,
+      workingStartedAt: status?.workingStartedAt ?? null,
       recoveryIssue: status?.recoveryIssue ?? null,
       latestTurnOutcome: status?.latestTurnOutcome ?? null,
       unread: state.unreadSessionIds.includes(change.sessionId),

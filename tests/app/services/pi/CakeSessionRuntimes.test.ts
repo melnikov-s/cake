@@ -6,6 +6,7 @@ import { it } from "@effect/vitest";
 import {
   Context,
   Deferred,
+  Clock,
   Effect,
   Exit,
   Fiber,
@@ -17,6 +18,7 @@ import {
   Stream,
 } from "effect";
 import { describe } from "vitest";
+import { TestClock } from "effect/testing";
 import {
   makeCakeSessionRuntimesLayer,
   CakeSessionRuntimes,
@@ -591,15 +593,29 @@ describe("CakeSessionRuntimes", () => {
       yield* Deferred.await(started);
       yield* Queue.take(activity);
       assert.equal((yield* sessions.currentStatus(target))?.streaming, false);
+      assert.equal((yield* sessions.currentStatus(target))?.workingStartedAt, undefined);
       executingIds = [turnId];
+      const startedAt = yield* Clock.currentTimeMillis;
       emitStreaming(true);
       yield* Queue.take(activity);
       assert.equal((yield* sessions.currentStatus(target))?.streaming, true);
+      assert.equal((yield* sessions.currentStatus(target))?.workingStartedAt, startedAt);
+      yield* TestClock.adjust("5 seconds");
+      emitStreaming(true);
+      yield* Queue.take(activity);
+      assert.equal((yield* sessions.currentStatus(target))?.workingStartedAt, startedAt);
       emitStreaming(false);
       yield* Queue.take(activity);
       assert.equal((yield* sessions.currentStatus(target))?.streaming, false);
+      assert.equal((yield* sessions.currentStatus(target))?.workingStartedAt, undefined);
       // The correlation still exists, but the actual Pi run has ended.
       assert.deepEqual(yield* handle.currentTurnIds(), [turnId]);
+      yield* TestClock.adjust("2 seconds");
+      emitStreaming(true);
+      yield* Queue.take(activity);
+      assert.equal((yield* sessions.currentStatus(target))?.workingStartedAt, startedAt + 7_000);
+      emitStreaming(false);
+      yield* Queue.take(activity);
       yield* Deferred.succeed(release, undefined);
     }),
   );
@@ -692,13 +708,17 @@ describe("CakeSessionRuntimes", () => {
         sessionId: "session-1",
       };
       assert.equal((yield* sessions.currentStatus(target))?.streaming, true);
+      const workingStartedAt = (yield* sessions.currentStatus(target))?.workingStartedAt;
+      assert.equal(workingStartedAt, yield* Clock.currentTimeMillis);
       const consumedIds = executingIds;
       executingIds = [];
       settle();
       assert.equal((yield* sessions.currentStatus(target))?.streaming, true);
+      assert.equal((yield* sessions.currentStatus(target))?.workingStartedAt, workingStartedAt);
       executingIds = consumedIds;
       settle();
       assert.equal((yield* sessions.currentStatus(target))?.streaming, false);
+      assert.equal((yield* sessions.currentStatus(target))?.workingStartedAt, undefined);
       yield* Deferred.succeed(release, undefined);
     }),
   );

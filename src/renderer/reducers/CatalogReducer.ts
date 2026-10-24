@@ -145,6 +145,8 @@ export function applySessionCatalogGroupUpdate(
       const existing = model.find(event.sessionId);
       if (existing && belongsToGroup(existing)) {
         existing.running = event.running;
+        if (event.workingStartedAt !== undefined)
+          existing.workingStartedAt = event.workingStartedAt ?? undefined;
         if (event.recoveryIssue !== undefined)
           existing.recoveryIssue = event.recoveryIssue ?? undefined;
         if (event.latestTurnOutcome !== undefined)

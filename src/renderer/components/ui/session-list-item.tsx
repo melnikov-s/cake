@@ -2,7 +2,7 @@ import { useEffect, useRef, type MouseEventHandler, type ReactNode } from "react
 import { observer } from "r-state-tree/react";
 import type { ProjectIcon, SessionLabel } from "../../../contracts/application/application-data";
 import type { WorktreeRecord } from "../../../contracts/worktrees/managed-worktree-data";
-import { isActiveSessionActivity, type SessionActivity } from "../../lib/session-activity";
+import { type SessionActivity } from "../../lib/session-activity";
 import { cn } from "../../lib/utils";
 import { SessionActivityIndicator } from "../session-activity-indicator";
 import { WorktreeStatusIcon } from "../worktree-status-icon";
@@ -14,12 +14,14 @@ import { IconButton } from "./icon-button";
 import { CakeIcon, ChevronIcon, ResolveIcon, RestoreIcon } from "./icons";
 import { LabelSwatch } from "./label-swatch";
 import { associationHighlightClassName, NavItem, type NavItemProps } from "./nav-item";
+import { SessionActivityTime } from "./session-activity-time";
 
 export interface SessionListItemProps {
   session: {
     sessionId: string;
     title: string;
     modifiedAt: string;
+    workingStartedAt?: number;
     draft?: boolean;
     worktreeName?: string;
     familyParentSessionId?: string;
@@ -111,7 +113,6 @@ export const SessionListItem = observer(function SessionListItem({
     : (session.worktreeName ?? managedWorktree?.branch.replace(/^agent\//, ""));
   const baseBranch = managedWorktree?.baseBranch.replace(/^agent\//, "");
   const showBaseBranch = baseBranch !== undefined && baseBranch !== "main";
-  const showActivityTime = !isActiveSessionActivity(activity);
   return (
     <div
       ref={rowRef}
@@ -274,11 +275,19 @@ export const SessionListItem = observer(function SessionListItem({
                     ) : null}
                     <span className="truncate">{source.name}</span>
                   </span>
-                  {(branch || showActivityTime) && <span aria-hidden="true">·</span>}
+                  <span aria-hidden="true">·</span>
                 </>
               )}
+              <SessionActivityTime
+                modifiedAt={session.modifiedAt}
+                workingStartedAt={session.workingStartedAt}
+                activity={activity}
+                activityTime={activityTime}
+                focusMode={focusMode}
+              />
               {branch && (
                 <>
+                  <span aria-hidden="true">·</span>
                   {managedWorktree && (
                     <WorktreeStatusIcon state={managedWorktree.state} className="shrink-0" />
                   )}
@@ -289,20 +298,7 @@ export const SessionListItem = observer(function SessionListItem({
                       <span className="truncate">{baseBranch}</span>
                     </>
                   )}
-                  {showActivityTime && <span aria-hidden="true">·</span>}
                 </>
-              )}
-              {showActivityTime && (
-                <time
-                  className={cn(
-                    "session-time shrink-0 whitespace-nowrap text-xs tabular-nums text-muted-foreground",
-                    focusMode && "text-xs",
-                  )}
-                  dateTime={session.modifiedAt}
-                  title={new Date(session.modifiedAt).toLocaleString()}
-                >
-                  {activityTime}
-                </time>
               )}
             </span>
           }

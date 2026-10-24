@@ -30,6 +30,7 @@ const SessionCatalogEvent = Schema.TaggedUnion({
   ActivityChanged: {
     sessionId: ProjectSessionSummary.fields.sessionId,
     running: ProjectSessionSummary.fields.running,
+    workingStartedAt: Schema.optionalKey(Schema.NullOr(Schema.Number)),
     modifiedAt: Schema.optionalKey(ProjectSessionSummary.fields.modifiedAt),
     unread: Schema.optionalKey(ProjectSessionSummary.fields.unread),
     /** Null explicitly clears a previously blocked recovery. */

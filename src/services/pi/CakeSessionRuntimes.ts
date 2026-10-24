@@ -11,6 +11,7 @@ import { stat } from "node:fs/promises";
 import type { CakeOperationOptions } from "../../contracts/agent/cake-operation-options";
 import {
   Context,
+  Clock,
   Deferred,
   Effect,
   Equal,
@@ -289,6 +290,8 @@ export interface CakeSessionHandle {
 }
 
 export interface CakeSessionRuntimeStatus {
+  /** Start of the current accepted/executing stretch, not transcript modification time. */
+  readonly workingStartedAt?: number;
   readonly recoveryIssue?: string;
   readonly latestTurnOutcome?: "complete" | "failed" | "aborted";
   readonly streaming: boolean;
@@ -388,6 +391,7 @@ interface SharedRuntime {
   readonly events: PubSub.PubSub<PiSessionEvent>;
   readonly initialTranscriptPersisted: Deferred.Deferred<void>;
   readonly activeTurns: Ref.Ref<ReadonlyMap<string, "prompt" | "steer" | "follow-up">>;
+  readonly activityTiming: { startedAt: number | undefined };
   readonly settledInputIds: Set<string>;
   readonly turnResults: Map<string, PiTurnResult>;
   readonly queueEdits: Semaphore.Semaphore;
@@ -500,6 +504,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
     CakeSessionRuntimes,
     Effect.gen(function* () {
       const layerScope = yield* Effect.scope;
+      const clock = yield* Clock.Clock;
       const recoveryStorage = yield* RuntimeRecoveryStorage;
       const recoveryGate = yield* Semaphore.make(1);
       const persistInput = Effect.fn("CakeSessionRuntimes.persistInput")(function* (
@@ -597,6 +602,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                 ReadonlyMap<string, "prompt" | "steer" | "follow-up">
               >(new Map());
               const settledInputIds = new Set<string>();
+              const activityTiming: SharedRuntime["activityTiming"] = { startedAt: undefined };
               const turnResults = new Map<string, PiTurnResult>();
               const initialTranscriptPersisted = yield* Deferred.make<void>();
               if (key.options.profile._tag === "ProjectSession" && key.options.runtime.newSession)
@@ -615,9 +621,20 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                   turnResults.set(turnId, result);
                 },
                 onEvent(event) {
-                  if (event.type === "streaming" && !event.streaming)
-                    for (const id of currentRuntime?.executingTurnIds?.() ?? [])
-                      settledInputIds.add(id);
+                  if (event.type === "streaming") {
+                    if (event.streaming)
+                      activityTiming.startedAt ??= clock.currentTimeMillisUnsafe();
+                    else {
+                      for (const id of currentRuntime?.executingTurnIds?.() ?? [])
+                        settledInputIds.add(id);
+                      if (
+                        ![...Ref.getUnsafe(activeTurns)].some(
+                          ([id, delivery]) => delivery !== "follow-up" && !settledInputIds.has(id),
+                        )
+                      )
+                        activityTiming.startedAt = undefined;
+                    }
+                  }
                   const projected: PiSessionEvent =
                     event.type === "snapshot"
                       ? { type: "snapshot-updated", snapshot: event.snapshot }
@@ -655,6 +672,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                 runtime,
                 events,
                 activeTurns,
+                activityTiming,
                 queueEdits: Semaphore.makeUnsafe(1),
                 turnAdmissions: Semaphore.makeUnsafe(1),
               };
@@ -1051,6 +1069,15 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
               },
               paused,
             ).pipe(sessionError(delivery));
+            if (delivery !== "follow-up") {
+              const alreadyWorking =
+                retained.runtime.streaming ||
+                [...(yield* Ref.get(retained.activeTurns))].some(
+                  ([id, kind]) => kind !== "follow-up" && !retained.settledInputIds.has(id),
+                );
+              if (!alreadyWorking)
+                retained.activityTiming.startedAt = clock.currentTimeMillisUnsafe();
+            }
             yield* Ref.update(retained.activeTurns, (turns) =>
               new Map(turns).set(turnId, delivery),
             );
@@ -1722,16 +1749,20 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
         const queued = yield* runtimeOperation("currentStatus", () =>
           shared.runtime.listQueuedMessages(),
         ).pipe(Effect.orDie);
+        // Accepted prompts bridge preparation to Pi's first event. Queued
+        // follow-ups and correlations retained after Pi stops are not work.
+        const streaming =
+          shared.runtime.streaming ||
+          [...(yield* Ref.get(shared.activeTurns))].some(
+            ([id, delivery]) => delivery !== "follow-up" && !shared.settledInputIds.has(id),
+          );
         return {
           recoveryIssue,
           latestTurnOutcome,
-          streaming:
-            shared.runtime.streaming ||
-            // Accepted prompts bridge preparation to Pi's first event. Queued
-            // follow-ups and correlations retained after Pi stops are not work.
-            [...(yield* Ref.get(shared.activeTurns))].some(
-              ([id, delivery]) => delivery !== "follow-up" && !shared.settledInputIds.has(id),
-            ),
+          streaming,
+          ...(streaming && shared.activityTiming.startedAt !== undefined
+            ? { workingStartedAt: shared.activityTiming.startedAt }
+            : null),
           pending: queued.steering.length > 0 || queued.followUp.length > 0,
           persisted: shared.runtime.sessionFile.length > 0,
         };

@@ -1044,8 +1044,10 @@ describe("Project Sessions domain", () => {
                 !update.event.running &&
                 update.event.unread &&
                 durable
-              )
+              ) {
+                assert.equal(update.event.workingStartedAt, null);
                 return Deferred.succeed(settled, undefined);
+              }
               return Effect.void;
             }),
             Effect.forkChild,
@@ -1079,6 +1081,7 @@ describe("Project Sessions domain", () => {
           assert.equal(first.projectPath, "/project");
           assert.equal(first.worktreeName, "attachment-task");
           assert.equal(first.running, true);
+          assert.equal(first.workingStartedAt, 0); // Effect test clock at prompt acceptance.
           assert.equal(scans, 2); // One initial metadata scan per registered location, never a retry scan.
           yield* projectSessionMetadata.open({ sessionId: item.id });
           yield* projectSessionOperations
@@ -1108,6 +1111,7 @@ describe("Project Sessions domain", () => {
           });
           assert.equal(recovered.workingDirectory, "/worktree");
           assert.equal(recovered.running, false);
+          assert.equal(recovered.workingStartedAt, undefined);
           assert.equal(recovered.title, "Attachment task");
           const unknown = yield* projectSessionMetadata
             .lookup({ sessionId: "missing" })
