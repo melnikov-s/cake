@@ -91,7 +91,7 @@ export const windowControlDefinitions = {
     discovery: {
       topic: "app",
       summary:
-        "Inspect Cake's current selection, split-pane layout, directional neighbors and collection counts; use projects.list/sessions.list for discovery.",
+        "Inspect Cake's current selection, split-pane layout, neighbors, counts and visible embedded browser location or VS Code editor paths/groups. URLs omit credentials, query and fragment; unavailable/hidden views are explicit. Uses canonical session IDs without global discovery.",
     },
   },
   "app.user-selection": {

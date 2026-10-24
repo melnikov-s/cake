@@ -1,3 +1,4 @@
+import type { AppWorkspaceView } from "../../contracts/application/app-workspace-view";
 import {
   type SessionInspectionQuery,
   type QueuedSessionCommandReceipt,
@@ -117,6 +118,7 @@ interface AppControlVscodeSelectionsHost {
 export interface AppControlHost {
   state: {
     currentSelection(): AppControlSelection;
+    workspaceView?(): Promise<AppWorkspaceView | undefined>;
     userSelection(): string | null;
     sessionLayout?(source?: AgentControlSource): {
       focusedSessionId?: string;
@@ -260,6 +262,7 @@ interface AppControlSessionLabel extends SessionLabel {
 
 export interface AppControlState {
   selection: AppControlSelection;
+  workspaceView?: AppWorkspaceView;
   sessionLayout?: ReturnType<NonNullable<AppControlHost["state"]["sessionLayout"]>>;
   projectCount: number;
   sessionCount: number;

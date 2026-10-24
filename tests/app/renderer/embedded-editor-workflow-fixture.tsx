@@ -180,6 +180,19 @@ export function renderEmbeddedEditor(
     : Promise.resolve();
   return {
     user: userEvent.setup(),
+    appState: () =>
+      fixture.root.applicationControlStore.invoke({ name: "app.state", arguments: {} }),
+    measureWorkspace() {
+      // Same ingress as the native surface's ResizeObserver.
+      act(() => {
+        const presentation = fixture.root.projectWorkbenchStore.presentationStore;
+        presentation.browserStore.setMeasuredBounds({ x: 0, y: 0, width: 800, height: 600 });
+        presentation.embeddedEditorStore.setMeasuredBounds({ x: 0, y: 0, width: 800, height: 600 });
+      });
+    },
+    coverWorkspace() {
+      act(() => fixture.root.navigationStore.showSettings());
+    },
     initialization,
     hydrate() {
       act(() => hydrate(editorSessionId));

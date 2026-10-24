@@ -43,11 +43,12 @@ export function createSessionApplicationOperations(
       command: "app.state",
       requires: "invokeAppControl",
       topic: "app",
-      summary: "Inspect the invoking Cake window's selection, layout and collection counts.",
+      summary:
+        "Inspect the invoking Cake window's selection, layout, counts and visible browser/editor metadata.",
       inputSchema: empty,
       examples: [{}],
       result:
-        "Current selection/layout and project/session counts. Discover collections with projects.list or sessions.list.",
+        "Selection/layout, counts and workspaceView (browser location without credentials/query/fragment, or visible VS Code paths/groups). Hidden/loading/unavailable views do not imply current files. Canonical session IDs avoid global discovery; use projects.list/sessions.list for collections.",
       execute: (_input, context) => api().invokeAppControl("app.state", {}, context.signal),
     },
     {

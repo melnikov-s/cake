@@ -1,4 +1,5 @@
 import type { AppControlHost } from "./app-control-data";
+import { inspectWorkspaceView } from "./workspace-view-projection";
 import { invokeAgentSettings } from "./AgentSettingsControl";
 import type { Client } from "../client/Client";
 import type { AppShellStore } from "../stores/AppShellStore";
@@ -59,6 +60,7 @@ export function createRootApplicationControlHost(
   return {
     state: {
       userSelection: () => window.getSelection()?.toString().slice(0, 48_000) || null,
+      workspaceView: () => inspectWorkspaceView(capabilities),
       currentSelection: () => {
         const selection = capabilities.appShellStore.selection;
         if (selection.kind === "project-session") {

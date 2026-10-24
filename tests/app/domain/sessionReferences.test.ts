@@ -206,6 +206,29 @@ it.effect("suffixAmbiguityStillRejected", () => {
   }).pipe(Effect.provide(f.layer));
 });
 
+it.effect("app.state retains canonical pane identities without any global roster I/O", () => {
+  const f = fixture();
+  f.fail();
+  return Effect.gen(function* () {
+    const value = {
+      ok: true,
+      command: "app.state",
+      state: {
+        selection: { kind: "project-session", sessionId: active },
+        sessionLayout: { focusedSessionId: active, panes: [{ sessionId: inactive }] },
+        workspaceView: {
+          kind: "browser",
+          sessionId: active,
+          status: "ready",
+          url: "https://example.com/",
+        },
+      },
+    };
+    expect(yield* project(value)).toBe(value);
+    expect(f.sessionIds).not.toHaveBeenCalled();
+  }).pipe(Effect.provide(f.layer));
+});
+
 it.effect("does not scan the roster for results containing no session identities", () => {
   const f = fixture();
   return Effect.gen(function* () {

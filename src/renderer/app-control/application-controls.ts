@@ -8,7 +8,7 @@ export const applicationControls = [
   defineControl({
     ...windowControlDefinitions["app.state"],
     run: async (_input, { host, source }, command): Promise<AppControlResult> => {
-      return { ok: true, command, state: getAppState(host, source) };
+      return { ok: true, command, state: await getAppState(host, source) };
     },
   }),
   defineControl({

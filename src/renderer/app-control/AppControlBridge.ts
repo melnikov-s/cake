@@ -31,7 +31,7 @@ export class AppControlBridge {
     return listAppControlTools();
   }
 
-  getAppState(source?: AgentControlSource): AppControlState {
+  getAppState(source?: AgentControlSource): Promise<AppControlState> {
     return getAppState(this.host, source);
   }
 

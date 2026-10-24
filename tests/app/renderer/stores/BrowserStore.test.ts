@@ -86,7 +86,9 @@ describe("BrowserStore native presentation boundaries", () => {
   it("reports positive measured native bounds and hides them when suspended", async () => {
     using fixture = harness();
     const { browser, store } = fixture;
+    expect(store.currentLocation).toBeUndefined();
     await store.show();
+    expect(store.currentLocation).toBe(ready.url);
     store.setMeasuredBounds({ x: 280, y: 40, width: 800, height: 600 });
 
     expect(browser.updateBounds).toHaveBeenLastCalledWith(
@@ -129,6 +131,7 @@ describe("BrowserStore native presentation boundaries", () => {
         expect.any(Object),
       );
       expect(browser.updateBounds).toHaveBeenCalledOnce();
+      expect(store.currentLocation).toBeUndefined();
 
       root.navigationStore.selectProjectSession("session-1");
       await store.restore();

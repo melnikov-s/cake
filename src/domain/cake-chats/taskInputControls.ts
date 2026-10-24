@@ -1,4 +1,5 @@
 import { Effect, Option, Schema } from "effect";
+import { AppWorkspaceView } from "../../contracts/application/app-workspace-view";
 import { messageRefsSchema } from "../../contracts/conversations/message-reference";
 import { appendMessageReferences } from "../../contracts/conversations/message-reference-forwarding";
 import { inputRefsSchema } from "../../contracts/conversations/task-input";
@@ -98,6 +99,26 @@ export const safeCoordinatorProjection = Effect.fn("CakeChats.safeCoordinatorPro
     if (Array.isArray(value))
       return yield* Effect.forEach(value, (item) => safeCoordinatorProjection(item));
     if (!Schema.is(jsonObjectSchema)(value)) return value;
+    // Explicit window orientation is visible UI metadata, not task transcript content.
+    // Preserve only its closed metadata contract while applying existing protection to
+    // selection/layout and all other fields. Never exempt arbitrary session records.
+    if (
+      value.ok === true &&
+      value.command === "app.state" &&
+      Schema.is(jsonObjectSchema)(value.state)
+    ) {
+      const { workspaceView, ...state } = Schema.decodeUnknownSync(jsonObjectSchema)(value.state);
+      const safe = yield* safeCoordinatorProjection(state);
+      const view = Schema.decodeUnknownOption(AppWorkspaceView)(workspaceView);
+      return {
+        ok: true,
+        command: "app.state",
+        state: {
+          ...Schema.decodeUnknownSync(jsonObjectSchema)(safe),
+          ...(Option.isSome(view) ? { workspaceView: view.value } : null),
+        },
+      };
+    }
     const inputs = yield* TaskInputStorage;
     const pointer = Schema.decodeUnknownOption(SessionPointer)(value);
     if (Option.isSome(pointer) && (yield* inputs.isRecipient(pointer.value.sessionId))) {

@@ -1,11 +1,11 @@
-import { Effect, Option, Stream } from "effect";
+import { Effect, Option, Schema, Stream } from "effect";
 import {
   projectSessionReferences,
   resolveSessionReference,
   sessionReference,
 } from "../../contracts/project-sessions/session-reference";
 import { ProjectSessionError } from "../../contracts/project-sessions/project-session-data";
-import type { JsonValue } from "../../contracts/serialization/json-contract";
+import { jsonObjectSchema, type JsonValue } from "../../contracts/serialization/json-contract";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import { SavedDraftStorage } from "../../services/storage/SavedDraftStorage";
@@ -133,6 +133,9 @@ export const resolve = Effect.fn("SessionReferences.resolve")(function* (referen
 });
 
 export const project = Effect.fn("SessionReferences.project")(function* (value: JsonValue) {
+  // Window orientation already contains a bounded set of canonical IDs. Shortening
+  // them must not enumerate every Project/Worktree directory after the renderer replied.
+  if (Schema.is(jsonObjectSchema)(value) && value.command === "app.state") return value;
   const candidate = projectSessionReferences(value, []);
   if (JSON.stringify(candidate) === JSON.stringify(value)) return value;
   return projectIn(value, yield* catalog());

@@ -48,6 +48,7 @@ export class BrowserStore extends Store<BrowserStoreProps> {
   errorDetails: string | undefined;
   measuredBounds: BrowserViewport | undefined;
   private openedSessionId: string | undefined;
+  private stateSessionId: string | undefined;
 
   get browser() {
     return ClientContext.consume(this)!.browser;
@@ -55,6 +56,13 @@ export class BrowserStore extends Store<BrowserStoreProps> {
 
   get sessionId() {
     return this.props.sessionId();
+  }
+
+  /** Do not report the default address or a previous session's retained URL as current. */
+  get currentLocation() {
+    return this.openedSessionId === this.sessionId && this.stateSessionId === this.sessionId
+      ? this.url
+      : undefined;
   }
 
   get chatSidebarVisible() {
@@ -252,6 +260,7 @@ export class BrowserStore extends Store<BrowserStoreProps> {
 
   private applyState(state: BrowserStateSnapshot) {
     if (state.sessionId !== this.sessionId) return;
+    this.stateSessionId = state.sessionId;
     this.url = state.url;
     if (!this.addressEditing) this.address = state.url;
     this.title = state.title;
