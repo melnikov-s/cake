@@ -50,6 +50,7 @@ describe("parseBuiltinCommand", () => {
       name: "toolcompact",
       args: "Implement the plan",
     });
+    expect(parseBuiltinCommand("/sidechat")).toEqual({ name: "sidechat", args: "" });
     expect(parseBuiltinCommand("/sidechat Compare approaches")).toEqual({
       name: "sidechat",
       args: "Compare approaches",
@@ -74,6 +75,7 @@ describe("parseBuiltinCommand", () => {
     expect(cakeChatBuiltinSlashCommands.map((command) => command.name)).toEqual([
       "compact",
       "model",
+      "sidechat",
       "schedule",
     ]);
     expect(

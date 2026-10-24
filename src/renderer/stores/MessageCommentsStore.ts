@@ -44,6 +44,7 @@ export interface MessageSelectionAnchor {
 /** Owns assistant-message annotation creation, replies, and thread visibility. */
 export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
   draftSelection: MessageSelectionAnchor | undefined;
+  private sessionDraft = false;
   createdThreadId: string | undefined;
   draftFocusRequestRevision = 0;
 
@@ -69,6 +70,17 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
     this.draftChatStore.setDraft("");
     this.annotationDraft.clear();
     this.draftSelection = selection;
+    this.sessionDraft = false;
+    this.createdThreadId = undefined;
+    this.draftFocusRequestRevision += 1;
+  }
+
+  /** A Project Session can discuss its whole conversation without a selection. */
+  prepareSessionDraft() {
+    this.draftChatStore.setDraft("");
+    this.annotationDraft.clear();
+    this.draftSelection = undefined;
+    this.sessionDraft = true;
     this.createdThreadId = undefined;
     this.draftFocusRequestRevision += 1;
   }
@@ -102,17 +114,21 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
       submitting: () => Boolean(this.createdThreadId),
       configuration: () => this.props.host().configuration,
       commands: () => [],
-      placeholder: () => "Ask Cake about this passage…",
-      inputLabel: () => "Message about selected text",
+      placeholder: () =>
+        this.draftSelection?.selectedText
+          ? "Ask Cake about this passage…"
+          : "Ask Cake about this conversation…",
+      inputLabel: () =>
+        this.draftSelection?.selectedText ? "Message about selected text" : "Message side chat",
       focusRequestRevision: () => this.draftFocusRequestRevision,
       canSubmit: (draft) =>
         Boolean(
-          this.draftSelection &&
+          (this.draftSelection || this.sessionDraft) &&
           !this.createdThreadId &&
           (draft.trim() || this.annotationDraft.annotations.length),
         ),
       submit: async (draft) => {
-        if (!this.draftSelection || this.createdThreadId) return false;
+        if ((!this.draftSelection && !this.sessionDraft) || this.createdThreadId) return false;
         const threadId = await this.createThread(
           this.draftSelection,
           draft,
@@ -137,12 +153,28 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
   }
 
   async createThread(
-    selection: MessageSelectionAnchor,
+    selection: MessageSelectionAnchor | undefined,
     body: string,
     annotations: readonly Annotation[] = this.annotationDraft.annotations,
   ) {
     const context = this.props.context();
     if (!context || (!body.trim() && annotations.length === 0)) return undefined;
+    if (!selection) {
+      return this.props.host().createThread(
+        {
+          path: `session:${context.sessionId}`,
+          view: "session",
+          start: { diffLine: 0 },
+          end: { diffLine: 0 },
+          selectedText: "",
+          contextBefore: "",
+          contextAfter: "",
+          diff: "",
+        },
+        body,
+        annotations.slice(),
+      );
+    }
     const anchor: ReviewAnchor = {
       path: selection.artifactId
         ? `session:${context.sessionId}/artifact/${selection.artifactId}`

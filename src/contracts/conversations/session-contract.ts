@@ -600,7 +600,7 @@ const cakeBuiltinSlashCommands = [
   {
     name: "sidechat",
     description: "Start a side chat",
-    argumentHint: "<prompt>",
+    argumentHint: "[prompt]",
   },
   {
     name: "schedule",
@@ -624,7 +624,7 @@ export const builtinSlashCommands = [...piBuiltinSlashCommands, ...cakeBuiltinSl
 
 /** Commands supported by both global Cake Chat and Project Chat. */
 export const cakeChatBuiltinSlashCommands = builtinSlashCommands.filter((command) =>
-  ["compact", "model", "schedule"].includes(command.name),
+  ["compact", "model", "sidechat", "schedule"].includes(command.name),
 );
 
 /** Pi commands Cake can execute before a Pi Session Runtime exists. */

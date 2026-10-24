@@ -11,6 +11,7 @@ import {
   DiscussionSessionStartInput,
   type DiscussionThread,
 } from "../../../src/contracts/discussion-sessions/discussion-session-data";
+import { builtinSlashCommands } from "../../../src/contracts/conversations/session-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
 import { SideChatLayout } from "../../../src/renderer/components/side-chat-layout";
@@ -35,7 +36,7 @@ function conversation(sessionId: string): ConversationSnapshot {
     availableThinkingLevels: ["off", "high"],
     streaming: false,
     diagnostics: [],
-    commands: [],
+    commands: builtinSlashCommands,
     compatibility: { resources: [], diagnostics: [] },
     extensionUi: { statuses: [] },
     tree: [],
@@ -71,6 +72,7 @@ function renderSideChats(
     threads?: DiscussionThread[];
     selection?: MessageSelectionAnchor;
     withoutModel?: boolean;
+    streaming?: boolean;
     streamingThreads?: readonly string[];
   } = {},
 ) {
@@ -88,7 +90,7 @@ function renderSideChats(
   const session = fixture.root.sessionRegistry.load("parent-1", "/project");
   fixture.root.projectWorkbenchStore.projectOpenStore.projectPath = "/project";
   fixture.root.navigationStore.selectProjectSession("parent-1");
-  const snapshot = conversation("parent-1");
+  const snapshot = { ...conversation("parent-1"), streaming: options.streaming ?? false };
   if (options.withoutModel) Object.assign(snapshot, { model: undefined });
   applyConversationSnapshot(session.model, snapshot);
   let revision = 0;
@@ -204,6 +206,48 @@ describe("Secondary conversation workflows", () => {
       expect(screen.getByRole("combobox")).toBeDefined();
     },
   );
+
+  it("discovers bare /sidechat and opens a session-wide draft while the parent streams", async () => {
+    const created = thread("bare-thread", "Compare approaches");
+    const start = vi.fn<Client["discussionSessions"]["start"]>(async () => ({
+      turnId: TurnId.make("10000000-0000-4000-8000-000000000001"),
+      thread: created,
+    }));
+    using fixture = renderSideChats(start, { streaming: true });
+    const input = screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message" });
+    await fixture.user.type(input, "/side");
+    expect(
+      await screen.findByRole("option", {
+        name: /sidechat \[prompt\] Start a side chat/,
+      }),
+    ).toBeDefined();
+    await fixture.user.keyboard("{Enter}");
+    const panel = await screen.findByRole("complementary", { name: "Side chat" });
+    expect(start).not.toHaveBeenCalled();
+    expect(input.value).toBe("");
+    await fixture.user.type(
+      within(panel).getByRole("combobox", { name: "Message side chat" }),
+      "Compare approaches",
+    );
+    await fixture.user.click(within(panel).getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
+    expect(start.mock.calls[0]![0]).toMatchObject({
+      parentSessionId: "parent-1",
+      text: "Compare approaches",
+      anchor: created.anchor,
+    });
+    fixture.publish([created]);
+    expect(
+      await within(panel).findByRole("combobox", { name: "Reply to side chat" }),
+    ).toBeDefined();
+    await fixture.user.type(within(panel).getByRole("combobox"), "/sidechat");
+    await fixture.user.click(within(panel).getByRole("button", { name: "Send" }));
+    expect(
+      await within(panel).findByText("Side chats are unavailable in this conversation"),
+    ).toBeDefined();
+    expect(within(panel).getByRole<HTMLTextAreaElement>("combobox").value).toBe("/sidechat");
+    expect(start).toHaveBeenCalledTimes(1);
+  });
 
   it("replaces the open side chat from the session menu and can reopen it after closing", async () => {
     const start = vi.fn<Client["discussionSessions"]["start"]>();

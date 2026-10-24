@@ -340,6 +340,16 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
 
   private async createSideChat(prompt: string) {
     if (this.pending.isTemporary(this.sessionId)) return false;
+    if (!prompt) {
+      this.messageCommentsStore.prepareSessionDraft();
+      this.conversationSessionStore.sideChatStore.open({
+        key: "session-side-chat-draft",
+        title: "Side chat",
+        eyebrow: () => "Session",
+        chatStore: this.messageCommentsStore.draftChatStore,
+      });
+      return true;
+    }
     const threadId = await this.props
       .reviews()
       .createSideChat({ sessionId: this.sessionId, workingDirectory: this.workspacePath }, prompt);

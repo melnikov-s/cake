@@ -188,6 +188,15 @@ function command(name: string) {
 afterEach(cleanup);
 
 describe("Staged session command workflow", () => {
+  it("rejects /sidechat before a conversation exists without starting a session", async () => {
+    using staged = await renderStaged(async () => []);
+    await staged.user.type(screen.getByRole("combobox", { name: "Message" }), "/sidechat");
+    await staged.user.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByText("Side chats require an existing conversation")).toBeDefined();
+    expect(screen.getByRole("combobox", { name: "Message" })).toHaveProperty("value", "/sidechat");
+    expect(staged.start).not.toHaveBeenCalled();
+  });
+
   it("attaches command-only runtime observation before accepting the first command without projecting a user message", async () => {
     using staged = await renderStaged(async () => [mcp()]);
     await staged.user.type(screen.getByRole("combobox", { name: "Message" }), "/mcp");

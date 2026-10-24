@@ -274,13 +274,6 @@ describe("Chat composer workflow", () => {
     expect(screen.queryByRole("button", { name: /Remove.*active.ts/ })).toBeNull();
   });
 
-  it("shows usage for an empty side-chat command without consuming the draft", async () => {
-    using fixture = await renderComposer();
-    await typeAndSend(fixture.user, "/sidechat");
-    expect(await screen.findByText("Usage: /sidechat <prompt>")).toBeDefined();
-    expect(input().value).toBe("/sidechat");
-  });
-
   // Sender-neutral queue policy and per-item steering cancellation are exercised
   // with the real runtime projection in prompt-queue-workflow.test.tsx.
 });

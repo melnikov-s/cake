@@ -292,9 +292,11 @@ export function SlashCommandCombobox({
     commitValue(nextValue);
     // Completing a slash command is an explicit writing action, even with dictation.
     // Keep convenience autofocus parked, but let the user continue entering arguments.
-    requestAnimationFrame(() => {
-      if (focusEnabledRef.current) inputRef.current?.focus();
-    });
+    // Execution may open another composer; only completion keeps writing here.
+    if (includeTrailingSpace)
+      requestAnimationFrame(() => {
+        if (focusEnabledRef.current) inputRef.current?.focus();
+      });
     return nextValue;
   };
 
@@ -309,7 +311,10 @@ export function SlashCommandCombobox({
     } finally {
       // A deferred dictation send must not take focus back after the user moves on.
       const movedOn =
-        dictation?.enabled && !dictation.muted && document.activeElement !== focusAtSubmit;
+        document.activeElement !== focusAtSubmit &&
+        ((dictation?.enabled && !dictation.muted) ||
+          // Application commands can open another chat's composer.
+          document.activeElement?.matches('textarea[role="combobox"]'));
       // Empty Enter is not a send and must not interrupt ongoing dictation.
       if (!movedOn && (submittedValue?.trim() || document.activeElement !== inputRef.current))
         requestAnimationFrame(() => {

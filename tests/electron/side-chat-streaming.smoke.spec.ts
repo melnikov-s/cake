@@ -27,8 +27,12 @@ test("side chat keeps its transcript visible and its composer available while st
   verifySideChat(false));
 test("creates a side chat from a work-log selection without a transcript entry ID", () =>
   verifySideChat(true));
+test("discovers bare /sidechat and focuses its existing draft composer", () =>
+  verifySideChat(false, "menu"));
+test("submits bare /sidechat with the slash menu dismissed without stealing draft focus", () =>
+  verifySideChat(false, "submitted"));
 
-async function verifySideChat(selection: boolean) {
+async function verifySideChat(selection: boolean, bare?: "menu" | "submitted") {
   test.setTimeout(60_000);
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-side-chat-streaming-"));
   const userData = join(temporaryRoot, "user-data");
@@ -215,6 +219,27 @@ async function verifySideChat(selection: boolean) {
       await expect(panel.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
       await draft.press("Enter");
       await expect(draft).toHaveCount(0);
+    } else if (bare) {
+      await composer.pressSequentially("/side");
+      await expect(
+        page.getByRole("option", { name: /sidechat \[prompt\] Start a side chat/ }),
+      ).toBeVisible();
+      if (bare === "submitted") {
+        await composer.fill("/sidechat ");
+        await composer.press("Escape");
+      }
+      await composer.press("Enter");
+      await expect(composer).toHaveValue("");
+      const draft = page.getByRole("combobox", { name: "Message side chat", exact: true });
+      await expect(draft).toBeFocused();
+      await draft.pressSequentially("Explain the settings shape in detail");
+      await expect(draft).toHaveValue("Explain the settings shape in detail");
+      await expect(
+        page
+          .getByRole("complementary", { name: "Side chat" })
+          .getByRole("button", { name: "Send", exact: true }),
+      ).toBeEnabled();
+      await draft.press("Enter");
     } else {
       await page.keyboard.type("/sidechat Explain the settings shape in detail");
       await expect(composer).toHaveValue("/sidechat Explain the settings shape in detail");

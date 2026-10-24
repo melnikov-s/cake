@@ -200,7 +200,7 @@ async function verifyMessageSelection(highlightsOnly: boolean) {
     await expect(composer).toBeVisible();
     await composer.fill("/");
     await expect(
-      page.getByRole("option", { name: /sidechat <prompt> Start a side chat/ }),
+      page.getByRole("option", { name: /sidechat \[prompt\] Start a side chat/ }),
     ).toBeVisible();
     await composer.fill("");
 

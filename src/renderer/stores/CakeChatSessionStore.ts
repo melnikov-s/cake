@@ -237,6 +237,42 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     return true;
   }
 
+  private async createSideChat(prompt: string) {
+    const part = this.model.uiParts.findLast(
+      (part) =>
+        part.kind === "text" &&
+        part.role === "assistant" &&
+        part.status === "complete" &&
+        Boolean(part.entryId),
+    );
+    if (!part || part.kind !== "text")
+      throw new Error("Side chats require a completed assistant response");
+    const selection = {
+      messageId: part.id,
+      entryId: part.entryId,
+      selectedText: "",
+      startOffset: 0,
+      endOffset: 0,
+      contextBefore: "",
+      contextAfter: "",
+    };
+    if (prompt) {
+      const threadId = await this.messageCommentsStore.createThread(selection, prompt, []);
+      if (!threadId) throw new Error(this.sideChats.error ?? "Could not create side chat");
+      this.pendingSideChatThreadId = threadId;
+      this.openSideChat(threadId);
+      return true;
+    }
+    this.messageCommentsStore.prepareDraft(selection);
+    this.conversationSessionStore.sideChatStore.open({
+      key: "message-side-chat-draft",
+      title: "Side chat",
+      eyebrow: () => "Message",
+      chatStore: this.messageCommentsStore.draftChatStore,
+    });
+    return true;
+  }
+
   @child
   get history(): ConversationHistoryStore {
     return createStore(ConversationHistoryStore, { model: this.model });
@@ -271,6 +307,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       startSession: (input) => this.startSession(input),
       ensureSessionActive: () => true,
       composer: {
+        createSideChat: (prompt) => this.createSideChat(prompt),
         scheduleMessage: async (sessionId, args) => {
           const scheduled = parseScheduledMessage(args);
           await this.client.scheduledMessages.schedule(
@@ -315,7 +352,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       chat: {
         contextUsage: true,
         history: this.history,
-        commands: () => this.model.commands.filter((command) => command.name !== "sidechat"),
+        commands: () => this.model.commands,
         placeholder: () =>
           this.sessionId.startsWith("project-chat:")
             ? "Talk about this project…"

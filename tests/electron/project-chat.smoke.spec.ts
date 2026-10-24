@@ -162,6 +162,24 @@ test("Project Chat isolates history and restores its root workspace, while globa
     await expect(page.getByText("Reply 1", { exact: true })).toBeVisible();
     const verifySchedule = async (label: string) => {
       const requestCount = requests.length;
+      // Cake Chat and Project Chat share the existing message-side-chat draft.
+      await input.click();
+      await input.pressSequentially("/side");
+      await expect(
+        page.getByRole("option", { name: /sidechat \[prompt\] Start a side chat Cake/ }),
+      ).toBeVisible();
+      await input.press("Enter");
+      await expect(input).toHaveValue("");
+      const sideChat = page.getByRole("complementary", { name: "Side chat" });
+      await expect(sideChat).toBeVisible();
+      const sideChatInput = sideChat.getByRole("combobox");
+      await expect(sideChatInput).toBeFocused();
+      await sideChatInput.pressSequentially("Draft a follow-up");
+      await expect(sideChatInput).toHaveValue("Draft a follow-up");
+      await expect(sideChat.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+      await sideChat.getByRole("button", { name: "Close Side chat" }).click();
+      await expect(input).toBeFocused();
+      expect(requests).toHaveLength(requestCount);
       await input.click();
       await expect(input).toBeFocused();
       await input.fill("/");

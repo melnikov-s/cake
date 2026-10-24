@@ -128,6 +128,13 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
     const text = this.draftStore.text.trim();
     const attachments = this.draftStore.submissionAttachments;
 
+    // Side-chat commands must never become a saved draft or an assistant prompt,
+    // including in staged or unsupported conversations.
+    if (parseBuiltinCommand(text)?.name === "sidechat") {
+      const commandResult = await this.dispatchApplicationCommand(text);
+      if (commandResult.handled) return commandResult.result;
+    }
+
     if (this.pendingSessionDraftStore.editing) {
       if (!(await this.pendingSessionDraftStore.update(text, attachments))) return false;
       const choice = this.props.sessionCreationChoice?.() ?? { kind: "draft" as const };
@@ -218,7 +225,6 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
     const name = parseBuiltinCommand(text)?.name;
     return (
       name === "toolcompact" ||
-      (name === "sidechat" && Boolean(this.props.createSideChat)) ||
       name === "model" ||
       name === "name" ||
       (name === "schedule" && Boolean(this.props.scheduleMessage))
@@ -259,9 +265,14 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
       if (compacted && this.draftStore.text.trim() === text) this.draftStore.setText("");
       return { handled: true, result: compacted };
     }
-    if (builtin?.name === "sidechat" && this.props.createSideChat) {
-      if (!builtin.args.trim()) {
-        this.reportError(new Error("Usage: /sidechat <prompt>"));
+    if (builtin?.name === "sidechat") {
+      if (!this.props.createSideChat) {
+        this.reportError(new Error("Side chats are unavailable in this conversation"));
+        return { handled: true, result: false };
+      }
+      const sessionId = this.props.sessionId();
+      if (!sessionId || this.props.isDeferredSession?.(sessionId)) {
+        this.reportError(new Error("Side chats require an existing conversation"));
         return { handled: true, result: false };
       }
       if (
@@ -271,10 +282,15 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
         this.reportError(new Error("Remove attachments before using /sidechat"));
         return { handled: true, result: false };
       }
-      const created = await this.props.createSideChat(builtin.args.trim());
-      if (created && this.draftStore.text.trim() === text) this.draftStore.setText("");
-      if (!created) this.reportError(new Error("Could not create side chat"));
-      return { handled: true, result: created };
+      try {
+        const created = await this.props.createSideChat(builtin.args.trim());
+        if (created && this.draftStore.text.trim() === text) this.draftStore.setText("");
+        if (!created) this.reportError(new Error("Could not create side chat"));
+        return { handled: true, result: created };
+      } catch (error) {
+        if (!this.signal.aborted) this.reportError(error);
+        return { handled: true, result: false };
+      }
     }
     if (builtin?.name === "model") {
       if (builtin.args.indexOf("/") < 1) {
