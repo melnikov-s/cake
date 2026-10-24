@@ -10,7 +10,7 @@ import {
   type ProjectTodos,
 } from "../../../src/contracts/projects/project-todos";
 import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-project-group";
-import { ProjectTodosPanel } from "../../../src/renderer/components/project-todos-panel";
+import { SideChatLayout } from "../../../src/renderer/components/side-chat-layout";
 import { applySessionCatalogGroupUpdate } from "../../../src/renderer/reducers/CatalogReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
@@ -90,7 +90,15 @@ function renderTodos(withSidebar = false) {
   store.open();
   const view = render(
     <StoreProvider store={fixture.root}>
-      <ProjectTodosPanel store={store} />
+      <SideChatLayout
+        store={
+          root.cakeChatCollectionStore.registry.load(projectChat).conversationSessionStore
+            .sideChatStore
+        }
+        renderChat={() => null}
+      >
+        <div />
+      </SideChatLayout>
       {withSidebar && (
         <SidebarProjectGroup
           cakeChat={root.cakeChatCollectionStore}
@@ -154,6 +162,62 @@ function renderTodos(withSidebar = false) {
     },
   };
 }
+
+it("filters titles and descriptions without changing selection or the authoritative list", async () => {
+  using fixture = renderTodos();
+  const search = screen.getByRole("searchbox", { name: "Search to-dos" });
+  const title = () => screen.getByRole("button", { name: "Investigate startup" });
+  await fixture.user.click(title());
+  await fixture.user.type(search, "FOLLOW");
+  expect(screen.getByRole("button", { name: "Follow up" })).toBeDefined();
+  expect(screen.queryByRole("button", { name: "Investigate startup" })).toBeNull();
+  expect(fixture.todos().selectedId).toBe(fixture.todos().items[0]!.id);
+  expect(fixture.todos().items).toHaveLength(2);
+  await fixture.user.clear(search);
+  await fixture.user.type(search, "BOTTLENECK");
+  expect(title().getAttribute("aria-pressed")).toBe("true");
+  expect(screen.queryByRole("button", { name: "Follow up" })).toBeNull();
+  await fixture.user.clear(search);
+  await fixture.user.type(search, "Report delivered");
+  expect(screen.getByRole("status").textContent).toContain("No matching to-dos");
+  await fixture.user.click(screen.getByRole("button", { name: "Clear search to-dos" }));
+  expect(title().getAttribute("aria-pressed")).toBe("true");
+  expect(screen.getByRole("button", { name: "Follow up" })).toBeDefined();
+  await fixture.user.type(search, "   ");
+  expect(screen.getAllByRole("button", { name: /^Mark done:/ })).toHaveLength(2);
+});
+
+it("keeps matching done items grouped and preserves disclosure and done/reopen actions", async () => {
+  using fixture = renderTodos();
+  const search = screen.getByRole("searchbox", { name: "Search to-dos" });
+  await fixture.user.click(screen.getByRole("button", { name: "Mark done: Follow up" }));
+  await fixture.user.type(search, "STEP");
+  expect(screen.getByRole("status").textContent).toBe("No matching open to-dos.");
+  const done = screen.getByRole("button", { name: "Done (1)" });
+  expect(done.getAttribute("aria-expanded")).toBe("false");
+  await fixture.user.click(done);
+  expect(
+    within(screen.getByRole("list", { name: "Done to-dos" })).getByRole("button", {
+      name: "Follow up",
+    }),
+  ).toBeDefined();
+  await fixture.user.click(screen.getByRole("button", { name: "Reopen: Follow up" }));
+  expect(
+    within(screen.getByRole("list", { name: "Open to-dos" })).getByRole("button", {
+      name: "Follow up",
+    }),
+  ).toBeDefined();
+  await fixture.user.click(screen.getByRole("button", { name: "Mark done: Follow up" }));
+  expect(screen.getByRole("button", { name: "Done (1)" }).getAttribute("aria-expanded")).toBe(
+    "true",
+  );
+  await fixture.user.clear(search);
+  await fixture.user.type(search, "no such task");
+  expect(screen.getByRole("status").textContent).toContain("No matching to-dos");
+  await fixture.user.click(screen.getByRole("button", { name: "Clear search to-dos" }));
+  expect(screen.getByRole("list", { name: "Done to-dos" })).toBeDefined();
+  expect(screen.getByRole("list", { name: "Open to-dos" })).toBeDefined();
+});
 
 it("selects description and status while done/reopen remain independent controls", async () => {
   using fixture = renderTodos();

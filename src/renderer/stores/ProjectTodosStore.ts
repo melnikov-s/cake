@@ -43,6 +43,7 @@ export class ProjectTodosStore extends Store<{
   /** The owning chat's transcript, for placing Done controls on result messages. */
   transcript?(): { readonly chatSessionId: string; readonly parts: readonly UiPart[] };
 }> {
+  query = "";
   doneExpanded = false;
   busy = false;
   error: string | undefined;
@@ -86,6 +87,24 @@ export class ProjectTodosStore extends Store<{
   }
   get doneItems() {
     return this.value?.items.filter((item) => item.state === "done") ?? [];
+  }
+  get filteredItems() {
+    const query = this.query.trim().toLowerCase();
+    return (this.value?.items ?? []).filter(
+      (item) =>
+        !query ||
+        item.title.toLowerCase().includes(query) ||
+        item.description.toLowerCase().includes(query),
+    );
+  }
+  get filteredOpenItems() {
+    return this.filteredItems.filter((item) => item.state === "open");
+  }
+  get filteredDoneItems() {
+    return this.filteredItems.filter((item) => item.state === "done");
+  }
+  setQuery(query: string) {
+    this.query = query;
   }
   get visible() {
     return this.props.sidePanel().target?.key === "project-todos";

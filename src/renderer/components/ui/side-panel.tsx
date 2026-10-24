@@ -8,12 +8,14 @@ export function SidePanel({
   eyebrow,
   className,
   children,
+  headerActions,
   onClose,
 }: {
   title: string;
   eyebrow: string;
   className?: string;
   children: ReactNode;
+  headerActions?: ReactNode;
   onClose(): void;
 }) {
   return (
@@ -32,6 +34,7 @@ export function SidePanel({
           </p>
           <strong className="block truncate text-sm font-semibold">{title}</strong>
         </div>
+        {headerActions}
         <IconButton tooltip={`Close ${title}`} ariaLabel={`Close ${title}`} onClick={onClose}>
           <CloseIcon size={14} />
         </IconButton>

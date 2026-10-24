@@ -24,6 +24,8 @@ See `AGENTS.md` for renderer implementation rules.
 | [Link](../../src/renderer/components/ui/link.tsx)                                                                                                                       | Shared anchors, source references and Cake links with destination tooltips.                                           |
 | [LoadingState](../../src/renderer/components/ui/loading-state.tsx)                                                                                                      | Shared loading treatments.                                                                                            |
 
+[`SearchInput`](../../src/renderer/components/ui/search-input.tsx) composes `Input` with a search icon, accessible clear action and Escape-to-clear. Callers own the query and filtering.
+
 `DisclosureTrigger` also supports leading disclosure triangles and wrapping titles
 for source outlines. Keep context expansion state and lazy provenance reads in the
 conversation's `ContextInspectorStore`, not in the shared control.

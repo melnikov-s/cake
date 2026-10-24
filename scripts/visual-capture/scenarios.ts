@@ -1946,7 +1946,17 @@ const projectChatTodos: VisualCaptureScenario = {
   name: "project-chat-todos",
   description:
     "Project Chat to-do selection, session readiness and compact destination-specific work links",
-  states: ["open", "hover", "done", "empty", "unselected", "links-hover", "links-focus"],
+  states: [
+    "open",
+    "hover",
+    "done",
+    "empty",
+    "unselected",
+    "links-hover",
+    "links-focus",
+    "search",
+    "search-empty",
+  ],
   async seed(paths, theme) {
     await assistantMarkdownCode.seed(paths, theme);
     await writeFile(join(paths.project, "README.md"), "# Startup investigation\n");
@@ -2092,6 +2102,11 @@ const projectChatTodos: VisualCaptureScenario = {
     await input.fill("Let’s revisit the startup investigation.");
     await page.getByRole("button", { name: "To-do", exact: true }).click();
     await expect(page.getByRole("complementary", { name: "To-do" })).toBeVisible();
+    // A stored selection can be cleared while the pane is initially closed.
+    // Establish the scenario's context through the same action as the user.
+    const selected = page.getByRole("button", { name: "Startup investigation", exact: true });
+    if ((await selected.getAttribute("aria-pressed")) !== "true") await selected.click();
+    await expect(selected).toHaveAttribute("aria-pressed", "true");
     if (state === "unselected" || state === "empty")
       await page.getByRole("button", { name: "Startup investigation", exact: true }).click();
     if (state === "empty") {
@@ -2100,6 +2115,11 @@ const projectChatTodos: VisualCaptureScenario = {
       await panel.getByRole("button", { name: "Mark done: Improve project navigation" }).click();
     }
     if (state === "done") await page.getByRole("button", { name: "Done (1)" }).click();
+    if (state === "search" || state === "search-empty") {
+      await page
+        .getByRole("searchbox", { name: "Search to-dos" })
+        .fill(state === "search" ? "STARTUP" : "no matching task");
+    }
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.mouse.move(1, 1);
     const report = page.getByRole("link", { name: "Exact investigation report", exact: true });
