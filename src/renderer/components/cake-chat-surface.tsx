@@ -2,6 +2,7 @@ import { observer, useStore } from "r-state-tree/react";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ConversationSplitLayout } from "@/components/conversation-split-layout";
 import { cn } from "@/lib/utils";
+import { SidebarNavigationControls } from "./sidebar-navigation-controls";
 import { cakeChatTranscriptBehaviorFor } from "../lib/cake-chat-transcript-behavior";
 import { RootStore } from "../stores/RootStore";
 import type { CakeChatSessionStore } from "../stores/CakeChatSessionStore";
@@ -80,8 +81,13 @@ export const CakeChatSurface = observer(function CakeChatSurface({
       headerClassName={(pane) =>
         // The frameless overlay has no traffic lights or sidebar toggle to make room for.
         !overlay && cakeChatCollection.sessionLayoutStore.panes[0]?.paneId === pane.paneId
-          ? cn("max-[620px]:pl-14 phone:pl-14", sidebarCollapsed && "pl-[124px]")
+          ? cn("max-[620px]:pl-[88px] phone:pl-[88px]", sidebarCollapsed && "pl-[156px]")
           : undefined
+      }
+      renderNavigation={(pane) =>
+        !overlay && cakeChatCollection.sessionLayoutStore.panes[0]?.paneId === pane.paneId ? (
+          <SidebarNavigationControls header />
+        ) : null
       }
       renderHeader={(pane, session) => (
         <CakeChatPaneHeader pane={pane} session={session} overlay={overlay} />

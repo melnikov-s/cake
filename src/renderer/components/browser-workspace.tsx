@@ -10,6 +10,7 @@ import { SideChatLayout } from "./side-chat-layout";
 import { WorkspaceChatLayout } from "./workspace-chat-layout";
 import { IconButton } from "./ui/icon-button";
 import { Input } from "./ui/input";
+import { BrowserSharingMenu } from "./browser-sharing-menu";
 import { WorkspacePanelToggle } from "./ui/workspace-panel-toggle";
 import { BackIcon, ForwardIcon, InspectIcon, ReloadIcon, StopIcon } from "./ui/icons";
 
@@ -100,7 +101,10 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
       >
         <div className="flex items-center gap-0.5 [-webkit-app-region:no-drag]">
           {!projectSidebarVisible && (
-            <WorkspacePanelToggle panel="sidebar" visible={false} onToggle={onToggleSidebar} />
+            <>
+              <WorkspacePanelToggle panel="sidebar" visible={false} onToggle={onToggleSidebar} />
+              <BrowserSharingMenu />
+            </>
           )}
           <IconButton
             tooltip="Back"

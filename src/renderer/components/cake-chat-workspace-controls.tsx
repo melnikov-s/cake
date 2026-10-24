@@ -1,6 +1,5 @@
 import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
-import { BrowserSharingMenu } from "./browser-sharing-menu";
 import type { CakeChatSessionStore } from "../stores/CakeChatSessionStore";
 import { WorkspaceModeControls } from "./workspace-mode-controls";
 import { SideChatsMenu } from "./side-chats-menu";
@@ -30,7 +29,6 @@ export const CakeChatWorkspaceControls = observer(function CakeChatWorkspaceCont
         />
       )}
       <SideChatsMenu store={session} />
-      <BrowserSharingMenu />
       <SessionArtifactMenu session={session} />
       <WorkspaceModeControls
         mode={mode}

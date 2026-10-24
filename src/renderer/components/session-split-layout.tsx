@@ -25,6 +25,8 @@ interface SessionSplitLayoutProps {
   titleLeading?(sessionId: string): ReactNode;
   headerClassName?(pane: SessionPaneNode): string | undefined;
   renderHeader(pane: SessionPaneNode): ReactNode;
+  /** Essential controls stay outside the scrolling optional header actions. */
+  renderNavigation?(pane: SessionPaneNode): ReactNode;
   renderPane(pane: SessionPaneNode): ReactNode;
   onFocus(paneId: string): void;
   onSplit?(axis: SessionSplitAxis): void;
@@ -40,6 +42,7 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
   titleLeading,
   headerClassName,
   renderHeader,
+  renderNavigation,
   renderPane,
   onFocus,
   onSplit,
@@ -121,6 +124,7 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
             headerClassName?.(node),
           )}
         >
+          {renderNavigation?.(node)}
           {multiplePanes && (
             <span className="grid size-5 shrink-0 place-items-center rounded bg-muted font-mono text-xs font-semibold text-muted-foreground">
               {pane?.number}
@@ -203,6 +207,7 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
           keyboardFocusIntent,
         }}
         node={node.first}
+        renderNavigation={renderNavigation}
       />
       <div className="relative z-30 bg-border/35">
         <ResizeHandle
@@ -229,6 +234,7 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
           keyboardFocusIntent,
         }}
         node={node.second}
+        renderNavigation={renderNavigation}
       />
     </div>
   );

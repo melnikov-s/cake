@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { observer } from "r-state-tree/react";
+import { observer, StoreProvider } from "r-state-tree/react";
 import { applySnapshot, toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
@@ -93,7 +93,11 @@ function renderPicker(options: Pick<RendererStoreFixtureOptions, "projects" | "s
       </>
     );
   });
-  const view = render(<Surface />);
+  const view = render(
+    <StoreProvider store={root}>
+      <Surface />
+    </StoreProvider>,
+  );
   return {
     user: userEvent.setup(),
     inspect,

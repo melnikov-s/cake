@@ -1,7 +1,6 @@
 import { observer, useStore } from "r-state-tree/react";
 import { WorkspaceModeControls } from "@/components/workspace-mode-controls";
 import { RootStore } from "../stores/RootStore";
-import { BrowserSharingMenu } from "./browser-sharing-menu";
 import type { ProjectSessionStore } from "../stores/ProjectSessionStore";
 import { SessionArtifactMenu } from "./session-artifact-menu";
 import { ConversationActivity } from "./conversation-activity";
@@ -28,7 +27,6 @@ export const ProjectWorkspaceControls = observer(function ProjectWorkspaceContro
           onOpen={() => session.showWorkspaceChatSidebar()}
         />
       )}
-      <BrowserSharingMenu />
       <SessionArtifactMenu session={session} />
       <WorkspaceModeControls
         mode={mode}

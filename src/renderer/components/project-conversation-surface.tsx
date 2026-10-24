@@ -5,6 +5,7 @@ import { LoadingState } from "@/components/ui/loading-state";
 import { ConversationSplitLayout } from "@/components/conversation-split-layout";
 import { BlockingInterviews } from "@/components/blocking-interviews";
 import { cn } from "@/lib/utils";
+import { SidebarNavigationControls } from "./sidebar-navigation-controls";
 import { RootStore } from "../stores/RootStore";
 import type { ProjectSessionStore } from "../stores/ProjectSessionStore";
 import { projectTranscriptBehaviorFor } from "../lib/project-transcript-behavior";
@@ -119,8 +120,13 @@ export const ProjectConversationSurface = observer(function ProjectConversationS
       loadingLabel="Opening session"
       headerClassName={(pane) =>
         root.sessionLayoutStore.panes[0]?.paneId === pane.paneId
-          ? cn("max-[620px]:pl-14 phone:pl-14", sidebarCollapsed && "pl-[124px]")
+          ? cn("max-[620px]:pl-[88px] phone:pl-[88px]", sidebarCollapsed && "pl-[156px]")
           : undefined
+      }
+      renderNavigation={(pane) =>
+        root.sessionLayoutStore.panes[0]?.paneId === pane.paneId ? (
+          <SidebarNavigationControls header />
+        ) : null
       }
       renderHeader={(pane, session) => (
         <ProjectPaneHeader pane={pane} session={session} browserMode={browserMode} />

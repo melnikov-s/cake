@@ -12,8 +12,8 @@ import {
   PlusIcon,
   SettingsIcon,
   SearchIcon,
-  SidebarIcon,
 } from "./ui/icons";
+import { SidebarNavigationControls } from "./sidebar-navigation-controls";
 import { SidebarCakeChatGroup } from "./sidebar-cake-chat-group";
 import { SidebarProjectGroup } from "./sidebar-project-group";
 import { ProjectSettingsDialog } from "./project-settings-dialog";
@@ -85,14 +85,7 @@ export const Sidebar = observer(function Sidebar({
       )}
     >
       <div className="flex h-[46px] shrink-0 items-center gap-1 pl-[103px] pr-3 [app-region:drag] max-[620px]:pl-2 max-[620px]:h-auto max-[620px]:min-h-11 max-[620px]:flex-wrap [@media(pointer:coarse)]:pl-2 [@media(pointer:coarse)]:h-auto [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:flex-wrap">
-        <IconButton
-          data-cake-hint-key="s"
-          tooltip="Toggle sidebar"
-          hotkey="toggle-sidebar"
-          onClick={onToggle}
-        >
-          <SidebarIcon />
-        </IconButton>
+        <SidebarNavigationControls onToggle={onToggle} />
         <IconButton
           data-cake-hint-key="b"
           tooltip="Back"

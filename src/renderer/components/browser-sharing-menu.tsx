@@ -65,6 +65,7 @@ export const BrowserSharingMenu = observer(function BrowserSharingMenu() {
         </Callout>
         {error && <Callout variant="error">{error}</Callout>}
         <Button
+          className="transition-colors"
           size="sm"
           disabled={pending}
           onClick={() => void sharing.configure(!sharing.enabled)}
@@ -73,6 +74,7 @@ export const BrowserSharingMenu = observer(function BrowserSharingMenu() {
         </Button>
         <Button
           variant="ghost"
+          className="transition-colors"
           size="sm"
           onClick={() => {
             setOpen(false);

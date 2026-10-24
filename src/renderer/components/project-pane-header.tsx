@@ -3,16 +3,13 @@ import { IconButton } from "@/components/ui/icon-button";
 import {
   BrowserIcon,
   ChangesIcon,
-  SidebarIcon,
   TerminalIcon,
   TreeIcon,
   VsCodeIcon,
 } from "@/components/ui/icons";
 import { WorkLogControls } from "@/components/work-log-controls";
 import { SideChatsMenu } from "@/components/side-chats-menu";
-import { cn } from "@/lib/utils";
 import { RootStore } from "../stores/RootStore";
-import { BrowserSharingMenu } from "./browser-sharing-menu";
 import type { SessionPaneNode } from "../stores/SessionLayoutStore";
 import type { ProjectSessionStore } from "../stores/ProjectSessionStore";
 import { SessionArtifactMenu } from "./session-artifact-menu";
@@ -30,29 +27,12 @@ export const ProjectPaneHeader = observer(function ProjectPaneHeader({
   const root = useStore(RootStore);
   const store = root.projectWorkbenchStore;
   const terminal = root.terminalStore;
-  const sidebarCollapsed = !root.sidebarStore.visible;
-  const toggleSidebar = () => root.sidebarStore.toggle();
   const focusPane = () => root.navigationStore.focusSessionPane(pane.paneId);
   const focused = root.sessionLayoutStore.focusedPaneId === pane.paneId;
-  const firstPane = root.sessionLayoutStore.panes[0]?.paneId === pane.paneId;
   const resolved = root.sessionCatalogStore.find(paneSession.sessionId)?.resolved === true;
   if (resolved)
     return (
       <>
-        {firstPane && (
-          <IconButton
-            className={cn(
-              "absolute left-[84px] top-[9px] max-[620px]:left-2 phone:left-2 [@media(pointer:coarse)]:top-1 z-20 size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
-              sidebarCollapsed ? "grid" : "hidden max-[620px]:grid phone:grid",
-            )}
-            data-slot="header-sidebar-toggle"
-            tooltip="Toggle sidebar"
-            hotkey="toggle-sidebar"
-            onClick={toggleSidebar}
-          >
-            <SidebarIcon />
-          </IconButton>
-        )}
         {!paneSession.conversationSessionStore.chatStore.composerVisible && (
           <ConversationActivity
             sessionId={paneSession.sessionId}
@@ -61,28 +41,12 @@ export const ProjectPaneHeader = observer(function ProjectPaneHeader({
             onOpen={focusPane}
           />
         )}
-        {firstPane && <BrowserSharingMenu />}
         <SideChatsMenu store={paneSession} onOpen={focusPane} />
         <SessionArtifactMenu session={paneSession} onOpen={focusPane} />
       </>
     );
   return (
     <>
-      {firstPane && (
-        <IconButton
-          className={cn(
-            "absolute left-[84px] top-[9px] max-[620px]:left-2 phone:left-2 [@media(pointer:coarse)]:top-1 z-20 size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
-            sidebarCollapsed ? "grid" : "hidden max-[620px]:grid phone:grid",
-          )}
-          data-slot="header-sidebar-toggle"
-          data-cake-hint-key="s"
-          tooltip="Toggle sidebar"
-          hotkey="toggle-sidebar"
-          onClick={toggleSidebar}
-        >
-          <SidebarIcon />
-        </IconButton>
-      )}
       {!paneSession.conversationSessionStore.chatStore.composerVisible && (
         <ConversationActivity
           sessionId={paneSession.sessionId}
@@ -103,7 +67,6 @@ export const ProjectPaneHeader = observer(function ProjectPaneHeader({
       >
         <TreeIcon />
       </IconButton>
-      {firstPane && <BrowserSharingMenu />}
       <SideChatsMenu store={paneSession} onOpen={focusPane} />
       <SessionArtifactMenu session={paneSession} onOpen={focusPane} />
       <div className="mx-0.5 h-4 w-px shrink-0 bg-border/60" aria-hidden="true" />

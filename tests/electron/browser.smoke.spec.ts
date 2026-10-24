@@ -185,6 +185,11 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
     await expect(page.locator(`.session-item[data-session-id="${sessionId}"]`)).toBeHidden();
     await expect(sidebarToggle).toHaveAccessibleName("Open sidebar");
     expect((await sidebarToggle.boundingBox())?.x).toBeGreaterThanOrEqual(84);
+    const sharing = workspace.getByRole("button", { name: /^Browser sharing:/ });
+    await expect(sharing).toBeVisible();
+    const sidebarBounds = (await sidebarToggle.boundingBox())!;
+    const sharingBounds = (await sharing.boundingBox())!;
+    expect(sharingBounds.x - sidebarBounds.x - sidebarBounds.width).toBe(2);
     await sidebarToggle.click();
     await expect(page.locator(`.session-item[data-session-id="${sessionId}"]`)).toBeVisible();
     await expect(sidebarToggle).toBeHidden();

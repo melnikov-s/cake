@@ -1793,18 +1793,23 @@ const mcpSettingsLayoutScenario: VisualCaptureScenario = {
 
 const browserSharingScenario: VisualCaptureScenario = {
   name: "topbar-browser-sharing",
-  description: "Topbar browser-sharing shortcut and anchored offline controls",
-  states: ["default", "open"],
+  description: "Browser-sharing shortcut beside sidebar navigation and anchored offline controls",
+  states: ["default", "open", "collapsed", "collapsed-open"],
   seed: assistantMarkdownCode.seed,
   async prepare(page, state) {
     await page.locator('[data-streamdown="code-block-body"] code').waitFor({ timeout: 20_000 });
     await expect(page.getByText("Opening session", { exact: true })).not.toBeVisible();
     const closeNavigation = page.getByRole("button", { name: "Close navigation", exact: true });
     if (await closeNavigation.isVisible()) await closeNavigation.click();
+    if (state.startsWith("collapsed") && (await page.getByRole("complementary").isVisible())) {
+      await page.getByRole("complementary").getByRole("button", { name: "Toggle sidebar" }).click();
+    }
     await page.waitForFunction(() => document.fonts.status === "loaded");
-    const trigger = page.getByRole("button", { name: "Browser sharing: Offline — go online" });
+    const trigger = page
+      .getByRole("button", { name: "Browser sharing: Offline — go online" })
+      .first();
     await expect(trigger).toBeInViewport();
-    if (state === "open") {
+    if (state.endsWith("open")) {
       await trigger.focus();
       await trigger.press("Enter");
       await expect(page.getByRole("dialog", { name: "Browser sharing" })).toBeVisible();
@@ -1813,9 +1818,15 @@ const browserSharingScenario: VisualCaptureScenario = {
     await page.mouse.move(1, 1);
   },
   region: (page, state) =>
-    state === "open"
+    state.endsWith("open")
       ? page.getByRole("dialog", { name: "Browser sharing" })
-      : page.locator('[data-slot="workspace-header"]'),
+      : state === "default"
+        ? page
+            .locator(
+              '[data-slot="sidebar"]:visible > div:first-of-type, [data-slot="workspace-header"]',
+            )
+            .first()
+        : page.locator('[data-slot="workspace-header"]'),
 };
 
 const appearanceSettingsScenario: VisualCaptureScenario = {

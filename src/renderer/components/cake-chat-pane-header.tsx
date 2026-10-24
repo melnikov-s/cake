@@ -6,13 +6,10 @@ import {
   VsCodeIcon,
   CloseIcon,
   CropIcon,
-  SidebarIcon,
   TerminalIcon,
 } from "@/components/ui/icons";
 import { WorkLogControls } from "@/components/work-log-controls";
-import { cn } from "@/lib/utils";
 import { RootStore } from "../stores/RootStore";
-import { BrowserSharingMenu } from "./browser-sharing-menu";
 import type { SessionPaneNode } from "../stores/SessionLayoutStore";
 import type { CakeChatSessionStore } from "../stores/CakeChatSessionStore";
 import { SessionArtifactMenu } from "./session-artifact-menu";
@@ -39,26 +36,8 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
   const root = useStore(RootStore);
   const cakeChatCollection = root.cakeChatCollectionStore;
   const terminal = root.terminalStore;
-  const sidebarCollapsed = !root.sidebarStore.visible;
-  const toggleSidebar = () => root.sidebarStore.toggle();
-  const firstPane = cakeChatCollection.sessionLayoutStore.panes[0]?.paneId === pane.paneId;
   return (
     <>
-      {firstPane && !overlay && (
-        <IconButton
-          className={cn(
-            "absolute left-[84px] top-[9px] max-[620px]:left-2 phone:left-2 [@media(pointer:coarse)]:top-1 z-20 size-7 place-items-center rounded-lg bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
-            sidebarCollapsed ? "grid" : "hidden max-[620px]:grid phone:grid",
-          )}
-          data-slot="header-sidebar-toggle"
-          data-cake-hint-key="s"
-          tooltip="Toggle sidebar"
-          hotkey="toggle-sidebar"
-          onClick={toggleSidebar}
-        >
-          <SidebarIcon />
-        </IconButton>
-      )}
       {!paneSession.conversationSessionStore.chatStore.composerVisible && (
         <ConversationActivity
           sessionId={paneSession.sessionId}
@@ -67,7 +46,6 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
           onOpen={() => root.navigationStore.focusCakeChatPane(pane.paneId)}
         />
       )}
-      {firstPane && !overlay && <BrowserSharingMenu />}
       {!overlay && (
         <SessionArtifactMenu
           session={paneSession}
