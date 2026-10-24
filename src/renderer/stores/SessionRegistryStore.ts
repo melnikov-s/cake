@@ -17,6 +17,7 @@ import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordin
 import type { WorktreeStoreProps } from "./WorktreeStore";
 import type { WorktreeLandingOperation } from "../../contracts/worktrees/worktree-landing-data";
 import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
+import { projectSessionForkPreview } from "../lib/session-fork-preview";
 
 export interface SessionRegistryStoreProps {
   catalog?: SessionCatalogStore;
@@ -44,6 +45,9 @@ export interface SessionRegistryStoreProps {
 export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   @snapshot readonly targets: SessionTarget[] = observable([]);
   private readonly sessionsById = new Map<string, ProjectSessionStore>();
+  private readonly forkPreviews = observable(
+    new Map<string, { title: string; sourceSessionId: string }>(),
+  );
 
   private get projects() {
     return ProjectCatalogContext.consume(this)!;
@@ -83,6 +87,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         key: target.sessionId,
         ...target,
         model: this.props.sessionModel(target.sessionId, target.workspacePath),
+        isForkPreview: () => this.isForkPreview(target.sessionId),
         discussionCatalog: this.props.discussionCatalog(target.sessionId),
         subagentCatalog: this.props.subagentCatalog(target.sessionId),
         workflowCatalog: this.props.workflowCatalog(target.sessionId),
@@ -160,6 +165,28 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     return this.sessionsById.get(sessionId);
   }
 
+  isForkPreview(sessionId: string) {
+    return this.forkPreviews.has(sessionId);
+  }
+
+  get forkPreviewSources(): ReadonlyMap<string, string> {
+    return new Map([...this.forkPreviews].map(([id, preview]) => [id, preview.sourceSessionId]));
+  }
+
+  forkPreviewTitle(sessionId: string) {
+    return this.forkPreviews.get(sessionId)?.title;
+  }
+
+  prepareForkPreview(sourceSessionId: string, entryId: string, title: string) {
+    const source = this.findSession(sourceSessionId);
+    if (!source) throw new Error("Cake could not find the source session");
+    const sessionId = crypto.randomUUID();
+    this.forkPreviews.set(sessionId, { sourceSessionId, title: `Fork of ${title}` });
+    const preview = this.prepareIdentity(sessionId, source.workspacePath);
+    projectSessionForkPreview(source.model, preview.model, entryId);
+    return preview;
+  }
+
   load(sessionId: string, workingDirectory: string) {
     const session = this.prepareIdentity(sessionId, workingDirectory);
     this.observationRetention.materialize(sessionId);
@@ -190,6 +217,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     const index = this.targets.findIndex((target) => target.sessionId === sessionId);
     if (index >= 0) this.targets.splice(index, 1);
     this.sessionsById.delete(sessionId);
+    this.forkPreviews.delete(sessionId);
     this.pendingSessions.remove(sessionId);
     this.observationRetention.remove(sessionId);
   }

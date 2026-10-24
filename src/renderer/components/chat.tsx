@@ -164,7 +164,7 @@ export const Chat = observer(function Chat({
   /** Drop-down entry is an explicit writing action, even with dictation enabled. */
   parkComposerFocusWhileDictating?: boolean;
   showContextUsage?: boolean;
-  transcriptTransition?: { requestedKey?: string; ready: boolean };
+  transcriptTransition?: { contentKey?: string; requestedKey?: string; ready: boolean };
 }) {
   const layoutRef = useRef<HTMLDivElement>(null);
   const composerDockRef = useRef<HTMLDivElement>(null);
@@ -433,7 +433,7 @@ export const Chat = observer(function Chat({
       )}
     >
       <ContentTransition
-        contentKey={store.id}
+        contentKey={transcriptTransition?.contentKey ?? store.id}
         requestedKey={transcriptTransition?.requestedKey}
         ready={transcriptTransition?.ready}
         enabled={Boolean(transcriptTransition)}

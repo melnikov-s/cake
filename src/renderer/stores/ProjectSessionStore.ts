@@ -58,6 +58,7 @@ export interface ProjectSessionStoreProps extends SessionTarget {
   operations: SessionOperationCoordinatorStore;
   reviews(): ReviewsStore;
   isActive(): boolean;
+  isForkPreview?(): boolean;
   worktreeOperation: WorktreeStoreProps["operation"];
   projectName(): string;
   familyId(): string | undefined;
@@ -72,6 +73,8 @@ export interface ProjectSessionStoreProps extends SessionTarget {
 export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   /** Session-local presentation preference restored when this session is selected. */
   @snapshot presentationMode: ProjectSessionPresentationMode = "normal";
+  /** Stable visual key while an optimistic fork becomes its Pi identity. */
+  transcriptContinuityKey: string | undefined;
   @snapshot workspaceChatSidebarVisible = true;
   @snapshot workspaceChatSidebarWidth = 420;
   private readonly interviewRequests = observable(
@@ -116,8 +119,16 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     return ProjectSessionNavigationContext.consume(this)!;
   }
 
+  get isForkPreview() {
+    return this.props.isForkPreview?.() ?? false;
+  }
+
   private canSubmit() {
-    return !this.signal.aborted && this.navigation.canSubmitSession(this.sessionId);
+    return (
+      !this.isForkPreview &&
+      !this.signal.aborted &&
+      this.navigation.canSubmitSession(this.sessionId)
+    );
   }
 
   showPresentation(mode: ProjectSessionPresentationMode) {
@@ -230,7 +241,11 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   }
 
   get hydrated() {
-    return this.pending.isTemporary(this.sessionId) || Boolean(this.model.sessionFile);
+    return (
+      this.isForkPreview ||
+      this.pending.isTemporary(this.sessionId) ||
+      Boolean(this.model.sessionFile)
+    );
   }
 
   @computed
@@ -434,6 +449,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
           pending.setConfiguration(this.sessionId, configuration),
       },
       chat: {
+        modelPickerVisible: () => !this.isForkPreview,
         conversationMode: ConversationModeContext.consume(this)
           ? { workflow: ConversationModeContext.consume(this)!, target: this.conversationTarget }
           : undefined,

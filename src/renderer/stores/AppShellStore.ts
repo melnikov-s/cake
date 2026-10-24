@@ -95,6 +95,22 @@ export class AppShellStore extends Store<AppShellStoreProps> {
     return "workbench";
   }
 
+  replaceProjectSession(from: string, to: string) {
+    for (let index = 0; index < this.sessionHistory.length; index++) {
+      const entry = this.sessionHistory[index]!;
+      if (entry.kind === "project-session" && entry.sessionId === from)
+        this.sessionHistory[index] = { ...entry, sessionId: to };
+    }
+    if (
+      this.pendingTraversal?.entry.kind === "project-session" &&
+      this.pendingTraversal.entry.sessionId === from
+    )
+      this.pendingTraversal = {
+        ...this.pendingTraversal,
+        entry: { kind: "project-session", sessionId: to },
+      };
+  }
+
   get canGoBack() {
     return this.historyCursorInDirection(-1) !== undefined;
   }

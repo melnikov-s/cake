@@ -33,8 +33,8 @@ export interface ProjectWorkbenchStoreProps {
   onBrowserUnavailable?(): void;
   /** Removes resolved worktree sessions from history and chooses the next conversation. */
   onWorktreeSessionsResolved(sessionIds: readonly string[], projectPath: string): Promise<void>;
-  /** Navigates the shell to an existing session by ID. */
-  openSessionById(sessionId: string): Promise<void>;
+  reconcileForkPreview(previewId: string, sessionId: string): void;
+  discardForkPreview(previewId: string): void;
   /** The Project Session retained by the application shell as its active conversation. */
   activeSessionId(): string | undefined;
   /** Restores the focused pane's retained unsent session for this Project, when present. */
@@ -145,8 +145,15 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       sessionContext: () => this.sessionContext(),
       sessionTitle: () => this.sessionTitle,
       closeCommandPane: () => this.commandPaneStore.close(),
-      openSession: (sessionId, workingDirectory) =>
-        this.openForkedSession(sessionId, workingDirectory),
+      showPreview: (sessionId) => this.activateLoadedSession(sessionId),
+      openSession: (previewId, sessionId, workingDirectory, isCurrent) =>
+        this.openForkedSession(previewId, sessionId, workingDirectory, isCurrent),
+      returnToSource: (sessionId) => this.activateLoadedSession(sessionId),
+      discardPreview: (previewId, sourceSessionId) => {
+        if (this.activeSessionId === previewId) this.activateLoadedSession(sourceSessionId);
+        this.props.discardForkPreview(previewId);
+        this.sessionRegistry.removeSession(previewId);
+      },
       reportError: (error) => this.setError(error),
     });
   }
@@ -189,6 +196,9 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   get sessionTitle() {
+    const previewTitle =
+      this.activeSessionId && this.sessionRegistry.forkPreviewTitle(this.activeSessionId);
+    if (previewTitle) return previewTitle;
     const context = this.sessionContext();
     const title = context ? this.props.catalog.find(context.sessionId)?.title : undefined;
     return title ?? "New chat";
@@ -200,7 +210,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   canSubmitSession(sessionId: string) {
-    if (!this.isActiveSession(sessionId)) return false;
+    if (!this.isActiveSession(sessionId) || this.sessionRegistry.isForkPreview(sessionId))
+      return false;
     const session = this.sessionRegistry.findSession(sessionId);
     if (!session) return false;
     if (this.sessionRegistry.pendingSessions.savedRecord(sessionId)?.status === "activating")
@@ -415,11 +426,40 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     return this.openSessionTarget(sessionId, false);
   }
 
-  /** Selects a fork as soon as its checkout exists, without waiting for setup or hydration. */
-  async openForkedSession(sessionId: string, workingDirectory: string) {
-    this.sessionRegistry.load(sessionId, workingDirectory);
-    this.activateLoadedSession(sessionId);
-    await this.props.openSessionById(sessionId);
+  /** Keep the immediate preview visible until the real runtime's transcript is ready. */
+  async openForkedSession(
+    previewId: string,
+    sessionId: string,
+    workingDirectory: string,
+    isCurrent: () => boolean,
+  ) {
+    const session = this.sessionRegistry.load(sessionId, workingDirectory);
+    await Promise.all([
+      this.client.projectSessions.open({ sessionId, workingDirectory }, { signal: this.signal }),
+      this.props.catalog.lookup(sessionId),
+    ]);
+    if (
+      !isCurrent() ||
+      !(await this.waitForSessionHydration(sessionId, undefined, isCurrent)) ||
+      this.signal.aborted
+    )
+      return;
+    const preview = this.sessionRegistry.findSession(previewId);
+    if (!preview) return;
+    const draft = preview.conversationSessionStore.composerStore.draftStore;
+    batch(() => {
+      session.conversationSessionStore.composerStore.draftStore.restore(
+        draft.text,
+        draft.submissionAttachments,
+      );
+      session.transcriptContinuityKey = previewId;
+      session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition(
+        preview.conversationSessionStore.chatStore.transcriptInteraction.transcriptScrollPosition,
+      );
+      this.props.reconcileForkPreview(previewId, sessionId);
+      this.sessionRegistry.removeSession(previewId);
+      if (this.activeSessionId === sessionId) this.showLoadedSession(sessionId);
+    });
   }
 
   private async openSessionTarget(sessionId: string, acceptedProjectOpen: boolean) {
@@ -428,6 +468,10 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.openingSession = undefined;
     if (!acceptedProjectOpen) this.projectOpenStore.cancelPending();
     const existingSession = this.sessionRegistry.findSession(sessionId);
+    if (existingSession?.isForkPreview) {
+      this.activateLoadedSession(sessionId);
+      return true;
+    }
     if (existingSession) existingSession.model.observationError = undefined;
     if (
       !existingSession ||
@@ -520,7 +564,11 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   /** Keeps the current transcript mounted until the destination's first snapshot is applied. */
-  private waitForSessionHydration(sessionId: string, revision: number): Promise<boolean> {
+  private waitForSessionHydration(
+    sessionId: string,
+    revision?: number,
+    isCurrent = () => true,
+  ): Promise<boolean> {
     const model = this.sessionRegistry.findSession(sessionId)?.model;
     if (model?.sessionFile) return Promise.resolve(true);
     if (model?.observationError) return Promise.reject(new Error(model.observationError));
@@ -539,7 +587,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       this.signal.addEventListener("abort", abort, { once: true });
       const dispose = reactiveEffect(() => {
         const current = this.sessionRegistry.findSession(sessionId)?.model;
-        if (revision !== this.sessionOpenRevision) queueMicrotask(() => finish(false));
+        if (!isCurrent() || (revision !== undefined && revision !== this.sessionOpenRevision))
+          queueMicrotask(() => finish(false));
         else if (current?.sessionFile) queueMicrotask(() => finish(true));
         else if (current?.observationError)
           queueMicrotask(() => finish(false, current.observationError));
@@ -610,7 +659,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   sessionContext() {
-    if (!this.projectOpenStore.projectPath || !this.session) return undefined;
+    if (!this.projectOpenStore.projectPath || !this.session || this.activeSession?.isForkPreview)
+      return undefined;
     const summary = this.props.catalog.find(this.session.sessionId);
     const managedWorktree = this.props.catalog.managedWorktree(this.projectOpenStore.projectPath);
     return {
@@ -659,6 +709,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         this.reopenAfterAgentRestart = Boolean(
           this.projectOpenStore.projectPath &&
           this.session &&
+          !this.activeSession?.isForkPreview &&
           !this.sessionRegistry.pendingSessions.isTemporary(this.session.sessionId),
         );
         this.projectOpenStore.cancelPending();

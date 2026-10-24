@@ -479,7 +479,11 @@ export class RootStore extends Store<{
           }
         : undefined;
     }
-    if (selection.kind !== "project-session") return undefined;
+    if (
+      selection.kind !== "project-session" ||
+      this.sessionRegistry.isForkPreview(selection.sessionId)
+    )
+      return undefined;
     const summary = this.sessionCatalogStore.find(selection.sessionId);
     if (this.sessionMetadataStore.isResolved(selection.sessionId)) return undefined;
     const workingDirectory = this.sessionMetadataStore.workingDirectory(selection.sessionId);
@@ -762,7 +766,8 @@ export class RootStore extends Store<{
       extensionUi: () => this.extensionUiStore,
       catalog: this.sessionCatalogStore,
       startCakeChat: (prompt) => this.navigationStore.startCakeChat(prompt),
-      presentationSession: () => this.workspaceSession,
+      presentationSession: () =>
+        this.projectWorkbenchStore.activeSession?.isForkPreview ? undefined : this.workspaceSession,
       presentationProjectPath: () => this.workspaceProjectPath,
       originatingDirectory: () => {
         const active = this.appShellStore.activeConversation;
@@ -779,8 +784,13 @@ export class RootStore extends Store<{
         }),
       onWorktreeSessionsResolved: (sessionIds, projectPath) =>
         this.sessionRetirementStore.forgetProjectSessions(sessionIds, projectPath),
-      openSessionById: async (sessionId) => {
-        await this.navigationStore.openSession(sessionId);
+      discardForkPreview: (previewId) => {
+        this.sessionLayoutStore.removeSessions([previewId]);
+        this.appShellStore.removeSessionsFromHistory([previewId]);
+      },
+      reconcileForkPreview: (previewId, sessionId) => {
+        this.sessionLayoutStore.replaceSession(previewId, sessionId);
+        this.appShellStore.replaceProjectSession(previewId, sessionId);
       },
       activeSessionId: () => {
         const active = this.appShellStore.activeConversation;

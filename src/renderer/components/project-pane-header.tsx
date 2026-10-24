@@ -30,6 +30,7 @@ export const ProjectPaneHeader = observer(function ProjectPaneHeader({
   const focusPane = () => root.navigationStore.focusSessionPane(pane.paneId);
   const focused = root.sessionLayoutStore.focusedPaneId === pane.paneId;
   const resolved = root.sessionCatalogStore.find(paneSession.sessionId)?.resolved === true;
+  if (paneSession.isForkPreview) return null;
   if (resolved)
     return (
       <>

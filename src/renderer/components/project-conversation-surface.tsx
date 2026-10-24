@@ -13,6 +13,7 @@ import { ProjectComposerAccessory } from "./project-composer-accessory";
 import { ProjectComposerHeader } from "./project-composer-header";
 import { ProjectPaneHeader } from "./project-pane-header";
 import { SessionArtifactPane } from "./session-artifact-pane";
+import { SessionForkStatus } from "./session-fork-status";
 
 export const ProjectConversationSurface = observer(function ProjectConversationSurface({
   browserMode,
@@ -52,6 +53,7 @@ export const ProjectConversationSurface = observer(function ProjectConversationS
         paneSession.interviewError?.errorDetails);
     return {
       transcriptTransition: {
+        contentKey: paneSession.transcriptContinuityKey ?? paneSession.sessionId,
         requestedKey:
           store.openingSession?.sourceSessionId === paneSession.sessionId
             ? store.openingSession.sessionId
@@ -86,10 +88,15 @@ export const ProjectConversationSurface = observer(function ProjectConversationS
         ?.resolved ? undefined : (
         <BlockingInterviews session={paneSession} inlineWidgets={root.inlineWidgetStore} />
       ),
-      composerLeadingAccessory: settings.appearance.sessionAvatarsEnabled
-        ? { visible: true, content: <ProjectComposerAccessory session={paneSession} /> }
-        : undefined,
-      composerHeader: <ProjectComposerHeader session={paneSession} />,
+      composerLeadingAccessory:
+        settings.appearance.sessionAvatarsEnabled && !paneSession.isForkPreview
+          ? { visible: true, content: <ProjectComposerAccessory session={paneSession} /> }
+          : undefined,
+      composerHeader: paneSession.isForkPreview ? (
+        <SessionForkStatus store={store.sessionContinuationStore} />
+      ) : (
+        <ProjectComposerHeader session={paneSession} />
+      ),
       status:
         focused && extensionUi.statuses.length > 0 ? (
           <div
@@ -111,7 +118,11 @@ export const ProjectConversationSurface = observer(function ProjectConversationS
       store={root.sessionLayoutStore}
       findSession={(sessionId) => store.sessionRegistry.findSession(sessionId)}
       chatProps={projectChatProps}
-      title={(sessionId) => root.sessionCatalogStore.find(sessionId)?.title ?? "New chat"}
+      title={(sessionId) =>
+        store.sessionRegistry.forkPreviewTitle(sessionId) ??
+        root.sessionCatalogStore.find(sessionId)?.title ??
+        "New chat"
+      }
       titleLeading={(sessionId) => (
         <ProjectChatHeaderLink
           projectPath={root.sessionCatalogStore.find(sessionId)?.projectPath}

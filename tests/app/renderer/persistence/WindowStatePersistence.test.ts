@@ -83,6 +83,26 @@ afterEach(() => {
 });
 
 describe("WindowStatePersistence", () => {
+  it("persists an unfinished fork's source rather than a made-up backend identity", async () => {
+    const h = harness();
+    const preview = h.root.sessionRegistry.prepareForkPreview(sessionId, "entry", "Source");
+    h.root.navigationStore.selectProjectSession(preview.sessionId);
+    h.root.projectWorkbenchStore.showLoadedSession(preview.sessionId);
+    await h.persistence.flush();
+    const persisted = h.save.mock.calls.at(-1)![0];
+    expect(persisted).toMatchObject({
+      children: {
+        sessionRegistry: { state: { targets: [{ sessionId, workspacePath: workspace }] } },
+        sessionLayoutStore: {
+          state: { layout: { history: [sessionId, sessionId], historyCursor: 1 } },
+        },
+      },
+    });
+    expect(JSON.stringify(persisted)).not.toContain(preview.sessionId);
+    expect(h.root.sessionLayoutStore.focusedSessionId).toBe(preview.sessionId);
+    expect(h.root.sessionRegistry.findSession(preview.sessionId)).toBe(preview);
+  });
+
   it("hydrates once, ignores transient changes, and saves the unchanged JSON-encodable Root payload", async () => {
     vi.useFakeTimers();
     const h = harness({

@@ -256,6 +256,16 @@ export class SessionLayoutStore extends Store<{ allowSplit?: boolean }> {
     return { removedSessionIds: [...closing.history], focusedSessionId: this.focusedSessionId };
   }
 
+  /** Reconcile a renderer-only identity in place, preserving pane focus and history cursor. */
+  replaceSession(from: string, to: string) {
+    if (!this.layout) return;
+    for (const pane of collectPanes(this.layout))
+      this.layout = updatePane(this.layout, pane.paneId, (node) => ({
+        ...node,
+        history: node.history.map((id) => (id === from ? to : id)),
+      }));
+  }
+
   removeSessions(sessionIds: readonly string[]) {
     if (!this.layout || sessionIds.length === 0) return;
     const removed = new Set(sessionIds);

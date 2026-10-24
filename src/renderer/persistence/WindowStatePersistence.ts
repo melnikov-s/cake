@@ -1,7 +1,9 @@
-import { onSnapshot, toSnapshot, type Store } from "r-state-tree";
+import { onSnapshot, toSnapshot, type Store, type StoreSnapshot } from "r-state-tree";
 import type { JsonValue } from "../../contracts/serialization/json-contract";
 import type { Client } from "../client/Client";
 import { extractSavedDrafts } from "../../contracts/project-sessions/saved-draft-extraction";
+import { RootStore } from "../stores/RootStore";
+import { withoutSessionForkPreviews } from "./session-fork-preview-snapshot";
 
 /** One-way mounted Store snapshot persistence owned by the renderer window. */
 export class WindowStatePersistence implements Disposable {
@@ -51,7 +53,13 @@ export class WindowStatePersistence implements Disposable {
     // Store snapshots are plain data, but may contain undefined and non-finite numbers.
     // Keep JSON normalization and capture isolation before queueing. Parsing our own JSON
     // needs no further tree validation here; the RPC and storage boundaries still validate.
-    const snapshot: JsonValue = JSON.parse(JSON.stringify(toSnapshot(root)));
+    const snapshot: StoreSnapshot & JsonValue = JSON.parse(JSON.stringify(toSnapshot(root)));
+    if (root instanceof RootStore)
+      withoutSessionForkPreviews(
+        snapshot,
+        root.sessionRegistry.forkPreviewSources,
+        root.sessionLayoutStore.layout,
+      );
     // After migration commits, this window persists only unsent navigation/composer state.
     const windowSnapshot = this.savedDraftsReady
       ? extractSavedDrafts(snapshot).windowSnapshot

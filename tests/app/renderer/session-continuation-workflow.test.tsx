@@ -3,6 +3,7 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
+import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
@@ -77,14 +78,16 @@ function deferredForkLookup(workingDirectory: string) {
 }
 function deferred<Value>() {
   let resolve!: (value: Value) => void;
-  const promise = new Promise<Value>((complete) => {
+  let reject!: (error: Error) => void;
+  const promise = new Promise<Value>((complete, fail) => {
     resolve = complete;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 function renderContinuation(client: TestClientOverrides, managed = true) {
   const workingDirectory = managed ? "/current-worktree" : "/project";
-  const source = sessionSummary({
+  let source = sessionSummary({
     sessionId: "source",
     title: "Source conversation",
     projectPath: "/project",
@@ -113,12 +116,32 @@ function renderContinuation(client: TestClientOverrides, managed = true) {
   const view = render(
     <StoreProvider store={fixture.root}>
       <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
-        <App />
+        <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
+          <App />
+        </VirtuosoMockContext.Provider>
       </StoreProvider>
     </StoreProvider>,
   );
   return {
     user: userEvent.setup(),
+    async interruptAgent() {
+      await act(async () =>
+        fixture.root.projectWorkbenchStore.applyAgentAvailability({
+          revision: 1,
+          global: { state: "unavailable", reason: "Agent stopped" },
+          workingDirectories: [],
+        }),
+      );
+    },
+    async resolveSource() {
+      await act(async () => {
+        source = { ...source, resolved: true };
+        applySnapshot(fixture.models.sessionCatalog, {
+          sessions: [source],
+          resolvedHasMoreByProject: {},
+        });
+      });
+    },
     async hydrateFork(path: string) {
       await act(async () => {
         applySnapshot(fixture.models.sessionCatalog, {
@@ -137,6 +160,9 @@ function renderContinuation(client: TestClientOverrides, managed = true) {
       fixture[Symbol.dispose]();
     },
   };
+}
+function visibleSessionId() {
+  return document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id");
 }
 async function openFork(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("button", { name: "Session tree" }));
@@ -167,7 +193,7 @@ afterEach(() => {
 });
 
 describe("Session continuation workflow", () => {
-  it("forks into the project root and selects the identity-only child before runtime setup finishes", async () => {
+  it("immediately previews the fork in the project root and reconciles only when the runtime is hydrated", async () => {
     const pendingOpen = deferred<void>();
     const open = vi.fn<Client["projectSessions"]["open"]>(() => pendingOpen.promise);
     const fork = vi.fn<Client["projectSessions"]["fork"]>(async () => ({ sessionId: "forked" }));
@@ -182,8 +208,14 @@ describe("Session continuation workflow", () => {
       within(dialog).getByRole("button", { name: "Use the project root (no worktree)" }),
     );
     await fixture.user.click(within(dialog).getByRole("button", { name: "Fork conversation" }));
-    expect(await screen.findByText("New chat")).toBeDefined();
-    expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
+    expect(screen.getByText("Fork of Source conversation")).toBeDefined();
+    expect(screen.getByRole("status", { name: "Preparing fork in progress" })).toBeDefined();
+    const previewId = visibleSessionId();
+    expect(previewId).not.toBe("source");
+    expect(previewId).not.toBe("forked");
+    const composer = screen.getByRole("combobox", { name: "Message" });
+    await fixture.user.type(composer, "Continue from here");
+    expect(screen.getByRole("button", { name: "Send" }).hasAttribute("disabled")).toBe(true);
     expect(fork).toHaveBeenCalledWith(
       {
         sessionId: "source",
@@ -195,9 +227,9 @@ describe("Session continuation workflow", () => {
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     expect(create).not.toHaveBeenCalled();
-    expect(open).not.toHaveBeenCalled();
+    expect(visibleSessionId()).toBe(previewId);
     await forkLookup.resolve();
-    // The child has no catalog row yet, so the renderer reconciles it by identity alone.
+    // Catalog arrival alone does not discard the ready-looking preview.
     expect(forkLookup.lookup).toHaveBeenCalledWith(
       { sessionId: "forked" },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
@@ -206,15 +238,24 @@ describe("Session continuation workflow", () => {
       { sessionId: "forked", workingDirectory: "/project" },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
-    await fixture.hydrateFork("/project");
     await act(async () => pendingOpen.resolve());
+    expect(visibleSessionId()).toBe(previewId);
+    await fixture.hydrateFork("/project");
+    await waitFor(() => expect(visibleSessionId()).toBe("forked"));
     expect(screen.getAllByText("Forked conversation").length).toBeGreaterThan(1);
+    expect(screen.queryByText("Fork of Source conversation")).toBeNull();
+    expect((screen.getByRole("combobox", { name: "Message" }) as HTMLTextAreaElement).value).toBe(
+      "Continue from here",
+    );
+    expect(screen.getByRole("button", { name: "Send" }).hasAttribute("disabled")).toBe(false);
+    expect(fork).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the source usable while preparing a new worktree, then forks into that checkout", async () => {
+  it("navigates before worktree creation or source resolution and never renders the intermediate resolved source", async () => {
     const pendingCreate = deferred<WorktreeRecord>();
     const create = vi.fn<Client["managedWorktrees"]["create"]>(() => pendingCreate.promise);
-    const fork = vi.fn<Client["projectSessions"]["fork"]>(async () => ({ sessionId: "forked" }));
+    const pendingFork = deferred<{ sessionId: string }>();
+    const fork = vi.fn<Client["projectSessions"]["fork"]>(() => pendingFork.promise);
     const open = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);
     const forkLookup = deferredForkLookup("/created-worktree");
     using fixture = renderContinuation({
@@ -231,11 +272,18 @@ describe("Session continuation workflow", () => {
     );
     await fixture.user.click(within(dialog).getByRole("button", { name: "Fork conversation" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(screen.getAllByText("Source conversation").length).toBeGreaterThan(1);
-    expect(screen.getByRole("combobox", { name: "Message" }).hasAttribute("disabled")).toBe(false);
+    expect(screen.getByText("Fork of Source conversation")).toBeDefined();
+    const previewId = visibleSessionId();
+    expect(previewId).not.toBe("source");
     expect(fork).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
     await act(async () => pendingCreate.resolve(worktree("/created-worktree")));
-    expect(await screen.findByText("New chat")).toBeDefined();
+    expect(visibleSessionId()).toBe(previewId);
+    await fixture.resolveSource();
+    expect(visibleSessionId()).toBe(previewId);
+    expect(screen.getByText("Fork of Source conversation")).toBeDefined();
+    expect(screen.queryByText("Conversation resolved")).toBeNull();
+    await act(async () => pendingFork.resolve({ sessionId: "forked" }));
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
         path: "/project",
@@ -257,6 +305,155 @@ describe("Session continuation workflow", () => {
       expect.anything(),
     );
     await fixture.hydrateFork("/created-worktree");
+    await waitFor(() => expect(visibleSessionId()).toBe("forked"));
+    expect(screen.queryByRole("status", { name: "Preparing fork in progress" })).toBeNull();
+  });
+
+  it("retains the immediate preview and draft after worktree failure, then retries successfully", async () => {
+    const pendingCreate = deferred<WorktreeRecord>();
+    const create = vi
+      .fn<Client["managedWorktrees"]["create"]>()
+      .mockImplementationOnce(() => pendingCreate.promise)
+      .mockResolvedValue(worktree("/created-worktree"));
+    const fork = vi.fn<Client["projectSessions"]["fork"]>(async () => ({ sessionId: "forked" }));
+    using fixture = renderContinuation({
+      managedWorktrees: { create },
+      projectSessions: {
+        fork,
+        open: async () => undefined,
+        lookup: async () => forkedSummary("/created-worktree"),
+      },
+    });
+    const dialog = await openFork(fixture.user);
+    await fixture.user.click(within(dialog).getByRole("button", { name: "Create a new worktree" }));
+    await fixture.user.click(within(dialog).getByRole("button", { name: "Fork conversation" }));
+    const previewId = visibleSessionId();
+    await fixture.user.type(screen.getByRole("combobox", { name: "Message" }), "Keep this draft");
+    await act(async () => pendingCreate.reject(new Error("Checkout failed")));
+    expect(await screen.findByRole("alert")).toHaveProperty(
+      "textContent",
+      expect.stringContaining("Checkout failed"),
+    );
+    expect(visibleSessionId()).toBe(previewId);
+    expect(fork).not.toHaveBeenCalled();
+    await fixture.user.click(screen.getByRole("button", { name: "Retry fork setup" }));
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(fork).toHaveBeenCalledTimes(1);
+    expect(visibleSessionId()).toBe(previewId);
+    await fixture.hydrateFork("/created-worktree");
+    await waitFor(() => expect(visibleSessionId()).toBe("forked"));
+    expect((screen.getByRole("combobox", { name: "Message" }) as HTMLTextAreaElement).value).toBe(
+      "Keep this draft",
+    );
+  });
+
+  it("retries runtime opening without creating another worktree or fork", async () => {
+    const create = vi.fn<Client["managedWorktrees"]["create"]>(async () =>
+      worktree("/created-worktree"),
+    );
+    const fork = vi.fn<Client["projectSessions"]["fork"]>(async () => ({ sessionId: "forked" }));
+    const open = vi
+      .fn<Client["projectSessions"]["open"]>()
+      .mockRejectedValueOnce(new Error("Runtime unavailable"))
+      .mockResolvedValue(undefined);
+    using fixture = renderContinuation({
+      managedWorktrees: { create },
+      projectSessions: { fork, open, lookup: async () => forkedSummary("/created-worktree") },
+    });
+    const dialog = await openFork(fixture.user);
+    await fixture.user.click(within(dialog).getByRole("button", { name: "Create a new worktree" }));
+    await fixture.user.click(within(dialog).getByRole("button", { name: "Fork conversation" }));
+    expect(await screen.findByRole("alert")).toHaveProperty(
+      "textContent",
+      expect.stringContaining("Runtime unavailable"),
+    );
+    const previewId = visibleSessionId();
+    await fixture.user.click(screen.getByRole("button", { name: "Retry fork setup" }));
+    expect(open).toHaveBeenCalledTimes(2);
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(fork).toHaveBeenCalledTimes(1);
+    expect(visibleSessionId()).toBe(previewId);
+    await fixture.hydrateFork("/created-worktree");
+    await waitFor(() => expect(visibleSessionId()).toBe("forked"));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("keeps a created checkout on fork failure and honestly retries the fork request", async () => {
+    const create = vi.fn<Client["managedWorktrees"]["create"]>(async () =>
+      worktree("/created-worktree"),
+    );
+    const fork = vi
+      .fn<Client["projectSessions"]["fork"]>()
+      .mockRejectedValueOnce(new Error("Fork failed"))
+      .mockResolvedValue({ sessionId: "forked" });
+    using fixture = renderContinuation({
+      managedWorktrees: { create },
+      projectSessions: {
+        fork,
+        open: async () => undefined,
+        lookup: async () => forkedSummary("/created-worktree"),
+      },
+    });
+    const dialog = await openFork(fixture.user);
+    await fixture.user.click(within(dialog).getByRole("button", { name: "Create a new worktree" }));
+    await fixture.user.click(within(dialog).getByRole("button", { name: "Fork conversation" }));
+    expect(await screen.findByRole("alert")).toHaveProperty(
+      "textContent",
+      expect.stringContaining("Backend changes may already exist"),
+    );
+    await fixture.user.click(screen.getByRole("button", { name: "Retry fork setup" }));
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(fork).toHaveBeenCalledTimes(2);
+    await fixture.hydrateFork("/created-worktree");
+    await waitFor(() => expect(visibleSessionId()).toBe("forked"));
+  });
+
+  it("does not steal focus if the user returns to the source during background setup", async () => {
+    const pendingFork = deferred<{ sessionId: string }>();
+    const fork = vi.fn<Client["projectSessions"]["fork"]>(() => pendingFork.promise);
+    using fixture = renderContinuation({
+      projectSessions: {
+        fork,
+        open: async () => undefined,
+        lookup: async () => forkedSummary("/current-worktree"),
+      },
+    });
+    const dialog = await openFork(fixture.user);
+    await fixture.user.click(within(dialog).getByRole("button", { name: "Fork conversation" }));
+    expect(visibleSessionId()).not.toBe("source");
+    await fixture.user.click(screen.getByRole("button", { name: "Back to source" }));
+    expect(visibleSessionId()).toBe("source");
+    await act(async () => pendingFork.resolve({ sessionId: "forked" }));
+    await fixture.hydrateFork("/current-worktree");
+    expect(visibleSessionId()).toBe("source");
+    expect(screen.getAllByText("Source conversation").length).toBeGreaterThan(1);
+    expect(fork).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps interrupted setup honest and ignores late startup completion until the preview is discarded", async () => {
+    const pendingOpen = deferred<void>();
+    const open = vi.fn<Client["projectSessions"]["open"]>(() => pendingOpen.promise);
+    const fork = vi.fn<Client["projectSessions"]["fork"]>(async () => ({ sessionId: "forked" }));
+    using fixture = renderContinuation({
+      projectSessions: { fork, open, lookup: async () => forkedSummary("/current-worktree") },
+    });
+    const dialog = await openFork(fixture.user);
+    await fixture.user.click(within(dialog).getByRole("button", { name: "Fork conversation" }));
+    const previewId = visibleSessionId();
+    expect(open).toHaveBeenCalledTimes(1);
+    await fixture.interruptAgent();
+    expect(await screen.findByRole("alert")).toHaveProperty(
+      "textContent",
+      expect.stringContaining("interrupted"),
+    );
+    await fixture.hydrateFork("/current-worktree");
+    await act(async () => pendingOpen.resolve());
+    expect(visibleSessionId()).toBe(previewId);
+    expect(screen.getByRole("button", { name: "Retry fork setup" })).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "Discard preview" }));
+    expect(visibleSessionId()).toBe("source");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(fork).toHaveBeenCalledTimes(1);
   });
 
   it("disables child-worktree branching outside a managed worktree and cancels without forking", async () => {

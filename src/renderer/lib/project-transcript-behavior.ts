@@ -10,7 +10,9 @@ export function projectTranscriptBehaviorFor(
 ): ChatTranscriptBehavior {
   const store = root.projectWorkbenchStore;
   const extensionUi = root.extensionUiStore;
-  const resolved = root.sessionCatalogStore.find(paneSession.sessionId)?.resolved === true;
+  const resolved =
+    paneSession.isForkPreview ||
+    root.sessionCatalogStore.find(paneSession.sessionId)?.resolved === true;
   return {
     workspacePath: paneSession.workspacePath,
     messageReferenceSessionId: paneSession.sessionId,
