@@ -74,8 +74,24 @@ test("header sidebar toggle only appears when the sidebar is collapsed", async (
       .toBe(true);
 
     const state = await page.evaluate(() => {
+      const header = document.querySelector('[data-slot="workspace-header"]');
       const toggle = document.querySelector('[data-slot="header-sidebar-toggle"]');
+      const avatar = header?.querySelector('[data-slot="avatar"]');
+      const title = header?.querySelector("strong");
+      const rightButtons = Array.from(
+        header?.querySelectorAll(":scope > div:last-child button") ?? [],
+      ).filter((button) => {
+        const box = button.getBoundingClientRect();
+        return box.width > 0 && box.height > 0;
+      });
+      const centerY = (element: Element | null | undefined) => {
+        const box = element?.getBoundingClientRect();
+        return box ? box.top + box.height / 2 : null;
+      };
       const rect = toggle?.getBoundingClientRect();
+      const toggleCenter = centerY(toggle);
+      const avatarCenter = centerY(avatar);
+      const titleCenter = centerY(title);
       const workspace = document.querySelector('[data-slot="workspace"]')?.getBoundingClientRect();
       const display = toggle ? getComputedStyle(toggle).display : "";
       return {
@@ -84,10 +100,15 @@ test("header sidebar toggle only appears when the sidebar is collapsed", async (
           workspace && workspace.left === 0 && workspace.right === innerWidth,
         ),
         clearsWindowControls: Boolean(rect && rect.left >= 84),
-        // Same horizontal line as the 46px .sidebar-window-tools row (28px
-        // buttons centered in it → 23px from the window's top edge) despite
-        // this header being 52px tall.
-        alignedWithWindowToolsRow: Boolean(rect) && Math.abs(rect!.top + rect!.height / 2 - 23) < 2,
+        // Same horizontal centerline across toggle, project icon, title, and right-side icons.
+        alignedWithWindowToolsRow:
+          toggleCenter !== null &&
+          titleCenter !== null &&
+          rightButtons.length > 0 &&
+          Math.abs(toggleCenter - 26.5) < 1 &&
+          (avatarCenter === null || Math.abs(avatarCenter - toggleCenter) < 0.5) &&
+          Math.abs(titleCenter - toggleCenter) < 0.5 &&
+          rightButtons.every((button) => Math.abs((centerY(button) ?? 0) - toggleCenter) < 0.5),
         display,
       };
     });

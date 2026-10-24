@@ -84,7 +84,7 @@ export const Sidebar = observer(function Sidebar({
         focusMode && "[&_svg]:size-5",
       )}
     >
-      <div className="flex h-[46px] shrink-0 items-center gap-1 pl-[103px] pr-3 [app-region:drag] max-[620px]:pl-2 max-[620px]:h-auto max-[620px]:min-h-11 max-[620px]:flex-wrap [@media(pointer:coarse)]:pl-2 [@media(pointer:coarse)]:h-auto [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:flex-wrap">
+      <div className="flex h-[52px] shrink-0 items-center gap-1 pl-[103px] pr-3 [app-region:drag] max-[620px]:pl-2 max-[620px]:h-auto max-[620px]:min-h-11 max-[620px]:flex-wrap [@media(pointer:coarse)]:pl-2 [@media(pointer:coarse)]:h-auto [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:flex-wrap">
         <SidebarNavigationControls onToggle={onToggle} />
         <IconButton
           data-cake-hint-key="b"

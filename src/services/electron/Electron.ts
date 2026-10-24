@@ -6,7 +6,7 @@ import type {
 } from "../../contracts/application/cake-rpc-contract";
 import type { ElectronError } from "../../contracts/desktop/electron-errors";
 
-export const CAKE_TITLE_BAR_HEIGHT = 46;
+export const CAKE_TITLE_BAR_HEIGHT = 52;
 export const VSCODE_TITLE_BAR_HEIGHT = 35;
 
 type Payload<Type extends keyof typeof cakeRpcPayloadSchemas> =

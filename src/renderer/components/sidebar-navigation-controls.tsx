@@ -19,7 +19,7 @@ export const SidebarNavigationControls = observer(function SidebarNavigationCont
       className={cn(
         "flex shrink-0 items-center gap-1 [app-region:no-drag]",
         header &&
-          "absolute left-[84px] top-[9px] z-20 max-[620px]:left-2 phone:left-2 [@media(pointer:coarse)]:top-1",
+          "absolute left-[84px] top-1/2 z-20 -translate-y-1/2 max-[620px]:left-2 phone:left-2 [@media(pointer:coarse)]:top-1 [@media(pointer:coarse)]:translate-y-0",
         header && !root.sidebarStore.visible
           ? "flex"
           : header && "hidden max-[620px]:flex phone:flex",
