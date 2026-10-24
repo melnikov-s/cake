@@ -11,7 +11,8 @@ import { IconButtonHotkeyProvider } from "./ui/icon-button";
 import { MarkdownLinkProvider } from "./ai-elements/markdown";
 import { RendererErrorBoundary } from "./renderer-error-boundary";
 import { ArtifactReferencePreview } from "./artifact-reference-preview";
-import { InlineArtifactPreview } from "./inline-artifact-preview";
+import { ConversationMarkdownResourceContext } from "./conversation-markdown-resource-context";
+import { ConversationMarkdownProvider } from "./conversation-markdown-provider";
 import { formatArtifactRef, parseArtifactRef } from "../../contracts/artifacts/artifact-lineage";
 
 interface RendererRootProps {
@@ -34,9 +35,6 @@ export const RendererRoot = observer(function RendererRoot({
 }: RendererRootProps) {
   const activeSessionId = rootStore.appShellStore.activeConversation?.sessionId;
   const sessionIds = rootStore.sessionCatalogStore.authoritativeSessionIds;
-  const activeWorkingDirectory = activeSessionId
-    ? rootStore.sessionCatalogStore.find(activeSessionId)?.workingDirectory
-    : undefined;
   return (
     <RendererErrorBoundary>
       <StrictMode>
@@ -62,23 +60,6 @@ export const RendererRoot = observer(function RendererRoot({
                     rootStore.cakeChatCollectionStore.summaries.find(
                       (session) => session.sessionId === sessionId,
                     )?.title,
-                  loadWorkspaceImage: (path, signal) => {
-                    if (!activeWorkingDirectory)
-                      return Promise.reject(new Error("No active project Working Directory"));
-                    return rootStore.client.filesystem.readImage(activeWorkingDirectory, path, {
-                      signal,
-                    });
-                  },
-                  renderArtifactEmbed: (reference, label, surfaceId) => (
-                    <InlineArtifactPreview
-                      reference={formatArtifactRef(parseArtifactRef(reference))}
-                      label={label}
-                      surfaceId={surfaceId}
-                      stateSessionId={activeSessionId}
-                      store={rootStore.inlineArtifactPreviewStore}
-                      inlineWidgets={rootStore.inlineWidgetStore}
-                    />
-                  ),
                   renderArtifactReference: (reference, label) => (
                     <ArtifactReferencePreview
                       reference={formatArtifactRef(parseArtifactRef(reference))}
@@ -95,28 +76,38 @@ export const RendererRoot = observer(function RendererRoot({
                   ),
                 }}
               >
-                <IconButtonHotkeyProvider
-                  bindingFor={(id) => rootStore.settingsStore.hotkeys.bindingFor(id)}
+                <ConversationMarkdownResourceContext
+                  value={{
+                    filesystem: rootStore.client.filesystem,
+                    inlineArtifacts: rootStore.inlineArtifactPreviewStore,
+                    inlineWidgets: rootStore.inlineWidgetStore,
+                  }}
                 >
-                  <div className="flex h-full min-h-0 flex-col">
-                    {rootStore.desktopConnection && (
-                      <DesktopConnectionStatus connection={rootStore.desktopConnection} />
-                    )}
-                    {browserConnection && (
-                      <BrowserConnectionStatus connection={browserConnection} />
-                    )}
-                    <div className="min-h-0 flex-1">
-                      {variant === "cake-chat-overlay" ? (
-                        <CakeChatOverlayApp />
-                      ) : (
-                        <>
-                          <App browserMode={Boolean(browserConnection)} />
-                          <NewSessionDialog store={rootStore.newSessionStore} />
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </IconButtonHotkeyProvider>
+                  <ConversationMarkdownProvider>
+                    <IconButtonHotkeyProvider
+                      bindingFor={(id) => rootStore.settingsStore.hotkeys.bindingFor(id)}
+                    >
+                      <div className="flex h-full min-h-0 flex-col">
+                        {rootStore.desktopConnection && (
+                          <DesktopConnectionStatus connection={rootStore.desktopConnection} />
+                        )}
+                        {browserConnection && (
+                          <BrowserConnectionStatus connection={browserConnection} />
+                        )}
+                        <div className="min-h-0 flex-1">
+                          {variant === "cake-chat-overlay" ? (
+                            <CakeChatOverlayApp />
+                          ) : (
+                            <>
+                              <App browserMode={Boolean(browserConnection)} />
+                              <NewSessionDialog store={rootStore.newSessionStore} />
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </IconButtonHotkeyProvider>
+                  </ConversationMarkdownProvider>
+                </ConversationMarkdownResourceContext>
               </MarkdownLinkProvider>
             </StoreProvider>
           </StoreProvider>

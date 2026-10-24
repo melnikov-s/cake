@@ -209,12 +209,14 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
             part.artifactReference ??
             (part.artifactRevision
               ? `cake://artifact/${part.artifactId}@r${part.artifactRevision}`
-              : behavior.inlineArtifactPreviews.publicationReference(
-                  part.artifactId,
-                  behavior.store.id,
-                ))
+              : behavior.messageReferenceSessionId
+                ? behavior.inlineArtifactPreviews.publicationReference(
+                    part.artifactId,
+                    behavior.messageReferenceSessionId,
+                  )
+                : `cake://artifact/${part.artifactId}`)
           }
-          stateSessionId={behavior.store.id}
+          stateSessionId={behavior.messageReferenceSessionId}
           store={behavior.inlineArtifactPreviews}
           inlineWidgets={behavior.inlineWidgets}
         />
@@ -223,7 +225,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
       return (
         <ArtifactHost
           record={record}
-          stateSessionId={behavior.store.id}
+          stateSessionId={behavior.messageReferenceSessionId}
           inlineWidgets={behavior.inlineWidgets}
           onOpenSourceLocation={behavior.openSourceLocation}
           presentation="inline"
@@ -311,7 +313,6 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
       />
     ) : (part.attachmentKind === "image" && part.data) ||
       (part.inputReference &&
-        behavior.messageReferenceSessionId &&
         behavior.store.attachmentImages &&
         isAttachmentImageMimeType(part.inputReference.mimeType)) ? (
       <TranscriptImageAttachment

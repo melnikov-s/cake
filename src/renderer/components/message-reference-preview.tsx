@@ -5,6 +5,7 @@ import { Button } from "./ui/button";
 import { Callout } from "./ui/callout";
 import { CopyButton } from "./ui/copy-button";
 import { Markdown, useMarkdownLinkActions } from "./ai-elements/markdown";
+import { ConversationMarkdownProvider } from "./conversation-markdown-provider";
 
 /** Read-only Pi source evidence for a message outside the visible continuation. */
 export const MessageReferencePreview = observer(function MessageReferencePreview({
@@ -44,9 +45,15 @@ export const MessageReferencePreview = observer(function MessageReferencePreview
             disabled={store.loading}
           />
         </div>
-        <Markdown>
-          {page.text || "No textual content. Attachments are referenced in message metadata."}
-        </Markdown>
+        <ConversationMarkdownProvider
+          stateSessionId={page.message.sessionId}
+          loadWorkspaceImage={store.loadWorkspaceImage}
+          loadAttachmentImage={store.loadAttachmentImage}
+        >
+          <Markdown>
+            {page.text || "No textual content. Attachments are referenced in message metadata."}
+          </Markdown>
+        </ConversationMarkdownProvider>
         {store.error && <Callout variant="error">{store.error}</Callout>}
         {store.copyError && (
           <Callout variant="error" role="alert">

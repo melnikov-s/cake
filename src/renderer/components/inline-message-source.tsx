@@ -5,7 +5,8 @@ import {
   attachmentLink,
   messageNavigationTarget,
 } from "../../contracts/conversations/message-reference";
-import { Markdown, MarkdownLinkProvider, useMarkdownLinkActions } from "./ai-elements/markdown";
+import { Markdown, useMarkdownLinkActions } from "./ai-elements/markdown";
+import { ConversationMarkdownProvider } from "./conversation-markdown-provider";
 import { MarkdownImage } from "./markdown-image";
 import { isAttachmentImageMimeType } from "../../contracts/conversations/attachment-reference-control";
 import { Button } from "./ui/button";
@@ -89,18 +90,13 @@ export const InlineMessageSource = observer(function InlineMessageSource({
             </Callout>
           ) : page ? (
             <>
-              <MarkdownLinkProvider
-                actions={{
-                  openExternalUrl: (url) => actions?.openExternalUrl(url),
-                  openSession: (sessionId, messageId, attachmentId) =>
-                    actions?.openSession(sessionId, messageId, attachmentId),
-                  ...actions,
-                  loadWorkspaceImage: store.loadWorkspaceImage,
-                  loadAttachmentImage: store.loadAttachmentImage,
-                }}
+              <ConversationMarkdownProvider
+                stateSessionId={page.message.sessionId}
+                loadWorkspaceImage={store.loadWorkspaceImage}
+                loadAttachmentImage={store.loadAttachmentImage}
               >
                 <Markdown>{page.text || "No textual content."}</Markdown>
-              </MarkdownLinkProvider>
+              </ConversationMarkdownProvider>
               {page.message.inputRefs.map((input) =>
                 isAttachmentImageMimeType(input.mimeType) ? (
                   <MarkdownImage

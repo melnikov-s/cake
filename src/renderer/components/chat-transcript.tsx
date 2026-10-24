@@ -17,6 +17,7 @@ import {
 } from "@/components/ai-elements/conversation";
 import { AnnotationDraftPopover } from "@/components/annotation-draft-popover";
 import { ChatTranscriptFooter } from "./chat-transcript-footer";
+import { ConversationMarkdownProvider } from "./conversation-markdown-provider";
 import { TranscriptScroller } from "./transcript-scroller";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
@@ -387,7 +388,10 @@ export const ChatTranscript = observer(function ChatTranscript({
     />
   );
   return (
-    <>
+    <ConversationMarkdownProvider
+      workspacePath={behavior.workspacePath}
+      stateSessionId={behavior.messageReferenceSessionId}
+    >
       {selectionOverlays}
       <div
         ref={setScroller}
@@ -454,6 +458,6 @@ export const ChatTranscript = observer(function ChatTranscript({
           )}
         </div>
       </div>
-    </>
+    </ConversationMarkdownProvider>
   );
 });
