@@ -81,7 +81,7 @@ const acquire = Effect.fn("SessionChats.acquire")(function* (sessionId: string) 
  * Deliberate primary-session submission updates its current renderer binding.
  * An eligible desktop controls subsequent device requests; browser submissions
  * cannot displace an existing desktop. Pending requests keep their dispatched
- * recipient. Auxiliary profiles never raise renderer requests.
+ * recipient. Discussion sidecars can request interviews; private workers cannot.
  */
 export const bindRenderer = Effect.fn("SessionChats.bindRenderer")(function* (
   sessionId: string,
@@ -89,7 +89,7 @@ export const bindRenderer = Effect.fn("SessionChats.bindRenderer")(function* (
 ) {
   const handle = yield* acquire(sessionId);
   const target =
-    handle.profile === "ProjectSession"
+    handle.profile === "ProjectSession" || handle.profile === "DiscussionSession"
       ? ({ _tag: "ProjectSession", sessionId } as const)
       : handle.profile === "CakeChatSession"
         ? ({ _tag: "CakeChatSession", sessionId } as const)

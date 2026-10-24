@@ -163,6 +163,8 @@ export interface CakeOperationOptions extends Partial<CakeArtifactOperationOptio
   allowedCakeOperations?: readonly string[];
   tools?: string[];
   auxiliary?: boolean;
+  /** Discussion sidecars only; private workers never receive blocking input authority. */
+  allowBlockingUserInput?: boolean;
   workflowControl?: WorkflowControl;
   messageBoardControl?: MessageBoardControl;
   requestInterview?(record: InterviewRecord, signal: AbortSignal): Promise<JsonValue | undefined>;

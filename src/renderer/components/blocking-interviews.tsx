@@ -1,6 +1,7 @@
 import { observer } from "r-state-tree/react";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
-import type { ProjectSessionStore } from "../stores/ProjectSessionStore";
+import type { InterviewStore } from "../stores/InterviewStore";
+import type { UiPart } from "../../contracts/conversations/session-contract";
 import { Interview } from "./interview";
 
 /** Keeps live interviews usable until their originating tool part is projected. */
@@ -8,7 +9,10 @@ export const BlockingInterviews = observer(function BlockingInterviews({
   session,
   inlineWidgets,
 }: {
-  session: ProjectSessionStore;
+  session: {
+    readonly interviews: readonly InterviewStore[];
+    readonly canonicalParts: readonly UiPart[];
+  };
   inlineWidgets: InlineWidgetStore;
 }) {
   const unlinked = session.interviews.filter(

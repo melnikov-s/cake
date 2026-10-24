@@ -31,8 +31,9 @@ export const observeCatalog = Effect.fn("CakeChatSideChats.observeCatalog")(func
 export const start = Effect.fn("CakeChatSideChats.start")(function* (
   input: CakeChatSideChatStartInput,
   location: CakeChatLocation,
+  connectionId?: number,
 ) {
   return yield* discussionSessions
-    .startCakeChatSideChat(input, location.workingDirectory)
+    .startCakeChatSideChat(input, location.workingDirectory, connectionId)
     .pipe(Effect.mapError(asCakeChatError("startSideChat")));
 });

@@ -155,6 +155,8 @@ const makeLayer = (
   const modelSelections: Array<{ provider: string; modelId: string }> = [];
   const controlInvocations: unknown[] = [];
   const forwardedInputs: unknown[] = [];
+  const rendererBindings: Array<{ sessionId: string; connectionId: number; prompts: number }> = [];
+  const interviewRequests: unknown[] = [];
   let stagedProjections = 0;
   const prompts: Parameters<CakeSessionRuntime["prompt"]>[] = [];
   const queueOperations: string[] = [];
@@ -351,6 +353,19 @@ const makeLayer = (
           ]
         : []),
       Layer.mock(RendererRequestCoordinator, {
+        bind: (target, connectionId) =>
+          Effect.sync(() => {
+            rendererBindings.push({
+              sessionId: target.sessionId,
+              connectionId,
+              prompts: prompts.length,
+            });
+          }),
+        requestInterview: (sessionId, record) =>
+          Effect.sync(() => {
+            interviewRequests.push({ sessionId, record });
+            return { answer: true };
+          }),
         presentAgentAction: () => Effect.void,
         requestProjectControl: (sessionId, invocation) =>
           Effect.sync(() => {
@@ -383,6 +398,8 @@ const makeLayer = (
     modelSelections,
     controlInvocations,
     forwardedInputs,
+    rendererBindings,
+    interviewRequests,
     record: () => record,
   };
 };
@@ -571,6 +588,64 @@ describe("Discussion Sessions domain", () => {
       ]);
     }).pipe(Effect.provide(fixture.layer));
   });
+
+  it.effect(
+    "binds first-prompt, reobserved and later user input to the exact sidecar, never its parent",
+    () => {
+      const fixture = makeLayer();
+      return Effect.gen(function* () {
+        const accepted = yield* discussionSessions.start(
+          {
+            parentSessionId: "parent-1",
+            workingDirectory: "/project",
+            anchor,
+            text: "Ask a question",
+          },
+          11,
+        );
+        const sessionId = accepted.thread.sidecarSessionId;
+        assert.ok(sessionId);
+        expect(fixture.rendererBindings).toEqual([{ sessionId, connectionId: 11, prompts: 0 }]);
+        const sidecar = fixture.options.find((options) => options.sessionId === sessionId);
+        assert.ok(sidecar?.requestInterview);
+        expect(sidecar.allowBlockingUserInput).toBe(true);
+        const record = {
+          id: "question",
+          sessionId,
+          request: {
+            protocol: "cake.request/v1" as const,
+            id: "question",
+            title: "Choose",
+            responseSchema: { type: "object" as const },
+            view: { type: "form" as const, fields: [] },
+            fallback: { markdown: "Choose" },
+          },
+        };
+        expect(
+          yield* Effect.promise(() =>
+            sidecar.requestInterview!(record, new AbortController().signal),
+          ),
+        ).toEqual({ answer: true });
+        expect(fixture.interviewRequests).toEqual([{ sessionId, record }]);
+        yield* discussionSessions.observe(
+          {
+            parentSessionId: "parent-1",
+            workingDirectory: "/project",
+            threadId: "thread-1",
+          },
+          22,
+        );
+        yield* sessionChats.bindRenderer(sessionId, 31);
+        expect(
+          fixture.rendererBindings.map(({ sessionId: id, connectionId }) => [id, connectionId]),
+        ).toEqual([
+          [sessionId, 11],
+          [sessionId, 22],
+          [sessionId, 31],
+        ]);
+      }).pipe(Effect.provide(fixture.layer));
+    },
+  );
 
   it.effect("starts on a constrained sidecar runtime with regenerated parent context", () => {
     const fixture = makeLayer();

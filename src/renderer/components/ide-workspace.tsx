@@ -12,6 +12,7 @@ import { EditorSelectionPills } from "./editor-selection-pills";
 import type { EditorSelectionsStore } from "../stores/EditorSelectionsStore";
 import { EmbeddedEditorPane } from "./embedded-editor";
 import { SideChatLayout } from "./side-chat-layout";
+import { NestedChat } from "./nested-chat";
 import { WorkspaceChatLayout } from "./workspace-chat-layout";
 
 function anchorTitle(anchor: NonNullable<ReviewsStore["draftAnchor"]>) {
@@ -69,37 +70,26 @@ export const IdeWorkspace = observer(function IdeWorkspace({
     : activeThread
       ? reviews.chatStore(activeThread.id)
       : undefined;
-  const chat = contextualChat ?? projectChat;
   const closeContext = () => {
     if (draftAnchor) reviews.cancelDraft();
     reviews.clearActiveThread();
   };
-  const sideChatTranscriptBehavior =
-    transcriptBehavior.openSourceLocation || transcriptBehavior.workspacePath
-      ? {
-          openSourceLocation: transcriptBehavior.openSourceLocation,
-          workspacePath: transcriptBehavior.workspacePath,
-        }
-      : undefined;
 
   const conversation = (
     <SideChatLayout
       store={sideChat}
       renderChat={(sideChatStore) => (
-        <Chat
-          store={sideChatStore}
-          embedded
-          compact
-          transcriptBehavior={sideChatTranscriptBehavior}
-        />
+        <NestedChat store={sideChatStore} parentBehavior={transcriptBehavior} />
       )}
     >
-      <Chat
-        className="h-full"
-        store={chat}
-        transcriptBehavior={transcriptBehavior}
-        composerHeader={
-          contextualChat ? undefined : (
+      {contextualChat ? (
+        <NestedChat store={contextualChat} parentBehavior={transcriptBehavior} compact={false} />
+      ) : (
+        <Chat
+          className="h-full"
+          store={projectChat}
+          transcriptBehavior={transcriptBehavior}
+          composerHeader={
             <>
               {(selections.selections.length > 0 || selections.error) && (
                 <div className="px-4 pb-2">
@@ -108,11 +98,11 @@ export const IdeWorkspace = observer(function IdeWorkspace({
               )}
               {projectComposerHeader}
             </>
-          )
-        }
-        composerContent={contextualChat ? undefined : projectComposerContent}
-        composerLeadingAccessory={projectComposerLeadingAccessory}
-      />
+          }
+          composerContent={projectComposerContent}
+          composerLeadingAccessory={projectComposerLeadingAccessory}
+        />
+      )}
     </SideChatLayout>
   );
 

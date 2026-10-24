@@ -12,6 +12,7 @@ import type {
 } from "../stores/SessionLayoutStore";
 import { SessionSplitLayout } from "./session-split-layout";
 import { SideChatLayout } from "./side-chat-layout";
+import { NestedChat } from "./nested-chat";
 import { WorkflowConversationLayout } from "./workflow-conversation-layout";
 import { WorkflowProgress } from "./workflow-progress";
 import type { WorkflowRunStore } from "../stores/WorkflowRunStore";
@@ -77,25 +78,16 @@ export function ConversationSplitLayout<T extends PrimarySessionStore>({
         const session = sessionForPane(pane);
         if (!session) return <LoadingState label={loadingLabel} />;
         const props = chatProps(session, pane);
-        const nestedTranscriptBehavior =
-          props.transcriptBehavior?.openSourceLocation || props.transcriptBehavior?.workspacePath
-            ? {
-                openSourceLocation: props.transcriptBehavior.openSourceLocation,
-                workspacePath: props.transcriptBehavior.workspacePath,
-              }
-            : undefined;
         const workflows = session.workflowRunStores ?? [];
         const conversation = (
           <WorkflowConversationLayout stores={workflows}>
             <SideChatLayout
               store={session.conversationSessionStore.sideChatStore}
               renderChat={(sideChatStore) => (
-                <Chat
+                <NestedChat
                   store={sideChatStore}
-                  embedded
-                  compact
                   composerFocusEnabled={store.focusedPaneId === pane.paneId}
-                  transcriptBehavior={nestedTranscriptBehavior}
+                  parentBehavior={props.transcriptBehavior}
                 />
               )}
             >

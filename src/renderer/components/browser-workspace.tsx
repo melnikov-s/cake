@@ -7,6 +7,7 @@ import type { ChatStore } from "../stores/ChatStore";
 import type { SideChatStore } from "../stores/SideChatStore";
 import { Chat } from "./chat";
 import { SideChatLayout } from "./side-chat-layout";
+import { NestedChat } from "./nested-chat";
 import { WorkspaceChatLayout } from "./workspace-chat-layout";
 import { IconButton } from "./ui/icon-button";
 import { Input } from "./ui/input";
@@ -78,7 +79,7 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
   const conversation = (
     <SideChatLayout
       store={sideChat}
-      renderChat={(store) => <Chat store={store} embedded compact />}
+      renderChat={(store) => <NestedChat store={store} parentBehavior={transcriptBehavior} />}
     >
       <Chat
         className="h-full"

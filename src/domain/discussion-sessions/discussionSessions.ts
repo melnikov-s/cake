@@ -48,6 +48,7 @@ import {
   sessionAssistantThreadPath,
 } from "../../contracts/discussion-sessions/discussion-session-data";
 import { ReviewStorage } from "../../services/storage/ReviewStorage";
+import type { InterviewRecord } from "../../contracts/interviews/interview";
 
 export * from "../../contracts/discussion-sessions/discussion-session-data";
 
@@ -167,6 +168,8 @@ const acquireRecord = Effect.fn("DiscussionSessions.acquireRecord")(function* (
   const environment = yield* DiscussionSessionEnvironment;
   const sessions = yield* CakeSessionRuntimes;
   const services = yield* Effect.context<RefreshServices>();
+  const rendererRequests = yield* RendererRequestCoordinator;
+  const run = makePiCallbackExecutor(services);
   const location = yield* environment.location(record).pipe(asError("acquire"));
   const sidecarSessionId = record.sidecarSessionId ?? crypto.randomUUID();
   // Hooks run long after acquisition, so they re-read the stored thread each time.
@@ -183,6 +186,9 @@ const acquireRecord = Effect.fn("DiscussionSessions.acquireRecord")(function* (
     newSession: record.sidecarSessionId === undefined,
     sessionId: sidecarSessionId,
     auxiliary: true,
+    allowBlockingUserInput: true,
+    requestInterview: (interview: InterviewRecord, signal: AbortSignal) =>
+      run(rendererRequests.requestInterview(sidecarSessionId, interview, signal)),
     tools: [...configuration.tools],
     slashCommands: [],
     additionalSystemPrompt: configuration.systemPrompt,
@@ -393,6 +399,7 @@ const prepare = Effect.fn("DiscussionSessions.prepare")(function* (
 export const ensureSessionAssistant = Effect.fn("DiscussionSessions.ensureSessionAssistant")(
   function* (
     input: SessionAssistantEnsureInput,
+    connectionId?: number,
   ): Effect.fn.Return<
     SessionAssistantEnsured,
     DiscussionSessionError,
@@ -419,6 +426,7 @@ export const ensureSessionAssistant = Effect.fn("DiscussionSessions.ensureSessio
     const firstPrompt = input.firstPrompt;
     if (!firstPrompt) return { thread: projectThread(record) };
     const prepared = yield* prepare(record, input.tools);
+    yield* bindSidecarRenderer(prepared.handle, connectionId);
     const annotations = firstPrompt.annotations ?? [];
     const attachments =
       annotations.length > 0 ? [{ kind: "annotation" as const, annotations }] : [];
@@ -501,6 +509,7 @@ export const observeCatalog = Effect.fn("DiscussionSessions.observeCatalog")(fun
 /** Observes one sidecar conversation in the shared Cake Session update shape. */
 export const observe = Effect.fn("DiscussionSessions.observe")(function* (
   target: DiscussionSessionTarget,
+  connectionId?: number,
 ) {
   const environment = yield* DiscussionSessionEnvironment;
   const record = yield* environment
@@ -512,6 +521,7 @@ export const observe = Effect.fn("DiscussionSessions.observe")(function* (
       message: "The Discussion Session has no sidecar transcript yet",
     });
   const prepared = yield* prepare(record, target.tools);
+  yield* bindSidecarRenderer(prepared.handle, connectionId);
   const sessionId = prepared.record.sidecarSessionId ?? record.sidecarSessionId;
   return observeConversation(prepared.handle).pipe(
     Stream.map((update): DiscussionSessionUpdate => {
@@ -550,14 +560,29 @@ const requirePrompt = (input: FirstPrompt) =>
       )
     : Effect.void;
 
+/** Bind only an already-authorized, acquired sidecar, before it can request input. */
+const bindSidecarRenderer = Effect.fn("DiscussionSessions.bindSidecarRenderer")(function* (
+  handle: CakeSessionHandle,
+  connectionId: number | undefined,
+) {
+  if (connectionId === undefined) return;
+  const requests = yield* RendererRequestCoordinator;
+  const { sessionId } = yield* handle.snapshot().pipe(asError("bindRenderer"));
+  yield* requests
+    .bind({ _tag: "ProjectSession", sessionId }, connectionId)
+    .pipe(asError("bindRenderer"));
+});
+
 /** Acquires a new thread's sidecar and delivers its first prompt. */
 const deliverFirstPrompt = Effect.fn("DiscussionSessions.deliverFirstPrompt")(function* (
   record: DiscussionSessionRecord,
   input: FirstPrompt,
+  connectionId?: number,
 ) {
   const environment = yield* DiscussionSessionEnvironment;
   const annotations = input.annotations ?? [];
   const prepared = yield* prepare(record);
+  yield* bindSidecarRenderer(prepared.handle, connectionId);
   if (input.model)
     yield* prepared.handle.setModel(input.model.provider, input.model.id).pipe(asError("start"));
   if (input.thinkingLevel)
@@ -573,13 +598,14 @@ const deliverFirstPrompt = Effect.fn("DiscussionSessions.deliverFirstPrompt")(fu
 /** Creates a Discussion Session and delivers its first prompt to a new sidecar. */
 export const start = Effect.fn("DiscussionSessions.start")(function* (
   input: DiscussionSessionStartInput,
+  connectionId?: number,
 ) {
   yield* requirePrompt(input);
   const environment = yield* DiscussionSessionEnvironment;
   const record = yield* environment
     .create(input.workingDirectory, input.parentSessionId, input.anchor)
     .pipe(asError("start"));
-  return yield* deliverFirstPrompt(record, input);
+  return yield* deliverFirstPrompt(record, input, connectionId);
 });
 
 /**
@@ -592,7 +618,7 @@ export const start = Effect.fn("DiscussionSessions.start")(function* (
  * thread behind.
  */
 export const startCakeChatSideChat = Effect.fn("DiscussionSessions.startCakeChatSideChat")(
-  function* (input: CakeChatSideChatStartInput, workingDirectory: string) {
+  function* (input: CakeChatSideChatStartInput, workingDirectory: string, connectionId?: number) {
     const parentSessionId = input.parentSessionId ?? CAKE_CHAT_SESSION_ID;
     yield* requirePrompt(input);
     const messageId = input.anchor.messageId;
@@ -626,7 +652,7 @@ export const startCakeChatSideChat = Effect.fn("DiscussionSessions.startCakeChat
       const linked = yield* environment
         .linkSidecar(record, { sessionId: forked })
         .pipe(asError("start"));
-      return yield* deliverFirstPrompt(linked, input);
+      return yield* deliverFirstPrompt(linked, input, connectionId);
     }
     const snapshot = yield* Effect.scoped(
       sessions.acquireSession(parentSessionId).pipe(Effect.flatMap((handle) => handle.snapshot())),
@@ -641,7 +667,7 @@ export const startCakeChatSideChat = Effect.fn("DiscussionSessions.startCakeChat
       .create(workingDirectory, parentSessionId, input.anchor)
       .pipe(asError("start"));
     yield* environment.prepareCakeChatBranchContext(record, messages).pipe(asError("start"));
-    return yield* deliverFirstPrompt(record, input);
+    return yield* deliverFirstPrompt(record, input, connectionId);
   },
 );
 

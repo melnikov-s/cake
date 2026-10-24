@@ -141,7 +141,11 @@ export function projectCakeOperations(options: CakeOperationOptions): ProjectCak
         (definition.requires === undefined || capabilities[definition.requires] !== undefined) &&
         (!options.allowedCakeOperations ||
           options.allowedCakeOperations.includes(definition.command)) &&
+        (definition.command !== "interview.open" ||
+          !options.auxiliary ||
+          options.allowBlockingUserInput === true) &&
         (!readOnlyAuxiliary ||
+          (options.allowBlockingUserInput === true && definition.command === "interview.open") ||
           [
             "session.info",
             "session.usage",
@@ -245,6 +249,7 @@ export function configureCakeSessionRuntime(
     messageReferenceControl,
     attachmentReferenceControl,
     allowedCakeOperations,
+    allowBlockingUserInput,
     workflowControl,
     requestInterview,
     sessionPluginControl,
@@ -283,6 +288,7 @@ export function configureCakeSessionRuntime(
     cwd: runtime.cwd,
     tools: runtime.tools,
     auxiliary: runtime.auxiliary,
+    allowBlockingUserInput,
     currentSessionControl: runtime.currentSessionControl,
     persistArtifact: runtime.persistArtifact,
     messageBoardControl: runtime.messageBoardControl,
@@ -319,6 +325,16 @@ export function configureCakeSessionRuntime(
   };
   return {
     ...runtime,
+    interviewOperations:
+      allowBlockingUserInput && requestInterview
+        ? (bridge) =>
+            createCakeInterviewOperations(bridge.host, {
+              requestInterview: async (record, signal) => {
+                await bridge.publishSnapshot();
+                return requestInterview(record, signal);
+              },
+            })
+        : undefined,
     operations: globalControl ? undefined : projectCakeOperations(featureOptions),
     coordinator: globalControl
       ? { operations: coordinatorCakeOperations(featureOptions), modelPresets }

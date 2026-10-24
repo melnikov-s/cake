@@ -114,6 +114,8 @@ import type {
 import type { CakeOperationHost } from "../../../contracts/agent/cake-operation-context";
 import type { CakeOperationDefinition } from "../../../contracts/agent/cake-operation";
 import { createPromptCacheLineage } from "./prompt-cache-lineage";
+import type { CakeOperationHost } from "../../../contracts/agent/cake-operation-context";
+import type { CakeOperationDefinition } from "../../../contracts/agent/cake-operation";
 import { projectCakeOperationRuntime } from "./cake-operation-context";
 import {
   createCakeSessionRuntimeConfiguration,
@@ -198,6 +200,11 @@ export interface CakeSessionRuntimeOptions {
   auxiliaryProjectResources?: boolean;
   /** Subset of builtin slash command names to advertise; defaults to all of them. */
   slashCommands?: readonly string[];
+  /** Composition supplies only Discussion-authorized interview operations to Durable. */
+  interviewOperations?(bridge: {
+    host: CakeOperationHost;
+    publishSnapshot(): Promise<void>;
+  }): CakeOperationDefinition[];
   requestUi(request: RuntimeUiRequest): Promise<string | undefined>;
   /** Composition supplies only Discussion-authorized interview operations to Durable. */
   interviewOperations?(bridge: {

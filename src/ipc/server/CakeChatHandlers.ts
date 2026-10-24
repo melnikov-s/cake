@@ -63,9 +63,11 @@ export const makeCakeChatHandlers = (configuration: CakeChatRuntimeConfiguration
         ),
       ),
     "cakeChats.startSideChat": (input) =>
-      Effect.flatMap(
-        locations.resolve(configuration.location, input.parentSessionId ?? CAKE_CHAT_SESSION_ID),
-        (location) => cakeChatSideChats.start(input, location),
+      withConnection((connectionId) =>
+        Effect.flatMap(
+          locations.resolve(configuration.location, input.parentSessionId ?? CAKE_CHAT_SESSION_ID),
+          (location) => cakeChatSideChats.start(input, location, connectionId),
+        ),
       ),
     "cakeChats.setUnread": ({ unread, sessionId = CAKE_CHAT_SESSION_ID }) =>
       locations

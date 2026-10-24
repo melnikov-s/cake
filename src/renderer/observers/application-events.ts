@@ -1,4 +1,5 @@
 import { toStoreEvent } from "../events/StoreEvent";
+import { discussionSessionFor } from "../lib/nested-transcript-behavior";
 import { respondBrowserNative } from "./browser-native-responder";
 import { respondWidgetCapture } from "./widget-capture-responder";
 import { createNativeRequestDispatch } from "./native-request-dispatch";
@@ -105,7 +106,11 @@ export const observeApplicationEvents = (
           return;
         }
         if (storeEvent.type === "interview-requested") {
-          root.sessionRegistry.findSession(storeEvent.record.sessionId)?.receive(storeEvent);
+          const sessionId = storeEvent.record.sessionId;
+          const owner =
+            root.sessionRegistry.findSession(sessionId) ??
+            discussionSessionFor(root, (session) => session.sessionId === sessionId);
+          owner?.receive(storeEvent);
           return;
         }
         if (storeEvent.type === "project-session-control-requested") {

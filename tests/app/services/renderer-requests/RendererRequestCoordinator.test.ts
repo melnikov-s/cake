@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Context, Effect, Exit, Fiber, Layer, Queue, References, Schema, Stream } from "effect";
 import { describe, expect } from "vitest";
+import * as interviews from "../../../../src/domain/interviews/interviews";
 import { observeControls } from "../../../../src/domain/cake-chats/cakeChatOperations";
 import {
   artifactEventSchema,
@@ -186,6 +187,91 @@ describe("RendererRequestCoordinator", () => {
         ).toBe("Failure");
       }),
   );
+
+  for (const sessionId of ["discussion-sidecar", "cake-chat-sidecar:7", "project-chat-sidecar"]) {
+    it.effect(
+      `authorizes only captured pending interview responses without filesystem access for ${sessionId}`,
+      () =>
+        Effect.gen(function* () {
+          const { coordinator, events } = yield* makeFixture;
+          yield* coordinator.bind({ _tag: "ProjectSession", sessionId }, 11);
+          const record = {
+            id: "call",
+            sessionId,
+            request: {
+              protocol: "cake.request/v1" as const,
+              id: "choice",
+              title: "Choose",
+              responseSchema: { type: "object" as const },
+              view: { type: "form" as const, fields: [] },
+              fallback: { markdown: "Choose" },
+            },
+          };
+          const respond = (
+            connectionId: number,
+            response: Parameters<typeof interviews.respond>[1],
+          ) =>
+            interviews
+              .respond(connectionId, response)
+              .pipe(Effect.provideService(RendererRequestCoordinator, coordinator));
+          for (const cancelled of [false, true]) {
+            const pending = yield* coordinator
+              .requestInterview(sessionId, record, new AbortController().signal)
+              .pipe(Effect.forkChild);
+            const event = yield* Queue.take(events);
+            assert.equal(event.type, "interview-requested");
+            const response = {
+              sessionId,
+              requestId: event.requestId,
+              interviewRequestId: event.interviewRequestId,
+              cancelled,
+              value: {},
+            };
+            for (const [connectionId, invalid] of [
+              [22, response],
+              [11, { ...response, sessionId: "parent" }],
+              [11, { ...response, requestId: "wrong-operation" }],
+              [11, { ...response, interviewRequestId: "missing-request" }],
+            ] as const) {
+              expect((yield* respond(connectionId, invalid).pipe(Effect.exit))._tag).toBe(
+                "Failure",
+              );
+            }
+            yield* respond(11, response);
+            expect(yield* Fiber.join(pending)).toEqual(cancelled ? undefined : {});
+            expect((yield* respond(11, response).pipe(Effect.exit))._tag).toBe("Failure");
+          }
+          const pending = yield* coordinator
+            .requestInterview(sessionId, record, new AbortController().signal)
+            .pipe(Effect.forkChild);
+          const event = yield* Queue.take(events);
+          assert.equal(event.type, "interview-requested");
+          yield* coordinator.releaseConnection(11);
+          expect(yield* Fiber.join(pending)).toBeUndefined();
+          expect(
+            (yield* respond(11, {
+              sessionId,
+              requestId: event.requestId,
+              interviewRequestId: event.interviewRequestId,
+              cancelled: true,
+            }).pipe(Effect.exit))._tag,
+          ).toBe("Failure");
+          yield* coordinator.bind({ _tag: "ProjectSession", sessionId }, 22);
+          const reconnected = yield* coordinator
+            .requestInterview(sessionId, record, new AbortController().signal)
+            .pipe(Effect.forkChild);
+          const next = yield* Queue.take(events);
+          assert.equal(next.type, "interview-requested");
+          yield* respond(22, {
+            sessionId,
+            requestId: next.requestId,
+            interviewRequestId: next.interviewRequestId,
+            cancelled: true,
+          });
+          expect(yield* Fiber.join(reconnected)).toBeUndefined();
+        }),
+    );
+  }
 
   it.effect("settles interview cancellation and removes aborted or released correlations", () =>
     Effect.gen(function* () {

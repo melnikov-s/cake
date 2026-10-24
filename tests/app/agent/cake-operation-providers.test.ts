@@ -13,6 +13,7 @@ import {
   projectCakeOperations,
   coordinatorCakeOperations,
 } from "../../../src/layers/CakeOperations";
+import type { InterviewRecord } from "../../../src/contracts/interviews/interview";
 import type { ProjectCakeOperations } from "../../../src/contracts/agent/cake-operation-api";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 
@@ -90,6 +91,34 @@ describe("Backend-owned Cake operation composition", () => {
       "app.state",
     ]);
   });
+
+  it.each([
+    { label: "read-only worker", tools: ["read"], allowBlockingUserInput: false, allowed: false },
+    {
+      label: "mutation worker",
+      tools: ["read", "bash", "edit", "write"],
+      allowBlockingUserInput: false,
+      allowed: false,
+    },
+    { label: "Discussion sidecar", tools: ["read"], allowBlockingUserInput: true, allowed: true },
+  ])(
+    "grants blocking interview input only to the $label profile",
+    ({ tools, allowBlockingUserInput, allowed }) => {
+      const registry = new CakeOperationRegistry(
+        projectCakeOperations({
+          cwd: "/workspace",
+          auxiliary: true,
+          tools,
+          allowBlockingUserInput,
+        })(bridge()),
+      );
+      expect(Boolean(registry.operationHelp("interview.open"))).toBe(allowed);
+      if (allowed) {
+        expect(registry.operationHelp("artifacts.create")).toBeUndefined();
+        expect(registry.operationHelp("settings.get")).toBeUndefined();
+      }
+    },
+  );
 
   it("composes coordinator model control through injected callbacks and its allowlist", async () => {
     const model = {
@@ -506,6 +535,52 @@ describe("Backend-owned Cake operation composition", () => {
     expect(() => coordinatorCakeOperations({ cwd: "/workspace" })).toThrow(
       "coordinator control is unavailable",
     );
+  });
+
+  it("configures the native sidecar interview-only factory with publish-before-request ordering", async () => {
+    const events: string[] = [];
+    const setup = {
+      ...options("/workspace"),
+      auxiliary: true,
+      tools: ["read"],
+      requestInterview: async (record: InterviewRecord) => {
+        expect(record.sessionId).toBe("sidecar");
+        events.push("request");
+        return {};
+      },
+    };
+    const worker = configureCakeSessionRuntime(setup);
+    expect(worker.interviewOperations).toBeUndefined();
+    const sidecar = configureCakeSessionRuntime({ ...setup, allowBlockingUserInput: true });
+    if (!sidecar.interviewOperations) throw new Error("Missing sidecar interview capability");
+    const definitions = sidecar.interviewOperations({
+      host: {
+        appendEntry: () => {
+          events.push("append");
+        },
+      },
+      publishSnapshot: async () => {
+        events.push("publish");
+      },
+    });
+    expect(definitions.map((definition) => definition.command)).toEqual(["interview.open"]);
+    await new CakeOperationRegistry(definitions).invoke(
+      {
+        command: "interview.open",
+        input: {
+          request: {
+            protocol: "cake.request/v1",
+            id: "choice",
+            title: "Choose",
+            responseSchema: { type: "object" },
+            view: { type: "form", fields: [{ id: "answer", label: "Answer", type: "text" }] },
+            fallback: { markdown: "Choose" },
+          },
+        },
+      },
+      { ...context, runtime: { sessionId: "sidecar", assistantEntryId: "assistant" } },
+    );
+    expect(events).toEqual(["append", "publish", "request"]);
   });
 
   it("publishes appended interview metadata before requesting its answer", async () => {
