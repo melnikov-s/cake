@@ -56,10 +56,15 @@ describe("Cake-owned prompt catalog", () => {
       "await `save({ ...value, selectedOptionId: option.id })`",
       "No dynamic imports, require, relative paths or file imports",
       "No module may import the chooser; no dependency cycles",
+      "--p-bg:var(--background)",
+      'html[data-theme="dark"]',
+      "including System effective changes",
+      "retain intentional design/brand/data colors",
     ])
       expect(widget).toContain(fact);
     for (const fact of [
       "Read `widget.md` before preparing the brief",
+      "use live host CSS variables throughout, never frozen screenshot colors",
       "expectedStateVersion",
       "artifacts.selection.capture",
       "{ selection, moduleId, offset: 0, limit: 48000 }",
@@ -67,7 +72,7 @@ describe("Cake-owned prompt catalog", () => {
     ])
       expect(skill).toContain(fact);
     expect(Buffer.byteLength(skill)).toBeLessThan(6_900);
-    expect(Buffer.byteLength(widget)).toBeLessThan(5_000);
+    expect(Buffer.byteLength(widget)).toBeLessThan(6_100);
   });
 
   it("keeps compaction limits, provenance and report obligations explicit", () => {

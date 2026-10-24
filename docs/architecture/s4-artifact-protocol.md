@@ -387,6 +387,13 @@ React interaction state, but share the lineage's live document state. Compiler/r
 
 Every widget receives the host's semantic color/font tokens before first paint through
 a URL fragment, and live theme changes through a source- and token-bound message.
+The host resolves explicit Light/Dark and follows OS changes when System is selected.
+The public authoring surface is live semantic CSS variables plus host-owned
+`html[data-theme="light"]`/`html[data-theme="dark"]` and CSS `color-scheme`, shared
+by HTML and React. Widgets must consume variables directly, not freeze resolved
+creation-time colors, override host tokens or independently follow OS media queries.
+Cake prototypes use those live variables inside their frames too; another app's
+intentional palette is not automatically recolored. See [agent guidance](../agent/artifacts.md#live-widget-theme).
 Changing themes does not change `src` or reset interaction state. Inline presentation
 removes outer padding/background; the artifact library retains its framing. Content
 height reports track both expansion and shrinkage (not the iframe viewport minimum),

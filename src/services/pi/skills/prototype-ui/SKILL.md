@@ -16,7 +16,7 @@ Gather context in the parent Project Session before calling the specialist. Cake
 - Inspect existing screenshots or capture the relevant running app using its documented verification workflow when feasible. If the app cannot be run, use its source and any supplied screenshots; say briefly what reference is missing.
 - Gather the screen's purpose, representative content, important states, platform, theme, and intended viewport from the request and app. Ask only about information that materially changes the prototypes.
 
-Supply a brief with concrete tokens, components, reference paths and observed screen details. Never merely say "read the repo": the specialist can read skill resources, not arbitrary workspace files or app captures. Ancestor context includes completed parent work, not unfinished tool calls.
+Supply a brief with concrete tokens, components, reference paths and observed screen details. For Cake prototypes, use live host CSS variables throughout, never frozen screenshot colors. Preserve intentional colors in other apps. Never merely say "read the repo": the specialist can read skill resources, not arbitrary workspace files or app captures. Ancestor context includes completed parent work, not unfinished tool calls.
 
 ## Choose the rendering approach
 
@@ -30,7 +30,7 @@ Read `widget.md` before preparing the brief. Request the `widgets` topic and use
 
 - One stable artifact ID for this exploration and `language: "react"` (the selected-source module manifest requires React; lightweight HTML mode is for simpler experiences, not this skill).
 - Five meaningful alternatives, each with a stable ID such as `option-1` through `option-5`, a short name, and a complete prototype. Vary layout, information hierarchy, or interaction where appropriate; do not present five color swaps.
-- The same realistic content, theme, and intended viewport across alternatives so the comparison is useful.
+- The same realistic content, live host theme for Cake, and intended viewport across alternatives so the comparison is useful.
 - The gathered app-specific design context. Match the existing app by default; make a redesign only when requested.
 - The absolute path to this skill's `widget.md`, and an instruction for the specialist to read it.
 - `initialState: { "schema": "cake.prototype-ui/v1", "selectedOptionId": null }`.

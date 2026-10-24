@@ -38,6 +38,14 @@ Permanent Project Chat/global Cake Chat expose linking, inline presentation, sav
 
 HTML saved state uses `globalThis.cakeArtifact.read()`, `getSnapshot()`, `subscribe(listener)` and `replace(jsonValue, expectedVersion)`; await hydration and handle conflicts. React uses `@cake/artifact-sdk`. The maintained artifact protocol has an HTML state example.
 
+## Live widget theme
+
+HTML and React widgets receive Cake's current effective theme before first paint and live updates without iframe navigation, including OS changes when Cake selects System. Use semantic CSS variables directly: `color:var(--foreground); background:var(--background); border:1px solid var(--border)`. Paired surfaces include `--card`/`--card-foreground` and `--primary`/`--primary-foreground`; supporting roles include `--muted`, `--muted-foreground`, `--accent`, `--success`, `--attention`, `--warning`, `--destructive`, `--font-sans` and `--font-mono`.
+
+The public theme mechanism is these live variables plus host-owned `html[data-theme="light"]` / `html[data-theme="dark"]` and CSS `color-scheme`. The host resolves System; widgets must not independently use `prefers-color-scheme`, override root theme/tokens, persist a theme setting, or snapshot resolved colors on mount. No theme SDK import or custom message listener is needed for CSS. Imperative drawing can observe the root's `data-theme`/`style` changes and reread computed variables without recreating the editor or losing state.
+
+For Cake prototypes, use live tokens inside prototype frames as well as the chooser. Aliases such as `--p-bg:var(--background)` remain live; copied dark screenshot colors do not. Other apps retain intentional brand/data/artwork colors; select any supplied light/dark palettes with the host's effective `data-theme`, not creation-time mode. Check dark→light→dark and System effective changes on open and reopened widgets. Retained initial-state PNGs are immutable evidence and do not retheme. A fixed-palette existing widget needs an explicit source revision; do not rewrite saved artifacts or choices automatically.
+
 ## Publish and revise
 
 When the user requests a text artifact or a spec qualifies as a shared durable reference, discover `artifacts` and publish Markdown directly with `artifacts.create`. Do not first write a repository document.

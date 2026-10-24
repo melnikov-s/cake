@@ -1577,6 +1577,83 @@ export default function Visual() {
   },
 };
 
+function widgetThemeScenario(language: "html" | "react"): VisualCaptureScenario {
+  const id = `widget-theme-${language}`;
+  const styles = `
+.theme-sample{--p-bg:var(--background);--p-fg:var(--foreground);background:var(--p-bg);color:var(--p-fg);font-family:var(--font-sans);padding:20px;border:1px solid var(--border);border-radius:10px}
+.theme-sample h2{margin:0 0 12px}.theme-sample p{color:var(--muted-foreground)}
+.theme-sample button,.theme-sample input{font:inherit;color:var(--foreground);background:var(--muted);border:1px solid var(--border);padding:8px;margin:4px}
+.theme-sample aside{background:var(--card);color:var(--card-foreground);padding:16px;border-left:2px solid var(--accent)}
+.theme-sample .design-color{color:#b44d12}
+`;
+  return {
+    name: id,
+    description: `Live host theme and preserved interaction in a retained ${language} widget`,
+    states: ["default", "expanded"],
+    async seed(paths, theme) {
+      const source =
+        language === "react"
+          ? `import { useState } from "react";
+export default function Widget() {
+  const [open, setOpen] = useState(false);
+  return <main className="theme-sample" data-initial-theme={useState(() => document.documentElement.dataset.theme)[0]}>
+    <style>{${JSON.stringify(styles)}}</style>
+    <h2>Live Cake theme · React</h2>
+    <p>Session updates follow the current appearance.</p>
+    <input aria-label="Draft" defaultValue="Keep my draft" />
+    <button aria-expanded={open} onClick={() => setOpen(!open)}>Report details</button>
+    <aside hidden={!open}>Expanded report stays open.</aside>
+    <p className="design-color">Intentional design color</p>
+  </main>;
+}`
+          : `<!doctype html><html><head><style>${styles}</style></head><body>
+<main class="theme-sample"><h2>Live Cake theme · HTML</h2>
+<p>Session updates follow the current appearance.</p>
+<input aria-label="Draft" value="Keep my draft">
+<button aria-expanded="false">Report details</button>
+<aside hidden>Expanded report stays open.</aside>
+<p class="design-color">Intentional design color</p></main>
+<script>
+document.querySelector("main").dataset.initialTheme = document.documentElement.dataset.theme;
+document.querySelector("button").onclick = (event) => {
+  const open = event.target.getAttribute("aria-expanded") !== "true";
+  event.target.setAttribute("aria-expanded", String(open));
+  document.querySelector("aside").hidden = !open;
+};
+</script></body></html>`;
+      await seedArtifactScenario(
+        paths,
+        theme,
+        {
+          protocol: "cake.artifact/v1",
+          id,
+          sessionId: id,
+          revision: 1,
+          kind: "widget",
+          title: "Live widget theme",
+          payload: {
+            language,
+            source,
+            brief: "Use live Cake semantic tokens",
+            generationSessionId: "visual-theme-generation",
+            browser: await retainArtifactBrowser(paths, language, source),
+          },
+          fallback: { markdown: "Live widget theme" },
+          interaction: { mode: "present" },
+        },
+        true,
+      );
+    },
+    async prepare(page, state) {
+      const host = page.locator('[data-slot="artifact-disclosure"]').first();
+      const frame = host.locator("iframe").contentFrame();
+      await expect(frame.getByRole("heading", { name: /Live Cake theme/ })).toBeVisible();
+      if (state === "expanded") await frame.getByRole("button", { name: "Report details" }).click();
+    },
+    region: (page) => page.locator('[data-slot="artifact-disclosure"]').first(),
+  };
+}
+
 const messageBoardScenario: VisualCaptureScenario = {
   name: "family-message-board",
   description:
@@ -4760,6 +4837,8 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   requestExplanationScenario,
   messageBoardScenario,
   inlineArtifactScenario,
+  widgetThemeScenario("react"),
+  widgetThemeScenario("html"),
   widgetViewEvidenceScenario,
   cakePromptsSettingsScenario,
   mcpSettingsScenario,

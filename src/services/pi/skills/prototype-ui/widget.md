@@ -8,9 +8,11 @@ Make prototypes the main content. Use compact controls to switch among five read
 
 Switching the visible prototype does not choose it. "Choose this" saves that option's stable ID, and the saved choice remains apparent when switching views or reopening the widget.
 
-Match the reference app's typography, colors, spacing, density, components, icons and layout. Cake variables style the outer chooser; supplied app tokens style prototype frames. Use comparable content/viewports. Match the brief's platform, not a generic dashboard.
+Match the reference app's typography, colors, spacing, density, components, icons and layout. Cake variables style the outer chooser. When prototyping Cake itself, use the host's live semantic CSS variables throughout the prototype frames too, not dark/light values copied from the brief or screenshot. Scoped aliases must stay live, e.g. `--p-bg:var(--background); --p-fg:var(--foreground); --p-border:var(--border)`. For another app, retain intentional design/brand/data colors; select supplied light/dark palettes via the host's effective `data-theme`. Use comparable content/viewports. Match the brief's platform, not a generic dashboard.
 
 Vary meaningful design decisions while retaining the app's visual language. Each alternative should be substantial enough to evaluate the requested task and its important interactions. Use the five stable IDs supplied by the parent; preserve them through revisions.
+
+The host supplies semantic color/font variables before first paint and updates them live, including System effective changes, without resetting interaction state. Use `var(--background)`, `var(--foreground)`, paired card/primary colors, `var(--muted-foreground)`, `var(--border)`, `var(--accent)`, `var(--success)`, `var(--attention)` and `var(--font-sans)` directly. For unavoidable theme-specific CSS, select `html[data-theme="light"]` or `html[data-theme="dark"]`; the host owns that effective attribute and `color-scheme`. Do not use `prefers-color-scheme`, override host tokens/root theme, copy resolved colors once, or add a competing theme setting. Check dark→light→dark and System changes while a prototype is open; navigation, disclosures and saved choice must survive theme changes.
 
 ## Separately addressable source (required)
 
