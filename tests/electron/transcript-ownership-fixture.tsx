@@ -1,4 +1,6 @@
 import { createRoot } from "react-dom/client";
+import { TurnId } from "../../src/contracts/conversations/conversation-data";
+import type { TestClientOverrides } from "../app/renderer/test-client";
 import { formatSessionDigestReminder } from "../../src/contracts/cake-chats/session-digest-reminder";
 import { flushSync } from "react-dom";
 import { StoreProvider } from "r-state-tree/react";
@@ -51,63 +53,78 @@ let releaseReport: (() => void) | undefined;
 const reportReady = new Promise<void>((resolve) => {
   releaseReport = resolve;
 });
-const fixture = createRendererStoreFixture({
-  client: withUpdates
+const client: TestClientOverrides | undefined = withUpdates
+  ? {
+      sessionChats: {
+        inspect: async (input) => {
+          if (input.kind !== "messages-read") throw new Error("Expected original report read");
+          await reportReady;
+          const ref = `cake://session/${input.sessionId}?message=${input.entryId}`;
+          const text = "## Report start\n\n" + "Detailed finding. ".repeat(900);
+          return {
+            message: {
+              ref,
+              link: ref,
+              sessionId: input.sessionId,
+              entryId: input.entryId,
+              parentId: null,
+              timestamp: new Date(0).toISOString(),
+              role: "assistant",
+              active: true,
+              inputRefs: [],
+              hasImages: false,
+            },
+            text,
+            totalChars: text.length,
+            offset: 0,
+            nextOffset: null,
+            truncated: false,
+          };
+        },
+      },
+    }
+  : widget
     ? {
-        sessionChats: {
-          inspect: async (input) => {
-            if (input.kind !== "messages-read") throw new Error("Expected original report read");
-            await reportReady;
-            const ref = `cake://session/${input.sessionId}?message=${input.entryId}`;
-            const text = "## Report start\n\n" + "Detailed finding. ".repeat(900);
-            return {
-              message: {
-                ref,
-                link: ref,
-                sessionId: input.sessionId,
-                entryId: input.entryId,
-                parentId: null,
-                timestamp: new Date(0).toISOString(),
-                role: "assistant",
-                active: true,
-                inputRefs: [],
-                hasImages: false,
-              },
-              text,
-              totalChars: text.length,
-              offset: 0,
-              nextOffset: null,
-              truncated: false,
-            };
-          },
+        inlineWidgets: { open: async () => widget },
+        artifacts: {
+          stateRead: async () => ({
+            lineageId: widgetRevision.lineageId,
+            version: 1,
+            value: { title: "Saved widget content" },
+          }),
+          referenceMetadata: async () => ({
+            lineage: {
+              id: widgetRevision.lineageId,
+              title: "Scroll widget",
+              createdAt: widgetRevision.metadata.publishedAt,
+              latestRevision: 1,
+              latest: widgetRevision.metadata,
+              stableRef: "cake://artifact/scroll-widget",
+            },
+            revision: widgetRevision.metadata,
+            links: [],
+            stableRef: "cake://artifact/scroll-widget",
+            exactRef: "cake://artifact/scroll-widget@r1",
+          }),
         },
       }
-    : widget
-      ? {
-          inlineWidgets: { open: async () => widget },
-          artifacts: {
-            stateRead: async () => ({
-              lineageId: widgetRevision.lineageId,
-              version: 1,
-              value: { title: "Saved widget content" },
-            }),
-            referenceMetadata: async () => ({
-              lineage: {
-                id: widgetRevision.lineageId,
-                title: "Scroll widget",
-                createdAt: widgetRevision.metadata.publishedAt,
-                latestRevision: 1,
-                latest: widgetRevision.metadata,
-                stableRef: "cake://artifact/scroll-widget",
-              },
-              revision: widgetRevision.metadata,
-              links: [],
-              stableRef: "cake://artifact/scroll-widget",
-              exactRef: "cake://artifact/scroll-widget@r1",
-            }),
-          },
-        }
-      : undefined,
+    : undefined;
+const fixture = createRendererStoreFixture({
+  client: {
+    ...client,
+    sessionChats: {
+      ...client?.sessionChats,
+      prompt: async ({ text }) => {
+        parts = [
+          ...parts,
+          { kind: "text", id: `sent-${revision}`, role: "user", status: "complete", text },
+        ];
+        publish();
+        render();
+        return TurnId.make("10000000-0000-4000-8000-000000000001");
+      },
+    },
+  },
   projects: [projectRecord({ path: "/project", name: "Project" })],
   sessions: [sessionSummary({ sessionId: "ownership", projectPath: "/project" })],
 });
@@ -125,7 +142,7 @@ let parts: UiPart[] = Array.from({ length: count }, (_, index) => ({
   id: `message-${index}`,
   role: index % 2 ? "assistant" : "user",
   status: "complete",
-  text: `Message ${index}. ${"Reading context. ".repeat(20)}`,
+  text: `Message ${index}. ${"Reading context. ".repeat(20)}${parameters.get("images") === "true" && index % 2 ? `\n\n![History image ${index}](https://transcript.invalid/${index})` : ""}`,
 }));
 if (widget)
   parts.splice(count - 2, 0, {

@@ -127,11 +127,6 @@ export const ChatTranscript = observer(function ChatTranscript({
   // scrolls to the bottom for the reader.
   const sentMessageRevision = store.transcriptInteraction.sentMessageRevision;
   const scrolledForSentMessage = useRef(sentMessageRevision);
-  useLayoutEffect(() => {
-    if (scrolledForSentMessage.current === sentMessageRevision) return;
-    scrolledForSentMessage.current = sentMessageRevision;
-    scrollOwner.current?.scrollToBottomForSentMessage();
-  }, [sentMessageRevision]);
   const parts = store.parts;
   // Read disclosure state in this observer's render. VirtualizedConversation invokes
   // itemContent from its own render, outside this component's reactive tracking.
@@ -170,6 +165,24 @@ export const ChatTranscript = observer(function ChatTranscript({
     ...(showAssistantLoading ? [{ kind: "loading-state" as const, id: "loading-state" }] : []),
   ];
   const itemKeys = transcriptItemKeys(items);
+  // Loading/changed-files rows can disappear during submission. Use the last
+  // content row as the durable destination while the virtual range settles.
+  const lastItemKey = itemKeys[visibleGroupedParts.length - 1];
+  useLayoutEffect(() => {
+    const owner = scrollOwner.current;
+    if (!owner || scrolledForSentMessage.current === sentMessageRevision) return;
+    if (virtualized && lastItemKey !== undefined && !virtuosoRef.current) return;
+    scrolledForSentMessage.current = sentMessageRevision;
+    owner.scrollToBottomForSentMessage(
+      virtualized && lastItemKey !== undefined
+        ? {
+            itemKey: lastItemKey,
+            scrollToIndex: () =>
+              virtuosoRef.current?.scrollToIndex({ index: "LAST", align: "end", behavior: "auto" }),
+          }
+        : undefined,
+    );
+  }, [lastItemKey, scroller, sentMessageRevision, virtualized]);
   const isArriving = useArrivals(itemKeys, store.id);
   const transcriptBehavior = useMemo<CanonicalTranscriptBehavior>(
     () => ({

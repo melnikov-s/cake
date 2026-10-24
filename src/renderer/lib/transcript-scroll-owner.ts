@@ -23,7 +23,7 @@
  *
  * Every layout trigger calls `reconcile()`. Nothing else in the renderer writes
  * this scroller's `scrollTop`; the virtualizer only moves it for an explicit
- * reveal of an unrendered row, and its own size compensation is disabled.
+ * reveal or sent-message destination, and its own size compensation is disabled.
  */
 
 /** Distance from the bottom, in CSS pixels, at which moving down resumes following. */
@@ -40,7 +40,7 @@ export interface TranscriptScrollOwner {
   /** Layout changed: pin the bottom while following, otherwise hold the reader's anchor still. */
   reconcile(): void;
   /** The reader sent a message: the one programmatic jump to the bottom. */
-  scrollToBottomForSentMessage(): void;
+  scrollToBottomForSentMessage(navigation?: { itemKey: string; scrollToIndex(): void }): void;
   /**
    * Reveals the row with this stable item key. An unrendered virtual row is
    * reached through `scrollToIndex`; the reveal completes once it renders.
@@ -78,6 +78,7 @@ export function createTranscriptScrollOwner(
   let selecting = false;
   let anchor: Anchor | undefined;
   let pendingReveal: string | undefined;
+  let pendingBottom: string | undefined;
   // The last scrollTop this owner wrote or observed. Any other position was
   // caused by someone else: the reader, or the browser clamping.
   let knownTop = scroller.scrollTop;
@@ -188,8 +189,9 @@ export function createTranscriptScrollOwner(
   };
 
   const cancelReveal = () => {
-    if (pendingReveal === undefined) return;
+    if (pendingReveal === undefined && pendingBottom === undefined) return;
     pendingReveal = undefined;
+    pendingBottom = undefined;
     options.cancelVirtualNavigation();
   };
 
@@ -218,7 +220,10 @@ export function createTranscriptScrollOwner(
     }
     // A native movement whose scroll event is still queued (layout commits and
     // ResizeObservers can run first) must not be pinned over.
-    if (scroller.scrollTop !== knownTop) observeMovement(pendingMeasurements);
+    // A sent-message jump is virtual navigation until the destination has real
+    // measurements. Estimate corrections/clamps during that jump are not input.
+    if (scroller.scrollTop !== knownTop && pendingBottom === undefined)
+      observeMovement(pendingMeasurements);
     if (!following && pendingMeasurements) return;
     if (following) pin();
     else holdAnchor();
@@ -232,12 +237,20 @@ export function createTranscriptScrollOwner(
         revealRow(element, "start");
       }
     }
-    if (!anchor) anchor = findAnchor();
+    if (pendingBottom !== undefined && !pendingMeasurements && row(pendingBottom)) {
+      pendingBottom = undefined;
+      options.cancelVirtualNavigation();
+      pin();
+    }
+    // After a range settles, anchor the row actually being read, not an old
+    // overscan row that may disappear on the next image resize/range commit.
+    if (!selecting && pendingReveal === undefined && !pendingMeasurements) anchor = findAnchor();
+    else if (!anchor) anchor = findAnchor();
   };
 
   const handleScroll = () => {
     if (!measurable()) return;
-    if (scroller.scrollTop === knownTop || positioning()) {
+    if (scroller.scrollTop === knownTop || positioning() || pendingBottom !== undefined) {
       reconcile();
       return;
     }
@@ -326,6 +339,7 @@ export function createTranscriptScrollOwner(
     signal: abort.signal,
     capture: true,
   });
+  scroller.addEventListener("pointerdown", cancelReveal, listen);
   scroller.addEventListener("scroll", handleScroll, listen);
   scroller.addEventListener("wheel", handleWheel, listen);
   scroller.addEventListener("keydown", handleKeyDown, { signal: abort.signal });
@@ -340,10 +354,13 @@ export function createTranscriptScrollOwner(
 
   return {
     reconcile,
-    scrollToBottomForSentMessage() {
+    scrollToBottomForSentMessage(navigation) {
       cancelReveal();
+      options.cancelVirtualNavigation();
       following = true;
+      pendingBottom = navigation?.itemKey;
       pin();
+      navigation?.scrollToIndex();
     },
     reveal(itemKey, scrollToIndex) {
       following = false;
@@ -361,9 +378,11 @@ export function createTranscriptScrollOwner(
       if (next === selecting) return;
       selecting = next;
       if (next) {
+        cancelReveal();
         following = false;
         anchor = findAnchor();
-      } else if (measurable() && !positioning()) following = atBottom();
+      } else if (pendingBottom === undefined && measurable() && !positioning())
+        following = atBottom();
     },
     dispose() {
       abort.abort();

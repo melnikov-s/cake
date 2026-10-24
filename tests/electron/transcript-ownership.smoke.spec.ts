@@ -21,12 +21,14 @@ const test = base.extend<{
   chatMode: string;
   withWidget: boolean;
   withUpdates: boolean;
+  withImages: boolean;
 }>({
+  withImages: [false, { option: true }],
   withUpdates: [false, { option: true }],
   withWidget: [false, { option: true }],
   messageCount: [48, { option: true }],
   chatMode: ["", { option: true }],
-  fixturePage: async ({ messageCount, chatMode, withWidget, withUpdates }, use) => {
+  fixturePage: async ({ messageCount, chatMode, withWidget, withUpdates, withImages }, use) => {
     const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-transcript-ownership-"));
     const cakeHome = join(temporaryRoot, "cake-home");
     await mkdir(cakeHome);
@@ -97,9 +99,19 @@ export default function Widget() {
             )
           ).widget
         : null;
+      await application.context().route("https://transcript.invalid/**", (route) => {
+        const index = Number(new URL(route.request().url()).pathname.slice(1));
+        return route.fulfill({
+          contentType: "image/svg+xml",
+          body: `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="${200 + (index % 7) * 150}"/>`,
+        });
+      });
       const opened = application.waitForEvent("window");
       await application.evaluate(
-        async ({ BrowserWindow }, { html, messageCount, chatMode, widget, withUpdates }) => {
+        async (
+          { BrowserWindow },
+          { html, messageCount, chatMode, widget, withUpdates, withImages },
+        ) => {
           // Match the application window: a hidden window must not throttle
           // animation frames, or Virtuoso never finishes initial positioning.
           const window = new BrowserWindow({
@@ -107,10 +119,10 @@ export default function Widget() {
             webPreferences: { sandbox: true, backgroundThrottling: false },
           });
           await window.loadFile(html, {
-            search: `?count=${messageCount}&chatMode=${chatMode}&updates=${withUpdates}&widget=${encodeURIComponent(JSON.stringify(widget))}`,
+            search: `?count=${messageCount}&chatMode=${chatMode}&updates=${withUpdates}&images=${withImages}&widget=${encodeURIComponent(JSON.stringify(widget))}`,
           });
         },
-        { html, messageCount, chatMode, widget, withUpdates },
+        { html, messageCount, chatMode, widget, withUpdates, withImages },
       );
       const page = await opened;
       const errors: string[] = [];
@@ -129,6 +141,132 @@ export default function Widget() {
       await rm(temporaryRoot, { recursive: true, force: true });
     }
   },
+});
+
+test.describe("sending from distant history", () => {
+  test.use({ messageCount: 2000, chatMode: "virtualized", withImages: true });
+  test("Enter reaches the measured bottom and Shift+Enter keeps the reading position", async ({
+    fixturePage: page,
+  }) => {
+    const transcript = page.locator(".transcript");
+    const composer = page.getByRole("combobox", { name: "Message", exact: true });
+    await settle(page);
+    await transcript.focus();
+    await page.keyboard.press("Home");
+    await settle(page);
+    expect(await gap(transcript)).toBeGreaterThan(10000);
+    await composer.focus();
+    await composer.pressSequentially("Send from distant history");
+    await expect(composer).toHaveValue("Send from distant history");
+    await expect(composer).toBeFocused();
+    await transcript
+      .locator("img")
+      .evaluateAll((images) =>
+        Promise.all(images.map((image) => (image as HTMLImageElement).decode())),
+      );
+    await settle(page);
+    const saved = await anchor(transcript);
+    await composer.press("Shift+Enter");
+    await expect(composer).toHaveValue("Send from distant history\n");
+    await settle(page);
+    expect(await anchor(transcript)).toEqual(saved);
+    await page.evaluate(() => {
+      const fixture = Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture;
+      for (let step = 0; step < 12; step++) fixture.grow("message-1999");
+    });
+    await composer.press("Enter");
+    await expect(composer).toHaveValue("");
+    await expect(transcript.locator('[data-slot="transcript-item"]').last()).toContainText(
+      "Send from distant history",
+    );
+    await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+    for (const operation of ["arrive", "stream", "activity"] as const) {
+      await command(page, operation);
+      await settle(page);
+      expect(await gap(transcript)).toBeLessThanOrEqual(1);
+    }
+  });
+});
+
+test.describe("image-heavy virtual history", () => {
+  test.use({ messageCount: 80, withImages: true });
+  test("manual upward scrolling keeps its anchor when older Markdown images finish loading", async ({
+    fixturePage: page,
+  }) => {
+    const transcript = page.locator(".transcript");
+    const waiting: Array<() => Promise<void>> = [];
+    let released = false;
+    await page.route("https://transcript.invalid/**", (route) => {
+      const finish = () =>
+        route.fulfill({
+          contentType: "image/svg+xml",
+          body: '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="900"/>',
+        });
+      if (released) return finish();
+      waiting.push(finish);
+    });
+    await wheel(page, transcript, -3500);
+    await wheel(page, transcript, -1600);
+    await settle(page);
+    expect(waiting.length).toBeGreaterThan(0);
+    const saved = await anchor(transcript);
+    released = true;
+    await Promise.all(waiting.map((finish) => finish()));
+    await transcript
+      .locator("img")
+      .evaluateAll((images) =>
+        Promise.all(images.map((image) => (image as HTMLImageElement).decode())),
+      );
+    await settle(page);
+    expect(await anchor(transcript)).toEqual(saved);
+    expect(await gap(transcript)).toBeGreaterThan(1000);
+    await command(page, "arrive");
+    await settle(page);
+    expect(await anchor(transcript)).toEqual(saved);
+    await wheel(page, transcript, -180);
+    await settle(page);
+    const moved = await anchor(transcript);
+    expect(moved).not.toEqual(saved);
+    await command(page, "stream");
+    await settle(page);
+    expect(await anchor(transcript)).toEqual(moved);
+  });
+});
+
+test("delayed image growth above history is compensated at every painted frame", async ({
+  fixturePage: page,
+}) => {
+  const transcript = page.locator(".transcript");
+  await wheel(page, transcript, -1600);
+  await settle(page);
+  const saved = await anchor(transcript);
+  const samples = await transcript.evaluate(async (element) => {
+    const viewportTop = element.getBoundingClientRect().top;
+    const rows = [...element.querySelectorAll<HTMLElement>("[data-transcript-anchor-id]")];
+    const reading = rows.find((row) => row.getBoundingClientRect().bottom > viewportTop + 1)!;
+    const above = rows.filter((row) => row.getBoundingClientRect().bottom <= viewportTop).at(-1)!;
+    const image = document.createElement("img");
+    above.append(image);
+    const offsets: number[] = [];
+    image.src =
+      'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="500" height="280"/>';
+    await image.decode();
+    for (let frame = 0; frame < 8; frame++) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+      offsets.push(reading.getBoundingClientRect().top - viewportTop);
+    }
+    image.style.height = "460px";
+    for (let frame = 0; frame < 8; frame++) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+      offsets.push(reading.getBoundingClientRect().top - viewportTop);
+    }
+    return offsets;
+  });
+  expect(samples).toEqual(Array(16).fill(saved.offset));
+  await expect.poll(() => anchor(transcript)).toEqual(saved);
+  await command(page, "arrive");
+  await settle(page);
+  expect(await anchor(transcript)).toEqual(saved);
 });
 
 const gap = (transcript: Locator) =>
@@ -379,7 +517,9 @@ test("tool expansion and late nested media keep the reader's visible anchor", as
   const saved = await anchor(transcript);
   const activity = transcript.locator('[data-slot="activity-group"]');
   const disclosure = activity.locator("summary");
-  await disclosure.click();
+  // This test isolates expansion/resize, not Playwright's offscreen-target
+  // auto-scroll (which legitimately changes the reader's position first).
+  await disclosure.evaluate((element) => element.click());
   await expect(activity).toHaveAttribute("open", "");
   await expect.poll(() => anchor(transcript)).toEqual(saved);
   for (let step = 0; step < 4; step++) {
@@ -400,7 +540,7 @@ test("tool expansion and late nested media keep the reader's visible anchor", as
     await image.decode();
   });
   await expect.poll(() => anchor(transcript)).toEqual(saved);
-  await disclosure.click();
+  await disclosure.evaluate((element) => element.click());
   await expect(activity).not.toHaveAttribute("open");
   await expect.poll(() => anchor(transcript)).toEqual(saved);
 });

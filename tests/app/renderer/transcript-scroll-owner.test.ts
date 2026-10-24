@@ -107,6 +107,64 @@ describe("transcript scroll owner measurement boundaries", () => {
     expect(scroller.scrollTop).toBe(1_300);
   });
 
+  it("refreshes the reading anchor after a manual scroll settles its virtual range", () => {
+    const mounted = addRow("older", 700, 300, 100);
+    scroller.scrollTop = 1_200;
+    scroller.dispatchEvent(new Event("scroll"));
+    mounted.dataset.knownSize = "300";
+    owner.reconcile();
+    // The old anchor has left overscan. A late image above the current reading
+    // row must still be compensated, rather than capturing shifted geometry.
+    list.firstElementChild!.remove();
+    shift = 280;
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(1_480);
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(1_480);
+  });
+
+  it("keeps a sent-message jump following through virtual estimate corrections", () => {
+    owner.setSelecting(true);
+    owner.scrollToBottomForSentMessage({
+      itemKey: "last",
+      scrollToIndex: vi.fn(),
+    });
+    // The destination is still unrendered. Virtual navigation corrects the
+    // estimated bottom before the next measurement/scroll event arrives.
+    scroller.scrollTop = 2_000;
+    contentHeight = 4_300;
+    // Clearing the keyboard selection is part of sending, not a request to
+    // abandon the still-unmeasured bottom destination.
+    owner.setSelecting(false);
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(3_700);
+    addRow("last", 4_000, 300);
+    owner.reconcile();
+    contentHeight += 400;
+    owner.reconcile();
+    expect(scroller.scrollTop).toBe(4_100);
+  });
+
+  it.each(["wheel", "pointerdown", "keydown"])(
+    "lets %s reader input cancel a pending sent-message destination",
+    (input) => {
+      owner.scrollToBottomForSentMessage({ itemKey: "last", scrollToIndex: vi.fn() });
+      scroller.dispatchEvent(
+        input === "wheel"
+          ? new WheelEvent("wheel", { deltaY: -100 })
+          : input === "keydown"
+            ? new KeyboardEvent("keydown", { key: "PageUp" })
+            : new Event("pointerdown"),
+      );
+      scroller.scrollTop -= 100;
+      scroller.dispatchEvent(new Event("scroll"));
+      contentHeight += 400;
+      addRow("last", 4_000, 300);
+      owner.reconcile();
+      expect(scroller.scrollTop).toBe(3_300);
+    },
+  );
+
   it("continues following tail growth even while new rows await measurement", () => {
     owner.scrollToBottomForSentMessage();
     addRow("tail", 3_000, 300, 100);
