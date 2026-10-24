@@ -25,7 +25,7 @@ export const SettingsDesktopSharingSection = observer(function SettingsDesktopSh
         ? "Starting…"
         : sharing.state.status === "stopping"
           ? "Stopping…"
-          : "Off · resets at launch";
+          : "Off · sharing stays off at launch";
 
   return (
     <section
@@ -108,8 +108,9 @@ export const SettingsDesktopSharingSection = observer(function SettingsDesktopSh
         )}
       </div>
       <p className="px-0.5 text-[11px] text-muted-foreground">
-        Anyone who can connect has full host access. Share only on a private Tailscale network or
-        behind an authenticated HTTPS proxy.
+        Connection preferences save automatically when valid. Sharing stays off at launch. Anyone
+        who can connect has full host access. Share only on a private Tailscale network or behind an
+        authenticated HTTPS proxy.
       </p>
       {(sharing.error ?? sharing.state?.error) && (
         <Callout variant="error">{sharing.error ?? sharing.state?.error}</Callout>

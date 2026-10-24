@@ -1,7 +1,7 @@
 import { ClientConnectionsLive } from "../../../../src/services/clients/ClientConnections";
 import { EventEmitter } from "node:events";
 import { it } from "@effect/vitest";
-import { Context, Effect, Layer, Queue, Stream } from "effect";
+import { Context, Deferred, Effect, Fiber, Layer, Queue, Stream } from "effect";
 import type { MenuItemConstructorOptions } from "electron";
 import { afterEach, describe, expect, vi } from "vitest";
 import type { CakeEvent } from "../../../../src/contracts/application/cake-rpc-contract";
@@ -17,6 +17,8 @@ const native = vi.hoisted(() => ({
   destroyed: false,
   windowShows: [] as (boolean | undefined)[],
   activations: [] as string[],
+  confirm: vi.fn(async () => ({ response: 0 })),
+  flushes: 0,
 }));
 vi.mock("electron", () => ({
   BrowserWindow: class extends EventEmitter {
@@ -50,6 +52,15 @@ vi.mock("electron", () => ({
     isDestroyed() {
       return native.destroyed;
     }
+    close() {
+      let prevented = false;
+      this.emit("close", {
+        preventDefault: () => {
+          prevented = true;
+        },
+      });
+      if (!prevented) this.destroy();
+    }
     destroy() {
       native.destroyed = true;
       this.emit("closed");
@@ -64,7 +75,7 @@ vi.mock("electron", () => ({
   },
   nativeImage: {},
   clipboard: {},
-  dialog: {},
+  dialog: { showMessageBox: native.confirm },
   Notification: {},
   shell: {},
   webContents: { fromId: () => undefined },
@@ -96,6 +107,8 @@ describe("ElectronLive client state", () => {
       const context = yield* Layer.build(live);
       const electron = Context.get(context, Electron);
       yield* electron.start({
+        flushWindowState: () => Effect.void,
+        onWindowCloseRequested: () => {},
         backToAgentForWindow: () => false,
         onWindowClosed: () => {},
         allowProjectPath: () => Effect.void,
@@ -120,6 +133,71 @@ describe("ElectronLive client state", () => {
     }),
   );
 
+  it.effect(
+    "waits for the final renderer save before closing and coalesces repeated close clicks",
+    () =>
+      Effect.gen(function* () {
+        native.destroyed = false;
+        const context = yield* Layer.build(live);
+        const electron = Context.get(context, Electron);
+        const requested = yield* Queue.unbounded<number>();
+        const saving = yield* Deferred.make<void>();
+        const saveStarted = yield* Deferred.make<void>();
+        yield* electron.start({
+          flushWindowState: () =>
+            Deferred.succeed(saveStarted, undefined).pipe(Effect.andThen(Deferred.await(saving))),
+          onWindowCloseRequested: (id) => {
+            Queue.offerUnsafe(requested, id);
+          },
+          backToAgentForWindow: () => false,
+          onWindowClosed: () => {},
+          allowProjectPath: () => Effect.void,
+          canRewordSelection: () => true,
+        });
+        Context.get(context, ClientWorkspaces).associateWorkspace(1, "/project");
+        const window = electron.windowsForWorkspace("/project")[0]![1];
+        window.close();
+        window.close();
+        expect(yield* Queue.take(requested)).toBe(1);
+        expect(yield* Queue.size(requested)).toBe(0);
+        expect(native.destroyed).toBe(false);
+        const closing = yield* electron.closeWindow(1).pipe(Effect.forkChild);
+        yield* Deferred.await(saveStarted);
+        expect(native.destroyed).toBe(false);
+        yield* Deferred.succeed(saving, undefined);
+        yield* Fiber.join(closing);
+        expect(native.destroyed).toBe(true);
+      }),
+  );
+
+  it.effect(
+    "save failures keep windows open unless the user explicitly discards the latest settings",
+    () =>
+      Effect.gen(function* () {
+        native.destroyed = false;
+        native.confirm.mockClear();
+        native.confirm.mockResolvedValue({ response: 0 });
+        const context = yield* Layer.build(live);
+        const electron = Context.get(context, Electron);
+        yield* electron.start({
+          flushWindowState: () => Effect.fail({ message: "Disk full" }),
+          onWindowCloseRequested: () => {},
+          backToAgentForWindow: () => false,
+          onWindowClosed: () => {},
+          allowProjectPath: () => Effect.void,
+          canRewordSelection: () => true,
+        });
+        expect(yield* electron.prepareToQuit()).toBe(false);
+        yield* electron.closeWindow(1);
+        expect(native.destroyed).toBe(false);
+        expect(native.confirm).toHaveBeenCalledTimes(2);
+        native.confirm.mockResolvedValue({ response: 1 });
+        expect(yield* electron.prepareToQuit()).toBe(true);
+        yield* electron.closeWindow(1);
+        expect(native.destroyed).toBe(true);
+      }),
+  );
+
   it.effect("native window closure reads and releases the shared workspace authority", () =>
     Effect.gen(function* () {
       native.destroyed = false;
@@ -128,6 +206,8 @@ describe("ElectronLive client state", () => {
       const workspaces = Context.get(context, ClientWorkspaces);
       const onWindowClosed = vi.fn();
       yield* electron.start({
+        flushWindowState: () => Effect.void,
+        onWindowCloseRequested: () => {},
         backToAgentForWindow: () => false,
         onWindowClosed,
         allowProjectPath: () => Effect.void,
@@ -171,6 +251,8 @@ describe("ElectronLive client state", () => {
         channel: "vscode",
       });
       yield* electron.start({
+        flushWindowState: () => Effect.void,
+        onWindowCloseRequested: () => {},
         backToAgentForWindow: () => false,
         onWindowClosed: () => {},
         allowProjectPath: () => Effect.void,

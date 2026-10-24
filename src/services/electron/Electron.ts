@@ -15,6 +15,10 @@ type Success<Type extends keyof typeof cakeRpcSuccessSchemas> =
   (typeof cakeRpcSuccessSchemas)[Type]["Type"];
 
 export interface ElectronWindowLifecycle {
+  readonly onWindowCloseRequested: (connectionId: number) => void;
+  readonly flushWindowState: (
+    connectionId: number,
+  ) => Effect.Effect<void, { readonly message: string }>;
   readonly backToAgentForWindow: (ownerId: number) => boolean;
   readonly onWindowClosed: (
     ownerId: number,
@@ -101,6 +105,9 @@ export interface ElectronService {
   readonly start: (lifecycle: ElectronWindowLifecycle) => Effect.Effect<void>;
   /** Brings the application window forward, recreating it when every window has been closed. */
   readonly focusOrCreateWindow: () => Effect.Effect<void>;
+  /** Flush presentation state while the renderer transport is still running. */
+  readonly prepareToQuit: () => Effect.Effect<boolean>;
+  readonly closeWindow: (connectionId: number) => Effect.Effect<void>;
   readonly stop: () => Effect.Effect<void>;
   readonly requireRendererConnection: (connectionId: number) => WebContents;
   readonly windowsForWorkspace: (

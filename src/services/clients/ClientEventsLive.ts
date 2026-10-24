@@ -125,7 +125,12 @@ export const ClientEventsLive = Layer.effect(
           "embedded-editor-side-chat-requested",
         ),
       surfaces: (connectionId) =>
-        focused(connectionId, "surfaces", "fullscreen-surface-close-requested"),
+        focused(
+          connectionId,
+          "surfaces",
+          "fullscreen-surface-close-requested",
+          "window-state-flush-requested",
+        ),
     });
   }),
 );

@@ -1,8 +1,9 @@
 import type { Event } from "electron";
-import { Cause, Deferred, Effect, Option, Queue, Stream } from "effect";
+import { Cause, Effect, Option, Queue, Stream } from "effect";
 import { releaseConnectionResources } from "../domain/clients/clientConnectionResources";
 import { DesktopSharing } from "../services/electron/DesktopSharing";
 import { Electron } from "../services/electron/Electron";
+import { RendererRequestCoordinator } from "../services/renderer-requests/RendererRequestCoordinator";
 import { Browser } from "../services/browser/Browser";
 import { ProjectAccess } from "../services/projects/ProjectAccess";
 import { ApplicationState } from "../services/storage/ApplicationState";
@@ -37,7 +38,7 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
     handleExtensionCompanionScheme();
   },
   initializeDeveloperTools,
-}: MainApplicationOptions): Effect.fn.Return<void, unknown, Electron> {
+}: MainApplicationOptions): Effect.fn.Return<void, unknown, Electron | RendererRequestCoordinator> {
   yield* Effect.annotateCurrentSpan({
     "cake.application": "main",
     "cake.process": "electron-main",
@@ -49,6 +50,14 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
       const sharing = yield* Effect.serviceOption(DesktopSharing);
       const browser = yield* Effect.serviceOption(Browser);
       const electron = yield* Electron;
+      const rendererRequests = yield* RendererRequestCoordinator;
+      const windowCloseRequests = yield* Queue.unbounded<number>();
+      yield* Stream.fromQueue(windowCloseRequests).pipe(
+        Stream.runForEach((connectionId) =>
+          electron.closeWindow(connectionId).pipe(Effect.forkScoped),
+        ),
+        Effect.forkScoped,
+      );
       const access = yield* Effect.serviceOption(ProjectAccess);
       const vscodeViews = yield* Effect.serviceOption(VsCodeViews);
       const windowClosed = yield* Queue.unbounded<{
@@ -90,10 +99,10 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
       );
 
       yield* Effect.addFinalizer(() => electron.stop());
-      const shutdownRequested = yield* Deferred.make<void>();
+      const shutdownRequested = yield* Queue.unbounded<void>();
       const onBeforeQuit = (event: Event) => {
         event.preventDefault();
-        Deferred.doneUnsafe(shutdownRequested, Effect.void);
+        Queue.offerUnsafe(shutdownRequested, undefined);
       };
       yield* Effect.acquireRelease(
         Effect.sync(() => application.on("before-quit", onBeforeQuit)),
@@ -123,6 +132,10 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
         );
       yield* Effect.sync(initializeNativeProtocols);
       yield* electron.start({
+        flushWindowState: rendererRequests.requestWindowStateFlush,
+        onWindowCloseRequested: (connectionId) => {
+          Queue.offerUnsafe(windowCloseRequests, connectionId);
+        },
         backToAgentForWindow: (id) =>
           Option.isSome(vscodeViews) && vscodeViews.value.backToAgentForWindow(id),
         onWindowClosed: (ownerId, workingDirectory, nativeId) => {
@@ -151,7 +164,13 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
         () => Effect.sync(() => application.removeListener("second-instance", onSecondInstance)),
       );
       yield* Effect.logInfo("Cake main application started");
-      yield* Deferred.await(shutdownRequested);
+      // Keep RPC and persistence alive until every healthy window acknowledges its last save.
+      // A cancelled failure dialog keeps the app running and permits a later quit retry.
+      let readyToQuit = false;
+      while (!readyToQuit) {
+        yield* Queue.take(shutdownRequested);
+        readyToQuit = yield* electron.prepareToQuit();
+      }
       yield* Effect.logInfo("Cake main application stopping");
     }),
   );

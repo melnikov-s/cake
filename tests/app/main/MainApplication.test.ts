@@ -49,6 +49,8 @@ class TestApplication extends EventEmitter {
 const testLayer = (input?: {
   readonly keepsProcessAlive?: () => boolean;
   readonly stop?: () => void;
+  readonly prepareToQuit?: () => Effect.Effect<boolean>;
+  readonly closeWindow?: (connectionId: number) => Effect.Effect<void>;
   readonly start?: (lifecycle: ElectronWindowLifecycle) => void;
   readonly focusOrCreateWindow?: () => void;
   readonly closeTerminalOwner?: (ownerId: number) => void;
@@ -69,6 +71,8 @@ const testLayer = (input?: {
       start: (lifecycle) => Effect.sync(() => input?.start?.(lifecycle)),
       focusOrCreateWindow: () => Effect.sync(() => input?.focusOrCreateWindow?.()),
       stop: () => Effect.sync(() => input?.stop?.()),
+      prepareToQuit: input?.prepareToQuit ?? (() => Effect.succeed(true)),
+      closeWindow: input?.closeWindow ?? (() => Effect.void),
       requireRendererConnection: () => {
         throw new Error("No renderer connection in this test");
       },
@@ -124,6 +128,7 @@ describe("MainApplication", () => {
           const native = Layer.mock(Electron, {
             start: (lifecycle) => Deferred.succeed(started, lifecycle).pipe(Effect.asVoid),
             stop: () => Effect.void,
+            prepareToQuit: () => Effect.succeed(true),
             requireRendererConnection: () => {
               throw new Error("Unexpected native connection lookup");
             },
@@ -143,7 +148,7 @@ describe("MainApplication", () => {
               : Layer.merge(native, Layer.mock(ApplicationState, { snapshot: () => state }));
           const fiber = yield* Effect.forkChild(
             MainApplication({ application, initializeNativeProtocols: () => {} }).pipe(
-              Effect.provide(layer),
+              Effect.provide(Layer.merge(layer, Layer.mock(RendererRequestCoordinator, {}))),
             ),
           );
           const lifecycle = yield* Deferred.await(started);
@@ -166,6 +171,43 @@ describe("MainApplication", () => {
       expect(stop).toHaveBeenCalledOnce();
       expect(application.listenerCount("before-quit")).toBe(0);
     }),
+  );
+
+  it.effect(
+    "keeps transports alive during the quit save and accepts a retry after cancellation",
+    () =>
+      Effect.gen(function* () {
+        const application = new TestApplication();
+        const saving = yield* Deferred.make<boolean>();
+        const startedSaving = yield* Deferred.make<void>();
+        const stopped = vi.fn();
+        let attempts = 0;
+        const fiber = yield* Effect.forkChild(
+          program(
+            application,
+            testLayer({
+              stop: stopped,
+              prepareToQuit: () => {
+                attempts++;
+                return attempts === 1
+                  ? Deferred.succeed(startedSaving, undefined).pipe(
+                      Effect.andThen(Deferred.await(saving)),
+                    )
+                  : Effect.succeed(true);
+              },
+            }),
+          ),
+        );
+        yield* Effect.promise(() => application.waitForListener("second-instance"));
+        application.requestQuit();
+        yield* Deferred.await(startedSaving);
+        expect(stopped).not.toHaveBeenCalled();
+        yield* Deferred.succeed(saving, false);
+        application.requestQuit();
+        yield* Fiber.join(fiber);
+        expect(attempts).toBe(2);
+        expect(stopped).toHaveBeenCalledOnce();
+      }),
   );
 
   it.effect("brings the primary instance's window forward on a second launch", () =>

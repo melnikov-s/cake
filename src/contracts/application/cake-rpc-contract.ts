@@ -96,6 +96,10 @@ const cakeEventSchemas = {
     type: Schema.Literal("renderer-events-ready"),
     channel: Schema.Literals(["application", "artifacts", "terminals", "vscode", "surfaces"]),
   }),
+  "window-state-flush-requested": Schema.Struct({
+    type: Schema.Literal("window-state-flush-requested"),
+    requestId: Schema.String,
+  }),
   "fullscreen-surface-close-requested": Schema.Struct({
     type: Schema.Literal("fullscreen-surface-close-requested"),
     surfaceId: uuid,
@@ -376,10 +380,12 @@ export const embeddedEditorEventSchema = Schema.Union([
 
 export const surfaceEventSchema = Schema.Union([
   cakeEventSchemas["renderer-events-ready"],
+  cakeEventSchemas["window-state-flush-requested"],
   cakeEventSchemas["fullscreen-surface-close-requested"],
 ]);
 
 export const cakeEventSchema = Schema.Union([
+  cakeEventSchemas["window-state-flush-requested"],
   cakeEventSchemas["agent-action-notice"],
   cakeEventSchemas["pi-settings-changed"],
   cakeEventSchemas["artifact-state-invalidated"],

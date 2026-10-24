@@ -11,18 +11,21 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it } from "@effect/vitest";
+import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import {
   Context,
   Deferred,
   Effect,
   Exit,
   Fiber,
+  FileSystem,
   Layer,
   Queue,
   Schema,
   Scope,
   Stream,
 } from "effect";
+import type { Path } from "effect";
 import { RpcClient } from "effect/unstable/rpc";
 import { expect, vi } from "vitest";
 import { BackendRpc } from "../../src/ipc/protocol/BackendRpc";
@@ -70,7 +73,12 @@ const configuration = {
   },
 };
 
-const setup = Effect.fn("DesktopSharingTest.setup")(function* () {
+const setup = Effect.fn("DesktopSharingTest.setup")(function* (
+  storage: Layer.Layer<FileSystem.FileSystem | Path.Path> = Layer.merge(
+    NodeFileSystem.layer,
+    NodePath.layer,
+  ),
+) {
   const assets = yield* Effect.acquireRelease(
     Effect.promise(() => mkdtemp(join(tmpdir(), "cake-sharing-assets-"))),
     (path) => Effect.promise(() => rm(path, { recursive: true, force: true })),
@@ -82,7 +90,9 @@ const setup = Effect.fn("DesktopSharingTest.setup")(function* () {
   const backend = yield* makeNetworkTestBackend();
   const hostScope = yield* Scope.fork(yield* Effect.scope);
   const host = yield* Layer.buildWithScope(
-    makeDesktopSharingLive(configuration, assets),
+    makeDesktopSharingLive(configuration, assets, join(assets, "user-data")).pipe(
+      Layer.provide(storage),
+    ),
     hostScope,
   ).pipe(Effect.provideContext(backend.context));
   const sharing = Context.get(host, DesktopSharing);
@@ -121,8 +131,126 @@ const setup = Effect.fn("DesktopSharingTest.setup")(function* () {
     expect(state.editorPort).not.toBe(state.port);
     return yield* connectClient(state.url.replace("http:", "ws:") + "rpc", state.url.slice(0, -1));
   });
-  return { backend, sharing, local, remote, closeHost: () => Scope.close(hostScope, Exit.void) };
+  return {
+    backend,
+    sharing,
+    local,
+    remote,
+    assets,
+    closeHost: () => Scope.close(hostScope, Exit.void),
+  };
 });
+
+it.live(
+  "queued preference writes survive cancellation and a failed save cannot keep sharing enabled",
+  () =>
+    Effect.gen(function* () {
+      const entered = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      let pause = true;
+      let failWrites = false;
+      const controlledFs = Layer.effect(
+        FileSystem.FileSystem,
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          return {
+            ...fs,
+            writeFileString: (path, content, options) =>
+              Effect.gen(function* () {
+                if (pause) {
+                  pause = false;
+                  yield* Deferred.succeed(entered, undefined);
+                  yield* Deferred.await(release);
+                }
+                return yield* fs.writeFileString(path, content, options);
+              }),
+            rename: (source, target) =>
+              failWrites ? fs.rename(`${source}.missing`, target) : fs.rename(source, target),
+          } satisfies FileSystem.FileSystem;
+        }),
+      ).pipe(Layer.provide(NodeFileSystem.layer));
+      const { sharing } = yield* setup(Layer.merge(controlledFs, NodePath.layer));
+      const first = yield* sharing
+        .updatePreferences({ bind: "127.0.0.1", port: 4318 })
+        .pipe(Effect.forkScoped);
+      yield* Deferred.await(entered);
+      const second = yield* sharing
+        .updatePreferences({ bind: "127.0.0.1", port: 0, publicOrigin: "https://last.example" })
+        .pipe(Effect.forkScoped);
+      yield* Effect.yieldNow;
+      const cancelling = yield* Fiber.interrupt(second).pipe(Effect.forkScoped);
+      yield* Deferred.succeed(release, undefined);
+      yield* Fiber.join(first);
+      yield* Fiber.join(cancelling);
+      expect(yield* sharing.changes().pipe(Stream.runHead)).toMatchObject({
+        value: { preferences: { port: 0, publicOrigin: "https://last.example" } },
+      });
+      yield* sharing.configure({ enabled: true, bind: "127.0.0.1", port: 0 });
+      failWrites = true;
+      const failure = yield* sharing
+        .configure({ enabled: false, bind: "127.0.0.1", port: 0 })
+        .pipe(Effect.flip);
+      expect(failure.message).toContain("Could not save");
+      expect(sharing.keepsProcessAlive()).toBe(false);
+      expect(yield* sharing.changes().pipe(Stream.runHead)).toMatchObject({
+        value: { status: "disabled" },
+      });
+    }).pipe(Effect.scoped),
+);
+
+it.live(
+  "connection preferences survive a recreated host, but listener opt-in and assigned ports do not",
+  () =>
+    Effect.gen(function* () {
+      const { backend, sharing, assets, closeHost } = yield* setup();
+      const preferences = {
+        bind: "127.0.0.1",
+        port: 0,
+        publicOrigin: "https://laptop.tailnet.ts.net:8443",
+      };
+      // Editing settings while off must save, even without ever enabling a listener.
+      expect(yield* sharing.updatePreferences(preferences)).toMatchObject({
+        status: "disabled",
+        preferences,
+      });
+      const serving = yield* sharing.configure({ ...preferences, enabled: true });
+      expect(serving.port).toBeGreaterThan(0);
+      expect(serving.preferences.port).toBe(0);
+      const disabled = yield* sharing.configure({ ...preferences, enabled: false });
+      expect(disabled).toMatchObject({ status: "disabled", port: 0, preferences });
+      yield* closeHost();
+      const recreated = yield* Layer.build(
+        makeDesktopSharingLive(configuration, assets, join(assets, "user-data")).pipe(
+          Layer.provide(Layer.merge(NodeFileSystem.layer, NodePath.layer)),
+        ),
+      ).pipe(Effect.provideContext(backend.context));
+      const fresh = Context.get(recreated, DesktopSharing);
+      expect(yield* fresh.changes().pipe(Stream.runHead)).toMatchObject({
+        value: { status: "disabled", ...preferences, preferences },
+      });
+      expect(fresh.keepsProcessAlive()).toBe(false);
+      const invalid = yield* fresh
+        .updatePreferences({ ...preferences, publicOrigin: "http://invalid.example" })
+        .pipe(Effect.flip);
+      expect(invalid.message).toContain("HTTPS");
+      expect(yield* fresh.changes().pipe(Stream.runHead)).toMatchObject({ value: { preferences } });
+      // Clearing the origin is durable, not a fallback to the old origin.
+      yield* fresh.updatePreferences({ bind: "127.0.0.2", port: 4319 });
+      const final = yield* Layer.build(
+        makeDesktopSharingLive(configuration, assets, join(assets, "user-data")).pipe(
+          Layer.provide(Layer.merge(NodeFileSystem.layer, NodePath.layer)),
+        ),
+      ).pipe(Effect.provideContext(backend.context));
+      expect(
+        yield* Context.get(final, DesktopSharing).changes().pipe(Stream.runHead),
+      ).toMatchObject({
+        value: { status: "disabled", preferences: { bind: "127.0.0.2", port: 4319 } },
+      });
+      const snapshot = yield* Context.get(final, DesktopSharing).changes().pipe(Stream.runHead);
+      assert.equal(snapshot._tag, "Some");
+      expect(snapshot.value.publicOrigin).toBeUndefined();
+    }).pipe(Effect.scoped),
+);
 
 it.live(
   "enable_desktop_serving_during_active_turn; disable_preserves_local_work_and_reenable",

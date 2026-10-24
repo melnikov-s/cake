@@ -1,6 +1,17 @@
 import assert from "node:assert/strict";
 import * as projectTodos from "../../../../src/domain/projects/projectTodos";
 import { upsertProject, setProjectSettings } from "../../../../src/domain/application/application";
+import * as application from "../../../../src/domain/application/application";
+import * as settingsCatalog from "../../../../src/domain/application/settingsCatalog";
+import * as modelPresets from "../../../../src/domain/model-presets/modelPresets";
+import * as projectChatInstructions from "../../../../src/domain/projects/projectChatInstructions";
+import {
+  settingsCatalog as settingDefinitions,
+  type SettingsUpdateInput,
+} from "../../../../src/contracts/application/settings-catalog";
+import { CakePrompts } from "../../../../src/contracts/application/cake-prompt-data";
+import { PiSettings } from "../../../../src/services/pi/PiSettings";
+import { CakeSessionRuntimes } from "../../../../src/services/pi/CakeSessionRuntimes";
 import { it } from "@effect/vitest";
 import { describe } from "vitest";
 import { Deferred, Effect, Fiber, FileSystem, Layer, Path, PlatformError, Schema } from "effect";
@@ -207,6 +218,123 @@ describe("ApplicationStorage", () => {
             cleared.find((p) => p.path === "/two")?.settings?.browserDefaultUrl,
             "http://localhost:5173/",
           );
+        });
+      }),
+  );
+
+  it.effect(
+    "round-trips every application catalog setting and dedicated Project, preset, label and instruction settings through fresh owners",
+    () =>
+      withStorage({}, (storage) => {
+        const owner = ApplicationState.layer.pipe(
+          Layer.provide(Layer.succeed(ApplicationStorage)(storage)),
+        );
+        return Effect.gen(function* () {
+          const committed = yield* Effect.gen(function* () {
+            const state = yield* ApplicationState;
+            yield* state.initialize();
+            yield* application.upsertProject("/project", "Project");
+            yield* application.setProjectSettings("/project", {
+              worktreeCreateCommand: "git worktree add {worktreePath}",
+              worktreeSetupCommands: "pnpm install\npnpm build:slim",
+              worktreeSetupInstructions: "Keep dependencies isolated.",
+              customInstructions: "Coding session guidance.",
+              projectChatInstructions: "Project Chat guidance.",
+              icon: { mimeType: "image/png", data: "aWNvbg==" },
+            });
+            yield* projectChatInstructions.update({
+              projectPath: "/project",
+              expectedInstructions: "Project Chat guidance.",
+              instructions: "Updated Project Chat guidance.",
+            });
+            yield* application.updateCakeChatInstructions({
+              expectedInstructions: "",
+              instructions: "Shared Cake Chat guidance.",
+            });
+            yield* application.setVscodeServerPath("/custom/code-server");
+            const presets = yield* modelPresets.create({
+              name: "Persisted model",
+              provider: "example",
+              modelId: "example-model",
+              thinkingLevel: "high",
+              fastMode: true,
+            });
+            const preset = presets.presets[0];
+            assert.ok(preset);
+            const updates: SettingsUpdateInput[] = [
+              { key: "cakeChat.contextLimitTokens", value: 128_000 },
+              { key: "cakeChat.memoryViewBytes", value: 20_000 },
+              {
+                key: "cakeChat.summarizationModel",
+                value: { source: "preset", presetId: preset.id },
+              },
+              {
+                key: "cakeChat.subagentDefaultModel",
+                value: {
+                  source: "model",
+                  model: {
+                    provider: "example",
+                    modelId: "subagent",
+                    thinkingLevel: "low",
+                    fastMode: true,
+                  },
+                },
+              },
+              { key: "models.defaultPreset", value: preset.id },
+              {
+                key: "models.utility",
+                value: { provider: "example", modelId: "utility", thinkingLevel: "low" },
+              },
+              { key: "models.imagePreference", value: { provider: "example", modelId: "image" } },
+              {
+                key: "models.classifierPreference",
+                value: { provider: "example", modelId: "classifier" },
+              },
+              { key: "instructions.global", value: "Global coding guidance." },
+              { key: "experimental.dynamicWorkflows", value: true },
+              ...Object.keys(CakePrompts.fields).map((key) => ({
+                key: `prompts.${key}`,
+                value: `Custom ${key} prompt.`,
+              })),
+            ];
+            // Fail when a future catalog control has no restart-persistence case.
+            assert.deepEqual(
+              updates.map(({ key }) => key).sort(),
+              settingDefinitions
+                .filter(({ key }) => !key.startsWith("pi."))
+                .map(({ key }) => key)
+                .sort(),
+            );
+            for (const input of updates) {
+              const updated = yield* settingsCatalog.update(input);
+              assert.deepEqual(updated.value, input.value, input.key);
+            }
+            yield* application.mutateGlobalSessionLabels({
+              _tag: "AddLabel",
+              label: { id: "00000000-0000-4000-8000-000000000099", name: "Custom", color: "green" },
+            });
+            yield* application.mutateProjectWorkflow("/project", {
+              _tag: "AddLabel",
+              label: { id: "00000000-0000-4000-8000-000000000098", name: "Project", color: "blue" },
+            });
+            yield* application.setProjectSessionLabels("/project", "session", [
+              "00000000-0000-4000-8000-000000000099",
+              "00000000-0000-4000-8000-000000000098",
+            ]);
+            return yield* state.current();
+          }).pipe(
+            Effect.provide(owner, { local: true }),
+            // Application catalog writes must not acquire Pi or conversation runtimes.
+            Effect.provide(
+              Layer.merge(Layer.mock(PiSettings, {}), Layer.mock(CakeSessionRuntimes, {})),
+            ),
+          );
+          assert.deepEqual((yield* storage.load()).state, committed);
+          yield* Effect.gen(function* () {
+            const state = yield* ApplicationState;
+            yield* state.initialize();
+            assert.deepEqual(yield* state.current(), committed);
+          }).pipe(Effect.provide(owner, { local: true }));
         });
       }),
   );

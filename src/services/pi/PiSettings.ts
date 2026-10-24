@@ -61,37 +61,36 @@ export const makePiSettingsLayer = (
         );
       });
 
+      const reload = Effect.fn("PiSettings.reload")(function* (operation: string) {
+        yield* Effect.tryPromise({
+          try: () => settingsManager.reload(),
+          catch: (cause) => settingsError(operation, cause),
+        });
+        const errors = settingsManager.drainErrors();
+        if (errors.length > 0)
+          return yield* settingsError(
+            operation,
+            errors.map((error) => error.error.message).join("\n"),
+          );
+      });
+
       const load = Effect.fn("PiSettings.load")(() =>
-        lock.withPermits(1)(
-          Effect.gen(function* () {
-            yield* Effect.tryPromise({
-              try: () => settingsManager.reload(),
-              catch: (cause) => settingsError("load", cause),
-            });
-            const errors = settingsManager.drainErrors();
-            if (errors.length > 0)
-              return yield* settingsError(
-                "load",
-                errors.map((error) => error.error.message).join("\n"),
-              );
-            return yield* read("load");
-          }),
-        ),
+        lock.withPermits(1)(reload("load").pipe(Effect.andThen(read("load")))),
       );
 
       const update = Effect.fn("PiSettings.update")((setting: PiSettingUpdate) =>
         lock.withPermits(1)(
           Effect.gen(function* () {
+            // Reload before mutation: Pi skips saving after a failed load until reload
+            // succeeds. It also keeps read/modify/write setters current with file edits.
+            yield* reload("update");
             if (setting.key === "defaultTools" || setting.key === "codemodeInlineBudget") {
               if (!writeExecutionSetting)
                 return yield* settingsError("update", "Execution settings storage is unavailable");
               // Pi exposes these settings but has no public setters. Persist only the native
               // fields through the backend adapter, then reload Pi's authoritative manager.
               yield* writeExecutionSetting(setting);
-              yield* Effect.tryPromise({
-                try: () => settingsManager.reload(),
-                catch: (cause) => settingsError("update", cause),
-              });
+              yield* reload("update");
             } else {
               yield* Effect.try({
                 try: () => applyPiSetting(settingsManager, setting),
@@ -118,10 +117,7 @@ export const makePiSettingsLayer = (
           Effect.gen(function* () {
             if (!extensionSettings)
               return yield* settingsError("extensions", "Extension discovery is unavailable");
-            yield* Effect.tryPromise({
-              try: () => settingsManager.reload(),
-              catch: (cause) => settingsError("extensions", cause),
-            });
+            yield* reload("extensions");
             yield* read("extensions");
             return yield* extensionSettings.list().pipe(
               Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(PiExtensionSetting))),
@@ -139,10 +135,7 @@ export const makePiSettingsLayer = (
                   "setExtensionEnabled",
                   "Extension discovery is unavailable",
                 );
-              yield* Effect.tryPromise({
-                try: () => settingsManager.reload(),
-                catch: (cause) => settingsError("setExtensionEnabled", cause),
-              });
+              yield* reload("setExtensionEnabled");
               yield* read("setExtensionEnabled");
               yield* extensionSettings.toggle(toggle);
               yield* Effect.tryPromise({

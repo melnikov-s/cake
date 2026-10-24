@@ -1052,7 +1052,12 @@ describe("Agent Settings through the real application-control/Client/domain boun
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       );
       const sharing = origin.root.settingsStore.desktopSharing;
-      sharing.apply({ status: "disabled", bind: "127.0.0.1", port: 4317 });
+      sharing.apply({
+        status: "disabled",
+        bind: "127.0.0.1",
+        port: 4317,
+        preferences: { bind: "127.0.0.1", port: 4317 },
+      });
       const enable = call("settings.desktop.sharing", {
         enabled: true,
         bind: "127.0.0.1",
@@ -1068,10 +1073,20 @@ describe("Agent Settings through the real application-control/Client/domain boun
         }),
       ).rejects.toThrow("already changing");
       expect(configure).toHaveBeenCalledTimes(1);
-      completeSharing({ status: "serving", bind: "127.0.0.1", port: 4317 });
+      completeSharing({
+        status: "serving",
+        bind: "127.0.0.1",
+        port: 4317,
+        preferences: { bind: "127.0.0.1", port: 4317 },
+      });
       expect(await enable).toMatchObject({ value: { status: "serving" } });
       expect(sharing.busy).toBe(false);
-      sharing.apply({ status: "serving", bind: "127.0.0.1", port: 4317 });
+      sharing.apply({
+        status: "serving",
+        bind: "127.0.0.1",
+        port: 4317,
+        preferences: { bind: "127.0.0.1", port: 4317 },
+      });
       await expect(
         call("settings.desktop.sharing", {
           enabled: true,
@@ -1131,7 +1146,12 @@ describe("Agent Settings through the real application-control/Client/domain boun
         call("settings.dictation.update", { action: "microphone", deviceId: "unknown" }),
       ).rejects.toThrow("listed device");
     } finally {
-      completeSharing({ status: "disabled", bind: "127.0.0.1", port: 4317 });
+      completeSharing({
+        status: "disabled",
+        bind: "127.0.0.1",
+        port: 4317,
+        preferences: { bind: "127.0.0.1", port: 4317 },
+      });
       origin[Symbol.dispose]();
       otherWindow[Symbol.dispose]();
       connection[Symbol.dispose]();

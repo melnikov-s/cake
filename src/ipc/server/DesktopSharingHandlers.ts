@@ -5,6 +5,8 @@ import { DesktopSharingRpc } from "../protocol/DesktopSharingRpc";
 export const desktopSharingHandlers = DesktopSharingRpc.of({
   "desktopSharing.configure": (input) =>
     Effect.flatMap(DesktopSharing, (sharing) => sharing.configure(input)),
+  "desktopSharing.updatePreferences": (input) =>
+    Effect.flatMap(DesktopSharing, (sharing) => sharing.updatePreferences(input)),
   "desktopSharing.observe": () =>
     Stream.unwrap(Effect.map(DesktopSharing, (sharing) => sharing.changes())),
 });

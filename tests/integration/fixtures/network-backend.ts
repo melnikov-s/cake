@@ -333,6 +333,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
       list: () => Effect.succeed([]),
       familyForMember: () => Effect.succeed(undefined),
       settleTurn: () => Effect.void,
+      closeUpdateBatch: () => Effect.void,
       withMemberLock: (_sessionId, effect) => effect,
       withNoticeDelivery: (effect) => effect,
       setBoardDeliveryPaused: () => Effect.void,

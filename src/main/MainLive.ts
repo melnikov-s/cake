@@ -97,6 +97,7 @@ export const makeMainLive = (options: MainLiveOptions) => {
   const SharingLive = makeDesktopSharingLive(
     { homeDirectory, cakeChat },
     join(import.meta.dirname, "../browser"),
+    options.userData,
   ).pipe(Layer.provide(BackendLive));
   const HostLive = Layer.suspend(() =>
     Layer.mergeAll(

@@ -115,10 +115,7 @@ async function executeAgentSettings(
         throw new Error(
           "Disable desktop sharing before changing its bind address, port or HTTPS origin, as in manual Settings.",
         );
-      sharing.setBind(invocation.arguments.bind);
-      sharing.setPort(String(invocation.arguments.port));
-      sharing.setPublicOrigin(invocation.arguments.publicOrigin ?? "");
-      const value = await sharing.configure(invocation.arguments.enabled);
+      const value = await sharing.configure(invocation.arguments.enabled, invocation.arguments);
       if (sharing.error) throw new Error(sharing.error);
       if (!value) throw new Error("Desktop sharing is already changing; retry when settled.");
       return value;

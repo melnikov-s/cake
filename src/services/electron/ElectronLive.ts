@@ -163,6 +163,8 @@ const makeElectronService = (
   };
   const fullscreenSurfaces = new Map<number, Set<string>>();
   const failedRenderers = new Set<number>();
+  const pendingCloses = new Set<number>();
+  const approvedCloses = new Set<number>();
   const fullscreenSurfaceListeners = new Set<
     (state: { readonly connectionId: number; readonly open: boolean }) => void
   >();
@@ -349,7 +351,7 @@ const makeElectronService = (
       fullscreenSurfaces.delete(ownerId);
     });
     window.on("close", (event) => {
-      if (applicationQuitting) return;
+      if (applicationQuitting || approvedCloses.delete(ownerId)) return;
       if (failedRenderers.has(ownerId)) return;
       if (closeFullscreenSurfaceForWindow(window)) {
         event.preventDefault();
@@ -358,6 +360,12 @@ const makeElectronService = (
       if (lifecycle().backToAgentForWindow(nativeId)) {
         centerTrafficLights(window, CAKE_TITLE_BAR_HEIGHT);
         event.preventDefault();
+        return;
+      }
+      event.preventDefault();
+      if (!pendingCloses.has(ownerId)) {
+        pendingCloses.add(ownerId);
+        lifecycle().onWindowCloseRequested(ownerId);
       }
     });
     window.on("closed", () => {
@@ -368,6 +376,8 @@ const makeElectronService = (
       connections.release(ownerId);
       fullscreenSurfaces.delete(ownerId);
       failedRenderers.delete(ownerId);
+      pendingCloses.delete(ownerId);
+      approvedCloses.delete(ownerId);
       if (applicationQuitting) return;
       lifecycle().onWindowClosed(ownerId, workingDirectory, nativeId);
       // macOS keeps a window-less Cake running, so the drop-down stays available from the
@@ -501,6 +511,42 @@ const makeElectronService = (
       if (!icon.isEmpty()) options.application.dock.setIcon(icon);
     }
   };
+
+  const prepareWindowClose = Effect.fn("Electron.prepareWindowClose")(function* (
+    window: BrowserWindow,
+    quitting: boolean,
+  ) {
+    if (window.isDestroyed() || failedRenderers.has(connectionForWindow(window))) return true;
+    return yield* lifecycle()
+      .flushWindowState(connectionForWindow(window))
+      .pipe(
+        Effect.as(true),
+        Effect.catch((error) =>
+          Effect.tryPromise({
+            try: () =>
+              dialog.showMessageBox(window, {
+                type: "warning",
+                title: "Window state could not be saved",
+                message: quitting
+                  ? "Quit without saving the latest window settings?"
+                  : "Close without saving the latest window settings?",
+                detail: error.message,
+                buttons: ["Keep open", quitting ? "Quit without saving" : "Close without saving"],
+                defaultId: 0,
+                cancelId: 0,
+              }),
+            catch: electronError,
+          }).pipe(
+            Effect.map(({ response }) => response === 1),
+            Effect.catch((failure) =>
+              Effect.logError("Could not confirm unsaved window close", failure).pipe(
+                Effect.as(false),
+              ),
+            ),
+          ),
+        ),
+      );
+  });
 
   const service = Electron.of({
     configureScreenCapture: Effect.fn("Electron.configureScreenCapture")((connectionId, settings) =>
@@ -935,6 +981,25 @@ const makeElectronService = (
         window.focus();
       }),
     ),
+    closeWindow: Effect.fn("Electron.closeWindow")(function* (connectionId) {
+      const window = [...windows.values()].find(
+        (candidate) => connectionForWindow(candidate) === connectionId,
+      );
+      if (!window || window.isDestroyed()) return;
+      try {
+        if (!(yield* prepareWindowClose(window, false))) return;
+        if (window.isDestroyed()) return;
+        approvedCloses.add(connectionId);
+        window.close();
+      } finally {
+        pendingCloses.delete(connectionId);
+      }
+    }),
+    prepareToQuit: Effect.fn("Electron.prepareToQuit")(function* () {
+      for (const window of windows.values())
+        if (!(yield* prepareWindowClose(window, true))) return false;
+      return true;
+    }),
     stop: Effect.fn("Electron.stop")(() =>
       Effect.sync(() => {
         if (stopped) return;
@@ -958,6 +1023,8 @@ const makeElectronService = (
         fullscreenSurfaceListeners.clear();
         fullscreenSurfaces.clear();
         failedRenderers.clear();
+        pendingCloses.clear();
+        approvedCloses.clear();
         windows.clear();
         windowLifecycle = undefined;
       }),

@@ -169,6 +169,9 @@ test("desktop Settings shares the existing backend; window closure, reopen, disa
     // The remaining native client's requests and the browser connection still work.
     await toggle.click();
     await expect(toggle).not.toBeChecked();
+    // This ownership scenario needs a stable address across toggles. Port zero now
+    // correctly remains an automatic-port preference rather than saving the assigned port.
+    await local.getByLabel("Browser sharing port", { exact: true }).fill(new URL(url).port);
     await expect
       .poll(async () =>
         remote.request.get(url!).then(
@@ -228,6 +231,68 @@ test("desktop Settings shares the existing backend; window closure, reopen, disa
   } finally {
     await browser.close();
     if (childProcess.exitCode === null) await application.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("connection preferences survive quitting and a fresh desktop process without enabling sharing", async () => {
+  test.setTimeout(60_000);
+  const directory = await mkdtemp(join(tmpdir(), "cake-sharing-restart-"));
+  const userData = join(directory, "user-data");
+  const home = join(directory, "home");
+  const launch = () =>
+    electron.launch({
+      args: [repositoryRoot],
+      cwd: repositoryRoot,
+      env: {
+        ...process.env,
+        CAKE_ELECTRON_SMOKE: "1",
+        CAKE_ELECTRON_USER_DATA: userData,
+        CAKE_HOME: home,
+        PI_CODING_AGENT_DIR: join(home, "pi"),
+        PI_CODING_AGENT_SESSION_DIR: "",
+      },
+    });
+  let application: Awaited<ReturnType<typeof launch>> | undefined;
+  try {
+    application = await launch();
+    const first = await application.firstWindow();
+    await openSharing(first);
+    await first.getByRole("textbox", { name: "Browser sharing port", exact: true }).fill("0");
+    await first
+      .getByRole("textbox", { name: "Browser sharing bind address", exact: true })
+      .fill("127.0.0.2");
+    await first
+      .getByRole("textbox", { name: "Browser sharing HTTPS origin", exact: true })
+      .fill("https://laptop.tailnet.ts.net:8443");
+    // Also exercise the window snapshot's debounce at the real quit boundary.
+    await first.getByRole("button", { name: "Appearance", exact: true }).click();
+    await first.getByRole("combobox", { name: "Color theme" }).selectOption("dark");
+    // No enable, debounce delay or explicit save before an orderly quit.
+    await application.close();
+    application = await launch();
+    const fresh = await application.firstWindow();
+    // A saved window snapshot may restore the Settings cover, otherwise open it.
+    const open = fresh.getByRole("button", { name: "Open settings", exact: true });
+    await expect(
+      fresh.getByRole("button", { name: "Network & privacy", exact: true }).or(open).first(),
+    ).toBeVisible();
+    if (await open.isVisible()) await open.click();
+    await fresh.getByRole("button", { name: "Network & privacy", exact: true }).click();
+    await expect(
+      fresh.getByRole("textbox", { name: "Browser sharing HTTPS origin", exact: true }),
+    ).toHaveValue("https://laptop.tailnet.ts.net:8443");
+    await expect(
+      fresh.getByRole("textbox", { name: "Browser sharing bind address", exact: true }),
+    ).toHaveValue("127.0.0.2");
+    await expect(
+      fresh.getByRole("textbox", { name: "Browser sharing port", exact: true }),
+    ).toHaveValue("0");
+    await expect(fresh.getByRole("switch", { name: "Enable browser sharing" })).not.toBeChecked();
+    await fresh.getByRole("button", { name: "Appearance", exact: true }).click();
+    await expect(fresh.getByRole("combobox", { name: "Color theme" })).toHaveValue("dark");
+  } finally {
+    if (application?.process().exitCode === null) await application.close();
     await rm(directory, { recursive: true, force: true });
   }
 });

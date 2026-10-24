@@ -2,6 +2,7 @@ import { Context, type Effect, type Stream } from "effect";
 import type {
   DesktopSharingError,
   DesktopSharingInput,
+  DesktopSharingPreferences,
   DesktopSharingState,
 } from "../../contracts/desktop/desktop-sharing-data";
 
@@ -11,6 +12,9 @@ export class DesktopSharing extends Context.Service<
   {
     readonly configure: (
       input: DesktopSharingInput,
+    ) => Effect.Effect<DesktopSharingState, DesktopSharingError>;
+    readonly updatePreferences: (
+      input: DesktopSharingPreferences,
     ) => Effect.Effect<DesktopSharingState, DesktopSharingError>;
     readonly changes: () => Stream.Stream<DesktopSharingState>;
     readonly keepsProcessAlive: () => boolean;

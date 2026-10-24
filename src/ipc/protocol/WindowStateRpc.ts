@@ -10,6 +10,10 @@ import {
 
 /** Desktop-local presentation persistence, never shared backend state. */
 export const WindowStateRpc = RpcGroup.make(
+  Rpc.make("windowState.respondFlush", {
+    payload: { requestId: Schema.String, error: Schema.optionalKey(Schema.String) },
+    error: Schema.String,
+  }),
   Rpc.make("windowState.load", {
     success: Schema.Json,
     error: Schema.Union([

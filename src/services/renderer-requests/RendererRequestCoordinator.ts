@@ -57,6 +57,12 @@ type SessionTarget =
 
 type PendingRequest =
   | {
+      readonly _tag: "WindowStateFlush";
+      readonly sessionId: "";
+      readonly connectionId: number;
+      readonly completion: Deferred.Deferred<JsonValue | undefined>;
+    }
+  | {
       readonly _tag: "Ui";
       readonly targetKind?: SessionTarget["_tag"];
       readonly workflowChoice: boolean;
@@ -110,6 +116,14 @@ class RendererRequestCoordinatorError extends Schema.TaggedError<RendererRequest
 ) {}
 
 export interface RendererRequestCoordinatorService {
+  readonly requestWindowStateFlush: (
+    connectionId: number,
+  ) => Effect.Effect<void, RendererRequestCoordinatorError>;
+  readonly respondWindowStateFlush: (
+    connectionId: number,
+    requestId: string,
+    error?: string,
+  ) => Effect.Effect<void, RendererRequestCoordinatorError>;
   /** Best-effort presentation only; never creates a pending request or controls admission. */
   readonly presentAgentAction: (notice: AgentActionNotice) => Effect.Effect<void>;
   /** Live user-response waits only, without reading Pi or creating requests. */
@@ -264,6 +278,8 @@ const coordinatorError = (operation: string, message: string) =>
   new RendererRequestCoordinatorError({ operation, message });
 
 const cancellationValue = (pending: PendingRequest, stopped: boolean): JsonValue | undefined => {
+  if (pending._tag === "WindowStateFlush")
+    return "The window disconnected before saving its settings";
   if (pending._tag === "Ui" || pending._tag === "Interview") return undefined;
   if (pending._tag === "BrowserNative")
     return {
@@ -1103,6 +1119,54 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
     );
 
     return RendererRequestCoordinator.of({
+      requestWindowStateFlush: Effect.fn("RendererRequestCoordinator.requestWindowStateFlush")(
+        function* (connectionId) {
+          const requestId = crypto.randomUUID();
+          const completion = yield* Deferred.make<JsonValue | undefined>();
+          const entry: PendingRequest = {
+            _tag: "WindowStateFlush",
+            sessionId: "",
+            connectionId,
+            completion,
+          };
+          const result = yield* Effect.uninterruptibleMask((restore) =>
+            Effect.gen(function* () {
+              yield* runTransition(Effect.sync(() => pending.set(requestId, entry)));
+              return yield* restore(
+                publishProjectEvent(connectionId, {
+                  type: "window-state-flush-requested",
+                  requestId,
+                }).pipe(Effect.andThen(awaitPending(requestId, entry, undefined, 5_000))),
+              ).pipe(Effect.ensuring(removePending(requestId)));
+            }),
+          );
+          if (result !== null)
+            return yield* coordinatorError(
+              "requestWindowStateFlush",
+              Schema.is(Schema.String)(result)
+                ? result
+                : "The window did not finish saving its settings",
+            );
+        },
+      ),
+      respondWindowStateFlush: Effect.fn("RendererRequestCoordinator.respondWindowStateFlush")(
+        function* (connectionId, requestId, error) {
+          const request = yield* Effect.try({
+            try: () =>
+              validateResponse(
+                "respondWindowStateFlush",
+                requestId,
+                "WindowStateFlush",
+                connectionId,
+              ),
+            catch: (cause) =>
+              cause instanceof RendererRequestCoordinatorError
+                ? cause
+                : coordinatorError("respondWindowStateFlush", String(cause)),
+          });
+          if (request) yield* complete(requestId, error ?? null);
+        },
+      ),
       pendingUserInputs: Effect.fn("RendererRequestCoordinator.pendingUserInputs")(() =>
         Effect.sync(() =>
           [...pending.values()].flatMap((entry) =>

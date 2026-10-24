@@ -44,6 +44,7 @@ import { nativeTerminalEvents } from "../ipc/server/ClientEventHandlers";
 import { ElectronRpcServerProtocolLive } from "../ipc/transport/ElectronRpcServerProtocol";
 import { ClientConnectionsLive } from "../services/clients/ClientConnections";
 import { ClientEventsLive } from "../services/clients/ClientEventsLive";
+import { RendererRequestCoordinatorLive } from "../services/renderer-requests/RendererRequestCoordinator";
 import { ClientWorkspacesLive } from "../services/clients/ClientWorkspacesLive";
 import { makeElectronLive } from "../services/electron/ElectronLive";
 import {
@@ -72,6 +73,7 @@ export const makeRemoteMainLive = (
   );
   const Host = Layer.mergeAll(
     Clients,
+    RendererRequestCoordinatorLive.pipe(Layer.provide(Clients)),
     Native,
     makePocketTtsLive(
       join(options.userData, "speech-output", "pocket-tts"),

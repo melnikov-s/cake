@@ -7,6 +7,8 @@ import { createTestClient } from "../test-client";
 import { mountRootStore } from "../../../../src/renderer/bootstrap/mount-root-store";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
 import { WindowStatePersistence } from "../../../../src/renderer/persistence/WindowStatePersistence";
+import { storeSnapshotSchema } from "../../../../src/renderer/persistence/StoreSnapshot";
+import { defaultSpeechInputPreferences } from "../../../../src/utils/speech-input-settings";
 import { fakeSavedDrafts } from "../fakes/saved-drafts";
 import { fixtureTimestamp } from "../fixtures/catalog-fixtures";
 
@@ -27,7 +29,12 @@ function harness({
   const save = vi.fn<Client["windowState"]["save"]>(async () => undefined);
   const reportError = vi.fn();
   const drafts = fakeSavedDrafts();
-  const client = createTestClient({ windowState: { save }, savedDrafts: drafts.client });
+  const client = createTestClient({
+    windowState: { save },
+    savedDrafts: drafts.client,
+    electron: { configureCakeChatOverlay: async () => {}, configureScreenCapture: async () => {} },
+    dictation: { release: async () => {}, prepare: async () => {} },
+  });
   const models = RootProjection.create();
   const persistence = new WindowStatePersistence(client, reportError, savedDraftsReady);
   const root = mountRootStore(client, loaded, () => persistence.flush(), models);
@@ -225,7 +232,8 @@ describe("WindowStatePersistence", () => {
     const secondFlush = h.persistence.flush();
     const failure = new Error("disk unavailable");
     firstSave.reject(failure);
-    await Promise.all([firstFlush, secondFlush]);
+    await expect(firstFlush).rejects.toBe(failure);
+    await secondFlush;
     expect(h.reportError).toHaveBeenCalledExactlyOnceWith(failure);
     expect(h.save).toHaveBeenLastCalledWith(h.expected());
     expect(h.save).toHaveBeenCalledTimes(2);
@@ -273,6 +281,74 @@ describe("WindowStatePersistence", () => {
     expect(restored.root.sessionRegistry.pendingSessions.savedRecord(savedId)).toEqual(saved);
     expect(restored.draft.text).toBe("unsent request");
     expect(restored.draft.attachments.slice()).toEqual([attachment]);
+  });
+
+  it("restores every window settings owner from the saved JSON without overwriting preferences with defaults", async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    const settings = h.root.settingsStore;
+    settings.appearance.setTheme("dark");
+    settings.appearance.setProjectAvatarsEnabled(false);
+    settings.appearance.setSessionAvatarsEnabled(false);
+    settings.appearance.setSidebarCharactersEnabled(true);
+    settings.appearance.setWorkLogViewMode("log");
+    settings.appearance.setWorkLogsExpansion("expanded");
+    settings.agentNavigation.setEnabled(false);
+    settings.embeddedEditor.setSidebarAutoHide("below-width");
+    settings.embeddedEditor.setSidebarAutoHideWidth(1728);
+    const action = settings.hotkeys.definitions[0]!.id;
+    settings.hotkeys.clear(action);
+    await settings.cakeChatOverlay.setShortcut("");
+    await settings.cakeChatOverlay.setCaptureSelectedText(false);
+    h.root.screenCaptureStore.setShortcut("");
+    h.root.screenCaptureStore.setMaxDimension(1024);
+    h.root.dictationStore.setDevice("microphone-fixture");
+    h.root.dictationStore.setTextProcessingMode("utility");
+    await h.root.dictationStore.setEnabled(true);
+    h.root.speechSettingsStore.setEnabled(false);
+    const preferences = h.root.speechInputSettingsStore;
+    preferences.setNumber("speechStartThreshold", 0.8);
+    preferences.setNumber("speechContinueThreshold", 0.6);
+    preferences.setNumber("minimumSpeechMs", 350);
+    preferences.setNumber("prerollMs", 800);
+    preferences.setNumber("sendPauseSeconds", 4);
+    preferences.setNumber("countdownDelaySeconds", 2);
+    preferences.setNumber("maximumUtteranceSeconds", 40);
+    preferences.setNumber("interruptionWords", 6);
+    preferences.setNumber("interruptionWindowMs", 4000);
+    preferences.setShortCommands(false);
+    settings.modelPresets.recordUsage({
+      provider: "fixture",
+      modelId: "chosen",
+      thinkingLevel: "high",
+      fastMode: true,
+    });
+    await h.persistence.flush();
+    const saved = h.save.mock.calls.at(-1)![0];
+    const restored = harness({ loaded: Schema.decodeUnknownSync(storeSnapshotSchema)(saved) });
+    const restoredSettings = restored.root.settingsStore;
+    expect(toSnapshot(restoredSettings)).toEqual(toSnapshot(settings));
+    expect(restored.root.speechInputSettingsStore.values).toEqual(preferences.values);
+    expect(restored.root.speechSettingsStore.enabled).toBe(false);
+    expect(restored.root.dictationStore.enabled).toBe(true);
+    expect(restored.root.dictationStore.phase).toBe("paused");
+    expect(restored.root.dictationStore.deviceId).toBe("microphone-fixture");
+    expect(restored.root.dictationStore.textProcessingMode).toBe("utility");
+    expect(restored.root.screenCaptureStore.shortcut).toBe("");
+    expect(restored.root.screenCaptureStore.maxDimension).toBe(1024);
+    expect(restoredSettings.hotkeys.bindingFor(action)).toBe("");
+    await vi.advanceTimersByTimeAsync(180);
+    expect(toSnapshot(restoredSettings)).toEqual(toSnapshot(settings));
+    preferences.reset();
+    settings.hotkeys.resetAll();
+    await h.persistence.flush();
+    const reset = harness({
+      loaded: Schema.decodeUnknownSync(storeSnapshotSchema)(h.save.mock.calls.at(-1)![0]),
+    });
+    expect(reset.root.speechInputSettingsStore.values).toEqual(defaultSpeechInputPreferences);
+    expect(reset.root.settingsStore.hotkeys.bindingFor(action)).toBe(
+      settings.hotkeys.bindingFor(action),
+    );
   });
 
   it("preserves normalization of supported non-JSON snapshot values", async () => {

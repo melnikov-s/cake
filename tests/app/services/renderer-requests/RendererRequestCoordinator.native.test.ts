@@ -33,6 +33,50 @@ const fixture = Effect.gen(function* () {
 const widget = { token: "token", url: "cake-widget://token" };
 
 describe("native request correlation and deadlines", () => {
+  it.effect(
+    "correlates window close saves, rejects a different window and propagates failure or timeout",
+    () =>
+      Effect.gen(function* () {
+        const context = yield* Layer.build(
+          RendererRequestCoordinatorLive.pipe(
+            Layer.provideMerge(Layer.merge(ClientConnectionsLive, ClientEventsLive)),
+          ),
+        );
+        const coordinator = Context.get(context, RendererRequestCoordinator);
+        const events = yield* Queue.unbounded<CakeEvent>();
+        yield* Context.get(context, ClientEvents)
+          .surfaces(11)
+          .pipe(
+            Stream.runForEach((event) => Queue.offer(events, event)),
+            Effect.forkScoped,
+          );
+        yield* Queue.take(events);
+        for (const outcome of ["success", "failure", "timeout", "disconnect"] as const) {
+          const flushing = yield* coordinator.requestWindowStateFlush(11).pipe(Effect.forkChild);
+          const event = yield* Queue.take(events);
+          if (event.type !== "window-state-flush-requested")
+            throw new Error("Expected flush request");
+          expect(
+            Exit.isFailure(
+              yield* coordinator.respondWindowStateFlush(22, event.requestId).pipe(Effect.exit),
+            ),
+          ).toBe(true);
+          if (outcome === "timeout") yield* TestClock.adjust(5_000);
+          else if (outcome === "disconnect") yield* coordinator.releaseConnection(11);
+          else
+            yield* coordinator.respondWindowStateFlush(
+              11,
+              event.requestId,
+              outcome === "failure" ? "Disk full" : undefined,
+            );
+          const result = yield* Fiber.await(flushing);
+          expect(Exit.isSuccess(result)).toBe(outcome === "success");
+          // A late receipt cannot satisfy the next close attempt.
+          yield* coordinator.respondWindowStateFlush(11, event.requestId);
+        }
+      }),
+  );
+
   it.effect.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
     "routes Browser control for permanent chat %s through its own desktop binding",
     (sessionId) =>

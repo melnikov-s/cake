@@ -73,7 +73,11 @@ export interface ClientEventsService {
   readonly surfaces: (
     connectionId: number,
   ) => Stream.Stream<
-    FocusedCakeEvent<"fullscreen-surface-close-requested" | "renderer-events-ready">
+    FocusedCakeEvent<
+      | "fullscreen-surface-close-requested"
+      | "window-state-flush-requested"
+      | "renderer-events-ready"
+    >
   >;
 }
 

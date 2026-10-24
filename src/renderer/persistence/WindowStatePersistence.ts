@@ -43,7 +43,7 @@ export class WindowStatePersistence implements Disposable {
     if (this.timer) clearTimeout(this.timer);
     this.timer = setTimeout(() => {
       this.timer = undefined;
-      if (this.root) void this.enqueue(this.root);
+      if (this.root) void this.enqueue(this.root).catch(() => undefined);
     }, 180);
   }
 
@@ -56,13 +56,15 @@ export class WindowStatePersistence implements Disposable {
     const windowSnapshot = this.savedDraftsReady
       ? extractSavedDrafts(snapshot).windowSnapshot
       : snapshot;
-    this.saveQueue = this.saveQueue
+    const save = this.saveQueue
       .then(() => {
         if (!this.disposed) return this.client.windowState.save(windowSnapshot);
       })
       .catch((error) => {
         if (!this.disposed) this.reportError(error);
+        throw error;
       });
-    return this.saveQueue;
+    this.saveQueue = save.catch(() => undefined);
+    return save;
   }
 }
