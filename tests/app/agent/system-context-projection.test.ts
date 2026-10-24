@@ -237,6 +237,33 @@ describe("system instruction source projection", () => {
     ]);
   });
 
+  it("retains a genuine full instruction replacement even when it matches the current runtime prompt", () => {
+    const original = {
+      preamble: "Original system",
+      skills: "<skills>\nOriginal skills\n</skills>",
+    };
+    const replacement = { preamble: "New system", skills: "<skills>\nNew skills\n</skills>" };
+    const initial = { role: "system" as const, content: "", sections: original, timestamp: 0 };
+    let currentPrompt = Object.values(original).join("\n\n");
+    const live = createLiveMessageProjector({
+      initialSystemMessages: [initial],
+      currentSystemPrompt: () => currentPrompt,
+    });
+    currentPrompt = Object.values(replacement).join("\n\n");
+    const changed = { ...initial, sections: replacement, timestamp: 2 };
+    expect.soft(live({ type: "message_start", message: changed })).toMatchObject([
+      { title: "System", text: replacement.preamble },
+      { title: "Skills", text: replacement.skills },
+    ]);
+    const session = SessionManager.inMemory("/project");
+    session.appendMessage(initial);
+    session.appendMessage({ role: "user", content: "Before replacement", timestamp: 1 });
+    session.appendMessage(changed);
+    const history = projectSessionEntries(session.getBranch());
+    expect.soft(withoutRuntimeSystemPrompt(history, currentPrompt)).toEqual(history);
+    expect(live({ type: "message_start", message: changed })).toEqual([]);
+  });
+
   it("retains a docs-only change to actual guidance or installation paths", () => {
     const initial = {
       role: "system" as const,

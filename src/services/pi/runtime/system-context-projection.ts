@@ -183,7 +183,7 @@ export function createSystemContextProjector(messages: readonly unknown[] = []) 
   return project;
 }
 
-/** Suppress equivalent full instruction baselines, retaining tool changes and partial patches. */
+/** Suppress only the initial equivalent baseline, never later instruction replacements. */
 export function withoutRuntimeSystemPrompt(
   parts: readonly UiPart[],
   prompt: string,
@@ -204,6 +204,7 @@ export function withoutRuntimeSystemPrompt(
   const redundantIds = new Set<string>();
   for (const group of groups.values()) {
     const instructions = group.filter((part) => part.title !== "Tools");
+    if (instructions.length === 0) continue;
     if (
       runtimeInstructions.length === 0 ||
       instructions.length !== runtimeInstructions.length ||
@@ -215,7 +216,7 @@ export function withoutRuntimeSystemPrompt(
         ),
       )
     )
-      continue;
+      break;
     for (const part of group)
       if (
         runtimeParts.some(
@@ -225,6 +226,8 @@ export function withoutRuntimeSystemPrompt(
         )
       )
         redundantIds.add(part.id);
+    // Subsequent groups are already section-deduplicated historical changes.
+    break;
   }
   return parts.filter((part) => !redundantIds.has(part.id));
 }

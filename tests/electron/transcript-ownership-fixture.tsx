@@ -251,6 +251,8 @@ export interface TranscriptOwnershipFixture {
   /** Release the external original-report read after opening its disclosure. */
   loadReport(): void;
   update(): void;
+  /** Deliver live external projections after the transcript has already rendered. */
+  partsUpdated(updates: UiPart[]): void;
   stream(): void;
   /** A complete assistant message arrives without any user action. */
   arrive(): void;
@@ -271,6 +273,20 @@ Reflect.set(window, "transcriptFixture", {
   },
   update() {
     publish();
+    render();
+  },
+  partsUpdated(updates) {
+    for (const part of updates) {
+      // Keep the external snapshot in arrival order so update() also exercises rebuild ordering.
+      const index = parts.findIndex((current) => current.id === part.id);
+      if (index < 0) parts.push(part);
+      else parts[index] = part;
+      applyConversationUpdate(session.model, {
+        _tag: "Event",
+        revision: ++revision,
+        event: { _tag: "PartUpdated", sessionId: "ownership", part },
+      });
+    }
     render();
   },
   stream() {

@@ -143,6 +143,72 @@ export default function Widget() {
   },
 });
 
+for (const chatMode of ["full", "compact"]) {
+  test.describe(`${chatMode} instruction baseline reconciliation`, () => {
+    test.use({ messageCount: 2, chatMode });
+    test("keeps late baseline pills at the top and real instruction updates after dialogue", async ({
+      fixturePage: page,
+    }) => {
+      const transcript = page.locator(".transcript");
+      const reconcile = async () =>
+        page.evaluate(() => {
+          const fixture = Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture;
+          fixture.partsUpdated([
+            {
+              id: "runtime-system-prompt-system",
+              kind: "context",
+              title: "System",
+              text: "Baseline rules",
+            },
+            {
+              id: "runtime-system-prompt-skills",
+              kind: "context",
+              title: "Skills",
+              text: "Baseline skills",
+            },
+            {
+              id: "runtime-system-prompt-instructions",
+              kind: "context",
+              title: "AGENTS.md",
+              text: "Baseline project rules",
+            },
+            {
+              id: "live-context-1-system-prompt-skills",
+              kind: "context",
+              title: "Skills",
+              text: "Genuine skill change",
+            },
+          ]);
+        });
+      const anchors = () =>
+        transcript
+          .locator('[data-slot="transcript-item"]')
+          .evaluateAll((items) =>
+            items.map((item) => item.getAttribute("data-transcript-anchor-id")),
+          );
+      const expected = [
+        "runtime-system-prompt-system",
+        "message-0",
+        "message-1",
+        "live-context-1-system-prompt-skills",
+      ];
+      await reconcile();
+      await expect.poll(anchors).toEqual(expected);
+      const baseline = transcript.locator('[data-slot="context-group"]').first();
+      await expect(baseline.getByRole("button", { name: "System", exact: true })).toHaveCount(1);
+      await expect(baseline.getByRole("button", { name: "Skills", exact: true })).toHaveCount(1);
+      await expect(baseline.getByRole("button", { name: "AGENTS.md", exact: true })).toHaveCount(1);
+      await reconcile();
+      await expect.poll(anchors).toEqual(expected);
+      await page.evaluate(() =>
+        (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).update(),
+      );
+      await expect.poll(anchors).toEqual(expected);
+      await expect(transcript.locator('[data-slot="context-group"]')).toHaveCount(2);
+    });
+  });
+}
+
 test.describe("sending from distant history", () => {
   test.use({ messageCount: 2000, chatMode: "virtualized", withImages: true });
   test("Enter reaches the measured bottom and Shift+Enter keeps the reading position", async ({

@@ -787,6 +787,13 @@ export function createLiveMessageProjector(
   } = {},
 ) {
   const projectSystem = createSystemContextProjector(options.initialSystemMessages);
+  let hasSystemContext =
+    options.initialSystemMessages?.some(
+      (message) =>
+        typeof message === "object" &&
+        message !== null &&
+        Reflect.get(message, "role") === "system",
+    ) ?? false;
   let activeStreamId: string | undefined;
   let streamIndex = 0;
   let userIndex = 0;
@@ -815,11 +822,15 @@ export function createLiveMessageProjector(
       (event.message.role === "custom" || event.message.role === "system")
     ) {
       const baseId = `live-context-${++userIndex}`;
+      const initialSystemContext = event.message.role === "system" && !hasSystemContext;
+      if (event.message.role === "system") hasSystemContext = true;
       const parts =
         event.message.role === "system"
           ? projectSystem(event.message, baseId, textFromContent(event.message.content))
           : partsFromMessage(event.message, baseId);
-      return event.message.role === "system" && options.currentSystemPrompt
+      // Named-section deduplication handles established context. Comparing every
+      // patch with the current prompt would hide genuine full replacements.
+      return initialSystemContext && options.currentSystemPrompt
         ? withoutRuntimeSystemPrompt(
             parts,
             options.currentSystemPrompt(),

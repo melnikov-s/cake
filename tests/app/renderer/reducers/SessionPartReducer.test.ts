@@ -1,8 +1,68 @@
 import { expect, it } from "vitest";
-import { messageSnapshots } from "../../../../src/renderer/reducers/SessionPartReducer";
+import {
+  applyPartUpdate,
+  messageSnapshots,
+} from "../../../../src/renderer/reducers/SessionPartReducer";
 import { applySnapshot, toSnapshot } from "r-state-tree";
 import { Conversation } from "../../../../src/renderer/models/Conversation";
 import type { UiPart } from "../../../../src/contracts/conversations/session-contract";
+
+it("inserts late synthetic baseline groups before dialogue without moving actual updates", () => {
+  using model = Conversation.create({ sessionId: "session" });
+  const user: UiPart = {
+    id: "entry-user-text",
+    kind: "text",
+    role: "user",
+    text: "Hello",
+    status: "complete",
+  };
+  const change: UiPart = {
+    id: "live-context-2-system-prompt-skills",
+    kind: "context",
+    title: "Skills",
+    text: "New skill",
+  };
+  const baseline = ["system", "skills", "instructions"].map((source): UiPart => ({
+    id: `runtime-system-prompt-${source}`,
+    kind: "context",
+    title: source,
+    text: source,
+  }));
+  applyPartUpdate(model.parts, user, model.sessionId);
+  applyPartUpdate(model.parts, change, model.sessionId);
+  for (const part of baseline) applyPartUpdate(model.parts, part, model.sessionId);
+  const originals = model.parts.slice();
+  for (const part of baseline) applyPartUpdate(model.parts, part, model.sessionId);
+  expect(model.uiParts).toEqual([...baseline, user, change]);
+  expect(model.parts.every((part, index) => part === originals[index])).toBe(true);
+});
+
+it("normalizes reconstructed snapshots without changing content or historical order", () => {
+  const user: UiPart = {
+    id: "entry-user-text",
+    kind: "text",
+    role: "user",
+    text: "Hello",
+    status: "complete",
+  };
+  const change: UiPart = {
+    id: "entry-update-system-prompt-system",
+    kind: "context",
+    title: "System",
+    text: "New rules",
+  };
+  const baseline: UiPart = {
+    id: "runtime-system-prompt-system",
+    kind: "context",
+    title: "System",
+    text: "Current rules",
+  };
+  using model = Conversation.create({
+    sessionId: "session",
+    parts: messageSnapshots([user, change, baseline], "session"),
+  });
+  expect(model.uiParts).toEqual([baseline, user, change]);
+});
 
 it("maps Pi identities without retaining renamed transport fields", () => {
   const snapshots = messageSnapshots(

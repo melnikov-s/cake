@@ -1,4 +1,5 @@
 import type { UiPart } from "../../contracts/conversations/session-contract";
+import { systemPromptBaselineFirst } from "../../utils/system-prompt-baseline";
 import {
   isCompactedWorkLogPart,
   isWorkLogPart,
@@ -65,7 +66,9 @@ export function groupTranscriptParts(parts: UiPart[]): TranscriptItem[] {
     items.push({ kind: "source-group", id: `sources-${sources[0]!.id}`, parts: sources });
     sources = [];
   };
-  for (const part of parts) {
+  // History paging and restored projections can prepend dialogue to a current baseline.
+  // Keep the same invariant for every shared Chat consumer, not just live reduction.
+  for (const part of systemPromptBaselineFirst(parts)) {
     if (part.kind === "context") {
       flushActivity();
       flushSources();
