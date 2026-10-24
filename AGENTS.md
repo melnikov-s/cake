@@ -12,6 +12,8 @@ Cake-owned workflow policies should distinguish defaults from hard constraints a
 
 Cake is Pi expressed as a desktop GUI. Pi owns the coding-agent engine and transcript history; Cake owns desktop application workflows and presentation. Keep conversation primary. Never persist a second Cake-owned transcript.
 
+Cut taglines, helper text and secondary labels. If a screen needs them to make sense, fix the layout.
+
 Read the matching documents before implementing; consult proportionally rather than treating exhaustive reading as a prerequisite to a focused investigation:
 
 - Architecture, feature ownership, or process boundaries: [agent architecture](docs/development/agent-architecture.md), then the relevant architecture documents it references.
@@ -29,6 +31,8 @@ These documents contain the detailed rules; read them with the file tools when t
 - Do not add tests solely to assert that a feature or DOM element removed outright is absent. Remove obsolete tests for removed features; test absence only when conditional or state-dependent absence is itself the behavior under contract.
 
 ## Review proportionality
+
+Before you add code for a race condition or security edge case that is unlikely or purely hypothetical, tell me exactly what would go wrong, how likely that is, and how much complexity the extra code adds, in words a 10-year-old could understand. Then wait for my OK. Don't quietly widen the scope to guard against problems that only exist in theory.
 
 - Calibrate findings to this product's actual risk. Reserve P0/P1 for common or severe failures such as data loss, security breaches, or a core workflow being unusable—not speculative races involving advisory metadata.
 - Do not manufacture complexity in the name of defensive programming. If an edge case is rare, recoverable, and low impact, either omit it or label it plainly as minor; do not propose coordination, caching, migration, or abstraction machinery without demonstrated need.
