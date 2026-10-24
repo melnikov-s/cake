@@ -50,6 +50,61 @@ describe("Tool", () => {
     expect(container.querySelector(".tool-timer")).not.toBeNull();
   });
 
+  it("shortens only display paths while retaining navigation, copy and details", async () => {
+    const onOpenSourceLocation = vi.fn();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    const path = "/home/alex/outside/file.ts";
+    act(() => {
+      root.render(
+        <Tool
+          part={{
+            id: "read-home",
+            kind: "tool",
+            name: "read",
+            input: JSON.stringify({ path }),
+            output: "contents",
+            state: "success",
+          }}
+          homeDirectory="/home/alex"
+          workspacePath="/home/alex/project"
+          onOpenSourceLocation={onOpenSourceLocation}
+        />,
+      );
+    });
+    const pathButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "~/outside/file.ts",
+    )!;
+    expect(pathButton.title).toBe(path);
+    expect(pathButton.className).toContain("select-text");
+    act(() => pathButton.click());
+    expect(onOpenSourceLocation).toHaveBeenCalledWith({ path });
+    const disclosure = container.querySelector<HTMLButtonElement>("[aria-expanded]")!;
+    expect(disclosure.className).toContain("select-text");
+    act(() => disclosure.click());
+    expect(disclosure.getAttribute("aria-expanded")).toBe("true");
+    expect(container.querySelector("[data-slot=tool-details]")?.hasAttribute("hidden")).toBe(false);
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>(`[aria-label="Copy ${path}"]`)!.click();
+    });
+    expect(writeText).toHaveBeenCalledWith(path);
+  });
+
+  it.each([0, 5, 49, 50, 100, 1200])("hides rounded-zero nested duration %sms", (durationMs) => {
+    const call = {
+      id: "nested",
+      name: "read",
+      input: '{"path":"a.ts"}',
+      state: "success" as const,
+      durationMs,
+      outputAvailability: "unavailable" as const,
+    };
+    act(() => root.render(<Tool part={{ kind: "tool", ...call }} activity={call} />));
+    const elapsed = container.querySelector('[aria-label="elapsed time"]');
+    if (durationMs < 50) expect(elapsed).toBeNull();
+    else expect(elapsed?.textContent).toBe(durationMs === 1200 ? "1.2s" : "0.1s");
+  });
+
   it("opens an edit at the changed range reported by the tool", () => {
     const onOpenSourceLocation = vi.fn();
     act(() => {

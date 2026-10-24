@@ -6,6 +6,7 @@ import type {
 } from "../../contracts/conversations/session-contract";
 import { workLogChangeChunks } from "../../utils/turn-diff";
 import { workLogGroupKeys } from "../../utils/work-log-groups";
+import { ClientContext } from "./context/ClientContext";
 
 export interface WorkLogPresentationCapabilities {
   viewMode?(): WorkLogViewMode | undefined;
@@ -32,6 +33,7 @@ export interface WorkLogChangeSummary {
 
 /** Owns work-log change summaries, display preferences, disclosure, and elapsed-time resources. */
 export class WorkLogPresentationStore extends Store<WorkLogPresentationStoreProps> {
+  homeDirectory: string | undefined;
   private localViewMode: WorkLogViewMode = "auto";
   private localExpansion: WorkLogsExpansion = "collapsed";
   readonly itemOverrides = observable(new Map<string, boolean>());
@@ -56,6 +58,20 @@ export class WorkLogPresentationStore extends Store<WorkLogPresentationStoreProp
       () => this.syncTimers(),
     );
     this.effect(() => () => this.stopTick());
+    this.effect(() => {
+      void this.loadHomeDirectory();
+    });
+  }
+
+  private async loadHomeDirectory() {
+    const client = ClientContext.consume(this);
+    if (!client) return;
+    try {
+      const home = await client.application.getHomeDirectory({ signal: this.signal });
+      if (!this.signal.aborted) this.homeDirectory = home;
+    } catch {
+      // Path shortening is optional; retain the full display path if lookup fails.
+    }
   }
 
   private get timingActive() {

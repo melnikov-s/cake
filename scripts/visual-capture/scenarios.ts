@@ -1,3 +1,4 @@
+import { toolCallRowsScenario } from "./tool-call-rows";
 import { provokeRendererCrash } from "../../tests/electron/renderer-crash-fixture.ts";
 import {
   seedMessageBoardFixture,
@@ -4730,13 +4731,14 @@ const assistantStandaloneDiagram: VisualCaptureScenario = {
       : page.locator('[data-slot="message"]').filter({ has: page.locator("svg.pele") }),
 };
 
-export const visualCaptureScenarios = [
+export const visualCaptureScenarios: VisualCaptureScenario[] = [
   assistantStandaloneDiagram,
   rendererCrash,
   workflowChoiceScenario,
   workflowProgressScenario,
   toastNotificationsScenario,
   nestedToolActivityScenario,
+  toolCallRowsScenario,
   readImageToolScenario,
   vscodeTerminalScenario,
   sourceSelectionScenario,

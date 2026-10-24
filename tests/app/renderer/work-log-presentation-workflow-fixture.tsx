@@ -6,6 +6,7 @@ import type { UiPart } from "../../../src/contracts/conversations/session-contra
 import { Chat } from "../../../src/renderer/components/chat";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
+import type { TestClientOverrides } from "./test-client";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
 type ToolPart = Extract<UiPart, { kind: "tool" }>;
@@ -45,8 +46,12 @@ export function readFile(id: string, state: ToolPart["state"] = "success"): Tool
   };
 }
 
-export function renderWorkLog(parts: UiPart[], options: { streaming?: boolean } = {}) {
+export function renderWorkLog(
+  parts: UiPart[],
+  options: { streaming?: boolean; client?: TestClientOverrides } = {},
+) {
   const fixture = createRendererStoreFixture({
+    client: options.client,
     projects: [projectRecord({ path: "/project", name: "Project" })],
     sessions: [sessionSummary({ sessionId: "work-log", projectPath: "/project" })],
   });

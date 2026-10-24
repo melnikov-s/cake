@@ -20,10 +20,17 @@ const patterns = {
 
 export type LoadingStateVariant = keyof typeof patterns;
 
-export function formatElapsed(milliseconds: number) {
+function formatElapsed(milliseconds: number) {
   const total = Math.max(0, milliseconds) / 1_000;
   if (total < 60) return `${total.toFixed(1)}s`;
   return `${Math.floor(total / 60)}m ${(total % 60).toFixed(1)}s`;
+}
+
+/** Work-log metadata is omitted when its displayed rounded value would be zero. */
+export function formatVisibleElapsed(milliseconds: number | undefined) {
+  if (milliseconds === undefined) return undefined;
+  const elapsed = formatElapsed(milliseconds);
+  return elapsed === "0.0s" ? undefined : elapsed;
 }
 
 export function LoadingSpinner({ label = "Pending" }: { label?: string }) {

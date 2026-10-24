@@ -1,7 +1,7 @@
 import { observer } from "r-state-tree/react";
 import { Badge } from "@/components/ui/badge";
 import { DisclosureTrigger } from "@/components/ui/disclosure-trigger";
-import { formatElapsed } from "@/components/ui/loading-state";
+import { formatVisibleElapsed } from "@/components/ui/loading-state";
 import type { ChatStore } from "@/stores/ChatStore";
 
 /** Keeps the 100 ms work-log clock subscribed to only this small label. */
@@ -24,10 +24,8 @@ export const WorkLogActivityTrigger = observer(function WorkLogActivityTrigger({
     firstPartId && lastPartId
       ? store.workLogPresentation.elapsedMsRange(firstPartId, lastPartId)
       : undefined;
-  const title =
-    elapsedMs === undefined
-      ? activityCountLabel
-      : `${activityCountLabel} · ${formatElapsed(elapsedMs)}`;
+  const elapsed = formatVisibleElapsed(elapsedMs);
+  const title = elapsed ? `${activityCountLabel} · ${elapsed}` : activityCountLabel;
 
   return (
     <DisclosureTrigger

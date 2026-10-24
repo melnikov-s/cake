@@ -3,6 +3,7 @@ import { jsonObjectSchema, jsonValueSchema } from "../../contracts/serialization
 import type { UiPart } from "../../contracts/conversations/session-contract";
 import { toolOperationName } from "../../utils/cake-tool";
 import { toWorkspaceRelativePath } from "../../utils/workspace-relative-path";
+import { toHomeRelativePath } from "../../utils/home-relative-path";
 
 export function parseToolInput(value: string) {
   try {
@@ -24,11 +25,14 @@ export function toolDisplayTitle(
   part: Extract<UiPart, { kind: "tool" }>,
   concise = false,
   workspacePath?: string,
+  homeDirectory?: string,
 ) {
   const operationName = toolOperationName(part);
   if (part.name === "codemode") return operationName;
   const filePath = toolPath(part);
-  const displayPath = filePath ? toWorkspaceRelativePath(filePath, workspacePath) : undefined;
+  const displayPath = filePath
+    ? toHomeRelativePath(toWorkspaceRelativePath(filePath, workspacePath), homeDirectory)
+    : undefined;
   if (concise && filePath) return operationName;
   if (operationName === "edit" && displayPath) return `edit ${displayPath}`;
 

@@ -247,6 +247,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         omitDiff={omitToolDiff}
         omitOutputImages={workLogItem && toolImagesAreConversationResults(part)}
         workspacePath={behavior.workspacePath}
+        homeDirectory={behavior.store.workLogPresentation.homeDirectory}
         nestedExpansion={
           workLogItem
             ? (partId) => ({

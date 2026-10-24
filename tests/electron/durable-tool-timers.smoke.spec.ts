@@ -111,10 +111,12 @@ test("Project and global Cake Chat restore Pi-recorded ordinary tool timers afte
     const verify = async () => {
       const summary = page.getByText("Work log", { exact: true });
       await summary.click();
-      for (const [index, elapsed] of ["32.0s", "38.2s", "0.0s"].entries()) {
-        await expect(
-          page.locator(`[data-part-id="tool-${calls[index]!.id}"]`).getByLabel("elapsed time"),
-        ).toHaveText(elapsed);
+      for (const [index, elapsed] of ["32.0s", "38.2s", undefined].entries()) {
+        const timer = page
+          .locator(`[data-part-id="tool-${calls[index]!.id}"]`)
+          .getByLabel("elapsed time");
+        if (elapsed) await expect(timer).toHaveText(elapsed);
+        else await expect(timer).toHaveCount(0);
       }
     };
     await verify();

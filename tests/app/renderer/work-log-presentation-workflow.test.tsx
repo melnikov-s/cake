@@ -23,6 +23,28 @@ afterEach(() => {
 });
 
 describe("Work-log presentation workflow", () => {
+  it("loads the actual home from the application boundary for display-only shortening", async () => {
+    const getHomeDirectory = vi.fn(async () => "/home/alex");
+    const part = { ...readFile("home"), filePath: "/home/alex/notes.ts" };
+    using fixture = renderWorkLog([part], { client: { application: { getHomeDirectory } } });
+    await fixture.user.click(workLog().summary);
+    expect(await screen.findByRole("button", { name: "read ~/notes.ts" })).toBeDefined();
+    expect(getHomeDirectory).toHaveBeenCalledTimes(1);
+    await fixture.user.click(screen.getByRole("button", { name: "read ~/notes.ts" }));
+    expect(screen.getByText("Contents of home")).toBeDefined();
+  });
+
+  it.each([0, 5, 49, 50, 100, 1200])(
+    "shows recorded tool duration %sms only when it rounds nonzero",
+    async (durationMs) => {
+      using fixture = renderWorkLog([{ ...readFile("recorded"), durationMs }]);
+      await fixture.user.click(workLog().summary);
+      const elapsed = screen.queryByLabelText("elapsed time");
+      if (durationMs < 50) expect(elapsed).toBeNull();
+      else expect(elapsed?.textContent).toBe(durationMs === 1200 ? "1.2s" : "0.1s");
+    },
+  );
+
   it.each(["widgets.present", "artifacts.preview", "artifacts.replace", "artifacts.restore"])(
     "labels %s retained pixels as initial state outside the collapsed log",
     (command) => {
@@ -276,7 +298,7 @@ describe("Work-log presentation workflow", () => {
     using fixture = renderWorkLog([addedFile("running")], { streaming: true });
     await fixture.user.click(workLog().summary);
     const diff = screen.getByRole("region", { name: "File changes to src/added.ts" });
-    const steps = screen.getByRole("button", { name: "1 tool call · 0.0s Activity View steps" });
+    const steps = screen.getByRole("button", { name: "1 tool call Activity View steps" });
     await fixture.user.click(steps);
     const tool = screen.getByRole("button", { name: /^write/ });
     await fixture.user.click(tool);
@@ -316,7 +338,7 @@ describe("Work-log presentation workflow", () => {
     const { summary, group } = workLog();
     await fixture.user.click(summary);
     expect(
-      within(group).getByRole("button", { name: "1 tool call · 0.0s Activity View steps" }),
+      within(group).getByRole("button", { name: "1 tool call Activity View steps" }),
     ).toBeDefined();
     act(() => vi.advanceTimersByTime(1_000));
     expect(
@@ -406,7 +428,7 @@ describe("Work-log presentation workflow", () => {
     await reloaded.user.click(workLog().summary);
     expect(screen.getByLabelText("elapsed time").textContent).toBe("38.2s");
     reloaded.publish(result(5));
-    expect(screen.getByLabelText("elapsed time").textContent).toBe("0.0s");
+    expect(screen.queryByLabelText("elapsed time")).toBeNull();
   });
 
   it("keeps Churning continuous through committed tools, model output and the next tool round", () => {
@@ -501,7 +523,6 @@ describe("Work-log presentation workflow", () => {
       "false",
     );
     expect(screen.getAllByLabelText("elapsed time").map((chip) => chip.textContent)).toEqual([
-      "0.0s",
       "1.0s",
     ]);
   });

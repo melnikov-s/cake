@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import type {
   NestedToolCall,
@@ -11,9 +11,10 @@ import { toolOperationName } from "../../../utils/cake-tool";
 import { toolDiff } from "../../../utils/turn-diff";
 import { toolSourceRange } from "../../../utils/source-ranges";
 import { toWorkspaceRelativePath } from "../../../utils/workspace-relative-path";
+import { toHomeRelativePath } from "../../../utils/home-relative-path";
 import { Button } from "../ui/button";
 import { DisclosureTrigger } from "../ui/disclosure-trigger";
-import { formatElapsed } from "../ui/loading-state";
+import { formatVisibleElapsed } from "../ui/loading-state";
 import { DiffView } from "./diff-view";
 import { languageForSource } from "./code";
 import { fencedCode, Markdown } from "./markdown";
@@ -22,6 +23,19 @@ import type { SubagentActivityStore } from "../../stores/SubagentActivityStore";
 import { ImagePreview } from "@/components/image-preview";
 import { CopyFilePathButton } from "@/components/copy-file-path-button";
 import { parseToolInput, toolDisplayTitle, toolPath } from "@/lib/tool-presentation";
+
+// A drag over selectable button text must not also navigate or toggle details.
+// Keyboard activation (detail === 0) still works with a selection present.
+function selectingText(event: MouseEvent<HTMLButtonElement>) {
+  const selection = event.currentTarget.ownerDocument.getSelection();
+  return (
+    event.detail !== 0 &&
+    selection &&
+    !selection.isCollapsed &&
+    (event.currentTarget.contains(selection.anchorNode) ||
+      event.currentTarget.contains(selection.focusNode))
+  );
+}
 
 function toolCode(value: string, className: string, streaming: boolean) {
   const parsed = parseToolInput(value);
@@ -146,13 +160,14 @@ export const ToolRunTimer = observer(function ToolRunTimer({
   const elapsedMs = startPartId
     ? store.workLogPresentation.elapsedMsRange(startPartId, partId)
     : store.workLogPresentation.elapsedMs(partId);
-  if (elapsedMs === undefined) return null;
+  const elapsed = formatVisibleElapsed(elapsedMs);
+  if (!elapsed) return null;
   return (
     <span
       className="flex items-center gap-1 font-mono text-xs tabular-nums text-muted-foreground whitespace-nowrap"
       aria-label="elapsed time"
     >
-      {formatElapsed(elapsedMs)}
+      {elapsed}
     </span>
   );
 });
@@ -169,6 +184,7 @@ export const Tool = observer(function Tool({
   omitDiff,
   omitOutputImages = false,
   workspacePath,
+  homeDirectory,
   activity,
   nestedExpansion,
 }: {
@@ -188,6 +204,8 @@ export const Tool = observer(function Tool({
   omitOutputImages?: boolean;
   /** Project root used only to shorten displayed in-project paths. */
   workspacePath?: string;
+  /** Actual user home, used only for display; navigation and copy targets stay unchanged. */
+  homeDirectory?: string;
   /** Child metadata is separate from an ordinary transcript tool result. */
   activity?: NestedToolCall;
   nestedExpansion?: (partId: string) => { open: boolean; toggle(): void };
@@ -219,8 +237,12 @@ export const Tool = observer(function Tool({
   const location = editorLocation(part);
   const filePath = location?.path;
   const displayPath = filePath ? toWorkspaceRelativePath(filePath, workspacePath) : undefined;
-  const path = onOpenSourceLocation ? displayPath : undefined;
-  const title = toolDisplayTitle(part, Boolean(path), workspacePath);
+  const path =
+    onOpenSourceLocation && displayPath
+      ? toHomeRelativePath(displayPath, homeDirectory)
+      : undefined;
+  const title = toolDisplayTitle(part, Boolean(path), workspacePath, homeDirectory);
+  const elapsed = formatVisibleElapsed(activity?.durationMs);
   const read = part.name === "read";
   const bash = part.name === "bash" && part.input ? part.input : undefined;
   const script = part.name === "codemode" && part.input ? part.input : undefined;
@@ -236,9 +258,9 @@ export const Tool = observer(function Tool({
   return (
     <div data-slot="tool" className="rounded-xl border border-border bg-muted/35 px-4 py-3">
       <div className="flex items-center justify-between gap-3 min-w-0">
-        <div className="group/path flex min-w-0 flex-1 items-center">
+        <div className="group/path flex min-w-0 flex-1 items-center gap-2">
           <DisclosureTrigger
-            className="flex-1"
+            className="flex-1 select-text"
             title={title}
             subtitle={part.nestedCalls ? `${part.nestedCalls.calls.length} tool calls` : undefined}
             showChevron={false}
@@ -253,7 +275,9 @@ export const Tool = observer(function Tool({
                       ? "interrupted"
                       : "ready"
             }
-            onClick={toggleOpen}
+            onClick={(event) => {
+              if (!selectingText(event)) toggleOpen();
+            }}
             open={open}
             disabled={!hasDetails}
           />
@@ -261,9 +285,11 @@ export const Tool = observer(function Tool({
             <Button
               variant="ghost"
               size="sm"
-              className="h-auto min-w-0 px-1 py-0 font-mono text-xs"
-              title={path}
-              onClick={() => void onOpenSourceLocation(location!)}
+              className="h-auto min-w-0 px-0 py-0 font-mono text-xs select-text"
+              title={filePath}
+              onClick={(event) => {
+                if (!selectingText(event)) void onOpenSourceLocation(location!);
+              }}
             >
               <span className="truncate">{path}</span>
             </Button>
@@ -271,12 +297,12 @@ export const Tool = observer(function Tool({
           {displayPath && <CopyFilePathButton path={displayPath} />}
         </div>
         {timer}
-        {activity?.durationMs !== undefined && (
+        {elapsed && (
           <span
             className="font-mono text-xs tabular-nums text-muted-foreground"
             aria-label="elapsed time"
           >
-            {formatElapsed(activity.durationMs)}
+            {elapsed}
           </span>
         )}
       </div>
@@ -361,6 +387,7 @@ export const Tool = observer(function Tool({
                   activity={call}
                   onOpenSourceLocation={onOpenSourceLocation}
                   workspacePath={workspacePath}
+                  homeDirectory={homeDirectory}
                   expansion={nestedExpansion?.(call.id)}
                 />
               ))}
