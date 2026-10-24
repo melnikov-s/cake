@@ -762,9 +762,16 @@ it("uses production SQLite, existing credentials and exact originals across reop
   expect(f.keys).toEqual(["fixture-key"]);
   expect(JSON.stringify(f.requests[0])).not.toContain("cake-input-presentation");
   const offered = f.requests[0]?.messages.flatMap((message) =>
-    message.role === "system" ? (message.toolsAdded?.map((tool) => tool.name) ?? []) : [],
+    message.role === "system" ? (message.toolsAdded ?? []) : [],
   );
-  expect(offered).toEqual([
+  const description = (name: string) => offered?.find((tool) => tool.name === name)?.description;
+  expect(description("zoom")).toContain("Primary entry point for dialogue represented");
+  expect(description("zoom")).toContain("not full tool records");
+  expect(description("conversation_search")).toContain("Supplements Zoom");
+  expect(description("conversation_search")).toContain("use Zoom first for dialogue");
+  expect(description("conversation_read")).toContain("section=record supplements Zoom");
+  expect(JSON.stringify(f.requests[0])).toContain("supplement rather than replace Zoom");
+  expect(offered?.map((tool) => tool.name)).toEqual([
     "cake",
     "zoom",
     "date",

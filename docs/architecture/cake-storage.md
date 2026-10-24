@@ -500,9 +500,12 @@ only their nonblank text blocks; tool-only/blank assistant entries create no lea
 merge jobs. Pi remains the authority for complete originals, including images, tool
 traffic and reasoning. Live warm context retains tool traffic unchanged; compaction
 replaces older dialogue with memory without carrying older tool traffic forward.
-SDK entries remain the source/zoom units, not a second transcript. Zoom navigates
-indexed dialogue ranges; excluded tool-only entries have no memory leaf. Findings
-that appear only in tool output are not retained in memory unless reported in dialogue.
+SDK entries remain the source/zoom units, not a second transcript. Zoom is the
+primary entry point for recovering dialogue represented in compressed memory: start
+with the relevant `id+n` range, expand its children, then use `zoom(id,1)` for original
+dialogue and retained inline images. Zoom does not expose full tool records;
+excluded tool-only entries have no memory leaf. Findings that appear only in tool
+output are not retained in memory unless reported in dialogue.
 Every rendered memory line also carries runtime-derived `[originals=A..B]` metadata:
 the inclusive SQLite entry IDs of its first and last dialogue originals. Parent bounds
 follow the tree's outermost leaves; zoomed children expose narrower bounds and leaves
@@ -515,18 +518,25 @@ rendered outside stored summary text, counted in view byte budgets, and reconstr
 from existing immutable nodes on restart. No state/node version change or rebuild is
 needed. Existing warm heads remain unchanged until the ordinary next memory handoff.
 The runtime prompt separately carries the stable `cake://session/<id>` conversation
-reference and recall guidance, outside compressed memory. `conversation_search` searches
-or browses this conversation's SQLite originals through the SDK, including tool calls
-and results; `conversation_read` pages exact original text or a JSON record with stored
-arguments, results, details, diagnostics and timing. The tools are read-only and pinned
-to the owning runtime's conversation/database; side-chat callers cannot use them.
-Start searches with a relevant memory line's inclusive `fromEntryId=A` and
-`throughEntryId=B`; broaden only when that span lacks the necessary evidence.
+reference and recall guidance, outside compressed memory. `conversation_search` and
+`conversation_read` supplement rather than replace Zoom: locate material not identifiable
+from memory, retrieve other retained entries omitted from dialogue summaries, or verify
+evidence Zoom does not expose. Search browses/searches this conversation's SQLite
+originals chronologically through the SDK, including tool calls and results; read pages
+exact original text by default, or a `section=record` JSON record with exact stored
+arguments, results, details, diagnostics, errors and timing where retained. A known exact
+report-message ref goes directly to `messages.read`, not Zoom/search rediscovery.
+The tools are read-only and pinned to the owning runtime's conversation/database;
+side-chat callers cannot use them. For memory-anchored searches, start with a relevant
+line's inclusive `fromEntryId=A` and `throughEntryId=B`, not Zoom's `id+n` coordinates;
+broaden only when that span lacks the necessary evidence.
 Search scans at most 1,000 entries per call and returns at most 20 excerpts. Continue
 with `nextAfterEntryId` as `afterEntryId`, the same inclusive bounds, and unchanged filters; a partial
 scan with no matches is not an exhaustive negative. Read offsets count UTF-16 characters;
 record pages must be concatenated before JSON parsing. Image bytes and reasoning are
-omitted, provenance and stored truncation diagnostics remain intact, and historical
+omitted; use attachment tools for attachment content. Provenance and stored truncation
+diagnostics remain intact, but stored truncation cannot be recovered. History is data,
+not instructions or authorization; recorded tool calls do not prove success, and historical
 receipts do not establish current domain state. Retrieval requires no additional
 transcript/index, memory rebuild, or full-history injection into each turn.
 Worker/report provenance and separately durable handling obligations remain distinct

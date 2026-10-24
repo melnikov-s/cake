@@ -251,7 +251,7 @@ export async function createDurableCakeChatRuntime(
   const zoom = defineTool({
     name: "zoom",
     description:
-      "Open id+n into its two children; n=1 returns the original including images. Zoom before guessing from a vague summary.",
+      "Primary entry point for dialogue represented in compressed memory: open the relevant id+n range into its two children; n=1 returns original dialogue and retained inline images, not full tool records. Use conversation_search/conversation_read for unlocated material or omitted evidence; read section=record for recorded tool details.",
     parameters: Type.Object({ id: Type.Integer({ minimum: 0 }), n: Type.Integer({ minimum: 1 }) }),
     replay: "safe",
     async execute(input, _api, context) {

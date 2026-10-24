@@ -230,11 +230,23 @@ it("uses memory-derived inclusive bounds to search only a summary's originals ac
   expect(anchor).not.toBeNull();
   const bounds = { fromEntryId: Number(anchor[1]), throughEntryId: Number(anchor[2]) };
   expect(bounds).toEqual({ fromEntryId: a.id, throughEntryId: b.id });
+  // Recover the indexed dialogue through Zoom, then supplement it with retained
+  // tool evidence inside the original-entry bounds, not the memory coordinates.
+  const dialogue = await f.engine.memory.zoom(0, 1, new AbortController().signal);
+  expect(dialogue.text).toContain("needle first");
+  expect(dialogue.text).not.toContain("needle tool evidence");
   const first = await f.search({ ...bounds, query: "needle", limit: 1 });
   expect(first).toMatchObject({ ...bounds, matches: [{ entryId: a.id }], complete: false });
   const rest = await f.search({ ...bounds, query: "needle", afterEntryId: first.nextAfterEntryId });
   expect(rest).toMatchObject({ complete: true, nextAfterEntryId: null });
   expect(rest.matches.map((match: { entryId: number }) => match.entryId)).toEqual([tool.id, b.id]);
+  const record = JSON.parse((await f.read({ entryId: tool.id, section: "record" })).text);
+  expect(record.message).toMatchObject({
+    role: "toolResult",
+    toolCallId: "bounded",
+    content: [{ type: "text", text: "needle tool evidence" }],
+    isError: false,
+  });
   expect((await f.search({ ...bounds, afterEntryId: 0 })).matches).toHaveLength(3);
   expect((await f.search({ fromEntryId: b.id, throughEntryId: b.id })).matches).toMatchObject([
     { entryId: b.id },
