@@ -4,7 +4,10 @@ import type {
   PiSessionPreview,
   PiSessionSummary,
 } from "../../contracts/conversations/session-contract";
-import type { CakeSessionRuntime } from "../pi/runtime/cake-session-runtime";
+import type {
+  CakeSessionRuntime,
+  CakeSessionRuntimeOptions,
+} from "../pi/runtime/cake-session-runtime";
 import type { DurableCakeChatRuntime } from "./durable-chat-runtime";
 import { DurableChatError } from "./durable-chat-data";
 import {
@@ -65,6 +68,7 @@ export const makeCakeChatDurableLive = (
     options: CakeSessionRuntimeSetup,
     inspection: RequestInspection,
   ) => Promise<DurableCakeChatRuntime>,
+  configureSideChatRuntime: (options: CakeSessionRuntimeSetup) => CakeSessionRuntimeOptions,
 ) =>
   Layer.sync(CakeChatDurable, () => {
     // References only: RcMap owns the runtimes. Forks must reuse their own parent's Harness.
@@ -142,7 +146,9 @@ export const makeCakeChatDurableLive = (
                   }),
               ),
             ));
-          return yield* operation("createSideChatRuntime", () => runtime.sideChats.open(options));
+          return yield* operation("createSideChatRuntime", () =>
+            runtime.sideChats.open(configureSideChatRuntime(options)),
+          );
         },
       ),
       inspectSideChat: (sessionId) =>

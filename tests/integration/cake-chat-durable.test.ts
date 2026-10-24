@@ -1,6 +1,9 @@
 import type { PiTurnResult } from "../../src/contracts/pi/turn-result-data";
 import { encodeCrossSessionMessage } from "../../src/contracts/conversations/cross-session-message";
-import { createCoordinatorRuntime } from "../../src/layers/CakeOperations";
+import {
+  configureCakeSessionRuntime,
+  createCoordinatorRuntime,
+} from "../../src/layers/CakeOperations";
 import type { CakeSessionRuntimeSetup } from "../../src/services/pi/CakeSessionRuntimes";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -120,7 +123,9 @@ async function fixture() {
   });
   await legacy.setRuntimeApiKey("openai", "fixture-key");
   vi.spyOn(ModelRuntime, "create").mockResolvedValue(legacy);
-  const serviceRuntime = ManagedRuntime.make(makeCakeChatDurableLive(createCoordinatorRuntime));
+  const serviceRuntime = ManagedRuntime.make(
+    makeCakeChatDurableLive(createCoordinatorRuntime, configureCakeSessionRuntime),
+  );
   cleanup.push(() => serviceRuntime.dispose());
   const service = await serviceRuntime.runPromise(CakeChatDurable);
   const summarize = vi.fn<(input: { signal: AbortSignal }) => Promise<string>>(
@@ -201,7 +206,10 @@ async function fixture() {
     return { runtime, close };
   };
   /** Opens a side-chat fork the way a Discussion Session sidecar acquisition does. */
-  const openSideChat = async (sessionId: string) => {
+  const openSideChat = async (
+    sessionId: string,
+    requestInterview?: CakeSessionRuntimeSetup["requestInterview"],
+  ) => {
     const events: ConversationSnapshot[] = [];
     const runtime = await serviceRuntime.runPromise(
       service.createSideChatRuntime({
@@ -214,6 +222,7 @@ async function fixture() {
         sessionId,
         auxiliary: true,
         tools: [],
+        ...(requestInterview ? { allowBlockingUserInput: true, requestInterview } : null),
         requestUi: async () => undefined,
         onEvent(event) {
           if (event.type === "snapshot") events.push(event.snapshot);
@@ -349,6 +358,87 @@ it.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/formatting-project")])(
     expect((await finalSide.runtime.snapshot()).parts).toEqual(
       expect.arrayContaining([expect.objectContaining({ entryId: sideId, renderAs: "markdown" })]),
     );
+  },
+);
+
+it.each(
+  [CAKE_CHAT_SESSION_ID, projectChatSessionId("/interview-project")].flatMap((sessionId) =>
+    [false, true].map((cancel) => ({ sessionId, cancel })),
+  ),
+)(
+  "routes native side-chat interviews through the real configured factory without parent authority ($sessionId, cancel=$cancel)",
+  async ({ sessionId, cancel }) => {
+    const f = await fixture();
+    const scope = { sessionId, sessionDir: join(f.directory, "interview-chat") };
+    const chat = await f.open(undefined, undefined, scope);
+    await chat.runtime.prompt("Parent question", "prompt", [], false, ids.first);
+    const before = (await chat.runtime.snapshot()).parts;
+    const fork = await chat.runtime.fork(
+      entryOf(await chat.runtime.snapshot(), "Parent question"),
+      "Side chat",
+    );
+    const entered =
+      Promise.withResolvers<
+        Parameters<NonNullable<CakeSessionRuntimeSetup["requestInterview"]>>[0]
+      >();
+    const response = Promise.withResolvers<undefined | { choice: string }>();
+    const side = await f.openSideChat(fork.sessionId, async (record) => {
+      entered.resolve(record);
+      return response.promise;
+    });
+    f.answer((index) =>
+      index === 2
+        ? durableAnswer("", [
+            {
+              type: "toolCall",
+              id: "native-interview",
+              name: "cake",
+              arguments: {
+                command: "interview.open",
+                input: {
+                  request: {
+                    protocol: "cake.request/v1",
+                    id: "native-question",
+                    title: "Choose a direction",
+                    responseSchema: { type: "object", properties: { choice: { type: "string" } } },
+                    view: {
+                      type: "form",
+                      fields: [{ id: "choice", label: "Choice", type: "text" }],
+                    },
+                    fallback: { markdown: "Choose a direction." },
+                  },
+                },
+              },
+            },
+          ])
+        : durableAnswer("Side answer"),
+    );
+    const pending = side.runtime.prompt("Interview me here", "prompt", [], false, ids.second);
+    const record = await Promise.race([
+      entered.promise,
+      pending.then(async () => {
+        throw new Error(JSON.stringify((await side.runtime.snapshot()).parts));
+      }),
+    ]);
+    expect(record.sessionId).toBe(fork.sessionId);
+    const waiting = (await side.runtime.snapshot()).parts.find((part) => part.kind === "tool");
+    expect(waiting).toMatchObject({ state: "running", interview: record });
+    expect((await chat.runtime.snapshot()).parts).toEqual(before);
+    response.resolve(cancel ? undefined : { choice: "Left" });
+    await pending;
+    const settled = (await side.runtime.snapshot()).parts;
+    expect(settled.find((part) => part.kind === "tool")).toMatchObject({
+      interview: record,
+      interviewResult: cancel
+        ? { interviewId: record.id, cancelled: true }
+        : { interviewId: record.id, cancelled: false, value: { choice: "Left" } },
+    });
+    await side.close();
+    await chat.close();
+    const reopened = await f.open(undefined, undefined, scope);
+    const restored = await f.openSideChat(fork.sessionId);
+    expect((await restored.runtime.snapshot()).parts).toEqual(settled);
+    expect((await reopened.runtime.snapshot()).parts).toEqual(before);
   },
 );
 

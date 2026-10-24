@@ -6,6 +6,8 @@ import {
   type Tx,
 } from "@earendil-works/pi-durable";
 import { Schema } from "effect";
+import type { InterviewEntry } from "../../contracts/interviews/interview";
+import { durableToolInterview, withDurableToolInterview } from "./durable-side-chat-interviews";
 import { internalInputEntryType } from "../pi/runtime/internal-input-projection";
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
@@ -35,6 +37,22 @@ export async function readDurableActiveTools(
   return active;
 }
 
+/** Live SDK details are persisted before an interview requests user input. */
+export async function readDurableActiveInterviews(
+  tx: Pick<Tx, "doc">,
+  conversationId: ConversationId,
+) {
+  const live = await tx.doc(LiveDoc, conversationId);
+  const interviews = new Map<string, InterviewEntry>();
+  if (!live?.run) return interviews;
+  for (const slot of live.tools ?? []) {
+    if (slot.status === "done") continue;
+    const entry = durableToolInterview(slot.details, slot.callId);
+    if (entry) interviews.set(boundedProjectionKey(`tool-${slot.callId}`), entry);
+  }
+  return interviews;
+}
+
 /** Original-only GUI projection. Keep each disk scan bounded, including pages containing
  * only derived nodes. No lifetime SessionManager or original-message cache is constructed. */
 export async function readDurableOriginalPage(
@@ -42,6 +60,7 @@ export async function readDurableOriginalPage(
   cursor?: string,
   activeTools: ReadonlyMap<string, number | null> = new Map(),
   presentationOverrides: Readonly<Record<string, boolean>> = {},
+  activeInterviews: ReadonlyMap<string, InterviewEntry> = new Map(),
 ) {
   let next = cursor;
   do {
@@ -121,11 +140,24 @@ export async function readDurableOriginalPage(
         }),
       ),
     );
+    const interviews = new Map(activeInterviews);
+    for (const entry of page.items)
+      for (const message of entry.model ?? []) {
+        if (message.role !== "toolResult") continue;
+        const interview = durableToolInterview(Reflect.get(message, "details"), message.toolCallId);
+        if (interview)
+          interviews.set(boundedProjectionKey(`tool-${message.toolCallId}`), interview);
+      }
     const parts = projectSessionEntries(entries).map((part) => {
       // Settled originals remain authoritative. Do not mark all history live:
       // abandoned unmatched calls must still read as interrupted during a new run.
-      if (part.kind === "tool" && part.state === "interrupted" && activeTools.has(part.id))
-        return { ...part, state: "running" as const, startedAt: activeTools.get(part.id) };
+      if (part.kind === "tool")
+        return withDurableToolInterview(
+          part.state === "interrupted" && activeTools.has(part.id)
+            ? { ...part, state: "running" as const, startedAt: activeTools.get(part.id) }
+            : part,
+          interviews.get(part.id),
+        );
       if (part.kind !== "text" || part.role !== "user" || !part.entryId) return part;
       const origin = origins.get(part.entryId);
       const markdown = presentationOverrides[part.entryId];

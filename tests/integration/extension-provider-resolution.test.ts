@@ -1,4 +1,5 @@
 import {
+  configureCakeSessionRuntime,
   createCoordinatorRuntime,
   createProjectSessionRuntime as createCakeSessionRuntime,
 } from "../../src/layers/CakeOperations";
@@ -91,7 +92,11 @@ async function openRuntime(
               summarize: async () => "Unused: no turn is submitted",
             },
           }),
-        ).pipe(Effect.provide(makeCakeChatDurableLive(createCoordinatorRuntime))),
+        ).pipe(
+          Effect.provide(
+            makeCakeChatDurableLive(createCoordinatorRuntime, configureCakeSessionRuntime),
+          ),
+        ),
       )
     : await createCakeSessionRuntime({
         ...runtimeOptions,

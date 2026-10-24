@@ -38,7 +38,12 @@ import type {
 } from "../pi/runtime/cake-session-runtime";
 import { supportsFastMode } from "../pi/fast-mode";
 import { changeConversation, markSystemCarried } from "./durable-chat-engine";
-import { readDurableOriginalPage } from "./durable-chat-history";
+import {
+  readDurableActiveInterviews,
+  readDurableActiveTools,
+  readDurableOriginalPage,
+} from "./durable-chat-history";
+import { createDurableSideChatInterview } from "./durable-side-chat-interviews";
 import {
   setDurableUserMessageMarkdown,
   UserMessagePresentationDoc,
@@ -73,6 +78,8 @@ export interface DurableSideChats {
   /** The Cake conversation runtime of one existing side-chat fork. */
   open(options: CakeSessionRuntimeOptions): Promise<CakeSessionRuntime>;
   preview(sessionId: string): Promise<PiSessionPreview | undefined>;
+  /** The inherited tool may dispatch only to an exactly opened fork's interview capability. */
+  executeInterview: ReturnType<typeof createDurableSideChatInterview>;
 }
 
 /**
@@ -120,6 +127,8 @@ const unsupported = async () => {
 
 export function createDurableSideChats(host: DurableSideChatHost): DurableSideChats {
   const { harness, root, storage } = host;
+  // Capability handles only, owned by open sidecar runtimes and removed on dispose.
+  const interviews = new Map<number, ReturnType<typeof createDurableSideChatInterview>>();
   /** Fork conversation and its inclusive fork point, for an ID this Cake Chat owns. */
   const resolve = async (sessionId: string | undefined) => {
     const id =
@@ -166,6 +175,11 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
     let disposed = false;
     let streaming = false;
     let activeTurnIds: string[] = [];
+    if (options.interviewOperations)
+      interviews.set(
+        conversation.id,
+        createDurableSideChatInterview(sessionId, options.interviewOperations),
+      );
     const {
       inbox,
       requestId,
@@ -187,8 +201,9 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
               after,
             ),
             cursor,
-            undefined,
+            await readDurableActiveTools(tx, conversation.id),
             (await tx.doc(UserMessagePresentationDoc, conversation.id)).overrides,
+            await readDurableActiveInterviews(tx, conversation.id),
           ),
         BACKGROUND_CONTEXT,
       );
@@ -251,8 +266,9 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
               after,
             ),
             undefined,
-            undefined,
+            await readDurableActiveTools(tx, conversation.id),
             (await tx.doc(UserMessagePresentationDoc, conversation.id)).overrides,
+            await readDurableActiveInterviews(tx, conversation.id),
           );
           const live = await tx.doc(LiveDoc, conversation.id);
           const agent = await tx.doc(AgentDoc, conversation.id);
@@ -401,6 +417,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
       navigate: unsupported,
       async dispose() {
         disposed = true;
+        interviews.delete(conversation.id);
         unsubscribe();
         await publishing;
       },
@@ -431,6 +448,12 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
   };
 
   return {
+    async executeInterview(input, api, context) {
+      const dispatch = interviews.get(api.conversationId);
+      if (!dispatch)
+        throw new Error("Interviews are unavailable in this closed or unsupported side chat");
+      return dispatch(input, api, context);
+    },
     async fork(entryId) {
       const at = await sideChatForkPoint(root, entryId);
       // Forks from history written before Cake Chat marked its resets need the marker
@@ -465,8 +488,9 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
               after,
             ),
             undefined,
-            undefined,
+            await readDurableActiveTools(tx, conversation.id),
             (await tx.doc(UserMessagePresentationDoc, conversation.id)).overrides,
+            await readDurableActiveInterviews(tx, conversation.id),
           ),
         BACKGROUND_CONTEXT,
       );

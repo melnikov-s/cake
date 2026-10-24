@@ -145,7 +145,7 @@ const SIDE_CHAT_NOTE_TAG = "<cake-side-chat>";
  * text block after the user's first side-chat input, so the forked prefix stays the
  * exact Cake Chat context and the side chat transcript never displays it.
  */
-export const DURABLE_SIDE_CHAT_NOTE = `${SIDE_CHAT_NOTE_TAG}This is a side chat branched from Cake Chat at the message above. Cake Chat continues separately and never sees this side chat. Discuss the conversation with the user here. The cake tool is unavailable in side chats; to act on Cake, the user returns to Cake Chat.</cake-side-chat>`;
+export const DURABLE_SIDE_CHAT_NOTE = `${SIDE_CHAT_NOTE_TAG}This is a side chat branched from Cake Chat at the message above. Cake Chat continues separately and never sees this side chat. Discuss the conversation with the user here. The cake tool is available here only for interview.open to ask the user questions; all other Cake actions require returning to Cake Chat.</cake-side-chat>`;
 
 type Blocks = string | ReadonlyArray<{ type: string; text?: string }>;
 

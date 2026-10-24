@@ -241,10 +241,14 @@ export async function createDurableCakeChatRuntime(
     async execute(input, api, context) {
       // Side-chat forks inherit this tool so their request stays cache-identical to
       // Cake Chat's, but acting as Cake Chat from a side chat would write back into it.
-      if (api.conversationId !== engine.root.id)
+      if (api.conversationId !== engine.root.id) {
+        const envelope = Schema.decodeUnknownOption(cakeToolEnvelopeSchema)(input);
+        if (Option.isSome(envelope) && envelope.value.command === "interview.open")
+          return sideChats.executeInterview(input, api, context);
         throw new Error(
           "Cake controls are unavailable in side chats. Return to Cake Chat to act on Cake.",
         );
+      }
       const result = await operations.invoke(input, {
         signal: context.abortSignal ?? new AbortController().signal,
         toolCallId: api.callId,
