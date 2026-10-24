@@ -7,7 +7,10 @@ import {
   projectTodoContextPresentation,
   splitProjectTodoReminder,
 } from "../../../contracts/projects/project-todo-context";
-import { splitSessionDigestReminder } from "../../../contracts/cake-chats/session-digest-reminder";
+import {
+  sessionNotificationEntries,
+  splitSessionDigestReminder,
+} from "../../../contracts/cake-chats/session-digest-reminder";
 import { splitReferenceNotifications } from "../../../contracts/conversations/reference-notification";
 import { splitUpdateBatchReminder } from "../../../contracts/conversations/update-batch";
 
@@ -27,7 +30,8 @@ export function splitContextReminders(text: string) {
   }
   if (references.reminder)
     reminders.push({ title: "Cake · reference notifications", text: references.reminder });
-  if (digest.reminder) reminders.push({ title: "Cake · session updates", text: digest.reminder });
+  if (digest.reminder && sessionNotificationEntries(digest.reminder).length)
+    reminders.push({ title: "Cake · session updates", text: digest.reminder });
   if (todos.reminder) reminders.push(projectTodoContextPresentation(todos.reminder));
   if (batch.reminder) reminders.push({ title: "Cake · batched updates", text: batch.reminder });
   if (withoutResponse !== text) {

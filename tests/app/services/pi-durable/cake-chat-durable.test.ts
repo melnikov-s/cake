@@ -3,6 +3,7 @@ import {
   emptyProjectTodos,
 } from "../../../../src/contracts/projects/project-todos";
 import { passiveNoticeContext } from "../../../../src/contracts/conversations/passive-notice";
+import { sessionNotificationEntries } from "../../../../src/contracts/cake-chats/session-digest-reminder";
 import { projectTodoReceipt } from "../../../../src/contracts/projects/project-todo-context";
 import { createDurableConversationQueue } from "../../../../src/services/pi-durable/durable-chat-queue";
 import type { UiPart } from "../../../../src/contracts/conversations/session-contract";
@@ -228,6 +229,35 @@ it("delivers Project Chat context only on consumed originals, not preparation, c
   expect(receipts).toEqual([1]);
   expect(JSON.stringify(f.requests.at(-1))).toContain("Follow up");
   expect(JSON.stringify(f.requests.at(-1))).not.toContain("cake-input-presentation");
+});
+
+it("projects persisted running-only and mixed session digests without losing results or originals", async () => {
+  const f = await fixture();
+  const running = "2 sessions you launched are still running.";
+  const wrap = (text: string) =>
+    `<system-reminder>\nCake session updates\n${text}\n</system-reminder>`;
+  const link = "cake://session/worker?message=exact-result";
+  const result = `- [Full agent response — Build fix](${link}) (worker) finished: Ready`;
+  const inputs = [wrap(running), wrap(`${result}\n${running}`), running];
+  await f.engine.root.commit(async (tx) => {
+    for (const [index, input] of inputs.entries())
+      await tx.appendEntry(UserEntry, f.engine.root.id, {
+        model: [
+          { role: "user", content: durableInputText(input, [], false), timestamp: index + 1 },
+        ],
+      });
+  }, BACKGROUND_CONTEXT);
+  const before = await f.engine.root.entries({}, 200, undefined, BACKGROUND_CONTEXT);
+  const page = await readDurableOriginalPage(f.engine.root);
+  const notices = page.parts.filter((part) => part.kind === "context");
+  expect(notices).toHaveLength(1);
+  expect(sessionNotificationEntries(notices[0]!.text)).toEqual([
+    { key: link, title: "Build fix", text: result, reference: link },
+  ]);
+  expect(page.parts.filter((part) => part.kind === "text")).toMatchObject([
+    { role: "user", text: running },
+  ]);
+  expect(await f.engine.root.entries({}, 200, undefined, BACKGROUND_CONTEXT)).toEqual(before);
 });
 
 it("records only the active bounded head for listing, and inspection never starts another request", async () => {

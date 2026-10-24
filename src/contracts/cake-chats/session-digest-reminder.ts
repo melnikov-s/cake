@@ -51,7 +51,6 @@ const interruptedReportNote =
 /** Returns undefined when there is nothing to tell the model. */
 export function formatSessionDigestReminder(input: {
   readonly lines: readonly SessionDigestLine[];
-  readonly running: number;
   readonly interruptedReport: boolean;
   readonly receiptIds?: readonly string[];
 }): string | undefined {
@@ -59,10 +58,6 @@ export function formatSessionDigestReminder(input: {
   const body: string[] = [];
   if (input.lines.length) {
     body.push(digestGuidance, ...input.lines.map(sessionDigestLine));
-    if (input.running > 0)
-      body.push(
-        `${input.running} session${input.running === 1 ? "" : "s"} you launched ${input.running === 1 ? "is" : "are"} still running.`,
-      );
   }
   if (input.interruptedReport) body.push(interruptedReportNote);
   if (input.receiptIds?.length)
@@ -100,6 +95,9 @@ export interface SessionNotificationEntry {
   readonly reference?: string;
 }
 
+// Old Pi originals retain this sentence; omit only that Cake-owned status from presentation.
+const runningSessionNotice = /^\d+ sessions? you launched (?:is|are) still running\.$/;
+
 /** One disclosure per exact report, plus any information unique to the batch. */
 export function sessionNotificationEntries(text: string): readonly SessionNotificationEntry[] {
   const reminder = block.exec(text)?.[0];
@@ -107,7 +105,12 @@ export function sessionNotificationEntries(text: string): readonly SessionNotifi
   const entries: SessionNotificationEntry[] = [];
   const seen = new Set<string>();
   for (const line of reminder.slice(HEADER.length, reminder.indexOf(FOOTER)).split("\n")) {
-    if (!line.trim() || line === digestGuidance || line.startsWith("<cake-digest-receipts>"))
+    if (
+      !line.trim() ||
+      line === digestGuidance ||
+      line.startsWith("<cake-digest-receipts>") ||
+      runningSessionNotice.test(line)
+    )
       continue;
     const link = /^- \[((?:\\.|[^\]])+)\]\((cake:\/\/session\/[^\s)]+)\)/.exec(line);
     const target = link ? parseSessionLink(link[2]!) : undefined;

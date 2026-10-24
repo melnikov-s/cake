@@ -70,6 +70,13 @@ describe("exact response presentation", () => {
       decisions: ["review"] as const,
     };
     const parent = SessionManager.inMemory("/project");
+    // Historical running-only inputs must not become an empty disclosure or context pill.
+    parent.appendMessage({
+      role: "user",
+      timestamp: 1,
+      content:
+        "<system-reminder>\nCake session updates\n2 sessions you launched are still running.\n</system-reminder>",
+    });
     parent.appendMessage({
       role: "user",
       timestamp: 2,
@@ -99,10 +106,12 @@ describe("exact response presentation", () => {
             summary: "Focus order is still being checked. No final report yet.",
           },
         ],
-        running: 1,
         interruptedReport: false,
         receiptIds: ["private-delivery-receipt"],
-      })!,
+      })!.replace(
+        "\n</system-reminder>",
+        "\n1 session you launched is still running.\n</system-reminder>",
+      ),
     });
     const persisted = projectSessionEntries(parent.getEntries());
     const inspect = vi.fn(async (request: { sessionId: string; entryId?: string }) => {
@@ -151,7 +160,6 @@ describe("exact response presentation", () => {
       "Review and land ready Cake changes",
       "Simplify Cake prompts [progressive disclosure]",
       "Keyboard navigation review",
-      "1 session you launched is still running.",
     ];
     expect(
       within(batch)
@@ -159,6 +167,8 @@ describe("exact response presentation", () => {
         .map((button) => button.textContent),
     ).toEqual(titles);
     expect(batch.textContent).toBe(titles.join(""));
+    expect(screen.getAllByRole("status", { name: "Session results" })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Cake · session updates" })).toBeNull();
     expect(inspect).not.toHaveBeenCalled();
     const user = userEvent.setup();
     const prompts = within(batch).getByRole("button", { name: titles[1] });
@@ -649,7 +659,6 @@ describe("exact response presentation", () => {
                       resultMessageRef: ref,
                     },
                   ],
-                  running: 0,
                   interruptedReport: false,
                 })}\n\nMy next real question`,
         });

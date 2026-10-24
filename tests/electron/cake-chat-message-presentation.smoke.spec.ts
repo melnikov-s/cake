@@ -168,6 +168,17 @@ for (const [delivery, theme] of [
               });
               firstPartIds.set(sessionId, `entry-${entry.id}-text`);
             }
+            // Persisted running-only notices leave no transcript row; mixed notices keep results.
+            await tx.appendEntry(UserEntry, conversation.id, {
+              model: [
+                {
+                  role: "user",
+                  content:
+                    "<system-reminder>\nCake session updates\n2 sessions you launched are still running.\n</system-reminder>",
+                  timestamp: 3,
+                },
+              ],
+            });
             const notificationEntry = await tx.appendEntry(UserEntry, conversation.id, {
               model: [
                 {
@@ -183,9 +194,11 @@ for (const [delivery, theme] of [
                         resultMessageRef: metadata.ref,
                       },
                     ],
-                    running: 0,
                     interruptedReport: false,
-                  })}\n\nDiscuss the summary here`,
+                  })!.replace(
+                    "\n</system-reminder>",
+                    "\n1 session you launched is still running.\n</system-reminder>",
+                  )}\n\nDiscuss the summary here`,
                   timestamp: 3,
                 },
               ],
@@ -257,6 +270,11 @@ for (const [delivery, theme] of [
       const verify = async (inputName: string, sessionId: string) => {
         await expect(page.getByRole("combobox", { name: inputName })).toBeVisible();
         await stubClipboard();
+        await expect(page.getByRole("status", { name: "Session results" })).toHaveCount(1);
+        await expect(page.getByRole("button", { name: "Cake · session updates" })).toHaveCount(0);
+        await expect(
+          page.getByText(/\d+ sessions? you launched (?:is|are) still running\./),
+        ).toHaveCount(0);
         const surfaces = page.locator('[data-slot="message-source"]');
         await expect(surfaces).toHaveCount(3);
         const first = page.locator(

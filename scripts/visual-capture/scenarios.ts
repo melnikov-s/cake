@@ -2685,7 +2685,6 @@ const resultTodoDoneScenario: VisualCaptureScenario = {
           summary: "Draft ready for review",
         },
       ],
-      running: 0,
       interruptedReport: false,
     });
     const storage = await openNodeSqliteStorage(
@@ -3240,7 +3239,6 @@ const sessionUpdateReportsScenario: VisualCaptureScenario = {
           status: "completed",
         },
       ],
-      running: 0,
       interruptedReport: false,
     });
     const storage = await openNodeSqliteStorage(
@@ -3394,7 +3392,6 @@ const cakeChatSessionUpdatesScenario: VisualCaptureScenario = {
             ]
           : [],
       ),
-      running: 1,
       interruptedReport: false,
     });
     const storage = await openNodeSqliteStorage(

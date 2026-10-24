@@ -6,8 +6,7 @@ import {
   formatSessionDigestReminder,
 } from "../../contracts/cake-chats/session-digest-reminder";
 import { sessionReference } from "../../contracts/project-sessions/session-reference";
-import { CakeSessionRuntimes, type CakeSessionHandle } from "../../services/pi/CakeSessionRuntimes";
-import { ProjectSessionConfiguration } from "../../services/project-sessions/ProjectSessionConfiguration";
+import type { CakeSessionHandle } from "../../services/pi/CakeSessionRuntimes";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 
 /**
@@ -51,22 +50,6 @@ export const prepareUserMessage = Effect.fn("CakeChatDigest.prepareUserMessage")
       ...state.spawnedSessions.map((spawn) => spawn.sessionId),
     ]),
   ];
-  let running = 0;
-  if (items.length) {
-    const sessions = yield* CakeSessionRuntimes;
-    const configuration = yield* Effect.serviceOption(ProjectSessionConfiguration);
-    if (configuration._tag === "Some")
-      for (const spawn of state.spawnedSessions.filter(
-        (item) => item.requester.sessionId === snapshot.sessionId,
-      )) {
-        const status = yield* sessions.currentStatus({
-          sessionId: spawn.sessionId,
-          workingDirectory: spawn.workingDirectory,
-          sessionDirectory: configuration.value.sessionDirectory,
-        });
-        if (status?.streaming) running += 1;
-      }
-  }
   const reminder = formatSessionDigestReminder({
     lines: items.map((item) => ({
       reference: sessionReference(item.sessionId, knownIds),
@@ -79,7 +62,6 @@ export const prepareUserMessage = Effect.fn("CakeChatDigest.prepareUserMessage")
       kind: state.completionInbox?.find((entry) => entry.id === item.id)?.kind,
       decisions: state.completionInbox?.find((entry) => entry.id === item.id)?.decisions,
     })),
-    running,
     interruptedReport,
     receiptIds: items.map((item) => item.id),
   });

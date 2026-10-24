@@ -10,14 +10,11 @@ import {
   formatSessionDigestReminder,
   splitSessionDigestReminder,
   sessionDigestReceiptIds,
+  sessionNotificationEntries,
 } from "../../../src/contracts/cake-chats/session-digest-reminder";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
-import {
-  CakeSessionRuntimes,
-  type CakeSessionHandle,
-} from "../../../src/services/pi/CakeSessionRuntimes";
-import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
+import type { CakeSessionHandle } from "../../../src/services/pi/CakeSessionRuntimes";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { snapshot, makeRuntimeRecoveryStorageTestLayer } from "../helpers/piRuntimeFixture";
@@ -65,25 +62,9 @@ const coordinator = (streaming: boolean, parts: UiPart[], admitted: readonly str
   return { handle: handle as unknown as CakeSessionHandle, calls };
 };
 
-const environment = (running: readonly string[] = []) => {
+const environment = () => {
   const harness = familyStorageHarness();
-  return Layer.mergeAll(
-    harness.layer,
-    makeRuntimeRecoveryStorageTestLayer(),
-    Layer.mock(CakeSessionRuntimes, {
-      currentStatus: (target) =>
-        Effect.succeed(
-          running.includes(target.sessionId)
-            ? { streaming: true, pending: false, persisted: true }
-            : { streaming: false, pending: false, persisted: true },
-        ),
-    }),
-    Layer.succeed(ProjectSessionConfiguration, {
-      agentDirectory: "/agent",
-      sessionDirectory: "/sessions",
-      resolvedSessionDirectory: "/resolved",
-    }),
-  );
+  return Layer.mergeAll(harness.layer, makeRuntimeRecoveryStorageTestLayer());
 };
 
 const seed = Effect.fn("CakeChatDigestTest.seed")(function* () {
@@ -164,7 +145,7 @@ describe("Cake Chat user priority and digest reminders", () => {
     }).pipe(Effect.provide(environment())),
   );
 
-  it.effect("the digest lists each result once with a link and the running count", () =>
+  it.effect("the digest lists each result once with a link and durable receipts", () =>
     Effect.gen(function* () {
       yield* seed();
       const { handle } = coordinator(false, []);
@@ -184,15 +165,15 @@ describe("Cake Chat user priority and digest reminders", () => {
               summary: "Typecheck failed in src/app.ts",
             },
           ],
-          running: 1,
           interruptedReport: false,
           receiptIds: ["turn-1"],
         }),
       );
       assert.match(split.reminder ?? "", /\[fix-x\]\(cake:\/\/session\/2b7e6c1a/);
       assert.match(split.reminder ?? "", /failed: Typecheck failed/);
-      assert.match(split.reminder ?? "", /1 session you launched is still running\./);
-    }).pipe(Effect.provide(environment([runningId]))),
+      assert.deepEqual(sessionDigestReceiptIds(prepared.text), ["turn-1"]);
+      assert.equal(sessionNotificationEntries(split.reminder ?? "").length, 1);
+    }).pipe(Effect.provide(environment())),
   );
 
   it.effect(
@@ -222,10 +203,24 @@ describe("Cake Chat user priority and digest reminders", () => {
       }).pipe(Effect.provide(environment())),
   );
 
+  it("retains actionable notes and interruption context in persisted mixed digests", () => {
+    const interruption = formatSessionDigestReminder({ lines: [], interruptedReport: true });
+    assert.ok(interruption);
+    const question = "Build is blocked: which branch should I use?";
+    const text = interruption.replace(
+      "\n</system-reminder>",
+      `\n2 sessions you launched are still running.\n${question}\n</system-reminder>`,
+    );
+    assert.deepEqual(
+      sessionNotificationEntries(text).map((entry) => entry.title),
+      ["Interrupted report", question],
+    );
+    assert.equal(splitSessionDigestReminder(text).reminder, text);
+  });
+
   it("only strips the exact Cake-owned block at the start of a message", () => {
     const reminder = formatSessionDigestReminder({
       lines: [],
-      running: 0,
       interruptedReport: true,
     });
     assert.ok(reminder);
@@ -235,9 +230,6 @@ describe("Cake Chat user priority and digest reminders", () => {
     });
     const quoted = `Hello\n\n${reminder}`;
     assert.deepEqual(splitSessionDigestReminder(quoted), { text: quoted, reminder: undefined });
-    assert.equal(
-      formatSessionDigestReminder({ lines: [], running: 3, interruptedReport: false }),
-      undefined,
-    );
+    assert.equal(formatSessionDigestReminder({ lines: [], interruptedReport: false }), undefined);
   });
 });

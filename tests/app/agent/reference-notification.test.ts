@@ -98,7 +98,6 @@ describe("passive reference notifications", () => {
           summary: "Finished",
         },
       ],
-      running: 0,
       interruptedReport: false,
     });
     const text = addReferenceNotifications(addSessionDigestReminder("Continue", digest), [

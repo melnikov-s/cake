@@ -156,7 +156,6 @@ describe("cross-session message format", () => {
           summary: "Landed",
         },
       ],
-      running: 0,
       interruptedReport: false,
     });
     expect(queuedUserMessageDisplay(addSessionDigestReminder("Next question", reminder)).text).toBe(
