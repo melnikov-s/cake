@@ -162,6 +162,11 @@ describe("Screen capture overlay completion", () => {
       async () => "data:image/png;base64,composed",
     );
     using fixture = await renderOverlay(renderImage);
+    // The capture-specific default overrides the shared floating toolbar's top-4 inset.
+    // Actual screen coordinates, dragging and clipping are checked in the Electron smoke test.
+    expect(
+      screen.getByRole("toolbar", { name: "Screen capture tools" }).classList.contains("top-14"),
+    ).toBe(true);
     await fixture.user.click(screen.getByRole("button", { name: "Annotate" }));
     expect(screen.getByRole("button", { name: "Annotate" }).getAttribute("aria-pressed")).toBe(
       "true",

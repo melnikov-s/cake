@@ -123,6 +123,14 @@ test("captures and annotates through the hidden native overlay into the existing
           ),
         ),
       ).toBe(true);
+      const bounds = (await overlay.getByRole("toolbar").boundingBox())!;
+      const viewport = await overlay.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+      // Defaults reset on every capture, independently of the last dragged position.
+      expect(bounds.y).toBe(56);
+      expect(bounds.x + bounds.width / 2).toBeCloseTo(viewport.width / 2, 0);
+      expect(bounds.x).toBeGreaterThanOrEqual(8);
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(viewport.width - 8);
+      expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height - 8);
       return overlay;
     };
     let overlay = await begin();
@@ -485,6 +493,27 @@ test("captures and annotates through the hidden native overlay into the existing
     await expect.poll(() => application.windows().length).toBe(1);
     await expect(preview).toHaveCount(7);
     await expect(composer).toHaveValue("Keep this draft plus screenshot");
+
+    // A small secondary display still gets the entire toolbar, in logical rather than Retina pixels.
+    await application.evaluate(({ screen }) => {
+      const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+      screen.getDisplayNearestPoint = () => ({
+        ...display,
+        bounds: { x: -640, y: 0, width: 640, height: 480 },
+        size: { width: 640, height: 480 },
+        scaleFactor: 2,
+      });
+    });
+    await settings.click();
+    overlay = await begin();
+    expect(await overlay.evaluate(() => ({ width: innerWidth, height: innerHeight }))).toEqual({
+      width: 640,
+      height: 480,
+    });
+    await Promise.all([
+      overlay.waitForEvent("close"),
+      overlay.getByRole("button", { name: "Cancel", exact: true }).click(),
+    ]);
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

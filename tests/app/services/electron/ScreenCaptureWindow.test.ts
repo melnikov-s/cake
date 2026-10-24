@@ -170,6 +170,13 @@ describe("Native screen capture lifetime", () => {
     const { owner, capture } = fixture();
     const { running, created } = startOverlay(capture, owner);
     const window = await created;
+    // Toolbar clearance must not shift/shrink the native overlay or change capture coordinates.
+    expect(native.windowOptions.at(-1)).toMatchObject({
+      x: -1200,
+      y: 0,
+      width: 1200,
+      height: 600,
+    });
     expect(native.sources).toHaveBeenCalledWith({
       types: ["screen"],
       thumbnailSize: { width: 2400, height: 1200 },

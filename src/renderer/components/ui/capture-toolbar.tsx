@@ -24,7 +24,14 @@ export function CaptureToolbar({
   onCancel(): void;
 }) {
   return (
-    <FloatingToolbar role="toolbar" aria-label="Screen capture tools" aria-busy={busy}>
+    <FloatingToolbar
+      role="toolbar"
+      aria-label="Screen capture tools"
+      aria-busy={busy}
+      // The native overlay covers the full display, including the MacBook notch/menu bar.
+      // Lower only the initial strip by 40 CSS pixels; dragged geometry stays with the primitive.
+      className="top-14"
+    >
       {destinationPicker}
       <span aria-hidden="true" className="mx-1 h-5 w-px shrink-0 bg-border" />
       <IconButton
