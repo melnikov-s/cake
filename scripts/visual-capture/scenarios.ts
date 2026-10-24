@@ -248,6 +248,93 @@ const assistantMarkdownCode: VisualCaptureScenario = {
   },
 };
 
+const toastNotificationsScenario: VisualCaptureScenario = {
+  ...assistantMarkdownCode,
+  name: "toast-notifications",
+  description: "Opaque app and extension toasts over a highlighted conversation in either theme",
+  states: ["default"],
+  async prepare(page, state, application) {
+    if (!application) throw new Error("Toast notifications require Electron");
+    await assistantMarkdownCode.prepare(page, state);
+    await emitRendererEvent(application, {
+      type: "provider-auth-notice",
+      provider: "visual-fixture",
+      sessionId: "visual-assistant-markdown-code",
+      notice: { type: "auth_url", url: "https://example.com/auth" },
+    });
+    await emitRendererEvent(application, {
+      type: "session-open-requested",
+      sessionId: "visual-missing-session",
+    });
+    const stack = page.locator('[aria-live="polite"]').filter({
+      has: page.getByText("Provider authentication", { exact: true }),
+    });
+    await expect(stack.getByRole("alert")).toContainText("Could not open session");
+    for (const tone of ["info", "warning", "error"] as const) {
+      await emitRendererEvent(application, {
+        type: "extension-ui-intent",
+        sessionId: "visual-assistant-markdown-code",
+        intent: {
+          kind: "notify",
+          id: `visual-toast-${tone}`,
+          tone,
+          message: `Extension ${tone}: notification text stays readable over the conversation.`,
+        },
+      });
+    }
+    await expect(stack.getByText("Extension", { exact: true })).toHaveCount(3);
+    await stack.evaluate(async (element) => {
+      await Promise.all(
+        element.getAnimations({ subtree: true }).map((animation) => animation.finished),
+      );
+    });
+    const surfaces = stack.locator(":scope > [role], :scope > button > div");
+    await expect(surfaces).toHaveCount(5);
+    const appearances = await surfaces.evaluateAll((elements) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 1;
+      const context = canvas.getContext("2d")!;
+      const rgba = (color: string) => {
+        context.clearRect(0, 0, 1, 1);
+        context.fillStyle = color;
+        context.fillRect(0, 0, 1, 1);
+        return Array.from(context.getImageData(0, 0, 1, 1).data);
+      };
+      const luminance = (color: number[]) =>
+        color.slice(0, 3).reduce((sum, channel, index) => {
+          const value = channel / 255;
+          return (
+            sum +
+            (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4) *
+              [0.2126, 0.7152, 0.0722][index]!
+          );
+        }, 0);
+      return elements.map((element) => {
+        const style = getComputedStyle(element);
+        const background = rgba(style.backgroundColor);
+        const text = [element.querySelector("strong")!, ...element.querySelectorAll("span")];
+        return {
+          background: style.backgroundColor,
+          alpha: background[3],
+          contrast: text.map((node) => {
+            const a = luminance(background);
+            const b = luminance(rgba(getComputedStyle(node).color));
+            return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+          }),
+        };
+      });
+    });
+    for (const appearance of appearances) {
+      expect(appearance.alpha, appearance.background).toBe(255);
+      for (const contrast of appearance.contrast) expect(contrast).toBeGreaterThanOrEqual(4.5);
+    }
+    await page.mouse.move(1, 1);
+  },
+  region(page) {
+    return page.locator("body");
+  },
+};
+
 const workflowProgressScenario: VisualCaptureScenario = {
   ...assistantMarkdownCode,
   name: "workflow-progress",
@@ -4439,6 +4526,7 @@ export const visualCaptureScenarios = [
   rendererCrash,
   workflowChoiceScenario,
   workflowProgressScenario,
+  toastNotificationsScenario,
   nestedToolActivityScenario,
   readImageToolScenario,
   vscodeTerminalScenario,

@@ -21,7 +21,7 @@ export function ToastItem({
   return (
     <Callout
       variant={toast.tone === "error" ? "error" : toast.tone === "warning" ? "warning" : "default"}
-      className="relative shadow-lg motion-safe:animate-toast-enter"
+      className="relative bg-popover text-popover-foreground shadow-lg motion-safe:animate-toast-enter"
       role={toast.tone === "error" ? "alert" : "status"}
     >
       {toast.action ? (

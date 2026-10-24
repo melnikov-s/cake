@@ -31,6 +31,16 @@ afterEach(() => {
 });
 
 describe("Toast workflow", () => {
+  it.each(["info", "warning", "error"] as const)(
+    "uses the opaque floating surface and paired foreground for %s notifications",
+    (tone) => {
+      using fixture = renderToasts([{ tone, title: "Notification", message: "Readable message" }]);
+      void fixture;
+      const toast = screen.getByRole(tone === "error" ? "alert" : "status");
+      expect(toast.classList.contains("bg-popover")).toBe(true);
+      expect(toast.classList.contains("text-popover-foreground")).toBe(true);
+    },
+  );
   it("updates a matching notification without duplicating it and restarts its visible lifetime", () => {
     vi.useFakeTimers();
     using fixture = renderToasts([
