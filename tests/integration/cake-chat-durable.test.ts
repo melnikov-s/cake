@@ -259,6 +259,99 @@ async function fixture() {
   };
 }
 
+it.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/formatting-project")])(
+  "persists display-only message formatting in permanent chat and its native forks (%s)",
+  async (sessionId) => {
+    const f = await fixture();
+    const scope = { sessionId, sessionDir: join(f.directory, "formatting-chat") };
+    const chat = await f.open(undefined, undefined, scope);
+    await chat.runtime.prompt("# Authored heading", "prompt", [], true, ids.first);
+    await chat.runtime.prompt("# Plain heading", "prompt", [], false, ids.second);
+    const firstId = entryOf(await chat.runtime.snapshot(), "# Authored heading");
+    const secondId = entryOf(await chat.runtime.snapshot(), "# Plain heading");
+    const requests = structuredClone(f.requests);
+    await chat.runtime.setUserMessageMarkdown(firstId, false);
+    await chat.runtime.setUserMessageMarkdown(secondId, true);
+    const formatted = (await chat.runtime.snapshot()).parts;
+    expect(formatted).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ entryId: firstId, renderAs: undefined }),
+        expect.objectContaining({ entryId: secondId, renderAs: "markdown" }),
+      ]),
+    );
+    expect(
+      (
+        await chat.runtime.history?.(
+          JSON.stringify({ after: Number(secondId), order: "descending" }),
+        )
+      )?.parts,
+    ).toEqual(
+      expect.arrayContaining([expect.objectContaining({ entryId: firstId, renderAs: undefined })]),
+    );
+    expect(f.requests).toEqual(requests);
+    expect(await chat.runtime.pendingMessages()).toEqual({ items: [] });
+    await chat.close();
+
+    const reopened = await f.open(undefined, undefined, scope);
+    expect((await reopened.runtime.snapshot()).parts).toEqual(formatted);
+    const fork = await reopened.runtime.fork(secondId, "Side chat");
+    const side = await f.openSideChat(fork.sessionId);
+    await side.runtime.prompt("# Side heading", "prompt", [], true, ids.first);
+    const sideId = entryOf(await side.runtime.snapshot(), "# Side heading");
+    await side.runtime.setUserMessageMarkdown(sideId, false);
+    const sideParts = (await side.runtime.snapshot()).parts;
+    expect(sideParts).toEqual(
+      expect.arrayContaining([expect.objectContaining({ entryId: sideId, renderAs: undefined })]),
+    );
+    expect(
+      (
+        await side.runtime.history?.(
+          JSON.stringify({ after: Number(sideId) + 1, order: "descending" }),
+        )
+      )?.parts,
+    ).toEqual(
+      expect.arrayContaining([expect.objectContaining({ entryId: sideId, renderAs: undefined })]),
+    );
+    const preview = await f.serviceRuntime.runPromise(f.service.inspectSideChat(fork.sessionId));
+    expect(preview?.parts).toEqual(sideParts);
+    await expect(side.runtime.setUserMessageMarkdown(secondId, true)).rejects.toThrow(
+      "not in the active conversation",
+    );
+    await expect(reopened.runtime.setUserMessageMarkdown(sideId, true)).rejects.toThrow(
+      "not in the active conversation",
+    );
+    expect((await reopened.runtime.snapshot()).parts).toEqual(formatted);
+    // Display writes do not change the exact inherited model prefix or side-chat input.
+    const sideRequest = f.requests.at(-1)!;
+    expect(JSON.stringify(sideRequest)).toContain("# Authored heading");
+    expect(JSON.stringify(sideRequest)).toContain("# Plain heading");
+    expect(JSON.stringify(sideRequest)).toContain("# Side heading");
+    await side.close();
+    await reopened.close();
+
+    const again = await f.open(undefined, undefined, scope);
+    const sideAgain = await f.openSideChat(fork.sessionId);
+    expect((await again.runtime.snapshot()).parts).toEqual(formatted);
+    expect((await sideAgain.runtime.snapshot()).parts).toEqual(sideParts);
+    await sideAgain.runtime.setUserMessageMarkdown(sideId, true);
+    await again.runtime.setUserMessageMarkdown(firstId, true);
+    await again.runtime.setUserMessageMarkdown(secondId, false);
+    await sideAgain.close();
+    await again.close();
+    const final = await f.open(undefined, undefined, scope);
+    const finalSide = await f.openSideChat(fork.sessionId);
+    expect((await final.runtime.snapshot()).parts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ entryId: firstId, renderAs: "markdown" }),
+        expect.objectContaining({ entryId: secondId, renderAs: undefined }),
+      ]),
+    );
+    expect((await finalSide.runtime.snapshot()).parts).toEqual(
+      expect.arrayContaining([expect.objectContaining({ entryId: sideId, renderAs: "markdown" })]),
+    );
+  },
+);
+
 it.each([CAKE_CHAT_SESSION_ID, projectChatSessionId("/internal-project")])(
   "projects typed Workboard wakes as application context through permanent chat admission and reopen (%s)",
   async (sessionId) => {

@@ -85,6 +85,10 @@ import { SubagentResult, SubagentReportOrigin } from "../../contracts/subagents/
 import { Option } from "effect";
 import type { InternalInput } from "../../contracts/conversations/internal-input";
 import { durableInputText, durableQueuedPart } from "./durable-input-presentation";
+import {
+  setDurableUserMessageMarkdown,
+  UserMessagePresentationDoc,
+} from "./durable-message-presentation";
 import { durableInputResponse, previousDurableResponseMode } from "./durable-response-mode";
 import type { ConversationResponseMode } from "../../contracts/conversations/response-mode-reminders";
 const unsupported = async () => {
@@ -411,6 +415,7 @@ export async function createDurableCakeChatRuntime(
           },
           cursor,
           await readDurableActiveTools(tx, engine.root.id),
+          (await tx.doc(UserMessagePresentationDoc, engine.root.id)).overrides,
         ),
       BACKGROUND_CONTEXT,
     );
@@ -545,6 +550,7 @@ export async function createDurableCakeChatRuntime(
           },
           undefined,
           await readDurableActiveTools(tx, engine.root.id),
+          (await tx.doc(UserMessagePresentationDoc, engine.root.id)).overrides,
         );
         const live = await tx.doc(LiveDoc, engine.root.id);
         const agent = await tx.doc(AgentDoc, engine.root.id);
@@ -707,7 +713,10 @@ export async function createDurableCakeChatRuntime(
       await submission.wait(BACKGROUND_CONTEXT);
     },
     ...queueOperations,
-    setUserMessageMarkdown: unsupported,
+    async setUserMessageMarkdown(entryId, markdown) {
+      if (disposed) throw new Error("The Cake runtime has been disposed");
+      await setDurableUserMessageMarkdown(engine.root, entryId, markdown);
+    },
     async compact(instructions) {
       const job = await engine.root.compact(instructions, BACKGROUND_CONTEXT);
       await engine.harness.waitForTask(job, BACKGROUND_CONTEXT);

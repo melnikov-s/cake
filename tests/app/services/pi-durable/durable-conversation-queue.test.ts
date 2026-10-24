@@ -25,6 +25,7 @@ import {
   durableInputText,
 } from "../../../../src/services/pi-durable/durable-input-presentation";
 import { durableAnswer, durableModel, durableModels } from "../../../fixtures/durable-chat";
+import { setDurableUserMessageMarkdown } from "../../../../src/services/pi-durable/durable-message-presentation";
 
 const context = BACKGROUND_CONTEXT;
 const cleanup: Array<() => Promise<void>> = [];
@@ -147,6 +148,27 @@ const metadata: CrossSessionMessageMetadata = {
 };
 
 describe.each(["root", "side-chat"] as const)("Durable %s queue", (kind) => {
+  it("changes only original-message display while a run and follow-up inbox remain active", async () => {
+    const f = await fixture(kind);
+    const queued = await f.submit("Keep queued", "pending");
+    const submission = await f.storage.submission(f.active.id, context);
+    if (submission?.status !== "placed") throw new Error("Active input was not placed");
+    const original = await f.storage.entry(f.conversation.id, submission.entry, context);
+    const pending = await f.queue.inbox();
+    const live = await f.live();
+    const modelContext = await f.conversation.context(context);
+    const requests = structuredClone(f.requests);
+    await setDurableUserMessageMarkdown(f.conversation, String(submission.entry), true);
+    await setDurableUserMessageMarkdown(f.conversation, String(submission.entry), false);
+    expect(await f.storage.entry(f.conversation.id, submission.entry, context)).toEqual(original);
+    expect(await f.queue.inbox()).toEqual(pending);
+    expect(await f.live()).toEqual(live);
+    expect(await f.conversation.context(context)).toEqual(modelContext);
+    expect(f.requests).toEqual(requests);
+    expect(await f.storage.submission(queued.id, context)).toMatchObject({ status: "queued" });
+    expect(f.activeCall.signal?.aborted).toBe(false);
+  });
+
   it("projects the same IDs, lane positions and correlated messages, and reorders within a lane", async () => {
     const f = await fixture(kind);
     await f.submit("First", "first");

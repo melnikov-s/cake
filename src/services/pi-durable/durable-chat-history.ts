@@ -41,6 +41,7 @@ export async function readDurableOriginalPage(
   root: Pick<Conversation, "entries">,
   cursor?: string,
   activeTools: ReadonlyMap<string, number | null> = new Map(),
+  presentationOverrides: Readonly<Record<string, boolean>> = {},
 ) {
   let next = cursor;
   do {
@@ -125,12 +126,21 @@ export async function readDurableOriginalPage(
       // abandoned unmatched calls must still read as interrupted during a new run.
       if (part.kind === "tool" && part.state === "interrupted" && activeTools.has(part.id))
         return { ...part, state: "running" as const, startedAt: activeTools.get(part.id) };
-      return part.kind === "text" &&
-        part.role === "user" &&
-        part.entryId &&
-        origins.has(part.entryId)
-        ? { ...part, subagentReport: origins.get(part.entryId), renderAs: "markdown" as const }
-        : part;
+      if (part.kind !== "text" || part.role !== "user" || !part.entryId) return part;
+      const origin = origins.get(part.entryId);
+      const markdown = presentationOverrides[part.entryId];
+      return {
+        ...part,
+        ...(origin ? { subagentReport: origin } : null),
+        renderAs:
+          markdown === undefined
+            ? origin
+              ? ("markdown" as const)
+              : part.renderAs
+            : markdown
+              ? ("markdown" as const)
+              : undefined,
+      };
     });
     next = page.next === undefined ? undefined : JSON.stringify(page.next);
     if (parts.length || next === undefined) return { parts, cursor: next };

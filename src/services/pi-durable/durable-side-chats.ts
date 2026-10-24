@@ -39,6 +39,10 @@ import type {
 import { supportsFastMode } from "../pi/fast-mode";
 import { changeConversation, markSystemCarried } from "./durable-chat-engine";
 import { readDurableOriginalPage } from "./durable-chat-history";
+import {
+  setDurableUserMessageMarkdown,
+  UserMessagePresentationDoc,
+} from "./durable-message-presentation";
 import { abortDurableActiveTurn, createDurableConversationQueue } from "./durable-chat-queue";
 import {
   DURABLE_SIDE_CHAT_NOTE,
@@ -174,12 +178,19 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
       executingTurnIds: () => activeTurnIds,
     });
     const history = (cursor?: string) =>
-      readDurableOriginalPage(
-        ownEntries(
-          (query, limit, next) => conversation.entries(query, limit, next, BACKGROUND_CONTEXT),
-          after,
-        ),
-        cursor,
+      conversation.commit(
+        async (tx) =>
+          readDurableOriginalPage(
+            ownEntries(
+              (query, limit, next) =>
+                tx.scanEntries({ ...query, conversationId: conversation.id }, limit, next),
+              after,
+            ),
+            cursor,
+            undefined,
+            (await tx.doc(UserMessagePresentationDoc, conversation.id)).overrides,
+          ),
+        BACKGROUND_CONTEXT,
       );
     const configure = async (change: {
       readonly preset?: PresetContext;
@@ -239,6 +250,9 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
                 tx.scanEntries({ ...query, conversationId: conversation.id }, limit, cursor),
               after,
             ),
+            undefined,
+            undefined,
+            (await tx.doc(UserMessagePresentationDoc, conversation.id)).overrides,
           );
           const live = await tx.doc(LiveDoc, conversation.id);
           const agent = await tx.doc(AgentDoc, conversation.id);
@@ -358,7 +372,10 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
         }
       },
       ...queueOperations,
-      setUserMessageMarkdown: unsupported,
+      async setUserMessageMarkdown(entryId, markdown) {
+        if (disposed) throw new Error("Cake Chat side chat has closed");
+        await setDurableUserMessageMarkdown(conversation, entryId, markdown);
+      },
       async compact(instructions) {
         const job = await conversation.compact(instructions, BACKGROUND_CONTEXT);
         await harness.waitForTask(job, BACKGROUND_CONTEXT);
@@ -439,11 +456,19 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
     open,
     async preview(sessionId) {
       const { conversation, after } = await resolve(sessionId);
-      const page = await readDurableOriginalPage(
-        ownEntries(
-          (query, limit, cursor) => conversation.entries(query, limit, cursor, BACKGROUND_CONTEXT),
-          after,
-        ),
+      const page = await conversation.commit(
+        async (tx) =>
+          readDurableOriginalPage(
+            ownEntries(
+              (query, limit, cursor) =>
+                tx.scanEntries({ ...query, conversationId: conversation.id }, limit, cursor),
+              after,
+            ),
+            undefined,
+            undefined,
+            (await tx.doc(UserMessagePresentationDoc, conversation.id)).overrides,
+          ),
+        BACKGROUND_CONTEXT,
       );
       return {
         workspacePath: "",

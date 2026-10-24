@@ -6,6 +6,10 @@ import type {
   UiPart,
 } from "../../contracts/conversations/session-contract";
 import type { ComposerDeliveryInput } from "./ConversationComposerStore";
+import {
+  cakeChatSideChatConversationId,
+  isCakeChatSessionId,
+} from "../../contracts/cake-chats/cake-chat-identity";
 import type { StoreEvent } from "../events/StoreEvent";
 import {
   ConversationComposerStore,
@@ -216,6 +220,9 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
   @child
   get chatStore(): ChatStore {
     const capabilities = this.props.chat;
+    const durable =
+      isCakeChatSessionId(this.sessionId) ||
+      cakeChatSideChatConversationId(this.sessionId) !== undefined;
     return createStore(ChatStore, {
       id: () => this.sessionId,
       parts: () =>
@@ -246,7 +253,12 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
       activateDraft: (choice) => this.composerStore.activateDraftSession(choice),
       sessionCreationChoice: capabilities.sessionCreationChoice,
       draftActivationCandidates: capabilities.draftActivationCandidates,
-      editLastUserMessage: (entryId) => this.composerStore.beginEditMessage(entryId),
+      // Durable supports saved display preferences, not transcript rewriting.
+      // Unsent Cake Chat drafts still use the shared draft editor.
+      editLastUserMessage:
+        !durable || this.props.configuration.deferredNewSession?.()
+          ? (entryId) => this.composerStore.beginEditMessage(entryId)
+          : undefined,
       isDraftSession: capabilities.isDraftSession,
       editingMessage: () => this.composerStore.editingMessage,
       abort: () => this.abort(),
