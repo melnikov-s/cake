@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { createHash } from "node:crypto";
 import { discoveryResultText } from "../../../contracts/agent/discovery-result-text";
 import {
   MAX_CAKE_OPERATION_IMAGE_BYTES,
@@ -307,57 +308,94 @@ export class CakeOperationRegistry {
     const operation = this.operations.get(command);
     if (!operation || operation.available?.() === false)
       return helpResult(command, this.unknown(command));
-    const input = decodeOperationInput(operation, envelope.input ?? {});
-    const executionResult = await operation.execute(input, context);
-    const richResult = isCakeOperationImageResult(executionResult);
-    if (operation.outputSchema && richResult)
-      throw new Error(`Structured Cake operation ${command} cannot return image content`);
-    const result = Schema.decodeUnknownSync(jsonValueSchema)(
-      operation.outputSchema
-        ? Schema.decodeUnknownSync(operation.outputSchema, { onExcessProperty: "error" })(
-            executionResult,
-          )
-        : richResult
-          ? executionResult.metadata
-          : executionResult,
-    );
-    const presented =
-      this.projectResult && !operation.canonicalSessionIds
-        ? await this.projectResult(result, context.signal)
-        : result;
-    // Typed results retain their canonical contract. Text is always the agent projection.
-    const structured =
-      operation.outputSchema && !Schema.is(operation.outputSchema)(presented) ? result : presented;
-    const images = richResult ? decodeImages(executionResult.images) : [];
-    const serialized = JSON.stringify(structured);
-    const byteLength = new TextEncoder().encode(serialized).byteLength;
-    if (operation.outputSchema && byteLength > MAX_CAKE_OPERATION_RESULT_BYTES)
-      throw new Error(
-        `Structured Cake operation ${command} exceeds the ${MAX_CAKE_OPERATION_RESULT_BYTES}-byte result limit`,
-      );
-    const boundedResult: JsonValue =
-      byteLength > MAX_CAKE_OPERATION_RESULT_BYTES
-        ? {
-            truncated: true,
-            byteLength,
-            preview: formatCakeResult(presented),
-          }
-        : structured;
-    const text = formatCakeResult(
-      presented,
-      operation.truncateResultText === false ? MAX_CAKE_OPERATION_RESULT_BYTES : undefined,
-      discoveryResultText(command, presented),
-    );
-    return {
-      text,
-      content: [{ type: "text", text }, ...images],
-      details: { protocol: CAKE_OPERATION_PROTOCOL, command, result: boundedResult },
-      structuredContent: operation.outputSchema
-        ? { command, result: structured }
-        : richResult
-          ? `${text}\n\nWARNING: This nested/structured result contains text metadata only; native image pixels were NOT forwarded. Descriptions and source are not image inspection. Call cake directly (outside codemode) to receive the images, or use an image-capable read on the resolved file.`
-          : text,
+    // This boundary excludes model generation, SDK admission/environment acquisition and
+    // result settlement/delivery. Do not present these spans as end-to-end tool timing.
+    const startedAt = performance.now();
+    type Phase = "input" | "execute" | "validate" | "project" | "format";
+    let phase: Phase = "input";
+    let phaseStartedAt = startedAt;
+    let completed = false;
+    const phases: Partial<Record<Phase, number>> = {};
+    const enter = (next: Phase) => {
+      const now = performance.now();
+      phases[phase] = now - phaseStartedAt;
+      phaseStartedAt = now;
+      phase = next;
     };
+    try {
+      const input = decodeOperationInput(operation, envelope.input ?? {});
+      enter("execute");
+      const executionResult = await operation.execute(input, context);
+      enter("validate");
+      const richResult = isCakeOperationImageResult(executionResult);
+      if (operation.outputSchema && richResult)
+        throw new Error(`Structured Cake operation ${command} cannot return image content`);
+      const result = Schema.decodeUnknownSync(jsonValueSchema)(
+        operation.outputSchema
+          ? Schema.decodeUnknownSync(operation.outputSchema, { onExcessProperty: "error" })(
+              executionResult,
+            )
+          : richResult
+            ? executionResult.metadata
+            : executionResult,
+      );
+      enter("project");
+      const presented =
+        this.projectResult && !operation.canonicalSessionIds
+          ? await this.projectResult(result, context.signal)
+          : result;
+      enter("format");
+      // Typed results retain their canonical contract. Text is always the agent projection.
+      const structured =
+        operation.outputSchema && !Schema.is(operation.outputSchema)(presented)
+          ? result
+          : presented;
+      const images = richResult ? decodeImages(executionResult.images) : [];
+      const serialized = JSON.stringify(structured);
+      const byteLength = new TextEncoder().encode(serialized).byteLength;
+      if (operation.outputSchema && byteLength > MAX_CAKE_OPERATION_RESULT_BYTES)
+        throw new Error(
+          `Structured Cake operation ${command} exceeds the ${MAX_CAKE_OPERATION_RESULT_BYTES}-byte result limit`,
+        );
+      const boundedResult: JsonValue =
+        byteLength > MAX_CAKE_OPERATION_RESULT_BYTES
+          ? {
+              truncated: true,
+              byteLength,
+              preview: formatCakeResult(presented),
+            }
+          : structured;
+      const text = formatCakeResult(
+        presented,
+        operation.truncateResultText === false ? MAX_CAKE_OPERATION_RESULT_BYTES : undefined,
+        discoveryResultText(command, presented),
+      );
+      completed = true;
+      return {
+        text,
+        content: [{ type: "text", text }, ...images],
+        details: { protocol: CAKE_OPERATION_PROTOCOL, command, result: boundedResult },
+        structuredContent: operation.outputSchema
+          ? { command, result: structured }
+          : richResult
+            ? `${text}\n\nWARNING: This nested/structured result contains text metadata only; native image pixels were NOT forwarded. Descriptions and source are not image inspection. Call cake directly (outside codemode) to receive the images, or use an image-capable read on the resolved file.`
+            : text,
+      };
+    } finally {
+      const finishedAt = performance.now();
+      phases[phase] = finishedAt - phaseStartedAt;
+      if (finishedAt - startedAt >= 1_000)
+        // One bounded, metadata-only diagnostic per slow invocation. Never log inputs,
+        // results, exceptions, tool-call/session IDs, titles, paths or arbitrary commands.
+        console.warn("Slow Cake operation", {
+          command: operation.command,
+          call: createHash("sha256").update(context.toolCallId).digest("hex").slice(0, 16),
+          completed,
+          phase,
+          phasesMs: phases,
+          totalMs: finishedAt - startedAt,
+        });
+    }
   }
 }
 

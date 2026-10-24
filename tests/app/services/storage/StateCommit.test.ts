@@ -1,6 +1,7 @@
 import { NodeFileSystem } from "@effect/platform-node-shared";
 import { it } from "@effect/vitest";
 import {
+  Clock,
   Context,
   Deferred,
   Effect,
@@ -8,6 +9,7 @@ import {
   Fiber,
   FileSystem,
   Layer,
+  Logger,
   Path,
   PlatformError,
   Queue,
@@ -295,6 +297,102 @@ commitTests(
   makeApplication,
   (value) => ({ ...value, globalCustomInstructions: "committed instructions" }),
   (value) => ({ ...value, unreadSessionIds: ["unrelated-session"] }),
+);
+
+it.effect(
+  "slow transaction diagnostics distinguish lock wait, transition and persisted publication",
+  () => {
+    let nanos = 0n;
+    let saves = 0;
+    const messages: unknown[] = [];
+    return Effect.gen(function* () {
+      const clock = yield* Clock.Clock;
+      const saving = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const storage = Layer.succeed(ApplicationStorage, {
+        load: () =>
+          Effect.succeed({ state: defaultApplicationState(), source: "current" as const }),
+        save: () =>
+          Effect.gen(function* () {
+            saves++;
+            if (saves === 1) {
+              yield* Deferred.succeed(saving, undefined);
+              yield* Deferred.await(release);
+            }
+          }),
+      });
+      const services = yield* Layer.build(ApplicationState.layer.pipe(Layer.provide(storage)));
+      const state = Context.get(services, ApplicationState);
+      yield* Effect.gen(function* () {
+        const first = yield* state
+          .transact((value) =>
+            Effect.sync(() => {
+              nanos += 2_000_000_000n;
+              return { ...value, globalCustomInstructions: "PRIVATE_STATE" };
+            }),
+          )
+          .pipe(Effect.forkScoped({ startImmediately: true }));
+        yield* Deferred.await(saving);
+        // A real persistence dependency still serializes mutations. Timing it must not
+        // weaken disk-before-publication or make the next edit overwrite the first.
+        const second = yield* state
+          .transact((value) =>
+            Effect.succeed({
+              ...value,
+              unreadSessionIds: ["PRIVATE_SESSION"],
+            }),
+          )
+          .pipe(Effect.forkScoped({ startImmediately: true }));
+        expect(state.snapshot().globalCustomInstructions).not.toBe("PRIVATE_STATE");
+        nanos += 3_000_000_000n;
+        yield* Deferred.succeed(release, undefined);
+        yield* Fiber.join(first);
+        yield* Fiber.join(second);
+        expect(state.snapshot()).toMatchObject({
+          globalCustomInstructions: "PRIVATE_STATE",
+          unreadSessionIds: ["PRIVATE_SESSION"],
+        });
+      }).pipe(
+        Effect.provideService(Clock.Clock, {
+          ...clock,
+          monotonicTimeNanosUnsafe: () => nanos,
+          monotonicTimeNanos: Effect.sync(() => nanos),
+        }),
+      );
+      expect(messages).toEqual(
+        expect.arrayContaining([
+          [
+            "Slow application transaction",
+            {
+              completed: true,
+              phase: "publish",
+              phasesMs: { wait: 0, transition: 2_000, persist: 3_000, publish: 0 },
+              totalMs: 5_000,
+            },
+          ],
+          [
+            "Slow application transaction",
+            {
+              completed: true,
+              phase: "publish",
+              phasesMs: { wait: 3_000, transition: 0, persist: 0, publish: 0 },
+              totalMs: 3_000,
+            },
+          ],
+        ]),
+      );
+      expect(messages).toHaveLength(2);
+      expect(JSON.stringify(messages)).not.toContain("PRIVATE");
+    }).pipe(
+      Effect.provide(
+        Logger.layer([
+          Logger.make(({ message }) => {
+            messages.push(message);
+          }),
+        ]),
+      ),
+    );
+  },
 );
 
 const late: ScheduledMessage = {

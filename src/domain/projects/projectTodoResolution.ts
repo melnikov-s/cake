@@ -81,8 +81,13 @@ export const join = Effect.fn("ProjectTodos.joinResolution")(
 /** Application policy, including legacy items: completion is monotonic; restore never reopens.
  * Revision checks prevent a join from overwriting a concurrent edit or explicit user closure.
  */
-export const completeLinked = Effect.fn("ProjectTodos.completeLinked")(function* (scope: string) {
-  const candidates = (yield* todos.list(scope)).items.filter((item) => item.state === "open");
+export const completeLinked = Effect.fn("ProjectTodos.completeLinked")(function* (
+  scope: string,
+  itemIds?: ReadonlySet<string>,
+) {
+  const candidates = (yield* todos.list(scope)).items.filter(
+    (item) => item.state === "open" && (!itemIds || itemIds.has(item.id)),
+  );
   const joined = yield* join(scope, candidates);
   yield* todos.completeResolved(
     scope,

@@ -167,7 +167,9 @@ export const updateMany = Effect.fn("ProjectTodos.updateManyWithAssociations")(f
       .map(({ item }) => item.id),
   );
   yield* todos.updateMany(scope, canonical, false, resolved);
-  yield* completeLinked(scope);
+  // Recheck only these items in case resolution raced their commit. Lifecycle/startup
+  // reconciliation owns other items; cheap edits must not wait on unrelated discovery.
+  yield* completeLinked(scope, new Set(canonical.map((input) => input.id)));
   return yield* Effect.forEach(canonical, (input) => todos.read(scope, input.id));
 });
 
@@ -191,7 +193,7 @@ export const create = Effect.fn("ProjectTodos.createWithAssociations")(function*
     joined?.sessions.length && joined.sessions.every((session) => session.resolved === true),
   );
   const item = yield* todos.create(scope, { ...input, associations }, resolved);
-  yield* completeLinked(scope);
+  yield* completeLinked(scope, new Set([item.id]));
   return yield* todos.read(scope, item.id);
 });
 export const update = Effect.fn("ProjectTodos.updateWithAssociations")(function* (

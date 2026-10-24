@@ -384,6 +384,111 @@ it.effect(
   },
 );
 
+it.effect.each(["create", "edit", "done", "batch"] as const)(
+  "%s returns a persisted receipt while unrelated linked-work reconciliation is suspended",
+  (operation) => {
+    const f = fixture();
+    return Effect.gen(function* () {
+      yield* upsertProject(project, "Project");
+      yield* todos.create(project, {
+        title: "Unrelated linked work",
+        description: "Resolved by the independent lifecycle hook.",
+        associations: [link(a)],
+      });
+      const item = yield* todos.create(project, { title: "Cheap", description: "Metadata only." });
+      const entered = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const archive = yield* SessionArchiveStorage;
+      const reconciliation = yield* completeLinked(project).pipe(
+        Effect.provideService(SessionArchiveStorage, {
+          ...archive,
+          resolutionSnapshot: () =>
+            Deferred.succeed(entered, undefined).pipe(
+              Effect.andThen(Deferred.await(release)),
+              Effect.andThen(archive.resolutionSnapshot()),
+            ),
+        }),
+        Effect.forkChild,
+      );
+      yield* Deferred.await(entered);
+      const writes = f.reads.writes;
+      const update = { id: item.id, expectedRevision: 0, status: "Committed" };
+      const mutation =
+        operation === "create"
+          ? controls.create(project, { title: "New", description: "Metadata only." })
+          : operation === "batch"
+            ? controls.updateMany(project, [update]).pipe(Effect.map((items) => items[0]))
+            : controls.update(project, {
+                ...update,
+                ...(operation === "done" ? { state: "done" as const } : {}),
+              });
+      // A second resolution read is unrelated to this mutation. Fail immediately instead
+      // of using a wall-clock timeout if the operation incorrectly depends on that work.
+      const result = yield* mutation.pipe(
+        Effect.provideService(SessionArchiveStorage, {
+          ...archive,
+          resolutionSnapshot: () => Effect.die("Cheap mutation waited on unrelated resolution"),
+        }),
+      );
+      expect(result).toBeDefined();
+      if (!result) throw new Error("Missing committed item");
+      expect(f.reads.writes).toBe(writes + 1);
+      expect(yield* todos.read(project, result.id)).toEqual(result);
+      expect(yield* Deferred.isDone(release)).toBe(false);
+      yield* Deferred.succeed(release, undefined);
+      yield* Fiber.join(reconciliation);
+    }).pipe(Effect.provide(f.layer));
+  },
+);
+
+it.effect("a resolution racing a mutation's commit is rechecked only for the edited item", () => {
+  const f = fixture();
+  return Effect.gen(function* () {
+    yield* upsertProject(project, "Project");
+    const item = yield* todos.create(project, {
+      title: "Edited work",
+      description: "Must not miss resolution.",
+      associations: [link(a)],
+    });
+    const unrelated = yield* todos.create(project, {
+      title: "Other work",
+      description: "Owned by lifecycle reconciliation.",
+      associations: [link(b)],
+    });
+    const archive = yield* SessionArchiveStorage;
+    const updated = yield* controls
+      .update(project, {
+        id: item.id,
+        expectedRevision: 0,
+        status: "Committed",
+      })
+      .pipe(
+        Effect.provideService(SessionArchiveStorage, {
+          ...archive,
+          resolutionSnapshot: () =>
+            archive.resolutionSnapshot().pipe(
+              Effect.tap(() =>
+                Effect.sync(() => {
+                  // The first join captured unresolved. Resolution commits before the to-do write.
+                  f.resolved.add(a);
+                  f.resolved.add(root);
+                }),
+              ),
+            ),
+        }),
+      );
+    expect(updated).toMatchObject({
+      state: "done",
+      status: "Committed",
+      completion: { by: "sessions" },
+    });
+    expect(yield* todos.read(project, item.id)).toEqual(updated);
+    expect((yield* todos.read(project, unrelated.id)).state).toBe("open");
+    yield* completeLinked(project);
+    expect((yield* todos.read(project, unrelated.id)).state).toBe("done");
+  }).pipe(Effect.provide(f.layer));
+});
+
 it.effect("a reopen during the metadata join wins over automatic completion", () => {
   const f = fixture();
   return Effect.gen(function* () {

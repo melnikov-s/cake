@@ -68,6 +68,103 @@ const tinyPng: CakeOperationImageContent = {
 };
 
 describe("Cake operation registry", () => {
+  it("cheap metadata dispatch is independent of an outstanding expensive operation", async () => {
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const operations = registry(
+      vi.fn(async () => {
+        entered.resolve();
+        await release.promise;
+        return { status: "ok" };
+      }),
+    );
+    const slow = operations.invoke({ command: "context.compact" }, context());
+    await entered.promise;
+    try {
+      const cheap = await operations.invoke({ command: "session.info" }, context());
+      expect(cheap.details).toMatchObject({ result: { sessionId: "one" } });
+    } finally {
+      release.resolve();
+      await slow;
+    }
+  });
+
+  it("measures execution and projection separately until result availability without leaking content", async () => {
+    let now = 0;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const projecting = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const operations = new CakeOperationRegistry(
+      registry(
+        vi.fn(async () => {
+          now += 1_200;
+          return { status: "PRIVATE_RESULT" };
+        }),
+      ).definitions(),
+      async (value) => {
+        projecting.resolve();
+        await release.promise;
+        now += 300;
+        return value;
+      },
+    );
+    try {
+      const result = operations.invoke(
+        { command: "context.compact", input: { instructions: "PRIVATE_INPUT" } },
+        context(),
+      );
+      await projecting.promise;
+      expect(warning).not.toHaveBeenCalled();
+      release.resolve();
+      expect((await result).structuredContent).toContain("PRIVATE_RESULT");
+      expect(warning).toHaveBeenCalledExactlyOnceWith("Slow Cake operation", {
+        command: "context.compact",
+        call: expect.stringMatching(/^[0-9a-f]{16}$/),
+        completed: true,
+        phase: "format",
+        phasesMs: { input: 0, execute: 1_200, validate: 0, project: 300, format: 0 },
+        totalMs: 1_500,
+      });
+      expect(JSON.stringify(warning.mock.calls)).not.toContain("PRIVATE");
+      expect(JSON.stringify(warning.mock.calls)).not.toContain("call-1");
+    } finally {
+      release.resolve();
+      clock.mockRestore();
+      warning.mockRestore();
+    }
+  });
+
+  it("reports the failed phase without error text and emits nothing for fast operations", async () => {
+    let now = 0;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      await registry().invoke({ command: "session.info" }, context());
+      expect(warning).not.toHaveBeenCalled();
+      await expect(
+        registry(
+          vi.fn(async () => {
+            now += 2_000;
+            throw new Error("PRIVATE_FAILURE");
+          }),
+        ).invoke({ command: "context.compact" }, context()),
+      ).rejects.toThrow("PRIVATE_FAILURE");
+      expect(warning).toHaveBeenCalledExactlyOnceWith("Slow Cake operation", {
+        command: "context.compact",
+        call: expect.stringMatching(/^[0-9a-f]{16}$/),
+        completed: false,
+        phase: "execute",
+        phasesMs: { input: 0, execute: 2_000 },
+        totalMs: 2_000,
+      });
+      expect(JSON.stringify(warning.mock.calls)).not.toContain("PRIVATE");
+    } finally {
+      clock.mockRestore();
+      warning.mockRestore();
+    }
+  });
+
   it("keeps the model-visible envelope and description compact", () => {
     const schema = Schema.toStandardJSONSchemaV1(cakeToolEnvelopeSchema)[
       "~standard"
