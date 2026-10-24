@@ -79,7 +79,7 @@ const cakeTopics = [
     summary:
       "Create, fork, inspect, message, steer, stop, schedule (one-off or recurring messages, reminders and check-ins), and manage sessions.",
     guidance: [
-      "Target sessions by canonical ID or bare trailing hex (at least 8 characters). Emitted references use the shortest unique suffix (normally 8); unknown or ambiguous references fail before routing. Titles are labels, not routing identities.",
+      "Target sessions by canonical ID or bare trailing hex (at least 8 characters). General results retain canonical IDs; scoped rosters may emit unique suffixes. Unknown or ambiguous references fail before routing. Titles are labels, not routing identities.",
     ],
   },
   {

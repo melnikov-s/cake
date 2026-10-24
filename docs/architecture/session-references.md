@@ -9,13 +9,15 @@ is an agent-boundary projection, not another stored identity or a name alias.
 Agents may target a session with its canonical identity or a bare hexadecimal suffix:
 8–32 trailing characters for UUIDs (hyphens removed), or 8–64 for Project Chat hashes.
 Global Cake Chat uses the distinct `cake-chat` label. Matching
-is case-insensitive for suffix hex. The default emitted suffix is eight characters;
-collisions extend it one character at a time until unique in the relevant live
-roster. UUIDv7 prefixes are intentionally not used because nearby creations share
+is case-insensitive for suffix hex. General operation results retain canonical
+identities. Where an authoritative roster is already available, the default emitted
+suffix is eight characters; collisions extend it one character at a time until
+unique in that roster. UUIDv7 prefixes are intentionally not used because nearby creations share
 them. Titles are readable labels, never routing identities.
 
-For example, `01957936-0000-7000-8000-000112345678` normally projects to
-`12345678`. If another session ends in `000212345678`, the references become
+For example, in a roster with no suffix collision,
+`01957936-0000-7000-8000-000112345678` projects to `12345678`.
+If another session ends in `000212345678`, the references become
 `112345678` and `212345678`. The eight-character reference is then ambiguous
 and must fail, not route to whichever session was listed first.
 
@@ -34,12 +36,19 @@ Global coordinator controls resolve before task-input authorization. The rendere
 shared targeted-control gate also resolves against its canonical live catalog;
 multi-target lifecycle operations validate every target before making a mutation.
 
-Roster, family, receipt, and other Cake operation text projects session identity
-fields without rewriting user text, paths, family IDs, message IDs, or thread IDs.
-Human titles remain readable. Structured outputs project identity fields only when
-the resulting value still satisfies the operation's declared output schema. A
-UUID-constrained typed field remains canonical while its text presentation uses a
-short reference. No typed output contract is silently weakened.
+General Cake operation results retain canonical session identities in text and
+structured data, except for global Cake Chat's fixed `cake-chat` label. Cosmetic
+projection performs no global catalog or archive discovery: a cheap read must not
+scan every Project and Worktree merely to abbreviate its result. This also keeps
+references unambiguous against identities outside the result without caching a
+potentially stale global roster.
+
+Operations that already own an authoritative roster, such as Workboards, may
+project session identity fields using that roster. Projection never rewrites user
+text, paths, family IDs, message IDs, or thread IDs. Human titles remain readable.
+Structured outputs project identity fields only when the resulting value still
+satisfies the operation's declared output schema. No typed output contract is
+silently weakened.
 
 Cross-session envelopes and generated notice headers are shortened in disposable
 provider context, both for regular Pi and Pi Durable. Persisted envelopes and
@@ -48,7 +57,7 @@ second transcript or modify Pi originals.
 
 ## Human-facing presentation
 
-Session-ID links display the same collision-aware bare trailing suffix used by agents. Markdown identity-only link labels
+Session-ID links display collision-aware bare trailing suffixes. Markdown identity-only link labels
 (including inline-code labels) use this presentation; authored titles stay intact.
 Known short link targets resolve against the live roster before rendering so the
 link destination and tooltip retain the canonical Pi UUID. Unresolved or ambiguous
@@ -132,16 +141,19 @@ help live in `src/domain/conversations/messageReferences.ts` and
 - `sessionReference(sessionId, knownSessionIds)` emits a collision-aware reference.
 - `resolveSessionReference(reference, knownSessionIds)` returns
   `{ ok: true, sessionId }` or `{ ok: false, error }`.
-- `projectSessionReferences(value, knownSessionIds)` projects JSON session identity
+- `projectSessionReferences(value, knownSessionIds?)` projects JSON session identity
   fields, including board audiences and receipt authors, without mutating its input.
+  Without a roster it retains canonical IDs, except for Cake Chat's fixed label.
 
 `src/domain/project-sessions/sessionReferences.ts` supplies live catalog operations
 and scoped helpers. `SessionReferenceEntry` contains `sessionId` and optional
 `title`. `resolveIn(reference, roster)` returns a canonical ID or a typed
 `ProjectSessionError`; `projectIn(value, roster)` projects JSON; `labelIn(id, roster)`
-adds a readable title. `catalog()`, `resolve(reference)`, and `project(value)` use
+adds a readable title. `catalog()` and short-reference `resolve(reference)` use
 registered Project roots, Managed Worktrees, retained family membership, archived
-sessions, and available saved Drafts.
+sessions, and available saved Drafts. Canonical resolution bypasses that discovery;
+`project(value)` is storage-free and preserves canonical IDs except for Cake Chat's
+fixed label.
 
 Workboards use their already-authorized family roster with the scoped helpers;
 reminders can use the same roster and labels. Scope selection remains with the

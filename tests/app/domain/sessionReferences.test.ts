@@ -1,9 +1,14 @@
 import { it } from "@effect/vitest";
-import { Effect, Layer, Stream } from "effect";
+import { Effect, Layer, Schema, Stream } from "effect";
 import { expect, vi } from "vitest";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import {
+  CAKE_CHAT_REFERENCE,
+  CAKE_CHAT_SESSION_ID,
+} from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
 import { catalog, project, resolve } from "../../../src/domain/project-sessions/sessionReferences";
+import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { CakeSessionRuntimes, PiSessionError } from "../../../src/services/pi/CakeSessionRuntimes";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
@@ -28,6 +33,19 @@ function fixture() {
     failure
       ? Stream.fail(new PiSessionError({ operation: "sessionIds", message: "Cannot list" }))
       : Stream.fromIterable(query.workingDirectory === "/project" ? activeIds : [inactive]),
+  );
+  const resolvedProjects = vi.fn(() =>
+    Stream.succeed({
+      version: 2 as const,
+      sessionId: retired,
+      projectPath: "/project",
+      projectName: "Project",
+      workingDirectory: "/deleted-worktree",
+      activeRoot: "/sessions",
+      resolvedRoot: "/resolved",
+      createdAt: timestamp,
+      modifiedAt: timestamp,
+    }),
   );
   const layer = Layer.mergeAll(
     Layer.mock(ApplicationState, {
@@ -74,18 +92,7 @@ function fixture() {
         }),
     }),
     Layer.mock(SessionArchiveStorage, {
-      resolvedProjects: () =>
-        Stream.succeed({
-          version: 2 as const,
-          sessionId: retired,
-          projectPath: "/project",
-          projectName: "Project",
-          workingDirectory: "/deleted-worktree",
-          activeRoot: "/sessions",
-          resolvedRoot: "/resolved",
-          createdAt: timestamp,
-          modifiedAt: timestamp,
-        }),
+      resolvedProjects,
       // Title-bearing resolved() and Pi catalog() deliberately remain unimplemented.
       // Layer.mock defects if reference resolution tries to open either catalog.
     }),
@@ -113,6 +120,7 @@ function fixture() {
   return {
     layer,
     sessionIds,
+    resolvedProjects,
     setActiveIds(ids: string[]) {
       activeIds = ids;
     },
@@ -121,6 +129,50 @@ function fixture() {
     },
   };
 }
+
+it.effect(
+  "cheap operation results do not repeatedly discover global archives or directories",
+  () => {
+    const f = fixture();
+    // The inactive session is not in this result, but collides with active's short suffix.
+    const value = {
+      todo: {
+        id: "task",
+        associations: [{ kind: "session", sessionId: active, title: "Worker" }],
+      },
+    };
+    const execute = vi.fn(async () => value);
+    const registry = new CakeOperationRegistry(
+      [
+        {
+          command: "todos.read",
+          topic: "todos",
+          summary: "Read a todo",
+          inputSchema: Schema.Struct({}),
+          examples: [{}],
+          result: "Todo",
+          execute,
+        },
+      ],
+      (value) => Effect.runPromise(project(value).pipe(Effect.provide(f.layer))),
+    );
+    return Effect.gen(function* () {
+      for (let index = 0; index < 20; index++) {
+        const result = yield* Effect.promise(() =>
+          registry.invoke(
+            { command: "todos.read" },
+            { signal: new AbortController().signal, toolCallId: `read-${index}`, runtime: {} },
+          ),
+        );
+        expect(result.details).toMatchObject({ result: value });
+        expect(result.text).toContain(active);
+      }
+      expect(execute).toHaveBeenCalledTimes(20);
+      expect(f.resolvedProjects).not.toHaveBeenCalled();
+      expect(f.sessionIds).not.toHaveBeenCalled();
+    });
+  },
+);
 
 it.effect("resolves and projects identities without title catalogs or runtime acquisition", () => {
   const f = fixture();
@@ -147,8 +199,8 @@ it.effect("resolves and projects identities without title catalogs or runtime ac
     expect(yield* resolve("deadbeef")).toBe(resolvedInPlace);
     expect(yield* resolve("cccccccc")).toBe(draft);
     expect(yield* project({ sessionId: active, childSessionId: inactive, text: active })).toEqual({
-      sessionId: "112345678",
-      childSessionId: "212345678",
+      sessionId: active,
+      childSessionId: inactive,
       text: active,
     });
     expect(yield* Effect.flip(resolve("12345678"))).toMatchObject({
@@ -196,6 +248,44 @@ it.effect("canonicalUuidResolutionDoesNotEnumerateRoster", () => {
   }).pipe(Effect.provide(f.layer));
 });
 
+it.effect("general projection retains round-trippable identities even when discovery fails", () => {
+  const f = fixture();
+  f.fail();
+  const sessionIds = [
+    active,
+    inactive, // Collides with active's eight-character suffix.
+    retired,
+    resolvedInPlace,
+    parent,
+    draft,
+    projectChatSessionId("/project"),
+    CAKE_CHAT_SESSION_ID,
+  ];
+  return Effect.gen(function* () {
+    const value = {
+      sessionIds,
+      parentSessionId: parent,
+      audience: [active, CAKE_CHAT_SESSION_ID],
+      text: CAKE_CHAT_SESSION_ID,
+      messageId: active,
+    };
+    const projected = yield* project(value);
+    expect(projected).toEqual({
+      ...value,
+      sessionIds: [...sessionIds.slice(0, -1), CAKE_CHAT_REFERENCE],
+      audience: [active, CAKE_CHAT_REFERENCE],
+    });
+    expect(value.sessionIds.at(-1)).toBe(CAKE_CHAT_SESSION_ID);
+    const output = Schema.decodeUnknownSync(
+      Schema.Struct({ sessionIds: Schema.Array(Schema.String) }),
+    )(projected);
+    for (const [index, reference] of output.sessionIds.entries())
+      expect(yield* resolve(reference)).toBe(sessionIds[index]);
+    expect(f.resolvedProjects).not.toHaveBeenCalled();
+    expect(f.sessionIds).not.toHaveBeenCalled();
+  }).pipe(Effect.provide(f.layer));
+});
+
 it.effect("suffixAmbiguityStillRejected", () => {
   const f = fixture();
   return Effect.gen(function* () {
@@ -224,7 +314,7 @@ it.effect("app.state retains canonical pane identities without any global roster
         },
       },
     };
-    expect(yield* project(value)).toBe(value);
+    expect(yield* project(value)).toEqual(value);
     expect(f.sessionIds).not.toHaveBeenCalled();
   }).pipe(Effect.provide(f.layer));
 });
@@ -233,7 +323,7 @@ it.effect("does not scan the roster for results containing no session identities
   const f = fixture();
   return Effect.gen(function* () {
     const value = { text: active, messageId: active };
-    expect(yield* project(value)).toBe(value);
+    expect(yield* project(value)).toEqual(value);
     expect(f.sessionIds).not.toHaveBeenCalled();
   }).pipe(Effect.provide(f.layer));
 });

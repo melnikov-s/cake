@@ -76,14 +76,20 @@ const identityKey = (key: string) =>
   /SessionIds?$/.test(key) || key === "sessionId" || key === "sessionIds";
 const audienceKey = (key: string) => key === "audience";
 
-/** Project only identity fields, never user text, paths, family IDs, or message/thread IDs. */
+/** Project only identity fields, never user text, paths, family IDs, or message/thread IDs.
+ * Without an authoritative roster, retain canonical IDs rather than guessing unique suffixes.
+ * Cake Chat's fixed label needs no roster and always round-trips to its permanent identity.
+ */
 export function projectSessionReferences(
   value: JsonValue,
-  knownSessionIds: readonly string[],
+  knownSessionIds?: readonly string[],
 ): JsonValue {
   const visit = (item: JsonValue, key = ""): JsonValue => {
-    if (Schema.is(Schema.String)(item))
-      return identityKey(key) || audienceKey(key) ? sessionReference(item, knownSessionIds) : item;
+    if (Schema.is(Schema.String)(item)) {
+      if (!identityKey(key) && !audienceKey(key)) return item;
+      if (item === CAKE_CHAT_SESSION_ID) return CAKE_CHAT_REFERENCE;
+      return knownSessionIds ? sessionReference(item, knownSessionIds) : item;
+    }
     if (Array.isArray(item)) return item.map((child) => visit(child, key));
     if (!Schema.is(jsonObjectSchema)(item)) return item;
     return Object.fromEntries(

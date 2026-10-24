@@ -12,7 +12,7 @@ Use `delivery: "fyi"` for passive notifications; prompt/steer only for authorize
 
 ## Other session references
 
-Session targets accept a canonical identity or a discovered bare hexadecimal suffix (at least eight trailing characters, with UUID hyphens removed; Project Chat hashes shorten the same way). Prefer the emitted short references in session messaging, inspection, Workboard audiences and receipt queries. Cake extends suffixes on collisions and rejects unknown or ambiguous references before routing; rediscover the roster or use a longer suffix rather than guessing. Titles are labels, not routing identities.
+Session targets accept a canonical identity or a discovered bare hexadecimal suffix (at least eight trailing characters, with UUID hyphens removed; Project Chat hashes shorten the same way). General operation results retain canonical IDs; use them directly in subsequent calls. Scoped rosters such as Workboards may emit short references. Cake extends suffixes on collisions within those rosters and rejects unknown or ambiguous references before routing; rediscover the roster or use a longer suffix rather than guessing. Titles are labels, not routing identities.
 
 ## Scope and workflow projection
 
