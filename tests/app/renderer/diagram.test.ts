@@ -70,6 +70,57 @@ describe("Pele diagram boundary", () => {
     expect(svg).not.toContain("foreignObject");
   });
 
+  it("pairs class and inline custom fills with a contrasting default foreground", () => {
+    const result = renderDiagram(
+      request(
+        "flowchart LR\nA[Normal] --> B[Runtime] --> C[Visible] --> D[Dark]\nclassDef runtime fill:#fff2cc,stroke:#d6b656\nclass B runtime\nstyle C fill:#d5e8d4,stroke:#82b366\nstyle D fill:#17365d",
+      ),
+    );
+    expect(result.error).toBeUndefined();
+    const doc = new DOMParser().parseFromString(sanitizeDiagram(result.svg!), "text/html");
+    expect(doc.querySelector('[data-id="A"]')?.getAttribute("style")).toBeNull();
+    for (const [id, fill] of [
+      ["B", "#fff2cc"],
+      ["C", "#d5e8d4"],
+      ["D", "#17365d"],
+    ]) {
+      const node = doc.querySelector<SVGElement>(`.pele-node[data-id="${id}"]`)!;
+      expect(node.style.fill).toBe(`contrast-color(${fill})`);
+      expect(node.querySelector<SVGElement>("rect")!.style.fill).toBe(fill);
+      expect(node.querySelector(".pele-label")?.getAttribute("style")).toBeNull();
+    }
+    expect(doc.querySelector<SVGElement>('[data-id="B"] rect')!.style.stroke).toBe("#d6b656");
+  });
+
+  it("preserves explicit label colors, transparent nodes and the live SVG theme", () => {
+    const result = renderDiagram(
+      request(
+        "flowchart LR\nA[Authored] --> B[Transparent] --> C[Named color]\nstyle A fill:#fff2cc,color:#543800\nstyle B fill:transparent\nstyle C fill:rebeccapurple",
+      ),
+    );
+    expect(result.error).toBeUndefined();
+    const doc = new DOMParser().parseFromString(sanitizeDiagram(result.svg!), "text/html");
+    expect(doc.querySelector<SVGElement>('[data-id="A"] .pele-label')!.style.fill).toBe("#543800");
+    expect(doc.querySelector('[data-id="B"]')?.getAttribute("style")).toBeNull();
+    expect(doc.querySelector<SVGElement>('.pele-node[data-id="C"]')!.style.fill).toBe(
+      "contrast-color(rebeccapurple)",
+    );
+    expect(doc.querySelector("svg")?.getAttribute("style")).toContain("--_fg:var(--pele-fg,");
+  });
+
+  it("keeps Cake's theme authoritative over Mermaid theme directives", () => {
+    const source = "flowchart LR\nA[Normal] --> B[Custom]\nstyle B fill:#fff2cc";
+    const plain = renderDiagram(request(source));
+    const themed = renderDiagram(
+      request(
+        '%%{init: {"theme":"dark","themeVariables":{"primaryColor":"#ff0000","primaryTextColor":"#fff"}}}%%\n' +
+          source,
+      ),
+    );
+    expect(themed.error).toBeUndefined();
+    expect(sanitizeDiagram(themed.svg!)).toBe(sanitizeDiagram(plain.svg!));
+  });
+
   it("keeps math readable without trusting an HTML/math or custom icon resolver", () => {
     const result = renderDiagram(request('flowchart LR\nA["$$x^2$$"] --> B[fa:fa-car Vehicle]'));
     expect(result.error).toBeUndefined();

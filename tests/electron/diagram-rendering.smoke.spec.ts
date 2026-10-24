@@ -28,6 +28,13 @@ for (const { theme, standalone } of (["light", "dark"] as const).flatMap((theme)
       `%% ${"A detailed pipeline description. ".repeat(20)}`,
       "  A[Cake application] --> B[Pi agent engine]",
       "  B --> C[Renderer presentation] --> D[SVG output]",
+      "  D --> E[Authored foreground] --> F[Named color]",
+      "  classDef runtime fill:#fff2cc,stroke:#d6b656",
+      "  class B runtime",
+      "  style C fill:#d5e8d4,stroke:#82b366",
+      "  style D fill:#17365d",
+      "  style E fill:#fff2cc,color:#543800",
+      "  style F fill:rebeccapurple",
       "```",
     ].join("\n");
     const assistantMarkdown = standalone
@@ -129,6 +136,44 @@ for (const { theme, standalone } of (["light", "dark"] as const).flatMap((theme)
       await expect(diagram).toBeVisible({ timeout: 20_000 });
       await expect(diagram).toHaveAttribute("tabindex", "0");
 
+      const assertNodeContrast = async () => {
+        const colors = await diagram.evaluate((svg) => {
+          const canvas = document.createElement("canvas");
+          canvas.width = canvas.height = 1;
+          const context = canvas.getContext("2d")!;
+          const luminance = (color: string) => {
+            context.clearRect(0, 0, 1, 1);
+            context.fillStyle = color;
+            context.fillRect(0, 0, 1, 1);
+            const channels = Array.from(context.getImageData(0, 0, 1, 1).data).slice(0, 3);
+            const linear = channels.map((channel) => {
+              const value = channel / 255;
+              return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+            });
+            return linear[0]! * 0.2126 + linear[1]! * 0.7152 + linear[2]! * 0.0722;
+          };
+          return ["A", "B", "C", "D", "E", "F"].map((id) => {
+            const node = svg.querySelector(`.pele-node[data-id="${id}"]`)!;
+            const background = getComputedStyle(node.querySelector("rect")!).fill;
+            const foreground = getComputedStyle(node.querySelector(".pele-label")!).fill;
+            const a = luminance(background);
+            const b = luminance(foreground);
+            return {
+              id,
+              background,
+              foreground,
+              contrast: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05),
+            };
+          });
+        });
+        for (const color of colors)
+          expect(color.contrast, JSON.stringify(color)).toBeGreaterThanOrEqual(4.5);
+        expect(colors.find((color) => color.id === "B")!.background).toBe("rgb(255, 242, 204)");
+        expect(colors.find((color) => color.id === "C")!.background).toBe("rgb(213, 232, 212)");
+        expect(colors.find((color) => color.id === "E")!.foreground).toBe("rgb(84, 56, 0)");
+      };
+      await assertNodeContrast();
+
       // Hover exposes the outer response control, so hidden duplicates also fail.
       const message = page.locator('[data-slot="message"]').filter({ has: diagram });
       await message.hover();
@@ -184,6 +229,7 @@ for (const { theme, standalone } of (["light", "dark"] as const).flatMap((theme)
         .poll(() => diagram.evaluate((svg) => getComputedStyle(svg).color))
         .not.toBe(beforeTheme);
       await expect(diagram).toHaveAttribute("data-retained", "yes");
+      await assertNodeContrast();
       await page.evaluate((next) => {
         document.documentElement.dataset.theme = next;
       }, theme);

@@ -96,7 +96,25 @@ export function sanitizeDiagram(svg: string): string {
   }
   const root = fragment.querySelector("svg");
   if (!root) throw new Error("Diagram renderer did not produce SVG.");
+  pairNodeColors(root);
   return root.outerHTML;
+}
+
+/** Pele applies authored fills to shapes, but leaves unspecified label colors
+ * inheriting the SVG's theme foreground. Pair those labels with their actual
+ * fill instead. CSS keeps variable-based fills live across theme changes; an
+ * explicit author-supplied label color still takes precedence. */
+function pairNodeColors(root: Element) {
+  for (const node of root.querySelectorAll<SVGElement>(".pele-node")) {
+    const background = node.querySelector<SVGElement>(
+      "rect[style], circle[style], ellipse[style], path[style], polygon[style]",
+    );
+    const fill = background?.style.fill;
+    if (!fill || /^(?:none|transparent)$/i.test(fill)) continue;
+    const foreground = `contrast-color(${fill})`;
+    node.style.fill = foreground;
+    node.style.color = foreground;
+  }
 }
 
 export function isDiagramHref(href: string) {
