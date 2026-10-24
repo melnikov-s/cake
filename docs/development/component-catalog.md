@@ -60,7 +60,7 @@ worktree tools beneath it when present. Empty caps collapse without reserved spa
 
 [`SessionResultNotice`](../../src/renderer/components/ui/session-result-notice.tsx) contains one title-and-chevron disclosure per application-delivered report or unique batch note, independently of model prose. Repeated exact reports are consolidated; `SessionUpdateEntry` reuses `InlineMessageSource` for lazy original access. Batch-only notes expand in place. This list has no summaries, status labels or to-do controls.
 
-`ContextUsageButton` presents estimated system, memory and message token accounting with a separate cache-freshness border. It opens the shared Context Browser; it does not infer context retention from cache color.
+`ContextUsageButton` presents a compact context icon and estimated total/limit, with a subtle cache-freshness underline. It opens the shared Context Browser, which retains the full system, memory, messages and baseline accounting. The accessible description includes the breakdown; cache color never represents context health or retention.
 
 ## Navigation and layout
 

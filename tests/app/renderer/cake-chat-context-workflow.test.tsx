@@ -115,10 +115,10 @@ it.each(["global", "project-chat"] as const)(
     using f = fixture(status, scope);
     const button = screen.getByRole("button", { name: "Browse context" });
     expect(button.closest("[title]")).toBeNull();
-    expect(button.textContent).toBe("[Sys 5k · Mem 10k · Msgs 30k] · ≈45k/300k");
+    expect(button.textContent).toBe("≈45k/300k");
     expect(button.getAttribute("data-cache-state")).toBe("likely-warm");
     expect(button.getAttribute("aria-description")).toBe(
-      "Cache: Likely warm\nExpires: ≈5 min\nNext: Continue",
+      "Estimated active context 45,000 of 300,000 tokens. System 5,000; memory 10,000; messages 30,000. Cache: Likely warm\nExpires: ≈5 min\nNext: Continue",
     );
     fireEvent.mouseEnter(button);
     const tooltip = await screen.findByRole("tooltip");
@@ -131,8 +131,23 @@ it.each(["global", "project-chat"] as const)(
     fireEvent.click(button);
     expect(screen.queryByRole("tooltip")).toBeNull();
     expect(await screen.findByRole("dialog", { name: "Context" })).toBeTruthy();
-    expect(screen.getByText("Baseline (system + memory): ≈15,000 tokens.")).toBeTruthy();
-    expect(screen.getByText(/Browsing earlier originals does not add them/)).toBeTruthy();
+    for (const [label, tokens] of [
+      ["System", "5,000"],
+      ["Memory", "10,000"],
+      ["Messages", "30,000"],
+      ["Baseline", "15,000"],
+      ["Active", "45,000"],
+      ["Limit", "300,000"],
+      ["Model window", "400,000"],
+      ["Cache", "Likely warm"],
+    ] as const) {
+      expect(screen.getByRole("rowheader", { name: label }).nextElementSibling?.textContent).toBe(
+        tokens,
+      );
+    }
+    expect(screen.getByRole("button", { name: "Refresh context" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Worktree preference" })).toBeTruthy();
+    expect(screen.getByRole("table", { name: "Context statistics" })).toBeTruthy();
     expect(f.inspect).toHaveBeenCalledExactlyOnceWith(
       {
         sessionId: scope === "global" ? CAKE_CHAT_SESSION_ID : projectChatSessionId("/project"),
@@ -141,6 +156,24 @@ it.each(["global", "project-chat"] as const)(
       expect.anything(),
     );
     expect(f.compact).not.toHaveBeenCalled();
+    f.publish({
+      ...status,
+      systemTokens: 6_000,
+      memoryTokens: 11_000,
+      messageTokens: 31_000,
+      totalTokens: 48_000,
+    });
+    expect(button.textContent).toBe("≈48k/300k");
+    for (const [label, tokens] of [
+      ["System", "6,000"],
+      ["Memory", "11,000"],
+      ["Messages", "31,000"],
+      ["Baseline", "17,000"],
+    ] as const) {
+      expect(screen.getByRole("rowheader", { name: label }).nextElementSibling?.textContent).toBe(
+        tokens,
+      );
+    }
   },
 );
 
@@ -152,7 +185,7 @@ it("changes the next-message forecast at persisted-request expiry without invoki
   expect(button.getAttribute("data-cache-state")).toBe("likely-warm");
   act(() => vi.advanceTimersByTime(5 * 60_000));
   expect(button.getAttribute("data-cache-state")).toBe("likely-cold");
-  expect(button.getAttribute("aria-description")).toBe(
+  expect(button.getAttribute("aria-description")).toContain(
     "Cache: Likely cold\nExpires: Expired\nNext: Summarize",
   );
   fireEvent.mouseEnter(button);
@@ -171,7 +204,7 @@ it("keeps missing cache metadata unknown and plans blocking preparation for the 
   using f = fixture(missing);
   const button = screen.getByRole("button", { name: "Browse context" });
   expect(button.getAttribute("data-cache-state")).toBe("unknown");
-  expect(button.getAttribute("aria-description")).toBe(
+  expect(button.getAttribute("aria-description")).toContain(
     "Cache: Unknown\nExpires: Unknown\nNext: Summarize",
   );
   expect(f.compact).not.toHaveBeenCalled();
@@ -240,7 +273,34 @@ it("shows actual preparation activity, a limit-triggered plan despite warm cache
     lastSummary: { beforeTokens: 89_300, afterTokens: 45_000, reason: "limit", completedAt: at },
   });
   fireEvent.click(screen.getByRole("button", { name: "Browse context" }));
+  await screen.findByRole("table", { name: "Context statistics" });
+  for (const [label, value] of [
+    [
+      "Last memory update",
+      new Date(at).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" }),
+    ],
+    ["Memory change", "89,300 → 45,000"],
+    ["Update reason", "Context limit"],
+  ] as const) {
+    expect(screen.getByRole("rowheader", { name: label }).nextElementSibling?.textContent).toBe(
+      value,
+    );
+  }
+  const missingCache = { ...status };
+  delete missingCache.cache;
+  f.publish({
+    ...missingCache,
+    lastSummary: {
+      beforeTokens: 89_300,
+      afterTokens: 45_000,
+      reason: "cache-unknown",
+      completedAt: at,
+    },
+  });
+  expect(screen.getByRole("rowheader", { name: "Cache" }).nextElementSibling?.textContent).toBe(
+    "Unknown",
+  );
   expect(
-    await screen.findByText("Last memory update: ≈89,300 → ≈45,000 tokens · limit."),
-  ).toBeTruthy();
+    screen.getByRole("rowheader", { name: "Update reason" }).nextElementSibling?.textContent,
+  ).toBe("Cache unknown");
 });

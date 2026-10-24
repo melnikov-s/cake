@@ -19,8 +19,54 @@ export const ContextInspector = observer(function ContextInspector({
   usage?: boolean;
 }) {
   const trigger = useRef<HTMLButtonElement>(null);
-  const activeTokens = usage ? store.status?.totalTokens : undefined;
+  const status = usage ? store.status : undefined;
+  const activeTokens = status?.totalTokens;
   const headerTokens = activeTokens ?? store.estimatedTokens;
+  const summary = status?.lastSummary;
+  const statistics: [string, string][] = status
+    ? [
+        ["Active", status.totalTokens.toLocaleString()],
+        ["System", status.systemTokens.toLocaleString()],
+        ["Memory", status.memoryTokens.toLocaleString()],
+        ["Messages", status.messageTokens.toLocaleString()],
+        ["Baseline", (status.systemTokens + status.memoryTokens).toLocaleString()],
+        ["Limit", status.limitTokens.toLocaleString()],
+        ["Model window", status.modelLimitTokens.toLocaleString()],
+        [
+          "Cache",
+          {
+            "likely-warm": "Likely warm",
+            "likely-cold": "Likely cold",
+            uncertain: "Uncertain",
+            unknown: "Unknown",
+          }[store.cache.state],
+        ],
+      ]
+    : [];
+  if (summary) {
+    statistics.push(
+      [
+        "Last memory update",
+        new Date(summary.completedAt).toLocaleString(undefined, {
+          dateStyle: "short",
+          timeStyle: "short",
+        }),
+      ],
+      [
+        "Memory change",
+        `${summary.beforeTokens.toLocaleString()} → ${summary.afterTokens.toLocaleString()}`,
+      ],
+      [
+        "Update reason",
+        {
+          limit: "Context limit",
+          "cache-cold": "Cache cold",
+          "cache-unknown": "Cache unknown",
+          overflow: "Overflow",
+        }[summary.reason],
+      ],
+    );
+  }
   useEffect(() => () => store.close(), [store]);
   const close = () => {
     store.close();
@@ -95,42 +141,21 @@ export const ContextInspector = observer(function ContextInspector({
               className="min-h-0 overflow-auto px-4 py-3"
               key={store.loading ? "loading" : "content"}
             >
-              {usage && store.status && (
-                <div className="mb-3 border-b border-border px-2 pb-3 text-xs leading-6 text-muted-foreground">
-                  <p className="text-foreground">{store.activityLabel ?? store.nextSend}</p>
-                  <p>
-                    Active ≈{store.status.totalTokens.toLocaleString()} /{" "}
-                    {store.status.limitTokens.toLocaleString()} tokens.
-                  </p>
-                  <p>
-                    Sys ≈{store.status.systemTokens.toLocaleString()} · Mem ≈
-                    {store.status.memoryTokens.toLocaleString()} · Msgs ≈
-                    {store.status.messageTokens.toLocaleString()}
-                  </p>
-                  <p>
-                    Baseline (system + memory): ≈
-                    {(store.status.systemTokens + store.status.memoryTokens).toLocaleString()}{" "}
-                    tokens.
-                  </p>
-                  <p>
-                    Limit: the smaller of Settings (
-                    {store.status.configuredLimitTokens.toLocaleString()}) and model window (
-                    {store.status.modelLimitTokens.toLocaleString()}).
-                  </p>
-                  <p>
-                    Cache {store.cache.state.replaceAll("-", " ")}. {store.cache.detail}
-                  </p>
-                  {store.status.lastSummary && (
-                    <p>
-                      Last memory update: ≈{store.status.lastSummary.beforeTokens.toLocaleString()}{" "}
-                      → ≈{store.status.lastSummary.afterTokens.toLocaleString()} tokens ·{" "}
-                      {store.status.lastSummary.reason.replaceAll("-", " ")}.
-                    </p>
-                  )}
-                  <p>
-                    Browsing earlier originals does not add them to the model context. Summaries can
-                    omit detail.
-                  </p>
+              {status && (
+                <div className="mb-3 border-b border-border px-2 pb-3">
+                  <table
+                    aria-label="Context statistics"
+                    className="w-full table-fixed text-xs leading-6 [&_td]:py-0.5 [&_td]:text-right [&_td]:font-mono [&_td]:tabular-nums [&_th]:py-0.5 [&_th]:pr-4 [&_th]:text-left [&_th]:font-normal [&_th]:text-muted-foreground"
+                  >
+                    <tbody>
+                      {statistics.map(([label, value]) => (
+                        <tr key={label}>
+                          <th scope="row">{label}</th>
+                          <td>{value}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
               {store.loading && <LoadingSpinner label="Loading context" />}

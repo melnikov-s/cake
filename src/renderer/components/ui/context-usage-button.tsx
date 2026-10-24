@@ -1,5 +1,6 @@
 import type { Ref } from "react";
 import { Button } from "./button";
+import { ContextIcon } from "./icons";
 import { TooltipBubble, useTooltip } from "./tooltip";
 import { cn } from "@/lib/utils";
 
@@ -8,7 +9,7 @@ const format = (tokens: number) =>
     .format(tokens)
     .toLowerCase();
 
-/** Compact context accounting; border conveys cache freshness, never context health. */
+/** Quiet context total; the subtle cache underline never represents context health. */
 export function ContextUsageButton({
   ref,
   system,
@@ -31,18 +32,23 @@ export function ContextUsageButton({
   onClick(): void;
 }) {
   const { anchor, show, hide } = useTooltip();
+  const available = total !== undefined && limit !== undefined;
+  const description = available
+    ? `Estimated active context ${total.toLocaleString("en")} of ${limit.toLocaleString("en")} tokens. System ${(system ?? 0).toLocaleString("en")}; memory ${(memory ?? 0).toLocaleString("en")}; messages ${(messages ?? 0).toLocaleString("en")}. ${detail}`
+    : detail;
   return (
     <>
       <Button
         ref={ref}
         variant="ghost"
         aria-label="Browse context"
-        aria-description={detail}
+        aria-description={description}
         data-slot="context-usage"
         data-cache-state={cacheState}
         className={cn(
-          "h-auto min-h-7 shrink-0 gap-1 rounded-full border bg-muted/40 px-2 py-1 font-mono text-xs font-normal tabular-nums",
-          cacheState === "likely-warm" ? "border-success/50" : "border-border/60",
+          "h-7 shrink-0 gap-1.5 rounded-sm border border-border/65 bg-transparent px-[0.4375rem] py-0 font-mono text-xs font-normal tabular-nums [&>svg]:size-3.5",
+          cacheState === "likely-warm" &&
+            "shadow-[inset_0_-1px_color-mix(in_srgb,var(--success)_40%,transparent)]",
         )}
         onClick={() => {
           hide();
@@ -55,18 +61,16 @@ export function ContextUsageButton({
         }}
         onBlur={hide}
       >
-        {total === undefined || limit === undefined ? (
-          "Context unavailable"
-        ) : (
+        {available ? (
           <>
-            <span className="@max-[38rem]/composer-dock:hidden">
-              [Sys {format(system ?? 0)} · Mem {format(memory ?? 0)} · Msgs {format(messages ?? 0)}]
-              ·{" "}
-            </span>
-            <span className="text-foreground">
-              ≈{format(total)}/{format(limit)}
+            <ContextIcon />
+            <span className="font-medium text-foreground">
+              ≈{format(total)}
+              <span className="font-normal text-muted-foreground">/{format(limit)}</span>
             </span>
           </>
+        ) : (
+          "Context unavailable"
         )}
       </Button>
       {anchor && (

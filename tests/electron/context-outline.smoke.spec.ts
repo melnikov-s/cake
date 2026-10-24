@@ -26,9 +26,12 @@ for (const scope of ["global", "project-chat"] as const) {
     const closeProvider = await openRequestInspectorFixture(
       { cakeHome, project },
       {
-        contextLimitTokens: 8_000,
+        contextLimitTokens: 12_000,
         beforeResponse: async (body) => {
-          if (body.includes("Compress or merge <input>")) {
+          if (
+            body.includes("Compaction: compress message") ||
+            body.includes("Compaction: merge lines")
+          ) {
             rebuilding = true;
             await summary.promise;
           } else if (rebuilding) await reply.promise;
@@ -106,7 +109,10 @@ for (const scope of ["global", "project-chat"] as const) {
       await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
       const warm = page.getByRole("button", { name: "Browse context", exact: true });
       await expect(warm).toHaveAttribute("data-cache-state", "likely-warm");
-      await expect(warm).toContainText("Sys");
+      await expect(warm).toHaveText(/^≈[\d.]+k?\/[\d.]+k$/);
+      await expect(warm).toHaveAccessibleDescription(
+        /Estimated active context .* System .*memory .*messages .*Cache:/,
+      );
       await warm.hover();
       const hover = page.getByRole("tooltip");
       await expect(hover).toHaveText("Cache: Likely warm\nExpires: ≈5 min\nNext: Continue");
@@ -118,6 +124,33 @@ for (const scope of ["global", "project-chat"] as const) {
       await expect(
         dialog.getByRole("button", { name: "Close context", exact: true }),
       ).toBeFocused();
+      const statistics = dialog.getByRole("table", { name: "Context statistics" });
+      for (const label of [
+        "Active",
+        "System",
+        "Memory",
+        "Messages",
+        "Baseline",
+        "Limit",
+        "Model window",
+      ]) {
+        const term = statistics.getByRole("rowheader", { name: label, exact: true });
+        const value = term.locator("+ td");
+        await expect(term).toBeVisible();
+        await expect(value).toHaveText(/^[\d,]+$/);
+      }
+      await expect(
+        statistics.getByRole("row", { name: "Cache Likely warm", exact: true }),
+      ).toBeVisible();
+      await expect(
+        statistics.getByRole("rowheader", { name: "Last memory update" }).locator("+ td"),
+      ).not.toBeEmpty();
+      await expect(
+        statistics.getByRole("row", { name: "Update reason Context limit", exact: true }),
+      ).toBeVisible();
+      await expect(
+        dialog.getByRole("button", { name: "Refresh context", exact: true }),
+      ).toBeEnabled();
       await dialog.getByRole("button", { name: "Cake Chat instructions", exact: true }).click();
       await expect(dialog).toContainText(
         "Prefer independent worktrees. Ask before merging changes.",

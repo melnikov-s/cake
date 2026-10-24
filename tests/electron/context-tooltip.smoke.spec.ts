@@ -113,7 +113,7 @@ for (const scope of scopes) {
       } else {
         await expect(target).toHaveAccessibleName("Browse context");
         await expect(target).toHaveAccessibleDescription(
-          "Cache: Likely warm\nExpires: ≈30 min\nNext: Continue",
+          /^Estimated active context [\d,]+ of [\d,]+ tokens\. System [\d,]+; memory [\d,]+; messages [\d,]+\. Cache: Likely warm\s+Expires: ≈30 min\s+Next: Continue$/,
         );
         await expect(tooltip).toHaveText("Cache: Likely warm\nExpires: ≈30 min\nNext: Continue");
       }
