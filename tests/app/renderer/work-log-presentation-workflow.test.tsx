@@ -34,14 +34,14 @@ describe("Work-log presentation workflow", () => {
     expect(screen.getByText("Contents of home")).toBeDefined();
   });
 
-  it.each([0, 5, 49, 50, 100, 1200])(
-    "shows recorded tool duration %sms only when it rounds nonzero",
+  it.each([0, 5, 49, 50, 100, 999, 1000, 1200])(
+    "shows recorded tool duration %sms only when at least one whole second has elapsed",
     async (durationMs) => {
       using fixture = renderWorkLog([{ ...readFile("recorded"), durationMs }]);
       await fixture.user.click(workLog().summary);
       const elapsed = screen.queryByLabelText("elapsed time");
-      if (durationMs < 50) expect(elapsed).toBeNull();
-      else expect(elapsed?.textContent).toBe(durationMs === 1200 ? "1.2s" : "0.1s");
+      if (durationMs < 1000) expect(elapsed).toBeNull();
+      else expect(elapsed?.textContent).toBe("1s");
     },
   );
 
@@ -306,9 +306,7 @@ describe("Work-log presentation workflow", () => {
     expect(screen.getByRole("region", { name: "File changes to src/added.ts" })).toBe(diff);
     expect(diff.textContent).toContain("one");
     expect(diff.textContent).toContain("three");
-    expect(screen.getByRole("button", { name: "1 tool call · 0.5s Activity Hide steps" })).toBe(
-      steps,
-    );
+    expect(screen.getByRole("button", { name: "1 tool call Activity Hide steps" })).toBe(steps);
     expect(tool.getAttribute("aria-expanded")).toBe("true");
   });
 
@@ -342,32 +340,32 @@ describe("Work-log presentation workflow", () => {
     ).toBeDefined();
     act(() => vi.advanceTimersByTime(1_000));
     expect(
-      within(group).getByRole("button", { name: "1 tool call · 1.0s Activity View steps" }),
+      within(group).getByRole("button", { name: "1 tool call · 1s Activity View steps" }),
     ).toBeDefined();
 
     fixture.publish([addedFile(), removedFile("running")], true);
     act(() => vi.advanceTimersByTime(1_500));
     const steps = within(group).getByRole("button", {
-      name: "2 tool calls · 2.5s Activity View steps",
+      name: "2 tool calls · 2s Activity View steps",
     });
     await fixture.user.click(steps);
     expect(
       within(group)
         .getAllByLabelText("elapsed time")
         .map((chip) => chip.textContent),
-    ).toEqual(["1.0s", "1.5s"]);
+    ).toEqual(["1s", "1s"]);
 
     fixture.publish([addedFile(), removedFile()]);
     expect(group.open).toBe(true);
     act(() => vi.advanceTimersByTime(5_000));
     expect(
-      within(group).getByRole("button", { name: "2 tool calls · 2.5s Activity Hide steps" }),
+      within(group).getByRole("button", { name: "2 tool calls · 2s Activity Hide steps" }),
     ).toBeDefined();
     expect(
       within(group)
         .getAllByLabelText("elapsed time")
         .map((chip) => chip.textContent),
-    ).toEqual(["1.0s", "1.5s"]);
+    ).toEqual(["1s", "1s"]);
   });
 
   it("reconciles live starts, pending siblings and recorded result durations through reload", async () => {
@@ -402,31 +400,31 @@ describe("Work-log presentation workflow", () => {
       fixture.publish([running, pending], true);
       act(() => vi.advanceTimersByTime(2_000));
       expect(screen.getAllByLabelText("elapsed time").map((chip) => chip.textContent)).toEqual([
-        "3.1s",
+        "3s",
       ]);
       fixture.publish([{ ...running, state: "interrupted" }, pending], true);
       act(() => vi.advanceTimersByTime(100));
       fixture.publish([running, pending], true);
       act(() => vi.advanceTimersByTime(1_000));
-      expect(screen.getByLabelText("elapsed time").textContent).toBe("4.2s");
+      expect(screen.getByLabelText("elapsed time").textContent).toBe("4s");
       fixture.publish(result(32_021));
-      expect(screen.getByLabelText("elapsed time").textContent).toBe("32.0s");
+      expect(screen.getByLabelText("elapsed time").textContent).toBe("32s");
       // Timing can arrive without a state change, and must replace a local estimate.
       fixture.publish(result(38_224));
-      expect(screen.getByLabelText("elapsed time").textContent).toBe("38.2s");
+      expect(screen.getByLabelText("elapsed time").textContent).toBe("38s");
       act(() => vi.advanceTimersByTime(5_000));
-      expect(screen.getByLabelText("elapsed time").textContent).toBe("38.2s");
+      expect(screen.getByLabelText("elapsed time").textContent).toBe("38s");
     }
     {
       using reconnected = renderWorkLog([running, pending], { streaming: true });
       await reconnected.user.click(workLog().summary);
-      expect(screen.getByLabelText("elapsed time").textContent).toBe("9.2s");
+      expect(screen.getByLabelText("elapsed time").textContent).toBe("9s");
       act(() => vi.advanceTimersByTime(1_000));
-      expect(screen.getByLabelText("elapsed time").textContent).toBe("10.2s");
+      expect(screen.getByLabelText("elapsed time").textContent).toBe("10s");
     }
     using reloaded = renderWorkLog(result(38_224));
     await reloaded.user.click(workLog().summary);
-    expect(screen.getByLabelText("elapsed time").textContent).toBe("38.2s");
+    expect(screen.getByLabelText("elapsed time").textContent).toBe("38s");
     reloaded.publish(result(5));
     expect(screen.queryByLabelText("elapsed time")).toBeNull();
   });
@@ -437,7 +435,7 @@ describe("Work-log presentation workflow", () => {
     using fixture = renderWorkLog([readFile("first", "running")], { streaming: true });
     const loading = () => screen.getByRole("status", { name: "Churning in progress" });
     act(() => vi.advanceTimersByTime(1_000));
-    expect(within(loading()).getByText("1.0s")).toBeDefined();
+    expect(within(loading()).getByText("1s")).toBeDefined();
     fixture.publish(
       [
         readFile("first"),
@@ -454,7 +452,7 @@ describe("Work-log presentation workflow", () => {
     act(() => vi.advanceTimersByTime(1_000));
     fixture.publish([readFile("first"), readFile("second", "running")], true);
     act(() => vi.advanceTimersByTime(1_000));
-    expect(within(loading()).getByText("3.0s")).toBeDefined();
+    expect(within(loading()).getByText("3s")).toBeDefined();
     fixture.publish([readFile("first"), readFile("second")]);
     expect(screen.queryByRole("status", { name: "Churning in progress" })).toBeNull();
   });
@@ -494,11 +492,11 @@ describe("Work-log presentation workflow", () => {
         const secondChat = within(second.container);
         await second.user.click(secondChat.getByText("Work log", { exact: true }));
         act(() => vi.advanceTimersByTime(1_000));
-        expect(firstChat.getByLabelText("elapsed time").textContent).toBe("1.5s");
-        expect(secondChat.getByLabelText("elapsed time").textContent).toBe("1.0s");
+        expect(firstChat.getByLabelText("elapsed time").textContent).toBe("1s");
+        expect(secondChat.getByLabelText("elapsed time").textContent).toBe("1s");
       }
       act(() => vi.advanceTimersByTime(500));
-      expect(firstChat.getByLabelText("elapsed time").textContent).toBe("2.0s");
+      expect(firstChat.getByLabelText("elapsed time").textContent).toBe("2s");
     }
   });
 
@@ -512,8 +510,8 @@ describe("Work-log presentation workflow", () => {
     await fixture.user.click(screen.getByRole("button", { name: /^read first/ }));
     act(() => vi.advanceTimersByTime(1_000));
     expect(screen.getAllByLabelText("elapsed time").map((chip) => chip.textContent)).toEqual([
-      "1.0s",
-      "1.0s",
+      "1s",
+      "1s",
     ]);
 
     fixture.publish([readFile("second")]);
@@ -523,7 +521,7 @@ describe("Work-log presentation workflow", () => {
       "false",
     );
     expect(screen.getAllByLabelText("elapsed time").map((chip) => chip.textContent)).toEqual([
-      "1.0s",
+      "1s",
     ]);
   });
 
@@ -543,11 +541,11 @@ describe("Work-log presentation workflow", () => {
       );
       act(() => vi.advanceTimersByTime(500));
     }
-    expect(screen.getByLabelText("elapsed time").textContent).toBe("1.5s");
+    expect(screen.getByLabelText("elapsed time").textContent).toBe("1s");
     expect(screen.getByText("Inspecting the results")).toBeDefined();
     fixture.publish([readFile("first")]);
     act(() => vi.advanceTimersByTime(2_000));
-    expect(screen.getByLabelText("elapsed time").textContent).toBe("1.5s");
+    expect(screen.getByLabelText("elapsed time").textContent).toBe("1s");
   });
 
   it("preserves the user's open group as live reasoning is replaced by its settled transcript identity", async () => {

@@ -36,7 +36,7 @@ describe("Tool", () => {
             state: "success",
           }}
           onOpenSourceLocation={onOpenSourceLocation}
-          timer={<span className="tool-timer">1.2s</span>}
+          timer={<span className="tool-timer">1s</span>}
         />,
       );
     });
@@ -90,20 +90,23 @@ describe("Tool", () => {
     expect(writeText).toHaveBeenCalledWith(path);
   });
 
-  it.each([0, 5, 49, 50, 100, 1200])("hides rounded-zero nested duration %sms", (durationMs) => {
-    const call = {
-      id: "nested",
-      name: "read",
-      input: '{"path":"a.ts"}',
-      state: "success" as const,
-      durationMs,
-      outputAvailability: "unavailable" as const,
-    };
-    act(() => root.render(<Tool part={{ kind: "tool", ...call }} activity={call} />));
-    const elapsed = container.querySelector('[aria-label="elapsed time"]');
-    if (durationMs < 50) expect(elapsed).toBeNull();
-    else expect(elapsed?.textContent).toBe(durationMs === 1200 ? "1.2s" : "0.1s");
-  });
+  it.each([0, 5, 49, 50, 100, 999, 1000, 1200])(
+    "shows nested duration %sms in whole seconds, omitting zero",
+    (durationMs) => {
+      const call = {
+        id: "nested",
+        name: "read",
+        input: '{"path":"a.ts"}',
+        state: "success" as const,
+        durationMs,
+        outputAvailability: "unavailable" as const,
+      };
+      act(() => root.render(<Tool part={{ kind: "tool", ...call }} activity={call} />));
+      const elapsed = container.querySelector('[aria-label="elapsed time"]');
+      if (durationMs < 1000) expect(elapsed).toBeNull();
+      else expect(elapsed?.textContent).toBe("1s");
+    },
+  );
 
   it("opens an edit at the changed range reported by the tool", () => {
     const onOpenSourceLocation = vi.fn();

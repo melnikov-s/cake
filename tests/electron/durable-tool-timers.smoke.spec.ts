@@ -111,7 +111,7 @@ test("Project and global Cake Chat restore Pi-recorded ordinary tool timers afte
     const verify = async () => {
       const summary = page.getByText("Work log", { exact: true });
       await summary.click();
-      for (const [index, elapsed] of ["32.0s", "38.2s", undefined].entries()) {
+      for (const [index, elapsed] of ["32s", "38s", undefined].entries()) {
         const timer = page
           .locator(`[data-part-id="tool-${calls[index]!.id}"]`)
           .getByLabel("elapsed time");

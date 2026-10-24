@@ -62,8 +62,8 @@ for (const { theme, width } of [
       await expect(prefix).toBeVisible();
       await expect(home.getByLabel("elapsed time")).toHaveCount(0);
       await expect(row("prefix").getByLabel("elapsed time")).toHaveCount(0);
-      await expect(row("project").getByLabel("elapsed time")).toHaveText("0.1s");
-      await expect(row("bash").getByLabel("elapsed time")).toHaveText("1.2s");
+      await expect(row("project").getByLabel("elapsed time")).toHaveCount(0);
+      await expect(row("bash").getByLabel("elapsed time")).toHaveText("1s");
 
       const dotLabelSpacing = (target: Locator) =>
         target.evaluate((element) => {

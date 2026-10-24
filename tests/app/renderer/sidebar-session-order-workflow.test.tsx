@@ -188,21 +188,23 @@ for (const kind of ["project-session"] as const) {
       const fixture = renderOrdering();
       const baselineTimers = vi.getTimerCount();
       const timestamp = () => document.querySelector('[data-session-id="previous"] time')!;
-      fixture.publishActivity(true, Date.now() - 65_000);
-      expect(timestamp().textContent).toBe("Working 1m 5.0s");
+      const startedAt = Date.now() - 65_400;
+      fixture.publishActivity(true, startedAt);
+      expect(timestamp().textContent).toBe("Working 1m 5s");
+      expect(timestamp().getAttribute("datetime")).toBe(new Date(startedAt).toISOString());
       expect(fixture.order()[0]).toBe("previous");
       expect(vi.getTimerCount()).toBe(baselineTimers + 1);
       act(() => vi.advanceTimersByTime(2_000));
-      expect(timestamp().textContent).toBe("Working 1m 7.0s");
+      expect(timestamp().textContent).toBe("Working 1m 7s");
       // Catalog refresh rerenders the row without changing the current stretch.
       fixture.publish(
         initialSessions.map((session) =>
           session.sessionId === "previous"
-            ? { ...session, title: "Renamed", running: true, workingStartedAt: Date.now() - 67_000 }
+            ? { ...session, title: "Renamed", running: true, workingStartedAt: startedAt }
             : session,
         ),
       );
-      expect(timestamp().textContent).toBe("Working 1m 7.0s");
+      expect(timestamp().textContent).toBe("Working 1m 7s");
       fixture.publishActivity(false, null);
       expect(timestamp().getAttribute("datetime")).toBe(initialSessions[1]!.modifiedAt);
       expect(timestamp().textContent).not.toContain("Working");
@@ -212,9 +214,9 @@ for (const kind of ["project-session"] as const) {
       expect(timestamp().textContent).toBe("Working");
       expect(vi.getTimerCount()).toBe(baselineTimers);
       fixture.publishActivity(true, Date.now());
-      expect(timestamp().textContent).toBe("Working 0.0s");
+      expect(timestamp().textContent).toBe("Working 0s");
       act(() => vi.advanceTimersByTime(1_000));
-      expect(timestamp().textContent).toBe("Working 1.0s");
+      expect(timestamp().textContent).toBe("Working 1s");
       fixture[Symbol.dispose]();
       expect(vi.getTimerCount()).toBe(0);
     });

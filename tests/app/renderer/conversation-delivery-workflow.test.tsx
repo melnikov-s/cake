@@ -36,9 +36,9 @@ describe("Conversation delivery workflow", () => {
     await fixture.user.click(screen.getByRole("button", { name: "Send" }));
     expect(prompt).toHaveBeenCalledOnce();
     const loading = () => screen.getByRole("status", { name: "Churning in progress" });
-    expect(within(loading()).getByText("0.0s")).toBeDefined();
+    expect(within(loading()).getByText("0s")).toBeDefined();
     act(() => vi.advanceTimersByTime(2_000));
-    expect(within(loading()).getByText("2.0s")).toBeDefined();
+    expect(within(loading()).getByText("2s")).toBeDefined();
 
     fixture.event({
       _tag: "TurnAccepted",
@@ -50,9 +50,9 @@ describe("Conversation delivery workflow", () => {
       admission.resolve(turnId);
       await admission.promise;
     });
-    expect(within(loading()).getByText("2.0s")).toBeDefined();
+    expect(within(loading()).getByText("2s")).toBeDefined();
     act(() => vi.advanceTimersByTime(1_000));
-    expect(within(loading()).getByText("3.0s")).toBeDefined();
+    expect(within(loading()).getByText("3s")).toBeDefined();
 
     fixture.event({ _tag: "StreamingChanged", sessionId: deliverySessionId, streaming: true });
     fixture.event({
@@ -62,7 +62,7 @@ describe("Conversation delivery workflow", () => {
       outcome: "complete",
     });
     act(() => vi.advanceTimersByTime(1_000));
-    expect(within(loading()).getByText("4.0s")).toBeDefined();
+    expect(within(loading()).getByText("4s")).toBeDefined();
     fixture.event({ _tag: "StreamingChanged", sessionId: deliverySessionId, streaming: false });
     expect(screen.queryByRole("status", { name: "Churning in progress" })).toBeNull();
 
@@ -70,7 +70,7 @@ describe("Conversation delivery workflow", () => {
     await fixture.user.click(screen.getByRole("button", { name: "Send" }));
     fixture.event({ _tag: "StreamingChanged", sessionId: deliverySessionId, streaming: true });
     act(() => vi.advanceTimersByTime(100));
-    expect(within(loading()).getByText("0.1s")).toBeDefined();
+    expect(within(loading()).getByText("0s")).toBeDefined();
     expect(prompt).toHaveBeenCalledTimes(2);
   });
 
