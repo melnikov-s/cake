@@ -9,7 +9,8 @@ import {
 } from "../../utils/subagent-runs";
 import type { ProjectTodo } from "../../contracts/projects/project-todos";
 import { ClientContext } from "./context/ClientContext";
-import { ChatStore } from "./ChatStore";
+import { ChatStore, type QueuedPrompt } from "./ChatStore";
+import { TranscriptAttachmentImagesStore } from "./TranscriptAttachmentImagesStore";
 import { SubagentHandleId } from "../../contracts/subagents/subagent-data";
 
 type ToolPart = Extract<UiPart, { kind: "tool" }>;
@@ -22,8 +23,30 @@ export class SubagentActivityStore extends Store<{
   /** The owning Project Chat's to-do selection while its panel is open; absent elsewhere. */
   selectedTodo?(): ProjectTodo | undefined;
 }> {
+  private commandErrors: Record<string, string | undefined> = {};
+
   get client() {
     return ClientContext.consume(this)!;
+  }
+
+  get parentSessionId() {
+    return this.props.sessionId;
+  }
+
+  resourceContext(
+    key: string,
+  ): { parentSessionId: string; handleId: SubagentHandleId; workspacePath?: string } | undefined {
+    const run = this.run(key);
+    if (!run?.handleId) return undefined;
+    const activity = this.props.model.activities.find(
+      (activity) => activity.handleId === run.handleId,
+    );
+    if (!activity) return undefined;
+    return {
+      parentSessionId: this.parentSessionId,
+      handleId: SubagentHandleId.make(run.handleId),
+      ...(activity.projectPath ? { workspacePath: activity.projectPath } : null),
+    };
   }
 
   get runs(): SubagentRun[] {
@@ -127,7 +150,95 @@ export class SubagentActivityStore extends Store<{
 
   private canMessage(key: string) {
     const run = this.run(key);
-    return Boolean(run?.handleId && run.available && !run.failurePhase && run.status !== "queued");
+    return Boolean(run?.handleId && run.available && !run.failurePhase);
+  }
+
+  private queuedPrompts(key: string): QueuedPrompt[] {
+    return (this.run(key)?.parts ?? []).flatMap((part) =>
+      part.kind === "text" &&
+      part.role === "user" &&
+      (part.deliveryState === "queued" || part.deliveryState === "steering")
+        ? [
+            {
+              id: part.id,
+              text: part.text,
+              itemId: part.queuedInput?.itemId,
+              turnId: part.queuedInput?.turnId,
+              command: part.queuedInput?.command,
+              attachments: part.queuedInput?.attachments.slice() ?? [],
+              renderUserMessageAsMarkdown:
+                part.queuedInput?.renderUserMessageAsMarkdown ?? part.renderAs === "markdown",
+              state: part.deliveryState,
+              source: part.crossSession,
+              scheduled: part.scheduled,
+              editable:
+                Boolean(part.queuedInput) &&
+                !part.queuedInput?.command &&
+                !part.crossSession &&
+                !part.scheduled,
+            },
+          ]
+        : [],
+    );
+  }
+
+  private async command<T>(key: string, run: (handleId: SubagentHandleId) => Promise<T>) {
+    if (!this.canMessage(key)) return false;
+    this.commandErrors = { ...this.commandErrors, [key]: undefined };
+    try {
+      return await run(SubagentHandleId.make(this.run(key)!.handleId!));
+    } catch (error) {
+      if (!this.signal.aborted)
+        this.commandErrors = {
+          ...this.commandErrors,
+          [key]: error instanceof Error ? error.message : String(error),
+        };
+      return false;
+    }
+  }
+
+  private async editQueue(
+    key: string,
+    partId: string,
+    operation: "remove" | "steer" | "send-now" | "reorder",
+    position?: number,
+  ) {
+    const entry = this.queuedPrompts(key).find((item) => item.id === partId);
+    if (!entry) return false;
+    return this.command(key, async (handleId) => {
+      await this.client.subagents.editQueued(
+        {
+          parentSessionId: this.props.sessionId,
+          handleId,
+          partId,
+          operation,
+          ...(position === undefined ? null : { position }),
+          ...(entry.itemId ? { itemId: entry.itemId } : null),
+        },
+        { signal: this.signal },
+      );
+      return true;
+    });
+  }
+
+  @child
+  get attachmentImageStores(): TranscriptAttachmentImagesStore[] {
+    return this.runs
+      .filter((run) => run.handleId)
+      .map((run) =>
+        createStore(TranscriptAttachmentImagesStore, {
+          key: run.key,
+          read: (reference, signal) =>
+            this.client.subagents.readAttachment(
+              {
+                parentSessionId: this.parentSessionId,
+                handleId: SubagentHandleId.make(run.handleId!),
+                reference: reference.id,
+              },
+              { signal },
+            ),
+        }),
+      );
   }
 
   @child
@@ -139,9 +250,17 @@ export class SubagentActivityStore extends Store<{
           key: run.key,
           id: () => `subagent:${run.key}`,
           parts: () => this.run(run.key)?.parts ?? [],
+          attachmentImages: () =>
+            this.attachmentImageStores[
+              this.runs.filter((run) => run.handleId).findIndex((entry) => entry.key === run.key)
+            ]!,
           streaming: () => {
             const current = this.run(run.key);
-            return Boolean(current && !current.released && current.status === "running");
+            return Boolean(
+              current &&
+              !current.released &&
+              (current.status === "running" || current.status === "queued"),
+            );
           },
           submitting: () => false,
           stoppable: () => {
@@ -155,40 +274,70 @@ export class SubagentActivityStore extends Store<{
           configuration: () => undefined,
           commands: () => [],
           placeholder: () =>
-            this.run(run.key)?.status === "running"
-              ? "Steer this subagent…"
+            this.run(run.key)?.status === "running" || this.run(run.key)?.status === "queued"
+              ? "Queue a message…"
               : this.canMessage(run.key)
                 ? "Message this subagent…"
                 : "Subagent unavailable",
           inputLabel: () => "Message subagent",
           canSubmit: (draft) => this.canMessage(run.key) && Boolean(draft.trim()),
-          submit: async (draft) => {
-            const current = this.run(run.key);
-            if (!current?.handleId || !this.canMessage(run.key)) return false;
-            const input = {
-              parentSessionId: this.props.sessionId,
-              handleId: SubagentHandleId.make(current.handleId),
-              text: draft.trim(),
-            };
-            if (current.status === "running")
-              await this.client.subagents.steer(input, { signal: this.signal });
-            else await this.client.subagents.prompt(input, { signal: this.signal });
-            return true;
+          submit: (draft, options) =>
+            this.command(run.key, (handleId) =>
+              this.client.subagents.submit(
+                {
+                  parentSessionId: this.props.sessionId,
+                  handleId,
+                  text: draft.trim(),
+                  renderUserMessageAsMarkdown: options?.renderUserMessageAsMarkdown ?? false,
+                },
+                { signal: this.signal },
+              ),
+            ),
+          userMessagePresentation: this.canMessage(run.key)
+            ? {
+                setMarkdown: (entryId, renderAsMarkdown) =>
+                  this.client.subagents.setUserMessageMarkdown(
+                    {
+                      parentSessionId: this.props.sessionId,
+                      handleId: SubagentHandleId.make(run.handleId!),
+                      entryId,
+                      renderAsMarkdown,
+                    },
+                    { signal: this.signal },
+                  ),
+              }
+            : undefined,
+          queuedPrompts: () => (this.canMessage(run.key) ? this.queuedPrompts(run.key) : []),
+          steerQueuedPrompt: async (id) => {
+            await this.editQueue(run.key, id, "steer");
+          },
+          stopAndSendQueuedPrompt: async (id) => {
+            await this.editQueue(run.key, id, "send-now");
+          },
+          reorderQueuedPrompt: async (id, position) => {
+            await this.editQueue(run.key, id, "reorder", position);
+          },
+          removeQueuedPrompt: (id) => {
+            void this.editQueue(run.key, id, "remove");
+          },
+          editQueuedPrompt: async (id) => {
+            const entry = this.queuedPrompts(run.key).find((item) => item.id === id);
+            if (!entry?.editable || !(await this.editQueue(run.key, id, "remove"))) return;
+            this.chatStore(run.key)?.setDraft(entry.text);
           },
           abort: async () => {
             const current = this.run(run.key);
             if (!current?.handleId || current.released) return;
-            await this.client.subagents.abort(
-              {
-                parentSessionId: this.props.sessionId,
-                handleId: SubagentHandleId.make(current.handleId),
-              },
-              { signal: this.signal },
+            await this.command(run.key, (handleId) =>
+              this.client.subagents.abort(
+                { parentSessionId: this.props.sessionId, handleId },
+                { signal: this.signal },
+              ),
             );
           },
           composerVisible: () => this.canMessage(run.key),
           usage: () => this.run(run.key)?.usage,
-          error: () => ({ message: this.run(run.key)?.error }),
+          error: () => ({ message: this.commandErrors[run.key] ?? this.run(run.key)?.error }),
         }),
       );
   }

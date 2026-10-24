@@ -28,6 +28,7 @@ test("background family children show running activity and only offer Mark as Un
   let childResponse: ServerResponse | undefined;
   let subagentResponse: ServerResponse | undefined;
   let subagentStarted = false;
+  let workerRequests = 0;
   let firstRequest = true;
   const server = createServer((request, response) => {
     let body = "";
@@ -62,14 +63,19 @@ test("background family children show running activity and only offer Mark as Un
             "data: [DONE]\n\n",
         );
       } else if (
-        JSON.parse(body).messages.some(
-          (message: { role: string; content: unknown }) =>
-            message.role === "user" &&
-            JSON.stringify(message.content).includes("Subagent activity fixture"),
+        JSON.parse(body).tools?.some(
+          (tool: { function: { name: string } }) => tool.function.name === "message_parent",
         )
       ) {
+        workerRequests++;
         subagentResponse = response;
-        response.write(chunk({ content: "Inspecting shared UI components." }));
+        if (JSON.stringify(JSON.parse(body).messages).includes("Check worker queue behavior"))
+          response.end(
+            chunk({ content: "Worker follow-up consumed." }) +
+              chunk({}, "stop") +
+              "data: [DONE]\n\n",
+          );
+        else response.write(chunk({ content: "Inspecting shared UI components." }));
       } else if (
         !JSON.parse(body).messages.some((message: { role: string }) => message.role === "tool")
       ) {
@@ -256,8 +262,28 @@ test("background family children show running activity and only offer Mark as Un
     const subagentPanel = page.getByRole("complementary", { name: "Subagent" });
     await expect(subagentPanel).toContainText("Inspecting shared UI components.");
     await expect.poll(() => Boolean(subagentResponse)).toBe(true);
-    subagentResponse!.end(chunk({}, "stop") + "data: [DONE]\n\n");
-    await expect(subagentPanel).toContainText("Inspecting shared UI components.");
+    const workerComposer = subagentPanel.getByRole("combobox", { name: "Message subagent" });
+    await workerComposer.click();
+    await expect(workerComposer).toBeFocused();
+    await page.keyboard.type("Check worker queue behavior");
+    await expect(workerComposer).toHaveValue("Check worker queue behavior");
+    await expect(subagentPanel.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await page.keyboard.press("Enter");
+    await expect(workerComposer).toHaveValue("");
+    const workerQueue = subagentPanel.getByRole("list", { name: "Queued prompts" });
+    await expect(workerQueue.getByRole("group", { name: "Queued", exact: true })).toContainText(
+      "Check worker queue behavior",
+    );
+    expect(workerRequests).toBe(1);
+    // Empty Enter promotes only this queued follow-up, then explicitly stops/sends it.
+    await workerComposer.press("Enter");
+    await expect(workerQueue.getByRole("group", { name: "Steering", exact: true })).toContainText(
+      "Check worker queue behavior",
+    );
+    await workerComposer.press("Enter");
+    await expect(subagentPanel).toContainText("Worker follow-up consumed.");
+    await expect(workerQueue).toHaveCount(0);
+    expect(workerRequests).toBe(2);
     // A narrow pane shows the inspected chat in place of the parent conversation.
     await subagentPanel.getByRole("button", { name: "Close Subagent" }).click();
     await expect(page.getByRole("button", { name: "Activity · 1 running" })).toBeVisible();

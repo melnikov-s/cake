@@ -9,6 +9,7 @@ export class SubagentActivity extends Model {
   @id handleId = "";
   revision = 0;
   task = "";
+  projectPath: string | undefined;
   status: SubagentStatus = "queued";
   resolvedModel: ResolvedAgentModel = {
     requested: "current",

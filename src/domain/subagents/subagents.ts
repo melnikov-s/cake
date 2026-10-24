@@ -77,6 +77,9 @@ import type { SubagentRecord, SubagentHistory } from "../../services/storage/Sub
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
 import type { RuntimeRecoveryInput } from "../../services/storage/RuntimeRecoveryStorage";
 
+import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
+import type { AttachmentReadInput } from "../../contracts/conversations/attachment-reference-control";
+
 export * from "../../contracts/subagents/subagent-data";
 
 const MAX_HANDLES_PER_PARENT = 8;
@@ -765,8 +768,22 @@ const observeTurn = Effect.fn("Subagents.observeTurn")(function* (
               ? { outcome: event.outcome }
               : { outcome: event.outcome, message: event.message };
           yield* Ref.update(settled, (values) => new Map(values).set(event.turnId, settlement));
+          yield* mutateHandle(handleId, (current) => ({
+            ...current,
+            recovery: {
+              ...current.recovery,
+              pendingInputs: current.recovery.pendingInputs.filter(
+                (input) => input.turnId !== event.turnId,
+              ),
+            },
+          }));
           const currentTarget = yield* Ref.get(target);
-          if (Option.isSome(currentTarget) && currentTarget.value === event.turnId)
+          const current = yield* requireHandleById(handleId);
+          const settlements = yield* Ref.get(settled);
+          if (
+            Option.isSome(currentTarget) &&
+            current.recovery.pendingInputs.every((input) => settlements.has(input.turnId))
+          )
             yield* Deferred.succeed(targetSettled, settlement);
         }
       }),
@@ -804,8 +821,19 @@ const observeTurn = Effect.fn("Subagents.observeTurn")(function* (
     asError(delivery),
   );
   yield* Ref.set(target, Option.some(turnId));
-  const already = (yield* Ref.get(settled)).get(turnId);
-  const settlement = already ? already : yield* Deferred.await(targetSettled);
+  // Queue removal also changes the accepted set: do not wait forever for a
+  // canceled follow-up after the preceding turn has already settled.
+  const coordinator = yield* SubagentCoordinator;
+  const drained = SubscriptionRef.changes(coordinator.state).pipe(
+    Stream.filter((state) => state.handles.get(handleId)?.recovery.pendingInputs.length === 0),
+    Stream.runHead,
+    Effect.flatMap(() => Ref.get(settled)),
+    Effect.flatMap((values) => {
+      const last = [...values.values()].at(-1);
+      return last ? Effect.succeed(last) : Deferred.await(targetSettled);
+    }),
+  );
+  const settlement = yield* Effect.raceFirst(drained, Deferred.await(targetSettled));
   yield* Fiber.interrupt(observer);
   const finalSnapshot = yield* piHandle.snapshot().pipe(asError(delivery));
   const current = yield* requireHandleById(handleId);
@@ -1499,6 +1527,7 @@ export const prompt = Effect.fn("Subagents.prompt")(function* (
   messageRefs?: readonly string[],
   continuation?: ParentContinuation,
   author: "user" | "assistant" = "user",
+  userInput?: { turnId: string; markdown: boolean },
 ) {
   const handle = yield* requireHandle(parentSessionId, rawHandleId);
   const normalized = text.trim();
@@ -1518,7 +1547,7 @@ export const prompt = Effect.fn("Subagents.prompt")(function* (
     messageReferences,
   );
   const input: RuntimeRecoveryInput = {
-    turnId: crypto.randomUUID(),
+    turnId: userInput?.turnId ?? crypto.randomUUID(),
     text:
       author === "assistant"
         ? yield* delegatedMessage(
@@ -1531,7 +1560,7 @@ export const prompt = Effect.fn("Subagents.prompt")(function* (
         : message,
     delivery,
     attachments: [],
-    markdown: false,
+    markdown: userInput?.markdown ?? false,
   };
   const claimed = yield* SubscriptionRef.modify(coordinator.state, (state) => {
     const current = state.handles.get(handle.handleId);
@@ -1560,10 +1589,10 @@ export const prompt = Effect.fn("Subagents.prompt")(function* (
           ...value.recovery,
           completionId: crypto.randomUUID(),
           pendingInputs: [input],
-          notifyOnCompletion: background ? true : value.recovery.notifyOnCompletion,
+          notifyOnCompletion: background && !userInput ? true : value.recovery.notifyOnCompletion,
           continuation: continuation ?? value.recovery.continuation ?? "none",
         },
-        completionDisposition: background ? "pending" : "waited",
+        completionDisposition: background && !userInput ? "pending" : "waited",
         activityRevision: value.activityRevision + 1,
       })),
     ] as const;
@@ -1635,6 +1664,204 @@ export const prompt = Effect.fn("Subagents.prompt")(function* (
   );
   return jsonValue(parentResult(handle, result));
 });
+
+export const readAttachment = Effect.fn("Subagents.readAttachment")(function* (
+  input: AttachmentReadInput & { parentSessionId: string; handleId: string },
+) {
+  const handleId = yield* Schema.decodeUnknownEffect(SubagentHandleId)(input.handleId).pipe(
+    asError("readAttachment"),
+  );
+  const coordinator = yield* SubagentCoordinator;
+  const live = (yield* SubscriptionRef.get(coordinator.state)).handles.get(handleId);
+  const saved = yield* coordinator.storage.history.get(handleId);
+  const owner = live
+    ? { parentSessionId: live.parentSessionId, privateSessionId: live.recovery.privateSessionId }
+    : saved;
+  if (!owner || owner.parentSessionId !== input.parentSessionId)
+    return yield* new SubagentError({
+      operation: "readAttachment",
+      message: "That subagent handle does not belong to this parent session",
+    });
+  const storage = yield* TaskInputStorage;
+  return yield* storage.inspect(owner.privateSessionId, input).pipe(asError("readAttachment"));
+});
+
+/** Human UI admission is queue-first. Agent tool prompt/steer policy is deliberately separate. */
+export const submitUserInput = Effect.fn("Subagents.submitUserInput")(function* (input: {
+  parentSessionId: string;
+  handleId: string;
+  text: string;
+  renderUserMessageAsMarkdown: boolean;
+}) {
+  const handle = yield* requireHandle(input.parentSessionId, input.handleId);
+  const text = input.text.trim();
+  if (!text)
+    return yield* new SubagentError({ operation: "submit", message: "Prompt text is required" });
+  const turnId = crypto.randomUUID();
+  if (handle.status !== "running" && handle.status !== "queued") {
+    yield* prompt(
+      input.parentSessionId,
+      input.handleId,
+      text,
+      "prompt",
+      true,
+      undefined,
+      undefined,
+      undefined,
+      "user",
+      { turnId, markdown: input.renderUserMessageAsMarkdown },
+    );
+  } else {
+    if (!handle.piHandle || handle.status === "queued")
+      return yield* new SubagentError({
+        operation: "submit",
+        message: "The subagent is still starting",
+      });
+    const accepted: RuntimeRecoveryInput = {
+      turnId,
+      text,
+      delivery: "follow-up",
+      attachments: [],
+      markdown: input.renderUserMessageAsMarkdown,
+    };
+    yield* mutateHandle(handle.handleId, (current) => ({
+      ...current,
+      recovery: {
+        ...current.recovery,
+        pendingInputs: [...current.recovery.pendingInputs, accepted],
+      },
+    }));
+    yield* handle.piHandle.submit(accepted).pipe(
+      asError("submit"),
+      Effect.onError(() =>
+        mutateHandle(handle.handleId, (current) => ({
+          ...current,
+          recovery: {
+            ...current.recovery,
+            pendingInputs: current.recovery.pendingInputs.filter((item) => item.turnId !== turnId),
+          },
+        })),
+      ),
+    );
+    yield* checkpoint(handle.handleId);
+  }
+  return { turnId };
+});
+
+export const editQueuedUserInput = Effect.fn("Subagents.editQueuedUserInput")(function* (input: {
+  parentSessionId: string;
+  handleId: string;
+  partId: string;
+  operation: "remove" | "steer" | "send-now" | "reorder";
+  itemId?: string;
+  position?: number;
+}) {
+  const handle = yield* requireHandle(input.parentSessionId, input.handleId);
+  const runtime = handle.piHandle;
+  if (!runtime)
+    return yield* new SubagentError({
+      operation: input.operation,
+      message: "The subagent is unavailable",
+    });
+  const snapshot = yield* runtime.snapshot().pipe(asError(input.operation));
+  const part = snapshot.parts.find((part) => part.id === input.partId);
+  if (
+    part?.kind !== "text" ||
+    part.role !== "user" ||
+    !part.queuedInput ||
+    part.crossSession ||
+    part.scheduled
+  )
+    return yield* new SubagentError({
+      operation: input.operation,
+      message: "That queued input is unavailable",
+    });
+  if (input.operation === "remove") {
+    yield* runtime.removeQueuedMessage(input.partId).pipe(asError(input.operation));
+    yield* mutateHandle(handle.handleId, (current) => ({
+      ...current,
+      recovery: {
+        ...current.recovery,
+        pendingInputs: current.recovery.pendingInputs.filter(
+          (item) => item.turnId !== part.queuedInput?.turnId,
+        ),
+      },
+    }));
+  } else if (input.operation === "steer") {
+    yield* runtime.steerQueuedMessage(input.partId).pipe(asError(input.operation));
+    yield* mutateHandle(handle.handleId, (current) => ({
+      ...current,
+      recovery: {
+        ...current.recovery,
+        pendingInputs: current.recovery.pendingInputs.map((item) =>
+          item.turnId === part.queuedInput?.turnId ? { ...item, delivery: "steer" } : item,
+        ),
+      },
+    }));
+  } else if (input.operation === "send-now")
+    yield* runtime.sendQueuedMessageNow(input.partId).pipe(asError(input.operation));
+  else {
+    if (!input.itemId || input.position === undefined || input.itemId !== part.queuedInput.itemId)
+      return yield* new SubagentError({
+        operation: input.operation,
+        message: "Queue item and position are required",
+      });
+    yield* runtime
+      .reorderPendingMessage({ itemId: input.itemId, position: input.position })
+      .pipe(asError(input.operation));
+    const pending = yield* runtime.pendingMessages().pipe(asError(input.operation));
+    const turnIds = pending.items.flatMap((item) => {
+      const queued = snapshot.parts.find(
+        (part) => part.kind === "text" && part.queuedInput?.itemId === item.itemId,
+      );
+      return queued?.kind === "text" && queued.queuedInput?.turnId
+        ? [queued.queuedInput.turnId]
+        : [];
+    });
+    yield* mutateHandle(handle.handleId, (current) => ({
+      ...current,
+      recovery: {
+        ...current.recovery,
+        pendingInputs: [
+          ...current.recovery.pendingInputs.filter((item) => !turnIds.includes(item.turnId)),
+          ...turnIds.flatMap((id) =>
+            current.recovery.pendingInputs.filter((item) => item.turnId === id),
+          ),
+        ],
+      },
+    }));
+  }
+  const updated = yield* runtime.snapshot().pipe(asError(input.operation));
+  yield* mutateHandle(handle.handleId, (current) => ({
+    ...current,
+    parts: projectParts(updated.parts),
+  }));
+  yield* checkpoint(handle.handleId);
+});
+
+export const setUserMessageMarkdown = Effect.fn("Subagents.setUserMessageMarkdown")(
+  function* (input: {
+    parentSessionId: string;
+    handleId: string;
+    entryId: string;
+    renderAsMarkdown: boolean;
+  }) {
+    const handle = yield* requireHandle(input.parentSessionId, input.handleId);
+    if (!handle.piHandle)
+      return yield* new SubagentError({
+        operation: "setUserMessageMarkdown",
+        message: "The subagent is unavailable",
+      });
+    yield* handle.piHandle
+      .setUserMessageMarkdown(input.entryId, input.renderAsMarkdown)
+      .pipe(asError("setUserMessageMarkdown"));
+    const snapshot = yield* handle.piHandle.snapshot().pipe(asError("setUserMessageMarkdown"));
+    yield* mutateHandle(handle.handleId, (current) => ({
+      ...current,
+      parts: projectParts(snapshot.parts),
+    }));
+  },
+);
 
 export const steer = Effect.fn("Subagents.steer")(function* (
   parentSessionId: string,

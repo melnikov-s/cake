@@ -32,6 +32,7 @@ import { configureCakeSessionRuntime } from "../../../src/layers/CakeOperations"
 import type { SubagentControlRequirements } from "../../../src/domain/subagents/subagentControl";
 import { makeSubagentControl } from "../../../src/domain/subagents/subagentControl";
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
+import { AttachmentUploadError } from "../../../src/contracts/filesystem/attachment-uploads-errors";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { TestClock } from "effect/testing";
@@ -152,7 +153,9 @@ interface Fixture {
   readonly completions: Ref.Ref<ReadonlyArray<unknown>>;
   readonly reports: Queue.Queue<unknown>;
   readonly parentMessages: Ref.Ref<ReadonlyArray<string>>;
-  readonly childPrompts: Ref.Ref<ReadonlyArray<{ sessionId: string; text: string }>>;
+  readonly childPrompts: Ref.Ref<
+    ReadonlyArray<{ sessionId: string; text: string; delivery?: string; markdown?: boolean }>
+  >;
 }
 
 const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
@@ -172,7 +175,9 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
   const completions = yield* Ref.make<ReadonlyArray<unknown>>([]);
   const reports = yield* Queue.unbounded<unknown>();
   const parentMessages = yield* Ref.make<ReadonlyArray<string>>([]);
-  const childPrompts = yield* Ref.make<ReadonlyArray<{ sessionId: string; text: string }>>([]);
+  const childPrompts = yield* Ref.make<
+    ReadonlyArray<{ sessionId: string; text: string; delivery?: string; markdown?: boolean }>
+  >([]);
 
   const runtime = (options: CakeSessionRuntimeSetup): CakeSessionRuntime => {
     const sessionId = options.sessionId ?? "parent";
@@ -255,13 +260,16 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
         queued: { steering: [], followUp: [] },
         abortedTurnIds: [],
       }),
-      prompt: async (text, _delivery, _attachments, _markdown, turnId) => {
+      prompt: async (text, delivery, _attachments, markdown, turnId) => {
         if (isParent) {
           await Effect.runPromise(Ref.update(parentMessages, (values) => [...values, text]));
           return;
         }
         await Effect.runPromise(
-          Ref.update(childPrompts, (values) => [...values, { sessionId, text }]),
+          Ref.update(childPrompts, (values) => [
+            ...values,
+            { sessionId, text, delivery, markdown },
+          ]),
         );
         if (turnId) activeTurnIds = [...activeTurnIds, turnId];
         const gate = Deferred.makeUnsafe<void>();
@@ -2062,6 +2070,142 @@ describe("Subagents", () => {
           yield* completeChild(fixture, child);
           yield* Queue.take(fixture.reports);
         }).pipe(Effect.provide(Layer.merge(fixture.layer, Layer.mock(TaskInputStorage, {}))));
+      }),
+  );
+
+  it.effect(
+    "human admission queues follow-ups with Markdown, observes through final settlement and leaves tool prompts strict",
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture();
+        yield* Effect.gen(function* () {
+          const receipt = yield* subagents.start(
+            { task: "Initial", continuation: "resume" },
+            parent(fixture),
+          );
+          const child = yield* Queue.take(fixture.childStarted);
+          const firstGate = (yield* Ref.get(fixture.childGates)).get(child);
+          assert.ok(firstGate);
+          const human = yield* subagents.submitUserInput({
+            parentSessionId: "parent",
+            handleId: receipt.handleId,
+            text: "**Human follow-up**",
+            renderUserMessageAsMarkdown: true,
+          });
+          assert.equal(yield* Queue.take(fixture.childStarted), child);
+          const last = (yield* Ref.get(fixture.childPrompts)).at(-1);
+          assert.equal(last?.delivery, "follow-up");
+          assert.equal(last?.markdown, true);
+          assert.equal(last?.text, "**Human follow-up**");
+          assert.equal(parseCrossSessionMessage(last?.text), undefined);
+          const coordinator = yield* SubagentCoordinator;
+          const saved = (yield* coordinator.storage.list())[0];
+          const input = saved?.pendingInputs.find((input) => input.turnId === human.turnId);
+          assert.ok(input);
+          const reloaded = Schema.decodeUnknownSync(Schema.fromJsonString(RuntimeRecoveryInput))(
+            JSON.stringify(input),
+          );
+          assert.equal(reloaded.markdown, true);
+          assert.equal(reloaded.delivery, "follow-up");
+          const unauthorized = yield* Effect.flip(
+            subagents.submitUserInput({
+              parentSessionId: "another-parent",
+              handleId: receipt.handleId,
+              text: "No",
+              renderUserMessageAsMarkdown: false,
+            }),
+          );
+          assert.match(unauthorized.message, /does not belong/);
+          const conflict = yield* Effect.flip(
+            subagents.prompt("parent", receipt.handleId, "Agent prompt", "prompt"),
+          );
+          assert.match(conflict.message, /already has active work/);
+          yield* Deferred.succeed(firstGate, undefined);
+          // A barrier after the first runtime settles: its prompt finalizer drops the active count.
+          while ((yield* Ref.get(fixture.active)) > 1) yield* Effect.yieldNow;
+          assert.equal((yield* Ref.get(fixture.completions)).length, 0);
+          yield* completeChild(fixture, child);
+          yield* Queue.take(fixture.reports);
+          const idle = yield* subagents.submitUserInput({
+            parentSessionId: "parent",
+            handleId: receipt.handleId,
+            text: "Plain human",
+            renderUserMessageAsMarkdown: false,
+          });
+          assert.ok(idle.turnId);
+          assert.equal(yield* Queue.take(fixture.childStarted), child);
+          assert.equal((yield* Ref.get(fixture.childPrompts)).at(-1)?.delivery, "prompt");
+          yield* completeChild(fixture, child);
+          yield* subagents.wait("parent", receipt.handleId);
+          assert.equal((yield* Ref.get(fixture.completions)).length, 1);
+          yield* subagents.close("parent", receipt.handleId);
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+  );
+
+  it.effect(
+    "reads exact granted worker images from live and released ownership without acquiring a runtime",
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture();
+        const imageReference = {
+          kind: "input" as const,
+          id: "20000000-0000-4000-8000-000000000001",
+          name: "image.png",
+          mimeType: "image/png",
+          byteLength: 1,
+        };
+        const inspect = vi.fn<TaskInputStorage["Service"]["inspect"]>((sessionId, input) =>
+          input.reference === imageReference.id
+            ? Effect.succeed({
+                kind: "image",
+                reference: imageReference,
+                mimeType: "image/png",
+                data: "AA==",
+              })
+            : Effect.fail(
+                new AttachmentUploadError({ operation: "read", message: "No input grant" }),
+              ),
+        );
+        yield* Effect.gen(function* () {
+          const receipt = yield* subagents.start(
+            { task: "Image worker", continuation: "resume" },
+            parent(fixture),
+          );
+          const child = yield* Queue.take(fixture.childStarted);
+          const constructions = yield* Ref.get(fixture.constructions);
+          const read = {
+            parentSessionId: "parent",
+            handleId: receipt.handleId,
+            reference: imageReference.id,
+          };
+          assert.equal((yield* subagents.readAttachment(read)).kind, "image");
+          assert.equal(inspect.mock.calls[0]?.[0], child);
+          const wrongParent = yield* Effect.flip(
+            subagents.readAttachment({ ...read, parentSessionId: "other" }),
+          );
+          assert.match(wrongParent.message, /does not belong/);
+          assert.equal(inspect.mock.calls.length, 1);
+          const ungranted = yield* Effect.flip(
+            subagents.readAttachment({
+              ...read,
+              reference: "20000000-0000-4000-8000-000000000002",
+            }),
+          );
+          assert.match(ungranted.message, /No input grant/);
+          yield* completeChild(fixture, child);
+          yield* Queue.take(fixture.reports);
+          yield* subagents.close("parent", receipt.handleId);
+          assert.equal((yield* subagents.readAttachment(read)).kind, "image");
+          assert.equal(inspect.mock.calls.at(-1)?.[0], child);
+          assert.equal(yield* Ref.get(fixture.constructions), constructions);
+          const released = yield* Effect.flip(
+            subagents.submitUserInput({ ...read, text: "No", renderUserMessageAsMarkdown: false }),
+          );
+          assert.match(released.message, /released/);
+        }).pipe(
+          Effect.provide(Layer.merge(fixture.layer, Layer.mock(TaskInputStorage, { inspect }))),
+        );
       }),
   );
 
