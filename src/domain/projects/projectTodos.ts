@@ -372,6 +372,7 @@ export const prepareUserContext = Effect.fn("ProjectTodos.prepareUserContext")(f
       digest.reminder,
     ),
     sequence: value.sequence,
+    selectedId: value.selectedId,
   };
 });
 
@@ -392,8 +393,43 @@ export const prepareForChat = Effect.fn("ProjectTodos.prepareForChat")(function*
   text: string,
 ) {
   const scope = yield* scopeForChat(sessionId);
-  if (scope === undefined) return text;
-  return (yield* prepareUserContext(scope, text)).text;
+  if (scope === undefined) return { text };
+  const prepared = yield* prepareUserContext(scope, text);
+  return {
+    text: prepared.text,
+    selection: prepared.selectedId
+      ? { scope, id: prepared.selectedId, sequence: prepared.sequence }
+      : undefined,
+  };
+});
+
+/** Consume only the selection captured by an accepted user input, not its delivery receipt.
+ * Other reminders still wait for durable consumption. A later selection (even A → B → A)
+ * wins over an in-flight admission; unrelated edits do not prevent deselection.
+ */
+export const consumeSelection = Effect.fn("ProjectTodos.consumeSelection")(function* (prepared: {
+  readonly selection?: { scope: string; id: string; sequence: number };
+}) {
+  const selection = prepared.selection;
+  if (!selection) return;
+  yield* change(selection.scope, (current) => {
+    if (
+      current.selectedId !== selection.id ||
+      current.pending.some(
+        (entry) => entry._tag === "Selection" && entry.sequence > selection.sequence,
+      )
+    )
+      return Effect.succeed(current);
+    // Automatic consumption is not another user selection change. Do not invalidate the
+    // admitted input's receipt or remove its other pending reminders.
+    const pending = current.pending.filter((entry) => entry._tag !== "Selection");
+    return Effect.succeed({
+      ...current,
+      selectedId: null,
+      pending,
+      deliveryToken: pending.length ? current.deliveryToken : null,
+    });
+  });
 });
 
 export const acknowledge = Effect.fn("ProjectTodos.acknowledge")(function* (

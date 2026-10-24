@@ -1,4 +1,4 @@
-import { prepareForChat } from "../projects/projectTodos";
+import { consumeSelection, prepareForChat } from "../projects/projectTodos";
 import {
   passiveNoticeContext,
   type StoredPassiveNotice,
@@ -165,14 +165,14 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
         ? yield* cakeChatDigest.prepareUserMessage(handle, message.text).pipe(asError("deliver"))
         : undefined;
     const reportPage = pendingReportPage(references);
-    const preparedText = message.crossSession
-      ? message.text
+    const prepared = message.crossSession
+      ? { text: message.text }
       : yield* prepareForChat(input.sessionId, userMessage?.text ?? message.text).pipe(
           asError("deliver"),
         );
     const text = message.crossSession
       ? encodeCrossSessionMessage(message.text, message.crossSession)
-      : addReferenceNotifications(preparedText, reportPage, references.length);
+      : addReferenceNotifications(prepared.text, reportPage, references.length);
     if (storage && !message.crossSession)
       yield* resumeAfterUserInput(input.sessionId).pipe(asError("deliver"));
     const carriesUpdates = Boolean(storage && !message.crossSession && !/^[!/]/.test(message.text));
@@ -219,6 +219,7 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
             )
       ).pipe(asError("deliver")),
     );
+    yield* consumeSelection(prepared).pipe(asError("deliver"));
     if (storage && passiveTurnId)
       yield* storage.markPassiveNoticeAdmission(
         passive.map((notice) => notice.id),

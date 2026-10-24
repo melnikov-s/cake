@@ -10,6 +10,7 @@ import {
 } from "../../../src/contracts/application/application-data";
 import {
   PROJECT_TODO_AUTO_COMPLETION_RULE,
+  CAKE_CHAT_TODO_SCOPE,
   projectTodoBaseline,
   ProjectTodo,
   ProjectTodos,
@@ -20,6 +21,7 @@ import {
   projectTodoReceipt,
   splitProjectTodoReminder,
 } from "../../../src/contracts/projects/project-todo-context";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
 import { ApplicationWriteError } from "../../../src/contracts/storage/application-storage-errors";
@@ -96,6 +98,7 @@ function fixture() {
     fail: () => {
       fail = true;
     },
+    persisted: () => Schema.decodeUnknownSync(StateSchema)(JSON.parse(persisted)),
   };
 }
 const project = "/project";
@@ -112,6 +115,76 @@ const create = () =>
   });
 
 describe("Project Chat to-do authority", () => {
+  it.effect.each([project, CAKE_CHAT_TODO_SCOPE])(
+    "persists one-shot deselection in %s without consuming other reminders",
+    (scope) => {
+      const f = fixture();
+      return Effect.gen(function* () {
+        yield* upsertProject(project, "Project");
+        const item = yield* todos.create(scope, {
+          title: "Review",
+          description: "Review findings.",
+        });
+        yield* todos.mutateUser(scope, { _tag: "Select", selectedId: item.id });
+        yield* todos.recordSessionChange(scope, "worker", "Findings", true);
+        const chat = scope === project ? projectChatSessionId(project) : CAKE_CHAT_SESSION_ID;
+        const prepared = yield* todos.prepareForChat(chat, "Explain");
+        const firstText = prepared.text;
+        yield* todos.consumeSelection(prepared);
+        const saved = f.persisted();
+        const persistedTodos = scope === project ? saved.projects[0]?.todos : saved.cakeChatTodos;
+        expect(persistedTodos?.selectedId).toBeNull();
+        expect(persistedTodos?.pending).toEqual([
+          expect.objectContaining({ _tag: "SessionState", sessionId: "worker" }),
+        ]);
+        expect((yield* todos.list(scope)).selectedId).toBeNull();
+        const next = yield* todos.prepareForChat(chat, "Next");
+        expect(next.text).not.toContain(item.id);
+        expect(next.text).toContain('"SessionState"');
+        yield* todos.acknowledge(scope, receipt(firstText));
+        expect((yield* todos.list(scope)).pending).toEqual([]);
+        expect((yield* todos.prepareForChat(chat, "Later")).text).toBe("Later");
+        expect(firstText).toContain(`"selection":{"title":"Review"`);
+      }).pipe(Effect.provide(f.layer));
+    },
+  );
+
+  it.effect(
+    "deselects even if durable consumption acknowledged the input before admission returned",
+    () => {
+      const f = fixture();
+      return Effect.gen(function* () {
+        yield* upsertProject(project, "Project");
+        const item = yield* create();
+        yield* todos.mutateUser(project, { _tag: "Select", selectedId: item.id });
+        const prepared = yield* todos.prepareForChat(projectChatSessionId(project), "Explain");
+        yield* todos.acknowledge(project, receipt(prepared.text));
+        expect((yield* todos.list(project)).pending).toEqual([]);
+        yield* todos.consumeSelection(prepared);
+        expect((yield* todos.list(project)).selectedId).toBeNull();
+        expect((yield* todos.prepareForChat(projectChatSessionId(project), "Next")).text).toBe(
+          "Next",
+        );
+      }).pipe(Effect.provide(f.layer));
+    },
+  );
+
+  it.effect("publishes no deselection if its persistence fails", () => {
+    const f = fixture();
+    return Effect.gen(function* () {
+      yield* upsertProject(project, "Project");
+      const item = yield* create();
+      yield* todos.mutateUser(project, { _tag: "Select", selectedId: item.id });
+      const prepared = yield* todos.prepareForChat(projectChatSessionId(project), "Explain");
+      const before = yield* todos.list(project);
+      const saved = f.persisted();
+      f.fail();
+      expect((yield* todos.consumeSelection(prepared).pipe(Effect.result))._tag).toBe("Failure");
+      expect(yield* todos.list(project)).toEqual(before);
+      expect(f.persisted()).toEqual(saved);
+    }).pipe(Effect.provide(f.layer));
+  });
+
   it.effect.each(["user", "agent", "automatic"] as const)(
     "clears selection atomically on %s completion, invalidates in-flight receipts and does not reselect on reopen",
     (source) => {
@@ -300,13 +373,15 @@ describe("Project Chat to-do authority", () => {
             projectChatSessionId(project),
             "After restart",
           );
-          expect(prepared).toContain('"SessionState"');
-          yield* todos.acknowledge(project, receipt(prepared));
+          expect(prepared.text).toContain('"SessionState"');
+          yield* todos.acknowledge(project, receipt(prepared.text));
           const baseline = projectTodoBaseline(yield* todos.list(project));
           expect(baseline).toContain(item.id);
           expect(baseline).toContain('"openCount":1');
-          expect(yield* todos.prepareForChat("cake-chat", "Global")).toBe("Global");
-          expect(yield* todos.prepareForChat("ordinary-session", "Coding")).toBe("Coding");
+          expect((yield* todos.prepareForChat("cake-chat", "Global")).text).toBe("Global");
+          expect(yield* todos.prepareForChat("ordinary-session", "Coding")).toEqual({
+            text: "Coding",
+          });
         }).pipe(Effect.provide(f.layer, { local: true }));
       });
     },

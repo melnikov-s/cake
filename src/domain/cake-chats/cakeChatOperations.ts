@@ -1,5 +1,5 @@
 import { Effect, Stream, type Schema } from "effect";
-import { prepareForChat } from "../projects/projectTodos";
+import { consumeSelection, prepareForChat } from "../projects/projectTodos";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
@@ -88,16 +88,18 @@ export const start = Effect.fn("CakeChats.start")(function* (
   const handle = yield* acquireTarget(target, !exists, configuration);
   if (input.newSession.configuration)
     yield* handle.applyConfiguration(input.newSession.configuration).pipe(asError("start"));
+  const prepared = yield* prepareForChat(input.sessionId, input.text).pipe(asError("start"));
   const turnId = TurnId.make(
     yield* deliverWhenAvailable(
       Effect.succeed(handle),
-      yield* prepareForChat(input.sessionId, input.text).pipe(asError("start")),
+      prepared.text,
       projectAttachments(
         yield* prepareTaskInputs(input.sessionId, true, input.attachments).pipe(asError("start")),
       ),
       input.renderUserMessageAsMarkdown,
     ).pipe(asError("start")),
   );
+  yield* consumeSelection(prepared).pipe(asError("start"));
   yield* publishCatalogChange(input.sessionId, false);
   return turnId;
 });

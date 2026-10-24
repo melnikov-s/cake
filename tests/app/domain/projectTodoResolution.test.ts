@@ -581,8 +581,8 @@ it.effect(
 
       // Its user-change reminder is labelled for Cake Chat and stays an application boundary.
       const prepared = yield* todos.prepareForChat(CAKE_CHAT_SESSION_ID, "Continue");
-      expect(prepared.startsWith("<system-reminder>\nCake Chat user changes.")).toBe(true);
-      expect(splitProjectTodoReminder(prepared).text).toBe("Continue");
+      expect(prepared.text.startsWith("<system-reminder>\nCake Chat user changes.")).toBe(true);
+      expect(splitProjectTodoReminder(prepared.text).text).toBe("Continue");
     }).pipe(Effect.provide(f.layer));
   },
 );

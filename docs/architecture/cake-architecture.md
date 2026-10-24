@@ -410,7 +410,10 @@ is a refactoring signal, not precedent.
   Pi Durable has placed that input in originals, not on preparation or queue admission.
   Newer concurrent edits invalidate an older receipt and remain pending (at-least-once
   context delivery, not exactly-once prose). Each input sent with an open selection includes
-  its snapshot in that same context block; the shared transcript projects one compact pill
+  its snapshot in that same context block. Successful admission consumes that selection in
+  ApplicationStorage and the pane, without clearing a newer selection made during admission.
+  Failed sends retain it. Automatic deselection does not acknowledge other pending reminders;
+  those still wait for durable consumption. The shared transcript projects one compact pill
   from the durable input, independent of later selection or lifecycle changes. A bounded
   baseline in Project Chat’s live system context also survives recreation/reset.
   Result messages (worker reports, Project Session replies/notices and compact completion
