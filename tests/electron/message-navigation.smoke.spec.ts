@@ -148,7 +148,10 @@ for (const surface of ["Project Session", "Cake Chat", "Project Chat"] as const)
       // Wait for startup restoration/hydration before switching surfaces or sending keys.
       await expect(page.getByText("Answer 12.", { exact: true })).toBeVisible({ timeout: 20_000 });
       if (surface === "Cake Chat")
-        await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+        await page
+          .getByRole("complementary")
+          .getByRole("button", { name: "Cake Chat", exact: true })
+          .click();
       if (surface === "Project Chat")
         await page
           .getByRole("button", { name: "Open Project Chat for project", exact: true })

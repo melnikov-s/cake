@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Button } from "./ui/button";
 import { useMessageHighlights, type MessageHighlightAnchor } from "@/lib/message-highlights";
 import { Markdown } from "@/components/ai-elements/markdown";
 import { FullscreenSurface } from "@/components/fullscreen-surface";
@@ -8,6 +9,7 @@ import type { SourceLocation } from "../../contracts/editor/source-location";
 /** Presents arbitrary transient message content without creating a transcript entry or artifact. */
 export function FullscreenMessage({
   eyebrow,
+  allowSourceView = false,
   highlightAnchors = [],
   markdown,
   onClose,
@@ -20,6 +22,7 @@ export function FullscreenMessage({
   title,
 }: {
   eyebrow: string;
+  allowSourceView?: boolean;
   highlightAnchors?: readonly MessageHighlightAnchor[];
   markdown: boolean;
   onClose(): void;
@@ -31,6 +34,7 @@ export function FullscreenMessage({
   text: string;
   title: string;
 }) {
+  const [showSource, setShowSource] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   useMessageHighlights(contentRef, highlightAnchors, text);
   const firstLine = useRef<HTMLSpanElement>(null);
@@ -45,8 +49,13 @@ export function FullscreenMessage({
             <Markdown>{`From session: [${sourceSession.title.replace(/[\\`*_[\]]/g, "\\$&")}](cake://session/${encodeURIComponent(sourceSession.sessionId)})`}</Markdown>
           </div>
         )}
+        {markdown && allowSourceView && (
+          <Button variant="outline" className="mb-4" onClick={() => setShowSource(!showSource)}>
+            {showSource ? "Show Markdown" : "Show source"}
+          </Button>
+        )}
         <div ref={contentRef}>
-          {markdown ? (
+          {markdown && !showSource ? (
             <Markdown
               streaming={streaming}
               normalizeLatexDelimiters={!streaming}

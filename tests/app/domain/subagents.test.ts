@@ -35,6 +35,8 @@ import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamil
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { TestClock } from "effect/testing";
 import * as sessionChats from "../../../src/domain/conversations/sessionChats";
+import * as pendingReports from "../../../src/domain/conversations/pendingReports";
+import { subagentLink } from "../../../src/contracts/subagents/subagent-reference";
 import { splitContextReminders } from "../../../src/services/pi/runtime/session-context-reminders";
 import * as subagents from "../../../src/domain/subagents/subagents";
 import {
@@ -1425,6 +1427,15 @@ describe("Subagents", () => {
           assert.equal(notice?.source?.handleId, started.handleId);
           assert.equal(notice?.source?.sessionId, childId);
           assert.equal(notice?.source?.task, "Investigate");
+          assert.equal(notice?.source?.messageId, "answer");
+          const canonical = subagentLink(caller.parentSessionId, started.handleId, "answer");
+          const listed = yield* pendingReports.list(caller.parentSessionId, {});
+          assert.equal(listed.items[0]?.ref, canonical);
+          const read = yield* pendingReports.read(caller.parentSessionId, {
+            id: worker.completionId,
+          });
+          assert.equal(read.ref, canonical);
+          assert.equal(read.text, reference);
           yield* (yield* CakeSessionRuntimes).acquire(caller.options);
           yield* sessionChats
             .deliver(
@@ -1446,6 +1457,7 @@ describe("Subagents", () => {
           assert.ok(delivered);
           assert.equal(splitContextReminders(delivered).text, "What does the s: prefix mean?");
           assert.ok(delivered.includes(reference));
+          assert.ok(delivered.includes(`[Full agent response](${canonical})`));
           assert.equal((yield* storage.state()).deferredReferences?.length, 1);
           assert.equal((yield* storage.state()).deferredReferences?.[0]?.admissions, 1);
         }).pipe(Effect.provide(fixture.layer));

@@ -1102,7 +1102,8 @@ const inlineLinks: VisualCaptureScenario = {
       timestamp: new Date(0).toISOString(),
       message: {
         role: "user",
-        content: "Original message evidence from a previous branch.",
+        content:
+          "## Original findings\n\nOriginal message evidence from a previous branch.\n\n**Readable Markdown**, not serialized reminder text.\n\n- First finding\n- Second finding",
         timestamp: 0,
       },
     });

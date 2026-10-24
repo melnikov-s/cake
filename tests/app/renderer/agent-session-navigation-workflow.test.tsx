@@ -106,8 +106,8 @@ describe("Agent session navigation workflow", () => {
           inputRefs: [],
           hasImages: false,
         },
-        text: "Exact original evidence",
-        totalChars: 23,
+        text: "## Original evidence\n\n**Exact original evidence**",
+        totalChars: 48,
         offset: 0,
         nextOffset: null,
         truncated: false,
@@ -123,9 +123,15 @@ describe("Agent session navigation workflow", () => {
       await requestOpen(fixture, { sessionId, messageId: "original-entry" });
       const dialog = await screen.findByRole("dialog", { name: "user · original-entry" });
       expect(dialog.textContent).toContain("Exact original evidence");
+      expect(screen.getByRole("heading", { name: "Original evidence" })).toBeDefined();
+      expect(screen.getByText("Exact original evidence").getAttribute("data-streamdown")).toBe(
+        "strong",
+      );
       await fixture.user.click(screen.getByRole("button", { name: "Copy message" }));
       expect(await screen.findByRole("button", { name: "Copied message" })).toBeDefined();
-      expect(await navigator.clipboard.readText()).toBe("Exact original evidence");
+      expect(await navigator.clipboard.readText()).toBe(
+        "## Original evidence\n\n**Exact original evidence**",
+      );
       expect(inspect).toHaveBeenCalledTimes(1);
       expect(inspect).toHaveBeenCalledWith(
         {

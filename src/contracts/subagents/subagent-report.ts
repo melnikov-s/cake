@@ -3,7 +3,7 @@ import { uiPartSchema } from "../conversations/session-contract";
 import type { SubagentResult } from "./subagent-data";
 
 /** Exact final assistant text only; child tool output is never a parent report. */
-export function subagentFinalAnswer(result: SubagentResult): string | undefined {
+export function subagentFinalAnswerPart(result: SubagentResult) {
   return result.parts
     .flatMap((part) => {
       const parsed = Schema.decodeUnknownOption(uiPartSchema)(part);
@@ -11,8 +11,12 @@ export function subagentFinalAnswer(result: SubagentResult): string | undefined 
         parsed.value.kind === "text" &&
         parsed.value.role === "assistant" &&
         parsed.value.text.trim()
-        ? [parsed.value.text]
+        ? [parsed.value]
         : [];
     })
     .at(-1);
+}
+
+export function subagentFinalAnswer(result: SubagentResult): string | undefined {
+  return subagentFinalAnswerPart(result)?.text;
 }

@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { subagentLink } from "../subagents/subagent-reference";
 
 const id = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 
@@ -14,11 +15,21 @@ export const PendingReport = Schema.Struct({
       sessionId: id,
       task: Schema.String,
       status: Schema.String,
+      /** Original worker entry/part, never the recipient's reminder entry. */
+      messageId: Schema.optionalKey(id),
     }),
   ),
   admissions: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
 });
 export interface PendingReport extends Schema.Schema.Type<typeof PendingReport> {}
+
+/** Public retained conversation, optionally at the exact final answer. Private Pi IDs are provenance. */
+export function pendingReportRef(report: PendingReport): string | undefined {
+  const source = report.source;
+  return source
+    ? subagentLink(report.recipientSessionId, source.handleId, source.messageId)
+    : undefined;
+}
 
 /** A receipt names visible Pi evidence; it does not claim semantic verification. */
 export const ReportHandlingReceipt = Schema.Struct({

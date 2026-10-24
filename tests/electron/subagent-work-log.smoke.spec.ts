@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
+import type { SubagentHistory } from "../../src/services/storage/SubagentStorage";
+import { recoveryRecordFileName } from "../../src/services/storage/internal/recoveryRecordFiles";
 import { emptyProjectTodos } from "../../src/contracts/projects/project-todos";
 import { subagentLink } from "../../src/contracts/subagents/subagent-reference";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
@@ -75,7 +77,7 @@ function toolResult(
   };
 }
 
-test("opens completed historical subagent results in a read-only side chat", async () => {
+test("opens retained historical subagent conversations at exact original responses", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-subagent-work-log-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -114,6 +116,64 @@ test("opens completed historical subagent results in a read-only side chat", asy
     windowState({ project, sessionId, theme: "dark" }),
   );
   await mkdir(join(cakeHome, "state"), { recursive: true });
+  const privateId = "10000000-0000-4000-8000-000000000099";
+  const privateDirectory = join(cakeHome, "pi", "subagent-sessions");
+  const privateWorkspaceDirectory = cakeWorkspaceSessionDirectory(project, privateDirectory);
+  const historyDirectory = join(cakeHome, "state", "private-worker-history");
+  await Promise.all([
+    mkdir(privateWorkspaceDirectory, { recursive: true }),
+    mkdir(historyDirectory, { recursive: true }),
+  ]);
+  const history: SubagentHistory = {
+    handleId,
+    privateSessionId: privateId,
+    parentSessionId: sessionId,
+    parentWorkingDirectory: project,
+    anchorPartId: "tool-call-spawn",
+    workingDirectory: project,
+    sessionDirectory: privateDirectory,
+    task: request.task,
+    status: "complete",
+    resolvedModel,
+    fastMode: true,
+  };
+  await writeFile(
+    join(historyDirectory, recoveryRecordFileName(handleId)),
+    JSON.stringify({ version: 1, data: history }),
+  );
+  const workerAnswer =
+    "## Original joke\n\nThe loop opened a bakery because it knew how to roll.\n\n**Exact worker response**";
+  await writeFile(
+    join(privateWorkspaceDirectory, `1970-01-01T00-00-00-000Z_${privateId}.jsonl`),
+    [
+      { type: "session", version: 3, id: privateId, timestamp, cwd: project },
+      ...[workerAnswer, "Later unrelated worker answer"].map((text, index) => ({
+        type: "message",
+        id: index === 0 ? "worker-answer" : "later-answer",
+        parentId: index === 0 ? null : "worker-answer",
+        timestamp,
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text }],
+          api: "openai-codex-responses",
+          provider: "openai-codex",
+          model: "gpt-5.6-sol",
+          stopReason: "stop",
+          timestamp: index + 1,
+          usage: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 0,
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+          },
+        },
+      })),
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n") + "\n",
+  );
   await writeFile(
     join(cakeHome, "state", "application.json"),
     JSON.stringify({
@@ -224,7 +284,12 @@ test("opens completed historical subagent results in a read-only side chat", asy
         timestamp,
         message: {
           role: "assistant",
-          content: [{ type: "text", text: "Here is the delegated joke." }],
+          content: [
+            {
+              type: "text",
+              text: `Here is the delegated joke. [Full agent response](${subagentLink(sessionId, handleId, "worker-answer")})`,
+            },
+          ],
           api: "openai-codex-responses",
           provider: "openai-codex",
           model: "gpt-5.6-sol",
@@ -288,6 +353,19 @@ test("opens completed historical subagent results in a read-only side chat", asy
     await expect(sideChat.locator("textarea")).toHaveCount(0);
     await sideChat.getByRole("button", { name: "Close Subagent" }).click();
 
+    const exactLink = page.getByRole("link", { name: "Full agent response", exact: true });
+    await expect(exactLink).toHaveAttribute(
+      "href",
+      subagentLink(sessionId, handleId, "worker-answer"),
+    );
+    await exactLink.click();
+    const original = page.getByRole("complementary", { name: request.task, exact: true });
+    await expect(original.getByRole("heading", { name: "Original joke" })).toBeVisible();
+    const selected = original.locator('[data-slot="transcript-item"][aria-current="true"]');
+    await expect(selected).toContainText("Exact worker response");
+    await expect(selected).not.toContainText("Later unrelated worker answer");
+    await original.getByRole("button", { name: `Close ${request.task}` }).click();
+
     await expect(page.getByRole("button", { name: /^Activity ·/ })).toHaveCount(0);
     await page
       .getByRole("button", { name: /^Open Project Chat for / })
@@ -306,13 +384,7 @@ test("opens completed historical subagent results in a read-only side chat", asy
     const report = page.getByRole("complementary", { name: request.task, exact: true });
     await expect(report).toContainText("The loop opened a bakery because it knew how to roll.");
     await expect(report.getByRole("combobox")).toHaveCount(0);
-    const workLog = page.locator('[data-slot="activity-group"]');
-    if ((await workLog.getAttribute("open")) === null)
-      await workLog.locator(":scope > summary").click();
-    await expect(workLog.locator(`[data-subagent-handle="${handleId}"]`)).toHaveAttribute(
-      "data-associated",
-      "true",
-    );
+    await expect(report.getByRole("heading", { name: "Original joke" })).toBeVisible();
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });
@@ -400,8 +472,11 @@ test("never restores an interrupted subagent as running", async () => {
     const subagent = log.locator('[data-slot="subagent-call"]');
     await expect(subagent).toHaveCount(1);
     await expect(subagent).toHaveAttribute("data-status", "unavailable");
-    await expect(subagent).toContainText("Detailed history was not retained");
-    await expect(subagent.getByRole("button", { name: "Open subagent chat" })).toHaveCount(0);
+    await expect(subagent).toContainText("no retained handle-to-Pi mapping");
+    await subagent.getByRole("button", { name: "Open subagent chat" }).click();
+    const unavailable = page.getByRole("complementary", { name: "Subagent", exact: true });
+    await expect(unavailable).toContainText("no retained handle-to-Pi mapping");
+    await expect(unavailable.getByRole("combobox")).toHaveCount(0);
     await expect(log.locator(".animate-pulse")).toHaveCount(0);
   } finally {
     await application.close();

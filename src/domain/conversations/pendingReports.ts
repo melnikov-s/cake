@@ -4,9 +4,10 @@ import {
   agentListPage,
   type AgentListInput,
 } from "../../contracts/agent/agent-list-data";
-import type {
-  PendingReportAcknowledge,
-  PendingReportRead,
+import {
+  pendingReportRef,
+  type PendingReportAcknowledge,
+  type PendingReportRead,
 } from "../../contracts/conversations/pending-report";
 import type { UiPart } from "../../contracts/conversations/session-contract";
 import { SessionChatError } from "../../contracts/conversations/conversation-data";
@@ -30,6 +31,7 @@ export const list = Effect.fn("PendingReports.list")(function* (
     .map((item) => ({
       id: item.id,
       state: "pending",
+      ref: pendingReportRef(item),
       admissions: item.admissions ?? 0,
       source: item.source ? { ...item.source, task: agentListLabel(item.source.task) } : undefined,
     }));
@@ -63,6 +65,7 @@ export const read = Effect.fn("PendingReports.read")(function* (
     id: item.id,
     state: "pending",
     source: item.source,
+    ref: pendingReportRef(item),
     text,
     offset,
     nextOffset: offset + text.length < item.text.length ? offset + text.length : null,

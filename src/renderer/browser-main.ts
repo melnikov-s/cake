@@ -206,9 +206,9 @@ root.render(
       rootStore,
       browserConnection: connection,
       openExternalUrl: (value) => void rootStore.openExternalUrl(value).catch(reportLinkError),
-      openSubagent: (parentSessionId, handleId) =>
+      openSubagent: (parentSessionId, handleId, messageId) =>
         void rootStore.navigationStore
-          .openSubagentLink(parentSessionId, handleId)
+          .openSubagentLink(parentSessionId, handleId, messageId)
           .catch(reportLinkError),
       openSession: (id, messageId, attachmentId) =>
         void rootStore.navigationStore

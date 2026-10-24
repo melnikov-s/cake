@@ -173,6 +173,64 @@ describe("Embedded editor workflow", () => {
     },
   );
 
+  it.each(["vscode", "text", "range"] as const)(
+    "opens Markdown via %s with explicit source access",
+    async (viewer) => {
+      const markdown = "# Report\n\n**Readable findings**\n\n- One\n- Two";
+      const location = {
+        kind: "working-directory" as const,
+        path: "report.md",
+        ...(viewer === "range" ? { range: { start: { line: 2 } } } : {}),
+      };
+      const prepare = vi.fn<Client["filesystem"]["prepareFileLocation"]>(async () =>
+        viewer === "vscode"
+          ? { viewer, location }
+          : { viewer: "text", path: "/external/report.md", content: markdown },
+      );
+      const open = vi.fn<Client["vscode"]["open"]>(async () => editorLease("a"));
+      const reveal = vi.fn<Client["vscode"]["reveal"]>(async () => ({
+        outcome: { view: "file" },
+        locations: [],
+      }));
+      using fixture = renderEmbeddedEditor(
+        { filesystem: { prepareFileLocation: prepare }, vscode: { open, reveal } },
+        {
+          parts: [
+            {
+              id: "markdown-link",
+              kind: "text",
+              role: "assistant",
+              status: "complete",
+              text: `[Read report](report.md${viewer === "range" ? "#L3" : ""})`,
+            },
+          ],
+        },
+      );
+      await fixture.user.click(await screen.findByRole("link", { name: "Read report" }));
+      if (viewer === "vscode") {
+        await waitFor(() =>
+          expect(reveal).toHaveBeenCalledWith(editorWorkingDirectory, location, expect.any(Object)),
+        );
+        return;
+      }
+      const dialog = await screen.findByRole("dialog", { name: /\/external\/report.md/ });
+      if (viewer === "range") {
+        expect(within(dialog).getByText("**Readable findings**").className).toContain("bg-accent");
+      } else {
+        expect(within(dialog).getByRole("heading", { name: "Report" })).toBeDefined();
+        expect(within(dialog).getByText("Readable findings").getAttribute("data-streamdown")).toBe(
+          "strong",
+        );
+        expect(within(dialog).getAllByRole("listitem")).toHaveLength(2);
+        await fixture.user.click(within(dialog).getByRole("button", { name: "Show source" }));
+        expect(within(dialog).getByText(/# Report/).textContent).toBe(markdown);
+        await fixture.user.click(within(dialog).getByRole("button", { name: "Show Markdown" }));
+        expect(within(dialog).getByRole("heading", { name: "Report" })).toBeDefined();
+      }
+      expect(open).not.toHaveBeenCalled();
+    },
+  );
+
   it("discards pending file routing when the selected project changes", async () => {
     const pending =
       deferredCompletion<Awaited<ReturnType<Client["filesystem"]["prepareFileLocation"]>>>();

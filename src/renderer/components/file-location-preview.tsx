@@ -15,6 +15,8 @@ export const FileLocationPreview = observer(function FileLocationPreview({
   const changes = location.view === "changes";
   return (
     <FullscreenMessage
+      key={preview.path}
+      allowSourceView
       eyebrow={
         changes
           ? "Text file · Diff unavailable outside the selected project; showing current file, not the requested revision"
@@ -24,7 +26,13 @@ export const FileLocationPreview = observer(function FileLocationPreview({
       }
       title={formatSourceLocation({ ...location, path: preview.path })}
       text={preview.content}
-      markdown={false}
+      markdown={
+        /\.(md|markdown|mdown)$/i.test(preview.path) &&
+        !location.view &&
+        !location.symbol &&
+        !location.range &&
+        !location.ranges?.length
+      }
       sourceRanges={
         changes && location.side === "before"
           ? []

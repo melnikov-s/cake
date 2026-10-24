@@ -16,4 +16,4 @@ For a launch roster, use `sessions.list` with `projection: "workflow"`; read `se
 
 ## Presenting sources
 
-When summarizing a delegated response, include its exact result-message link labeled **Full agent response**. Cake presents the original inline. Use `messages.present` only for explicit standalone source presentation. Never copy reports into artifacts or silently substitute a newer message. Presentation does not prove you read the source or attachments. Read `presentation.md` before presenting links or rich output.
+When summarizing a delegated response, include its exact result-message link labeled **Full agent response**. Use the canonical report `ref` to navigate the originating conversation, never the internal reminder entry that embeds serialized report text. Private Pi IDs are provenance, not public navigation. Cake also offers an optional inline source preview. Use `messages.present` only for explicit standalone source presentation. Never copy reports into artifacts or silently substitute a newer message. Presentation does not prove you read the source or attachments. Read `presentation.md` before presenting links or rich output.

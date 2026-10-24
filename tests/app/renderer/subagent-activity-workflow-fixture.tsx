@@ -22,6 +22,7 @@ import { createRendererStoreFixture } from "./renderer-store-fixture";
 import type { TestClientOverrides } from "./test-client";
 
 export const parentSessionId = "subagent-parent";
+export const projectChatSessionId = `project-chat:${"a".repeat(64)}`;
 export const handleId = SubagentHandleId.make("10000000-0000-4000-8000-000000000001");
 
 export function workerActivity(overrides: Partial<SubagentActivity> = {}): SubagentActivity {
@@ -90,7 +91,7 @@ export function renderSubagentActivity(options: {
   projectChat?: boolean;
 }) {
   let todos = options.todos;
-  const parent = options.projectChat ? "project-chat:/project" : parentSessionId;
+  const parent = options.projectChat ? projectChatSessionId : parentSessionId;
   const fixture = createRendererStoreFixture({
     client: {
       ...options.client,
@@ -115,11 +116,11 @@ export function renderSubagentActivity(options: {
     ],
     sessions: [sessionSummary({ sessionId: parentSessionId, projectPath: "/project" })],
   });
-  if (todos)
+  if (todos || options.projectChat)
     applySnapshot(fixture.models.cakeChatCatalog, {
       loaded: true,
       sessions: [
-        { sessionId: "project-chat:/project", title: "Project Chat", projectPath: "/project" },
+        { sessionId: projectChatSessionId, title: "Project Chat", projectPath: "/project" },
       ],
     });
   const session = options.projectChat
@@ -172,17 +173,15 @@ export function renderSubagentActivity(options: {
           openSession: (id) => {
             void fixture.root.navigationStore.openSessionLink(id);
           },
-          openSubagent: (parent, handle) => {
-            void fixture.root.navigationStore.openSubagentLink(parent, handle);
+          openSubagent: (parent, handle, messageId) => {
+            void fixture.root.navigationStore.openSubagentLink(parent, handle, messageId);
           },
         }}
       >
         <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
           {todos && !options.projectChat && (
             <ProjectTodosPanel
-              store={
-                fixture.root.cakeChatCollectionStore.registry.load("project-chat:/project").todos
-              }
+              store={fixture.root.cakeChatCollectionStore.registry.load(projectChatSessionId).todos}
             />
           )}
           <SideChatLayout

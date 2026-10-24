@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, screen } from "@testing-library/react";
+import { act, screen, within } from "@testing-library/react";
 import { expect, it } from "vitest";
 import {
   emptyProjectTodos,
@@ -9,12 +9,68 @@ import { subagentLink } from "../../../src/contracts/subagents/subagent-referenc
 import {
   handleId,
   parentSessionId,
+  projectChatSessionId,
   renderSubagentActivity,
   workerActivity,
   workerTranscript,
 } from "./subagent-activity-workflow-fixture";
 
-const projectChat = "project-chat:/project";
+it.each([false, true])(
+  "opens an exact worker response in its retained conversation (Project Chat=%s)",
+  async (projectChat) => {
+    const parent = projectChat ? projectChatSessionId : parentSessionId;
+    const ref = subagentLink(parent, handleId, "original-answer");
+    using fixture = renderSubagentActivity({
+      projectChat,
+      activity: workerActivity({
+        parentSessionId: parent,
+        status: "complete",
+        streaming: false,
+        released: true,
+        parts: [
+          {
+            id: "entry-original-answer-text-0",
+            entryId: "original-answer",
+            kind: "text",
+            role: "assistant",
+            text: "## Actual findings\n\n**Worker result**",
+            status: "complete",
+          },
+          {
+            id: "later",
+            kind: "text",
+            role: "assistant",
+            text: "Later unrelated answer",
+            status: "complete",
+          },
+        ],
+      }),
+      parts: [
+        ...workerTranscript(),
+        {
+          id: "summary",
+          kind: "text",
+          role: "assistant",
+          text: `Summary. [Full agent response](${ref})`,
+          status: "complete",
+        },
+      ],
+    });
+    await fixture.user.click(screen.getByRole("link", { name: "Full agent response" }));
+    const conversation = await screen.findByRole("complementary", { name: "Inspect the boundary" });
+    expect(within(conversation).getByRole("heading", { name: "Actual findings" })).toBeDefined();
+    expect(within(conversation).getByText("Worker result").getAttribute("data-streamdown")).toBe(
+      "strong",
+    );
+    const selected = conversation.querySelector(
+      '[data-slot="transcript-item"][aria-current="true"]',
+    );
+    expect(selected?.textContent).toContain("Worker result");
+    expect(selected?.textContent).not.toContain("Later unrelated answer");
+  },
+);
+
+const projectChat = projectChatSessionId;
 const first = "00000000-0000-4000-8000-000000000011";
 const todos = (parent: string): ProjectTodos => ({
   ...emptyProjectTodos(),

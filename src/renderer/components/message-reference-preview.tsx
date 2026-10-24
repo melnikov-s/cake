@@ -4,6 +4,7 @@ import { FullscreenSurface } from "./fullscreen-surface";
 import { Button } from "./ui/button";
 import { Callout } from "./ui/callout";
 import { CopyButton } from "./ui/copy-button";
+import { Markdown, useMarkdownLinkActions } from "./ai-elements/markdown";
 
 /** Read-only Pi source evidence for a message outside the visible continuation. */
 export const MessageReferencePreview = observer(function MessageReferencePreview({
@@ -11,6 +12,7 @@ export const MessageReferencePreview = observer(function MessageReferencePreview
 }: {
   store: MessageReferencePreviewStore;
 }) {
+  const actions = useMarkdownLinkActions();
   const page = store.page;
   if (!page) return null;
   return (
@@ -20,10 +22,17 @@ export const MessageReferencePreview = observer(function MessageReferencePreview
       onClose={() => store.close()}
     >
       <div className="flex w-full flex-col gap-4">
-        <Callout>
-          This exact message is outside the visible conversation. Viewing its Pi original does not
-          change the active branch or the agent’s context.
-        </Callout>
+        <div>
+          <Button
+            variant="outline"
+            onClick={() => {
+              store.close();
+              actions?.openSession(page.message.sessionId);
+            }}
+          >
+            Open conversation
+          </Button>
+        </div>
         <div className="flex items-center justify-between gap-3">
           <div className="break-all text-xs text-muted-foreground">
             {page.message.timestamp} · {page.message.ref}
@@ -35,9 +44,9 @@ export const MessageReferencePreview = observer(function MessageReferencePreview
             disabled={store.loading}
           />
         </div>
-        <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+        <Markdown>
           {page.text || "No textual content. Attachments are referenced in message metadata."}
-        </div>
+        </Markdown>
         {store.error && <Callout variant="error">{store.error}</Callout>}
         {store.copyError && (
           <Callout variant="error" role="alert">

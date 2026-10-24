@@ -36,6 +36,8 @@ test("workspace changes use Source Control, committed files fall back to the fil
     join(external, "notes.txt"),
     "External first line\nExternal selected line\nExternal third line\n",
   );
+  const markdown = "# Investigation\n\n**Readable findings**\n\n- First\n- Second\n";
+  await writeFile(join(external, "report.md"), markdown);
   await writeFile(join(project, "src", "app.ts"), "export const value = 0;\n");
   await git(project, "-c", "init.defaultBranch=main", "init");
   await git(project, "config", "user.name", "Cake Test");
@@ -143,7 +145,7 @@ test("workspace changes use Source Control, committed files fall back to the fil
           content: [
             {
               type: "text",
-              text: `Compare with the previous commit: [what this branch changed](src/app.ts?view=changes&base=HEAD~1#L1). Read [external lines](../project-sibling/notes.txt#L2-L3) or [external before revision](${join(external, "notes.txt")}?view=changes&side=before&base=HEAD~1#L2).`,
+              text: `Read [Markdown report](../project-sibling/report.md). Compare with the previous commit: [what this branch changed](src/app.ts?view=changes&base=HEAD~1#L1). Read [external lines](../project-sibling/notes.txt#L2-L3) or [external before revision](${join(external, "notes.txt")}?view=changes&side=before&base=HEAD~1#L2).`,
             },
           ],
           api: "anthropic-messages",
@@ -195,6 +197,19 @@ test("workspace changes use Source Control, committed files fall back to the fil
     const changes = page.getByRole("button", { name: "Open workspace changes in VS Code" });
     await expect(changes).toBeVisible({ timeout: 20_000 });
     // Real RPC authorization and fullscreen reader, before any editor is started.
+    await page.getByRole("link", { name: "Markdown report" }).click();
+    const markdownReader = page.getByRole("dialog", { name: /project-sibling\/report\.md/ });
+    await expect(markdownReader.getByRole("heading", { name: "Investigation" })).toBeVisible();
+    await expect(markdownReader.locator('[data-streamdown="strong"]')).toHaveText(
+      "Readable findings",
+    );
+    await expect(markdownReader.getByRole("listitem")).toHaveCount(2);
+    await markdownReader.getByRole("button", { name: "Show source" }).click();
+    await expect(markdownReader).toContainText("# Investigation");
+    await expect(markdownReader).toContainText("**Readable findings**");
+    await markdownReader.getByRole("button", { name: "Show Markdown" }).click();
+    await expect(markdownReader.getByRole("heading", { name: "Investigation" })).toBeVisible();
+    await page.keyboard.press("Escape");
     await page.getByRole("link", { name: "external lines" }).click();
     const externalReader = page.getByRole("dialog", { name: /project-sibling\/notes\.txt/ });
     await expect(externalReader).toBeVisible();

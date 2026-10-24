@@ -161,7 +161,7 @@ export class NavigationStore extends Store<{
   }
 
   /** Inspect the public worker in its parent; never navigate to its private Pi session. */
-  async openSubagentLink(parentReference: string, handleId: string) {
+  async openSubagentLink(parentReference: string, handleId: string, messageId?: string) {
     const resolved = resolveSessionLinkReference(parentReference, [
       ...this.props.catalog.sessions.map((session) => session.sessionId),
       ...this.props.cakeChat().summaries.map((session) => session.sessionId),
@@ -181,6 +181,12 @@ export class NavigationStore extends Store<{
       throw new Error(
         "The linked subagent conversation is unavailable: no retained handle-to-Pi mapping was found. Cake cannot safely infer a private session from a parent report.",
       );
+    if (messageId) {
+      const target = chatStore && linkedMessageTarget(chatStore.parts, messageId);
+      if (!target)
+        throw new Error("The linked message is unavailable in the retained subagent conversation");
+      chatStore.transcriptInteraction.navigateToMessage(target.id);
+    }
     if (!chatStore) {
       parent.conversationSessionStore.chatStore.transcriptInteraction.navigateToMessage(
         run.anchorPartId,

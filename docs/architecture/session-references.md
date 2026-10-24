@@ -115,7 +115,13 @@ second transcript is persisted.
 Pi remains the authority through restart, ordinary compaction and Tool Compact.
 Deleting the source transcript removes its evidence; references do not promise
 an independent retained copy. These operations address Project Sessions and permanent
-Cake Chat originals, not process-local investigators or private side-chat transcripts.
+Cake Chat originals, not private side-chat transcripts. Subagent navigation uses
+`cake://subagent/<encoded-parent>/<public-handle>?message=<original-entry-or-part>`:
+it opens the retained worker conversation under its parent and marks that exact
+response, never a private Pi session or the recipient's serialized reminder. Deferred
+report list/read results expose this canonical `ref`; older reports without an exact
+message identity link only the retained public conversation. Reminder wrappers remain
+inspectable originals, but must not be selected as Full agent response sources.
 Bounded investigators receive only explicitly selected exact references and expose
 `messages.read` behind that allowlist, never broad discovery or navigation.
 

@@ -24,7 +24,7 @@ import { getState } from "../application/application";
 import { TaskInputReference, inputRefsSchema } from "../../contracts/conversations/task-input";
 import { messageRefsSchema } from "../../contracts/conversations/message-reference";
 import type { ParentContinuation } from "../../contracts/conversations/parent-continuation";
-import { subagentFinalAnswer } from "../../contracts/subagents/subagent-report";
+import { subagentFinalAnswerPart } from "../../contracts/subagents/subagent-report";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import type {
   SubagentMessageAccess,
@@ -558,7 +558,8 @@ const deliverCompletion = Effect.fn("Subagents.deliverCompletion")(function* (
 ) {
   const handle = yield* requireHandleById(handleId);
   if (!handle.result || handle.completionDisposition !== "notifying") return;
-  const answer = subagentFinalAnswer(handle.result);
+  const original = subagentFinalAnswerPart(handle.result);
+  const answer = original?.text;
   if (handle.recovery.continuation === "none") {
     const storage = yield* SessionFamilyStorage;
     yield* storage
@@ -572,6 +573,7 @@ const deliverCompletion = Effect.fn("Subagents.deliverCompletion")(function* (
             sessionId: handle.recovery.privateSessionId,
             task: handle.task,
             status: handle.result.status,
+            ...(original ? { messageId: original.entryId ?? original.id } : null),
           },
           text:
             handle.result.status === "complete"

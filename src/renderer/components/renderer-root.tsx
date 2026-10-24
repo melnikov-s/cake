@@ -21,7 +21,7 @@ interface RendererRootProps {
   browserConnection?: BrowserConnectionStore;
   openExternalUrl(url: string): void;
   openSession(sessionId: string, messageId?: string, attachmentId?: string): void;
-  openSubagent(parentSessionId: string, handleId: string): void;
+  openSubagent(parentSessionId: string, handleId: string, messageId?: string): void;
 }
 
 export const RendererRoot = observer(function RendererRoot({

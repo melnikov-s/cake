@@ -16,6 +16,12 @@ import {
   addSessionDigestReminder,
 } from "../../../src/contracts/cake-chats/session-digest-reminder";
 
+import { parseSubagentLink } from "../../../src/contracts/subagents/subagent-reference";
+import {
+  pendingReportRef,
+  type PendingReport,
+} from "../../../src/contracts/conversations/pending-report";
+
 const ref = "cake://session/task?message=exact%3Aentry";
 const metadata = {
   version: 1 as const,
@@ -27,6 +33,40 @@ const metadata = {
 };
 
 describe("passive reference notifications", () => {
+  it("supplies public originating refs, not recipient reminders or private Pi navigation", () => {
+    const report: PendingReport = {
+      id: "report",
+      recipientSessionId: "project-chat:parent",
+      text: "## Actual Markdown\n\n**Findings**",
+      source: {
+        kind: "subagent",
+        handleId: "10000000-0000-4000-8000-000000000001",
+        sessionId: "private-pi",
+        task: "Investigate",
+        status: "complete",
+        messageId: "exact:answer",
+      },
+    };
+    const ref = pendingReportRef(report)!;
+    expect(ref).toBe(
+      "cake://subagent/project-chat%3Aparent/10000000-0000-4000-8000-000000000001?message=exact%3Aanswer",
+    );
+    expect(parseSubagentLink(ref)).toEqual({
+      parentSessionId: report.recipientSessionId,
+      handleId: report.source?.handleId,
+      messageId: "exact:answer",
+    });
+    expect(addReferenceNotifications("Next question", [report])).toContain(
+      `[Full agent response](${ref})`,
+    );
+    expect(addReferenceNotifications("Next question", [report])).toContain(
+      "never this internal reminder's entry",
+    );
+    const source = { ...report.source! };
+    delete source.messageId;
+    expect(pendingReportRef({ ...report, source })).toBe(ref.split("?")[0]);
+  });
+
   it("truthfully distinguishes inline reports, bounds replay and rotates pending pages", () => {
     const reports = Array.from({ length: 8 }, (_, index) => ({
       id: `report-${index}`,

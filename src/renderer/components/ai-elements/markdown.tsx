@@ -61,7 +61,7 @@ type MarkdownLinkActions = {
   openExternalUrl(url: string): void;
   openArtifact?(reference: string): void;
   openSession(sessionId: string, messageId?: string, attachmentId?: string): void;
-  openSubagent?(parentSessionId: string, handleId: string): void;
+  openSubagent?(parentSessionId: string, handleId: string, messageId?: string): void;
   sessionTitle?(sessionId: string): string | undefined;
   sessionIds?(): readonly string[];
   loadWorkspaceImage?(
@@ -163,7 +163,7 @@ function prepareMarkdownLinks(markdown: string, sourceLinks: boolean, workspaceI
           (match, target: string) => {
             const subagent = subagentTargetFromHref(target);
             if (subagent)
-              return `](${subagentPathPrefix}${subagentLink(subagent.parentSessionId, subagent.handleId).slice("cake://subagent/".length)})`;
+              return `](${subagentPathPrefix}${subagentLink(subagent.parentSessionId, subagent.handleId, subagent.messageId).slice("cake://subagent/".length)})`;
             const session = sessionTargetFromHref(target);
             if (session)
               return `](${sessionPathPrefix}${sessionLink(session.sessionId, session.messageId, session.attachmentId).slice("cake://session/".length)})`;
@@ -275,7 +275,7 @@ function linkAnchor(allProps: AnchorProps, actions?: MarkdownLinkActions) {
     );
   const subagent = href ? subagentTargetFromHref(href) : undefined;
   if (subagent) {
-    const reference = subagentLink(subagent.parentSessionId, subagent.handleId);
+    const reference = subagentLink(subagent.parentSessionId, subagent.handleId, subagent.messageId);
     return (
       <Link
         {...props}
@@ -283,7 +283,7 @@ function linkAnchor(allProps: AnchorProps, actions?: MarkdownLinkActions) {
         title={reference}
         onClick={(event) => {
           event.preventDefault();
-          actions?.openSubagent?.(subagent.parentSessionId, subagent.handleId);
+          actions?.openSubagent?.(subagent.parentSessionId, subagent.handleId, subagent.messageId);
         }}
       />
     );
@@ -604,7 +604,11 @@ function MarkdownRenderer({
       }
       const subagent = subagentTargetFromHref(href);
       if (subagent) {
-        linkActions?.openSubagent?.(subagent.parentSessionId, subagent.handleId);
+        linkActions?.openSubagent?.(
+          subagent.parentSessionId,
+          subagent.handleId,
+          subagent.messageId,
+        );
         return;
       }
       const location = sourceReferenceFromHref(href);
