@@ -14,6 +14,7 @@ import {
   type WebContents,
 } from "electron";
 import { ScreenCaptureWindow } from "./ScreenCaptureWindow";
+import { AppUpdateChecks } from "./AppUpdateChecks";
 import { CakeChatOverlayWindow } from "./CakeChatOverlayWindow";
 import type { CakeWindowFocus } from "./cake-chat-overlay-policy";
 import { ACCESSIBILITY_PERMISSION_MESSAGE, readSelectedText, runOsaScript } from "./selected-text";
@@ -65,6 +66,7 @@ const makeElectronService = (
   connections: ClientConnections["Service"],
 ) => {
   const windows = new Map<number, BrowserWindow>();
+  const updates = new AppUpdateChecks(options.application);
   let lastFocusedWindow: BrowserWindow | undefined;
   const capture = new ScreenCaptureWindow({
     preloadPath: options.preloadPath,
@@ -402,6 +404,7 @@ const makeElectronService = (
           label: "Cake",
           submenu: [
             { role: "about", label: "About Cake" },
+            updates.menuItem,
             { type: "separator" },
             { role: "services", submenu: [] },
             { type: "separator" },
@@ -957,6 +960,7 @@ const makeElectronService = (
         options.application.on("browser-window-focus", syncOverlayShortcut);
         options.application.on("browser-window-blur", syncOverlayShortcut);
         createWindow();
+        if (process.env.CAKE_ELECTRON_SMOKE !== "1") updates.start();
       }),
     ),
     focusOrCreateWindow: Effect.fn("Electron.focusOrCreateWindow")(() =>
@@ -1001,6 +1005,7 @@ const makeElectronService = (
         applicationQuitting = true;
         capture.stop();
         overlay.stop();
+        updates.stop();
         if (overlayFocusSync) clearImmediate(overlayFocusSync);
         overlayFocusSync = undefined;
         options.application.removeListener("activate", onActivate);

@@ -28,6 +28,13 @@ You can also import a VS Code color-theme JSON/JSONC file. For themes with `incl
 
 Cake maps workbench colors onto its semantic surfaces and derives chat/status colors with light/dark defaults. Embedded VS Code receives workbench, TextMate and semantic-token colors; Cake code blocks and diffs use TextMate colors for supported languages. The result is a matching palette, not a pixel-identical VS Code skin: Cake has different surfaces, syntax grammars can differ, and language-server semantic highlighting is editor-only. Legacy `.tmTheme` references, includes outside the selected source, fonts, icons, extension code and Marketplace installation are not imported.
 
+## macOS app
+
+Apple Silicon distribution builds use a drag-to-Applications DMG and manual
+replacement updates. See [installation and releases](./docs/development/macos-distribution.md)
+for download availability, first-launch macOS approval, prerequisites and release builds.
+These builds are ad-hoc signed, not notarized; macOS download warnings still apply.
+
 ## Development
 
 Requirements: Node.js 22 or newer and Corepack.

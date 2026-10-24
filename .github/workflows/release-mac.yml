@@ -1,0 +1,81 @@
+name: macOS release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+      - name: Verify architecture, toolchain and release version
+        env:
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: |
+          test "$(uname -m)" = arm64
+          sudo xcode-select -s /Applications/Xcode_26.2.app/Contents/Developer
+          swift --version
+          node --input-type=module -e '
+            import p from "./package.json" with { type: "json" };
+            if (process.env.RELEASE_TAG && process.env.RELEASE_TAG !== `v${p.version}`)
+              throw new Error("Tag must match package.json version");
+          '
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint:oxlint
+      - run: pnpm typecheck
+      - run: pnpm test tests/app/services/electron/AppUpdateChecks.test.ts tests/app/contracts/app-update.test.ts
+      - run: pnpm dist:mac
+      - name: Verify standalone DMG
+        run: |
+          (cd dist && shasum -a 256 -c SHA256SUMS)
+          VERSION=$(node -p "require('./package.json').version")
+          MOUNT=$(mktemp -d)
+          trap 'hdiutil detach "$MOUNT"; rmdir "$MOUNT"' EXIT
+          hdiutil attach -readonly -nobrowse -noautoopen -mountpoint "$MOUNT" "dist/Cake-$VERSION-mac-arm64.dmg"
+          test "$(readlink "$MOUNT/Applications")" = /Applications
+          CAKE_PACKAGED_APP="$MOUNT/Cake.app" pnpm test:packaged
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cake-mac-arm64
+          if-no-files-found: error
+          path: |
+            dist/Cake-*-mac-arm64.dmg
+            dist/latest-mac-arm64.json
+            dist/SHA256SUMS
+
+  publish:
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Cake-mac-arm64
+          path: release
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" release/* \
+            --verify-tag --title "Cake $RELEASE_TAG" \
+            --notes "Apple Silicon, macOS 14+. Open the DMG and drag Cake into Applications. To update, quit Cake and replace the app; chats and settings stay in place. Ad-hoc signed, not Developer ID signed or notarized: macOS download warnings and first-launch approval still apply."

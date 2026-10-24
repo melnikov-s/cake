@@ -1,0 +1,58 @@
+appId: works.cake.desktop
+productName: Cake
+directories:
+  output: dist
+  buildResources: src/assets
+# Keep executable helpers, Swift resource bundles, Pi docs/WASM and esbuild on disk.
+# Cake compiles widgets and loads runtime resources after installation.
+asar: false
+npmRebuild: false
+files:
+  - out/**/*
+  - package.json
+  - "!out/server/**"
+  - "!out/renderer/rpc-test-harness.html"
+  - "!**/prebuilds/{darwin-x64,linux-*,win32-*}/**"
+  - "!**/pi-tui/native/{linux,win32}/**"
+# electron-builder prunes top-level package READMEs, examples and changelogs.
+# Pi exposes these as runtime documentation and its in-app changelog.
+extraResources:
+  - from: node_modules/@earendil-works/pi-coding-agent/README.md
+    to: app/node_modules/@earendil-works/pi-coding-agent/README.md
+  - from: node_modules/@earendil-works/pi-coding-agent/CHANGELOG.md
+    to: app/node_modules/@earendil-works/pi-coding-agent/CHANGELOG.md
+  - from: node_modules/@earendil-works/pi-coding-agent/examples
+    to: app/node_modules/@earendil-works/pi-coding-agent/examples
+mac:
+  target:
+    - target: dmg
+      arch: [arm64]
+  artifactName: Cake-${version}-mac-${arch}.${ext}
+  category: public.app-category.developer-tools
+  icon: src/assets/cake.png
+  minimumSystemVersion: "14.0"
+  identity: "-"
+  hardenedRuntime: false
+  notarize: false
+  timestamp: none
+  # osx-sign otherwise tries to sign binary data (Core ML, compressed lexicons,
+  # WASM and images). Only native executables/addons inside app need signing.
+  signIgnore:
+    - /Resources/app/(?!.*(?:\.node$|/cake-dictation$|/cake-speech$|/spawn-helper$|/esbuild$))
+  extendInfo:
+    NSMicrophoneUsageDescription: Cake uses the microphone for voice conversations and dictation.
+    NSCameraUsageDescription: Cake uses the camera only when you choose to share it.
+    NSScreenCaptureUsageDescription: Cake captures your screen only when you choose to share it.
+    NSAppleEventsUsageDescription: Cake reads selected text from other apps when you open the drop-down chat.
+dmg:
+  sign: false
+  contents:
+    - x: 150
+      y: 180
+      type: file
+    - x: 450
+      y: 180
+      type: link
+      path: /Applications
+# Publishing is owned by the release workflow, never by a local packaging command.
+publish: null
