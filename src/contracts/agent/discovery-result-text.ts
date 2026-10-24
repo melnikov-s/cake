@@ -13,7 +13,9 @@ const count = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 const page = { total: count, nextOffset: Schema.NullOr(count) };
 const projects = Schema.Struct({
   ...page,
-  projects: Schema.Array(Schema.Struct({ path: Schema.String, name: Schema.String })),
+  projects: Schema.Array(
+    Schema.Struct({ path: Schema.String, name: Schema.String, projectChatId: Schema.String }),
+  ),
 });
 const family = Schema.Struct({
   ...page,
@@ -99,8 +101,8 @@ export function discoveryResultText(command: string, value: JsonValue): string |
       const result = Schema.decodeUnknownSync(projects)(value);
       return table(
         heading("projects", result),
-        ["path", "name"],
-        result.projects.map((item) => [item.path, item.name]),
+        ["path", "name", "projectChatId"],
+        result.projects.map((item) => [item.path, item.name, item.projectChatId]),
       );
     }
     case "sessions.list-family": {

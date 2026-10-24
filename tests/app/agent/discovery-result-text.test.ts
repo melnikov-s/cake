@@ -59,8 +59,11 @@ const message = {
 const cases: { command: string; value: JsonValue; text: string }[] = [
   {
     command: "projects.list",
-    value: { ...page, projects: [{ path: "/project", name: "My App" }] },
-    text: "1 projects\npath\tname\n/project\tMy App",
+    value: {
+      ...page,
+      projects: [{ path: "/project", name: "My App", projectChatId: "project-chat:canonical" }],
+    },
+    text: "1 projects\npath\tname\tprojectChatId\n/project\tMy App\tproject-chat:canonical",
   },
   {
     command: "sessions.list-family",
@@ -213,12 +216,20 @@ describe("compact discovery presentation", () => {
   it("losslessly quotes multiline cells, paths, literal dashes and unusual punctuation", () => {
     const path = '/project\twith\n"quotes"\\backslash';
     const name = "Comma, pipe | and\r\nnewline";
-    const text = discoveryResultText("projects.list", { ...page, projects: [{ path, name }] });
-    expect(text).toBe(`1 projects\npath\tname\n${JSON.stringify(path)}\t${JSON.stringify(name)}`);
+    const text = discoveryResultText("projects.list", {
+      ...page,
+      projects: [{ path, name, projectChatId: "project-chat:canonical" }],
+    });
+    expect(text).toBe(
+      `1 projects\npath\tname\tprojectChatId\n${JSON.stringify(path)}\t${JSON.stringify(name)}\tproject-chat:canonical`,
+    );
     assert.ok(text);
     const [, , line] = text.split("\n");
     assert.ok(line);
-    const cells = line.split("\t").map((value) => JSON.parse(value));
+    const cells = line
+      .split("\t")
+      .slice(0, 2)
+      .map((value) => JSON.parse(value));
     expect(cells).toEqual([path, name]);
     expect(
       discoveryResultText("models.list", { ...page, presets: [{ name: "-", default: false }] }),
@@ -277,6 +288,7 @@ describe("compact discovery presentation", () => {
       projects: Array.from({ length: 7 }, (_, index) => ({
         path: "/" + String(index) + "x".repeat(4000),
         name: "Long checkout path",
+        projectChatId: "project-chat:canonical",
       })),
     };
     const result = await registry("projects.list", value).invoke(

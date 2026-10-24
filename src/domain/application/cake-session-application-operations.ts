@@ -55,12 +55,13 @@ export function createSessionApplicationOperations(
       command: "projects.list",
       requires: "invokeAppControl",
       topic: "projects",
-      summary: "List a bounded page of registered Project names and exact paths.",
+      summary:
+        "List registered Project names, exact paths and canonical projectChatId messaging targets.",
       guidance: [compactDiscoveryGuidance],
       inputSchema: AgentListInput,
       examples: [{}],
       result:
-        "Compact path/name rows, total and next=N; projects.info supplies trust and timestamps.",
+        "Compact path/name/projectChatId rows, total and next=N; send to projectChatId with sessions.send. projects.info supplies trust and timestamps.",
       execute: invokeAppControl("projects.list"),
     },
     {

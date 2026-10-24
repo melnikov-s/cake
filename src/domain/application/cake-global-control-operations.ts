@@ -24,6 +24,7 @@ export function createGlobalControlOperations(
     (tool) =>
       settings.find((operation) => operation.command === tool.command) ?? {
         command: tool.command,
+        canonicalSessionIds: ["sessions.reports.read", "sessions.send"].includes(tool.command),
         topic: tool.topic,
         summary: tool.summary,
         guidance: tool.guidance,

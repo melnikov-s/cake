@@ -48,6 +48,7 @@ import {
   type ProjectSessionArchiveMetadata,
 } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
+import { SessionCoordination } from "../../../src/services/session-catalogs/SessionCoordination";
 import {
   CakeSessionRuntimes,
   PiSessionError,
@@ -1532,6 +1533,7 @@ const cakeControl = Effect.fn("BackendAgentControlTest.cakeControl")(function* (
 
 const batchRegistry = Effect.fn("BackendAgentControlTest.batchRegistry")(function* (
   f: Effect.Success<ReturnType<typeof fixture>>,
+  projectResult?: (value: JsonValue, signal: AbortSignal) => Promise<JsonValue>,
 ) {
   const control = yield* cakeControl(f);
   const registry = new CakeOperationRegistry(
@@ -1541,12 +1543,127 @@ const batchRegistry = Effect.fn("BackendAgentControlTest.batchRegistry")(functio
       thinkingLevel: "off",
       fastMode: false,
     })),
+    projectResult,
   );
   return (command: string, input: JsonObject) =>
     Effect.promise(() =>
       registry.invoke({ command, input }, { signal: signal(), toolCallId: "batch", runtime: {} }),
     );
 });
+
+it.effect(
+  "stored report reads bypass unrelated admission/delivery locks and global identity projection",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture(true);
+      const storage = Context.get(f.context, SessionFamilyStorage);
+      yield* storage.deferReferenceNotice({
+        id: "retained-report",
+        recipientSessionId: CAKE_CHAT_SESSION_ID,
+        text: "Exact retained handoff",
+        source: {
+          kind: "subagent",
+          sessionId: target,
+          handleId: "worker",
+          task: "Investigate",
+          status: "done",
+        },
+      });
+      const locked = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      yield* Context.get(f.context, SessionCoordination)
+        .withAdmission(
+          storage.withNoticeDelivery(
+            Deferred.succeed(locked, undefined).pipe(Effect.andThen(Deferred.await(release))),
+          ),
+        )
+        .pipe(Effect.forkScoped);
+      yield* Deferred.await(locked);
+      let projections = 0;
+      const invoke = yield* batchRegistry(f, async () => {
+        projections++;
+        throw new Error("Must not discover unrelated checkouts to read a stored report");
+      });
+      const before = { ...f.listReads, ids: [...f.listReads.ids] };
+      const result = yield* invoke("sessions.reports.read", { id: "retained-report", limit: 5 });
+      expect(result.details).toMatchObject({
+        result: { text: "Exact", nextOffset: 5, source: { sessionId: target } },
+      });
+      expect(projections).toBe(0);
+      expect(f.listReads).toEqual(before);
+      expect(f.runtimeCreates).toEqual([source]);
+      expect((yield* storage.state()).deferredReferences).toHaveLength(1);
+      yield* Deferred.succeed(release, undefined);
+    }),
+);
+
+it.effect(
+  "registered Project Chat discovery routes directly and sends return before recipient execution",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture(true);
+      const globalCaller = {
+        kind: "cake-chat" as const,
+        sessionId: CAKE_CHAT_SESSION_ID,
+        title: "Cake Chat",
+      };
+      const listing = yield* f.direct("projects.list", { query: "Project" }, globalCaller);
+      const projectChat = projectChatSessionId("/project");
+      expect(listing).toMatchObject({
+        projects: [{ path: "/project", projectChatId: projectChat }],
+      });
+      let projections = 0;
+      const invoke = yield* batchRegistry(f, async () => {
+        projections++;
+        throw new Error("A send receipt must not scan unrelated sessions");
+      });
+      const beforeIds = [...f.listReads.ids];
+      // The recipient's model boundary will remain suspended until explicitly released.
+      f.pauseMessage();
+      const receipt = yield* invoke("sessions.send", {
+        sessionId: projectChat,
+        text: "Investigate this",
+        delivery: "prompt",
+      });
+      expect(receipt.details).toMatchObject({
+        result: { ok: true, target: { sessionId: projectChat }, status: "accepted" },
+      });
+      expect((yield* Queue.take(f.prompts)).sessionId).toBe(projectChat);
+      expect(yield* Deferred.isDone(f.messageRelease)).toBe(false);
+      f.active.add(projectChat);
+      const quiet = yield* invoke("sessions.send", {
+        sessionId: projectChat,
+        text: "Related evidence",
+        delivery: "fyi",
+      });
+      expect(quiet.details).toMatchObject({
+        result: { ok: true, delivery: "fyi", status: "deferred", expectsResponse: false },
+      });
+      const storage = Context.get(f.context, SessionFamilyStorage);
+      expect((yield* storage.state()).passiveNotices).toMatchObject([
+        { recipientSessionId: projectChat, text: "Related evidence" },
+      ]);
+      expect(yield* Queue.size(f.prompts)).toBe(0);
+      expect(f.runtimeCreates.filter((id) => id === projectChat)).toHaveLength(1);
+      expect(f.listReads.ids).toEqual(beforeIds);
+      expect(projections).toBe(0);
+      expect(
+        yield* f
+          .direct(
+            "sessions.send",
+            {
+              sessionId: projectChatSessionId("/unregistered"),
+              text: "Nobody",
+              delivery: "fyi",
+            },
+            globalCaller,
+          )
+          .pipe(Effect.exit),
+      ).toMatchObject({ _tag: "Failure" });
+      expect(f.runtimeCreates).not.toContain(projectChatSessionId("/unregistered"));
+      yield* Deferred.succeed(f.messageRelease, undefined);
+    }),
+);
 
 it.effect(
   "backend inspection includes saved Drafts without starting Pi or requiring a window",
@@ -2797,14 +2914,14 @@ it.effect(
         targetTitle: "Cake Chat",
         scheduledMessage: { sendAt: "1970-01-01T01:00:00.000Z" },
       });
-      // The chat gateway rejects addresses outside the registered roster before scheduling.
+      // Canonical addresses are validated by the registered-project route before scheduling.
       expect(
         yield* call("sessions.schedule", {
           sessionId: projectChatSessionId("/unregistered"),
           text: "Nobody",
           delaySeconds: 15,
-        }).pipe(Effect.exit),
-      ).toMatchObject({ _tag: "Failure" });
+        }),
+      ).toMatchObject({ ok: false, error: "Project Chat belongs to no registered project" });
       expect(
         yield* call("sessions.schedule", { text: "Both", delaySeconds: 1, sendAt: "2030-01-01" }),
       ).toMatchObject({ ok: false, error: "Provide sendAt or delaySeconds, not both." });

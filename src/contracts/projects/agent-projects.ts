@@ -31,6 +31,7 @@ export interface AgentProjectRemoveInput extends Schema.Schema.Type<
 export interface AgentProjectView {
   readonly path: string;
   readonly name: string;
+  readonly projectChatId: string;
   readonly addedAt: string;
   readonly lastOpenedAt: string;
   readonly trusted: boolean;

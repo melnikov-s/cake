@@ -409,7 +409,13 @@ describe("Backend-owned Cake operation composition", () => {
     };
     const control = {
       list: vi.fn(async () => ({
-        projects: [{ path: project.path, name: project.name }],
+        projects: [
+          {
+            path: project.path,
+            name: project.name,
+            projectChatId: "project-chat:" + "a".repeat(64),
+          },
+        ],
         total: 1,
         offset: 0,
         nextOffset: null,

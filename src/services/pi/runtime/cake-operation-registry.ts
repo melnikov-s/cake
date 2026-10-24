@@ -321,9 +321,10 @@ export class CakeOperationRegistry {
           ? executionResult.metadata
           : executionResult,
     );
-    const presented = this.projectResult
-      ? await this.projectResult(result, context.signal)
-      : result;
+    const presented =
+      this.projectResult && !operation.canonicalSessionIds
+        ? await this.projectResult(result, context.signal)
+        : result;
     // Typed results retain their canonical contract. Text is always the agent projection.
     const structured =
       operation.outputSchema && !Schema.is(operation.outputSchema)(presented) ? result : presented;

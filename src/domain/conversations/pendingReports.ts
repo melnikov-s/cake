@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Clock, Effect } from "effect";
 import {
   agentListLabel,
   agentListPage,
@@ -40,7 +40,10 @@ export const read = Effect.fn("PendingReports.read")(function* (
   sessionId: string,
   input: PendingReportRead,
 ) {
-  const item = ((yield* (yield* SessionFamilyStorage).state()).deferredReferences ?? []).find(
+  const startedAt = yield* Clock.currentTimeMillis;
+  const state = yield* (yield* SessionFamilyStorage).state();
+  const loadedAt = yield* Clock.currentTimeMillis;
+  const item = (state.deferredReferences ?? []).find(
     (item) => item.id === input.id && item.recipientSessionId === sessionId,
   );
   if (!item)
@@ -50,6 +53,12 @@ export const read = Effect.fn("PendingReports.read")(function* (
     });
   const offset = input.offset ?? 0;
   const text = item.text.slice(offset, offset + (input.limit ?? 4000));
+  // Numeric, request-local evidence only; no report text, IDs or provenance in logs.
+  yield* Effect.logDebug("Pending report read timings", {
+    storageMs: loadedAt - startedAt,
+    sliceMs: (yield* Clock.currentTimeMillis) - loadedAt,
+    returnedCharacters: text.length,
+  });
   return {
     id: item.id,
     state: "pending",

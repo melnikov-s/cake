@@ -183,7 +183,7 @@ export const invoke = Effect.fn("AgentSessionMessaging.invoke")(function* (
     return fail("That session thread reached its message limit.");
   }
   const chatTarget = isCakeChatSessionId(targetSessionId)
-    ? yield* (yield* cakeChatTargets.acquire(targetSessionId)).snapshot()
+    ? yield* (yield* cakeChatTargets.acquireAvailable(targetSessionId)).snapshot()
     : undefined;
   const target = chatTarget
     ? { workingDirectory: chatTarget.workspacePath, title: "Project Chat" }

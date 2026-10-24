@@ -59,6 +59,8 @@ export interface CakeOperationDefinition<
    * The registry also validates JSON after decoding, allowing authoritative projection
    * schemas whose optional fields include undefined in TypeScript. */
   outputSchema?: Schema.ConstraintDecoder<unknown, never>;
+  /** Exact details/receipts retain canonical identities without global suffix discovery. */
+  canonicalSessionIds?: boolean;
   /** Bounded multi-outcome operations must expose every outcome in model-facing text. */
   truncateResultText?: boolean;
   examples: readonly CakeOperationExample[];

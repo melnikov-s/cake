@@ -1,5 +1,6 @@
 import { stat } from "node:fs/promises";
 import { basename, isAbsolute, resolve } from "node:path";
+import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
 import { Effect, Stream } from "effect";
 import type {
@@ -264,12 +265,13 @@ const agentProjectView = (project: ProjectRecord, trustedPaths: readonly string[
   ({
     path: project.path,
     name: project.name,
+    projectChatId: projectChatSessionId(project.path),
     addedAt: project.addedAt,
     lastOpenedAt: project.lastOpenedAt,
     trusted: trustedPaths.includes(project.path),
   }) satisfies AgentProjectView;
 
-/** Discovery returns only the routing path and display name, in registry order. */
+/** Registry-only discovery includes the canonical chat target even before its first open. */
 export const listForAgent = Effect.fn("Projects.listForAgent")(function* (input: AgentListInput) {
   const state = (yield* ApplicationState).snapshot();
   const query = input.query?.toLowerCase();
@@ -279,7 +281,11 @@ export const listForAgent = Effect.fn("Projects.listForAgent")(function* (input:
   const { items, ...page } = agentListPage(selected, input);
   return {
     ...page,
-    projects: items.map(({ path, name }) => ({ path, name: agentListLabel(name) })),
+    projects: items.map(({ path, name }) => ({
+      path,
+      name: agentListLabel(name),
+      projectChatId: projectChatSessionId(path),
+    })),
   };
 });
 

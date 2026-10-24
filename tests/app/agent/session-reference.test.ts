@@ -84,6 +84,12 @@ describe("session references", () => {
     });
   });
 
+  it("recognizes canonical Project Chat addresses without a global roster", () => {
+    const chat = "project-chat:" + "a".repeat(64);
+    expect(resolveSessionReference(chat, [])).toEqual({ ok: true, sessionId: chat });
+    expect(resolveSessionReference("project-chat:bad", []).ok).toBe(false);
+  });
+
   it("never projects the full-UUID deepLink field to a short reference", () => {
     expect(projectSessionReferences({ sessionId: a, deepLink: sessionLink(a) }, ids)).toEqual({
       sessionId: "112345678",

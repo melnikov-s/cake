@@ -11,7 +11,7 @@ import {
 } from "../../contracts/projects/agent-projects";
 
 const projectResult =
-  "The registered Project: exact path (use it verbatim as workspacePath or projectPath), display name, addedAt, lastOpenedAt and whether the user has trusted its Pi resources.";
+  "The registered Project: exact path (use it verbatim as workspacePath or projectPath), display name, canonical projectChatId, addedAt, lastOpenedAt and whether the user has trusted its Pi resources.";
 
 /** Cake Chat's Project registry: the same registration, rename and removal the sidebar offers. */
 export function createCakeChatProjectOperations(
@@ -21,14 +21,16 @@ export function createCakeChatProjectOperations(
     {
       command: "projects.list",
       topic: "projects",
-      summary: "List a bounded page of registered Project names and exact paths.",
+      summary:
+        "List registered Projects with exact paths and canonical Project Chat messaging addresses.",
       guidance: [
-        "Filter names/paths with query; use projects.info for trust and timestamps.",
+        'Filter names/paths with query; use projects.info for trust and timestamps. Send directly with sessions.send { sessionId: projectChatId, text, delivery: "fyi" } for a passive update; no filesystem lookup or hashing is needed.',
         compactDiscoveryGuidance,
       ],
       inputSchema: AgentListInput,
       examples: [{}],
-      result: "Compact path/name rows, total and next=N when another page exists.",
+      result:
+        "Compact path/name/projectChatId rows, total and next=N when another page exists. projectChatId is canonical and available before the chat is opened.",
       execute: (input, context) =>
         control.list(Schema.decodeUnknownSync(AgentListInput)(input), context.signal),
     },

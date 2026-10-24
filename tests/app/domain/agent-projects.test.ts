@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { it } from "@effect/vitest";
 import { Effect, Fiber, Layer, Stream } from "effect";
 import { afterEach, beforeEach, describe, expect } from "vitest";
+import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
 import * as projects from "../../../src/domain/projects/projects";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
@@ -114,7 +115,7 @@ describe("agent Project registration", () => {
         total: 1,
         offset: 0,
         nextOffset: null,
-        projects: [{ path, name: "Agents zone" }],
+        projects: [{ path, name: "Agents zone", projectChatId: projectChatSessionId(path) }],
       });
       expect(yield* projects.listForAgent({ limit: 1 })).toMatchObject({ total: 2, nextOffset: 1 });
       expect(yield* projects.listForAgent({ limit: 1, offset: 1 })).toMatchObject({

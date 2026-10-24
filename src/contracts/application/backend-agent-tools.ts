@@ -317,7 +317,8 @@ const definitions = [
       summary:
         "Send, queue, or steer a correlated message to one explicitly targeted session. The result is a visible delivery receipt; optional maxMessages bounds the exchange.",
       guidance: [
-        "sessionId is required from Cake Chat; Cake Chat cannot message itself. Project Sessions reach Cake Chat by omitting sessionId.",
+        "For a registered Project Chat, call projects.list with query and pass its canonical projectChatId as sessionId. Do not read repository files, hash paths, or inspect recipient history to find its address. The receipt confirms admission/deferred retention, not recipient execution or completion.",
+        "sessionId is required from Cake Chat; Cake Chat cannot message itself. Project Sessions reach global Cake Chat by omitting sessionId.",
         resultDeliveryGuidance,
         sessionMessageDeliveryGuidance,
       ],

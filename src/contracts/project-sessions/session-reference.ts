@@ -31,7 +31,7 @@ export type SessionReferenceResolution =
   | { readonly ok: true; readonly sessionId: string }
   | { readonly ok: false; readonly error: string };
 
-/** Full UUIDs can be authoritatively looked up even if discovery is stale.
+/** Canonical UUID/Project Chat addresses route to authoritative existence checks even if discovery is stale.
  * Short references never select the first match or search outside the discovered roster. */
 export function resolveSessionReference(
   reference: string,
@@ -39,7 +39,11 @@ export function resolveSessionReference(
 ): SessionReferenceResolution {
   // The emitted Cake Chat label routes to Cake Chat; callers decide whether it is a valid target.
   if (reference === CAKE_CHAT_REFERENCE) return { ok: true, sessionId: CAKE_CHAT_SESSION_ID };
-  if (knownSessionIds.includes(reference) || uuid.test(reference))
+  if (
+    knownSessionIds.includes(reference) ||
+    uuid.test(reference) ||
+    /^project-chat:[0-9a-f]{64}$/.test(reference)
+  )
     return { ok: true, sessionId: reference };
   const suffix = shortReference.exec(reference)?.[1]?.toLowerCase();
   if (!suffix) return { ok: false, error: `Unknown session reference: ${reference}` };

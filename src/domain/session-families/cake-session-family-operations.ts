@@ -48,6 +48,7 @@ export function createSessionFamilyOperations(
     },
     {
       command: "sessions.reports.read",
+      canonicalSessionIds: true,
       requires: "invokeAppControl",
       topic: "sessions",
       summary: "Read a bounded slice of one pending handoff report with worker provenance.",
@@ -195,11 +196,13 @@ export function createSessionFamilyOperations(
     },
     {
       command: "sessions.send",
+      canonicalSessionIds: true,
       requires: "invokeAppControl",
       topic: "sessions",
       summary:
-        "Send a message to an explicitly targeted Project Session in any Cake project, or omit sessionId to message Cake Chat.",
+        "Send to a Project Session or registered Project Chat; omit sessionId to message global Cake Chat from a Project Session.",
       guidance: [
+        "For a Project Chat, call projects.list with query and pass its canonical projectChatId as sessionId. No repository reads, path hashing, sessions.info or recipient turn wait is needed. Receipt means admission/deferred retention, not execution or completion.",
         'Omit sessionId to reach Cake Chat. Cake Chat has no session ID; never pass the sender ID shown on Cake Chat\'s messages (it is labelled "cake-chat"). delivery, resultDelivery, threadId, and replyToMessageId mean the same as in sessions.reply to Cake Chat. To ask the user a question through Cake Chat, set resultDelivery: "reply"; to report a blocker on assigned work, prefer sessions.reply with outcome: "blocked".',
         "By default do not use sessions.send (including send-batch or steering) for intra-family communication. Current explicit user exceptions override this Cake policy; supported tool capabilities and genuine platform limits still apply. Parents, children, siblings and recursive descendants communicate exclusively through their shared Workboard. This does not restrict user-facing replies, Cake Chat or unrelated independent sessions.",
         "Outside the family, necessary immediate corrections steer active work by default; idle sessions start normally. Use delivery: fyi for passive batched updates, queue only for deliberately ordered future work.",
