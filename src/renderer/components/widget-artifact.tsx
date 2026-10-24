@@ -13,7 +13,6 @@ import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
 import { InlineWidgetFrame } from "./inline-widget-frame";
 import { decodeArtifactLineageId } from "../../contracts/artifacts/artifact-lineage";
 import { ArtifactState } from "../../contracts/artifacts/artifact-state";
-import type { WidgetViewIdentity } from "../../contracts/widgets/widget-view-evidence";
 import { artifactStateWireError } from "../../contracts/widgets/artifact-state-wire";
 
 const detachedState = Schema.decodeUnknownSync(Schema.fromJsonString(ArtifactState));
@@ -174,44 +173,12 @@ export const WidgetArtifact = observer(function WidgetArtifact({
       </div>
     );
   if (!state?.compiled) return <div className="min-h-55" aria-busy="true" />;
-  const identity: WidgetViewIdentity = {
-    exactRef: `cake://artifact/${artifact.id}@r${artifact.revision}`,
-    localState: "unavailable: widget-local interactive state is not reported",
-    savedState: liveState?.current,
-  };
   return (
     <div
       className={fill ? "flex h-full min-h-0 flex-col" : "flex flex-col"}
       data-widget-view-id={id}
       data-widget-view-ready={readyToken === state.compiled.token}
-      data-widget-view-identity={JSON.stringify(identity)}
     >
-      <div
-        data-slot="widget-view-toolbar"
-        className="flex shrink-0 flex-wrap items-center gap-2 pb-2 pr-10 text-xs text-muted-foreground"
-      >
-        <span>Live interactive view · r{artifact.revision}</span>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={inlineWidgets.evidenceBusy || readyToken !== state.compiled.token}
-          onClick={() => void inlineWidgets.attachCurrentView(id)}
-        >
-          {inlineWidgets.evidenceBusy && inlineWidgets.evidenceViewId === id
-            ? "Capturing…"
-            : "Attach current view"}
-        </Button>
-        <span>Pixels + exact revision to draft; local state may be unreported.</span>
-      </div>
-      {inlineWidgets.evidenceViewId === id && inlineWidgets.evidenceMessage && (
-        <Callout
-          variant={inlineWidgets.evidenceFailed ? "error" : "info"}
-          className="mb-2 shrink-0"
-          role="status"
-        >
-          {inlineWidgets.evidenceMessage}
-        </Callout>
-      )}
       <InlineWidgetFrame
         ref={iframe}
         className={fill ? "min-h-0 flex-1" : undefined}

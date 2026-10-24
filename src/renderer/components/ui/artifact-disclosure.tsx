@@ -1,16 +1,19 @@
 import { type ReactNode, useId } from "react";
 import { DisclosureTrigger } from "./disclosure-trigger";
+import { Badge } from "./badge";
 
 /** One collapsible inline artifact surface, with no separate open action. */
 export function ArtifactDisclosure({
   title,
   reference,
+  oldVersion = false,
   open,
   onToggle,
   children,
 }: {
   title: string;
   reference: string;
+  oldVersion?: boolean;
   open: boolean;
   onToggle(): void;
   children?: ReactNode;
@@ -26,6 +29,13 @@ export function ArtifactDisclosure({
         <DisclosureTrigger
           title={title}
           subtitle={open ? "Collapse" : "Expand"}
+          badge={
+            oldVersion ? (
+              <Badge size="xs" className="shrink-0">
+                Old version
+              </Badge>
+            ) : undefined
+          }
           open={open}
           aria-controls={open ? contentId : undefined}
           onClick={onToggle}

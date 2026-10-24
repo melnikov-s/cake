@@ -20,7 +20,7 @@ Publication supplies the accepted review PNG as a native image to the caller. Th
 
 Before implementation, inspect the approved exact @rN preview with `artifacts.preview` directly or read resolved `preview.png`. The brief describes intent; it is not the approved visual design. Read projected source.tsx.txt/source.html.txt selectively for ambiguous layout/dynamic behavior; do not import private generation conversation history.
 
-A preview covers one bounded initial-state view, not all interactions, themes or viewports. Compare the implementation's real screenshot against the same approved revision and verify relevant interactions. A matching revision is not enough: Initial state may show A while the user selected C. For an approved interactive selection, ask for Attach current view on that widget. Inspect the draft's matching pixels and exact-revision evidence before implementation.
+A preview covers one bounded initial-state view, not all interactions, themes or viewports. Compare the implementation's real screenshot against the same approved revision and verify relevant interactions. A matching revision is not enough: Initial state may show A while the user selected C. For an approved interactive selection, request a screenshot and confirm its artifact revision and selected state before implementation.
 
 Saved lineage state is advisory. Do not infer unavailable widget-local state or variants from source. Never claim visual verification from source or an image description alone. If nested tool forwarding returns text only, call the image tool directly or read with an image-capable tool; disclose missing pixels.
 

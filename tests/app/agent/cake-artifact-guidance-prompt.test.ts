@@ -59,7 +59,9 @@ describe("shared artifact guidance required by Project Sessions and Cake Chat", 
     );
     expect(prompt).toContain("verify relevant interactions");
     expect(prompt).toContain("A matching revision is not enough");
-    expect(prompt).toContain("Attach current view");
+    expect(prompt).toContain(
+      "request a screenshot and confirm its artifact revision and selected state",
+    );
     expect(prompt).toContain(
       "Never claim visual verification from source or an image description alone",
     );

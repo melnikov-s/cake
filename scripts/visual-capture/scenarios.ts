@@ -1386,85 +1386,6 @@ async function seedArtifactScenario(
   }
 }
 
-const widgetViewEvidenceScenario: VisualCaptureScenario = {
-  name: "widget-view-evidence",
-  description:
-    "Initial A and live C at the same revision, with current-view evidence attached to a draft",
-  states: ["initial", "selected", "attached"],
-  async seed(paths, theme, supplied) {
-    const source = `import React, { useState } from "react";
-import { useArtifactState } from "@cake/artifact-sdk";
-export default function Visual() {
-  const saved = useArtifactState({ variant: "A" });
-  const [variant, setVariant] = useState("A");
-  return <main style={{ height: "100%", padding: 24, boxSizing: "border-box", color: "var(--foreground)", background: "var(--background)", fontFamily: "var(--font-sans)" }}>
-    <h1>Variant {variant}</h1>
-    <p>Same revision. Different interactive pixels.</p>
-    <button onClick={() => setVariant("A")}>Select A</button>{" "}
-    <button onClick={() => setVariant("C")}>Select C</button>{" "}
-    <button disabled={!saved.hydrated} onClick={() => saved.save({ variant: "A" })}>Save A state</button>
-    <section style={{ marginTop: 24, padding: 24, border: "2px solid var(--border)", borderRadius: variant === "A" ? 0 : 24 }}>
-      {variant === "A" ? "INITIAL A · retained preview baseline" : "LIVE C · user-selected view"}
-    </section>
-  </main>;
-}`;
-    const artifact: CakeArtifactV1 = {
-      protocol: "cake.artifact/v1",
-      id: "widget-view-evidence",
-      sessionId: "visual-widget-view-evidence",
-      revision: 3,
-      kind: "widget",
-      title: "Widget view evidence",
-      payload: {
-        language: "react",
-        source,
-        brief: "A-initial/C-live mismatch fixture",
-        generationSessionId: "visual-evidence-generation",
-        browser: await retainArtifactBrowser(paths, "react", source),
-        ...(supplied?.kind === "widget" && supplied.payload.preview
-          ? { preview: supplied.payload.preview }
-          : {}),
-      },
-      fallback: { markdown: "Widget view evidence" },
-      interaction: { mode: "present" },
-    };
-    await seedArtifactScenario(paths, theme, artifact, true);
-    for (const revision of [1, 2]) {
-      const serialized = `${JSON.stringify({ ...artifact, revision }, null, 2)}\n`;
-      await writeFile(
-        join(paths.cakeHome, "state", "artifacts", "blobs", `${sha256(serialized)}.json`),
-        serialized,
-      );
-    }
-  },
-  async prepare(page, state) {
-    const host = page.locator('[data-artifact-id="widget-view-evidence"]').first();
-    await expect(
-      host.locator("iframe").contentFrame().getByRole("heading", { name: "Variant A" }),
-    ).toBeVisible();
-    await host.getByRole("button", { name: "View Widget view evidence fullscreen" }).click();
-    const dialog = page.getByRole("dialog", { name: "Widget view evidence", exact: true });
-    const frame = dialog.locator("iframe").contentFrame();
-    await frame.getByRole("button", { name: "Save A state" }).click();
-    if (state !== "initial") {
-      await frame.getByRole("button", { name: "Select C" }).click();
-      await expect(frame.getByRole("heading", { name: "Variant C" })).toBeVisible();
-    }
-    if (state === "attached") {
-      await dialog.getByRole("button", { name: "Attach current view" }).click();
-      await expect(
-        dialog.getByText("Current view + revision added to draft. Send when ready."),
-      ).toBeVisible();
-      await dialog.getByRole("button", { name: "Exit fullscreen Widget view evidence" }).click();
-    }
-  },
-  region(page, state) {
-    return state === "attached"
-      ? page.locator("body")
-      : page.getByRole("dialog", { name: "Widget view evidence", exact: true });
-  },
-};
-
 const inlineArtifactScenario: VisualCaptureScenario = {
   name: "inline-artifact",
   description: "One saved visualization, expanded inline by default with collapse and fullscreen",
@@ -1574,6 +1495,84 @@ export default function Visual() {
       : state === "popup" || state === "fullscreen"
         ? page.getByRole("dialog")
         : page.locator('[data-slot="artifact-disclosure"]').first();
+  },
+};
+
+const inlineArtifactRevisionsScenario: VisualCaptureScenario = {
+  name: "inline-artifact-revisions",
+  description: "Old and current widget revision headers, collapsed or reopened",
+  states: ["default", "reopened"],
+  async seed(paths, theme) {
+    await inlineArtifactScenario.seed(paths, theme);
+    const artifactRoot = join(paths.cakeHome, "state", "artifacts");
+    const record = JSON.parse(
+      await readFile(
+        join(
+          artifactRoot,
+          "sessions",
+          sha256(paths.project),
+          sha256("visual-inline-artifact"),
+          `${sha256("inline-visual")}.json`,
+        ),
+        "utf8",
+      ),
+    );
+    const original: CakeArtifactV1 = JSON.parse(
+      await readFile(join(artifactRoot, "blobs", `${record.digest}.json`), "utf8"),
+    );
+    await seedArtifact(paths, { ...original, revision: 2 }, new Date(0).toISOString());
+    const transcript = join(
+      workspaceSessionDirectory(paths.project, join(paths.cakeHome, "pi", "sessions")),
+      "1970-01-01T00-00-00-000Z_visual-inline-artifact.jsonl",
+    );
+    const entries = (await readFile(transcript, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const first = entries.find((entry) => entry.id === "assistant-architecture");
+    first.message.content = first.message.content.filter(
+      (part: { type: string }) => part.type === "toolCall",
+    );
+    const final = entries.find((entry) => entry.id === "inline-finished");
+    final.message.content = [
+      { type: "text", text: "![Inline visualization](cake://artifact/inline-visual@r2)" },
+    ];
+    await writeFile(transcript, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+  },
+  async prepare(page, state) {
+    const disclosures = page.locator('[data-slot="artifact-disclosure"]');
+    const old = disclosures.filter({ hasText: "Old version" });
+    const current = disclosures.filter({ has: page.locator('[data-artifact-id="inline-visual"]') });
+    await expect(old).toHaveCount(1);
+    await expect(old.getByRole("button", { name: /Expand Old version/ })).toBeVisible();
+    await expect(
+      current
+        .locator("iframe")
+        .contentFrame()
+        .getByRole("heading", { name: "One artifact, two views" }),
+    ).toBeVisible();
+    await current
+      .getByRole("button", { name: "Inline visualization Collapse", exact: true })
+      .click();
+    if (state === "reopened") {
+      await old.getByRole("button", { name: /Expand Old version/ }).click();
+      await expect(
+        old
+          .locator("iframe")
+          .contentFrame()
+          .getByRole("heading", { name: "One artifact, two views" }),
+      ).toBeVisible();
+    }
+    await page
+      .locator(".transcript")
+      .first()
+      .evaluate((element) => {
+        element.scrollTop = 0;
+      });
+    await page.mouse.move(1, 1);
+  },
+  region(page) {
+    return page.locator(".transcript").first();
   },
 };
 
@@ -4843,9 +4842,9 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   requestExplanationScenario,
   messageBoardScenario,
   inlineArtifactScenario,
+  inlineArtifactRevisionsScenario,
   widgetThemeScenario("react"),
   widgetThemeScenario("html"),
-  widgetViewEvidenceScenario,
   cakePromptsSettingsScenario,
   mcpSettingsScenario,
   mcpSettingsLayoutScenario,

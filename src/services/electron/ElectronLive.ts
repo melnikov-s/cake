@@ -14,7 +14,6 @@ import {
   type WebContents,
 } from "electron";
 import { ScreenCaptureWindow } from "./ScreenCaptureWindow";
-import { captureWidgetView } from "./capture-widget-view";
 import { CakeChatOverlayWindow } from "./CakeChatOverlayWindow";
 import type { CakeWindowFocus } from "./cake-chat-overlay-policy";
 import { ACCESSIBILITY_PERMISSION_MESSAGE, readSelectedText, runOsaScript } from "./selected-text";
@@ -614,20 +613,6 @@ const makeElectronService = (
         },
         catch: electronError,
       }),
-    ),
-    captureWidgetView: Effect.fn("Electron.captureWidgetViewForConnection")(
-      function* (connectionId, request) {
-        const sender = yield* Effect.try({
-          try: () => requireRendererConnection(connectionId),
-          catch: electronError,
-        });
-        const owner = BrowserWindow.fromWebContents(sender);
-        if (!owner || owner.isDestroyed() || owner.isMinimized())
-          return yield* new ElectronError({
-            message: "Current widget capture requires an available, non-minimized Cake window.",
-          });
-        return yield* captureWidgetView(sender, request.viewId);
-      },
     ),
     startScreenCapture: Effect.fn("Electron.startScreenCapture")((connectionId, routing) =>
       Effect.tryPromise({

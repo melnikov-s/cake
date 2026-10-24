@@ -106,10 +106,7 @@ for (const theme of ["light", "dark"] as const) {
       const initialHeight = await iframe.evaluate(
         (element) => element.getBoundingClientRect().height,
       );
-      const toolbarHeight = await inline
-        .locator('[data-slot="widget-view-toolbar"]')
-        .evaluate((element) => element.getBoundingClientRect().height);
-      expect(initialHeight).toBe(600 - toolbarHeight);
+      expect(initialHeight).toBe(600);
       const resize = inline.getByRole("separator", { name: "Resize Inline visualization" });
       await resize.focus();
       await resize.press("ArrowDown");
@@ -122,7 +119,7 @@ for (const theme of ["light", "dark"] as const) {
       await expect(resize).toHaveAttribute("aria-valuenow", "680");
       await expect
         .poll(() => iframe.evaluate((element) => element.getBoundingClientRect().height))
-        .toBe(680 - toolbarHeight);
+        .toBe(680);
       const explore = frame.getByRole("button", { name: "Explore detail" });
       await explore.focus();
       await explore.press("Enter");
@@ -228,11 +225,8 @@ for (const theme of ["light", "dark"] as const) {
         const bounds = (await fullFrame.boundingBox())!;
         const viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
         expect(bounds.width).toBe(viewport.width);
-        const toolbar = (await fullscreen
-          .locator('[data-slot="widget-view-toolbar"]')
-          .boundingBox())!;
-        expect(bounds.height).toBeCloseTo(viewport.height - header.height - toolbar.height, 0);
-        expect(bounds.y).toBeCloseTo(header.height + toolbar.height, 0);
+        expect(bounds.height).toBeCloseTo(viewport.height - header.height, 0);
+        expect(bounds.y).toBeCloseTo(header.height, 0);
         expect(
           await fullContent
             .locator("body")
@@ -259,7 +253,7 @@ for (const theme of ["light", "dark"] as const) {
       await expect(frame.getByRole("button", { name: "Hide detail" })).toBeVisible();
       await expect
         .poll(() => iframe.evaluate((element) => element.getBoundingClientRect().height))
-        .toBe(680 - toolbarHeight);
+        .toBe(680);
       await expect(resize).toHaveAttribute("aria-valuenow", "680");
       const collapse = inline.getByRole("button", { name: "Inline visualization Collapse" });
       await collapse.focus();

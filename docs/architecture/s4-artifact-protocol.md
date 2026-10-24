@@ -449,22 +449,15 @@ private-transcript recovery, latest-revision substitution, or mutation of old sn
 
 Retained previews are labeled **Initial state—not current interactive view** in the UI and
 image-operation metadata (`retained-initial-state`, with exact reference). They remain immutable.
-The live widget provides **Attach current view**: a user-initiated native Electron capture of that
-specific mounted iframe, after paint settlement, plus exact revision, capture timestamp, dimensions,
-`live-widget-view` provenance and available last host-observed saved lineage state. Pixels and evidence
-metadata are paired attachments in the active conversation's draft; capture never auto-sends,
-navigates, revises the artifact, resumes an agent, or persists widget-local React state. The destination
-is frozen before capture. Closed, unready, minimized, clipped or covered views fail explicitly, without
-substituting retained or freshly rendered initial pixels. Browser-only hosts do not support native capture.
-The image covers the visible widget viewport, not all internal scrolling content or other viewports.
+The live widget has no current-view attachment action. Ordinary screenshot and attachment workflows
+remain available separately; retained previews never track widget-local interactions.
 
-Saved lineage state is advisory, not an atomic snapshot of arbitrary widget-local state. Local
-variant/selection metadata is explicitly unavailable unless represented in saved state; even then,
-inspect the actual pixels. A matching revision alone can still mean initial A versus live C.
-Before implementing an approved interactive view, inspect matching revision **and state** pixels,
-requesting Attach current view when needed. Source or image descriptions alone are never visual
-verification. Read source selectively for behavior, without importing the generation conversation.
-Compare the implementation's real screenshot against the approved view and verify relevant interactions.
+Saved lineage state is advisory, not an atomic snapshot of arbitrary widget-local state.
+A matching revision alone can still mean initial A versus live C. Before implementing an approved
+interactive view, request a screenshot and confirm its artifact revision and selected state.
+Source or image descriptions alone are never visual verification. Read source selectively for
+behavior, without importing the generation conversation. Compare the implementation's real
+screenshot against the approved view and verify relevant interactions.
 
 Normal artifact presentation does not expose generated Source or a renderer-local
 Repair control. User-requested repair is a durable `artifacts.replace`: a new

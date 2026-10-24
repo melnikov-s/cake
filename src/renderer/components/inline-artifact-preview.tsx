@@ -52,6 +52,7 @@ export const InlineArtifactPreview = observer(function InlineArtifactPreview({
     <ArtifactDisclosure
       title={title}
       reference={exactRef}
+      oldVersion={store.isOldVersion(key)}
       open={store.expanded(key)}
       onToggle={() => store.toggle(key)}
     >

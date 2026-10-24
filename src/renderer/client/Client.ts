@@ -3,7 +3,6 @@ import type {
   PreparedFileLocation,
 } from "../../contracts/filesystem/file-location";
 import type { CommandGroup } from "./command-group";
-import type { WidgetViewCapture } from "../../contracts/widgets/widget-view-evidence";
 import type { WidgetBrowserOutput } from "../../contracts/widgets/widget-browser-output";
 import type {
   BoardDescriptionPage,
@@ -113,7 +112,6 @@ type SessionContextMenuAction = {
 };
 
 interface ElectronCommands {
-  captureWidgetView(viewId: string, options?: ClientCommandOptions): Promise<WidgetViewCapture>;
   configureCakeChatOverlay(
     settings: CakeChatOverlaySettings,
     options?: ClientCommandOptions,

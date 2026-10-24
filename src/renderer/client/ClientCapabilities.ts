@@ -39,12 +39,6 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
 
   return {
     electron: {
-      captureWidgetView: (viewId, options) =>
-        execute(
-          "electron.capture-widget-view",
-          (client) => client.electron["capture-widget-view"]({ viewId }),
-          options,
-        ),
       configureScreenCapture: (input, options) =>
         execute(
           "electron.configure-screen-capture",

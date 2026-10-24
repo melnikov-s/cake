@@ -96,6 +96,20 @@ export class InlineArtifactPreviewStore extends Store<{
     return this.props.model.find(parsed.lineageId)?.revision(parsed.revision!);
   }
 
+  isOldVersion(key: string) {
+    const state = this.states[key];
+    const reference = state?.exactRef ?? state?.targetRef ?? state?.reference;
+    if (!reference) return false;
+    const parsed = parseArtifactRef(reference);
+    const lineage = this.props.model.find(parsed.lineageId);
+    const revision = parsed.revision && lineage?.revision(parsed.revision);
+    return (
+      (revision?.kind === "widget" || lineage?.latest?.kind === "widget") &&
+      parsed.revision !== undefined &&
+      parsed.revision < (lineage?.latestRevision ?? 0)
+    );
+  }
+
   title(key: string) {
     const state = this.states[key];
     if (!state) return undefined;

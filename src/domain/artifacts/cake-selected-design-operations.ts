@@ -95,7 +95,7 @@ export function createSelectedDesignOperations(
       guidance: [
         "Pass a captured cake.selected-design/v1 reference. Omit moduleId to discover just the chosen option's dependency closure; request each module by ID with character offset/limit (maximum 48000). External package imports are listed, not copied.",
         "Link exactRef first. Unknown options, unauthorized modules, missing manifests/dependencies/source, mismatched digests, changed revisions and changed saved state fail explicitly. Never substitute latest, all five options, chooser source, a screenshot, or private generation history.",
-        "Source is implementation material, not evidence of the visible design. Request Attach current view separately only when visual checks are needed.",
+        "Source is implementation material, not evidence of the visible design. Request a screenshot separately only when visual checks are needed; confirm its artifact revision and selected state.",
       ],
       async execute(input) {
         const parsed = Schema.decodeUnknownSync(SelectedDesignSourceInput)(input);

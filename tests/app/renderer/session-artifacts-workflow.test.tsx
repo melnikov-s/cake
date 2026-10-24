@@ -494,7 +494,7 @@ describe("Session artifact workflows", () => {
       ],
       { open },
     );
-    await screen.findByRole("button", { name: "Visual explanation Collapse" });
+    await screen.findByRole("button", { name: "Visual explanation Collapse Old version" });
     expect(await screen.findByText("Read temporarily unavailable")).toBeDefined();
     readExact.mockImplementation(async (_id, revision) => visual(revision).revision);
     await fixture.user.click(screen.getByRole("button", { name: "Retry preview" }));
@@ -504,9 +504,13 @@ describe("Session artifact workflows", () => {
     expect(readExact).toHaveBeenLastCalledWith("visual", 1, expect.anything());
     expect(await screen.findByText("Explanation r1")).toBeDefined();
     expect(open).toHaveBeenCalledWith({ digest: "b".repeat(64) });
-    await fixture.user.click(screen.getByRole("button", { name: "Visual explanation Collapse" }));
+    await fixture.user.click(
+      screen.getByRole("button", { name: "Visual explanation Collapse Old version" }),
+    );
     expect(screen.queryByText("Explanation r1")).toBeNull();
-    await fixture.user.click(screen.getByRole("button", { name: "Visual explanation Expand" }));
+    await fixture.user.click(
+      screen.getByRole("button", { name: "Visual explanation Expand Old version" }),
+    );
     expect(await screen.findByText("Explanation r1")).toBeDefined();
     expect(readExact.mock.calls.every((call) => call[1] === 1)).toBe(true);
     // Inline expansion is independent of toolbar navigation.
@@ -626,11 +630,15 @@ describe("Session artifact workflows", () => {
         },
       ],
     );
-    await screen.findByRole("button", { name: "Visual explanation Collapse" });
+    await screen.findByRole("button", { name: "Visual explanation Collapse Old version" });
     await waitFor(() => expect(readExact).toHaveBeenCalled());
-    await fixture.user.click(screen.getByRole("button", { name: "Visual explanation Collapse" }));
+    await fixture.user.click(
+      screen.getByRole("button", { name: "Visual explanation Collapse Old version" }),
+    );
     await act(async () => pending.resolve(visual(1).revision));
-    expect(screen.getByRole("button", { name: "Visual explanation Expand" })).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Visual explanation Expand Old version" }),
+    ).toBeDefined();
     expect(screen.queryByText("Explanation r1")).toBeNull();
   });
   it("opens a sole linked artifact in the detail pane and reopens its catalog after closing", async () => {
