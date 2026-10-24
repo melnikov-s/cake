@@ -50,12 +50,14 @@ Admission identity, not text or queue position, links the receipt to the runtime
 
 [`ReadableData`](../../src/renderer/components/ui/readable-data.tsx) renders complete literal values as readable documents, ordered arrays and definition lists, with optional section disclosure and embedded raster-image previews. It never fetches remote image references or interprets strings as Markdown. Use it for literal attachment previews; syntax-highlighted source remains owned by AI Elements.
 
-[`ActivityMenu`](../../src/renderer/components/ui/activity-menu.tsx) composes the shared
-Popover, Button and StatusDot into a compact pill or attached composer strip with
-a flat list of inspect/open rows. Per-row type icons have accessible labels and
-tooltips, separate from status dots. Conversation owners supply only currently
-running work and derive the summary/count from those same rows, omitting the menu
-when none remain. The strip opens upward above the composer.
+[`ActivityDisclosure`](../../src/renderer/components/ui/activity-disclosure.tsx) composes
+Button and StatusDot into a compact pill or attached composer strip. Clicking the
+bar or its chevron toggles a bounded, scrollable inline list of inspect/open rows;
+Enter and Space toggle it, and Escape collapses it and returns focus to the trigger.
+Per-row type icons retain accessible labels and tooltips, separate from status dots.
+Conversation owners supply only currently running work and derive the summary/count
+from those same rows, omitting the disclosure when none remain. Activity-only caps
+join the composer without reserved vertical space.
 
 [`ComposerCap`](../../src/renderer/components/ui/composer-cap.tsx) frames supporting
 controls attached above the shared composer. Activity occupies its top band, with

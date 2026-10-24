@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { researchMarkdown } from "../fixtures/subagent-report";
+import { verifyInlineActivity } from "./fixtures/activity-disclosure";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
@@ -225,7 +226,10 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
             const input = dock.querySelector("form")!.getBoundingClientRect();
             const chat = element.closest('[data-slot="chat"]')!;
             return (
-              strip.bottom <= input.top &&
+              Math.abs(strip.bottom - input.top) < 2 &&
+              Math.abs(
+                strip.top - element.parentElement!.parentElement!.getBoundingClientRect().top,
+              ) < 2 &&
               Math.abs(strip.left - input.left - 16) < 2 &&
               Math.abs(input.right - strip.right - 16) < 2 &&
               parseFloat((chat as HTMLElement).style.getPropertyValue("--composer-dock-height")) >=
@@ -235,9 +239,7 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
         )
         .toBe(true);
     }
-    await activity.focus();
-    await activity.press("Enter");
-    const activityMenu = page.getByRole("dialog", { name: "Conversation activity" });
+    const activityMenu = await verifyInlineActivity(activity, composer);
     await expect(
       activityMenu.getByRole("img", { name: "Temporary subagent", exact: true }),
     ).toBeVisible();

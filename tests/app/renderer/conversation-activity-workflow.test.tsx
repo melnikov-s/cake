@@ -195,7 +195,7 @@ it.each(["project", "cake-chat"] as const)(
     const input = dock.querySelector('[data-slot="composer-input"]')!;
     expect(trigger.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await view.user.click(trigger);
-    const menu = screen.getByRole("dialog", { name: "Conversation activity" });
+    const menu = screen.getByRole("region", { name: "Conversation activity" });
     expect(within(menu).getByRole("img", { name: "Temporary subagent" })).toBeTruthy();
     expect(
       within(menu)
@@ -211,6 +211,38 @@ it.each(["project", "cake-chat"] as const)(
     view.publishWorker("running", true);
     expect(screen.queryByRole("button", { name: /^Activity ·/ })).toBeNull();
     expect(within(panel).getByText("Inspecting now")).toBeTruthy();
+  },
+);
+
+it.each(["project", "cake-chat"] as const)(
+  "%s activity toggles inline from the bar, chevron and keyboard without dismissing on composer input",
+  async (kind) => {
+    using view = renderActivity(kind);
+    view.publishWorker("running");
+    const trigger = screen.getByRole("button", { name: "Activity · 1 running" });
+    const dock = trigger.closest('[data-slot="composer-dock"]')!;
+    const detailsId = trigger.getAttribute("aria-controls")!;
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("region", { name: "Conversation activity" })).toBeNull();
+
+    await view.user.click(trigger.querySelector("svg")!);
+    const details = screen.getByRole("region", { name: "Conversation activity" });
+    expect(details.id).toBe(detailsId);
+    expect(dock.contains(details)).toBe(true);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    const input = within(dock as HTMLElement).getByRole("combobox");
+    await view.user.click(input);
+    await view.user.type(input, "Keep this draft");
+    expect(screen.getByRole("region", { name: "Conversation activity" })).toBe(details);
+
+    await view.user.click(within(trigger).getByText("Activity ·"));
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("region", { name: "Conversation activity" })).toBeNull();
+    await view.user.keyboard("{Enter}");
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    await view.user.keyboard(" ");
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect((input as HTMLTextAreaElement).value).toBe("Keep this draft");
   },
 );
 
@@ -238,11 +270,17 @@ it("keeps worktree tools beneath the activity band when workers appear and finis
   const tools = screen.getByTestId("worktree-pill-toolbar");
   expect(trigger.compareDocumentPosition(tools) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   await view.user.click(trigger);
-  expect(screen.getByRole("dialog", { name: "Conversation activity" })).toBeTruthy();
+  const details = screen.getByRole("region", { name: "Conversation activity" });
+  expect(worktree.contains(details)).toBe(true);
+  expect(details.compareDocumentPosition(tools) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  await view.user.click(trigger);
+  expect(screen.queryByRole("region", { name: "Conversation activity" })).toBeNull();
+  expect(within(worktree).getByRole("button", { name: "Merge" })).toBeTruthy();
+  await view.user.click(trigger);
   view.publishWorker("complete");
   expect(within(worktree).queryByRole("button", { name: /^Activity ·/ })).toBeNull();
   expect(within(worktree).getByRole("button", { name: "Merge" })).toBeTruthy();
-  expect(screen.queryByRole("dialog", { name: "Conversation activity" })).toBeNull();
+  expect(screen.queryByRole("region", { name: "Conversation activity" })).toBeNull();
 });
 
 it("regular sessions show only running direct children and open the selected session", async () => {
@@ -253,7 +291,7 @@ it("regular sessions show only running direct children and open the selected ses
     child({ sessionId: "unrelated", familyParentSessionId: "another-parent", title: "Other work" }),
   ]);
   await view.user.click(screen.getByRole("button", { name: "Activity · 1 running" }));
-  const menu = screen.getByRole("dialog", { name: "Conversation activity" });
+  const menu = screen.getByRole("region", { name: "Conversation activity" });
   expect(
     within(menu)
       .getAllByRole("button")
@@ -326,7 +364,7 @@ it.each(["project", "cake-chat"] as const)(
       ),
     );
     await view.user.click(screen.getByRole("button", { name: "Activity · 2 running" }));
-    const menu = screen.getByRole("dialog", { name: "Conversation activity" });
+    const menu = screen.getByRole("region", { name: "Conversation activity" });
     const rows = within(menu).getAllByRole("button");
     expect(rows.map((row) => row.getAttribute("aria-label"))).toEqual([
       "Open session: Activity UI review",
@@ -353,7 +391,7 @@ it.each(["project", "cake-chat"] as const)(
     expect(within(menu).getAllByRole("button")).toHaveLength(1);
     view.publishWorker("complete");
     expect(screen.queryByRole("button", { name: /^Activity ·/ })).toBeNull();
-    expect(screen.queryByRole("dialog", { name: "Conversation activity" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Conversation activity" })).toBeNull();
   },
 );
 

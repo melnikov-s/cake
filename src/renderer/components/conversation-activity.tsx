@@ -2,7 +2,7 @@ import { observer, useStore } from "r-state-tree/react";
 import { RootStore } from "../stores/RootStore";
 import type { SubagentActivityStore } from "../stores/SubagentActivityStore";
 import type { SideChatStore } from "../stores/SideChatStore";
-import { ActivityMenu } from "./ui/activity-menu";
+import { ActivityDisclosure } from "./ui/activity-disclosure";
 import { ChatIcon, ForkIcon } from "./ui/icons";
 import { ComposerCap } from "./ui/composer-cap";
 
@@ -27,9 +27,8 @@ export const ConversationActivity = observer(function ConversationActivity({
   const runs = subagents.activeRuns.filter((run) => run.status === "running");
   const running = sessions.length + runs.length;
   if (running === 0) return null;
-  const menu = (
-    <ActivityMenu
-      side={placement === "header" ? "bottom" : "top"}
+  const activity = (
+    <ActivityDisclosure
       presentation={placement === "header" ? "pill" : "strip"}
       summary={`${running} running`}
       status="running"
@@ -73,5 +72,9 @@ export const ConversationActivity = observer(function ConversationActivity({
       ]}
     />
   );
-  return placement === "composer" ? <ComposerCap>{menu}</ComposerCap> : menu;
+  return placement === "composer" ? (
+    <ComposerCap className="pb-5">{activity}</ComposerCap>
+  ) : (
+    activity
+  );
 });

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { windowState } from "../fixtures/window-state";
+import { verifyInlineActivity } from "./fixtures/activity-disclosure";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -212,7 +213,10 @@ test("background family children show running activity and only offer Mark as Un
             const input = dock.querySelector("form")!.getBoundingClientRect();
             const chat = element.closest('[data-slot="chat"]')!;
             return (
-              strip.bottom <= input.top &&
+              Math.abs(strip.bottom - input.top) < 2 &&
+              Math.abs(
+                strip.top - element.parentElement!.parentElement!.getBoundingClientRect().top,
+              ) < 2 &&
               Math.abs(strip.left - input.left - 16) < 2 &&
               Math.abs(input.right - strip.right - 16) < 2 &&
               parseFloat((chat as HTMLElement).style.getPropertyValue("--composer-dock-height")) >=
@@ -222,8 +226,7 @@ test("background family children show running activity and only offer Mark as Un
         )
         .toBe(true);
     }
-    await activity.click();
-    const activityMenu = page.getByRole("dialog", { name: "Conversation activity" });
+    const activityMenu = await verifyInlineActivity(activity, composer);
     await expect(
       activityMenu.getByRole("button", { name: "Open session: Background worker" }),
     ).toBeVisible();

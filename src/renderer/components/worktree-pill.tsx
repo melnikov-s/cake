@@ -224,7 +224,7 @@ export const WorktreePill = observer(function WorktreePill({
   // The catalog Model receives authoritative worktree lifecycle events. Do not let an
   // older status request temporarily mask its landed state.
   const record = knownRecord ?? status?.record;
-  if (!record) return header ? <ComposerCap>{header}</ComposerCap> : null;
+  if (!record) return header ? <ComposerCap className="pb-5">{header}</ComposerCap> : null;
 
   const branch = record.branch.replace(/^agent\//, "");
   const landed = record.state === "landed";

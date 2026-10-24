@@ -3378,8 +3378,10 @@ async function startActivityFixtureSession(page: Page, title: string) {
   await search.getByRole("option").filter({ hasText: title }).click();
   await page.getByRole("button", { name: "Model configuration", exact: true }).click();
   const changeModel = page.getByRole("button", { name: "Change model", exact: true });
+  const modelSearch = page.getByLabel("Search presets and models");
+  await expect(changeModel.or(modelSearch)).toBeVisible();
   if (await changeModel.isVisible()) await changeModel.click();
-  await page.getByLabel("Search presets and models").fill("Inspection fixture");
+  await modelSearch.fill("Inspection fixture");
   await page
     .getByRole("button", { name: /Inspection fixture/ })
     .first()
@@ -3513,7 +3515,7 @@ const cakeChatSessionUpdatesScenario: VisualCaptureScenario = {
     if (state === "open") {
       await activity.click();
       await expect(
-        page.getByRole("dialog", { name: "Conversation activity", exact: true }),
+        page.getByRole("region", { name: "Conversation activity", exact: true }),
       ).toBeVisible();
     }
     await page.waitForFunction(() => document.fonts.status === "loaded");
@@ -3595,7 +3597,7 @@ const activityWorktreeScenario: VisualCaptureScenario = {
     await expect(activity).toBeVisible();
     if (state === "open") {
       await activity.click();
-      await expect(page.getByRole("dialog", { name: "Conversation activity" })).toBeVisible();
+      await expect(page.getByRole("region", { name: "Conversation activity" })).toBeVisible();
     }
     await page.mouse.move(1, 1);
   },
