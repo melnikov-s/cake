@@ -9,7 +9,7 @@ overrides:
 
 patchedDependencies:
   react-virtuoso@4.18.11:
-    hash: 2fd15b9a45e0c17e2153b18e786d882d2eee9515d8982a28a3d38e494f1108d9
+    hash: 0d18babe7fd4023695efb2bbdeb08161961e70220af3ba802c86e7e361b3ad6f
     path: patches/react-virtuoso@4.18.11.patch
 
 importers:
@@ -126,7 +126,7 @@ importers:
         version: 19.2.8(react@19.2.8)
       react-virtuoso:
         specifier: 4.18.11
-        version: 4.18.11(patch_hash=2fd15b9a45e0c17e2153b18e786d882d2eee9515d8982a28a3d38e494f1108d9)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 4.18.11(patch_hash=0d18babe7fd4023695efb2bbdeb08161961e70220af3ba802c86e7e361b3ad6f)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       remark-gfm:
         specifier: 4.0.1
         version: 4.0.1
@@ -6580,7 +6580,7 @@ snapshots:
 
   react-refresh@0.18.0: {}
 
-  react-virtuoso@4.18.11(patch_hash=2fd15b9a45e0c17e2153b18e786d882d2eee9515d8982a28a3d38e494f1108d9)(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+  react-virtuoso@4.18.11(patch_hash=0d18babe7fd4023695efb2bbdeb08161961e70220af3ba802c86e7e361b3ad6f)(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
     dependencies:
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)

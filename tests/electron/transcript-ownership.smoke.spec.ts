@@ -167,6 +167,57 @@ async function wheel(page: Page, transcript: Locator, delta: number) {
 
 // Real Root/Models/Stores, ChatTranscript, Virtuoso, native layout and observers.
 // Only projection delivery and commit ordering are controlled by the fixture.
+test.describe("long transcript layout", () => {
+  test.use({ messageCount: 2000 });
+  test("fractional row geometry settles during transcript layout updates", async ({
+    fixturePage: page,
+  }) => {
+    const transcript = page.locator(".transcript");
+    for (const size of [13, 14, 15, 16, 17, 18, 19, 20]) {
+      await page.evaluate((size) => {
+        document.documentElement.style.fontSize = `${size}px`;
+      }, size);
+      await command(page, "stream");
+      await settle(page);
+      await expect(transcript.locator('[aria-label="Conversation"]')).toBeVisible();
+      await wheel(page, transcript, -10000);
+      await command(page, "arrive");
+      await wheel(page, transcript, 10000);
+    }
+  });
+});
+
+test("size-result commits do not republish native scroll geometry", async ({
+  fixturePage: page,
+}) => {
+  const transcript = page.locator(".transcript");
+  await settle(page);
+  const reads = await transcript.evaluate((element) => {
+    const offsetHeight = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "offsetHeight",
+    )!.get!;
+    let reads = 0;
+    Object.defineProperty(element, "offsetHeight", {
+      configurable: true,
+      get() {
+        reads++;
+        return offsetHeight.call(this);
+      },
+    });
+    try {
+      // Deliver a real authority update and flush its React commit, before the
+      // browser delivers any queued scroll or ResizeObserver notifications.
+      (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).stream();
+      return reads;
+    } finally {
+      Reflect.deleteProperty(element, "offsetHeight");
+    }
+  });
+  expect(reads).toBe(0);
+  await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+});
+
 test("layout commits never undo user movement before its scroll event", async ({
   fixturePage: page,
 }) => {
