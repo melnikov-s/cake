@@ -117,10 +117,12 @@ and [`ChatStore`](../../src/renderer/stores/ChatStore.ts).
 exact attachment link with shared feedback. It never reads message bodies; the parent
 supplies the addressable session identity. Original-message previews reuse `FullscreenSurface` with bounded source pages.
 [`InlineMessageSource`](../../src/renderer/components/inline-message-source.tsx) composes
-`DisclosureTrigger` (the report title in consolidated session updates; otherwise **Expand response** / **Collapse response**), shared Markdown and
-pagination for lazy source access within the parent conversation. Receipt-only
-session cards compose it inside their attributed body and load a bounded text
-preview when visible, with explicit loading, unavailable and empty states.
+`DisclosureTrigger` with a title-only header, shared Markdown and pagination for lazy
+source access within every chat surface. Consolidated notifications, receipt-only
+session cards and linked originals use this same viewer. Opening reads the exact
+source on demand, without a separate collapsed summary; loading, unavailable and
+empty states appear inside the disclosure. The transcript scroll owner pauses
+bottom-follow before expansion to preserve the response start.
 It reuses `MessageReferencePreviewStore`;
 only the exact reference persists in Pi, never the retrieved body. Expanding loads supported
 Markdown and attachment images through the producer's authorized Working Directory and

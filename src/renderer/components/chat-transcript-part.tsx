@@ -368,7 +368,15 @@ export const TranscriptPart = observer(function TranscriptPart(props: {
           ) &&
           props.behavior.store.messageSources
             .filter((source) => source.props.partId === props.part.id)
-            .map((source) => <InlineMessageSource key={source.props.reference} store={source} />)}
+            .map((source) => (
+              <InlineMessageSource
+                key={source.props.reference}
+                store={source}
+                sourceSession={
+                  props.part.kind === "text" ? props.part.crossSession?.sender : undefined
+                }
+              />
+            ))}
       </div>
     </InlineArtifactContext>
   );

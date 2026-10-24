@@ -21,6 +21,10 @@ import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/ses
 import { formatSessionDigestReminder } from "../../src/contracts/cake-chats/session-digest-reminder";
 import { durableInputText } from "../../src/services/pi-durable/durable-input-presentation";
 import { researchOrigin } from "../fixtures/subagent-report";
+import { projectSessionEntries } from "../../src/services/pi/runtime/session-projection";
+import { encodeCrossSessionMessage } from "../../src/contracts/conversations/cross-session-message";
+import { appendMessageReferences } from "../../src/contracts/conversations/message-reference-forwarding";
+import { protectedResponseNotice } from "../../src/contracts/conversations/reference-notification";
 
 const repository = resolve(import.meta.dirname, "../..");
 const usage = {
@@ -38,7 +42,7 @@ for (const [delivery, theme] of [
   ["subagent", "dark"],
   ["subagent", "light"],
 ] as const)
-  test(`Project and global Chat automatically present ${delivery} links after reload (${theme})`, async () => {
+  test(`All three chats share title-only ${delivery} links after reload (${theme})`, async () => {
     test.setTimeout(90_000);
     const root = await mkdtemp(join(tmpdir(), "cake-message-presentation-"));
     const paths = {
@@ -116,8 +120,149 @@ for (const [delivery, theme] of [
       const originalFile = await readFile(sourceFile, "utf8");
       const hash = createHash("sha256").update(paths.project).digest("hex");
       const projectId = `project-chat:${hash}`;
-      const firstPartIds = new Map<string, string>();
-      const notificationPartIds = new Map<string, string>();
+      const viewer = SessionManager.create(
+        paths.project,
+        cakeWorkspaceSessionDirectory(paths.project, join(paths.cakeHome, "pi", "sessions")),
+      );
+      viewer.appendSessionInfo("Shared response viewer");
+      const links = `[Review findings](${metadata.ref}) and [same original](${metadata.ref}).\n\n[Producer session](cake://session/${source.getSessionId()})`;
+      const records: {
+        kind: "linked" | "notification" | "receipt" | "missing" | "running-only";
+        message: Parameters<typeof source.appendMessage>[0];
+      }[] = [
+        {
+          kind: "linked",
+          message:
+            delivery === "assistant"
+              ? {
+                  role: "assistant",
+                  content: [{ type: "text", text: links }],
+                  api: "anthropic-messages",
+                  provider: "anthropic",
+                  model: "fixture",
+                  stopReason: "stop",
+                  timestamp: 2,
+                  usage,
+                }
+              : {
+                  role: "user",
+                  content: durableInputText(
+                    `Background subagent complete: ${researchOrigin.task}\n\n${links}`,
+                    [],
+                    true,
+                    false,
+                    researchOrigin,
+                  ),
+                  timestamp: 2,
+                },
+        },
+        {
+          kind: "running-only",
+          message: {
+            role: "user",
+            timestamp: 3,
+            content:
+              "<system-reminder>\nCake session updates\n2 sessions you launched are still running.\n</system-reminder>",
+          },
+        },
+        {
+          kind: "notification",
+          message: {
+            role: "user",
+            timestamp: 3,
+            content: `${formatSessionDigestReminder({
+              lines: [
+                {
+                  reference: "worker",
+                  sessionId: source.getSessionId(),
+                  title: "Detailed delegated review",
+                  summary: "Review ready",
+                  status: "completed",
+                  resultMessageRef: metadata.ref,
+                },
+              ],
+              interruptedReport: false,
+            })!.replace(
+              "\n</system-reminder>",
+              "\n1 session you launched is still running.\n</system-reminder>",
+            )}\n\nDiscuss the summary here`,
+          },
+        },
+        {
+          kind: "receipt",
+          message: {
+            role: "user",
+            timestamp: 4,
+            content: encodeCrossSessionMessage(
+              appendMessageReferences(protectedResponseNotice, [metadata.ref]),
+              {
+                version: 1,
+                messageId: randomUUID(),
+                threadId: randomUUID(),
+                replyToMessageId: randomUUID(),
+                sequence: 1,
+                expectsResponse: false,
+                sender: {
+                  sessionId: source.getSessionId(),
+                  title: "Detailed delegated review",
+                  kind: "project-session",
+                },
+              },
+            ),
+          },
+        },
+        {
+          kind: "missing",
+          message: {
+            role: "toolResult",
+            toolName: "cake",
+            toolCallId: "missing",
+            content: [],
+            details: {
+              command: "messages.present",
+              result: {
+                ...metadata,
+                sessionId: "deleted-producer",
+                ref: "cake://session/deleted-producer?message=deleted-entry",
+                link: "cake://session/deleted-producer?message=deleted-entry",
+                entryId: "deleted-entry",
+              },
+            },
+            isError: false,
+            timestamp: 5,
+          },
+        },
+      ];
+      const partIds = new Map<string, Map<string, string>>();
+      const ordinaryIds = new Map<string, string>();
+      partIds.set(viewer.getSessionId(), ordinaryIds);
+      for (const { kind, message } of records) {
+        // Pi Project Sessions store ordinary assistant links, not Durable input envelopes.
+        const ordinary =
+          kind === "linked"
+            ? {
+                role: "assistant" as const,
+                content: [{ type: "text" as const, text: links }],
+                api: "anthropic-messages" as const,
+                provider: "anthropic",
+                model: "fixture",
+                stopReason: "stop" as const,
+                timestamp: 2,
+                usage,
+              }
+            : message;
+        const id = viewer.appendMessage(ordinary);
+        if (kind === "running-only") continue;
+        const part = projectSessionEntries(viewer.getEntries()).find((part) =>
+          kind === "notification"
+            ? part.id === `entry-${id}-context-0`
+            : kind === "missing"
+              ? part.kind === "tool" && part.messageReference
+              : part.kind === "text" && part.entryId === id,
+        );
+        if (!part) throw new Error(`Missing projected ${kind} source`);
+        ordinaryIds.set(kind, part.id);
+      }
       for (const sessionId of [CAKE_CHAT_SESSION_ID, projectId]) {
         const directory =
           sessionId === CAKE_CHAT_SESSION_ID
@@ -130,103 +275,26 @@ for (const [delivery, theme] of [
           { models: createModels(), registry: createRegistry() },
           BACKGROUND_CONTEXT,
         );
+        const ids = new Map<string, string>();
+        partIds.set(sessionId, ids);
         try {
           const conversation = await harness.root(BACKGROUND_CONTEXT);
           await conversation.commit(async (tx) => {
-            const links = `[Review findings](${metadata.ref}) and [same original](${metadata.ref}).\n\n[Producer session](cake://session/${source.getSessionId()})`;
-            if (delivery === "assistant") {
-              const entry = await tx.appendEntry(AssistantEntry, conversation.id, {
-                model: [
-                  {
-                    role: "assistant",
-                    content: [{ type: "text", text: links }],
-                    api: "anthropic-messages",
-                    provider: "anthropic",
-                    model: "fixture",
-                    stopReason: "stop",
-                    timestamp: 2,
-                    usage,
-                  },
-                ],
-              });
-              firstPartIds.set(sessionId, `entry-${entry.id}-text-0`);
-            } else {
-              const entry = await tx.appendEntry(UserEntry, conversation.id, {
-                model: [
-                  {
-                    role: "user",
-                    content: durableInputText(
-                      `Background subagent complete: ${researchOrigin.task}\n\n${links}`,
-                      [],
-                      true,
-                      false,
-                      researchOrigin,
-                    ),
-                    timestamp: 2,
-                  },
-                ],
-              });
-              firstPartIds.set(sessionId, `entry-${entry.id}-text`);
+            for (const { kind, message } of records) {
+              const entry = await tx.appendEntry(
+                message.role === "assistant"
+                  ? AssistantEntry
+                  : message.role === "toolResult"
+                    ? ToolResultEntry
+                    : UserEntry,
+                conversation.id,
+                { model: [message] },
+              );
+              ids.set(
+                kind,
+                `entry-${entry.id}-${kind === "notification" ? "context-0" : message.role === "assistant" ? "text-0" : message.role === "toolResult" ? "tool" : "text"}`,
+              );
             }
-            // Persisted running-only notices leave no transcript row; mixed notices keep results.
-            await tx.appendEntry(UserEntry, conversation.id, {
-              model: [
-                {
-                  role: "user",
-                  content:
-                    "<system-reminder>\nCake session updates\n2 sessions you launched are still running.\n</system-reminder>",
-                  timestamp: 3,
-                },
-              ],
-            });
-            const notificationEntry = await tx.appendEntry(UserEntry, conversation.id, {
-              model: [
-                {
-                  role: "user",
-                  content: `${formatSessionDigestReminder({
-                    lines: [
-                      {
-                        reference: "worker",
-                        sessionId: source.getSessionId(),
-                        title: "Detailed delegated review",
-                        summary: "Review ready",
-                        status: "completed",
-                        resultMessageRef: metadata.ref,
-                      },
-                    ],
-                    interruptedReport: false,
-                  })!.replace(
-                    "\n</system-reminder>",
-                    "\n1 session you launched is still running.\n</system-reminder>",
-                  )}\n\nDiscuss the summary here`,
-                  timestamp: 3,
-                },
-              ],
-            });
-            notificationPartIds.set(sessionId, `entry-${notificationEntry.id}-context-0`);
-            // This historical successful presentation now points at an unavailable original.
-            await tx.appendEntry(ToolResultEntry, conversation.id, {
-              model: [
-                {
-                  role: "toolResult",
-                  toolName: "cake",
-                  toolCallId: "missing",
-                  content: [],
-                  details: {
-                    command: "messages.present",
-                    result: {
-                      ...metadata,
-                      sessionId: "deleted-producer",
-                      ref: "cake://session/deleted-producer?message=deleted-entry",
-                      link: "cake://session/deleted-producer?message=deleted-entry",
-                      entryId: "deleted-entry",
-                    },
-                  },
-                  isError: false,
-                  timestamp: 4,
-                },
-              ],
-            });
           }, BACKGROUND_CONTEXT);
         } finally {
           await harness.close(BACKGROUND_CONTEXT);
@@ -259,8 +327,9 @@ for (const [delivery, theme] of [
             },
           });
         });
-      await app.evaluate(({ BrowserWindow }) =>
-        BrowserWindow.getAllWindows()[0]!.setContentSize(1280, 1100),
+      await app.evaluate(
+        ({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0]!.setContentSize(width, 1100),
+        theme === "light" ? 900 : 1280,
       );
       // Finish the seeded Project Session's startup selection before navigating away.
       await expect(
@@ -276,24 +345,36 @@ for (const [delivery, theme] of [
           page.getByText(/\d+ sessions? you launched (?:is|are) still running\./),
         ).toHaveCount(0);
         const surfaces = page.locator('[data-slot="message-source"]');
-        await expect(surfaces).toHaveCount(3);
+        await expect(surfaces).toHaveCount(4);
         const first = page.locator(
-          `[data-part-id="${firstPartIds.get(sessionId)}"] [data-slot="message-source"]`,
+          `[data-part-id="${partIds.get(sessionId)!.get("linked")}"] [data-slot="message-source"]`,
         );
         const notification = page.locator(
-          `[data-part-id="${notificationPartIds.get(sessionId)}"] [data-slot="message-source"]`,
+          `[data-part-id="${partIds.get(sessionId)!.get("notification")}"] [data-slot="message-source"]`,
         );
+        const receipt = page.locator(
+          `[data-part-id="${partIds.get(sessionId)!.get("receipt")}"] [data-slot="message-source"]`,
+        );
+        for (const source of [first, notification, receipt]) {
+          const header = source.locator('[data-slot="response-disclosure"]');
+          await expect(header).toHaveText("Detailed delegated review");
+          await expect(header).toHaveAttribute("aria-expanded", "false");
+          await expect(source).toHaveText("Detailed delegated review");
+          expect(await header.evaluate((button) => button.scrollWidth <= button.clientWidth)).toBe(
+            true,
+          );
+        }
         const missing = page.locator(
           '[data-message-reference="cake://session/deleted-producer?message=deleted-entry"]',
         );
         await expect(
-          first.getByRole("button", { name: /(?:Expand|Collapse) response/ }),
+          first.getByRole("button", { name: "Detailed delegated review", exact: true }),
         ).toHaveAttribute("aria-expanded", "false");
-        await first.getByRole("button", { name: /(?:Expand|Collapse) response/ }).click();
+        await first.getByRole("button", { name: "Detailed delegated review", exact: true }).click();
         await expect
           .poll(() =>
             first
-              .getByRole("button", { name: /(?:Expand|Collapse) response/ })
+              .getByRole("button", { name: "Detailed delegated review", exact: true })
               .evaluate((button) => {
                 const viewport = button.closest(".transcript")!.getBoundingClientRect();
                 return button.getBoundingClientRect().top - viewport.top;
@@ -318,10 +399,45 @@ for (const [delivery, theme] of [
           await expect(first.getByText("Image not available: Missing screenshot")).toBeVisible();
         };
         await verifyImages();
+        await expect(first.getByRole("link", { name: /Original message/ })).toHaveAttribute(
+          "href",
+          metadata.ref,
+        );
+        await page.waitForFunction(() =>
+          Array.from(
+            document.querySelectorAll<HTMLElement>(
+              '[data-slot="message-source"] [data-streamdown="code-block-body"] code span span',
+            ),
+          ).some((token) => token.style.getPropertyValue("--sdm-c") !== "inherit"),
+        );
+        // Real Chromium selection remains native in both Markdown prose and highlighted code.
+        for (const [target, word] of [
+          [first.getByText("Substance stays in Pi."), "Substance"],
+          [first.locator('[data-streamdown="code-block-body"] code'), "evidence"],
+        ] as const) {
+          const point = await target.evaluate((element, word) => {
+            const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+            let node: Node | null;
+            while ((node = walker.nextNode())) {
+              const start = node.textContent!.indexOf(word);
+              if (start < 0) continue;
+              const range = document.createRange();
+              range.setStart(node, start);
+              range.setEnd(node, start + word.length);
+              const rect = range.getBoundingClientRect();
+              return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+            }
+            throw new Error("Selection word missing");
+          }, word);
+          await page.mouse.dblclick(point.x, point.y);
+          await expect
+            .poll(() => page.evaluate(() => window.getSelection()?.toString().trim()))
+            .toBe(word);
+        }
         // Collapse unmounts image reads; reopening must resolve in the same source context.
-        await first.getByRole("button", { name: /(?:Expand|Collapse) response/ }).click();
+        await first.getByRole("button", { name: "Detailed delegated review", exact: true }).click();
         await expect(first.getByRole("img")).toHaveCount(0);
-        await first.getByRole("button", { name: /(?:Expand|Collapse) response/ }).click();
+        await first.getByRole("button", { name: "Detailed delegated review", exact: true }).click();
         await verifyImages();
         await first.getByRole("button", { name: "Next", exact: true }).click();
         await expect(first.getByText(/Last original finding/)).toBeVisible();
@@ -333,17 +449,37 @@ for (const [delivery, theme] of [
         await expect(first.getByText(/Last original finding/)).toBeVisible();
         await expect(page.getByRole("combobox", { name: inputName })).toBeVisible();
         // Notification-mode source is available without any model-authored relay.
-        await first.getByRole("button", { name: /(?:Expand|Collapse) response/ }).click();
+        await first.getByRole("button", { name: "Detailed delegated review", exact: true }).click();
         await notification.getByRole("button", { name: "Detailed delegated review" }).click();
         await expect(
           notification.getByRole("heading", { name: "Original detailed findings" }),
         ).toBeVisible();
         await notification.getByRole("button", { name: "Detailed delegated review" }).click();
-        await missing.getByRole("button", { name: /(?:Expand|Collapse) response/ }).click();
+        const receiptHeader = receipt.getByRole("button", {
+          name: "Detailed delegated review",
+          exact: true,
+        });
+        await receiptHeader.click();
+        await expect(
+          receipt.getByRole("heading", { name: "Original detailed findings" }),
+        ).toBeInViewport();
+        await expect(receipt.getByRole("link", { name: /Original message/ })).toHaveAttribute(
+          "href",
+          metadata.ref,
+        );
+        await expect(receipt.getByText("Substance stays in Pi.")).toHaveCount(1);
+        await receiptHeader.click();
+        await expect(receipt).toHaveText("Detailed delegated review");
+        await missing.getByRole("button", { name: "Source session", exact: true }).click();
         await expect(missing.getByText("Original response unavailable")).toBeVisible();
         await expect(missing.getByRole("button", { name: "Retry source" })).toBeVisible();
         await expect(page.getByRole("combobox", { name: inputName })).toBeVisible();
       };
+      await page.locator(`.session-item[data-session-id="${viewer.getSessionId()}"]`).click();
+      await verify("Message", viewer.getSessionId());
+      await page.reload();
+      await verify("Message", viewer.getSessionId());
+      await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
       await verify("Message Cake Chat", CAKE_CHAT_SESSION_ID);
       await page.reload();
       await page.getByRole("button", { name: "Cake Chat", exact: true }).click();

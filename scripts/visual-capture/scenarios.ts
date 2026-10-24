@@ -3041,7 +3041,15 @@ const sessionMessageVariantsScenario: VisualCaptureScenario = {
   name: "session-message-variants",
   description:
     "Incoming reply, lifecycle notice, and Cake Chat request attribution with copy-only actions",
-  states: ["default", "project", "hover", "reference", "original"],
+  states: [
+    "default",
+    "project",
+    "hover",
+    "reference",
+    "original",
+    "project-reference",
+    "project-original",
+  ],
   async seed(paths, theme) {
     await sessionMessagesScenario.seed(paths, theme);
     const timestamp = new Date(0).toISOString();
@@ -3202,13 +3210,11 @@ const sessionMessageVariantsScenario: VisualCaptureScenario = {
     await expect(
       page.getByRole("region", { name: "Notice about another session" }).last(),
     ).toBeVisible();
-    if (state === "reference" || state === "original") {
-      const response = page.getByRole("button", { name: /(?:Expand|Collapse) response/ });
+    if (state.endsWith("reference") || state.endsWith("original")) {
+      const response = page.locator('[data-slot="response-disclosure"]');
       await response.scrollIntoViewIfNeeded();
-      await expect(page.locator('[data-slot="response-preview"]')).toContainText(
-        "manual post-mortem skill",
-      );
-      if (state === "original") {
+      await expect(response).toHaveText("Add and globally install manual post-mortem skill");
+      if (state.endsWith("original")) {
         await response.click();
         await expect(page.getByRole("heading", { name: "Skill installed" })).toBeVisible();
       }

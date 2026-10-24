@@ -7,7 +7,6 @@ import {
   type MessageReadResult,
 } from "../../contracts/conversations/message-reference";
 import { ClientContext } from "./context/ClientContext";
-import { markdownTextPreview } from "../../utils/markdown";
 
 /** A transient exact-source preview, never added to the Conversation or a window snapshot. */
 export class MessageReferencePreviewStore extends Store<{
@@ -24,13 +23,6 @@ export class MessageReferencePreviewStore extends Store<{
   load() {
     const target = messageNavigationTarget(this.props.reference!);
     return this.open(target.sessionId, target.messageId);
-  }
-
-  /** Bounded first-page preview; transient, like the source page itself. */
-  previewText: string | undefined;
-
-  loadPreview() {
-    if (!this.page && !this.loading && !this.error) void this.load();
   }
 
   page: MessageReadResult | undefined;
@@ -104,7 +96,6 @@ export class MessageReferencePreviewStore extends Store<{
       const page = await this.readPage(sessionId, entryId, offset);
       if (revision !== this.revision || this.signal.aborted) return false;
       this.page = page;
-      if (offset === 0) this.previewText = markdownTextPreview(page.text);
       return true;
     } catch (error) {
       if (revision === this.revision && !this.signal.aborted)
@@ -130,7 +121,6 @@ export class MessageReferencePreviewStore extends Store<{
   close() {
     this.revision++;
     this.page = undefined;
-    this.previewText = undefined;
     this.loading = false;
     this.error = undefined;
     this.copyError = undefined;

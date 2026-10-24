@@ -16,31 +16,22 @@ export const SessionUpdateEntry = observer(function SessionUpdateEntry({
   const contentId = useId();
   const { entry } = store.props;
   const source = store.source;
+  if (source) return <InlineMessageSource store={source} title={entry.title} />;
   return (
     <section className="min-w-0 border-b border-border py-4 last:border-b-0">
-      {source ? (
-        <InlineMessageSource
-          store={source}
-          title={entry.title}
-          triggerClassName="rounded-sm text-base leading-relaxed outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        />
-      ) : (
-        <>
-          <DisclosureTrigger
-            data-slot="response-disclosure"
-            title={entry.title}
-            wrapTitle
-            className="rounded-sm text-base leading-relaxed outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            open={store.expanded}
-            aria-controls={store.expanded ? contentId : undefined}
-            onClick={() => store.toggle()}
-          />
-          {store.expanded && (
-            <div id={contentId} className="mt-3 min-w-0 border-l border-border px-4 text-sm">
-              <Markdown onOpenSourceLocation={onOpenSourceLocation}>{entry.text}</Markdown>
-            </div>
-          )}
-        </>
+      <DisclosureTrigger
+        data-slot="response-disclosure"
+        title={entry.title}
+        wrapTitle
+        className="rounded-sm text-base leading-relaxed outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        open={store.expanded}
+        aria-controls={store.expanded ? contentId : undefined}
+        onClick={() => store.toggle()}
+      />
+      {store.expanded && (
+        <div id={contentId} className="mt-3 min-w-0 border-l border-border px-4 text-sm">
+          <Markdown onOpenSourceLocation={onOpenSourceLocation}>{entry.text}</Markdown>
+        </div>
       )}
     </section>
   );

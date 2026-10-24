@@ -454,7 +454,11 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
       sourceResponse={
         sources.length
           ? sources.map((source) => (
-              <InlineMessageSource key={source.props.reference} store={source} preview />
+              <InlineMessageSource
+                key={source.props.reference}
+                store={source}
+                sourceSession={part.crossSession?.sender}
+              />
             ))
           : undefined
       }

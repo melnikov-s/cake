@@ -89,15 +89,20 @@ for (const state of ["default", "project", "reference"]) {
       expect(copied).not.toContain("cake-session-message");
       if (state === "reference") {
         const reply = page.getByRole("region", { name: "Message from another session" }).last();
-        await expect(reply.locator('[data-slot="response-preview"]')).toContainText(
-          "manual post-mortem skill",
+        await expect(reply.locator('[data-slot="message-source"]')).toHaveText(
+          "Add and globally install manual post-mortem skill",
         );
         await expect(reply).not.toContainText("Referenced Cake messages");
         await expect(reply).not.toContainText("messages.read");
         const replyMessage = reply.locator("..");
         await expect(replyMessage.getByRole("button", { name: "Copy response" })).toHaveCount(0);
-        await expect(reply.getByRole("button", { name: /Expand response/ })).toBeVisible();
-        const original = page.getByRole("button", { name: /(?:Expand|Collapse) response/ });
+        await expect(
+          reply.getByRole("button", {
+            name: "Add and globally install manual post-mortem skill",
+            exact: true,
+          }),
+        ).toBeVisible();
+        const original = page.locator('[data-slot="response-disclosure"]');
         await original.focus();
         await original.press("Enter");
         await expect(page.getByRole("heading", { name: "Skill installed" })).toBeVisible();
