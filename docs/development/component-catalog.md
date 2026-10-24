@@ -120,7 +120,9 @@ supplies the addressable session identity. Original-message previews reuse `Full
 `DisclosureTrigger` with a title-only header, shared Markdown and pagination for lazy
 source access within every chat surface. Consolidated notifications, receipt-only
 session cards and linked originals use this same viewer. Opening reads the exact
-source on demand, without a separate collapsed summary; loading, unavailable and
+source on demand. The expanded header contains only its linked response/session title
+and copy action, followed directly by the content. There is no separate collapsed
+summary; loading, unavailable and
 empty states appear inside the disclosure. The transcript scroll owner pauses
 bottom-follow before expansion to preserve the response start.
 It reuses `MessageReferencePreviewStore`;

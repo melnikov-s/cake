@@ -399,10 +399,26 @@ for (const [delivery, theme] of [
           await expect(first.getByText("Image not available: Missing screenshot")).toBeVisible();
         };
         await verifyImages();
-        await expect(first.getByRole("link", { name: /Original message/ })).toHaveAttribute(
-          "href",
-          metadata.ref,
-        );
+        const expandedId = await first
+          .locator('[data-slot="response-disclosure"]')
+          .getAttribute("aria-controls");
+        const expanded = page.locator(`[id="${expandedId}"]`);
+        expect(
+          await expanded.evaluate((body) => ({
+            header: body.firstElementChild?.textContent,
+            contentStart:
+              body.firstElementChild?.nextElementSibling?.querySelector("h2")?.textContent,
+          })),
+        ).toEqual({
+          header: "Detailed delegated review",
+          contentStart: "Original detailed findings",
+        });
+        await expect(
+          expanded.getByRole("button", { name: "Copy message", exact: true }),
+        ).toBeVisible();
+        await expect(
+          first.getByRole("link", { name: "Detailed delegated review", exact: true }),
+        ).toHaveAttribute("href", metadata.ref);
         await page.waitForFunction(() =>
           Array.from(
             document.querySelectorAll<HTMLElement>(
@@ -463,10 +479,9 @@ for (const [delivery, theme] of [
         await expect(
           receipt.getByRole("heading", { name: "Original detailed findings" }),
         ).toBeInViewport();
-        await expect(receipt.getByRole("link", { name: /Original message/ })).toHaveAttribute(
-          "href",
-          metadata.ref,
-        );
+        await expect(
+          receipt.getByRole("link", { name: "Detailed delegated review", exact: true }),
+        ).toHaveAttribute("href", metadata.ref);
         await expect(receipt.getByText("Substance stays in Pi.")).toHaveCount(1);
         await receiptHeader.click();
         await expect(receipt).toHaveText("Detailed delegated review");
@@ -504,6 +519,19 @@ for (const [delivery, theme] of [
         "Follow-up stays here",
       );
       await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+      const notification = page.locator(
+        `[data-part-id="${partIds.get(projectId)!.get("notification")}"] [data-slot="message-source"]`,
+      );
+      await notification
+        .getByRole("button", { name: "Detailed delegated review", exact: true })
+        .click();
+      await notification
+        .getByRole("link", { name: "Detailed delegated review", exact: true })
+        .click();
+      await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText(
+        "Detailed delegated review",
+      );
+      await expect(page.getByRole("heading", { name: "Original detailed findings" })).toBeVisible();
     } finally {
       await app?.close();
       await rm(root, { recursive: true, force: true });

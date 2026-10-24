@@ -21,6 +21,7 @@ import { formatSessionDigestReminder } from "../../../src/contracts/cake-chats/s
 import { appendMessageReferences } from "../../../src/contracts/conversations/message-reference-forwarding";
 import { protectedResponseNotice } from "../../../src/contracts/conversations/reference-notification";
 import { Chat } from "../../../src/renderer/components/chat";
+import { MarkdownLinkProvider } from "../../../src/renderer/components/ai-elements/markdown";
 import { Message } from "../../../src/renderer/models/Message";
 import { messageSnapshots } from "../../../src/renderer/reducers/SessionPartReducer";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
@@ -148,12 +149,15 @@ describe("exact response presentation", () => {
         tree: [],
       },
     });
+    const openSession = vi.fn();
     const view = render(
-      <Chat
-        store={session.conversationSessionStore.chatStore}
-        compact
-        composerFocusEnabled={false}
-      />,
+      <MarkdownLinkProvider actions={{ openSession, openExternalUrl: () => {} }}>
+        <Chat
+          store={session.conversationSessionStore.chatStore}
+          compact
+          composerFocusEnabled={false}
+        />
+      </MarkdownLinkProvider>,
     );
     const batch = screen.getByRole("status", { name: "Session results" });
     const titles = [
@@ -174,11 +178,25 @@ describe("exact response presentation", () => {
     const prompts = within(batch).getByRole("button", { name: titles[1] });
     await user.click(prompts);
     expect(await within(batch).findByText(/Committed as d58aa9b5/)).toBeTruthy();
+    expect(within(batch).getByRole("link", { name: titles[1] }).getAttribute("href")).toBe(
+      promptRef,
+    );
+    const expanded = document.getElementById(prompts.getAttribute("aria-controls")!)!;
+    expect(Array.from(expanded.children).map((child) => child.textContent)).toEqual([
+      titles[1],
+      "Committed as d58aa9b5. Worktree clean; ready for review. No merge, resolution, or restart.",
+    ]);
     expect(
-      within(batch)
-        .getByRole("link", { name: /Original message/ })
-        .getAttribute("href"),
-    ).toBe(promptRef);
+      within(expanded.firstElementChild as HTMLElement).getByRole("button", {
+        name: "Copy message",
+      }),
+    ).toBeTruthy();
+    await user.click(within(expanded).getByRole("link", { name: titles[1] }));
+    expect(openSession).toHaveBeenCalledWith(source.getSessionId(), promptId);
+    await user.click(within(expanded).getByRole("button", { name: "Copy message" }));
+    expect(await navigator.clipboard.readText()).toBe(
+      "Committed as d58aa9b5. Worktree clean; ready for review. No merge, resolution, or restart.",
+    );
     expect(inspect).toHaveBeenLastCalledWith(
       expect.objectContaining({ sessionId: source.getSessionId(), entryId: promptId, offset: 0 }),
       expect.anything(),
@@ -193,11 +211,9 @@ describe("exact response presentation", () => {
         "Landed 8 workstreams through Cake and resolved their owners.",
       ),
     ).toBeTruthy();
-    expect(
-      within(batch)
-        .getByRole("link", { name: /Original message/ })
-        .getAttribute("href"),
-    ).toBe(landedRef);
+    expect(within(batch).getByRole("link", { name: titles[0] }).getAttribute("href")).toBe(
+      landedRef,
+    );
     expect(projectSessionEntries(parent.getEntries())).toEqual(persisted);
     view.unmount();
   });

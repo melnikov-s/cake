@@ -63,7 +63,7 @@ export const InlineMessageSource = observer(function InlineMessageSource({
                 actions?.openSession(target.sessionId, target.messageId);
               }}
             >
-              Original message · {sourceTitle}
+              {title ?? sourceTitle}
             </Link>
             {page && (
               <CopyButton
@@ -72,10 +72,6 @@ export const InlineMessageSource = observer(function InlineMessageSource({
                 disabled={store.loading}
               />
             )}
-          </div>
-          <div className="break-all text-xs text-muted-foreground">
-            {reference}
-            {page ? ` · ${page.message.role} · ${page.message.timestamp}` : ""}
           </div>
           {store.loading && <LoadingState label="Loading original response" />}
           {store.copyError && (
