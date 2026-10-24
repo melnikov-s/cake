@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { renderTranscriptContent as render } from "./render-transcript-content";
 import userEvent from "@testing-library/user-event";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -131,6 +132,9 @@ describe("exact response presentation", () => {
       client: { sessionChats: { inspect } },
     });
     const session = fixture.root.sessionRegistry.load("parent", "/project");
+    session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
+      kind: "top",
+    });
     applyConversationUpdate(session.model, {
       _tag: "Snapshot",
       revision: 1,
@@ -314,6 +318,9 @@ describe("exact response presentation", () => {
         },
       });
       const session = fixture.root.sessionRegistry.load("viewer", "/viewer");
+      session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
+        kind: "top",
+      });
       applyConversationUpdate(session.model, {
         _tag: "Snapshot",
         revision: 1,
@@ -492,6 +499,9 @@ describe("exact response presentation", () => {
       client: { sessionChats: { inspect } },
     });
     const session = fixture.root.sessionRegistry.load("parent", "/project");
+    session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
+      kind: "top",
+    });
     applyConversationUpdate(session.model, {
       _tag: "Snapshot",
       revision: 1,
@@ -684,6 +694,9 @@ describe("exact response presentation", () => {
         client: { sessionChats: { inspect } },
       });
       const session = fixture.root.sessionRegistry.load("parent", "/project");
+      session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
+        kind: "top",
+      });
       applyConversationUpdate(session.model, {
         _tag: "Snapshot",
         revision: 1,
@@ -855,6 +868,9 @@ describe("exact response presentation", () => {
           client: { sessionChats: { inspect } },
         });
         const session = fixture.root.sessionRegistry.load("parent", "/project");
+        session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition(
+          { kind: "top" },
+        );
         applyConversationUpdate(session.model, {
           _tag: "Snapshot",
           revision: 1,

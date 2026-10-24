@@ -149,6 +149,10 @@ function renderActivity(
           activities: status ? [activity] : [],
           backgroundActive: status === "running",
         });
+        const owner =
+          kind === "cake-chat" ? cakeChat : fixture.root.sessionRegistry.findSession(ownerId);
+        for (const chat of owner?.subagentActivityStore.chatStores ?? [])
+          chat.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" });
         if (released)
           applySubagentUpdate(catalog, ownerId, {
             _tag: "Removed",

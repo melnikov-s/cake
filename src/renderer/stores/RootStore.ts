@@ -11,6 +11,10 @@ import { createApplicationCommandRegistry } from "../commands/application-comman
 import { NavigationStore } from "./NavigationStore";
 import type { Client } from "../client/Client";
 import { ClientContext } from "./context/ClientContext";
+import {
+  ChatPresentationContext,
+  type ChatPresentationPreferences,
+} from "./context/ChatPresentationContext";
 import { SessionMetadataContext } from "./context/SessionMetadataContext";
 import { SessionRegistryContext } from "./context/SessionRegistryContext";
 import { ToastContext } from "./context/ToastContext";
@@ -144,6 +148,18 @@ export class RootStore extends Store<{
 
   [ClientContext.provide]() {
     return this.client;
+  }
+
+  [ChatPresentationContext.provide](): ChatPresentationPreferences {
+    return {
+      hideThinking: () => Boolean(this.settingsStore.providers.piSettings?.hideThinkingBlock),
+      workLogPresentation: {
+        viewMode: () => this.settingsStore.appearance.workLogViewMode,
+        setViewMode: (mode) => this.settingsStore.appearance.setWorkLogViewMode(mode),
+        expansion: () => this.settingsStore.appearance.workLogsExpansion,
+        setExpansion: (expansion) => this.settingsStore.appearance.setWorkLogsExpansion(expansion),
+      },
+    };
   }
 
   [ModelCatalogContext.provide]() {

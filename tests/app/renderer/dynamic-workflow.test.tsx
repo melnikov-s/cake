@@ -201,6 +201,8 @@ function renderWorkflow(
     cakeChatTargets: () => [],
   });
   const stores = session.workflowRunStores;
+  for (const store of stores)
+    store.workerChat.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" });
   const view = render(
     <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
       <WorkflowConversationLayout stores={stores}>

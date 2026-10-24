@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
+import { renderTranscriptContent as render } from "./render-transcript-content";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { observer } from "r-state-tree/react";
@@ -95,6 +96,11 @@ async function renderDrafts(
   fixture.root.navigationStore.selectProjectSession(sessionId);
   fixture.root.projectWorkbenchStore.showLoadedSession(sessionId);
   const { root } = fixture;
+  root.sessionRegistry
+    .findSession(sessionId)!
+    .conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
+      kind: "top",
+    });
   const Surface = observer(function Surface() {
     const session = root.sessionRegistry.findSession(sessionId);
     if (!session) throw new Error("Missing draft session");

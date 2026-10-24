@@ -1,4 +1,5 @@
-import { act, render } from "@testing-library/react";
+import { act } from "@testing-library/react";
+import { renderTranscriptContent as render } from "./render-transcript-content";
 import userEvent from "@testing-library/user-event";
 import type {
   ConversationSnapshot,
@@ -92,6 +93,15 @@ function createSessionAssistantFixture(
       ],
     }),
   );
+  session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
+    kind: "top",
+  });
+  session.sessionAssistantStore.quickChatStore.transcriptInteraction.setTranscriptScrollPosition({
+    kind: "top",
+  });
+  session.sessionAssistantStore.bootstrapChatStore.transcriptInteraction.setTranscriptScrollPosition(
+    { kind: "top" },
+  );
   let revision = 0;
   function observe(parts: ConversationSnapshot["parts"], streaming: boolean) {
     const sidecar = fixture.models.discussionConversation("sidecar-assistant", "/project");
@@ -113,6 +123,9 @@ function createSessionAssistantFixture(
       parentSessionId: "parent-1",
       threads: [assistantThread],
     });
+    fixture.root.reviewsStore
+      .chatStore(assistantThread.id)
+      ?.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" });
   }
   return {
     assistant: session.sessionAssistantStore,

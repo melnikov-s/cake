@@ -54,6 +54,8 @@ export function renderChatSurface(
   let revision = 1;
   applyConversationUpdate(session.model, { _tag: "Snapshot", revision, snapshot });
   const chat = session.conversationSessionStore.chatStore;
+  // Content proof only; native initial bottom alignment is covered in Electron.
+  chat.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" });
   const view = render(
     <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
       <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>

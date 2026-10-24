@@ -159,6 +159,7 @@ export const Chat = observer(function Chat({
   pluginActions?: ReactNode;
   className?: string;
   embedded?: boolean;
+  /** Visual density only; all Chat surfaces retain the shared virtualized transcript. */
   compact?: boolean;
   composerFocusEnabled?: boolean;
   /** Drop-down entry is an explicit writing action, even with dictation enabled. */
@@ -444,7 +445,6 @@ export const Chat = observer(function Chat({
           empty={empty}
           footer={footer}
           error={error}
-          virtualized={!compact}
           key={store.id}
         />
       </ContentTransition>

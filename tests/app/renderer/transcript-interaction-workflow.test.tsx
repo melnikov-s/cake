@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, screen, waitFor } from "@testing-library/react";
+import { renderTranscriptContent as render } from "./render-transcript-content";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
@@ -47,9 +48,10 @@ function renderTranscript(
   };
   let revision = 1;
   applyConversationUpdate(session.model, { _tag: "Snapshot", revision, snapshot });
-  // Compact is a production Chat mode, not a substitute virtualizer. This suite
-  // proves formatting/projection behavior only; it makes no native focus,
-  // selection, geometry, or scrolling claims.
+  // Content proof only; native layout, selection and scrolling live in Electron.
+  session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
+    kind: "top",
+  });
   const view = render(
     <Chat
       store={session.conversationSessionStore.chatStore}

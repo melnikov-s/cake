@@ -7,6 +7,7 @@ import type {
 import { workLogChangeChunks } from "../../utils/turn-diff";
 import { workLogGroupKeys } from "../../utils/work-log-groups";
 import { ClientContext } from "./context/ClientContext";
+import { ChatPresentationContext } from "./context/ChatPresentationContext";
 
 export interface WorkLogPresentationCapabilities {
   viewMode?(): WorkLogViewMode | undefined;
@@ -56,6 +57,14 @@ export class WorkLogPresentationStore extends Store<WorkLogPresentationStoreProp
           )
           .join("\u0001"),
       () => this.syncTimers(),
+    );
+    this.reaction(
+      () => this.expansion,
+      () => {
+        // A shared preference change resets every chat, not just its initiating control.
+        this.itemOverrides.clear();
+        this.groupOverrides.clear();
+      },
     );
     this.effect(() => () => this.stopTick());
     this.effect(() => {
@@ -158,12 +167,16 @@ export class WorkLogPresentationStore extends Store<WorkLogPresentationStoreProp
     return Math.max(0, (end?.endedAt ?? this.tickNow) - start.startedAt);
   }
 
+  private get presentation() {
+    return this.props.presentation ?? ChatPresentationContext.consume(this)?.workLogPresentation;
+  }
+
   get viewMode(): WorkLogViewMode {
-    return this.props.presentation?.viewMode?.() ?? this.localViewMode;
+    return this.presentation?.viewMode?.() ?? this.localViewMode;
   }
 
   setViewMode(mode: WorkLogViewMode) {
-    if (this.props.presentation?.setViewMode) this.props.presentation.setViewMode(mode);
+    if (this.presentation?.setViewMode) this.presentation.setViewMode(mode);
     else this.localViewMode = mode;
   }
 
@@ -172,11 +185,11 @@ export class WorkLogPresentationStore extends Store<WorkLogPresentationStoreProp
   }
 
   get expansion(): WorkLogsExpansion {
-    return this.props.presentation?.expansion?.() ?? this.localExpansion;
+    return this.presentation?.expansion?.() ?? this.localExpansion;
   }
 
   setExpansion(expansion: WorkLogsExpansion) {
-    if (this.props.presentation?.setExpansion) this.props.presentation.setExpansion(expansion);
+    if (this.presentation?.setExpansion) this.presentation.setExpansion(expansion);
     else this.localExpansion = expansion;
     this.itemOverrides.clear();
     this.groupOverrides.clear();

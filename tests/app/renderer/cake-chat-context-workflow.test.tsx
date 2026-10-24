@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen } from "@testing-library/react";
+import { renderTranscriptContent as render } from "./render-transcript-content";
 import { afterEach, expect, it, vi } from "vitest";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/session-contract";
 import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
@@ -88,6 +89,9 @@ function fixture(
     );
   }
   publish(initial);
+  owner.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
+    kind: "top",
+  });
   const view = render(
     <Chat
       store={owner.conversationSessionStore.chatStore}

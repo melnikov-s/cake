@@ -74,6 +74,10 @@ export function renderWorkLog(
   };
   let revision = 1;
   applyConversationUpdate(session.model, { _tag: "Snapshot", revision, snapshot });
+  // Content proof only; native initial bottom alignment is covered in Electron.
+  session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
+    kind: "top",
+  });
   const view = render(
     <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
       <Chat

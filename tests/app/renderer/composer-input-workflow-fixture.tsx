@@ -1,5 +1,6 @@
 import { act, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { VirtuosoMockContext } from "react-virtuoso";
 import type { Annotation, UiPart } from "../../../src/contracts/conversations/session-contract";
 import { Chat } from "../../../src/renderer/components/chat";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
@@ -66,8 +67,12 @@ export function renderComposerInput(
   options: { parts?: UiPart[]; annotations?: Omit<Annotation, "id">[] } = {},
 ) {
   const fixture = createComposerInputFixture(client, options.parts, options.annotations);
+  // Content proof only; native alignment/scrolling is covered in Electron.
+  fixture.conversation.chatStore.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" });
   const view = render(
-    <Chat store={fixture.conversation.chatStore} compact embedded composerFocusEnabled={false} />,
+    <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
+      <Chat store={fixture.conversation.chatStore} compact embedded composerFocusEnabled={false} />
+    </VirtuosoMockContext.Provider>,
   );
   return {
     user: userEvent.setup(),

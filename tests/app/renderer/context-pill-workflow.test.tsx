@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, screen } from "@testing-library/react";
+import { renderTranscriptContent as render } from "./render-transcript-content";
 import userEvent from "@testing-library/user-event";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it } from "vitest";
@@ -53,6 +54,9 @@ describe("Context visibility through the authoritative projection and shared Cha
       ],
     });
     const session = fixture.root.sessionRegistry.load("workboard", "/project");
+    session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
+      kind: "top",
+    });
     const publish = () =>
       applyConversationSnapshot(session.model, {
         sessionId: "workboard",
@@ -127,6 +131,9 @@ describe("Context visibility through the authoritative projection and shared Cha
       ],
     });
     const session = fixture.root.sessionRegistry.load("notifications", "/project");
+    session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
+      kind: "top",
+    });
     applyConversationSnapshot(session.model, {
       sessionId: "notifications",
       sessionFile: "/sessions/notifications.jsonl",
@@ -224,6 +231,9 @@ describe("Context visibility through the authoritative projection and shared Cha
       ],
     });
     const session = fixture.root.sessionRegistry.load("ordered", "/project");
+    session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
+      kind: "top",
+    });
     const publish = () =>
       applyConversationSnapshot(session.model, {
         sessionId: "ordered",
@@ -344,6 +354,9 @@ describe("Context visibility through the authoritative projection and shared Cha
       ],
     });
     const session = fixture.root.sessionRegistry.load("context", "/project");
+    session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
+      kind: "top",
+    });
     const publish = () =>
       applyConversationSnapshot(session.model, {
         sessionId: "context",

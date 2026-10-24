@@ -68,10 +68,13 @@ function renderSplitPanes(parts: UiPart[] = conversation) {
       tree: [],
     };
     applyConversationUpdate(session.model, { _tag: "Snapshot", revision: 1, snapshot });
+    session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
+      kind: "top",
+    });
     return session.conversationSessionStore.chatStore;
   });
   const view = render(
-    <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
+    <VirtuosoMockContext.Provider value={{ viewportHeight: 2400, itemHeight: 100 }}>
       {chats.map((chat) => (
         <section key={chat.id} aria-label={chat.id}>
           <Chat store={chat} compact composerFocusEnabled={false} />

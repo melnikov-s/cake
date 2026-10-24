@@ -222,6 +222,14 @@ function render() {
         {chatMode ? (
           <Chat
             store={store}
+            transcriptBehavior={
+              widget
+                ? {
+                    inlineWidgets: fixture.root.inlineWidgetStore,
+                    inlineArtifactPreviews: fixture.root.inlineArtifactPreviewStore,
+                  }
+                : undefined
+            }
             compact={chatMode === "compact"}
             embedded={withUpdates && chatMode === "compact"}
           />

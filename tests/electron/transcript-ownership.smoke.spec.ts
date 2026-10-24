@@ -209,93 +209,124 @@ for (const chatMode of ["full", "compact"]) {
   });
 }
 
-test.describe("sending from distant history", () => {
-  test.use({ messageCount: 2000, chatMode: "virtualized", withImages: true });
-  test("Enter reaches the measured bottom and Shift+Enter keeps the reading position", async ({
+for (const chatMode of ["virtualized", "compact"]) {
+  test.describe(`${chatMode} sending from distant history`, () => {
+    test.use({ messageCount: 2000, chatMode, withImages: true });
+    test("Enter reaches the measured bottom and Shift+Enter keeps the reading position", async ({
+      fixturePage: page,
+    }) => {
+      const transcript = page.locator(".transcript");
+      const composer = page.getByRole("combobox", { name: "Message", exact: true });
+      await settle(page);
+      await transcript.focus();
+      await page.keyboard.press("Home");
+      await settle(page);
+      expect(await gap(transcript)).toBeGreaterThan(10000);
+      await composer.focus();
+      await composer.pressSequentially("Send from distant history");
+      await expect(composer).toHaveValue("Send from distant history");
+      await expect(composer).toBeFocused();
+      await transcript
+        .locator("img")
+        .evaluateAll((images) =>
+          Promise.all(images.map((image) => (image as HTMLImageElement).decode())),
+        );
+      await settle(page);
+      const saved = await anchor(transcript);
+      await composer.press("Shift+Enter");
+      await expect(composer).toHaveValue("Send from distant history\n");
+      await settle(page);
+      expect(await anchor(transcript)).toEqual(saved);
+      await page.evaluate(() => {
+        const fixture = Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture;
+        for (let step = 0; step < 12; step++) fixture.grow("message-1999");
+      });
+      await composer.press("Enter");
+      await expect(composer).toHaveValue("");
+      await expect(transcript.locator('[data-slot="transcript-item"]').last()).toContainText(
+        "Send from distant history",
+      );
+      await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+      for (const operation of ["arrive", "stream", "activity"] as const) {
+        await command(page, operation);
+        await settle(page);
+        expect(await gap(transcript)).toBeLessThanOrEqual(1);
+      }
+    });
+  });
+}
+
+for (const chatMode of ["virtualized", "compact"]) {
+  test.describe(`${chatMode} image-heavy virtual history`, () => {
+    test.use({ chatMode });
+    test.use({ messageCount: 80, withImages: true });
+    test("manual upward scrolling keeps its anchor when older Markdown images finish loading", async ({
+      fixturePage: page,
+    }) => {
+      const transcript = page.locator(".transcript");
+      const waiting: Array<() => Promise<void>> = [];
+      let released = false;
+      await page.route("https://transcript.invalid/**", (route) => {
+        const finish = () =>
+          route.fulfill({
+            contentType: "image/svg+xml",
+            body: '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="900"/>',
+          });
+        if (released) return finish();
+        waiting.push(finish);
+      });
+      await wheel(page, transcript, -3500);
+      await wheel(page, transcript, -1600);
+      await settle(page);
+      expect(waiting.length).toBeGreaterThan(0);
+      const saved = await anchor(transcript);
+      released = true;
+      await Promise.all(waiting.map((finish) => finish()));
+      await transcript
+        .locator("img")
+        .evaluateAll((images) =>
+          Promise.all(images.map((image) => (image as HTMLImageElement).decode())),
+        );
+      await settle(page);
+      expect(await anchor(transcript)).toEqual(saved);
+      expect(await gap(transcript)).toBeGreaterThan(1000);
+      await command(page, "arrive");
+      await settle(page);
+      expect(await anchor(transcript)).toEqual(saved);
+      await wheel(page, transcript, -180);
+      await settle(page);
+      const moved = await anchor(transcript);
+      expect(moved).not.toEqual(saved);
+      await command(page, "stream");
+      await settle(page);
+      expect(await anchor(transcript)).toEqual(moved);
+    });
+  });
+}
+
+test.describe("compact transcript density", () => {
+  test.use({ chatMode: "compact", messageCount: 2000 });
+  test("keeps long compact transcripts virtualized without losing compact spacing", async ({
     fixturePage: page,
   }) => {
     const transcript = page.locator(".transcript");
-    const composer = page.getByRole("combobox", { name: "Message", exact: true });
-    await settle(page);
+    const rows = transcript.locator('[data-slot="transcript-item"]');
+    await expect.poll(() => rows.count()).toBeLessThan(100);
+    await expect(transcript.locator('[data-virtuoso-scroller="true"]')).toHaveCount(1);
+    await expect(page.locator('[data-slot="chat"]')).toHaveClass(/chat-layout-compact/);
+    expect(
+      await transcript
+        .locator('[aria-label="Conversation"]')
+        .evaluate(
+          (element) =>
+            parseFloat(getComputedStyle(element).paddingLeft) /
+            parseFloat(getComputedStyle(document.documentElement).fontSize),
+        ),
+    ).toBe(0.75);
     await transcript.focus();
     await page.keyboard.press("Home");
-    await settle(page);
-    expect(await gap(transcript)).toBeGreaterThan(10000);
-    await composer.focus();
-    await composer.pressSequentially("Send from distant history");
-    await expect(composer).toHaveValue("Send from distant history");
-    await expect(composer).toBeFocused();
-    await transcript
-      .locator("img")
-      .evaluateAll((images) =>
-        Promise.all(images.map((image) => (image as HTMLImageElement).decode())),
-      );
-    await settle(page);
-    const saved = await anchor(transcript);
-    await composer.press("Shift+Enter");
-    await expect(composer).toHaveValue("Send from distant history\n");
-    await settle(page);
-    expect(await anchor(transcript)).toEqual(saved);
-    await page.evaluate(() => {
-      const fixture = Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture;
-      for (let step = 0; step < 12; step++) fixture.grow("message-1999");
-    });
-    await composer.press("Enter");
-    await expect(composer).toHaveValue("");
-    await expect(transcript.locator('[data-slot="transcript-item"]').last()).toContainText(
-      "Send from distant history",
-    );
-    await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
-    for (const operation of ["arrive", "stream", "activity"] as const) {
-      await command(page, operation);
-      await settle(page);
-      expect(await gap(transcript)).toBeLessThanOrEqual(1);
-    }
-  });
-});
-
-test.describe("image-heavy virtual history", () => {
-  test.use({ messageCount: 80, withImages: true });
-  test("manual upward scrolling keeps its anchor when older Markdown images finish loading", async ({
-    fixturePage: page,
-  }) => {
-    const transcript = page.locator(".transcript");
-    const waiting: Array<() => Promise<void>> = [];
-    let released = false;
-    await page.route("https://transcript.invalid/**", (route) => {
-      const finish = () =>
-        route.fulfill({
-          contentType: "image/svg+xml",
-          body: '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="900"/>',
-        });
-      if (released) return finish();
-      waiting.push(finish);
-    });
-    await wheel(page, transcript, -3500);
-    await wheel(page, transcript, -1600);
-    await settle(page);
-    expect(waiting.length).toBeGreaterThan(0);
-    const saved = await anchor(transcript);
-    released = true;
-    await Promise.all(waiting.map((finish) => finish()));
-    await transcript
-      .locator("img")
-      .evaluateAll((images) =>
-        Promise.all(images.map((image) => (image as HTMLImageElement).decode())),
-      );
-    await settle(page);
-    expect(await anchor(transcript)).toEqual(saved);
-    expect(await gap(transcript)).toBeGreaterThan(1000);
-    await command(page, "arrive");
-    await settle(page);
-    expect(await anchor(transcript)).toEqual(saved);
-    await wheel(page, transcript, -180);
-    await settle(page);
-    const moved = await anchor(transcript);
-    expect(moved).not.toEqual(saved);
-    await command(page, "stream");
-    await settle(page);
-    expect(await anchor(transcript)).toEqual(moved);
+    await expect(rows.first()).toContainText("Message 0.");
+    await expect.poll(() => rows.count()).toBeLessThan(100);
   });
 });
 
@@ -573,43 +604,48 @@ test("PageUp and Home keep ownership across updates; deliberate insertion recove
   await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
 });
 
-test("tool expansion and late nested media keep the reader's visible anchor", async ({
-  fixturePage: page,
-}) => {
-  const transcript = page.locator(".transcript");
-  await command(page, "activity");
-  await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
-  await wheel(page, transcript, -120);
-  const saved = await anchor(transcript);
-  const activity = transcript.locator('[data-slot="activity-group"]');
-  const disclosure = activity.locator("summary");
-  // This test isolates expansion/resize, not Playwright's offscreen-target
-  // auto-scroll (which legitimately changes the reader's position first).
-  await disclosure.evaluate((element) => element.click());
-  await expect(activity).toHaveAttribute("open", "");
-  await expect.poll(() => anchor(transcript)).toEqual(saved);
-  for (let step = 0; step < 4; step++) {
-    await command(page, "activity");
-    await expect.poll(() => anchor(transcript)).toEqual(saved);
-  }
-  // A late intrinsic media height inside a real overscanned transcript row is
-  // measured by the same observers as tool/artifact content. No fake geometry.
-  await transcript.evaluate(async (element) => {
-    const viewportTop = element.getBoundingClientRect().top;
-    const row = [...element.querySelectorAll<HTMLElement>('[data-slot="transcript-item"]')].find(
-      (row) => row.getBoundingClientRect().bottom <= viewportTop,
-    )!;
-    const image = document.createElement("img");
-    row.append(image);
-    image.src =
-      'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="180"/>';
-    await image.decode();
+for (const chatMode of ["virtualized", "compact"]) {
+  test.describe(`${chatMode} tool expansion`, () => {
+    test.use({ chatMode });
+    test("tool expansion and late nested media keep the reader's visible anchor", async ({
+      fixturePage: page,
+    }) => {
+      const transcript = page.locator(".transcript");
+      await command(page, "activity");
+      await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+      await wheel(page, transcript, -120);
+      const saved = await anchor(transcript);
+      const activity = transcript.locator('[data-slot="activity-group"]');
+      const disclosure = activity.locator("summary");
+      // This test isolates expansion/resize, not Playwright's offscreen-target
+      // auto-scroll (which legitimately changes the reader's position first).
+      await disclosure.evaluate((element) => element.click());
+      await expect(activity).toHaveAttribute("open", "");
+      await expect.poll(() => anchor(transcript)).toEqual(saved);
+      for (let step = 0; step < 4; step++) {
+        await command(page, "activity");
+        await expect.poll(() => anchor(transcript)).toEqual(saved);
+      }
+      // A late intrinsic media height inside a real overscanned transcript row is
+      // measured by the same observers as tool/artifact content. No fake geometry.
+      await transcript.evaluate(async (element) => {
+        const viewportTop = element.getBoundingClientRect().top;
+        const row = [
+          ...element.querySelectorAll<HTMLElement>('[data-slot="transcript-item"]'),
+        ].find((row) => row.getBoundingClientRect().bottom <= viewportTop)!;
+        const image = document.createElement("img");
+        row.append(image);
+        image.src =
+          'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="180"/>';
+        await image.decode();
+      });
+      await expect.poll(() => anchor(transcript)).toEqual(saved);
+      await disclosure.evaluate((element) => element.click());
+      await expect(activity).not.toHaveAttribute("open");
+      await expect.poll(() => anchor(transcript)).toEqual(saved);
+    });
   });
-  await expect.poll(() => anchor(transcript)).toEqual(saved);
-  await disclosure.evaluate((element) => element.click());
-  await expect(activity).not.toHaveAttribute("open");
-  await expect.poll(() => anchor(transcript)).toEqual(saved);
-});
+}
 
 test("user input supersedes navigation measurement retries", async ({ fixturePage: page }) => {
   const transcript = page.locator(".transcript");
@@ -692,72 +728,76 @@ for (const chatMode of ["virtualized", "compact"]) {
   });
 }
 
-test.describe("inline widget reading position", () => {
-  test.use({ withWidget: true });
+for (const chatMode of ["virtualized", "compact"]) {
+  test.describe(`${chatMode} inline widget reading position`, () => {
+    test.use({ withWidget: true, chatMode });
 
-  test("scrolling over the widget pauses outer bottom following", async ({ fixturePage: page }) => {
-    const transcript = page.locator(".transcript");
-    const iframe = transcript.locator("iframe");
-    await expect(transcript.locator('[data-widget-view-ready="true"]')).toHaveCount(1);
-    const bounds = (await iframe.boundingBox())!;
-    const viewport = (await transcript.boundingBox())!;
-    await page.mouse.move(bounds.x + bounds.width / 2, Math.max(viewport.y, bounds.y) + 30);
-    const before = await top(transcript);
-    await page.mouse.wheel(0, -200);
-    await expect.poll(() => top(transcript)).toBeLessThan(before - 100);
-    const saved = await top(transcript);
-    const savedAnchor = await anchor(transcript);
-    await command(page, "stream");
-    await expect.poll(() => top(transcript)).toBe(saved);
-    await expect.poll(() => anchor(transcript)).toEqual(savedAnchor);
-  });
-
-  test("widget remains rendered during away-from-bottom streaming, reopen and virtual range changes", async ({
-    fixturePage: page,
-  }) => {
-    const transcript = page.locator(".transcript");
-    const disclosure = transcript.locator('[data-slot="artifact-disclosure"]');
-    const iframe = disclosure.locator("iframe");
-    const content = iframe.contentFrame();
-    await expect(disclosure.locator('[data-widget-view-ready="true"]')).toHaveCount(1);
-    await wheel(page, transcript, -500);
-    await expect(content.getByRole("heading", { name: "Saved widget content" })).toBeVisible();
-    await expect(disclosure.locator('[data-widget-view-ready="true"]')).toHaveCount(1);
-    const saved = await anchor(transcript);
-    const initialTop = await top(transcript);
-    const originalSrc = await iframe.getAttribute("src");
-    for (let step = 0; step < 12; step++) {
-      await command(page, step % 3 === 0 ? "activity" : "stream");
-      await expect.poll(() => anchor(transcript)).toEqual(saved);
-      // Record both native scrolling and item coordinates: a virtual padding
-      // shift can move the reader even when scrollTop has not changed.
-      expect(await top(transcript)).toBe(initialTop);
-      await expect(content.getByRole("heading", { name: "Saved widget content" })).toBeVisible();
-      expect(await iframe.getAttribute("src")).toBe(originalSrc);
-    }
-    const collapse = disclosure.getByRole("button", { name: "Scroll widget Collapse" });
-    await collapse.focus();
-    await collapse.press("Enter");
-    await expect(iframe).toHaveCount(0);
-    const expand = disclosure.getByRole("button", { name: "Scroll widget Expand" });
-    await expand.focus();
-    await expand.press("Enter");
-    await expect(content.getByRole("heading", { name: "Saved widget content" })).toBeVisible();
-    await expect(disclosure.locator('[data-widget-view-ready="true"]')).toHaveCount(1);
-    // Leave the virtual range entirely, then return via a user gesture. A new
-    // mount must hydrate and paint without requiring an extra corrective scroll.
-    await wheel(page, transcript, -10000);
-    await expect(iframe).toHaveCount(0);
-    await wheel(page, transcript, initialTop - (await top(transcript)));
-    await expect(content.getByRole("heading", { name: "Saved widget content" })).toBeVisible();
-    await expect(disclosure.locator('[data-widget-view-ready="true"]')).toHaveCount(1);
-    await command(page, "insert");
-    for (let step = 0; step < 4; step++) {
+    test("scrolling over the widget pauses outer bottom following", async ({
+      fixturePage: page,
+    }) => {
+      const transcript = page.locator(".transcript");
+      const iframe = transcript.locator("iframe");
+      await expect(transcript.locator('[data-widget-view-ready="true"]')).toHaveCount(1);
+      const bounds = (await iframe.boundingBox())!;
+      const viewport = (await transcript.boundingBox())!;
+      await page.mouse.move(bounds.x + bounds.width / 2, Math.max(viewport.y, bounds.y) + 30);
+      const before = await top(transcript);
+      await page.mouse.wheel(0, -200);
+      await expect.poll(() => top(transcript)).toBeLessThan(before - 100);
+      const saved = await top(transcript);
+      const savedAnchor = await anchor(transcript);
       await command(page, "stream");
-      await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
-    }
+      await expect.poll(() => top(transcript)).toBe(saved);
+      await expect.poll(() => anchor(transcript)).toEqual(savedAnchor);
+    });
+
+    test("widget remains rendered during away-from-bottom streaming, reopen and virtual range changes", async ({
+      fixturePage: page,
+    }) => {
+      const transcript = page.locator(".transcript");
+      const disclosure = transcript.locator('[data-slot="artifact-disclosure"]');
+      const iframe = disclosure.locator("iframe");
+      const content = iframe.contentFrame();
+      await expect(disclosure.locator('[data-widget-view-ready="true"]')).toHaveCount(1);
+      await wheel(page, transcript, -500);
+      await expect(content.getByRole("heading", { name: "Saved widget content" })).toBeVisible();
+      await expect(disclosure.locator('[data-widget-view-ready="true"]')).toHaveCount(1);
+      const saved = await anchor(transcript);
+      const initialTop = await top(transcript);
+      const originalSrc = await iframe.getAttribute("src");
+      for (let step = 0; step < 12; step++) {
+        await command(page, step % 3 === 0 ? "activity" : "stream");
+        await expect.poll(() => anchor(transcript)).toEqual(saved);
+        // Record both native scrolling and item coordinates: a virtual padding
+        // shift can move the reader even when scrollTop has not changed.
+        expect(await top(transcript)).toBe(initialTop);
+        await expect(content.getByRole("heading", { name: "Saved widget content" })).toBeVisible();
+        expect(await iframe.getAttribute("src")).toBe(originalSrc);
+      }
+      const collapse = disclosure.getByRole("button", { name: "Scroll widget Collapse" });
+      await collapse.focus();
+      await collapse.press("Enter");
+      await expect(iframe).toHaveCount(0);
+      const expand = disclosure.getByRole("button", { name: "Scroll widget Expand" });
+      await expand.focus();
+      await expand.press("Enter");
+      await expect(content.getByRole("heading", { name: "Saved widget content" })).toBeVisible();
+      await expect(disclosure.locator('[data-widget-view-ready="true"]')).toHaveCount(1);
+      // Leave the virtual range entirely, then return via a user gesture. A new
+      // mount must hydrate and paint without requiring an extra corrective scroll.
+      await wheel(page, transcript, -10000);
+      await expect(iframe).toHaveCount(0);
+      await wheel(page, transcript, initialTop - (await top(transcript)));
+      await expect(content.getByRole("heading", { name: "Saved widget content" })).toBeVisible();
+      await expect(disclosure.locator('[data-widget-view-ready="true"]')).toHaveCount(1);
+      await command(page, "insert");
+      for (let step = 0; step < 4; step++) {
+        await command(page, "stream");
+        await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+      }
+    });
   });
-});
+}
 
 for (const chatMode of ["full", "compact"]) {
   test.describe(`${chatMode} response expansion`, () => {

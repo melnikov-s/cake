@@ -1,4 +1,5 @@
 import { child, computed, createStore, snapshot, Store } from "r-state-tree";
+import { ChatPresentationContext } from "./context/ChatPresentationContext";
 import { MessageReferencePreviewStore } from "./MessageReferencePreviewStore";
 import { crossSessionPresentation } from "../lib/cross-session-presentation";
 import { messageReferencesInText } from "../../contracts/conversations/message-reference-forwarding";
@@ -429,7 +430,9 @@ export class ChatStore extends Store<ChatStoreProps> {
     return this.props.modelPickerVisible?.() ?? true;
   }
   get hideThinking() {
-    return this.props.hideThinking?.() ?? false;
+    return (
+      this.props.hideThinking?.() ?? ChatPresentationContext.consume(this)?.hideThinking() ?? false
+    );
   }
   get attachments() {
     return this.props.attachments?.() ?? [];

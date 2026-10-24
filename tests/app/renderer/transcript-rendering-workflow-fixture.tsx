@@ -1,5 +1,6 @@
 import { act, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { VirtuosoMockContext } from "react-virtuoso";
 import { StoreProvider } from "r-state-tree/react";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
@@ -38,16 +39,20 @@ export function renderTranscriptRendering(
   let revision = 1;
   applyConversationUpdate(session.model, { _tag: "Snapshot", revision, snapshot });
   const user = userEvent.setup();
-  // Compact is a real shared Chat mode. No virtualizer substitute or synthetic
-  // Range/scroll geometry: this fixture proves rendered projection behavior only.
+  // Content proof only; native alignment/scrolling is covered in Electron.
+  session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
+    kind: "top",
+  });
   const view = render(
-    <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
-      <Chat
-        store={session.conversationSessionStore.chatStore}
-        compact
-        composerFocusEnabled={false}
-      />
-    </StoreProvider>,
+    <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
+      <StoreProvider store={fixture.root.fullscreenSurfaceStore}>
+        <Chat
+          store={session.conversationSessionStore.chatStore}
+          compact
+          composerFocusEnabled={false}
+        />
+      </StoreProvider>
+    </VirtuosoMockContext.Provider>,
   );
   return {
     user,
