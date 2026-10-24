@@ -2,6 +2,7 @@ import {
   SessionMessageDelivery,
   immediateDelivery,
 } from "../../contracts/conversations/session-message-delivery";
+import * as projectTodoUpdates from "../projects/projectTodoUpdates";
 import { ResultDelivery } from "../../contracts/conversations/result-delivery";
 import { messageRefsSchema } from "../../contracts/conversations/message-reference";
 import { appendMessageReferences } from "../../contracts/conversations/message-reference-forwarding";
@@ -126,6 +127,11 @@ export const route: (
       ...(input.resultKind ? { resultKind: input.resultKind } : null),
       text: input.text,
     });
+    yield* projectTodoUpdates.offer({
+      sessionId,
+      projectPath: location.projectPath,
+      text: input.text,
+    });
     return toJsonValue({
       ok: true,
       command,
@@ -232,13 +238,20 @@ export const route: (
   const preparedRequests = replyToMessageId
     ? (yield* families.state()).turns.filter((turn) => turn.replyMessageIds?.includes(messageId))
     : [];
-  if (substantiveTurnResult({ stopReason: "stop", text: input.text }))
+  if (substantiveTurnResult({ stopReason: "stop", text: input.text })) {
+    if (preparedRequests.length)
+      yield* projectTodoUpdates.offer({
+        sessionId,
+        projectPath: location.projectPath,
+        text: input.text,
+      });
     for (const request of preparedRequests)
       yield* families.recordReport(request.turnId, {
         outcome: input.outcome ?? "result",
         ...(input.resultKind ? { resultKind: input.resultKind } : null),
         text: input.text,
       });
+  }
   if (delivery === "fyi") {
     yield* families.deferPassiveNotice({
       id: messageId,
@@ -246,6 +259,12 @@ export const route: (
       text: appendMessageReferences(input.text, input.messageRefs ?? []),
       crossSession: messageMetadata,
     });
+    if (!preparedRequests.length && substantiveTurnResult({ stopReason: "stop", text: input.text }))
+      yield* projectTodoUpdates.offer({
+        sessionId,
+        projectPath: location.projectPath,
+        text: input.text,
+      });
     return toJsonValue({
       ok: true,
       command,

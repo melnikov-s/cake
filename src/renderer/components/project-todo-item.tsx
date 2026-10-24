@@ -16,7 +16,7 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
   store: ProjectTodosStore;
 }) {
   const selected = store.selectedItem?.id === item.id;
-  const status = item.status || (item.description !== item.title ? item.description : "");
+  const description = item.description !== item.title ? item.description : "";
   return (
     <li data-todo-id={item.id} data-animated-list-key={item.id}>
       <NavItem
@@ -51,9 +51,9 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
           </IconButton>
         }
       >
-        {status && (
+        {description && (
           <p className="col-start-2 mt-1 w-full whitespace-pre-wrap break-words text-xs font-normal leading-snug text-muted-foreground">
-            {status}
+            {description}
           </p>
         )}
         {item.associations.length > 0 && (

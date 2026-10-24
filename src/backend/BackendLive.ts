@@ -1,4 +1,6 @@
 import { homedir } from "node:os";
+import * as projectTodoUpdates from "../domain/projects/projectTodoUpdates";
+import { ProjectTodoReports } from "../services/projects/ProjectTodoReports";
 import * as projectTodoResolution from "../domain/projects/projectTodoResolution";
 import { join } from "node:path";
 import { makeVsCodeServerLive } from "../services/vscode/VsCodeServerLive";
@@ -114,6 +116,7 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
   const scheduledMessageStorage = makeScheduledMessageStorageLive(paths.state);
   const StorageLive = Layer.mergeAll(
     applicationStorage,
+    ProjectTodoReports.layer,
     ApplicationState.layer.pipe(Layer.provide(applicationStorage)),
     scheduledMessageStorage,
     makeRuntimeRecoveryStorageLive(paths.state),
@@ -281,6 +284,7 @@ export const makeBackendLive = <HostServices, HostError>(
   );
   const BackgroundWorkersLive = Layer.mergeAll(
     Layer.effectDiscard(projectTodoResolution.initialize()),
+    Layer.effectDiscard(projectTodoUpdates.initialize()),
     Layer.effectDiscard(
       Effect.gen(function* () {
         yield* scheduledMessages.initialize().pipe(Effect.orDie);

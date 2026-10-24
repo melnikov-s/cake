@@ -40,6 +40,27 @@ for (const theme of ["light", "dark"] as const) {
       const selected = panel.getByRole("button", { name: "Startup investigation", exact: true });
       const clear = panel.getByRole("button", { name: "Clear search to-dos" });
 
+      const sort = panel.getByRole("combobox", { name: "Sort to-dos" });
+      const rows = panel.getByRole("list", { name: "Open to-dos" }).locator(":scope > li");
+      const ids = () =>
+        rows.evaluateAll((elements) =>
+          elements.map((element) => element.getAttribute("data-todo-id")),
+        );
+      const chronological = await ids();
+      await sort.selectOption("latest");
+      expect(await ids()).toEqual([...chronological].reverse());
+      await expect(selected).toHaveAttribute("aria-pressed", "true");
+      await sort.selectOption("earliest");
+      expect(await ids()).toEqual(chronological);
+      await panel.getByRole("button", { name: "Close To-do" }).click();
+      await page.getByRole("button", { name: "To-do", exact: true }).click();
+      await expect(sort).toHaveValue("earliest");
+      await sort.selectOption("agent");
+      expect(await ids()).toEqual(chronological);
+      // Closing clears selection by design; re-establish it before the search workflow.
+      await selected.click();
+      await expect(selected).toHaveAttribute("aria-pressed", "true");
+
       for (const width of [1500, 780]) {
         await page.setViewportSize({ width, height: 900 });
         await expect(search).toBeVisible();

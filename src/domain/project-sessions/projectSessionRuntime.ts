@@ -7,7 +7,8 @@ import type { WidgetPackages } from "../../services/widgets/WidgetPackages";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import { SessionCoordination } from "../../services/session-catalogs/SessionCoordination";
 import { CakeChatConfiguration } from "../../services/pi-durable/CakeChatConfiguration";
-import { implicitTurnResultFor } from "../../contracts/pi/turn-result-data";
+import { ProjectTodoReports } from "../../services/projects/ProjectTodoReports";
+import { substantiveTurnResult, implicitTurnResultFor } from "../../contracts/pi/turn-result-data";
 import * as sessionFamilyMessaging from "../session-families/sessionFamilyMessaging";
 import * as projectSessionAgentPolicy from "./projectSessionAgentPolicy";
 import { cakeModelCatalog, resolveCakeModelSelection } from "../model-presets/cake-model-selection";
@@ -175,9 +176,13 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
     | Effect.Services<ReturnType<typeof workflowControl.invoke>>
   >();
   const chatConfiguration = yield* Effect.serviceOption(CakeChatConfiguration);
-  const configuredContext = Option.isSome(chatConfiguration)
-    ? Context.add(context, CakeChatConfiguration, chatConfiguration.value)
+  const todoReports = yield* Effect.serviceOption(ProjectTodoReports);
+  const reportContext = Option.isSome(todoReports)
+    ? Context.add(context, ProjectTodoReports, todoReports.value)
     : context;
+  const configuredContext = Option.isSome(chatConfiguration)
+    ? Context.add(reportContext, CakeChatConfiguration, chatConfiguration.value)
+    : reportContext;
   const run = makePiCallbackExecutor(
     Option.isSome(savedDraftStorage)
       ? Context.add(configuredContext, SavedDraftStorage, savedDraftStorage.value)
@@ -386,6 +391,14 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
         const familyTurn = (yield* families.state()).turns.find(
           (turn) => turn.turnId === event.turnId,
         );
+        // An explicit report was already queued when recorded; do not summarize it twice.
+        const todoReport = familyTurn?.report ? undefined : substantiveTurnResult(event.result);
+        if (event.outcome !== "aborted" && todoReport && Option.isSome(todoReports))
+          yield* todoReports.value.offer({
+            projectPath: location.projectPath,
+            sessionId,
+            text: todoReport,
+          });
         if (workflowOwnsCompletion && familyTurn) return;
         // Only an answer to the requester itself may become its implicit result.
         const text = familyTurn

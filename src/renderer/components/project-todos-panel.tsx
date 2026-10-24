@@ -1,5 +1,6 @@
 import { observer } from "r-state-tree/react";
 import { AnimatedList } from "@/components/ui/animated-list";
+import { Select } from "@/components/ui/select";
 import { Callout } from "@/components/ui/callout";
 import { DisclosureTrigger } from "@/components/ui/disclosure-trigger";
 import type { ProjectTodosStore } from "../stores/ProjectTodosStore";
@@ -16,13 +17,24 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
   const noResults = searching && !openItems.length && !doneItems.length;
   return (
     <div className="h-full overflow-y-auto px-3 pb-4 pt-4">
-      <div className="mb-3 px-3">
+      <div className="mb-3 flex items-center justify-between gap-2 px-3">
         <h2 className="text-xs font-semibold">
           Open{" "}
           <span className="ml-1 font-normal tabular-nums text-muted-foreground">
             {openItems.length}
           </span>
         </h2>
+        <Select
+          aria-label="Sort to-dos"
+          size="sm"
+          className="w-auto"
+          value={store.sortMode}
+          onChange={(event) => store.setSortMode(event.target.value)}
+        >
+          <option value="agent">Agent sorted</option>
+          <option value="latest">Latest first</option>
+          <option value="earliest">Earliest first</option>
+        </Select>
       </div>
       {store.error && (
         <Callout variant="error" role="alert">

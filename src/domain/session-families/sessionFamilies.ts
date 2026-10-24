@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import * as projectTodoUpdates from "../projects/projectTodoUpdates";
 import { ensureSession as ensureSessionTodo } from "../projects/projectTodos";
 import { describeTurnStop, type TurnStop } from "../../contracts/conversations/turn-stop";
 import { appendMessageReferences } from "../../contracts/conversations/message-reference-forwarding";
@@ -829,6 +830,11 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
         ...(input.resultKind ? { resultKind: input.resultKind } : null),
         text: appendMessageReferences(input.text, input.messageRefs ?? []),
       });
+      yield* projectTodoUpdates.offer({
+        sessionId,
+        projectPath: location.projectPath,
+        text: input.text,
+      });
       // Explicit input forwarding is delivered below rather than silently discarded.
       if (!input.inputRefs?.length)
         return toJsonValue({
@@ -908,6 +914,11 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
           );
         }),
       );
+      yield* projectTodoUpdates.offer({
+        sessionId,
+        projectPath: location.projectPath,
+        text: input.text,
+      });
       return toJsonValue({
         ok: true,
         command,
@@ -935,6 +946,12 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
         text: prepared?.text ?? input.text,
         crossSession: metadata,
       });
+      if (substantiveTurnResult({ stopReason: "stop", text: input.text }))
+        yield* projectTodoUpdates.offer({
+          sessionId,
+          projectPath: location.projectPath,
+          text: input.text,
+        });
       return toJsonValue({
         ok: true,
         command,

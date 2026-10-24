@@ -29,6 +29,7 @@ import * as projectTodos from "../../../src/domain/projects/projectTodos";
 import * as projectTodoResolution from "../../../src/domain/projects/projectTodoResolution";
 import * as projectTodoAssociations from "../../../src/domain/projects/projectTodoAssociations";
 import * as projectSessionLifecycle from "../../../src/domain/project-sessions/projectSessionLifecycle";
+import { ProjectTodoReports } from "../../../src/services/projects/ProjectTodoReports";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import { TurnCanceledError } from "../../../src/services/pi/runtime/RuntimeTurnCompletion";
 import { createCakeSessionRuntimeContinuations } from "../../../src/services/pi/runtime/cake-session-runtime-continuations";
@@ -1257,6 +1258,43 @@ describe("Project Sessions domain", () => {
         true,
       );
     }).pipe(Effect.provide(makeLayer())),
+  );
+
+  it.effect(
+    "queues a local final report at settlement without acquiring a notification recipient",
+    () =>
+      Effect.gen(function* () {
+        const queue = yield* ProjectTodoReports;
+        const options = yield* acquireOptions({
+          sessionId: "session-1",
+          newSession: false,
+          location: {
+            projectPath: "/project",
+            projectName: "Project",
+            workingDirectory: "/project",
+            sessionDirectory: "/sessions",
+            resolvedSessionDirectory: "/resolved-sessions",
+          },
+        });
+        assert.ok(options.onTurnSettled);
+        yield* options.onTurnSettled({
+          sessionId: "session-1",
+          turnId: "local-turn",
+          outcome: "complete",
+          result: {
+            stopReason: "stop",
+            text: "Located the startup bottleneck; verification is pending.",
+          },
+        });
+        const batches = yield* queue.reports().pipe(Stream.take(1), Stream.runCollect);
+        assert.deepEqual(batches.flat(), [
+          {
+            projectPath: "/project",
+            sessionId: "session-1",
+            text: "Located the startup bottleneck; verification is pending.",
+          },
+        ]);
+      }).pipe(Effect.provide(Layer.merge(makeLayer(), ProjectTodoReports.layer))),
   );
 
   it.effect.each([

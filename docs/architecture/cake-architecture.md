@@ -378,8 +378,8 @@ is a refactoring signal, not precedent.
   start/child/fork boundaries, idempotent by canonical session identity. Agent guidance
   requires an item for every request not settled in the same reply (including subagent work,
   lookups and brainstorms); research stays open after its report until the user has reviewed
-  it. Items have a title, short durable description and freeform progress
-  status. Optional titled session, message, artifact, web and workspace associations use
+  it. Items have a title, short latest-update description and freeform agent
+  status metadata; the pane displays the description. Optional titled session, message, artifact, web and workspace associations use
   shared conversation navigation. Backend lifecycle authority completes linked open items
   once all actual session associations are resolved (UI and tools alike). Metadata-only,
   idempotent reconciliation handles late associations and legacy open items at startup;
@@ -391,6 +391,22 @@ is a refactoring signal, not precedent.
   Session restore never reopens items,
   and to-do completion never resolves, stops, deletes or merges sessions. ApplicationStorage
   publication drives the pane and Open count without loading/waking Project Chat.
+  Existing passive notifications, explicit result reports, final Project Session turns and worker completion
+  enqueue best-effort description refreshes before normal notification delivery.
+  A scoped backend consumer uses the configured utility model with only the task title,
+  current description and bounded new report text; no transcript, tools or chat wake.
+  Unchanged/invalid output or provider failure keeps the current description; revision
+  checks discard results made obsolete by another edit. Reports do not close items or
+  acknowledge delivery. This queue is ephemeral; pending refreshes are not replayed after
+  restart. Normal durable reporting remains unchanged.
+  A separate change-driven, debounced pass ranks 2–50 open items from titles/descriptions
+  and returns validated IDs only. Utility calls share one concurrency permit and have
+  ten-second deadlines, without retries or foreground-model fallback. The advisory
+  `agentOrder` is persisted on the list; chronological storage order remains creation
+  order. The pane offers Agent sorted, Latest first and Earliest first; chronological
+  modes use creation order, never description-edit recency. Agent order is captured on
+  pane opening or an explicit sort change, so background rankings do not move rows
+  while reading. Descriptions remain live. Larger lists retain their existing order.
   One metadata-index snapshot and family snapshot join a bounded page, with filename-only
   identity enumeration per directory, never per item.
   Tools default to title/id/state/revision rows and compact mutation receipts; content is

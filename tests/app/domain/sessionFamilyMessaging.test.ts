@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { ProjectTodoReports } from "../../../src/services/projects/ProjectTodoReports";
 import { it } from "@effect/vitest";
 import { Cause, Deferred, Effect, Exit, Layer, Queue, Schema, Stream } from "effect";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
@@ -327,6 +328,13 @@ it.effect("records a substantive completion report without sending it before set
       status: "report-recorded",
       expectsResponse: false,
     });
+    const batches = yield* (yield* ProjectTodoReports)
+      .reports()
+      .pipe(Stream.take(1), Stream.runCollect);
+    assert.deepEqual(
+      batches.flat().map(({ text }) => text),
+      ["Fixed the queue race and verified the regression tests."],
+    );
     const [turn] = (yield* storage.state()).turns;
     assert.ok(turn);
     assert.deepEqual(turn.report, {
@@ -344,8 +352,11 @@ it.effect("records a substantive completion report without sending it before set
     assert.match(acknowledgment.message, /substantive/);
   }).pipe(
     Effect.provide(
-      environment(
-        Layer.mock(CakeSessionRuntimes, { executingTurnIds: () => Effect.succeed(["turn"]) }),
+      Layer.merge(
+        environment(
+          Layer.mock(CakeSessionRuntimes, { executingTurnIds: () => Effect.succeed(["turn"]) }),
+        ),
+        ProjectTodoReports.layer,
       ),
     ),
   ),

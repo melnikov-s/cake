@@ -29,10 +29,16 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
     let body = "";
     for await (const chunk of request) body += chunk;
     const input = JSON.parse(body) as Request;
-    requests.push(input);
+    const instructions = input.messages.find((message) => message.role === "system")?.content;
+    const utility =
+      typeof instructions === "string" &&
+      (instructions.includes("Order these open to-dos") ||
+        instructions.includes("Update the current to-do description"));
+    if (!utility) requests.push(input);
     const user = latestUser(input);
-    const marker =
-      /(?:CREATE_LINKED|RESOLVE_LINKED|LINK_SOURCE|INPUT_[A-Z_]+)/.exec(user)?.[0] ?? "request";
+    const marker = utility
+      ? "utility"
+      : (/(?:CREATE_LINKED|RESOLVE_LINKED|LINK_SOURCE|INPUT_[A-Z_]+)/.exec(user)?.[0] ?? "request");
     if (marker === "INPUT_HOLD")
       await new Promise<void>((done) => {
         releaseWork = done;
@@ -76,6 +82,23 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
     const chunk = (delta: object, finish_reason: string | null) =>
       `data: ${JSON.stringify({ id: "fixture", object: "chat.completion.chunk", created: 0, model: "fixture", choices: [{ index: 0, delta, finish_reason }] })}\n\n`;
     response.writeHead(200, { "content-type": "text/event-stream" });
+    if (utility) {
+      const content = input.messages.findLast((message) => message.role === "user")?.content;
+      const raw =
+        typeof content === "string"
+          ? content
+          : (content?.map((part) => ("text" in part ? part.text : "")).join("") ?? "");
+      const context = JSON.parse(raw);
+      const result = Array.isArray(context)
+        ? JSON.stringify(context.map((item: { id: string }) => item.id))
+        : context.currentDescription;
+      response.end(
+        chunk({ role: "assistant", content: result }, null) +
+          chunk({}, "stop") +
+          "data: [DONE]\n\n",
+      );
+      return;
+    }
     response.end(
       tool
         ? chunk(
@@ -215,7 +238,7 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
                   {
                     id: reviewId,
                     title: "Review conversations",
-                    description: "Review conversations.",
+                    description: "Report delivered; awaiting your review",
                     status: "Report delivered; awaiting your review",
                     state: "open",
                     revision: 0,

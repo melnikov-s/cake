@@ -44,6 +44,8 @@ export class ProjectTodosStore extends Store<{
   transcript?(): { readonly chatSessionId: string; readonly parts: readonly UiPart[] };
 }> {
   query = "";
+  sortMode: "agent" | "latest" | "earliest" = "agent";
+  displayOrder: readonly string[] = [];
   doneExpanded = false;
   busy = false;
   error: string | undefined;
@@ -54,6 +56,12 @@ export class ProjectTodosStore extends Store<{
       () => this.source?.owner.todoCreationRevision ?? 0,
       (revision, previous) => {
         if (revision > previous) this.open();
+      },
+    );
+    this.reaction(
+      () => this.visible,
+      (visible) => {
+        if (visible) this.captureOrder();
       },
     );
     // A selection lives only while this panel shows it. Closing the panel clears it, once any
@@ -90,7 +98,7 @@ export class ProjectTodosStore extends Store<{
   }
   get filteredItems() {
     const query = this.query.trim().toLowerCase();
-    return (this.value?.items ?? []).filter(
+    return this.orderedItems.filter(
       (item) =>
         !query ||
         item.title.toLowerCase().includes(query) ||
@@ -102,6 +110,28 @@ export class ProjectTodosStore extends Store<{
   }
   get filteredDoneItems() {
     return this.filteredItems.filter((item) => item.state === "done");
+  }
+  get orderedItems() {
+    const items = [...(this.value?.items ?? [])];
+    // Storage is append-only creation order; description edits never change chronological order.
+    if (this.sortMode === "latest") return items.reverse();
+    if (this.sortMode === "earliest") return items;
+    const positions = new Map(this.displayOrder.map((id, index) => [id, index]));
+    return items.sort(
+      (a, b) =>
+        (positions.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+        (positions.get(b.id) ?? Number.MAX_SAFE_INTEGER),
+    );
+  }
+  setSortMode(value: string) {
+    if (value !== "agent" && value !== "latest" && value !== "earliest") return;
+    this.sortMode = value;
+    this.captureOrder();
+  }
+  private captureOrder() {
+    this.displayOrder = [
+      ...(this.value?.agentOrder ?? this.value?.items.map(({ id }) => id) ?? []),
+    ];
   }
   setQuery(query: string) {
     this.query = query;

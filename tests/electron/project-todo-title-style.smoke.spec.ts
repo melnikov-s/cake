@@ -92,7 +92,7 @@ for (const theme of ["light", "dark"] as const) {
           const foreground = await row.evaluate((element) => getComputedStyle(element).color);
           expect.soft(resting.color).toBe(foreground);
         } else {
-          const status = row.getByText("Decision recorded");
+          const status = row.getByText("Agree on the next milestone’s scope and priorities.");
           expect(resting.color).toBe(
             await status.evaluate((element) => getComputedStyle(element).color),
           );

@@ -24,6 +24,7 @@ import { getState } from "../application/application";
 import { TaskInputReference, inputRefsSchema } from "../../contracts/conversations/task-input";
 import { messageRefsSchema } from "../../contracts/conversations/message-reference";
 import type { ParentContinuation } from "../../contracts/conversations/parent-continuation";
+import * as projectTodoUpdates from "../projects/projectTodoUpdates";
 import { subagentFinalAnswerPart } from "../../contracts/subagents/subagent-report";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import type {
@@ -550,6 +551,14 @@ const completeHandle = Effect.fn("Subagents.completeHandle")(function* (
   if (!handle) return;
   yield* checkpoint(handleId);
   yield* Deferred.succeed(handle.completion, result);
+  const answer = subagentFinalAnswerPart(result)?.text;
+  if (result.status !== "aborted" && answer)
+    yield* projectTodoUpdates.offer({
+      sessionId: handle.parentSessionId,
+      ...(handle.projectPath ? { projectPath: handle.projectPath } : null),
+      subagent: { parentSessionId: handle.parentSessionId, handleId },
+      text: result.status === "complete" ? answer : `Worker ${result.status}: ${answer}`,
+    });
   if (shouldNotify) yield* deliverCompletion(handleId);
 });
 

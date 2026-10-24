@@ -1,3 +1,4 @@
+import { ProjectTodoReports } from "../../../src/services/projects/ProjectTodoReports";
 import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
 import type {
   SubagentRecord,
@@ -1577,6 +1578,34 @@ describe("Subagents", () => {
         }).pipe(Effect.provide(fixture.layer));
       }).pipe(Effect.scoped),
   );
+  it.effect("queues the worker final report before its existing completion notification", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture(
+        false,
+        [],
+        "Located the cause; verification remains pending.",
+      );
+      yield* Effect.gen(function* () {
+        const receipt = yield* subagents.start(
+          { continuation: "resume", task: "Investigate retries" },
+          parent(fixture),
+        );
+        const child = yield* Queue.take(fixture.childStarted);
+        yield* completeChild(fixture, child);
+        const batch = yield* (yield* ProjectTodoReports)
+          .reports()
+          .pipe(Stream.take(1), Stream.runCollect);
+        assert.equal(batch.flat()[0]?.text, "Located the cause; verification remains pending.");
+        assert.deepEqual(batch.flat()[0]?.subagent, {
+          parentSessionId: "parent",
+          handleId: receipt.handleId,
+        });
+        // Original notification is still independently delivered.
+        yield* Queue.take(fixture.reports);
+      }).pipe(Effect.provide(Layer.merge(fixture.layer, ProjectTodoReports.layer)));
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("uses one stable public handle without exposing the private Pi Session ID", () =>
     Effect.gen(function* () {
       const fixture = yield* makeFixture();

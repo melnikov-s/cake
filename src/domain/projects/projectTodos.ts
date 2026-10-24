@@ -108,6 +108,44 @@ const change = Effect.fn("ProjectTodos.change")(function* (
   return stored(next, scope) ?? emptyProjectTodos();
 });
 
+/** Advisory background results never overwrite a newer item edit. */
+export const applyReportDescription = Effect.fn("ProjectTodos.applyReportDescription")(function* (
+  scope: string,
+  candidate: ProjectTodo,
+  description: string,
+) {
+  yield* change(scope, (value) =>
+    Effect.succeed({
+      ...value,
+      items: value.items.map((item) =>
+        item.id === candidate.id &&
+        item.state === "open" &&
+        item.revision === candidate.revision &&
+        item.description !== description
+          ? commit(item, { description }, "agent")
+          : item,
+      ),
+    }),
+  );
+});
+
+export const rankingKey = (items: readonly ProjectTodo[]) =>
+  JSON.stringify(
+    items
+      .filter((item) => item.state === "open")
+      .map(({ id, title, description }) => ({ id, title, description })),
+  );
+
+export const applyAgentOrder = Effect.fn("ProjectTodos.applyAgentOrder")(function* (
+  scope: string,
+  expectedKey: string,
+  agentOrder: readonly string[],
+) {
+  yield* change(scope, (value) =>
+    Effect.succeed(rankingKey(value.items) === expectedKey ? { ...value, agentOrder } : value),
+  );
+});
+
 export const list = Effect.fn("ProjectTodos.list")(function* (scope: string) {
   const application = yield* ApplicationState;
   const state = application.snapshot();

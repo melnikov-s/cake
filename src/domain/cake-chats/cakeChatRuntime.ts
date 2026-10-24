@@ -68,6 +68,7 @@ import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCa
 import { SubagentStorage } from "../../services/storage/SubagentStorage";
 import { SubagentCoordinator } from "../../services/subagents/SubagentCoordinator";
 import type { SubagentEnvironment } from "../../services/subagents/SubagentEnvironment";
+import { ProjectTodoReports } from "../../services/projects/ProjectTodoReports";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
 import type { CakeSessionRuntimeAcquireOptions } from "../../services/pi/CakeSessionRuntimes";
@@ -232,9 +233,13 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
   const landingCompletion = yield* Effect.serviceOption(WorktreeLandingCompletion);
   const drafts = yield* Effect.serviceOption(SavedDraftStorage);
   const chatConfiguration = yield* Effect.serviceOption(CakeChatConfiguration);
-  const configuredContext = Option.isSome(chatConfiguration)
-    ? Context.add(context, CakeChatConfiguration, chatConfiguration.value)
+  const todoReports = yield* Effect.serviceOption(ProjectTodoReports);
+  const reportContext = Option.isSome(todoReports)
+    ? Context.add(context, ProjectTodoReports, todoReports.value)
     : context;
+  const configuredContext = Option.isSome(chatConfiguration)
+    ? Context.add(reportContext, CakeChatConfiguration, chatConfiguration.value)
+    : reportContext;
   const run = makePiCallbackExecutor(
     Option.isSome(drafts)
       ? Context.add(configuredContext, SavedDraftStorage, drafts.value)

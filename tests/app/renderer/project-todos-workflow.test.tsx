@@ -130,6 +130,10 @@ function renderTodos(withSidebar = false) {
     root,
     store,
     todos: () => todos,
+    async updateTodos(next: ProjectTodos) {
+      todos = next;
+      await act(async () => applySnapshot(fixture.models.projects, { projects: [project()] }));
+    },
     associated: () =>
       Array.from(
         view.container.querySelectorAll("[data-session-id][data-associated=true]"),
@@ -162,6 +166,64 @@ function renderTodos(withSidebar = false) {
     },
   };
 }
+
+it("sorts chronologically without treating description edits as newly created work", async () => {
+  using fixture = renderTodos();
+  const titles = () =>
+    within(screen.getByRole("list", { name: "Open to-dos" }))
+      .getAllByRole("button")
+      .filter((button) => button.hasAttribute("aria-pressed"))
+      .map((button) => button.textContent);
+  const select = screen.getByRole("combobox", { name: "Sort to-dos" });
+  expect(titles()).toEqual(["Investigate startup", "Follow up"]);
+  await fixture.user.selectOptions(select, "latest");
+  expect(titles()).toEqual(["Follow up", "Investigate startup"]);
+  await fixture.updateTodos({
+    ...fixture.todos(),
+    items: fixture
+      .todos()
+      .items.map((item, index) =>
+        index === 0
+          ? { ...item, description: "New finding from the older task.", revision: 1 }
+          : item,
+      ),
+  });
+  expect(titles()).toEqual(["Follow up", "Investigate startup"]);
+  await fixture.user.selectOptions(select, "earliest");
+  expect(titles()).toEqual(["Investigate startup", "Follow up"]);
+});
+
+it("holds agent order steady during reading and uses the prepared order on reopening", async () => {
+  using fixture = renderTodos();
+  const titles = () =>
+    Array.from(
+      screen.getByRole("list", { name: "Open to-dos" }).querySelectorAll("[data-todo-id]"),
+      (row) => row.getAttribute("data-todo-id"),
+    );
+  const original = fixture.todos().items.map(({ id }) => id);
+  await fixture.updateTodos({ ...fixture.todos(), agentOrder: [...original].reverse() });
+  expect(titles()).toEqual(original);
+  await fixture.user.click(screen.getByRole("button", { name: "Close To-do" }));
+  // The fixture mounts only the accessory layout; its real toolbar toggle is covered in Electron.
+  act(() => fixture.store.open());
+  expect(titles()).toEqual([...original].reverse());
+  await fixture.updateTodos({
+    ...fixture.todos(),
+    agentOrder: original,
+    items: fixture
+      .todos()
+      .items.map((item, index) =>
+        index === 0 ? { ...item, description: "Updated finding.", revision: 1 } : item,
+      ),
+  });
+  expect(screen.getByText("Updated finding.")).toBeDefined();
+  expect(titles()).toEqual([...original].reverse());
+  await fixture.user.selectOptions(
+    screen.getByRole("combobox", { name: "Sort to-dos" }),
+    "earliest",
+  );
+  expect(titles()).toEqual(original);
+});
 
 it("filters titles and descriptions without changing selection or the authoritative list", async () => {
   using fixture = renderTodos();
@@ -219,18 +281,18 @@ it("keeps matching done items grouped and preserves disclosure and done/reopen a
   expect(screen.getByRole("list", { name: "Open to-dos" })).toBeDefined();
 });
 
-it("selects status or fallback description while done/reopen remain independent controls", async () => {
+it("selects the latest description while done/reopen remain independent controls", async () => {
   using fixture = renderTodos();
   const title = () => screen.getByRole("button", { name: "Investigate startup" });
   const followUp = () => screen.getByRole("button", { name: "Follow up" });
-  await fixture.user.click(screen.getByText("Report delivered"));
+  await fixture.user.click(screen.getByText("Find the startup bottleneck."));
   expect(title().getAttribute("aria-pressed")).toBe("true");
   await fixture.user.click(screen.getByText("Plan the next step."));
   expect(title().getAttribute("aria-pressed")).toBe("false");
   expect(followUp().getAttribute("aria-pressed")).toBe("true");
   await fixture.user.click(screen.getByText("Plan the next step."));
   expect(followUp().getAttribute("aria-pressed")).toBe("false");
-  await fixture.user.click(screen.getByText("Report delivered"));
+  await fixture.user.click(screen.getByText("Find the startup bottleneck."));
   expect(title().getAttribute("aria-pressed")).toBe("true");
   await fixture.user.click(screen.getByRole("button", { name: "Mark done: Investigate startup" }));
   await fixture.user.click(screen.getByRole("button", { name: "Done (1)" }));
