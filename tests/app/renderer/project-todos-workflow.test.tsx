@@ -219,13 +219,19 @@ it("keeps matching done items grouped and preserves disclosure and done/reopen a
   expect(screen.getByRole("list", { name: "Open to-dos" })).toBeDefined();
 });
 
-it("selects description and status while done/reopen remain independent controls", async () => {
+it("selects status or fallback description while done/reopen remain independent controls", async () => {
   using fixture = renderTodos();
   const title = () => screen.getByRole("button", { name: "Investigate startup" });
-  await fixture.user.click(screen.getByText("Find the startup bottleneck."));
-  expect(title().getAttribute("aria-pressed")).toBe("true");
+  const followUp = () => screen.getByRole("button", { name: "Follow up" });
   await fixture.user.click(screen.getByText("Report delivered"));
+  expect(title().getAttribute("aria-pressed")).toBe("true");
+  await fixture.user.click(screen.getByText("Plan the next step."));
   expect(title().getAttribute("aria-pressed")).toBe("false");
+  expect(followUp().getAttribute("aria-pressed")).toBe("true");
+  await fixture.user.click(screen.getByText("Plan the next step."));
+  expect(followUp().getAttribute("aria-pressed")).toBe("false");
+  await fixture.user.click(screen.getByText("Report delivered"));
+  expect(title().getAttribute("aria-pressed")).toBe("true");
   await fixture.user.click(screen.getByRole("button", { name: "Mark done: Investigate startup" }));
   await fixture.user.click(screen.getByRole("button", { name: "Done (1)" }));
   expect(title().getAttribute("aria-pressed")).toBe("false");

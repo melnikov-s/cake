@@ -12,7 +12,7 @@ export function SidePanel({
   onClose,
 }: {
   title: string;
-  eyebrow: string;
+  eyebrow?: string;
   className?: string;
   children: ReactNode;
   headerActions?: ReactNode;
@@ -29,9 +29,11 @@ export function SidePanel({
     >
       <header className="flex min-w-0 items-center gap-3 border-b border-border/65 px-4">
         <div className="min-w-0 flex-1">
-          <p className="truncate font-mono text-xs uppercase tracking-wider text-muted-foreground">
-            {eyebrow}
-          </p>
+          {eyebrow && (
+            <p className="truncate font-mono text-xs uppercase tracking-wider text-muted-foreground">
+              {eyebrow}
+            </p>
+          )}
           <strong className="block truncate text-sm font-semibold">{title}</strong>
         </div>
         {headerActions}

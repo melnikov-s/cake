@@ -158,7 +158,7 @@ export function CaptureDestinationPicker({
                   <div className="px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground">
                     Cake Chat
                   </div>
-                  {rows(routing.cakeChats, "cake-chat")}
+                  <div className="flex flex-col gap-1">{rows(routing.cakeChats, "cake-chat")}</div>
                 </section>
               )}
               {routing.projects.map((project) => (
@@ -166,7 +166,9 @@ export function CaptureDestinationPicker({
                   <div className="px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground">
                     {project.name}
                   </div>
-                  <div className="pl-4">{rows(project.sessions, "project-session")}</div>
+                  <div className="flex flex-col gap-1 pl-4">
+                    {rows(project.sessions, "project-session")}
+                  </div>
                 </section>
               ))}
             </>

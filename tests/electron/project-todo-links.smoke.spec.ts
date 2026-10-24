@@ -95,7 +95,7 @@ for (const theme of ["light", "dark"] as const) {
         await expect(link).toHaveAttribute("href", href);
         await expect(link.locator(":scope > svg")).toBeHidden();
         await expect(link).toHaveAccessibleDescription(href!);
-        await expect(link).toHaveCSS("font-size", "11px");
+        await expect(link).toHaveCSS("font-size", "14px");
         await expect(link).toHaveCSS("font-weight", "400");
         await expect(link).toHaveCSS("line-height", "16px");
         await expect(link).toHaveCSS("text-decoration-line", "none");
@@ -112,16 +112,12 @@ for (const theme of ["light", "dark"] as const) {
         await expect(page.getByRole("tooltip")).not.toBeAttached();
       }
       expect(new Set(icons.slice(0, 5)).size).toBe(5);
-      const session = panel.getByRole("link", {
-        name: "Startup investigation session",
-        exact: true,
-      });
-      await session.focus();
+      await startup.focus();
       await page.keyboard.press("Tab");
       await expect(
         panel.getByRole("button", { name: "Mark done: Startup investigation", exact: true }),
       ).toBeFocused();
-      for (const [title, href] of destinations.slice(1)) {
+      for (const [title, href] of destinations) {
         await page.keyboard.press("Tab");
         const link = panel.getByRole("link", { name: title, exact: true });
         await expect(link).toBeFocused();

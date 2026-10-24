@@ -84,7 +84,7 @@ export const SidebarActivityFeed = observer(function SidebarActivityFeed({
           <h2 className="px-2 pb-1.5 text-sm font-medium text-muted-foreground">
             {dayLabel(group[0]!.modifiedAt, store.now)}
           </h2>
-          <AnimatedList className="flex flex-col space-y-0.5 pl-2">
+          <AnimatedList className="flex flex-col gap-1 pl-2">
             {group.map((entry) => {
               if (entry.kind === "project-chat") {
                 const projectPath = entry.summary.projectPath;
@@ -112,7 +112,7 @@ export const SidebarActivityFeed = observer(function SidebarActivityFeed({
                 <div
                   key={`project-family:${entry.family.rootSessionId}`}
                   data-animated-list-key={`project-family:${entry.family.rootSessionId}`}
-                  className="flex flex-col space-y-0.5"
+                  className="flex flex-col gap-1"
                 >
                   {entry.family.sessions.map((session) => {
                     const selected =

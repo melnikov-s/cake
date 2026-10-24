@@ -277,8 +277,8 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
       {expanded && (
         <AnimatedList
           className={cn(
-            "mt-0.5 flex flex-col space-y-0.5 pl-4",
-            focusMode && "mt-1 gap-1 pl-5",
+            "mt-1 flex flex-col gap-1 pl-4",
+            focusMode && "mt-1.5 gap-1.5 pl-5",
             // Center session squares on the unchanged project icon's column.
             !appearance.sidebarCharactersEnabled &&
               appearance.projectAvatarsEnabled &&

@@ -344,7 +344,7 @@ test("Project Chat side pane, context, titled links and tool-resolved linked wor
     await reviewTitle.press("Enter");
     await expect(reviewTitle).toHaveAttribute("aria-pressed", "false");
     await expect(reviewTitle).toHaveAttribute("aria-disabled", "false");
-    await review.getByText("Review conversations.", { exact: true }).click();
+    await review.getByText("Report delivered; awaiting your review", { exact: true }).click();
     await expect(reviewTitle).toHaveAttribute("aria-pressed", "true");
     await expect(reviewTitle).toHaveAttribute("aria-disabled", "false");
     await reviewTitle.press("Tab");

@@ -178,7 +178,6 @@ export class ProjectTodosStore extends Store<{
       this.props.sidePanel().open({
         key: "project-todos",
         title: "To-do",
-        eyebrow: () => source.chat,
         todos: this,
       });
   }

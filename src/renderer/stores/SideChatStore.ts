@@ -5,7 +5,7 @@ import type { ProjectTodosStore } from "./ProjectTodosStore";
 interface SidePanelTarget {
   readonly key: string;
   readonly title: string;
-  readonly eyebrow: () => string;
+  readonly eyebrow?: () => string;
 }
 
 export type SideChatTarget = SidePanelTarget &

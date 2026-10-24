@@ -10,6 +10,7 @@ import { SettingsScreenCaptureSection } from "./settings-screen-capture-section"
 import { SettingsDesktopHostSection } from "./settings-desktop-host-section";
 import { useEffect, useState } from "react";
 import { observer } from "r-state-tree/react";
+import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 import { Callout } from "./ui/callout";
 import { Badge } from "./ui/badge";
@@ -118,7 +119,7 @@ export const SettingsPage = observer(function SettingsPage({
     setScrollRequest({ targetId });
   };
   return (
-    <div className="grid h-full min-h-0 min-w-0 grid-cols-[220px_minmax(0,1fr)] max-[620px]:grid-cols-1 max-[620px]:grid-rows-[auto_minmax(0,1fr)] phone:grid-cols-1 phone:grid-rows-[auto_minmax(0,1fr)]">
+    <div className="grid h-full min-h-0 min-w-0 grid-cols-[252px_minmax(0,1fr)] max-[620px]:grid-cols-1 max-[620px]:grid-rows-[auto_minmax(0,1fr)] phone:grid-cols-1 phone:grid-rows-[auto_minmax(0,1fr)]">
       <div className="hidden border-b border-border px-4 py-2 max-[620px]:block phone:block">
         <Select
           aria-label="Settings section"
@@ -145,14 +146,14 @@ export const SettingsPage = observer(function SettingsPage({
       </div>
       <aside
         aria-label="Settings sections"
-        className="min-h-0 overflow-y-auto border-r border-border/65 bg-sidebar px-3 py-5 max-[620px]:hidden phone:hidden"
+        className="min-h-0 overflow-y-auto border-r border-border/65 bg-sidebar px-3.5 py-5 max-[620px]:hidden phone:hidden"
       >
-        <h1 className="px-2 text-lg font-bold text-foreground">Settings</h1>
-        <p className="mb-4 mt-1 px-2 text-xs leading-relaxed text-muted-foreground">
+        <h1 className="px-2.5 text-lg font-bold tracking-tight text-foreground">Settings</h1>
+        <p className="mb-4 mt-0.5 px-2.5 text-xs leading-snug text-muted-foreground/80">
           Cake and Pi preferences
         </p>
-        <div className="relative mb-6">
-          <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground">
+        <div className="relative mb-6 px-0.5">
+          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
             <SearchIcon size={13} />
           </span>
           <Input
@@ -168,53 +169,88 @@ export const SettingsPage = observer(function SettingsPage({
             }}
           />
         </div>
-        <nav className="grid gap-5" aria-label="Settings pages">
+        <nav className="grid gap-6" aria-label="Settings pages">
           {searching
             ? searchResults.map((group) => (
-                <div key={group.page}>
-                  <p className="mb-1 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground/75">
+                <div
+                  key={group.page}
+                  className="border-t border-border/60 pt-4 first:border-t-0 first:pt-0"
+                >
+                  <p className="mb-2 px-2.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">
                     {group.label}
                   </p>
-                  <div className="grid gap-0.5">
-                    {group.items.map((item) => (
-                      <NavItem
-                        key={item.targetId}
-                        label={item.label}
-                        badge={
-                          failedPages.has(item.page) && <Badge variant="destructive">Error</Badge>
-                        }
-                        active={
-                          activePage === item.page && scrollRequest?.targetId === item.targetId
-                        }
-                        onClick={() => selectSearchResult(item.page, item.targetId)}
-                      />
-                    ))}
+                  <div className="grid gap-1.5">
+                    {group.items.map((item) => {
+                      const active =
+                        activePage === item.page && scrollRequest?.targetId === item.targetId;
+                      return (
+                        <NavItem
+                          key={item.targetId}
+                          className="items-start px-2.5 py-2"
+                          label={
+                            <span
+                              className={cn(
+                                "font-semibold leading-snug",
+                                active
+                                  ? "text-primary"
+                                  : "text-foreground/90 group-hover/nav-item:text-foreground",
+                              )}
+                            >
+                              {item.label}
+                            </span>
+                          }
+                          badge={
+                            failedPages.has(item.page) && <Badge variant="destructive">Error</Badge>
+                          }
+                          active={active}
+                          onClick={() => selectSearchResult(item.page, item.targetId)}
+                        />
+                      );
+                    })}
                   </div>
                 </div>
               ))
             : navigationGroups.map((group) => (
-                <div key={group.label}>
-                  <p className="mb-1 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground/75">
+                <div
+                  key={group.label}
+                  className="border-t border-border/60 pt-4 first:border-t-0 first:pt-0"
+                >
+                  <p className="mb-2 px-2.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">
                     {group.label}
                   </p>
-                  <div className="grid gap-0.5">
-                    {group.items.map((item) => (
-                      <NavItem
-                        key={item.page}
-                        label={item.label}
-                        description={item.description}
-                        badge={
-                          failedPages.has(item.page) && <Badge variant="destructive">Error</Badge>
-                        }
-                        active={activePage === item.page}
-                        onClick={() => settings.selectPage(item.page)}
-                      />
-                    ))}
+                  <div className="grid gap-1.5">
+                    {group.items.map((item) => {
+                      const active = activePage === item.page;
+                      return (
+                        <NavItem
+                          key={item.page}
+                          className="items-start px-2.5 py-2"
+                          label={
+                            <span
+                              className={cn(
+                                "font-semibold leading-snug",
+                                active
+                                  ? "text-primary"
+                                  : "text-foreground/90 group-hover/nav-item:text-foreground",
+                              )}
+                            >
+                              {item.label}
+                            </span>
+                          }
+                          description={item.description}
+                          badge={
+                            failedPages.has(item.page) && <Badge variant="destructive">Error</Badge>
+                          }
+                          active={active}
+                          onClick={() => settings.selectPage(item.page)}
+                        />
+                      );
+                    })}
                   </div>
                 </div>
               ))}
           {searching && searchResultCount === 0 && (
-            <p className="px-2 text-xs leading-relaxed text-muted-foreground" role="status">
+            <p className="px-2.5 text-xs leading-relaxed text-muted-foreground" role="status">
               No settings found for “{searchQuery.trim()}”.
             </p>
           )}

@@ -30,7 +30,7 @@ export const SideChatLayout = observer(function SideChatLayout({
           target ? (
             <SidePanel
               title={target.title}
-              eyebrow={target.eyebrow()}
+              eyebrow={target.eyebrow?.()}
               onClose={() => store.close()}
               headerActions={
                 target.todos && (

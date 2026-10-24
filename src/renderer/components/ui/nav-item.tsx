@@ -140,13 +140,22 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
             {badge}
           </div>
           {description && (
-            <div className="mt-0.5 text-xs font-normal text-muted-foreground leading-none">
+            <div
+              className={cn(
+                "mt-0.5 text-xs font-normal leading-snug",
+                active ? "text-primary/75" : "text-muted-foreground/75",
+              )}
+            >
               {description}
             </div>
           )}
         </div>
       </button>
-      {trailing && <div className="shrink-0 text-inherit">{trailing}</div>}
+      {trailing && (
+        <div data-slot="nav-trailing" className="shrink-0 text-inherit">
+          {trailing}
+        </div>
+      )}
       {children}
     </div>
   );

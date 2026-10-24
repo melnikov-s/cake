@@ -1,8 +1,4 @@
-import { observer, useStore } from "r-state-tree/react";
-import { RootStore } from "../stores/RootStore";
-import { MarkdownLink } from "./ai-elements/markdown";
-import { editorLocationFromPath } from "../../contracts/editor/editor-location";
-import { projectTodoAssociationDestination } from "../lib/project-todo-association";
+import { observer } from "r-state-tree/react";
 import { projectTodoAssociationKey } from "../../contracts/projects/project-todos";
 import { NavItem } from "@/components/ui/nav-item";
 import { ProjectTodoWorkLink } from "./project-todo-work-link";
@@ -19,10 +15,8 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
   item: ProjectTodo;
   store: ProjectTodosStore;
 }) {
-  const root = useStore(RootStore);
   const selected = store.selectedItem?.id === item.id;
-  const sessions = item.associations.filter((association) => association.kind !== "source");
-  const resources = item.associations.filter((association) => association.kind === "source");
+  const status = item.status || (item.description !== item.title ? item.description : "");
   return (
     <li data-todo-id={item.id} data-animated-list-key={item.id}>
       <NavItem
@@ -35,11 +29,11 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
           "aria-disabled": store.busy || item.state === "done",
         }}
         onClick={() => void store.select(item)}
-        className="flex-wrap items-start gap-y-0 px-3 py-3 text-sm leading-relaxed [&_a>svg]:hidden"
+        className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 gap-y-0 px-3 py-2.5 text-sm leading-snug [&>button]:col-start-2 [&>button]:row-start-1 [&>button]:items-start [&>[data-slot=nav-trailing]]:col-start-1 [&>[data-slot=nav-trailing]]:row-start-1 [&_a>svg]:hidden"
         label={
           <span
             className={cn(
-              "font-medium",
+              "font-medium leading-snug",
               item.state === "done" ? "text-muted-foreground" : "text-foreground",
             )}
           >
@@ -47,66 +41,34 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
           </span>
         }
         trailing={
-          <div className="flex items-start gap-2">
-            {sessions.length > 0 && (
-              <span className="flex max-w-36 flex-col gap-1 pt-0.5">
-                {sessions.map((association) => (
-                  <ProjectTodoWorkLink
-                    key={projectTodoAssociationKey(association)}
-                    association={association}
-                  />
-                ))}
-              </span>
-            )}
-            <IconButton
-              className="-mr-1 -mt-1 size-7"
-              disabled={store.busy}
-              tooltip={`${item.state === "done" ? "Reopen" : "Mark done"}: ${item.title}`}
-              onClick={() => void store.setDone(item)}
-            >
-              {item.state === "done" ? <CheckIcon /> : <CircleIcon />}
-            </IconButton>
-          </div>
+          <IconButton
+            className="-ml-0.5 size-5"
+            disabled={store.busy}
+            tooltip={`${item.state === "done" ? "Reopen" : "Mark done"}: ${item.title}`}
+            onClick={() => void store.setDone(item)}
+          >
+            {item.state === "done" ? <CheckIcon /> : <CircleIcon />}
+          </IconButton>
         }
       >
-        {item.description !== item.title && (
-          <p className="mt-1 w-full whitespace-pre-wrap break-words text-xs font-normal leading-relaxed text-muted-foreground">
-            {item.description}
+        {status && (
+          <p className="col-start-2 mt-1 w-full whitespace-pre-wrap break-words text-xs font-normal leading-snug text-muted-foreground">
+            {status}
           </p>
         )}
-        {item.status && item.status !== item.description && item.status !== item.title && (
-          <p className="mt-1 w-full whitespace-pre-wrap break-words text-xs font-normal leading-relaxed text-muted-foreground">
-            {item.status}
-          </p>
-        )}
-        {resources.length > 0 && (
+        {item.associations.length > 0 && (
           <ul
             aria-label={`Work for ${item.title}`}
-            className="mt-1.5 w-full space-y-0.5 text-xs leading-4 text-muted-foreground"
+            className="col-start-2 mt-2 flex w-full flex-wrap items-center gap-1.5"
           >
-            {resources.map((association) => {
-              const { href, Icon } = projectTodoAssociationDestination(association);
-              return (
-                <li
-                  key={projectTodoAssociationKey(association)}
-                  className="flex items-start gap-1.5 [&>a]:min-w-0 [&>a]:break-words [&>a]:font-normal [&>a]:no-underline [&>a:hover]:text-foreground [&>a:hover]:underline"
-                >
-                  <span className="mt-0.5 shrink-0 [&>svg]:size-3">
-                    <Icon />
-                  </span>
-                  <MarkdownLink
-                    href={href}
-                    onOpenSourceLocation={(location) =>
-                      void root.projectWorkbenchStore.presentationStore.openFile(
-                        editorLocationFromPath(location),
-                      )
-                    }
-                  >
-                    {association.title}
-                  </MarkdownLink>
-                </li>
-              );
-            })}
+            {item.associations.map((association) => (
+              <li
+                key={projectTodoAssociationKey(association)}
+                className="flex max-w-full min-w-0 items-center"
+              >
+                <ProjectTodoWorkLink association={association} />
+              </li>
+            ))}
           </ul>
         )}
       </NavItem>

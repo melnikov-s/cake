@@ -65,9 +65,6 @@ for (const theme of ["light", "dark"] as const) {
       await scenario.prepare(page, "done", app);
       const panel = page.getByRole("complementary", { name: "To-do", exact: true });
       const associated = panel.getByRole("button", { name: "Startup investigation", exact: true });
-      // Startup clears persisted context selection; establish it through the real UI.
-      await expect(associated).toHaveAttribute("aria-pressed", "false");
-      await associated.click();
       await expect(associated).toHaveAttribute("aria-pressed", "true");
       await expect(associated.locator("..")).toHaveAttribute("data-associated", "true");
       // Association is an advisory cue, not actual navigation selection.
@@ -95,9 +92,9 @@ for (const theme of ["light", "dark"] as const) {
           const foreground = await row.evaluate((element) => getComputedStyle(element).color);
           expect.soft(resting.color).toBe(foreground);
         } else {
-          const description = row.getByText("Agree on the next milestone’s scope and priorities.");
+          const status = row.getByText("Decision recorded");
           expect(resting.color).toBe(
-            await description.evaluate((element) => getComputedStyle(element).color),
+            await status.evaluate((element) => getComputedStyle(element).color),
           );
         }
         expect.soft(hovered).toEqual(resting);
