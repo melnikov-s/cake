@@ -1791,6 +1791,33 @@ const mcpSettingsLayoutScenario: VisualCaptureScenario = {
   region: (page) => page.getByRole("region", { name: "MCP configuration", exact: true }),
 };
 
+const browserSharingScenario: VisualCaptureScenario = {
+  name: "topbar-browser-sharing",
+  description: "Topbar browser-sharing shortcut and anchored offline controls",
+  states: ["default", "open"],
+  seed: assistantMarkdownCode.seed,
+  async prepare(page, state) {
+    await page.locator('[data-streamdown="code-block-body"] code').waitFor({ timeout: 20_000 });
+    await expect(page.getByText("Opening session", { exact: true })).not.toBeVisible();
+    const closeNavigation = page.getByRole("button", { name: "Close navigation", exact: true });
+    if (await closeNavigation.isVisible()) await closeNavigation.click();
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    const trigger = page.getByRole("button", { name: "Browser sharing: Offline — go online" });
+    await expect(trigger).toBeInViewport();
+    if (state === "open") {
+      await trigger.focus();
+      await trigger.press("Enter");
+      await expect(page.getByRole("dialog", { name: "Browser sharing" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Go online", exact: true })).toBeFocused();
+    }
+    await page.mouse.move(1, 1);
+  },
+  region: (page, state) =>
+    state === "open"
+      ? page.getByRole("dialog", { name: "Browser sharing" })
+      : page.locator('[data-slot="workspace-header"]'),
+};
+
 const appearanceSettingsScenario: VisualCaptureScenario = {
   name: "appearance-settings",
   description: "Session-only sidebar character preference in Cake Appearance settings",
@@ -4565,6 +4592,7 @@ export const visualCaptureScenarios = [
   mcpSettingsScenario,
   mcpSettingsLayoutScenario,
   appearanceSettingsScenario,
+  browserSharingScenario,
   projectCustomInstructionsScenario,
   newSessionScenario,
   sessionSearchScenario,

@@ -41,7 +41,9 @@ describe("Cake Popover", () => {
     act(() => trigger.dispatchEvent(new MouseEvent("click", { bubbles: true })));
 
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
-    expect(document.body.querySelector('[aria-label="Environment details"]')).not.toBeNull();
+    const content = document.body.querySelector('[aria-label="Environment details"]');
+    expect(content).not.toBeNull();
+    expect(document.activeElement).toBe(content?.querySelector("button"));
     act(() =>
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })),
     );

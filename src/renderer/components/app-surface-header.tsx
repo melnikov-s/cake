@@ -4,6 +4,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { IconButton } from "@/components/ui/icon-button";
 import { BackIcon, CloseIcon, SidebarIcon, TerminalIcon } from "@/components/ui/icons";
 import { ArtifactCatalogMenu } from "@/components/artifact-catalog-menu";
+import { BrowserSharingMenu } from "@/components/browser-sharing-menu";
 import { cn } from "@/lib/utils";
 import { RootStore } from "../stores/RootStore";
 
@@ -90,6 +91,7 @@ export const AppSurfaceHeader = observer(function AppSurfaceHeader() {
         </strong>
       </div>
       <div className="flex min-w-0 shrink-0 items-center gap-1.5 [app-region:no-drag]">
+        <BrowserSharingMenu />
         {surface !== "artifact-library" && artifactCatalogMenu}
         {surface === "artifact-library" && (
           <IconButton tooltip="Close all artifacts" onClick={returnToWorkbench}>

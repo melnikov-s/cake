@@ -12,6 +12,7 @@ import {
 import { WorkLogControls } from "@/components/work-log-controls";
 import { cn } from "@/lib/utils";
 import { RootStore } from "../stores/RootStore";
+import { BrowserSharingMenu } from "./browser-sharing-menu";
 import type { SessionPaneNode } from "../stores/SessionLayoutStore";
 import type { CakeChatSessionStore } from "../stores/CakeChatSessionStore";
 import { SessionArtifactMenu } from "./session-artifact-menu";
@@ -66,6 +67,7 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
           onOpen={() => root.navigationStore.focusCakeChatPane(pane.paneId)}
         />
       )}
+      {firstPane && !overlay && <BrowserSharingMenu />}
       {!overlay && (
         <SessionArtifactMenu
           session={paneSession}

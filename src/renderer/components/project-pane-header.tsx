@@ -12,6 +12,7 @@ import { WorkLogControls } from "@/components/work-log-controls";
 import { SideChatsMenu } from "@/components/side-chats-menu";
 import { cn } from "@/lib/utils";
 import { RootStore } from "../stores/RootStore";
+import { BrowserSharingMenu } from "./browser-sharing-menu";
 import type { SessionPaneNode } from "../stores/SessionLayoutStore";
 import type { ProjectSessionStore } from "../stores/ProjectSessionStore";
 import { SessionArtifactMenu } from "./session-artifact-menu";
@@ -60,6 +61,7 @@ export const ProjectPaneHeader = observer(function ProjectPaneHeader({
             onOpen={focusPane}
           />
         )}
+        {firstPane && <BrowserSharingMenu />}
         <SideChatsMenu store={paneSession} onOpen={focusPane} />
         <SessionArtifactMenu session={paneSession} onOpen={focusPane} />
       </>
@@ -101,6 +103,7 @@ export const ProjectPaneHeader = observer(function ProjectPaneHeader({
       >
         <TreeIcon />
       </IconButton>
+      {firstPane && <BrowserSharingMenu />}
       <SideChatsMenu store={paneSession} onOpen={focusPane} />
       <SessionArtifactMenu session={paneSession} onOpen={focusPane} />
       <div className="mx-0.5 h-4 w-px shrink-0 bg-border/60" aria-hidden="true" />

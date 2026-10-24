@@ -284,6 +284,18 @@ export const ReloadIcon = () => (
     <path d="M18.5 15a7 7 0 1 1-1-8.5L20 11" />
   </Icon>
 );
+export const NetworkIcon = () => (
+  <Icon>
+    <path d="M2 8.8a16 16 0 0 1 20 0M5 12a11 11 0 0 1 14 0M8.5 15.5a5.5 5.5 0 0 1 7 0" />
+    <circle cx="12" cy="19" r="1" fill="currentColor" stroke="none" />
+  </Icon>
+);
+export const NetworkOffIcon = () => (
+  <Icon>
+    <path d="M3 3l18 18M2 8.8a16 16 0 0 1 3-2M9.5 5.5A16 16 0 0 1 22 8.8M5 12a11 11 0 0 1 3.5-2M14 9.7a11 11 0 0 1 5 2.3M8.5 15.5a5.5 5.5 0 0 1 7 0" />
+    <circle cx="12" cy="19" r="1" fill="currentColor" stroke="none" />
+  </Icon>
+);
 export const BrowserIcon = () => (
   <Icon>
     <circle cx="12" cy="12" r="9" />

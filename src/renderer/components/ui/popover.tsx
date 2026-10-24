@@ -234,6 +234,9 @@ export function PopoverContent({
       prevOpenRef.current = false;
       return;
     }
+    // The first portal commit is hidden until its position is measured; hidden
+    // descendants cannot receive DOM focus. Wait for that visible commit.
+    if (!position.ready) return;
     if (!prevOpenRef.current) {
       prevOpenRef.current = true;
       const content = contentRef.current;
@@ -244,7 +247,7 @@ export function PopoverContent({
         focusable?.focus();
       }
     }
-  }, [open]);
+  }, [open, position.ready]);
 
   const updatePositionRef = useRef(updatePosition);
   updatePositionRef.current = updatePosition;
