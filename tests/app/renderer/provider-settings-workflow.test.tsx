@@ -128,6 +128,109 @@ afterEach(() => {
 });
 
 describe("Provider settings workflow without an active chat", () => {
+  it.each([
+    { page: "Providers", type: undefined },
+    { page: "Images", type: "image" as const },
+    { page: "Classifiers", type: "classifier" as const },
+  ])(
+    "keeps connected providers first on $page as authentication changes",
+    async ({ page, type }) => {
+      let catalog = [
+        model({ provider: "zulu", providerName: "Zulu", id: "zulu" }),
+        model({ provider: "beta", providerName: "Beta", id: "beta-1", available: false }),
+        model({
+          provider: "beta",
+          providerName: "Beta",
+          id: "beta-2",
+          authenticated: true,
+          available: false,
+          authSource: "stored",
+        }),
+        model({ provider: "alpha", providerName: "Alpha", id: "alpha" }),
+        model({
+          provider: "echo",
+          providerName: "Echo",
+          id: "echo",
+          authenticated: true,
+          authSource: "environment",
+        }),
+      ];
+      let finishLogin!: () => void;
+      let finishLogout!: () => void;
+      const loginGate = new Promise<void>((resolve) => {
+        finishLogin = resolve;
+      });
+      const logoutGate = new Promise<void>((resolve) => {
+        finishLogout = resolve;
+      });
+      const login = vi.fn<Client["models"]["login"]>(async ({ provider }) => {
+        await loginGate;
+        catalog = catalog.map((entry) =>
+          entry.provider === provider
+            ? { ...entry, authenticated: true, authSource: "runtime" }
+            : entry,
+        );
+      });
+      const logout = vi.fn<Client["models"]["logout"]>(async ({ provider }) => {
+        await logoutGate;
+        catalog = catalog.map((entry) =>
+          entry.provider === provider
+            ? { ...entry, authenticated: false, authSource: undefined }
+            : entry,
+        );
+      });
+      const refresh = vi.fn<Client["models"]["refresh"]>(async () => {
+        catalog = catalog.map((entry) => ({
+          ...entry,
+          authenticated: entry.provider === "alpha" || entry.provider === "echo",
+          authSource:
+            entry.provider === "alpha" || entry.provider === "echo" ? "environment" : undefined,
+        }));
+      });
+      using fixture = await renderProviderSettings({
+        models: { list: async () => (type ? [] : catalog), login, logout, refresh },
+        nonChatModels: {
+          list: async () =>
+            type
+              ? catalog.map((entry) => ({ ...entry, type, available: entry.available ?? true }))
+              : [],
+        },
+      });
+      if (type)
+        await fixture.user.click(screen.getByRole("button", { name: new RegExp(`^${page}\\b`) }));
+      const order = () =>
+        screen.getAllByRole("article").map((card) => card.querySelector("strong")?.textContent);
+
+      // Authentication, not model availability, determines the group. Any
+      // authenticated model connects its provider, regardless of credential source.
+      expect(order()).toEqual(["Beta", "Echo", "Zulu", "Alpha"]);
+      expect(providerCard("Beta").getByText("2 models")).toBeDefined();
+      expect(providerCard("Echo").getByText("Connected · environment")).toBeDefined();
+      await fixture.user.click(providerCard("Zulu").getByRole("button", { name: "Add API key" }));
+      expect(providerCard("Zulu").getByRole("button", { name: "Connecting…" })).toBeDefined();
+      expect(order()).toEqual(["Beta", "Echo", "Zulu", "Alpha"]);
+      await act(async () => finishLogin());
+      await waitFor(() => expect(order()).toEqual(["Zulu", "Beta", "Echo", "Alpha"]));
+
+      await fixture.user.click(providerCard("Beta").getByRole("button", { name: "Disconnect" }));
+      expect(providerCard("Beta").getByRole("button", { name: "Disconnecting…" })).toBeDefined();
+      expect(order()).toEqual(["Zulu", "Beta", "Echo", "Alpha"]);
+      await act(async () => finishLogout());
+      await waitFor(() => expect(order()).toEqual(["Zulu", "Echo", "Beta", "Alpha"]));
+
+      await fixture.user.click(screen.getByRole("button", { name: "Refresh models" }));
+      await waitFor(() => expect(order()).toEqual(["Alpha", "Echo", "Zulu", "Beta"]));
+      expect(login).toHaveBeenCalledWith(
+        { provider: "zulu", authType: "api_key" },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+      expect(logout).toHaveBeenCalledWith(
+        { provider: "beta" },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+      expect(refresh).toHaveBeenCalledOnce();
+    },
+  );
   it("presents a device-code challenge during sign-in and opens only safe authentication URLs on this device", async () => {
     let finishLogin!: () => void;
     const loginGate = new Promise<void>((resolve) => {

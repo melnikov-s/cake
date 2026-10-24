@@ -11,6 +11,11 @@ export const SettingsProvidersSection = observer(function SettingsProvidersSecti
   providers: ProviderSettingsStore;
   providerGroups: ProviderSettingsStore["catalog"]["allModelsByProvider"];
 }) {
+  const sortedProviderGroups = providerGroups.toSorted(
+    (left, right) =>
+      Number(right.models.some((model) => model.authenticated)) -
+      Number(left.models.some((model) => model.authenticated)),
+  );
   return (
     <section className="grid gap-1.5" aria-labelledby="providers-title">
       <header className="flex items-center justify-between gap-3 px-0.5">
@@ -37,7 +42,7 @@ export const SettingsProvidersSection = observer(function SettingsProvidersSecti
             {providers.catalog.loading ? "Loading providers…" : "No providers are available."}
           </p>
         ) : (
-          providerGroups.map((provider) => {
+          sortedProviderGroups.map((provider) => {
             const authenticated = provider.models.some((model) => model.authenticated);
             const authenticatedModel = provider.models.find((model) => model.authenticated);
             const authSource = authenticatedModel?.authSource;
