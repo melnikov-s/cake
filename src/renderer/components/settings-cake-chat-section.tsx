@@ -27,7 +27,7 @@ export const SettingsCakeChatSection = observer(function SettingsCakeChatSection
         <label className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm">
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <strong className="text-xs font-medium text-foreground">Active context limit</strong>
-            <small className="text-[11px] text-muted-foreground">
+            <small className="text-xs text-muted-foreground">
               Summarize at this token limit or the model window, whichever is smaller. Otherwise
               retain context while cache is likely warm; uncertain or expired cache rebuilds memory
               on the next input.
@@ -52,7 +52,7 @@ export const SettingsCakeChatSection = observer(function SettingsCakeChatSection
         <label className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm">
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <strong className="text-xs font-medium text-foreground">History-view budget</strong>
-            <small className="text-[11px] text-muted-foreground">
+            <small className="text-xs text-muted-foreground">
               OptMem history grows to this size, then consolidates toward half (40/20 KB by
               default). Model-window admission may lower it. Originals are retained.
             </small>

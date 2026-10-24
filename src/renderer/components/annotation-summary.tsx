@@ -39,7 +39,7 @@ export const AnnotationSummary = observer(function AnnotationSummary({
             <div key={annotation.id} className="group rounded-lg bg-muted/60 p-2.5">
               <div className="flex items-start gap-2">
                 <div className="min-w-0 flex-1">
-                  <div className="mb-1 text-[11px] font-medium text-muted-foreground">
+                  <div className="mb-1 text-xs font-medium text-muted-foreground">
                     Annotation {index + 1}
                   </div>
                   <blockquote className="line-clamp-4 whitespace-pre-wrap border-l-2 border-border pl-2 text-xs text-foreground">

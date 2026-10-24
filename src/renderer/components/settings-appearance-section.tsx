@@ -20,7 +20,7 @@ export const SettingsAppearanceSection = observer(function SettingsAppearanceSec
         >
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <strong className="text-xs font-medium text-foreground">Theme</strong>
-            <small className="text-[11px] text-muted-foreground">
+            <small className="text-xs text-muted-foreground">
               Follow your system or use a fixed appearance.
             </small>
           </span>

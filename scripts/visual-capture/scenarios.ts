@@ -3701,12 +3701,17 @@ const sessionSearchScenario: VisualCaptureScenario = {
 const projectCustomInstructionsScenario: VisualCaptureScenario = {
   name: "project-custom-instructions",
   description: "Personal project instructions in the Project Settings dialog",
-  states: ["default"],
+  states: ["default", "browser"],
   seed: (paths, theme) => cakePromptsSettingsScenario.seed(paths, theme),
-  async prepare(page) {
+  async prepare(page, state) {
     await page.getByRole("button", { name: "Open settings for project" }).click();
     await page.getByRole("dialog", { name: /settings/ }).waitFor({ state: "visible" });
     await page.waitForFunction(() => document.fonts.status === "loaded");
+    if (state === "browser") {
+      await page
+        .getByRole("textbox", { name: "Browser default URL", exact: true })
+        .scrollIntoViewIfNeeded();
+    }
   },
   region(page) {
     return page.getByRole("dialog", { name: /settings/ });

@@ -52,7 +52,7 @@ export const LabelSettings = observer(function LabelSettings({
           <h3 id="session-labels-title" className="text-xs font-semibold text-foreground">
             {title}
           </h3>
-          <p className="text-[11px] text-muted-foreground">{description}</p>
+          <p className="text-xs text-muted-foreground">{description}</p>
         </div>
         <Button
           type="button"

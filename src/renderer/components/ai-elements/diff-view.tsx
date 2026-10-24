@@ -109,14 +109,14 @@ export const DiffView = memo(function DiffView({
   return (
     <section
       className={cn(
-        "min-w-0 max-w-full overflow-clip rounded-lg border border-border/80 bg-card/60 font-mono text-[11px]",
+        "min-w-0 max-w-full overflow-clip rounded-lg border border-border/80 bg-card/60 font-mono text-xs",
         className,
       )}
       aria-label={`${label}${filePath ? ` to ${filePath}` : ""}`}
     >
       <header
         className={cn(
-          "sticky top-0 z-10 flex min-h-[31px] items-center justify-between gap-3 border-b border-border/70 bg-card/90 px-2.5 py-1 text-[10px] text-muted-foreground",
+          "sticky top-0 z-10 flex min-h-[31px] items-center justify-between gap-3 border-b border-border/70 bg-card/90 px-2.5 py-1 text-xs text-muted-foreground",
           headerClassName,
         )}
       >
@@ -144,7 +144,7 @@ export const DiffView = memo(function DiffView({
         </span>
       </header>
       <div
-        className="w-full max-w-full min-w-0 overflow-x-auto py-1 font-mono text-[11px] leading-[1.55]"
+        className="w-full max-w-full min-w-0 overflow-x-auto py-1 font-mono text-xs leading-[1.55]"
         role="table"
         aria-label="Code changes"
       >

@@ -31,7 +31,7 @@ export const SettingsScreenCaptureSection = observer(function SettingsScreenCapt
         <div className="flex flex-wrap items-center justify-between gap-4 px-3.5 py-2.5">
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
             <strong className="text-xs font-medium text-foreground">Global shortcut</strong>
-            <small className="text-[11px] text-muted-foreground">
+            <small className="text-xs text-muted-foreground">
               Capture any app into the active chat draft. Works while another app is active.
             </small>
           </div>
@@ -50,7 +50,7 @@ export const SettingsScreenCaptureSection = observer(function SettingsScreenCapt
             <label htmlFor="capture-max-dimension" className="text-xs font-medium text-foreground">
               Maximum image dimension
             </label>
-            <small className="text-[11px] text-muted-foreground">
+            <small className="text-xs text-muted-foreground">
               Caps the longest edge; smaller images are not enlarged.
             </small>
           </div>

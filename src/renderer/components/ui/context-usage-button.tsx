@@ -41,7 +41,7 @@ export function ContextUsageButton({
         data-slot="context-usage"
         data-cache-state={cacheState}
         className={cn(
-          "h-auto min-h-7 shrink-0 gap-1 rounded-full border bg-muted/40 px-2 py-1 font-mono text-[11px] font-normal tabular-nums",
+          "h-auto min-h-7 shrink-0 gap-1 rounded-full border bg-muted/40 px-2 py-1 font-mono text-xs font-normal tabular-nums",
           cacheState === "likely-warm" ? "border-success/50" : "border-border/60",
         )}
         onClick={() => {

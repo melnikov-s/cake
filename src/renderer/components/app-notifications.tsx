@@ -28,7 +28,7 @@ export const AppNotifications = observer(function AppNotifications() {
             className="bg-popover text-popover-foreground shadow-md motion-safe:animate-toast-enter"
           >
             <strong className="text-xs">Extension</strong>
-            <span className="text-[11px] text-muted-foreground">{notification.message}</span>
+            <span className="text-xs text-muted-foreground">{notification.message}</span>
           </Callout>
         </Button>
       ))}

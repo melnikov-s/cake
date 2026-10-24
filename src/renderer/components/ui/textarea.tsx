@@ -21,12 +21,12 @@ const textareaVariants = cva(
     variants: {
       size: {
         default: "p-2.5 text-xs leading-relaxed",
-        sm: "p-2 text-[11px] leading-relaxed",
+        sm: "p-2 text-xs leading-relaxed",
         lg: "p-3 text-sm leading-relaxed",
       },
       font: {
         sans: "font-sans",
-        mono: "font-mono text-[12px] leading-[1.45]",
+        mono: "font-mono text-xs leading-[1.45]",
       },
     },
     defaultVariants: {

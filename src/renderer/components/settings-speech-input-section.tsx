@@ -57,7 +57,7 @@ export const SettingsSpeechInputSection = observer(function SettingsSpeechInputS
               <div key={group} className="min-w-0">
                 <h3 className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-3.5 pt-3 pb-1 text-xs font-semibold text-foreground">
                   {group}
-                  <span className="text-[11px] font-normal text-muted-foreground">
+                  <span className="text-xs font-normal text-muted-foreground">
                     {group === "Detection" ? "Dictation + voice mode" : "Voice mode only"}
                   </span>
                 </h3>
@@ -98,7 +98,7 @@ export const SettingsSpeechInputSection = observer(function SettingsSpeechInputS
                         </label>
                         <p
                           id="voice-short-commands-description"
-                          className="max-w-prose text-[11px] leading-relaxed text-muted-foreground"
+                          className="max-w-prose text-xs leading-relaxed text-muted-foreground"
                         >
                           <span className="sr-only">Voice mode only. </span>
                           Let “stop,” “wait,” “please stop” and “please wait” interrupt immediately.

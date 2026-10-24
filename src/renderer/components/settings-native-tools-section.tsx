@@ -91,7 +91,7 @@ export const SettingsNativeToolsSection = observer(function SettingsNativeToolsS
               onApply={(value) => void providers.setPiSetting({ key: "defaultTools", value })}
             />
           </div>
-          <p className="px-0.5 text-[11px] text-muted-foreground" role="status">
+          <p className="px-0.5 text-xs text-muted-foreground" role="status">
             {usingDefaults
               ? "Using Cake’s default tool selection (codemode enabled)"
               : settings.defaultTools?.length === 0

@@ -42,7 +42,7 @@ export const SettingsNonChatModelsSection = observer(function SettingsNonChatMod
               <strong className="text-xs font-medium text-foreground">
                 Preferred {label} model
               </strong>
-              <small className="text-[11px] text-muted-foreground">
+              <small className="text-xs text-muted-foreground">
                 Advisory default when an agent does not specify a {label} model.
               </small>
             </span>
@@ -92,7 +92,7 @@ export const SettingsNonChatModelsSection = observer(function SettingsNonChatMod
             model.
           </Callout>
         )}
-        <p className="px-0.5 text-[11px] text-muted-foreground">
+        <p className="px-0.5 text-xs text-muted-foreground">
           {type === "image"
             ? "Requires native codemode in Execution & resources. Generation may incur provider charges."
             : "Requires native codemode in Execution & resources. Choosing a preference does not enable background classification or Auto routing."}

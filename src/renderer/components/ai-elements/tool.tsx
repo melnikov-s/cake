@@ -149,7 +149,7 @@ export const ToolRunTimer = observer(function ToolRunTimer({
   if (elapsedMs === undefined) return null;
   return (
     <span
-      className="flex items-center gap-1 font-mono text-[10px] tabular-nums text-muted-foreground whitespace-nowrap"
+      className="flex items-center gap-1 font-mono text-xs tabular-nums text-muted-foreground whitespace-nowrap"
       aria-label="elapsed time"
     >
       {formatElapsed(elapsedMs)}
@@ -273,7 +273,7 @@ export const Tool = observer(function Tool({
         {timer}
         {activity?.durationMs !== undefined && (
           <span
-            className="font-mono text-[10px] tabular-nums text-muted-foreground"
+            className="font-mono text-xs tabular-nums text-muted-foreground"
             aria-label="elapsed time"
           >
             {formatElapsed(activity.durationMs)}

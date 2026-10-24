@@ -92,7 +92,7 @@ export const ProjectConversationSurface = observer(function ProjectConversationS
       status:
         focused && extensionUi.statuses.length > 0 ? (
           <div
-            className="mx-auto mt-1.5 flex w-full max-w-[51.25rem] gap-2.5 overflow-x-auto font-mono text-[10px] text-muted-foreground pointer-events-auto"
+            className="mx-auto mt-1.5 flex w-full max-w-[51.25rem] gap-2.5 overflow-x-auto font-mono text-xs text-muted-foreground pointer-events-auto"
             role="status"
           >
             {extensionUi.statuses.map((status) => (

@@ -410,7 +410,7 @@ export function SlashCommandCombobox({
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => chooseFile(item)}
                   icon={
-                    <code className="font-mono text-[11px] font-semibold text-accent whitespace-nowrap">
+                    <code className="font-mono text-xs font-semibold text-accent whitespace-nowrap">
                       {item.label}
                     </code>
                   }
@@ -429,7 +429,7 @@ export function SlashCommandCombobox({
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => chooseCommand(command)}
                   icon={
-                    <code className="font-mono text-[11px] font-semibold text-accent whitespace-nowrap">
+                    <code className="font-mono text-xs font-semibold text-accent whitespace-nowrap">
                       /{command.name}
                       {command.argumentHint ? ` ${command.argumentHint}` : ""}
                     </code>

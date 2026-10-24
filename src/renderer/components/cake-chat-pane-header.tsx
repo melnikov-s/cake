@@ -84,7 +84,7 @@ export const CakeChatPaneHeader = observer(function CakeChatPaneHeader({
           }}
         >
           <CheckIcon />
-          <span className="font-mono text-[11px] tabular-nums">
+          <span className="font-mono text-xs tabular-nums">
             {paneSession.todos.openItems.length}
           </span>
         </IconButton>

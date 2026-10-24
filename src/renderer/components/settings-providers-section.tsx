@@ -59,7 +59,7 @@ export const SettingsProvidersSection = observer(function SettingsProvidersSecti
                     <strong className="block truncate text-xs font-medium text-foreground">
                       {provider.name}
                     </strong>
-                    <small className="block truncate text-[11px] text-muted-foreground">
+                    <small className="block truncate text-xs text-muted-foreground">
                       {provider.models.length} {provider.models.length === 1 ? "model" : "models"}
                     </small>
                   </span>
@@ -93,7 +93,7 @@ export const SettingsProvidersSection = observer(function SettingsProvidersSecti
                       </Button>
                     ) : (
                       <small
-                        className="max-w-48 text-right font-mono text-[10px] text-muted-foreground"
+                        className="max-w-48 text-right font-mono text-xs text-muted-foreground"
                         title="Remove this credential from its environment or configuration source, then restart Cake."
                       >
                         Remove externally, then restart

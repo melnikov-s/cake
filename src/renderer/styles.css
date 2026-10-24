@@ -155,6 +155,10 @@
 }
 
 @theme inline {
+  /* Small UI text shares a readable, root-relative floor, including third-party
+     components using Tailwind's text-xs. Keep the root size user-controlled. */
+  --text-xs: 0.875rem;
+  --text-xs--line-height: calc(1.25 / 0.875);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -251,6 +255,9 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+  }
+  small {
+    font-size: var(--text-xs);
   }
   button,
   [role="button"],

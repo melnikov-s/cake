@@ -28,7 +28,7 @@ export const ContextInspectorNode = observer(function ContextInspectorNode({
           </Badge>
         </figcaption>
         <blockquote className="border-l-2 border-border pl-3">
-          <pre className="whitespace-pre-wrap break-words font-sans text-[13px] leading-7">
+          <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-7">
             {node.text}
           </pre>
         </blockquote>
@@ -61,13 +61,13 @@ export const ContextInspectorNode = observer(function ContextInspectorNode({
         chevronPosition="start"
         wrapTitle
         aria-controls={open ? contentId : undefined}
-        className="min-h-9 rounded-md px-2 py-2 text-[13px] font-normal leading-6 hover:bg-muted/50"
+        className="min-h-9 rounded-md px-2 py-2 text-sm font-normal leading-6 hover:bg-muted/50"
         onClick={() => store.toggle(node)}
       />
       {open && (
         <div id={contentId} className={page ? "pb-2" : "pb-2 pl-7"} title={node.source}>
           {node.text && (
-            <pre className="whitespace-pre-wrap break-words font-sans text-[13px] leading-7">
+            <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-7">
               {node.text}
             </pre>
           )}

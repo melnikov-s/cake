@@ -18,7 +18,7 @@ export const SettingsLocalSpeechSection = observer(function SettingsLocalSpeechS
           <strong className="text-xs font-medium text-foreground">
             Pocket TTS Core ML · English · Alba voice
           </strong>
-          <small className="text-[11px] text-muted-foreground">
+          <small className="text-xs text-muted-foreground">
             {size} local model; no Python or API key is needed. Speaking speed is adjusted locally
             without changing pitch.
           </small>

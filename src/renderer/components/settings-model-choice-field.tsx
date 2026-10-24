@@ -70,7 +70,7 @@ export const SettingsModelChoiceField = observer(function SettingsModelChoiceFie
     <div className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm max-[620px]:flex-col max-[620px]:items-stretch">
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <strong className="text-xs font-medium text-foreground">{label}</strong>
-        <small className="text-[11px] text-muted-foreground">{description}</small>
+        <small className="text-xs text-muted-foreground">{description}</small>
       </span>
       <span className="flex shrink-0 flex-col items-end gap-2">
         <Select

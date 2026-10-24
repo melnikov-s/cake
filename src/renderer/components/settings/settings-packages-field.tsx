@@ -36,7 +36,7 @@ export function SettingsPackagesField({
       <div className="flex items-center justify-between gap-4">
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <strong className="text-xs font-medium text-foreground">Packages</strong>
-          <small className="text-[11px] text-muted-foreground">
+          <small className="text-xs text-muted-foreground">
             Pi package sources as JSON. Saving reloads open sessions.
           </small>
           {error && (

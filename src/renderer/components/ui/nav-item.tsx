@@ -140,7 +140,7 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
             {badge}
           </div>
           {description && (
-            <div className="mt-0.5 text-[10px] font-normal text-muted-foreground leading-none">
+            <div className="mt-0.5 text-xs font-normal text-muted-foreground leading-none">
               {description}
             </div>
           )}

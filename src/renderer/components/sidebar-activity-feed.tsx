@@ -75,13 +75,13 @@ export const SidebarActivityFeed = observer(function SidebarActivityFeed({
   }
 
   if (entries.length === 0)
-    return <p className="mx-2 my-3 text-[13px] text-muted-foreground">No active sessions.</p>;
+    return <p className="mx-2 my-3 text-sm text-muted-foreground">No active sessions.</p>;
 
   return (
     <div data-slot="activity-feed" className="space-y-4">
       {[...groups.entries()].map(([key, group]) => (
         <section key={key}>
-          <h2 className="px-2 pb-1.5 text-[13px] font-medium text-muted-foreground">
+          <h2 className="px-2 pb-1.5 text-sm font-medium text-muted-foreground">
             {dayLabel(group[0]!.modifiedAt, store.now)}
           </h2>
           <AnimatedList className="flex flex-col space-y-0.5 pl-2">

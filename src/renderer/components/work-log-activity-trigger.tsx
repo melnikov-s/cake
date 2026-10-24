@@ -41,9 +41,7 @@ export const WorkLogActivityTrigger = observer(function WorkLogActivityTrigger({
       }
       title={title}
       trailing={
-        <span className="text-[11px] text-muted-foreground">
-          {open ? "Hide steps" : "View steps"}
-        </span>
+        <span className="text-xs text-muted-foreground">{open ? "Hide steps" : "View steps"}</span>
       }
     />
   );

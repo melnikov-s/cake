@@ -62,7 +62,7 @@ export const SidebarProjectChatItem = observer(function SidebarProjectChatItem({
         </span>
       }
       active={selected}
-      className="pl-0 text-[13px]"
+      className="pl-0 text-sm"
       trailing={
         activity && (
           <span data-slot="project-chat-status" className="flex w-8 items-center justify-center">

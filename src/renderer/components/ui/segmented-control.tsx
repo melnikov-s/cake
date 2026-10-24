@@ -43,7 +43,7 @@ export const SegmentedControlButton = forwardRef<HTMLButtonElement, SegmentedCon
         aria-pressed={active}
         className={cn(
           "inline-flex items-center justify-center rounded-md text-xs font-medium text-muted-foreground transition-all hover:bg-muted/80 hover:text-foreground",
-          size === "sm" && "h-6 px-2 text-[11px]",
+          size === "sm" && "h-6 px-2 text-xs",
           size === "default" && "h-7.5 px-3",
           active &&
             "bg-card text-foreground font-semibold shadow-xs hover:bg-card hover:text-foreground",

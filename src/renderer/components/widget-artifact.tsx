@@ -188,7 +188,7 @@ export const WidgetArtifact = observer(function WidgetArtifact({
     >
       <div
         data-slot="widget-view-toolbar"
-        className="flex shrink-0 flex-wrap items-center gap-2 pb-2 pr-10 text-[11px] text-muted-foreground"
+        className="flex shrink-0 flex-wrap items-center gap-2 pb-2 pr-10 text-xs text-muted-foreground"
       >
         <span>Live interactive view · r{artifact.revision}</span>
         <Button

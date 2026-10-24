@@ -105,7 +105,7 @@ export function CaptureDestinationPicker({
         disabled={disabled}
         variant="ghost"
         size="sm"
-        className="h-[30px] w-52 min-w-0 justify-between gap-2 px-2 text-xs font-normal"
+        className="h-7.5 w-52 min-w-0 justify-between gap-2 px-2 text-xs font-normal"
       >
         <span className="truncate">{label}</span>
         <ChevronDownIcon />
@@ -155,7 +155,7 @@ export function CaptureDestinationPicker({
             <>
               {routing.cakeChats.length > 0 && (
                 <section aria-label="Cake Chat">
-                  <div className="px-2 pt-2 pb-1 text-[11px] font-medium text-muted-foreground">
+                  <div className="px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground">
                     Cake Chat
                   </div>
                   {rows(routing.cakeChats, "cake-chat")}
@@ -163,7 +163,7 @@ export function CaptureDestinationPicker({
               )}
               {routing.projects.map((project) => (
                 <section key={project.path} aria-label={project.name}>
-                  <div className="px-2 pt-2 pb-1 text-[11px] font-medium text-muted-foreground">
+                  <div className="px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground">
                     {project.name}
                   </div>
                   <div className="pl-4">{rows(project.sessions, "project-session")}</div>

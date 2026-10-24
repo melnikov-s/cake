@@ -37,14 +37,14 @@ export function SettingSlider({
           </label>
           <p
             id={`${id}-description`}
-            className="max-w-prose text-[11px] leading-relaxed text-muted-foreground"
+            className="max-w-prose text-xs leading-relaxed text-muted-foreground"
           >
             {scopeLabel && <span className="sr-only">{scopeLabel}. </span>}
             {description}
           </p>
         </div>
         <div className="grid min-w-0 gap-1">
-          <div className="flex items-center justify-end text-[11px]">
+          <div className="flex items-center justify-end text-xs">
             <span className="tabular-nums font-medium text-foreground">{valueText}</span>
           </div>
           <Slider
@@ -58,7 +58,7 @@ export function SettingSlider({
             onValueChange={onValueChange}
           />
           {(minLabel || maxLabel) && (
-            <div className="flex justify-between text-[10px] text-muted-foreground">
+            <div className="flex justify-between text-xs text-muted-foreground">
               <span>{minLabel}</span>
               <span>{maxLabel}</span>
             </div>

@@ -49,7 +49,8 @@ export function TerminalView({
       convertEol: false,
       cursorBlink: true,
       fontFamily: '"SFMono-Regular", Consolas, "Liberation Mono", monospace',
-      fontSize: 12,
+      // xterm requires a numeric size; derive it from the relative UI token.
+      fontSize: Number.parseFloat(getComputedStyle(host).fontSize),
       lineHeight: 1.25,
       scrollback: 10_000,
       theme: terminalTheme(),
@@ -71,6 +72,7 @@ export function TerminalView({
     });
     const fitTerminal = () => {
       if (!host.isConnected || host.clientWidth === 0 || host.clientHeight === 0) return;
+      terminal.options.fontSize = Number.parseFloat(getComputedStyle(host).fontSize);
       fit.fit();
       callbacksRef.current.onResize(terminal.cols, terminal.rows);
     };
@@ -78,10 +80,11 @@ export function TerminalView({
     resizeObserver.observe(host);
     const themeObserver = new MutationObserver(() => {
       terminal.options.theme = terminalTheme();
+      fitTerminal();
     });
     themeObserver.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["data-theme"],
+      attributeFilter: ["data-theme", "class", "style"],
     });
     const dataSubscription = terminal.onData((data) => callbacksRef.current.onData(data));
     const unsubscribe = callbacksRef.current.subscribe((data) => terminal.write(data));
@@ -113,5 +116,5 @@ export function TerminalView({
     });
   }, [active]);
 
-  return <div ref={hostRef} className={cn("h-full min-h-0 w-full min-w-0", className)} />;
+  return <div ref={hostRef} className={cn("h-full min-h-0 w-full min-w-0 text-xs", className)} />;
 }

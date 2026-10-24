@@ -27,9 +27,9 @@ export function SettingsPromptField({
       <div className="flex items-start justify-between gap-4">
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <strong className="text-xs font-medium text-foreground">{label}</strong>
-          <small className="text-[11px] text-muted-foreground">{description}</small>
+          <small className="text-xs text-muted-foreground">{description}</small>
           {variables && (
-            <small className="font-mono text-[10px] text-muted-foreground">
+            <small className="font-mono text-xs text-muted-foreground">
               Variables: {variables}
             </small>
           )}

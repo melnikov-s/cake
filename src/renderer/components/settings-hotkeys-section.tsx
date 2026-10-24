@@ -17,7 +17,7 @@ export const SettingsHotkeysSection = observer(function SettingsHotkeysSection({
           <h2 id="hotkeys-title" className="text-xs font-semibold text-foreground">
             Keyboard shortcuts
           </h2>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Select a shortcut and press a new key combination, or Backspace to clear.
           </p>
         </div>
@@ -47,7 +47,7 @@ export const SettingsHotkeysSection = observer(function SettingsHotkeysSection({
                       <strong className="text-xs font-medium text-foreground">
                         {definition.label}
                       </strong>
-                      <small className="text-[11px] text-muted-foreground">
+                      <small className="text-xs text-muted-foreground">
                         {definition.description}
                       </small>
                     </span>

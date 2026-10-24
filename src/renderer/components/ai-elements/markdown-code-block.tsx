@@ -10,7 +10,7 @@ export const streamingCodeMarker = "__cake_streaming_code__";
 const startLinePattern = /startLine=(\d+)/;
 const noLineNumbersPattern = /\bnoLineNumbers\b/;
 const lineNumberClasses =
-  "block before:mr-4 before:inline-block before:w-6 before:select-none before:text-right before:font-mono before:text-[13px] before:text-muted-foreground/50 before:[counter-increment:line] before:content-[counter(line)]";
+  "block before:mr-4 before:inline-block before:w-6 before:select-none before:text-right before:font-mono before:text-sm before:text-muted-foreground/50 before:[counter-increment:line] before:content-[counter(line)]";
 
 function trimTrailingNewlines(code: string) {
   return code.replace(/\n+$/, "");
@@ -35,7 +35,7 @@ export function MarkdownCodeBlock({ code, language, meta }: CustomRendererProps)
 
   if (!changing)
     return (
-      <div className="group/code relative my-4 [&_[data-streamdown=code-block]]:my-0 [&_[data-streamdown=code-block]]:gap-0 [&_[data-streamdown=code-block]]:rounded-none [&_[data-streamdown=code-block]]:border-0 [&_[data-streamdown=code-block]]:bg-transparent [&_[data-streamdown=code-block]]:p-0 [&_[data-streamdown=code-block-header]]:hidden">
+      <div className="group/code relative my-4 [&_[data-streamdown=code-block]]:my-0 [&_[data-streamdown=code-block]]:gap-0 [&_[data-streamdown=code-block]]:rounded-none [&_[data-streamdown=code-block]]:border-0 [&_[data-streamdown=code-block]]:bg-transparent [&_[data-streamdown=code-block]]:p-0 [&_[data-streamdown=code-block-header]]:hidden [&_[data-streamdown=code-block-body]_code>span]:before:text-xs">
         <CodeBlock
           code={code}
           language={language}

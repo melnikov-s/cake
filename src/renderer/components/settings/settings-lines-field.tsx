@@ -21,7 +21,7 @@ export function SettingsLinesField({
     <label id={id} className="scroll-mt-8 flex flex-col gap-2 px-3.5 py-2.5 text-sm">
       <span className="flex flex-col gap-0.5">
         <strong className="text-xs font-medium text-foreground">{label}</strong>
-        <small className="text-[11px] text-muted-foreground">{description}</small>
+        <small className="text-xs text-muted-foreground">{description}</small>
       </span>
       <Textarea
         className="min-h-16 w-full rounded-sm font-mono text-xs"

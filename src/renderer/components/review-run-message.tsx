@@ -31,7 +31,7 @@ export function ReviewRunMessage({
             <span className={run.status === "error" ? "text-destructive" : ""}>{label}</span>
           )
         }
-        trailing={<span className="font-mono text-[10px] text-accent">View in VS Code</span>}
+        trailing={<span className="font-mono text-xs text-accent">View in VS Code</span>}
       />
     </Message>
   );

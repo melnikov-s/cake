@@ -3,7 +3,7 @@ import { type HTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
 const badgeVariants = cva(
-  "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors select-none",
+  "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium transition-colors select-none",
   {
     variants: {
       variant: {
@@ -17,9 +17,9 @@ const badgeVariants = cva(
         mono: "font-mono border border-border/70 text-muted-foreground",
       },
       size: {
-        default: "px-2 py-0.5 text-[10px]",
-        sm: "px-1.5 py-0.5 text-[10px]",
-        xs: "px-1.5 py-0 text-[10px] leading-tight",
+        default: "px-2 py-0.5 text-xs",
+        sm: "px-1.5 py-0.5 text-xs",
+        xs: "px-1.5 py-0 text-xs leading-tight",
       },
     },
     defaultVariants: {

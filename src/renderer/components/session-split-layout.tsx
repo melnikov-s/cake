@@ -122,12 +122,12 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
           )}
         >
           {multiplePanes && (
-            <span className="grid size-5 shrink-0 place-items-center rounded bg-muted font-mono text-[10px] font-semibold text-muted-foreground">
+            <span className="grid size-5 shrink-0 place-items-center rounded bg-muted font-mono text-xs font-semibold text-muted-foreground">
               {pane?.number}
             </span>
           )}
           {titleLeading?.(sessionId)}
-          <strong className="min-w-0 flex-1 truncate text-[13px] font-semibold">
+          <strong className="min-w-0 flex-1 truncate text-sm font-semibold">
             {title(sessionId)}
           </strong>
           <div className="flex min-w-0 shrink-0 items-center gap-1 [app-region:no-drag] max-[620px]:max-w-[50%] max-[620px]:overflow-x-auto phone:-ml-11 phone:w-[calc(100%+2.75rem)] phone:max-w-none phone:flex-none phone:overflow-x-auto">

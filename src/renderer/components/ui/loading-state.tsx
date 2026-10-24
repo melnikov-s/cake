@@ -77,7 +77,7 @@ export function LoadingState({
         ))}
       </span>
       <span
-        className="bg-clip-text text-[13px] font-medium text-transparent motion-reduce:!animate-none"
+        className="bg-clip-text text-sm font-medium text-transparent motion-reduce:!animate-none"
         style={{
           backgroundImage:
             "linear-gradient(90deg, var(--muted-foreground) 35%, var(--foreground) 50%, var(--muted-foreground) 65%)",
@@ -87,7 +87,7 @@ export function LoadingState({
       >
         {label}
       </span>
-      <span className="font-mono text-[12px] text-muted-foreground tabular-nums">
+      <span className="font-mono text-xs text-muted-foreground tabular-nums">
         {formatElapsed(now - effectiveStartedAt)}
       </span>
     </div>

@@ -231,7 +231,7 @@ export const UiHintMode = observer(function UiHintMode({ store }: { store: UiHin
           data-slot="ui-hint"
           data-hint-label={label}
           aria-label={`${name}: ${label.toUpperCase()}`}
-          className="absolute inline-flex min-w-4 -translate-x-1/3 -translate-y-1/3 items-center justify-center rounded border border-background bg-accent px-1 py-0.5 font-mono text-[10px] font-bold leading-none tracking-tight text-accent-foreground shadow-md"
+          className="absolute inline-flex min-w-4 -translate-x-1/3 -translate-y-1/3 items-center justify-center rounded border border-background bg-accent px-1 py-0.5 font-mono text-xs font-bold leading-none tracking-tight text-accent-foreground shadow-md"
           style={{
             left: Math.max(8, Math.min(window.innerWidth - 8, rect.left)),
             top: Math.max(8, Math.min(window.innerHeight - 8, rect.top)),

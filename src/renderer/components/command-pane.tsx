@@ -114,7 +114,7 @@ export const CommandPane = observer(function CommandPane({
                   className="p-2.5"
                 >
                   <strong className="text-xs">{item.method ?? item.source}</strong>
-                  <span className="whitespace-pre-wrap text-[11px] text-muted-foreground">
+                  <span className="whitespace-pre-wrap text-xs text-muted-foreground">
                     {item.message}
                     {item.path ? `\n${item.path}` : ""}
                   </span>
@@ -126,7 +126,7 @@ export const CommandPane = observer(function CommandPane({
             <section key={group.kind} className="grid gap-2">
               <h3 className="m-0 flex items-center gap-2 text-xs font-semibold capitalize text-foreground">
                 {group.kind[0]!.toUpperCase() + group.kind.slice(1)}s{" "}
-                <span className="font-mono text-[10px] text-muted-foreground">
+                <span className="font-mono text-xs text-muted-foreground">
                   {group.resources.length}
                 </span>
               </h3>
@@ -140,7 +140,7 @@ export const CommandPane = observer(function CommandPane({
                   >
                     <div className="flex items-baseline justify-between gap-3">
                       <strong className="text-xs">{resource.name}</strong>
-                      <small className="text-[11px] text-muted-foreground">
+                      <small className="text-xs text-muted-foreground">
                         {resource.scope} · {resource.origin}
                       </small>
                     </div>
@@ -163,7 +163,7 @@ export const CommandPane = observer(function CommandPane({
                     )}
                     <code
                       title={resource.path}
-                      className="truncate font-mono text-[10px] text-muted-foreground"
+                      className="truncate font-mono text-xs text-muted-foreground"
                     >
                       {resource.source}
                     </code>

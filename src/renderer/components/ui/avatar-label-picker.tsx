@@ -68,13 +68,13 @@ export function AvatarLabelPicker({
         className="max-h-[min(32rem,80vh)] w-64 overflow-y-auto p-2"
       >
         <div className="flex items-center justify-between px-2 pb-1.5">
-          <p className="text-[11px] font-semibold text-muted-foreground">Session labels</p>
+          <p className="text-xs font-semibold text-muted-foreground">Session labels</p>
           {value.length > 0 && (
             <Button
               type="button"
               variant="ghost"
               size="sm"
-              className="h-6 px-1.5 text-[10px] text-muted-foreground"
+              className="h-6 px-1.5 text-xs text-muted-foreground"
               onClick={() => onChange([])}
             >
               Clear
@@ -112,7 +112,7 @@ export function AvatarLabelPicker({
                     variant="ghost"
                     size="sm"
                     className={cn(
-                      "mr-1 h-6 px-1.5 text-[10px]",
+                      "mr-1 h-6 px-1.5 text-xs",
                       primary ? "text-foreground" : "text-muted-foreground",
                     )}
                     disabled={primary}

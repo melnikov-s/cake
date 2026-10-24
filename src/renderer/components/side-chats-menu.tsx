@@ -61,9 +61,7 @@ export const SideChatsMenu = observer(function SideChatsMenu({
       >
         <div className="mb-1 flex items-center gap-2 px-2 py-1">
           <ChatIcon size={14} />
-          <strong className="font-mono text-[10px] uppercase tracking-wider">
-            Open side chats
-          </strong>
+          <strong className="font-mono text-xs uppercase tracking-wider">Open side chats</strong>
         </div>
         {threads.length ? (
           <div className="grid gap-1">
@@ -80,7 +78,7 @@ export const SideChatsMenu = observer(function SideChatsMenu({
                 <StatusDot status={store.sideChatStreaming(thread.id) ? "running" : "complete"} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-xs font-medium">{threadTitle(thread)}</span>
-                  <span className="block truncate text-[10px] font-normal text-muted-foreground">
+                  <span className="block truncate text-xs font-normal text-muted-foreground">
                     {store.sideChatStreaming(thread.id) ? "Working…" : threadPreview(thread)}
                   </span>
                 </span>

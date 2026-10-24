@@ -66,7 +66,7 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
               />
               <span
                 id="project-browser-url-help"
-                className="text-[11px] leading-relaxed text-muted-foreground"
+                className="text-xs leading-relaxed text-muted-foreground"
               >
                 Opens when this project’s browser has no page yet. Leave blank to use
                 https://www.google.com/. Existing pages are preserved when switching modes.
@@ -88,7 +88,7 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
               />
               <span
                 id="project-chat-instructions-help"
-                className="text-[11px] leading-relaxed text-muted-foreground"
+                className="text-xs leading-relaxed text-muted-foreground"
               >
                 Only for this project’s permanent Project Chat. Never added to coding Project
                 Sessions or global Cake Chat. Applies on the next Project Chat message. Saved
@@ -111,7 +111,7 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
               />
               <span
                 id="project-custom-instructions-help"
-                className="text-[11px] leading-relaxed text-muted-foreground"
+                className="text-xs leading-relaxed text-muted-foreground"
               >
                 For coding Project Sessions only, not permanent Project Chat. Existing custom
                 instructions are preserved here; they have not been moved to Project Chat. Personal
@@ -136,7 +136,7 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
                   <p className="text-xs text-foreground">
                     {store.icon ? "Custom icon" : "Generated from the project name"}
                   </p>
-                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  <p className="mt-0.5 text-xs text-muted-foreground">
                     PNG, JPEG, GIF, or WebP under 750 KB. Cake controls its displayed size.
                   </p>
                 </div>
@@ -179,7 +179,7 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
               />
               <span
                 id="worktree-command-help"
-                className="text-[11px] leading-relaxed text-muted-foreground"
+                className="text-xs leading-relaxed text-muted-foreground"
               >
                 Runs once from the repository root. Cake shell-quotes each variable value before
                 substitution. Leave variables unquoted in the command.
@@ -202,7 +202,7 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
               />
               <span
                 id="worktree-setup-help"
-                className="text-[11px] leading-relaxed text-muted-foreground"
+                className="text-xs leading-relaxed text-muted-foreground"
               >
                 Runs as one shell script from inside the new worktree after creation. A failed
                 command stops session startup and removes the incomplete worktree.
@@ -222,7 +222,7 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
               />
               <span
                 id="worktree-setup-instructions-help"
-                className="text-[11px] leading-relaxed text-muted-foreground"
+                className="text-xs leading-relaxed text-muted-foreground"
               >
                 Added to the agent prompt for sessions running in a Cake-managed worktree. Use this
                 for conditional guidance; put commands that must always run in Setup commands.
@@ -231,7 +231,7 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
 
             <div className="rounded-lg border border-border bg-muted/45 p-3">
               <h3 className="text-xs font-semibold text-foreground">Available variables</h3>
-              <dl className="mt-2 grid grid-cols-[max-content_1fr] phone:grid-cols-1 phone:break-words gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+              <dl className="mt-2 grid grid-cols-[max-content_1fr] phone:grid-cols-1 phone:break-words gap-x-4 gap-y-1 text-xs text-muted-foreground">
                 {variables.map(([name, description]) => (
                   <div key={name} className="contents">
                     <dt className="font-mono text-foreground">{name}</dt>

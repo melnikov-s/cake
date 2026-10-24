@@ -65,7 +65,7 @@ export const ArtifactCatalogMenu = observer(function ArtifactCatalogMenu({
           aria-label={`${items.length} artifacts`}
         >
           <ArtifactIcon />
-          <span className="font-mono text-[11px] tabular-nums">{items.length}</span>
+          <span className="font-mono text-xs tabular-nums">{items.length}</span>
         </PopoverTrigger>
       ) : (
         <PopoverIconTrigger tooltip="Artifacts" data-cake-hint-key="a">

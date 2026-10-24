@@ -58,7 +58,7 @@ export const ArtifactHost = observer(function ArtifactHost({
       ) : null}
       {artifact.kind === "media" ? <MediaArtifact artifact={artifact} /> : null}
       {artifact.kind === "diff" ? (
-        <pre className="overflow-x-auto font-mono text-[11px] leading-relaxed">
+        <pre className="overflow-x-auto font-mono text-xs leading-relaxed">
           {artifact.payload.diff}
         </pre>
       ) : null}

@@ -19,7 +19,7 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
             {store.openItems.length}
           </span>
         </h2>
-        <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
           Select a thread to give your next message context.
         </p>
       </div>

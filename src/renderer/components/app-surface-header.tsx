@@ -79,7 +79,7 @@ export const AppSurfaceHeader = observer(function AppSurfaceHeader() {
             aria-hidden="true"
           />
         )}
-        <strong className="block min-w-0 max-w-full truncate text-[13px] font-semibold">
+        <strong className="block min-w-0 max-w-full truncate text-sm font-semibold">
           {surface === "settings"
             ? "Settings"
             : surface === "artifact-library"

@@ -14,7 +14,7 @@ export const ProjectTodoWorkLink = observer(function ProjectTodoWorkLink({
   const root = useStore(RootStore);
   const { href, Icon } = projectTodoAssociationDestination(association);
   return (
-    <span className="inline-flex min-w-0 items-center gap-1.5 text-[11px] font-normal leading-4 text-muted-foreground [&>a]:min-w-0 [&>a]:truncate [&>a]:font-normal [&>a]:no-underline [&>a:hover]:text-foreground [&>a:hover]:underline">
+    <span className="inline-flex min-w-0 items-center gap-1.5 text-xs font-normal leading-4 text-muted-foreground [&>a]:min-w-0 [&>a]:truncate [&>a]:font-normal [&>a]:no-underline [&>a:hover]:text-foreground [&>a:hover]:underline">
       {association.kind === "session" && (
         <SessionActivityIndicator
           activity={root.sessionMetadataStore.sessionWorkActivity(association.sessionId)}

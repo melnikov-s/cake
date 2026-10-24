@@ -20,7 +20,7 @@ export function FastModeToggle({
       title={enabled ? "Fast mode on" : "Fast mode off"}
       onClick={() => onToggle(!enabled)}
       icon={<LightningIcon />}
-      className="h-[30px] rounded-[7px] px-2 text-[11px] font-semibold"
+      className="h-7.5 rounded-[7px] px-2 text-xs font-semibold"
     >
       <span>Fast</span>
     </Chip>

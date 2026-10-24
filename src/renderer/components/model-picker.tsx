@@ -270,7 +270,7 @@ export const ModelPicker = observer(function ModelPicker({
                   <strong className="block truncate text-sm font-semibold text-foreground">
                     {selectedModel?.name ?? configuration?.modelId}
                   </strong>
-                  <small className="block truncate font-mono text-[10px] text-muted-foreground">
+                  <small className="block truncate font-mono text-xs text-muted-foreground">
                     {configuration ? modelKey(configuration.provider, configuration.modelId) : ""}
                   </small>
                 </span>
@@ -289,7 +289,7 @@ export const ModelPicker = observer(function ModelPicker({
                 <section className="mt-3 grid gap-1.5" aria-label="Reasoning effort">
                   <span>
                     <strong className="block text-xs font-medium text-foreground">Reasoning</strong>
-                    <small className="block text-[11px] text-muted-foreground">
+                    <small className="block text-xs text-muted-foreground">
                       Choose how much time this model spends thinking.
                     </small>
                   </span>
@@ -328,7 +328,7 @@ export const ModelPicker = observer(function ModelPicker({
                 >
                   <span>
                     <strong className="block text-xs font-medium text-foreground">Fast mode</strong>
-                    <small className="block text-[11px] text-muted-foreground">
+                    <small className="block text-xs text-muted-foreground">
                       Use priority processing for this model.
                     </small>
                   </span>
@@ -385,9 +385,7 @@ export const ModelPicker = observer(function ModelPicker({
               <div className="max-h-60 space-y-3 overflow-y-auto pr-1 text-xs">
                 {filteredPresets.length > 0 && (
                   <section aria-label="Model presets" className="space-y-1">
-                    <h3 className="px-2 py-1 text-[11px] font-medium text-muted-foreground">
-                      Presets
-                    </h3>
+                    <h3 className="px-2 py-1 text-xs font-medium text-muted-foreground">Presets</h3>
                     {filteredPresets.map((preset) => {
                       const isActive =
                         activePreset?.id === preset.id ||
@@ -424,12 +422,12 @@ export const ModelPicker = observer(function ModelPicker({
                               });
                           }}
                           trailing={
-                            <div className="flex shrink-0 items-center gap-1 font-mono text-[10px]">
-                              <Badge variant="outline" className="text-[10px] font-medium">
+                            <div className="flex shrink-0 items-center gap-1 font-mono text-xs">
+                              <Badge variant="outline" className="text-xs font-medium">
                                 {reasoningLabel(preset.thinkingLevel)}
                               </Badge>
                               {preset.fastMode && (
-                                <Badge variant="accent" className="text-[10px] font-semibold">
+                                <Badge variant="accent" className="text-xs font-semibold">
                                   Fast
                                 </Badge>
                               )}
@@ -446,7 +444,7 @@ export const ModelPicker = observer(function ModelPicker({
                     key={group.id}
                     className="space-y-1 pt-1.5 border-t border-border first:border-t-0 first:pt-0"
                   >
-                    <h3 className="px-2 py-1 text-[11px] font-medium text-muted-foreground">
+                    <h3 className="px-2 py-1 text-xs font-medium text-muted-foreground">
                       {group.name}
                     </h3>
                     {group.models.map((model) => (
@@ -475,7 +473,7 @@ export const ModelPicker = observer(function ModelPicker({
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-auto w-full justify-between text-[11px] text-accent hover:underline hover:bg-transparent px-1 py-1"
+                    className="h-auto w-full justify-between text-xs text-accent hover:underline hover:bg-transparent px-1 py-1"
                     type="button"
                     onClick={() => {
                       close();
@@ -491,7 +489,7 @@ export const ModelPicker = observer(function ModelPicker({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="mt-1 h-auto w-full text-center text-[11px] text-muted-foreground hover:underline hover:bg-transparent"
+                  className="mt-1 h-auto w-full text-center text-xs text-muted-foreground hover:underline hover:bg-transparent"
                   type="button"
                   onClick={() => {
                     close();
@@ -519,7 +517,7 @@ export const ModelPicker = observer(function ModelPicker({
                   <strong className="block truncate text-xs font-semibold text-foreground">
                     {draftModel.name}
                   </strong>
-                  <small className="block truncate font-mono text-[10px] text-muted-foreground">
+                  <small className="block truncate font-mono text-xs text-muted-foreground">
                     {draftModel.id}
                   </small>
                 </span>
@@ -528,7 +526,7 @@ export const ModelPicker = observer(function ModelPicker({
                 <section className="mt-3 grid gap-1.5" aria-label="Reasoning level">
                   <span>
                     <strong className="block text-xs font-medium text-foreground">Reasoning</strong>
-                    <small className="block text-[11px] text-muted-foreground">
+                    <small className="block text-xs text-muted-foreground">
                       Available levels are provided by this model.
                     </small>
                   </span>
@@ -555,7 +553,7 @@ export const ModelPicker = observer(function ModelPicker({
                 >
                   <span>
                     <strong className="block text-xs font-medium text-foreground">Fast mode</strong>
-                    <small className="block text-[11px] text-muted-foreground">
+                    <small className="block text-xs text-muted-foreground">
                       Use priority processing for this model.
                     </small>
                   </span>

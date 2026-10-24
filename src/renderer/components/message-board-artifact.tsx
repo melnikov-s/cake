@@ -52,13 +52,13 @@ export const MessageBoardArtifact = observer(function MessageBoardArtifact({
             open={store.expanded.includes(entry.sequence)}
             onClick={() => void store.toggleBody(entry.sequence)}
           />
-          <p className="mt-1 break-all text-[11px] text-muted-foreground">
+          <p className="mt-1 break-all text-xs text-muted-foreground">
             From{" "}
             <SessionIdLink sessionId={entry.authorSessionId} knownSessionIds={knownSessionIds} /> ·{" "}
             {new Date(entry.createdAt).toLocaleString()}
           </p>
           {entry.topic && (
-            <p className="mt-1 break-all text-[11px] text-muted-foreground">
+            <p className="mt-1 break-all text-xs text-muted-foreground">
               Topic: {entry.topic}
               {entry.supersedes?.length
                 ? ` · Supersedes ${entry.supersedes.map((sequence) => `#${sequence}`).join(", ")} for this entry's audience`
@@ -75,7 +75,7 @@ export const MessageBoardArtifact = observer(function MessageBoardArtifact({
             </div>
           )}
           <div className="mt-2 flex min-w-0 flex-wrap items-center justify-between gap-2">
-            <span className="min-w-0 break-all text-[11px] text-muted-foreground">
+            <span className="min-w-0 break-all text-xs text-muted-foreground">
               For{" "}
               {entry.audience === "workgroup"
                 ? "the workgroup"
@@ -96,7 +96,7 @@ export const MessageBoardArtifact = observer(function MessageBoardArtifact({
             </Button>
           </div>
           {store.showingReceipts.includes(entry.sequence) && (
-            <div className="mt-2 grid min-w-0 gap-2 text-[11px] text-muted-foreground">
+            <div className="mt-2 grid min-w-0 gap-2 text-xs text-muted-foreground">
               <p>Read means supplied content, not understanding or completion.</p>
               {store.receipts[entry.sequence] ? (
                 store.receipts[entry.sequence]?.receipts.map((receipt) => (

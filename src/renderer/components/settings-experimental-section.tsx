@@ -22,7 +22,7 @@ export const SettingsExperimentalSection = observer(function SettingsExperimenta
           onChange={(enabled) => void experimental.setDynamicWorkflows(enabled)}
         />
       </div>
-      <p className="px-0.5 text-[11px] text-muted-foreground">
+      <p className="px-0.5 text-xs text-muted-foreground">
         Disabling prevents new workflow proposals; running workflows keep their progress and
         controls.
       </p>

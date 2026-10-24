@@ -148,7 +148,7 @@ export const SettingsPage = observer(function SettingsPage({
         className="min-h-0 overflow-y-auto border-r border-border/65 bg-sidebar px-3 py-5 max-[620px]:hidden phone:hidden"
       >
         <h1 className="px-2 text-lg font-bold text-foreground">Settings</h1>
-        <p className="mb-4 mt-1 px-2 text-[11px] leading-relaxed text-muted-foreground">
+        <p className="mb-4 mt-1 px-2 text-xs leading-relaxed text-muted-foreground">
           Cake and Pi preferences
         </p>
         <div className="relative mb-6">
@@ -172,7 +172,7 @@ export const SettingsPage = observer(function SettingsPage({
           {searching
             ? searchResults.map((group) => (
                 <div key={group.page}>
-                  <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/75">
+                  <p className="mb-1 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground/75">
                     {group.label}
                   </p>
                   <div className="grid gap-0.5">
@@ -194,7 +194,7 @@ export const SettingsPage = observer(function SettingsPage({
               ))
             : navigationGroups.map((group) => (
                 <div key={group.label}>
-                  <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/75">
+                  <p className="mb-1 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground/75">
                     {group.label}
                   </p>
                   <div className="grid gap-0.5">
@@ -309,7 +309,7 @@ export const SettingsPage = observer(function SettingsPage({
                         <strong className="text-xs font-medium text-foreground">
                           Model configuration
                         </strong>
-                        <small className="text-[11px] text-muted-foreground">
+                        <small className="text-xs text-muted-foreground">
                           Model, reasoning effort, and priority mode for this chat.
                         </small>
                       </span>
@@ -339,7 +339,7 @@ export const SettingsPage = observer(function SettingsPage({
                         <strong className="text-xs font-medium text-foreground">
                           Model & reasoning
                         </strong>
-                        <small className="text-[11px] text-muted-foreground">
+                        <small className="text-xs text-muted-foreground">
                           Default model and reasoning profile for new project chats.
                         </small>
                       </span>
@@ -394,7 +394,7 @@ export const SettingsPage = observer(function SettingsPage({
                       <strong className="text-xs font-medium text-foreground">
                         Model & reasoning
                       </strong>
-                      <small className="text-[11px] text-muted-foreground">
+                      <small className="text-xs text-muted-foreground">
                         Runs lightweight background tasks such as naming sessions.
                       </small>
                     </span>
@@ -474,7 +474,7 @@ export const SettingsPage = observer(function SettingsPage({
                         <strong className="text-xs font-medium text-foreground">
                           Steering mode
                         </strong>
-                        <small className="text-[11px] text-muted-foreground">
+                        <small className="text-xs text-muted-foreground">
                           How steering messages are delivered while Pi is working.
                         </small>
                       </span>
@@ -501,7 +501,7 @@ export const SettingsPage = observer(function SettingsPage({
                         <strong className="text-xs font-medium text-foreground">
                           Follow-up mode
                         </strong>
-                        <small className="text-[11px] text-muted-foreground">
+                        <small className="text-xs text-muted-foreground">
                           How queued follow-ups are delivered after Pi stops.
                         </small>
                       </span>
@@ -694,7 +694,7 @@ export const SettingsPage = observer(function SettingsPage({
                     >
                       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <strong className="text-xs font-medium text-foreground">Transport</strong>
-                        <small className="text-[11px] text-muted-foreground">
+                        <small className="text-xs text-muted-foreground">
                           Preferred transport when a provider supports more than one.
                         </small>
                       </span>
@@ -723,7 +723,7 @@ export const SettingsPage = observer(function SettingsPage({
                         <strong className="text-xs font-medium text-foreground">
                           HTTP idle timeout
                         </strong>
-                        <small className="text-[11px] text-muted-foreground">
+                        <small className="text-xs text-muted-foreground">
                           Maximum pause while Pi waits for HTTP data.
                         </small>
                       </span>
@@ -765,7 +765,7 @@ export const SettingsPage = observer(function SettingsPage({
                         <strong className="text-xs font-medium text-foreground">
                           Default project trust
                         </strong>
-                        <small className="text-[11px] text-muted-foreground">
+                        <small className="text-xs text-muted-foreground">
                           Fallback when no saved trust decision applies.
                         </small>
                       </span>

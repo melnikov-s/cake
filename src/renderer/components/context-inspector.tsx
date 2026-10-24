@@ -63,7 +63,7 @@ export const ContextInspector = observer(function ContextInspector({
           >
             <header className="flex items-center justify-between gap-3 border-b border-border bg-background px-5 py-3">
               <div className="min-w-0">
-                <DialogTitle className="text-[15px] font-medium">Context</DialogTitle>
+                <DialogTitle className="text-[0.9375rem] font-medium">Context</DialogTitle>
                 {headerTokens !== undefined && (
                   <p
                     className="mt-0.5 text-xs text-muted-foreground"

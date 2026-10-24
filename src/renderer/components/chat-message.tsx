@@ -487,7 +487,7 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
               }}
             >
               <ChatIcon size={15} />
-              <b className="absolute -top-1.5 -right-1.5 grid min-w-[15px] h-[15px] px-1 place-items-center rounded-full border-2 border-background bg-accent text-accent-foreground font-mono font-bold text-[8px]">
+              <b className="absolute -top-1.5 -right-1.5 grid min-w-6 min-h-6 px-1 place-items-center rounded-full border-2 border-background bg-accent text-accent-foreground font-mono font-bold text-xs">
                 {thread.messageCount}
               </b>
             </IconButton>

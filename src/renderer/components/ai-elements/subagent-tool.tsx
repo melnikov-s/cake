@@ -159,7 +159,7 @@ export const SubagentTool = observer(function SubagentTool({
                 <p className="truncate text-xs" title={run.task}>
                   {run.task}
                 </p>
-                <p className="truncate text-[0.68rem] text-muted-foreground">
+                <p className="truncate text-xs text-muted-foreground">
                   {[
                     parallel ? undefined : protocolActivity,
                     activity,

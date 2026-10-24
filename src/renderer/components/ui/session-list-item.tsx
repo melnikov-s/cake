@@ -122,7 +122,7 @@ export const SessionListItem = observer(function SessionListItem({
       data-associated={associated && !selected ? "true" : undefined}
       data-family-role={isFamilyChild ? "child" : isFamilyParent ? "parent" : "root"}
       className={cn(
-        "session-item group group/session relative grid min-h-11 w-full items-center rounded-md text-[13px] select-none transition-colors duration-200 ease-out motion-reduce:transition-none",
+        "session-item group group/session relative grid min-h-11 w-full items-center rounded-md text-sm select-none transition-colors duration-200 ease-out motion-reduce:transition-none",
         focusMode && "min-h-14 text-sm [&_svg]:size-5",
         focusMode && charactersEnabled && "[&_[data-slot=avatar]]:size-7",
         avatarsEnabled
@@ -253,7 +253,7 @@ export const SessionListItem = observer(function SessionListItem({
             <span
               data-slot="session-description"
               className={cn(
-                "flex w-full min-w-0 items-center gap-1.5 text-[11px] font-normal leading-none",
+                "flex w-full min-w-0 items-center gap-1.5 text-xs font-normal leading-none",
                 focusMode && "text-xs leading-tight",
                 selected ? "text-primary/80" : "text-muted-foreground/80",
               )}
@@ -295,7 +295,7 @@ export const SessionListItem = observer(function SessionListItem({
               {showActivityTime && (
                 <time
                   className={cn(
-                    "session-time shrink-0 whitespace-nowrap text-[11px] tabular-nums text-muted-foreground",
+                    "session-time shrink-0 whitespace-nowrap text-xs tabular-nums text-muted-foreground",
                     focusMode && "text-xs",
                   )}
                   dateTime={session.modifiedAt}

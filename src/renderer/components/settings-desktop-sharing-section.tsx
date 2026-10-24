@@ -42,7 +42,7 @@ export const SettingsDesktopSharingSection = observer(function SettingsDesktopSh
             <strong className="text-xs font-medium text-foreground">Enable browser sharing</strong>
             <span
               role="status"
-              className="flex items-center gap-1.5 break-all text-[11px] text-muted-foreground"
+              className="flex items-center gap-1.5 break-all text-xs text-muted-foreground"
             >
               <StatusDot size="sm" status={dotStatus} />
               <span>{statusText}</span>
@@ -58,7 +58,7 @@ export const SettingsDesktopSharingSection = observer(function SettingsDesktopSh
         <label className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm max-[620px]:flex-col max-[620px]:items-stretch">
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <strong className="text-xs font-medium text-foreground">Bind IPv4 address</strong>
-            <small className="text-[11px] text-muted-foreground">
+            <small className="text-xs text-muted-foreground">
               Use 127.0.0.1 for local or proxied connections.
             </small>
           </span>
@@ -73,7 +73,7 @@ export const SettingsDesktopSharingSection = observer(function SettingsDesktopSh
         <label className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm max-[620px]:flex-col max-[620px]:items-stretch">
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <strong className="text-xs font-medium text-foreground">Port</strong>
-            <small className="text-[11px] text-muted-foreground">
+            <small className="text-xs text-muted-foreground">
               Set to 0 to choose an available port automatically.
             </small>
           </span>
@@ -88,7 +88,7 @@ export const SettingsDesktopSharingSection = observer(function SettingsDesktopSh
         <label className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm max-[620px]:flex-col max-[620px]:items-stretch">
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <strong className="text-xs font-medium text-foreground">Proxy HTTPS origin</strong>
-            <small className="text-[11px] text-muted-foreground">
+            <small className="text-xs text-muted-foreground">
               Optional exact origin for Tailscale Serve or reverse proxy.
             </small>
           </span>
@@ -102,12 +102,12 @@ export const SettingsDesktopSharingSection = observer(function SettingsDesktopSh
           />
         </label>
         {sharing.state?.status === "serving" && sharing.state.publicOrigin && (
-          <div className="px-3.5 py-2 font-mono text-[11px] text-muted-foreground">
+          <div className="px-3.5 py-2 font-mono text-xs text-muted-foreground">
             Listener {sharing.state.bind}:{sharing.state.port} · Origin {sharing.state.publicOrigin}
           </div>
         )}
       </div>
-      <p className="px-0.5 text-[11px] text-muted-foreground">
+      <p className="px-0.5 text-xs text-muted-foreground">
         Connection preferences save automatically when valid. Sharing stays off at launch. Anyone
         who can connect has full host access. Share only on a private Tailscale network or behind an
         authenticated HTTPS proxy.

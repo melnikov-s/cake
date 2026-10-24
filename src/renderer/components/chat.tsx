@@ -67,7 +67,7 @@ const Usage = observer(function Usage({ store }: { store: ChatStore }) {
   return (
     <div
       className={cn(
-        "flex shrink-0 items-center gap-1.5 rounded-full border bg-muted/40 px-2 py-1 font-mono text-[11px] text-muted-foreground tabular-nums select-none hover:bg-muted/70 hover:text-foreground transition-colors cursor-default",
+        "flex shrink-0 items-center gap-1.5 rounded-full border bg-muted/40 px-2 py-1 font-mono text-xs text-muted-foreground tabular-nums select-none hover:bg-muted/70 hover:text-foreground transition-colors cursor-default",
         cache?.state === "likely-warm"
           ? "border-success/50"
           : cache?.state === "uncertain"

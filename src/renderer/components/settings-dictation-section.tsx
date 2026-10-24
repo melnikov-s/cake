@@ -58,7 +58,7 @@ export const SettingsDictationSection = observer(function SettingsDictationSecti
             <label htmlFor="text-processing-mode" className="text-xs font-medium text-foreground">
               Text processing
             </label>
-            <small className="text-[11px] text-muted-foreground">
+            <small className="text-xs text-muted-foreground">
               Shared by dictation and voice mode. Utility mode cleans up pauses and fillers.
             </small>
           </div>
@@ -90,7 +90,7 @@ export const SettingsDictationSection = observer(function SettingsDictationSecti
             <label htmlFor="dictation-microphone" className="text-xs font-medium text-foreground">
               Microphone
             </label>
-            <small className="text-[11px] text-muted-foreground">
+            <small className="text-xs text-muted-foreground">
               Audio input device for dictation and voice mode.
             </small>
           </div>
@@ -137,7 +137,7 @@ export const SettingsDictationSection = observer(function SettingsDictationSecti
             <strong className="text-xs font-medium text-foreground">
               Parakeet TDT 0.6B v2 · Core ML
             </strong>
-            <small className="truncate text-[11px] text-muted-foreground">
+            <small className="truncate text-xs text-muted-foreground">
               {state?.modelPath ? `Installed: ${state.modelPath}` : "464 MB local English model"}
             </small>
           </div>
@@ -191,7 +191,7 @@ export const SettingsDictationSection = observer(function SettingsDictationSecti
             <label htmlFor="dictation-model-path" className="text-xs font-medium text-foreground">
               Use an existing Core ML Parakeet model folder
             </label>
-            <small className="text-[11px] text-muted-foreground">
+            <small className="text-xs text-muted-foreground">
               Directory containing v2 .mlmodelc bundles and parakeet_vocab.json.
             </small>
           </div>

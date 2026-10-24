@@ -32,7 +32,7 @@ export const SettingsWidgetPackagesSection = observer(function SettingsWidgetPac
         <div className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm max-[620px]:flex-col max-[620px]:items-stretch">
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <strong className="text-xs font-medium text-foreground">Package name or version</strong>
-            <small className="text-[11px] text-muted-foreground">
+            <small className="text-xs text-muted-foreground">
               Install npm packages for interactive widgets. React and ReactDOM are built in.
             </small>
           </span>
@@ -83,7 +83,7 @@ export const SettingsWidgetPackagesSection = observer(function SettingsWidgetPac
         ))}
       </div>
       {settings.snapshot && (
-        <p className="break-all px-0.5 text-[11px] text-muted-foreground">
+        <p className="break-all px-0.5 text-xs text-muted-foreground">
           Backend package directory: {settings.snapshot.directory}
         </p>
       )}

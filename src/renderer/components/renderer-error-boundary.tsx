@@ -75,7 +75,7 @@ export class RendererErrorBoundary extends Component<
               <summary className="cursor-pointer font-medium text-muted-foreground hover:text-foreground">
                 Error details
               </summary>
-              <pre className="my-3 max-h-56 overflow-auto rounded-lg border border-border bg-background p-3 font-mono text-[11px] leading-relaxed text-foreground">
+              <pre className="my-3 max-h-56 overflow-auto rounded-lg border border-border bg-background p-3 font-mono text-xs leading-relaxed text-foreground">
                 {details}
               </pre>
               <CopyErrorDetailsButton details={details} />

@@ -103,7 +103,7 @@ export function HotkeyRecorder({
       <Button
         variant="ghost"
         size="sm"
-        className="px-2 text-[11px]"
+        className="px-2 text-xs"
         disabled={value === defaultValue}
         onClick={() => {
           onReset();
@@ -115,7 +115,7 @@ export function HotkeyRecorder({
       <Button
         variant="ghost"
         size="sm"
-        className="px-2 text-[11px]"
+        className="px-2 text-xs"
         disabled={!value}
         onClick={() => {
           onClear();

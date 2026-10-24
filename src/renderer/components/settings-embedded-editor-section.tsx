@@ -29,7 +29,7 @@ export const SettingsEmbeddedEditorSection = observer(function SettingsEmbeddedE
             <strong className="text-xs font-medium text-foreground">
               Auto-hide project sidebar
             </strong>
-            <small className="text-[11px] text-muted-foreground">
+            <small className="text-xs text-muted-foreground">
               Temporary while VS Code is open; restores when returning to the agent.
             </small>
           </span>
@@ -54,7 +54,7 @@ export const SettingsEmbeddedEditorSection = observer(function SettingsEmbeddedE
           >
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
               <strong className="text-xs font-medium text-foreground">Window width</strong>
-              <small className="text-[11px] text-muted-foreground">
+              <small className="text-xs text-muted-foreground">
                 Hide the sidebar when the Cake window is narrower than this width.
               </small>
             </span>

@@ -35,7 +35,7 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
           "aria-disabled": store.busy || item.state === "done",
         }}
         onClick={() => void store.select(item)}
-        className="flex-wrap items-start gap-y-0 px-3 py-3 text-[13px] leading-relaxed [&_a>svg]:hidden"
+        className="flex-wrap items-start gap-y-0 px-3 py-3 text-sm leading-relaxed [&_a>svg]:hidden"
         label={
           <span
             className={cn(
@@ -75,14 +75,14 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
           </p>
         )}
         {item.status && item.status !== item.description && item.status !== item.title && (
-          <p className="mt-1 w-full whitespace-pre-wrap break-words text-[11px] font-normal leading-relaxed text-muted-foreground">
+          <p className="mt-1 w-full whitespace-pre-wrap break-words text-xs font-normal leading-relaxed text-muted-foreground">
             {item.status}
           </p>
         )}
         {resources.length > 0 && (
           <ul
             aria-label={`Work for ${item.title}`}
-            className="mt-1.5 w-full space-y-0.5 text-[11px] leading-4 text-muted-foreground"
+            className="mt-1.5 w-full space-y-0.5 text-xs leading-4 text-muted-foreground"
           >
             {resources.map((association) => {
               const { href, Icon } = projectTodoAssociationDestination(association);

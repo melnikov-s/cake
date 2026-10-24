@@ -68,7 +68,7 @@ export const ArtifactLibrary = observer(function ArtifactLibrary({
           <option value="media">Media</option>
           <option value="diff">Diff</option>
         </Select>
-        <p className="px-1 pb-2 pt-3 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        <p className="px-1 pb-2 pt-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
           {store.total} {store.total === 1 ? "lineage" : "lineages"}
         </p>
         {store.loading && store.lineages.length === 0 ? (

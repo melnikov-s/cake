@@ -21,7 +21,7 @@ export function ErrorNotice({
 
   return (
     <div
-      className="relative grid gap-1 rounded-lg border-l-[3px] border-l-[color:var(--destructive)] bg-muted/65 px-4 py-3 text-[13px] leading-normal"
+      className="relative grid gap-1 rounded-lg border-l-[3px] border-l-[color:var(--destructive)] bg-muted/65 px-4 py-3 text-sm leading-normal"
       role="alert"
     >
       <strong className="pr-8">{title}</strong>

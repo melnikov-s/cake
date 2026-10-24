@@ -25,7 +25,7 @@ export const WorkLogDiff = memo(function WorkLogDiff({
   const displayedChanges = useBufferedWorkLogChanges(changes);
   if (displayedChanges.length === 0)
     return streaming ? (
-      <div className="p-3 font-mono text-[11px] text-muted-foreground" role="status">
+      <div className="p-3 font-mono text-xs text-muted-foreground" role="status">
         Waiting for file changes…
       </div>
     ) : null;

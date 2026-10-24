@@ -117,7 +117,7 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
               </h1>
               <Badge>{isWorkboard ? "Workboard" : kind}</Badge>
             </div>
-            <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+            <p className="mt-1 font-mono text-xs text-muted-foreground">
               {isWorkboard ? (
                 "Append-only coordination log"
               ) : (
@@ -197,10 +197,10 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
               className="mt-6 grid grid-cols-2 gap-3 max-[760px]:grid-cols-1"
               aria-label="Revision comparison"
             >
-              <pre className="max-h-80 overflow-auto rounded-lg border border-border bg-muted/35 p-3 text-[11px] whitespace-pre-wrap">
+              <pre className="max-h-80 overflow-auto rounded-lg border border-border bg-muted/35 p-3 text-xs whitespace-pre-wrap">
                 {store.comparison.fromText}
               </pre>
-              <pre className="max-h-80 overflow-auto rounded-lg border border-border bg-muted/35 p-3 text-[11px] whitespace-pre-wrap">
+              <pre className="max-h-80 overflow-auto rounded-lg border border-border bg-muted/35 p-3 text-xs whitespace-pre-wrap">
                 {store.comparison.toText}
               </pre>
             </section>
@@ -272,7 +272,7 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
               )}
             </div>
             <h2 className="mt-6 text-xs font-semibold">Linked sessions</h2>
-            <div className="mt-2 grid gap-2 text-[11px]">
+            <div className="mt-2 grid gap-2 text-xs">
               {store.selectedLinks.length === 0 && (
                 <p className="text-muted-foreground">Not linked to a session.</p>
               )}

@@ -132,7 +132,7 @@ export const SessionAssistant = observer(function SessionAssistant({
           <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]">
             <div className="border-b border-border px-3 py-2">
               <p className="text-xs font-semibold">Session assistant</p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">
+              <p className="mt-0.5 text-xs text-muted-foreground">
                 Uses your utility model and continues this session’s assistant chat.
               </p>
             </div>
@@ -140,7 +140,7 @@ export const SessionAssistant = observer(function SessionAssistant({
               store={store.chatStore}
               compact
               embedded
-              className="[&_[data-slot=message]]:gap-1.5 [&_[data-slot=message-content]]:rounded-md [&_[data-slot=message-content]]:px-3 [&_[data-slot=message-content]]:py-2 [&_[data-slot=message-content]]:text-xs [&_[data-slot=message-content]]:leading-5 [&_[data-slot=message-content]]:shadow-none [&_[data-slot=message-label]]:text-[10px] [&_form]:rounded-md [&_form]:p-2 [&_textarea]:min-h-9 [&_textarea]:py-1.5"
+              className="[&_[data-slot=message]]:gap-1.5 [&_[data-slot=message-content]]:rounded-md [&_[data-slot=message-content]]:px-3 [&_[data-slot=message-content]]:py-2 [&_[data-slot=message-content]]:text-xs [&_[data-slot=message-content]]:leading-5 [&_[data-slot=message-content]]:shadow-none [&_[data-slot=message-label]]:text-xs [&_form]:rounded-md [&_form]:p-2 [&_textarea]:min-h-9 [&_textarea]:py-1.5"
               error={store.error ? { message: store.error, title: "Assistant failed" } : undefined}
               empty={
                 <div className="grid h-full place-items-center p-5 text-center text-xs leading-relaxed text-muted-foreground">

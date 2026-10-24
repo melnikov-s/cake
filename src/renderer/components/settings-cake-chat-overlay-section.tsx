@@ -22,7 +22,7 @@ export const SettingsCakeChatOverlaySection = observer(function SettingsCakeChat
         <div className="flex flex-wrap items-center justify-between gap-4 px-3.5 py-2.5 text-sm">
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <strong className="text-xs font-medium text-foreground">Global shortcut</strong>
-            <small className="text-[11px] text-muted-foreground">
+            <small className="text-xs text-muted-foreground">
               Opens Cake Chat from the top of the screen while another app is active.
             </small>
           </span>
@@ -43,7 +43,7 @@ export const SettingsCakeChatOverlaySection = observer(function SettingsCakeChat
           onChange={(enabled) => void store.setCaptureSelectedText(enabled)}
         />
       </div>
-      <p className="px-0.5 text-[11px] text-muted-foreground">
+      <p className="px-0.5 text-xs text-muted-foreground">
         If macOS uses Command–` for window switching, choose another shortcut or disable “Move focus
         to next window” in System Settings.
       </p>

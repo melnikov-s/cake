@@ -65,6 +65,9 @@ for (const theme of ["light", "dark"] as const) {
       await scenario.prepare(page, "done", app);
       const panel = page.getByRole("complementary", { name: "To-do", exact: true });
       const associated = panel.getByRole("button", { name: "Startup investigation", exact: true });
+      // Startup clears persisted context selection; establish it through the real UI.
+      await expect(associated).toHaveAttribute("aria-pressed", "false");
+      await associated.click();
       await expect(associated).toHaveAttribute("aria-pressed", "true");
       await expect(associated.locator("..")).toHaveAttribute("data-associated", "true");
       // Association is an advisory cue, not actual navigation selection.

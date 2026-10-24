@@ -96,6 +96,16 @@ test("Quake terminal runs a shell and retains tabs when a Project Session is res
     await toggleTerminalViaMenu();
     await expect(panel).toHaveAttribute("aria-hidden", "false");
     await expect(panel.locator(".xterm-screen:visible")).toBeVisible();
+    const terminalRows = panel.locator(".xterm-rows:visible");
+    await expect(terminalRows).toHaveCSS("font-size", "14px");
+    await page.evaluate(() => {
+      document.documentElement.style.fontSize = "125%";
+    });
+    await expect(terminalRows).toHaveCSS("font-size", "17.5px");
+    await page.evaluate(() => {
+      document.documentElement.style.removeProperty("font-size");
+    });
+    await expect(terminalRows).toHaveCSS("font-size", "14px");
     await panel.locator(".xterm-screen:visible").click();
     await page.keyboard.type("printf CAKE_TERMINAL_OK");
     await page.keyboard.press("Enter");

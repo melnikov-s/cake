@@ -22,7 +22,7 @@ export const SettingsDesktopHostSection = observer(function SettingsDesktopHostS
               <span className="truncate text-xs font-medium text-foreground">
                 Current host: {connection.hostLabel}
               </span>
-              <span className="text-[11px] text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
                 {connection.remote
                   ? connection.connected
                     ? "Connected to remote server"
@@ -48,7 +48,7 @@ export const SettingsDesktopHostSection = observer(function SettingsDesktopHostS
         <div className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm max-[620px]:flex-col max-[620px]:items-stretch">
           <label htmlFor="cake-server-url-input" className="flex min-w-0 flex-1 flex-col gap-0.5">
             <strong className="text-xs font-medium text-foreground">Server URL</strong>
-            <small className="text-[11px] text-muted-foreground">
+            <small className="text-xs text-muted-foreground">
               Relaunches Cake and connects to an existing server.
             </small>
           </label>
@@ -73,7 +73,7 @@ export const SettingsDesktopHostSection = observer(function SettingsDesktopHostS
           </div>
         </div>
       </div>
-      <p className="px-0.5 text-[11px] text-muted-foreground">
+      <p className="px-0.5 text-xs text-muted-foreground">
         No authentication. Connect only to a trusted private network or authenticated tunnel.
       </p>
       {connection.error && <Callout variant="error">{connection.error}</Callout>}

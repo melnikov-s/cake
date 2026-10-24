@@ -16,7 +16,7 @@ export function CompactionMessage({
       <details className="overflow-hidden rounded-xl border border-accent/25 bg-card/85 marker:text-accent">
         <summary className="flex cursor-pointer items-baseline gap-2.5 px-3.5 py-3">
           <strong className="text-xs font-semibold">Context compacted</strong>
-          <span className="font-mono text-[10px] text-muted-foreground">
+          <span className="font-mono text-xs text-muted-foreground">
             {part.tokensBefore.toLocaleString()} tokens summarized
           </span>
         </summary>

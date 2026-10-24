@@ -143,7 +143,7 @@ export const IdeWorkspace = observer(function IdeWorkspace({
                 {contextualAnchor ? "Chat about selection" : sessionTitle}
               </strong>
               {contextualAnchor ? (
-                <span className="block truncate font-mono text-[11px] text-muted-foreground">
+                <span className="block truncate font-mono text-xs text-muted-foreground">
                   {anchorTitle(contextualAnchor)}
                 </span>
               ) : null}

@@ -49,10 +49,7 @@ export const ActionCard = forwardRef<HTMLButtonElement, ActionCardProps>(functio
           </div>
           {description && (
             <span
-              className={cn(
-                "text-[11px] text-muted-foreground",
-                descriptionClassName ?? "truncate",
-              )}
+              className={cn("text-xs text-muted-foreground", descriptionClassName ?? "truncate")}
             >
               {description}
             </span>

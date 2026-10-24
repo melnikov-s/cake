@@ -123,7 +123,7 @@ export const QuakeTerminal = observer(function QuakeTerminal({
                 <div key={entry.key} className="flex shrink-0 items-center rounded-md bg-muted/35">
                   <Button
                     className={cn(
-                      "h-7 rounded-md px-2 font-mono text-[11px] font-medium",
+                      "h-7 rounded-md px-2 font-mono text-xs font-medium",
                       isActive && "bg-muted text-foreground",
                     )}
                     variant="ghost"
@@ -157,7 +157,7 @@ export const QuakeTerminal = observer(function QuakeTerminal({
               <PlusIcon />
             </IconButton>
           </div>
-          <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+          <span className="shrink-0 font-mono text-xs text-muted-foreground">
             {store.toggleAcceleratorHint}
           </span>
           {store.docked ? (

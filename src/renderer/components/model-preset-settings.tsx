@@ -156,7 +156,7 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
                   <strong className="block truncate text-xs font-medium text-foreground">
                     {preset.name}
                   </strong>
-                  <small className="block truncate font-mono text-[10px] text-muted-foreground">
+                  <small className="block truncate font-mono text-xs text-muted-foreground">
                     {preset.provider}/{preset.modelId} · {reasoningLabel(preset.thinkingLevel)}
                     {preset.fastMode ? " · Fast" : ""}
                   </small>

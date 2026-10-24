@@ -41,7 +41,7 @@ export function ActivityMenu({
         size="sm"
         data-slot={presentation === "strip" ? "composer-activity" : undefined}
         className={cn(
-          "gap-1.5 font-mono text-[10px]",
+          "gap-1.5 font-mono text-xs",
           presentation === "strip"
             ? "-mx-5 -mt-3 mb-1 h-9 w-[calc(100%+2.5rem)] shrink-0 justify-start rounded-none rounded-t-[1.75rem] border-b border-border/65 bg-muted/20 px-5 shadow-none"
             : "h-7 rounded-full bg-card/95 px-2.5 shadow-sm",
@@ -86,13 +86,11 @@ export function ActivityMenu({
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-xs font-medium">{item.title}</span>
-                <span className="block truncate font-mono text-[10px] font-normal text-muted-foreground">
+                <span className="block truncate font-mono text-xs font-normal text-muted-foreground">
                   {item.description}
                 </span>
               </span>
-              {item.action && (
-                <span className="shrink-0 text-[10px] font-normal">{item.action}</span>
-              )}
+              {item.action && <span className="shrink-0 text-xs font-normal">{item.action}</span>}
               <span className="flex w-[7px] shrink-0 justify-center">
                 {item.status && <StatusDot status={item.status} />}
               </span>

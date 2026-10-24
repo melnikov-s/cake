@@ -48,7 +48,7 @@ export const SettingsDictationVocabulary = observer(function SettingsDictationVo
       <div className="flex items-center justify-between gap-3">
         <div className="grid gap-0.5">
           <h3 className="text-xs font-medium">Custom vocabulary</h3>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Preferred words and phrases for local acoustic recognition, including raw mode. No
             utility model or cloud transcription.
           </p>
@@ -67,14 +67,14 @@ export const SettingsDictationVocabulary = observer(function SettingsDictationVo
           Add word
         </Button>
       </div>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         Aliases are optional common misrecognitions, not automatic replacements. Audio must favor
         the preferred spelling; ordinary words can still be recognized. Changes apply to the next
         utterance (refocus the writing field).
       </p>
       {!state?.vocabularyInstalled ? (
         <div className="grid gap-2">
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Saved words need an additional 103 MB CTC encoder download to become active. It runs an
             extra local inference pass per live revision, increasing latency and memory. First
             preparation can take several seconds before Listening. Empty vocabulary uses no extra
@@ -96,7 +96,7 @@ export const SettingsDictationVocabulary = observer(function SettingsDictationVo
           </Button>
         </div>
       ) : (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           Local vocabulary encoder installed · {state.vocabularyCount} saved entries
         </p>
       )}
@@ -126,7 +126,7 @@ export const SettingsDictationVocabulary = observer(function SettingsDictationVo
           <div className="min-w-0 text-xs">
             <strong className="break-words font-medium">{entry.text}</strong>
             {entry.aliases.length > 0 && (
-              <p className="break-words text-[11px] text-muted-foreground">
+              <p className="break-words text-xs text-muted-foreground">
                 Aliases: {entry.aliases.join(", ")}
               </p>
             )}

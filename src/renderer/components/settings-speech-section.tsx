@@ -25,7 +25,7 @@ export const SettingsSpeechSection = observer(function SettingsSpeechSection({
             <label htmlFor="speech-enabled" className="text-xs font-medium text-foreground">
               Enable speech
             </label>
-            <p id="speech-enabled-description" className="text-[11px] text-muted-foreground">
+            <p id="speech-enabled-description" className="text-xs text-muted-foreground">
               Show the conversation-mode icon in chat.
             </p>
           </div>
@@ -42,7 +42,7 @@ export const SettingsSpeechSection = observer(function SettingsSpeechSection({
             <label htmlFor="speech-provider" className="text-xs font-medium text-foreground">
               Speech provider
             </label>
-            <small className="text-[11px] text-muted-foreground">
+            <small className="text-xs text-muted-foreground">
               {speech.localModel && !speech.localModel.supported
                 ? "Local output requires Apple Silicon and macOS 14 or later."
                 : speech.localSelected
@@ -72,7 +72,7 @@ export const SettingsSpeechSection = observer(function SettingsSpeechSection({
                 <label htmlFor="speech-key" className="text-xs font-medium text-foreground">
                   ElevenLabs API key
                 </label>
-                <small className="text-[11px] text-muted-foreground">
+                <small className="text-xs text-muted-foreground">
                   {speech.settings?.keyConfigured ? "Key configured" : "No key configured"} · stored
                   encrypted on this desktop.
                 </small>
@@ -114,7 +114,7 @@ export const SettingsSpeechSection = observer(function SettingsSpeechSection({
                 <label htmlFor="speech-voice" className="text-xs font-medium text-foreground">
                   Voice
                 </label>
-                <small className="text-[11px] text-muted-foreground">
+                <small className="text-xs text-muted-foreground">
                   ElevenLabs synthesis voice for assistant replies.
                 </small>
               </div>
@@ -154,14 +154,14 @@ export const SettingsSpeechSection = observer(function SettingsSpeechSection({
             <label htmlFor="speech-speed" className="text-xs font-medium text-foreground">
               Speaking speed
             </label>
-            <small className="text-[11px] text-muted-foreground">
+            <small className="text-xs text-muted-foreground">
               {speech.localSelected
                 ? "Pocket TTS speed (up to 2×)."
                 : "ElevenLabs speed (up to 1.2×)."}
             </small>
           </div>
           <div className="grid w-48 shrink-0 gap-1">
-            <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>1×</span>
               <span className="tabular-nums font-medium text-foreground">
                 {speech.speed.toFixed(2)}×
@@ -185,7 +185,7 @@ export const SettingsSpeechSection = observer(function SettingsSpeechSection({
         <div className="flex items-center justify-between gap-4 px-3.5 py-2.5">
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
             <strong className="text-xs font-medium text-foreground">Voice diagnostics</strong>
-            <small className="text-[11px] text-muted-foreground">
+            <small className="text-xs text-muted-foreground">
               Copy recent reply detection, synthesis timing, and playback state.
             </small>
           </div>

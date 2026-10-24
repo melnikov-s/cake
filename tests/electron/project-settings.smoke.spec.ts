@@ -6,7 +6,7 @@ import { expect, test, _electron as electron } from "@playwright/test";
 
 const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
-test("roundtrips separate Project Chat, coding instructions and worktree settings", async () => {
+test("roundtrips browser, separate Project Chat, coding instructions and worktree settings", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-project-settings-"));
   const userData = join(temporaryRoot, "user-data");
   const cakeHome = join(temporaryRoot, "cake-home");
@@ -48,6 +48,9 @@ test("roundtrips separate Project Chat, coding instructions and worktree setting
   try {
     const page = await application.firstWindow();
     await page.getByRole("button", { name: "Open settings for project" }).click();
+    const browserUrl = page.getByRole("textbox", { name: "Browser default URL", exact: true });
+    await expect(browserUrl).toHaveValue("");
+    await browserUrl.fill("http://localhost:3000/");
     const customInstructions = page.getByRole("textbox", { name: /^Project Session instructions/ });
     const chatInstructions = page.getByRole("textbox", { name: /^Project Chat instructions/ });
     await expect(page.getByText(/Only for this project’s permanent Project Chat/)).toBeVisible();
@@ -77,6 +80,7 @@ test("roundtrips separate Project Chat, coding instructions and worktree setting
         return document.data?.projects?.[0]?.settings;
       })
       .toEqual({
+        browserDefaultUrl: "http://localhost:3000/",
         worktreeCreateCommand: "my-worktree {worktreeName} {worktreePath}",
         worktreeSetupCommands: "pnpm install",
         worktreeSetupInstructions: "Run pnpm install only when dependencies are needed.",
@@ -84,6 +88,7 @@ test("roundtrips separate Project Chat, coding instructions and worktree setting
         projectChatInstructions: "  Discuss ideas before creating coding tasks.  ",
       });
     await page.getByRole("button", { name: "Open settings for project" }).click();
+    await expect(browserUrl).toHaveValue("http://localhost:3000/");
     await expect(page.getByRole("textbox", { name: /^Project Chat instructions/ })).toHaveValue(
       "  Discuss ideas before creating coding tasks.  ",
     );
