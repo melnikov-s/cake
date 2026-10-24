@@ -127,7 +127,7 @@ export const ChatTextMessage = forwardRef<
             ? "rounded-none border-0 bg-transparent py-2 shadow-none"
             : assistant
               ? "bg-card text-foreground"
-              : "border-user-message-foreground/20 bg-user-message text-user-message-foreground",
+              : "border-user-message-foreground/20 bg-user-message text-user-message-foreground dark:border-border",
         !assistant &&
           !report &&
           !part.crossSession &&
