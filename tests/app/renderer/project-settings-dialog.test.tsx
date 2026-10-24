@@ -73,7 +73,7 @@ describe("Project settings workflow", () => {
       const input = screen.getByRole("textbox", { name: "Browser default URL" });
       expect(input).toHaveProperty("value", "https://example.com/start");
       await fixture.user.clear(input);
-      expect(input).toHaveProperty("placeholder", "https://www.google.com/");
+      expect(input).toHaveProperty("placeholder", "localhost:3000");
       await fixture.user.click(screen.getByRole("button", { name: "Save settings" }));
       await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
       expect(persisted.browserDefaultUrl).toBe("");

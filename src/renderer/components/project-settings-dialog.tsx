@@ -12,7 +12,6 @@ import {
 } from "./ui/dialog";
 import { Textarea } from "./ui/textarea";
 import { Input } from "./ui/input";
-import { DEFAULT_BROWSER_URL } from "../../contracts/browser/browser-default-url";
 import { LabelSettings } from "./label-settings";
 import { Avatar } from "./ui/avatar";
 
@@ -60,7 +59,7 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
                 aria-label="Browser default URL"
                 maxLength={16_384}
                 spellCheck={false}
-                placeholder={DEFAULT_BROWSER_URL}
+                placeholder="localhost:3000"
                 value={store.browserDefaultUrl}
                 onChange={(event) => store.setBrowserDefaultUrl(event.target.value)}
                 aria-describedby="project-browser-url-help"
