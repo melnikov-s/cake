@@ -44,6 +44,7 @@ function sseChunk(delta: object, finishReason: string | null = null) {
 
 interface FixtureProvider {
   requestCount(): number;
+  requestBodies(): readonly string[];
 }
 
 async function registerFixtureProvider(
@@ -51,9 +52,17 @@ async function registerFixtureProvider(
   respond: (requestIndex: number, response: ServerResponse) => void,
 ): Promise<FixtureProvider> {
   let requests = 0;
-  const server = createServer((_request, response) => {
-    requests += 1;
-    respond(requests, response);
+  const bodies: string[] = [];
+  const server = createServer((request, response) => {
+    let body = "";
+    request.on("data", (data: Buffer) => {
+      body += data.toString();
+    });
+    request.on("end", () => {
+      bodies.push(body);
+      requests += 1;
+      respond(requests, response);
+    });
   });
   servers.push(server);
   await new Promise<void>((resolve, reject) => {
@@ -83,7 +92,7 @@ async function registerFixtureProvider(
       ],
     })}); }\n`,
   );
-  return { requestCount: () => requests };
+  return { requestCount: () => requests, requestBodies: () => bodies };
 }
 
 async function createFixtureRuntime(directory: string, onEvent = vi.fn()) {
@@ -305,7 +314,7 @@ describe("response retry and recovery", () => {
       expect(browse).toContain("docs/sdk.md");
       expect(browse).toContain("Keep real project instructions");
       if (recovery?.type !== "custom_message") throw new Error("Missing Pi recovery message");
-      expect(browse).toContain(recovery.content as string);
+      expect(browse).toContain(JSON.stringify(recovery.content).slice(1, -1));
       await reopened.dispose();
       const observedAgain = await createCakeSessionRuntime(reopenOptions);
       runtimes.push(observedAgain);
@@ -319,6 +328,142 @@ describe("response retry and recovery", () => {
       ).toBe(true);
     }, 15_000);
   }
+
+  it.each(["restart", "manual Continue"] as const)(
+    "hands unfinished tool effects to the agent on %s without replaying the tool or blocking on user review",
+    async (continuation) => {
+      const directory = await createTemporaryDirectory();
+      const provider = await registerFixtureProvider(directory, (index, response) => {
+        response.writeHead(200, { "content-type": "text/event-stream" });
+        if (index === 1) {
+          response.write(
+            sseChunk({
+              role: "assistant",
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "uncertain-call",
+                  type: "function",
+                  function: {
+                    name: "uncertain_mutation",
+                    arguments: JSON.stringify({ value: "changed" }),
+                  },
+                },
+              ],
+            }),
+          );
+          response.write(sseChunk({}, "tool_calls"));
+        } else {
+          response.write(sseChunk({ role: "assistant", content: "Checked current state" }));
+          response.write(sseChunk({}, "stop"));
+        }
+        response.end("data: [DONE]\n\n");
+      });
+      await writeFile(
+        join(directory, ".pi", "extensions", "mutation.ts"),
+        `import { appendFileSync } from "node:fs";
+        export default function(pi) {
+          pi.registerTool({ name: "uncertain_mutation", label: "Mutation", description: "Changes a file", parameters: { type: "object", properties: { value: { type: "string" } }, required: ["value"] },
+            execute: async () => { appendFileSync(${JSON.stringify(join(directory, "effects"))}, "1"); return { content: [{ type: "text", text: "changed" }] }; } });
+        }`,
+      );
+      const { runtime } = await createFixtureRuntime(directory);
+      const input = {
+        turnId: "uncertain-turn",
+        text: "Do the work",
+        delivery: "prompt" as const,
+        attachments: [],
+        markdown: false,
+      };
+      await runtime.prompt(input.text, "prompt", [], false, input.turnId);
+      expect(await readFile(join(directory, "effects"), "utf8")).toBe("1");
+      const file = runtime.sessionFile;
+      const lines = (await readFile(file, "utf8")).trimEnd().split("\n");
+      const callIndex = lines.findIndex(
+        (line) => line.includes('"type":"toolCall"') && line.includes("uncertain-call"),
+      );
+      expect(callIndex).toBeGreaterThan(0);
+      await runtime.dispose();
+      // Checkpoint after the real side effect but before its result was saved.
+      await writeFile(file, lines.slice(0, callIndex + 1).join("\n") + "\n");
+      const events: CakeSessionRuntimeEvent[] = [];
+      const reopened = await createCakeSessionRuntime({
+        cwd: directory,
+        agentDir: join(directory, "agent"),
+        sessionDir: join(directory, "sessions"),
+        sessionId: runtime.sessionId,
+        trusted: true,
+        requestUi: async () => undefined,
+        onEvent: (event) => events.push(event),
+      });
+      runtimes.push(reopened);
+      expect(provider.requestCount()).toBe(2);
+      if (continuation === "restart") await reopened.recoverInput?.(input);
+      else await reopened.prompt("Continue", "prompt", [], false, "manual-continue");
+      expect(provider.requestCount()).toBe(3);
+      const context = provider.requestBodies()[2];
+      expect(context).toContain("uncertain_mutation");
+      expect(context).toContain("uncertain-call");
+      expect(context).toContain("no saved result");
+      expect(context).toContain("Inspect current state and verify effects");
+      expect(context).toContain("do not blindly replay");
+      expect(context).toContain("ask only the concrete question");
+      expect(await readFile(join(directory, "effects"), "utf8")).toBe("1");
+      const snapshot = await reopened.snapshot();
+      expect(snapshot.streaming).toBe(false);
+      expect(snapshot.parts).toContainEqual(
+        expect.objectContaining({ kind: "text", role: "assistant", text: "Checked current state" }),
+      );
+      expect(
+        events.some(
+          (event) =>
+            event.type === "part-updated" &&
+            event.part.kind === "notice" &&
+            event.part.tone === "error",
+        ),
+      ).toBe(false);
+      expect(snapshot.parts.some((part) => part.kind === "notice" && part.tone === "error")).toBe(
+        false,
+      );
+      await reopened.recoverInput?.(input);
+      expect(provider.requestCount()).toBe(3);
+    },
+    15_000,
+  );
+
+  it.each(["!echo mutate", "/mutating-command"])(
+    "lets the agent inspect an interrupted command (%s) rather than executing it automatically",
+    async (command) => {
+      const directory = await createTemporaryDirectory();
+      const provider = await registerFixtureProvider(directory, (_index, response) => {
+        response.writeHead(200, { "content-type": "text/event-stream" });
+        response.write(sseChunk({ role: "assistant", content: "Inspected command outcome" }));
+        response.write(sseChunk({}, "stop"));
+        response.end("data: [DONE]\n\n");
+      });
+      const { runtime } = await createFixtureRuntime(directory);
+      const input = {
+        turnId: "command-turn",
+        text: command,
+        delivery: "prompt" as const,
+        attachments: [],
+        markdown: false,
+      };
+      await runtime.recoverInput?.(input);
+      expect(provider.requestCount()).toBe(1);
+      expect(provider.requestBodies()[0]).toContain("effects are uncertain");
+      expect(provider.requestBodies()[0]).toContain(command);
+      expect((await runtime.snapshot()).parts).toContainEqual(
+        expect.objectContaining({
+          kind: "text",
+          role: "assistant",
+          text: "Inspected command outcome",
+        }),
+      );
+      await runtime.recoverInput?.(input);
+      expect(provider.requestCount()).toBe(1);
+    },
+  );
 
   it("keeps a busy parent's worker report unacknowledged until Pi persists it and retries once after a crash", async () => {
     const directory = await createTemporaryDirectory();

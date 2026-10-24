@@ -238,9 +238,7 @@ try {
           const coordinator = yield* SubagentCoordinator;
           const record = yield* coordinator.storage.list().pipe(
             Effect.flatMap((records) =>
-              records[0]?.status ===
-                (mode === "inspect-blocked" || mode === "continue-worker" ? "error" : "complete") &&
-              records[0]?.completionDisposition === "notified"
+              records[0]?.status === "complete" && records[0]?.completionDisposition === "notified"
                 ? Effect.succeed(records[0])
                 : Effect.fail("waiting for worker recovery"),
             ),
@@ -258,25 +256,6 @@ try {
           const attachmentAccess = restored.attachmentAccess;
           const messageAccess = restored.messageAccess;
           assert.ok(reference && ref && attachmentAccess && messageAccess);
-          if (mode === "continue-worker") {
-            yield* subagents.prompt(
-              sessionId,
-              record.handleId,
-              "I reviewed the unfinished action. Continue without repeating it.",
-              "follow-up",
-              true,
-            );
-            yield* coordinator.storage.list().pipe(
-              Effect.flatMap((records) =>
-                records[0]?.status === "complete" &&
-                records[0]?.completionDisposition === "notified"
-                  ? Effect.void
-                  : Effect.fail("waiting for reviewed worker continuation"),
-              ),
-              Effect.retry(Schedule.spaced("10 millis")),
-              Effect.timeout("15 seconds"),
-            );
-          }
           const attachment = yield* Effect.promise(() =>
             attachmentAccess.control.read(
               { reference: reference.id },
@@ -345,11 +324,14 @@ try {
           yield* recovery.initialize();
         }
         const storage = yield* RuntimeRecoveryStorage;
+        const application = yield* ApplicationState;
         const records = yield* storage.list().pipe(
           Effect.flatMap((records) =>
             mode === "inspect-stopped" ||
-            mode === "inspect-blocked" ||
-            records.find((item) => item.sessionId === sessionId)?.state === "complete"
+            (records.find((item) => item.sessionId === sessionId)?.state === "complete" &&
+              (globalChat ||
+                surface === "project-chat" ||
+                application.snapshot().unreadSessionIds.includes(sessionId)))
               ? Effect.succeed(records)
               : Effect.fail("waiting for durable settlement"),
           ),
@@ -371,6 +353,9 @@ try {
             streaming: status?.streaming,
             outcome: status?.latestTurnOutcome,
             unread: (yield* ApplicationState).snapshot().unreadSessionIds.includes(sessionId),
+            recoveryNotice: (yield* handle.snapshot()).parts.some(
+              (part) => part.kind === "notice" && part.id === "restart-recovery",
+            ),
             users: (yield* handle.snapshot()).parts.filter(
               (part) => part.kind === "text" && part.role === "user" && !part.deliveryState,
             ).length,

@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { expect, it } from "vitest";
@@ -58,12 +58,13 @@ it.each([
   "global chat",
   "project chat",
   "uncertain tool",
+  "previously blocked tool",
 ])(
   "production backend automatically resumes after %s, and the next launch stays idle",
   async (shutdown) => {
     const root = await mkdtemp(join(process.cwd(), ".restart-node-test-"));
     const stoppedWithQueue = shutdown === "stopped with queue";
-    const uncertainTool = shutdown === "uncertain tool";
+    const uncertainTool = shutdown.endsWith("tool");
     const hasQueue = shutdown.includes("queue");
     const surface =
       shutdown === "global chat"
@@ -216,24 +217,22 @@ it.each([
         );
         expect(requests).toBe(1);
       }
-      if (uncertainTool) {
-        const blocked = await exec(process.execPath, [output, "inspect-blocked", surface], {
-          env: environment,
-          timeout: 30_000,
-        });
-        expect(blocked.stdout).toContain(
-          '"state":"blocked","recoveryIssue":true,"inputs":1,"streaming":false',
-        );
-        expect(requests).toBe(1);
-        expect(await readFile(join(root, "mutation-count"), "utf8")).toBe("1");
+      if (shutdown === "previously blocked tool") {
+        const directory = join(root, "state", "recovery-intents");
+        for (const file of await readdir(directory)) {
+          const path = join(directory, file);
+          const record = JSON.parse(await readFile(path, "utf8"));
+          if (record.data.state === "active") {
+            record.data.state = "blocked";
+            record.data.issue =
+              "Cake restarted before a tool result was saved. Review the unfinished tool before continuing.";
+            await writeFile(path, JSON.stringify(record));
+          }
+        }
       }
       const recovered = await exec(
         process.execPath,
-        [
-          output,
-          stoppedWithQueue || uncertainTool ? "continue" : hasQueue ? "recover-queued" : "recover",
-          surface,
-        ],
+        [output, stoppedWithQueue ? "continue" : hasQueue ? "recover-queued" : "recover", surface],
         {
           env: environment,
           timeout: 30_000,
@@ -243,9 +242,8 @@ it.each([
         `"state":"complete","inputs":0,"streaming":false,"outcome":"complete","unread":${surface === "project-session"}`,
       );
       expect(requests).toBe(hasQueue ? 3 : 2);
-      expect(recovered.stdout).toContain(
-        `"users":${stoppedWithQueue ? 3 : hasQueue || uncertainTool ? 2 : 1}`,
-      );
+      expect(recovered.stdout).toContain('"recoveryNotice":false');
+      expect(recovered.stdout).toContain(`"users":${stoppedWithQueue ? 3 : hasQueue ? 2 : 1}`);
       const again = await exec(
         process.execPath,
         [output, shutdown === "report retry" ? "inspect-duplicate" : "inspect", surface],

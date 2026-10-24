@@ -5,14 +5,14 @@ import { acquireTarget } from "./projectSessionOperations";
 import { locations } from "./projectSessionLocations";
 import * as cakeChatTargets from "../cake-chats/cakeChatTargets";
 
-/** Reacquire only durable active intents; visiting/selecting a chat is not admission. */
+/** Reconcile unfinished intents, including earlier failed recovery; observing a chat is not admission. */
 export const initialize = Effect.fn("RuntimeRecovery.initialize")(function* () {
   const storage = yield* RuntimeRecoveryStorage;
   const availableLocations = yield* locations();
   for (const record of yield* storage.list()) {
     // Private workers are restored by their handle/capability owner before parent turns.
     if (record.profile === "SubagentSession") continue;
-    if ((record.state !== "active" && record.state !== "stopped") || record.inputs.length === 0)
+    if (!["active", "blocked", "stopped"].includes(record.state) || record.inputs.length === 0)
       continue;
     // Durable owns stopped coordinator queues and does not need a new admission.
     if (record.profile === "CakeChatSession" && record.state === "stopped") continue;
@@ -55,7 +55,11 @@ export const initialize = Effect.fn("RuntimeRecovery.initialize")(function* () {
       ),
     );
     if (recovered._tag === "Failure") {
-      yield* storage.update({ ...record, state: "blocked", issue: String(recovered.failure) });
+      yield* storage.update({
+        ...record,
+        state: record.state === "stopped" ? "stopped" : "blocked",
+        issue: String(recovered.failure),
+      });
       yield* Effect.logWarning(
         "Session restart recovery needs attention",
         record.sessionId,

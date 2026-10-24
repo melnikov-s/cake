@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
+import { encodeCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
 import {
   recoveryInputEntryType,
   restartDecision,
+  restartResumePrompt,
+  unfinishedTools,
 } from "../../../src/services/pi/runtime/restart-recovery";
 
 type Message = Extract<SessionEntry, { type: "message" }>["message"];
@@ -96,11 +99,61 @@ describe("restart transcript reconciliation", () => {
   });
   it("never replays a tool whose side effect might have completed without a saved result", () => {
     const ambiguous = [marker(), user(), call()];
-    expect(restartDecision(ambiguous, "turn").kind).toBe("blocked");
-    // A later response cannot make an unresolved mutation safe to repeat.
-    expect(restartDecision([...ambiguous, assistant()], "turn").kind).toBe("blocked");
+    expect(restartDecision(ambiguous, "turn")).toEqual({
+      kind: "resume",
+      interruptedTools: [
+        { type: "toolCall", id: "mutation", name: "bash", arguments: { command: "mutate" } },
+      ],
+    });
+    // A later response without a recovery handoff cannot resolve the uncertainty.
+    expect(restartDecision([...ambiguous, assistant()], "turn").kind).toBe("resume");
     expect(restartDecision([...ambiguous, result()], "turn").kind).toBe("resume");
     expect(restartDecision([...ambiguous, result(), assistant()], "turn").kind).toBe("settled");
+  });
+  it("hands uncertainty to the agent, then settles recovery without repeatedly resuming old calls", () => {
+    const recovery: SessionEntry = {
+      type: "custom_message",
+      customType: "cake.restart-recovery",
+      content: restartResumePrompt(unfinishedTools([call()])),
+      details: { turnId: "turn" },
+      display: false,
+      id: String(++id),
+      parentId: null,
+      timestamp: new Date(0).toISOString(),
+    };
+    const branch = [marker(), user(), call(), recovery];
+    expect(restartDecision(branch, "turn")).toEqual({ kind: "resume", interruptedTools: [] });
+    expect(restartDecision([...branch, assistant()], "turn").kind).toBe("settled");
+    expect(restartDecision([...branch, call()], "turn")).toMatchObject({
+      kind: "resume",
+      interruptedTools: [{ id: "mutation" }],
+    });
+    expect(restartDecision([recovery, assistant()], "turn").kind).toBe("settled");
+    const request = message({
+      role: "user",
+      timestamp: 0,
+      content: encodeCrossSessionMessage("Original assignment", {
+        version: 1,
+        messageId: "20000000-0000-4000-8000-000000000002",
+        threadId: "20000000-0000-4000-8000-000000000003",
+        sequence: 1,
+        expectsResponse: true,
+        sender: { sessionId: "requester", title: "Requester", kind: "project-session" },
+      }),
+    });
+    expect(
+      restartDecision([marker(), request, call(), recovery, assistant()], "turn"),
+    ).toMatchObject({
+      kind: "settled",
+      result: { respondsToSessionId: "requester" },
+    });
+    expect(recovery.content).toContain('"name":"bash"');
+    expect(recovery.content).toContain('"command":"mutate"');
+    expect(recovery.content).toContain("no saved result");
+    expect(recovery.content).toContain("Inspect current state and verify effects");
+    expect(recovery.content).toContain("do not blindly replay");
+    expect(recovery.content).toContain("ask only the concrete question");
+    expect(restartResumePrompt([], "!mutate")).toContain('"!mutate"');
   });
   it("keeps later answers, failures and unfinished tools out of an earlier input", () => {
     const first = [marker(), user(), assistant()];

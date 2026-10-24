@@ -304,6 +304,86 @@ describe("CakeSessionRuntimes", () => {
     }),
   );
 
+  it.effect.each(["restart", "manual Continue"] as const)(
+    "continues previously interrupted turns on %s without reporting a user stop or losing the original completion",
+    (continuation) =>
+      Effect.gen(function* () {
+        const input = {
+          turnId: "interrupted",
+          text: "Original task",
+          delivery: "prompt" as const,
+          attachments: [],
+          markdown: false,
+        };
+        const settlements = yield* Queue.unbounded<{
+          turnId: string;
+          outcome: string;
+          stop?: unknown;
+        }>();
+        const recovered = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        const record = {
+          sessionId: "session-1",
+          workingDirectory: "/project",
+          sessionDirectory: "/sessions",
+          profile: "ProjectSession" as const,
+          transcriptPersisted: false,
+          state: "blocked" as const,
+          issue: "Unfinished tool",
+          inputs: [input],
+        };
+        const storageLayer = makeRuntimeRecoveryStorageTestLayer([record]);
+        const layer = makeCakeSessionRuntimesLayer({
+          sessionIds: () => Stream.empty,
+          catalog: () => Stream.empty,
+          catalogEntry: () => Effect.succeed(undefined),
+          inspect: () => Effect.succeed(undefined),
+          changelog: () => Effect.succeed(""),
+          createRuntime: (runtimeOptions) =>
+            Effect.succeed({
+              ...fakeRuntime(runtimeOptions, () => undefined),
+              recoverInput: async (restored) => {
+                assert.equal(restored.turnId, input.turnId);
+                Deferred.doneUnsafe(recovered, Effect.void);
+                await Effect.runPromise(Deferred.await(release));
+                runtimeOptions.onTurnResult?.(restored.turnId, {
+                  stopReason: "stop",
+                  text: "Verified effects",
+                });
+              },
+              abort: async () => {
+                throw new Error("Continuation must not abort");
+              },
+            }),
+        }).pipe(Layer.provideMerge(storageLayer));
+        const context = yield* Layer.build(layer);
+        const sessions = Context.get(context, CakeSessionRuntimes);
+        const storage = Context.get(context, RuntimeRecoveryStorage);
+        const handle = yield* sessions.acquire({
+          ...options(),
+          onTurnSettled: (event) => Queue.offer(settlements, event).pipe(Effect.asVoid),
+        });
+        if (continuation === "restart") yield* handle.recover([input]);
+        else yield* handle.prompt("Continue");
+        yield* Deferred.await(recovered);
+        const current = yield* storage.get("session-1");
+        assert.equal(current?.state, "active");
+        assert.equal(current?.issue, undefined);
+        assert.equal(
+          (yield* handle.snapshot()).parts.some((part) => part.id === "restart-recovery"),
+          false,
+        );
+        yield* Deferred.succeed(release, undefined);
+        const outcomes = [yield* Queue.take(settlements)];
+        if (continuation === "manual Continue") outcomes.push(yield* Queue.take(settlements));
+        assert.ok(outcomes.some((event) => event.turnId === input.turnId));
+        assert.ok(
+          outcomes.every((event) => event.outcome === "complete" && event.stop === undefined),
+        );
+        assert.equal((yield* storage.get("session-1"))?.state, "complete");
+      }),
+  );
+
   it.effect("delivers one aborted settlement even when the prompt finishes afterward", () =>
     Effect.gen(function* () {
       const started = yield* Deferred.make<void>();

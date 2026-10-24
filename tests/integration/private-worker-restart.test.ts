@@ -161,11 +161,10 @@ it.each([
         shutdown === "clean quit" ? { code: 0, signal: null } : { code: null, signal: "SIGKILL" },
       );
       expect(unexpectedNodeStderr(stderr)).toBe("");
-      const recovered = await exec(
-        process.execPath,
-        [output, shutdown === "uncertain tool" ? "inspect-blocked" : "recover", surface],
-        { env: environment, timeout: 30_000 },
-      );
+      const recovered = await exec(process.execPath, [output, "recover", surface], {
+        env: environment,
+        timeout: 30_000,
+      });
       expect(unexpectedNodeStderr(recovered.stderr)).toBe("");
       const result = JSON.parse(
         recovered.stdout
@@ -174,7 +173,7 @@ it.each([
       );
       expect(result).toMatchObject({
         ...identity,
-        status: shutdown === "uncertain tool" ? "error" : "complete",
+        status: "complete",
         disposition: "notified",
         inputs: 0,
         users: 1,
@@ -185,30 +184,20 @@ it.each([
       // Pi Durable can also summarize earlier messages through the utility model.
       const expectedRequests = requests;
       if (shutdown === "busy parent report") expect(workerRequests).toBe(1);
-      expect(requests).toBeGreaterThanOrEqual(shutdown === "uncertain tool" ? 3 : 4);
+      expect(requests).toBeGreaterThanOrEqual(4);
       // Simulate a crash after the parent durably received the report but before the worker
       // recorded its acknowledgement. Stable completion IDs must suppress a second report.
       const saved = JSON.parse(await readFile(workerFile, "utf8"));
       saved.data.completionDisposition = "notifying";
       await writeFile(workerFile, JSON.stringify(saved));
-      const again = await exec(
-        process.execPath,
-        [output, shutdown === "uncertain tool" ? "inspect-blocked" : "inspect", surface],
-        { env: environment, timeout: 30_000 },
-      );
-      expect(again.stdout).toContain(
-        `"status":"${shutdown === "uncertain tool" ? "error" : "complete"}","disposition":"notified"`,
-      );
+      const again = await exec(process.execPath, [output, "inspect", surface], {
+        env: environment,
+        timeout: 30_000,
+      });
+      expect(again.stdout).toContain('"status":"complete","disposition":"notified"');
       expect(requests).toBe(expectedRequests);
-      if (shutdown === "uncertain tool") {
+      if (shutdown === "uncertain tool")
         expect(await readFile(join(root, "mutation-count"), "utf8")).toBe("1");
-        await exec(process.execPath, [output, "continue-worker", surface], {
-          env: environment,
-          timeout: 30_000,
-        });
-        expect(requests).toBeGreaterThan(expectedRequests);
-        expect(await readFile(join(root, "mutation-count"), "utf8")).toBe("1");
-      }
     } finally {
       if (child && child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
       server.closeAllConnections();

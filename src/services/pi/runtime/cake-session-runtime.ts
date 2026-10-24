@@ -94,7 +94,7 @@ import {
   recoveryInputEntryType,
   restartDecision,
   restartResumePrompt,
-  RestartRecoveryBlockedError,
+  unfinishedTools,
 } from "./restart-recovery";
 import {
   createCakeSessionRuntimeResourceLifecycle,
@@ -237,9 +237,7 @@ export interface CakeSessionRuntime {
   executingTurnIds?(): ReadonlyArray<string>;
   recoverInput?(input: RuntimeRecoveryInput): Promise<void>;
   restoreInput?(input: RuntimeRecoveryInput): Promise<void>;
-  checkRecovery?(inputs: ReadonlyArray<RuntimeRecoveryInput>): void;
   hasConsumedInput?(turnId: string): boolean;
-  acknowledgeRecovery?(): Promise<void>;
   pendingRecoveryInputs?(): ReadonlyArray<{ turnId: string; delivery: "steer" | "follow-up" }>;
   getReviewParentContext?(): ReviewParentContext;
   recordReviewRun(run: ReviewRunEntry): void;
@@ -882,54 +880,17 @@ export async function createCakeSessionRuntime(
     snapshot: () => makeSnapshot(),
     restoreInput: (input) =>
       turnController.restorePending({ ...input, attachments: [...input.attachments] }),
-    async acknowledgeRecovery() {
-      await session.sendCustomMessage(
-        {
-          customType: "cake.restart-review",
-          display: false,
-          content:
-            "The user sent a new message after Cake's interrupted-work warning. A prior tool may have executed without a saved result. Inspect current state before further mutations; do not automatically replay unfinished tool calls or already-sent reports.",
-        },
-        { triggerTurn: false },
-      );
-    },
     pendingRecoveryInputs: turnController.pendingRecoveryInputs,
     hasConsumedInput(turnId) {
       return restartDecision(session.sessionManager.getEntries(), turnId).kind !== "pending";
     },
-    checkRecovery(inputs) {
-      for (const input of inputs) {
-        const decision = restartDecision(session.sessionManager.getBranch(), input.turnId);
-        if (decision.kind === "blocked") throw new RestartRecoveryBlockedError(decision.issue);
-        if (decision.kind === "pending" && /^[!/]/.test(input.text))
-          throw new RestartRecoveryBlockedError(
-            "An interrupted command needs review before it can be run again.",
-          );
-      }
-    },
     async recoverInput(input) {
       const decision = restartDecision(session.sessionManager.getBranch(), input.turnId);
-      if (decision.kind === "blocked") {
-        emitPart({
-          id: "restart-recovery",
-          kind: "notice",
-          tone: "error",
-          title: "Recovery needs your review",
-          detail: decision.issue,
-        });
-        throw new RestartRecoveryBlockedError(decision.issue);
-      }
       if (decision.kind === "settled") {
         options.onTurnResult?.(input.turnId, decision.result);
         return;
       }
-      if (decision.kind === "pending") {
-        // Extension commands and user shell commands can mutate before a user
-        // message is committed. They cannot be replayed on an uncertain handoff.
-        if (/^[!/]/.test(input.text))
-          throw new RestartRecoveryBlockedError(
-            "An interrupted command needs review before it can be run again.",
-          );
+      if (decision.kind === "pending" && !/^[!/]/.test(input.text)) {
         await turnController.prompt(
           input.text,
           input.delivery,
@@ -942,19 +903,15 @@ export async function createCakeSessionRuntime(
         );
         return;
       }
-      emitPart({
-        id: "restart-recovery",
-        kind: "notice",
-        tone: "info",
-        title: "Recovering interrupted work",
-      });
-      try {
-        await turnController.resume(input.turnId, restartResumePrompt);
-        const settled = restartDecision(session.sessionManager.getBranch(), input.turnId);
-        if (settled.kind === "settled") options.onTurnResult?.(input.turnId, settled.result);
-      } finally {
-        removePart("restart-recovery");
-      }
+      await turnController.resume(
+        input.turnId,
+        restartResumePrompt(
+          decision.kind === "resume" ? decision.interruptedTools : [],
+          decision.kind === "pending" ? input.text : undefined,
+        ),
+      );
+      const settled = restartDecision(session.sessionManager.getBranch(), input.turnId);
+      if (settled.kind === "settled") options.onTurnResult?.(input.turnId, settled.result);
     },
     async notifySubagentCompletion(result, completionId) {
       if (disposed) throw new Error("The Cake runtime has been disposed");
@@ -1124,7 +1081,7 @@ export async function createCakeSessionRuntime(
       );
     },
     executingTurnIds: turnController.executingTurnIds,
-    prompt(
+    async prompt(
       text,
       delivery,
       attachments,
@@ -1136,6 +1093,20 @@ export async function createCakeSessionRuntime(
       internal,
     ) {
       automaticTitleForNextMessage = automaticTitle;
+      // Manual Continue (including after an explicit stop) must inspect uncertain
+      // effects too, without automatically resuming deliberately stopped work.
+      const interruptedTools = !session.isStreaming
+        ? unfinishedTools(session.sessionManager.getBranch())
+        : [];
+      if (interruptedTools.length)
+        await session.sendCustomMessage(
+          {
+            customType: "cake.restart-recovery",
+            content: restartResumePrompt(interruptedTools),
+            display: false,
+          },
+          { triggerTurn: false },
+        );
       return turnController.prompt(
         text,
         delivery,

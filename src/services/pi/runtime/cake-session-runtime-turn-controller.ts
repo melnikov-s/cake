@@ -1130,6 +1130,7 @@ export function createCakeSessionRuntimeTurnController(input: {
               {
                 customType: "cake.restart-recovery",
                 content,
+                details: { turnId },
                 display: false,
               },
               { triggerTurn: true, deliverAs: "followUp" },

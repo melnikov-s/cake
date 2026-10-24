@@ -284,15 +284,23 @@ Blocked recovery retains its diagnostic and obligations rather than displaying a
 `state/session-coordination.json` separately retains message/thread correlation metadata,
 closed state and outcomes, with no message bodies.
 
-Backend startup reacquires journaled active sessions, including background sessions without
+Backend startup reconciles journaled active and previously blocked sessions, including background sessions without
 an open renderer pane. It does not start idle chats. Regular Pi's own custom entries identify
 consumed inputs. Saved completed responses settle the original obligations without a new
 model request; unconsumed ordinary inputs are restored once. Reconciliation stops at the
 next run's input, while steering inputs consumed before the same answer share that answer. Interrupted generation or saved
 tool-result boundaries get a contextual continuation, not a replay of the original prompt.
-An unresolved tool call or ambiguous command handoff requires review, because its external
-side effect may already have occurred. Deliberately stopped queues are restored paused and
-wait for the next user input. Queue edits update the recovery intent before acknowledging.
+An unresolved tool call or ambiguous command handoff continues through hidden agent-visible
+recovery context, identifying the call/arguments or command and the uncertain persistence/effects.
+The agent inspects current state and verifies effects before proceeding; Cake never blindly
+replays the unfinished tool or command and does not ask the user to review a generic recovery
+warning. Manual Continue supplies the same context. Only a concrete necessary question belongs
+with the user when inspection cannot establish a fact. Continuation keeps the original turn's
+completion obligations; it is not a new user stop. Missing transcripts, unavailable locations
+and corrupt metadata remain actual recovery failures, not permission to replay original work.
+Deliberately stopped queues are restored paused and wait for the next user input. Failed recovery
+of a stopped queue does not turn it into automatically resumable work. Queue edits update the
+recovery intent before acknowledging.
 
 Cross-session inputs use the message ID as the admission ID. An already consumed or pending
 identity is not delivered again; permanent chats use Durable's idempotent request IDs.
@@ -325,8 +333,9 @@ never turns these workers into aborted results. Completed replies are projected 
 another model call. A report queued in a busy Project Session is not acknowledged until Pi has
 appended its custom message; shutdown before that receipt leaves the worker's durable disposition
 pending for retry. Stable completion IDs suppress retries after consumption. Worker notification
-policy has one in-memory owner and is persisted with the current completion state. Missing transcripts or an
-unfinished tool produce a visible worker failure/review requirement rather than a replay.
+policy has one in-memory owner and is persisted with the current completion state. Missing transcripts
+produce a visible worker failure. Unfinished tools continue with the same agent-owned inspection
+context as Project Sessions, preserving exact capability grants rather than replaying the call.
 For continuation:none, `notified` means the reporting inbox durably owns the compact handoff,
 not that its content was communicated. Inbox admissions retain pending intent; explicit
 `sessions.reports.acknowledge` receipts reference already-visible Pi assistant parts and
