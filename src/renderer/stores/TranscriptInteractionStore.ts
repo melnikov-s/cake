@@ -1,6 +1,6 @@
 import { Store, computed, observable } from "r-state-tree";
 import type { UiPart } from "../../contracts/conversations/session-contract";
-import { sessionNotificationMarkdown } from "../../contracts/cake-chats/session-digest-reminder";
+import { sessionNotificationEntries } from "../../contracts/cake-chats/session-digest-reminder";
 
 export interface UserMessagePresentationCapabilities {
   setMarkdown(entryId: string, renderAsMarkdown: boolean): Promise<void>;
@@ -32,7 +32,7 @@ function isSelectableMessage(part: UiPart) {
     return part.role === "user" || Boolean(part.text) || Boolean(part.subagentReport);
   if (part.kind === "skill") return true;
   // Session result notifications are conversational; ordinary injected context is not.
-  return part.kind === "context" && Boolean(sessionNotificationMarkdown(part.text));
+  return part.kind === "context" && sessionNotificationEntries(part.text).length > 0;
 }
 
 function messageRenderKey(part: UiPart | undefined) {

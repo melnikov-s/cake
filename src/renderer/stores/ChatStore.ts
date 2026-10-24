@@ -2,7 +2,8 @@ import { child, computed, createStore, snapshot, Store } from "r-state-tree";
 import { MessageReferencePreviewStore } from "./MessageReferencePreviewStore";
 import { crossSessionPresentation } from "../lib/cross-session-presentation";
 import { messageReferencesInText } from "../../contracts/conversations/message-reference-forwarding";
-import { sessionNotificationMarkdown } from "../../contracts/cake-chats/session-digest-reminder";
+import { sessionNotificationEntries } from "../../contracts/cake-chats/session-digest-reminder";
+import { SessionUpdateEntryStore } from "./SessionUpdateEntryStore";
 import { shouldRenderMarkdown } from "../../utils/markdown";
 import type { ConversationModeStore, ConversationModeTarget } from "./ConversationModeStore";
 import type {
@@ -236,13 +237,12 @@ export class ChatStore extends Store<ChatStoreProps> {
       const references =
         part.kind === "tool" && part.messageReference
           ? [part.messageReference]
-          : (part.kind === "context" && sessionNotificationMarkdown(part.text)) ||
-              (part.kind === "text" &&
-                (part.role === "assistant" ||
-                  part.subagentReport ||
-                  part.crossSession?.replyToMessageId ||
-                  (part.crossSession &&
-                    crossSessionPresentation(part.text, part.crossSession).sourceResponse)))
+          : part.kind === "text" &&
+              (part.role === "assistant" ||
+                part.subagentReport ||
+                part.crossSession?.replyToMessageId ||
+                (part.crossSession &&
+                  crossSessionPresentation(part.text, part.crossSession).sourceResponse))
             ? messageReferencesInText(part.text)
             : [];
       return references.map((reference) =>
@@ -253,6 +253,21 @@ export class ChatStore extends Store<ChatStoreProps> {
         }),
       );
     });
+  }
+
+  @child
+  get sessionUpdates(): SessionUpdateEntryStore[] {
+    return this.parts.flatMap((part) =>
+      part.kind === "context"
+        ? sessionNotificationEntries(part.text).map((entry) =>
+            createStore(SessionUpdateEntryStore, {
+              key: part.id + entry.key,
+              partId: part.id,
+              entry,
+            }),
+          )
+        : [],
+    );
   }
 
   @child

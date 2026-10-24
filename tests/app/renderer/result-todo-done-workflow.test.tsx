@@ -285,19 +285,18 @@ it.each(chats)(
     await using f = await renderChat(kind);
     expect(f.groupFor("worker-report")?.textContent).toBe("To-do · Research optionsDone");
     expect(f.groupFor("session-reply")?.textContent).toBe("To-do · Fix the buildDone");
-    expect(f.groupFor("notice")?.textContent).toBe("To-do · Benchmark startupDone");
-    for (const title of ["Research options", "Fix the build", "Benchmark startup"])
+    for (const title of ["Research options", "Fix the build"])
       expect(f.checked(title)).toBe("false");
     // Only the latest result from a linked session carries its control.
     expect(f.groupFor("session-progress")).toBeNull();
     // Unlinked results and a linked session's request are not results to close.
     expect(f.groupFor("unlinked-report")).toBeNull();
     expect(f.groupFor("session-request")).toBeNull();
-    expect(screen.getAllByRole("group", { name: "Linked to-dos" })).toHaveLength(3);
+    expect(screen.getAllByRole("group", { name: "Linked to-dos" })).toHaveLength(2);
     // The bar is part of each message, so every result type shares one layout.
     expect(f.groupFor("worker-report")?.closest('[data-slot="message-content"]')).not.toBeNull();
     expect(f.groupFor("session-reply")?.closest('[data-slot="session-message"]')).not.toBeNull();
-    expect(f.groupFor("notice")?.closest('[aria-label="Session results"]')).not.toBeNull();
+    expect(await f.paneState("Benchmark startup")).toBe("open");
     expect(f.chat.todos.source?.chat).toBe(kind);
   },
 );
@@ -380,7 +379,7 @@ it.each(chats)(
         { id: sessionTodo.id, expectedRevision: 1, state: "open" },
       ]),
     );
-    expect(f.checked("Benchmark startup")).toBe("true");
+    expect(await f.paneState("Benchmark startup")).toBe("done");
     expect(f.checked("Fix the build")).toBe("false");
 
     // The user can still reopen an agent closure from the message.

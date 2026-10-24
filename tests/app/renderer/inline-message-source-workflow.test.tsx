@@ -43,6 +43,155 @@ const usage = {
 };
 
 describe("exact response presentation", () => {
+  it("consolidates a batch into title-only disclosures while preserving distinct reports and batch-only notes", async () => {
+    const source = SessionManager.inMemory("/producer");
+    const report = (text: string) =>
+      source.appendMessage({
+        role: "assistant",
+        content: [{ type: "text", text }],
+        api: "openai-responses",
+        provider: "openai",
+        model: "fixture",
+        timestamp: 1,
+        usage,
+        stopReason: "stop",
+      });
+    const landedId = report("Landed 8 workstreams through Cake and resolved their owners.");
+    const promptId = report(
+      "Committed as d58aa9b5. Worktree clean; ready for review. No merge, resolution, or restart.",
+    );
+    const landedRef = readMessageReference(source, { entryId: landedId }).message.ref;
+    const promptRef = readMessageReference(source, { entryId: promptId }).message.ref;
+    const line = {
+      reference: "worker",
+      sessionId: source.getSessionId(),
+      status: "completed" as const,
+      kind: "ready" as const,
+      decisions: ["review"] as const,
+    };
+    const parent = SessionManager.inMemory("/project");
+    parent.appendMessage({
+      role: "user",
+      timestamp: 2,
+      content: formatSessionDigestReminder({
+        lines: [
+          {
+            ...line,
+            title: "Review and land ready Cake changes",
+            summary: "Landed",
+            resultMessageRef: landedRef,
+          },
+          {
+            ...line,
+            title: "Duplicate merge result",
+            summary: "Same exact report",
+            resultMessageRef: landedRef,
+          },
+          {
+            ...line,
+            title: "Simplify Cake prompts [progressive disclosure]",
+            summary: "Ready",
+            resultMessageRef: promptRef,
+          },
+          {
+            ...line,
+            title: "Keyboard navigation review",
+            summary: "Focus order is still being checked. No final report yet.",
+          },
+        ],
+        running: 1,
+        interruptedReport: false,
+        receiptIds: ["private-delivery-receipt"],
+      })!,
+    });
+    const persisted = projectSessionEntries(parent.getEntries());
+    const inspect = vi.fn(async (request: { sessionId: string; entryId?: string }) => {
+      expect(request.sessionId).toBe(source.getSessionId());
+      return readMessageReference(source, request);
+    });
+    using fixture = createRendererStoreFixture({
+      projects: [projectRecord({ path: "/project" })],
+      sessions: [
+        sessionSummary({
+          sessionId: "parent",
+          projectPath: "/project",
+          workingDirectory: "/project",
+        }),
+      ],
+      client: { sessionChats: { inspect } },
+    });
+    const session = fixture.root.sessionRegistry.load("parent", "/project");
+    applyConversationUpdate(session.model, {
+      _tag: "Snapshot",
+      revision: 1,
+      snapshot: {
+        sessionId: "parent",
+        sessionFile: "/parent.jsonl",
+        parts: persisted,
+        models: [],
+        thinkingLevel: "off",
+        availableThinkingLevels: ["off"],
+        streaming: false,
+        diagnostics: [],
+        commands: [],
+        compatibility: { resources: [], diagnostics: [] },
+        extensionUi: { statuses: [] },
+        tree: [],
+      },
+    });
+    const view = render(
+      <Chat
+        store={session.conversationSessionStore.chatStore}
+        compact
+        composerFocusEnabled={false}
+      />,
+    );
+    const batch = screen.getByRole("status", { name: "Session results" });
+    const titles = [
+      "Review and land ready Cake changes",
+      "Simplify Cake prompts [progressive disclosure]",
+      "Keyboard navigation review",
+      "1 session you launched is still running.",
+    ];
+    expect(
+      within(batch)
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(titles);
+    expect(batch.textContent).toBe(titles.join(""));
+    expect(inspect).not.toHaveBeenCalled();
+    const user = userEvent.setup();
+    const prompts = within(batch).getByRole("button", { name: titles[1] });
+    await user.click(prompts);
+    expect(await within(batch).findByText(/Committed as d58aa9b5/)).toBeTruthy();
+    expect(
+      within(batch)
+        .getByRole("link", { name: /Original message/ })
+        .getAttribute("href"),
+    ).toBe(promptRef);
+    expect(inspect).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sessionId: source.getSessionId(), entryId: promptId, offset: 0 }),
+      expect.anything(),
+    );
+    await user.click(prompts);
+    await user.click(within(batch).getByRole("button", { name: titles[2] }));
+    expect(within(batch).getByText(/Focus order is still being checked/)).toBeTruthy();
+    expect(inspect).toHaveBeenCalledTimes(1);
+    await user.click(within(batch).getByRole("button", { name: titles[0] }));
+    expect(
+      await within(batch).findByText(
+        "Landed 8 workstreams through Cake and resolved their owners.",
+      ),
+    ).toBeTruthy();
+    expect(
+      within(batch)
+        .getByRole("link", { name: /Original message/ })
+        .getAttribute("href"),
+    ).toBe(landedRef);
+    expect(projectSessionEntries(parent.getEntries())).toEqual(persisted);
+    view.unmount();
+  });
+
   it.each(["assistant", "receipt"] as const)(
     "loads %s report images lazily in the producer's workspace and attachment context, including after reopening",
     async (delivery) => {
@@ -548,7 +697,9 @@ describe("exact response presentation", () => {
         />,
       );
       expect(inspect).not.toHaveBeenCalled();
-      const disclosure = screen.getByRole("button", { name: /(?:Expand|Collapse) response/ });
+      const disclosure = screen.getByRole("button", {
+        name: delivery === "notification" ? "Producer session" : /(?:Expand|Collapse) response/,
+      });
       expect(disclosure.getAttribute("aria-expanded")).toBe("false");
       expect(view.container.querySelectorAll('[data-slot="message-source"]')).toHaveLength(1);
       const user = userEvent.setup();

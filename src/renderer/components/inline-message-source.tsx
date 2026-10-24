@@ -19,10 +19,15 @@ import { LoadingState } from "./ui/loading-state";
 export const InlineMessageSource = observer(function InlineMessageSource({
   store,
   preview = false,
+  title,
+  triggerClassName,
 }: {
   store: MessageReferencePreviewStore;
   /** Receipt cards reveal a bounded source preview only when visible. */
   preview?: boolean;
+  /** A report title replaces the generic source action in consolidated lists. */
+  title?: string;
+  triggerClassName?: string;
 }) {
   const contentId = useId();
   const previewRef = useRef<HTMLElement>(null);
@@ -40,7 +45,7 @@ export const InlineMessageSource = observer(function InlineMessageSource({
   const actions = useMarkdownLinkActions();
   const reference = store.props.reference!;
   const target = messageNavigationTarget(reference);
-  const title = actions?.sessionTitle?.(target.sessionId) ?? "Source session";
+  const sourceTitle = actions?.sessionTitle?.(target.sessionId) ?? "Source session";
   const page = store.page;
   return (
     <section
@@ -74,8 +79,10 @@ export const InlineMessageSource = observer(function InlineMessageSource({
         </div>
       )}
       <DisclosureTrigger
-        title={store.expanded ? "Collapse response" : "Expand response"}
-        subtitle={preview ? undefined : title}
+        title={title ?? (store.expanded ? "Collapse response" : "Expand response")}
+        subtitle={title || preview ? undefined : sourceTitle}
+        wrapTitle={Boolean(title)}
+        className={triggerClassName}
         open={store.expanded}
         aria-controls={store.expanded ? contentId : undefined}
         onClick={() => store.toggle()}
@@ -93,7 +100,7 @@ export const InlineMessageSource = observer(function InlineMessageSource({
                 actions?.openSession(target.sessionId, target.messageId);
               }}
             >
-              Original message · {title}
+              Original message · {sourceTitle}
             </Link>
             {page && (
               <CopyButton

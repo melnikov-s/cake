@@ -93,7 +93,7 @@ describe("Context visibility through the authoritative projection and shared Cha
       view.unmount();
     }
   });
-  it("shows application-owned completion and exact result link with the next user message without any assistant relay", () => {
+  it("shows application-owned report disclosures with the next user message without any assistant relay", () => {
     const pi = SessionManager.inMemory("/project");
     const ref = "cake://session/worker?message=application-captured-result";
     pi.appendMessage({
@@ -153,9 +153,12 @@ describe("Context visibility through the authoritative projection and shared Cha
       expect(screen.getByText("My next question", { exact: true })).toBeTruthy();
       expect(screen.getByRole("status", { name: "Session results" })).toBeTruthy();
       expect(
-        screen
-          .getByRole("link", { name: "Full agent response — Review result" })
-          .getAttribute("href"),
+        screen.getByRole("button", { name: "Review result" }).getAttribute("aria-expanded"),
+      ).toBe("false");
+      expect(
+        view.container
+          .querySelector("[data-message-reference]")
+          ?.getAttribute("data-message-reference"),
       ).toBe(ref);
       expect(screen.queryByText(/Answer the user's current message first/)).toBeNull();
     } finally {

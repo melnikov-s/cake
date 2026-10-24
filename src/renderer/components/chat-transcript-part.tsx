@@ -27,7 +27,7 @@ import { ReviewRunMessage } from "./chat-transcript-elements";
 import { RetryNotice } from "./retry-notice";
 import { ContextPill } from "./ui/context-pill";
 import { SessionResultNotice } from "./ui/session-result-notice";
-import { sessionNotificationMarkdown } from "../../contracts/cake-chats/session-digest-reminder";
+import { SessionUpdateEntry } from "./session-update-entry";
 import { SkillMessage } from "./skill-message";
 import { SourceAttachment } from "./source-attachment";
 import { InlineMessageSource } from "./inline-message-source";
@@ -275,21 +275,18 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
     );
   }
   if (part.kind === "context") {
-    const notification = sessionNotificationMarkdown(part.text);
-    if (notification)
+    const updates = behavior.store.sessionUpdates.filter((entry) => entry.props.partId === part.id);
+    if (updates.length)
       return (
-        <div className="flex w-full min-w-0 basis-full flex-col gap-3">
-          <SessionResultNotice
-            text={notification}
-            onOpenSourceLocation={behavior.openSourceLocation}
-            footer={<ResultTodoFooter partId={part.id} todos={behavior.todos} className="mt-1" />}
-          />
-          {behavior.store.messageSources
-            .filter((source) => source.props.partId === part.id)
-            .map((source) => (
-              <InlineMessageSource key={source.props.reference} store={source} />
-            ))}
-        </div>
+        <SessionResultNotice>
+          {updates.map((entry) => (
+            <SessionUpdateEntry
+              key={entry.props.entry.key}
+              store={entry}
+              onOpenSourceLocation={behavior.openSourceLocation}
+            />
+          ))}
+        </SessionResultNotice>
       );
     return (
       <ContextPill

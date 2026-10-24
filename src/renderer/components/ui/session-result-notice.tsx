@@ -1,23 +1,14 @@
 import type { ReactNode } from "react";
-import { Markdown } from "../ai-elements/markdown";
-import { Callout } from "./callout";
-import type { SourceLocation } from "../../../contracts/editor/source-location";
 
-/** Application-delivered status and exact result links; no assistant relay is required. */
-export function SessionResultNotice({
-  text,
-  onOpenSourceLocation,
-  footer,
-}: {
-  text: string;
-  onOpenSourceLocation?(location: SourceLocation): void;
-  /** Rendered inside the notice, after its links (e.g. linked to-do bar). */
-  footer?: ReactNode;
-}) {
+/** One integrated list of application-delivered report and batch-note disclosures. */
+export function SessionResultNotice({ children }: { children: ReactNode }) {
   return (
-    <Callout role="status" aria-label="Session results" className="w-full min-w-0">
-      <Markdown onOpenSourceLocation={onOpenSourceLocation}>{text}</Markdown>
-      {footer}
-    </Callout>
+    <section
+      role="status"
+      aria-label="Session results"
+      className="w-full min-w-0 rounded-lg bg-background px-5 py-2"
+    >
+      {children}
+    </section>
   );
 }

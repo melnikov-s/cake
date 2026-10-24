@@ -3135,6 +3135,148 @@ const sessionMessageVariantsScenario: VisualCaptureScenario = {
   region: (page) => page.locator(".transcript"),
 };
 
+const sessionUpdateReportsScenario: VisualCaptureScenario = {
+  name: "session-update-reports",
+  description:
+    "Deduplicated title-only batch entries with lazy exact reports and a unique ongoing note",
+  states: ["default", "expanded", "note"],
+  async seed(paths, theme) {
+    await cakeChatScenario.seed(paths, theme);
+    const timestamp = new Date(0).toISOString();
+    const sourceId = "visual-session-update-reports";
+    const reports = [
+      {
+        id: "merge",
+        title: "Review and land ready Cake changes",
+        text: "Landed 8 workstreams through Cake and resolved their owners.",
+      },
+      {
+        id: "prompts",
+        title: "Simplify Cake prompts with progressive disclosure",
+        text: "Implemented prompt simplification with progressive disclosure and committed as `d58aa9b5`.\n\nCore instructions remain immediately available. More detailed guidance is disclosed where it is relevant instead of repeating the same instructions throughout the prompt.\n\nWorktree clean; ready for review. No merge, resolution, or restart.",
+      },
+      {
+        id: "toasts",
+        title: "Make toast notifications opaque",
+        text: "Committed as `b6333290`. Toast backgrounds are fully opaque in both themes, including extension notifications.\n\nPlacement, timing, and interactions are unchanged.",
+      },
+      {
+        id: "contrast",
+        title: "Fix highlighted diagram node contrast",
+        text: "Ready: committed as `6ab252a9`; worktree clean.\n\nHighlighted node text remains readable while preserving selection and hover.",
+      },
+    ];
+    const directory = workspaceSessionDirectory(
+      paths.project,
+      join(paths.cakeHome, "pi", "sessions"),
+    );
+    await writeFile(
+      join(directory, `1970-01-01T00-00-00-000Z_${sourceId}.jsonl`),
+      [
+        { type: "session", version: 3, id: sourceId, timestamp, cwd: paths.project },
+        {
+          type: "session_info",
+          id: "title",
+          parentId: null,
+          timestamp,
+          name: "Cake change reports",
+        },
+        ...reports.map((report, index) => ({
+          type: "message",
+          id: report.id,
+          parentId: index === 0 ? "title" : reports[index - 1]!.id,
+          timestamp,
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: report.text }],
+            api: "anthropic-messages",
+            provider: "anthropic",
+            model: "visual-fixture",
+            usage: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 0,
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+            },
+            stopReason: "stop",
+            timestamp: 1,
+          },
+        })),
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n") + "\n",
+    );
+    const lines = [reports[0]!, ...reports].map((report) => ({
+      reference: sourceId,
+      sessionId: sourceId,
+      title: report.title,
+      summary: report.text,
+      status: "completed" as const,
+      resultMessageRef: `cake://session/${sourceId}?message=${report.id}`,
+    }));
+    const reminder = formatSessionDigestReminder({
+      lines: [
+        ...lines,
+        {
+          reference: "keyboard",
+          sessionId: sourceId,
+          title: "Keyboard navigation review continues",
+          summary:
+            "The agent is still checking focus order and disclosure keyboard behavior. No final report yet.",
+          status: "completed",
+        },
+      ],
+      running: 0,
+      interruptedReport: false,
+    });
+    const storage = await openNodeSqliteStorage(
+      join(paths.cakeHome, "pi", "global-chat", "coordinator.sqlite"),
+    );
+    const harness = await Harness.open(
+      storage,
+      { models: createModels(), registry: createRegistry() },
+      BACKGROUND_CONTEXT,
+    );
+    try {
+      const root = await harness.root(BACKGROUND_CONTEXT);
+      await root.commit(async (tx) => {
+        await tx.appendEntry(UserEntry, root.id, {
+          model: [
+            {
+              role: "user",
+              content: addSessionDigestReminder("Show me the updates.", reminder),
+              timestamp: 10,
+            },
+          ],
+        });
+      }, BACKGROUND_CONTEXT);
+    } finally {
+      await harness.close(BACKGROUND_CONTEXT);
+      await storage.close(BACKGROUND_CONTEXT);
+    }
+  },
+  async prepare(page, state) {
+    await assistantMarkdownCode.prepare(page, "default");
+    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+    const batch = page.getByRole("status", { name: "Session results" });
+    await expect(batch.getByRole("button")).toHaveCount(5);
+    if (state === "expanded") {
+      await batch
+        .getByRole("button", { name: "Simplify Cake prompts with progressive disclosure" })
+        .click();
+      await expect(batch.getByText(/Core instructions remain immediately available/)).toBeVisible();
+    } else if (state === "note") {
+      await batch.getByRole("button", { name: "Keyboard navigation review continues" }).click();
+      await expect(batch.getByText(/No final report yet/)).toBeVisible();
+    }
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.getByRole("status", { name: "Session results" }),
+};
+
 /** Start real work against the held local provider, then return to its owning conversation. */
 async function startActivityFixtureSession(page: Page, title: string) {
   await page.getByRole("button", { name: "Search sessions", exact: true }).click();
@@ -4593,6 +4735,7 @@ export const visualCaptureScenarios = [
   contextPillsScenario,
   sessionMessagesScenario,
   sessionMessageVariantsScenario,
+  sessionUpdateReportsScenario,
   cakeChatSessionUpdatesScenario,
   activityWorktreeScenario,
   conversationEntryScenario,

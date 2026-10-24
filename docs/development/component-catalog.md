@@ -58,7 +58,7 @@ when none remain. The strip opens upward above the composer.
 controls attached above the shared composer. Activity occupies its top band, with
 worktree tools beneath it when present. Empty caps collapse without reserved space.
 
-[`SessionResultNotice`](../../src/renderer/components/ui/session-result-notice.tsx) renders application-delivered compact session completion lines and exact result links, independently of model prose. It composes Callout and Markdown rather than requiring an assistant to relay the notification.
+[`SessionResultNotice`](../../src/renderer/components/ui/session-result-notice.tsx) contains one title-and-chevron disclosure per application-delivered report or unique batch note, independently of model prose. Repeated exact reports are consolidated; `SessionUpdateEntry` reuses `InlineMessageSource` for lazy original access. Batch-only notes expand in place. This list has no summaries, status labels or to-do controls.
 
 `ContextUsageButton` presents estimated system, memory and message token accounting with a separate cache-freshness border. It opens the shared Context Browser; it does not infer context retention from cache color.
 
@@ -114,7 +114,7 @@ and [`ChatStore`](../../src/renderer/stores/ChatStore.ts).
 exact attachment link with shared feedback. It never reads message bodies; the parent
 supplies the addressable session identity. Original-message previews reuse `FullscreenSurface` with bounded source pages.
 [`InlineMessageSource`](../../src/renderer/components/inline-message-source.tsx) composes
-`DisclosureTrigger` (**Expand response** / **Collapse response**), shared Markdown and
+`DisclosureTrigger` (the report title in consolidated session updates; otherwise **Expand response** / **Collapse response**), shared Markdown and
 pagination for lazy source access within the parent conversation. Receipt-only
 session cards compose it inside their attributed body and load a bounded text
 preview when visible, with explicit loading, unavailable and empty states.
