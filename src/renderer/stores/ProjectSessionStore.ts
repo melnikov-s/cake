@@ -411,8 +411,8 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
         openCommandPane: (pane) => CommandPaneContext.consume(this)!.open(pane),
         createSideChat: (prompt) => this.createSideChat(prompt),
         renameSession: (name) => management.renameSession(this.sessionId, name),
-        toolCompactSession: (entryId, prompt) =>
-          SessionContinuationContext.consume(this)!.toolCompactAt(entryId, prompt),
+        toolCompactSession: (entryId) =>
+          SessionContinuationContext.consume(this)!.toolCompactAt(entryId),
         scheduleMessage: (sessionId, args) => this.scheduleMessage(sessionId, args),
         draftSessionPrompt: (sessionId) => {
           const record = pending.savedRecord(sessionId);

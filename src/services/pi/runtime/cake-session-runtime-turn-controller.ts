@@ -43,6 +43,8 @@ export interface CakeSessionRuntimeTurnController {
   readonly queuedParts: () => UiPart[];
   readonly handoffActive: () => boolean;
   readonly idleCompactionActive: () => boolean;
+  readonly toolCompactionActive: () => boolean;
+  readonly withToolCompaction: <T>(compact: () => Promise<T>) => Promise<T>;
   readonly pendingRecoveryInputs: () => ReadonlyArray<{
     turnId: string;
     delivery: "steer" | "follow-up";
@@ -174,6 +176,8 @@ export function createCakeSessionRuntimeTurnController(input: {
   let commandRunning = false;
   let promptOperations = 0;
   let idleCompactionActive = false;
+  let toolCompactionActive = false;
+  const isCompacting = () => session.isCompacting || toolCompactionActive;
   let rebuildingQueue = false;
   let handingOff = false;
   let abortGeneration = 0;
@@ -262,10 +266,7 @@ export function createCakeSessionRuntimeTurnController(input: {
     if (text.startsWith("/")) return content;
     const previous = previousModes(
       delivery === "prompt" &&
-        (session.isStreaming ||
-          session.isCompacting ||
-          commandRunning ||
-          compactionQueue.length > 0)
+        (session.isStreaming || isCompacting() || commandRunning || compactionQueue.length > 0)
         ? "follow-up"
         : delivery,
     );
@@ -295,7 +296,7 @@ export function createCakeSessionRuntimeTurnController(input: {
       input.isDisposed() ||
       pausedAfterRestart ||
       (session.isStreaming && compactionQueue.some((item) => item.command)) ||
-      session.isCompacting ||
+      isCompacting() ||
       flushingHeldQueue ||
       commandRunning ||
       compactionQueue.length === 0
@@ -348,7 +349,7 @@ export function createCakeSessionRuntimeTurnController(input: {
           if (
             item.turnId &&
             !session.isStreaming &&
-            !session.isCompacting &&
+            !isCompacting() &&
             session.getSteeringMessages().length === 0 &&
             session.getFollowUpMessages().length === 0
           )
@@ -441,7 +442,7 @@ export function createCakeSessionRuntimeTurnController(input: {
     const completion = turnId ? turnCompletions.track(turnId, content, true, internal) : undefined;
     try {
       if (
-        session.isCompacting ||
+        isCompacting() ||
         commandRunning ||
         ((flushingHeldQueue || compactionQueue.length > 0) && delivery !== "steer")
       ) {
@@ -492,7 +493,7 @@ export function createCakeSessionRuntimeTurnController(input: {
       if (
         turnId &&
         !session.isStreaming &&
-        !session.isCompacting &&
+        !isCompacting() &&
         session.getSteeringMessages().length === 0 &&
         session.getFollowUpMessages().length === 0
       )
@@ -513,7 +514,7 @@ export function createCakeSessionRuntimeTurnController(input: {
   ) => {
     assertActive();
     assertImageSupport(attachments);
-    if (session.isStreaming || session.isCompacting)
+    if (session.isStreaming || isCompacting())
       throw new Error("Wait for the current response to finish before editing a message");
     const lastUserEntry = session.sessionManager
       .getBranch()
@@ -677,13 +678,13 @@ export function createCakeSessionRuntimeTurnController(input: {
 
   const replacePendingQueues = async (queues: TrackedQueue) => {
     if (
-      session.isCompacting ||
+      isCompacting() ||
       commandRunning ||
       queues["follow-up"].some((item) => item.command) ||
       flushingHeldQueue
     ) {
       const held = new Map(compactionQueue.map((entry) => [entry.itemId, entry]));
-      const holdSteering = session.isCompacting || commandRunning;
+      const holdSteering = isCompacting() || commandRunning;
       const heldLanes = holdSteering
         ? (["steering", "follow-up"] as const)
         : (["follow-up"] as const);
@@ -762,6 +763,22 @@ export function createCakeSessionRuntimeTurnController(input: {
     compactionQueuedMessages: () => compactionQueue.map((item) => item.text),
     handoffActive: () => handingOff,
     idleCompactionActive: () => idleCompactionActive,
+    toolCompactionActive: () => toolCompactionActive,
+    async withToolCompaction(compact) {
+      assertActive();
+      if (promptOperations > 0 || commandRunning || session.isStreaming || isCompacting())
+        throw new Error("Wait for the current operation before tool compaction");
+      // Tree navigation sets Pi's compaction flag only during navigateTree and
+      // emits no compaction_end. Reserve through snapshot publication and always
+      // wake the held-input lane, including failed/cancelled navigation.
+      toolCompactionActive = true;
+      try {
+        return await compact();
+      } finally {
+        toolCompactionActive = false;
+        void flushCompactionQueue();
+      }
+    },
     queuedParts: () => {
       const queues = queuedForStop();
       const parts = projectQueuedMessages(
@@ -827,7 +844,7 @@ export function createCakeSessionRuntimeTurnController(input: {
       if (
         promptOperations > 0 ||
         session.isStreaming ||
-        session.isCompacting ||
+        isCompacting() ||
         session.isBashRunning ||
         commandRunning ||
         restoringRun ||

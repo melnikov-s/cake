@@ -9,8 +9,10 @@ import { applyConversationUpdate } from "../../../src/renderer/reducers/Conversa
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import type { TestClientOverrides } from "./test-client";
+import { deliveryGate } from "./conversation-delivery-workflow-fixture";
 
 const sessionId = "session-one";
+const continuationTurnId = TurnId.make("10000000-0000-4000-8000-000000000003");
 const source = {
   kind: "source" as const,
   name: "active.ts",
@@ -215,13 +217,15 @@ describe("Chat composer workflow", () => {
     });
   });
 
-  it("tool-compacts without consuming explicit attachments or rejecting implicit editor context", async () => {
+  it("sends the continuation and all attachments together after tool compaction, consuming them once", async () => {
     const toolCompact = vi.fn<Client["projectSessions"]["toolCompact"]>(async () => ({
       sessionId,
     }));
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () => continuationTurnId);
     using fixture = await renderComposer(
       {
         projectSessions: { toolCompact },
+        sessionChats: { prompt },
       },
       { editor: true },
     );
@@ -233,13 +237,119 @@ describe("Chat composer workflow", () => {
           sessionId,
           workingDirectory: "/project",
           entryId: "assistant-entry",
-          prompt: "Continue cleanly",
         },
         expect.any(Object),
       ),
     );
+    await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
+    expect(prompt.mock.calls[0]?.[0]).toMatchObject({
+      text: "Continue cleanly",
+      attachments: [
+        expect.objectContaining({ kind: "source", location: source.location }),
+        textAttachment("reference"),
+      ],
+    });
     expect(input().value).toBe("");
-    expect(screen.getByRole("button", { name: /^Remove Pasted text/ })).toBeDefined();
+    expect(screen.queryByRole("button", { name: /^Remove Pasted text/ })).toBeNull();
+    await typeAndSend(fixture.user, "Next request");
+    expect(prompt).toHaveBeenLastCalledWith(
+      expect.objectContaining({ text: "Next request", attachments: [] }),
+      expect.any(Object),
+    );
+  });
+
+  it("captures attachments while tool compaction is pending without consuming the next draft", async () => {
+    const compacted = deliveryGate<{ sessionId: string }>();
+    const toolCompact = vi.fn<Client["projectSessions"]["toolCompact"]>(() => compacted.promise);
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () => continuationTurnId);
+    using fixture = await renderComposer({
+      projectSessions: { toolCompact },
+      sessionChats: { prompt },
+    });
+    await pasteAttachment(fixture.user, "sent");
+    await typeAndSend(fixture.user, "/toolcompact Review the log");
+    expect(input().value).toBe("");
+    expect(prompt).not.toHaveBeenCalled();
+    await fixture.user.type(input(), "Next message");
+    await pasteAttachment(fixture.user, "next");
+    await act(async () => compacted.resolve({ sessionId }));
+    await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
+    expect(prompt.mock.calls[0]?.[0]).toMatchObject({
+      text: "Review the log",
+      attachments: [textAttachment("sent")],
+    });
+    expect(input().value).toBe("Next message");
+    expect(screen.getAllByRole("button", { name: /^Remove Pasted text/ })).toHaveLength(1);
+    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+    expect(prompt.mock.calls[1]?.[0]).toMatchObject({
+      text: "Next message",
+      attachments: [textAttachment("next")],
+    });
+  });
+
+  it("restores the whole command on compaction failure and sends its attachment once on retry", async () => {
+    const toolCompact = vi
+      .fn<Client["projectSessions"]["toolCompact"]>()
+      .mockRejectedValueOnce(new Error("Navigation failed"))
+      .mockResolvedValue({ sessionId });
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () => continuationTurnId);
+    using fixture = await renderComposer({
+      projectSessions: { toolCompact },
+      sessionChats: { prompt },
+    });
+    await pasteAttachment(fixture.user, "reference");
+    await typeAndSend(fixture.user, "/toolcompact Review the log");
+    await waitFor(() => expect(input().value).toBe("/toolcompact Review the log"));
+    expect(screen.getAllByRole("button", { name: /^Remove Pasted text/ })).toHaveLength(1);
+    expect(prompt).not.toHaveBeenCalled();
+    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
+    expect(prompt.mock.calls[0]?.[0]).toMatchObject({
+      text: "Review the log",
+      attachments: [textAttachment("reference")],
+    });
+  });
+
+  it("retries failed continuation admission with the attachment without compacting again", async () => {
+    const toolCompact = vi.fn<Client["projectSessions"]["toolCompact"]>(async () => ({
+      sessionId,
+    }));
+    const prompt = vi
+      .fn<Client["sessionChats"]["prompt"]>()
+      .mockRejectedValueOnce(new Error("Admission failed"))
+      .mockResolvedValue(continuationTurnId);
+    using fixture = await renderComposer({
+      projectSessions: { toolCompact },
+      sessionChats: { prompt },
+    });
+    await pasteAttachment(fixture.user, "reference");
+    await typeAndSend(fixture.user, "/toolcompact Review the log");
+    expect(await screen.findByText("Admission failed")).toBeDefined();
+    expect(input().value).toBe("Review the log");
+    expect(screen.getAllByRole("button", { name: /^Remove Pasted text/ })).toHaveLength(1);
+    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(prompt).toHaveBeenCalledTimes(2));
+    expect(toolCompact).toHaveBeenCalledOnce();
+    expect(prompt.mock.calls.map(([input]) => input.attachments)).toEqual([
+      [textAttachment("reference")],
+      [textAttachment("reference")],
+    ]);
+  });
+
+  it("does not submit a captured continuation after the renderer cancels tool compaction", async () => {
+    const compacted = deliveryGate<{ sessionId: string }>();
+    const toolCompact = vi.fn<Client["projectSessions"]["toolCompact"]>(() => compacted.promise);
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>();
+    const fixture = await renderComposer({
+      projectSessions: { toolCompact },
+      sessionChats: { prompt },
+    });
+    await pasteAttachment(fixture.user, "reference");
+    await typeAndSend(fixture.user, "/toolcompact Review the log");
+    fixture[Symbol.dispose]();
+    expect(toolCompact.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+    await act(async () => compacted.resolve({ sessionId }));
+    expect(prompt).not.toHaveBeenCalled();
   });
 
   it("replaces implicit editor context with an explicit note at the same range and reveals context when removed", async () => {

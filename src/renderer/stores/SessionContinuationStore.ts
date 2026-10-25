@@ -70,7 +70,7 @@ export class SessionContinuationStore extends Store<SessionContinuationStoreProp
     return this.requestContinuation(entryId);
   }
 
-  async toolCompactAt(entryId: string, prompt?: string) {
+  async toolCompactAt(entryId: string) {
     const context = this.props.sessionContext();
     if (!context) {
       this.props.reportError("There is no active session to compact");
@@ -85,7 +85,6 @@ export class SessionContinuationStore extends Store<SessionContinuationStoreProp
           sessionId: context.sessionId,
           workingDirectory: context.workspacePath,
           entryId,
-          prompt: prompt?.trim() || undefined,
         },
         { signal: this.signal },
       );

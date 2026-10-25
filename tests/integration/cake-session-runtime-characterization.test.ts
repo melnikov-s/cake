@@ -19,6 +19,7 @@ import { piAgentDirectory } from "../../src/services/pi/PiPaths";
 import {
   type CakeSessionRuntime,
   type CakeSessionRuntimeEvent,
+  type CakeSessionRuntimeOptions,
 } from "../../src/services/pi/runtime/cake-session-runtime";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 
@@ -121,6 +122,7 @@ async function createFixtureRuntime(
     onInitialTranscriptPersisted?(): void;
     onTurnResult?(turnId: string, result: PiTurnResult): void;
     attachmentReferenceControl?: AttachmentReferenceControl;
+    requestUi?: CakeSessionRuntimeOptions["requestUi"];
   } = {},
 ) {
   vi.stubEnv("PI_CODING_AGENT_DIR", join(directory, "agent"));
@@ -143,7 +145,7 @@ async function createFixtureRuntime(
     allowedCakeOperations: options.attachmentReferenceControl
       ? ["attachments.list", "attachments.read"]
       : undefined,
-    requestUi: async () => undefined,
+    requestUi: options.requestUi ?? (async () => undefined),
     onInitialTranscriptPersisted: options.onInitialTranscriptPersisted,
     onTurnResult: options.onTurnResult,
     onEvent: (event) => events.push(event),
@@ -537,6 +539,89 @@ describe("CakeSessionRuntime characterization", () => {
     expect(JSON.stringify(help)).not.toContain("sessions");
     expect(runtime.sessionFile).toBe("");
   });
+  it("delivers text, image pixels and input refs once when a send overlaps real Pi tool-compaction navigation", async () => {
+    const directory = await createTemporaryDirectory();
+    const bodies: Array<Record<string, unknown>> = [];
+    await registerFixtureProvider(
+      directory,
+      (index, response) => finishTextResponse(response, `Reply ${index}`),
+      (body) => bodies.push(body),
+    );
+    await writeFile(
+      join(directory, ".pi", "extensions", "hold-navigation.ts"),
+      `export default function (pi) {
+        pi.on("session_before_tree", async (_event, ctx) => {
+          await ctx.ui.confirm("Hold navigation", "Release navigation");
+        });
+      }`,
+    );
+    const navigating = deferred();
+    const navigation = deferred();
+    const runtime = await createFixtureRuntime(directory, [], {
+      requestUi: async () => {
+        navigating.resolve();
+        await navigation.promise;
+        return "true";
+      },
+    });
+    await runtime.prompt("First", "prompt", []);
+    const selectedId = SessionManager.open(runtime.sessionFile)
+      .getBranch()
+      .findLast((entry) => entry.type === "message" && entry.message.role === "assistant")!.id;
+    const compact = runtime.toolCompact(selectedId);
+    await navigating.promise;
+    const reference = {
+      kind: "input" as const,
+      id: "20000000-0000-4000-8000-000000000001",
+      name: "log.txt",
+      mimeType: "text/plain",
+      byteLength: 42,
+    };
+    const data =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
+    const sent = runtime.prompt(
+      "Review both attachments",
+      "prompt",
+      [
+        { kind: "image", name: "screenshot.png", mimeType: "image/png", data },
+        { kind: "file", name: reference.name, path: "/inputs/log.txt", inputReference: reference },
+      ],
+      false,
+      "attached-turn",
+    );
+    // Snapshot awaits the same resource preparation as the accepted prompt.
+    const held = await runtime.snapshot();
+    expect(runtime.streaming).toBe(true);
+    expect(held.parts).toContainEqual(
+      expect.objectContaining({
+        text: "Review both attachments",
+        queuedInput: expect.objectContaining({
+          attachments: expect.arrayContaining([
+            expect.objectContaining({ inputReference: reference }),
+          ]),
+        }),
+      }),
+    );
+    expect(bodies).toHaveLength(1);
+    navigation.resolve();
+    await compact;
+    await sent;
+    expect(bodies).toHaveLength(2);
+    expect(JSON.stringify(bodies[1])).toContain(`data:image/png;base64,${data}`);
+    expect(JSON.stringify(bodies[1])).toContain(reference.id);
+    const users = SessionManager.open(runtime.sessionFile)
+      .getBranch()
+      .filter(
+        (entry) =>
+          entry.type === "message" &&
+          entry.message.role === "user" &&
+          JSON.stringify(entry.message.content).includes("Review both attachments"),
+      );
+    expect(users).toHaveLength(1);
+    expect(JSON.stringify(users[0])).toContain(data);
+    expect(JSON.stringify(users[0])).toContain(reference.id);
+  });
+
   it("retains required system instructions across Tool Compact without re-emitting an unchanged system message", async () => {
     const directory = await createTemporaryDirectory();
     const bodies: Array<Record<string, unknown>> = [];

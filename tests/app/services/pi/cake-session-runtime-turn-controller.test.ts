@@ -4,6 +4,7 @@ import {
   type AgentSession,
 } from "@earendil-works/pi-coding-agent";
 import { durableModel } from "../../../fixtures/durable-chat";
+import type { Attachment } from "../../../../src/contracts/conversations/session-contract";
 import { describe, expect, it, vi } from "vitest";
 import { createCakeSessionRuntimeTurnController } from "../../../../src/services/pi/runtime/cake-session-runtime-turn-controller";
 import { TurnCanceledError } from "../../../../src/services/pi/runtime/RuntimeTurnCompletion";
@@ -67,6 +68,135 @@ function createFixture(overrides: Partial<AgentSession> = {}) {
 }
 
 describe("CakeSessionRuntime turn controller", () => {
+  const attachedInputs: Attachment[] = [
+    { kind: "image", name: "screenshot.png", data: "AAA=", mimeType: "image/png" },
+    {
+      kind: "file",
+      name: "log.txt",
+      path: "/inputs/log.txt",
+      inputReference: {
+        kind: "input",
+        id: "20000000-0000-4000-8000-000000000001",
+        name: "log.txt",
+        mimeType: "text/plain",
+        byteLength: 42,
+      },
+    },
+  ];
+
+  it.each(["success", "failure", "cancel"] as const)(
+    "releases text, image pixels and input refs together after tool navigation (%s), without a compaction_end event",
+    async (outcome) => {
+      const navigation = deferred();
+      const delivered = deferred();
+      const prompt = vi.fn<AgentSession["prompt"]>(async () => delivered.resolve());
+      const { controller, session } = createFixture({
+        model: { ...durableModel, input: ["text", "image"] },
+        prompt,
+      });
+      const compact = controller.withToolCompaction(async () => {
+        // navigateTree sets isCompacting, but emits no normal compaction_end.
+        Object.assign(session, { isCompacting: true });
+        await navigation.promise;
+        Object.assign(session, { isCompacting: false });
+        if (outcome !== "success") throw new Error(outcome);
+      });
+      const compacted = compact.catch((error: Error) => error.message);
+      const accepted = controller.prompt("Review both", "prompt", attachedInputs, true, "turn-1");
+      await Promise.resolve();
+      expect(controller.toolCompactionActive()).toBe(true);
+      const [queued] = controller.queuedParts();
+      expect(queued).toMatchObject({
+        text: "Review both",
+        queuedInput: { attachments: attachedInputs, turnId: "turn-1" },
+      });
+      expect(prompt).not.toHaveBeenCalled();
+      navigation.resolve();
+      expect(await compacted).toBe(outcome === "success" ? undefined : outcome);
+      await delivered.promise;
+      await accepted;
+      expect(prompt).toHaveBeenCalledExactlyOnceWith(
+        expect.stringContaining('"inputReference":'),
+        expect.objectContaining({
+          images: [{ type: "image", data: "AAA=", mimeType: "image/png" }],
+        }),
+      );
+      expect(prompt.mock.calls[0]?.[0]).toContain("Review both");
+      expect(prompt.mock.calls[0]?.[0]).toContain("/inputs/log.txt");
+      expect(controller.toolCompactionActive()).toBe(false);
+      controller.dispose();
+    },
+  );
+
+  it("does not navigate away from an attached send admitted before Pi starts streaming", async () => {
+    const delivery = deferred();
+    const { controller, session } = createFixture({
+      model: { ...durableModel, input: ["text", "image"] },
+      prompt: vi.fn(async () => delivery.promise),
+    });
+    const accepted = controller.prompt("Review both", "prompt", attachedInputs);
+    const navigate = vi.fn(async () => undefined);
+    await expect(controller.withToolCompaction(navigate)).rejects.toThrow(
+      "Wait for the current operation before tool compaction",
+    );
+    expect(navigate).not.toHaveBeenCalled();
+    delivery.resolve();
+    await accepted;
+    expect(session.prompt).toHaveBeenCalledExactlyOnceWith(
+      expect.stringContaining("/inputs/log.txt"),
+      expect.objectContaining({
+        images: [{ type: "image", data: "AAA=", mimeType: "image/png" }],
+      }),
+    );
+    controller.dispose();
+  });
+
+  it("keeps a complete held input through abort and removes it without later delivery", async () => {
+    const navigation = deferred();
+    const { controller, session } = createFixture({
+      model: { ...durableModel, input: ["text", "image"] },
+    });
+    const compact = controller.withToolCompaction(() => navigation.promise);
+    const accepted = controller.prompt("Review both", "prompt", attachedInputs, false, "turn-1");
+    const canceled = accepted.catch((error: Error) => error.message);
+    await Promise.resolve();
+    await controller.abort();
+    expect(session.followUp).toHaveBeenCalledExactlyOnceWith(
+      expect.stringContaining("/inputs/log.txt"),
+      [{ type: "image", data: "AAA=", mimeType: "image/png" }],
+    );
+    // The Pi queue owns the input after abort. Project it as Pi does.
+    const content = vi.mocked(session.followUp).mock.calls[0]![0];
+    vi.mocked(session.getFollowUpMessages).mockReturnValue([content]);
+    const [part] = controller.queuedParts();
+    expect(part).toMatchObject({ queuedInput: { attachments: attachedInputs } });
+    vi.mocked(session.clearQueue).mockImplementation(() => {
+      vi.mocked(session.getFollowUpMessages).mockReturnValue([]);
+      return { steering: [], followUp: [content] };
+    });
+    await controller.removeQueuedMessage(part!.id);
+    expect(await canceled).toBe("Queued input was canceled");
+    navigation.resolve();
+    await compact;
+    expect(session.prompt).not.toHaveBeenCalled();
+    controller.dispose();
+  });
+
+  it("sends an ordinary attached input once without compaction", async () => {
+    const { controller, session } = createFixture({
+      model: { ...durableModel, input: ["text", "image"] },
+    });
+    await controller.prompt("Review both", "prompt", attachedInputs);
+    expect(session.prompt).toHaveBeenCalledExactlyOnceWith(
+      expect.stringContaining("/inputs/log.txt"),
+      expect.objectContaining({
+        images: [{ type: "image", data: "AAA=", mimeType: "image/png" }],
+      }),
+    );
+    expect(vi.mocked(session.prompt).mock.calls[0]?.[0]).toContain("Review both");
+    controller.dispose();
+  });
+
   it("idle-only compaction reserves before preparation, waits for Pi, and releases held inputs", async () => {
     const gate = deferred();
     const started = deferred();

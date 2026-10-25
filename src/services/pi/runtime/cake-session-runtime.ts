@@ -855,7 +855,12 @@ export async function createCakeSessionRuntime(
       return session.sessionFile ?? "";
     },
     get streaming() {
-      return session.isStreaming || session.isCompacting || turnController.idleCompactionActive();
+      return (
+        session.isStreaming ||
+        session.isCompacting ||
+        turnController.idleCompactionActive() ||
+        turnController.toolCompactionActive()
+      );
     },
     getReviewParentContext() {
       if (!session.sessionFile) throw new Error("The parent session is not persisted");
@@ -1185,7 +1190,8 @@ export async function createCakeSessionRuntime(
       await continuations.rename(name, false, onlyIfUnnamed);
     },
     fork: continuations.fork,
-    toolCompact: continuations.toolCompact,
+    toolCompact: (entryId) =>
+      turnController.withToolCompaction(() => continuations.toolCompact(entryId)),
     async navigate(entryId, options) {
       const result = await session.navigateTree(entryId, options);
       if (result.cancelled) throw new Error("Session tree navigation was cancelled");

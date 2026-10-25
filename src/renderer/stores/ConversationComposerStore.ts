@@ -27,7 +27,7 @@ export interface ConversationComposerStoreProps {
   createSideChat?(prompt: string): Promise<boolean>;
   selectModel(value: string): Promise<boolean | void>;
   renameSession?(name: string): Promise<boolean | void>;
-  toolCompactSession?(entryId: string, prompt?: string): Promise<boolean>;
+  toolCompactSession?(entryId: string): Promise<boolean>;
   deliver(input: ConversationDeliveryInput): Promise<boolean | void | { turnId: string }>;
   editMessage(
     input: Omit<ConversationDeliveryInput, "delivery"> & { entryId: string },
@@ -261,9 +261,28 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
         this.reportError(new Error("Tool compaction requires a completed assistant response"));
         return { handled: true, result: false };
       }
-      const compacted = await this.props.toolCompactSession?.(entryId, builtin.args || undefined);
-      if (compacted && this.draftStore.text.trim() === text) this.draftStore.setText("");
-      return { handled: true, result: compacted };
+      // Capture and consume one complete input before navigation. The text-only
+      // compaction API must not deliver the continuation without its attachments.
+      const attachments = this.draftStore.submissionAttachments;
+      this.draftStore.clearForSubmit();
+      const compacted = await this.props.toolCompactSession?.(entryId);
+      if (!compacted) {
+        if (!this.signal.aborted) this.draftStore.restoreAfterFailure(text, attachments);
+        return { handled: true, result: false };
+      }
+      if (this.signal.aborted) return { handled: true, result: false };
+      const continuation = builtin.args.trim();
+      const result =
+        continuation || attachments.length
+          ? await this.deliveryStore.send(
+              continuation,
+              attachments,
+              "prompt",
+              true,
+              shouldRenderMarkdown(continuation),
+            )
+          : true;
+      return { handled: true, result: result !== false };
     }
     if (builtin?.name === "sidechat") {
       if (!this.props.createSideChat) {

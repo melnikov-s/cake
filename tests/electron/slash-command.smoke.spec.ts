@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -15,11 +15,21 @@ test("selects and runs slash commands from the composer with the keyboard", asyn
   const project = join(temporaryRoot, "project");
   const cakeHome = join(temporaryRoot, "cake-home");
   const home = join(temporaryRoot, "home");
-  const server = createServer((_request, response) => {
-    response.writeHead(200, { "content-type": "text/event-stream" });
-    response.end(
-      `data: ${JSON.stringify({ id: "slash-fixture", object: "chat.completion.chunk", created: 0, model: "slash-fixture", choices: [{ index: 0, delta: { content: "Fixture response." }, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
-    );
+  const requests: Array<{
+    messages: Array<{ role: string; content: string | Array<{ type: string; text?: string }> }>;
+  }> = [];
+  const server = createServer((request, response) => {
+    let body = "";
+    request.on("data", (chunk) => {
+      body += String(chunk);
+    });
+    request.on("end", () => {
+      requests.push(JSON.parse(body));
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.end(
+        `data: ${JSON.stringify({ id: "slash-fixture", object: "chat.completion.chunk", created: 0, model: "slash-fixture", choices: [{ index: 0, delta: { content: "Fixture response." }, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
+      );
+    });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -177,6 +187,59 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
     await composer.press("Enter");
     await expect(page.locator(".session-item.active")).toHaveCount(1, { timeout: 20_000 });
     await expect(composer).toHaveValue("");
+
+    // Tool Compact must send the continuation through ordinary attachment admission,
+    // not the text-only continuation parameter. Exercise the real native composer.
+    await expect(
+      page
+        .getByLabel("Conversation", { exact: true })
+        .getByText("Fixture response.", { exact: true }),
+    ).toBeVisible();
+    await composer.click();
+    await expect(composer).toBeFocused();
+    const log = "ATTACHED_LOG\n" + "log details\n".repeat(50);
+    await composer.evaluate((element, log) => {
+      const clipboard = new DataTransfer();
+      clipboard.setData("text/plain", log);
+      element.dispatchEvent(
+        new ClipboardEvent("paste", {
+          bubbles: true,
+          cancelable: true,
+          clipboardData: clipboard,
+        }),
+      );
+    }, log);
+    const removeAttachment = page.getByRole("button", { name: /^Remove Pasted text/ });
+    await expect(removeAttachment).toHaveCount(1);
+    await composer.pressSequentially("/toolcompact Review attached log");
+    await expect(composer).toHaveValue("/toolcompact Review attached log");
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    const continuationRequests = () =>
+      requests.filter((request) =>
+        JSON.stringify(
+          request.messages.findLast((message) => message.role === "user")?.content,
+        )?.includes("Review attached log"),
+      );
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect.poll(() => continuationRequests().length).toBe(1);
+    const content = continuationRequests()[0]!.messages.findLast(
+      (message) => message.role === "user",
+    )!.content;
+    const sent =
+      typeof content === "string"
+        ? content
+        : content
+            .filter((block) => block.type === "text")
+            .map((block) => block.text)
+            .join("\n");
+    expect(sent).toContain("Pasted text · 52 lines");
+    expect(sent).toContain("inputReference");
+    const attachments = [...sent.matchAll(/<cake-file-attachment>(.*?)<\/cake-file-attachment>/g)];
+    expect(attachments).toHaveLength(1);
+    const attachment = JSON.parse(attachments[0]![1]!);
+    expect(await readFile(attachment.path, "utf8")).toBe(log);
+    await expect(composer).toHaveValue("");
+    await expect(removeAttachment).toHaveCount(0);
 
     if (process.platform === "darwin" && process.arch === "arm64") {
       await page.getByRole("button", { name: "Open settings", exact: true }).click();

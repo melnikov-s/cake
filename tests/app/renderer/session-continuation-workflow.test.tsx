@@ -5,7 +5,10 @@ import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
+import {
+  TurnId,
+  type ConversationSnapshot,
+} from "../../../src/contracts/conversations/conversation-data";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { App } from "../../../src/renderer/components/app";
@@ -479,7 +482,13 @@ describe("Session continuation workflow", () => {
       sessionId: "source",
     }));
     const fork = vi.fn<Client["projectSessions"]["fork"]>();
-    using fixture = renderContinuation({ projectSessions: { toolCompact, fork } });
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
+      TurnId.make("10000000-0000-4000-8000-000000000003"),
+    );
+    using fixture = renderContinuation({
+      projectSessions: { toolCompact, fork },
+      sessionChats: { prompt },
+    });
     await fixture.user.type(
       screen.getByRole("combobox", { name: "Message" }),
       "/toolcompact Continue cleanly",
@@ -491,10 +500,14 @@ describe("Session continuation workflow", () => {
           sessionId: "source",
           workingDirectory: "/current-worktree",
           entryId: "assistant-entry",
-          prompt: "Continue cleanly",
         },
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       ),
+    );
+    await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
+    expect(prompt).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "Continue cleanly", attachments: [] }),
+      expect.any(Object),
     );
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(fork).not.toHaveBeenCalled();
