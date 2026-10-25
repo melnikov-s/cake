@@ -84,7 +84,7 @@ import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identi
 import { SubagentResult, SubagentReportOrigin } from "../../contracts/subagents/subagent-data";
 import { Option } from "effect";
 import type { InternalInput } from "../../contracts/conversations/internal-input";
-import { durableInputText, durableQueuedPart } from "./durable-input-presentation";
+import { durableInputText, durableQueuedParts } from "./durable-input-presentation";
 import {
   setDurableUserMessageMarkdown,
   UserMessagePresentationDoc,
@@ -600,7 +600,7 @@ export async function createDurableCakeChatRuntime(
         for (const item of items)
           if (item.mode !== "write") {
             const id = await requestId(item);
-            parts.push(durableQueuedPart(item, id));
+            parts.push(...durableQueuedParts(item, id));
           }
         const sums = Object.values(usage?.models ?? {}).concat(Object.values(usage?.tools ?? {}));
         const tokens = sums.reduce(

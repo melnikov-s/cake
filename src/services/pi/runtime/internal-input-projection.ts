@@ -30,23 +30,25 @@ export function internalInputOrigins(entries: readonly SessionEntry[]) {
   return origins;
 }
 
-export function internalInputPart(origin: InternalInput, id: string): UiPart {
-  if (origin._tag === "UpdateBatch" && !origin.notices.length)
-    return {
-      id,
-      kind: "context",
-      title: "Cake · batched updates",
-      text: "Deferred updates delivered together without a user message.",
-    };
-  if (origin._tag === "UserWithReminders" || origin._tag === "UpdateBatch")
-    return {
-      id,
-      kind: "context",
-      title: "Cake · passive updates",
-      text: origin.notices
-        .map((notice) => `${notice.crossSession.sender.title}: ${notice.text}`)
-        .join("\n\n"),
-    };
+/** Stable sender-authored messages, independent of their user/timer transport and replay IDs. */
+export function passiveNoticeParts(origin?: InternalInput): UiPart[] {
+  if (origin?._tag !== "UserWithReminders" && origin?._tag !== "UpdateBatch") return [];
+  return origin.notices.map((notice) => ({
+    id: `passive-${notice.id}`,
+    renderKey: `passive-${notice.id}`,
+    kind: "text",
+    role: "user",
+    text: notice.text,
+    renderAs: "markdown",
+    status: "complete",
+    crossSession: notice.crossSession,
+  }));
+}
+
+export function internalInputPart(
+  origin: Extract<InternalInput, { _tag: "WorkboardDelivery" }>,
+  id: string,
+): UiPart {
   return {
     id,
     kind: "context",

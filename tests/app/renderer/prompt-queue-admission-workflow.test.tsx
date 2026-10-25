@@ -7,7 +7,7 @@ import type { Attachment } from "../../../src/contracts/conversations/session-co
 import type { Client } from "../../../src/renderer/client/Client";
 import {
   durableInputText,
-  durableQueuedPart,
+  durableQueuedParts,
 } from "../../../src/services/pi-durable/durable-input-presentation";
 import { queuePart } from "./prompt-queue-workflow-fixture";
 import { renderConversationSession } from "./conversation-session-workflow-fixture";
@@ -96,14 +96,14 @@ describe.each(["project", "cake-chat", "project-chat"] as const)(
         const projected = (index: number, text: string, attachments: Attachment[] = []) =>
           profile === "project"
             ? queuePart(index, text, { attachments })
-            : durableQueuedPart(
+            : durableQueuedParts(
                 {
                   id: index as SubmissionId,
                   mode: "followUp",
                   content: durableInputText(text, attachments, false),
                 },
                 `20000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
-              );
+              )[0]!;
         const b = projected(2, "B");
         const c = projected(3, text, attachments);
         const acknowledgement = Promise.withResolvers<void>();

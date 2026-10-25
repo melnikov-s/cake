@@ -8,6 +8,11 @@ import {
 import { withoutPassiveNotices } from "../../../src/contracts/conversations/internal-input";
 import { passiveNoticeContext } from "../../../src/contracts/conversations/passive-notice";
 import { internalInputEntryType } from "../../../src/services/pi/runtime/internal-input-projection";
+import {
+  createLiveMessageProjector,
+  projectSessionEntries,
+} from "../../../src/services/pi/runtime/session-projection";
+import { updateBatchReminder } from "../../../src/contracts/conversations/update-batch";
 import { projectConversationDisplay } from "../../../src/services/pi/runtime/conversation-display-projection";
 import { forkDisplayProvenanceEntryType } from "../../../src/services/pi/runtime/fork-display-provenance";
 import { appendToolCompactedBranch } from "../../../src/services/pi/runtime/session-tool-compaction";
@@ -73,6 +78,79 @@ function summarized(parts: ReturnType<typeof projectConversationDisplay>) {
 }
 
 describe("Conversation display projection after tool compaction", () => {
+  it.each(["UserWithReminders", "UpdateBatch"] as const)(
+    "projects each passive sender once with stable provenance in live and replay (%s)",
+    (kind) => {
+      const notices = [
+        "cd06817e-b37a-44f6-84bb-76c380a42e79",
+        "bd06817e-b37a-44f6-84bb-76c380a42e79",
+      ].map((id, index) => ({
+        id,
+        text: "## Project vision\n\n**Keep Markdown**\n\n- Discuss next",
+        crossSession: {
+          version: 1 as const,
+          messageId: id,
+          threadId: "ad06817e-b37a-44f6-84bb-76c380a42e79",
+          sequence: index + 1,
+          expectsResponse: false,
+          resultDelivery: "ignore" as const,
+          sender: { kind: "cake-chat" as const, sessionId: "global", title: "Cake Chat" },
+        },
+      }));
+      const origin = {
+        _tag: kind,
+        text: kind === "UserWithReminders" ? "My question" : updateBatchReminder,
+        notices,
+      };
+      const message = {
+        role: "user" as const,
+        content: `${origin.text}\n\n${passiveNoticeContext(notices)}`,
+        timestamp: 1,
+      };
+      const live = createLiveMessageProjector({ internalInput: () => origin })({
+        type: "message_start",
+        message,
+      });
+      const session = SessionManager.inMemory("/project");
+      session.appendCustomEntry(internalInputEntryType, { timestamp: 1, origin });
+      session.appendMessage(message);
+      const replay = projectConversationDisplay(session);
+      const authored = (parts: typeof live) =>
+        parts.filter((part) => part.kind === "text" && part.crossSession);
+      expect(authored(live)).toEqual(authored(replay));
+      expect(authored(replay)).toEqual(
+        notices.map((notice) =>
+          expect.objectContaining({
+            id: `passive-${notice.id}`,
+            renderKey: `passive-${notice.id}`,
+            text: notice.text,
+            crossSession: notice.crossSession,
+            renderAs: "markdown",
+          }),
+        ),
+      );
+      expect(replay.filter((part) => part.kind === "text" && !part.crossSession)).toEqual(
+        kind === "UserWithReminders" ? [expect.objectContaining({ text: "My question" })] : [],
+      );
+      expect(replay.filter((part) => part.kind === "context")).not.toContainEqual(
+        expect.objectContaining({ title: "Cake · batched updates" }),
+      );
+      // Same words without typed application provenance remain visible user-authored context.
+      expect(
+        projectSessionEntries([
+          {
+            type: "message",
+            id: "quoted",
+            parentId: null,
+            timestamp: new Date(1).toISOString(),
+            message: { ...message, content: updateBatchReminder },
+          },
+        ]),
+      ).toContainEqual(
+        expect.objectContaining({ kind: "context", title: "Cake · batched updates" }),
+      );
+    },
+  );
   it("preserves actual user input and typed passive context across persistence and tool compaction", () => {
     const id = "cd06817e-b37a-44f6-84bb-76c380a42e79";
     const notice = {
@@ -108,22 +186,23 @@ describe("Conversation display projection after tool compaction", () => {
     const leaf = session.appendMessage(assistant([{ type: "text", text: "The answer." }]));
     const parts = projectConversationDisplay(session);
     expect(parts.filter((part) => part.kind === "text" && part.role === "user")).toEqual([
+      expect.objectContaining({
+        text: notice.text,
+        crossSession: notice.crossSession,
+        renderAs: "markdown",
+      }),
       expect.objectContaining({ text: origin.text }),
     ]);
-    expect(parts).toContainEqual(
-      expect.objectContaining({
-        kind: "context",
-        title: "Cake · passive updates",
-        text: "Review: Optional review ready.",
-      }),
-    );
     expect(JSON.stringify(parts)).not.toContain("Cake passive updates (agent-authored data");
     appendToolCompactedBranch(session, leaf);
     expect(
       projectConversationDisplay(session).filter(
         (part) => part.kind === "text" && part.role === "user",
       ),
-    ).toEqual([expect.objectContaining({ text: origin.text })]);
+    ).toEqual([
+      expect.objectContaining({ text: notice.text, crossSession: notice.crossSession }),
+      expect.objectContaining({ text: origin.text }),
+    ]);
     const replayed = session
       .getBranch()
       .filter((entry) => entry.type === "message" && entry.message.role === "user");

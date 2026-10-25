@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { InternalInput } from "../../../contracts/conversations/internal-input";
-import { internalInputPart } from "./internal-input-projection";
+import { internalInputPart, passiveNoticeParts } from "./internal-input-projection";
 import {
   addResponseModeReminder,
   responseModeFromReminder,
@@ -800,31 +800,35 @@ export function createCakeSessionRuntimeTurnController(input: {
           if (id) payloads.set(id, item);
         });
       }
-      return parts.map((part) => {
+      return parts.flatMap((part) => {
         const item = payloads.get(part.id);
         const internal = item?.turnId ? turnCompletions.internalInputById(item.turnId) : undefined;
-        if (internal?._tag === "WorkboardDelivery" || internal?._tag === "UpdateBatch")
-          return internalInputPart(internal, part.id);
-        return part.kind === "text" && item
-          ? {
-              ...part,
-              text:
-                part.crossSession || part.scheduled
-                  ? part.text
-                  : internal?._tag === "UserWithReminders"
-                    ? internal.text
-                    : item.text,
-              renderAs: item.renderUserMessageAsMarkdown ? ("markdown" as const) : part.renderAs,
-              queuedInput: {
-                itemId: item.itemId,
-                ...(item.turnId ? { turnId: item.turnId } : null),
-                ...(item.command ? { command: item.command } : null),
-                text: internal?._tag === "UserWithReminders" ? internal.text : item.text,
-                attachments: item.attachments,
-                renderUserMessageAsMarkdown: item.renderUserMessageAsMarkdown,
-              },
-            }
-          : part;
+        if (internal?._tag === "WorkboardDelivery") return [internalInputPart(internal, part.id)];
+        const notices = passiveNoticeParts(internal);
+        if (internal?._tag === "UpdateBatch") return notices;
+        return [
+          ...notices,
+          part.kind === "text" && item
+            ? {
+                ...part,
+                text:
+                  part.crossSession || part.scheduled
+                    ? part.text
+                    : internal?._tag === "UserWithReminders"
+                      ? internal.text
+                      : item.text,
+                renderAs: item.renderUserMessageAsMarkdown ? ("markdown" as const) : part.renderAs,
+                queuedInput: {
+                  itemId: item.itemId,
+                  ...(item.turnId ? { turnId: item.turnId } : null),
+                  ...(item.command ? { command: item.command } : null),
+                  text: internal?._tag === "UserWithReminders" ? internal.text : item.text,
+                  attachments: item.attachments,
+                  renderUserMessageAsMarkdown: item.renderUserMessageAsMarkdown,
+                },
+              }
+            : part,
+        ];
       });
     },
     executingTurnIds: () => turnCompletions.executingIds(),

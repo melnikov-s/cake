@@ -52,7 +52,7 @@ import { abortDurableActiveTurn, createDurableConversationQueue } from "./durabl
 import {
   DURABLE_SIDE_CHAT_NOTE,
   durableInputText,
-  durableQueuedPart,
+  durableQueuedParts,
   withoutDurableSideChatNote,
 } from "./durable-input-presentation";
 
@@ -309,7 +309,7 @@ export function createDurableSideChats(host: DurableSideChatHost): DurableSideCh
           for (const item of items)
             if (item.mode !== "write") {
               const id = await requestId(item);
-              parts.push(durableQueuedPart(item, id));
+              parts.push(...durableQueuedParts(item, id));
             }
           const sums = Object.values(usage?.models ?? {}).concat(Object.values(usage?.tools ?? {}));
           const tokens = sums.reduce(

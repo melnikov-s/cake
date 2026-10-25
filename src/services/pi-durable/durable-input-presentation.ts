@@ -1,6 +1,6 @@
 import { Option, Schema } from "effect";
 import { InternalInput, withoutPassiveNotices } from "../../contracts/conversations/internal-input";
-import { internalInputPart } from "../pi/runtime/internal-input-projection";
+import { internalInputPart, passiveNoticeParts } from "../pi/runtime/internal-input-projection";
 import type { Message } from "@earendil-works/pi-durable-ai";
 import {
   attachmentSchema,
@@ -179,26 +179,30 @@ export const durableQueuedDisplayText = (content: Blocks) =>
     ),
   ).text;
 
-/** One queue card for the whole input, never its model-only attachment envelope. */
-export function durableQueuedPart(
+/** One editable user queue card plus attributed FYIs; synthetic batch transport stays model-only. */
+export function durableQueuedParts(
   item: Extract<InboxItem, { content: unknown }>,
   id: string,
-): UiPart {
+): UiPart[] {
   const internal = durableQueuedPresentation(item.content).internal;
-  if (internal?._tag === "WorkboardDelivery" || internal?._tag === "UpdateBatch")
-    return internalInputPart(internal, `queued-${id}`);
+  if (internal?._tag === "WorkboardDelivery") return [internalInputPart(internal, `queued-${id}`)];
+  const notices = passiveNoticeParts(internal);
+  if (internal?._tag === "UpdateBatch") return notices;
   const display = queuedUserMessageDisplay(durableQueuedDisplayText(item.content));
   const { subagentReport } = durableQueuedPresentation(item.content);
-  return {
-    id: `queued-${id}`,
-    kind: "text",
-    role: "user",
-    ...display,
-    status: "complete",
-    deliveryState: item.mode === "steer" ? "steering" : "queued",
-    ...(subagentReport ? { subagentReport } : null),
-    queuedInput: durableQueuedInput(item, id),
-  };
+  return [
+    ...notices,
+    {
+      id: `queued-${id}`,
+      kind: "text",
+      role: "user",
+      ...display,
+      status: "complete",
+      deliveryState: item.mode === "steer" ? "steering" : "queued",
+      ...(subagentReport ? { subagentReport } : null),
+      queuedInput: durableQueuedInput(item, id),
+    },
+  ];
 }
 
 /** The editable queued-input projection of one durable inbox item. */

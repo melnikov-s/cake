@@ -3,6 +3,7 @@ import {
   emptyProjectTodos,
 } from "../../../../src/contracts/projects/project-todos";
 import { passiveNoticeContext } from "../../../../src/contracts/conversations/passive-notice";
+import { updateBatchReminder } from "../../../../src/contracts/conversations/update-batch";
 import { sessionNotificationEntries } from "../../../../src/contracts/cake-chats/session-digest-reminder";
 import { projectTodoReceipt } from "../../../../src/contracts/projects/project-todo-context";
 import { createDurableConversationQueue } from "../../../../src/services/pi-durable/durable-chat-queue";
@@ -47,7 +48,7 @@ import {
   durableInputText,
   durableInputPresentation,
   markDurableInputSteering,
-  durableQueuedPart,
+  durableQueuedParts,
 } from "../../../../src/services/pi-durable/durable-input-presentation";
 import {
   investigatorOrigin,
@@ -895,65 +896,87 @@ it("adds voice guidance only on transitions, recovering the mode from durable st
   ]);
 });
 
-it("keeps passive FYIs beside the actual user message across durable queue and SQLite reload", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "cake-passive-input-"));
-  cleanup.push(() => rm(directory, { recursive: true, force: true }));
-  const database = join(directory, "chat.sqlite");
-  const id = "cd06817e-b37a-44f6-84bb-76c380a42e79";
-  const notice = {
-    id,
-    text: "Optional review ready.",
-    crossSession: {
-      version: 1 as const,
-      messageId: id,
-      threadId: id,
-      sequence: 1,
-      expectsResponse: false,
-      resultDelivery: "ignore" as const,
-      sender: { sessionId: "worker", title: "Review", kind: "project-session" as const },
-    },
-  };
-  const origin = {
-    _tag: "UserWithReminders" as const,
-    text: "Actual user question",
-    notices: [notice],
-  };
-  const encoded = durableInputText(
-    `${origin.text}\n\n${passiveNoticeContext(origin.notices)}`,
-    [],
-    false,
-    false,
-    undefined,
-    undefined,
-    origin,
-  );
-  const f = await fixture(undefined, 20_000, await openNodeSqliteStorage(database));
-  const submitted = await f.submit(encoded, "user-with-fyi");
-  await submitted.wait(BACKGROUND_CONTEXT);
-  const parts = (await readDurableOriginalPage(f.engine.root)).parts;
-  expect(parts.filter((part) => part.kind === "text" && part.role === "user")).toEqual([
-    expect.objectContaining({ text: origin.text }),
-  ]);
-  expect(parts).toContainEqual(
-    expect.objectContaining({
-      kind: "context",
-      title: "Cake · passive updates",
-      text: "Review: Optional review ready.",
-    }),
-  );
-  expect(
-    durableQueuedPart({ id: submitted.id, mode: "followUp", content: encoded }, "user-with-fyi"),
-  ).toMatchObject({
-    kind: "text",
-    role: "user",
-    text: origin.text,
-    queuedInput: { text: origin.text },
-  });
-  await f.engine.close();
-  cleanup.pop();
-  const reopened = await fixture(undefined, 20_000, await openNodeSqliteStorage(database));
-  expect((await readDurableOriginalPage(reopened.engine.root)).parts).toEqual(parts);
-});
+it.each(["UserWithReminders", "UpdateBatch"] as const)(
+  "renders attributed passive FYIs across durable queue, consumed history and SQLite reload (%s)",
+  async (kind) => {
+    const directory = await mkdtemp(join(tmpdir(), "cake-passive-input-"));
+    cleanup.push(() => rm(directory, { recursive: true, force: true }));
+    const database = join(directory, "chat.sqlite");
+    const id = "cd06817e-b37a-44f6-84bb-76c380a42e79";
+    const notice = {
+      id,
+      text: "## Project vision\n\n**Optional review ready.**\n\n- Keep this passive.",
+      crossSession: {
+        version: 1 as const,
+        messageId: id,
+        threadId: id,
+        sequence: 1,
+        expectsResponse: false,
+        resultDelivery: "ignore" as const,
+        sender: { sessionId: "worker", title: "Review", kind: "project-session" as const },
+      },
+    };
+    const origin = {
+      _tag: kind,
+      text: kind === "UserWithReminders" ? "Actual user question" : updateBatchReminder,
+      notices: [notice],
+    };
+    const encoded = durableInputText(
+      `${origin.text}\n\n${passiveNoticeContext(origin.notices)}`,
+      [],
+      false,
+      false,
+      undefined,
+      undefined,
+      origin,
+    );
+    const f = await fixture(undefined, 20_000, await openNodeSqliteStorage(database));
+    const submitted = await f.submit(encoded, "user-with-fyi");
+    await submitted.wait(BACKGROUND_CONTEXT);
+    const parts = (await readDurableOriginalPage(f.engine.root)).parts;
+    const authored = {
+      id: `passive-${id}`,
+      kind: "text",
+      role: "user",
+      text: notice.text,
+      crossSession: notice.crossSession,
+      renderAs: "markdown",
+    };
+    expect(parts.filter((part) => part.kind === "text" && part.crossSession)).toEqual([
+      expect.objectContaining(authored),
+    ]);
+    expect(
+      parts.filter((part) => part.kind === "text" && part.role === "user" && !part.crossSession),
+    ).toEqual(kind === "UserWithReminders" ? [expect.objectContaining({ text: origin.text })] : []);
+    expect(parts.filter((part) => part.kind === "context")).not.toContainEqual(
+      expect.objectContaining({ title: "Cake · batched updates" }),
+    );
+    expect(JSON.stringify(f.requests)).toContain("Cake passive updates (agent-authored data");
+    if (kind === "UpdateBatch")
+      expect(JSON.stringify(f.requests)).toContain("Cake batched updates");
+    const queued = durableQueuedParts(
+      { id: submitted.id, mode: "followUp", content: encoded },
+      "user-with-fyi",
+    );
+    expect(queued).toEqual(
+      kind === "UserWithReminders"
+        ? [
+            expect.objectContaining(authored),
+            expect.objectContaining({
+              kind: "text",
+              role: "user",
+              text: origin.text,
+              queuedInput: expect.objectContaining({ text: origin.text }),
+            }),
+          ]
+        : [expect.objectContaining(authored)],
+    );
+    await f.engine.close();
+    cleanup.pop();
+    const reopened = await fixture(undefined, 20_000, await openNodeSqliteStorage(database));
+    expect((await readDurableOriginalPage(reopened.engine.root)).parts).toEqual(parts);
+  },
+);
 
 it("keeps typed Workboard delivery as application context across durable queues, SQLite reload, and user quotations", async () => {
   const directory = await mkdtemp(join(tmpdir(), "cake-internal-input-"));
@@ -979,11 +1002,11 @@ it("keeps typed Workboard delivery as application context across durable queues,
   );
   expect(JSON.stringify(parts)).not.toContain("family-board-private");
   // Inbox presentation consumes the same persisted admission metadata, including after steering edits.
-  const queued = durableQueuedPart(
+  const queued = durableQueuedParts(
     { id: submission.id, mode: "followUp", content: encoded },
     "board-wake",
   );
-  expect(queued).toMatchObject({ kind: "context", title: "Workboard" });
+  expect(queued).toMatchObject([{ kind: "context", title: "Workboard" }]);
   expect(JSON.stringify(queued)).not.toContain("system-reminder");
   await f.engine.close();
   cleanup.pop();

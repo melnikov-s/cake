@@ -2,7 +2,11 @@ import {
   withoutPassiveNotices,
   type InternalInput,
 } from "../../../contracts/conversations/internal-input";
-import { internalInputOrigins, internalInputPart } from "./internal-input-projection";
+import {
+  internalInputOrigins,
+  internalInputPart,
+  passiveNoticeParts,
+} from "./internal-input-projection";
 import {
   parseSkillBlock,
   type AgentSessionEvent,
@@ -373,17 +377,17 @@ function partsFromMessage(
       withoutPassiveNotices(textFromContent(content), internal),
     );
     const envelope = parseUserMessageEnvelope(context.text);
-    const reminderParts = context.reminders.map((reminder, index): UiPart => ({
-      id: `${baseId}-context-${index}`,
-      kind: "context",
-      title: reminder.title,
-      text: reminder.text,
-    }));
-    if (
-      internal?._tag === "UserWithReminders" ||
-      (internal?._tag === "UpdateBatch" && internal.notices.length)
-    )
-      reminderParts.push(internalInputPart(internal, `${baseId}-passive`));
+    const reminderParts = context.reminders
+      .filter(
+        (reminder) =>
+          internal?._tag !== "UpdateBatch" || reminder.title !== "Cake · batched updates",
+      )
+      .map((reminder, index): UiPart => ({
+        id: `${baseId}-context-${index}`,
+        kind: "context",
+        title: reminder.title,
+        text: reminder.text,
+      }));
     const parsedContext = parseContextAttachmentBlocks(envelope.text);
     const text = parsedContext.text;
     const renderAsMarkdown =
@@ -526,8 +530,8 @@ function partsFromMessage(
         text: "",
         status: "complete",
       });
-    // Attached application context precedes this input in both live and persisted views.
-    return [...reminderParts, ...parts];
+    // Sender-authored FYIs and remaining context precede the actual user input in every view.
+    return [...reminderParts, ...passiveNoticeParts(internal), ...parts];
   }
 
   if (role === "assistant" && Array.isArray(content)) {
