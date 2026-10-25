@@ -443,14 +443,23 @@ test("size-result commits do not republish native scroll geometry", async ({
     try {
       // Deliver a real authority update and flush its React commit, before the
       // browser delivers any queued scroll or ResizeObserver notifications.
-      (Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture).stream();
-      return reads;
+      const fixture = Reflect.get(window, "transcriptFixture") as TranscriptOwnershipFixture;
+      const readsPerUpdate: number[] = [];
+      for (let update = 0; update < 20; update++) {
+        reads = 0;
+        fixture.stream();
+        readsPerUpdate.push(reads);
+      }
+      return readsPerUpdate;
     } finally {
       Reflect.deleteProperty(element, "offsetHeight");
     }
   });
-  expect(reads).toBe(0);
+  expect(reads).toEqual(Array(20).fill(0));
   await expect.poll(() => gap(transcript)).toBeLessThanOrEqual(1);
+  // Streaming must keep the list virtualized rather than settling by mounting
+  // every row or dropping the reader's bottom position.
+  expect(await transcript.locator('[data-slot="transcript-item"]').count()).toBeLessThan(48);
 });
 
 test("layout commits never undo user movement before its scroll event", async ({

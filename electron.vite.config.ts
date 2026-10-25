@@ -6,6 +6,9 @@ import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 
 import { buildIdentity } from "./scripts/build-identity.mjs";
 import { buildNativeAssets } from "./scripts/native-build-mode.mjs";
+import { verifyVirtuosoPatch } from "./scripts/verify-virtuoso-patch.mjs";
+
+verifyVirtuosoPatch();
 const buildDefine = { __CAKE_BUILD_ID__: JSON.stringify(buildIdentity()) };
 
 const manualReload = process.env.CAKE_MANUAL_RELOAD === "1";
