@@ -8,7 +8,6 @@ import type { Annotation, ModelPreset } from "../../contracts/conversations/sess
 import type { Conversation } from "../models/Conversation";
 import type { DiscussionCatalog } from "../models/DiscussionCatalog";
 import { describeError } from "../lib/error-details";
-import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import type { ChatConfigurationStore } from "./ChatConfigurationStore";
 import { ClientContext } from "./context/ClientContext";
 import { DiscussionSessionStore } from "./DiscussionSessionStore";
@@ -30,7 +29,6 @@ export interface CakeChatSideChatsStoreProps {
   operations: SessionOperationCoordinatorStore;
   modelPresets(): readonly ModelPreset[];
   openModelPresetSettings(): void;
-  settings?(): AppearanceSettingsStore | undefined;
 }
 
 /**
@@ -74,7 +72,7 @@ export class CakeChatSideChatsStore
         operations: this.props.operations,
         modelPresets: this.props.modelPresets,
         openModelPresetSettings: this.props.openModelPresetSettings,
-        settings: this.props.settings,
+
         setResolved: (resolved) => this.resolveThread(thread.id, resolved),
       }),
     );

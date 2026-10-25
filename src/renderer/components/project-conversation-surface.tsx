@@ -45,12 +45,12 @@ export const ProjectConversationSurface = observer(function ProjectConversationS
       paneError?.message ??
       paneSession.conversationSessionStore.composerStore.error ??
       paneSession.conversationSessionStore.configurationStore.error ??
-      paneSession.interviewError?.error;
+      paneSession.conversationSessionStore.interviewStore.error?.error;
     const errorDetails = paneError
       ? paneError.details
       : (paneSession.conversationSessionStore.composerStore.errorDetails ??
         paneSession.conversationSessionStore.configurationStore.errorDetails ??
-        paneSession.interviewError?.errorDetails);
+        paneSession.conversationSessionStore.interviewStore.error?.errorDetails);
     return {
       transcriptTransition: {
         contentKey: paneSession.transcriptContinuityKey ?? paneSession.sessionId,
@@ -86,7 +86,11 @@ export const ProjectConversationSurface = observer(function ProjectConversationS
           : undefined,
       composerContent: root.sessionCatalogStore.find(paneSession.sessionId)
         ?.resolved ? undefined : (
-        <BlockingInterviews session={paneSession} inlineWidgets={root.inlineWidgetStore} />
+        <BlockingInterviews
+          interviews={paneSession.conversationSessionStore.interviewStore.interviews}
+          parts={paneSession.canonicalParts}
+          inlineWidgets={root.inlineWidgetStore}
+        />
       ),
       composerLeadingAccessory:
         settings.appearance.sessionAvatarsEnabled && !paneSession.isForkPreview

@@ -14,7 +14,6 @@ import { ClientContext } from "./context/ClientContext";
 import { ConversationHistoryStore } from "./ConversationHistoryStore";
 import { ConversationSessionStore } from "./ConversationSessionStore";
 import type { ComposerDeliveryInput } from "./ConversationComposerStore";
-import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import type { CakeChatPendingSessionsStore } from "./CakeChatPendingSessionsStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { CakeChatTarget } from "../../contracts/cake-chats/cake-chat-data";
@@ -56,7 +55,6 @@ export interface CakeChatSessionStoreProps {
   operations: SessionOperationCoordinatorStore;
   modelPresets(): readonly ModelPreset[];
   openModelPresetSettings(): void;
-  settings?(): AppearanceSettingsStore | undefined;
 }
 
 /** Owns the configuration and shared conversation input workflow for one Cake Chat session. */
@@ -193,7 +191,6 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       operations: this.props.operations,
       modelPresets: this.props.modelPresets,
       openModelPresetSettings: this.props.openModelPresetSettings,
-      settings: this.props.settings,
     });
   }
 
@@ -369,7 +366,6 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       },
       modelPresets: this.props.modelPresets,
       openModelPresetSettings: this.props.openModelPresetSettings,
-      settings: this.props.settings,
     });
   }
 

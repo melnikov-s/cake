@@ -28,7 +28,11 @@ export const ProjectWorkspaceSurface = observer(function ProjectWorkspaceSurface
         }
         projectComposerHeader={<ProjectComposerHeader session={session} recoverSavedDraft />}
         projectComposerContent={
-          <BlockingInterviews session={session} inlineWidgets={root.inlineWidgetStore} />
+          <BlockingInterviews
+            interviews={session.conversationSessionStore.interviewStore.interviews}
+            parts={session.canonicalParts}
+            inlineWidgets={root.inlineWidgetStore}
+          />
         }
         projectComposerLeadingAccessory={
           root.settingsStore.appearance.sessionAvatarsEnabled

@@ -7,7 +7,6 @@ import type { DiscussionCatalog } from "../models/DiscussionCatalog";
 import type { SubagentCatalog } from "../models/SubagentCatalog";
 import type { WorkflowCatalog } from "../models/WorkflowCatalog";
 import type { ScheduledMessageCatalog } from "../models/ScheduledMessageCatalog";
-import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { ProjectPendingSessionsStore, type SavedDraftClient } from "./ProjectPendingSessionsStore";
 import { ProjectSessionStore, type SessionTarget } from "./ProjectSessionStore";
 import type { ReviewsStore } from "./ReviewsStore";
@@ -38,7 +37,6 @@ export interface SessionRegistryStoreProps {
   assistantTools?(): readonly CakeControlTool[];
   openModelPresetSettings?(): void;
   retirement: WorktreeStoreProps["retirement"];
-  settings?(): AppearanceSettingsStore | undefined;
 }
 
 /** Owns the keyed collection and stable identity of loaded Project Session Stores for a window. */
@@ -105,7 +103,6 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         assistantTools: () => this.props.assistantTools?.() ?? [],
         openModelPresetSettings: () => this.props.openModelPresetSettings?.(),
         retirement: this.props.retirement,
-        settings: () => this.props.settings?.(),
       }),
     );
   }

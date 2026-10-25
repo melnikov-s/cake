@@ -13,6 +13,7 @@ import {
 import { SubagentStorage, type SubagentRecord } from "../storage/SubagentStorage";
 import type { Deferred, Schema } from "effect";
 import type { TaskInputReference } from "../../contracts/conversations/task-input";
+import type { UiPart } from "../../contracts/conversations/session-contract";
 import type { SubagentAttachmentAccess } from "../../contracts/subagents/subagent-attachments";
 import type { SubagentMessageAccess } from "../../contracts/subagents/subagent-messages";
 import type {
@@ -123,6 +124,8 @@ export const SubagentCoordinatorLive = Layer.effect(
   }),
 );
 
+export const queuedWorkerInputId = (turnId: string) => `worker-input:${turnId}`;
+
 export const activityOf = (handle: SubagentHandleState): SubagentActivity => {
   const activity: SubagentActivity = {
     parentSessionId: handle.parentSessionId,
@@ -135,7 +138,28 @@ export const activityOf = (handle: SubagentHandleState): SubagentActivity => {
     resolvedModel: handle.resolvedModel,
     fastMode: handle.fastMode,
     streaming: handle.streaming,
-    parts: handle.parts,
+    parts:
+      handle.status === "queued"
+        ? [
+            ...handle.parts,
+            ...handle.recovery.pendingInputs.slice(1).map((input): UiPart => ({
+              id: queuedWorkerInputId(input.turnId),
+              kind: "text",
+              role: "user",
+              text: input.text,
+              status: "complete",
+              deliveryState: "queued",
+              ...(input.markdown ? { renderAs: "markdown" as const } : null),
+              queuedInput: {
+                itemId: input.turnId,
+                turnId: input.turnId,
+                text: input.text,
+                attachments: [...input.attachments],
+                renderUserMessageAsMarkdown: input.markdown,
+              },
+            })),
+          ]
+        : handle.parts,
   };
   if (handle.projectPath) Object.assign(activity, { projectPath: handle.projectPath });
   if (handle.failurePhase) Object.assign(activity, { failurePhase: handle.failurePhase });

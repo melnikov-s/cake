@@ -61,7 +61,7 @@ function setup() {
     },
   };
   const receive = (request = record) =>
-    discussion.receive({
+    discussion.conversationSessionStore.receive({
       type: "interview-requested",
       operationId: "operation",
       interviewRequestId: "request",
@@ -88,15 +88,15 @@ function setup() {
 it("keeps sidecar interview identity and partial answers when live metadata arrives, and responds only to that sidecar", async () => {
   using fixture = setup();
   fixture.receive({ ...fixture.record, sessionId: CAKE_CHAT_SESSION_ID });
-  expect(fixture.discussion.interviews).toHaveLength(0);
-  expect(fixture.discussion.waitingForInterview).toBe(false);
+  expect(fixture.discussion.conversationSessionStore.interviewStore.interviews).toHaveLength(0);
+  expect(fixture.discussion.conversationSessionStore.interviewStore.waiting).toBe(false);
   fixture.receive();
-  const interview = fixture.discussion.interviews[0]!;
+  const interview = fixture.discussion.conversationSessionStore.interviewStore.interviews[0]!;
   interview.setValue("scope", "Only this side chat");
   fixture.project();
-  expect(fixture.discussion.interviews[0]).toBe(interview);
+  expect(fixture.discussion.conversationSessionStore.interviewStore.interviews[0]).toBe(interview);
   expect(interview.values.scope).toBe("Only this side chat");
-  expect(fixture.discussion.waitingForInterview).toBe(true);
+  expect(fixture.discussion.conversationSessionStore.interviewStore.waiting).toBe(true);
   await interview.respond({ scope: "Only this side chat" });
   expect(fixture.respond).toHaveBeenCalledExactlyOnceWith(
     {
@@ -108,18 +108,20 @@ it("keeps sidecar interview identity and partial answers when live metadata arri
     },
     { signal: expect.any(AbortSignal) },
   );
-  expect(fixture.discussion.waitingForInterview).toBe(false);
-  expect(fixture.discussion.interviews[0]?.submitted).toBe(true);
+  expect(fixture.discussion.conversationSessionStore.interviewStore.waiting).toBe(false);
+  expect(fixture.discussion.conversationSessionStore.interviewStore.interviews[0]?.submitted).toBe(
+    true,
+  );
 });
 
 it("removes a settled sidecar interview's live correlation without removing its historical result", () => {
   using fixture = setup();
   fixture.receive();
   fixture.project();
-  const interview = fixture.discussion.interviews[0];
+  const interview = fixture.discussion.conversationSessionStore.interviewStore.interviews[0];
   fixture.project(true);
-  expect(fixture.discussion.waitingForInterview).toBe(false);
-  expect(fixture.discussion.interviews[0]).toBe(interview);
+  expect(fixture.discussion.conversationSessionStore.interviewStore.waiting).toBe(false);
+  expect(fixture.discussion.conversationSessionStore.interviewStore.interviews[0]).toBe(interview);
   expect(interview?.requested).toBe(false);
   expect(interview?.cancelled).toBe(true);
 });

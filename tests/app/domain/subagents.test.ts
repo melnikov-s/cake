@@ -52,7 +52,10 @@ import {
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
 } from "../../../src/contracts/application/application-data";
-import type { ConversationSnapshot } from "../../../src/contracts/conversations/session-contract";
+import {
+  uiPartSchema,
+  type ConversationSnapshot,
+} from "../../../src/contracts/conversations/session-contract";
 import {
   makeCakeSessionRuntimesLayer,
   PiSessionError,
@@ -145,6 +148,11 @@ interface Fixture {
   readonly parentOptions: CakeSessionRuntimeAcquireOptions;
   readonly childStarted: Queue.Queue<string>;
   readonly persisted: Map<string, () => ConversationSnapshot>;
+  readonly childTurns: Queue.Queue<{
+    sessionId: string;
+    text: string;
+    gate: Deferred.Deferred<void>;
+  }>;
   readonly childGates: Ref.Ref<ReadonlyMap<string, Deferred.Deferred<void>>>;
   readonly constructions: Ref.Ref<number>;
   readonly constructedOptions: Ref.Ref<ReadonlyArray<CakeSessionRuntimeSetup>>;
@@ -167,6 +175,11 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
 ): Effect.fn.Return<Fixture> {
   const persisted = savedTranscripts;
   const childStarted = yield* Queue.unbounded<string>();
+  const childTurns = yield* Queue.unbounded<{
+    sessionId: string;
+    text: string;
+    gate: Deferred.Deferred<void>;
+  }>();
   const childGates = yield* Ref.make<ReadonlyMap<string, Deferred.Deferred<void>>>(new Map());
   const constructions = yield* Ref.make(0);
   const constructedOptions = yield* Ref.make<ReadonlyArray<CakeSessionRuntimeSetup>>([]);
@@ -280,6 +293,7 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
         await Effect.runPromise(Ref.update(maximumActive, (maximum) => Math.max(maximum, now)));
         streaming = true;
         await Effect.runPromise(Queue.offer(childStarted, sessionId));
+        await Effect.runPromise(Queue.offer(childTurns, { sessionId, text, gate }));
         await Effect.runPromise(Deferred.await(gate));
         activeTurnIds = turnId ? activeTurnIds.filter((id) => id !== turnId) : activeTurnIds;
         streaming = false;
@@ -408,6 +422,7 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
     layer,
     parentOptions,
     childStarted,
+    childTurns,
     persisted,
     childGates,
     constructions,
@@ -1911,6 +1926,86 @@ describe("Subagents", () => {
     }),
   );
 
+  it.effect("queues a human follow-up before the worker acquires its slot", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture();
+      yield* Effect.gen(function* () {
+        const receipts = yield* Effect.forEach([1, 2, 3, 4, 5], (index) =>
+          subagents.start({ task: `Task ${index}` }, parent(fixture)),
+        );
+        const running = yield* Effect.forEach([1, 2, 3, 4], () => Queue.take(fixture.childTurns));
+        const worker = receipts[4]!;
+        const first = yield* subagents.submitUserInput({
+          parentSessionId: "parent",
+          handleId: worker.handleId,
+          text: "**First follow-up**",
+          renderUserMessageAsMarkdown: true,
+        });
+        const canceled = yield* subagents.submitUserInput({
+          parentSessionId: "parent",
+          handleId: worker.handleId,
+          text: "Cancel before starting",
+          renderUserMessageAsMarkdown: false,
+        });
+        const second = yield* subagents.submitUserInput({
+          parentSessionId: "parent",
+          handleId: worker.handleId,
+          text: "Second follow-up",
+          renderUserMessageAsMarkdown: false,
+        });
+        const update = yield* Stream.runHead(yield* subagents.observe("parent"));
+        assert.equal(update._tag, "Some");
+        assert.ok(update._tag === "Some" && update.value._tag === "Snapshot");
+        const activity = update.value.activities.find((item) => item.handleId === worker.handleId)!;
+        const parts = activity.parts.map((part) => Schema.decodeUnknownSync(uiPartSchema)(part));
+        assert.deepEqual(
+          parts.map((part) => (part.kind === "text" ? part.text : "")),
+          ["**First follow-up**", "Cancel before starting", "Second follow-up"],
+        );
+        const canceledPart = parts.find(
+          (part) => part.kind === "text" && part.queuedInput?.turnId === canceled.turnId,
+        )!;
+        yield* subagents.editQueuedUserInput({
+          parentSessionId: "parent",
+          handleId: worker.handleId,
+          partId: canceledPart.id,
+          operation: "remove",
+        });
+        const coordinator = yield* SubagentCoordinator;
+        const saved = (yield* coordinator.storage.list()).find(
+          (item) => item.handleId === worker.handleId,
+        )!;
+        assert.deepEqual(
+          saved.pendingInputs.slice(1).map((item) => item.turnId),
+          [first.turnId, second.turnId],
+        );
+        assert.equal(yield* Ref.get(fixture.constructions), 4);
+        yield* Deferred.succeed(running[0]!.gate, undefined);
+        const admitted = yield* Effect.forEach([1, 2, 3], () => Queue.take(fixture.childTurns));
+        assert.equal(new Set(admitted.map((turn) => turn.sessionId)).size, 1);
+        assert.ok(parseCrossSessionMessage(admitted[0]!.text)?.text.includes("Task 5"));
+        assert.deepEqual(
+          admitted.slice(1).map((turn) => turn.text),
+          ["**First follow-up**", "Second follow-up"],
+        );
+        const prompts = (yield* Ref.get(fixture.childPrompts)).filter(
+          (item) => item.sessionId === admitted[0]!.sessionId,
+        );
+        assert.deepEqual(
+          prompts.slice(1).map((item) => [item.delivery, item.markdown]),
+          [
+            ["follow-up", true],
+            ["follow-up", false],
+          ],
+        );
+        yield* Effect.forEach(admitted, (turn) => Deferred.succeed(turn.gate, undefined));
+        const result = yield* subagents.wait("parent", worker.handleId);
+        assert.equal(Schema.decodeUnknownSync(subagents.SubagentResult)(result).status, "complete");
+        yield* Effect.forEach(running.slice(1), (turn) => Deferred.succeed(turn.gate, undefined));
+      }).pipe(Effect.provide(fixture.layer));
+    }),
+  );
+
   it.effect("cancels queued work before constructing its private runtime", () =>
     Effect.gen(function* () {
       const fixture = yield* makeFixture();
@@ -1925,7 +2020,18 @@ describe("Subagents", () => {
         );
         const queued = receipts[4];
         assert.ok(queued);
+        yield* subagents.submitUserInput({
+          parentSessionId: "parent",
+          handleId: queued.handleId,
+          text: "Cancel this accepted follow-up with its worker",
+          renderUserMessageAsMarkdown: false,
+        });
         yield* subagents.abort("parent", queued.handleId);
+        const canceled = yield* subagents.wait("parent", queued.handleId);
+        assert.equal(
+          Schema.decodeUnknownSync(subagents.SubagentResult)(canceled).status,
+          "aborted",
+        );
         yield* Effect.forEach(activeIds, (id) => completeChild(fixture, id), { discard: true });
         yield* Effect.yieldNow;
         assert.equal(yield* Ref.get(fixture.constructions), 4);

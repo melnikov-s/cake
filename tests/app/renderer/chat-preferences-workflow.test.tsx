@@ -116,6 +116,13 @@ it("applies Hide thinking to nested workers while respecting each Pi conversatio
   expect(screen.getAllByText("Shared reasoning")).toHaveLength(3);
   await fixture.user.click(screen.getByRole("switch", { name: "Hide thinking" }));
   expect(screen.queryByText("Shared reasoning")).toBeNull();
+  fixture.publish(false);
+  expect(
+    within(screen.getByRole("region", { name: "Parent" })).getByText("Shared reasoning"),
+  ).toBeDefined();
+  expect(
+    within(screen.getByRole("region", { name: "Worker" })).queryByText("Shared reasoning"),
+  ).toBeNull();
   await fixture.user.click(screen.getByRole("switch", { name: "Hide thinking" }));
   expect(screen.getAllByText("Shared reasoning")).toHaveLength(3);
   // An effective per-conversation Pi setting takes precedence over the window default.

@@ -10,6 +10,7 @@ export function projectTranscriptBehaviorFor(
 ): ChatTranscriptBehavior {
   const store = root.projectWorkbenchStore;
   const extensionUi = root.extensionUiStore;
+  const interviews = paneSession.conversationSessionStore.interviewStore;
   const resolved =
     paneSession.isForkPreview ||
     root.sessionCatalogStore.find(paneSession.sessionId)?.resolved === true;
@@ -53,8 +54,8 @@ export function projectTranscriptBehaviorFor(
     waitingForUser:
       !resolved &&
       paneSession.sessionId === root.sessionLayoutStore.focusedSessionId &&
-      Boolean(extensionUi.visibleRequest || paneSession.waitingForInterview),
-    interviews: paneSession.interviews,
+      Boolean(extensionUi.visibleRequest || interviews.waiting),
+    interviews: interviews.interviews,
     messageComments: resolved ? undefined : paneSession.messageCommentsStore,
     subagents: paneSession.subagentActivityStore,
     showSelectionContextMenu: resolved

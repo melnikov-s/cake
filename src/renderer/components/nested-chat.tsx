@@ -30,7 +30,8 @@ export const NestedChat = observer(function NestedChat({
       composerContent={
         behavior.interviews && (
           <BlockingInterviews
-            session={{ interviews: behavior.interviews, canonicalParts: store.parts }}
+            interviews={behavior.interviews}
+            parts={store.parts}
             inlineWidgets={root.inlineWidgetStore}
           />
         )

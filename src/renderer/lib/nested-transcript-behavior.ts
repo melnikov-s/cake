@@ -41,7 +41,7 @@ export function nestedTranscriptBehaviorFor(
                 : location,
             )
         : undefined,
-    interviews: discussion?.interviews,
-    waitingForUser: discussion?.waitingForInterview,
+    interviews: discussion?.conversationSessionStore.interviewStore.interviews,
+    waitingForUser: discussion?.conversationSessionStore.interviewStore.waiting,
   };
 }

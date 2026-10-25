@@ -10,7 +10,6 @@ import type { Conversation } from "../models/Conversation";
 import { ClientContext } from "./context/ClientContext";
 import { ActiveProjectSessionContext } from "./context/ActiveProjectSessionContext";
 import { describeError } from "../lib/error-details";
-import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { ChatStore } from "./ChatStore";
 import { DiscussionSessionStore } from "./DiscussionSessionStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
@@ -24,7 +23,6 @@ export interface ReviewsStoreProps {
   operations: SessionOperationCoordinatorStore;
   modelPresets(): readonly ModelPreset[];
   openModelPresetSettings(): void;
-  settings?(): AppearanceSettingsStore | undefined;
 }
 
 /**
@@ -106,7 +104,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
         operations: this.props.operations,
         modelPresets: this.props.modelPresets,
         openModelPresetSettings: this.props.openModelPresetSettings,
-        settings: this.props.settings,
+
         setResolved: (resolved) => this.resolveThread(thread.id, resolved),
       }),
     );

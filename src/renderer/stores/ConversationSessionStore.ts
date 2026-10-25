@@ -17,7 +17,8 @@ import {
 } from "./ConversationComposerStore";
 import { ChatConfigurationStore, type ChatConfigurationStoreProps } from "./ChatConfigurationStore";
 import { ChatStore, type ChatStoreProps, type QueuedPrompt } from "./ChatStore";
-import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
+import { queuedPrompts } from "../lib/queued-prompts";
+import { ConversationInterviewStore } from "./ConversationInterviewStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import { SideChatStore } from "./SideChatStore";
 import { ContextInspectorStore } from "./ContextInspectorStore";
@@ -87,7 +88,6 @@ export interface ConversationSessionStoreProps {
   chat: ConversationChatCapabilities;
   modelPresets(): readonly ModelPreset[];
   openModelPresetSettings(): void;
-  settings?(): AppearanceSettingsStore | undefined;
 }
 
 /** Owns the common active-conversation children and wiring for one primary Cake session. */
@@ -211,6 +211,16 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
   }
 
   @child
+  get interviewStore(): ConversationInterviewStore {
+    return createStore(ConversationInterviewStore, {
+      sessionId: this.sessionId,
+      parts: () => this.model.uiParts,
+      isStreaming: () => this.streaming,
+      operations: this.props.operations,
+    });
+  }
+
+  @child
   get sideChatStore(): SideChatStore {
     return createStore(SideChatStore, {
       onClose: () => this.composerStore.draftStore.requestFocus(),
@@ -319,12 +329,6 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
       },
       hideThinking: () => Boolean(this.model.piSettings?.hideThinkingBlock),
       error: () => this.error,
-      workLogPresentation: {
-        viewMode: () => this.props.settings?.()?.workLogViewMode,
-        setViewMode: (mode) => this.props.settings?.()?.setWorkLogViewMode(mode),
-        expansion: () => this.props.settings?.()?.workLogsExpansion,
-        setExpansion: (expansion) => this.props.settings?.()?.setWorkLogsExpansion(expansion),
-      },
     });
   }
 
@@ -337,37 +341,12 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
   }
 
   receive(event: StoreEvent) {
-    this.composerStore.receive(event);
+    if (event.type === "interview-requested") this.interviewStore.receive(event);
+    else this.composerStore.receive(event);
   }
 
   private get runtimeQueuedPrompts(): QueuedPrompt[] {
-    return this.model.parts.flatMap((part) =>
-      part.kind === "text" &&
-      part.role === "user" &&
-      !part.subagentReport &&
-      (part.deliveryState === "queued" || part.deliveryState === "steering")
-        ? [
-            {
-              id: part.partKey,
-              text: part.text ?? "",
-              itemId: part.queuedInput?.itemId,
-              turnId: part.queuedInput?.turnId,
-              command: part.queuedInput?.command,
-              attachments: part.queuedInput?.attachments.slice() ?? [],
-              renderUserMessageAsMarkdown:
-                part.queuedInput?.renderUserMessageAsMarkdown ?? part.renderAs === "markdown",
-              state: part.deliveryState,
-              source: part.crossSession,
-              scheduled: part.scheduled,
-              editable:
-                Boolean(part.queuedInput) &&
-                !part.queuedInput?.command &&
-                !part.crossSession &&
-                !part.scheduled,
-            },
-          ]
-        : [],
-    );
+    return queuedPrompts(this.model.parts.map((part) => part.value));
   }
 
   private async deliver(input: ComposerDeliveryInput) {

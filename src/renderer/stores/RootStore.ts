@@ -460,7 +460,6 @@ export class RootStore extends Store<{
       assistantTools: () => this.applicationControlStore.sessionAssistantTools(),
       openModelPresetSettings: () => this.navigationStore.showModelPresetSettings(),
       retirement: this.workingDirectoryRetirementStore,
-      settings: () => this.settingsStore.appearance,
     });
   }
 
@@ -634,7 +633,6 @@ export class RootStore extends Store<{
       operations: this.sessionOperationCoordinator,
       modelPresets: () => this.settingsStore.modelPresets.presets,
       openModelPresetSettings: () => this.navigationStore.showModelPresetSettings(),
-      settings: () => this.settingsStore.appearance,
     });
   }
 
@@ -843,7 +841,6 @@ export class RootStore extends Store<{
       modelPresets: () => this.settingsStore.modelPresets.presets,
       defaultConfiguration: () => this.settingsStore.modelPresets.defaultConfiguration,
       openModelPresetSettings: () => this.navigationStore.showModelPresetSettings(),
-      settings: () => this.settingsStore.appearance,
     });
   }
 

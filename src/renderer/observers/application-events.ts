@@ -110,7 +110,7 @@ export const observeApplicationEvents = (
           const owner =
             root.sessionRegistry.findSession(sessionId) ??
             discussionSessionFor(root, (session) => session.sessionId === sessionId);
-          owner?.receive(storeEvent);
+          owner?.conversationSessionStore.receive(storeEvent);
           return;
         }
         if (storeEvent.type === "project-session-control-requested") {

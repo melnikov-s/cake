@@ -63,6 +63,7 @@ import {
 import {
   SubagentCoordinator,
   activityOf,
+  queuedWorkerInputId,
   removeHandle,
   updateHandle,
   type SubagentCoordinatorState,
@@ -672,8 +673,6 @@ const requireHandleById = Effect.fn("Subagents.requireHandleById")(function* (
 const observeTurn = Effect.fn("Subagents.observeTurn")(function* (
   handleId: SubagentHandleId,
   delivery: "prompt" | "steer" | "follow-up",
-  text: string,
-  recoveryInputs?: readonly RuntimeRecoveryInput[],
   recovering = false,
 ) {
   const handle = yield* requireHandleById(handleId);
@@ -802,14 +801,21 @@ const observeTurn = Effect.fn("Subagents.observeTurn")(function* (
     Effect.forkChild,
   );
   yield* Deferred.await(ready);
-  const inputs = recoveryInputs ?? [
-    { turnId: crypto.randomUUID(), text, delivery, attachments: [], markdown: false },
-  ];
-  yield* mutateHandle(handleId, (current) => ({
-    ...current,
-    recovery: { ...current.recovery, pendingInputs: inputs },
-  }));
   yield* checkpoint(handleId);
+  // Handoff includes inputs accepted while waiting for a slot or assembling Pi.
+  const coordinator = yield* SubagentCoordinator;
+  const inputs = yield* SubscriptionRef.modify(
+    coordinator.state,
+    (state) =>
+      [
+        state.handles.get(handleId)?.recovery.pendingInputs ?? [],
+        updateHandle(state, handleId, (current) => ({
+          ...current,
+          status: "running",
+          activityRevision: current.activityRevision + 1,
+        })),
+      ] as const,
+  );
   const firstInput = inputs[0];
   const turnId = inputs.at(-1)?.turnId;
   if (!firstInput || !turnId)
@@ -817,13 +823,12 @@ const observeTurn = Effect.fn("Subagents.observeTurn")(function* (
       operation: "recover",
       message: "Worker has no accepted input to recover",
     });
-  yield* (recovering ? piHandle.recover(inputs) : piHandle.submit(firstInput)).pipe(
-    asError(delivery),
-  );
+  yield* (
+    recovering || inputs.length > 1 ? piHandle.recover(inputs) : piHandle.submit(firstInput)
+  ).pipe(asError(delivery));
   yield* Ref.set(target, Option.some(turnId));
   // Queue removal also changes the accepted set: do not wait forever for a
   // canceled follow-up after the preceding turn has already settled.
-  const coordinator = yield* SubagentCoordinator;
   const drained = SubscriptionRef.changes(coordinator.state).pipe(
     Stream.filter((state) => state.handles.get(handleId)?.recovery.pendingInputs.length === 0),
     Stream.runHead,
@@ -898,7 +903,6 @@ const executeInitial = Effect.fn("Subagents.executeInitial")(function* (
   );
   yield* slot.withPermit(
     Effect.gen(function* () {
-      yield* mutateHandle(handleId, (current) => ({ ...current, status: "running" }));
       const current = yield* requireHandleById(handleId);
       const sessions = yield* CakeSessionRuntimes;
       const piHandle =
@@ -937,20 +941,7 @@ const executeInitial = Effect.fn("Subagents.executeInitial")(function* (
           })
           .pipe(asError("start"));
       else if (prepared.input.fastMode) yield* piHandle.setFastMode(true).pipe(asError("start"));
-      const assignment =
-        prepared.parent.options.profile._tag === "CakeChatSession" && prepared.input.instructions
-          ? `Assignment guidance (subject to your ${prepared.input.allowMutations ? "scoped mutation-mode" : "investigation-only"} system instructions):\n${prepared.input.instructions}\n\nTask:\n${prepared.input.task}`
-          : prepared.input.task;
-      const result = yield* observeTurn(
-        handleId,
-        "prompt",
-        withMessageReferences(
-          withInputReferences(assignment, current.inputReferences),
-          current.messageReferences,
-        ),
-        current.recovery.pendingInputs,
-        restored !== undefined,
-      );
+      const result = yield* observeTurn(handleId, "prompt", restored !== undefined);
       yield* completeHandle(handleId, result);
     }),
   );
@@ -1606,30 +1597,14 @@ export const prompt = Effect.fn("Subagents.prompt")(function* (
   const slot = yield* RcMap.get(coordinator.slots, handle.workingDirectory).pipe(
     Effect.provideService(Scope.Scope, handle.scope),
   );
-  const execute = slot
-    .withPermit(
-      mutateHandle(handle.handleId, (current) => ({ ...current, status: "running" })).pipe(
-        Effect.andThen(
-          observeTurn(
-            handle.handleId,
-            delivery,
-            withMessageReferences(
-              withInputReferences(normalized, inputReferences),
-              messageReferences,
-            ),
-            [input],
-          ),
-        ),
-      ),
-    )
-    .pipe(
-      Effect.onInterrupt(() =>
-        Effect.gen(function* () {
-          if (yield* Ref.get(coordinator.shuttingDown)) return;
-          if (handle.piHandle) yield* handle.piHandle.abort().pipe(Effect.ignore);
-        }),
-      ),
-    );
+  const execute = slot.withPermit(observeTurn(handle.handleId, delivery)).pipe(
+    Effect.onInterrupt(() =>
+      Effect.gen(function* () {
+        if (yield* Ref.get(coordinator.shuttingDown)) return;
+        if (handle.piHandle) yield* handle.piHandle.abort().pipe(Effect.ignore);
+      }),
+    ),
+  );
   if (background) {
     yield* FiberMap.run(
       coordinator.fibers,
@@ -1712,11 +1687,6 @@ export const submitUserInput = Effect.fn("Subagents.submitUserInput")(function* 
       { turnId, markdown: input.renderUserMessageAsMarkdown },
     );
   } else {
-    if (!handle.piHandle || handle.status === "queued")
-      return yield* new SubagentError({
-        operation: "submit",
-        message: "The subagent is still starting",
-      });
     const accepted: RuntimeRecoveryInput = {
       turnId,
       text,
@@ -1724,25 +1694,39 @@ export const submitUserInput = Effect.fn("Subagents.submitUserInput")(function* 
       attachments: [],
       markdown: input.renderUserMessageAsMarkdown,
     };
-    yield* mutateHandle(handle.handleId, (current) => ({
-      ...current,
-      recovery: {
-        ...current.recovery,
-        pendingInputs: [...current.recovery.pendingInputs, accepted],
-      },
-    }));
-    yield* handle.piHandle.submit(accepted).pipe(
-      asError("submit"),
-      Effect.onError(() =>
-        mutateHandle(handle.handleId, (current) => ({
-          ...current,
-          recovery: {
-            ...current.recovery,
-            pendingInputs: current.recovery.pendingInputs.filter((item) => item.turnId !== turnId),
-          },
-        })),
-      ),
+    const coordinator = yield* SubagentCoordinator;
+    const runtime = yield* SubscriptionRef.modify(
+      coordinator.state,
+      (state) =>
+        [
+          state.handles.get(handle.handleId)?.status === "running"
+            ? state.handles.get(handle.handleId)?.piHandle
+            : undefined,
+          updateHandle(state, handle.handleId, (current) => ({
+            ...current,
+            activityRevision: current.activityRevision + 1,
+            recovery: {
+              ...current.recovery,
+              pendingInputs: [...current.recovery.pendingInputs, accepted],
+            },
+          })),
+        ] as const,
     );
+    if (runtime)
+      yield* runtime.submit(accepted).pipe(
+        asError("submit"),
+        Effect.onError(() =>
+          mutateHandle(handle.handleId, (current) => ({
+            ...current,
+            recovery: {
+              ...current.recovery,
+              pendingInputs: current.recovery.pendingInputs.filter(
+                (item) => item.turnId !== turnId,
+              ),
+            },
+          })),
+        ),
+      );
     yield* checkpoint(handle.handleId);
   }
   return { turnId };
@@ -1757,6 +1741,40 @@ export const editQueuedUserInput = Effect.fn("Subagents.editQueuedUserInput")(fu
   position?: number;
 }) {
   const handle = yield* requireHandle(input.parentSessionId, input.handleId);
+  if (handle.status === "queued") {
+    const pending = handle.recovery.pendingInputs
+      .slice(1)
+      .find((entry) => queuedWorkerInputId(entry.turnId) === input.partId);
+    if (!pending || input.operation !== "remove")
+      return yield* new SubagentError({
+        operation: input.operation,
+        message: "Only canceling a queued follow-up is available before the worker starts",
+      });
+    const coordinator = yield* SubagentCoordinator;
+    const removed = yield* SubscriptionRef.modify(coordinator.state, (state) => {
+      if (state.handles.get(handle.handleId)?.status !== "queued") return [false, state] as const;
+      return [
+        true,
+        updateHandle(state, handle.handleId, (current) => ({
+          ...current,
+          activityRevision: current.activityRevision + 1,
+          recovery: {
+            ...current.recovery,
+            pendingInputs: current.recovery.pendingInputs.filter(
+              (entry) => entry.turnId !== pending.turnId,
+            ),
+          },
+        })),
+      ] as const;
+    });
+    if (!removed)
+      return yield* new SubagentError({
+        operation: input.operation,
+        message: "The worker has started; retry canceling its queued follow-up",
+      });
+    yield* checkpoint(handle.handleId);
+    return;
+  }
   const runtime = handle.piHandle;
   if (!runtime)
     return yield* new SubagentError({

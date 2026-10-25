@@ -9,7 +9,8 @@ import {
 } from "../../utils/subagent-runs";
 import type { ProjectTodo } from "../../contracts/projects/project-todos";
 import { ClientContext } from "./context/ClientContext";
-import { ChatStore, type QueuedPrompt } from "./ChatStore";
+import { ChatStore } from "./ChatStore";
+import { queuedPrompts } from "../lib/queued-prompts";
 import { TranscriptAttachmentImagesStore } from "./TranscriptAttachmentImagesStore";
 import { SubagentHandleId } from "../../contracts/subagents/subagent-data";
 
@@ -153,35 +154,6 @@ export class SubagentActivityStore extends Store<{
     return Boolean(run?.handleId && run.available && !run.failurePhase);
   }
 
-  private queuedPrompts(key: string): QueuedPrompt[] {
-    return (this.run(key)?.parts ?? []).flatMap((part) =>
-      part.kind === "text" &&
-      part.role === "user" &&
-      (part.deliveryState === "queued" || part.deliveryState === "steering")
-        ? [
-            {
-              id: part.id,
-              text: part.text,
-              itemId: part.queuedInput?.itemId,
-              turnId: part.queuedInput?.turnId,
-              command: part.queuedInput?.command,
-              attachments: part.queuedInput?.attachments.slice() ?? [],
-              renderUserMessageAsMarkdown:
-                part.queuedInput?.renderUserMessageAsMarkdown ?? part.renderAs === "markdown",
-              state: part.deliveryState,
-              source: part.crossSession,
-              scheduled: part.scheduled,
-              editable:
-                Boolean(part.queuedInput) &&
-                !part.queuedInput?.command &&
-                !part.crossSession &&
-                !part.scheduled,
-            },
-          ]
-        : [],
-    );
-  }
-
   private async command<T>(key: string, run: (handleId: SubagentHandleId) => Promise<T>) {
     if (!this.canMessage(key)) return false;
     this.commandErrors = { ...this.commandErrors, [key]: undefined };
@@ -203,7 +175,7 @@ export class SubagentActivityStore extends Store<{
     operation: "remove" | "steer" | "send-now" | "reorder",
     position?: number,
   ) {
-    const entry = this.queuedPrompts(key).find((item) => item.id === partId);
+    const entry = queuedPrompts(this.run(key)?.parts ?? []).find((item) => item.id === partId);
     if (!entry) return false;
     return this.command(key, async (handleId) => {
       await this.client.subagents.editQueued(
@@ -307,21 +279,33 @@ export class SubagentActivityStore extends Store<{
                   ),
               }
             : undefined,
-          queuedPrompts: () => (this.canMessage(run.key) ? this.queuedPrompts(run.key) : []),
-          steerQueuedPrompt: async (id) => {
-            await this.editQueue(run.key, id, "steer");
-          },
-          stopAndSendQueuedPrompt: async (id) => {
-            await this.editQueue(run.key, id, "send-now");
-          },
-          reorderQueuedPrompt: async (id, position) => {
-            await this.editQueue(run.key, id, "reorder", position);
-          },
+          queuedPrompts: () =>
+            this.canMessage(run.key) ? queuedPrompts(this.run(run.key)?.parts ?? []) : [],
+          steerQueuedPrompt:
+            run.status === "queued"
+              ? undefined
+              : async (id) => {
+                  await this.editQueue(run.key, id, "steer");
+                },
+          stopAndSendQueuedPrompt:
+            run.status === "queued"
+              ? undefined
+              : async (id) => {
+                  await this.editQueue(run.key, id, "send-now");
+                },
+          reorderQueuedPrompt:
+            run.status === "queued"
+              ? undefined
+              : async (id, position) => {
+                  await this.editQueue(run.key, id, "reorder", position);
+                },
           removeQueuedPrompt: (id) => {
             void this.editQueue(run.key, id, "remove");
           },
           editQueuedPrompt: async (id) => {
-            const entry = this.queuedPrompts(run.key).find((item) => item.id === id);
+            const entry = queuedPrompts(this.run(run.key)?.parts ?? []).find(
+              (item) => item.id === id,
+            );
             if (!entry?.editable || !(await this.editQueue(run.key, id, "remove"))) return;
             this.chatStore(run.key)?.setDraft(entry.text);
           },

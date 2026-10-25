@@ -15,7 +15,7 @@ export const WorkbenchLanding = observer(function WorkbenchLanding() {
   const composer = session?.conversationSessionStore.composerStore;
   const chatConfiguration = session?.conversationSessionStore.configurationStore;
   const extensionUi = root.extensionUiStore;
-  const interviewError = session?.interviewError;
+  const interviewError = session?.conversationSessionStore.interviewStore.error;
   const selectedProjectSessionId =
     shell.selection.kind === "project-session" ? shell.selection.sessionId : undefined;
   const workbenchError =

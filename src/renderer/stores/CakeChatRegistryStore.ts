@@ -6,7 +6,6 @@ import type { ModelPreset } from "../../contracts/conversations/session-contract
 import type { Conversation } from "../models/Conversation";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
 import type { DiscussionCatalog } from "../models/DiscussionCatalog";
-import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import type { CakeChatControls } from "../models/CakeChatControls";
 import type { WorkflowCatalog } from "../models/WorkflowCatalog";
 import type { SubagentCatalog } from "../models/SubagentCatalog";
@@ -36,7 +35,6 @@ export interface CakeChatRegistryStoreProps {
   isVisible(sessionId: string): boolean;
   modelPresets?(): readonly ModelPreset[];
   openModelPresetSettings?(): void;
-  settings?(): AppearanceSettingsStore | undefined;
 }
 
 /** Owns loaded Cake Chat target identities and their stable keyed Session Store instances. */
@@ -65,7 +63,6 @@ export class CakeChatRegistryStore extends Store<CakeChatRegistryStoreProps> {
         operations: this.props.operations,
         modelPresets: () => this.props.modelPresets?.() ?? [],
         openModelPresetSettings: () => this.props.openModelPresetSettings?.(),
-        settings: () => this.props.settings?.(),
       }),
     );
   }

@@ -1,5 +1,4 @@
-import { Store, child, computed, createStore, observable, snapshot } from "r-state-tree";
-import type { InterviewRecord, InterviewResult } from "../../contracts/interviews/interview";
+import { Store, child, computed, createStore, snapshot } from "r-state-tree";
 import {
   ConversationModeContext,
   conversationModeTarget,
@@ -20,8 +19,6 @@ import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordin
 import type { ReviewsStore } from "./ReviewsStore";
 import { parseScheduledMessage } from "../../utils/scheduled-message-time";
 import { ConversationSessionStore } from "./ConversationSessionStore";
-import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
-import { InterviewStore } from "./InterviewStore";
 import { SessionArtifactsStore } from "./SessionArtifactsStore";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
 import { MessageCommentsStore } from "./MessageCommentsStore";
@@ -66,7 +63,6 @@ export interface ProjectSessionStoreProps extends SessionTarget {
   assistantTools?(): readonly CakeControlTool[];
   openModelPresetSettings(): void;
   retirement: WorktreeStoreProps["retirement"];
-  settings?(): AppearanceSettingsStore | undefined;
 }
 
 /** Owns the view and interaction workflow for one project Pi session. */
@@ -77,25 +73,11 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   transcriptContinuityKey: string | undefined;
   @snapshot workspaceChatSidebarVisible = true;
   @snapshot workspaceChatSidebarWidth = 420;
-  private readonly interviewRequests = observable(
-    new Map<string, Extract<StoreEvent, { type: "interview-requested" }>>(),
-  );
   private readSettledTurnRevision = 0;
   private pendingSideChatThreadId: string | undefined;
 
   constructor(props: ProjectSessionStore["props"]) {
     super(props);
-    this.reaction(
-      () =>
-        this.canonicalParts.flatMap((part) =>
-          part.kind === "tool" && part.interview && part.state !== "running"
-            ? [part.interview.id]
-            : [],
-        ),
-      (settled) => {
-        for (const id of settled) this.interviewRequests.delete(id);
-      },
-    );
     // A new thread is listed before its sidecar conversation is live; the side
     // chat opens once the thread's own conversation Store exists.
     this.reaction(
@@ -221,8 +203,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   /** Routes an event only to the session subsystem that authoritatively owns it. */
   receive(event: StoreEvent) {
     if (event.type === "interview-requested") {
-      if (event.record.sessionId !== this.sessionId) return;
-      this.interviewRequests.set(event.record.id, event);
+      this.conversationSessionStore.receive(event);
       return;
     }
     if (event.type === "operation-completed" || event.type === "operation-failed") {
@@ -236,7 +217,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     if (event.type === "agent-availability-changed" && event.availability.state === "unavailable") {
       if (this.props.operations.active(this.composerOwner).length > 0)
         this.conversationSessionStore.receive(event);
-      this.interviewRequests.clear();
+      this.conversationSessionStore.interviewStore.clearPending();
     }
   }
 
@@ -250,7 +231,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
 
   @computed
   get activity(): SessionActivity | undefined {
-    if (this.interviewRequests.size > 0) return "waiting";
+    if (this.conversationSessionStore.interviewStore.waiting) return "waiting";
     // Accepted turns include preparation before Pi emits its first streaming event.
     if (this.isStreaming || this.model.activeTurnIds.length > 0) return "running";
     const settled = settledSessionActivity(
@@ -479,7 +460,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       },
       modelPresets: this.props.modelPresets,
       openModelPresetSettings: this.props.openModelPresetSettings,
-      settings: this.props.settings,
     });
   }
 
@@ -504,40 +484,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       model: this.props.artifactModel,
       enabled: () => Boolean(this.model.sessionFile) && !this.pending.isTemporary(this.sessionId),
     });
-  }
-
-  @child
-  get interviews(): InterviewStore[] {
-    const records = new Map<string, { record: InterviewRecord; result?: InterviewResult }>();
-    for (const part of this.canonicalParts)
-      if (part.kind === "tool" && part.interview?.sessionId === this.sessionId)
-        records.set(part.interview.id, { record: part.interview, result: part.interviewResult });
-    // Requests can arrive before their Pi metadata reaches the projection.
-    for (const [id, request] of this.interviewRequests)
-      if (!records.has(id)) records.set(id, { record: request.record });
-    return [...records.values()].map(({ record, result }) =>
-      createStore(InterviewStore, {
-        key: record.id,
-        record,
-        result,
-        request: this.interviewRequests.get(record.id),
-        operations: this.props.operations,
-        isStreaming: () => this.isStreaming,
-        onResponded: () => {
-          this.interviewRequests.delete(record.id);
-        },
-      }),
-    );
-  }
-
-  interview(id: string) {
-    return this.interviews.find((interview) => interview.record.id === id);
-  }
-  get waitingForInterview() {
-    return this.interviewRequests.size > 0;
-  }
-  get interviewError() {
-    return this.interviews.find((interview) => interview.error);
   }
 
   @child

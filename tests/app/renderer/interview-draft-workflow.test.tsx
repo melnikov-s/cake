@@ -104,7 +104,7 @@ it("restores all answers, blank Other selection, and review step after unmount, 
       part={fixture.session.canonicalParts[0]!}
       behavior={{
         store: fixture.session.conversationSessionStore.chatStore,
-        interviews: fixture.session.interviews,
+        interviews: fixture.session.conversationSessionStore.interviewStore.interviews,
       }}
     />
   );
@@ -153,7 +153,10 @@ it("restores all answers, blank Other selection, and review step after unmount, 
       interviewRequestId: "other-request",
       record: sameCallInOtherSession,
     });
-    for (const other of [fixture.session.interview("call-2")!, otherSession.interview("call-1")!]) {
+    for (const other of [
+      fixture.session.conversationSessionStore.interviewStore.find("call-2")!,
+      otherSession.conversationSessionStore.interviewStore.find("call-1")!,
+    ]) {
       view.rerender(<Interview store={other} />);
       expect(screen.getByText("Question 1 of 5")).toBeDefined();
       expect((screen.getByRole("radio", { name: "US" }) as HTMLInputElement).checked).toBe(true);
@@ -171,7 +174,7 @@ it("restores all answers, blank Other selection, and review step after unmount, 
     remount();
     expect(screen.getByText("Submitted")).toBeDefined();
     expect(respond).toHaveBeenCalledTimes(1);
-    const completed = fixture.session.interview(record.id)!;
+    const completed = fixture.session.conversationSessionStore.interviewStore.find(record.id)!;
     expect(completed.values).toEqual({});
     expect(completed.customRows.size).toBe(0);
     expect(completed.step).toBe(0);
@@ -187,7 +190,8 @@ it("moves a live interview from its fallback into the projected tool without los
   const surface = () => (
     <>
       <BlockingInterviews
-        session={fixture.session}
+        interviews={fixture.session.conversationSessionStore.interviewStore.interviews}
+        parts={fixture.session.canonicalParts}
         inlineWidgets={fixture.root.inlineWidgetStore}
       />
       {fixture.session.canonicalParts.map((part) => (
@@ -196,7 +200,7 @@ it("moves a live interview from its fallback into the projected tool without los
           part={part}
           behavior={{
             store: fixture.session.conversationSessionStore.chatStore,
-            interviews: fixture.session.interviews,
+            interviews: fixture.session.conversationSessionStore.interviewStore.interviews,
           }}
         />
       ))}
@@ -230,7 +234,9 @@ it("preserves editable answers on failure and prevents duplicate submissions whi
   const record = interview();
   fixture.receive(record);
   fixture.project(record);
-  const view = render(<Interview store={fixture.session.interview(record.id)!} />);
+  const view = render(
+    <Interview store={fixture.session.conversationSessionStore.interviewStore.find(record.id)!} />,
+  );
   try {
     await fixture.click("Next");
     await fixture.user.type(screen.getByRole("textbox", { name: "Name" }), "Keep this on failure");
@@ -241,8 +247,10 @@ it("preserves editable answers on failure and prevents duplicate submissions whi
     );
     await act(async () => reject(new Error("Try again")));
     expect(screen.getByText("Try again")).toBeDefined();
-    expect(fixture.session.interview(record.id)!.values.name).toBe("Keep this on failure");
-    expect(fixture.session.interview(record.id)!.step).toBe(5);
+    expect(
+      fixture.session.conversationSessionStore.interviewStore.find(record.id)!.values.name,
+    ).toBe("Keep this on failure");
+    expect(fixture.session.conversationSessionStore.interviewStore.find(record.id)!.step).toBe(5);
     expect((screen.getByRole("button", { name: "Submit" }) as HTMLButtonElement).disabled).toBe(
       false,
     );
@@ -262,7 +270,9 @@ it("renders historical submitted answers from the authoritative projection witho
     cancelled: false,
     value: { region: "eu", name: "From history" },
   });
-  const view = render(<Interview store={fixture.session.interview(record.id)!} />);
+  const view = render(
+    <Interview store={fixture.session.conversationSessionStore.interviewStore.find(record.id)!} />,
+  );
   try {
     expect(screen.getByText("Submitted")).toBeDefined();
     expect((screen.getByRole("textbox", { name: "Name" }) as HTMLTextAreaElement).value).toBe(
@@ -282,7 +292,9 @@ it("skips a live interview with an explicit cancellation", async () => {
   const record = interview();
   fixture.receive(record);
   fixture.project(record);
-  const view = render(<Interview store={fixture.session.interview(record.id)!} />);
+  const view = render(
+    <Interview store={fixture.session.conversationSessionStore.interviewStore.find(record.id)!} />,
+  );
   try {
     await fixture.click("Skip");
     await waitFor(() => expect(screen.getByText("Skipped")).toBeDefined());
@@ -300,7 +312,7 @@ it("disposes interview children when their owning session is removed, not when t
   const record = interview();
   fixture.receive(record);
   fixture.project(record);
-  const store = fixture.session.interview(record.id)!;
+  const store = fixture.session.conversationSessionStore.interviewStore.find(record.id)!;
   const view = render(<Interview store={store} />);
   view.unmount();
   expect(store.signal.aborted).toBe(false);
@@ -313,7 +325,7 @@ it("disposes an invocation removed from the transcript and clears correlations w
   const record = interview();
   fixture.receive(record);
   fixture.project(record);
-  const store = fixture.session.interview(record.id)!;
+  const store = fixture.session.conversationSessionStore.interviewStore.find(record.id)!;
   const view = render(<Interview store={store} />);
   expect(fixture.session.activity).toBe("waiting");
   act(() =>
@@ -331,11 +343,11 @@ it("disposes an invocation removed from the transcript and clears correlations w
       fixture.session.sessionId,
     ),
   );
-  expect(fixture.session.waitingForInterview).toBe(false);
+  expect(fixture.session.conversationSessionStore.interviewStore.waiting).toBe(false);
   expect(store.requested).toBe(false);
   view.unmount();
   fixture.session.model.parts = [];
-  expect(fixture.session.interviews).toHaveLength(0);
+  expect(fixture.session.conversationSessionStore.interviewStore.interviews).toHaveLength(0);
   expect(store.signal.aborted).toBe(true);
 });
 
@@ -347,7 +359,9 @@ it("delivers an unanswered historical interview as ordinary conversation input, 
   using fixture = setup({ sessionChats: { prompt }, interviews: { respond } });
   const record = interview();
   fixture.project(record);
-  const view = render(<Interview store={fixture.session.interview(record.id)!} />);
+  const view = render(
+    <Interview store={fixture.session.conversationSessionStore.interviewStore.find(record.id)!} />,
+  );
   try {
     await fixture.user.click(screen.getByRole("button", { name: "Review answers" }));
     await fixture.click("Submit");
@@ -382,7 +396,7 @@ it("accepts only the sandbox's token-bound submission for a widget interview", a
   fixture.project(record);
   const view = render(
     <Interview
-      store={fixture.session.interview(record.id)!}
+      store={fixture.session.conversationSessionStore.interviewStore.find(record.id)!}
       inlineWidgets={fixture.root.inlineWidgetStore}
     />,
   );

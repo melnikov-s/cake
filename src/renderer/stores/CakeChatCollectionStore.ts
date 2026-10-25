@@ -16,7 +16,6 @@ import type { CakeChatControls } from "../models/CakeChatControls";
 import type { WorkflowCatalog } from "../models/WorkflowCatalog";
 import type { SubagentCatalog } from "../models/SubagentCatalog";
 import type { DiscussionCatalog } from "../models/DiscussionCatalog";
-import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import {
   CakeChatPendingSessionsStore,
   type CakeChatSummaryProjection,
@@ -49,7 +48,7 @@ export interface CakeChatCollectionStoreProps {
   modelPresets?(): readonly ModelPreset[];
   defaultConfiguration?(): ChatConfiguration | undefined;
   openModelPresetSettings?(): void;
-  settings?(): AppearanceSettingsStore | undefined;
+
   isSelected(): boolean;
 }
 
@@ -104,7 +103,6 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
       isVisible: (sessionId) => this.sessionLayoutStore.hasSession(sessionId),
       modelPresets: this.props.modelPresets,
       openModelPresetSettings: this.props.openModelPresetSettings,
-      settings: this.props.settings,
     });
   }
 

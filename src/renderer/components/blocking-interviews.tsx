@@ -6,21 +6,18 @@ import { Interview } from "./interview";
 
 /** Keeps live interviews usable until their originating tool part is projected. */
 export const BlockingInterviews = observer(function BlockingInterviews({
-  session,
+  interviews,
+  parts,
   inlineWidgets,
 }: {
-  session: {
-    readonly interviews: readonly InterviewStore[];
-    readonly canonicalParts: readonly UiPart[];
-  };
+  interviews: readonly InterviewStore[];
+  parts: readonly UiPart[];
   inlineWidgets: InlineWidgetStore;
 }) {
-  const unlinked = session.interviews.filter(
+  const unlinked = interviews.filter(
     (interview) =>
       interview.requested &&
-      !session.canonicalParts.some(
-        (part) => part.kind === "tool" && part.interview?.id === interview.record.id,
-      ),
+      !parts.some((part) => part.kind === "tool" && part.interview?.id === interview.record.id),
   );
   if (!unlinked.length) return null;
   return (

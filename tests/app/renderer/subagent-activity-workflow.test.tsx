@@ -101,6 +101,45 @@ describe("Subagent activity workflow", () => {
     expect(within(panel).queryByRole("button", { name: "Send" })).toBeNull();
   });
 
+  it("shows accepted pre-start follow-ups with cancellation but waits for Pi before steering", async () => {
+    const pending = queuePart(1, "Before worker starts");
+    const editQueued = vi.fn<Client["subagents"]["editQueued"]>(async () => undefined);
+    using fixture = renderSubagentActivity({
+      client: { subagents: { editQueued } },
+      activity: workerActivity({ status: "queued", streaming: false, parts: [pending] }),
+      parts: workerTranscript(),
+    });
+    const panel = within(await openWorkerChat(fixture.user));
+    expect(panel.getByText("Before worker starts")).toBeDefined();
+    expect(
+      panel.queryByRole("button", { name: "Send now as steering: Before worker starts" }),
+    ).toBeNull();
+    await fixture.user.click(
+      panel.getByRole("button", { name: "Cancel queued message: Before worker starts" }),
+    );
+    await waitFor(() =>
+      expect(editQueued).toHaveBeenCalledWith(
+        {
+          parentSessionId,
+          handleId,
+          partId: pending.id,
+          itemId: pending.queuedInput!.itemId,
+          operation: "remove",
+        },
+        { signal: expect.any(AbortSignal) },
+      ),
+    );
+    fixture.publish({
+      _tag: "Activity",
+      revision: 2,
+      parentSessionId,
+      activity: workerActivity({ revision: 2, parts: [pending] }),
+    });
+    expect(
+      await panel.findByRole("button", { name: "Send now as steering: Before worker starts" }),
+    ).toBeDefined();
+  });
+
   it("uses shared queue controls for explicit steering and stop-and-send without losing the other message", async () => {
     const first = {
       ...queuePart(1, "First follow-up"),
