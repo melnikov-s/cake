@@ -225,6 +225,7 @@ function render() {
             transcriptBehavior={
               widget
                 ? {
+                    messageReferenceSessionId: session.sessionId,
                     inlineWidgets: fixture.root.inlineWidgetStore,
                     inlineArtifactPreviews: fixture.root.inlineArtifactPreviewStore,
                   }
@@ -239,6 +240,7 @@ function render() {
             behavior={
               widget
                 ? {
+                    messageReferenceSessionId: session.sessionId,
                     inlineWidgets: fixture.root.inlineWidgetStore,
                     inlineArtifactPreviews: fixture.root.inlineArtifactPreviewStore,
                   }

@@ -114,8 +114,6 @@ import type {
 import type { CakeOperationHost } from "../../../contracts/agent/cake-operation-context";
 import type { CakeOperationDefinition } from "../../../contracts/agent/cake-operation";
 import { createPromptCacheLineage } from "./prompt-cache-lineage";
-import type { CakeOperationHost } from "../../../contracts/agent/cake-operation-context";
-import type { CakeOperationDefinition } from "../../../contracts/agent/cake-operation";
 import { projectCakeOperationRuntime } from "./cake-operation-context";
 import {
   createCakeSessionRuntimeConfiguration,
@@ -206,11 +204,6 @@ export interface CakeSessionRuntimeOptions {
     publishSnapshot(): Promise<void>;
   }): CakeOperationDefinition[];
   requestUi(request: RuntimeUiRequest): Promise<string | undefined>;
-  /** Composition supplies only Discussion-authorized interview operations to Durable. */
-  interviewOperations?(bridge: {
-    host: CakeOperationHost;
-    publishSnapshot(): Promise<void>;
-  }): CakeOperationDefinition[];
   emitExtensionUiIntent?(intent: ExtensionUiIntent): void;
   reviewContextPath?(sessionId: string): string;
   utilityModel?(): UtilityModel | undefined;

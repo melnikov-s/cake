@@ -51,7 +51,12 @@ it.each([CAKE_CHAT_SESSION_ID, projectChatId, "project-session"])(
       extensionUi: { statuses: [] },
       tree: [],
     };
-    act(() => applyConversationSnapshot(owner.model, snapshot));
+    act(() => {
+      applyConversationSnapshot(owner.model, snapshot);
+      owner.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
+        kind: "top",
+      });
+    });
     const view = render(
       <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
         <Chat

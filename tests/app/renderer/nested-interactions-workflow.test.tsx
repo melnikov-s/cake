@@ -208,7 +208,6 @@ describe("child-scoped nested interaction routing", () => {
       await panel.findByRole("textbox", { name: "Answer" }),
       "Use the child context",
     );
-    await fixture.user.click(panel.getByRole("button", { name: "Review" }));
     await fixture.user.click(panel.getByRole("button", { name: "Submit" }));
     await waitFor(() =>
       expect(respond).toHaveBeenCalledExactlyOnceWith(
