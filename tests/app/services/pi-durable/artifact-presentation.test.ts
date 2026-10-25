@@ -13,6 +13,7 @@ import { expect, it } from "vitest";
 import {
   decodeArtifactRevisionNumber,
   ArtifactLineageId,
+  artifactRevisionToRecord,
 } from "../../../../src/contracts/artifacts/artifact-lineage";
 import { ArtifactProjectionMetadata } from "../../../../src/contracts/artifacts/artifact-projection-data";
 import { SessionFamilyStorageError } from "../../../../src/contracts/storage/session-family-storage-errors";
@@ -79,6 +80,17 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
       },
       onEvent: () => undefined,
       globalControl: { tools: [], invoke: async () => ({}) },
+      persistArtifact: (artifact) =>
+        runtime.runPromise(
+          workflows
+            .create({
+              sessionId,
+              lineageId: Schema.decodeUnknownSync(ArtifactLineageId)(artifact.id),
+              snapshot: artifact,
+              workingDirectory: root,
+            })
+            .pipe(Effect.map(artifactRevisionToRecord)),
+        ),
       resolveArtifact: (reference) => runtime.runPromise(access.resolve(sessionId, reference)),
       resolveArtifactForPresentation: (reference) =>
         runtime.runPromise(access.resolveForPresentation(sessionId, reference)),
@@ -111,7 +123,15 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
       description: "Cake controls",
       parameters: Type.Object({
         command: Type.String(),
-        input: Type.Object({ reference: Type.String() }),
+        input: Type.Union([
+          Type.Object({ reference: Type.String() }),
+          Type.Object({
+            id: Type.String(),
+            title: Type.String(),
+            html: Type.String(),
+            height: Type.Number(),
+          }),
+        ]),
       }),
       replay: "unsafe",
       executionMode: "sequential",
@@ -127,7 +147,24 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
     registry.install(defineExtension({ name: "cake", tools: [tool] }));
     const references = ["cake://artifact/prototype@r1", "prototype", "prototype", "prototype@r1"];
     const models = durableModels((_request, index) => {
-      const reference = references[index - 1];
+      if (index === 1)
+        return durableAnswer("", [
+          {
+            type: "toolCall",
+            name: "cake",
+            id: "html-1",
+            arguments: {
+              command: "html.present",
+              input: {
+                id: "headers",
+                title: "Three headers",
+                height: 360,
+                html: "<header>Minimal Studio</header><header>Editorial</header><header>Modern Dark</header>",
+              },
+            },
+          },
+        ]);
+      const reference = references[index - 2];
       return reference
         ? durableAnswer("", [
             {
@@ -210,7 +247,11 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
       denied = false;
       engine = await open();
       const input = await engine.root.submit(
-        { type: "input", content: "Here is the artifact", requestId: "present-existing" },
+        {
+          type: "input",
+          content: "Show three pure HTML header designs inline, then the existing artifact.",
+          requestId: "present-existing",
+        },
         BACKGROUND_CONTEXT,
       );
       await input.wait(BACKGROUND_CONTEXT);
@@ -226,6 +267,7 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
             ],
         ),
       ).toEqual([
+        ["headers", 1, "cake://artifact/headers@r1"],
         [id, 1, "cake://artifact/prototype@r1"],
         [id, 2, "cake://artifact/prototype@r2"],
         [id, 2, "cake://artifact/prototype@r2"],
@@ -272,7 +314,20 @@ it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
         (await runtime.runPromise(storage.catalog())).links.filter(
           (link) => link.target.type === "session" && link.target.sessionId === sessionId,
         ),
-      ).toMatchObject([{ selection: { mode: "pinned", revision: 1 } }]);
+      ).toMatchObject([
+        { lineageId: "headers", selection: { mode: "follow-latest" } },
+        { lineageId: "prototype", selection: { mode: "pinned", revision: 1 } },
+      ]);
+      expect(
+        await runtime.runPromise(
+          storage.read(Schema.decodeUnknownSync(ArtifactLineageId)("headers")),
+        ),
+      ).toMatchObject({
+        snapshot: {
+          kind: "html",
+          payload: { height: 360, html: expect.stringContaining("Modern Dark") },
+        },
+      });
       expect(JSON.stringify(surfaces)).not.toMatch(
         /private-generation|private generation|export default/,
       );

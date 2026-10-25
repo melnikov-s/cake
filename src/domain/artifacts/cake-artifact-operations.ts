@@ -16,6 +16,7 @@ import {
 
 import {
   MAX_ARTIFACT_INPUT_BYTES,
+  htmlArtifactHeightSchema,
   artifactPointerSchema,
   parseArtifactInput,
   type ArtifactRecord,
@@ -58,6 +59,13 @@ const widgetSchema = Schema.Struct({
       Schema.isMaxLength(MAX_ARTIFACT_INPUT_BYTES),
     ),
   }),
+});
+
+const htmlPresentSchema = Schema.Struct({
+  id: artifactIdSchema,
+  title: titleSchema,
+  html: markdownSchema,
+  height: Schema.optionalKey(htmlArtifactHeightSchema),
 });
 
 const markdownCreateSchema = Schema.Struct({
@@ -242,6 +250,59 @@ export function createCakeArtifactOperations(
   const operations: CakeOperationDefinition[] = [
     ...createCakeArtifactStateOperations(options),
     ...createSelectedDesignOperations(options),
+    {
+      command: "html.present",
+      topic: "html",
+      summary: "Write and show static HTML/CSS inline in one call, without specialist generation.",
+      guidance: [
+        "For simple mockups, headers, layouts, and static visual explanations, author HTML/CSS directly here. No React, specialist, screenshot review, workspace file, or browser opening is needed.",
+        "Supply an HTML fragment with inline CSS or a style element. Scripts, network access, forms, and parent access are disabled. Use widgets.present for JavaScript, durable state, or complex interactive experiences.",
+        "Keep requested alternatives compact and visible together. Set height in CSS pixels (120–1600) to fit the content; otherwise the frame is 240px tall. Avoid unrelated hero sections.",
+        "The successful call already displays the result inline. Do not add duplicate embeds. Use artifacts.present to show it again. Publication is not visual verification; do not claim you inspected rendered pixels.",
+      ],
+      inputSchema: htmlPresentSchema,
+      outputSchema: ArtifactProjectionMetadata,
+      examples: [
+        {
+          input: {
+            id: "header-options",
+            title: "Three header styles",
+            height: 360,
+            html: "<style>header{padding:24px;margin:8px;border:1px solid #888}</style><header>Minimal Studio</header><header>Editorial</header><header>Modern Dark</header>",
+          },
+        },
+      ],
+      result:
+        "Persisted exact-revision metadata; the static HTML renders inline in this conversation.",
+      async execute(input, context) {
+        const draft = Schema.decodeUnknownSync(htmlPresentSchema)(input);
+        const sessionId = runtimeContext(context).sessionId;
+        const origin = pi ? pointerOrigin(context) : undefined;
+        if (context.signal.aborted) throw new Error("HTML presentation was cancelled");
+        const record = await persist(
+          {
+            protocol: "cake.artifact/v1",
+            id: draft.id,
+            sessionId,
+            revision: 1,
+            kind: "html",
+            title: draft.title,
+            payload: {
+              html: draft.html,
+              ...(draft.height === undefined ? null : { height: draft.height }),
+            },
+            fallback: { markdown: draft.title },
+            interaction: { mode: "present" },
+          },
+          sessionId,
+        );
+        const resolved = await resolveArtifact(
+          `cake://artifact/${record.artifact.id}@r${record.artifact.revision}`,
+        );
+        if (origin) appendPointer(record, origin);
+        return resolved.metadata;
+      },
+    },
     {
       command: "artifacts.list",
       topic: "artifacts",
@@ -695,7 +756,7 @@ export function createCakeArtifactOperations(
       summary: "Delegate and present one self-contained interactive or highly visual widget.",
       guidance: [
         "Prefer ordinary inline Markdown—including Mermaid and small tables—whenever it communicates the result clearly. Create a widget only for a substantial, reusable, or genuinely interactive/visual deliverable, especially when requested.",
-        "Supply the explanation goal, audience, verified facts/source references, bounded data, and a readable Markdown fallback. Do not write the generated source yourself.",
+        "For static HTML/CSS mockups use html.present instead. For this delegated interactive workflow, supply the explanation goal, audience, verified facts/source references, bounded data, and a readable Markdown fallback. Do not write the generated source yourself.",
         "Publication supplies the accepted rendered preview to the agent as a native image, with an immutable exact reference. The user sees a live interactive widget. The retained PNG is Initial state—not current interactive view. Revision alone does not identify a selected variant. Before implementing an approved design, inspect matching revision AND state pixels: use the exact preview for the initial state, or request a screenshot of their interactive selection and confirm its artifact revision and selected state. Never claim visual verification from source or textual image descriptions. Read projected source selectively when needed and compare the implementation's real screenshot against the approved revision.",
         'Choose language: "html" for simple self-contained experiences using inline CSS and browser JavaScript without JSX, npm packages or bundling. Omit language (or choose "react") for React components, installed libraries, and prototype-ui module manifests. HTML remains an interactive widget, not a static HTML artifact. Replacements and repairs preserve the source language.',
         "HTML durable state uses globalThis.cakeArtifact.read(), getSnapshot(), subscribe(listener), and replace(value, expectedVersion); React uses @cake/artifact-sdk hooks. Both are scoped to this artifact. Wait for hydration, save only JSON, and handle version conflicts.",

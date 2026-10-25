@@ -696,7 +696,7 @@ function partsFromMessage(
       name === "cake" && !Reflect.get(message, "isError")
         ? Schema.decodeUnknownOption(
             Schema.Struct({
-              command: Schema.Literal("artifacts.present"),
+              command: Schema.Literals(["artifacts.present", "html.present"]),
               result: ArtifactProjectionMetadata,
             }),
           )(details)

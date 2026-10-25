@@ -7,7 +7,8 @@ export function HtmlArtifact({
 }) {
   return (
     <iframe
-      className="min-h-60 w-full rounded-lg border border-border bg-background"
+      className="w-full rounded-lg border border-border bg-background"
+      style={{ height: artifact.payload.height ?? 240 }}
       title={artifact.title ?? artifact.id}
       sandbox=""
       referrerPolicy="no-referrer"

@@ -191,11 +191,14 @@ export function coordinatorCakeOperations(
       ...createCoordinatorOperations(bridge),
       ...createCakeArtifactOperations(undefined, {
         ...options,
-        persistArtifact: async () => {
-          throw new Error("Artifact publication is unavailable in Cake Chat");
-        },
+        persistArtifact:
+          options.persistArtifact ??
+          (async () => {
+            throw new Error("Artifact publication is unavailable in Cake Chat");
+          }),
       }).filter((operation) =>
         [
+          "html.present",
           "artifacts.link",
           "artifacts.present",
           "artifacts.state.read",

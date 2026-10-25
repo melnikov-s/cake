@@ -21,7 +21,10 @@ import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-i
 import * as access from "../../src/domain/artifacts/agentArtifactAccess";
 import * as workflows from "../../src/domain/artifacts/artifactWorkflows";
 import { createCakeArtifactOperations } from "../../src/domain/artifacts/cake-artifact-operations";
-import { decodeArtifactLineageId } from "../../src/contracts/artifacts/artifact-lineage";
+import {
+  artifactRevisionToRecord,
+  decodeArtifactLineageId,
+} from "../../src/contracts/artifacts/artifact-lineage";
 import { ArtifactStorage } from "../../src/services/storage/ArtifactStorage";
 import { makeArtifactStorageLive } from "../../src/services/storage/ArtifactStorageLive";
 import { makeArtifactProjectionLive } from "../../src/services/artifacts/ArtifactProjectionLive";
@@ -128,9 +131,19 @@ export default function Prototype() {
         const conversation = await harness.root(BACKGROUND_CONTEXT);
         const operations = new CakeOperationRegistry(
           createCakeArtifactOperations(undefined, {
-            persistArtifact: async () => {
-              throw new Error("Presentation must not publish");
-            },
+            persistArtifact: (artifact) =>
+              runtime.runPromise(
+                workflows
+                  .create({
+                    sessionId,
+                    lineageId: decodeArtifactLineageId(artifact.id),
+                    snapshot: artifact,
+                    workingDirectory: paths.project,
+                  })
+                  .pipe(Effect.map(artifactRevisionToRecord)),
+              ),
+            resolveArtifact: (reference) =>
+              runtime.runPromise(access.resolve(sessionId, reference)),
             resolveArtifactForPresentation: (reference) =>
               runtime.runPromise(access.resolveForPresentation(sessionId, reference)),
           }),
@@ -140,12 +153,26 @@ export default function Prototype() {
           "inline-visual",
           "inline-visual@r2",
           "existing-document@r1",
+          "new-headers",
         ].entries()) {
           const toolCallId = `present-${index}`;
-          const result = await operations.invoke(
-            { command: "artifacts.present", input: { reference } },
-            { runtime: { sessionId }, toolCallId, signal: new AbortController().signal },
-          );
+          const request =
+            reference === "new-headers"
+              ? {
+                  command: "html.present",
+                  input: {
+                    id: sessionId === CAKE_CHAT_SESSION_ID ? "global-headers" : "project-headers",
+                    title: "Three header styles",
+                    height: 360,
+                    html: "<style>header{padding:20px;margin:8px;border:1px solid #888}</style><header>Minimal Studio</header><header>Editorial</header><header>Modern Dark</header><script>document.body.textContent='SCRIPT RAN'</script>",
+                  },
+                }
+              : { command: "artifacts.present", input: { reference } };
+          const result = await operations.invoke(request, {
+            runtime: { sessionId },
+            toolCallId,
+            signal: new AbortController().signal,
+          });
           await conversation.commit(async (tx) => {
             await tx.appendEntry(AssistantEntry, conversation.id, {
               model: [
@@ -156,7 +183,7 @@ export default function Prototype() {
                       type: "toolCall",
                       id: toolCallId,
                       name: "cake",
-                      arguments: { command: "artifacts.present", input: { reference } },
+                      arguments: request,
                     },
                   ],
                   timestamp: index,
@@ -216,7 +243,19 @@ export default function Prototype() {
     await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
     const surfaces = page.locator('[data-slot="artifact-disclosure"]');
     const verify = async (selected: string, restored = false) => {
-      await expect(surfaces).toHaveCount(4);
+      await expect(surfaces).toHaveCount(5);
+      const staticFrame = surfaces.nth(4).locator("iframe");
+      await expect(staticFrame).toHaveAttribute("sandbox", "");
+      const headers = staticFrame.contentFrame().locator("header");
+      await expect(headers).toHaveText(["Minimal Studio", "Editorial", "Modern Dark"]);
+      expect(await staticFrame.evaluate((frame) => frame.getBoundingClientRect().height)).toBe(360);
+      // All three designs fit inside the initial frame, with scripts still disabled.
+      expect(
+        await staticFrame
+          .contentFrame()
+          .locator("body")
+          .evaluate((body) => body.scrollHeight <= window.innerHeight),
+      ).toBe(true);
       await expect(
         surfaces.nth(3).getByRole("heading", { name: "Existing document", exact: true }),
       ).toBeVisible();
@@ -226,7 +265,7 @@ export default function Prototype() {
       for (const index of [0, 2]) {
         const expand = surfaces
           .nth(index)
-          .getByRole("button", { name: "Inline visualization Expand", exact: true });
+          .getByRole("button", { name: /^Inline visualization Expand(?: Old version)?$/ });
         if (restored) await expect(expand).toHaveAttribute("aria-expanded", "false");
         if (await expand.count()) await expand.click();
       }
@@ -258,6 +297,9 @@ export default function Prototype() {
     await page.reload();
     await verify("Selected option C", true);
     await mkdir(join(repositoryRoot, ".visual-captures"), { recursive: true });
+    await surfaces.nth(4).screenshot({
+      path: join(repositoryRoot, ".visual-captures", "static-html-headers.png"),
+    });
     await page.screenshot({
       path: join(repositoryRoot, ".visual-captures", "cake-chat-inline-artifact.png"),
       clip: { x: 0, y: 0, width: 1280, height: 900 },

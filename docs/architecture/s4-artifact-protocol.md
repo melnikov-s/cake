@@ -98,6 +98,25 @@ and widget compilation/sandbox infrastructure with artifacts.
   may pin refs visible at the fork point. Hydration reads catalog links directly
   rather than reconstructing associations from transcript content.
 
+## Direct static HTML presentation
+
+`html.present({ id, title, html, height? })` creates and presents a revision-one
+`html` artifact in Project Sessions, Project Chat, and global Cake Chat. The
+calling agent authors the HTML/CSS; no specialist generation, bundling, browser
+opening, workspace file, or automatic screenshot review is involved.
+The existing HTML iframe uses an empty sandbox and a restrictive CSP: scripts,
+network requests, forms, and parent access remain disabled. Optional payload
+`height` is an integer from 120 to 1600 CSS pixels; omission uses a 240px frame.
+This is explicit geometry, not automatic content measurement.
+
+Publication and the first scope link use the existing artifact storage workflow.
+Regular Pi records its normal custom artifact pointer; Durable records successful
+`html.present` metadata in its original tool result, which also reconstructs the
+inline surface on history replay and result-only pages. Existing results can be
+shown again with `artifacts.present`. Static publication supplies no model-visible
+rendered pixels and must not be described as visual verification. Interactive
+HTML/React remains the separate reviewed `widgets.present` workflow.
+
 ## Message-board artifacts
 
 **Workboard** (`message-board`) is a specialized artifact kind, automatically linked to a Session Family. Board-facing language calls these sessions a workgroup and its members; this does not change the underlying session-creation hierarchy. Its immutable revision-one payload identifies the family; it is a descriptor, not a snapshot of the evolving log. Artifact stable/exact references resolve that descriptor. Ordered entries are individually persisted under the artifact repository's `boards/<lineage-hash>/entries` directory, and compact per-entry/per-session first-notified/read receipts are stored separately. Appending does not rewrite earlier entries, copy the entire log into new artifact revisions, or change content revisions when someone reads. Generic replace/restore is refused; corrections are new entries referencing an earlier sequence.

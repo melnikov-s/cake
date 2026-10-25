@@ -136,24 +136,31 @@ describe("ArtifactHost rendering integration", () => {
     expect(cells()).toEqual(["2", "1"]);
   });
 
-  it("places authored HTML behind an empty sandbox, no-referrer policy and deny-by-default CSP", () => {
-    using fixture = renderArtifactHost({
-      ...base,
-      kind: "html",
-      payload: { html: "<script>parent.document.body.textContent='owned'</script>" },
-    });
-    const frame = fixture.container.querySelector("iframe")!;
-    expect(frame.getAttribute("sandbox")).toBe("");
-    expect(frame.getAttribute("referrerpolicy")).toBe("no-referrer");
-    const policy = documentIn(frame)
-      .querySelector('meta[http-equiv="Content-Security-Policy"]')
-      ?.getAttribute("content");
-    expect(policy).toContain("default-src 'none'");
-    expect(policy).toContain("form-action 'none'");
-    expect(policy).toContain("base-uri 'none'");
-    // Asserts document construction only, not jsdom enforcement of a sandbox.
-    expect(document.body.textContent).not.toContain("owned");
-  });
+  it.each([undefined, 120, 360])(
+    "places authored HTML at height %s behind an empty sandbox and deny-by-default CSP",
+    (height) => {
+      using fixture = renderArtifactHost({
+        ...base,
+        kind: "html",
+        payload: {
+          html: "<script>parent.document.body.textContent='owned'</script>",
+          ...(height === undefined ? null : { height }),
+        },
+      });
+      const frame = fixture.container.querySelector("iframe")!;
+      expect(frame.style.height).toBe(`${height ?? 240}px`);
+      expect(frame.getAttribute("sandbox")).toBe("");
+      expect(frame.getAttribute("referrerpolicy")).toBe("no-referrer");
+      const policy = documentIn(frame)
+        .querySelector('meta[http-equiv="Content-Security-Policy"]')
+        ?.getAttribute("content");
+      expect(policy).toContain("default-src 'none'");
+      expect(policy).toContain("form-action 'none'");
+      expect(policy).toContain("base-uri 'none'");
+      // Asserts document construction only, not jsdom enforcement of a sandbox.
+      expect(document.body.textContent).not.toContain("owned");
+    },
+  );
 
   it("renders an imported Markdown file as a readable document", () => {
     using fixture = renderArtifactHost({

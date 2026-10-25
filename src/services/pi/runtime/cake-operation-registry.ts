@@ -29,7 +29,7 @@ const MAX_CAKE_OPERATION_IMAGES = 4;
 const MAX_CAKE_OPERATION_IMAGE_BASE64_LENGTH = Math.ceil(MAX_CAKE_OPERATION_IMAGE_BYTES / 3) * 4;
 
 export const cakeToolDescription =
-  'Use Cake controls when helpful. {} lists enabled topics; {"command":"<topic>"} lists operations; {"command":"<operation>.help"} gives the exact contract. Known operations need no prior discovery. Invoke with {"command":"<operation>","input":{...}}. Full result schemas: <operation>.output-schema. In codemode, typed operations resolve to {command,result}; help and untyped operations resolve to text. Artifact content is not preloaded: discover, resolve, then read it. Use artifacts.present to show an existing artifact.';
+  'Use Cake controls when helpful. {} lists enabled topics; {"command":"<topic>"} lists operations; {"command":"<operation>.help"} gives the exact contract. Known operations need no prior discovery. Invoke with {"command":"<operation>","input":{...}}. Full result schemas: <operation>.output-schema. In codemode, typed operations resolve to {command,result}; help and untyped operations resolve to text. Artifact content is not preloaded: discover, resolve, then read it. For static HTML/CSS mockups, call html.present with {id,title,html,height?}: one inline presentation, no files or specialist. Use widgets.present for complex interactive experiences. Use artifacts.present to show an existing artifact.';
 
 const commandSchema = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)).annotate({
   description: "Exact topic or operation command. Omit for the help index.",

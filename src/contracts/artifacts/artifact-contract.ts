@@ -86,10 +86,17 @@ const diffArtifactSchema = Schema.Struct({
     language: Schema.optional(Schema.String.check(Schema.isMaxLength(128))),
   }),
 });
+export const htmlArtifactHeightSchema = Schema.Int.check(
+  Schema.isGreaterThanOrEqualTo(120),
+  Schema.isLessThanOrEqualTo(1600),
+);
 const htmlArtifactSchema = Schema.Struct({
   ...artifactBase,
   kind: Schema.Literal("html"),
-  payload: Schema.Struct({ html: textSchema }),
+  payload: Schema.Struct({
+    html: textSchema,
+    height: Schema.optionalKey(htmlArtifactHeightSchema),
+  }),
 });
 const widgetArtifactSchema = Schema.Struct({
   ...artifactBase,

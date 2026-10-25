@@ -225,6 +225,8 @@ describe("permanent Cake Chat", () => {
         expect(prompt()).toContain("/zombies chat only.");
         expect(prompt()).not.toContain("/other chat only.");
         expect(prompt()).not.toContain("Coding only.");
+        expect(commands).toContain("html.present");
+        expect(options.runtime.persistArtifact).toBeDefined();
         expect(options.runtime.allowedCakeOperations).toContain("settings.project-chat.update");
         expect(options.runtime.allowedCakeOperations).not.toContain("settings.cake-chat.update");
         // Project Chats can inspect and change every user setting the Settings UI offers.
@@ -298,6 +300,8 @@ describe("permanent Cake Chat", () => {
         expect(globalPrompt()).toContain(PROJECT_TODO_CREATION_RULE);
         expect(globalPrompt()).toContain(PROJECT_TODO_CLOSING_RULE);
         expect(globalPrompt()).not.toContain("Project commitment");
+        expect(global.runtime.allowedCakeOperations).toContain("html.present");
+        expect(global.runtime.persistArtifact).toBeDefined();
         expect(global.runtime.allowedCakeOperations).toContain("todos.update-many");
         expect(global.runtime.onCakeChatInputConsumed).toBeDefined();
         const globalTodos = global.runtime.projectTodos;

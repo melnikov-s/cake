@@ -121,6 +121,64 @@ function makeHarness(initial: CakeArtifactV1 = markdown(1, "one")) {
 }
 
 describe("Cake artifact management operations", () => {
+  it("presents authored static HTML in one call with a durable regular-Pi pointer", async () => {
+    const { registry, callbacks, appendEntry } = makeHarness();
+    const html =
+      "<style>header{padding:20px}</style><header>One</header><header>Two</header><header>Three</header>";
+    const result = await registry.invoke(
+      {
+        command: "html.present",
+        input: { id: "headers", title: "Three headers", html, height: 360 },
+      },
+      context(),
+    );
+    expect(callbacks.persistArtifact).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        kind: "html",
+        payload: { html, height: 360 },
+        sessionId: "session-1",
+        interaction: { mode: "present" },
+      }),
+    );
+    expect(result.details).toMatchObject({
+      command: "html.present",
+      result: { kind: "html", exactRef: "cake://artifact/headers@r1" },
+    });
+    expect(appendEntry).toHaveBeenCalledExactlyOnceWith(
+      "cake.artifact/v1",
+      expect.objectContaining({
+        kind: "html",
+        exactRef: "cake://artifact/headers@r1",
+        origin: { assistantEntryId: "assistant-1", toolCallId: "tool-1" },
+      }),
+    );
+  });
+
+  it("rejects invalid HTML frame sizes and cancelled publication before persistence", async () => {
+    const { registry, callbacks } = makeHarness();
+    for (const height of [0, 1601, 240.5]) {
+      await expect(
+        registry.invoke(
+          {
+            command: "html.present",
+            input: { id: "headers", title: "Headers", html: "<header>One</header>", height },
+          },
+          context(),
+        ),
+      ).rejects.toThrow();
+    }
+    await expect(
+      registry.invoke(
+        {
+          command: "html.present",
+          input: { id: "headers", title: "Headers", html: "<header>One</header>" },
+        },
+        { ...context(), signal: AbortSignal.abort() },
+      ),
+    ).rejects.toThrow();
+    expect(callbacks.persistArtifact).not.toHaveBeenCalled();
+  });
+
   it("returns exact retained initial pixels with provenance, never live C state or regenerated pixels", async () => {
     const widget = widgetArtifact();
     if (widget.kind !== "widget") throw new Error("Expected widget");

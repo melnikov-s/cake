@@ -82,10 +82,13 @@ import { ArtifactStorage } from "../../services/storage/ArtifactStorage";
 import { ArtifactProjection } from "../../services/artifacts/ArtifactProjection";
 import { ClientEvents } from "../../services/clients/ClientEvents";
 import * as agentArtifactAccess from "../artifacts/agentArtifactAccess";
+import * as artifactWorkflows from "../artifacts/artifactWorkflows";
+import { artifactRevisionToRecord } from "../../contracts/artifacts/artifact-lineage";
 import * as artifactState from "../artifacts/artifactState";
 import { ArtifactLineageId } from "../../contracts/artifacts/artifact-lineage";
 
 const CAKE_CHAT_OPERATIONS = [
+  "html.present",
   "artifacts.link",
   "artifacts.present",
   "artifacts.state.read",
@@ -443,6 +446,20 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
       allowedCakeOperations: project
         ? CAKE_CHAT_OPERATIONS.filter((command) => !command.startsWith("settings.cake-chat."))
         : CAKE_CHAT_OPERATIONS,
+      persistArtifact: (artifact) =>
+        runArtifact(
+          Effect.gen(function* () {
+            const revision = yield* artifactWorkflows.create({
+              sessionId: target.sessionId,
+              lineageId: yield* Schema.decodeUnknownEffect(ArtifactLineageId)(artifact.id),
+              snapshot: artifact,
+              workingDirectory: configuration.location.workingDirectory,
+            });
+            const record = artifactRevisionToRecord(revision);
+            (yield* ClientEvents).broadcast({ type: "artifact-updated", record });
+            return record;
+          }),
+        ),
       resolveArtifact: (reference) =>
         runArtifact(agentArtifactAccess.resolve(target.sessionId, reference)),
       resolveArtifactForPresentation: (reference) =>
