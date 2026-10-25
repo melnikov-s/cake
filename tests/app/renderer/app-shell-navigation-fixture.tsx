@@ -116,6 +116,7 @@ export function renderAppShellNavigation(
   );
   return {
     root: fixture.root,
+    models: fixture.models,
     client: fixture.client,
     user: userEvent.setup(),
     async publishResolved(sessionId: string, resolved = true) {

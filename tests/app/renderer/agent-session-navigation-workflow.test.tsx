@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, screen } from "@testing-library/react";
-import { toSnapshot, type StoreSnapshot } from "r-state-tree";
+import { applySnapshot, toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { messageReference } from "../../../src/contracts/conversations/message-reference";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
@@ -88,6 +88,58 @@ describe("Agent session navigation workflow", () => {
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
   });
+
+  it.each([CAKE_CHAT_SESSION_ID, `project-chat:${"a".repeat(64)}`])(
+    "opens and re-focuses permanent chat %s without Project Session lookup, honoring permission",
+    async (sessionId) => {
+      const lookup = vi.fn<Client["projectSessions"]["lookup"]>();
+      const open = vi.fn<Client["cakeChats"]["open"]>(async () => undefined);
+      using fixture = renderAppShellNavigation({
+        projectSessions: { lookup },
+        cakeChats: { open },
+      });
+      if (sessionId !== CAKE_CHAT_SESSION_ID)
+        act(() =>
+          applySnapshot(fixture.models.cakeChatCatalog, {
+            loaded: true,
+            sessions: [
+              ...(toSnapshot(fixture.models.cakeChatCatalog).sessions ?? []),
+              {
+                sessionId,
+                projectPath: "/alpha",
+                title: "Alpha chat",
+                createdAt: new Date(0).toISOString(),
+                modifiedAt: new Date(0).toISOString(),
+                messageCount: 0,
+                resolved: false,
+                unread: false,
+              },
+            ],
+          }),
+        );
+      const invoke = () =>
+        fixture.root.applicationControlStore.invoke(
+          { name: "sessions.open", arguments: { sessionId } },
+          { kind: "cake-chat", sessionId: CAKE_CHAT_SESSION_ID, title: "Cake Chat" },
+        );
+      await act(async () => {
+        expect(await invoke()).toMatchObject({ ok: true, opened: { sessionId } });
+      });
+      expect(fixture.root.cakeChatCollectionStore.sessionId).toBe(sessionId);
+      await act(async () => {
+        expect(await invoke()).toMatchObject({ ok: true });
+      });
+      expect(lookup).not.toHaveBeenCalled();
+      await fixture.user.click(await openSettings(fixture));
+      await act(async () => {
+        expect(await invoke()).toMatchObject({
+          ok: false,
+          error: expect.stringContaining("disabled"),
+        });
+      });
+      expect(lookup).not.toHaveBeenCalled();
+    },
+  );
 
   it.each(["beta", CAKE_CHAT_SESSION_ID])(
     "opens an exact original outside the visible projection for %s without switching its Pi branch",
@@ -247,7 +299,7 @@ describe("Agent session navigation workflow", () => {
     },
   );
 
-  it.each(["missing", CAKE_CHAT_SESSION_ID, "", 42])(
+  it.each(["missing", `project-chat:${"f".repeat(64)}`, "", 42])(
     "rejects invalid Project Session target %s without navigating",
     async (sessionId) => {
       const open = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);

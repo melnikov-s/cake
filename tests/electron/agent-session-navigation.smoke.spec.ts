@@ -5,7 +5,6 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
-import { sessionReference } from "../../src/contracts/project-sessions/session-reference";
 import { installLocalModelHttpGuard } from "./main-harness";
 import { windowState } from "../fixtures/window-state";
 
@@ -199,7 +198,7 @@ for (const { disabled, late } of [
               ? { error: expect.stringContaining("disabled") }
               : {
                   opened: expect.objectContaining({
-                    sessionId: sessionReference(targetId, [targetId]),
+                    sessionId: targetId,
                   }),
                 }),
           }),

@@ -10,6 +10,8 @@ To contact a registered project's Project Chat from global Cake Chat, discover o
 
 Use `delivery: "fyi"` for passive notifications; prompt/steer only for authorized immediate work. A send receipt confirms admission or deferred retention, never recipient execution/completion; no recipient answer is awaited. Never replace passive batching with an immediate wake to make delivery look faster. Send receipts and report-read provenance retain canonical identities; do not scan unrelated sessions to shorten them. Read `communication.md` for delivery choices.
 
+Use the same canonical `projectChatId` with `sessions.open` to select its permanent chat, including before first manual open. This honors the invoking window's user-owned agent-navigation permission. If disabled, offer the `sessions.info` deepLink for the user to open; do not change the permission. Opening does not drain passive FYIs (see `communication.md`).
+
 ## Other session references
 
 Session targets accept a canonical identity or a discovered bare hexadecimal suffix (at least eight trailing characters, with UUID hyphens removed; Project Chat hashes shorten the same way). General operation results retain canonical IDs; use them directly in subsequent calls. Scoped rosters such as Workboards may emit short references. Cake extends suffixes on collisions within those rosters and rejects unknown or ambiguous references before routing; rediscover the roster or use a longer suffix rather than guessing. Titles are labels, not routing identities.

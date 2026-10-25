@@ -42,7 +42,8 @@ const threadView = Effect.fn("AgentControl.threadView")(function* (thread: Coord
       const notice = (yield* (yield* SessionFamilyStorage).state()).passiveNotices?.find(
         (item) => item.id === message.messageId,
       );
-      message.status = notice?.delivered ? "delivered" : "deferred";
+      // The notice marker proves Pi admission, not transcript projection or execution.
+      message.status = notice?.delivered ? "accepted" : "deferred";
       continue;
     }
     if (message.status === "failed" || message.status === "canceled") continue;
@@ -296,5 +297,7 @@ export const invoke = Effect.fn("AgentSessionMessaging.invoke")(function* (
     recipientContext: yield* context(targetSessionId),
     ...(queue ? { queue } : null),
     status: message.status,
+    transcriptDelivery: delivery === "fyi" ? "pending" : "unverified",
+    execution: delivery === "fyi" ? "not-requested" : "unverified",
   });
 });

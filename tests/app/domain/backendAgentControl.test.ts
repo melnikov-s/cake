@@ -1626,7 +1626,13 @@ it.effect(
         delivery: "prompt",
       });
       expect(receipt.details).toMatchObject({
-        result: { ok: true, target: { sessionId: projectChat }, status: "accepted" },
+        result: {
+          ok: true,
+          target: { sessionId: projectChat },
+          status: "accepted",
+          transcriptDelivery: "unverified",
+          execution: "unverified",
+        },
       });
       expect((yield* Queue.take(f.prompts)).sessionId).toBe(projectChat);
       expect(yield* Deferred.isDone(f.messageRelease)).toBe(false);
@@ -1637,7 +1643,14 @@ it.effect(
         delivery: "fyi",
       });
       expect(quiet.details).toMatchObject({
-        result: { ok: true, delivery: "fyi", status: "deferred", expectsResponse: false },
+        result: {
+          ok: true,
+          delivery: "fyi",
+          status: "deferred",
+          expectsResponse: false,
+          transcriptDelivery: "pending",
+          execution: "not-requested",
+        },
       });
       const storage = Context.get(f.context, SessionFamilyStorage);
       expect((yield* storage.state()).passiveNotices).toMatchObject([

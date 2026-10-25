@@ -256,7 +256,7 @@ export function createSessionFamilyOperations(
         },
       ],
       result:
-        "An informational correlated receipt with target identity, recipient context snapshot, queue facts when pending, and response expectation. No acknowledgment is needed.",
+        "A correlated admission/retention receipt, not proof of communication. status:deferred and transcriptDelivery:pending mean retained FYI; immediate admission returns transcriptDelivery:unverified and execution:unverified. Verify transcript visibility and execution separately. No acknowledgment is needed.",
       execute: invokeAppControl("sessions.send"),
     },
     {

@@ -14,6 +14,7 @@ import { describe } from "vitest";
 import * as boards from "../../../src/domain/artifacts/messageBoards";
 import * as completionInbox from "../../../src/domain/conversations/completionInbox";
 import * as families from "../../../src/domain/session-families/sessionFamilies";
+import * as updateBatches from "../../../src/domain/session-families/updateBatches";
 import { acquireOptions as projectOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import { acquireOptions as chatOptions } from "../../../src/domain/cake-chats/cakeChatRuntime";
 import { createPrompted } from "../../../src/domain/project-sessions/projectSessionCreation";
@@ -649,6 +650,82 @@ describe("one-shot to-do selection admission", () => {
 });
 
 describe("automatic spawned-session reporting", () => {
+  it.effect(
+    "a fresh Project Chat FYI survives restart and the ordinary batch deadline admits it once",
+    () =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        const target = projectChatSessionId("/project");
+        yield* f.run(
+          Effect.gen(function* () {
+            const receipt = yield* agentMessaging.invoke(
+              {
+                name: "sessions.send",
+                arguments: {
+                  sessionId: target,
+                  text: "Retained project vision",
+                  delivery: "fyi",
+                  resultDelivery: "ignore",
+                },
+              },
+              { kind: "cake-chat", sessionId: CAKE_CHAT_SESSION_ID, title: "Cake Chat" },
+            );
+            yield* Schema.decodeUnknownEffect(
+              Schema.Struct({
+                status: Schema.Literal("deferred"),
+                transcriptDelivery: Schema.Literal("pending"),
+              }),
+            )(receipt);
+            yield* updateBatches.runPass();
+            assert.equal(f.inputs.length, 0);
+            const restarted = yield* Layer.build(familyStorageHarness(f.harness.files).layer);
+            const storage = yield* SessionFamilyStorage.pipe(Effect.provide(restarted));
+            const deadline = (yield* storage.state()).updateBatches?.find(
+              (batch) => batch.recipientSessionId === target,
+            )?.dueAt;
+            assert.ok(deadline);
+            yield* TestClock.adjust("4 minutes");
+            yield* updateBatches
+              .runPass()
+              .pipe(Effect.provideService(SessionFamilyStorage, storage));
+            assert.equal(f.inputs.length, 0);
+            yield* TestClock.adjust("1 minute");
+            yield* Deferred.succeed(f.consumeQueued, undefined);
+            yield* updateBatches
+              .runPass()
+              .pipe(Effect.provideService(SessionFamilyStorage, storage));
+            yield* Deferred.await(f.persisted);
+            assert.equal(f.inputs.length, 1);
+            assert.equal(f.inputs[0]?.internal?._tag, "UpdateBatch");
+            assert.ok(f.inputs[0]?.text.includes("Retained project vision"));
+            assert.equal((yield* storage.state()).passiveNotices?.[0]?.delivered, true);
+            const thread = yield* agentMessaging
+              .invoke(
+                { name: "sessions.thread", arguments: {} },
+                { kind: "cake-chat", sessionId: CAKE_CHAT_SESSION_ID, title: "Cake Chat" },
+              )
+              .pipe(Effect.provideService(SessionFamilyStorage, storage));
+            yield* Schema.decodeUnknownEffect(
+              Schema.Struct({
+                thread: Schema.Struct({
+                  messages: Schema.Array(Schema.Struct({ status: Schema.Literal("accepted") })),
+                }),
+              }),
+            )(thread);
+            yield* updateBatches
+              .runPass()
+              .pipe(Effect.provideService(SessionFamilyStorage, storage));
+            assert.equal(f.inputs.length, 1);
+          }).pipe(
+            Effect.provideService(CakeChatConfiguration, {
+              location: { workingDirectory: "/home", sessionDirectory: "/chat" },
+              agentDirectory: "/cake",
+            }),
+            Effect.provide(makeRuntimeRecoveryStorageTestLayer()),
+          ),
+        );
+      }),
+  );
   it.effect.each(["global", "project-chat", "project-session"] as const)(
     "omitted send result delivery is notification for %s callers",
     (kind) =>
