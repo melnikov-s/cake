@@ -17,6 +17,7 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
 }) {
   return (
     <NavItem
+      activateOnMouseDown
       data-slot="cake-chat-group"
       label="Cake Chat"
       icon={<CakeIcon aria-hidden />}

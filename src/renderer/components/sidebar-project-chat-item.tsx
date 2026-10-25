@@ -32,6 +32,7 @@ export const SidebarProjectChatItem = observer(function SidebarProjectChatItem({
   const activity = cakeChat.activityFor(summary.sessionId);
   return (
     <NavItem
+      activateOnMouseDown
       data-slot="project-chat-item"
       data-session-id={summary.sessionId}
       data-animated-list-key={summary.sessionId}

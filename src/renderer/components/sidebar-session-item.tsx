@@ -46,6 +46,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   return (
     <SessionListItem
       {...row}
+      activateOnMouseDown
       revealWhenSelected
       associated={store.isSessionAssociatedWithSelectedTodo(session.sessionId)}
       activityTime={store.sessionActivityTime(session.modifiedAt)}

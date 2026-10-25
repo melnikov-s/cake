@@ -30,6 +30,8 @@ export interface SessionListItemProps {
   };
   managedWorktree?: Pick<WorktreeRecord, "branch" | "baseBranch" | "parentWorktreePath" | "state">;
   selected: boolean;
+  /** Sidebar navigation opens on press; destination pickers retain click activation. */
+  activateOnMouseDown?: boolean;
   /** Scroll the row into view when it becomes (or mounts) selected; navigation lists opt in. */
   revealWhenSelected?: boolean;
   /** Advisory to-do association; never replaces actual selection. */
@@ -70,6 +72,7 @@ export const SessionListItem = observer(function SessionListItem({
   session,
   managedWorktree,
   selected,
+  activateOnMouseDown = false,
   revealWhenSelected = false,
   associated = false,
   paneNumber,
@@ -225,6 +228,7 @@ export const SessionListItem = observer(function SessionListItem({
         <NavItem
           ref={navigationRef}
           actionProps={actionProps}
+          activateOnMouseDown={activateOnMouseDown}
           motionFeedback
           className={cn(
             "session-row col-start-2 h-full bg-transparent py-1.5 hover:bg-transparent [&>button]:h-full",

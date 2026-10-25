@@ -186,6 +186,12 @@ use `cake://subagent/<encoded-parent>/<public-handle>` and the shared Markdown n
 open the existing worker chat/report under its parent. Private Pi IDs are never session links.
 Subagent call rows use the same advisory cue; worker completion/release is not to-do resolution.
 
+`NavItem.activateOnMouseDown` opens sidebar conversations on primary press and
+ignores the following pointer click, while retaining native keyboard/assistive
+activation and control-click semantics. `SessionListItem` forwards this opt-in;
+search and destination pickers keep their default click activation. Nested row
+controls remain independent siblings of the navigation button.
+
 `NavItem.wholeRowAction` extends the primary action to non-interactive row content
 and whitespace without nesting controls. It retains the native action button for
 keyboard activation and focus, and supports `aria-pressed` selection and temporary

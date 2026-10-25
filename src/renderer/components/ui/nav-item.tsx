@@ -28,6 +28,8 @@ export interface NavItemProps extends Omit<HTMLAttributes<HTMLDivElement>, "onCl
   wholeRowAction?: boolean;
   /** Allow native text selection; selection drags must not activate row actions or controls. */
   selectableText?: boolean;
+  /** Open on primary press; retain native keyboard/assistive clicks and control-click menus. */
+  activateOnMouseDown?: boolean;
   /** Action semantics for composite controls such as a searchable listbox. */
   actionProps?: Pick<
     ButtonHTMLAttributes<HTMLButtonElement>,
@@ -57,6 +59,7 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
     motionFeedback = false,
     wholeRowAction = false,
     selectableText = false,
+    activateOnMouseDown = false,
     actionProps,
     onClick,
     onContextMenu,
@@ -142,7 +145,22 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
           wholeRowAction &&
             "after:pointer-events-none after:absolute after:inset-0 after:rounded-md focus-visible:after:ring-2 focus-visible:after:ring-ring focus-visible:after:ring-offset-2",
         )}
+        onMouseDown={(event) => {
+          actionProps?.onMouseDown?.(event);
+          if (
+            activateOnMouseDown &&
+            event.button === 0 &&
+            !event.ctrlKey &&
+            !event.defaultPrevented &&
+            actionProps?.["aria-disabled"] !== true
+          ) {
+            onClick?.(event);
+          }
+        }}
         onClick={(event) => {
+          // Pointer clicks already opened on press. detail=0 retains native keyboard,
+          // assistive technology and programmatic activation. Control-click stays native.
+          if (activateOnMouseDown && event.detail > 0 && !event.ctrlKey) return;
           if (actionProps?.["aria-disabled"] !== true) onClick?.(event);
         }}
       >

@@ -69,6 +69,34 @@ function deferred<Value>() {
 }
 
 describe("Sidebar navigation workflow", () => {
+  it.each(["projects", "activity"] as const)(
+    "opens on primary down before release and retains keyboard activation in %s",
+    async (mode) => {
+      const sessions = [sidebarSummary("first"), sidebarSummary("second", 2)];
+      using fixture = renderSidebarNavigation({
+        projects: [project],
+        sessions,
+        loadedIds: ["first", "second"],
+        client: { projectSessions: { open: async () => undefined } },
+      });
+      if (mode === "activity")
+        await fixture.user.click(screen.getByRole("button", { name: "Show activity" }));
+      const paneId = () =>
+        document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id");
+      await fixture.user.pointer({ target: rowButton("first"), keys: "[MouseLeft>]" });
+      await waitFor(() => expect(paneId()).toBe("first"));
+      expect(row("first").getAttribute("data-navigation-active")).toBe("true");
+      await fixture.user.pointer({ keys: "[/MouseLeft]" });
+      expect(paneId()).toBe("first");
+      rowButton("second").focus();
+      await fixture.user.keyboard("{Enter}");
+      await waitFor(() => expect(paneId()).toBe("second"));
+      rowButton("first").focus();
+      await fixture.user.keyboard(" ");
+      await waitFor(() => expect(paneId()).toBe("first"));
+    },
+  );
+
   it.each(["New chat in pi"])(
     "starts an unsent conversation in the inactive project through %s",
     async (control) => {
