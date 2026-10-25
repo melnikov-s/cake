@@ -21,6 +21,7 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
     <li data-todo-id={item.id} data-animated-list-key={item.id}>
       <NavItem
         wholeRowAction
+        selectableText
         associated={selected}
         aria-busy={store.busy}
         actionProps={{

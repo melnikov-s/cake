@@ -10,11 +10,12 @@ Project Chat and global Cake Chat (not coding sessions) have `todos.list`, `todo
 
 **When a to-do is associated with a session, resolving that session completes the to-do automatically; don't mark it done by hand.** So for a session-linked item, "close it" means resolving the session; you close every other item (subagent-only, discussion or source-only items) yourself by the rule above. The injected to-do baseline lists each open item's linked session IDs in `sessions`, so you can tell which items `sessions.resolve` will close. After resolving, update only the title, description or status if needed. `state: "done"` on an already-done item is a no-op for the state: alone it commits nothing, and other edits in the same update still apply, even when the only change since your revision was that automatic completion. The receipt's `note` says why the item was already done. Any other change since your revision is still a conflict that names what happened; reread and re-apply.
 
-The title identifies the task; the description gives the latest update, not a restatement of the task. Keep it short and punchy, usually one or two short sentences: what happened or is happening, what was found (or not found), blockers and what remains pending, as relevant. Keep descriptions current when meaningful progress, findings, completion, review/merge readiness or blockers change, using available events and evidence. Say when no findings or fix exist; never claim finished, merged or fixed without evidence. Do not poll, schedule timers or wake workers merely for status; preserve notification behavior.
+Titles identify tasks; descriptions give the latest update, not a task restatement. Use one or two short sentences. Emphasize the user-relevant outcome, current state and remaining blockers or decisions. Omit commit hashes, commit messages and routine implementation/test bookkeeping; keep technical provenance in linked reports or code references. Retain verification gaps or failures that affect readiness. Update when meaningful progress, findings, completion, review/merge readiness or blockers change, using available events and evidence. Say when no findings or fix exist; never claim finished, merged or fixed without evidence. Do not poll, schedule timers or wake workers merely for status; preserve notification behavior.
 
 Examples:
 
-- "Preset prompts implemented and committed. Review and merge still pending."
+- "Preset prompts are implemented. Review and merge still pending."
+- "Apple Silicon packaging is implemented. Review, merge and release remain pending; downloaded-app first launch and release CI are unverified."
 - "Startup delays first display, but the full ~500 ms remains unexplained. No fix implemented."
 - "Live widget-theme fix is underway, including System mode. No findings reported yet."
 

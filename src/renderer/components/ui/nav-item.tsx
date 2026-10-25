@@ -26,6 +26,8 @@ export interface NavItemProps extends Omit<HTMLAttributes<HTMLDivElement>, "onCl
   motionFeedback?: boolean;
   /** Select from non-interactive row content while keeping nested controls independent. */
   wholeRowAction?: boolean;
+  /** Allow native text selection; selection drags must not activate row actions or controls. */
+  selectableText?: boolean;
   /** Action semantics for composite controls such as a searchable listbox. */
   actionProps?: Pick<
     ButtonHTMLAttributes<HTMLButtonElement>,
@@ -54,16 +56,20 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
     disabled = false,
     motionFeedback = false,
     wholeRowAction = false,
+    selectableText = false,
     actionProps,
     onClick,
     onContextMenu,
     onMouseEnter,
+    onMouseDownCapture,
+    onClickCapture,
     children,
     ...props
   },
   ref,
 ) {
   const actionRef = useRef<HTMLButtonElement>(null);
+  const selectionStart = useRef<{ x: number; y: number } | null>(null);
   return (
     <div
       ref={ref}
@@ -76,6 +82,7 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
         associated && !active && associationHighlightClassName,
         wholeRowAction && "relative",
         wholeRowAction && !disabled && "cursor-pointer",
+        selectableText && "select-text cursor-text",
         disabled && "opacity-40 cursor-default hover:bg-transparent hover:text-muted-foreground",
         className,
       )}
@@ -100,6 +107,21 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
             }
           : undefined
       }
+      onMouseDownCapture={(event) => {
+        onMouseDownCapture?.(event);
+        if (selectableText) selectionStart.current = { x: event.clientX, y: event.clientY };
+      }}
+      onClickCapture={(event) => {
+        onClickCapture?.(event);
+        if (!selectableText || event.detail === 0) return;
+        const start = selectionStart.current;
+        const dragged = start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 3;
+        const selection = event.currentTarget.ownerDocument.getSelection();
+        if (dragged || (event.shiftKey && selection && !selection.isCollapsed)) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }}
       onMouseEnter={onMouseEnter}
       onContextMenu={onContextMenu}
       {...props}
@@ -116,6 +138,7 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
         }
         className={cn(
           "group/nav-action flex min-w-0 flex-1 items-center gap-2 text-left bg-transparent border-0 p-0 text-inherit cursor-pointer disabled:cursor-default outline-none",
+          selectableText && "select-text cursor-text",
           wholeRowAction &&
             "after:pointer-events-none after:absolute after:inset-0 after:rounded-md focus-visible:after:ring-2 focus-visible:after:ring-ring focus-visible:after:ring-offset-2",
         )}

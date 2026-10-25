@@ -6,6 +6,7 @@ import {
   PROJECT_TODO_CLOSING_RULE,
   PROJECT_TODO_CREATION_RULE,
   PROJECT_TODO_DESCRIPTION_GUIDANCE,
+  PROJECT_TODO_SUMMARY_GUIDANCE,
   PROJECT_TODO_LINK_GUIDANCE,
   projectTodoBaseline,
 } from "../../../src/contracts/projects/project-todos";
@@ -123,10 +124,9 @@ describe("latest-update to-do writing guidance", () => {
 
   it("requires concise, evidence-based updates as work changes without status polling", () => {
     for (const requirement of [
-      "The title identifies the task; the description gives the latest update, not a restatement of the task",
-      "short and punchy, usually one or two short sentences",
-      "what happened or is happening, what was found (or not found), blockers and what remains pending",
-      "Keep descriptions current when meaningful progress, findings, completion, review/merge readiness or blockers change",
+      "Titles identify tasks; descriptions give the latest update, not a task restatement",
+      "Use one or two short sentences",
+      "Update when meaningful progress, findings, completion, review/merge readiness or blockers change",
       "using available events and evidence",
       "Say when no findings or fix exist",
       "never claim finished, merged or fixed without evidence",
@@ -137,9 +137,22 @@ describe("latest-update to-do writing guidance", () => {
     }
   });
 
+  it("focuses summaries on user outcomes and keeps provenance in linked evidence", () => {
+    for (const requirement of [
+      "user-relevant outcome, current state and remaining blockers or decisions",
+      "Omit commit hashes, commit messages and routine implementation/test bookkeeping",
+      "keep technical provenance in linked reports or code references",
+      "Retain verification gaps or failures that affect readiness",
+    ]) {
+      expect(PROJECT_TODO_SUMMARY_GUIDANCE).toContain(requirement);
+    }
+    expect(PROJECT_TODO_DESCRIPTION_GUIDANCE).toContain(PROJECT_TODO_SUMMARY_GUIDANCE);
+  });
+
   it("shows the approved updates and keeps the description current even when status is used", () => {
     for (const example of [
-      "Preset prompts implemented and committed. Review and merge still pending.",
+      "Preset prompts are implemented. Review and merge still pending.",
+      "Apple Silicon packaging is implemented. Review, merge and release remain pending; downloaded-app first launch and release CI are unverified.",
       "Startup delays first display, but the full ~500 ms remains unexplained. No fix implemented.",
       "Live widget-theme fix is underway, including System mode. No findings reported yet.",
     ]) {

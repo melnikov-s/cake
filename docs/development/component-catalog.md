@@ -189,7 +189,10 @@ Subagent call rows use the same advisory cue; worker completion/release is not t
 `NavItem.wholeRowAction` extends the primary action to non-interactive row content
 and whitespace without nesting controls. It retains the native action button for
 keyboard activation and focus, and supports `aria-pressed` selection and temporary
-`aria-disabled` busy states that do not blur the action.
+`aria-disabled` busy states that do not blur the action. Opt into
+`selectableText` for readable rows such as to-dos: native text selection stays enabled,
+and selection drags do not activate the row or nested controls; ordinary clicks and
+keyboard activation remain independent.
 
 Structured work/source links reuse `MarkdownLink` from
 [`Markdown`](../../src/renderer/components/ai-elements/markdown.tsx), the same destination

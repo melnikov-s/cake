@@ -87,9 +87,12 @@ export const PROJECT_TODO_CREATION_RULE =
 export const PROJECT_TODO_CLOSING_RULE =
   "Closing to-dos. Close a to-do yourself when the work is actually done: the change merged or shipped, the requested operation finished and was checked, or the user said they're satisfied with the outcome. Research, investigations, brainstorms and lookups stay open after the report arrives. Set the status to \"Report delivered; awaiting your review\", link the report, and close the to-do only after the user has read it and either said they're satisfied or moved on without follow-ups. Closing automatically when the linked session is resolved still applies: an item linked to a session closes when that session is resolved, so resolve the session rather than marking the item done by hand.";
 
+/** User-facing focus shared by agent guidance and automatic report summaries. */
+export const PROJECT_TODO_SUMMARY_GUIDANCE =
+  "Emphasize the user-relevant outcome, current state and remaining blockers or decisions. Omit commit hashes, commit messages and routine implementation/test bookkeeping; keep technical provenance in linked reports or code references. Retain verification gaps or failures that affect readiness.";
+
 /** Latest-update writing policy, shared by both chat baselines, mutation help and chat-todos.md. */
-export const PROJECT_TODO_DESCRIPTION_GUIDANCE =
-  "The title identifies the task; the description gives the latest update, not a restatement of the task. Keep it short and punchy, usually one or two short sentences: what happened or is happening, what was found (or not found), blockers and what remains pending, as relevant. Keep descriptions current when meaningful progress, findings, completion, review/merge readiness or blockers change, using available events and evidence. Say when no findings or fix exist; never claim finished, merged or fixed without evidence. Do not poll, schedule timers or wake workers merely for status; preserve notification behavior.";
+export const PROJECT_TODO_DESCRIPTION_GUIDANCE = `Titles identify tasks; descriptions give the latest update, not a task restatement. Use one or two short sentences. ${PROJECT_TODO_SUMMARY_GUIDANCE} Update when meaningful progress, findings, completion, review/merge readiness or blockers change, using available events and evidence. Say when no findings or fix exist; never claim finished, merged or fixed without evidence. Do not poll, schedule timers or wake workers merely for status; preserve notification behavior.`;
 
 /** Canonical detailed link policy, disclosed by to-do mutation help and chat-todos.md. */
 export const PROJECT_TODO_LINK_GUIDANCE =

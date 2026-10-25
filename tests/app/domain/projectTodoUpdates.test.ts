@@ -10,7 +10,10 @@ import {
   defaultApplicationState,
   ApplicationState as State,
 } from "../../../src/contracts/application/application-data";
-import { CAKE_CHAT_TODO_SCOPE } from "../../../src/contracts/projects/project-todos";
+import {
+  CAKE_CHAT_TODO_SCOPE,
+  PROJECT_TODO_SUMMARY_GUIDANCE,
+} from "../../../src/contracts/projects/project-todos";
 import {
   PiModelCompletionError,
   type BoundedCompletionInput,
@@ -71,7 +74,7 @@ it.effect(
     const f = fixture((input) =>
       Effect.sync(() => {
         inputs.push(input);
-        return "Retry fix committed; focused tests pass. Awaiting merge.";
+        return "Retry fix is ready for review. Awaiting merge.";
       }),
     );
     return Effect.gen(function* () {
@@ -89,7 +92,7 @@ it.effect(
       const before = yield* todos.list("/project");
       yield* updates.processReports([report]);
       const next = yield* todos.read("/project", item.id);
-      expect(next.description).toBe("Retry fix committed; focused tests pass. Awaiting merge.");
+      expect(next.description).toBe("Retry fix is ready for review. Awaiting merge.");
       expect(next.revision).toBe(1);
       expect(next.state).toBe("open");
       expect(next.associations).toEqual(work);
@@ -107,6 +110,7 @@ it.effect(
       });
       expect(inputs[0]!.selection).toEqual({ ...model, fastMode: false });
       expect(inputs[0]!.timeoutMs).toBe(10_000);
+      expect(inputs[0]!.instructions).toContain(PROJECT_TODO_SUMMARY_GUIDANCE);
       expect(f.persisted().projects[0]?.todos?.items[0]?.description).toBe(next.description);
     }).pipe(Effect.provide(f.layer));
   },
