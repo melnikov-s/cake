@@ -364,6 +364,27 @@ for (const [delivery, theme] of [
             true,
           );
         }
+        const verifyHeadingAlignment = async () => {
+          const edges = async (source: typeof first) =>
+            source.locator('[data-slot="response-disclosure"]').evaluate(async (button) => {
+              await Promise.all(
+                button.getAnimations({ subtree: true }).map((animation) => animation.finished),
+              );
+              return {
+                title: button.querySelector("span")!.getBoundingClientRect().left,
+                chevron: button.querySelector("svg")!.getBoundingClientRect().right,
+              };
+            });
+          const standalone = await edges(first);
+          const batched = await edges(notification);
+          expect(batched.title).toBeCloseTo(standalone.title, 0);
+          expect(batched.chevron).toBeCloseTo(standalone.chevron, 0);
+          // Attributed responses remain deliberately inset inside their session card.
+          const nested = await edges(receipt);
+          expect(nested.title).toBeGreaterThan(standalone.title);
+          expect(nested.chevron).toBeLessThan(standalone.chevron);
+        };
+        await verifyHeadingAlignment();
         const missing = page.locator(
           '[data-message-reference="cake://session/deleted-producer?message=deleted-entry"]',
         );
@@ -384,6 +405,7 @@ for (const [delivery, theme] of [
         await expect(
           first.getByRole("heading", { name: "Original detailed findings" }),
         ).toBeVisible();
+        await verifyHeadingAlignment();
         await expect(first.locator('[data-streamdown="code-block-body"]')).toContainText(
           "const evidence",
         );

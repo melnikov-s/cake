@@ -3235,7 +3235,8 @@ const sessionUpdateReportsScenario: VisualCaptureScenario = {
     "Deduplicated title-only batch entries with lazy exact reports and a unique ongoing note",
   states: ["default", "expanded", "note"],
   async seed(paths, theme) {
-    await cakeChatScenario.seed(paths, theme);
+    await assistantMarkdownCode.seed(paths, theme);
+    await mkdir(join(paths.cakeHome, "pi", "global-chat"), { recursive: true });
     const timestamp = new Date(0).toISOString();
     const sourceId = "visual-session-update-reports";
     const reports = [
@@ -3246,7 +3247,7 @@ const sessionUpdateReportsScenario: VisualCaptureScenario = {
       },
       {
         id: "prompts",
-        title: "Simplify Cake prompts with progressive disclosure",
+        title: "Simplify Cake prompts with progressive disclosure across every chat surface",
         text: "Implemented prompt simplification with progressive disclosure and committed as `d58aa9b5`.\n\nCore instructions remain immediately available. More detailed guidance is disclosed where it is relevant instead of repeating the same instructions throughout the prompt.\n\nWorktree clean; ready for review. No merge, resolution, or restart.",
       },
       {
@@ -3335,6 +3336,33 @@ const sessionUpdateReportsScenario: VisualCaptureScenario = {
     try {
       const root = await harness.root(BACKGROUND_CONTEXT);
       await root.commit(async (tx) => {
+        // A standalone reference and batched references share the transcript gutter.
+        await tx.appendEntry(AssistantEntry, root.id, {
+          model: [
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "text",
+                  text: `[Original report](cake://session/${sourceId}?message=merge)`,
+                },
+              ],
+              timestamp: 9,
+              api: "anthropic-messages",
+              provider: "anthropic",
+              model: "visual-fixture",
+              stopReason: "stop",
+              usage: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                totalTokens: 0,
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+              },
+            },
+          ],
+        });
         await tx.appendEntry(UserEntry, root.id, {
           model: [
             {
@@ -3355,7 +3383,38 @@ const sessionUpdateReportsScenario: VisualCaptureScenario = {
     await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
     const batch = page.getByRole("status", { name: "Session results" });
     await expect(batch.getByRole("button")).toHaveCount(5);
+    const standalone = page
+      .locator(
+        '[data-message-reference="cake://session/visual-session-update-reports?message=merge"]',
+      )
+      .first()
+      .locator('[data-slot="response-disclosure"]');
+    const verifyAlignment = async () => {
+      await page.locator('[data-slot="response-disclosure"]').evaluateAll(async (buttons) => {
+        await Promise.all(
+          buttons.flatMap((button) =>
+            button.getAnimations({ subtree: true }).map((animation) => animation.finished),
+          ),
+        );
+      });
+      const edges = await standalone.evaluate((button) => ({
+        title: button.querySelector("span")!.getBoundingClientRect().left,
+        chevron: button.querySelector("svg")!.getBoundingClientRect().right,
+      }));
+      for (const button of await batch.locator('[data-slot="response-disclosure"]').all()) {
+        const geometry = await button.evaluate((element) => ({
+          title: element.querySelector("span")!.getBoundingClientRect().left,
+          chevron: element.querySelector("svg")!.getBoundingClientRect().right,
+          overflows: element.scrollWidth > element.clientWidth,
+        }));
+        expect(geometry.title).toBeCloseTo(edges.title, 0);
+        expect(geometry.chevron).toBeCloseTo(edges.chevron, 0);
+        expect(geometry.overflows).toBe(false);
+      }
+    };
+    await verifyAlignment();
     if (state === "expanded") {
+      await standalone.click();
       await batch
         .getByRole("button", { name: "Simplify Cake prompts with progressive disclosure" })
         .click();
@@ -3364,10 +3423,33 @@ const sessionUpdateReportsScenario: VisualCaptureScenario = {
       await batch.getByRole("button", { name: "Keyboard navigation review continues" }).click();
       await expect(batch.getByText(/No final report yet/)).toBeVisible();
     }
+    await verifyAlignment();
+    if (await page.evaluate(() => innerWidth <= 760)) {
+      const wraps = await batch
+        .getByRole("button", { name: "Simplify Cake prompts with progressive disclosure" })
+        .evaluate((button) => {
+          const title = button.querySelector("span")!;
+          return (
+            title.getBoundingClientRect().height >
+            Number.parseFloat(getComputedStyle(title).lineHeight)
+          );
+        });
+      expect(wraps).toBe(true);
+    }
+    const expanded = batch.locator('[data-slot="response-disclosure"][aria-expanded="true"]');
+    if (await expanded.count()) {
+      const inset = await expanded.evaluate((button) => {
+        const body = document.getElementById(button.getAttribute("aria-controls")!)!;
+        return (
+          body.firstElementChild!.getBoundingClientRect().left - button.getBoundingClientRect().left
+        );
+      });
+      expect(inset).toBeGreaterThan(0);
+    }
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.mouse.move(1, 1);
   },
-  region: (page) => page.getByRole("status", { name: "Session results" }),
+  region: (page) => page.locator(".transcript"),
 };
 
 /** Start real work against the held local provider, then return to its owning conversation. */
