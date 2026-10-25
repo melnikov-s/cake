@@ -17,7 +17,7 @@ function chunk(delta: object, finishReason: string | null = null) {
   })}\n\n`;
 }
 
-test("opens the full pasted text from its sent transcript badge", async () => {
+test("preserves paste focus and caret through attachments and opens the sent text", async () => {
   test.setTimeout(90_000);
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-pasted-text-"));
   const userData = join(temporaryRoot, "user-data");
@@ -119,7 +119,97 @@ test("opens the full pasted text from its sent transcript badge", async () => {
       );
     }, pasted);
     await expect(page.getByRole("button", { name: /^Pasted text/ })).toBeVisible();
-    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(composer).toBeFocused();
+    await page.keyboard.type("Review this paste");
+    await expect(composer).toHaveValue("Review this paste");
+    const send = page.getByRole("button", { name: "Send", exact: true });
+    await expect(send).toBeEnabled();
+
+    // A paste must not enqueue autofocus that overrides the next deliberate focus change.
+    await composer.evaluate((element, text) => {
+      const clipboardData = new DataTransfer();
+      clipboardData.setData("text/plain", text);
+      element.dispatchEvent(
+        new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }),
+      );
+      (element.closest("form")!.querySelector('[aria-label="Send"]') as HTMLElement).focus();
+    }, pasted + "\nAnother line");
+    await expect(page.getByRole("button", { name: /^Remove Pasted text/ })).toHaveCount(2);
+    await page.evaluate(() =>
+      new Promise(requestAnimationFrame).then(() => new Promise(requestAnimationFrame)),
+    );
+    await expect(send).toBeFocused();
+    await page
+      .getByRole("button", { name: /^Remove Pasted text/ })
+      .last()
+      .click();
+
+    const pixel =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9XkAAAAASUVORK5CYII=";
+    const otherControl = page.getByRole("button", { name: "Model configuration", exact: true });
+    for (const moveFocus of [false, true]) {
+      await composer.fill("before after");
+      // Delay only the external file read; conversion, Store updates and rendering stay real.
+      const readGate = await page.evaluateHandle(() => {
+        const original = FileReader.prototype.readAsDataURL;
+        let resume: (() => void) | undefined;
+        FileReader.prototype.readAsDataURL = function (blob) {
+          resume = () => original.call(this, blob);
+        };
+        return {
+          release() {
+            FileReader.prototype.readAsDataURL = original;
+            if (!resume) throw new Error("Expected a pending image read");
+            resume();
+          },
+        };
+      });
+      try {
+        await composer.evaluate((element: HTMLTextAreaElement, data) => {
+          element.setSelectionRange(7, 7);
+          const clipboardData = new DataTransfer();
+          clipboardData.items.add(
+            new File([Uint8Array.from(atob(data), (c) => c.charCodeAt(0))], "pixel.png", {
+              type: "image/png",
+            }),
+          );
+          element.dispatchEvent(
+            new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }),
+          );
+        }, pixel);
+        await expect(send).toBeDisabled();
+        await expect(composer).toBeFocused();
+        expect(
+          await composer.evaluate((element: HTMLTextAreaElement) => [
+            element.selectionStart,
+            element.selectionEnd,
+          ]),
+        ).toEqual([7, 7]);
+        // Real keyboard input while conversion is still pending must not be overwritten.
+        await page.keyboard.type("typed ");
+        if (moveFocus) await otherControl.focus();
+        await readGate.evaluate((gate) => gate.release());
+        await expect(page.getByAltText("pixel.png", { exact: true })).toHaveAttribute(
+          "src",
+          `data:image/png;base64,${pixel}`,
+        );
+        await expect(send).toBeEnabled();
+        if (moveFocus) {
+          await expect(otherControl).toBeFocused();
+        } else {
+          await expect(composer).toBeFocused();
+          await page.keyboard.type("more ");
+        }
+        await expect(composer).toHaveValue(
+          moveFocus ? "before typed after" : "before typed more after",
+        );
+      } finally {
+        await readGate.dispose();
+      }
+      await page.getByRole("button", { name: "Remove pixel.png", exact: true }).click();
+    }
+    await composer.fill("Review this paste");
+    await send.click();
     await expect(page.getByText("Read it.", { exact: true })).toBeVisible({ timeout: 20_000 });
     const conversation = page.getByLabel("Conversation", { exact: true });
     const badge = conversation.getByText("Pasted text · 90 lines", { exact: true });
@@ -129,6 +219,24 @@ test("opens the full pasted text from its sent transcript badge", async () => {
     await expect(viewer).toBeVisible({ timeout: 5_000 });
     await expect(viewer).toContainText("FIRST_PASTED_LINE");
     await expect(viewer).toContainText("LAST_PASTED_LINE");
+    await page.keyboard.press("Escape");
+
+    // The permanent chat consumes the same draft/composer implementation.
+    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+    const cakeInput = page.getByRole("combobox", { name: "Message Cake Chat", exact: true });
+    await cakeInput.click();
+    await cakeInput.evaluate((element, text) => {
+      const clipboardData = new DataTransfer();
+      clipboardData.setData("text/plain", text);
+      element.dispatchEvent(
+        new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }),
+      );
+    }, pasted);
+    await expect(page.getByRole("button", { name: /^Pasted text/ })).toBeVisible();
+    await expect(cakeInput).toBeFocused();
+    await page.keyboard.type("Continue typing");
+    await expect(cakeInput).toHaveValue("Continue typing");
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
   } finally {
     await application.close();
     server.close();

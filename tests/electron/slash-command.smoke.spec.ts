@@ -252,6 +252,33 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
       await page.keyboard.press("Tab");
       await expect(composer).toBeFocused();
       await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
+      // Large text is an attachment, not a request to park this deliberate writing focus.
+      await composer.fill("before after");
+      await composer.evaluate((element: HTMLTextAreaElement, text) => {
+        element.setSelectionRange(7, 12);
+        const clipboardData = new DataTransfer();
+        clipboardData.setData("text/plain", text);
+        element.dispatchEvent(
+          new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }),
+        );
+      }, log);
+      await expect(removeAttachment).toHaveCount(1);
+      await page.evaluate(() =>
+        new Promise(requestAnimationFrame).then(() => new Promise(requestAnimationFrame)),
+      );
+      await expect(composer).toBeFocused();
+      expect(
+        await composer.evaluate((element: HTMLTextAreaElement) => [
+          element.selectionStart,
+          element.selectionEnd,
+        ]),
+      ).toEqual([7, 12]);
+      await expect(composer).toHaveValue("before after");
+      await page.keyboard.type("typed");
+      await expect(composer).toHaveValue("before typed");
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+      await removeAttachment.click();
+      await composer.click();
       // The visible menu revokes this focused field's dictation target, not the global
       // preference. Refocusing cannot start capture until the menu is dismissed.
       await composer.fill("/");

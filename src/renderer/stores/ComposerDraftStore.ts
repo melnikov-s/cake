@@ -88,6 +88,8 @@ export class ComposerDraftStore extends Store<ComposerDraftStoreProps> {
   }
 
   addPastedText(text: string) {
+    // Paste already owns the input's focus and selection. A convenience focus request
+    // can park it for dictation or take focus back after the user has moved elsewhere.
     this.addTextAttachment(text, `Pasted text · ${text.split("\n").length} lines`);
   }
 
@@ -99,10 +101,13 @@ export class ComposerDraftStore extends Store<ComposerDraftStoreProps> {
     )
       return;
     const lines = text.split("\n").length;
-    this.addTextAttachment(
-      text,
-      `Selected text${application ? ` from ${application}` : ""} · ${lines} ${lines === 1 ? "line" : "lines"}`,
-    );
+    if (
+      this.addTextAttachment(
+        text,
+        `Selected text${application ? ` from ${application}` : ""} · ${lines} ${lines === 1 ? "line" : "lines"}`,
+      )
+    )
+      this.requestFocus();
   }
 
   private addTextAttachment(text: string, name: string) {
@@ -115,7 +120,7 @@ export class ComposerDraftStore extends Store<ComposerDraftStoreProps> {
       return;
     }
     this.attachments.push({ kind: "text", name: name.slice(0, 512), text });
-    this.requestFocus();
+    return true;
   }
 
   async addPastedImages(files: readonly File[]) {
