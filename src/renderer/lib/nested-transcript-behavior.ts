@@ -28,6 +28,7 @@ export function nestedTranscriptBehaviorFor(
   const workerContext = worker && subagents?.resourceContext(worker.key);
   const workspacePath = discussion?.thread.workingDirectory ?? workerContext?.workspacePath;
   return {
+    todos: parent.todos,
     workspacePath,
     messageReferenceSessionId: discussion?.sessionId,
     inlineWidgets: root.inlineWidgetStore,

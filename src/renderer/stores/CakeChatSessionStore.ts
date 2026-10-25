@@ -177,7 +177,6 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         return project && { scope: project.path, chat: "Project Chat" as const, owner: project };
       },
       sidePanel: () => this.conversationSessionStore.sideChatStore,
-      transcript: () => ({ chatSessionId: this.sessionId, parts: this.model.uiParts }),
     });
   }
 

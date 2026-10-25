@@ -81,13 +81,6 @@ export function sessionDigestReceiptIds(text: string): readonly string[] {
   return Option.isSome(parsed) ? parsed.value : [];
 }
 
-/** Deterministic visible notification, independent of any model-authored relay. */
-export function sessionNotificationMarkdown(text: string): string | undefined {
-  if (!text.startsWith(HEADER)) return undefined;
-  const lines = text.split("\n").filter((line) => line.startsWith("- ["));
-  return lines.length ? lines.join("\n") : undefined;
-}
-
 export interface SessionNotificationEntry {
   readonly key: string;
   readonly title: string;

@@ -14,7 +14,13 @@ export function projectTranscriptBehaviorFor(
   const resolved =
     paneSession.isForkPreview ||
     root.sessionCatalogStore.find(paneSession.sessionId)?.resolved === true;
+  const projectPath =
+    root.sessionCatalogStore.find(paneSession.sessionId)?.projectPath ?? paneSession.workspacePath;
+  const projectChat = root.cakeChatCollectionStore.projectChat(projectPath);
   return {
+    todos: projectChat
+      ? root.cakeChatCollectionStore.registry.load(projectChat.sessionId).todos
+      : undefined,
     workspacePath: paneSession.workspacePath,
     messageReferenceSessionId: paneSession.sessionId,
     onFork: resolved

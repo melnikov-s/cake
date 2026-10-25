@@ -1,43 +1,43 @@
 import type { UiPart } from "../../contracts/conversations/session-contract";
 import { parseSessionLink } from "../../contracts/conversations/message-reference";
-import { sessionNotificationMarkdown } from "../../contracts/cake-chats/session-digest-reminder";
+import { parseSubagentLink } from "../../contracts/subagents/subagent-reference";
+import { messageReferencesInText } from "../../contracts/conversations/message-reference-forwarding";
 import type { TodoResultOrigin } from "../stores/ProjectTodosStore";
-import { crossSessionPresentation } from "./cross-session-presentation";
 
-const sessionLinks = /\]\((cake:\/\/session\/[^\s<>()[\]]+)\)/g;
+/** Exact source identity, independent of the message or batch that presents it. */
+export function referenceTodoOrigin(reference: string): TodoResultOrigin | undefined {
+  const worker = parseSubagentLink(reference);
+  if (worker) return { subagent: worker, references: [reference] };
+  const target = parseSessionLink(reference);
+  if (!target || target.attachmentId) return undefined;
+  return {
+    sessionIds: [target.sessionId],
+    references: [reference],
+    ...(target.messageId
+      ? { message: { sessionId: target.sessionId, entryId: target.messageId } }
+      : null),
+  };
+}
 
-/**
- * Where a result message in a chat transcript came from: a private worker report, a Project
- * Session's reply or notice, or the application's compact session-completion notice. Requests
- * and ordinary dialogue are not results.
- */
+/** Incoming communication keeps its to-do association, including requests and older updates. */
 export function resultTodoOrigin(
   part: UiPart,
   chatSessionId: string | undefined,
 ): TodoResultOrigin | undefined {
-  if (!chatSessionId) return undefined;
-  if (part.kind === "context") {
-    const notice = sessionNotificationMarkdown(part.text);
-    if (!notice) return undefined;
-    const sessionIds = [...notice.matchAll(sessionLinks)].flatMap((match) => {
-      const target = parseSessionLink(match[1]!);
-      return target ? [target.sessionId] : [];
-    });
-    return sessionIds.length ? { sessionIds } : undefined;
-  }
   if (part.kind !== "text") return undefined;
-  const message = part.entryId ? { sessionId: chatSessionId, entryId: part.entryId } : undefined;
-  if (part.subagentReport)
+  const message =
+    chatSessionId && part.entryId ? { sessionId: chatSessionId, entryId: part.entryId } : undefined;
+  const references = messageReferencesInText(part.text);
+  if (part.subagentReport && chatSessionId)
     return {
       subagent: { parentSessionId: chatSessionId, handleId: part.subagentReport.handleId },
+      references,
       ...(message ? { message } : null),
     };
-  const sender = part.crossSession?.sender;
-  if (
-    !part.crossSession ||
-    sender?.kind !== "project-session" ||
-    crossSessionPresentation(part.text, part.crossSession).relation === "request"
-  )
-    return undefined;
-  return { sessionIds: [sender.sessionId], ...(message ? { message } : null) };
+  if (!part.crossSession) return undefined;
+  return {
+    sessionIds: [part.crossSession.sender.sessionId],
+    references,
+    ...(message ? { message } : null),
+  };
 }

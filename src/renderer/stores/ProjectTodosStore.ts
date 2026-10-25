@@ -1,6 +1,4 @@
-import { Store, computed } from "r-state-tree";
-import type { UiPart } from "../../contracts/conversations/session-contract";
-import { resultTodoOrigin } from "../lib/result-todo-origin";
+import { Store } from "r-state-tree";
 import {
   type ProjectTodo,
   type ProjectTodos,
@@ -35,13 +33,12 @@ export interface TodoResultOrigin {
   readonly subagent?: { readonly parentSessionId: string; readonly handleId: string };
   /** The exact result message, as a `cake://session/<chat>?message=<entry>` source link. */
   readonly message?: { readonly sessionId: string; readonly entryId: string };
+  readonly references?: readonly string[];
 }
 
 export class ProjectTodosStore extends Store<{
   list(): TodoListSource | undefined;
   sidePanel(): SideChatStore;
-  /** The owning chat's transcript, for placing Done controls on result messages. */
-  transcript?(): { readonly chatSessionId: string; readonly parts: readonly UiPart[] };
 }> {
   query = "";
   sortMode: "agent" | "latest" | "earliest" = "agent";
@@ -156,6 +153,7 @@ export class ProjectTodosStore extends Store<{
             origin.subagent?.handleId === link.handleId &&
             origin.subagent.parentSessionId === link.parentSessionId
           );
+        if (origin.references?.includes(link.ref)) return true;
         const worker = parseSubagentLink(link.ref);
         if (worker)
           return (
@@ -164,38 +162,11 @@ export class ProjectTodosStore extends Store<{
           );
         const target = parseSessionLink(link.ref);
         if (!target || target.attachmentId) return false;
-        if (message && target.sessionId === message.sessionId)
-          return target.messageId === message.entryId;
+        if (target.messageId)
+          return target.sessionId === message?.sessionId && target.messageId === message.entryId;
         return sessions.has(target.sessionId);
       }),
     );
-  }
-
-  /**
-   * Which result message shows each to-do's Done control: only the latest linked result in
-   * the transcript, so a session's earlier progress updates don't repeat the control.
-   */
-  @computed
-  get resultControls(): ReadonlyMap<string, readonly ProjectTodo[]> {
-    const transcript = this.props.transcript?.();
-    const controls = new Map<string, ProjectTodo[]>();
-    if (!transcript || !this.available) return controls;
-    const placed = new Set<string>();
-    for (let index = transcript.parts.length - 1; index >= 0; index--) {
-      const part = transcript.parts[index]!;
-      const origin = resultTodoOrigin(part, transcript.chatSessionId);
-      if (!origin) continue;
-      const items = this.itemsForResult(origin).filter((item) => !placed.has(item.id));
-      if (!items.length) continue;
-      for (const item of items) placed.add(item.id);
-      controls.set(part.id, items);
-    }
-    return controls;
-  }
-
-  /** The to-dos whose Done control belongs on this transcript part, if any. */
-  itemsForPart(partId: string): readonly ProjectTodo[] {
-    return this.resultControls.get(partId) ?? [];
   }
 
   toggle() {

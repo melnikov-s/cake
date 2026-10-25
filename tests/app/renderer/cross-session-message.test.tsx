@@ -116,7 +116,10 @@ describe("cross-session message presentation", () => {
       />,
     );
     expect(screen.getByRole("region", { name: "Notice about another session" })).toBeTruthy();
-    expect(screen.getByText("API review")).toBeTruthy();
+    expect(
+      screen.getByRole("region", { name: "Notice about another session" }).querySelector("header")
+        ?.textContent,
+    ).toContain("API review");
   });
 
   it.each(["", "source-session", "Session source-session"])(

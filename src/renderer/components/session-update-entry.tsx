@@ -1,20 +1,23 @@
-import { useId } from "react";
 import { observer } from "r-state-tree/react";
 import type { SourceLocation } from "../../contracts/editor/source-location";
 import type { SessionUpdateEntryStore } from "../stores/SessionUpdateEntryStore";
+import type { ProjectTodosStore } from "../stores/ProjectTodosStore";
+import { referenceTodoOrigin } from "../lib/result-todo-origin";
 import { Markdown } from "./ai-elements/markdown";
 import { InlineMessageSource } from "./inline-message-source";
-import { DisclosureTrigger } from "./ui/disclosure-trigger";
+import { MessageDisclosure } from "./ui/message-disclosure";
 import { SessionMessage } from "./ui/session-message";
+import { ResultTodoFooter } from "./result-todo-done";
 
 export const SessionUpdateEntry = observer(function SessionUpdateEntry({
   store,
   onOpenSourceLocation,
+  todos,
 }: {
   store: SessionUpdateEntryStore;
   onOpenSourceLocation?(location: SourceLocation): void;
+  todos?: ProjectTodosStore;
 }) {
-  const contentId = useId();
   const { entry } = store.props;
   const source = store.source;
   const content = source ? (
@@ -26,28 +29,28 @@ export const SessionUpdateEntry = observer(function SessionUpdateEntry({
       }
     />
   ) : (
-    <section className="min-w-0 border-b border-border py-4 last:border-b-0">
-      <DisclosureTrigger
-        data-slot="response-disclosure"
-        title={entry.title}
-        wrapTitle
-        className="rounded-sm text-base leading-relaxed outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        open={store.expanded}
-        aria-controls={store.expanded ? contentId : undefined}
-        onClick={() => store.toggle()}
-      />
-      {store.expanded && (
-        <div id={contentId} className="mt-3 min-w-0 border-l border-border px-4 text-sm">
-          <Markdown onOpenSourceLocation={onOpenSourceLocation}>{entry.text}</Markdown>
-        </div>
-      )}
-    </section>
+    <MessageDisclosure title={entry.title} open={store.expanded} onToggle={() => store.toggle()}>
+      <Markdown onOpenSourceLocation={onOpenSourceLocation}>{entry.text}</Markdown>
+    </MessageDisclosure>
   );
-  return entry.sessionId ? (
-    <SessionMessage source={{ sessionId: entry.sessionId, title: entry.title }}>
+  if (!entry.sessionId) return content;
+  return (
+    <SessionMessage
+      source={entry.sessionId ? { sessionId: entry.sessionId, title: entry.title } : undefined}
+      footer={
+        <ResultTodoFooter
+          origin={
+            entry.reference
+              ? referenceTodoOrigin(entry.reference)
+              : entry.sessionId
+                ? { sessionIds: [entry.sessionId] }
+                : undefined
+          }
+          todos={todos}
+        />
+      }
+    >
       <div className="px-5">{content}</div>
     </SessionMessage>
-  ) : (
-    content
   );
 });

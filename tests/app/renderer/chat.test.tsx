@@ -60,7 +60,7 @@ describe("Chat composition", () => {
       using fixture = renderChatSurface();
       fixture.publish(projectSessionEntries(session.getBranch()));
       const attributed = screen.getByLabelText("Message from another session");
-      expect(within(attributed).getByText("Originating assistant")).toBeDefined();
+      expect(attributed.querySelector("header")?.textContent).toContain("Originating assistant");
       expect(within(attributed).getByRole("heading", { name: "Delegated Markdown" })).toBeDefined();
       expect(attributed.querySelector('[data-streamdown="strong"]')?.textContent).toBe("Bold");
       expect(attributed.querySelector("em")?.textContent).toBe("emphasis");

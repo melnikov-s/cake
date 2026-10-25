@@ -24,6 +24,10 @@ import * as projectTodos from "../../../src/domain/projects/projectTodos";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
 import { CakeChatSurface } from "../../../src/renderer/components/cake-chat-surface";
+import { Chat } from "../../../src/renderer/components/chat";
+import { projectTranscriptBehaviorFor } from "../../../src/renderer/lib/project-transcript-behavior";
+import { nestedTranscriptBehaviorFor } from "../../../src/renderer/lib/nested-transcript-behavior";
+import { sessionSummary } from "./fixtures/catalog-fixtures";
 import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";
 import { applyCakeChatTodosProjection } from "../../../src/renderer/reducers/CakeChatTodosReducer";
 import { applyProjectCatalogUpdate } from "../../../src/renderer/reducers/CatalogReducer";
@@ -112,6 +116,24 @@ const parts: UiPart[] = [
       `- [Other](cake://session/${unlinkedSession}) finished`,
       "</system-reminder>",
     ].join("\n"),
+  },
+  {
+    id: "standalone-original",
+    kind: "tool",
+    name: "cake",
+    command: "messages.present",
+    input: "",
+    state: "success",
+    messageReference: `cake://session/${sessionA}?message=linked-original`,
+  },
+  {
+    id: "different-source",
+    kind: "text",
+    role: "user",
+    entryId: "different-source",
+    text: "A different report from Benchmark.",
+    status: "complete",
+    crossSession: crossSession(sessionB, "Benchmark", "f6debbbd-ced1-4a12-b0f7-fb60c292c623"),
   },
 ];
 
@@ -242,6 +264,9 @@ async function renderChat(kind: ChatKind) {
     return screen.getByRole("complementary", { name: "To-do" });
   };
   return {
+    root: fixture.root,
+    models: fixture.models,
+    view,
     kind,
     scope,
     chat,
@@ -251,9 +276,12 @@ async function renderChat(kind: ChatKind) {
     items: { workerTodo, sessionTodo, sourceTodo },
     groupFor,
     /** The message control for one to-do, by its live title. */
-    control: (title: string) => screen.getByRole("checkbox", { name: `Done: ${title}` }),
+    control: (title: string) => screen.getAllByRole("checkbox", { name: `Done: ${title}` }).at(-1)!,
     checked: (title: string) =>
-      screen.getByRole("checkbox", { name: `Done: ${title}` }).getAttribute("aria-checked"),
+      screen
+        .getAllByRole("checkbox", { name: `Done: ${title}` })
+        .at(-1)!
+        .getAttribute("aria-checked"),
     read: (id: string) => runtime.runPromise(projectTodos.read(scope, id)),
     list: () => runtime.runPromise(projectTodos.list(scope)),
     /** The pane's own open/done rows, expanding Done history when needed. */
@@ -280,26 +308,106 @@ async function renderChat(kind: ChatKind) {
 }
 
 it.each(chats)(
-  "places one live control on each linked result message's latest result in %s",
+  "keeps the association on every incoming card, historical update, request and batch entry in %s",
   async (kind) => {
     await using f = await renderChat(kind);
     expect(f.groupFor("worker-report")?.textContent).toBe("To-do · Research optionsDone");
     expect(f.groupFor("session-reply")?.textContent).toBe("To-do · Fix the buildDone");
     for (const title of ["Research options", "Fix the build"])
       expect(f.checked(title)).toBe("false");
-    // Only the latest result from a linked session carries its control.
-    expect(f.groupFor("session-progress")).toBeNull();
-    // Unlinked results and a linked session's request are not results to close.
+    for (const id of ["session-progress", "session-request", "standalone-original"])
+      expect(f.groupFor(id)?.textContent).toBe("To-do · Fix the buildDone");
+    expect(f.groupFor("notice")?.textContent).toBe("To-do · Benchmark startupDone");
     expect(f.groupFor("unlinked-report")).toBeNull();
-    expect(f.groupFor("session-request")).toBeNull();
-    expect(screen.getAllByRole("group", { name: "Linked to-dos" })).toHaveLength(2);
+    // An exact-message association must not bleed onto another message from that sender.
+    expect(f.groupFor("different-source")).toBeNull();
+    expect(screen.getAllByRole("group", { name: "Linked to-dos" })).toHaveLength(6);
     // The bar is part of each message, so every result type shares one layout.
     expect(f.groupFor("worker-report")?.closest('[data-slot="session-message"]')).not.toBeNull();
     expect(f.groupFor("session-reply")?.closest('[data-slot="session-message"]')).not.toBeNull();
+    expect(f.groupFor("notice")?.closest('[data-slot="session-message"]')).not.toBeNull();
+    expect(
+      f.groupFor("standalone-original")?.closest('[data-slot="session-message"]'),
+    ).not.toBeNull();
+    expect(
+      within(f.groupFor("notice")!.closest("[data-part-id]") as HTMLElement)
+        .getByRole("button", { name: "Benchmark" })
+        .getAttribute("aria-expanded"),
+    ).toBe("false");
     expect(await f.paneState("Benchmark startup")).toBe("open");
     expect(f.chat.todos.source?.chat).toBe(kind);
+    // Associations are outside the disclosure, including on older messages.
+    for (const id of ["worker-report", "session-progress", "session-request"]) {
+      const group = f.groupFor(id)!;
+      const card = group.closest('[data-slot="session-message"]')!;
+      const toggle = card.querySelector<HTMLButtonElement>(
+        '[data-slot="incoming-body-disclosure"]',
+      )!;
+      await f.user.click(toggle);
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+      expect(group.isConnected).toBe(true);
+      expect(group.closest('[data-slot="message-disclosure"]')).toBeNull();
+    }
   },
 );
+
+it("reuses the Project's to-do list for incoming Project Session and secondary-chat cards without opening Project Chat", async () => {
+  await using f = await renderChat("Project Chat");
+  f.view.unmount();
+  act(() =>
+    applySnapshot(f.models.sessionCatalog, {
+      sessions: [
+        sessionSummary({ sessionId: "viewer", projectPath, workingDirectory: projectPath }),
+      ],
+      resolvedHasMoreByProject: {},
+    }),
+  );
+  const session = f.root.sessionRegistry.load("viewer", projectPath);
+  act(() =>
+    applyConversationSnapshot(session.model, {
+      sessionId: "viewer",
+      sessionFile: "/viewer.jsonl",
+      parts: parts.filter((part) => part.kind === "text" && part.crossSession),
+      models: [],
+      thinkingLevel: "off",
+      availableThinkingLevels: ["off"],
+      streaming: false,
+      diagnostics: [],
+      commands: [],
+      compatibility: { resources: [], diagnostics: [] },
+      extensionUi: { statuses: [] },
+      tree: [],
+    }),
+  );
+  session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
+    kind: "top",
+  });
+  const behavior = projectTranscriptBehaviorFor(f.root, session);
+  expect(behavior.todos).toBe(f.chat.todos);
+  expect(
+    nestedTranscriptBehaviorFor(f.root, session.conversationSessionStore.chatStore, behavior).todos,
+  ).toBe(f.chat.todos);
+  const view = render(
+    <StoreProvider store={f.root}>
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 4000, itemHeight: 100 }}>
+        <Chat
+          store={session.conversationSessionStore.chatStore}
+          transcriptBehavior={behavior}
+          composerFocusEnabled={false}
+        />
+      </VirtuosoMockContext.Provider>
+    </StoreProvider>,
+  );
+  expect(screen.getAllByRole("checkbox", { name: "Done: Fix the build" })).toHaveLength(3);
+  await f.user.click(screen.getAllByRole("checkbox", { name: "Done: Fix the build" })[0]!);
+  expect((await f.read(f.items.sessionTodo.id)).state).toBe("done");
+  expect(
+    screen
+      .getAllByRole("checkbox", { name: "Done: Fix the build" })
+      .every((control) => control.getAttribute("aria-checked") === "true"),
+  ).toBe(true);
+  view.unmount();
+});
 
 it.each(chats)(
   "shows a pane Done on the message, and a message reopen in the pane, in %s",
@@ -307,6 +415,11 @@ it.each(chats)(
     await using f = await renderChat(kind);
     await f.clickPane("Mark done", "Fix the build");
     expect(f.checked("Fix the build")).toBe("true");
+    expect(
+      screen
+        .getAllByRole("checkbox", { name: "Done: Fix the build" })
+        .every((control) => control.getAttribute("aria-checked") === "true"),
+    ).toBe(true);
     expect(await f.paneState("Fix the build")).toBe("done");
 
     await f.user.click(f.control("Fix the build"));

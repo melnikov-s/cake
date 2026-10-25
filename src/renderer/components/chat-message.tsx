@@ -11,7 +11,11 @@ import {
   type RefObject,
 } from "react";
 import { observer } from "r-state-tree/react";
-import { isStandaloneDiagram, Markdown } from "@/components/ai-elements/markdown";
+import {
+  isStandaloneDiagram,
+  Markdown,
+  useMarkdownLinkActions,
+} from "@/components/ai-elements/markdown";
 import { cakeHotkeyEventName } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 import { rangeAtOffsets, useMessageHighlights } from "@/lib/message-highlights";
@@ -19,6 +23,7 @@ import { Message, MessageContent, MessageLabel } from "@/components/ai-elements/
 import { FullscreenMessage } from "@/components/fullscreen-message";
 import { FullscreenButton } from "@/components/ui/fullscreen-button";
 import { SessionMessage } from "@/components/ui/session-message";
+import { MessageDisclosure } from "@/components/ui/message-disclosure";
 import { IconButton } from "@/components/ui/icon-button";
 import {
   ChatIcon,
@@ -47,6 +52,7 @@ import { subagentReportFindings, subagentReportHeading } from "../lib/subagent-r
 import { crossSessionPresentation } from "../lib/cross-session-presentation";
 import { InlineMessageSource } from "./inline-message-source";
 import { ResultTodoFooter } from "./result-todo-done";
+import { resultTodoOrigin } from "../lib/result-todo-origin";
 
 export function chatWorkIsActive(
   parts: UiPart[],
@@ -103,6 +109,17 @@ export const ChatTextMessage = forwardRef<
   ref,
 ) {
   const report = part.subagentReport;
+  const [incomingExpanded, setIncomingExpanded] = useState(true);
+  const linkActions = useMarkdownLinkActions();
+  const sender = part.crossSession?.sender;
+  const sourceTitle =
+    (sender ? linkActions?.sessionTitle?.(sender.sessionId) : undefined) ?? sender?.title;
+  const incomingTitle =
+    sourceTitle &&
+    sourceTitle !== sender?.sessionId &&
+    sourceTitle !== `Session ${sender?.sessionId}`
+      ? sourceTitle
+      : "Message";
   const crossSession = useMemo(
     () => (part.crossSession ? crossSessionPresentation(part.text, part.crossSession) : undefined),
     [part.text, part.crossSession],
@@ -124,7 +141,7 @@ export const ChatTextMessage = forwardRef<
       ref={contentRef}
       className={cn(
         report || part.crossSession
-          ? "rounded-none border-0 bg-transparent py-2 shadow-none"
+          ? "rounded-none border-0 bg-transparent p-0 shadow-none"
           : assistant
             ? "bg-card text-foreground"
             : "border-user-message-foreground/20 bg-user-message text-user-message-foreground dark:border-border",
@@ -179,15 +196,31 @@ export const ChatTextMessage = forwardRef<
           source={part.crossSession?.sender ?? reportSource}
           relation={crossSession?.relation}
           badges={crossSession?.badges}
+          footer={footer}
         >
-          {report && (
+          {content && (
             <div className="px-5">
-              <SubagentReportHeader key={part.id} report={report} />
+              {sourceResponse ? (
+                <div className="py-2">
+                  {report && <SubagentReportHeader key={part.id} report={report} />}
+                  {content}
+                </div>
+              ) : (
+                <MessageDisclosure
+                  title={report ? subagentReportHeading(report) : incomingTitle}
+                  open={incomingExpanded}
+                  onToggle={() => setIncomingExpanded(!incomingExpanded)}
+                  triggerSlot="incoming-body-disclosure"
+                  ariaLabel={`Message: ${report ? subagentReportHeading(report) : incomingTitle}`}
+                >
+                  {report && <SubagentReportHeader key={part.id} report={report} />}
+                  {content}
+                </MessageDisclosure>
+              )}
             </div>
           )}
-          {content}
           {(sourceResponse || crossSession?.sourceResponse) && (
-            <div className="flex flex-col gap-3 px-5 py-2">
+            <div className="flex flex-col gap-3 px-5">
               {sourceResponse ?? (
                 <p className="text-sm text-muted-foreground">
                   Original response unavailable: no exact source reference was recorded.
@@ -195,7 +228,6 @@ export const ChatTextMessage = forwardRef<
               )}
             </div>
           )}
-          {footer}
         </SessionMessage>
       ) : (
         content
@@ -453,7 +485,12 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
       contentRef={contentRef}
       onOpenSourceLocation={behavior.openSourceLocation}
       omitArtifactEmbeds={publishedArtifactReferences}
-      footer={<ResultTodoFooter partId={part.id} todos={behavior.todos} className="mx-5 mb-1" />}
+      footer={
+        <ResultTodoFooter
+          origin={resultTodoOrigin(part, behavior.messageReferenceSessionId ?? behavior.store.id)}
+          todos={behavior.todos}
+        />
+      }
       sourceResponse={
         sources.length
           ? sources.map((source) => (

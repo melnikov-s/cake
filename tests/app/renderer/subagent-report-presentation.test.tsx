@@ -42,18 +42,17 @@ it.each([
     const body = view.container.querySelector('[data-slot="message-content"]')!;
     expect(body.textContent).toBe(findings);
     const disclosure = screen.getByRole("button", { name: "Assignment details" });
-    const details = document.getElementById(disclosure.getAttribute("aria-controls")!)!;
     expect(disclosure.getAttribute("aria-expanded")).toBe("false");
-    expect(details.hidden).toBe(true);
+    expect(disclosure.hasAttribute("aria-controls")).toBe(false);
     await userEvent.setup().click(disclosure);
     expect(disclosure.getAttribute("aria-expanded")).toBe("true");
-    expect(details.hidden).toBe(false);
+    const details = document.getElementById(disclosure.getAttribute("aria-controls")!)!;
     expect(within(details).getByText(report.task, { normalizer: (text) => text })).toBeDefined();
     expect(details.textContent).toContain(report.handleId);
     expect(details.textContent).toContain(report.projectPath);
     expect(details.textContent).toContain("fixture/fixture");
     await userEvent.setup().click(disclosure);
-    expect(details.hidden).toBe(true);
+    expect(details.isConnected).toBe(false);
     expect(body.textContent).toBe(findings);
     expect(report.task.length).toBeGreaterThan(500);
   },

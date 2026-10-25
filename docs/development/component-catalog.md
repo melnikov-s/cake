@@ -63,7 +63,7 @@ join the composer without reserved vertical space.
 controls attached above the shared composer. Activity occupies its top band, with
 worktree tools beneath it when present. Empty caps collapse without reserved space.
 
-[`SessionResultNotice`](../../src/renderer/components/ui/session-result-notice.tsx) contains one title-and-chevron disclosure per application-delivered report or unique batch note, independently of model prose. Repeated exact reports are consolidated; `SessionUpdateEntry` reuses `InlineMessageSource` for lazy original access. Batch-only notes expand in place. This list has no summaries, status labels or to-do controls.
+[`SessionResultNotice`](../../src/renderer/components/ui/session-result-notice.tsx) contains one title-and-chevron disclosure per application-delivered report or unique batch note, independently of model prose. Repeated exact reports are consolidated; `SessionUpdateEntry` reuses `InlineMessageSource` for lazy original access. Batch-only notes expand in place. Each attributed entry keeps its linked to-do row outside the disclosure so it remains visible when collapsed.
 
 `ContextUsageButton` presents a compact context icon and estimated total/limit, with a subtle cache-freshness underline. It opens the shared Context Browser, which retains the full system, memory, messages and baseline accounting. The accessible description includes the breakdown; cache color never represents context health or retention.
 
@@ -122,7 +122,7 @@ and [`ChatStore`](../../src/renderer/stores/ChatStore.ts).
 exact attachment link with shared feedback. It never reads message bodies; the parent
 supplies the addressable session identity. Original-message previews reuse `FullscreenSurface` with bounded source pages.
 [`InlineMessageSource`](../../src/renderer/components/inline-message-source.tsx) composes
-`DisclosureTrigger` with a title-only header, shared Markdown and pagination for lazy
+`MessageDisclosure` with a title-only header, shared Markdown and pagination for lazy
 source access within every chat surface. Consolidated notifications, receipt-only
 session cards and linked originals use this same viewer. Opening reads the exact
 source on demand. The expanded header contains only its linked response/session title
@@ -147,6 +147,8 @@ a sent image hands its pixels to the saved reference, older ones load for displa
 [`SessionIdLink`](../../src/renderer/components/ui/session-id-link.tsx) displays a bare,
 collision-aware session suffix while retaining the canonical UUID in its link and
 destination tooltip. Use it for identity metadata where the session context is clear.
+
+[`MessageDisclosure`](../../src/renderer/components/ui/message-disclosure.tsx) owns the shared incoming-message dropdown layout: leading chevron, wrapping title, quiet hover/focus treatment and bounded content area. Source readers, batch notes and worker assignment details use it rather than assembling their own layouts. Owners supply expansion state and lazy loading. Delivered inline messages start expanded so immediate prompts remain readable; exact originals remain lazy. To-do associations stay outside the collapsible area.
 
 [`SessionMessage`](../../src/renderer/components/ui/session-message.tsx) presents
 incoming session communication with lightweight attribution (source-session link

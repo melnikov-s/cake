@@ -35,6 +35,7 @@ import { SessionMessage } from "./ui/session-message";
 import { messageNavigationTarget } from "../../contracts/conversations/message-reference";
 import { subagentLink } from "../../contracts/subagents/subagent-reference";
 import { ResultTodoFooter } from "./result-todo-done";
+import { referenceTodoOrigin, resultTodoOrigin } from "../lib/result-todo-origin";
 
 const artifactReferenceInText =
   /(?:^|\s)cake:\/\/artifact\/[A-Za-z0-9][A-Za-z0-9._:-]*(?:@r[1-9][0-9]*)?(?=$|[\s),.;!?])/;
@@ -77,7 +78,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         part={part}
         onOpenSourceLocation={behavior.openSourceLocation}
         reportSource={{
-          title: part.subagentReport.task,
+          title: `Worker ${part.subagentReport.handleId.slice(0, 8)}`,
           href: behavior.messageReferenceSessionId
             ? subagentLink(behavior.messageReferenceSessionId, part.subagentReport.handleId)
             : undefined,
@@ -89,7 +90,12 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
               ))
             : undefined
         }
-        footer={<ResultTodoFooter partId={part.id} todos={behavior.todos} className="mx-5 mb-1" />}
+        footer={
+          <ResultTodoFooter
+            origin={resultTodoOrigin(part, behavior.messageReferenceSessionId ?? behavior.store.id)}
+            todos={behavior.todos}
+          />
+        }
       />
     );
   }
@@ -215,6 +221,12 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         return (
           <SessionMessage
             source={{ sessionId: messageNavigationTarget(part.messageReference).sessionId }}
+            footer={
+              <ResultTodoFooter
+                origin={referenceTodoOrigin(part.messageReference)}
+                todos={behavior.todos}
+              />
+            }
           >
             <div className="px-5">
               <InlineMessageSource store={source} />
@@ -315,6 +327,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
               key={entry.props.entry.key}
               store={entry}
               onOpenSourceLocation={behavior.openSourceLocation}
+              todos={behavior.todos}
             />
           ))}
         </SessionResultNotice>
@@ -399,6 +412,12 @@ export const TranscriptPart = observer(function TranscriptPart(props: {
               <SessionMessage
                 key={source.props.reference}
                 source={{ sessionId: messageNavigationTarget(source.props.reference!).sessionId }}
+                footer={
+                  <ResultTodoFooter
+                    origin={referenceTodoOrigin(source.props.reference!)}
+                    todos={props.behavior.todos}
+                  />
+                }
               >
                 <div className="px-5">
                   <InlineMessageSource store={source} />

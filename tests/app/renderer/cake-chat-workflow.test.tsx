@@ -124,10 +124,10 @@ it("renders authoritative live and replayed reports as Markdown subagent respons
       name: "Assignment details",
     });
     expect(details.getAttribute("aria-expanded")).toBe("false");
-    const assignment = document.getElementById(details.getAttribute("aria-controls")!)!;
-    expect(assignment.hasAttribute("hidden")).toBe(true);
+    expect(details.hasAttribute("aria-controls")).toBe(false);
     await userEvent.setup().click(details);
     expect(details.getAttribute("aria-expanded")).toBe("true");
+    const assignment = document.getElementById(details.getAttribute("aria-controls")!)!;
     expect(assignment.textContent).toContain(researchOrigin.task);
     expect(assignment.textContent).toContain(researchOrigin.handleId);
     await userEvent.setup().click(details);

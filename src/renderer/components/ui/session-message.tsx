@@ -18,11 +18,13 @@ export const SessionMessage = observer(function SessionMessage({
   relation = "request",
   badges = [],
   children,
+  footer,
 }: {
   source?: { sessionId?: string; title?: string; projectName?: string; href?: string };
   relation?: keyof typeof relationLabels;
   badges?: readonly CrossSessionBadge[];
   children: ReactNode;
+  footer?: ReactNode;
 }) {
   const actions = useMarkdownLinkActions();
   const id = source?.sessionId?.trim();
@@ -84,6 +86,7 @@ export const SessionMessage = observer(function SessionMessage({
         )}
       </header>
       {children}
+      {footer}
     </section>
   );
 });

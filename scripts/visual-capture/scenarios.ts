@@ -2727,15 +2727,62 @@ const resultTodoDoneScenario: VisualCaptureScenario = {
   name: "result-todo-done",
   description:
     "Live Done checkbox on Cake Chat result messages linked to a to-do, beside the To-do pane",
-  states: ["report", "session", "done", "pane"],
+  states: ["report", "session", "done", "pane", "dropdowns"],
   async seed(paths, theme) {
     await subagentReportsScenario.seed(paths, theme);
+    const sourceDirectory = workspaceSessionDirectory(
+      paths.project,
+      join(paths.cakeHome, "pi", "sessions"),
+    );
+    const seedEntries = (
+      await readFile(
+        join(sourceDirectory, "1970-01-01T00-00-00-000Z_visual-assistant-markdown-code.jsonl"),
+        "utf8",
+      )
+    )
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const sourceMessage = seedEntries.find(
+      (entry) => entry.type === "message" && entry.message.role === "assistant",
+    ).message;
+    const sourceRef = `cake://session/${resultTodoSessionId}?message=build-result`;
+    await writeFile(
+      join(sourceDirectory, `1970-01-01T00-00-00-000Z_${resultTodoSessionId}.jsonl`),
+      [
+        { ...seedEntries[0], id: resultTodoSessionId },
+        {
+          type: "session_info",
+          id: "build-title",
+          parentId: null,
+          timestamp: seedEntries[0].timestamp,
+          name: "Fix the flaky build",
+        },
+        {
+          type: "message",
+          id: "build-result",
+          parentId: "build-title",
+          timestamp: seedEntries[0].timestamp,
+          message: {
+            ...sourceMessage,
+            content: [
+              {
+                type: "text",
+                text: "## Build fixed\n\nThe flaky `pnpm test` step now waits for the server port. Three clean CI runs in a row.\n\n```ts\nconst ready = true;\n```",
+              },
+            ],
+          },
+        },
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n") + "\n",
+    );
     const threadId = "8358c2b7-bd3c-42ee-9fec-fcb726b66c18";
     const reply = encodeCrossSessionMessage(
       formatCrossSessionReportText(
         resultTodoSessionId,
         "completed",
-        "## Build fixed\n\nThe flaky `pnpm test` step now waits for the server port. Three clean CI runs in a row.",
+        appendMessageReferences(protectedResponseNotice, [sourceRef]),
       ),
       {
         version: 1,
@@ -2871,6 +2918,15 @@ const resultTodoDoneScenario: VisualCaptureScenario = {
     if (state === "pane") {
       await page.getByRole("button", { name: "To-do", exact: true }).click();
       await expect(page.getByRole("complementary", { name: "To-do" })).toBeVisible();
+    }
+    if (state === "dropdowns") {
+      for (const body of await page.locator('[data-slot="incoming-body-disclosure"]').all()) {
+        if ((await body.getAttribute("aria-expanded")) === "true") await body.click();
+      }
+      await expect(page.getByRole("checkbox", { name: "Done: Fix the flaky build" })).toBeVisible();
+      const lastAssociation = page.getByRole("checkbox", { name: "Done: Draft the release notes" });
+      await expect(lastAssociation).toBeVisible();
+      await lastAssociation.scrollIntoViewIfNeeded();
     }
     if (state === "session" || state === "pane")
       await page
