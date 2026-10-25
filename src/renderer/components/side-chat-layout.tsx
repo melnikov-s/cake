@@ -12,12 +12,15 @@ export const SideChatLayout = observer(function SideChatLayout({
   store,
   children,
   renderChat,
+  hideTodos = false,
 }: {
   store: SideChatStore;
   children: ReactNode;
   renderChat(store: ChatStore): ReactNode;
+  /** Workspace chat drawers keep the conversation visible without clearing the to-do selection. */
+  hideTodos?: boolean;
 }) {
-  const target = store.target;
+  const target = hideTodos && store.target?.todos ? undefined : store.target;
   return (
     <SideChatContext.Provider value={store}>
       <AccessoryPanelLayout

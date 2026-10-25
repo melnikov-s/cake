@@ -79,6 +79,7 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
   const conversation = (
     <SideChatLayout
       store={sideChat}
+      hideTodos
       renderChat={(store) => <NestedChat store={store} parentBehavior={transcriptBehavior} />}
     >
       <Chat

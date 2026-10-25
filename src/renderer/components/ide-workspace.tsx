@@ -78,6 +78,7 @@ export const IdeWorkspace = observer(function IdeWorkspace({
   const conversation = (
     <SideChatLayout
       store={sideChat}
+      hideTodos
       renderChat={(sideChatStore) => (
         <NestedChat store={sideChatStore} parentBehavior={transcriptBehavior} />
       )}
