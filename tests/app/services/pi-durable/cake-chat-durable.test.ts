@@ -258,7 +258,7 @@ it("projects persisted running-only and mixed session digests without losing res
   const notices = page.parts.filter((part) => part.kind === "context");
   expect(notices).toHaveLength(1);
   expect(sessionNotificationEntries(notices[0]!.text)).toEqual([
-    { key: link, title: "Build fix", text: result, reference: link },
+    { key: link, title: "Build fix", text: result, reference: link, sessionId: "worker" },
   ]);
   expect(page.parts.filter((part) => part.kind === "text")).toMatchObject([
     { role: "user", text: running },

@@ -6,6 +6,60 @@ import { _electron as electron, expect, test } from "@playwright/test";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
+
+test("incoming report owns its source before and after recap/reload", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cake-incoming-report-recap-"));
+  const paths = {
+    cakeHome: join(root, "cake"),
+    project: join(root, "project"),
+    userData: join(root, "user-data"),
+  };
+  const scenario = findVisualCaptureScenario("incoming-report-recap")!;
+  await scenario.seed(paths, "dark");
+  const app = await electron.launch({
+    args: [repositoryRoot],
+    cwd: repositoryRoot,
+    env: {
+      ...process.env,
+      CAKE_ELECTRON_SMOKE: "1",
+      CAKE_HOME: paths.cakeHome,
+      CAKE_ELECTRON_USER_DATA: paths.userData,
+      PI_CODING_AGENT_DIR: join(paths.cakeHome, "pi"),
+      PI_CODING_AGENT_SESSION_DIR: "",
+    },
+  });
+  try {
+    const page = await app.firstWindow();
+    for (const reload of [false, true]) {
+      if (reload) await page.reload();
+      await scenario.prepare(page, "default");
+      const card = page.locator('[data-slot="session-message"]');
+      await expect(card).toContainText("From");
+      await expect(card.locator('[data-slot="message-source"]')).toHaveCount(1);
+      await expect(page.locator('[data-slot="message-source"]')).toHaveCount(1);
+      const disclosure = card.getByRole("button", {
+        name: "Side-chat shared to-dos and merge-back memory",
+      });
+      await disclosure.click();
+      await expect(card.getByRole("heading", { name: "Proposed plan" })).toBeVisible();
+      await expect(card.locator('[data-streamdown="code-block-body"]')).toContainText(
+        "const merged = false;",
+      );
+      await expect(
+        card
+          .getByRole("link", { name: "Side-chat shared to-dos and merge-back memory", exact: true })
+          .last(),
+      ).toHaveAttribute("href", "cake://session/visual-incoming-report?message=original-result");
+      await disclosure.click();
+      await expect(disclosure).toHaveAttribute("aria-expanded", "false");
+      await expect(page.getByText("No code has changed. Shall we review the plan?")).toBeVisible();
+    }
+  } finally {
+    await app.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 for (const state of ["default", "project", "reference"]) {
   test(`incoming communication is readable and navigable (${state})`, async () => {
     const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-session-messages-"));

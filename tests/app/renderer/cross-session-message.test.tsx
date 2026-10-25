@@ -153,6 +153,31 @@ describe("cross-session message presentation", () => {
     expect(screen.getByText("Original content")).toBeTruthy();
   });
 
+  it("opens a private worker through its public parent/handle, never a private session ID", async () => {
+    const openSubagent = vi.fn();
+    const openSession = vi.fn();
+    render(
+      <MarkdownLinkProvider actions={{ openSession, openSubagent, openExternalUrl: vi.fn() }}>
+        <SessionMessage
+          source={{
+            title: "Review worker",
+            href: "cake://subagent/parent/10000000-0000-4000-8000-000000000002",
+          }}
+        >
+          Original worker findings
+        </SessionMessage>
+      </MarkdownLinkProvider>,
+    );
+    await userEvent.setup().click(screen.getByRole("link", { name: "Review worker" }));
+    expect(openSubagent).toHaveBeenCalledExactlyOnceWith(
+      "parent",
+      "10000000-0000-4000-8000-000000000002",
+      undefined,
+    );
+    expect(openSession).not.toHaveBeenCalled();
+    expect(screen.queryByText("Source identity not recorded")).toBeNull();
+  });
+
   it("does not invent a source or link when historical identity is unavailable", () => {
     render(<SessionMessage>Original historical content</SessionMessage>);
     expect(screen.getByText("Source session unavailable")).toBeTruthy();

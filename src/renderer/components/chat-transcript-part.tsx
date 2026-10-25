@@ -31,7 +31,9 @@ import { SessionUpdateEntry } from "./session-update-entry";
 import { SkillMessage } from "./skill-message";
 import { SourceAttachment } from "./source-attachment";
 import { InlineMessageSource } from "./inline-message-source";
-import { crossSessionPresentation } from "../lib/cross-session-presentation";
+import { SessionMessage } from "./ui/session-message";
+import { messageNavigationTarget } from "../../contracts/conversations/message-reference";
+import { subagentLink } from "../../contracts/subagents/subagent-reference";
 import { ResultTodoFooter } from "./result-todo-done";
 
 const artifactReferenceInText =
@@ -66,14 +68,31 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
   const hasArtifactReference =
     part.kind === "text" && part.role === "user" && artifactReferenceInText.test(part.text);
   const userMessageDisplaysAsMarkdown = userMessageRendersAsMarkdown || hasArtifactReference;
-  if (part.kind === "text" && part.subagentReport)
+  if (part.kind === "text" && part.subagentReport) {
+    const sources = behavior.store.messageSources.filter(
+      (source) => source.props.partId === part.id,
+    );
     return (
       <ChatTextMessage
         part={part}
         onOpenSourceLocation={behavior.openSourceLocation}
-        footer={<ResultTodoFooter partId={part.id} todos={behavior.todos} />}
+        reportSource={{
+          title: part.subagentReport.task,
+          href: behavior.messageReferenceSessionId
+            ? subagentLink(behavior.messageReferenceSessionId, part.subagentReport.handleId)
+            : undefined,
+        }}
+        sourceResponse={
+          sources.length
+            ? sources.map((source) => (
+                <InlineMessageSource key={source.props.reference} store={source} />
+              ))
+            : undefined
+        }
+        footer={<ResultTodoFooter partId={part.id} todos={behavior.todos} className="mx-5 mb-1" />}
       />
     );
+  }
   if (part.kind === "text")
     return part.role === "assistant" || part.crossSession ? (
       <AssistantTextMessage part={part} behavior={behavior} />
@@ -192,7 +211,16 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
   if (part.kind === "tool") {
     if (part.messageReference) {
       const source = behavior.store.messageSources.find((store) => store.props.partId === part.id);
-      if (source) return <InlineMessageSource store={source} />;
+      if (source)
+        return (
+          <SessionMessage
+            source={{ sessionId: messageNavigationTarget(part.messageReference).sessionId }}
+          >
+            <div className="px-5">
+              <InlineMessageSource store={source} />
+            </div>
+          </SessionMessage>
+        );
     }
     const interviewId = part.interview?.id;
     if (interviewId) {
@@ -363,20 +391,19 @@ export const TranscriptPart = observer(function TranscriptPart(props: {
       <div className="contents" data-part-id={props.part.id}>
         <TranscriptPartContent {...props} />
         {props.part.kind === "text" &&
-          !(
-            props.part.crossSession &&
-            crossSessionPresentation(props.part.text, props.part.crossSession).sourceResponse
-          ) &&
+          !props.part.crossSession &&
+          !props.part.subagentReport &&
           props.behavior.store.messageSources
             .filter((source) => source.props.partId === props.part.id)
             .map((source) => (
-              <InlineMessageSource
+              <SessionMessage
                 key={source.props.reference}
-                store={source}
-                sourceSession={
-                  props.part.kind === "text" ? props.part.crossSession?.sender : undefined
-                }
-              />
+                source={{ sessionId: messageNavigationTarget(source.props.reference!).sessionId }}
+              >
+                <div className="px-5">
+                  <InlineMessageSource store={source} />
+                </div>
+              </SessionMessage>
             ))}
       </div>
     </InlineArtifactContext>

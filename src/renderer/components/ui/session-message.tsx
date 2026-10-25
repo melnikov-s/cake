@@ -4,6 +4,7 @@ import { useMarkdownLinkActions } from "../ai-elements/markdown";
 import type { CrossSessionBadge } from "../../lib/cross-session-presentation";
 import { Badge } from "./badge";
 import { Link } from "./link";
+import { parseSubagentLink } from "../../../contracts/subagents/subagent-reference";
 
 const relationLabels = {
   request: "From",
@@ -18,7 +19,7 @@ export const SessionMessage = observer(function SessionMessage({
   badges = [],
   children,
 }: {
-  source?: { sessionId?: string; title?: string; projectName?: string };
+  source?: { sessionId?: string; title?: string; projectName?: string; href?: string };
   relation?: keyof typeof relationLabels;
   badges?: readonly CrossSessionBadge[];
   children: ReactNode;
@@ -34,9 +35,10 @@ export const SessionMessage = observer(function SessionMessage({
       ? recordedTitle
       : undefined;
   const label = title ?? (id ? "Untitled session" : "Source session unavailable");
+  const href = source?.href ?? (id ? `cake://session/${encodeURIComponent(id)}` : undefined);
   const detail = [
     source?.projectName,
-    !id ? "Source identity not recorded" : !title ? "Source title not recorded" : undefined,
+    !href ? "Source identity not recorded" : !title ? "Source title not recorded" : undefined,
   ].filter(Boolean);
   return (
     <section
@@ -49,14 +51,17 @@ export const SessionMessage = observer(function SessionMessage({
       <header className="flex flex-wrap items-baseline gap-x-2 gap-y-1 px-5 pt-1 pb-2">
         <span className="shrink-0 text-xs text-muted-foreground">{relationLabels[relation]}</span>
         <span className="min-w-0 break-words text-xs text-muted-foreground">
-          {id && actions ? (
+          {href && actions ? (
             <Link
-              href={`cake://session/${encodeURIComponent(id)}`}
-              title={`Open source session · ${id}`}
+              href={href}
+              title="Open source conversation"
               className="font-medium text-inherit decoration-transparent hover:decoration-current"
               onClick={(event) => {
                 event.preventDefault();
-                actions.openSession(id);
+                const worker = parseSubagentLink(href);
+                if (worker)
+                  actions.openSubagent?.(worker.parentSessionId, worker.handleId, worker.messageId);
+                else if (id) actions.openSession(id);
               }}
             >
               {label}

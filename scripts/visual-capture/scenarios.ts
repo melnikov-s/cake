@@ -3037,6 +3037,115 @@ const sessionMessagesScenario: VisualCaptureScenario = {
   region: (page) => page.locator(".transcript"),
 };
 
+const incomingReportRecapScenario: VisualCaptureScenario = {
+  name: "incoming-report-recap",
+  description: "One sender-attributed incoming report, with a recap link but no duplicate source",
+  states: ["default", "expanded"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    const directory = workspaceSessionDirectory(
+      paths.project,
+      join(paths.cakeHome, "pi", "sessions"),
+    );
+    const file = join(directory, "1970-01-01T00-00-00-000Z_visual-assistant-markdown-code.jsonl");
+    const entries = (await readFile(file, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const sourceId = "visual-incoming-report";
+    const title = "Side-chat shared to-dos and merge-back memory";
+    const ref = `cake://session/${sourceId}?message=original-result`;
+    const original = {
+      ...entries[2],
+      id: "original-result",
+      parentId: "source-title",
+      message: {
+        ...entries[2].message,
+        content: [
+          {
+            type: "text",
+            text: "## Proposed plan\n\nThe plan is ready for **review**, not approval.\n\n- Preserve source identity and Markdown.\n- Keep history and to-dos intact.\n\n```ts\nconst merged = false;\n```\n\nFixture only; no code changed and nothing merged.",
+          },
+        ],
+      },
+    };
+    await writeFile(
+      join(directory, `1970-01-01T00-00-00-000Z_${sourceId}.jsonl`),
+      [
+        { ...entries[0], id: sourceId },
+        {
+          type: "session_info",
+          id: "source-title",
+          parentId: null,
+          timestamp: entries[0].timestamp,
+          name: title,
+        },
+        original,
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n") + "\n",
+    );
+    const incoming = encodeCrossSessionMessage(
+      appendMessageReferences(protectedResponseNotice, [ref]),
+      {
+        version: 1,
+        messageId: "f6debbbd-ced1-4a12-b0f7-fb60c292c623",
+        threadId: "8358c2b7-bd3c-42ee-9fec-fcb726b66c18",
+        replyToMessageId: "8358c2b7-bd3c-42ee-9fec-fcb726b66c18",
+        sequence: 1,
+        expectsResponse: false,
+        sender: { sessionId: sourceId, title, kind: "project-session" },
+      },
+    );
+    await writeFile(
+      file,
+      [
+        entries[0],
+        {
+          ...entries[1],
+          message: {
+            role: "user",
+            content: "Check this report without approving or merging anything.",
+            timestamp: 0,
+          },
+        },
+        { ...entries[2], message: { role: "user", content: incoming, timestamp: 1 } },
+        {
+          ...entries[2],
+          id: "recap",
+          parentId: entries[2].id,
+          message: {
+            ...entries[2].message,
+            timestamp: 2,
+            content: [
+              {
+                type: "text",
+                text: `No code has changed. Shall we review the plan?\n\n[Full agent response](${ref})`,
+              },
+            ],
+          },
+        },
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n") + "\n",
+    );
+  },
+  async prepare(page, state) {
+    await expect(page.locator('[data-slot="session-message"]')).toHaveCount(1);
+    const disclosure = page.locator('[data-slot="response-disclosure"]');
+    await expect(disclosure).toHaveCount(1);
+    await expect(disclosure).toHaveText("Side-chat shared to-dos and merge-back memory");
+    await expect(page.getByRole("link", { name: "Full agent response" })).toBeVisible();
+    if (state === "expanded") {
+      await disclosure.click();
+      await expect(page.getByRole("heading", { name: "Proposed plan" })).toBeVisible();
+    }
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator(".transcript"),
+};
+
 const sessionMessageVariantsScenario: VisualCaptureScenario = {
   name: "session-message-variants",
   description:
@@ -4912,6 +5021,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   contextPillsScenario,
   sessionMessagesScenario,
   sessionMessageVariantsScenario,
+  incomingReportRecapScenario,
   sessionUpdateReportsScenario,
   cakeChatSessionUpdatesScenario,
   activityWorktreeScenario,

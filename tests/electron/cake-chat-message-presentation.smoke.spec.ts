@@ -345,17 +345,24 @@ for (const [delivery, theme] of [
           page.getByText(/\d+ sessions? you launched (?:is|are) still running\./),
         ).toHaveCount(0);
         const surfaces = page.locator('[data-slot="message-source"]');
-        await expect(surfaces).toHaveCount(4);
-        const first = page.locator(
+        const linkedIsIncoming = delivery === "subagent" && sessionId !== viewer.getSessionId();
+        await expect(surfaces).toHaveCount(linkedIsIncoming ? 4 : 3);
+        const linked = page.locator(
           `[data-part-id="${partIds.get(sessionId)!.get("linked")}"] [data-slot="message-source"]`,
         );
+        // Ordinary recap links stay navigable, but never add a second incoming report.
+        await expect(linked).toHaveCount(linkedIsIncoming ? 1 : 0);
         const notification = page.locator(
           `[data-part-id="${partIds.get(sessionId)!.get("notification")}"] [data-slot="message-source"]`,
         );
         const receipt = page.locator(
           `[data-part-id="${partIds.get(sessionId)!.get("receipt")}"] [data-slot="message-source"]`,
         );
+        const first = linkedIsIncoming ? linked : notification;
         for (const source of [first, notification, receipt]) {
+          expect(
+            await source.evaluate((node) => Boolean(node.closest('[data-slot="session-message"]'))),
+          ).toBe(true);
           const header = source.locator('[data-slot="response-disclosure"]');
           await expect(header).toHaveText("Detailed delegated review");
           await expect(header).toHaveAttribute("aria-expanded", "false");
@@ -379,10 +386,10 @@ for (const [delivery, theme] of [
           const batched = await edges(notification);
           expect(batched.title).toBeCloseTo(standalone.title, 0);
           expect(batched.chevron).toBeCloseTo(standalone.chevron, 0);
-          // Attributed responses remain deliberately inset inside their session card.
+          // Every incoming path uses the same inset, sender-attributed card.
           const nested = await edges(receipt);
-          expect(nested.title).toBeGreaterThan(standalone.title);
-          expect(nested.chevron).toBeLessThan(standalone.chevron);
+          expect(nested.title).toBeCloseTo(standalone.title, 0);
+          expect(nested.chevron).toBeCloseTo(standalone.chevron, 0);
         };
         await verifyHeadingAlignment();
         const missing = page.locator(
@@ -486,6 +493,12 @@ for (const [delivery, theme] of [
         expect(await page.evaluate(() => Reflect.get(window, "copiedMessage"))).toBe(originalText);
         await expect(first.getByText(/Last original finding/)).toBeVisible();
         await expect(page.getByRole("combobox", { name: inputName })).toBeVisible();
+        // Reset the page before checking the notification's original heading; the
+        // notification may itself be the canonical preview exercised above.
+        await first.getByRole("button", { name: "Previous", exact: true }).click();
+        await expect(
+          first.getByRole("heading", { name: "Original detailed findings" }),
+        ).toBeVisible();
         // Notification-mode source is available without any model-authored relay.
         await first.getByRole("button", { name: "Detailed delegated review", exact: true }).click();
         await notification.getByRole("button", { name: "Detailed delegated review" }).click();

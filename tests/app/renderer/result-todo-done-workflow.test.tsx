@@ -294,7 +294,7 @@ it.each(chats)(
     expect(f.groupFor("session-request")).toBeNull();
     expect(screen.getAllByRole("group", { name: "Linked to-dos" })).toHaveLength(2);
     // The bar is part of each message, so every result type shares one layout.
-    expect(f.groupFor("worker-report")?.closest('[data-slot="message-content"]')).not.toBeNull();
+    expect(f.groupFor("worker-report")?.closest('[data-slot="session-message"]')).not.toBeNull();
     expect(f.groupFor("session-reply")?.closest('[data-slot="session-message"]')).not.toBeNull();
     expect(await f.paneState("Benchmark startup")).toBe("open");
     expect(f.chat.todos.source?.chat).toBe(kind);

@@ -174,7 +174,10 @@ describe("exact response presentation", () => {
         .getAllByRole("button")
         .map((button) => button.textContent),
     ).toEqual(titles);
-    expect(batch.textContent).toBe(titles.join(""));
+    expect(
+      within(batch).getAllByRole("region", { name: "Message from another session" }),
+    ).toHaveLength(3);
+    expect(batch.textContent).toBe(titles.map((title) => `From${title}${title}`).join(""));
     expect(screen.getAllByRole("status", { name: "Session results" })).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Cake · session updates" })).toBeNull();
     expect(inspect).not.toHaveBeenCalled();
@@ -182,9 +185,11 @@ describe("exact response presentation", () => {
     const prompts = within(batch).getByRole("button", { name: titles[1] });
     await user.click(prompts);
     expect(await within(batch).findByText(/Committed as d58aa9b5/)).toBeTruthy();
-    expect(within(batch).getByRole("link", { name: titles[1] }).getAttribute("href")).toBe(
-      promptRef,
-    );
+    expect(
+      within(batch)
+        .getAllByRole("link", { name: titles[1] })
+        .map((link) => link.getAttribute("href")),
+    ).toContain(promptRef);
     const expanded = document.getElementById(prompts.getAttribute("aria-controls")!)!;
     expect(Array.from(expanded.children).map((child) => child.textContent)).toEqual([
       titles[1],
@@ -215,9 +220,11 @@ describe("exact response presentation", () => {
         "Landed 8 workstreams through Cake and resolved their owners.",
       ),
     ).toBeTruthy();
-    expect(within(batch).getByRole("link", { name: titles[0] }).getAttribute("href")).toBe(
-      landedRef,
-    );
+    expect(
+      within(batch)
+        .getAllByRole("link", { name: titles[0] })
+        .map((link) => link.getAttribute("href")),
+    ).toContain(landedRef);
     expect(projectSessionEntries(parent.getEntries())).toEqual(persisted);
     view.unmount();
   });
@@ -539,7 +546,7 @@ describe("exact response presentation", () => {
     const message = within(delivered.closest("article")!);
     expect(
       message.getAllByRole("button").map((button) => button.getAttribute("aria-label")),
-    ).toEqual(["Copy response"]);
+    ).toEqual([null, "Copy response"]);
     await user.click(message.getByRole("button", { name: "Copy response" }));
     expect(await navigator.clipboard.readText()).toBe("Worker summary");
     expect(inspect).not.toHaveBeenCalled();
@@ -750,7 +757,7 @@ describe("exact response presentation", () => {
         } else {
           expect(
             message.getAllByRole("button").map((button) => button.getAttribute("aria-label")),
-          ).toEqual(["Copy response"]);
+          ).toEqual([null, "Copy response"]);
           await user.click(message.getByRole("button", { name: "Copy response" }));
           expect(await navigator.clipboard.readText()).toBe(links);
         }

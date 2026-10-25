@@ -99,7 +99,7 @@ function noticePresentation(notice: CrossSessionNotice): NoticePresentation {
   }
 }
 
-function replyBody(text: string): string {
+function withoutReferenceFooter(text: string): string {
   const references = messageReferencesInText(text);
   if (!references.length) return text;
   // Only remove Cake's exact generated footer. Authored links and prose stay intact;
@@ -116,9 +116,9 @@ export function crossSessionPresentation(
 ): CrossSessionPresentation {
   const described = describeCrossSessionMessage(text, metadata);
   const badges: CrossSessionBadge[] = [];
-  const sourceBody = replyBody(described.body);
+  const sourceBody = withoutReferenceFooter(described.body);
   const sourceResponse = !described.notice && sourceBody.trim() === protectedResponseNotice;
-  let body = sourceResponse ? "" : described.relation === "reply" ? sourceBody : described.body;
+  let body = sourceResponse ? "" : sourceBody;
   if (described.notice) {
     const notice = noticePresentation(described.notice);
     badges.push(notice.badge);

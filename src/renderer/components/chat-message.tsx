@@ -83,6 +83,7 @@ export const ChatTextMessage = forwardRef<
     onOpenSourceLocation?(location: SourceLocation): void;
     omitArtifactEmbeds?: readonly string[];
     sourceResponse?: ReactNode;
+    reportSource?: { title: string; href?: string };
     /** Rendered inside the message container, after its content (e.g. linked to-do bar). */
     footer?: ReactNode;
   }
@@ -96,6 +97,7 @@ export const ChatTextMessage = forwardRef<
     onOpenSourceLocation,
     omitArtifactEmbeds,
     sourceResponse,
+    reportSource,
     footer,
   },
   ref,
@@ -121,13 +123,11 @@ export const ChatTextMessage = forwardRef<
     <MessageContent
       ref={contentRef}
       className={cn(
-        report
-          ? "border-l-2 border-accent bg-muted/35 text-foreground"
-          : part.crossSession
-            ? "rounded-none border-0 bg-transparent py-2 shadow-none"
-            : assistant
-              ? "bg-card text-foreground"
-              : "border-user-message-foreground/20 bg-user-message text-user-message-foreground dark:border-border",
+        report || part.crossSession
+          ? "rounded-none border-0 bg-transparent py-2 shadow-none"
+          : assistant
+            ? "bg-card text-foreground"
+            : "border-user-message-foreground/20 bg-user-message text-user-message-foreground dark:border-border",
         !assistant &&
           !report &&
           !part.crossSession &&
@@ -148,7 +148,6 @@ export const ChatTextMessage = forwardRef<
       ) : (
         text
       )}
-      {report && footer}
     </MessageContent>
   ) : null;
   return (
@@ -164,7 +163,6 @@ export const ChatTextMessage = forwardRef<
           : "group/msg relative ml-auto w-[min(88%,42rem)]",
       )}
     >
-      {report && <SubagentReportHeader key={part.id} report={report} />}
       {!assistant &&
         !report &&
         !part.crossSession &&
@@ -176,14 +174,19 @@ export const ChatTextMessage = forwardRef<
         ) : (
           <MessageLabel>{userLabel}</MessageLabel>
         ))}
-      {part.crossSession ? (
+      {part.crossSession || report ? (
         <SessionMessage
-          source={part.crossSession.sender}
+          source={part.crossSession?.sender ?? reportSource}
           relation={crossSession?.relation}
           badges={crossSession?.badges}
         >
+          {report && (
+            <div className="px-5">
+              <SubagentReportHeader key={part.id} report={report} />
+            </div>
+          )}
           {content}
-          {crossSession?.sourceResponse && (
+          {(sourceResponse || crossSession?.sourceResponse) && (
             <div className="flex flex-col gap-3 px-5 py-2">
               {sourceResponse ?? (
                 <p className="text-sm text-muted-foreground">
@@ -345,7 +348,7 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
     ? crossSessionPresentation(part.text, part.crossSession)
     : undefined;
   const copyText = presentation?.body ?? part.text;
-  const sources = presentation?.sourceResponse
+  const sources = part.crossSession
     ? behavior.store.messageSources.filter((source) => source.props.partId === part.id)
     : [];
   const canOpenFullscreen =

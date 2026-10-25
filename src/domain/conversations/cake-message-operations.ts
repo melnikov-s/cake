@@ -61,7 +61,7 @@ export function createMessageOperations(
       topic: "messages",
       summary: "Show an exact full agent response in a lazy expandable source surface here.",
       guidance: [
-        "Use alongside a concise summary so the original detail remains accessible without visiting the producer session. Label source links Full agent response, not a vague topic title.",
+        "Use for explicit standalone source presentation, not to relay an incoming report already shown in a sender-attributed card. Recap links stay clickable without creating another copy of that card. Label source links Full agent response, not a vague topic title.",
         "The persisted tool result retains exact Pi message metadata only, not a copy or generated summary. Expansion reads bounded original text lazily; it does not inject the report into future model context.",
         "Missing or inaccessible sources fail explicitly. No branch fallback, history changes, ownership transfer or artifact copy. Attachments remain metadata, not inspected bytes.",
         "Presentation does not send another completion notice or change reply/notification/ignore delivery.",

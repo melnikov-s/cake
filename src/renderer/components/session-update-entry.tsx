@@ -5,6 +5,7 @@ import type { SessionUpdateEntryStore } from "../stores/SessionUpdateEntryStore"
 import { Markdown } from "./ai-elements/markdown";
 import { InlineMessageSource } from "./inline-message-source";
 import { DisclosureTrigger } from "./ui/disclosure-trigger";
+import { SessionMessage } from "./ui/session-message";
 
 export const SessionUpdateEntry = observer(function SessionUpdateEntry({
   store,
@@ -16,8 +17,15 @@ export const SessionUpdateEntry = observer(function SessionUpdateEntry({
   const contentId = useId();
   const { entry } = store.props;
   const source = store.source;
-  if (source) return <InlineMessageSource store={source} title={entry.title} />;
-  return (
+  const content = source ? (
+    <InlineMessageSource
+      store={source}
+      title={entry.title}
+      sourceSession={
+        entry.sessionId ? { sessionId: entry.sessionId, title: entry.title } : undefined
+      }
+    />
+  ) : (
     <section className="min-w-0 border-b border-border py-4 last:border-b-0">
       <DisclosureTrigger
         data-slot="response-disclosure"
@@ -34,5 +42,12 @@ export const SessionUpdateEntry = observer(function SessionUpdateEntry({
         </div>
       )}
     </section>
+  );
+  return entry.sessionId ? (
+    <SessionMessage source={{ sessionId: entry.sessionId, title: entry.title }}>
+      <div className="px-5">{content}</div>
+    </SessionMessage>
+  ) : (
+    content
   );
 });

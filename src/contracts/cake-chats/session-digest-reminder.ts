@@ -93,6 +93,7 @@ export interface SessionNotificationEntry {
   readonly title: string;
   readonly text: string;
   readonly reference?: string;
+  readonly sessionId?: string;
 }
 
 // Old Pi originals retain this sentence; omit only that Cake-owned status from presentation.
@@ -125,7 +126,13 @@ export function sessionNotificationEntries(text: string): readonly SessionNotifi
     const key = reference ?? line;
     if (seen.has(key)) continue;
     seen.add(key);
-    entries.push({ key, title, text: line, reference });
+    entries.push({
+      key,
+      title,
+      text: line,
+      reference,
+      ...(target ? { sessionId: target.sessionId } : null),
+    });
   }
   return entries;
 }

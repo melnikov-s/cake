@@ -1,7 +1,7 @@
 import { child, computed, createStore, snapshot, Store } from "r-state-tree";
 import { ChatPresentationContext } from "./context/ChatPresentationContext";
 import { MessageReferencePreviewStore } from "./MessageReferencePreviewStore";
-import { crossSessionPresentation } from "../lib/cross-session-presentation";
+import { incomingMessageReferences } from "../lib/incoming-message-references";
 import { messageReferencesInText } from "../../contracts/conversations/message-reference-forwarding";
 import { sessionNotificationEntries } from "../../contracts/cake-chats/session-digest-reminder";
 import { SessionUpdateEntryStore } from "./SessionUpdateEntryStore";
@@ -234,25 +234,30 @@ export class ChatStore extends Store<ChatStoreProps> {
   // messages.present. Discover exact identities only; bodies stay lazy in each preview.
   @child
   get messageSources(): MessageReferencePreviewStore[] {
+    const incoming = incomingMessageReferences(this.parts);
     return this.parts.flatMap((part) => {
       const references =
         part.kind === "tool" && part.messageReference
           ? [part.messageReference]
           : part.kind === "text" &&
-              (part.role === "assistant" ||
+              ((part.role === "assistant" && part.status !== "streaming") ||
                 part.subagentReport ||
-                part.crossSession?.replyToMessageId ||
-                (part.crossSession &&
-                  crossSessionPresentation(part.text, part.crossSession).sourceResponse))
+                part.crossSession)
             ? messageReferencesInText(part.text)
             : [];
-      return references.map((reference) =>
-        createStore(MessageReferencePreviewStore, {
-          key: part.id + reference,
-          partId: part.id,
-          reference,
-        }),
-      );
+      return references
+        .filter(
+          (reference) =>
+            (part.kind === "text" && (part.crossSession || part.subagentReport)) ||
+            !incoming.has(reference),
+        )
+        .map((reference) =>
+          createStore(MessageReferencePreviewStore, {
+            key: part.id + reference,
+            partId: part.id,
+            reference,
+          }),
+        );
     });
   }
 
@@ -315,7 +320,7 @@ export class ChatStore extends Store<ChatStoreProps> {
   }
   @computed
   get parts() {
-    return this.props
+    const parts = this.props
       .parts()
       .filter(
         (part) =>
@@ -323,6 +328,18 @@ export class ChatStore extends Store<ChatStoreProps> {
           Boolean(part.subagentReport) ||
           (part.deliveryState !== "queued" && part.deliveryState !== "steering"),
       );
+    const incoming = incomingMessageReferences(parts);
+    const deliveries = new Set<string>();
+    return parts.filter((part) => {
+      // Keep the Pi receipt in history, but do not mount a second source surface.
+      if (part.kind === "tool" && part.messageReference && incoming.has(part.messageReference))
+        return false;
+      if (part.kind !== "text" || !part.crossSession) return true;
+      const id = part.crossSession.messageId;
+      if (deliveries.has(id)) return false;
+      deliveries.add(id);
+      return true;
+    });
   }
   get streaming() {
     return this.props.streaming();

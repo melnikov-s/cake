@@ -6,7 +6,7 @@ export function SessionResultNotice({ children }: { children: ReactNode }) {
     <section
       role="status"
       aria-label="Session results"
-      className="w-full min-w-0 rounded-lg bg-background py-2"
+      className="flex w-full min-w-0 flex-col gap-3 rounded-lg bg-background py-2"
     >
       {children}
     </section>
