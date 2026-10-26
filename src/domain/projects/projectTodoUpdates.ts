@@ -133,7 +133,13 @@ export const initialize = Effect.fn("ProjectTodoUpdates.initialize")(function* (
       rankList(scope).pipe(
         calls.withPermits(1),
         Effect.catch((error) =>
-          Effect.logWarning("To-do ranking failed; keeping current order", error),
+          Effect.logWarning("To-do ranking failed; keeping current order", error).pipe(
+            Effect.annotateLogs(
+              error._tag === "UtilityWorkOutputError" && error.replyPreview !== undefined
+                ? { replyPreview: error.replyPreview }
+                : {},
+            ),
+          ),
         ),
       ),
     ),

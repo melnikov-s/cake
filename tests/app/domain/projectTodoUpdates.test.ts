@@ -228,35 +228,39 @@ it.effect(
   },
 );
 
-it.effect(
-  "ranking persists only validated item IDs and preserves chronological storage order",
-  () => {
-    let output = "";
-    const f = fixture(() => Effect.succeed(output));
-    return Effect.gen(function* () {
-      const first = yield* setup();
-      const second = yield* todos.create("/project", {
-        title: "Needs your choice",
-        description: "Please choose the deployment target.",
-      });
-      output = JSON.stringify([second.id, first.id]);
-      yield* updates.rankList("/project");
-      const ranked = yield* todos.list("/project");
-      expect(ranked.agentOrder).toEqual([second.id, first.id]);
-      expect(ranked.items.map(({ id }) => id)).toEqual([first.id, second.id]);
-      expect(ranked.items[0]?.revision).toBe(0);
-      for (const invalid of [
-        [first.id, first.id],
-        [first.id],
-        [first.id, "00000000-0000-4000-8000-000000000099"],
-      ]) {
-        output = JSON.stringify(invalid);
-        expect((yield* updates.rankList("/project").pipe(Effect.result))._tag).toBe("Failure");
-        expect((yield* todos.list("/project")).agentOrder).toEqual(ranked.agentOrder);
-      }
-    }).pipe(Effect.provide(f.layer));
-  },
-);
+it.effect("ranking maps item numbers back to IDs and preserves chronological storage order", () => {
+  const inputs: BoundedCompletionInput[] = [];
+  let output = "";
+  const f = fixture((input) =>
+    Effect.sync(() => {
+      inputs.push(input);
+      return output;
+    }),
+  );
+  return Effect.gen(function* () {
+    const first = yield* setup();
+    const second = yield* todos.create("/project", {
+      title: "Needs your choice",
+      description: "Please choose the deployment target.",
+    });
+    output = "```json\n[2, 1]\n```";
+    yield* updates.rankList("/project");
+    expect(JSON.parse(inputs[0]!.context)).toEqual([
+      { number: 1, title: first.title, description: first.description },
+      { number: 2, title: second.title, description: second.description },
+    ]);
+    expect(inputs[0]!.context).not.toContain(first.id);
+    const ranked = yield* todos.list("/project");
+    expect(ranked.agentOrder).toEqual([second.id, first.id]);
+    expect(ranked.items.map(({ id }) => id)).toEqual([first.id, second.id]);
+    expect(ranked.items[0]?.revision).toBe(0);
+    for (const invalid of ["[1, 1]", "[3, 1]", "not json"]) {
+      output = invalid;
+      expect((yield* updates.rankList("/project").pipe(Effect.result))._tag).toBe("Failure");
+      expect((yield* todos.list("/project")).agentOrder).toEqual(ranked.agentOrder);
+    }
+  }).pipe(Effect.provide(f.layer));
+});
 
 it.effect("coalesces ranking changes and does not rerank its own order publication", () => {
   let calls = 0;
@@ -265,7 +269,7 @@ it.effect("coalesces ranking changes and does not rerank its own order publicati
       calls++;
       return JSON.stringify(
         JSON.parse(input.context)
-          .map((item: { id: string }) => item.id)
+          .map((item: { number: number }) => item.number)
           .reverse(),
       );
     }),
@@ -320,7 +324,7 @@ it.effect("discards a ranking when its descriptions changed during the model cal
         Effect.as(
           JSON.stringify(
             JSON.parse(input.context)
-              .map((item: { id: string }) => item.id)
+              .map((item: { number: number }) => item.number)
               .reverse(),
           ),
         ),

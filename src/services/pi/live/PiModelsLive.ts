@@ -407,6 +407,9 @@ export const makePiModelsLive = (agentDirectory: string) =>
               throw error;
             }
             if (response.errorMessage) throw new Error(response.errorMessage);
+            // A cut-off utility reply is never a usable answer; report it instead of partial text.
+            if (!input.chat && response.stopReason === "length")
+              throw new Error(`Model output was truncated at the ${maxTokens}-token limit`);
             if (
               input.chat &&
               (response.stopReason === "error" ||

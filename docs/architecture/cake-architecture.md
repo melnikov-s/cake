@@ -404,8 +404,11 @@ is a refactoring signal, not precedent.
   acknowledge delivery. This queue is ephemeral; pending refreshes are not replayed after
   restart. Normal durable reporting remains unchanged.
   A separate change-driven, debounced pass ranks 2–50 open items from titles/descriptions
-  and returns validated IDs only. Utility calls share one concurrency permit and have
-  ten-second deadlines, without retries or foreground-model fallback. The advisory
+  by asking for item numbers, which code validates and maps back to IDs; omitted items
+  keep their current relative order after the ranked ones. Rejected or token-truncated
+  replies are logged with a bounded reply preview. Utility calls share one concurrency
+  permit and have deadlines (ten seconds for summaries, twenty for ranking), without
+  retries or foreground-model fallback. The advisory
   `agentOrder` is persisted on the list; chronological storage order remains creation
   order. The pane offers Agent sorted, Latest first and Earliest first; chronological
   modes use creation order, never description-edit recency. Agent order is captured on

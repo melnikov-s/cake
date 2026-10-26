@@ -132,6 +132,65 @@ describe("PiModels", () => {
     },
   );
 
+  vitestIt("fails a utility completion that stopped at the token limit", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cake-utility-truncated-"));
+    const checkAuth = vi
+      .spyOn(ModelRuntime.prototype, "checkAuth")
+      .mockResolvedValue({ type: "api_key", source: "fixture" });
+    const available = vi
+      .spyOn(ModelRuntime.prototype, "getAvailable")
+      .mockImplementation(async function (this: ModelRuntime, provider) {
+        return this.getModels(provider);
+      });
+    const complete = vi
+      .spyOn(ModelRuntime.prototype, "completeSimple")
+      .mockImplementation(async (model) => ({
+        role: "assistant",
+        content: [{ type: "text", text: "[3, 1," }],
+        api: model.api,
+        provider: model.provider,
+        model: model.id,
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        stopReason: "length",
+        timestamp: 0,
+      }));
+    try {
+      const failure = await Effect.runPromise(
+        Effect.gen(function* () {
+          const models = yield* PiModels;
+          return yield* Effect.flip(
+            models.complete({
+              selection: {
+                provider: "openai",
+                modelId: "gpt-5-mini",
+                thinkingLevel: "low",
+                fastMode: false,
+              },
+              instructions: "Rank these",
+              context: "[]",
+              maximumOutputCharacters: 16_384,
+              timeoutMs: 15_000,
+            }),
+          );
+        }).pipe(Effect.provide(makePiModelsLive(directory))),
+      );
+      assert.equal(failure._tag, "PiModelCompletionError");
+      assert.equal(failure.message, "Model output was truncated at the 8192-token limit");
+    } finally {
+      complete.mockRestore();
+      available.mockRestore();
+      checkAuth.mockRestore();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   vitestIt(
     "sends the shared memory system/tools prefix and real assistant/user shortening turns without a utility wrapper",
     async () => {
