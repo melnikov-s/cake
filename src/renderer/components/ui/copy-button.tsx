@@ -8,11 +8,14 @@ export function CopyButton({
   onError,
   disabled,
   label = "message",
+  className,
 }: {
   getText(): Promise<string>;
-  onError(error: unknown): void;
+  /** Omit when a failed copy needs no explanation beyond the missing confirmation. */
+  onError?(error: unknown): void;
   disabled?: boolean;
   label?: string;
+  className?: string;
 }) {
   const [copied, setCopied] = useState(false);
   const [copying, setCopying] = useState(false);
@@ -23,6 +26,7 @@ export function CopyButton({
   }, [copied]);
   return (
     <IconButton
+      className={className}
       tooltip={copied ? `Copied ${label}` : `Copy ${label}`}
       ariaLabel={copied ? `Copied ${label}` : `Copy ${label}`}
       disabled={disabled || copying}
@@ -34,7 +38,7 @@ export function CopyButton({
           await navigator.clipboard.writeText(await getText());
           setCopied(true);
         } catch (error) {
-          onError(error);
+          onError?.(error);
         } finally {
           setCopying(false);
         }

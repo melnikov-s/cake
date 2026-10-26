@@ -18,16 +18,13 @@ import {
   parseMarkdownIntoBlocks,
   Streamdown,
   type Components,
+  type ExtraProps,
   type StreamdownProps,
 } from "streamdown";
 import { unified } from "unified";
 import { usePhoneLayout } from "../../lib/phone-layout";
 import { DiagramContext } from "../../lib/diagram-context";
-import {
-  supportsSyntaxHighlightLanguage,
-  syntaxHighlighter,
-  syntaxHighlightLanguageNames,
-} from "@/lib/syntax-highlighter";
+import { supportsSyntaxHighlightLanguage, syntaxHighlighter } from "@/lib/syntax-highlighter";
 import { cn } from "@/lib/utils";
 import type { SourceLocation } from "../../../contracts/editor/source-location";
 import { parseSubagentLink, subagentLink } from "../../../contracts/subagents/subagent-reference";
@@ -400,23 +397,44 @@ export function MarkdownLink({
 
 const configuredPlugins = {
   code: syntaxHighlighter,
-  renderers: [
-    { component: PeleDiagram, language: "mermaid" },
-    {
-      component: MarkdownCodeBlock,
-      language: syntaxHighlightLanguageNames,
-    },
-  ],
-};
-const markdownControls = {
-  code: {
-    copy: true,
-    download: false,
-  },
+  renderers: [{ component: PeleDiagram, language: "mermaid" }],
 };
 
-const codeBlockPresentation =
-  "[&_[data-streamdown=code-block]]:relative [&_[data-streamdown=code-block]]:gap-0 [&_[data-streamdown=code-block]]:rounded-none [&_[data-streamdown=code-block]]:border-0 [&_[data-streamdown=code-block]]:bg-transparent [&_[data-streamdown=code-block]]:p-0 [&_[data-streamdown=code-block-header]]:hidden [&_[data-streamdown=code-block-actions]]:!absolute [&_[data-streamdown=code-block-actions]]:!top-2 [&_[data-streamdown=code-block-actions]]:!right-2 [&_[data-streamdown=code-block-actions]]:!mt-0 [&_[data-streamdown=code-block-actions]]:!h-auto [&_[data-streamdown=code-block-actions]]:opacity-0 [&_[data-streamdown=code-block-actions]]:transition-opacity [&_[data-streamdown=code-block-actions]>div]:!border-0 [&_[data-streamdown=code-block-actions]>div]:!bg-transparent [&_[data-streamdown=code-block-actions]>div]:!p-0 [&_[data-streamdown=code-block-actions]>div]:!backdrop-blur-none [&_[data-streamdown=code-block]:hover_[data-streamdown=code-block-actions]]:opacity-100 [&_[data-streamdown=code-block]:focus-within_[data-streamdown=code-block-actions]]:opacity-100";
+const codeLanguagePattern = /language-([^\s]+)/;
+
+/**
+ * Gives every fenced block except a diagram the same code snippet, whatever its
+ * language. Streamdown's own renderers match only listed languages, so plain or
+ * unlabelled fences would otherwise fall back to its separate default block.
+ */
+function MarkdownPre({ node, children }: ComponentProps<"pre"> & ExtraProps) {
+  const code = node?.children[0];
+  if (code?.type === "element" && code.tagName === "code") {
+    const classes = code.properties.className;
+    const language =
+      (Array.isArray(classes) ? classes.join(" ") : String(classes ?? "")).match(
+        codeLanguagePattern,
+      )?.[1] ?? "";
+    if (language !== "mermaid") {
+      const text = code.children
+        .map((child) => (child.type === "text" ? child.value : ""))
+        .join("");
+      const meta = code.properties.metastring;
+      return (
+        <MarkdownCodeBlock
+          code={text}
+          language={language}
+          meta={meta == null ? undefined : String(meta)}
+          isIncomplete={false}
+        />
+      );
+    }
+  }
+  // Streamdown's default: mark the child as block code so its diagram renderer runs.
+  return isValidElement<{ "data-block"?: string }>(children)
+    ? cloneElement(children, { "data-block": "true" })
+    : children;
+}
 
 type FenceLocation = {
   contentStart: number;
@@ -647,6 +665,7 @@ function MarkdownRenderer({
   const components = useMemo<Components>(() => {
     const openSourceLocation = onOpenSourceLocation;
     return {
+      pre: MarkdownPre,
       table(allProps) {
         const props = { ...allProps };
         delete props.node;
@@ -726,10 +745,8 @@ function MarkdownRenderer({
           components={components}
           className={cn(
             "markdown-content min-w-0 max-w-full break-words [overflow-wrap:anywhere] [&_[data-streamdown=code-block-body]]:overflow-x-hidden [&_[data-streamdown=code-block-body]_pre]:whitespace-pre-wrap [&_[data-streamdown=code-block-body]_pre]:[overflow-wrap:anywhere]",
-            codeBlockPresentation,
             className,
           )}
-          controls={markdownControls}
           isAnimating={false}
           mode="streaming"
           parseMarkdownIntoBlocksFn={parseMarkdownIntoBlocks}

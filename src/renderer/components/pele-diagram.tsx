@@ -1,6 +1,7 @@
 import { useContext, useEffect, useId, useRef, useState } from "react";
 import type { Zoom } from "pele/core";
-import { CodeBlockCopyButton, type CustomRendererProps } from "streamdown";
+import type { CustomRendererProps } from "streamdown";
+import { CopyButton } from "@/components/ui/copy-button";
 import { IconButton } from "@/components/ui/icon-button";
 import { ResetZoomIcon, ZoomInIcon, ZoomOutIcon } from "@/components/ui/icons";
 import { Callout } from "@/components/ui/callout";
@@ -8,7 +9,7 @@ import { FullscreenButton } from "@/components/ui/fullscreen-button";
 import { LoadingState } from "@/components/ui/loading-state";
 import { DiagramContext } from "../lib/diagram-context";
 import { isDiagramHref, requestDiagram, sanitizeDiagram } from "../lib/diagram-rendering";
-import { streamingCodeMarker } from "./ai-elements/markdown-code-block";
+import { streamingCodeMarker, trimTrailingNewlines } from "./ai-elements/markdown-code-block";
 
 /** One renderer for chat fences, artifacts and fullscreen. Only sanitized SVG
  * enters the DOM; React owns controls and errors, Pele owns canvas gestures. */
@@ -131,7 +132,7 @@ export function PeleDiagram({
             </IconButton>
           </>
         )}
-        <CodeBlockCopyButton code={source} />
+        <CopyButton label="code" getText={async () => trimTrailingNewlines(source)} />
         {!fullscreen && svg && !changing && !error && openFullscreen && (
           <FullscreenButton
             label="View diagram fullscreen"

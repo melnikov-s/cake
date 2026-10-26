@@ -281,8 +281,8 @@ describe("Projected transcript rendering workflows", () => {
     await waitFor(() => expect(fixture.container.querySelector("svg.pele")).not.toBeNull());
     expect(screen.getAllByRole("button", { name: /View .*fullscreen/ })).toHaveLength(1);
     const copy = vi.spyOn(navigator.clipboard, "writeText");
-    await fixture.user.click(screen.getByRole("button", { name: "Copy Code" }));
-    expect(copy).toHaveBeenCalledWith(`${code}\n`);
+    await fixture.user.click(screen.getByRole("button", { name: "Copy code" }));
+    expect(copy).toHaveBeenCalledWith(code);
     await fixture.user.click(screen.getByRole("button", { name: "View diagram fullscreen" }));
     const fullscreen = screen.getByRole("dialog", { name: "Diagram" });
     await waitFor(() => expect(fullscreen.querySelector("svg.pele")).not.toBeNull());

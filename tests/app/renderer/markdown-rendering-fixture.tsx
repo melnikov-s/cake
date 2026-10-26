@@ -27,7 +27,7 @@ type MarkdownActions = ComponentProps<typeof MarkdownLinkProvider>["actions"];
  * worker loading/bundling and layout remain Electron integration concerns. */
 export async function installMarkdownWorker() {
   const highlighter = await createHighlighter({
-    langs: ["typescript", "json"],
+    langs: ["typescript", "json", "shellscript"],
     themes: [...syntaxThemes],
   });
   class InProcessWorker extends EventTarget {

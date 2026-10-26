@@ -30,9 +30,6 @@ const aliases = new Map<string, SupportedSyntaxLanguage>([
   ["yml", "yaml"],
 ]);
 const supportedLanguages = new Set<string>(supportedSyntaxLanguages);
-export const syntaxHighlightLanguageNames = [
-  ...new Set([...supportedSyntaxLanguages, ...aliases.keys()]),
-];
 
 function normalizeLanguage(language: string) {
   const normalized = language.trim().toLowerCase();

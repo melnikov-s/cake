@@ -196,10 +196,10 @@ for (const { theme, standalone } of (["light", "dark"] as const).flatMap((theme)
           },
         });
       });
-      await message.getByRole("button", { name: "Copy Code", exact: true }).click();
+      await message.getByRole("button", { name: "Copy code", exact: true }).click();
       await expect
         .poll(() => page.evaluate(() => navigator.clipboard.readText()))
-        .toBe(diagramMarkdown.slice("```mermaid\n".length, -"```".length));
+        .toBe(diagramMarkdown.slice("```mermaid\n".length, -"\n```".length));
 
       const fitBox = await diagram.getAttribute("viewBox");
       await page.getByRole("button", { name: "Zoom in", exact: true }).click();

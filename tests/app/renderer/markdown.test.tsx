@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
 import {
@@ -7,6 +8,7 @@ import {
   isStandaloneDiagram,
   type Markdown,
 } from "../../../src/renderer/components/ai-elements/markdown";
+import { Tool } from "../../../src/renderer/components/ai-elements/tool";
 import { installDiagramMeasurement } from "./diagram-browser-fixture";
 import type { Client } from "../../../src/renderer/client/Client";
 import {
@@ -56,7 +58,57 @@ describe("Markdown rendering integration", () => {
     expect(screen.getByText("inline code").tagName).toBe("CODE");
     await waitFor(() => expect(highlighted(codeBodies(fixture.container)[0]!)).toBe(true));
     expect(codeBodies(fixture.container)[0]!.textContent).toContain(code);
-    expect(screen.getByRole("button", { name: "Copy Code" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Copy code" })).toBeDefined();
+  });
+
+  it("gives every fenced snippet, whatever its language, its own copy button beside the code", async () => {
+    const snippets = [
+      ["bash", 'devx binks check pass shop/world#1 --reason "clear" --apply'],
+      ["text", "plain output\nsecond line"],
+      ["", "unlabelled fence"],
+      ["toml", 'name = "cake"'],
+    ] as const;
+    using fixture = renderMarkdown(
+      snippets.map(([language, code]) => fencedCode(code, language)).join("\n\nBetween.\n\n"),
+    );
+    const frames = Array.from(
+      fixture.container.querySelectorAll<HTMLElement>('[data-slot="code-snippet"]'),
+    );
+    expect(frames).toHaveLength(snippets.length);
+    const copy = vi.spyOn(navigator.clipboard, "writeText");
+    for (const [index, frame] of frames.entries()) {
+      const button = within(frame).getByRole("button", { name: "Copy code" });
+      // The button sits in the frame's gutter, outside the scrolling code body.
+      expect(within(frame).getAllByRole("button")).toHaveLength(1);
+      expect(codeBodies(frame)[0]!.contains(button)).toBe(false);
+      await fixture.user.click(button);
+      // Exactly the snippet: no line numbers and no trailing newline.
+      expect(copy).toHaveBeenLastCalledWith(snippets[index]![1]);
+      expect(within(frame).getByRole("button", { name: "Copied code" })).toBeDefined();
+    }
+  });
+
+  it("copies a work-log bash command and its output separately", async () => {
+    const user = userEvent.setup();
+    render(
+      <Tool
+        part={{
+          id: "tool-bash",
+          kind: "tool",
+          name: "bash",
+          input: "git status --short",
+          outputContent: [{ type: "text", text: " M src/app.ts\n" }],
+          state: "success",
+        }}
+        expansion={{ open: true, toggle: () => undefined }}
+      />,
+    );
+    const copy = vi.spyOn(navigator.clipboard, "writeText");
+    const [command, output] = screen.getAllByRole("button", { name: "Copy code" });
+    await user.click(command!);
+    expect(copy).toHaveBeenLastCalledWith("git status --short");
+    await user.click(output!);
+    expect(copy).toHaveBeenLastCalledWith(" M src/app.ts");
   });
 
   it("renders safe content without executing authored HTML or unsafe links", () => {

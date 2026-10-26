@@ -185,13 +185,10 @@ const assistantMarkdownCode: VisualCaptureScenario = {
     );
 
     if (state === "hover") {
-      await page.locator(".group\\/code").hover();
-      await page.waitForFunction(() => {
-        const button = document.querySelector<HTMLElement>(
-          '[data-streamdown="code-block-copy-button"]',
-        );
-        return button !== null && Number.parseFloat(getComputedStyle(button).opacity) === 1;
-      });
+      await page
+        .locator('[data-slot="code-snippet"]')
+        .getByRole("button", { name: "Copy code", exact: true })
+        .hover();
       return;
     }
     if (state === "resolved") {
