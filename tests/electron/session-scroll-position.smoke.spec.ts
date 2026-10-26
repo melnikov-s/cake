@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test, type Locator, type Page } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
+import { recordedRendererErrors, recordRendererErrors } from "../fixtures/renderer-errors";
 import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
@@ -215,6 +216,8 @@ for (const scenario of [
   "keeps user ownership through repeated streaming gestures",
   "keeps every resize frame at the bottom",
   "preserves the reading anchor during row resize",
+  "keeps a grown row rendered while scrolling past it",
+  "mounts rows revealed by a shrinking row without renderer errors",
   "scrolls upward through virtual range boundaries without resetting",
   "reopens a large loaded session",
   "restores session position",
@@ -305,6 +308,9 @@ for (const scenario of [
           ),
         )
         .toBeLessThanOrEqual(1);
+      // Row growth (streaming, resizes, range commits) must not feed back into
+      // ResizeObserver delivery and report "ResizeObserver loop" errors.
+      await recordRendererErrors(page);
 
       if (scenario === "scrolls upward through virtual range boundaries without resetting") {
         await expect(transcript.locator('[data-slot="transcript-item"]').last()).toContainText(
@@ -312,11 +318,6 @@ for (const scenario of [
         );
         await paintFrames(page, 10);
         expect(await transcript.locator('[data-slot="transcript-item"]').count()).toBeLessThan(48);
-        await page.evaluate(() => {
-          const errors: string[] = [];
-          Reflect.set(window, "scrollRendererErrors", errors);
-          window.addEventListener("error", (event) => errors.push(event.message));
-        });
         await transcript.hover({ position: { x: 20, y: 200 } });
         let reachedTop = false;
         for (let step = 0; step < 140; step++) {
@@ -361,7 +362,7 @@ for (const scenario of [
           }
         }
         expect(reachedTop).toBe(true);
-        expect(await page.evaluate(() => Reflect.get(window, "scrollRendererErrors"))).toEqual([]);
+        expect(await recordedRendererErrors(page)).toEqual([]);
         await page.mouse.wheel(0, -120);
         await expect.poll(() => transcript.evaluate((element) => element.scrollTop)).toBe(0);
         await expect(transcript.locator('[data-slot="transcript-item"]').first()).toHaveAttribute(
@@ -485,6 +486,7 @@ for (const scenario of [
           stream.finish();
           await expect(firstSession.locator('[aria-label="Running"]')).toHaveCount(0);
           await expectRestoredAnchor(transcript, saved);
+          expect(await recordedRendererErrors(page)).toEqual([]);
           return;
         }
         await startTranscriptFrameSamples(transcript);
@@ -505,6 +507,7 @@ for (const scenario of [
         const samples = await stopTranscriptFrameSamples(transcript);
         expect(samples.length).toBeGreaterThan(10);
         expect(Math.max(...samples.map((sample) => sample.gap))).toBeLessThanOrEqual(1);
+        expect(await recordedRendererErrors(page)).toEqual([]);
         return;
       }
 
@@ -540,6 +543,7 @@ for (const scenario of [
         expect(samples.length).toBeGreaterThan(10);
         expect(Math.max(...samples.map((sample) => sample.gap))).toBeLessThanOrEqual(1);
         expect(samples.every((sample) => sample.anchorId !== undefined)).toBe(true);
+        expect(await recordedRendererErrors(page)).toEqual([]);
         return;
       }
 
@@ -587,6 +591,113 @@ for (const scenario of [
               sample.anchorText !== saved.text || Math.abs(sample.offset! - saved.offset) > 1,
           ),
         ).toEqual([]);
+        expect(await recordedRendererErrors(page)).toEqual([]);
+        return;
+      }
+
+      if (scenario === "mounts rows revealed by a shrinking row without renderer errors") {
+        // Shrinking rendered rows makes Virtuoso mount never-measured rows
+        // above them. That commit must not run inside ResizeObserver delivery.
+        await expect(transcript.locator('[data-slot="transcript-item"]').last()).toContainText(
+          "transcript item 47",
+        );
+        await paintFrames(page, 8);
+        const firstRendered = () =>
+          transcript.evaluate(
+            (element) =>
+              element.querySelector<HTMLElement>('[data-slot="transcript-item"]')!.dataset
+                .transcriptAnchorId,
+          );
+        for (let round = 0; round < 5; round++) {
+          const before = await firstRendered();
+          await transcript.evaluate(
+            (element) =>
+              new Promise<void>((resolve) =>
+                requestAnimationFrame(() => {
+                  for (const row of Array.from(
+                    element.querySelectorAll<HTMLElement>('[data-slot="transcript-item"]'),
+                  ).slice(0, 3)) {
+                    row.style.height = "8px";
+                    row.style.overflow = "hidden";
+                  }
+                  resolve();
+                }),
+              ),
+          );
+          await paintFrames(page, 10);
+          expect(await firstRendered()).not.toBe(before);
+        }
+        expect(
+          await transcript.evaluate(
+            (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+          ),
+        ).toBeLessThanOrEqual(1);
+        expect(await recordedRendererErrors(page)).toEqual([]);
+        return;
+      }
+
+      if (scenario === "keeps a grown row rendered while scrolling past it") {
+        // A row above the reader grows (a diagram or image finishing). The scroll
+        // owner compensates in ResizeObserver delivery; Virtuoso measures on the
+        // next frame. The scroll event from that compensation (and the reader's
+        // next wheel step) must not select a range from the stale size and
+        // unmount the grown row.
+        await expect(transcript.locator('[data-slot="transcript-item"]').last()).toContainText(
+          "transcript item 47",
+        );
+        await transcript.hover({ position: { x: 20, y: 200 } });
+        const bottomTop = await transcript.evaluate((element) => element.scrollTop);
+        await page.mouse.wheel(0, -1200);
+        await expect
+          .poll(() => transcript.evaluate((element) => element.scrollTop))
+          .toBeLessThan(bottomTop - 1000);
+        await paintFrames(page, 8);
+        const saved = await transcriptAnchor(transcript);
+        await startTranscriptFrameSamples(transcript);
+        await transcript.evaluate(
+          (element) =>
+            new Promise<void>((resolve) =>
+              requestAnimationFrame(() => {
+                const top = element.getBoundingClientRect().top;
+                const above = Array.from(
+                  element.querySelectorAll<HTMLElement>('[data-slot="transcript-item"]'),
+                ).findLast((row) => row.getBoundingClientRect().bottom <= top);
+                if (!above) throw new Error("Missing overscanned row above the reading anchor");
+                above.style.minHeight = `${above.offsetHeight + 1600}px`;
+                Reflect.set(window, "grownTranscriptRow", above);
+                resolve();
+              }),
+            ),
+        );
+        await paintFrames(page, 10);
+        const samples = await stopTranscriptFrameSamples(transcript);
+        expect(
+          samples.filter(
+            (sample) =>
+              sample.anchorText !== saved.text || Math.abs(sample.offset! - saved.offset) > 1,
+          ),
+        ).toEqual([]);
+        const grownTop = () =>
+          transcript.evaluate((element) => {
+            const row = Reflect.get(window, "grownTranscriptRow") as HTMLElement;
+            return row.isConnected
+              ? row.getBoundingClientRect().top - element.getBoundingClientRect().top
+              : null;
+          });
+        let before = await grownTop();
+        for (let step = 0; step < 18; step++) {
+          await page.mouse.wheel(0, -120);
+          await paintFrames(page, 3);
+          const after = await grownTop();
+          const context = `step ${step}: ${before} -> ${after}`;
+          expect(after, context).not.toBeNull();
+          expect(after! - before!, context).toBeGreaterThanOrEqual(0);
+          expect(after! - before!, context).toBeLessThanOrEqual(121);
+          before = after;
+        }
+        // The reader scrolled onto the grown row itself.
+        expect(before).toBeGreaterThan(-600);
+        expect(await recordedRendererErrors(page)).toEqual([]);
         return;
       }
 

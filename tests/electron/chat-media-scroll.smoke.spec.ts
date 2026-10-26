@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test, type Page } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
+import { recordedRendererErrors, recordRendererErrors } from "../fixtures/renderer-errors";
 import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
@@ -174,6 +175,8 @@ for (const media of ["diagram", "image", "combined"] as const) {
         { timeout: 20_000 },
       );
       await expect(transcript.locator('[aria-label="Conversation"]')).toBeVisible();
+      // Async row growth must not re-render inside ResizeObserver delivery.
+      await recordRendererErrors(page);
       // Delay only worker transport, not Pele, native layout or measurement.
       // This guarantees coverage of initially-loading and loaded diagrams.
       await page.evaluate(() => {
@@ -211,6 +214,10 @@ for (const media of ["diagram", "image", "combined"] as const) {
         const result = await page.evaluate(() =>
           (Reflect.get(window, "stopMediaProbe") as () => MediaProbe)(),
         );
+        expect(
+          await recordedRendererErrors(page),
+          `renderer errors scrolling ${direction < 0 ? "up" : "down"}`,
+        ).toEqual([]);
         expect(result.jumps, `painted jumps scrolling ${direction < 0 ? "up" : "down"}`).toEqual(
           [],
         );

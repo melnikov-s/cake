@@ -34,6 +34,12 @@ it.each(["normal", ""])(
         disconnect() {}
       },
     );
+    // Virtuoso measures ResizeObserver notifications on the next frame.
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) =>
+      frames.push(callback),
+    );
+    vi.stubGlobal("cancelAnimationFrame", () => {});
     vi.spyOn(HTMLElement.prototype, "offsetParent", "get").mockReturnValue(document.body);
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
       function (this: HTMLElement) {
@@ -76,6 +82,7 @@ it.each(["normal", ""])(
       act(() => {
         for (const observer of [...observers])
           if (observer.target.getAttribute("data-viewport-type") === "window") observer.callback();
+        for (const frame of frames.splice(0)) frame(0);
       });
       expect(scroller.textContent).toContain("Message 0");
       expect(scroller.querySelector('[data-known-size="100"]')).not.toBeNull();
