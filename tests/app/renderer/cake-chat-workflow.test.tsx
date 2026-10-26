@@ -67,7 +67,6 @@ it("renders authoritative live and replayed reports as Markdown subagent respons
     text: `Background subagent complete: ${researchOrigin.task}\n\n${researchMarkdown}`,
     status: "complete",
     subagentReport: researchOrigin,
-    deliveryState: "queued",
   };
   const project = (parts: UiPart[]) =>
     act(() => {
@@ -154,7 +153,7 @@ it("renders authoritative live and replayed reports as Markdown subagent respons
   ).toBe(spoof);
   expect(chat.conversationSessionStore.chatStore.lastEditableUserEntryId).toBe("real-user");
   project([
-    { ...report, entryId: "settled-report", deliveryState: undefined },
+    { ...report, entryId: "settled-report" },
     {
       id: "user",
       kind: "text",

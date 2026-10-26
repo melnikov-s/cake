@@ -8,7 +8,6 @@ import {
 import { existsSync } from "node:fs";
 import type { IdleCompactionResult } from "../../../contracts/project-sessions/session-compaction";
 import { internalInputEntryType } from "./internal-input-projection";
-import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { observeMessageBoardRequests } from "./message-board-extension";
 import { createTurnResultCapture } from "./turn-result-capture";
@@ -22,7 +21,7 @@ import type { ArtifactExtensionOptions } from "./artifact-extension";
 import type { MessageBoardControl } from "../../../contracts/artifacts/message-board-control";
 import type { CakeModelPresetCatalog } from "../../../contracts/model-presets/cake-model-selection";
 import type { CakeChatMemoryOptions } from "../cake-chat-memory-options";
-import { Option, Schema } from "effect";
+import { Schema } from "effect";
 import {
   registerAgentDirectoryExtensionProviders,
   registerPendingExtensionProviders,
@@ -58,8 +57,6 @@ import { projectContextInspection, projectMemoryDetail } from "./project-context
 import { runtimeSystemTools } from "./system-context-projection";
 import { listMessageReferences, readMessageReference } from "./message-references";
 import { builtinSlashCommands } from "../../../contracts/conversations/session-contract";
-import { SubagentResult as subagentResultSchema } from "../../../contracts/subagents/subagent-data";
-import { subagentFinalAnswer } from "../../../contracts/subagents/subagent-report";
 import {
   jsonValueSchema,
   type JsonObject,
@@ -124,23 +121,6 @@ import type { RuntimeUiRequest } from "./runtime-ui-request";
 import type { ReviewParentContext } from "./sidecar-runtime";
 
 export const piRuntimeVersion = "1.0.0" as const;
-
-const SUBAGENT_REPORT_LIMIT = 16_000;
-
-/** Formats the parent-facing report without copying verbose child tool activity into model context. */
-export function subagentCompletionMessage(value: JsonValue): string {
-  const decoded = Schema.decodeUnknownOption(subagentResultSchema)(value);
-  if (Option.isNone(decoded)) return "A background subagent finished, but its report was invalid.";
-
-  const result = decoded.value;
-  const finalAnswer = subagentFinalAnswer(result)?.trim();
-  const heading = `Background subagent ${result.status}: ${result.task.slice(0, 500)}`;
-  const report = finalAnswer || result.error?.trim() || "No final report was produced.";
-  const available = Math.max(0, SUBAGENT_REPORT_LIMIT - heading.length - 2);
-  const bounded =
-    report.length > available ? `${report.slice(0, Math.max(0, available - 2))}…` : report;
-  return `${heading}\n\n${bounded}`;
-}
 
 export type CakeSessionRuntimeEvent =
   | { type: "snapshot"; requestId?: string; snapshot: ConversationSnapshot }
@@ -250,6 +230,7 @@ export interface CakeSessionRuntime {
   recordReviewRun(run: ReviewRunEntry): void;
   snapshot(): Promise<ConversationSnapshot>;
   history?(cursor: string): Promise<{ parts: UiPart[]; cursor?: string }>;
+  /** Runtimes with their own durable inbox; others admit worker reports as ordinary input. */
   notifySubagentCompletion?(result: JsonValue, completionId?: string): Promise<void>;
   prompt(
     text: string,
@@ -429,7 +410,6 @@ export async function createCakeSessionRuntime(
   });
   let disposed = false;
   let disposePromise: Promise<void> | undefined;
-  const completionReceipts = new AbortController();
   const emitPart = (part: UiPart) =>
     options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part });
   const removePart = (partId: string) =>
@@ -925,95 +905,6 @@ export async function createCakeSessionRuntime(
       const settled = restartDecision(session.sessionManager.getBranch(), input.turnId);
       if (settled.kind === "settled") options.onTurnResult?.(input.turnId, settled.result);
     },
-    async notifySubagentCompletion(result, completionId) {
-      if (disposed) throw new Error("The Cake runtime has been disposed");
-      const receiptSchema = Schema.Struct({ completionId: Schema.String });
-      const matchesReceipt = (details: unknown) => {
-        const receipt = Schema.decodeUnknownOption(receiptSchema)(details);
-        return Option.isSome(receipt) && receipt.value.completionId === completionId;
-      };
-      const persistedReceiptSchema = Schema.fromJsonString(
-        Schema.Struct({
-          type: Schema.Literal("custom_message"),
-          customType: Schema.Literal("cake.subagent-completion"),
-          details: receiptSchema,
-        }),
-      );
-      const hasReceipt = async () => {
-        const file = session.sessionFile;
-        if (completionId === undefined || !file || !existsSync(file)) return false;
-        if (
-          !session.sessionManager
-            .getEntries()
-            .some(
-              (entry) =>
-                entry.type === "custom_message" &&
-                entry.customType === "cake.subagent-completion" &&
-                matchesReceipt(entry.details),
-            )
-        )
-          return false;
-        // Pi updates its entry index before writing. An index entry alone is
-        // not proof of receipt if the transcript append failed.
-        const transcript = await readFile(file, "utf8");
-        return transcript.split("\n").some((line) => {
-          if (!line.includes("cake.subagent-completion")) return false;
-          const receipt = Schema.decodeUnknownOption(persistedReceiptSchema)(line);
-          return Option.isSome(receipt) && receipt.value.details.completionId === completionId;
-        });
-      };
-      if (await hasReceipt()) return;
-      const parsed = Schema.decodeUnknownOption(subagentResultSchema)(result);
-      const message = {
-        customType: "cake.subagent-completion",
-        content: subagentCompletionMessage(result),
-        display: false,
-        details: completionId && Option.isSome(parsed) ? { ...parsed.value, completionId } : result,
-      };
-      if (!completionId) {
-        await session.sendCustomMessage(message, { triggerTurn: true, deliverAs: "followUp" });
-        return;
-      }
-      let unsubscribe = () => {};
-      let onDispose = () => {};
-      const receipt = new Promise<void>((resolve, reject) => {
-        let observed = false;
-        onDispose = () => reject(new Error("Cake stopped before the worker report was persisted"));
-        if (completionReceipts.signal.aborted) {
-          onDispose();
-          return;
-        }
-        completionReceipts.signal.addEventListener("abort", onDispose, { once: true });
-        unsubscribe = session.subscribe((event) => {
-          if (event.type !== "message_end") return;
-          if (
-            event.message.role === "custom" &&
-            event.message.customType === "cake.subagent-completion" &&
-            matchesReceipt(event.message.details)
-          )
-            observed = true;
-          if (!observed) return;
-          // Pi emits message_end before its synchronous transcript append. Wait
-          // until after that append; accepting an in-memory follow-up is not a receipt.
-          queueMicrotask(() => {
-            void hasReceipt().then((persisted) => {
-              if (persisted) {
-                unsubscribe();
-                resolve();
-              }
-            }, reject);
-          });
-        });
-      });
-      void receipt.catch(() => undefined);
-      try {
-        await session.sendCustomMessage(message, { triggerTurn: true, deliverAs: "followUp" });
-        await receipt;
-      } finally {
-        unsubscribe();
-        completionReceipts.signal.removeEventListener("abort", onDispose);
-      }
-    },
     compact: turnController.compact,
     compactIfIdle: turnController.compactIfIdle,
     async queueCommand(command, onSettled) {
@@ -1207,7 +1098,6 @@ export async function createCakeSessionRuntime(
     dispose() {
       if (disposed) return disposePromise;
       disposed = true;
-      completionReceipts.abort();
       turnController.dispose();
       continuations.dispose();
       projection.dispose();

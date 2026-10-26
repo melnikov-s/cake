@@ -147,7 +147,11 @@ projections needed by a surface. References do not transfer ownership.
   content. The checkpoint does not add a new context pill; genuine later
   instruction changes do.
 - Waiting user and cross-session inputs use the owning Pi backend's admission
-  and queue mechanism. Primary-session admission retains a durable recovery intent
+  and queue mechanism. Worker reports, batched updates and Workboard deliveries are
+  typed internal inputs in that same queue: visible queue rows that can be steered,
+  sent now, reordered or removed like a user message, and that survive edits to other
+  rows. Empty-composer Enter escalates only the user's own latest message (queue,
+  then steer, then send now), never another sender's row. Primary-session admission retains a durable recovery intent
   until settlement; it is not transcript history or a second execution queue.
   Regular Pi records input-consumption identities in its own transcript metadata,
   allowing restart to reconstruct unconsumed inputs without replaying consumed

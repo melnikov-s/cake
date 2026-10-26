@@ -13,10 +13,10 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   piRuntimeVersion,
-  subagentCompletionMessage,
   type CakeSessionRuntime,
   type CakeSessionRuntimeEvent,
 } from "../../../src/services/pi/runtime/cake-session-runtime";
+import { subagentCompletionMessage } from "../../../src/contracts/subagents/subagent-report";
 import { projectSessionCreateInputSchema } from "../../../src/contracts/project-sessions/agent-session-create";
 import { projectConversationDisplay } from "../../../src/services/pi/runtime/conversation-display-projection";
 import {

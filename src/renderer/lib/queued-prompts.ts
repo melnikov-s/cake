@@ -6,7 +6,6 @@ export function queuedPrompts(parts: readonly UiPart[]): QueuedPrompt[] {
   return parts.flatMap((part) =>
     part.kind === "text" &&
     part.role === "user" &&
-    !part.subagentReport &&
     (part.deliveryState === "queued" || part.deliveryState === "steering")
       ? [
           {
@@ -21,9 +20,12 @@ export function queuedPrompts(parts: readonly UiPart[]): QueuedPrompt[] {
             state: part.deliveryState,
             source: part.crossSession,
             scheduled: part.scheduled,
+            automatic: Boolean(part.queuedInput?.internal || part.subagentReport),
             editable:
               Boolean(part.queuedInput) &&
               !part.queuedInput?.command &&
+              !part.queuedInput?.internal &&
+              !part.subagentReport &&
               !part.crossSession &&
               !part.scheduled,
           },

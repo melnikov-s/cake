@@ -10,6 +10,7 @@ import {
   type CakeSessionRuntime,
   type CakeSessionRuntimeEvent,
 } from "../../src/services/pi/runtime/cake-session-runtime";
+import { subagentCompletionInput } from "../../src/contracts/subagents/subagent-report";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { UiPart } from "../../src/contracts/conversations/session-contract";
 
@@ -465,29 +466,32 @@ describe("response retry and recovery", () => {
     },
   );
 
-  it("keeps a busy parent's worker report unacknowledged until Pi persists it and retries once after a crash", async () => {
+  it("queues a busy parent's worker report like a user message and keeps it through queue edits", async () => {
     const directory = await createTemporaryDirectory();
     let started = () => {};
     const ready = new Promise<void>((resolve) => {
       started = resolve;
     });
+    let finishFirst: () => void = () => {
+      throw new Error("First request has not started");
+    };
     const provider = await registerFixtureProvider(directory, (index, response) => {
       response.writeHead(200, { "content-type": "text/event-stream" });
-      response.write(
-        sseChunk({ role: "assistant", content: index === 1 ? "Busy" : "Report received" }),
-      );
-      if (index === 1) started();
-      else {
+      response.write(sseChunk({ role: "assistant", content: `Answer ${index}` }));
+      const finish = () => {
         response.write(sseChunk({}, "stop"));
         response.end("data: [DONE]\n\n");
-      }
+      };
+      if (index === 1) {
+        finishFirst = finish;
+        started();
+      } else finish();
     });
     const { runtime } = await createFixtureRuntime(directory);
-    const running = runtime
-      .prompt("Parent work", "prompt", [], false, "parent-turn")
-      .catch(() => undefined);
+    const running = runtime.prompt("Parent work", "prompt", [], false, "parent-turn");
     await ready;
     const completionId = "c3c0aba9-e0ba-496a-96a5-60be562db027";
+    const userTurnId = "5d0b8d36-2b55-4c1c-9a57-1f1e1a3b2c4d";
     const report = {
       handleId: "1490b261-4ce9-4744-b0fb-f2d013787ff1",
       task: "Linked prerequisite",
@@ -508,52 +512,118 @@ describe("response retry and recovery", () => {
           kind: "text",
           role: "assistant",
           status: "complete",
-          text: "[Commit](cake://session/worker?message=commit)",
+          text: "Worker finding",
         },
       ],
     };
-    let acknowledged = false;
-    const delivery = runtime.notifySubagentCompletion?.(report, completionId).then(() => {
-      acknowledged = true;
-    });
-    const checkpoint = await readFile(runtime.sessionFile, "utf8");
-    expect(acknowledged).toBe(false);
-    expect(checkpoint).not.toContain(completionId);
-    const rejected = expect(delivery).rejects.toThrow("before the worker report was persisted");
-    await runtime.dispose();
-    await Promise.all([running, rejected]);
-    await writeFile(runtime.sessionFile, checkpoint);
-    const reopened = await createCakeSessionRuntime({
-      cwd: directory,
-      agentDir: join(directory, "agent"),
-      sessionDir: join(directory, "sessions"),
-      sessionId: runtime.sessionId,
-      trusted: true,
-      requestUi: async () => undefined,
-      onEvent: () => undefined,
-    });
-    runtimes.push(reopened);
-    await reopened.notifySubagentCompletion?.(report, completionId);
-    expect(provider.requestCount()).toBe(2);
-    await reopened.notifySubagentCompletion?.(report, completionId);
-    expect(provider.requestCount()).toBe(2);
-    const persisted = await readFile(reopened.sessionFile, "utf8");
-    expect(persisted.match(/cake.subagent-completion/g)).toHaveLength(1);
-
-    // A failed append can leave Pi's entry index ahead of its file. An indexed
-    // receipt without its persisted line must not suppress the durable retry.
-    await writeFile(
-      reopened.sessionFile,
-      persisted
-        .split("\n")
-        .filter((line) => !line.includes(completionId))
-        .join("\n"),
+    const input = subagentCompletionInput(report, completionId);
+    const reportDelivered = runtime.prompt(
+      input.text,
+      "follow-up",
+      [],
+      false,
+      completionId,
+      undefined,
+      false,
+      undefined,
+      input.internal,
     );
-    await reopened.notifySubagentCompletion?.(report, completionId);
+    const userDelivered = runtime.prompt("User follow-up", "follow-up", [], false, userTurnId);
+    const queuedRows = async () =>
+      (await runtime.snapshot()).parts.filter(
+        (part): part is Extract<UiPart, { kind: "text" }> =>
+          part.kind === "text" && part.deliveryState !== undefined,
+      );
+    await vi.waitFor(async () => expect(await queuedRows()).toHaveLength(2));
+
+    // Arrival order, one queue: the report is a visible row, not a hidden Pi follow-up.
+    const [reportRow, userRow] = await queuedRows();
+    expect(reportRow).toMatchObject({
+      deliveryState: "queued",
+      text: expect.stringContaining("Worker finding"),
+      queuedInput: { turnId: completionId, internal: "SubagentCompletion" },
+    });
+    expect(userRow).toMatchObject({ deliveryState: "queued", text: "User follow-up" });
+
+    // Rebuilding Pi's queue for a user edit must not drop the worker report.
+    await runtime.steerQueuedMessage(userRow!.id);
+    expect(await queuedRows()).toEqual([
+      expect.objectContaining({ deliveryState: "steering", text: "User follow-up" }),
+      expect.objectContaining({ queuedInput: expect.objectContaining({ turnId: completionId }) }),
+    ]);
+
+    finishFirst();
+    await Promise.all([running, userDelivered, reportDelivered]);
     expect(provider.requestCount()).toBe(3);
+    expect(provider.requestBodies()[2]).toContain("Worker finding");
+    expect(runtime.hasConsumedInput?.(completionId)).toBe(true);
+    const parts = (await runtime.snapshot()).parts;
+    expect(parts).toContainEqual(
+      expect.objectContaining({
+        kind: "context",
+        title: "cake.subagent-completion",
+        text: expect.stringContaining("Worker finding"),
+      }),
+    );
+    // A report is never presented as words the user typed.
     expect(
-      (await readFile(reopened.sessionFile, "utf8")).match(/cake.subagent-completion/g),
-    ).toHaveLength(1);
+      parts.some(
+        (part) => part.kind === "text" && part.role === "user" && part.text.includes("Worker"),
+      ),
+    ).toBe(false);
+  }, 15_000);
+
+  it("keeps a queued worker report through Stop and delivers it on Send now", async () => {
+    const directory = await createTemporaryDirectory();
+    let started = () => {};
+    const ready = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const provider = await registerFixtureProvider(directory, (index, response) => {
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.write(sseChunk({ role: "assistant", content: `Answer ${index}` }));
+      if (index === 1) started();
+      else {
+        response.write(sseChunk({}, "stop"));
+        response.end("data: [DONE]\n\n");
+      }
+    });
+    const { runtime } = await createFixtureRuntime(directory);
+    const running = runtime
+      .prompt("Parent work", "prompt", [], false, "parent-turn")
+      .catch(() => undefined);
+    await ready;
+    const completionId = "0f3c2a51-7d4e-4b8a-9c1d-2e3f4a5b6c7d";
+    const input = subagentCompletionInput(
+      { handleId: "1490b261-4ce9-4744-b0fb-f2d013787ff1", task: "Check", status: "complete" },
+      completionId,
+    );
+    const reportDelivered = runtime.prompt(
+      input.text,
+      "follow-up",
+      [],
+      false,
+      completionId,
+      undefined,
+      false,
+      undefined,
+      input.internal,
+    );
+    const reportRow = async () =>
+      (await runtime.snapshot()).parts.find(
+        (part) => part.kind === "text" && part.queuedInput?.turnId === completionId,
+      );
+    await vi.waitFor(async () => expect(await reportRow()).toBeDefined());
+
+    await runtime.abort();
+    await running;
+    const held = await reportRow();
+    expect(held).toMatchObject({ deliveryState: "queued" });
+
+    await runtime.sendQueuedMessageNow(held!.id);
+    await reportDelivered;
+    expect(provider.requestCount()).toBe(2);
+    expect(runtime.hasConsumedInput?.(completionId)).toBe(true);
   }, 15_000);
 
   it("settles correlated follow-up input only after Pi consumes it", async () => {

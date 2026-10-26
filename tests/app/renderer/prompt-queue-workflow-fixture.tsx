@@ -12,6 +12,9 @@ export function queuePart(
   options: {
     lane?: "queued" | "steering";
     agent?: boolean;
+    /** A worker report Cake admitted to this queue. */
+    report?: boolean;
+    turnId?: string;
     command?: string;
     attachments?: readonly Attachment[];
     markdown?: boolean;
@@ -33,6 +36,8 @@ export function queuePart(
   };
   if (options.markdown) Object.assign(part, { renderAs: "markdown" });
   if (options.command) Object.assign(part.queuedInput!, { command: options.command });
+  if (options.turnId) Object.assign(part.queuedInput!, { turnId: options.turnId });
+  if (options.report) Object.assign(part.queuedInput!, { internal: "SubagentCompletion" });
   if (options.agent)
     Object.assign(part, {
       crossSession: {

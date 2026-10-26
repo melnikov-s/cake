@@ -15,6 +15,10 @@ export const InternalInput = Schema.TaggedUnion({
     boardId: Schema.String,
     sequences: Schema.Array(Schema.Int.check(Schema.isGreaterThan(0))),
   },
+  /** A background worker's final result, queued for its parent like any other input. */
+  SubagentCompletion: {
+    details: Schema.Json,
+  },
 });
 export type InternalInput = Schema.Schema.Type<typeof InternalInput>;
 

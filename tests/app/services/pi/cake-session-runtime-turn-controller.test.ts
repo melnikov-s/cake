@@ -328,8 +328,14 @@ describe("CakeSessionRuntime turn controller", () => {
       markdown: false,
     });
     expect(controller.internalInput(text)).toEqual(internal);
+    // A held Workboard delivery is an ordinary, non-editable queue row, not transcript context.
     expect(controller.queuedParts()).toEqual([
-      expect.objectContaining({ kind: "context", title: "Workboard" }),
+      expect.objectContaining({
+        kind: "text",
+        deliveryState: "queued",
+        text: "Workboard entries #3",
+        queuedInput: expect.objectContaining({ turnId: "wake", internal: "WorkboardDelivery" }),
+      }),
     ]);
     expect(JSON.stringify(controller.queuedParts())).not.toContain("system-reminder");
     expect(controller.pendingRecoveryInputs()).toEqual([{ turnId: "wake", delivery: "follow-up" }]);

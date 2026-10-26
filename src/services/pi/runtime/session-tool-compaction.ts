@@ -31,7 +31,12 @@ export function toolCompactDialogueMessage(
   entry: SessionEntry,
   internal?: InternalInput,
 ): UserMessage | AssistantMessage | undefined {
-  if (entry.type !== "message" || internal?._tag === "WorkboardDelivery") return undefined;
+  if (
+    entry.type !== "message" ||
+    internal?._tag === "WorkboardDelivery" ||
+    internal?._tag === "SubagentCompletion"
+  )
+    return undefined;
   const message = entry.message;
   if (message.role === "user") {
     const clean = (text: string) =>

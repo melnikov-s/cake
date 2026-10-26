@@ -334,6 +334,10 @@ export const uiPartSchema = Schema.Union([
         /** Admission identity returned to the sender; absent for extension-generated inputs. */
         turnId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
         command: Schema.optionalKey(boundedText),
+        /** Cake admitted this input on someone else's behalf; the user did not type it. */
+        internal: Schema.optionalKey(
+          Schema.Literals(["SubagentCompletion", "UpdateBatch", "WorkboardDelivery"]),
+        ),
         text: boundedText,
         attachments: Schema.Array(attachmentSchema).check(Schema.isMaxLength(20)),
         renderUserMessageAsMarkdown: Schema.Boolean,

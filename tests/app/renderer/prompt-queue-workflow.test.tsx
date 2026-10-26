@@ -218,6 +218,97 @@ describe("Prompt queue workflow", () => {
     expect(queuedTexts()).toEqual(["Agent steer", "First steer", "User queued"]);
   });
 
+  it.each([
+    [
+      "a queued worker report",
+      queuePart(3, "Background subagent complete: Audit", { report: true }),
+    ],
+    [
+      "steering from another session",
+      queuePart(3, "Agent steer", { lane: "steering", agent: true }),
+    ],
+  ])(
+    "escalates the user's own message on empty Enter when %s is ahead of it",
+    async (_label, other) => {
+      const own = queuePart(4, "My follow-up", { turnId });
+      const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () => {
+        fixture.publish([other, own]);
+        return turnId;
+      });
+      const steer = vi.fn<Client["sessionChats"]["steerQueuedMessage"]>(async () =>
+        fixture.publish([other, { ...own, deliveryState: "steering" }]),
+      );
+      const sendNow = vi.fn<Client["sessionChats"]["sendQueuedMessageNow"]>(async () =>
+        fixture.publish([other]),
+      );
+      using fixture = renderQueue([other], {
+        sessionChats: { prompt, steerQueuedMessage: steer, sendQueuedMessageNow: sendNow },
+      });
+      const composer = screen.getByRole("combobox");
+      await fixture.user.type(composer, "My follow-up");
+      await fixture.user.keyboard("{Enter}");
+      await waitFor(() => expect(queuedTexts()).toEqual([other.text, "My follow-up"]));
+      await fixture.user.keyboard("{Enter}");
+      expect(steer).toHaveBeenCalledExactlyOnceWith(
+        { sessionId: queueSessionId, partId: own.id },
+        commandOptions,
+      );
+      await fixture.user.keyboard("{Enter}");
+      expect(sendNow).toHaveBeenCalledExactlyOnceWith(
+        { sessionId: queueSessionId, partId: own.id },
+        commandOptions,
+      );
+      expect(queuedTexts()).toEqual([other.text]);
+      expect(prompt).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("never escalates another sender's row while the user's own message awaits its queue row", async () => {
+    const report = queuePart(3, "Background subagent complete: Audit", { report: true });
+    const own = queuePart(4, "My follow-up", { turnId });
+    // Admission returns before the runtime projects the queued row.
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () => turnId);
+    const steer = vi.fn<Client["sessionChats"]["steerQueuedMessage"]>();
+    using fixture = renderQueue([report], {
+      sessionChats: { prompt, steerQueuedMessage: steer },
+    });
+    await fixture.user.type(screen.getByRole("combobox"), "My follow-up");
+    await fixture.user.keyboard("{Enter}");
+    await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
+    expect(queuedTexts()).toEqual([report.text, "My follow-up"]);
+    await fixture.user.keyboard("{Enter}");
+    expect(steer).not.toHaveBeenCalled();
+    fixture.publish([report, own]);
+    await fixture.user.keyboard("{Enter}");
+    expect(steer).toHaveBeenCalledExactlyOnceWith(
+      { sessionId: queueSessionId, partId: own.id },
+      commandOptions,
+    );
+  });
+
+  it("shows a queued worker report as a queue row the user can steer or cancel but not edit", async () => {
+    const report = queuePart(3, "Background subagent complete: Audit", { report: true });
+    const remove = vi.fn<Client["sessionChats"]["removeQueuedMessage"]>(async () =>
+      fixture.publish([]),
+    );
+    using fixture = renderQueue([report], { sessionChats: { removeQueuedMessage: remove } });
+    expect(queuedTexts()).toEqual([report.text]);
+    expect(
+      within(screen.getByLabelText("Conversation")).queryByText(report.text, { exact: false }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: `Send now as steering: ${report.text}` }),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: `Edit queued prompt: ${report.text}` })).toBeNull();
+    await fixture.user.click(
+      screen.getByRole("button", { name: `Cancel queued message: ${report.text}` }),
+    );
+    expect(remove).toHaveBeenCalledExactlyOnceWith(
+      { sessionId: queueSessionId, partId: report.id },
+      commandOptions,
+    );
+  });
+
   it("expands status only on steering promotion and sends the chosen item while retaining the queue", async () => {
     const steering = queuePart(1, "Keep steering", { lane: "steering" });
     const queued = queuePart(2, "Keep queued");

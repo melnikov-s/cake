@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { InternalInput } from "../../../contracts/conversations/internal-input";
-import { internalInputPart, passiveNoticeParts } from "./internal-input-projection";
+import {
+  isAutomaticInput,
+  passiveNoticeParts,
+  queuedAutomaticInputPart,
+} from "./internal-input-projection";
 import {
   addResponseModeReminder,
   responseModeFromReminder,
@@ -392,7 +396,8 @@ export function createCakeSessionRuntimeTurnController(input: {
     assertImageSupport(attachments);
     const generation = abortGeneration;
     input.recovery.onUserInput();
-    if (!parseCrossSessionMessage(text)) pausedAfterRestart = false;
+    // Only a person's input resumes work held after a restart; sender and Cake inputs wait.
+    if (!parseCrossSessionMessage(text) && !isAutomaticInput(internal)) pausedAfterRestart = false;
     const builtin = parseBuiltinCommand(text);
     if (builtin?.name === "compact") {
       await runCompact(builtin.args || undefined, generation);
@@ -803,11 +808,8 @@ export function createCakeSessionRuntimeTurnController(input: {
       return parts.flatMap((part) => {
         const item = payloads.get(part.id);
         const internal = item?.turnId ? turnCompletions.internalInputById(item.turnId) : undefined;
-        if (internal?._tag === "WorkboardDelivery") return [internalInputPart(internal, part.id)];
-        const notices = passiveNoticeParts(internal);
-        if (internal?._tag === "UpdateBatch") return notices;
-        return [
-          ...notices,
+        const notices = isAutomaticInput(internal) ? [] : passiveNoticeParts(internal);
+        const row: UiPart =
           part.kind === "text" && item
             ? {
                 ...part,
@@ -827,7 +829,12 @@ export function createCakeSessionRuntimeTurnController(input: {
                   renderUserMessageAsMarkdown: item.renderUserMessageAsMarkdown,
                 },
               }
-            : part,
+            : part;
+        return [
+          ...notices,
+          isAutomaticInput(internal) && row.kind === "text"
+            ? queuedAutomaticInputPart(internal, row)
+            : row,
         ];
       });
     },

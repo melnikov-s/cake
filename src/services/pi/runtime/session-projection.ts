@@ -5,6 +5,8 @@ import {
 import {
   internalInputOrigins,
   internalInputPart,
+  subagentCompletionPart,
+  subagentCompletionType,
   passiveNoticeParts,
 } from "./internal-input-projection";
 import {
@@ -807,9 +809,12 @@ export function createLiveMessageProjector(
   const nextStreamId = () => `stream-${++streamIndex}`;
   const project = (event: AgentSessionEvent): UiPart[] => {
     if (event.type === "message_start" && event.message.role === "user") {
-      const internal = options.internalInput?.(textFromContent(event.message.content));
+      const content = textFromContent(event.message.content);
+      const internal = options.internalInput?.(content);
       if (internal?._tag === "WorkboardDelivery")
         return [internalInputPart(internal, `live-user-${++userIndex}-context`)];
+      if (internal?._tag === "SubagentCompletion")
+        return [subagentCompletionPart(`live-user-${++userIndex}-custom`, content)];
       return partsFromMessage(
         event.message,
         `live-user-${++userIndex}`,
@@ -1101,6 +1106,35 @@ export function projectSessionEntries(
     else if (entry.type === "custom_message") nextContextRole = "custom";
   }
 
+  // A worker's final result completes its start card; otherwise it stands alone.
+  const projectSubagentCompletion = (entryId: string, details: unknown) => {
+    const completion = Schema.decodeUnknownOption(
+      Schema.Struct({ handleId: Schema.String.check(Schema.isUUID()) }),
+    )(details);
+    const start = Option.isSome(completion)
+      ? projected.findLast(
+          (part): part is Extract<UiPart, { kind: "tool" }> =>
+            part.kind === "tool" &&
+            part.command === "subagents.start" &&
+            (part.input.includes(completion.value.handleId) ||
+              part.output?.includes(completion.value.handleId) === true),
+        )
+      : undefined;
+    if (start) {
+      const index = projected.indexOf(start);
+      projected[index] = { ...start, output: formatUnknown(details) };
+    } else
+      append({
+        id: `entry-${entryId}-subagent-completion`,
+        kind: "tool",
+        name: "cake",
+        command: "subagents.completion",
+        input: "",
+        output: formatUnknown(details),
+        state: "success",
+      });
+  };
+
   const projectSystem = createSystemContextProjector();
   const internalInputs = internalInputOrigins(entries);
   for (const entry of entries) {
@@ -1108,6 +1142,16 @@ export function projectSessionEntries(
       const internal = internalInputs.get(entry.id);
       if (internal?._tag === "WorkboardDelivery") {
         append(internalInputPart(internal, `entry-${entry.id}-context`));
+        continue;
+      }
+      if (internal?._tag === "SubagentCompletion" && entry.message.role === "user") {
+        projectSubagentCompletion(entry.id, internal.details);
+        append(
+          subagentCompletionPart(
+            `entry-${entry.id}-custom`,
+            textFromContent(entry.message.content),
+          ),
+        );
         continue;
       }
       if (intermediateRetryErrors.has(entry.id)) continue;
@@ -1153,33 +1197,8 @@ export function projectSessionEntries(
       continue;
     }
     if (entry.type === "custom_message") {
-      if (entry.customType === "cake.subagent-completion") {
-        const completion = Schema.decodeUnknownOption(
-          Schema.Struct({ handleId: Schema.String.check(Schema.isUUID()) }),
-        )(entry.details);
-        const start = Option.isSome(completion)
-          ? projected.findLast(
-              (part): part is Extract<UiPart, { kind: "tool" }> =>
-                part.kind === "tool" &&
-                part.command === "subagents.start" &&
-                (part.input.includes(completion.value.handleId) ||
-                  part.output?.includes(completion.value.handleId) === true),
-            )
-          : undefined;
-        if (start) {
-          const index = projected.indexOf(start);
-          projected[index] = { ...start, output: formatUnknown(entry.details) };
-        } else
-          append({
-            id: `entry-${entry.id}-subagent-completion`,
-            kind: "tool",
-            name: "cake",
-            command: "subagents.completion",
-            input: "",
-            output: formatUnknown(entry.details),
-            state: "success",
-          });
-      }
+      if (entry.customType === subagentCompletionType)
+        projectSubagentCompletion(entry.id, entry.details);
       for (const part of partsFromMessage({ ...entry, role: "custom" }, `entry-${entry.id}`))
         append(part);
       continue;

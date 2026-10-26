@@ -273,7 +273,27 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
         queued: { steering: [], followUp: [] },
         abortedTurnIds: [],
       }),
-      prompt: async (text, delivery, _attachments, markdown, turnId) => {
+      prompt: async (
+        text,
+        delivery,
+        _attachments,
+        markdown,
+        turnId,
+        _presentationMode,
+        _automaticTitle,
+        _responseMode,
+        internal,
+      ) => {
+        // Worker reports reach the parent as ordinary queued input, like a user message.
+        if (isParent && internal?._tag === "SubagentCompletion") {
+          // The admission identity is delivery metadata, not part of the worker's result.
+          const result = Object.fromEntries(
+            Object.entries(internal.details as object).filter(([key]) => key !== "completionId"),
+          );
+          await Effect.runPromise(Ref.update(completions, (values) => [...values, result]));
+          await Effect.runPromise(Queue.offer(reports, result));
+          return;
+        }
         if (isParent) {
           await Effect.runPromise(Ref.update(parentMessages, (values) => [...values, text]));
           return;
@@ -321,10 +341,6 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
       setFastMode: async () => undefined,
       setPiSetting: async () => undefined,
       recordReviewRun: () => undefined,
-      notifySubagentCompletion: async (result) => {
-        await Effect.runPromise(Ref.update(completions, (values) => [...values, result]));
-        await Effect.runPromise(Queue.offer(reports, result));
-      },
       rename: async () => undefined,
       fork: async () => ({
         sessionId: "fork",

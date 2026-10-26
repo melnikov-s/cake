@@ -1,6 +1,10 @@
 import { Option, Schema } from "effect";
 import { InternalInput, withoutPassiveNotices } from "../../contracts/conversations/internal-input";
-import { internalInputPart, passiveNoticeParts } from "../pi/runtime/internal-input-projection";
+import {
+  isAutomaticInput,
+  passiveNoticeParts,
+  queuedAutomaticInputPart,
+} from "../pi/runtime/internal-input-projection";
 import type { Message } from "@earendil-works/pi-durable-ai";
 import {
   attachmentSchema,
@@ -207,24 +211,23 @@ export function durableQueuedParts(
   id: string,
 ): UiPart[] {
   const internal = durableQueuedPresentation(item.content).internal;
-  if (internal?._tag === "WorkboardDelivery") return [internalInputPart(internal, `queued-${id}`)];
-  const notices = passiveNoticeParts(internal);
-  if (internal?._tag === "UpdateBatch") return notices;
+  const notices = isAutomaticInput(internal) ? [] : passiveNoticeParts(internal);
   const display = queuedUserMessageDisplay(durableQueuedDisplayText(item.content));
   const { subagentReport } = durableQueuedPresentation(item.content);
-  return [
-    ...notices,
-    {
-      id: `queued-${id}`,
-      kind: "text",
-      role: "user",
-      ...display,
-      status: "complete",
-      deliveryState: item.mode === "steer" ? "steering" : "queued",
-      ...(subagentReport ? { subagentReport } : null),
-      queuedInput: durableQueuedInput(item, id),
+  const row: Extract<UiPart, { kind: "text" }> = {
+    id: `queued-${id}`,
+    kind: "text",
+    role: "user",
+    ...display,
+    status: "complete",
+    deliveryState: item.mode === "steer" ? "steering" : "queued",
+    ...(subagentReport ? { subagentReport } : null),
+    queuedInput: {
+      ...durableQueuedInput(item, id),
+      ...(subagentReport ? { internal: "SubagentCompletion" as const } : null),
     },
-  ];
+  };
+  return [...notices, isAutomaticInput(internal) ? queuedAutomaticInputPart(internal, row) : row];
 }
 
 /** The editable queued-input projection of one durable inbox item. */

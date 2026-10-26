@@ -46,6 +46,8 @@ export interface QueuedPrompt {
   state: "queued" | "steering";
   source?: Extract<UiPart, { kind: "text" }>["crossSession"];
   scheduled?: Extract<UiPart, { kind: "text" }>["scheduled"];
+  /** Cake admitted it for someone else (a worker report, batched updates, Workboard entries). */
+  automatic?: boolean;
   /** Whether the prompt text can be pulled back into the composer; runtime-held prompts cannot. */
   editable?: boolean;
 }
@@ -146,6 +148,8 @@ export class ChatStore extends Store<ChatStoreProps> {
   private enterContinuationGeneration = 0;
   private advancingEnterContinuation = false;
   private enterContinuationError: string | undefined;
+  /** Empty Enter escalates the user's own latest message, never whatever heads the queue. */
+  private lastSentTurnId: string | undefined;
 
   constructor(props: ChatStore["props"]) {
     super(props);
@@ -325,7 +329,6 @@ export class ChatStore extends Store<ChatStoreProps> {
       .filter(
         (part) =>
           part.kind !== "text" ||
-          Boolean(part.subagentReport) ||
           (part.deliveryState !== "queued" && part.deliveryState !== "steering"),
       );
     const incoming = incomingMessageReferences(parts);
@@ -537,18 +540,13 @@ export class ChatStore extends Store<ChatStoreProps> {
     }
     if (value !== this.draft) this.setDraft(value);
     const empty = !value.trim() && this.attachments.length === 0 && this.annotations.length === 0;
-    const steering = this.queuedPrompts.find(
-      (entry) => entry.state === "steering" && !entry.pending,
-    );
-    if (empty && steering && this.canStopAndSendQueuedPrompt) {
-      await this.stopAndSendQueuedPrompt(steering.id);
+    const own = empty ? this.ownQueuedPrompt() : undefined;
+    if (own?.state === "steering" && this.canStopAndSendQueuedPrompt) {
+      await this.stopAndSendQueuedPrompt(own.id);
       return true;
     }
-    const queued = this.queuedPrompts.find(
-      (entry) => entry.state === "queued" && !entry.pending && !entry.command,
-    );
-    if (empty && queued) {
-      await this.steerQueuedPrompt(queued.id);
+    if (own?.state === "queued" && !own.command) {
+      await this.steerQueuedPrompt(own.id);
       return true;
     }
     if (!this.props.canSubmit(value)) {
@@ -568,6 +566,7 @@ export class ChatStore extends Store<ChatStoreProps> {
       });
       if (submitted !== false && this.draft === value && this.draftRevision === submittedRevision)
         this.setDraft("");
+      if (submitted && submitted !== true) this.lastSentTurnId = submitted.turnId;
       const continuation = this.enterContinuation;
       if (continuation && continuation.generation === options?.enterContinuation) {
         if (submitted && submitted !== true)
@@ -583,6 +582,26 @@ export class ChatStore extends Store<ChatStoreProps> {
         this.cancelEnterContinuation();
       this.submittingLocally = false;
     }
+  }
+
+  /**
+   * The queued message empty Enter acts on: the one this user sent last, or else their first
+   * queued message. Rows from other sessions, schedules or Cake are never escalated.
+   */
+  private ownQueuedPrompt(): QueuedPrompt | undefined {
+    const latest = this.lastSentTurnId
+      ? this.queuedPrompts.find((entry) => entry.turnId === this.lastSentTurnId)
+      : undefined;
+    if (latest) return latest.pending ? undefined : latest;
+    // An admission still in flight is the user's latest message; wait for its row.
+    if (this.queuedPrompts.some((entry) => entry.pending)) return undefined;
+    return this.queuedPrompts.find(
+      (entry) =>
+        !entry.source &&
+        !entry.scheduled &&
+        !entry.automatic &&
+        (entry.state === "steering" || !entry.command),
+    );
   }
 
   steerQueuedPrompt(id: string) {

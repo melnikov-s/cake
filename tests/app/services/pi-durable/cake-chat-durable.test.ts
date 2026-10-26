@@ -59,7 +59,7 @@ import {
   projectSessionEntries,
   promptText,
 } from "../../../../src/services/pi/runtime/session-projection";
-import { subagentCompletionMessage } from "../../../../src/services/pi/runtime/cake-session-runtime";
+import { subagentCompletionMessage } from "../../../../src/contracts/subagents/subagent-report";
 import { durableAnswer, durableModel, durableModels } from "../../../fixtures/durable-chat";
 import { cakeChatCacheFreshness } from "../../../../src/contracts/cake-chats/context-policy";
 import {
@@ -1076,7 +1076,17 @@ it.each(["UserWithReminders", "UpdateBatch"] as const)(
               queuedInput: expect.objectContaining({ text: origin.text }),
             }),
           ]
-        : [expect.objectContaining(authored)],
+        : // A held batch is one ordinary queue row; its FYIs join the transcript when consumed.
+          [
+            expect.objectContaining({
+              kind: "text",
+              role: "user",
+              deliveryState: "queued",
+              text: notice.text,
+              renderAs: "markdown",
+              queuedInput: expect.objectContaining({ internal: "UpdateBatch" }),
+            }),
+          ],
     );
     await f.engine.close();
     cleanup.pop();
@@ -1113,7 +1123,14 @@ it("keeps typed Workboard delivery as application context across durable queues,
     { id: submission.id, mode: "followUp", content: encoded },
     "board-wake",
   );
-  expect(queued).toMatchObject([{ kind: "context", title: "Workboard" }]);
+  expect(queued).toMatchObject([
+    {
+      kind: "text",
+      deliveryState: "queued",
+      text: "Workboard entries #3",
+      queuedInput: { internal: "WorkboardDelivery" },
+    },
+  ]);
   expect(JSON.stringify(queued)).not.toContain("system-reminder");
   await f.engine.close();
   cleanup.pop();

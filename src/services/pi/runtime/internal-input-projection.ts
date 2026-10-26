@@ -45,6 +45,47 @@ export function passiveNoticeParts(origin?: InternalInput): UiPart[] {
   }));
 }
 
+export type AutomaticInput = Exclude<InternalInput, { _tag: "UserWithReminders" }>;
+
+/** Application-admitted input (no user text): a worker report, batched updates or Workboard entries. */
+export function isAutomaticInput(origin?: InternalInput): origin is AutomaticInput {
+  return origin !== undefined && origin._tag !== "UserWithReminders";
+}
+
+/** Transcript title of a worker report, and the custom-message type of reports in older transcripts. */
+export const subagentCompletionType = "cake.subagent-completion";
+
+/** The consumed worker report as transcript context, never as user-authored text. */
+export function subagentCompletionPart(id: string, text: string): UiPart {
+  return { id, kind: "context", title: subagentCompletionType, text };
+}
+
+/**
+ * A held automatic input is an ordinary queue row: it can be steered, sent now, reordered or
+ * removed exactly like a user message, and shows in the queue rather than the transcript.
+ */
+export function queuedAutomaticInputPart(
+  origin: AutomaticInput,
+  row: Extract<UiPart, { kind: "text" }>,
+): UiPart {
+  const text =
+    origin._tag === "WorkboardDelivery"
+      ? `Workboard entries ${origin.sequences.map((sequence) => `#${sequence}`).join(", ")}`
+      : origin._tag === "UpdateBatch"
+        ? origin.notices.map((notice) => notice.text).join("\n\n") || "Batched updates"
+        : row.text;
+  return {
+    ...row,
+    text,
+    ...(origin._tag === "UpdateBatch" && origin.notices.length
+      ? { renderAs: "markdown" as const }
+      : null),
+    ...(row.queuedInput
+      ? { queuedInput: { ...row.queuedInput, text, internal: origin._tag } }
+      : null),
+  };
+}
+
 export function internalInputPart(
   origin: Extract<InternalInput, { _tag: "WorkboardDelivery" }>,
   id: string,

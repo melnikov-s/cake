@@ -38,7 +38,7 @@ const conversation: UiPart[] = [
     },
   },
   text("assistant-2", "assistant"),
-  { ...text("report", "user"), subagentReport: researchOrigin, deliveryState: "queued" },
+  { ...text("report", "user"), subagentReport: researchOrigin },
   text("user-3", "user"),
   { ...text("queued", "user"), deliveryState: "queued" },
   { ...text("steering", "user"), deliveryState: "steering" },

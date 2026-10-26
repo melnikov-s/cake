@@ -37,6 +37,17 @@ it("shares queue identity, payload and editability rules across conversation own
     ["queued-4", "queued", false],
     ["queued-5", "queued", false],
     ["queued-6", "queued", false],
+    ["queued-7", "queued", false],
+  ]);
+  // A worker report waits in the same queue as everything else, marked as Cake-admitted.
+  expect(rows.map((row) => row.automatic)).toEqual([
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    true,
   ]);
   expect(rows[0]).toMatchObject({
     text: "**First**",

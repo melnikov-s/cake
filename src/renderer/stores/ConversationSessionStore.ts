@@ -471,6 +471,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
     if (
       !part?.queuedInput ||
       part.queuedInput.command ||
+      part.queuedInput.internal ||
       part.crossSession ||
       part.scheduled ||
       part.subagentReport

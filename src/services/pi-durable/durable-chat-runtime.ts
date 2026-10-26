@@ -45,10 +45,10 @@ import { projectModelCatalog } from "../pi/live/PiModelsLive";
 import { supportsFastMode } from "../pi/fast-mode";
 import { TurnCanceledError } from "../pi/runtime/RuntimeTurnCompletion";
 import {
-  subagentCompletionMessage,
   type CakeSessionRuntime,
   type CakeSessionRuntimeOptions,
 } from "../pi/runtime/cake-session-runtime";
+import { subagentCompletionMessage } from "../../contracts/subagents/subagent-report";
 import { durableModels } from "./durable-models";
 import type { RequestInspection } from "./request-inspection";
 import { openDurableChatEngine } from "./durable-chat-engine";

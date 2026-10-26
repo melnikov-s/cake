@@ -57,6 +57,7 @@ import {
   type CakeSessionRuntimeEvent,
   type CakeSessionRuntimeOptions,
 } from "./runtime/cake-session-runtime";
+import { subagentCompletionInput } from "../../contracts/subagents/subagent-report";
 import { CakeChatDurable } from "../pi-durable/CakeChatDurable";
 import { cakeChatSideChatConversationId } from "../../contracts/cake-chats/cake-chat-identity";
 import { TurnCanceledError } from "./runtime/RuntimeTurnCompletion";
@@ -1462,22 +1463,29 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                     ),
               ),
             ),
-          notifySubagentCompletion: (result, completionId) =>
-            shared.runtime.notifySubagentCompletion
-              ? call(
-                  "notifySubagentCompletion",
-                  (runtime) =>
-                    runtime.notifySubagentCompletion?.(
-                      Schema.decodeUnknownSync(jsonValueSchema)(result),
-                      completionId,
-                    ) ?? Promise.resolve(),
-                )
-              : Effect.fail(
-                  new PiSessionError({
-                    operation: "notifySubagentCompletion",
-                    message: "Subagent completion delivery is unavailable",
-                  }),
-                ),
+          // A worker report joins the parent's one input queue exactly like a user message:
+          // visible, steerable, removable, and kept when other queued items are edited.
+          notifySubagentCompletion: (result, completionId) => {
+            const json = Schema.decodeUnknownSync(jsonValueSchema)(result);
+            if (shared.runtime.notifySubagentCompletion)
+              return call(
+                "notifySubagentCompletion",
+                (runtime) =>
+                  runtime.notifySubagentCompletion?.(json, completionId) ?? Promise.resolve(),
+              );
+            const input = subagentCompletionInput(json, completionId);
+            return deliverInput(
+              "follow-up",
+              input.text,
+              [],
+              false,
+              undefined,
+              false,
+              undefined,
+              completionId,
+              input.internal,
+            ).pipe(Effect.asVoid);
+          },
           reload: () =>
             shared.runtime.reload
               ? call("reload", (runtime) => runtime.reload?.() ?? Promise.resolve())
