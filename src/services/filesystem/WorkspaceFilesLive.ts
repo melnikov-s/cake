@@ -1,48 +1,14 @@
 import { homedir } from "node:os";
-import { readFile, realpath, stat } from "node:fs/promises";
-import { extname, isAbsolute, relative, resolve, sep } from "node:path";
+import { readFile, realpath } from "node:fs/promises";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import { Effect, Layer } from "effect";
 import { ProjectAccess } from "../projects/ProjectAccess";
 import { suggestProjectFiles } from "../pi/runtime/session-discovery";
 import { WorkspaceFileError } from "../../contracts/filesystem/workspace-files-errors";
 import { WorkspaceFiles } from "./WorkspaceFiles";
 import { prepareFileLocation } from "./file-location";
+import { readLocalImage } from "./local-image";
 import { expandHomePath } from "./local-path";
-
-const imageMimeTypes = new Map([
-  [".avif", "image/avif"],
-  [".png", "image/png"],
-  [".jpg", "image/jpeg"],
-  [".jpeg", "image/jpeg"],
-  [".gif", "image/gif"],
-  [".webp", "image/webp"],
-]);
-
-const maxImageBytes = 8 * 1_024 * 1_024;
-
-/** Short, user-facing reasons for the chat image placeholder. */
-function imageReadFailure(cause: unknown) {
-  const code = cause instanceof Error && "code" in cause ? cause.code : undefined;
-  if (code === "ENOENT" || code === "ENOTDIR") return new Error("File not found");
-  if (code === "EACCES" || code === "EPERM") return new Error("Permission denied");
-  return cause;
-}
-
-/** Reads any local image file; only type and size are restricted. */
-async function readLocalImage(target: string) {
-  const mimeType = imageMimeTypes.get(extname(target).toLowerCase());
-  if (!mimeType) throw new Error(`Unsupported image type: ${extname(target) || "no extension"}`);
-  const metadata = await stat(target).catch((cause: unknown) => {
-    throw imageReadFailure(cause);
-  });
-  if (!metadata.isFile()) throw new Error("Not a file");
-  if (metadata.size > maxImageBytes) throw new Error("Image is larger than 8 MB");
-  const data = await readFile(target).catch((cause: unknown) => {
-    throw imageReadFailure(cause);
-  });
-  if (data.byteLength > maxImageBytes) throw new Error("Image is larger than 8 MB");
-  return { data: data.toString("base64"), mimeType };
-}
 
 const workspaceFilesError = (operation: string, cause: unknown) =>
   new WorkspaceFileError({

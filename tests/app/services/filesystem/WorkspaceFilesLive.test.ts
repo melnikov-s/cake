@@ -90,7 +90,13 @@ describe("WorkspaceFilesLive", () => {
             // Workspace authorization does not gate image reads.
             expect(yield* read(outside, "/not-selected")).toEqual(external);
 
-            yield* Effect.promise(() => writeFile(join(workspace, "script.svg"), "<svg/>"));
+            // SVG renders through <img>, where browsers run no scripts.
+            yield* Effect.promise(() => writeFile(join(workspace, "drawing.svg"), "<svg/>"));
+            expect(yield* read("drawing.svg")).toEqual({
+              data: Buffer.from("<svg/>").toString("base64"),
+              mimeType: "image/svg+xml",
+            });
+            yield* Effect.promise(() => writeFile(join(workspace, "notes.txt"), "text"));
             yield* Effect.promise(() =>
               writeFile(join(workspace, "huge.png"), Buffer.alloc(8 * 1_024 * 1_024 + 1)),
             );
@@ -98,7 +104,7 @@ describe("WorkspaceFilesLive", () => {
             for (const [path, message] of [
               ["missing.png", "File not found"],
               [join(root, "missing", "shot.png"), "File not found"],
-              ["script.svg", "Unsupported image type: .svg"],
+              ["notes.txt", "Unsupported image type: .txt"],
               ["huge.png", "Image is larger than 8 MB"],
               ["folder.png", "Not a file"],
             ] as const) {

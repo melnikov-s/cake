@@ -16,5 +16,11 @@ export const PreparedFileLocation = Schema.Union([
     path: Schema.String,
     content: Schema.String.check(Schema.isMaxLength(2_000_000)),
   }),
+  Schema.Struct({
+    viewer: Schema.Literal("image"),
+    path: Schema.String,
+    data: Schema.String.check(Schema.isMaxLength(11_184_812)),
+    mimeType: Schema.String.check(Schema.isMaxLength(128)),
+  }),
 ]);
 export type PreparedFileLocation = typeof PreparedFileLocation.Type;

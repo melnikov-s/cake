@@ -2,8 +2,9 @@ import { observer } from "r-state-tree/react";
 import type { SessionPresentationStore } from "../stores/SessionPresentationStore";
 import { formatSourceLocation } from "../../utils/source-location";
 import { FullscreenMessage } from "./fullscreen-message";
+import { FullscreenSurface } from "./fullscreen-surface";
 
-/** Uses Cake's existing transient text reader, never a persisted artifact or transcript. */
+/** Uses Cake's existing transient text or image reader, never a persisted artifact or transcript. */
 export const FileLocationPreview = observer(function FileLocationPreview({
   store,
 }: {
@@ -12,6 +13,25 @@ export const FileLocationPreview = observer(function FileLocationPreview({
   const preview = store.filePreview;
   if (!preview) return null;
   const location = preview.location;
+  if (preview.viewer === "image")
+    return (
+      <FullscreenSurface
+        key={preview.path}
+        eyebrow="Image"
+        mode="canvas"
+        title={preview.path}
+        onClose={() => store.closeFilePreview()}
+      >
+        <div className="flex h-full w-full items-center justify-center bg-black/75 p-6">
+          <img
+            src={`data:${preview.mimeType};base64,${preview.data}`}
+            alt={preview.path}
+            draggable={false}
+            className="max-h-[calc(100vh-120px)] max-w-full rounded-lg object-contain shadow-2xl"
+          />
+        </div>
+      </FullscreenSurface>
+    );
   const changes = location.view === "changes";
   return (
     <FullscreenMessage

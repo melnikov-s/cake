@@ -150,6 +150,22 @@ describe("file location routing", () => {
               path,
             ).toMatchObject({ viewer: "text", content: "outside every project" });
           }
+          yield* Effect.promise(() => writeFile(join(root, "shot.png"), Buffer.from([1, 2, 3])));
+          yield* Effect.promise(() => writeFile(join(project, "inside.png"), Buffer.from([1])));
+          expect(
+            yield* files.prepareFileLocation(1, {
+              workspacePath: project,
+              originatingDirectory: project,
+              location: { kind: "absolute-file", path: join(root, "shot.png") },
+            }),
+          ).toMatchObject({ viewer: "image", data: "AQID", mimeType: "image/png" });
+          expect(
+            yield* files.prepareFileLocation(1, {
+              workspacePath: project,
+              originatingDirectory: project,
+              location: { kind: "working-directory", path: "inside.png" },
+            }),
+          ).toMatchObject({ viewer: "vscode", location: { path: "inside.png" } });
           for (const path of [
             "../allowed/missing",
             "../allowed/binary",

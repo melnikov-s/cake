@@ -5,6 +5,7 @@ import type {
   PrepareFileLocation,
   PreparedFileLocation,
 } from "../../contracts/filesystem/file-location";
+import { isImagePath, readLocalImage } from "./local-image";
 import { expandHomePath } from "./local-path";
 
 /** Both inputs must be canonical absolute paths. Directory equality is not a file. */
@@ -13,7 +14,7 @@ function containsFile(directory: string, target: string): boolean {
   return Boolean(path) && path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path);
 }
 
-/** Classify before starting VS Code; files outside the workspace open in the read-only text viewer. */
+/** Classify before starting VS Code; files outside the workspace open in Cake's read-only image or text viewer. */
 export async function prepareFileLocation(
   request: PrepareFileLocation,
   signal?: AbortSignal,
@@ -37,6 +38,8 @@ export async function prepareFileLocation(
       },
     };
   }
+  if (isImagePath(target))
+    return { viewer: "image", path: target, ...(await readLocalImage(target)) };
   // Bounded read from the opened handle; directories, devices, binary and invalid UTF-8 are not text.
   const handle = await open(
     target,

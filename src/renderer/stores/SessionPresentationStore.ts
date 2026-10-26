@@ -49,7 +49,12 @@ export interface SessionPresentationStoreProps {
 
 /** Coordinates Agent, embedded VS Code, and browser presentation for the active session. */
 export class SessionPresentationStore extends Store<SessionPresentationStoreProps> {
-  filePreview: { path: string; content: string; location: EditorLocation } | undefined;
+  filePreview:
+    | ((
+        | { viewer: "text"; path: string; content: string }
+        | { viewer: "image"; path: string; data: string; mimeType: string }
+      ) & { location: EditorLocation })
+    | undefined;
 
   closeFilePreview() {
     this.filePreview = undefined;
@@ -255,7 +260,7 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
       this.props.activeSessionResolved()
     )
       throw new Error("The active file context changed before navigation completed");
-    if (prepared.viewer === "text") {
+    if (prepared.viewer !== "vscode") {
       this.embeddedEditorStore.suspend();
       this.browserStore.suspend();
       session.showPresentation("normal");

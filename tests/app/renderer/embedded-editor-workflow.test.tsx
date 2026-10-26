@@ -231,6 +231,42 @@ describe("Embedded editor workflow", () => {
     },
   );
 
+  it("opens image file links outside the project in Cake's image viewer", async () => {
+    const prepare = vi.fn<Client["filesystem"]["prepareFileLocation"]>(async () => ({
+      viewer: "image",
+      path: "/tmp/shots/after.svg",
+      data: "PHN2Zy8+",
+      mimeType: "image/svg+xml",
+    }));
+    const open = vi.fn<Client["vscode"]["open"]>(async () => editorLease("a"));
+    using fixture = renderEmbeddedEditor(
+      { filesystem: { prepareFileLocation: prepare }, vscode: { open } },
+      {
+        parts: [
+          {
+            id: "image-link",
+            kind: "text",
+            role: "assistant",
+            status: "complete",
+            text: "[After screenshot](/tmp/shots/after.svg)",
+          },
+        ],
+      },
+    );
+    await fixture.user.click(await screen.findByRole("link", { name: "After screenshot" }));
+    const dialog = await screen.findByRole("dialog", { name: "/tmp/shots/after.svg" });
+    expect(within(dialog).getByRole("img").getAttribute("src")).toBe(
+      "data:image/svg+xml;base64,PHN2Zy8+",
+    );
+    expect(prepare).toHaveBeenCalledWith(
+      expect.objectContaining({
+        location: { kind: "absolute-file", path: "/tmp/shots/after.svg" },
+      }),
+      expect.anything(),
+    );
+    expect(open).not.toHaveBeenCalled();
+  });
+
   it("discards pending file routing when the selected project changes", async () => {
     const pending =
       deferredCompletion<Awaited<ReturnType<Client["filesystem"]["prepareFileLocation"]>>>();
