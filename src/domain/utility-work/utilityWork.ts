@@ -64,8 +64,7 @@ Return only a JSON array of item numbers, highest attention first, containing ev
         description: description.slice(0, 512),
       })),
     ),
-    // The reply is short, but the provider token budget (half this value) includes reasoning.
-    maximumOutputCharacters: 16_384,
+    maximumOutputCharacters: 2_048,
     timeoutMs: 20_000,
   });
   const order = yield* decodeTodoRanking(text, input.items.length);

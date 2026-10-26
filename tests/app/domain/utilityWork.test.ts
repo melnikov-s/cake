@@ -373,8 +373,7 @@ describe("utility work", () => {
           description: "d".repeat(512),
         });
         assert.ok(!received.context.includes(items[0]!.id));
-        // A full 50-item reply is tiny next to the provider budget (half the character limit).
-        assert.ok(reply.length * 10 < received.maximumOutputCharacters);
+        assert.ok(reply.length < received.maximumOutputCharacters);
       }),
     );
 
@@ -382,7 +381,7 @@ describe("utility work", () => {
       Effect.gen(function* () {
         const failure = yield* Effect.flip(
           run(rankTodos({ selection, items: [todo(1), todo(2)] }), () =>
-            Effect.fail(new Error("Model output was truncated at the 8192-token limit")),
+            Effect.fail(new Error("Model output was truncated at the model's output limit")),
           ),
         );
         assert.ok(failure instanceof PiModelCompletionError);

@@ -310,14 +310,16 @@ export const makePiModelsLive = (agentDirectory: string) =>
           try: async (signal) => {
             const reasoning =
               input.selection.thinkingLevel === "off" ? undefined : input.selection.thinkingLevel;
-            // The provider budget includes reasoning; display length is bounded separately.
-            const maxTokens = Math.min(
+            // Utility calls use the model's own output limit, since reasoning shares it; the
+            // deadline and maximumOutputCharacters bound them. Chat memory keeps its budget.
+            const chatMaxTokens = Math.min(
               8_192,
               Math.max(2_048, Math.ceil(input.maximumOutputCharacters / 2)),
             );
+            const maxTokens = input.chat ? chatMaxTokens : undefined;
             const capture = observeRequest?.(model, {
               reasoning,
-              maxTokens,
+              maxTokens: chatMaxTokens,
               fastMode: input.selection.fastMode,
             });
             const fastMode = input.selection.fastMode && supportsFastMode(model);
@@ -409,7 +411,7 @@ export const makePiModelsLive = (agentDirectory: string) =>
             if (response.errorMessage) throw new Error(response.errorMessage);
             // A cut-off utility reply is never a usable answer; report it instead of partial text.
             if (!input.chat && response.stopReason === "length")
-              throw new Error(`Model output was truncated at the ${maxTokens}-token limit`);
+              throw new Error("Model output was truncated at the model's output limit");
             if (
               input.chat &&
               (response.stopReason === "error" ||

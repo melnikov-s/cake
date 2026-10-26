@@ -69,7 +69,7 @@ const resolveError = (models: ReadonlyArray<PiModel>, input = selection) =>
 
 describe("PiModels", () => {
   vitestIt(
-    "gives short utility completions room for reasoning independently of the display limit",
+    "lets utility completions use the model's own output limit independently of the display limit",
     async () => {
       const directory = await mkdtemp(join(tmpdir(), "cake-utility-budget-"));
       const checkAuth = vi
@@ -83,7 +83,7 @@ describe("PiModels", () => {
       const complete = vi
         .spyOn(ModelRuntime.prototype, "completeSimple")
         .mockImplementation(async (model, _context, options) => {
-          assert.equal(options?.maxTokens, 2_048);
+          assert.equal(options?.maxTokens, undefined);
           assert.equal(options?.reasoning, "low");
           return {
             role: "assistant",
@@ -175,14 +175,14 @@ describe("PiModels", () => {
               },
               instructions: "Rank these",
               context: "[]",
-              maximumOutputCharacters: 16_384,
+              maximumOutputCharacters: 2_048,
               timeoutMs: 15_000,
             }),
           );
         }).pipe(Effect.provide(makePiModelsLive(directory))),
       );
       assert.equal(failure._tag, "PiModelCompletionError");
-      assert.equal(failure.message, "Model output was truncated at the 8192-token limit");
+      assert.equal(failure.message, "Model output was truncated at the model's output limit");
     } finally {
       complete.mockRestore();
       available.mockRestore();
@@ -216,7 +216,8 @@ describe("PiModels", () => {
       ];
       const complete = vi
         .spyOn(ModelRuntime.prototype, "completeSimple")
-        .mockImplementation(async (model, context) => {
+        .mockImplementation(async (model, context, options) => {
+          assert.equal(options?.maxTokens, 2_048);
           assert.equal(context.systemPrompt, "Stable coordinator system and compaction rules");
           assert.deepEqual(context.tools, tools);
           assert.deepEqual(
