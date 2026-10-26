@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatTextMessage } from "../../../src/renderer/components/chat-message";
 import { MarkdownLinkProvider } from "../../../src/renderer/components/ai-elements/markdown";
-import { SessionMessage } from "../../../src/renderer/components/ui/session-message";
+import { SessionMessage } from "../../../src/renderer/components/session-message";
 import {
   encodeCrossSessionMessage,
   formatCrossSessionNoticeText,
@@ -78,7 +78,10 @@ describe("cross-session message presentation", () => {
       expect(region.querySelector('[data-slot="message-content"]')).toBeTruthy();
       expect(screen.getByRole("heading", { name: outcome })).toBeTruthy();
       expect(screen.getByText("details").getAttribute("data-streamdown")).toBe("strong");
-      const link = screen.getByRole("link", { name: "API review" });
+      expect(screen.getByRole("button", { name: "API review" }).getAttribute("aria-expanded")).toBe(
+        "true",
+      );
+      const link = screen.getByRole("link", { name: "Open conversation" });
       expect(link.getAttribute("href")).toBe("cake://session/source-session");
       await userEvent.setup().click(link);
       expect(openSession).toHaveBeenCalledExactlyOnceWith("source-session");
@@ -115,11 +118,10 @@ describe("cross-session message presentation", () => {
         }}
       />,
     );
-    expect(screen.getByRole("region", { name: "Notice about another session" })).toBeTruthy();
-    expect(
-      screen.getByRole("region", { name: "Notice about another session" }).querySelector("header")
-        ?.textContent,
-    ).toContain("API review");
+    const region = screen.getByRole("region", { name: "Notice about another session" });
+    expect(region.querySelector('[data-slot="response-disclosure"]')?.textContent).toBe(
+      "API review",
+    );
   });
 
   it.each(["", "source-session", "Session source-session"])(
@@ -128,8 +130,7 @@ describe("cross-session message presentation", () => {
       render(
         <SessionMessage source={{ sessionId: "source-session", title }}>Report</SessionMessage>,
       );
-      expect(screen.getByText("Untitled session")).toBeTruthy();
-      expect(screen.getByText("Source title not recorded")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Untitled session" })).toBeTruthy();
     },
   );
 
@@ -143,7 +144,7 @@ describe("cross-session message presentation", () => {
         </SessionMessage>
       </MarkdownLinkProvider>,
     );
-    expect(screen.getByRole("link", { name: "Renamed API review" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Renamed API review" })).toBeTruthy();
     sessionTitle.mockReturnValue(undefined);
     view.rerender(
       <MarkdownLinkProvider actions={actions}>
@@ -152,7 +153,7 @@ describe("cross-session message presentation", () => {
         </SessionMessage>
       </MarkdownLinkProvider>,
     );
-    expect(screen.getByRole("link", { name: "API review" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "API review" })).toBeTruthy();
     expect(screen.getByText("Original content")).toBeTruthy();
   });
 
@@ -171,20 +172,19 @@ describe("cross-session message presentation", () => {
         </SessionMessage>
       </MarkdownLinkProvider>,
     );
-    await userEvent.setup().click(screen.getByRole("link", { name: "Review worker" }));
+    expect(screen.getByRole("button", { name: "Review worker" })).toBeTruthy();
+    await userEvent.setup().click(screen.getByRole("link", { name: "Open conversation" }));
     expect(openSubagent).toHaveBeenCalledExactlyOnceWith(
       "parent",
       "10000000-0000-4000-8000-000000000002",
       undefined,
     );
     expect(openSession).not.toHaveBeenCalled();
-    expect(screen.queryByText("Source identity not recorded")).toBeNull();
   });
 
   it("does not invent a source or link when historical identity is unavailable", () => {
     render(<SessionMessage>Original historical content</SessionMessage>);
-    expect(screen.getByText("Source session unavailable")).toBeTruthy();
-    expect(screen.getByText("Source identity not recorded")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Source session unavailable" })).toBeTruthy();
     expect(screen.queryByRole("link")).toBeNull();
     expect(screen.getByText("Original historical content")).toBeTruthy();
   });
@@ -206,14 +206,16 @@ describe("cross-session message presentation", () => {
           resultDelivery ?? (expectsResponse ? "reply" : "ignore"),
         );
         const region = screen.getByRole("region", { name: "Message from another session" });
-        expect(region.querySelector("header")?.textContent).toBe(
+        // One title, then the delivery badge; the title is never repeated in the body.
+        expect(region.querySelector('[data-slot="response-disclosure"]')?.textContent).toBe(
           expectsResponse
             ? resultDelivery === "notification"
-              ? "FromCake ChatNotification expected"
-              : "FromCake ChatReply expected"
-            : "FromCake Chat",
+              ? "Cake ChatNotification expected"
+              : "Cake ChatReply expected"
+            : "Cake Chat",
         );
-        expect(screen.getByRole("link", { name: "Cake Chat" }).getAttribute("href")).toBe(
+        expect(region.textContent?.match(/Cake Chat/g)).toHaveLength(1);
+        expect(screen.getByRole("link", { name: "Open conversation" }).getAttribute("href")).toBe(
           "cake://session/cake-chat-id",
         );
         expect(screen.getByText("fix").getAttribute("data-streamdown")).toBe("strong");
@@ -230,11 +232,9 @@ describe("cross-session message presentation", () => {
       { ...metadata, replyToMessageId: metadata.threadId },
     );
     renderPersisted(content);
-    const header = screen
-      .getByRole("region", { name: "Message from another session" })
-      .querySelector("header");
-    expect(header?.textContent).toContain("From");
-    expect(screen.getByText("Blocked")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "API review" }).textContent).toBe(
+      "API reviewBlocked",
+    );
     expect(screen.getByText("decision")).toBeTruthy();
     expect(screen.queryByText(/Session source-session/)).toBeNull();
     expect(screen.getByRole("region").textContent).not.toContain("cake-session-message");
@@ -252,8 +252,7 @@ describe("cross-session message presentation", () => {
       ),
     );
     const region = screen.getByRole("region", { name: "Notice about another session" });
-    expect(region.querySelector("header")?.textContent).toContain("Notice about");
-    expect(screen.getByText("Failed")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "API review" }).textContent).toBe("API reviewFailed");
     expect(screen.getByText("Stopped with an error while working on a message.")).toBeTruthy();
     expect(region.querySelector('[data-slot="message-content"]')?.textContent).not.toContain(
       metadata.messageId,

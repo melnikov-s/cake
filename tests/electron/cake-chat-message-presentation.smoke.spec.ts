@@ -344,43 +344,57 @@ for (const [delivery, theme] of [
         await expect(
           page.getByText(/\d+ sessions? you launched (?:is|are) still running\./),
         ).toHaveCount(0);
-        const surfaces = page.locator('[data-slot="message-source"]');
+        const surfaces = page.locator('[data-slot="session-message"]');
         const linkedIsIncoming = delivery === "subagent" && sessionId !== viewer.getSessionId();
         await expect(surfaces).toHaveCount(linkedIsIncoming ? 4 : 3);
         const linked = page.locator(
-          `[data-part-id="${partIds.get(sessionId)!.get("linked")}"] [data-slot="message-source"]`,
+          `[data-part-id="${partIds.get(sessionId)!.get("linked")}"] [data-slot="session-message"]`,
         );
         // Ordinary recap links stay navigable, but never add a second incoming report.
         await expect(linked).toHaveCount(linkedIsIncoming ? 1 : 0);
         const notification = page.locator(
-          `[data-part-id="${partIds.get(sessionId)!.get("notification")}"] [data-slot="message-source"]`,
+          `[data-part-id="${partIds.get(sessionId)!.get("notification")}"] [data-slot="session-message"]`,
         );
         const receipt = page.locator(
-          `[data-part-id="${partIds.get(sessionId)!.get("receipt")}"] [data-slot="message-source"]`,
+          `[data-part-id="${partIds.get(sessionId)!.get("receipt")}"] [data-slot="session-message"]`,
         );
         const first = linkedIsIncoming ? linked : notification;
-        for (const source of [first, notification, receipt]) {
-          expect(
-            await source.evaluate((node) => Boolean(node.closest('[data-slot="session-message"]'))),
-          ).toBe(true);
-          const header = source.locator('[data-slot="response-disclosure"]');
-          await expect(header).toHaveText("Detailed delegated review");
+        // An incoming worker report names the worker once and keeps its findings open; the
+        // exact original sits behind a nested disclosure instead of a second titled header.
+        const firstToggle = linkedIsIncoming
+          ? first.getByRole("button", { name: "Original response", exact: true })
+          : first.getByRole("button", { name: "Detailed delegated review", exact: true });
+        if (linkedIsIncoming) {
+          await expect(first.locator('[data-slot="response-disclosure"]').first()).toHaveAttribute(
+            "aria-label",
+            /^Worker /,
+          );
+          await expect(firstToggle).toHaveAttribute("aria-expanded", "false");
+        }
+        for (const source of linkedIsIncoming
+          ? [notification, receipt]
+          : [first, notification, receipt]) {
+          const header = source.locator('[data-slot="response-disclosure"]').first();
+          await expect(header).toHaveAttribute("aria-label", "Detailed delegated review");
           await expect(header).toHaveAttribute("aria-expanded", "false");
-          await expect(source).toHaveText("Detailed delegated review");
+          await expect(source.locator('[data-slot="message-source"]')).toHaveCount(0);
           expect(await header.evaluate((button) => button.scrollWidth <= button.clientWidth)).toBe(
             true,
           );
         }
         const edges = async (source: typeof first) =>
-          source.locator('[data-slot="response-disclosure"]').evaluate(async (button) => {
-            await Promise.all(
-              button.getAnimations({ subtree: true }).map((animation) => animation.finished),
-            );
-            return {
-              title: button.querySelector("span")!.getBoundingClientRect().left,
-              chevron: button.querySelector("svg")!.getBoundingClientRect().right,
-            };
-          });
+          source
+            .locator('[data-slot="response-disclosure"]')
+            .first()
+            .evaluate(async (button) => {
+              await Promise.all(
+                button.getAnimations({ subtree: true }).map((animation) => animation.finished),
+              );
+              return {
+                title: button.querySelector("span")!.getBoundingClientRect().left,
+                chevron: button.querySelector("svg")!.getBoundingClientRect().right,
+              };
+            });
         const verifyHeadingAlignment = async () => {
           const standalone = await edges(first);
           const batched = await edges(notification);
@@ -393,21 +407,17 @@ for (const [delivery, theme] of [
         };
         await verifyHeadingAlignment();
         const collapsedEdges = await edges(first);
-        const missing = page.locator(
-          '[data-message-reference="cake://session/deleted-producer?message=deleted-entry"]',
-        );
-        await expect(
-          first.getByRole("button", { name: "Detailed delegated review", exact: true }),
-        ).toHaveAttribute("aria-expanded", "false");
-        await first.getByRole("button", { name: "Detailed delegated review", exact: true }).click();
+        const missing = surfaces.filter({
+          has: page.getByRole("button", { name: "Untitled session", exact: true }),
+        });
+        await expect(firstToggle).toHaveAttribute("aria-expanded", "false");
+        await firstToggle.click();
         await expect
           .poll(() =>
-            first
-              .getByRole("button", { name: "Detailed delegated review", exact: true })
-              .evaluate((button) => {
-                const viewport = button.closest(".transcript")!.getBoundingClientRect();
-                return button.getBoundingClientRect().top - viewport.top;
-              }),
+            firstToggle.evaluate((button) => {
+              const viewport = button.closest(".transcript")!.getBoundingClientRect();
+              return button.getBoundingClientRect().top - viewport.top;
+            }),
           )
           .toBeGreaterThanOrEqual(0);
         await expect(
@@ -421,7 +431,10 @@ for (const [delivery, theme] of [
         await expect(first.locator('[data-streamdown="code-block-body"]')).toContainText(
           "const evidence",
         );
-        await expect(first).toHaveAttribute("data-message-reference", metadata.ref);
+        await expect(first.locator('[data-slot="message-source"]')).toHaveAttribute(
+          "data-message-reference",
+          metadata.ref,
+        );
         const verifyImages = async () => {
           for (const name of ["Relative screenshot", "Absolute screenshot", "Attachment pixels"]) {
             const image = first.getByRole("img", { name, exact: true });
@@ -433,25 +446,20 @@ for (const [delivery, theme] of [
           await expect(first.getByText("Image not available: Missing screenshot")).toBeVisible();
         };
         await verifyImages();
-        const expandedId = await first
-          .locator('[data-slot="response-disclosure"]')
-          .getAttribute("aria-controls");
+        const expandedId = await firstToggle.getAttribute("aria-controls");
         const expanded = page.locator(`[id="${expandedId}"]`);
+        // The body starts with the original; the title is not repeated inside it.
         expect(
           await expanded.evaluate((body) => ({
-            header: body.firstElementChild?.textContent,
-            contentStart:
-              body.firstElementChild?.nextElementSibling?.querySelector("h2")?.textContent,
+            repeatsTitle: body.textContent!.includes("Detailed delegated review"),
+            contentStart: body.querySelector("h2")?.textContent,
           })),
-        ).toEqual({
-          header: "Detailed delegated review",
-          contentStart: "Original detailed findings",
-        });
+        ).toEqual({ repeatsTitle: false, contentStart: "Original detailed findings" });
         await expect(
-          expanded.getByRole("button", { name: "Copy message", exact: true }),
+          first.getByRole("button", { name: "Copy message", exact: true }),
         ).toBeVisible();
         await expect(
-          first.getByRole("link", { name: "Detailed delegated review", exact: true }),
+          first.getByRole("link", { name: "Full response", exact: true }),
         ).toHaveAttribute("href", metadata.ref);
         await page.waitForFunction(() =>
           Array.from(
@@ -485,9 +493,9 @@ for (const [delivery, theme] of [
             .toBe(word);
         }
         // Collapse unmounts image reads; reopening must resolve in the same source context.
-        await first.getByRole("button", { name: "Detailed delegated review", exact: true }).click();
+        await firstToggle.click();
         await expect(first.getByRole("img")).toHaveCount(0);
-        await first.getByRole("button", { name: "Detailed delegated review", exact: true }).click();
+        await firstToggle.click();
         await verifyImages();
         await first.getByRole("button", { name: "Next", exact: true }).click();
         await expect(first.getByText(/Last original finding/)).toBeVisible();
@@ -505,7 +513,7 @@ for (const [delivery, theme] of [
           first.getByRole("heading", { name: "Original detailed findings" }),
         ).toBeVisible();
         // Notification-mode source is available without any model-authored relay.
-        await first.getByRole("button", { name: "Detailed delegated review", exact: true }).click();
+        await firstToggle.click();
         await notification.getByRole("button", { name: "Detailed delegated review" }).click();
         await expect(
           notification.getByRole("heading", { name: "Original detailed findings" }),
@@ -520,12 +528,12 @@ for (const [delivery, theme] of [
           receipt.getByRole("heading", { name: "Original detailed findings" }),
         ).toBeInViewport();
         await expect(
-          receipt.getByRole("link", { name: "Detailed delegated review", exact: true }),
+          receipt.getByRole("link", { name: "Full response", exact: true }),
         ).toHaveAttribute("href", metadata.ref);
         await expect(receipt.getByText("Substance stays in Pi.")).toHaveCount(1);
         await receiptHeader.click();
-        await expect(receipt).toHaveText("Detailed delegated review");
-        await missing.getByRole("button", { name: "Source session", exact: true }).click();
+        await expect(receiptHeader).toHaveAttribute("aria-expanded", "false");
+        await missing.getByRole("button", { name: "Untitled session", exact: true }).click();
         await expect(missing.getByText("Original response unavailable")).toBeVisible();
         await expect(missing.getByRole("button", { name: "Retry source" })).toBeVisible();
         await expect(page.getByRole("combobox", { name: inputName })).toBeVisible();
@@ -534,10 +542,10 @@ for (const [delivery, theme] of [
       await verify("Message", viewer.getSessionId());
       await page.reload();
       await verify("Message", viewer.getSessionId());
-      await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+      await page.getByRole("button", { name: "Cake Chat", exact: true }).first().click();
       await verify("Message Cake Chat", CAKE_CHAT_SESSION_ID);
       await page.reload();
-      await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+      await page.getByRole("button", { name: "Cake Chat", exact: true }).first().click();
       await verify("Message Cake Chat", CAKE_CHAT_SESSION_ID);
       await page
         .locator(
@@ -560,14 +568,12 @@ for (const [delivery, theme] of [
       );
       await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
       const notification = page.locator(
-        `[data-part-id="${partIds.get(projectId)!.get("notification")}"] [data-slot="message-source"]`,
+        `[data-part-id="${partIds.get(projectId)!.get("notification")}"] [data-slot="session-message"]`,
       );
       await notification
         .getByRole("button", { name: "Detailed delegated review", exact: true })
         .click();
-      await notification
-        .getByRole("link", { name: "Detailed delegated review", exact: true })
-        .click();
+      await notification.getByRole("link", { name: "Full response", exact: true }).click();
       await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText(
         "Detailed delegated review",
       );

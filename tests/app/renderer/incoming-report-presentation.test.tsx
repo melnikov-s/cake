@@ -110,8 +110,15 @@ it.each(["receipt", "reply", "request", "digest", "UserWithReminders", "UpdateBa
     const inspect = vi.fn(async () => original);
     using fixture = renderChatSurface({ parts: incoming, client: { sessionChats: { inspect } } });
     const card = screen.getByRole("region", { name: "Message from another session" });
-    const disclosure = within(card).getByRole("button", { name: title });
-    expect(card.textContent).toContain("From");
+    const toggle = within(card).getByRole("button", { name: title });
+    // The card names its sender once. A delivered message that has its own text keeps it
+    // open, with the exact original behind a nested disclosure; a receipt is the original.
+    expect(card.textContent!.split(title)).toHaveLength(2);
+    const delivered = toggle.getAttribute("aria-expanded") === "true";
+    expect(delivered).toBe(delivery !== "receipt" && delivery !== "digest");
+    const disclosure = delivered
+      ? within(card).getByRole("button", { name: "Original response" })
+      : toggle;
     expect(inspect).not.toHaveBeenCalled();
     await fixture.user.click(disclosure);
     expect(await within(card).findByRole("heading", { name: "Original findings" })).toBeTruthy();
@@ -156,7 +163,7 @@ it.each(["receipt", "reply", "request", "digest", "UserWithReminders", "UpdateBa
     await fixture.user.click(disclosure);
     fixture.publish(projectSessionEntries(parent.getEntries()));
     expect(screen.getAllByRole("region", { name: "Message from another session" })).toHaveLength(1);
-    expect(document.querySelectorAll('[data-slot="message-source"]')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-slot="message-source"]')).toHaveLength(0);
     expect(inspect).toHaveBeenCalledOnce();
     // The receipt and assistant prose remain in Pi, independently of presentation ownership.
     expect(parent.getEntries().filter((entry) => entry.type === "message")).toHaveLength(3);
@@ -188,13 +195,13 @@ it("deduplicates a replayed delivery ID, not distinct messages with identical se
   using fixture = renderChatSurface({ parts: projectSessionEntries(parent.getEntries()) });
   expect(screen.getAllByRole("region", { name: "Message from another session" })).toHaveLength(2);
   expect(screen.getAllByText("Identical authored message")).toHaveLength(2);
-  expect(document.querySelectorAll('[data-slot="message-source"]')).toHaveLength(2);
+  expect(screen.getAllByRole("button", { name: "Original response" })).toHaveLength(2);
   fixture.publish(projectSessionEntries(parent.getEntries()));
   expect(screen.getAllByText("Identical authored message")).toHaveLength(2);
   expect(parent.getEntries().filter((entry) => entry.type === "message")).toHaveLength(3);
 });
 
-it("keeps an unrelated exact original in an attributed source card", () => {
+it("keeps an unrelated exact original in an attributed source card", async () => {
   const parent = SessionManager.inMemory("/project");
   parent.appendMessage({
     role: "user",
@@ -210,9 +217,9 @@ it("keeps an unrelated exact original in an attributed source card", () => {
   using fixture = renderChatSurface({ parts: projectSessionEntries(parent.getEntries()) });
   fixture.publish(projectSessionEntries(parent.getEntries()));
   expect(screen.getAllByRole("region", { name: "Message from another session" })).toHaveLength(2);
+  for (const card of screen.getAllByRole("region", { name: "Message from another session" }))
+    await fixture.user.click(within(card).getAllByRole("button")[0]!);
   expect(
-    [...document.querySelectorAll("[data-message-reference]")].map((node) =>
-      node.getAttribute("data-message-reference"),
-    ),
+    screen.getAllByRole("link", { name: "Full response" }).map((link) => link.getAttribute("href")),
   ).toEqual(["cake://session/producer?message=first", "cake://session/producer?message=second"]);
 });

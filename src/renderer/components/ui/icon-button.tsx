@@ -30,10 +30,12 @@ export function IconButtonHotkeyProvider({
 export type IconButtonProps = Omit<
   ButtonHTMLAttributes<HTMLButtonElement>,
   "title" | "aria-label"
-> & { hotkey?: CakeHotkeyActionId; pressedAppearance?: "solid" | "subtle" } & (
-    | { tooltip: string; ariaLabel?: string }
-    | { tooltip?: undefined; ariaLabel: string }
-  );
+> & {
+  hotkey?: CakeHotkeyActionId;
+  pressedAppearance?: "solid" | "subtle";
+  /** Wrap a long tooltip instead of truncating it, for labels whose full text matters. */
+  wrapTooltip?: boolean;
+} & ({ tooltip: string; ariaLabel?: string } | { tooltip?: undefined; ariaLabel: string });
 
 /** Square transparent button for a single icon; tooltips show quickly by default. */
 const ObservedIconButton = observer(function ObservedIconButton({
@@ -43,6 +45,7 @@ const ObservedIconButton = observer(function ObservedIconButton({
   type = "button",
   className,
   pressedAppearance = "solid",
+  wrapTooltip = false,
   children,
   onMouseEnter,
   onMouseLeave,
@@ -93,7 +96,9 @@ const ObservedIconButton = observer(function ObservedIconButton({
       }}
     >
       {children}
-      {label && anchor && <TooltipBubble label={label} anchor={anchor} wrap={Boolean(binding)} />}
+      {label && anchor && (
+        <TooltipBubble label={label} anchor={anchor} wrap={wrapTooltip || Boolean(binding)} />
+      )}
     </button>
   );
 });

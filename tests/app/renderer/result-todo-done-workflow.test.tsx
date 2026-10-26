@@ -311,13 +311,21 @@ it.each(chats)(
   "keeps the association on every incoming card, historical update, request and batch entry in %s",
   async (kind) => {
     await using f = await renderChat(kind);
-    expect(f.groupFor("worker-report")?.textContent).toBe("To-do · Research optionsDone");
-    expect(f.groupFor("session-reply")?.textContent).toBe("To-do · Fix the buildDone");
+    expect(
+      f.groupFor("worker-report")?.querySelector("[role=checkbox]")?.getAttribute("aria-label"),
+    ).toBe("Done: Research options");
+    expect(
+      f.groupFor("session-reply")?.querySelector("[role=checkbox]")?.getAttribute("aria-label"),
+    ).toBe("Done: Fix the build");
     for (const title of ["Research options", "Fix the build"])
       expect(f.checked(title)).toBe("false");
     for (const id of ["session-progress", "session-request", "standalone-original"])
-      expect(f.groupFor(id)?.textContent).toBe("To-do · Fix the buildDone");
-    expect(f.groupFor("notice")?.textContent).toBe("To-do · Benchmark startupDone");
+      expect(f.groupFor(id)?.querySelector("[role=checkbox]")?.getAttribute("aria-label")).toBe(
+        "Done: Fix the build",
+      );
+    expect(f.groupFor("notice")?.querySelector("[role=checkbox]")?.getAttribute("aria-label")).toBe(
+      "Done: Benchmark startup",
+    );
     expect(f.groupFor("unlinked-report")).toBeNull();
     // An exact-message association must not bleed onto another message from that sender.
     expect(f.groupFor("different-source")).toBeNull();
@@ -340,16 +348,26 @@ it.each(chats)(
     for (const id of ["worker-report", "session-progress", "session-request"]) {
       const group = f.groupFor(id)!;
       const card = group.closest('[data-slot="session-message"]')!;
-      const toggle = card.querySelector<HTMLButtonElement>(
-        '[data-slot="incoming-body-disclosure"]',
-      )!;
+      const toggle = card.querySelector<HTMLButtonElement>('[data-slot="response-disclosure"]')!;
       await f.user.click(toggle);
       expect(toggle.getAttribute("aria-expanded")).toBe("false");
       expect(group.isConnected).toBe(true);
-      expect(group.closest('[data-slot="message-disclosure"]')).toBeNull();
+      expect(toggle.contains(group)).toBe(false);
     }
   },
 );
+
+it("names the to-do being resolved in the Done tooltip, before and after toggling", async () => {
+  await using f = await renderChat("Cake Chat");
+  const done = f.control("Research options");
+  await f.user.hover(done);
+  expect((await screen.findByRole("tooltip")).textContent).toBe("Mark done: Research options");
+  await f.user.click(done);
+  await waitFor(() => expect(f.checked("Research options")).toBe("true"));
+  await f.user.unhover(done);
+  await f.user.hover(f.control("Research options"));
+  expect((await screen.findByRole("tooltip")).textContent).toBe("Reopen: Research options");
+});
 
 it("reuses the Project's to-do list for incoming Project Session and secondary-chat cards without opening Project Chat", async () => {
   await using f = await renderChat("Project Chat");
@@ -472,7 +490,9 @@ it.each(chats)(
         title: "Research engine options",
       }),
     );
-    expect(f.groupFor("worker-report")?.textContent).toBe("To-do · Research engine optionsDone");
+    expect(
+      f.groupFor("worker-report")?.querySelector("[role=checkbox]")?.getAttribute("aria-label"),
+    ).toBe("Done: Research engine options");
     expect(screen.queryByRole("checkbox", { name: "Done: Research options" })).toBeNull();
     await f.commit(
       projectTodos.update(f.scope, { id: workerTodo.id, expectedRevision: 1, state: "done" }),

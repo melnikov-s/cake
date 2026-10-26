@@ -172,12 +172,13 @@ describe("exact response presentation", () => {
     expect(
       within(batch)
         .getAllByRole("button")
-        .map((button) => button.textContent),
+        .map((button) => button.getAttribute("aria-label")),
     ).toEqual(titles);
     expect(
       within(batch).getAllByRole("region", { name: "Message from another session" }),
     ).toHaveLength(3);
-    expect(batch.textContent).toBe(titles.map((title) => `From${title}${title}`).join(""));
+    // Each card names its session once; the title is never repeated as a second header.
+    for (const title of titles) expect(batch.textContent!.split(title)).toHaveLength(2);
     expect(screen.getAllByRole("status", { name: "Session results" })).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Cake · session updates" })).toBeNull();
     expect(inspect).not.toHaveBeenCalled();
@@ -185,24 +186,16 @@ describe("exact response presentation", () => {
     const prompts = within(batch).getByRole("button", { name: titles[1] });
     await user.click(prompts);
     expect(await within(batch).findByText(/Committed as d58aa9b5/)).toBeTruthy();
-    expect(
-      within(batch)
-        .getAllByRole("link", { name: titles[1] })
-        .map((link) => link.getAttribute("href")),
-    ).toContain(promptRef);
     const expanded = document.getElementById(prompts.getAttribute("aria-controls")!)!;
-    expect(Array.from(expanded.children).map((child) => child.textContent)).toEqual([
-      titles[1],
+    expect(expanded.textContent).toBe(
       "Committed as d58aa9b5. Worktree clean; ready for review. No merge, resolution, or restart.",
-    ]);
-    expect(
-      within(expanded.firstElementChild as HTMLElement).getByRole("button", {
-        name: "Copy message",
-      }),
-    ).toBeTruthy();
-    await user.click(within(expanded).getByRole("link", { name: titles[1] }));
+    );
+    const promptCard = within(prompts.closest<HTMLElement>('[data-slot="session-message"]')!);
+    const fullResponse = promptCard.getByRole("link", { name: "Full response" });
+    expect(fullResponse.getAttribute("href")).toBe(promptRef);
+    await user.click(fullResponse);
     expect(openSession).toHaveBeenCalledWith(source.getSessionId(), promptId);
-    await user.click(within(expanded).getByRole("button", { name: "Copy message" }));
+    await user.click(promptCard.getByRole("button", { name: "Copy message" }));
     expect(await navigator.clipboard.readText()).toBe(
       "Committed as d58aa9b5. Worktree clean; ready for review. No merge, resolution, or restart.",
     );
@@ -222,7 +215,7 @@ describe("exact response presentation", () => {
     ).toBeTruthy();
     expect(
       within(batch)
-        .getAllByRole("link", { name: titles[0] })
+        .getAllByRole("link", { name: "Full response" })
         .map((link) => link.getAttribute("href")),
     ).toContain(landedRef);
     expect(projectSessionEntries(parent.getEntries())).toEqual(persisted);
@@ -546,13 +539,12 @@ describe("exact response presentation", () => {
     const message = within(delivered.closest("article")!);
     expect(
       message.getAllByRole("button").map((button) => button.getAttribute("aria-label")),
-    ).toEqual([null, "Copy response"]);
+    ).toEqual(["Delegated review", null, "Copy response"]);
+    const original = () => screen.getByRole("button", { name: "Original response" });
     await user.click(message.getByRole("button", { name: "Copy response" }));
     expect(await navigator.clipboard.readText()).toBe("Worker summary");
     expect(inspect).not.toHaveBeenCalled();
-    await user.click(
-      view.container.querySelector<HTMLButtonElement>('[data-slot="response-disclosure"]')!,
-    );
+    await user.click(original());
     expect(await screen.findByRole("heading", { name: "Detailed result" })).toBeTruthy();
     expect(screen.getByText("Original substance").getAttribute("data-streamdown")).toBe("strong");
     expect(await screen.findByRole("img", { name: "source image" })).toBeTruthy();
@@ -593,16 +585,12 @@ describe("exact response presentation", () => {
     write.mockRestore();
     await user.click(screen.getByRole("button", { name: "Previous" }));
     expect(await screen.findByRole("heading", { name: "Detailed result" })).toBeTruthy();
-    await user.click(
-      view.container.querySelector<HTMLButtonElement>('[data-slot="response-disclosure"]')!,
-    );
+    await user.click(original());
     view.unmount();
     // Reprojecting the persisted original tool result reconstructs the same reference.
     expect(projectSessionEntries(parent.getEntries())[0]).toMatchObject({ messageReference: ref });
     view = show();
-    expect(
-      view.container.querySelector<HTMLButtonElement>('[data-slot="response-disclosure"]')!,
-    ).toBeTruthy();
+    expect(original()).toBeTruthy();
     view.unmount();
   });
 
@@ -730,14 +718,19 @@ describe("exact response presentation", () => {
         />,
       );
       expect(inspect).not.toHaveBeenCalled();
-      const disclosure = view.container.querySelector<HTMLButtonElement>(
-        '[data-slot="response-disclosure"]',
+      const toggle = view.container.querySelector<HTMLButtonElement>(
+        '[data-slot="session-message"] [data-slot="response-disclosure"]',
       )!;
-      expect(disclosure.textContent).toBe(
-        delivery === "assistant" ? "Source session" : "Producer session",
+      expect(toggle.getAttribute("aria-label")).toBe(
+        delivery === "assistant" ? "Untitled session" : "Producer session",
       );
+      // A reply keeps its own text open; its exact original sits behind a nested disclosure.
+      expect(toggle.getAttribute("aria-expanded")).toBe(String(delivery === "reply"));
+      const disclosure =
+        delivery === "reply" ? screen.getByRole("button", { name: "Original response" }) : toggle;
       expect(disclosure.getAttribute("aria-expanded")).toBe("false");
-      expect(view.container.querySelectorAll('[data-slot="message-source"]')).toHaveLength(1);
+      expect(view.container.querySelectorAll('[data-slot="session-message"]')).toHaveLength(1);
+      expect(view.container.querySelectorAll('[data-slot="message-source"]')).toHaveLength(0);
       const user = userEvent.setup();
       if (receipt || delivery === "reply") {
         const delivered = screen.getByRole("region", {
@@ -753,11 +746,11 @@ describe("exact response presentation", () => {
             disclosure,
           );
           expect(message.queryByRole("button", { name: "Copy response" })).toBeNull();
-          expect(disclosure.textContent).toBe("Producer session");
+          expect(disclosure.textContent).toBe("Producer sessionCompleted");
         } else {
           expect(
             message.getAllByRole("button").map((button) => button.getAttribute("aria-label")),
-          ).toEqual([null, "Copy response"]);
+          ).toEqual(["Producer session", null, "Copy response"]);
           await user.click(message.getByRole("button", { name: "Copy response" }));
           expect(await navigator.clipboard.readText()).toBe(links);
         }
@@ -807,7 +800,7 @@ describe("exact response presentation", () => {
       expect(inspect).toHaveBeenCalledTimes(delivery === "assistant" ? 3 : 1);
       await user.click(disclosure);
       expect(projectSessionEntries(parent.getEntries())).toEqual(parts);
-      expect(view.container.querySelectorAll('[data-slot="message-source"]')).toHaveLength(1);
+      expect(view.container.querySelectorAll('[data-slot="session-message"]')).toHaveLength(1);
       if (delivery === "assistant") {
         expect(screen.getByRole("link", { name: "Producer session" }).getAttribute("href")).toBe(
           `cake://session/${source.getSessionId()}`,
@@ -925,7 +918,10 @@ describe("exact response presentation", () => {
             expect(screen.getAllByText(report || "No textual content.")).toHaveLength(1);
           }
           await user.click(trigger);
-          expect(trigger.textContent).toBe(title);
+          // Once read, the collapsed row previews the original after its one title.
+          expect(trigger.textContent).toBe(
+            `${title}${report && state !== "unavailable" ? report : ""}`,
+          );
           expect(trigger.getAttribute("aria-expanded")).toBe("false");
         }
         expect(projectSessionEntries(parent.getEntries())).toEqual(persisted);

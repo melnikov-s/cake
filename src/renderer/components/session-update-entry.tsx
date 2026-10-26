@@ -4,10 +4,7 @@ import type { SessionUpdateEntryStore } from "../stores/SessionUpdateEntryStore"
 import type { ProjectTodosStore } from "../stores/ProjectTodosStore";
 import { referenceTodoOrigin } from "../lib/result-todo-origin";
 import { Markdown } from "./ai-elements/markdown";
-import { InlineMessageSource } from "./inline-message-source";
-import { MessageDisclosure } from "./ui/message-disclosure";
-import { SessionMessage } from "./ui/session-message";
-import { ResultTodoFooter } from "./result-todo-done";
+import { SessionMessage } from "./session-message";
 
 export const SessionUpdateEntry = observer(function SessionUpdateEntry({
   store,
@@ -20,37 +17,24 @@ export const SessionUpdateEntry = observer(function SessionUpdateEntry({
 }) {
   const { entry } = store.props;
   const source = store.source;
-  const content = source ? (
-    <InlineMessageSource
-      store={source}
-      title={entry.title}
-      sourceSession={
-        entry.sessionId ? { sessionId: entry.sessionId, title: entry.title } : undefined
-      }
-    />
-  ) : (
-    <MessageDisclosure title={entry.title} open={store.expanded} onToggle={() => store.toggle()}>
-      <Markdown onOpenSourceLocation={onOpenSourceLocation}>{entry.text}</Markdown>
-    </MessageDisclosure>
-  );
-  if (!entry.sessionId) return content;
   return (
     <SessionMessage
       source={entry.sessionId ? { sessionId: entry.sessionId, title: entry.title } : undefined}
-      footer={
-        <ResultTodoFooter
-          origin={
-            entry.reference
-              ? referenceTodoOrigin(entry.reference)
-              : entry.sessionId
-                ? { sessionIds: [entry.sessionId] }
-                : undefined
-          }
-          todos={todos}
-        />
-      }
+      title={entry.title}
+      sources={source ? [source] : undefined}
+      preview={source ? undefined : entry.text}
+      open={store.expanded}
+      onToggle={() => store.toggle()}
+      todo={{
+        origin: entry.reference
+          ? referenceTodoOrigin(entry.reference)
+          : entry.sessionId
+            ? { sessionIds: [entry.sessionId] }
+            : undefined,
+        todos,
+      }}
     >
-      <div className="px-5">{content}</div>
+      {!source && <Markdown onOpenSourceLocation={onOpenSourceLocation}>{entry.text}</Markdown>}
     </SessionMessage>
   );
 });

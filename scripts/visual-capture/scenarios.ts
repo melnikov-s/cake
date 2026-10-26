@@ -2682,7 +2682,9 @@ const subagentReportsScenario: VisualCaptureScenario = {
           ? "Subagent aborted"
           : "Subagent complete";
     const report = page.getByRole("article", { name: heading, exact: true });
-    await expect(report.getByRole("heading", { name: heading, exact: true })).toBeVisible();
+    await expect(
+      report.getByRole("button", { name: "Worker 10000000", exact: true }),
+    ).toBeVisible();
     const assignment = report.getByRole("button", { name: "Assignment details" });
     await expect(assignment).toHaveAttribute("aria-expanded", "false");
     await assignment.focus();
@@ -2727,7 +2729,7 @@ const resultTodoDoneScenario: VisualCaptureScenario = {
   name: "result-todo-done",
   description:
     "Live Done checkbox on Cake Chat result messages linked to a to-do, beside the To-do pane",
-  states: ["report", "session", "done", "pane", "dropdowns"],
+  states: ["report", "session", "done", "pane", "dropdowns", "done-tooltip"],
   async seed(paths, theme) {
     await subagentReportsScenario.seed(paths, theme);
     const sourceDirectory = workspaceSessionDirectory(
@@ -2920,7 +2922,9 @@ const resultTodoDoneScenario: VisualCaptureScenario = {
       await expect(page.getByRole("complementary", { name: "To-do" })).toBeVisible();
     }
     if (state === "dropdowns") {
-      for (const body of await page.locator('[data-slot="incoming-body-disclosure"]').all()) {
+      for (const body of await page
+        .locator('[data-slot="session-message"] [data-slot="response-disclosure"]')
+        .all()) {
         if ((await body.getAttribute("aria-expanded")) === "true") await body.click();
       }
       await expect(page.getByRole("checkbox", { name: "Done: Fix the flaky build" })).toBeVisible();
@@ -2928,13 +2932,16 @@ const resultTodoDoneScenario: VisualCaptureScenario = {
       await expect(lastAssociation).toBeVisible();
       await lastAssociation.scrollIntoViewIfNeeded();
     }
-    if (state === "session" || state === "pane")
+    if (state === "session" || state === "pane" || state === "done-tooltip")
       await page
         .getByRole("checkbox", { name: "Done: Draft the release notes" })
         .scrollIntoViewIfNeeded();
     else await report.scrollIntoViewIfNeeded();
     await page.waitForFunction(() => document.fonts.status === "loaded");
-    await page.mouse.move(1, 1);
+    if (state === "done-tooltip") {
+      await page.getByRole("checkbox", { name: "Done: Fix the flaky build" }).hover();
+      await expect(page.getByRole("tooltip")).toHaveText("Mark done: Fix the flaky build");
+    } else await page.mouse.move(1, 1);
   },
   region: (page) => page.locator("body"),
 };
@@ -3190,7 +3197,10 @@ const incomingReportRecapScenario: VisualCaptureScenario = {
     await expect(page.locator('[data-slot="session-message"]')).toHaveCount(1);
     const disclosure = page.locator('[data-slot="response-disclosure"]');
     await expect(disclosure).toHaveCount(1);
-    await expect(disclosure).toHaveText("Side-chat shared to-dos and merge-back memory");
+    await expect(disclosure).toHaveAttribute(
+      "aria-label",
+      "Side-chat shared to-dos and merge-back memory",
+    );
     await expect(page.getByRole("link", { name: "Full agent response" })).toBeVisible();
     if (state === "expanded") {
       await disclosure.click();
@@ -3369,16 +3379,22 @@ const sessionMessageVariantsScenario: VisualCaptureScenario = {
       .first()
       .waitFor({ state: "visible", timeout: 20_000 });
     if (state === "default" || state === "reference" || state === "original") {
-      await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+      await page.getByRole("button", { name: "Cake Chat", exact: true }).first().click();
       await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText("Cake Chat");
     }
     await expect(
       page.getByRole("region", { name: "Notice about another session" }).last(),
     ).toBeVisible();
     if (state.endsWith("reference") || state.endsWith("original")) {
-      const response = page.locator('[data-slot="response-disclosure"]');
+      const response = page
+        .getByRole("region", { name: "Message from another session" })
+        .last()
+        .locator('[data-slot="response-disclosure"]');
       await response.scrollIntoViewIfNeeded();
-      await expect(response).toHaveText("Add and globally install manual post-mortem skill");
+      await expect(response).toHaveAttribute(
+        "aria-label",
+        "Add and globally install manual post-mortem skill",
+      );
       if (state.endsWith("original")) {
         await response.click();
         await expect(page.getByRole("heading", { name: "Skill installed" })).toBeVisible();
@@ -3545,39 +3561,21 @@ const sessionUpdateReportsScenario: VisualCaptureScenario = {
   },
   async prepare(page, state) {
     await assistantMarkdownCode.prepare(page, "default");
-    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+    await page.getByRole("button", { name: "Cake Chat", exact: true }).first().click();
     const batch = page.getByRole("status", { name: "Session results" });
     await expect(batch.getByRole("button")).toHaveCount(5);
     const standalone = page
-      .locator(
-        '[data-message-reference="cake://session/visual-session-update-reports?message=merge"]',
-      )
+      .locator('[data-slot="session-message"]:not([role="status"] [data-slot="session-message"])')
       .first()
       .locator('[data-slot="response-disclosure"]');
-    const verifyAlignment = async () => {
-      await page.locator('[data-slot="response-disclosure"]').evaluateAll(async (buttons) => {
-        await Promise.all(
-          buttons.flatMap((button) =>
-            button.getAnimations({ subtree: true }).map((animation) => animation.finished),
-          ),
+    // Long titles truncate within their single row rather than wrapping or overflowing.
+    const verifyRows = async () => {
+      for (const button of await batch.locator('[data-slot="response-disclosure"]').all())
+        expect(await button.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
+          false,
         );
-      });
-      const edges = await standalone.evaluate((button) => ({
-        title: button.querySelector("span")!.getBoundingClientRect().left,
-        chevron: button.querySelector("svg")!.getBoundingClientRect().right,
-      }));
-      for (const button of await batch.locator('[data-slot="response-disclosure"]').all()) {
-        const geometry = await button.evaluate((element) => ({
-          title: element.querySelector("span")!.getBoundingClientRect().left,
-          chevron: element.querySelector("svg")!.getBoundingClientRect().right,
-          overflows: element.scrollWidth > element.clientWidth,
-        }));
-        expect(geometry.title).toBeCloseTo(edges.title, 0);
-        expect(geometry.chevron).toBeCloseTo(edges.chevron, 0);
-        expect(geometry.overflows).toBe(false);
-      }
     };
-    await verifyAlignment();
+    await verifyRows();
     if (state === "expanded") {
       await standalone.click();
       await batch
@@ -3588,19 +3586,7 @@ const sessionUpdateReportsScenario: VisualCaptureScenario = {
       await batch.getByRole("button", { name: "Keyboard navigation review continues" }).click();
       await expect(batch.getByText(/No final report yet/)).toBeVisible();
     }
-    await verifyAlignment();
-    if (await page.evaluate(() => innerWidth <= 760)) {
-      const wraps = await batch
-        .getByRole("button", { name: "Simplify Cake prompts with progressive disclosure" })
-        .evaluate((button) => {
-          const title = button.querySelector("span")!;
-          return (
-            title.getBoundingClientRect().height >
-            Number.parseFloat(getComputedStyle(title).lineHeight)
-          );
-        });
-      expect(wraps).toBe(true);
-    }
+    await verifyRows();
     const expanded = batch.locator('[data-slot="response-disclosure"][aria-expanded="true"]');
     if (await expanded.count()) {
       const inset = await expanded.evaluate((button) => {

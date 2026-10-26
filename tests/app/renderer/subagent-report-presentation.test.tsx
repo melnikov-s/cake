@@ -10,13 +10,19 @@ import type { SubagentReportOrigin } from "../../../src/contracts/subagents/suba
 afterEach(cleanup);
 
 it.each([
-  ["complete", undefined, "Subagent complete", "The requested checks passed."],
-  ["error", undefined, "Subagent failed", "Permission denied reading the requested transcript."],
-  ["error", "start", "Subagent failed to start", "Could not start the selected model."],
-  ["aborted", undefined, "Subagent aborted", "Partial findings retained before cancellation."],
+  ["complete", undefined, "Subagent complete", "Completed", "The requested checks passed."],
+  [
+    "error",
+    undefined,
+    "Subagent failed",
+    "Failed",
+    "Permission denied reading the requested transcript.",
+  ],
+  ["error", "start", "Subagent failed to start", "Failed to start", "Could not start the model."],
+  ["aborted", undefined, "Subagent aborted", "Aborted", "Partial findings retained."],
 ] as const)(
   "shows %s reports with inspectable assignment and unchanged findings",
-  async (status, failurePhase, heading, findings) => {
+  async (status, failurePhase, heading, badge, findings) => {
     const report: SubagentReportOrigin = {
       ...researchOrigin,
       task:
@@ -38,7 +44,11 @@ it.each([
         }}
       />,
     );
-    expect(screen.getByRole("heading", { name: heading })).toBeDefined();
+    expect(screen.getByRole("article", { name: heading })).toBeDefined();
+    // The card names the worker once, with its status as a badge.
+    expect(
+      screen.getByRole("button", { name: `Worker ${report.handleId.slice(0, 8)}` }).textContent,
+    ).toBe(`Worker ${report.handleId.slice(0, 8)}${badge}`);
     const body = view.container.querySelector('[data-slot="message-content"]')!;
     expect(body.textContent).toBe(findings);
     const disclosure = screen.getByRole("button", { name: "Assignment details" });

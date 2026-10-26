@@ -34,9 +34,8 @@ test("incoming report owns its source before and after recap/reload", async () =
       if (reload) await page.reload();
       await scenario.prepare(page, "default");
       const card = page.locator('[data-slot="session-message"]');
-      await expect(card).toContainText("From");
-      await expect(card.locator('[data-slot="message-source"]')).toHaveCount(1);
-      await expect(page.locator('[data-slot="message-source"]')).toHaveCount(1);
+      await expect(card).toHaveCount(1);
+      await expect(page.locator('[data-slot="message-source"]')).toHaveCount(0);
       const disclosure = card.getByRole("button", {
         name: "Side-chat shared to-dos and merge-back memory",
       });
@@ -45,11 +44,11 @@ test("incoming report owns its source before and after recap/reload", async () =
       await expect(card.locator('[data-streamdown="code-block-body"]')).toContainText(
         "const merged = false;",
       );
-      await expect(
-        card
-          .getByRole("link", { name: "Side-chat shared to-dos and merge-back memory", exact: true })
-          .last(),
-      ).toHaveAttribute("href", "cake://session/visual-incoming-report?message=original-result");
+      await expect(card.locator('[data-slot="message-source"]')).toHaveCount(1);
+      await expect(card.getByRole("link", { name: "Full response", exact: true })).toHaveAttribute(
+        "href",
+        "cake://session/visual-incoming-report?message=original-result",
+      );
       await disclosure.click();
       await expect(disclosure).toHaveAttribute("aria-expanded", "false");
       await expect(page.getByText("No code has changed. Shall we review the plan?")).toBeVisible();
@@ -125,9 +124,9 @@ for (const state of ["default", "project", "reference"]) {
       const card = page.getByRole("region", { name: "Message from another session" }).first();
       await expect(card.getByRole("heading", { name: "Completed" })).toBeVisible();
       await expect(card).toHaveCSS("border-width", "1px");
-      await expect(card).toHaveCSS("border-radius", "16px");
-      await expect(card.locator("header")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-      await expect(card.locator("header")).toHaveCSS("border-bottom-width", "0px");
+      await expect(card).toHaveCSS("border-radius", "10px");
+      // One title row: the sender's title is not repeated in a second header.
+      await expect(card.locator('[data-slot="response-disclosure"]')).toHaveCount(1);
       await expect(card.locator('[data-slot="message-content"]')).toHaveCSS("border-width", "0px");
       await expect(card).not.toContainText("cake-session-message");
       const message = card.locator("..");
@@ -143,9 +142,7 @@ for (const state of ["default", "project", "reference"]) {
       expect(copied).not.toContain("cake-session-message");
       if (state === "reference") {
         const reply = page.getByRole("region", { name: "Message from another session" }).last();
-        await expect(reply.locator('[data-slot="message-source"]')).toHaveText(
-          "Add and globally install manual post-mortem skill",
-        );
+        await expect(reply.locator('[data-slot="message-source"]')).toHaveCount(0);
         await expect(reply).not.toContainText("Referenced Cake messages");
         await expect(reply).not.toContainText("messages.read");
         const replyMessage = reply.locator("..");
@@ -156,11 +153,14 @@ for (const state of ["default", "project", "reference"]) {
             exact: true,
           }),
         ).toBeVisible();
-        const original = page.locator('[data-slot="response-disclosure"]');
+        const original = reply.getByRole("button", {
+          name: "Add and globally install manual post-mortem skill",
+          exact: true,
+        });
         await original.focus();
         await original.press("Enter");
         await expect(page.getByRole("heading", { name: "Skill installed" })).toBeVisible();
-        await page.getByRole("button", { name: "Copy message", exact: true }).click();
+        await reply.getByRole("button", { name: "Copy message", exact: true }).click();
         await expect(
           page.getByRole("button", { name: "Copied message", exact: true }),
         ).toBeVisible();
@@ -180,17 +180,15 @@ for (const state of ["default", "project", "reference"]) {
       await context.click();
       if (state === "project") {
         const fallback = page.getByRole("region", { name: "Message from another session" }).last();
-        await expect(fallback).toContainText("Source title not recorded");
+        await expect(fallback.getByRole("button", { name: "Untitled session" })).toBeVisible();
         await expect(fallback).toContainText("Historical report from a now-unavailable session.");
-        await fallback.getByRole("link", { name: "Untitled session", exact: true }).click();
+        await fallback.getByRole("link", { name: "Open conversation", exact: true }).click();
         await expect(
           page.getByText("Cake could not find Project Session missing-session", { exact: true }),
         ).toBeVisible();
         await expect(card).toBeVisible();
       }
-      const source = card.getByRole("link", {
-        name: "Add and globally install manual post-mortem skill",
-      });
+      const source = card.getByRole("link", { name: "Open conversation", exact: true });
       await expect(source).toHaveAttribute("href", "cake://session/visual-report-source");
       await source.focus();
       await expect(source).toBeFocused();

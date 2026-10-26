@@ -256,7 +256,9 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
       .locator('[data-slot="session-message"]')
       .filter({ has: page.getByRole("heading", { name: "Markdown delivery test", exact: true }) });
     await expect(initialMessage).toBeVisible();
-    await expect(initialMessage.locator("header")).toContainText("Cake Chat");
+    await expect(
+      initialMessage.getByRole("button", { name: "Cake Chat", exact: true }),
+    ).toBeVisible();
     await expect(initialMessage.locator('[data-streamdown="strong"]')).toHaveText(
       "clearly Markdown",
     );
@@ -288,7 +290,9 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
     const followUpMessage = panel
       .locator('[data-slot="session-message"]')
       .filter({ has: page.getByRole("heading", { name: "Assistant follow-up", exact: true }) });
-    await expect(followUpMessage.locator("header")).toContainText("Cake Chat");
+    await expect(
+      followUpMessage.getByRole("button", { name: "Cake Chat", exact: true }),
+    ).toBeVisible();
     await expect(followUpMessage.locator('[data-streamdown="strong"]')).toHaveText("Recheck");
     await expect(followUpMessage.locator("code")).toHaveText("limit");
     await expect(
@@ -321,8 +325,12 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
     await log.getByRole("button", { name: "Open subagent chat" }).first().click();
     await expect(initialMessage).toBeVisible();
     await expect(followUpMessage).toBeVisible();
-    await expect(initialMessage.locator("header")).toContainText("Cake Chat");
-    await expect(followUpMessage.locator("header")).toContainText("Cake Chat");
+    await expect(
+      initialMessage.getByRole("button", { name: "Cake Chat", exact: true }),
+    ).toBeVisible();
+    await expect(
+      followUpMessage.getByRole("button", { name: "Cake Chat", exact: true }),
+    ).toBeVisible();
     await expect(
       panel.locator('[data-slot="message-label"]').filter({ hasText: /^You$/ }),
     ).toHaveCount(1);

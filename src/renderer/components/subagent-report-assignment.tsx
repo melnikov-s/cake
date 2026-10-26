@@ -1,28 +1,24 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { SubagentReportOrigin } from "../../contracts/subagents/subagent-data";
-import { subagentReportHeading } from "../lib/subagent-report-presentation";
-import { MessageLabel } from "./ai-elements/message";
-import { MessageDisclosure } from "./ui/message-disclosure";
+import { DisclosureTrigger } from "./ui/disclosure-trigger";
 
-export function SubagentReportHeader({ report }: { report: SubagentReportOrigin }) {
+/** The worker's assignment, collapsed above its findings; the card shows name and status. */
+export function SubagentReportAssignment({ report }: { report: SubagentReportOrigin }) {
   const [open, setOpen] = useState(false);
+  const contentId = useId();
   return (
-    <div className="mb-2 space-y-1.5">
-      <MessageLabel className="mb-0 text-foreground">
-        <span role="heading" aria-level={3}>
-          {subagentReportHeading(report)}
-        </span>
-        <span className="ml-2 font-normal text-muted-foreground">
-          Worker {report.handleId.slice(0, 8)}
-        </span>
-      </MessageLabel>
-      <MessageDisclosure
+    <div className="min-w-0">
+      <DisclosureTrigger
+        data-slot="assignment-disclosure"
         title="Assignment details"
+        chevronPosition="start"
+        className="w-fit rounded-md px-1.5 py-1 text-xs text-muted-foreground outline-none hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         open={open}
-        onToggle={() => setOpen(!open)}
-        triggerSlot="assignment-disclosure"
-      >
-        <div className="space-y-2 text-xs text-muted-foreground">
+        aria-controls={open ? contentId : undefined}
+        onClick={() => setOpen(!open)}
+      />
+      {open && (
+        <div id={contentId} className="space-y-2 px-1.5 pt-1.5 text-xs text-muted-foreground">
           <p className="whitespace-pre-wrap break-words text-foreground">{report.task}</p>
           <dl className="space-y-1 break-words">
             <div>
@@ -42,7 +38,7 @@ export function SubagentReportHeader({ report }: { report: SubagentReportOrigin 
             </div>
           </dl>
         </div>
-      </MessageDisclosure>
+      )}
     </div>
   );
 }

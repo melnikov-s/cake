@@ -117,8 +117,10 @@ it("renders authoritative live and replayed reports as Markdown subagent respons
     expect(response).not.toBeNull();
     expect(response.getAttribute("aria-label")).toBe("Subagent complete");
     expect(
-      within(response as HTMLElement).getByRole("heading", { name: "Subagent complete" }),
-    ).toBeDefined();
+      within(response as HTMLElement).getByRole("button", {
+        name: `Worker ${researchOrigin.handleId.slice(0, 8)}`,
+      }).textContent,
+    ).toBe(`Worker ${researchOrigin.handleId.slice(0, 8)}Completed`);
     const details = within(response as HTMLElement).getByRole("button", {
       name: "Assignment details",
     });

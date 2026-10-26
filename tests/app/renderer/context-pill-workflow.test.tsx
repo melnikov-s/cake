@@ -162,10 +162,11 @@ describe("Context visibility through the authoritative projection and shared Cha
         screen.getByRole("button", { name: "Review result" }).getAttribute("aria-expanded"),
       ).toBe("false");
       expect(
-        view.container
-          .querySelector("[data-message-reference]")
-          ?.getAttribute("data-message-reference"),
-      ).toBe(ref);
+        screen
+          .getByRole("status", { name: "Session results" })
+          .querySelectorAll('[data-slot="session-message"]'),
+      ).toHaveLength(1);
+      expect(view.container.querySelector("[data-message-reference]")).toBeNull();
       expect(screen.queryByText(/Answer the user's current message first/)).toBeNull();
     } finally {
       view.unmount();

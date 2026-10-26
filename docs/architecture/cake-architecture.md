@@ -450,8 +450,9 @@ is a refactoring signal, not precedent.
   and toggles through the same user done/reopen mutation as the pane. Exact-message links
   match their original, not every message from that sender. Removing an item removes its
   association rows. Project Sessions and secondary chats reuse their owning Project/parent
-  list without opening or waking Project Chat. Incoming dropdowns share MessageDisclosure;
-  batching, source ownership and lifecycle remain unchanged.
+  list without opening or waking Project Chat. Every incoming card is one SessionMessage
+  summary row whose Done checkbox names its to-do; batching, source ownership and
+  lifecycle remain unchanged.
 - **Global Cake Chat to-dos** reuse the same schema, tools, baseline and pane, stored as one
   separate application-level list (`cakeChatTodos`, scope `CAKE_CHAT_TODO_SCOPE`) rather
   than inside any Project. Its links may target sessions, workers and messages in any

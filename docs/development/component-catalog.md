@@ -63,7 +63,7 @@ join the composer without reserved vertical space.
 controls attached above the shared composer. Activity occupies its top band, with
 worktree tools beneath it when present. Empty caps collapse without reserved space.
 
-[`SessionResultNotice`](../../src/renderer/components/ui/session-result-notice.tsx) contains one title-and-chevron disclosure per application-delivered report or unique batch note, independently of model prose. Repeated exact reports are consolidated; `SessionUpdateEntry` reuses `InlineMessageSource` for lazy original access. Batch-only notes expand in place. Each attributed entry keeps its linked to-do row outside the disclosure so it remains visible when collapsed.
+[`SessionResultNotice`](../../src/renderer/components/ui/session-result-notice.tsx) contains one `SessionMessage` card per application-delivered report or unique batch note, independently of model prose. Repeated exact reports are consolidated; `SessionUpdateEntry` passes the exact original to the card for lazy access. Batch-only notes expand in place.
 
 `ContextUsageButton` presents a compact context icon and estimated total/limit, with a subtle cache-freshness underline. It opens the shared Context Browser, which retains the full system, memory, messages and baseline accounting. The accessible description includes the breakdown; cache color never represents context health or retention.
 
@@ -121,15 +121,14 @@ and [`ChatStore`](../../src/renderer/stores/ChatStore.ts).
 [`CopyReferenceButton`](../../src/renderer/components/ui/copy-reference-button.tsx) copies an
 exact attachment link with shared feedback. It never reads message bodies; the parent
 supplies the addressable session identity. Original-message previews reuse `FullscreenSurface` with bounded source pages.
-[`InlineMessageSource`](../../src/renderer/components/inline-message-source.tsx) composes
-`MessageDisclosure` with a title-only header, shared Markdown and pagination for lazy
-source access within every chat surface. Consolidated notifications, receipt-only
-session cards and linked originals use this same viewer. Opening reads the exact
-source on demand. The expanded header contains only its linked response/session title
-and copy action, followed directly by the content. There is no separate collapsed
-summary; loading, unavailable and
-empty states appear inside the disclosure. The transcript scroll owner pauses
-bottom-follow before expansion to preserve the response start.
+[`MessageSourceBody`](../../src/renderer/components/message-source-body.tsx) renders an
+exact original with shared Markdown and pagination inside a `SessionMessage` card.
+Consolidated notifications, receipt-only session cards and linked originals use this
+same viewer; the card owns the title, expansion, copy action and "Full response" link.
+A delivered message that has its own text shows the original behind a nested
+`OriginalResponse` disclosure instead. Opening reads the exact source on demand;
+loading, unavailable and empty states appear in the body. The transcript scroll owner
+pauses bottom-follow before expansion to preserve the response start.
 It reuses `MessageReferencePreviewStore`;
 only the exact reference persists in Pi, never the retrieved body. Expanding loads supported
 Markdown images from any local path, resolving relative paths against the producer's
@@ -149,17 +148,20 @@ a sent image hands its pixels to the saved reference, older ones load for displa
 collision-aware session suffix while retaining the canonical UUID in its link and
 destination tooltip. Use it for identity metadata where the session context is clear.
 
-[`MessageDisclosure`](../../src/renderer/components/ui/message-disclosure.tsx) owns the shared incoming-message dropdown layout: leading chevron, wrapping title, quiet hover/focus treatment and an uncapped content area that scrolls with the transcript, never inside the card. Source readers, batch notes and worker assignment details use it rather than assembling their own layouts. Owners supply expansion state and lazy loading. Delivered inline messages start expanded so immediate prompts remain readable; exact originals remain lazy. To-do associations stay outside the collapsible area.
-
-[`SessionMessage`](../../src/renderer/components/ui/session-message.tsx) presents
-incoming session communication with lightweight attribution (source-session link
-and status/metadata badges) inside the standard message outline, without a shaded
-header, nested border, or transport-envelope UI.
-Delivered messages use assistant-style Markdown and copy-only actions; exact
-original references remain available through lazy `InlineMessageSource` disclosures.
+[`SessionMessage`](../../src/renderer/components/session-message.tsx) presents every
+message from another session (replies, requests, notices, worker reports, batch notes
+and exact originals) as one summary row: chevron, the sender's title (shown once, never
+repeated in the body), status badges, a one-line preview while collapsed, and an
+icon-only Done checkbox per linked to-do whose tooltip names the to-do. Expanding shows
+the whole message with no height cap or nested scroller, then a footer with the linked
+to-do titles and a link to the original ("Full response" for an exact message, otherwise
+"Open conversation"). Delivered inline messages start expanded so immediate prompts
+remain readable; exact originals start collapsed and load lazily. Done checkboxes stay
+in the row, so associations remain visible when collapsed.
+Delivered messages use assistant-style Markdown and copy-only actions.
 Use recorded provenance;
-do not infer the sender from message text. Missing source identity/title is
-disclosed, not invented. Badges and bodies come from
+do not infer the sender from message text. A missing source title reads "Untitled
+session" and missing identity "Source session unavailable", never an invented name. Badges and bodies come from
 [`crossSessionPresentation`](../../src/renderer/lib/cross-session-presentation.ts),
 which reads Cake's own report/notice wording through the parser colocated with the
 envelope format in `cross-session-message.ts`. System/reminder context remains `ContextPill`.

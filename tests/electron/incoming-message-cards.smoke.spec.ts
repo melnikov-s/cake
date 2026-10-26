@@ -6,8 +6,8 @@ import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenario
 
 const repository = resolve(import.meta.dirname, "../..");
 for (const theme of ["dark", "light"] as const)
-  test(`incoming dropdowns share one layout and keep to-dos visible (${theme})`, async () => {
-    const root = await mkdtemp(join(tmpdir(), "cake-incoming-dropdowns-"));
+  test(`incoming cards share one summary row and keep to-dos visible (${theme})`, async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-incoming-cards-"));
     const paths = {
       cakeHome: join(root, "cake"),
       project: join(root, "project"),
@@ -40,23 +40,30 @@ for (const theme of ["dark", "light"] as const)
       const batch = page
         .locator('[data-slot="session-message"]')
         .filter({ has: page.getByRole("checkbox", { name: "Done: Draft the release notes" }) });
-      const reportToggle = report.locator('[data-slot="incoming-body-disclosure"]');
-      const sourceToggle = source.locator('[data-slot="response-disclosure"]');
-      const batchToggle = batch.locator('[data-slot="response-disclosure"]');
+      const toggle = (card: typeof source) => card.locator('[data-slot="response-disclosure"]');
+      const reportToggle = toggle(report);
+      const sourceToggle = toggle(source);
+      const batchToggle = toggle(batch);
+      // Every incoming card is one summary row with one title, not a title plus a dropdown.
       const skin = await sourceToggle.getAttribute("class");
-      for (const toggle of [reportToggle, sourceToggle, batchToggle]) {
-        await expect(toggle).toHaveAttribute("class", skin!);
-        await expect(toggle).toHaveAttribute("aria-expanded", "false");
-      }
-      for (const card of [report, source, batch]) {
+      for (const [card, title] of [
+        [report, "Worker 10000000"],
+        [source, "Fix the flaky build"],
+        [batch, "Draft the release notes"],
+      ] as const) {
+        await expect(toggle(card)).toHaveCount(1);
+        await expect(toggle(card)).toHaveAttribute("class", skin!);
+        await expect(toggle(card)).toHaveAttribute("aria-expanded", "false");
+        await expect(toggle(card)).toHaveAttribute("aria-label", title);
         const association = card.getByRole("group", { name: "Linked to-dos" });
         await expect(association).toBeVisible();
-        expect(
-          await association.evaluate(
-            (node) => node.closest('[data-slot="message-disclosure"]') === null,
-          ),
-        ).toBe(true);
+        expect(await association.evaluate((node) => node.closest("button") === null)).toBe(true);
       }
+      // The icon-only Done control names the to-do it resolves.
+      const sourceDone = source.getByRole("checkbox", { name: "Done: Fix the flaky build" });
+      await sourceDone.hover();
+      await expect(page.getByRole("tooltip")).toHaveText("Mark done: Fix the flaky build");
+      await page.mouse.move(1, 1);
       // Keyboard expansion and the exact lazy source retain real Markdown/code rendering.
       await sourceToggle.focus();
       await sourceToggle.press("Enter");
@@ -64,29 +71,29 @@ for (const theme of ["dark", "light"] as const)
       await expect(source.locator('[data-streamdown="code-block-body"]')).toContainText(
         "const ready = true;",
       );
+      await expect(source.getByText("To-do · Fix the flaky build")).toBeVisible();
+      await expect(source.getByRole("link", { name: "Full response", exact: true })).toBeVisible();
       await sourceToggle.press("Enter");
-      await expect(
-        source.getByRole("checkbox", { name: "Done: Fix the flaky build" }),
-      ).toBeVisible();
-      await source.getByRole("checkbox", { name: "Done: Fix the flaky build" }).click();
-      await expect(
-        source.getByRole("checkbox", { name: "Done: Fix the flaky build" }),
-      ).toHaveAttribute("aria-checked", "true");
+      await expect(sourceDone).toBeVisible();
+      await sourceDone.click();
+      await expect(sourceDone).toHaveAttribute("aria-checked", "true");
+      await sourceDone.hover();
+      await expect(page.getByRole("tooltip")).toHaveText("Reopen: Fix the flaky build");
+      await page.mouse.move(1, 1);
       await batchToggle.click();
-      await expect(batch.getByText(/Draft ready for review/)).toBeVisible();
+      await expect(batch.getByText(/Draft ready for review/).last()).toBeVisible();
       await batchToggle.click();
       await expect(
         batch.getByRole("checkbox", { name: "Done: Draft the release notes" }),
       ).toBeVisible();
       await reportToggle.click();
-      const assignment = report.getByRole("button", { name: "Assignment details" });
-      await expect(assignment).toHaveAttribute("class", skin!);
+      await expect(report.getByRole("button", { name: "Assignment details" })).toBeVisible();
       await reportToggle.click();
       await expect(
         report.getByRole("checkbox", { name: "Done: Research the publication check" }),
       ).toBeVisible();
       await page.reload();
-      await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+      await page.getByRole("button", { name: "Cake Chat", exact: true }).first().click();
       await expect(report).toBeVisible();
       await expect(sourceToggle).toHaveAttribute("aria-expanded", "false");
       await expect(

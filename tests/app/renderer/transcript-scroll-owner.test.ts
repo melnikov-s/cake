@@ -225,9 +225,9 @@ describe("transcript scroll owner following", () => {
     owner.reconcile();
   };
 
-  function disclosure(expanded = false, slot = "response-disclosure") {
+  function disclosure(expanded = false) {
     const trigger = document.createElement("button");
-    trigger.dataset.slot = slot;
+    trigger.dataset.slot = "response-disclosure";
     trigger.setAttribute("aria-expanded", String(expanded));
     scroller.firstElementChild!.append(trigger);
     return trigger;
@@ -240,13 +240,6 @@ describe("transcript scroll owner following", () => {
     expect(scroller.scrollTop).toBe(3_400);
     // The original can load later; pausing is not limited to the first resize.
     grow(600);
-    expect(scroller.scrollTop).toBe(3_400);
-  });
-
-  it("pauses following when a collapsed incoming message body is reopened", () => {
-    const trigger = disclosure(false, "incoming-body-disclosure");
-    trigger.addEventListener("click", () => grow(1_800));
-    trigger.click();
     expect(scroller.scrollTop).toBe(3_400);
   });
 

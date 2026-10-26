@@ -11,19 +11,14 @@ import {
   type RefObject,
 } from "react";
 import { observer } from "r-state-tree/react";
-import {
-  isStandaloneDiagram,
-  Markdown,
-  useMarkdownLinkActions,
-} from "@/components/ai-elements/markdown";
+import { isStandaloneDiagram, Markdown } from "@/components/ai-elements/markdown";
 import { cakeHotkeyEventName } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 import { rangeAtOffsets, useMessageHighlights } from "@/lib/message-highlights";
 import { Message, MessageContent, MessageLabel } from "@/components/ai-elements/message";
 import { FullscreenMessage } from "@/components/fullscreen-message";
 import { FullscreenButton } from "@/components/ui/fullscreen-button";
-import { SessionMessage } from "@/components/ui/session-message";
-import { MessageDisclosure } from "@/components/ui/message-disclosure";
+import { SessionMessage } from "@/components/session-message";
 import { IconButton } from "@/components/ui/icon-button";
 import {
   ChatIcon,
@@ -47,11 +42,15 @@ import type { ProjectTodosStore } from "../stores/ProjectTodosStore";
 import type { SideChatTarget } from "../stores/SideChatStore";
 import type { MessageCommentAnchorRect } from "./message-comment-anchor";
 import { describeScheduledOrigin } from "../../utils/scheduled-message-time";
-import { SubagentReportHeader } from "./subagent-report-header";
-import { subagentReportFindings, subagentReportHeading } from "../lib/subagent-report-presentation";
+import { SubagentReportAssignment } from "./subagent-report-assignment";
+import {
+  subagentReportBadge,
+  subagentReportFindings,
+  subagentReportHeading,
+} from "../lib/subagent-report-presentation";
 import { crossSessionPresentation } from "../lib/cross-session-presentation";
-import { InlineMessageSource } from "./inline-message-source";
-import { ResultTodoFooter } from "./result-todo-done";
+import type { MessageReferencePreviewStore } from "../stores/MessageReferencePreviewStore";
+import type { ResultTodoLink } from "./result-todo-done";
 import { resultTodoOrigin } from "../lib/result-todo-origin";
 
 export function chatWorkIsActive(
@@ -88,10 +87,11 @@ export const ChatTextMessage = forwardRef<
     onMouseLeave?: MouseEventHandler<HTMLElement>;
     onOpenSourceLocation?(location: SourceLocation): void;
     omitArtifactEmbeds?: readonly string[];
-    sourceResponse?: ReactNode;
-    reportSource?: { title: string; href?: string };
-    /** Rendered inside the message container, after its content (e.g. linked to-do bar). */
-    footer?: ReactNode;
+    /** Exact originals that carry the content of an incoming receipt. */
+    sources?: readonly MessageReferencePreviewStore[];
+    reportSource?: { href?: string };
+    /** To-dos tracking an incoming message, with Done checkboxes on its card. */
+    todo?: ResultTodoLink;
   }
 >(function ChatTextMessage(
   {
@@ -102,24 +102,13 @@ export const ChatTextMessage = forwardRef<
     onMouseLeave,
     onOpenSourceLocation,
     omitArtifactEmbeds,
-    sourceResponse,
+    sources = [],
     reportSource,
-    footer,
+    todo,
   },
   ref,
 ) {
   const report = part.subagentReport;
-  const [incomingExpanded, setIncomingExpanded] = useState(true);
-  const linkActions = useMarkdownLinkActions();
-  const sender = part.crossSession?.sender;
-  const sourceTitle =
-    (sender ? linkActions?.sessionTitle?.(sender.sessionId) : undefined) ?? sender?.title;
-  const incomingTitle =
-    sourceTitle &&
-    sourceTitle !== sender?.sessionId &&
-    sourceTitle !== `Session ${sender?.sessionId}`
-      ? sourceTitle
-      : "Message";
   const crossSession = useMemo(
     () => (part.crossSession ? crossSessionPresentation(part.text, part.crossSession) : undefined),
     [part.text, part.crossSession],
@@ -194,39 +183,20 @@ export const ChatTextMessage = forwardRef<
       {part.crossSession || report ? (
         <SessionMessage
           source={part.crossSession?.sender ?? reportSource}
+          title={report ? `Worker ${report.handleId.slice(0, 8)}` : undefined}
           relation={crossSession?.relation}
-          badges={crossSession?.badges}
-          footer={footer}
+          badges={report ? [subagentReportBadge(report)] : crossSession?.badges}
+          preview={text}
+          sources={content ? undefined : sources}
+          originals={content ? sources : undefined}
+          todo={todo}
         >
-          {content && (
-            <div className="px-5">
-              {sourceResponse ? (
-                <div className="py-2">
-                  {report && <SubagentReportHeader key={part.id} report={report} />}
-                  {content}
-                </div>
-              ) : (
-                <MessageDisclosure
-                  title={report ? subagentReportHeading(report) : incomingTitle}
-                  open={incomingExpanded}
-                  onToggle={() => setIncomingExpanded(!incomingExpanded)}
-                  triggerSlot="incoming-body-disclosure"
-                  ariaLabel={`Message: ${report ? subagentReportHeading(report) : incomingTitle}`}
-                >
-                  {report && <SubagentReportHeader key={part.id} report={report} />}
-                  {content}
-                </MessageDisclosure>
-              )}
-            </div>
-          )}
-          {(sourceResponse || crossSession?.sourceResponse) && (
-            <div className="flex flex-col gap-3 px-5">
-              {sourceResponse ?? (
-                <p className="text-sm text-muted-foreground">
-                  Original response unavailable: no exact source reference was recorded.
-                </p>
-              )}
-            </div>
+          {report && <SubagentReportAssignment key={part.id} report={report} />}
+          {content}
+          {crossSession?.sourceResponse && !sources.length && (
+            <p className="text-sm text-muted-foreground">
+              Original response unavailable: no exact source reference was recorded.
+            </p>
           )}
         </SessionMessage>
       ) : (
@@ -485,23 +455,11 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
       contentRef={contentRef}
       onOpenSourceLocation={behavior.openSourceLocation}
       omitArtifactEmbeds={publishedArtifactReferences}
-      footer={
-        <ResultTodoFooter
-          origin={resultTodoOrigin(part, behavior.messageReferenceSessionId ?? behavior.store.id)}
-          todos={behavior.todos}
-        />
-      }
-      sourceResponse={
-        sources.length
-          ? sources.map((source) => (
-              <InlineMessageSource
-                key={source.props.reference}
-                store={source}
-                sourceSession={part.crossSession?.sender}
-              />
-            ))
-          : undefined
-      }
+      todo={{
+        origin: resultTodoOrigin(part, behavior.messageReferenceSessionId ?? behavior.store.id),
+        todos: behavior.todos,
+      }}
+      sources={sources}
     >
       {behavior.showAssistantFullscreen !== false && canOpenFullscreen && (
         <FullscreenButton
