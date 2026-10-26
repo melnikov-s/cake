@@ -371,17 +371,17 @@ for (const [delivery, theme] of [
             true,
           );
         }
+        const edges = async (source: typeof first) =>
+          source.locator('[data-slot="response-disclosure"]').evaluate(async (button) => {
+            await Promise.all(
+              button.getAnimations({ subtree: true }).map((animation) => animation.finished),
+            );
+            return {
+              title: button.querySelector("span")!.getBoundingClientRect().left,
+              chevron: button.querySelector("svg")!.getBoundingClientRect().right,
+            };
+          });
         const verifyHeadingAlignment = async () => {
-          const edges = async (source: typeof first) =>
-            source.locator('[data-slot="response-disclosure"]').evaluate(async (button) => {
-              await Promise.all(
-                button.getAnimations({ subtree: true }).map((animation) => animation.finished),
-              );
-              return {
-                title: button.querySelector("span")!.getBoundingClientRect().left,
-                chevron: button.querySelector("svg")!.getBoundingClientRect().right,
-              };
-            });
           const standalone = await edges(first);
           const batched = await edges(notification);
           expect(batched.title).toBeCloseTo(standalone.title, 0);
@@ -392,6 +392,7 @@ for (const [delivery, theme] of [
           expect(nested.chevron).toBeCloseTo(standalone.chevron, 0);
         };
         await verifyHeadingAlignment();
+        const collapsedEdges = await edges(first);
         const missing = page.locator(
           '[data-message-reference="cake://session/deleted-producer?message=deleted-entry"]',
         );
@@ -412,7 +413,11 @@ for (const [delivery, theme] of [
         await expect(
           first.getByRole("heading", { name: "Original detailed findings" }),
         ).toBeVisible();
-        await verifyHeadingAlignment();
+        // The full-height body can push the other cards out of the virtual range, so compare
+        // the open header with its own collapsed edges, which matched every other path.
+        const openEdges = await edges(first);
+        expect(openEdges.title).toBeCloseTo(collapsedEdges.title, 0);
+        expect(openEdges.chevron).toBeCloseTo(collapsedEdges.chevron, 0);
         await expect(first.locator('[data-streamdown="code-block-body"]')).toContainText(
           "const evidence",
         );

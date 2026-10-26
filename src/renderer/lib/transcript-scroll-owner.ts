@@ -4,7 +4,7 @@
  * The rule is deliberately small:
  *
  * - While the reader is at the bottom, the transcript follows new content.
- * - Opening a response pauses following, preserving its header for reading.
+ * - Opening a response or incoming message pauses following, preserving its header for reading.
  * - Anywhere else, the transcript never scrolls for the reader. Layout changes
  *   (streaming text, new messages, tool output, cards, virtual measurement,
  *   viewport resizes) are compensated so the row at the top of the viewport
@@ -325,7 +325,9 @@ export function createTranscriptScrollOwner(
   const handleDisclosureClick = (event: MouseEvent) => {
     if (
       !(event.target instanceof Element) ||
-      !event.target.closest('[data-slot="response-disclosure"][aria-expanded="false"]')
+      !event.target.closest(
+        ':is([data-slot="response-disclosure"], [data-slot="incoming-body-disclosure"])[aria-expanded="false"]',
+      )
     )
       return;
     cancelReveal();

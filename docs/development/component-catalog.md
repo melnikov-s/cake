@@ -149,7 +149,7 @@ a sent image hands its pixels to the saved reference, older ones load for displa
 collision-aware session suffix while retaining the canonical UUID in its link and
 destination tooltip. Use it for identity metadata where the session context is clear.
 
-[`MessageDisclosure`](../../src/renderer/components/ui/message-disclosure.tsx) owns the shared incoming-message dropdown layout: leading chevron, wrapping title, quiet hover/focus treatment and bounded content area. Source readers, batch notes and worker assignment details use it rather than assembling their own layouts. Owners supply expansion state and lazy loading. Delivered inline messages start expanded so immediate prompts remain readable; exact originals remain lazy. To-do associations stay outside the collapsible area.
+[`MessageDisclosure`](../../src/renderer/components/ui/message-disclosure.tsx) owns the shared incoming-message dropdown layout: leading chevron, wrapping title, quiet hover/focus treatment and an uncapped content area that scrolls with the transcript, never inside the card. Source readers, batch notes and worker assignment details use it rather than assembling their own layouts. Owners supply expansion state and lazy loading. Delivered inline messages start expanded so immediate prompts remain readable; exact originals remain lazy. To-do associations stay outside the collapsible area.
 
 [`SessionMessage`](../../src/renderer/components/ui/session-message.tsx) presents
 incoming session communication with lightweight attribution (source-session link

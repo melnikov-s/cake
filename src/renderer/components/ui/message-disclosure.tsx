@@ -1,7 +1,11 @@
 import { useId, type ReactNode } from "react";
 import { DisclosureTrigger } from "./disclosure-trigger";
 
-/** One disclosure layout for incoming messages, batch notes and original-source readers. */
+/**
+ * One disclosure layout for incoming messages, batch notes and original-source readers.
+ * The open body is never height-capped: the transcript is the only scroller, so a long
+ * message reads like any assistant reply and collapsing is the way to shorten it.
+ */
 export function MessageDisclosure({
   title,
   open,
@@ -34,7 +38,7 @@ export function MessageDisclosure({
       {open && (
         <div
           id={contentId}
-          className="flex max-h-[65vh] min-w-0 flex-col gap-3 overflow-y-auto border-t border-border/60 px-2 pt-3 pb-2"
+          className="flex min-w-0 flex-col gap-3 border-t border-border/60 px-2 pt-3 pb-2"
         >
           {children}
         </div>
