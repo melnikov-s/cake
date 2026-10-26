@@ -14,6 +14,8 @@ import {
   queuedUserMessageDisplay,
 } from "../pi/runtime/session-projection";
 import { splitContextReminders } from "../pi/runtime/session-context-reminders";
+import { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
+import { addPresentationModeReminder } from "../../contracts/conversations/presentation-mode-reminders";
 
 import { SubagentReportOrigin } from "../../contracts/subagents/subagent-data";
 import {
@@ -23,6 +25,8 @@ import {
 
 const Presentation = Schema.Struct({
   textLength: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  /** Start of the original user text, after any injected presentation reminder. */
+  textOffset: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
   markdown: Schema.Boolean,
   internal: Schema.optionalKey(InternalInput),
   steering: Schema.optionalKey(Schema.Boolean),
@@ -31,6 +35,7 @@ const Presentation = Schema.Struct({
   subagentReport: Schema.optionalKey(SubagentReportOrigin),
   /** Effective response mode of this input; absent on inputs admitted before voice support. */
   responseMode: Schema.optionalKey(ConversationResponseMode),
+  presentationMode: Schema.optionalKey(ProjectSessionPresentationMode),
 });
 const prefix = /^<cake-input-presentation>([^\n]*)<\/cake-input-presentation>\n/;
 
@@ -43,8 +48,8 @@ export interface DurableInputResponse {
 /** Tiny admission metadata travels with the SDK's durable queued content, not a
  * second history or a lifetime map. Selected source text remains in promptText's
  * existing attachment envelope; image bytes remain only in their image blocks.
- * The recorded response mode lets the next admission find the previous mode from
- * the newest Cake input alone, so a restart recovers it without a second store. */
+ * Recorded presentation/response modes let the next admission find the previous
+ * modes from the newest Cake input, so restart recovery needs no second store. */
 export function durableInputText(
   text: string,
   attachments: readonly Attachment[],
@@ -53,20 +58,30 @@ export function durableInputText(
   subagentReport?: SubagentReportOrigin,
   response: DurableInputResponse = { mode: "text", remind: false },
   internal?: InternalInput,
+  presentation?: {
+    readonly mode: ProjectSessionPresentationMode;
+    readonly previousMode: ProjectSessionPresentationMode;
+  },
 ) {
+  const body = `${promptText(text, [...attachments])}${subagentReport ? `\n\nWorker provenance: ${JSON.stringify(subagentReport)}` : ""}`;
+  const presented = presentation
+    ? addPresentationModeReminder(body, presentation.previousMode, presentation.mode)
+    : body;
   const metadata = {
     internal,
     subagentReport,
     textLength: text.length,
+    textOffset: presented.length - body.length,
     markdown,
     steering,
     files: attachments.filter((item) => item.kind === "file"),
     imageNames: attachments.flatMap((item) => (item.kind === "image" ? [item.name] : [])),
     responseMode: response.mode,
+    presentationMode: presentation?.mode ?? "normal",
   };
-  const body = `${promptText(text, [...attachments])}${subagentReport ? `\n\nWorker provenance: ${JSON.stringify(subagentReport)}` : ""}`;
-  // The reminder ends the body, at the boundary the shared projection reads as a context pill.
-  return `<cake-input-presentation>${JSON.stringify(metadata).replaceAll("<", "\\u003c")}</cake-input-presentation>\n${response.remind ? addResponseModeReminder(body, response.mode) : body}`;
+  // Presentation guidance starts the body; response guidance ends it. These are
+  // the existing injection boundaries the shared projection reads as context pills.
+  return `<cake-input-presentation>${JSON.stringify(metadata).replaceAll("<", "\\u003c")}</cake-input-presentation>\n${response.remind ? addResponseModeReminder(presented, response.mode) : presented}`;
 }
 
 export function durableInputPresentation(value: string) {
@@ -75,16 +90,19 @@ export function durableInputPresentation(value: string) {
     const decoded = Schema.decodeUnknownOption(Schema.fromJsonString(Presentation))(match[1]);
     if (Option.isSome(decoded)) {
       const body = value.slice(match[0].length);
+      const textOffset = decoded.value.textOffset ?? 0;
       return {
         body,
         subagentReport: decoded.value.subagentReport,
         internal: decoded.value.internal,
-        text: body.slice(0, decoded.value.textLength),
+        text: body.slice(textOffset, textOffset + decoded.value.textLength),
+        textOffset,
         markdown: decoded.value.markdown,
         steering: decoded.value.steering ?? false,
         files: decoded.value.files,
         imageNames: decoded.value.imageNames,
         responseMode: decoded.value.responseMode ?? ("text" as const),
+        presentationMode: decoded.value.presentationMode ?? ("normal" as const),
       };
     }
   }
@@ -92,14 +110,16 @@ export function durableInputPresentation(value: string) {
   return {
     body: value,
     text: value,
+    textOffset: 0,
     markdown: false,
     steering: false,
     files: [],
     imageNames: [],
     subagentReport: undefined,
     internal: undefined,
-    // Not a Cake input, so it carries no response mode of its own.
+    // Not a Cake input, so it carries no modes of its own.
     responseMode: undefined,
+    presentationMode: undefined,
   };
 }
 
@@ -109,11 +129,13 @@ export function markDurableInputSteering(value: string, steering = true): string
     internal: input.internal,
     subagentReport: input.subagentReport,
     textLength: input.text.length,
+    textOffset: input.textOffset,
     markdown: input.markdown,
     steering,
     files: input.files,
     imageNames: input.imageNames,
     responseMode: input.responseMode,
+    presentationMode: input.presentationMode,
   };
   return `<cake-input-presentation>${JSON.stringify(metadata).replaceAll("<", "\\u003c")}</cake-input-presentation>\n${input.body}`;
 }

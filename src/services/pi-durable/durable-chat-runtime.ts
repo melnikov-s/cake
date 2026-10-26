@@ -89,7 +89,8 @@ import {
   setDurableUserMessageMarkdown,
   UserMessagePresentationDoc,
 } from "./durable-message-presentation";
-import { durableInputResponse, previousDurableResponseMode } from "./durable-response-mode";
+import { durableInputResponse, previousDurableInputModes } from "./durable-input-modes";
+import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
 import type { ConversationResponseMode } from "../../contracts/conversations/response-mode-reminders";
 const unsupported = async () => {
   throw new Error(
@@ -449,6 +450,7 @@ export async function createDurableCakeChatRuntime(
     subagentReport?: SubagentReportOrigin,
     responseMode?: ConversationResponseMode,
     internal?: InternalInput,
+    presentationMode?: ProjectSessionPresentationMode,
   ) => {
     // Defense in depth: no caller may submit payload-bearing attachments to the coordinator.
     // Annotations quote Cake Chat's own transcript and stay inline.
@@ -466,12 +468,10 @@ export async function createDurableCakeChatRuntime(
       delivery === "steer" &&
       (await engine.harness.snapshot(LiveDoc, engine.root.id, BACKGROUND_CONTEXT))?.run !==
         undefined;
-    // Voice guidance follows the same transition rule as Project Sessions, read from
-    // the durable inbox and history rather than in-memory state.
-    const response = durableInputResponse(
-      await previousDurableResponseMode(engine.root, await inbox(), delivery),
-      responseMode,
-    );
+    // Presentation and voice guidance follow Project Session transitions, read
+    // from the durable inbox/history rather than a second in-memory mode flag.
+    const previous = await previousDurableInputModes(engine.root, await inbox(), delivery);
+    const response = durableInputResponse(previous.response, responseMode);
     const content = [
       {
         type: "text" as const,
@@ -483,6 +483,7 @@ export async function createDurableCakeChatRuntime(
           subagentReport,
           response,
           internal,
+          { mode: presentationMode ?? previous.presentation, previousMode: previous.presentation },
         ),
       },
       // Reference attachments have no image parts.
@@ -657,7 +658,7 @@ export async function createDurableCakeChatRuntime(
       attachments,
       markdown,
       turnId,
-      _presentation,
+      presentationMode,
       _title,
       responseMode,
       internal,
@@ -672,6 +673,7 @@ export async function createDurableCakeChatRuntime(
         undefined,
         responseMode,
         internal,
+        presentationMode,
       );
       const settled = await submission.wait(BACKGROUND_CONTEXT);
       if (turnId && settled.status !== "unanswered") {

@@ -64,8 +64,13 @@ import { durableAnswer, durableModel, durableModels } from "../../../fixtures/du
 import { cakeChatCacheFreshness } from "../../../../src/contracts/cake-chats/context-policy";
 import {
   durableInputResponse,
-  previousDurableResponseMode,
-} from "../../../../src/services/pi-durable/durable-response-mode";
+  previousDurableInputModes,
+} from "../../../../src/services/pi-durable/durable-input-modes";
+import {
+  addPresentationModeReminder,
+  presentationModeFromReminder,
+} from "../../../../src/contracts/conversations/presentation-mode-reminders";
+import type { ProjectSessionPresentationMode } from "../../../../src/contracts/project-sessions/project-session-presentation";
 import {
   addResponseModeReminder,
   responseModeReminders,
@@ -841,7 +846,7 @@ it("adds voice guidance only on transitions, recovering the mode from durable st
     const inbox =
       (await engine.harness.snapshot(InboxDoc, engine.root.id, BACKGROUND_CONTEXT))?.items ?? [];
     const response = durableInputResponse(
-      await previousDurableResponseMode(engine.root, inbox, "prompt"),
+      (await previousDurableInputModes(engine.root, inbox, "prompt")).response,
       mode,
     );
     const submission = await engine.root.submit(
@@ -879,7 +884,10 @@ it("adds voice guidance only on transitions, recovering the mode from durable st
   cleanup.pop();
 
   const reopened = await fixture(undefined, 20_000, await openNodeSqliteStorage(database));
-  expect(await previousDurableResponseMode(reopened.engine.root, [], "prompt")).toBe("voice");
+  expect(await previousDurableInputModes(reopened.engine.root, [], "prompt")).toEqual({
+    response: "voice",
+    presentation: "normal",
+  });
   expect(await admit(reopened.engine, "Typed again", "typed-2", "text")).toEqual({
     mode: "text",
     remind: true,
@@ -895,6 +903,105 @@ it("adds voice guidance only on transitions, recovering the mode from durable st
     "Typed again",
   ]);
 });
+
+it("keeps exact user text when it quotes a presentation reminder, with or without an injected transition", () => {
+  const text = addPresentationModeReminder("Quoted guidance", "normal", "browser");
+  for (const presentation of [undefined, { mode: "vscode", previousMode: "normal" }] as const) {
+    const encoded = durableInputText(
+      text,
+      [],
+      false,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      presentation,
+    );
+    expect(durableInputPresentation(encoded).text).toBe(text);
+    expect(durableInputPresentation(markDurableInputSteering(encoded)).text).toBe(text);
+  }
+});
+
+it.each(["browser", "vscode"] as const)(
+  "preserves %s context across repeats, background inputs, steering metadata and restart, then discloses return to chat",
+  async (mode) => {
+    const directory = await mkdtemp(join(tmpdir(), "cake-chat-presentation-"));
+    cleanup.unshift(() => rm(directory, { recursive: true, force: true }));
+    const database = join(directory, "chat.sqlite");
+    const f = await fixture(undefined, 20_000, await openNodeSqliteStorage(database));
+    const admit = async (
+      engine: typeof f.engine,
+      text: string,
+      requested: ProjectSessionPresentationMode | undefined,
+    ) => {
+      const previous = await previousDurableInputModes(engine.root, [], "prompt");
+      const encoded = durableInputText(
+        text,
+        [],
+        false,
+        false,
+        undefined,
+        durableInputResponse(previous.response, "voice"),
+        undefined,
+        { mode: requested ?? previous.presentation, previousMode: previous.presentation },
+      );
+      const input = durableInputPresentation(encoded);
+      expect(input.text).toBe(text);
+      expect(input.presentationMode).toBe(requested ?? previous.presentation);
+      const steering = markDurableInputSteering(encoded);
+      expect(durableInputPresentation(steering)).toEqual({ ...input, steering: true });
+      // The editable queue row is still the user's words, never the mode reminder.
+      const queued = durableQueuedParts(
+        { id: 1 as never, mode: "steer", content: steering },
+        "mode-input",
+      );
+      expect(queued).toContainEqual(
+        expect.objectContaining({
+          kind: "text",
+          role: "user",
+          text,
+          queuedInput: expect.objectContaining({ text }),
+        }),
+      );
+      const submission = await engine.root.submit(
+        { type: "input", content: encoded, requestId: text },
+        BACKGROUND_CONTEXT,
+      );
+      await submission.wait(BACKGROUND_CONTEXT);
+      return presentationModeFromReminder(input.body);
+    };
+    expect(await admit(f.engine, "Entered workspace", mode)).toBe(mode);
+    expect(await admit(f.engine, "Same workspace", mode)).toBeUndefined();
+    // Cross-session/report inputs have no UI mode and inherit without a new notice.
+    expect(await admit(f.engine, "Background update", undefined)).toBeUndefined();
+    await f.engine.close();
+    cleanup.pop();
+    const reopened = await fixture(undefined, 20_000, await openNodeSqliteStorage(database));
+    expect(await previousDurableInputModes(reopened.engine.root, [], "prompt")).toEqual({
+      response: "voice",
+      presentation: mode,
+    });
+    expect(await admit(reopened.engine, "After restart", mode)).toBeUndefined();
+    expect(await admit(reopened.engine, "Back to chat", "normal")).toBe("normal");
+    const parts = (await readDurableOriginalPage(reopened.engine.root)).parts;
+    expect(
+      parts
+        .filter((part) => part.kind === "text" && part.role === "user")
+        .map((part) => part.kind === "text" && part.text),
+    ).toEqual([
+      "Entered workspace",
+      "Same workspace",
+      "Background update",
+      "After restart",
+      "Back to chat",
+    ]);
+    expect(
+      parts
+        .filter((part) => part.kind === "context")
+        .map((part) => part.kind === "context" && part.title),
+    ).toEqual(["Cake · presentation mode", "Cake · response mode", "Cake · presentation mode"]);
+  },
+);
 
 it.each(["UserWithReminders", "UpdateBatch"] as const)(
   "renders attributed passive FYIs across durable queue, consumed history and SQLite reload (%s)",
@@ -1056,27 +1163,60 @@ it("renders a durable voice turn with the same context pill as a Project Session
   expect(cakeChat.some((part) => part.kind === "context")).toBe(true);
 });
 
-it("reads the previous mode from queued input ahead of committed history", async () => {
+it("reads the previous modes from queued input ahead of committed history", async () => {
   const f = await fixture();
   await f.send(
-    durableInputText("Spoken", [], false, false, undefined, { mode: "voice", remind: true }),
+    durableInputText(
+      "Spoken",
+      [],
+      false,
+      false,
+      undefined,
+      { mode: "voice", remind: true },
+      undefined,
+      { mode: "browser", previousMode: "normal" },
+    ),
     "voice",
   );
-  const queued = (mode: "steer" | "followUp", response: ConversationResponseMode) => ({
+  const queued = (
+    mode: "steer" | "followUp",
+    response: ConversationResponseMode,
+    presentation: ProjectSessionPresentationMode,
+  ) => ({
     id: 99 as never,
     mode,
-    content: durableInputText("Queued", [], false, false, undefined, {
-      mode: response,
-      remind: false,
-    }),
+    content: durableInputText(
+      "Queued",
+      [],
+      false,
+      false,
+      undefined,
+      {
+        mode: response,
+        remind: false,
+      },
+      undefined,
+      { mode: presentation, previousMode: presentation },
+    ),
   });
   expect(
-    await previousDurableResponseMode(f.engine.root, [queued("followUp", "text")], "prompt"),
-  ).toBe("text");
+    await previousDurableInputModes(
+      f.engine.root,
+      [queued("followUp", "text", "vscode")],
+      "prompt",
+    ),
+  ).toEqual({ response: "text", presentation: "vscode" });
   // Steering lands ahead of follow-ups, so only queued steering precedes it.
   expect(
-    await previousDurableResponseMode(f.engine.root, [queued("followUp", "text")], "steer"),
-  ).toBe("voice");
+    await previousDurableInputModes(f.engine.root, [queued("followUp", "text", "vscode")], "steer"),
+  ).toEqual({ response: "voice", presentation: "browser" });
+  expect(
+    await previousDurableInputModes(
+      f.engine.root,
+      [queued("followUp", "text", "vscode"), queued("steer", "voice", "normal")],
+      "steer",
+    ),
+  ).toEqual({ response: "voice", presentation: "normal" });
   // Inputs admitted before voice support carry no recorded mode and read as text.
   expect(
     durableInputPresentation(

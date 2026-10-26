@@ -1,5 +1,6 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Conversation, InboxItem } from "@earendil-works/pi-durable";
+import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
 import type { ConversationResponseMode } from "../../contracts/conversations/response-mode-reminders";
 import { durableInputPresentation, type DurableInputResponse } from "./durable-input-presentation";
 
@@ -13,42 +14,44 @@ const contentText = (content: string | ReadonlyArray<{ type: string; text?: stri
         .flatMap((block) => (block.type === "text" && block.text ? [block.text] : []))
         .join("\n");
 
+const inputModes = (content: Parameters<typeof contentText>[0]) => {
+  const input = durableInputPresentation(contentText(content));
+  if (input.responseMode === undefined || input.presentationMode === undefined) return undefined;
+  return { response: input.responseMode, presentation: input.presentationMode };
+};
+
 /**
- * The response mode of the newest Cake input the model will have seen before this one:
+ * Modes of the newest Cake input the model will have seen before this one:
  * queued inbox input first (steering sees only the steering lane), then committed history.
- * Every Cake input records its effective mode, so the newest one decides; the durable
- * store is the authority, which keeps the mode correct across restarts and dedup.
+ * Every Cake input records its effective modes, so the durable store recovers them
+ * across restarts without a second store or notices on presentation-only clicks.
  */
-export async function previousDurableResponseMode(
+export async function previousDurableInputModes(
   root: Pick<Conversation, "entries">,
   inbox: readonly InboxItem[],
   delivery: "prompt" | "steer" | "follow-up",
-): Promise<ConversationResponseMode> {
+): Promise<{ response: ConversationResponseMode; presentation: ProjectSessionPresentationMode }> {
   const queued = inbox.filter(
     (item): item is Extract<InboxItem, { content: unknown }> =>
       item.mode !== "write" && (delivery !== "steer" || item.mode === "steer"),
   );
   for (const item of queued.toReversed()) {
-    const mode = durableInputPresentation(contentText(item.content)).responseMode;
-    if (mode) return mode;
+    const modes = inputModes(item.content);
+    if (modes) return modes;
   }
   const page = await root.entries({}, HISTORY_SCAN_LIMIT, undefined, BACKGROUND_CONTEXT);
   for (const entry of page.items) {
     if (entry.kind !== "pi.user") continue;
     for (const message of (entry.model ?? []).toReversed()) {
       if (message.role !== "user") continue;
-      const mode = durableInputPresentation(contentText(message.content)).responseMode;
-      if (mode) return mode;
+      const modes = inputModes(message.content);
+      if (modes) return modes;
     }
   }
-  return "text";
+  return { response: "text", presentation: "normal" };
 }
 
-/**
- * Decide what a new input records. An explicit mode adds guidance only on a transition,
- * like Project Sessions; an input with no mode (worker reports, cross-session messages)
- * keeps the conversation's current mode without adding guidance.
- */
+/** Inputs without an explicit mode (reports, cross-session messages) inherit it silently. */
 export function durableInputResponse(
   previous: ConversationResponseMode,
   requested: ConversationResponseMode | undefined,

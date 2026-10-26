@@ -457,6 +457,81 @@ test("Project Chat isolates history and restores its root workspace, while globa
     await input.press("Enter");
     await expect(input).toHaveValue("");
     expect(requests).toHaveLength(5);
+
+    // A mode click changes presentation only. The next user input carries the
+    // existing Cake reminder and context pill, once per transition.
+    const sendInMode = async (text: string, reminder?: string) => {
+      const before = requests.length;
+      await input.click();
+      await expect(input).toBeFocused();
+      await input.pressSequentially(text);
+      await expect(input).toHaveValue(text);
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+      await input.press("Enter");
+      await expect(page.getByText(`Reply ${before + 1}`, { exact: true })).toBeVisible();
+      expect(requests).toHaveLength(before + 1);
+      const messages = JSON.parse(requests[before]).messages;
+      const latest = messages.findLast((message: { role: string }) => message.role === "user");
+      const content = JSON.stringify(latest.content);
+      expect(content).toContain(text);
+      if (reminder) expect(content).toContain(reminder);
+      expect(content.match(/<system-reminder>/g) ?? []).toHaveLength(reminder ? 1 : 0);
+      // Inspect this input's adjacent context group, not the total number of
+      // mounted pills: older rows can leave the virtualized viewport.
+      const row = transcript()
+        .locator('[data-slot="transcript-item"]')
+        .filter({
+          has: page.getByText(text, { exact: true }),
+        });
+      await expect(row).toBeVisible();
+      const index = Number(await row.getAttribute("data-transcript-item-index"));
+      const previous = transcript().locator(`[data-transcript-item-index="${index - 1}"]`);
+      const pill = previous.getByRole("button", { name: "Cake · presentation mode", exact: true });
+      await expect(pill).toHaveCount(reminder ? 1 : 0);
+      if (reminder) {
+        await pill.click();
+        await expect(previous).toContainText(reminder);
+        await pill.click();
+      }
+      await expect(input).toHaveValue("");
+    };
+    for (const [button, reminder] of [
+      ["Open Browser Mode", "The user has entered Browser Mode."],
+      ["Open VS Code", "The user has entered embedded VS Code."],
+    ]) {
+      const before = requests.length;
+      await page.getByRole("button", { name: button, exact: true }).click();
+      await expect(page.getByRole("button", { name: "Back to agent", exact: true })).toBeVisible();
+      expect(requests).toHaveLength(before);
+      await sendInMode(`First message in ${button}`, reminder);
+      await sendInMode(`Still in ${button}`);
+      await page.getByRole("button", { name: "Back to agent", exact: true }).click();
+      expect(requests).toHaveLength(before + 2);
+      await sendInMode(
+        `Back from ${button}`,
+        "The user has returned to the normal conversation view",
+      );
+    }
+    // Browser -> VS Code before sending reports only the current editor, then
+    // switching directly back to Browser reports the new current workspace.
+    await page.getByRole("button", { name: "Open Browser Mode", exact: true }).click();
+    await page.getByRole("button", { name: "Open VS Code", exact: true }).click();
+    await sendInMode("Switched to code before sending", "The user has entered embedded VS Code.");
+    await page.getByRole("button", { name: "Open Browser Mode", exact: true }).click();
+    await sendInMode("Switched directly to browser", "The user has entered Browser Mode.");
+    await page.getByRole("button", { name: "Back to agent", exact: true }).click();
+    await sendInMode(
+      "Returned from the workspace switch",
+      "The user has returned to the normal conversation view",
+    );
+
+    // Unsent mode changes must not leak stale enter notices into a chat message.
+    const before = requests.length;
+    await page.getByRole("button", { name: "Open Browser Mode", exact: true }).click();
+    await page.getByRole("button", { name: "Open VS Code", exact: true }).click();
+    await page.getByRole("button", { name: "Back to agent", exact: true }).click();
+    expect(requests).toHaveLength(before);
+    await sendInMode("Only the current chat view matters");
   } finally {
     await app?.close();
     await new Promise<void>((done) => server.close(() => done()));
