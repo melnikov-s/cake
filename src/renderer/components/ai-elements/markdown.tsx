@@ -152,6 +152,19 @@ function artifactReferenceFromHref(href: string) {
   }
 }
 
+/** `file:///tmp/a.png` becomes `/tmp/a.png`; other targets are returned unchanged. */
+function localPathFromFileUrl(target: string) {
+  if (!/^file:\/\//i.test(target)) return target;
+  try {
+    const url = new URL(target);
+    return url.hostname && url.hostname !== "localhost"
+      ? undefined
+      : decodeURIComponent(url.pathname);
+  } catch {
+    return undefined;
+  }
+}
+
 /** Makes Cake session links and workspace source references parseable and clickable. */
 function prepareMarkdownLinks(markdown: string, sourceLinks: boolean, workspaceImages: boolean) {
   return markdown
@@ -171,10 +184,12 @@ function prepareMarkdownLinks(markdown: string, sourceLinks: boolean, workspaceI
             if (artifactReference)
               return `](${artifactPathPrefix}${encodeURIComponent(artifactReference)})`;
             // Streamdown blocks bare relative image URLs before our renderer sees
-            // them. Rewrite only workspace paths handled by Cake's authorized reader.
-            return (sourceLinks || (workspaceImages && segment.startsWith("!["))) &&
-              parseSourceLocation(target)
-              ? `](${sourceHref(target)})`
+            // them. Rewrite local paths, including file: URLs for images, so
+            // Cake's image reader can load them from anywhere on this host.
+            const image = workspaceImages && segment.startsWith("![");
+            const path = image ? localPathFromFileUrl(target) : target;
+            return (sourceLinks || image) && path && parseSourceLocation(path)
+              ? `](${sourceHref(path)})`
               : match;
           },
         );

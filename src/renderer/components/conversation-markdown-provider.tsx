@@ -27,8 +27,7 @@ export function ConversationMarkdownProvider({
   const loadWorkspaceImage = useCallback(
     (path: string, signal: AbortSignal) => {
       if (sourceWorkspaceImage) return sourceWorkspaceImage(path, signal);
-      if (!workspacePath || !filesystem)
-        return Promise.reject(new Error("This conversation has no image Working Directory"));
+      if (!filesystem) return Promise.reject(new Error("Images cannot be read here"));
       return filesystem.readImage(workspacePath, path, { signal });
     },
     [filesystem, sourceWorkspaceImage, workspacePath],

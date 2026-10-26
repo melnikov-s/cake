@@ -165,7 +165,10 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
         execute(
           "filesystem.read-workspace-image",
           (client) =>
-            client.filesystem["read-workspace-image"]({ workspacePath: workingDirectory, path }),
+            client.filesystem["read-workspace-image"]({
+              ...(workingDirectory ? { workspacePath: workingDirectory } : null),
+              path,
+            }),
           options,
         ),
     },

@@ -7,7 +7,8 @@ it("shared presentation guidance requires inline images rather than clickable li
   const prompt = presentationDocumentation;
   expect(prompt).toContain("Always present images, screenshots, and visual previews inline");
   expect(prompt).toContain("never as plain clickable links");
-  expect(prompt).toContain("![Description](working-directory-relative-image-path)");
+  expect(prompt).toContain("![Description](path)");
+  expect(prompt).toContain("absolute (for example `/tmp/shot.png`)");
   expect(prompt).toContain("native inline image output");
 });
 

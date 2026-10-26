@@ -34,4 +34,4 @@ Check `stopReason` and `errorMessage`; report errors/cancellation, not success. 
 
 Generation alone must not save workspace files. For a requested save, decode the original generated block in the same script, before returning the preview. Stage base64 in a temporary file with `tools.write`; use `tools.bash` and Node to decode it, write the requested image, and remove the temporary file. Large base64 shell arguments can exceed OS limits; do not embed them in commands.
 
-Quote paths, honor destination/overwrite intent and verify success. Then display the saved image inline with Markdown image syntax using its workspace-relative path. Pi may resize transcript images; later previews are not original bytes, and an unsaved original may be unrecoverable. Never regenerate a billed image silently merely to save it.
+Quote paths, honor destination/overwrite intent and verify success. Then display the saved image inline with Markdown image syntax using its path (relative or absolute). Pi may resize transcript images; later previews are not original bytes, and an unsaved original may be unrecoverable. Never regenerate a billed image silently merely to save it.

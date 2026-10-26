@@ -16,7 +16,7 @@ const withFiles = (test: (root: string) => Effect.Effect<void, WorkspaceFileErro
     (root) => Effect.promise(() => rm(root, { recursive: true, force: true })),
   );
 
-describe("authorized file location routing", () => {
+describe("file location routing", () => {
   it.effect(
     "uses actual selected containment, origins and symlinks rather than project/worktree association or prefixes",
     () =>
@@ -113,12 +113,6 @@ describe("authorized file location routing", () => {
               Layer.provide(
                 Layer.mock(ProjectAccess, {
                   isAllowed: () => Effect.succeed(true),
-                  allowedWorkingDirectories: () =>
-                    Effect.succeed([
-                      join(root, "project"),
-                      join(root, "project-sibling"),
-                      join(root, "managed-worktree"),
-                    ]),
                 }),
               ),
             ),
@@ -128,7 +122,7 @@ describe("authorized file location routing", () => {
   );
 
   it.effect(
-    "rejects unauthorized, unavailable, non-text and oversized external targets without broadening access",
+    "opens text files anywhere on the host but rejects unavailable, non-text and oversized targets",
     () =>
       withFiles((root) =>
         Effect.gen(function* () {
@@ -136,15 +130,27 @@ describe("authorized file location routing", () => {
           const external = join(root, "allowed");
           yield* Effect.promise(() => mkdir(project));
           yield* Effect.promise(() => mkdir(external));
-          yield* Effect.promise(() => writeFile(join(root, "secret"), "private"));
-          yield* Effect.promise(() => symlink(join(root, "secret"), join(external, "escape")));
+          yield* Effect.promise(() => writeFile(join(root, "notes"), "outside every project"));
+          yield* Effect.promise(() => symlink(join(root, "notes"), join(external, "escape")));
           yield* Effect.promise(() => writeFile(join(external, "binary"), Buffer.from([0, 1, 2])));
           yield* Effect.promise(() => writeFile(join(external, "invalid"), Buffer.from([255])));
           yield* Effect.promise(() => writeFile(join(external, "large"), "a".repeat(2_000_001)));
           const files = yield* WorkspaceFiles;
+          for (const [path, kind] of [
+            ["../notes", "working-directory"],
+            ["../allowed/escape", "working-directory"],
+            [join(root, "notes"), "absolute-file"],
+          ] as const) {
+            expect(
+              yield* files.prepareFileLocation(1, {
+                workspacePath: project,
+                originatingDirectory: project,
+                location: { kind, path },
+              }),
+              path,
+            ).toMatchObject({ viewer: "text", content: "outside every project" });
+          }
           for (const path of [
-            "../secret",
-            "../allowed/escape",
             "../allowed/missing",
             "../allowed/binary",
             "../allowed/invalid",
@@ -167,7 +173,7 @@ describe("authorized file location routing", () => {
             const result = yield* Effect.result(
               files.prepareFileLocation(1, {
                 ...request,
-                location: { kind: "working-directory", path: "secret" },
+                location: { kind: "working-directory", path: "notes" },
               }),
             );
             expect(result).toMatchObject({
@@ -184,8 +190,6 @@ describe("authorized file location routing", () => {
                     Effect.succeed(
                       path === join(root, "project") || path === join(root, "allowed"),
                     ),
-                  allowedWorkingDirectories: () =>
-                    Effect.succeed([join(root, "project"), join(root, "allowed")]),
                 }),
               ),
             ),

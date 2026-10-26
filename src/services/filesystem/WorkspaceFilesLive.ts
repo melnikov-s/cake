@@ -7,6 +7,7 @@ import { suggestProjectFiles } from "../pi/runtime/session-discovery";
 import { WorkspaceFileError } from "../../contracts/filesystem/workspace-files-errors";
 import { WorkspaceFiles } from "./WorkspaceFiles";
 import { prepareFileLocation } from "./file-location";
+import { expandHomePath } from "./local-path";
 
 const imageMimeTypes = new Map([
   [".avif", "image/avif"],
@@ -17,7 +18,31 @@ const imageMimeTypes = new Map([
   [".webp", "image/webp"],
 ]);
 
-const maxWorkspaceImageBytes = 8 * 1_024 * 1_024;
+const maxImageBytes = 8 * 1_024 * 1_024;
+
+/** Short, user-facing reasons for the chat image placeholder. */
+function imageReadFailure(cause: unknown) {
+  const code = cause instanceof Error && "code" in cause ? cause.code : undefined;
+  if (code === "ENOENT" || code === "ENOTDIR") return new Error("File not found");
+  if (code === "EACCES" || code === "EPERM") return new Error("Permission denied");
+  return cause;
+}
+
+/** Reads any local image file; only type and size are restricted. */
+async function readLocalImage(target: string) {
+  const mimeType = imageMimeTypes.get(extname(target).toLowerCase());
+  if (!mimeType) throw new Error(`Unsupported image type: ${extname(target) || "no extension"}`);
+  const metadata = await stat(target).catch((cause: unknown) => {
+    throw imageReadFailure(cause);
+  });
+  if (!metadata.isFile()) throw new Error("Not a file");
+  if (metadata.size > maxImageBytes) throw new Error("Image is larger than 8 MB");
+  const data = await readFile(target).catch((cause: unknown) => {
+    throw imageReadFailure(cause);
+  });
+  if (data.byteLength > maxImageBytes) throw new Error("Image is larger than 8 MB");
+  return { data: data.toString("base64"), mimeType };
+}
 
 const workspaceFilesError = (operation: string, cause: unknown) =>
   new WorkspaceFileError({
@@ -91,39 +116,18 @@ export const makeWorkspaceFilesLive = (agentDirectory: string) =>
         },
       );
 
-      const readWorkspaceImage = Effect.fn("WorkspaceFiles.readImage")(
-        function* (_connectionId, request) {
-          yield* requireAllowed(request.workspacePath);
-          // Reports may use absolute screenshot paths. They still must resolve
-          // inside this authorized source workspace, including through symlinks.
-          const image = yield* Effect.tryPromise({
-            try: async () => {
-              const workspace = await realpath(request.workspacePath);
-              const target = await realpath(resolve(workspace, request.path));
-              const relativePath = relative(workspace, target);
-              if (
-                !relativePath ||
-                relativePath === ".." ||
-                relativePath.startsWith(`..${sep}`) ||
-                isAbsolute(relativePath)
-              )
-                throw new Error("Image is outside the selected project");
-              const mimeType = imageMimeTypes.get(extname(target).toLowerCase());
-              if (!mimeType) throw new Error("Workspace image type is not supported");
-              const metadata = await stat(target);
-              if (!metadata.isFile()) throw new Error("Workspace image path must identify a file");
-              if (metadata.size > maxWorkspaceImageBytes)
-                throw new Error("Workspace image is too large to display");
-              const data = await readFile(target);
-              if (data.byteLength > maxWorkspaceImageBytes)
-                throw new Error("Workspace image is too large to display");
-              return { data: data.toString("base64"), mimeType };
-            },
-            catch: (cause) => workspaceFilesError("readImage", cause),
-          });
-          return image;
-        },
-      );
+      // Chat images may live anywhere on this host (for example /tmp screenshots).
+      // Relative paths resolve against the conversation's Working Directory, or
+      // home for global Cake Chat, which has none.
+      const readImage = Effect.fn("WorkspaceFiles.readImage")(function* (_connectionId, request) {
+        return yield* Effect.tryPromise({
+          try: () =>
+            readLocalImage(
+              resolve(request.workspacePath ?? homedir(), expandHomePath(request.path)),
+            ),
+          catch: (cause) => workspaceFilesError("readImage", cause),
+        });
+      });
 
       return WorkspaceFiles.of({
         suggestFiles,
@@ -132,20 +136,14 @@ export const makeWorkspaceFilesLive = (agentDirectory: string) =>
             if (request.workspacePath) yield* requireAllowed(request.workspacePath);
             const originatingDirectory = request.originatingDirectory ?? homedir();
             yield* requireAllowed(originatingDirectory);
-            const allowedDirectories = yield* access.allowedWorkingDirectories();
             return yield* Effect.tryPromise({
-              try: (signal) =>
-                prepareFileLocation(
-                  { ...request, originatingDirectory },
-                  allowedDirectories,
-                  signal,
-                ),
+              try: (signal) => prepareFileLocation({ ...request, originatingDirectory }, signal),
               catch: (cause) => workspaceFilesError("prepareFileLocation", cause),
             });
           },
         ),
         readFile: readWorkspaceFile,
-        readImage: readWorkspaceImage,
+        readImage,
       });
     }),
   );

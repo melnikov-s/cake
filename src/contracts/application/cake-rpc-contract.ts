@@ -640,7 +640,8 @@ export const cakeRpcPayloadSchemas = {
     path: bounded(1, 8_192),
   }),
   "read-workspace-image": Schema.Struct({
-    workspacePath: stringMax(4_096),
+    /** Base for relative paths; omitted for global Cake Chat, which resolves against home. */
+    workspacePath: Schema.optionalKey(stringMax(4_096)),
     path: bounded(1, 8_192),
   }),
   "open-widget-browser": Schema.Struct({ browser: WidgetBrowserOutput }),

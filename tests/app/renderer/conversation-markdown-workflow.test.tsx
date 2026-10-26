@@ -204,15 +204,20 @@ it("loads Project Chat images from its project without task-session catalog memb
   expect(readImage).toHaveBeenCalledWith("/alpha", "screen.png", expect.anything());
 });
 
-it("shows an unavailable image in global Cake Chat rather than falling back to a task's directory", async () => {
-  const readImage = vi.fn<Client["filesystem"]["readImage"]>();
+it("reads global Cake Chat images without a Working Directory rather than falling back to a task's directory", async () => {
+  const readImage = vi.fn<Client["filesystem"]["readImage"]>(async () => ({
+    data: "AQID",
+    mimeType: "image/png",
+  }));
   using fixture = renderResources(
-    { cakeChat: "![Global image](screen.png)" },
+    { cakeChat: "![Global image](screen.png)\n\n![Temporary image](/tmp/shot.png)" },
     { filesystem: { readImage } },
   );
-  expect(await screen.findByText("Image not available: Global image")).toBeDefined();
+  expect(await screen.findByRole("img", { name: "Global image" })).toBeDefined();
+  expect(await screen.findByRole("img", { name: "Temporary image" })).toBeDefined();
   expect(fixture.root.sessionCatalogStore.find(CAKE_CHAT_SESSION_ID)).toBeUndefined();
-  expect(readImage).not.toHaveBeenCalled();
+  expect(readImage).toHaveBeenCalledWith(undefined, "screen.png", expect.anything());
+  expect(readImage).toHaveBeenCalledWith(undefined, "/tmp/shot.png", expect.anything());
 });
 
 it.each(["Markdown", "tool"] as const)(

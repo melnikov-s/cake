@@ -359,27 +359,44 @@ describe("Markdown rendering integration", () => {
       },
       client: { filesystem: { readImage } },
     });
-    expect(await screen.findByText("Image not available: Missing")).toBeDefined();
+    const placeholder = (await screen.findByText("Image not available: Missing")).closest(
+      '[role="note"]',
+    );
+    expect(placeholder?.textContent).toContain("missing.png");
+    expect(placeholder?.textContent).toContain("Not authorized");
     await fixture.update("![Pending](pending.png)");
     expect(await screen.findByText("Loading image…")).toBeDefined();
     await fixture.update("Replacement prose.");
     expect(signal?.aborted).toBe(true);
   });
 
-  it("resolves workspace images without requiring an editor action, but never rewrites schemes as filesystem paths", async () => {
-    const loadWorkspaceImage = vi.fn(async () => ({ data: "AQID", mimeType: "image/png" }));
+  it("resolves local images from any path without requiring an editor action, but never rewrites other schemes", async () => {
+    const loadWorkspaceImage = vi.fn<
+      (path: string, signal: AbortSignal) => Promise<{ data: string; mimeType: string }>
+    >(async () => ({ data: "AQID", mimeType: "image/png" }));
     using fixture = renderMarkdown(
-      "![Screenshot](.visual-captures/report.png)\n\n![Local file](file:///private/image.png)\n\n![Script](javascript:alert)\n\n![Unknown](custom:private.png)",
+      [
+        "![Screenshot](.visual-captures/report.png)",
+        "![Temporary](/tmp/cake-screens/shot.png)",
+        "![Home](~/Desktop/shot.png)",
+        "![Local file](file:///private/image.png)",
+        "![Remote file](file://server/share/image.png)",
+        "![Script](javascript:alert)",
+        "![Unknown](custom:private.png)",
+      ].join("\n\n"),
       { actions: { loadWorkspaceImage } },
     );
-    expect((await fixture.findByRole("img", { name: "Screenshot" })).getAttribute("src")).toBe(
-      "data:image/png;base64,AQID",
-    );
-    expect(loadWorkspaceImage).toHaveBeenCalledExactlyOnceWith(
+    for (const name of ["Screenshot", "Temporary", "Home", "Local file"])
+      expect((await fixture.findByRole("img", { name })).getAttribute("src")).toBe(
+        "data:image/png;base64,AQID",
+      );
+    expect(loadWorkspaceImage.mock.calls.map(([path]) => path)).toEqual([
       ".visual-captures/report.png",
-      expect.any(AbortSignal),
-    );
-    expect(screen.queryByRole("img", { name: "Local file" })).toBeNull();
+      "/tmp/cake-screens/shot.png",
+      "~/Desktop/shot.png",
+      "/private/image.png",
+    ]);
+    expect(screen.queryByRole("img", { name: "Remote file" })).toBeNull();
     expect(screen.queryByRole("img", { name: "Script" })).toBeNull();
     expect(screen.queryByRole("img", { name: "Unknown" })).toBeNull();
   });

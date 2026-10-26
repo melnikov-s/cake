@@ -51,10 +51,14 @@ export function MarkdownImage({
   if (error)
     return (
       <span
-        title={error}
-        className="inline-flex rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
+        role="note"
+        className="inline-flex max-w-full flex-col gap-0.5 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
       >
-        Image not available: {alt}
+        <span title={error} className="font-medium text-foreground">
+          Image not available: {alt}
+        </span>
+        {caption && <span className="font-mono break-all">{caption}</span>}
+        <span>{error}</span>
       </span>
     );
   const displaySrc = resourcePath ? resolvedSrc : src;

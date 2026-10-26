@@ -232,8 +232,9 @@ interface FilesystemCommands {
     options?: ClientCommandOptions,
   ): Promise<ReadonlyArray<FileSuggestion>>;
   readFile(workingDirectory: string, path: string, options?: ClientCommandOptions): Promise<string>;
+  /** Reads any local image; relative paths resolve against `workingDirectory`, or home without one. */
   readImage(
-    workingDirectory: string,
+    workingDirectory: string | undefined,
     path: string,
     options?: ClientCommandOptions,
   ): Promise<{ readonly data: string; readonly mimeType: string }>;

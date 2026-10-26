@@ -132,8 +132,9 @@ empty states appear inside the disclosure. The transcript scroll owner pauses
 bottom-follow before expansion to preserve the response start.
 It reuses `MessageReferencePreviewStore`;
 only the exact reference persists in Pi, never the retrieved body. Expanding loads supported
-Markdown and attachment images through the producer's authorized Working Directory and
-attachment context, never the viewer's active project. Other attachments remain metadata;
+Markdown images from any local path, resolving relative paths against the producer's
+Working Directory (never the viewer's active project), and attachment images through the
+producer's attachment context. Other attachments remain metadata;
 inline Pi image blocks without vault references show an explicit source-reader limitation.
 [`AttachmentReference`](../../src/renderer/components/ui/attachment-reference.tsx) presents
 a metadata-only file/input link with the same copy affordance; previews fetch the

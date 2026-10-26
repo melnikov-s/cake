@@ -5,6 +5,7 @@ import type {
   PrepareFileLocation,
   PreparedFileLocation,
 } from "../../contracts/filesystem/file-location";
+import { expandHomePath } from "./local-path";
 
 /** Both inputs must be canonical absolute paths. Directory equality is not a file. */
 function containsFile(directory: string, target: string): boolean {
@@ -12,16 +13,15 @@ function containsFile(directory: string, target: string): boolean {
   return Boolean(path) && path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path);
 }
 
-/** Classify before starting VS Code; only already-authorized roots can grant a text read. */
+/** Classify before starting VS Code; files outside the workspace open in the read-only text viewer. */
 export async function prepareFileLocation(
   request: PrepareFileLocation,
-  allowedDirectories: readonly string[],
   signal?: AbortSignal,
 ): Promise<PreparedFileLocation> {
   const workspace = request.workspacePath ? await realpath(request.workspacePath) : undefined;
   if (!request.originatingDirectory) throw new Error("A file origin is required");
   const origin = await realpath(request.originatingDirectory);
-  let path = request.location.path.trim();
+  let path = expandHomePath(request.location.path.trim());
   if (path.startsWith("vscode-remote://")) path = decodeURIComponent(new URL(path).pathname);
   if (request.location.kind === "absolute-file" && !isAbsolute(path))
     throw new Error("An absolute file path is required");
@@ -37,12 +37,6 @@ export async function prepareFileLocation(
       },
     };
   }
-  const roots = await Promise.all(
-    allowedDirectories.map((directory) => realpath(directory).catch(() => undefined)),
-  );
-  if (!roots.some((root) => root !== undefined && containsFile(root, target)))
-    throw new Error("File is not within an authorized project or working directory");
-
   // Bounded read from the opened handle; directories, devices, binary and invalid UTF-8 are not text.
   const handle = await open(
     target,
