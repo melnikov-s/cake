@@ -1,5 +1,9 @@
 # Session-switch performance measurement
 
+For versioned regression checks covering switching, resolve/restore and sending,
+see [user-visible performance checks](user-performance.md). This ABBA command is
+an investigation tool, not the accepted-baseline CI gate.
+
 Run the repository-owned comparison with an explicit baseline revision:
 
 ```sh

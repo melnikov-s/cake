@@ -1,0 +1,9 @@
+{
+  "version": "cake-desktop-v1",
+  "sessionCount": 80,
+  "messagesPerSession": 240,
+  "navigationHistoryCount": 7500,
+  "sidebarWidth": 420,
+  "viewport": { "width": 1440, "height": 1000 },
+  "timestamp": "2026-01-01T00:00:00.000Z"
+}

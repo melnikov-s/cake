@@ -4,7 +4,7 @@ export default defineConfig({
   reporter: "line",
   testDir: "tests/electron",
   // Native desktop activation requires the separate foreground config, not an inherited env flag.
-  grepInvert: /@foreground/,
+  grepInvert: /@foreground|@performance/,
   fullyParallel: false,
   workers: 1,
   timeout: 30_000,

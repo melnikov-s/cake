@@ -1,0 +1,67 @@
+name: Performance
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Explicit non-gating collection or strict comparison
+        type: choice
+        options: [check, collect]
+        default: check
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: performance-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  comparator:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.9.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test tests/app/performance-regression.test.ts
+      - run: pnpm test:integration tests/integration/performance-cli.test.ts
+
+  # Do not run untrusted pull-request code on a self-hosted desktop.
+  # Enable push enforcement only after runner calibration and baseline review.
+  desktop:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && vars.CAKE_PERFORMANCE_ENFORCE == 'true')
+    runs-on: [self-hosted, cake-performance-v1]
+    timeout-minutes: 30
+    env:
+      PERF_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'check' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.9.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Collect or compare on the dedicated desktop
+        shell: bash
+        run: |
+          if [[ "$PERF_MODE" == collect ]]; then
+            pnpm perf:collect --profile cake-performance-v1 --output .performance-captures/ci
+          else
+            pnpm perf:check --profile cake-performance-v1 --baseline tests/fixtures/performance/baselines/cake-performance-v1.json --output .performance-captures/ci
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-performance-${{ github.run_id }}
+          path: .performance-captures/ci
+          retention-days: 14
+          if-no-files-found: warn

@@ -37,6 +37,9 @@ corepack pnpm build
 corepack pnpm test:electron
 ```
 
+For isolated user-visible performance collection and reviewed baseline comparisons,
+see [performance checks](docs/development/user-performance.md).
+
 Run `pnpm dev` for the normal Electron development loop. Renderer changes use
 Vite hot module replacement; changes to main or preload rebuild and restart the
 Electron process automatically.
