@@ -31,7 +31,6 @@ export interface SessionContinuationStoreProps {
     workingDirectory: string,
     isCurrent: () => boolean,
   ): Promise<void>;
-  returnToSource(sessionId: string): void;
   discardPreview(previewId: string, sourceSessionId: string): void;
   reportError(error: unknown): void;
 }
@@ -142,11 +141,6 @@ export class SessionContinuationStore extends Store<SessionContinuationStoreProp
   retryFork() {
     if (!this.forkSetup?.error || this.activeOperationId) return;
     return this.prepareFork();
-  }
-
-  returnToSource() {
-    const sourceSessionId = this.forkSetup?.prompt.sessionId;
-    if (sourceSessionId) this.props.returnToSource(sourceSessionId);
   }
 
   discardPreview() {

@@ -411,7 +411,7 @@ describe("Session continuation workflow", () => {
     await waitFor(() => expect(visibleSessionId()).toBe("forked"));
   });
 
-  it("does not steal focus if the user returns to the source during background setup", async () => {
+  it("preserves sidebar navigation to the source during background fork setup", async () => {
     const pendingFork = deferred<{ sessionId: string }>();
     const fork = vi.fn<Client["projectSessions"]["fork"]>(() => pendingFork.promise);
     using fixture = renderContinuation({
@@ -424,7 +424,9 @@ describe("Session continuation workflow", () => {
     const dialog = await openFork(fixture.user);
     await fixture.user.click(within(dialog).getByRole("button", { name: "Fork conversation" }));
     expect(visibleSessionId()).not.toBe("source");
-    await fixture.user.click(screen.getByRole("button", { name: "Back to source" }));
+    expect(screen.getByText("Fork of Source conversation")).toBeDefined();
+    expect(screen.getByRole("status", { name: "Preparing fork in progress" })).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: /^Source conversation/ }));
     expect(visibleSessionId()).toBe("source");
     await act(async () => pendingFork.resolve({ sessionId: "forked" }));
     await fixture.hydrateFork("/current-worktree");

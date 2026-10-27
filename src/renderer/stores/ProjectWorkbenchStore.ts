@@ -148,7 +148,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       showPreview: (sessionId) => this.activateLoadedSession(sessionId),
       openSession: (previewId, sessionId, workingDirectory, isCurrent) =>
         this.openForkedSession(previewId, sessionId, workingDirectory, isCurrent),
-      returnToSource: (sessionId) => this.activateLoadedSession(sessionId),
       discardPreview: (previewId, sourceSessionId) => {
         if (this.activeSessionId === previewId) this.activateLoadedSession(sourceSessionId);
         this.props.discardForkPreview(previewId);

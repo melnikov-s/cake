@@ -31,9 +31,6 @@ export const SessionForkStatus = observer(function SessionForkStatus({
       ) : (
         <LoadingState label="Preparing fork" />
       )}
-      <Button size="sm" variant="ghost" onClick={() => store.returnToSource()}>
-        Back to source
-      </Button>
     </div>
   );
 });
