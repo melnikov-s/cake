@@ -3,7 +3,11 @@ import { MessageReference } from "./message-reference";
 
 /** Preserve bounded reference metadata in coordinator notices, never surrounding report text. */
 export function messageReferencesInText(text: string): readonly string[] {
-  const candidates = text.match(/cake:\/\/session\/[^\s<>()[\]]+\?message=[^\s<>()[\]]+/g) ?? [];
+  const candidates = (
+    text.match(/cake:\/\/session\/[^\s<>()[\]]+\?message=[^\s<>()[\]]+/g) ?? []
+  ).map((reference) => reference.replace(/[.,;:!?]+$/, ""));
+  // Sentence punctuation is prose, not part of the Pi identity. Strip it before
+  // validation and deduplication; percent-encoded identity characters stay intact.
   return [
     ...new Set(candidates.filter((reference) => Schema.is(MessageReference)(reference))),
   ].slice(0, 20);

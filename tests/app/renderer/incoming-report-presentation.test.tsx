@@ -201,6 +201,50 @@ it("deduplicates a replayed delivery ID, not distinct messages with identical se
   expect(parent.getEntries().filter((entry) => entry.type === "message")).toHaveLength(3);
 });
 
+it("expands all three originals linked with sentence punctuation in an audit request", async () => {
+  const originals = ["Mode notification", "HTML prototype", "Handoff/FYI"].map((name) => {
+    const source = SessionManager.inMemory("/producer");
+    const entryId = source.appendMessage(assistant(`## ${name}\n\nOriginal findings for ${name}.`));
+    return { source, entryId, ref: readMessageReference(source, { entryId }).message.ref, name };
+  });
+  const parent = SessionManager.inMemory("/project");
+  parent.appendMessage({
+    role: "user",
+    timestamp: 1,
+    content: encodeCrossSessionMessage(
+      `Recent sessions with exact report refs can seed comparison: mode notification fix ${originals[0]!.ref}; HTML prototype capability investigation ${originals[1]!.ref}; handoff/FYI fix ${originals[2]!.ref}. Recent session resolutions are not proof of merge.`,
+      { ...metadata, expectsResponse: true, resultDelivery: "notification" },
+    ),
+  });
+  const inspect = vi.fn(async (request: { sessionId: string; entryId?: string }) => {
+    const original = originals.find(({ source }) => source.getSessionId() === request.sessionId);
+    if (!original) throw new Error("Unexpected source session");
+    return readMessageReference(original.source, request);
+  });
+  using fixture = renderChatSurface({
+    parts: projectSessionEntries(parent.getEntries()),
+    client: { sessionChats: { inspect } },
+  });
+  const card = screen.getByRole("region", { name: "Message from another session" });
+  const disclosures = within(card).getAllByRole("button", { name: "Original response" });
+  expect(disclosures).toHaveLength(3);
+  expect(inspect).not.toHaveBeenCalled();
+  for (const [index, original] of originals.entries()) {
+    await fixture.user.click(disclosures[index]!);
+    expect(await within(card).findByRole("heading", { name: original.name })).toBeTruthy();
+    expect(inspect).toHaveBeenLastCalledWith(
+      {
+        sessionId: original.source.getSessionId(),
+        kind: "messages-read",
+        entryId: original.entryId,
+        offset: 0,
+        maxChars: 20_000,
+      },
+      expect.anything(),
+    );
+  }
+});
+
 it("keeps an unrelated exact original in an attributed source card", async () => {
   const parent = SessionManager.inMemory("/project");
   parent.appendMessage({
