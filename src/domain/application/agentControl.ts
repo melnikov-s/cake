@@ -360,8 +360,6 @@ export const invoke: (
         case "sessions.list": {
           if (invocation.arguments.projection === "workflow")
             return yield* launchWorkflowRoster(invocation.arguments, caller);
-          if (invocation.arguments.includeResolved !== undefined)
-            return fail('includeResolved requires projection: "workflow".');
           const startedAt = yield* Clock.currentTimeMillis;
           const global = caller.kind === "cake-chat" && caller.sessionId === CAKE_CHAT_SESSION_ID;
           const scope = global

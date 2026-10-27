@@ -92,7 +92,7 @@ export function createConversationOperations(
         "Use sessions.list-family when only the calling Project Session's family is needed.",
       ],
       inputSchema: AgentSessionListInput,
-      examples: [{}],
+      examples: [{}, { input: { projection: "workflow", includeResolved: true } }],
       result: sessionListResult,
       execute: invokeAppControl("sessions.list"),
     },

@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Schema } from "effect";
+import { AgentSessionListInput } from "../../../src/contracts/project-sessions/agent-session-list";
+import { BackendAgentInvocation } from "../../../src/contracts/application/backend-agent-control";
+import { backendAgentTools } from "../../../src/contracts/application/backend-agent-tools";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { projectCakeOperations } from "../../../src/layers/CakeOperations";
 import * as projectSessionOperations from "../../../src/domain/project-sessions/cake-session-operations";
@@ -202,6 +205,93 @@ describe("Project Session operation capabilities", () => {
     expect(registry.operationHelp("sessions.open")).toContain("Settings → Agent");
     expect(registry.operationHelp("sessions.open")).toContain("cannot be changed by an agent");
     expect(registry.operationHelp("sessions.open")).toContain("Enabled by default");
+  });
+
+  it("accepts scoped listings and workflow history in the shared session-list contract", () => {
+    for (const input of [
+      {},
+      { projectPath: "/project", query: "task", status: "running", limit: 10 },
+      { projection: "workflow" },
+      { projection: "workflow", includeResolved: true },
+      { projection: "workflow", includeResolved: false },
+    ]) {
+      expect(Schema.decodeUnknownSync(AgentSessionListInput)(input)).toEqual(input);
+      expect(
+        Schema.decodeUnknownSync(BackendAgentInvocation)({
+          name: "sessions.list",
+          arguments: input,
+        }),
+      ).toEqual({ name: "sessions.list", arguments: input });
+    }
+  });
+
+  it.each([true, false])(
+    "rejects includeResolved=%s without workflow with actionable guidance",
+    (includeResolved) => {
+      for (const decode of [
+        () => Schema.decodeUnknownSync(AgentSessionListInput)({ includeResolved }),
+        () =>
+          Schema.decodeUnknownSync(BackendAgentInvocation)({
+            name: "sessions.list",
+            arguments: { includeResolved },
+          }),
+      ]) {
+        expect(decode).toThrow('includeResolved requires projection: "workflow"');
+        expect(decode).toThrow("omit includeResolved for a normal session listing");
+      }
+    },
+  );
+
+  it("rejects invalid session-list input before invoking the app gateway", async () => {
+    const invokeAppControl = vi.fn(async () => null);
+    const registry = new CakeOperationRegistry(
+      operations({ currentSessionControl: control({ invokeAppControl }) }),
+    );
+    await expect(
+      registry.invoke(
+        { command: "sessions.list", input: { includeResolved: true } },
+        { signal: new AbortController().signal, toolCallId: "session-list", runtime: {} },
+      ),
+    ).rejects.toThrow('includeResolved requires projection: "workflow"');
+    expect(invokeAppControl).not.toHaveBeenCalled();
+  });
+
+  it("advertises the workflow dependency in generated session-list schemas and help", () => {
+    const definitions = operations({
+      currentSessionControl: control({ invokeAppControl: async () => null }),
+    });
+    const listing = definitions.find((operation) => operation.command === "sessions.list");
+    const backendListing = backendAgentTools().find((tool) => tool.command === "sessions.list");
+    if (!listing || !backendListing) throw new Error("Expected session-list definitions");
+    const parameters = Schema.toStandardJSONSchemaV1(listing.inputSchema)[
+      "~standard"
+    ].jsonSchema.input({ target: "draft-07" });
+    expect(parameters).toEqual(backendListing.parameters);
+    expect(parameters).toMatchObject({
+      type: "object",
+      properties: {
+        projection: {
+          enum: ["workflow"],
+          description: expect.stringContaining("required with includeResolved"),
+        },
+        includeResolved: {
+          type: "boolean",
+          description: expect.stringContaining('Requires projection: "workflow", even when false'),
+        },
+      },
+      additionalProperties: false,
+    });
+    const help = new CakeOperationRegistry(definitions).operationHelp("sessions.list");
+    expect(help).toContain('requires projection: "workflow"');
+    expect(listing.examples).toContainEqual({
+      input: { projection: "workflow", includeResolved: true },
+    });
+    expect(backendListing.guidance).toEqual(
+      expect.arrayContaining([expect.stringContaining('requires projection: "workflow"')]),
+    );
+    expect(backendListing.examples).toContainEqual({
+      input: { projection: "workflow", includeResolved: true },
+    });
   });
 
   it.each([undefined, true, false])(

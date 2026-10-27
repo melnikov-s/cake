@@ -134,6 +134,7 @@ const definitions = [
         {
           input: {
             projection: "workflow",
+            includeResolved: true,
           },
         },
       ],
