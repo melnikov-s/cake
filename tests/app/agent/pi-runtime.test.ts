@@ -1,6 +1,9 @@
 import { resolveCakeModelSelection } from "../../../src/domain/model-presets/cake-model-selection";
 import { createProjectSessionRuntime as createCakeSessionRuntime } from "../../../src/layers/CakeOperations";
-import { Effect, Schema, Stream } from "effect";
+import { Effect, Layer, Schema, Stream } from "effect";
+import { snapshotPromptFiles } from "../../../src/services/filesystem/prompt-files";
+import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
+import type { JsonObject } from "../../../src/contracts/serialization/json-contract";
 import {
   ProjectSessionFamilyInfo,
   type ProjectSessionAgentPolicy,
@@ -186,6 +189,77 @@ describe("Pi 1.0.0 foundation contract", () => {
     policy = { ...policy, family: { ...family, childSessionIds: ["first-child", "second-child"] } };
     expect((await info()).family?.childSessionIds).toEqual(["first-child", "second-child"]);
   });
+
+  it.each(["sessions.send", "sessions.reply"])(
+    "%s captures once before family routing and passes content, not paths, through fallback",
+    async (command) => {
+      const directory = await createTemporaryDirectory();
+      const path = join(directory, "task.md");
+      await writeFile(path, "Exact instructions from the sender\n");
+      let snapshots = 0;
+      const routed: JsonObject[] = [];
+      const dispatched: JsonObject[] = [];
+      const runtime = await createCakeSessionRuntime({
+        cwd: directory,
+        agentDir: join(directory, "agent"),
+        sessionDir: join(directory, "sessions"),
+        trusted: false,
+        newSession: true,
+        requestUi: async () => undefined,
+        onEvent: () => undefined,
+        currentSessionControl: {
+          resolved: () => false,
+          setResolved: async () => undefined,
+          readPolicy: async () => ({ canFork: true, deferResolution: true }),
+          resolveDeferredStandalone: async () => undefined,
+          snapshotPromptFiles: async (text, promptFiles) => {
+            snapshots++;
+            return Effect.runPromise(
+              snapshotPromptFiles({
+                text,
+                promptFiles,
+                senderSessionId: "source",
+                workingDirectory: directory,
+              }).pipe(
+                Effect.provide(
+                  Layer.mock(ProjectAccess, {
+                    allowedWorkingDirectories: () => Effect.succeed([directory]),
+                  }),
+                ),
+              ),
+            );
+          },
+          routeFamilyMessage: async (_command, input) => {
+            routed.push(input);
+            await rm(path);
+            return undefined;
+          },
+          invokeAppControl: async (_command, input) => {
+            dispatched.push(input);
+            return { ok: true, command };
+          },
+        },
+      });
+      runtimes.push(runtime);
+      const call = runtime.callCakeOperation;
+      if (!call) throw new Error("Expected Cake controls");
+      await call(
+        command,
+        { text: "Short inline", promptFiles: ["task.md"], resultDelivery: "ignore" },
+        new AbortController().signal,
+      );
+      expect(snapshots).toBe(1);
+      expect(dispatched).toEqual(routed);
+      expect(dispatched).toEqual([
+        expect.objectContaining({
+          text: expect.stringContaining("Exact instructions from the sender\n"),
+          resultDelivery: "ignore",
+        }),
+      ]);
+      expect(dispatched[0]?.promptFiles).toBeUndefined();
+      expect(dispatched[0]?.text).toContain('"requestedPath":"task.md"');
+    },
+  );
 
   it("keeps artifact and review discovery in system guidance without persistent context messages", async () => {
     const directory = await createTemporaryDirectory();

@@ -1,4 +1,5 @@
 import { Cause, DateTime, Effect, Exit } from "effect";
+import { snapshotPromptFiles } from "../../services/filesystem/prompt-files";
 import type { ResultDelivery } from "../../contracts/conversations/result-delivery";
 import {
   CAKE_CHAT_SESSION_ID,
@@ -27,6 +28,8 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
   readonly attachments?: readonly Attachment[];
   readonly name: string;
   readonly initialPrompt: string;
+  readonly promptFiles?: readonly string[];
+  readonly senderWorkingDirectory?: string;
   readonly model: ChatConfiguration;
   readonly worktreeName?: string;
   readonly requester?: SessionRequester;
@@ -48,6 +51,20 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
       operation: "createPrompted",
       message: "The Project is not registered",
     });
+  const initialPrompt =
+    input.promptFiles === undefined
+      ? input.initialPrompt
+      : yield* snapshotPromptFiles({
+          text: input.initialPrompt,
+          promptFiles: input.promptFiles,
+          senderSessionId: input.sourceSessionId ?? "user",
+          workingDirectory: input.senderWorkingDirectory,
+        }).pipe(
+          Effect.mapError(
+            (error) =>
+              new ProjectSessionError({ operation: "createPrompted", message: error.message }),
+          ),
+        );
   const record = input.worktreeName
     ? yield* managedWorktrees.create({
         projectPath: input.projectPath,
@@ -93,7 +110,7 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
       handoffSettled: !expectsResponse,
     });
   const text = sender
-    ? encodeCrossSessionMessage(input.initialPrompt, {
+    ? encodeCrossSessionMessage(initialPrompt, {
         version: 1,
         messageId: sessionId,
         threadId: sessionId,
@@ -102,7 +119,7 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
         resultDelivery,
         sender: { sessionId: sender.sessionId, title: sender.title, kind: sender.kind },
       })
-    : input.initialPrompt;
+    : initialPrompt;
   yield* projectSessionOperations
     .start({
       sessionId,

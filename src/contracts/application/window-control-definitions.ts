@@ -19,6 +19,7 @@ import { QueuedSessionCommand } from "../conversations/session-query-data";
 import { SESSION_TITLE_MAX_LENGTH, thinkingLevelSchema } from "../conversations/session-contract";
 import { messageRefsSchema } from "../conversations/message-reference";
 import { inputRefsSchema } from "../conversations/task-input";
+import { promptFilesSchema, promptFilesGuidance } from "../conversations/prompt-files";
 import { CakeModelSelection } from "../model-presets/cake-model-selection";
 import { SessionNavigationInput, sessionNavigationHelp } from "./session-navigation";
 import { PROJECT_TODO_AUTO_COMPLETION_RULE } from "../projects/project-todos";
@@ -35,6 +36,7 @@ const sessionIdTargetSchema = Schema.Struct({ sessionId: bounded(1, 256) });
 const emptyArgumentsSchema = Schema.Struct({});
 
 const createSessionArgs = Schema.Struct({
+  promptFiles: Schema.optionalKey(promptFilesSchema),
   messageRefs: Schema.optionalKey(messageRefsSchema),
   inputRefs: Schema.optionalKey(inputRefsSchema),
   workspacePath: bounded(1, 4096),
@@ -250,6 +252,7 @@ export const windowControlDefinitions = {
         "Create, configure, name, and start a project session in the background, optionally from a model preset or in a new managed worktree.",
       guidance: [
         "Omit model unless the user explicitly asks for a specific model. When omitted, the new session uses the configured default model preset's complete settings (provider, model, thinking level, and Fast mode; see models.list), not the calling Cake Chat's current model. Only when no default preset is configured does it use the calling Cake Chat's current settings.",
+        promptFilesGuidance,
         "Pass exact attachment IDs from input metadata or attachments.list in inputRefs to forward without reading. Use attachments.read only when you want to inspect the content yourself.",
         resultDeliveryGuidance,
         "Defaults to notification. Later unrelated local user turns never notify the creator.",

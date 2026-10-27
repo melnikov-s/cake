@@ -45,10 +45,17 @@ export interface CurrentSessionControl extends ProjectSessionLivePolicyControl {
   resolved(): boolean;
   canResolve?(): boolean;
   setResolved(resolved: boolean): Promise<void>;
+  snapshotPromptFiles?(
+    text: string,
+    promptFiles: readonly string[],
+    signal: AbortSignal,
+  ): Promise<string>;
   createSession?(
     input: {
       name: string;
       initialPrompt: string;
+      promptFiles?: readonly string[];
+      resultDelivery?: ResultDelivery;
       model: ChatConfiguration;
       worktreeName?: string;
     },

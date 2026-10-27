@@ -22,6 +22,7 @@ import type { MessageBoardControl } from "../../../contracts/artifacts/message-b
 import type { CakeModelPresetCatalog } from "../../../contracts/model-presets/cake-model-selection";
 import type { CakeChatMemoryOptions } from "../cake-chat-memory-options";
 import { Schema } from "effect";
+import { promptFilesSchema } from "../../../contracts/conversations/prompt-files";
 import {
   registerAgentDirectoryExtensionProviders,
   registerPendingExtensionProviders,
@@ -813,6 +814,21 @@ export async function createCakeSessionRuntime(
       );
     },
     async invokeAppControl(command, input, signal) {
+      if (
+        (command === "sessions.send" || command === "sessions.reply") &&
+        input.promptFiles !== undefined
+      ) {
+        const { promptFiles, ...rest } = input;
+        const paths = Schema.decodeUnknownSync(promptFilesSchema)(promptFiles);
+        const capture = options.currentSessionControl?.snapshotPromptFiles;
+        if (!capture) throw new Error("Prompt files are unavailable in this runtime");
+        const text = await capture(
+          Schema.decodeUnknownSync(Schema.String)(input.text),
+          paths,
+          signal,
+        );
+        input = { ...rest, text };
+      }
       if (typeof input.sessionId === "string")
         input = { ...input, sessionId: await resolveTarget(input.sessionId, signal) };
       const familyResult =

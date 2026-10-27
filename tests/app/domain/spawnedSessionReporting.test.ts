@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import type { InternalInput } from "../../../src/contracts/conversations/internal-input";
 import { SessionFamilyStorageError } from "../../../src/contracts/storage/session-family-storage-errors";
 import * as agentMessaging from "../../../src/domain/application/agentSessionMessaging";
@@ -93,6 +97,7 @@ const createArgs = {
 const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
   busy = false,
   failStartup = false,
+  promptRoot?: string,
 ) {
   const entered = yield* Deferred.make<{ sessionId: string; turnId: string; text: string }>();
   const finish = yield* Deferred.make<PiTurnResult>();
@@ -135,6 +140,11 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
   const environment = Layer.mergeAll(
     WorkflowTestLive,
     makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
+    Layer.mock(ProjectAccess, {
+      rememberSessionLocation: () => Effect.void,
+      isAllowed: () => Effect.succeed(true),
+      allowedWorkingDirectories: () => Effect.succeed(promptRoot ? [promptRoot] : []),
+    }),
     messageBoardHarness().layer,
     harness.layer,
     projectTodoLayer(),
@@ -399,6 +409,98 @@ const createFromChat = Effect.fn("SpawnedReportingTest.createFromChat")(function
   );
   return yield* Schema.decodeUnknownEffect(Schema.Struct({ sessionId: Schema.String }))(result);
 });
+
+it.effect.each(["singular", "plural"] as const)(
+  "%s independent creation captures prompt files before launch with unchanged result semantics",
+  (surface) =>
+    Effect.gen(function* () {
+      const root = yield* Effect.acquireRelease(
+        Effect.promise(() => mkdtemp(join(tmpdir(), "cake-create-prompt-"))),
+        (path) => Effect.promise(() => rm(path, { recursive: true, force: true })),
+      );
+      const path = join(root, "task.md");
+      const original = "Build the file-backed prompt feature.\n";
+      yield* Effect.promise(() => writeFile(path, original));
+      const f = yield* fixture(false, false, root);
+      yield* f.run(
+        Effect.gen(function* () {
+          if (surface === "singular") {
+            const options = yield* projectOptions({
+              location,
+              sessionId: parentId,
+              newSession: false,
+            });
+            const create = options.runtime.currentSessionControl?.createSession;
+            assert.ok(create);
+            yield* Effect.promise(() =>
+              create(
+                { ...createArgs, promptFiles: [path], resultDelivery: "ignore" },
+                new AbortController().signal,
+              ),
+            );
+          } else {
+            const options = yield* assembleCoordinator();
+            assert.ok(options.runtime.globalControl);
+            yield* Effect.promise(() =>
+              options.runtime.globalControl!.invoke(
+                {
+                  name: "sessions.create",
+                  arguments: {
+                    workspacePath: "/project",
+                    ...createArgs,
+                    promptFiles: [path],
+                    resultDelivery: "ignore",
+                  },
+                },
+                new AbortController().signal,
+              ),
+            );
+          }
+          const entered = yield* Deferred.await(f.entered);
+          yield* Effect.promise(() => writeFile(path, "Changed after admission"));
+          yield* Effect.promise(() => rm(path));
+          const parsed = parseCrossSessionMessage(entered.text);
+          assert.ok(parsed);
+          assert.ok(parsed.text.startsWith(createArgs.initialPrompt));
+          assert.ok(parsed.text.includes(original));
+          assert.ok(parsed.text.includes('"filename":"task.md"'));
+          assert.equal(
+            parsed.metadata.sender.kind,
+            surface === "plural" ? "cake-chat" : "project-session",
+          );
+          assert.equal(parsed.metadata.resultDelivery, "ignore");
+          assert.equal(parsed.metadata.expectsResponse, false);
+          assert.deepEqual(f.submittedAttachments.get(entered.sessionId), []);
+          yield* Deferred.succeed(f.finish, { stopReason: "stop", text: resultText });
+        }),
+      );
+    }).pipe(Effect.scoped),
+);
+
+it.effect("invalid creation prompt files fail before worktree creation or session admission", () =>
+  Effect.gen(function* () {
+    const root = yield* Effect.acquireRelease(
+      Effect.promise(() => mkdtemp(join(tmpdir(), "cake-invalid-create-prompt-"))),
+      (path) => Effect.promise(() => rm(path, { recursive: true, force: true })),
+    );
+    const f = yield* fixture(false, false, root);
+    yield* f.run(
+      Effect.gen(function* () {
+        const error = yield* createPrompted({
+          ...createArgs,
+          projectPath: "/project",
+          sourceSessionId: parentId,
+          senderWorkingDirectory: root,
+          promptFiles: ["missing.md"],
+          worktreeName: "must-not-create",
+        }).pipe(Effect.flip);
+        assert.equal(error._tag, "ProjectSessionError");
+        assert.equal(yield* Deferred.isDone(f.entered), false);
+        assert.deepEqual((yield* f.storage.state()).spawnedSessions, []);
+      }),
+    );
+  }).pipe(Effect.scoped),
+);
 
 const onlyTurn = Effect.fn("SpawnedReportingTest.onlyTurn")(function* () {
   const state = yield* (yield* SessionFamilyStorage).state();

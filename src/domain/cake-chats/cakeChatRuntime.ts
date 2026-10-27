@@ -739,6 +739,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
                             ...input,
                             projectPath: input.workspacePath,
                             sourceSessionId: target.sessionId,
+                            senderWorkingDirectory: project?.path,
                             attachments: selected.inputRefs.map((reference) => ({
                               kind: "forwarded-input" as const,
                               name: "Attachment",

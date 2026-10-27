@@ -1,5 +1,6 @@
 import { MessageReference } from "../conversations/message-reference";
 import { Schema } from "effect";
+import { promptFilesSchema } from "../conversations/prompt-files";
 import { ResultDelivery } from "../conversations/result-delivery";
 import { ExplicitCakeModelSelection } from "../model-presets/cake-model-selection";
 
@@ -61,6 +62,7 @@ export interface SessionRequester extends Schema.Schema.Type<typeof SessionReque
 export const AgentProjectSessionCreate = Schema.Struct({
   workspacePath: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4096)),
   name: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(500))),
+  promptFiles: Schema.optionalKey(promptFilesSchema),
   initialPrompt: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100_000))),
   model: ExplicitCakeModelSelection,
   markdown: Schema.optionalKey(Schema.Boolean),

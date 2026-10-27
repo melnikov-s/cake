@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { snapshotPromptFiles } from "../../services/filesystem/prompt-files";
 import { immediateDelivery } from "../../contracts/conversations/session-message-delivery";
 import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import * as cakeChatTargets from "../cake-chats/cakeChatTargets";
@@ -120,6 +121,17 @@ export const invoke = Effect.fn("AgentSessionMessaging.invoke")(function* (
 ) {
   const coordination = yield* SessionCoordination;
   const { name: command, arguments: input } = invocation;
+  const text =
+    invocation.name === "sessions.send" || invocation.name === "sessions.reply"
+      ? invocation.arguments.promptFiles === undefined
+        ? invocation.arguments.text
+        : yield* snapshotPromptFiles({
+            text: invocation.arguments.text,
+            promptFiles: invocation.arguments.promptFiles,
+            senderSessionId: caller.sessionId,
+            workingDirectory: caller.workingDirectory ?? caller.projectPath,
+          })
+      : "";
   const fail = (error: string) => toJsonValue({ ok: false, command, error });
   let thread =
     invocation.name === "sessions.send"
@@ -243,7 +255,7 @@ export const invoke = Effect.fn("AgentSessionMessaging.invoke")(function* (
     .deliver(
       {
         sessionId: targetSessionId,
-        text: args.text,
+        text,
         renderUserMessageAsMarkdown: false,
         attachments: inputRefs.map((reference) => ({
           kind: "forwarded-input" as const,

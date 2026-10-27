@@ -13,6 +13,7 @@ import { compactDiscoveryGuidance } from "../../contracts/agent/discovery-result
 import { AgentListInput } from "../../contracts/agent/agent-list-data";
 import { messageRefsSchema } from "../../contracts/conversations/message-reference";
 import { inputRefsSchema } from "../../contracts/conversations/task-input";
+import { promptFilesSchema, promptFilesGuidance } from "../../contracts/conversations/prompt-files";
 import { Effect, Schema } from "effect";
 import { CakeModelSelection } from "../../contracts/model-presets/cake-model-selection";
 import { type JsonObject } from "../../contracts/serialization/json-contract";
@@ -202,6 +203,7 @@ export function createSessionFamilyOperations(
       summary:
         "Send to a Project Session or registered Project Chat; omit sessionId to message global Cake Chat from a Project Session.",
       guidance: [
+        promptFilesGuidance,
         "For a Project Chat, call projects.list with query and pass its canonical projectChatId as sessionId. No repository reads, path hashing, sessions.info or recipient turn wait is needed. Receipt means admission/deferred retention, not execution or completion.",
         'Omit sessionId to reach Cake Chat. Cake Chat has no session ID; never pass the sender ID shown on Cake Chat\'s messages (it is labelled "cake-chat"). delivery, resultDelivery, threadId, and replyToMessageId mean the same as in sessions.reply to Cake Chat. To ask the user a question through Cake Chat, set resultDelivery: "reply"; to report a blocker on assigned work, prefer sessions.reply with outcome: "blocked".',
         "By default do not use sessions.send (including send-batch or steering) for intra-family communication. Current explicit user exceptions override this Cake policy; supported tool capabilities and genuine platform limits still apply. Parents, children, siblings and recursive descendants communicate exclusively through their shared Workboard. This does not restrict user-facing replies, Cake Chat or unrelated independent sessions.",
@@ -220,6 +222,7 @@ export function createSessionFamilyOperations(
           }),
         ),
         inputRefs: Schema.optionalKey(inputRefsSchema),
+        promptFiles: Schema.optionalKey(promptFilesSchema),
         messageRefs: Schema.optionalKey(messageRefsSchema),
         text: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100_000))),
         delivery: Schema.optionalKey(SessionMessageDelivery),
@@ -272,6 +275,7 @@ export function createSessionFamilyOperations(
       summary:
         "Reply to the originating session in the current open exchange without carrying its session ID.",
       guidance: [
+        promptFilesGuidance,
         "By default do not use sessions.reply for intra-family communication; current explicit user exceptions override this Cake policy; publish results, questions and blockers exclusively on the shared Workboard. User-facing replies, Cake Chat and unrelated independent sessions retain their ordinary reporting rules.",
         "Replies default to resultDelivery: notification; ordinary reports never request an acknowledgment or continuation.",
         "Provide replyToMessageId when more than one request may be pending. Cake otherwise selects the latest matching request in the thread.",
@@ -285,6 +289,7 @@ export function createSessionFamilyOperations(
         threadId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
         resultDelivery: Schema.optionalKey(ResultDelivery),
         replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
+        promptFiles: Schema.optionalKey(promptFilesSchema),
         outcome: Schema.optionalKey(Schema.Literals(["completed", "blocked", "failed"])),
         resultKind: Schema.optionalKey(Schema.Literals(["ready", "investigation"])),
       }),

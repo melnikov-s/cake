@@ -1,4 +1,5 @@
 import { sessionMessageDeliveryGuidance } from "../conversations/session-message-delivery";
+import { promptFilesGuidance } from "../conversations/prompt-files";
 import { sessionCompactionDefinitions } from "../project-sessions/session-compaction";
 import { resultDeliveryGuidance } from "../conversations/result-delivery";
 import { compactDiscoveryGuidance } from "../agent/discovery-result-text";
@@ -319,6 +320,7 @@ const definitions = [
       guidance: [
         "For a registered Project Chat, call projects.list with query and pass its canonical projectChatId as sessionId. Do not read repository files, hash paths, or inspect recipient history to find its address. The receipt confirms admission/deferred retention, not recipient execution or completion.",
         "sessionId is required from Cake Chat; Cake Chat cannot message itself. Project Sessions reach global Cake Chat by omitting sessionId.",
+        promptFilesGuidance,
         resultDeliveryGuidance,
         sessionMessageDeliveryGuidance,
       ],
@@ -331,6 +333,7 @@ const definitions = [
       topic: "sessions",
       summary:
         "Reply to the originating session in the current open coordination thread without supplying a session ID.",
+      guidance: [promptFilesGuidance],
     },
   },
   {

@@ -24,6 +24,7 @@ import * as projectSessionCreation from "./projectSessionCreation";
 import * as savedDrafts from "./savedDrafts";
 import { SavedDraftStorage } from "../../services/storage/SavedDraftStorage";
 import type { TaskInputStorage } from "../../services/storage/TaskInputStorage";
+import { snapshotPromptFiles } from "../../services/filesystem/prompt-files";
 import * as projectSessionContinuations from "./projectSessionContinuations";
 import * as projectSessionOperations from "./projectSessionOperations";
 import * as sessionChats from "../conversations/sessionChats";
@@ -574,12 +575,23 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
               workingDirectory: location.workingDirectory,
             }),
           ).then(() => undefined),
+        snapshotPromptFiles: (text, promptFiles, signal) =>
+          run(
+            snapshotPromptFiles({
+              text,
+              promptFiles,
+              senderSessionId: sessionId,
+              workingDirectory: location.workingDirectory,
+            }),
+            { signal },
+          ),
         createSession: (input, signal) =>
           run(
             Effect.scoped(
               projectSessionCreation.createPrompted({
                 ...input,
                 sourceSessionId: sessionId,
+                senderWorkingDirectory: location.workingDirectory,
                 projectPath: location.projectPath,
               }),
             ),

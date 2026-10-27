@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { it } from "@effect/vitest";
 import { TestClock } from "effect/testing";
 import { Context, Deferred, Effect, Fiber, Layer, Queue, Schema, Stream } from "effect";
@@ -128,6 +131,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
   let protectedTarget = false;
   const drafts: SavedDraft[] = [];
   const deniedPaths = new Set<string>();
+  const promptRoots = new Set<string>();
   const active = new Set<string>();
   const unavailable = new Set<string>();
   const failedTurns = new Set<string>();
@@ -360,6 +364,8 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
     Layer.mock(ProjectAccess, {
       rememberSessionLocation: () => Effect.void,
       isAllowed: (path) => Effect.succeed(!deniedPaths.has(path)),
+      allowedWorkingDirectories: () =>
+        Effect.succeed([...promptRoots].filter((path) => !deniedPaths.has(path))),
     }),
     runtimes,
     renderers,
@@ -469,6 +475,7 @@ const fixture = Effect.fn("BackendAgentControlTest.fixture")(function* (withChat
     },
     drafts,
     deny: (path: string) => deniedPaths.add(path),
+    allowPromptRoot: (path: string) => promptRoots.add(path),
     active,
     unavailable,
     failedTurns,
@@ -1365,6 +1372,91 @@ it.effect(
       ).toHaveLength(1);
       expect(f.requestCalls).toEqual([]);
     }),
+);
+
+it.effect.each([
+  { delivery: "prompt" as const, resultDelivery: "reply" as const },
+  { delivery: "steer" as const, resultDelivery: "notification" as const },
+  { delivery: "queue" as const, resultDelivery: "ignore" as const },
+])(
+  "file-backed sends snapshot before admission and preserve $delivery/$resultDelivery, references and provenance",
+  ({ delivery, resultDelivery }) =>
+    Effect.gen(function* () {
+      const root = yield* Effect.acquireRelease(
+        Effect.promise(() => mkdtemp(join(tmpdir(), "cake-send-prompt-"))),
+        (path) => Effect.promise(() => rm(path, { recursive: true, force: true })),
+      );
+      const path = join(root, "task.md");
+      const original = "Implement the exact file-backed task.\n";
+      yield* Effect.promise(() => writeFile(path, original));
+      const f = yield* fixture();
+      f.allowPromptRoot(root);
+      const sent = yield* f.call("sessions.send", {
+        sessionId: target,
+        text: "Follow the file",
+        promptFiles: [path],
+        inputRefs: ["allowed"],
+        delivery,
+        resultDelivery,
+      });
+      expect(sent).toMatchObject({
+        ok: true,
+        delivery,
+        resultDelivery,
+        expectsResponse: resultDelivery !== "ignore",
+      });
+      yield* Effect.promise(() => writeFile(path, "Changed source"));
+      yield* Effect.promise(() => rm(path));
+      const received = yield* Queue.take(f.prompts);
+      const envelope = parseCrossSessionMessage(received.text);
+      expect(envelope?.text).toContain(original);
+      expect(envelope?.text).toContain('"filename":"task.md"');
+      expect(envelope?.text).toContain(`"senderSessionId":"${source}"`);
+      expect(envelope?.metadata.sender.sessionId).toBe(source);
+      expect(received.attachments).toMatchObject([
+        { kind: "forwarded-input", reference: "granted/allowed" },
+      ]);
+      expect(f.requestCalls).toEqual([]);
+      const before = f.runtimeCreates.length;
+      expect(
+        yield* f
+          .direct("sessions.send", { sessionId: third, text: "Invalid", promptFiles: [path] })
+          .pipe(Effect.flip),
+      ).toMatchObject({ _tag: "AgentControlError" });
+      expect(f.runtimeCreates).toHaveLength(before);
+    }).pipe(Effect.scoped),
+);
+
+it.effect("passive file-backed sends retain their snapshot and remain passive", () =>
+  Effect.gen(function* () {
+    const root = yield* Effect.acquireRelease(
+      Effect.promise(() => mkdtemp(join(tmpdir(), "cake-fyi-prompt-"))),
+      (path) => Effect.promise(() => rm(path, { recursive: true, force: true })),
+    );
+    const path = join(root, "context.md");
+    yield* Effect.promise(() => writeFile(path, "Exact passive context"));
+    const f = yield* fixture();
+    f.allowPromptRoot(root);
+    const receipt = yield* f.call("sessions.send", {
+      sessionId: target,
+      text: "Context only",
+      promptFiles: [path],
+      delivery: "fyi",
+    });
+    expect(receipt).toMatchObject({
+      ok: true,
+      delivery: "fyi",
+      status: "deferred",
+      resultDelivery: "ignore",
+      expectsResponse: false,
+    });
+    yield* Effect.promise(() => rm(path));
+    expect(yield* Queue.size(f.prompts)).toBe(0);
+    const notices = (yield* Context.get(f.context, SessionFamilyStorage).state()).passiveNotices;
+    expect(notices).toMatchObject([
+      { recipientSessionId: target, text: expect.stringContaining("Exact passive context") },
+    ]);
+  }).pipe(Effect.scoped),
 );
 
 it.effect(

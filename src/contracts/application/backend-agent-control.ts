@@ -16,6 +16,7 @@ import {
 } from "../projects/project-settings-schema";
 import { SessionHistoryQuery } from "../conversations/session-query-data";
 import { inputRefsSchema } from "../conversations/task-input";
+import { promptFilesSchema } from "../conversations/prompt-files";
 import { messageRefsSchema } from "../conversations/message-reference";
 import { jsonObjectSchema } from "../serialization/json-contract";
 import { AgentListInput } from "../agent/agent-list-data";
@@ -34,6 +35,7 @@ const trimmed = (min: number, max: number) =>
 const id = Schema.String.check(Schema.isUUID(4));
 const target = { sessionId: bounded(1, 256) };
 const message = {
+  promptFiles: Schema.optionalKey(promptFilesSchema),
   resultDelivery: Schema.optionalKey(ResultDelivery),
   text: trimmed(1, 100_000),
   delivery: Schema.optionalKey(SessionMessageDelivery),
