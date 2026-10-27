@@ -39,7 +39,7 @@ the timeline to JSON before loading it in a trace viewer if needed.
 A failed/incomplete scenario is never usable as a complete run. Trace overhead is
 part of this fixed profile; don't compare to untraced measurements.
 
-## Workload and markers (visible-readiness-v1)
+## Workload and markers (visible-readiness-v2)
 
 [`tests/fixtures/performance/v2.json`](../../tests/fixtures/performance/v2.json)
 and its deterministic generator define at least 828 sessions, each with 240 mixed
@@ -60,7 +60,9 @@ checked after every cold switch, resolve and restore (outside the timed interval
 warm switches have the separate timed composer-input check. The second frame
 requires the renderer event loop to run again, but is not a bound on subsequent
 input latency. This is a **hidden-window DOM/paint-opportunity readiness proxy**,
-not proof of compositor presentation or real foreground pixel latency. Native windows stay
+not proof of compositor presentation or real foreground pixel latency. Metric v2
+requires the expected transcript marker after resolve and restore as well as after
+switching; v1 restore checked only the composer. Do not compare across versions. Native windows stay
 hidden and unfocused; no desktop activation is required.
 
 | Metric              | Start                                            | End and setup                                                                                                                                                                                                                                                                                  |
@@ -69,7 +71,7 @@ hidden and unfocused; no desktop activation is required.
 | `switch.warm.ready` | sidebar row `mousedown`                          | Same end marker. Five fixed discarded visits hydrate two destinations and ordinary JS/render paths. Samples alternate between just these two destinations without retention eviction.                                                                                                          |
 | `composer.input`    | first character `keydown` after each warm switch | Controlled textarea retains the actual typed `x` at the next frame opportunity; focus and enabled Send are also asserted. Focus setup and draft clearing are outside timing.                                                                                                                   |
 | `session.resolve`   | selected session's Resolve `mousedown`           | Resolved row visible in the already-expanded resolved lane, previous conversation and composer ready. Repeats resolve/restore of the same session, including real retirement/navigation/persistence. A spare resolved session keeps the lane open.                                             |
-| `session.restore`   | resolved session's Restore `mousedown`           | Active sidebar action and composer visible, resolved notice/row gone. Opening its archived transcript is setup, excluded from restore timing.                                                                                                                                                  |
+| `session.restore`   | resolved session's Restore `mousedown`           | Active sidebar action, destination transcript marker and composer visible, resolved notice/row gone. Opening its archived transcript is setup, excluded from restore timing.                                                                                                                   |
 | `message.feedback`  | enabled Send `mousedown`                         | Submitted user text visible, draft cleared, Stop feedback visible/settled. Real typing precedes submission and is checked, but excluded from this interval. Three sends warm the runtime/HTTP path; subsequent sends accumulate in one transcript.                                             |
 
 Send uses the real native RPC, Pi prompt path and provider HTTP serialization.

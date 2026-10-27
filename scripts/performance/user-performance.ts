@@ -94,7 +94,7 @@ try {
     const run: Run = {
       schemaVersion: 1,
       fixtureVersion: "cake-desktop-v2-retained",
-      metricVersion: "visible-readiness-v1",
+      metricVersion: "visible-readiness-v2",
       harnessHash: hash.digest("hex"),
       environment: {
         profile,
