@@ -281,7 +281,15 @@ test("user-visible performance collection @performance", async ({ browserName },
     });
     // Expose all rows outside timing. Each cold destination is never opened in this process.
     const showMore = page.getByRole("button", { name: "Show more", exact: true });
-    while (await showMore.count()) await showMore.click();
+    const sessionRows = page.locator(".session-item[data-session-id]");
+    const sessionCount = Math.max(fixture.sessionCount, n + 3);
+    while ((await sessionRows.count()) < sessionCount) {
+      const nextCount = Math.min(sessionCount, (await sessionRows.count()) + 10);
+      await showMore.click();
+      // click() may finish before React removes the final Show more button.
+      // Wait for the actual row commit before deciding whether to click again.
+      await expect(sessionRows).toHaveCount(nextCount);
+    }
     for (let i = 3; i < n + 3; i++) {
       await sample("switch.cold.ready", switchProbe(i), () => page.locator(row(i)).click());
       await checkComposer();

@@ -191,6 +191,6 @@ export async function createPerformanceFixture(origin: string, samples: number) 
     home,
     cakeHome,
     userData,
-    cleanup: () => rm(directory, { recursive: true, force: true }),
+    cleanup: () => rm(directory, { recursive: true, force: true, maxRetries: 3 }),
   };
 }
