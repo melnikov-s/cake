@@ -10,7 +10,7 @@ export function incomingMessageReferences(parts: readonly UiPart[]): ReadonlySet
         ? sessionNotificationEntries(part.text).flatMap((entry) =>
             entry.reference ? [entry.reference] : [],
           )
-        : part.kind === "text" && (part.crossSession || part.subagentReport)
+        : part.kind === "text" && (part.crossSession || part.subagentReport || part.agentSource)
           ? messageReferencesInText(part.text)
           : [],
     ),

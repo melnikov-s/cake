@@ -197,13 +197,18 @@ const durableQueuedPresentation = (content: Blocks) =>
 export const durableQueuedText = (content: Blocks) => durableQueuedPresentation(content).body;
 
 /** Queued rows show the user's words, not Cake-owned model guidance such as a voice reminder. */
-export const durableQueuedDisplayText = (content: Blocks) =>
-  splitContextReminders(
+export const durableQueuedDisplayText = (content: Blocks) => {
+  const input = durableQueuedPresentation(content);
+  if (input.internal?._tag === "UserWithReminders" && input.internal.userText !== undefined)
+    return input.internal.userText;
+  if (input.internal?._tag === "AgentUpdate") return input.internal.update.text;
+  return splitContextReminders(
     withoutPassiveNotices(
       durableQueuedPresentation(content).text,
       durableQueuedPresentation(content).internal,
     ),
   ).text;
+};
 
 /** One editable user queue card plus attributed FYIs; synthetic batch transport stays model-only. */
 export function durableQueuedParts(
@@ -212,7 +217,10 @@ export function durableQueuedParts(
 ): UiPart[] {
   const internal = durableQueuedPresentation(item.content).internal;
   const notices = isAutomaticInput(internal) ? [] : passiveNoticeParts(internal);
-  const display = queuedUserMessageDisplay(durableQueuedDisplayText(item.content));
+  const display = queuedUserMessageDisplay(
+    durableQueuedDisplayText(item.content),
+    internal?._tag === "UserWithReminders" && internal.userText !== undefined,
+  );
   const { subagentReport } = durableQueuedPresentation(item.content);
   const row: Extract<UiPart, { kind: "text" }> = {
     id: `queued-${id}`,
@@ -248,7 +256,7 @@ const durableQueuedInput = (item: Extract<InboxItem, { content: unknown }>, id: 
     itemId: id,
     turnId: id,
     // Workflow reminders are model context, not editable user text.
-    text: splitContextReminders(withoutPassiveNotices(input.text, input.internal)).text,
+    text: durableQueuedDisplayText(item.content),
     renderUserMessageAsMarkdown: input.markdown,
     attachments: [
       ...input.files,

@@ -25,6 +25,7 @@ import { TaskInputReference, inputRefsSchema } from "../../contracts/conversatio
 import { messageRefsSchema } from "../../contracts/conversations/message-reference";
 import type { ParentContinuation } from "../../contracts/conversations/parent-continuation";
 import { encodeCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
+import { subagentLink } from "../../contracts/subagents/subagent-reference";
 import { PROJECT_CHAT_PREFIX } from "../../contracts/cake-chats/cake-chat-identity";
 import * as projectTodoUpdates from "../projects/projectTodoUpdates";
 import { subagentFinalAnswerPart } from "../../contracts/subagents/subagent-report";
@@ -1009,9 +1010,24 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
       prepared.parent.runEffect(
         acquireParent.pipe(
           Effect.flatMap((parent) =>
-            parent.followUp(
-              `Message from subagent ${handleId} (${prepared.input.task.slice(0, 500)}):\n\n${text}\n\nReply through this subagent's handle if a response is needed.`,
-            ),
+            parent.submit({
+              turnId: crypto.randomUUID(),
+              delivery: "follow-up",
+              text: `Message from subagent ${handleId} (${prepared.input.task.slice(0, 500)}):\n\n${text}\n\nReply through this subagent's handle if a response is needed.`,
+              attachments: [],
+              markdown: true,
+              internal: {
+                _tag: "AgentUpdate",
+                update: {
+                  id: crypto.randomUUID(),
+                  text,
+                  source: {
+                    title: `Worker ${handleId.slice(0, 8)}`,
+                    href: subagentLink(prepared.parent.parentSessionId, handleId),
+                  },
+                },
+              },
+            }),
           ),
           asError("messageParent"),
           Effect.asVoid,

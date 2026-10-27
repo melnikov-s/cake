@@ -111,11 +111,15 @@ projections needed by a surface. References do not transfer ownership.
   and a live projection, not its derived summary nodes or context resets.
 - Never silently hide current model-facing system reminders or custom messages,
   including Cake/extension messages, regardless of Pi's `display` flag, except the
-  hidden `cake.restart-recovery` execution trigger and typed `UpdateBatch`
-  orchestration instructions. Keep these in Pi and Browse context, not ordinary
+  hidden `cake.restart-recovery` execution trigger and typed `UpdateBatch`,
+  `AgentUpdate` and user-carried report routing/reminder instructions. Keep these in Pi and Browse context, not ordinary
   conversation. Project sender-authored passive notices as individual Markdown messages
   with their structured cross-session provenance and stable notice identity, never as
-  generic context pills or user-authored words. User-carried and timer-carried notices
+  generic context pills or user-authored words. Worker progress and deferred reports
+  retain source identity and public original links in typed input presentation metadata;
+  the human input is recorded separately from injected reminders. Report obligations
+  may be reminded repeatedly in model context, but their sender-authored presentation
+  is admitted once, using the stable report identity. User-carried and timer-carried notices
   use the same projection across queues, live consumption and persisted replay. Suppress repeated system sections and resets
   differing only by Cake's terminal-documentation adaptation; retain genuine
   instruction/tool changes. Disclose context as

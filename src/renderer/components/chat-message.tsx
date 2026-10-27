@@ -116,6 +116,7 @@ export const ChatTextMessage = forwardRef<
   const text = report
     ? subagentReportFindings(part.text, report)
     : (crossSession?.body ?? part.text);
+  const agentSource = part.agentSource;
   const assistant = part.role === "assistant";
   const scheduled = part.scheduled ? describeScheduledOrigin(part.scheduled) : undefined;
   const userLabel = scheduled
@@ -129,7 +130,7 @@ export const ChatTextMessage = forwardRef<
     <MessageContent
       ref={contentRef}
       className={cn(
-        report || part.crossSession
+        report || part.crossSession || agentSource
           ? "rounded-none border-0 bg-transparent p-0 shadow-none"
           : assistant
             ? "bg-card text-foreground"
@@ -137,11 +138,12 @@ export const ChatTextMessage = forwardRef<
         !assistant &&
           !report &&
           !part.crossSession &&
+          !agentSource &&
           part.renderAs !== "markdown" &&
           "whitespace-pre-wrap",
       )}
     >
-      {assistant || report || part.crossSession || part.renderAs === "markdown" ? (
+      {assistant || report || part.crossSession || agentSource || part.renderAs === "markdown" ? (
         <Markdown
           streaming={part.status === "streaming"}
           normalizeLatexDelimiters={part.status !== "streaming"}
@@ -164,7 +166,7 @@ export const ChatTextMessage = forwardRef<
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       className={cn(
-        assistant || report || part.crossSession
+        assistant || report || part.crossSession || agentSource
           ? "group/msg relative mr-auto w-full"
           : "group/msg relative ml-auto w-[min(88%,42rem)]",
       )}
@@ -172,6 +174,7 @@ export const ChatTextMessage = forwardRef<
       {!assistant &&
         !report &&
         !part.crossSession &&
+        !agentSource &&
         (scheduled ? (
           <MessageLabel className="flex items-center gap-1" title={scheduled.detail}>
             <ClockIcon />
@@ -180,9 +183,9 @@ export const ChatTextMessage = forwardRef<
         ) : (
           <MessageLabel>{userLabel}</MessageLabel>
         ))}
-      {part.crossSession || report ? (
+      {part.crossSession || report || agentSource ? (
         <SessionMessage
-          source={part.crossSession?.sender ?? reportSource}
+          source={agentSource ?? part.crossSession?.sender ?? reportSource}
           title={report ? `Worker ${report.handleId.slice(0, 8)}` : undefined}
           relation={crossSession?.relation}
           badges={report ? [subagentReportBadge(report)] : crossSession?.badges}

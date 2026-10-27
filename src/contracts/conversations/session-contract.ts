@@ -1,6 +1,7 @@
 import { PresetContext } from "../model-presets/preset-context";
 import { EditorDiffDocument } from "../editor/editor-selection";
 import { Effect, Schema } from "effect";
+import { AgentUpdateSource } from "./agent-update";
 import type { SessionContextMetadata } from "./session-context-metadata";
 import { CakeChatContextStatus } from "../cake-chats/context-policy";
 import { MessageReference } from "./message-reference";
@@ -326,6 +327,7 @@ export const uiPartSchema = Schema.Union([
     draft: Schema.optional(Schema.Boolean),
     crossSession: Schema.optional(CrossSessionMessageMetadata),
     subagentReport: Schema.optionalKey(SubagentReportOrigin),
+    agentSource: Schema.optionalKey(AgentUpdateSource),
     scheduled: Schema.optional(ScheduledMessageOrigin),
     /** Original payload and stable identity while Pi holds this input. */
     queuedInput: Schema.optionalKey(
@@ -336,7 +338,12 @@ export const uiPartSchema = Schema.Union([
         command: Schema.optionalKey(boundedText),
         /** Cake admitted this input on someone else's behalf; the user did not type it. */
         internal: Schema.optionalKey(
-          Schema.Literals(["SubagentCompletion", "UpdateBatch", "WorkboardDelivery"]),
+          Schema.Literals([
+            "SubagentCompletion",
+            "UpdateBatch",
+            "WorkboardDelivery",
+            "AgentUpdate",
+          ]),
         ),
         text: boundedText,
         attachments: Schema.Array(attachmentSchema).check(Schema.isMaxLength(20)),

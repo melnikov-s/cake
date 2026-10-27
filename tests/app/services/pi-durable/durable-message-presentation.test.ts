@@ -13,6 +13,13 @@ import {
 } from "../../../../src/services/pi-durable/durable-message-presentation";
 import { durableModels } from "../../../fixtures/durable-chat";
 import { researchMarkdown, researchOrigin } from "../../../fixtures/subagent-report";
+import type { InternalInput } from "../../../../src/contracts/conversations/internal-input";
+import {
+  addReferenceNotifications,
+  pendingReportPresentation,
+} from "../../../../src/contracts/conversations/reference-notification";
+import { updateBatchReminder } from "../../../../src/contracts/conversations/update-batch";
+import { durableQueuedDisplayText } from "../../../../src/services/pi-durable/durable-input-presentation";
 
 const context = BACKGROUND_CONTEXT;
 const cleanup: Array<() => Promise<void>> = [];
@@ -37,11 +44,24 @@ async function fixture(database?: string) {
   const root = await harness.root(context, {
     agent: { model: { provider: "fixture", modelId: "fixture" } },
   });
-  const send = async (text: string, markdown: boolean, report = false) => {
+  const send = async (
+    text: string,
+    markdown: boolean,
+    report = false,
+    internal?: InternalInput,
+  ) => {
     const submission = await root.submit(
       {
         type: "input",
-        content: durableInputText(text, [], markdown, false, report ? researchOrigin : undefined),
+        content: durableInputText(
+          text,
+          [],
+          markdown,
+          false,
+          report ? researchOrigin : undefined,
+          undefined,
+          internal,
+        ),
       },
       context,
     );
@@ -109,4 +129,109 @@ it("surfaces a genuine SDK storage write failure, keeps originals/preferences at
   expect(await reopened.root.entries({}, 200, undefined, context)).toEqual(originals);
   await setDurableUserMessageMarkdown(reopened.root, user.entryId, false);
   expect((await reopened.history()).parts).toContainEqual({ ...user, renderAs: undefined });
+});
+
+it.each(["next-user", "timer"] as const)(
+  "replays one attributed report, hides its transport, and preserves genuine text after SQLite reopen (%s)",
+  async (timing) => {
+    const f = await fixture();
+    const report = {
+      id: "report-1",
+      recipientSessionId: "parent",
+      text: researchMarkdown,
+      source: {
+        kind: "subagent" as const,
+        handleId: researchOrigin.handleId,
+        sessionId: "private-pi-id",
+        task: researchOrigin.task,
+        status: "complete",
+        messageId: "answer-1",
+      },
+    };
+    const userText =
+      "<system-reminder>\nCake reference notifications\nMy literal quotation\n</system-reminder>\n\nActual question";
+    const presentation = pendingReportPresentation([report]);
+    const raw = addReferenceNotifications(timing === "next-user" ? userText : updateBatchReminder, [
+      report,
+    ]);
+    const origin: InternalInput =
+      timing === "next-user"
+        ? { _tag: "UserWithReminders", text: raw, userText, ...presentation }
+        : { _tag: "UpdateBatch", ...presentation };
+    expect(
+      durableQueuedDisplayText(
+        durableInputText(raw, [], false, false, undefined, undefined, origin),
+      ),
+    ).toBe(timing === "next-user" ? userText : "");
+    await f.send(raw, false, false, origin);
+    const parts = (await f.history()).parts;
+    const update = parts.find((part) => part.kind === "text" && part.agentSource);
+    expect(update).toMatchObject({
+      kind: "text",
+      text: researchMarkdown,
+      renderAs: "markdown",
+      agentSource: { title: "Worker 10000000", href: expect.stringContaining("?message=answer-1") },
+    });
+    const users = parts.filter(
+      (part) => part.kind === "text" && part.role === "user" && !part.agentSource,
+    );
+    expect(users).toEqual(
+      timing === "next-user" ? [expect.objectContaining({ text: userText })] : [],
+    );
+    expect(parts.filter((part) => part.kind === "context")).toEqual([]);
+    const originals = JSON.stringify(await f.root.entries({}, 200, undefined, context));
+    expect(originals).toContain("Deferred reports/status refs");
+    expect(originals).toContain("private-pi-id");
+    expect(originals).toContain("answer-1");
+    const repeatPresentation = pendingReportPresentation([{ ...report, admissions: 1 }]);
+    expect(repeatPresentation).toEqual({ updates: [], notices: [] });
+    await f.send(
+      addReferenceNotifications("Next question", [{ ...report, admissions: 1 }]),
+      false,
+      false,
+      { _tag: "UserWithReminders", text: "", userText: "Next question", ...repeatPresentation },
+    );
+    const history = await f.history();
+    expect(history.parts.filter((part) => part.kind === "text" && part.agentSource)).toEqual([
+      update,
+    ]);
+    await f.harness.close(context);
+    const reopened = await fixture(f.database);
+    expect((await reopened.history()).parts).toEqual(history.parts);
+  },
+);
+
+it("retains progress attribution, model-only reply routing and genuine user text through replay", async () => {
+  const f = await fixture();
+  const update = {
+    id: "progress-1",
+    text: "## Progress\n\n**Evidence found**",
+    source: { title: "Worker 10000000", href: "cake://subagent/parent/" + researchOrigin.handleId },
+  };
+  const raw =
+    "Message from subagent: " +
+    update.text +
+    "\n\nReply through this subagent's handle if a response is needed.";
+  await f.send(raw, true, false, { _tag: "AgentUpdate", update });
+  await f.send(raw, false, false, {
+    _tag: "UserWithReminders",
+    text: raw,
+    userText: raw,
+    notices: [],
+  });
+  const history = await f.history();
+  expect(history.parts.filter((part) => part.kind === "text" && part.role === "user")).toEqual([
+    expect.objectContaining({
+      text: update.text,
+      agentSource: update.source,
+      renderAs: "markdown",
+    }),
+    expect.objectContaining({ text: raw }),
+  ]);
+  expect(JSON.stringify(await f.root.entries({}, 200, undefined, context))).toContain(
+    "Reply through this subagent",
+  );
+  await f.harness.close(context);
+  const reopened = await fixture(f.database);
+  expect((await reopened.history()).parts).toEqual(history.parts);
 });

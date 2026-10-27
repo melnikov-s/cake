@@ -34,13 +34,17 @@ export function toolCompactDialogueMessage(
   if (
     entry.type !== "message" ||
     internal?._tag === "WorkboardDelivery" ||
-    internal?._tag === "SubagentCompletion"
+    internal?._tag === "SubagentCompletion" ||
+    internal?._tag === "AgentUpdate" ||
+    internal?._tag === "UpdateBatch"
   )
     return undefined;
   const message = entry.message;
   if (message.role === "user") {
     const clean = (text: string) =>
-      splitContextReminders(withoutPassiveNotices(text, internal)).text;
+      internal?._tag === "UserWithReminders" && internal.userText !== undefined
+        ? internal.userText
+        : splitContextReminders(withoutPassiveNotices(text, internal)).text;
     const rawText =
       typeof message.content === "string"
         ? message.content

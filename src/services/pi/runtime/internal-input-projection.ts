@@ -2,6 +2,7 @@ import { Option, Schema } from "effect";
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import { InternalInput } from "../../../contracts/conversations/internal-input";
 import type { UiPart } from "../../../contracts/conversations/session-contract";
+import type { AgentUpdate } from "../../../contracts/conversations/agent-update";
 
 export const internalInputEntryType = "cake.internal-input/v1";
 /** Written before Pi persists the immediately following user-transport message. */
@@ -33,16 +34,35 @@ export function internalInputOrigins(entries: readonly SessionEntry[]) {
 /** Stable sender-authored messages, independent of their user/timer transport and replay IDs. */
 export function passiveNoticeParts(origin?: InternalInput): UiPart[] {
   if (origin?._tag !== "UserWithReminders" && origin?._tag !== "UpdateBatch") return [];
-  return origin.notices.map((notice) => ({
-    id: `passive-${notice.id}`,
-    renderKey: `passive-${notice.id}`,
+  return [
+    ...(origin.updates ?? []).map(agentUpdatePart),
+    ...[...(origin.reportNotices ?? []), ...origin.notices].map(
+      (notice) =>
+        ({
+          id: `passive-${notice.id}`,
+          renderKey: `passive-${notice.id}`,
+          kind: "text",
+          role: "user",
+          text: notice.text,
+          renderAs: "markdown",
+          status: "complete",
+          crossSession: notice.crossSession,
+        }) as const,
+    ),
+  ];
+}
+
+export function agentUpdatePart(update: AgentUpdate): UiPart {
+  return {
+    id: `agent-update-${update.id}`,
+    renderKey: `agent-update-${update.id}`,
     kind: "text",
     role: "user",
-    text: notice.text,
+    text: update.text,
     renderAs: "markdown",
     status: "complete",
-    crossSession: notice.crossSession,
-  }));
+    agentSource: update.source,
+  };
 }
 
 export type AutomaticInput = Exclude<InternalInput, { _tag: "UserWithReminders" }>;
@@ -69,14 +89,22 @@ export function queuedAutomaticInputPart(
   row: Extract<UiPart, { kind: "text" }>,
 ): UiPart {
   const text =
-    origin._tag === "WorkboardDelivery"
-      ? `Workboard entries ${origin.sequences.map((sequence) => `#${sequence}`).join(", ")}`
-      : origin._tag === "UpdateBatch"
-        ? origin.notices.map((notice) => notice.text).join("\n\n") || "Batched updates"
-        : row.text;
+    origin._tag === "AgentUpdate"
+      ? origin.update.text
+      : origin._tag === "WorkboardDelivery"
+        ? `Workboard entries ${origin.sequences.map((sequence) => `#${sequence}`).join(", ")}`
+        : origin._tag === "UpdateBatch"
+          ? [
+              ...(origin.updates ?? []).map((update) => update.text),
+              ...[...(origin.reportNotices ?? []), ...origin.notices].map((notice) => notice.text),
+            ].join("\n\n") || "Batched updates"
+          : row.text;
   return {
     ...row,
     text,
+    ...(origin._tag === "AgentUpdate"
+      ? { agentSource: origin.update.source, renderAs: "markdown" as const }
+      : null),
     ...(origin._tag === "UpdateBatch" && origin.notices.length
       ? { renderAs: "markdown" as const }
       : null),

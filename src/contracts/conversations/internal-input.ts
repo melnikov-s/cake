@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { AgentUpdate } from "./agent-update";
 import { PassiveNotice, passiveNoticeContext } from "./passive-notice";
 
 /** Application provenance, supplied by admission code, never inferred from message text. */
@@ -6,10 +7,20 @@ export const InternalInput = Schema.TaggedUnion({
   UserWithReminders: {
     text: Schema.String,
     notices: Schema.Array(PassiveNotice),
+    updates: Schema.optionalKey(Schema.Array(AgentUpdate)),
+    /** Reference reports are carried in their own reminder, not the passive-notice suffix. */
+    reportNotices: Schema.optionalKey(Schema.Array(PassiveNotice)),
+    /** Exact human input before application reminders were added. */
+    userText: Schema.optionalKey(Schema.String),
   },
   /** Timer-delivered batch of deferred updates; carries no user text. */
   UpdateBatch: {
     notices: Schema.Array(PassiveNotice),
+    updates: Schema.optionalKey(Schema.Array(AgentUpdate)),
+    reportNotices: Schema.optionalKey(Schema.Array(PassiveNotice)),
+  },
+  AgentUpdate: {
+    update: AgentUpdate,
   },
   WorkboardDelivery: {
     boardId: Schema.String,

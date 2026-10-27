@@ -817,14 +817,17 @@ export function createCakeSessionRuntimeTurnController(input: {
                   part.crossSession || part.scheduled
                     ? part.text
                     : internal?._tag === "UserWithReminders"
-                      ? internal.text
+                      ? (internal.userText ?? internal.text)
                       : item.text,
                 renderAs: item.renderUserMessageAsMarkdown ? ("markdown" as const) : part.renderAs,
                 queuedInput: {
                   itemId: item.itemId,
                   ...(item.turnId ? { turnId: item.turnId } : null),
                   ...(item.command ? { command: item.command } : null),
-                  text: internal?._tag === "UserWithReminders" ? internal.text : item.text,
+                  text:
+                    internal?._tag === "UserWithReminders"
+                      ? (internal.userText ?? internal.text)
+                      : item.text,
                   attachments: item.attachments,
                   renderUserMessageAsMarkdown: item.renderUserMessageAsMarkdown,
                 },

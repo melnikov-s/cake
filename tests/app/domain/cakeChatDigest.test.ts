@@ -112,6 +112,12 @@ describe("Cake Chat user priority and digest reminders", () => {
       ]),
       true,
     );
+    const progress = {
+      ...userText("Worker evidence"),
+      agentSource: { title: "Worker abc", href: "cake://subagent/parent/abc" },
+    };
+    assert.equal(runStartedByReport([userText("earlier"), progress]), true);
+    assert.equal(runStartedByReport([progress, userText("My next question")]), false);
     // A queued user message does not own the active run.
     assert.equal(
       runStartedByReport([reportPart, { ...userText("queued"), deliveryState: "queued" }]),

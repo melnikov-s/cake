@@ -29,6 +29,8 @@ import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktre
 import { PiModels } from "../../../src/services/pi/PiModels";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { splitContextReminders } from "../../../src/services/pi/runtime/session-context-reminders";
+import { encodeCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
+import { withoutPassiveNotices } from "../../../src/contracts/conversations/internal-input";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { messageBoardHarness } from "../helpers/messageBoardHarness";
 import { WorkflowTestLive } from "../helpers/workflowFixture";
@@ -560,6 +562,79 @@ describe("timed batch delivery", () => {
       assert.equal(f.admitted.length, 0);
       assert.ok(yield* f.batch());
     }),
+  );
+});
+
+describe("worker report presentation", () => {
+  it.effect.each(["next-user", "timer"] as const)(
+    "records sender content once without changing admission policy (%s)",
+    (timing) =>
+      Effect.gen(function* () {
+        yield* TestClock.setTime(START);
+        const f = yield* fixture();
+        yield* f.provide(
+          f.storage.deferReferenceNotice({
+            id: "report-1",
+            recipientSessionId: "parent",
+            text: "## Findings\n\n**Exact evidence**",
+            source: {
+              kind: "subagent",
+              handleId: "worker-1",
+              sessionId: "private-pi",
+              task: "Investigate attribution",
+              status: "complete",
+              messageId: "answer",
+            },
+          }),
+        );
+        const reportId = crypto.randomUUID();
+        yield* f.provide(
+          f.storage.deferReferenceNotice({
+            id: reportId,
+            recipientSessionId: "parent",
+            text: encodeCrossSessionMessage("Session report", {
+              version: 1,
+              messageId: reportId,
+              threadId: reportId,
+              sequence: 1,
+              expectsResponse: false,
+              resultDelivery: "ignore",
+              sender: { sessionId: "other", title: "Other session", kind: "project-session" },
+            }),
+          }),
+        );
+        yield* f.notice("Passive FYI");
+        yield* f.pass();
+        assert.equal(f.admitted.length, 0);
+        if (timing === "next-user") yield* f.userMessage("My actual question");
+        else {
+          yield* advance(UPDATE_BATCH_WINDOW_MS);
+          yield* f.pass();
+        }
+        assert.equal(f.admitted.length, 1);
+        const origin = f.admitted[0]?.internal;
+        assert.equal(origin?._tag, timing === "next-user" ? "UserWithReminders" : "UpdateBatch");
+        assert.ok(origin?._tag === "UserWithReminders" || origin?._tag === "UpdateBatch");
+        assert.equal(origin.updates?.[0]?.text, "## Findings\n\n**Exact evidence**");
+        assert.equal(origin.updates?.[0]?.source.title, "Worker worker-1");
+        assert.ok(origin.updates?.[0]?.source.href.includes("?message=answer"));
+        assert.equal(origin.notices.length, 1);
+        assert.equal(origin.reportNotices?.[0]?.text, "Session report");
+        assert.equal(
+          splitContextReminders(withoutPassiveNotices(f.admitted[0]!.text, origin)).text,
+          timing === "next-user" ? "My actual question" : "",
+        );
+        if (origin._tag === "UserWithReminders")
+          assert.equal(origin.userText, "My actual question");
+        assert.equal((yield* f.state()).deferredReferences?.[0]?.admissions, 1);
+        yield* f.pass();
+        assert.equal(yield* f.batch(), undefined);
+        yield* f.userMessage("Another question");
+        const second = f.admitted[1]?.internal;
+        assert.ok(second?._tag === "UserWithReminders");
+        assert.deepEqual(second.updates, []);
+        assert.equal((yield* f.state()).deferredReferences?.length, 2);
+      }),
   );
 });
 

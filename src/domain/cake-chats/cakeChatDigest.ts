@@ -19,7 +19,7 @@ export function runStartedByReport(parts: readonly UiPart[]): boolean {
     (part): part is Extract<UiPart, { kind: "text" }> =>
       part.kind === "text" && part.role === "user" && part.deliveryState === undefined,
   );
-  return Boolean(input && (input.crossSession || input.subagentReport));
+  return Boolean(input && (input.crossSession || input.subagentReport || input.agentSource));
 }
 
 /**

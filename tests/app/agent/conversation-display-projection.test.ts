@@ -15,7 +15,10 @@ import {
 import { updateBatchReminder } from "../../../src/contracts/conversations/update-batch";
 import { projectConversationDisplay } from "../../../src/services/pi/runtime/conversation-display-projection";
 import { forkDisplayProvenanceEntryType } from "../../../src/services/pi/runtime/fork-display-provenance";
-import { appendToolCompactedBranch } from "../../../src/services/pi/runtime/session-tool-compaction";
+import {
+  appendToolCompactedBranch,
+  toolCompactDialogueMessage,
+} from "../../../src/services/pi/runtime/session-tool-compaction";
 import {
   toolCompactEntryType,
   toolCompactProvenanceEntryType,
@@ -78,6 +81,49 @@ function summarized(parts: ReturnType<typeof projectConversationDisplay>) {
 }
 
 describe("Conversation display projection after tool compaction", () => {
+  it("keeps worker progress attributed in live/replay and excludes it from user-only compaction", () => {
+    const update = {
+      id: "progress-1",
+      text: "## Found evidence\n\n**Read the source**",
+      source: { title: "Worker abcdef12", href: "cake://subagent/parent/abcdef12" },
+    };
+    const origin = { _tag: "AgentUpdate" as const, update };
+    const message = {
+      role: "user" as const,
+      timestamp: 1,
+      content: `Message from subagent: ${update.text}\n\nReply through this subagent's handle.`,
+    };
+    const live = createLiveMessageProjector({ internalInput: () => origin })({
+      type: "message_start",
+      message,
+    });
+    const session = SessionManager.inMemory("/project");
+    session.appendCustomEntry(internalInputEntryType, { timestamp: 1, origin });
+    session.appendMessage(message);
+    const replay = projectConversationDisplay(session);
+    expect(live).toEqual(replay);
+    expect(replay).toEqual([
+      expect.objectContaining({
+        id: "agent-update-progress-1",
+        agentSource: update.source,
+        renderAs: "markdown",
+        text: update.text,
+      }),
+    ]);
+    // Identical words entered by the user are a separate human-authored message.
+    session.appendMessage({ ...message, timestamp: 2 });
+    expect(projectConversationDisplay(session)).toContainEqual(
+      expect.objectContaining({
+        kind: "text",
+        text: message.content,
+        entryId: expect.any(String),
+      }),
+    );
+    const entries = session.getEntries();
+    const automatic = entries.find((entry) => entry.type === "message");
+    expect(automatic).toBeDefined();
+    if (automatic) expect(toolCompactDialogueMessage(automatic, origin)).toBeUndefined();
+  });
   it.each(["UserWithReminders", "UpdateBatch"] as const)(
     "projects each passive sender once with stable provenance in live and replay (%s)",
     (kind) => {

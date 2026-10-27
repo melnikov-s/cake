@@ -144,6 +144,19 @@ function durableMessageText(message: Message): string {
         .join("\n")
     : message.content;
   const input = message.role === "user" ? durableInputPresentation(rawText) : undefined;
+  if (input?.internal?._tag === "AgentUpdate")
+    return `work: [${input.internal.update.source.title}] ${input.internal.update.text}`;
+  if (input?.internal?._tag === "UserWithReminders" && input.internal.userText !== undefined) {
+    const work = [
+      ...[...(input.internal.reportNotices ?? []), ...input.internal.notices].map(
+        (notice) => `work: [${notice.crossSession.sender.title}] ${notice.text}`,
+      ),
+      ...(input.internal.updates ?? []).map(
+        (update) => `work: [${update.source.title}] ${update.text}`,
+      ),
+    ];
+    return [...work, `user: ${input.internal.userText}`].join("\n");
+  }
   const text =
     input?.internal?._tag === "UserWithReminders"
       ? input.internal.text

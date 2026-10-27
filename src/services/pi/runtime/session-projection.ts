@@ -8,6 +8,7 @@ import {
   subagentCompletionPart,
   subagentCompletionType,
   passiveNoticeParts,
+  agentUpdatePart,
 } from "./internal-input-projection";
 import {
   parseSkillBlock,
@@ -375,14 +376,32 @@ function partsFromMessage(
     const timestamp = Reflect.get(message, "timestamp");
     const renderKey =
       typeof timestamp === "number" && Number.isFinite(timestamp) ? `user-${timestamp}` : undefined;
-    const context = splitContextReminders(
+    if (internal?._tag === "AgentUpdate") return [agentUpdatePart(internal.update)];
+    const rawContext = splitContextReminders(
       withoutPassiveNotices(textFromContent(content), internal),
     );
-    const envelope = parseUserMessageEnvelope(context.text);
+    const context = {
+      ...rawContext,
+      text:
+        internal?._tag === "UserWithReminders" && internal.userText !== undefined
+          ? internal.userText
+          : internal?._tag === "UpdateBatch"
+            ? ""
+            : rawContext.text,
+    };
+    const envelope = parseUserMessageEnvelope(
+      context.text,
+      internal?._tag === "UserWithReminders" && internal.userText !== undefined,
+    );
     const reminderParts = context.reminders
       .filter(
         (reminder) =>
-          internal?._tag !== "UpdateBatch" || reminder.title !== "Cake · batched updates",
+          !(
+            (internal?._tag === "UpdateBatch" ||
+              (internal?._tag === "UserWithReminders" && internal.userText !== undefined)) &&
+            (reminder.title === "Cake · reference notifications" ||
+              reminder.title === "Cake · batched updates")
+          ),
       )
       .map((reminder, index): UiPart => ({
         id: `${baseId}-context-${index}`,
@@ -914,7 +933,8 @@ type UserMessageEnvelope = {
 };
 
 /** Strips Cake's provenance envelope from a Pi user message and surfaces its metadata. */
-function parseUserMessageEnvelope(content: string): UserMessageEnvelope {
+function parseUserMessageEnvelope(content: string, literalUserText = false): UserMessageEnvelope {
+  if (literalUserText) return { text: content };
   content = splitContextReminders(content).text;
   const scheduled = parseScheduledMessage(content);
   if (scheduled) return { text: scheduled.text, scheduled: scheduled.origin };
@@ -924,8 +944,8 @@ function parseUserMessageEnvelope(content: string): UserMessageEnvelope {
 }
 
 /** Display fields for a not-yet-consumed input; the raw queued text stays model-facing. */
-export function queuedUserMessageDisplay(content: string) {
-  const envelope = parseUserMessageEnvelope(content);
+export function queuedUserMessageDisplay(content: string, literalUserText = false) {
+  const envelope = parseUserMessageEnvelope(content, literalUserText);
   return {
     text: envelope.text,
     renderAs:

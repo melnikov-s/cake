@@ -36,6 +36,7 @@ import {
   addReferenceNotifications,
   isReferenceNotification,
   pendingReportPage,
+  pendingReportPresentation,
 } from "../../contracts/conversations/reference-notification";
 import {
   TurnId,
@@ -186,8 +187,9 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
         message.attachments,
       ).pipe(asError("deliver")),
     );
-    const passiveTurnId = passive.length ? crypto.randomUUID() : undefined;
-    if (storage && passiveTurnId)
+    const reportPresentation = pendingReportPresentation(reportPage);
+    const passiveTurnId = passive.length || reportPage.length ? crypto.randomUUID() : undefined;
+    if (storage && passiveTurnId && passive.length)
       yield* storage.markPassiveNoticeAdmission(
         passive.map((notice) => notice.id),
         passiveTurnId,
@@ -200,10 +202,17 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
           ? handle.submit({
               turnId: passiveTurnId,
               delivery: effectiveDelivery,
-              text: `${text}\n\n${passiveNoticeContext(passive)}`,
+              text: passive.length ? `${text}\n\n${passiveNoticeContext(passive)}` : text,
               attachments,
               markdown: input.renderUserMessageAsMarkdown,
-              internal: { _tag: "UserWithReminders", text, notices: passive },
+              internal: {
+                _tag: "UserWithReminders",
+                text,
+                notices: passive,
+                reportNotices: reportPresentation.notices,
+                updates: reportPresentation.updates,
+                userText: message.text,
+              },
               ...(input.presentationMode ? { presentationMode: input.presentationMode } : null),
               ...(input.responseMode ? { responseMode: input.responseMode } : null),
             })
@@ -220,7 +229,7 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
       ).pipe(asError("deliver")),
     );
     yield* consumeSelection(prepared).pipe(asError("deliver"));
-    if (storage && passiveTurnId)
+    if (storage && passiveTurnId && passive.length)
       yield* storage.markPassiveNoticeAdmission(
         passive.map((notice) => notice.id),
         passiveTurnId,

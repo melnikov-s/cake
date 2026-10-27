@@ -1,3 +1,4 @@
+import type { InternalInput } from "../../../src/contracts/conversations/internal-input";
 import { ProjectTodoReports } from "../../../src/services/projects/ProjectTodoReports";
 import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
 import type {
@@ -161,6 +162,7 @@ interface Fixture {
   readonly completions: Ref.Ref<ReadonlyArray<unknown>>;
   readonly reports: Queue.Queue<unknown>;
   readonly parentMessages: Ref.Ref<ReadonlyArray<string>>;
+  readonly parentOrigins: Ref.Ref<ReadonlyArray<InternalInput | undefined>>;
   readonly childPrompts: Ref.Ref<
     ReadonlyArray<{ sessionId: string; text: string; delivery?: string; markdown?: boolean }>
   >;
@@ -188,6 +190,7 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
   const completions = yield* Ref.make<ReadonlyArray<unknown>>([]);
   const reports = yield* Queue.unbounded<unknown>();
   const parentMessages = yield* Ref.make<ReadonlyArray<string>>([]);
+  const parentOrigins = yield* Ref.make<ReadonlyArray<InternalInput | undefined>>([]);
   const childPrompts = yield* Ref.make<
     ReadonlyArray<{ sessionId: string; text: string; delivery?: string; markdown?: boolean }>
   >([]);
@@ -295,6 +298,7 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
           return;
         }
         if (isParent) {
+          await Effect.runPromise(Ref.update(parentOrigins, (values) => [...values, internal]));
           await Effect.runPromise(Ref.update(parentMessages, (values) => [...values, text]));
           return;
         }
@@ -448,6 +452,7 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
     completions,
     reports,
     parentMessages,
+    parentOrigins,
     childPrompts,
   };
 });
@@ -2146,6 +2151,13 @@ describe("Subagents", () => {
         assert.equal(messages.length, 1);
         assert.match(messages[0] ?? "", /Message from subagent/);
         assert.ok(messages[0]?.includes(text));
+        const origin = (yield* Ref.get(fixture.parentOrigins))[0];
+        assert.equal(origin?._tag, "AgentUpdate");
+        if (origin?._tag === "AgentUpdate") {
+          assert.equal(origin.update.text, text);
+          assert.match(origin.update.source.title, /^Worker /);
+          assert.match(origin.update.source.href, /^cake:\/\/subagent\/parent\//);
+        }
         assert.equal(
           (yield* (yield* SessionFamilyStorage).state()).deferredReferences?.length ?? 0,
           0,

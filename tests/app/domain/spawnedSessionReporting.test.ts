@@ -1329,10 +1329,10 @@ describe("automatic spawned-session reporting", () => {
                     acquireSession: () =>
                       Effect.succeed({
                         ...handle,
-                        prompt: () =>
+                        submit: () =>
                           Effect.fail(
                             new PiSessionError({
-                              operation: "prompt",
+                              operation: "submit",
                               message: "Admission rejected",
                             }),
                           ),

@@ -10,6 +10,7 @@ import {
 import {
   addReferenceNotifications,
   pendingReportPage,
+  pendingReportPresentation,
 } from "../../contracts/conversations/reference-notification";
 import { updateBatchDueAt, updateBatchReminder } from "../../contracts/conversations/update-batch";
 import type { SessionContextMetadata } from "../../contracts/conversations/session-context-metadata";
@@ -190,6 +191,7 @@ const deliverBatch = Effect.fn("UpdateBatches.deliverBatch")(function* (
           turnId,
         );
       yield* storage.saveUpdateBatch({ ...batch, turnId });
+      const presentation = pendingReportPresentation(reportPage);
       yield* handle.submit({
         turnId,
         delivery: "follow-up",
@@ -197,7 +199,12 @@ const deliverBatch = Effect.fn("UpdateBatches.deliverBatch")(function* (
         attachments: [],
         markdown: false,
         automaticTitle: false,
-        internal: { _tag: "UpdateBatch", notices: passive },
+        internal: {
+          _tag: "UpdateBatch",
+          notices: passive,
+          reportNotices: presentation.notices,
+          updates: presentation.updates,
+        },
       });
       if (passive.length)
         yield* storage.markPassiveNoticeAdmission(

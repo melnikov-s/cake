@@ -1,4 +1,6 @@
 import { pendingReportRef, type PendingReport } from "./pending-report";
+import type { AgentUpdate } from "./agent-update";
+import type { PassiveNotice } from "./passive-notice";
 import { parseSessionLink } from "./message-reference";
 import { describeCrossSessionMessage, parseCrossSessionMessage } from "./cross-session-message";
 
@@ -40,6 +42,29 @@ const block =
 /** Fair bounded page: omitted reports remain discoverable without replaying full bodies forever. */
 export function pendingReportPage(reports: readonly PendingReport[]) {
   return [...reports].sort((a, b) => (a.admissions ?? 0) - (b.admissions ?? 0)).slice(0, 5);
+}
+
+/** First admission presents sender-authored content once; subsequent reminders are model-only. */
+export function pendingReportPresentation(reports: readonly PendingReport[]) {
+  const updates: AgentUpdate[] = [];
+  const notices: PassiveNotice[] = [];
+  for (const report of reports) {
+    if (report.admissions) continue;
+    if (report.source) {
+      const href = pendingReportRef(report);
+      if (href)
+        updates.push({
+          id: report.id,
+          text: report.text,
+          source: { title: `Worker ${report.source.handleId.slice(0, 8)}`, href },
+        });
+    } else {
+      const message = parseCrossSessionMessage(report.text);
+      if (message)
+        notices.push({ id: report.id, text: message.text, crossSession: message.metadata });
+    }
+  }
+  return { updates, notices };
 }
 
 export function addReferenceNotifications(
