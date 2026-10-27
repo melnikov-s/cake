@@ -44,7 +44,7 @@ const harnessFiles = [
   "tests/electron/fixtures/performance.ts",
   "tests/electron/main-harness.ts",
   "tests/fixtures/window-state.ts",
-  "tests/fixtures/performance/v1.json",
+  "tests/fixtures/performance/v2.json",
   "playwright.performance.config.ts",
   "scripts/performance/user-performance.ts",
   "scripts/performance/regression.ts",
@@ -93,7 +93,7 @@ try {
       (await readJson(join(root, "node_modules", name, "package.json"))).version as string;
     const run: Run = {
       schemaVersion: 1,
-      fixtureVersion: "cake-desktop-v1",
+      fixtureVersion: "cake-desktop-v2-retained",
       metricVersion: "visible-readiness-v1",
       harnessHash: hash.digest("hex"),
       environment: {

@@ -28,7 +28,12 @@ status, collection time, fixture/metric versions, harness hash and environment.
 write `comparison.json` with metric/stat-specific failures. Playwright retains its
 trace on scenario failure; every run also retains a streaming gzip-compressed Chromium
 renderer timeline (`renderer-trace.json.gz`) and partial samples under `evidence/`,
-including when timing comparison fails afterward. User-timing spans named
+including when timing comparison fails afterward. `renderer.cpuprofile` retains
+1 ms sampled CPU stacks. `diagnostics.json` records actual native RPC request
+counts by tag, opt-in navigation entry/phase marks, and heap usage per sample.
+These diagnostics include work between the pre/post driver snapshots, not exact
+exclusive attribution to the metric. Repeated sampled stacks are never call counts.
+Profiling overhead is fixed for both control and candidate. User-timing spans named
 `cake.perf.<metric>.<iteration>` correlate trace events with raw samples. Decompress
 the timeline to JSON before loading it in a trace viewer if needed.
 A failed/incomplete scenario is never usable as a complete run. Trace overhead is
@@ -36,11 +41,12 @@ part of this fixed profile; don't compare to untraced measurements.
 
 ## Workload and markers (visible-readiness-v1)
 
-[`tests/fixtures/performance/v1.json`](../../tests/fixtures/performance/v1.json)
-and its deterministic generator define at least 80 sessions, each with 240 mixed
-user/assistant messages, substantial prose and code, 7,500 navigation-history
-entries, restored renderer identities, composer state and workspace-sidebar pane
-preferences. No user data or provider credentials are copied. Larger requested
+[`tests/fixtures/performance/v2.json`](../../tests/fixtures/performance/v2.json)
+and its deterministic generator define at least 828 sessions, each with 240 mixed
+user/assistant messages (1,000 in each of the two warm destinations), substantial
+prose and code, 9,998 navigation-history entries, restored renderer identities,
+composer state and workspace-sidebar pane preferences. This retained-identity
+workload is not comparable to the original 80-session v1 fixture. No user data or provider credentials are copied. Larger requested
 sample counts expand the distinct session set; sample count must match exactly
 for comparison. Use the fixed default for calibrated runs.
 
@@ -49,8 +55,12 @@ handlers. End markers are checked in animation frames, then rechecked one frame
 later, without Playwright polling/driver time inside the measured interval. End
 content must have layout, visible computed styles, nonzero ancestor opacity and
 no running ancestor animations. Outgoing inert transcript clones are excluded.
-This is a **hidden-window DOM/paint-opportunity readiness proxy**, not proof of
-compositor presentation or real foreground pixel latency. Native windows stay
+Actual focus, typing, retained draft and enabled submission are additionally
+checked after every cold switch, resolve and restore (outside the timed interval);
+warm switches have the separate timed composer-input check. The second frame
+requires the renderer event loop to run again, but is not a bound on subsequent
+input latency. This is a **hidden-window DOM/paint-opportunity readiness proxy**,
+not proof of compositor presentation or real foreground pixel latency. Native windows stay
 hidden and unfocused; no desktop activation is required.
 
 | Metric              | Start                                            | End and setup                                                                                                                                                                                                                                                                                  |

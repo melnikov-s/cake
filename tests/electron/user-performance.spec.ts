@@ -193,6 +193,18 @@ test("user-visible performance collection @performance", async ({ browserName },
   });
   let cdp: CDPSession | undefined;
   const errors: string[] = [];
+  const diagnostics: object[] = [];
+  await application.evaluate(({ ipcMain }) => {
+    const counts: Record<string, number> = {};
+    Object.assign(globalThis, { cakePerformanceRpcCounts: counts });
+    ipcMain.on("cake:rpc:request", (_event, message) => {
+      if (message?._tag === "Request") counts[message.tag] = (counts[message.tag] ?? 0) + 1;
+    });
+  });
+  const rpcCounts = () =>
+    application.evaluate(
+      () => ({ ...Reflect.get(globalThis, "cakePerformanceRpcCounts") }) as Record<string, number>,
+    );
   const metrics = Object.fromEntries(metricNames.map((name) => [name, []])) as unknown as Record<
     Metric,
     Sample[]
@@ -207,6 +219,10 @@ test("user-visible performance collection @performance", async ({ browserName },
       timeout: 60000,
     });
     cdp = await page.context().newCDPSession(page);
+    await page.evaluate(() => performance.mark("cake.session-switch.enabled"));
+    await cdp.send("Profiler.enable");
+    await cdp.send("Profiler.setSamplingInterval", { interval: 1000 });
+    await cdp.send("Profiler.start");
     await cdp.send("Tracing.start", {
       categories: "devtools.timeline,blink.user_timing",
       transferMode: "ReturnAsStream",
@@ -219,16 +235,43 @@ test("user-visible performance collection @performance", async ({ browserName },
     };
     const sample = async (name: Metric, probe: Probe, action: () => Promise<unknown>) => {
       const before = calls;
+      const ipcBefore = await rpcCounts();
+      await page.evaluate(() => performance.clearMarks("cake.session-switch"));
       const timing = await measured(
         page,
         { ...probe, label: `${name}.${metrics[name].length}` },
         action,
       );
+      const ipcAfter = await rpcCounts();
+      diagnostics.push({
+        metric: name,
+        iteration: metrics[name].length,
+        rpcCalls: Object.fromEntries(
+          Object.entries(ipcAfter)
+            .map(([tag, count]) => [tag, count - (ipcBefore[tag] ?? 0)])
+            .filter(([, count]) => count),
+        ),
+        switchPhases: await page.evaluate(() =>
+          performance
+            .getEntriesByName("cake.session-switch")
+            .map((entry) => ({ at: entry.startTime, ...Reflect.get(entry, "detail") })),
+        ),
+        heap: await cdp!.send("Runtime.getHeapUsage"),
+      });
       metrics[name].push({
         ...timing,
         iteration: metrics[name].length,
         providerCalls: calls - before,
       });
+    };
+    const checkComposer = async () => {
+      const composer = page.locator(input);
+      await composer.focus();
+      await expect(composer).toBeFocused();
+      await composer.press("x");
+      await expect(composer).toHaveValue("x");
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+      await composer.fill("");
     };
     const switchProbe = (i: number): Probe => ({
       event: "mousedown",
@@ -241,6 +284,7 @@ test("user-visible performance collection @performance", async ({ browserName },
     while (await showMore.count()) await showMore.click();
     for (let i = 3; i < n + 3; i++) {
       await sample("switch.cold.ready", switchProbe(i), () => page.locator(row(i)).click());
+      await checkComposer();
     }
     // Fixed warm-up, discarded. Only two destinations remain hot; no eviction between samples.
     for (const i of [0, 1, 0, 1, 0]) await switchTo(i);
@@ -286,6 +330,7 @@ test("user-visible performance collection @performance", async ({ browserName },
         },
         () => page.locator(resolve).click(),
       );
+      await checkComposer();
       await page.locator(`${resolvedRow(1)} .session-row`).click();
       await expect(page.getByTestId("resolved-session-notice")).toBeVisible();
       const restore = page.locator(resolvedRow(1)).getByRole("button", { name: /^Restore / });
@@ -303,6 +348,7 @@ test("user-visible performance collection @performance", async ({ browserName },
         },
         () => restore.click(),
       );
+      await checkComposer();
     }
     await switchTo(0);
     // Three discarded send warmups establish a ready Pi runtime and HTTP path.
@@ -355,7 +401,12 @@ test("user-visible performance collection @performance", async ({ browserName },
       JSON.stringify({ metrics, errors, calls }, null, 2),
     );
     try {
-      if (cdp) await saveTrace(cdp, testInfo.outputPath("renderer-trace.json.gz"));
+      await writeFile(testInfo.outputPath("diagnostics.json"), JSON.stringify(diagnostics));
+      if (cdp) {
+        const { profile } = await cdp.send("Profiler.stop");
+        await writeFile(testInfo.outputPath("renderer.cpuprofile"), JSON.stringify(profile));
+        await saveTrace(cdp, testInfo.outputPath("renderer-trace.json.gz"));
+      }
     } finally {
       pending?.end();
       await application.close();

@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import fixture from "../../fixtures/performance/v1.json" with { type: "json" };
+import fixture from "../../fixtures/performance/v2.json" with { type: "json" };
 import { windowStateChildren, windowStateDocument, store } from "../../fixtures/window-state";
 import { cakeWorkspaceSessionDirectory } from "../../../src/services/pi/runtime/session-discovery";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
@@ -140,7 +140,8 @@ export async function createPerformanceFixture(origin: string, samples: number) 
           modelId: "fixture",
         },
       ];
-      for (let i = 0; i < fixture.messagesPerSession; i++) {
+      const messageCount = index < 2 ? fixture.largeTranscriptMessages : fixture.messagesPerSession;
+      for (let i = 0; i < messageCount; i++) {
         const assistant = i % 2 === 0;
         entries.push({
           type: "message",
@@ -154,7 +155,7 @@ export async function createPerformanceFixture(origin: string, samples: number) 
               {
                 type: "text",
                 text:
-                  i === fixture.messagesPerSession - 1
+                  i === messageCount - 1
                     ? marker(index)
                     : `History ${i}: ${"A realistic conversation about implementation and verification. ".repeat(10)}\n\n\`\`\`ts\nconst message = ${i};\n\`\`\``,
               },
