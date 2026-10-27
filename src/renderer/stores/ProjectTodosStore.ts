@@ -106,6 +106,7 @@ export class ProjectTodosStore extends Store<{
     const metadata = SessionMetadataContext.consume(this)!;
     return (this.value?.items ?? [])
       .map((item) => {
+        let needsInput = false;
         let active = false;
         let unread = false;
         let modifiedAt = item.modifiedAt ?? "";
@@ -114,12 +115,13 @@ export class ProjectTodosStore extends Store<{
         for (const link of item.associations) {
           if (link.kind !== "session") continue;
           const activity = metadata.sessionActivity(link.sessionId);
+          needsInput ||= activity === "waiting" || activity === "blocked";
           active ||= isActiveSessionActivity(activity);
           unread ||= activity === "unread";
           const sessionModifiedAt = metadata.sessionModifiedAt(link.sessionId) ?? "";
           if (sessionModifiedAt > modifiedAt) modifiedAt = sessionModifiedAt;
         }
-        return { item, group: active ? 2 : unread ? 0 : 1, modifiedAt };
+        return { item, group: needsInput ? 0 : active ? 3 : unread ? 1 : 2, modifiedAt };
       })
       .sort(
         (a, b) =>

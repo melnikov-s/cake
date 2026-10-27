@@ -13,6 +13,8 @@ import {
 import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-project-group";
 import { SideChatLayout } from "../../../src/renderer/components/side-chat-layout";
 import { applySessionCatalogGroupUpdate } from "../../../src/renderer/reducers/CatalogReducer";
+import { applyPartUpdate } from "../../../src/renderer/reducers/SessionPartReducer";
+import type { InterviewRecord } from "../../../src/contracts/interviews/interview";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
@@ -262,6 +264,112 @@ it("groups unread, other and active work with newest activity first and running 
   expect(openOrder()).toEqual([4, 3, 2, 6, 1, 5, 8, 7].map((id) => todo(id).id));
   expect(screen.queryByRole("combobox", { name: "Sort to-dos" })).toBeNull();
   expect(fixture.todos().items).toEqual(items); // Ordering never rewrites storage.
+});
+
+it("puts pending interviews and input blockers ahead of unread and running work, updating when the interview settles", async () => {
+  const sessions = [
+    sessionSummary({
+      sessionId: "unread",
+      projectPath: "/cake",
+      unread: true,
+      latestTurnOutcome: "complete",
+      modifiedAt: activityTime(10),
+    }),
+    sessionSummary({
+      sessionId: "read",
+      projectPath: "/cake",
+      latestTurnOutcome: "complete",
+      modifiedAt: activityTime(9),
+    }),
+    sessionSummary({
+      sessionId: "running",
+      projectPath: "/cake",
+      running: true,
+      modifiedAt: activityTime(8),
+    }),
+    sessionSummary({
+      sessionId: "interview",
+      projectPath: "/cake",
+      running: true,
+      unread: true,
+      modifiedAt: activityTime(2),
+    }),
+    sessionSummary({
+      sessionId: "blocked",
+      projectPath: "/cake",
+      recoveryIssue: "Choose the next step",
+      unread: true,
+      modifiedAt: activityTime(3),
+    }),
+  ];
+  const items = [
+    todo(1, undefined, ["unread"]),
+    todo(2, undefined, ["read"]),
+    todo(3, undefined, ["running"]),
+    todo(4, undefined, ["interview"]),
+    todo(5, undefined, ["blocked"]),
+    todo(6, undefined, ["blocked", "running", "unread"]),
+    todo(7, undefined, ["blocked"]), // Same input-blocked activity; ID breaks the tie.
+  ];
+  using fixture = renderTodos(false, { todos: { ...emptyProjectTodos(), items }, sessions });
+  const order = (ids: number[]) => ids.map((id) => todo(id).id);
+  expect(openOrder()).toEqual(order([6, 5, 7, 1, 2, 3, 4]));
+  await fixture.user.click(screen.getByRole("button", { name: "Task 4" }));
+
+  const record: InterviewRecord = {
+    id: "choose-target",
+    sessionId: "interview",
+    request: {
+      protocol: "cake.request/v1",
+      id: "target",
+      title: "Choose target",
+      responseSchema: { type: "object" },
+      view: { type: "form", fields: [{ id: "target", label: "Target", type: "text" }] },
+      fallback: { markdown: "Which target?" },
+    },
+  };
+  act(() =>
+    fixture.root.sessionRegistry.load("interview", "/cake").receive({
+      type: "interview-requested",
+      operationId: "operation",
+      interviewRequestId: "request",
+      record,
+    }),
+  );
+  expect(openOrder()).toEqual(order([6, 5, 7, 4, 1, 2, 3]));
+  expect(screen.getByRole("img", { name: "Waiting for your answer" })).toBeDefined();
+  expect(screen.getByRole("button", { name: "Task 4" }).getAttribute("aria-pressed")).toBe("true");
+
+  // Pi's settled tool projection clears the live request; the still-running task returns last.
+  act(() =>
+    applyPartUpdate(
+      fixture.root.sessionRegistry.findModel("interview")!.parts,
+      {
+        id: "tool-interview",
+        kind: "tool",
+        name: "cake",
+        command: "interview.open",
+        input: "",
+        state: "success",
+        interview: record,
+        interviewResult: {
+          interviewId: record.id,
+          cancelled: false,
+          value: { target: "production" },
+        },
+      },
+      "interview",
+    ),
+  );
+  expect(openOrder()).toEqual(order([6, 5, 7, 1, 2, 3, 4]));
+  await fixture.updateSessions(
+    sessions.map((session) =>
+      session.sessionId === "blocked"
+        ? { ...session, recoveryIssue: undefined, unread: false }
+        : session,
+    ),
+  );
+  expect(openOrder()).toEqual(order([1, 2, 5, 7, 6, 3, 4]));
 });
 
 it("breaks equal and missing activity ties by ID, independent of incoming storage order", () => {

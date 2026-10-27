@@ -413,10 +413,12 @@ is a refactoring signal, not precedent.
   restart. Normal durable reporting remains unchanged.
   Summary calls have a ten-second deadline, without retries or foreground-model
   fallback. To-do ordering never calls a model and has no user sort controls.
-  The pane derives one live order: unread non-active items, other non-active items,
-  then active items (including active+unread), newest activity first within each group.
-  Required session links use the shared session activity authority, including
-  waiting turns; source links are context only. Activity is the latest item
+  The pane derives one live order: items needing user input, unread non-active items,
+  other non-active items, then active items (including active+unread), newest activity
+  first within each group. Pending interviews (`waiting`) and recovery issues
+  (`blocked`) take precedence even when another required session is running or unread.
+  Required session links use the shared session activity authority;
+  source links are context only. Activity is the latest item
   `modifiedAt` or linked session `modifiedAt`. Item creation and revision changes
   record the timestamp in ApplicationStorage; selection/read acknowledgement does not.
   Older saved items without timestamps use linked activity where available.

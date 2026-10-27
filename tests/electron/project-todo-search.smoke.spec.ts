@@ -42,6 +42,15 @@ for (const theme of ["light", "dark"] as const) {
 
       await expect(panel.getByRole("combobox", { name: "Sort to-dos" })).toHaveCount(0);
       await expect(selected).toHaveAttribute("aria-pressed", "true");
+      // The input-blocked navigation task takes precedence over the ready startup report.
+      await expect
+        .poll(() =>
+          panel
+            .getByRole("list", { name: "Open to-dos" })
+            .locator(":scope > li")
+            .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-todo-id"))),
+        )
+        .toEqual(["00000000-0000-4000-8000-000000000012", "00000000-0000-4000-8000-000000000011"]);
 
       for (const width of [1500, 780]) {
         await page.setViewportSize({ width, height: 900 });
