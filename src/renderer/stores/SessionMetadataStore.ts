@@ -22,6 +22,10 @@ export class SessionMetadataStore extends Store<{
     );
   }
 
+  sessionModifiedAt(sessionId: string) {
+    return this.props.catalog.find(sessionId)?.modifiedAt;
+  }
+
   exists(sessionId: string) {
     return !!(this.props.catalog.find(sessionId) || this.props.sessions.findSession(sessionId));
   }

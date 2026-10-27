@@ -8,6 +8,8 @@ import {
 import { parseSessionLink } from "../../contracts/conversations/message-reference";
 import { parseSubagentLink } from "../../contracts/subagents/subagent-reference";
 import { ClientContext } from "./context/ClientContext";
+import { SessionMetadataContext } from "./context/SessionMetadataContext";
+import { isActiveSessionActivity } from "../lib/session-activity";
 import type { SideChatStore } from "./SideChatStore";
 import { describeError } from "../lib/error-details";
 
@@ -41,8 +43,6 @@ export class ProjectTodosStore extends Store<{
   sidePanel(): SideChatStore;
 }> {
   query = "";
-  sortMode: "agent" | "latest" | "earliest" = "agent";
-  displayOrder: readonly string[] = [];
   doneExpanded = false;
   busy = false;
   error: string | undefined;
@@ -53,12 +53,6 @@ export class ProjectTodosStore extends Store<{
       () => this.source?.owner.todoCreationRevision ?? 0,
       (revision, previous) => {
         if (revision > previous) this.open();
-      },
-    );
-    this.reaction(
-      () => this.visible,
-      (visible) => {
-        if (visible) this.captureOrder();
       },
     );
     // A selection lives only while this panel shows it. Closing the panel clears it, once any
@@ -109,26 +103,31 @@ export class ProjectTodosStore extends Store<{
     return this.filteredItems.filter((item) => item.state === "done");
   }
   get orderedItems() {
-    const items = [...(this.value?.items ?? [])];
-    // Storage is append-only creation order; description edits never change chronological order.
-    if (this.sortMode === "latest") return items.reverse();
-    if (this.sortMode === "earliest") return items;
-    const positions = new Map(this.displayOrder.map((id, index) => [id, index]));
-    return items.sort(
-      (a, b) =>
-        (positions.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
-        (positions.get(b.id) ?? Number.MAX_SAFE_INTEGER),
-    );
-  }
-  setSortMode(value: string) {
-    if (value !== "agent" && value !== "latest" && value !== "earliest") return;
-    this.sortMode = value;
-    this.captureOrder();
-  }
-  private captureOrder() {
-    this.displayOrder = [
-      ...(this.value?.agentOrder ?? this.value?.items.map(({ id }) => id) ?? []),
-    ];
+    const metadata = SessionMetadataContext.consume(this)!;
+    return (this.value?.items ?? [])
+      .map((item) => {
+        let active = false;
+        let unread = false;
+        let modifiedAt = item.modifiedAt ?? "";
+        // Required work links use the same activity authority as session dots.
+        // Source links are context, not the activity of the task they reference.
+        for (const link of item.associations) {
+          if (link.kind !== "session") continue;
+          const activity = metadata.sessionActivity(link.sessionId);
+          active ||= isActiveSessionActivity(activity);
+          unread ||= activity === "unread";
+          const sessionModifiedAt = metadata.sessionModifiedAt(link.sessionId) ?? "";
+          if (sessionModifiedAt > modifiedAt) modifiedAt = sessionModifiedAt;
+        }
+        return { item, group: active ? 2 : unread ? 0 : 1, modifiedAt };
+      })
+      .sort(
+        (a, b) =>
+          a.group - b.group ||
+          b.modifiedAt.localeCompare(a.modifiedAt) ||
+          a.item.id.localeCompare(b.item.id),
+      )
+      .map(({ item }) => item);
   }
   setQuery(query: string) {
     this.query = query;

@@ -1,5 +1,6 @@
 import { it } from "@effect/vitest";
 import { Effect, Layer, Schema } from "effect";
+import { TestClock } from "effect/testing";
 import { describe, expect } from "vitest";
 import * as todos from "../../../src/domain/projects/projectTodos";
 import { upsertProject } from "../../../src/domain/application/application";
@@ -32,6 +33,8 @@ import {
 } from "../../../src/contracts/cake-chats/session-digest-reminder";
 import { addReferenceNotifications } from "../../../src/contracts/conversations/reference-notification";
 import { createProjectTodoOperations } from "../../../src/domain/projects/project-todo-operations";
+
+const project = "/project";
 
 it.effect(
   "persists first-class subagent associations, exposes them in context and keeps public identities type-scoped",
@@ -74,6 +77,55 @@ it.effect(
   },
 );
 
+it.effect.each([project, CAKE_CHAT_TODO_SCOPE])(
+  "records activity for item creation and edits in %s, not selection or redundant completion",
+  (scope) => {
+    const f = fixture();
+    return Effect.gen(function* () {
+      yield* upsertProject(project, "Project");
+      yield* TestClock.setTime(1_000);
+      const first = yield* todos.create(scope, { title: "First", description: "Initial update." });
+      expect(first.modifiedAt).toBe("1970-01-01T00:00:01.000Z");
+      expect(yield* todos.read(scope, first.id)).toEqual(first);
+      yield* TestClock.setTime(2_000);
+      const second = yield* todos.create(scope, {
+        title: "Second",
+        description: "Another update.",
+      });
+      yield* TestClock.setTime(3_000);
+      yield* todos.mutateUser(scope, { _tag: "Select", selectedId: first.id });
+      expect(yield* todos.read(scope, first.id)).toEqual(first);
+      const [edited] = yield* todos.updateMany(scope, [
+        {
+          id: first.id,
+          expectedRevision: 0,
+          description: "New finding.",
+        },
+      ]);
+      expect(edited?.modifiedAt).toBe("1970-01-01T00:00:03.000Z");
+      expect(yield* todos.read(scope, second.id)).toEqual(second);
+      yield* TestClock.setTime(4_000);
+      yield* todos.applyReportDescription(scope, edited!, "Report delivered.");
+      const reported = yield* todos.read(scope, first.id);
+      expect(reported.modifiedAt).toBe("1970-01-01T00:00:04.000Z");
+      yield* TestClock.setTime(5_000);
+      yield* todos.completeResolved(scope, [reported]);
+      const done = yield* todos.read(scope, first.id);
+      expect(done.modifiedAt).toBe("1970-01-01T00:00:05.000Z");
+      yield* TestClock.setTime(6_000);
+      yield* todos.update(scope, { id: done.id, expectedRevision: done.revision, state: "done" });
+      expect(yield* todos.read(scope, first.id)).toEqual(done);
+      yield* todos.mutateUser(scope, {
+        _tag: "SetState",
+        id: done.id,
+        expectedRevision: done.revision,
+        state: "open",
+      });
+      expect((yield* todos.read(scope, first.id)).modifiedAt).toBe("1970-01-01T00:00:06.000Z");
+    }).pipe(Effect.provide(f.layer));
+  },
+);
+
 function fixture() {
   let persisted = JSON.stringify(defaultApplicationState());
   let fail = false;
@@ -101,7 +153,6 @@ function fixture() {
     persisted: () => Schema.decodeUnknownSync(StateSchema)(JSON.parse(persisted)),
   };
 }
-const project = "/project";
 function receipt(text: string) {
   const value = projectTodoReceipt(text);
   if (!value) throw new Error("Expected application receipt");

@@ -115,6 +115,8 @@ export const ProjectTodo = Schema.Struct({
   status: text(4096),
   state: Schema.Literals(["open", "done"]),
   revision,
+  /** Latest creation/content/lifecycle change; older saved items may have no timestamp. */
+  modifiedAt: Schema.optionalKey(Schema.String),
   associations: Associations,
   completion: Schema.optionalKey(ProjectTodoCompletion),
 });
@@ -140,8 +142,6 @@ export type ProjectTodoUserChange = typeof ProjectTodoUserChange.Type;
 /** ApplicationStorage owns this document with its Project. Pending context is not a transcript. */
 export const ProjectTodos = Schema.Struct({
   items: Schema.Array(ProjectTodo).check(Schema.isMaxLength(1000)),
-  /** Advisory order only; item storage order remains creation order. */
-  agentOrder: Schema.optionalKey(Schema.Array(identity).check(Schema.isMaxLength(1000))),
   selectedId: Schema.NullOr(identity),
   sequence: revision,
   deliveryToken: Schema.NullOr(identity),

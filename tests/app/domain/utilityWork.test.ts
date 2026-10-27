@@ -4,13 +4,11 @@ import { Deferred, Effect, Fiber, Logger, Ref } from "effect";
 import { TestClock } from "effect/testing";
 import { describe, it as vitestIt } from "vitest";
 import {
-  decodeTodoRanking,
   generateSessionDescription,
   generateSessionTitle,
   generateWorktreeName,
   normalizeSessionTitle,
   normalizeWorktreeName,
-  rankTodos,
   rewordSelection,
   selectInitialSessionLabels,
 } from "../../../src/domain/utility-work/utilityWork";
@@ -19,12 +17,7 @@ import {
   type PiModels,
   type PiModelsAdapter,
 } from "../../../src/services/pi/PiModels";
-import {
-  PiModelCompletionError,
-  type BoundedCompletionInput,
-  type PiModel,
-} from "../../../src/contracts/pi/model-data";
-import type { ProjectTodo } from "../../../src/contracts/projects/project-todos";
+import { type BoundedCompletionInput, type PiModel } from "../../../src/contracts/pi/model-data";
 
 const selection = {
   provider: "openai",
@@ -298,95 +291,5 @@ describe("utility work", () => {
     assert.equal(title.length, 80);
     assert.match(title, /…$/u);
     assert.equal(normalizeSessionTitle("\n\n"), "");
-  });
-  describe("to-do ranking", () => {
-    const todo = (index: number): ProjectTodo => ({
-      id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
-      title: `Item ${index}`,
-      description: "d".repeat(600),
-      status: "",
-      state: "open",
-      revision: 0,
-      associations: [],
-    });
-    const decode = (text: string, count = 3) =>
-      Effect.runSync(Effect.result(decodeTodoRanking(text, count)));
-
-    it.effect.each([
-      ["a plain array", "[3,1,2]", [2, 0, 1]],
-      ["surrounding whitespace", "\n  [3, 1, 2]  \n", [2, 0, 1]],
-      ["a json code fence", "```json\n[3,1,2]\n```", [2, 0, 1]],
-      ["a bare code fence", "```\n[2,3,1]\n```", [1, 2, 0]],
-      ["omitted items in current order", "[3]", [2, 0, 1]],
-    ] as const)("accepts %s", ([, text, expected]) =>
-      Effect.sync(() => {
-        const result = decode(text);
-        assert.equal(result._tag, "Success");
-        if (result._tag === "Success") assert.deepEqual(result.success, expected);
-      }),
-    );
-
-    it.effect.each([
-      ["prose", "Here is the order: [1,2,3]", /not valid JSON/],
-      ["a cut-off array", "[3, 1,", /not valid JSON/],
-      ["an object", '{"order":[1,2,3]}', /not an array of item numbers/],
-      ["ID strings", '["1","2","3"]', /not an array of item numbers/],
-      ["fractions", "[1.5,2,3]", /not an array of item numbers/],
-      ["zero", "[0,1,2]", /item number 0 is outside 1-3/],
-      ["too large", "[1,2,4]", /item number 4 is outside 1-3/],
-      ["duplicates", "[2,1,2]", /repeats item number 2/],
-    ] as const)("rejects %s with a specific error and reply preview", ([, text, message]) =>
-      Effect.sync(() => {
-        const result = decode(text);
-        assert.equal(result._tag, "Failure");
-        if (result._tag === "Failure") {
-          assert.match(result.failure.message, message);
-          assert.equal(result.failure.replyPreview, text);
-        }
-      }),
-    );
-
-    vitestIt("bounds the reply preview", () => {
-      const result = decode(`${"x".repeat(5_000)}`);
-      assert.equal(result._tag, "Failure");
-      if (result._tag === "Failure") assert.equal(result.failure.replyPreview?.length, 400);
-    });
-
-    it.effect("asks for numbers within budget and maps them back to IDs", () =>
-      Effect.gen(function* () {
-        const items = Array.from({ length: 50 }, (_, index) => todo(index));
-        let received: BoundedCompletionInput | undefined;
-        const reply = JSON.stringify(items.map((_, index) => 50 - index));
-        const order = yield* run(rankTodos({ selection, items }), (input) =>
-          Effect.sync(() => {
-            received = input;
-            return reply;
-          }),
-        );
-        assert.deepEqual(order, items.map(({ id }) => id).reverse());
-        assert.ok(received);
-        assert.match(received.instructions, /item numbers[\s\S]*1 to 50 exactly once/);
-        const context = JSON.parse(received.context);
-        assert.deepEqual(context[0], {
-          number: 1,
-          title: "Item 0",
-          description: "d".repeat(512),
-        });
-        assert.ok(!received.context.includes(items[0]!.id));
-        assert.ok(reply.length < received.maximumOutputCharacters);
-      }),
-    );
-
-    it.effect("reports a truncated reply as a completion failure, not a ranking", () =>
-      Effect.gen(function* () {
-        const failure = yield* Effect.flip(
-          run(rankTodos({ selection, items: [todo(1), todo(2)] }), () =>
-            Effect.fail(new Error("Model output was truncated at the model's output limit")),
-          ),
-        );
-        assert.ok(failure instanceof PiModelCompletionError);
-        assert.match(failure.message, /truncated/);
-      }),
-    );
   });
 });

@@ -411,17 +411,17 @@ is a refactoring signal, not precedent.
   checks discard results made obsolete by another edit. Reports do not close items or
   acknowledge delivery. This queue is ephemeral; pending refreshes are not replayed after
   restart. Normal durable reporting remains unchanged.
-  A separate change-driven, debounced pass ranks 2–50 open items from titles/descriptions
-  by asking for item numbers, which code validates and maps back to IDs; omitted items
-  keep their current relative order after the ranked ones. Rejected or token-truncated
-  replies are logged with a bounded reply preview. Utility calls share one concurrency
-  permit and have deadlines (ten seconds for summaries, twenty for ranking), without
-  retries or foreground-model fallback. The advisory
-  `agentOrder` is persisted on the list; chronological storage order remains creation
-  order. The pane offers Agent sorted, Latest first and Earliest first; chronological
-  modes use creation order, never description-edit recency. Agent order is captured on
-  pane opening or an explicit sort change, so background rankings do not move rows
-  while reading. Descriptions remain live. Larger lists retain their existing order.
+  Summary calls have a ten-second deadline, without retries or foreground-model
+  fallback. To-do ordering never calls a model and has no user sort controls.
+  The pane derives one live order: unread non-active items, other non-active items,
+  then active items (including active+unread), newest activity first within each group.
+  Required session links use the shared session activity authority, including
+  waiting turns; source links are context only. Activity is the latest item
+  `modifiedAt` or linked session `modifiedAt`. Item creation and revision changes
+  record the timestamp in ApplicationStorage; selection/read acknowledgement does not.
+  Older saved items without timestamps use linked activity where available.
+  Equal or missing timestamps break ties by ascending item ID. Open and Done
+  sections and search preserve this order, reacting immediately to metadata changes.
   One metadata-index snapshot and family snapshot join a bounded page, with filename-only
   identity enumeration per directory, never per item.
   Tools default to title/id/state/revision rows and compact mutation receipts; content is

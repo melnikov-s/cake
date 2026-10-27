@@ -1,6 +1,5 @@
 import { observer } from "r-state-tree/react";
 import { AnimatedList } from "@/components/ui/animated-list";
-import { Select } from "@/components/ui/select";
 import { Callout } from "@/components/ui/callout";
 import { DisclosureTrigger } from "@/components/ui/disclosure-trigger";
 import type { ProjectTodosStore } from "../stores/ProjectTodosStore";
@@ -24,17 +23,6 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
             {openItems.length}
           </span>
         </h2>
-        <Select
-          aria-label="Sort to-dos"
-          size="sm"
-          className="w-auto"
-          value={store.sortMode}
-          onChange={(event) => store.setSortMode(event.target.value)}
-        >
-          <option value="agent">Agent sorted</option>
-          <option value="latest">Latest first</option>
-          <option value="earliest">Earliest first</option>
-        </Select>
       </div>
       {store.error && (
         <Callout variant="error" role="alert">

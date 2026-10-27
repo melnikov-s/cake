@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { clearCompletedProjectTodoSelection } from "../../utils/project-todo-selection";
 import type { ProjectTodoContextReceipt } from "../../contracts/projects/project-todo-context";
 import { projectChatSessionId } from "../cake-chats/cakeChatLocations";
-import { Effect, Schema } from "effect";
+import { DateTime, Effect, Schema } from "effect";
 import {
   addSessionDigestReminder,
   splitSessionDigestReminder,
@@ -90,8 +90,17 @@ const change = Effect.fn("ProjectTodos.change")(function* (
         const global = isCakeChatTodoScope(scope);
         if (!global && !current.projects.some((item) => item.path === scope))
           return yield* error("Unknown registered project");
+        const previous = stored(current, scope) ?? emptyProjectTodos();
+        const updated = yield* transition(previous);
+        const modifiedAt = DateTime.formatIso(yield* DateTime.now);
+        const revisions = new Map(previous.items.map((item) => [item.id, item.revision]));
         const todos = clearCompletedProjectTodoSelection(
-          yield* transition(stored(current, scope) ?? emptyProjectTodos()),
+          {
+            ...updated,
+            items: updated.items.map((item) =>
+              revisions.get(item.id) === item.revision ? item : { ...item, modifiedAt },
+            ),
+          },
           randomUUID,
         );
         return global
@@ -129,23 +138,6 @@ export const applyReportDescription = Effect.fn("ProjectTodos.applyReportDescrip
   );
 });
 
-export const rankingKey = (items: readonly ProjectTodo[]) =>
-  JSON.stringify(
-    items
-      .filter((item) => item.state === "open")
-      .map(({ id, title, description }) => ({ id, title, description })),
-  );
-
-export const applyAgentOrder = Effect.fn("ProjectTodos.applyAgentOrder")(function* (
-  scope: string,
-  expectedKey: string,
-  agentOrder: readonly string[],
-) {
-  yield* change(scope, (value) =>
-    Effect.succeed(rankingKey(value.items) === expectedKey ? { ...value, agentOrder } : value),
-  );
-});
-
 export const list = Effect.fn("ProjectTodos.list")(function* (scope: string) {
   const application = yield* ApplicationState;
   const state = application.snapshot();
@@ -175,12 +167,12 @@ export const create = Effect.fn("ProjectTodos.create")(function* (
     revision: 0,
     ...(resolved ? { completion: { revision: 0, by: "sessions" as const } } : null),
   };
-  yield* change(scope, (value) =>
+  const next = yield* change(scope, (value) =>
     value.items.length >= 1000
       ? Effect.fail(error("To-do list is full"))
       : Effect.succeed({ ...value, items: [...value.items, item] }),
   );
-  return item;
+  return next.items.find((candidate) => candidate.id === item.id)!;
 });
 
 export const update = Effect.fn("ProjectTodos.update")(function* (

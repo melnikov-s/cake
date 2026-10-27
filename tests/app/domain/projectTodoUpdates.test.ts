@@ -1,5 +1,5 @@
 import { it } from "@effect/vitest";
-import { Clock, Deferred, Effect, Fiber, Layer, Schema, Stream } from "effect";
+import { Deferred, Effect, Fiber, Layer, Schema, Stream } from "effect";
 import { expect } from "vitest";
 import { TestClock } from "effect/testing";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
@@ -228,127 +228,43 @@ it.effect(
   },
 );
 
-it.effect("ranking maps item numbers back to IDs and preserves chronological storage order", () => {
+it.effect("list changes never request model sorting while report summaries still work", () => {
   const inputs: BoundedCompletionInput[] = [];
-  let output = "";
   const f = fixture((input) =>
     Effect.sync(() => {
       inputs.push(input);
-      return output;
+      return "Fix committed; awaiting merge.";
     }),
   );
   return Effect.gen(function* () {
-    const first = yield* setup();
-    const second = yield* todos.create("/project", {
-      title: "Needs your choice",
-      description: "Please choose the deployment target.",
-    });
-    output = "```json\n[2, 1]\n```";
-    yield* updates.rankList("/project");
-    expect(JSON.parse(inputs[0]!.context)).toEqual([
-      { number: 1, title: first.title, description: first.description },
-      { number: 2, title: second.title, description: second.description },
-    ]);
-    expect(inputs[0]!.context).not.toContain(first.id);
-    const ranked = yield* todos.list("/project");
-    expect(ranked.agentOrder).toEqual([second.id, first.id]);
-    expect(ranked.items.map(({ id }) => id)).toEqual([first.id, second.id]);
-    expect(ranked.items[0]?.revision).toBe(0);
-    for (const invalid of ["[1, 1]", "[3, 1]", "not json"]) {
-      output = invalid;
-      expect((yield* updates.rankList("/project").pipe(Effect.result))._tag).toBe("Failure");
-      expect((yield* todos.list("/project")).agentOrder).toEqual(ranked.agentOrder);
-    }
-  }).pipe(Effect.provide(f.layer));
-});
-
-it.effect("coalesces ranking changes and does not rerank its own order publication", () => {
-  let calls = 0;
-  const f = fixture((input) =>
-    Effect.sync(() => {
-      calls++;
-      return JSON.stringify(
-        JSON.parse(input.context)
-          .map((item: { number: number }) => item.number)
-          .reverse(),
-      );
-    }),
-  );
-  return Effect.gen(function* () {
+    yield* updates.initialize();
     const first = yield* setup();
     const second = yield* todos.create("/project", {
       title: "Review choices",
       description: "Choose the target.",
-    });
-    const clock = yield* Clock.Clock;
-    const armed = yield* Deferred.make<void>();
-    yield* updates.initialize().pipe(
-      Effect.provideService(Clock.Clock, {
-        ...clock,
-        sleep: (duration) =>
-          Deferred.succeed(armed, undefined).pipe(Effect.andThen(clock.sleep(duration))),
-      }),
-    );
-    const ranked = yield* (yield* ApplicationState).changes().pipe(
-      Stream.filter(({ state }) => state.projects[0]?.todos?.agentOrder?.[0] === second.id),
-      Stream.take(1),
-      Stream.runCollect,
-      Effect.forkChild,
-    );
-    yield* todos.update("/project", {
-      id: first.id,
-      expectedRevision: 0,
-      description: "Fix verified; review pending.",
     });
     yield* todos.update("/project", {
       id: second.id,
       expectedRevision: 0,
       description: "Choose the deployment target.",
     });
-    yield* Deferred.await(armed);
-    yield* TestClock.adjust("1 second");
-    yield* Fiber.join(ranked);
-    expect(calls).toBe(1);
     yield* TestClock.adjust("10 seconds");
-    expect(calls).toBe(1);
+    expect(inputs).toHaveLength(0);
+
+    const updated = yield* (yield* ApplicationState).changes().pipe(
+      Stream.filter(({ state }) => state.projects[0]?.todos?.items[0]?.revision === 1),
+      Stream.take(1),
+      Stream.runCollect,
+      Effect.forkChild,
+    );
+    yield* updates.offer(report);
+    yield* Fiber.join(updated);
+    yield* TestClock.adjust("10 seconds");
+    expect(inputs).toHaveLength(1);
+    expect(JSON.parse(inputs[0]!.context).title).toBe(first.title);
+    expect(inputs[0]!.instructions).toContain(PROJECT_TODO_SUMMARY_GUIDANCE);
   }).pipe(Effect.provide(f.layer), Effect.scoped);
 });
-
-it.effect("discards a ranking when its descriptions changed during the model call", () =>
-  Effect.gen(function* () {
-    const started = yield* Deferred.make<void>();
-    const release = yield* Deferred.make<void>();
-    const f = fixture((input) =>
-      Deferred.succeed(started, undefined).pipe(
-        Effect.andThen(Deferred.await(release)),
-        Effect.as(
-          JSON.stringify(
-            JSON.parse(input.context)
-              .map((item: { number: number }) => item.number)
-              .reverse(),
-          ),
-        ),
-      ),
-    );
-    yield* Effect.gen(function* () {
-      const first = yield* setup();
-      yield* todos.create("/project", {
-        title: "Review choices",
-        description: "Choose the target.",
-      });
-      const pending = yield* updates.rankList("/project").pipe(Effect.forkChild);
-      yield* Deferred.await(started);
-      yield* todos.update("/project", {
-        id: first.id,
-        expectedRevision: 0,
-        description: "Newer finding changes priority.",
-      });
-      yield* Deferred.succeed(release, undefined);
-      yield* Fiber.join(pending);
-      expect((yield* todos.list("/project")).agentOrder).toBeUndefined();
-    }).pipe(Effect.provide(f.layer));
-  }),
-);
 
 it.effect(
   "the background queue accepts a report immediately and publishes its summary without chat delivery",
