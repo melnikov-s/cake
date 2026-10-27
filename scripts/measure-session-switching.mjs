@@ -8,6 +8,7 @@ import process from "node:process";
 // Build an exported baseline, not another checkout/worktree or the user's installed app.
 const root = resolve(import.meta.dirname, "..");
 const revision = process.argv[2] ?? "e9947a7d";
+const output = `.performance-captures/session-switching/${process.env.CAKE_PERFORMANCE_WORKLOAD ?? "warm"}`;
 const baseline = await mkdtemp(join(tmpdir(), "cake-switching-baseline-"));
 const run = (args, cwd, env = process.env) => {
   const result = spawnSync("pnpm", args, { cwd, env, stdio: "inherit" });
@@ -28,15 +29,15 @@ try {
   if (currentLockfile === baselineLockfile)
     await symlink(join(root, "node_modules"), join(baseline, "node_modules"), "dir");
   else run(["install", "--offline", "--frozen-lockfile"], baseline);
-  run(["build"], baseline);
-  run(["build"], root);
+  run(["build:slim"], baseline);
+  run(["build:slim"], root);
   run(
     [
       "exec",
       "playwright",
       "test",
       "tests/electron/session-switching.performance.spec.ts",
-      "--output=.performance-captures/session-switching",
+      `--output=${output}`,
     ],
     root,
     {
@@ -46,17 +47,16 @@ try {
         cwd: root,
         encoding: "utf8",
       }).trim(),
-      CAKE_PERFORMANCE_PATCHED_REVISION: execFileSync("git", ["rev-parse", "HEAD"], {
-        cwd: root,
-        encoding: "utf8",
-      }).trim(),
+      CAKE_PERFORMANCE_PATCHED_REVISION:
+        execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim() +
+        (execFileSync("git", ["status", "--porcelain"], { cwd: root, encoding: "utf8" }).trim()
+          ? "+working-tree"
+          : ""),
     },
   );
-  const report = JSON.parse(
-    await readFile(join(root, ".performance-captures/session-switching/summary.json"), "utf8"),
-  );
+  const report = JSON.parse(await readFile(join(root, output, "summary.json"), "utf8"));
   console.log(JSON.stringify(report.comparison, null, 2));
-  console.log("Full report: .performance-captures/session-switching/summary.json");
+  console.log(`Full report: ${output}/summary.json`);
 } finally {
   await rm(baseline, { recursive: true, force: true });
 }

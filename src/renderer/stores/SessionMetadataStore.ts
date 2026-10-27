@@ -78,16 +78,17 @@ export class SessionMetadataStore extends Store<{
   @computed
   get activeSessionIds() {
     const ids = new Set(
-      this.props.catalog.sessions
+      this.props.catalog.activeSessions
         .filter((session) => session.running)
         .map((session) => session.sessionId),
     );
-    for (const session of this.props.sessions.sessions) {
+    for (const session of this.props.sessions.activeSessions) {
       if (isActiveSessionActivity(session.activity)) ids.add(session.sessionId);
     }
     for (const operation of this.props.worktreeOperations?.operations ?? []) {
       if (
         operation.kind === "landing" &&
+        !this.props.catalog.find(operation.sessionId)?.resolved &&
         (operation.phase === "waiting" || operation.phase === "queued")
       )
         ids.add(operation.sessionId);
@@ -107,6 +108,7 @@ export class SessionMetadataStore extends Store<{
 
   sessionActivity(sessionId: string): SessionActivity | undefined {
     const session = this.props.catalog.find(sessionId);
+    if (session?.resolved) return undefined;
     const activity = this.props.sessions.findSession(sessionId)?.activity;
     if (activity === "waiting") return activity;
     // A blocked journal is authoritative even if a retained projection still has

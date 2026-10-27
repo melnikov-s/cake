@@ -9,6 +9,10 @@ import type { ExtensionUiStore } from "./ExtensionUiStore";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import { describeError } from "../lib/error-details";
+import {
+  beginSessionSwitchMeasurement,
+  type SessionSwitchPhase,
+} from "../lib/session-switch-performance";
 import { ClientContext } from "./context/ClientContext";
 import { CommandPaneStore } from "./CommandPaneStore";
 import { SessionManagementContext } from "./context/SessionManagementContext";
@@ -463,30 +467,76 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
 
   private async openSessionTarget(sessionId: string, acceptedProjectOpen: boolean) {
     const revision = ++this.sessionOpenRevision;
+    const phase = beginSessionSwitchMeasurement(
+      sessionId,
+      revision,
+      acceptedProjectOpen ? "project-open" : "navigation",
+    );
+    try {
+      return await this.loadSessionTarget(sessionId, acceptedProjectOpen, revision, phase);
+    } catch (error) {
+      phase("failed");
+      // Warm navigation is already visible while its metadata request completes.
+      if (this.signal.aborted || revision !== this.sessionOpenRevision) return false;
+      if (
+        this.activeSessionId === sessionId &&
+        this.sessionRegistry.findModel(sessionId)?.sessionFile
+      ) {
+        this.setError(error, "Opening Project Session", sessionId);
+        return false;
+      }
+      throw error;
+    } finally {
+      phase(
+        this.signal.aborted || revision !== this.sessionOpenRevision ? "superseded" : "finished",
+      );
+    }
+  }
+
+  private async loadSessionTarget(
+    sessionId: string,
+    acceptedProjectOpen: boolean,
+    revision: number,
+    phase: (phase: SessionSwitchPhase) => void,
+  ) {
     const sourceSessionId = this.activeSessionId;
     this.openingSession = undefined;
     if (!acceptedProjectOpen) this.projectOpenStore.cancelPending();
     const existingSession = this.sessionRegistry.findSession(sessionId);
     if (existingSession?.isForkPreview) {
       this.activateLoadedSession(sessionId);
+      phase("selected");
       return true;
     }
     if (existingSession) existingSession.model.observationError = undefined;
+    const hydrated = Boolean(existingSession?.model.sessionFile);
+    const alreadyActive = this.activeSessionId === sessionId;
+    this.error = undefined;
+    this.errorDetails = undefined;
+    this.errorSessionId = undefined;
+    // A retained transcript needs no metadata round trip before it can be read
+    // or edited. Keep authoritative lookup and backend validation below.
+    if (hydrated && !alreadyActive) {
+      // Native mousedown focus runs after microtasks. Select at the next frame
+      // so it cannot overwrite the destination composer's mount-time autofocus.
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      if (this.signal.aborted || revision !== this.sessionOpenRevision) return false;
+      this.activateLoadedSession(sessionId);
+      phase("selected");
+    }
     if (
       !existingSession ||
       (!this.sessionRegistry.pendingSessions.isTemporary(sessionId) &&
         !this.sessionRegistry.pendingSessions.canCreateRuntime(sessionId))
     ) {
+      phase("lookup-start");
       await this.props.catalog.lookup(sessionId);
+      phase("lookup-end");
       if (this.signal.aborted || revision !== this.sessionOpenRevision) return false;
     }
     const summary = this.props.catalog.find(sessionId);
     const workspacePath = summary?.workingDirectory ?? existingSession?.workspacePath;
     if (!workspacePath) throw new Error(`Cake could not find session ${sessionId}`);
-    const alreadyActive = this.activeSessionId === sessionId;
-    this.error = undefined;
-    this.errorDetails = undefined;
-    this.errorSessionId = undefined;
     if (
       alreadyActive &&
       workspacePath === this.projectOpenStore.projectPath &&
@@ -497,15 +547,15 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       const preserveEditor = this.hasCurrentVisibleEditor(sessionId, workspacePath);
       this.props.selectSession(sessionId);
       if (!preserveEditor) this.presentationStore.restore();
+      phase("selected");
       return;
     }
     if (existingSession && this.sessionRegistry.pendingSessions.isTemporary(sessionId)) {
       this.activateLoadedSession(sessionId);
+      phase("selected");
       return;
     }
-    const hydrated = Boolean(existingSession?.model.sessionFile);
-    if (hydrated) this.activateLoadedSession(sessionId);
-    else if (existingSession) this.sessionRegistry.observationRetention.retain(sessionId);
+    if (!hydrated && existingSession) this.sessionRegistry.observationRetention.retain(sessionId);
     this.openingSession = { sessionId, sourceSessionId };
     try {
       // An evicted command-only identity has no transcript for main to validate.
@@ -515,24 +565,32 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         !hydrated &&
         this.sessionRegistry.pendingSessions.canCreateRuntime(sessionId)
       ) {
+        phase("hydration-start");
         const ready = await this.waitForSessionHydration(sessionId, revision);
+        phase("hydration-end");
         if (!ready || this.signal.aborted || revision !== this.sessionOpenRevision) return;
       }
+      phase("validation-start");
       await this.client.projectSessions.open(
         { sessionId, workingDirectory: workspacePath },
         { signal: this.signal },
       );
+      phase("validation-end");
       if (this.signal.aborted || revision !== this.sessionOpenRevision) return;
       if (!existingSession) this.sessionRegistry.load(sessionId, workspacePath);
       if (!hydrated) {
+        phase("hydration-start");
         const ready = await this.waitForSessionHydration(sessionId, revision);
+        phase("hydration-end");
         if (!ready || this.signal.aborted || revision !== this.sessionOpenRevision) return;
         this.activateLoadedSession(sessionId);
+        phase("selected");
       }
       ProjectCatalogContext.consume(this)!.register(
         this.props.catalog.projectPathFor(workspacePath),
       );
     } catch (error) {
+      phase("failed");
       if (!this.signal.aborted && revision === this.sessionOpenRevision)
         this.setError(error, "Opening Project Session", this.activeSessionId ?? sessionId);
       return false;

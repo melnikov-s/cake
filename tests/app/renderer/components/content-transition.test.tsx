@@ -68,17 +68,35 @@ describe("ContentTransition", () => {
     expect(live.textContent).toBe("b transcript");
   });
 
-  it("mounts a ready destination immediately but waits for the exit before revealing it", () => {
+  it("reveals a ready destination immediately without cloning, animating, or blocking interaction", () => {
     const view = render(content("a"));
+    const clone = vi.spyOn(Node.prototype, "cloneNode");
     view.rerender(content("b"));
-    expect(view.container.querySelector('[data-slot="content-transition-live"]')?.textContent).toBe(
-      "b transcript",
-    );
+    const live = view.container.querySelector<HTMLElement>(
+      '[data-slot="content-transition-live"]',
+    )!;
+    expect(live.textContent).toBe("b transcript");
+    expect(live.classList.contains("opacity-0")).toBe(false);
+    expect(live.inert).not.toBe(true);
+    expect(live.hasAttribute("aria-hidden")).toBe(false);
+    expect(clone).not.toHaveBeenCalled();
+    expect(animate).not.toHaveBeenCalled();
+  });
+
+  it("reveals a ready redirect immediately even while another destination is loading", () => {
+    const view = render(content("a"));
+    view.rerender(content("a", "b"));
+    const exit = animations[0]!.animation;
+    view.rerender(content("c"));
+    const live = view.container.querySelector<HTMLElement>(
+      '[data-slot="content-transition-live"]',
+    )!;
+    expect(exit.cancel).toHaveBeenCalledOnce();
+    expect(exit.onfinish).toBeNull();
+    expect(live.textContent).toBe("c transcript");
+    expect(live.classList.contains("opacity-0")).toBe(false);
+    expect(live.inert).toBe(false);
     expect(animate).toHaveBeenCalledTimes(1);
-    finish(animations[0]!.animation);
-    expect(animate).toHaveBeenCalledTimes(2);
-    view.rerender(content("b"));
-    expect(animate).toHaveBeenCalledTimes(2);
   });
 
   it("drops interrupted exits and never reveals a stale destination", () => {
@@ -100,7 +118,7 @@ describe("ContentTransition", () => {
   it("restores outgoing scroll offsets without retaining interactive content", () => {
     const view = render(content("a"));
     view.container.querySelector<HTMLElement>("#message")!.scrollTop = 240;
-    view.rerender(content("b"));
+    view.rerender(content("a", "b"));
     const outgoing = view.container.querySelector('[data-slot="content-transition-outgoing"]')!;
     expect(outgoing.querySelector<HTMLElement>(".overflow-auto")!.scrollTop).toBe(240);
     expect(outgoing.firstElementChild?.getAttribute("aria-hidden")).toBe("true");

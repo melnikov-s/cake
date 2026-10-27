@@ -10,12 +10,22 @@ import { createRendererStoreFixture } from "./renderer-store-fixture";
 const projectPath = "/project";
 
 /** User navigation is real; only session opening and conversation authority are controlled. */
-export function renderSessionObservation(options: { restored?: boolean; split?: boolean } = {}) {
+export function renderSessionObservation(
+  options: { restored?: boolean; split?: boolean; archivedCount?: number } = {},
+) {
   const sessions = [
     ...["selected", "visible", "running", ...Array.from({ length: 6 }, (_, i) => `idle-${i}`)].map(
       (sessionId) => sessionSummary({ sessionId, projectPath, title: `Task ${sessionId}` }),
     ),
     sessionSummary({ sessionId: "archive", projectPath, title: "Archived task", resolved: true }),
+    ...Array.from({ length: options.archivedCount ?? 0 }, (_, index) =>
+      sessionSummary({
+        sessionId: `archive-${index}`,
+        projectPath,
+        title: `Old task ${index}`,
+        resolved: true,
+      }),
+    ),
   ];
   const opened: string[] = [];
   const open: Client["projectSessions"]["open"] = async ({ sessionId }) => {
@@ -30,14 +40,28 @@ export function renderSessionObservation(options: { restored?: boolean; split?: 
           children: {
             sessionRegistry: {
               state: {
-                targets: ["selected", "idle-0"].map((sessionId) => ({
+                targets: [
+                  "selected",
+                  "idle-0",
+                  ...sessions
+                    .filter((session) => session.resolved)
+                    .map((session) => session.sessionId),
+                ].map((sessionId) => ({
                   sessionId,
                   workspacePath: projectPath,
                 })),
               },
               children: {
                 observationRetention: {
-                  state: { materializedSessionIds: ["selected", "idle-0"] },
+                  state: {
+                    materializedSessionIds: [
+                      "selected",
+                      "idle-0",
+                      ...sessions
+                        .filter((session) => session.resolved)
+                        .map((session) => session.sessionId),
+                    ],
+                  },
                   children: {},
                 },
               },
@@ -92,6 +116,8 @@ export function renderSessionObservation(options: { restored?: boolean; split?: 
     // This is the actual demand output consumed by Model synchronization, not a fake
     // observer. Resource assertions below do not claim transport acquisition/eviction.
     demand: () => root.projectSessionObservationTargets,
+    activeCandidates: () => root.sessionRegistry.activeSessions,
+    workingIds: () => root.sessionMetadataStore.activeSessionIds,
     settleRunning() {
       act(() => publish("running", false, 2));
     },

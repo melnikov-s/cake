@@ -61,6 +61,12 @@ export class SessionCatalogStore extends Store<{
     });
   }
 
+  /** Filter archives before active ordering/activity work, not after sorting all history. */
+  @computed
+  get activeSessions(): ReadonlyArray<SessionSummary | PendingSessionSummary> {
+    return [...this.sessionIndex.values()].filter((session) => !session.resolved);
+  }
+
   @computed
   private get sessionIndex(): ReadonlyMap<string, SessionSummary | PendingSessionSummary> {
     const index = new Map<string, SessionSummary | PendingSessionSummary>();
@@ -96,20 +102,26 @@ export class SessionCatalogStore extends Store<{
     return this.sessionIndex;
   }
 
-  projectSessions(projectPath: string) {
-    let group = this.projectSessionGroups.get(projectPath);
+  projectSessions(projectPath: string, resolved?: boolean) {
+    const key = `${resolved === undefined ? "all" : resolved ? "resolved" : "active"}:${projectPath}`;
+    let group = this.projectSessionGroups.get(key);
     if (!group) {
       group = computed(() => {
         // Read membership from the shared index, not the globally sorted list: metadata
         // changes in another Project must not invalidate this group's ordering.
-        return [...this.sessionIndex.values()]
-          .filter((session) => session.projectPath === projectPath)
+        const sessions = resolved === false ? this.activeSessions : [...this.sessionIndex.values()];
+        return sessions
+          .filter(
+            (session) =>
+              session.projectPath === projectPath &&
+              (resolved === undefined || session.resolved === resolved),
+          )
           .sort((left, right) => {
             if (left.resolved !== right.resolved) return left.resolved ? 1 : -1;
             return compareSessionSummariesForSidebar(left, right);
           });
       });
-      this.projectSessionGroups.set(projectPath, group);
+      this.projectSessionGroups.set(key, group);
     }
     return group.value;
   }

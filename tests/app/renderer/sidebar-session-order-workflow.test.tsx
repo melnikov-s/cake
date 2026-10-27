@@ -92,8 +92,17 @@ function renderOrdering() {
     />,
   );
   let eventRevision = 0;
+  const user = userEvent.setup();
+  const selected = () =>
+    view.container
+      .querySelector('[data-navigation-active="true"]')
+      ?.getAttribute("data-session-id");
   return {
-    user: userEvent.setup(),
+    user,
+    async openSession(sessionId: string) {
+      await user.click(screen.getByRole("button", { name: new RegExp(`^${sessionId} `) }));
+      await waitFor(() => expect(selected()).toBe(sessionId));
+    },
     publishEvent(event: Exclude<ConversationEvent, { _tag: "SnapshotUpdated" }>) {
       act(() =>
         applyConversationUpdate(models.projectConversation(event.sessionId, projectPath), {
@@ -129,10 +138,7 @@ function renderOrdering() {
       [...view.container.querySelectorAll(".session-item")].map((row) =>
         row.getAttribute("data-session-id"),
       ),
-    selected: () =>
-      view.container
-        .querySelector('[data-navigation-active="true"]')
-        ?.getAttribute("data-session-id"),
+    selected,
     [Symbol.dispose]() {
       view.unmount();
       fixture[Symbol.dispose]();
@@ -155,7 +161,7 @@ for (const kind of ["project-session"] as const) {
         const turnId = TurnId.make("20000000-0000-4000-8000-000000000001");
         const running = () => screen.queryByRole("img", { name: "Running" });
         const timestamp = () => document.querySelector(`[data-session-id="${sessionId}"] time`);
-        await fixture.user.click(screen.getByRole("button", { name: /^previous / }));
+        await fixture.openSession("previous");
         expect(running()).toBeNull();
         expect(timestamp()).not.toBeNull();
         // A queued follow-up is not work that Pi has begun processing.
@@ -169,7 +175,7 @@ for (const kind of ["project-session"] as const) {
         fixture.publishEvent({ _tag: "TurnAccepted", sessionId, turnId, delivery: "prompt" });
         expect(running()).not.toBeNull();
         expect(timestamp()?.textContent).toBe("Working");
-        await fixture.user.click(screen.getByRole("button", { name: /^older / }));
+        await fixture.openSession("older");
         expect(running()).not.toBeNull();
         fixture.publishEvent({ _tag: "StreamingChanged", sessionId, streaming: true });
         expect(running()).not.toBeNull();
@@ -226,8 +232,8 @@ for (const kind of ["project-session"] as const) {
       "keeps the previous session in date order when resolution projects %s fallback navigation",
       async (timing) => {
         using fixture = renderOrdering();
-        await fixture.user.click(screen.getByRole("button", { name: /^previous / }));
-        await fixture.user.click(screen.getByRole("button", { name: /^newer / }));
+        await fixture.openSession("previous");
+        await fixture.openSession("newer");
         expect(fixture.selected()).toBe("newer");
         await fixture.user.click(screen.getByRole("button", { name: "Resolve newer" }));
         expect(fixture.resolve).toHaveBeenCalledOnce();
@@ -240,7 +246,7 @@ for (const kind of ["project-session"] as const) {
         await waitFor(() => expect(fixture.selected()).toBe("previous"));
         if (timing === "after") fixture.publish(resolved);
         expect(fixture.order()).toEqual(["previous", "older", "oldest"]);
-        await fixture.user.click(screen.getByRole("button", { name: /^older / }));
+        await fixture.openSession("older");
         expect(fixture.selected()).toBe("older");
         expect(fixture.order()).toEqual(["previous", "older", "oldest"]);
       },
@@ -248,7 +254,7 @@ for (const kind of ["project-session"] as const) {
 
     it("moves selected inactive rows with recency without changing selection identity", async () => {
       using fixture = renderOrdering();
-      await fixture.user.click(screen.getByRole("button", { name: /^previous / }));
+      await fixture.openSession("previous");
       fixture.publish(
         initialSessions.map((session) =>
           session.sessionId === "previous"
@@ -258,7 +264,7 @@ for (const kind of ["project-session"] as const) {
       );
       expect(fixture.order()).toEqual(["previous", "newer", "older", "oldest"]);
       expect(fixture.selected()).toBe("previous");
-      await fixture.user.click(screen.getByRole("button", { name: /^older / }));
+      await fixture.openSession("older");
       expect(fixture.order()).toEqual(["previous", "newer", "older", "oldest"]);
       expect(fixture.selected()).toBe("older");
     });

@@ -10,7 +10,7 @@ interface ContentTransitionProps {
   children: ReactNode;
 }
 
-/** Commits live content immediately; only its presentation waits for the outgoing fade. */
+/** Ready destinations switch immediately; loading destinations fade out until ready. */
 export class ContentTransition extends Component<
   ContentTransitionProps,
   Record<string, never>,
@@ -26,11 +26,20 @@ export class ContentTransition extends Component<
     return props.requestedKey ?? props.contentKey;
   }
 
+  private readyDestination(previous: ContentTransitionProps) {
+    return (
+      this.target(previous) !== this.target() &&
+      this.props.ready !== false &&
+      this.props.contentKey === this.target()
+    );
+  }
+
   getSnapshotBeforeUpdate(previous: ContentTransitionProps): HTMLDivElement | null {
     if (
       !this.props.enabled ||
       !previous.enabled ||
       this.target(previous) === this.target() ||
+      this.readyDestination(previous) ||
       this.waiting ||
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
     )
@@ -65,7 +74,7 @@ export class ContentTransition extends Component<
     const outgoing = this.outgoingRef.current;
     if (!content || !outgoing) return;
     const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    if (!this.props.enabled || reduced) {
+    if (!this.props.enabled || reduced || this.readyDestination(previous)) {
       this.clearAnimations();
       this.waiting = false;
       content.classList.remove("opacity-0");

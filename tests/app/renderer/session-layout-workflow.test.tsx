@@ -108,9 +108,16 @@ function renderLayout({
       </StoreProvider>
     </StoreProvider>,
   );
+  const user = userEvent.setup();
   return {
     root: fixture.root,
-    user: userEvent.setup(),
+    user,
+    async openSession(sessionId: string) {
+      await user.click(
+        screen.getByRole("button", { name: new RegExp(`^${sessionId} conversation `) }),
+      );
+      await waitFor(() => expect(fixture.root.sessionLayoutStore.focusedSessionId).toBe(sessionId));
+    },
     open,
     setFullscreenSurfaceOpen,
     persistedLayout() {
@@ -173,7 +180,7 @@ describe("Session layout workflow", () => {
     {
       using fixture = renderLayout();
       await fixture.user.click(screen.getByRole("button", { name: "Split right" }));
-      await fixture.user.click(screen.getByRole("button", { name: /^beta conversation / }));
+      await fixture.openSession("beta");
       await fixture.user.click(
         pane("alpha conversation").getByRole("combobox", { name: "Message" }),
       );
@@ -211,7 +218,7 @@ describe("Session layout workflow", () => {
       "Unsent pane request",
     );
     expect(screen.getAllByRole("combobox", { name: "Message" })).toHaveLength(2);
-    await restored.user.click(screen.getByRole("button", { name: /^beta conversation / }));
+    await restored.openSession("beta");
     expect(pane("alpha conversation").getByRole("combobox", { name: "Message" })).toBeDefined();
     expect(pane("beta conversation").getByRole("combobox", { name: "Message" })).toBeDefined();
   });
@@ -220,7 +227,7 @@ describe("Session layout workflow", () => {
     using fixture = renderLayout();
     const back = screen.getByRole("button", { name: "Go back in session history" });
     const forward = screen.getByRole("button", { name: "Go forward in session history" });
-    await fixture.user.click(screen.getByRole("button", { name: /^beta conversation / }));
+    await fixture.openSession("beta");
     expect(back.hasAttribute("disabled")).toBe(false);
     expect(forward.hasAttribute("disabled")).toBe(true);
     await fixture.user.click(back);
@@ -229,7 +236,7 @@ describe("Session layout workflow", () => {
     await fixture.user.click(forward);
     expect(pane("beta conversation").getByRole("combobox", { name: "Message" })).toBeDefined();
     await fixture.user.click(back);
-    await fixture.user.click(screen.getByRole("button", { name: /^gamma conversation / }));
+    await fixture.openSession("gamma");
     expect(forward.hasAttribute("disabled")).toBe(true);
     await fixture.user.click(back);
     expect(pane("alpha conversation").getByRole("combobox", { name: "Message" })).toBeDefined();
@@ -240,9 +247,9 @@ describe("Session layout workflow", () => {
   it("traverses to the pane's actual target rather than the intervening window visit", async () => {
     using fixture = renderLayout();
     await fixture.user.click(screen.getByRole("button", { name: "Split down" }));
-    await fixture.user.click(screen.getByRole("button", { name: /^beta conversation / }));
+    await fixture.openSession("beta");
     await fixture.user.click(pane("alpha conversation").getByRole("combobox", { name: "Message" }));
-    await fixture.user.click(screen.getByRole("button", { name: /^gamma conversation / }));
+    await fixture.openSession("gamma");
     const back = screen.getByRole("button", { name: "Go back in session history" });
     const forward = screen.getByRole("button", { name: "Go forward in session history" });
     await fixture.user.click(back);
@@ -263,7 +270,7 @@ describe("Session layout workflow", () => {
     expect(pane("alpha conversation").getByText("1")).toBeDefined();
     expect(pane("New chat").getByText("2")).toBeDefined();
     expect(screen.getByRole("separator", { name: "Resize session columns" })).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: /^beta conversation / }));
+    await fixture.openSession("beta");
     expect(pane("alpha conversation").getByRole("combobox", { name: "Message" })).toBeDefined();
     expect(pane("beta conversation").getByRole("combobox", { name: "Message" })).toBeDefined();
     await fixture.user.click(pane("beta conversation").getByRole("button", { name: "Close pane" }));
@@ -276,17 +283,17 @@ describe("Session layout workflow", () => {
   it("navigates within the selected pane and reuses an already-visible conversation", async () => {
     using fixture = renderLayout();
     await fixture.user.click(screen.getByRole("button", { name: "Split down" }));
-    await fixture.user.click(screen.getByRole("button", { name: /^beta conversation / }));
+    await fixture.openSession("beta");
     expect(screen.getByRole("separator", { name: "Resize session rows" })).toBeDefined();
     await fixture.user.click(pane("alpha conversation").getByRole("combobox", { name: "Message" }));
-    await fixture.user.click(screen.getByRole("button", { name: /^gamma conversation / }));
+    await fixture.openSession("gamma");
     expect(pane("gamma conversation").getByRole("combobox", { name: "Message" })).toBeDefined();
     expect(pane("beta conversation").getByRole("combobox", { name: "Message" })).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: "Go back in session history" }));
     expect(pane("alpha conversation").getByRole("combobox", { name: "Message" })).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: /^beta conversation / }));
+    await fixture.openSession("beta");
     expect(screen.getAllByRole("combobox", { name: "Message" })).toHaveLength(2);
-    await fixture.user.click(screen.getByRole("button", { name: /^gamma conversation / }));
+    await fixture.openSession("gamma");
     expect(pane("alpha conversation").getByRole("combobox", { name: "Message" })).toBeDefined();
     expect(pane("gamma conversation").getByRole("combobox", { name: "Message" })).toBeDefined();
   });
@@ -312,7 +319,7 @@ describe("Session layout workflow", () => {
     const input = () => screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message" });
     await fixture.user.click(newChat());
     await fixture.user.type(input(), "Retained staged work");
-    await fixture.user.click(screen.getByRole("button", { name: /^beta conversation / }));
+    await fixture.openSession("beta");
     expect(input().value).toBe("");
     await fixture.user.click(newChat());
     expect(input().value).toBe("Retained staged work");

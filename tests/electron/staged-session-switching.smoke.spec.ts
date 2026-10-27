@@ -65,28 +65,6 @@ test("switches Project Session, Project Chat and Cake Chat workspaces and restor
     await expect(composer).toBeFocused();
     await expect(composer).toHaveValue("First project draft");
 
-    // Observe real Chromium animations, not mocked timers. The outgoing transcript
-    // must finish before the incoming fade starts, and the composer is excluded.
-    await page.evaluate(() => {
-      const state = window as typeof window & { contentTransitions: string[] };
-      state.contentTransitions = [];
-      const animate = HTMLElement.prototype.animate;
-      HTMLElement.prototype.animate = function (...args) {
-        const animation = animate.apply(this, args);
-        if (this.dataset.slot === "content-transition-outgoing") {
-          state.contentTransitions.push("exit-start");
-          animation.addEventListener("finish", () =>
-            state.contentTransitions.push("exit-finished"),
-          );
-        } else if (this.dataset.slot === "content-transition-live") {
-          state.contentTransitions.push("enter-start");
-          const composer = document.querySelector('[data-slot="composer-dock"]');
-          if (composer && this.contains(composer)) state.contentTransitions.push("composer-moved");
-        }
-        return animation;
-      };
-    });
-
     // No existing-session detour should be needed to start in another Project.
     await newSecond.click();
     await expect(composer).toHaveValue("");
@@ -94,13 +72,6 @@ test("switches Project Session, Project Chat and Cake Chat workspaces and restor
     await composer.pressSequentially("Second project draft");
     await expect(composer).toHaveValue("Second project draft");
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
-    await expect
-      .poll(() =>
-        page.evaluate(
-          () => (window as typeof window & { contentTransitions: string[] }).contentTransitions,
-        ),
-      )
-      .toEqual(["exit-start", "exit-finished", "enter-start"]);
 
     await page.emulateMedia({ reducedMotion: "reduce" });
     await newFirst.click();
@@ -110,11 +81,6 @@ test("switches Project Session, Project Chat and Cake Chat workspaces and restor
     await expect(composer).toHaveValue("Second project draft");
     await expect(composer).toBeFocused();
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
-    expect(
-      await page.evaluate(
-        () => (window as typeof window & { contentTransitions: string[] }).contentTransitions,
-      ),
-    ).toEqual(["exit-start", "exit-finished", "enter-start"]);
 
     await page.getByRole("button", { name: "Open Project Chat for first", exact: true }).click();
     const projectChat = page.getByRole("combobox", { name: "Message Project Chat", exact: true });

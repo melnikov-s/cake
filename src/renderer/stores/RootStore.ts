@@ -450,10 +450,11 @@ export class RootStore extends Store<{
         this.props.projection.scheduledMessageCatalog(sessionId),
       artifactModel: this.props.projection.artifacts,
 
-      isActive: (sessionId) =>
-        this.appShellStore.selection.kind === "project-session" &&
-        this.appShellStore.selection.sessionId === sessionId,
-      isVisible: (sessionId) => this.sessionLayoutStore.hasSession(sessionId),
+      selectedSessionId: () => {
+        const selection = this.appShellStore.selection;
+        return selection.kind === "project-session" ? selection.sessionId : undefined;
+      },
+      visibleSessionIds: () => this.sessionLayoutStore.panes.map((pane) => pane.sessionId),
       worktreeOperation: (workspacePath) => this.worktreeOperation(workspacePath),
       persistNow: () => this.props.flushWindowState(),
       modelPresets: () => this.settingsStore.modelPresets.presets,

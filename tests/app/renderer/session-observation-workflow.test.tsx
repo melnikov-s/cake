@@ -2,6 +2,7 @@
 import { cleanup, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderSessionObservation } from "./session-observation-workflow-fixture";
+import { SubagentActivityStore } from "../../../src/renderer/stores/SubagentActivityStore";
 
 beforeEach(() => {
   vi.stubGlobal("PointerEvent", MouseEvent);
@@ -22,6 +23,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   Reflect.deleteProperty(SVGElement.prototype, "getBBox");
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -29,6 +31,52 @@ afterEach(() => {
 // then inspect Root's production synchronization output alongside the rendered panes.
 // Actual Stream acquisition/cancellation remains the Model observer integration's concern.
 describe("Session observation navigation integration", () => {
+  it("keeps a growing archive out of active candidates and releases an explicitly viewed archive on leaving", async () => {
+    const activity = vi.spyOn(SubagentActivityStore.prototype, "activeRuns", "get");
+    using fixture = renderSessionObservation({ restored: true, archivedCount: 1000 });
+    const candidates = fixture.activeCandidates();
+    expect(candidates.map((session) => session.sessionId)).toEqual(["selected", "idle-0"]);
+    expect([...fixture.workingIds()]).toEqual([]);
+    await fixture.user.click(screen.getByRole("button", { name: /^Task idle-0 / }));
+    await waitFor(() => expect(fixture.opened).toContain("idle-0"));
+    // Reuse the active membership projection; selection must not rescan historical identities.
+    expect(fixture.activeCandidates()).toBe(candidates);
+    // Even restored/materialized archive identities must never enter activity checks.
+    expect(activity).toHaveBeenCalled();
+    expect(
+      activity.mock.contexts.every(
+        (store) =>
+          store instanceof SubagentActivityStore && !store.parentSessionId.startsWith("archive"),
+      ),
+    ).toBe(true);
+    expect(
+      fixture
+        .demand()
+        .map((target) => target.sessionId)
+        .sort(),
+    ).toEqual(["idle-0", "selected"]);
+
+    await fixture.user.click(screen.getByRole("button", { name: "Expand Resolved" }));
+    await fixture.user.click(
+      screen.getAllByRole("button", { name: "Expand Project resolved" })[0]!,
+    );
+    await fixture.user.click(screen.getByRole("button", { name: /^Archived task / }));
+    await waitFor(() => expect(fixture.opened).toContain("archive"));
+    expect(fixture.demand().map((target) => target.sessionId)).toContain("archive");
+    await fixture.user.click(screen.getByRole("button", { name: /^Task selected / }));
+    await waitFor(() => expect(fixture.opened).toContain("selected"));
+    expect(
+      fixture
+        .demand()
+        .map((target) => target.sessionId)
+        .sort(),
+    ).toEqual(["idle-0", "selected"]);
+    expect(fixture.activeCandidates().map((session) => session.sessionId)).toEqual([
+      "selected",
+      "idle-0",
+    ]);
+  });
+
   it("resets restored warm observations, pins the selected pane and observes a deliberately opened archive", async () => {
     using fixture = renderSessionObservation({ restored: true });
     expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
@@ -38,7 +86,12 @@ describe("Session observation navigation integration", () => {
 
     await fixture.user.click(screen.getByRole("button", { name: /^Task idle-0 / }));
     await waitFor(() => expect(fixture.opened).toContain("idle-0"));
-    expect(fixture.demand().map(({ sessionId }) => sessionId)).toEqual(["selected", "idle-0"]);
+    expect(
+      fixture
+        .demand()
+        .map(({ sessionId }) => sessionId)
+        .sort(),
+    ).toEqual(["idle-0", "selected"]);
 
     await fixture.user.click(screen.getByRole("button", { name: "Expand Resolved" }));
     await fixture.user.click(

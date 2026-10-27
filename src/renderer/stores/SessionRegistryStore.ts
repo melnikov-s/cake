@@ -1,4 +1,13 @@
-import { Store, batch, child, createStore, observable, snapshot, updateStore } from "r-state-tree";
+import {
+  Store,
+  batch,
+  child,
+  computed,
+  createStore,
+  observable,
+  snapshot,
+  updateStore,
+} from "r-state-tree";
 import type { ModelPreset } from "../../contracts/conversations/session-contract";
 import type { CakeControlTool } from "../../contracts/cake-chats/cake-chat-data";
 import type { Conversation } from "../models/Conversation";
@@ -29,8 +38,8 @@ export interface SessionRegistryStoreProps {
   artifactModel: ArtifactCatalog;
   operations: SessionOperationCoordinatorStore;
   reviews(): ReviewsStore;
-  isActive(sessionId: string): boolean;
-  isVisible?(sessionId: string): boolean;
+  selectedSessionId(): string | undefined;
+  visibleSessionIds(): readonly string[];
   worktreeOperation(workspacePath: string): typeof WorktreeLandingOperation.Encoded | undefined;
   persistNow(): Promise<void>;
   modelPresets?(): readonly ModelPreset[];
@@ -73,8 +82,9 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   get observationRetention(): SessionObservationRetentionStore {
     return createStore(SessionObservationRetentionStore, {
       findSession: (sessionId) => this.findSession(sessionId),
-      isActive: this.props.isActive,
-      isVisible: this.props.isVisible,
+      activeSessions: () => this.activeSessions,
+      selectedSessionId: this.props.selectedSessionId,
+      visibleSessionIds: this.props.visibleSessionIds,
     });
   }
 
@@ -93,7 +103,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         artifactModel: this.props.artifactModel,
         operations: this.props.operations,
         reviews: this.props.reviews,
-        isActive: () => this.props.isActive(target.sessionId),
+        isActive: () => this.props.selectedSessionId() === target.sessionId,
         worktreeOperation: () => this.props.worktreeOperation(target.workspacePath),
         projectName: () => this.projects.nameForPath(target.workspacePath),
         familyId: () =>
@@ -107,15 +117,29 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     );
   }
 
+  /** Membership changes invalidate this projection; navigating between panes does not.
+   * Unknown restored identities are cold until exact lookup or explicit navigation.
+   */
+  @computed
+  get activeSessions(): readonly ProjectSessionStore[] {
+    return this.targets.flatMap(({ sessionId }) => {
+      const summary = this.props.catalog?.find(sessionId);
+      if (summary ? summary.resolved : !this.pendingSessions.isTemporary(sessionId)) return [];
+      const session = this.findSession(sessionId);
+      return session ? [session] : [];
+    });
+  }
+
   /** Parents whose Discussion sidecars this window currently observes and renders. */
+  @computed
   get discussionSessionDemand(): readonly ProjectSessionStore[] {
-    const retainedIds = new Set(
-      this.observationRetention.sessions.map((session) => session.sessionId),
+    const demand = new Map(
+      this.observationRetention.sessions.map((session) => [session.sessionId, session]),
     );
-    return this.sessions.filter(
-      (session) =>
-        retainedIds.has(session.sessionId) || this.pendingSessions.isTemporary(session.sessionId),
-    );
+    for (const session of this.activeSessions)
+      if (this.pendingSessions.isTemporary(session.sessionId))
+        demand.set(session.sessionId, session);
+    return [...demand.values()];
   }
 
   /** Unsent pane identities not already represented by a surface's Project list. */

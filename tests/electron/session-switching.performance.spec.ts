@@ -14,11 +14,22 @@ const reducedMotion =
 const sessionCount = 429;
 const historyCount = 7500;
 const iterations = 12;
+const workload = process.env.CAKE_PERFORMANCE_WORKLOAD ?? "warm";
+if (!["warm", "cold", "large"].includes(workload))
+  throw new Error(`Unknown session-switch workload: ${workload}`);
+const transcriptMessages = workload === "large" ? 500 : 1;
 const timestamp = "2026-01-01T00:00:00.000Z";
 const id = (index: number) => `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`;
 const title = (index: number) => `Performance transcript ${index}`;
 const store = (state: object = {}, children: object = {}) => ({ state, children });
 
+type SwitchPhase = {
+  sessionId: string;
+  revision: number;
+  source: string;
+  phase: string;
+  elapsedMs: number;
+};
 type SwitchSample = {
   sessionId: string;
   startedAt: number;
@@ -26,6 +37,8 @@ type SwitchSample = {
   frameBoundaryMs?: number;
   transcriptVisibleMs?: number;
   transcriptSettledMs?: number;
+  composerInputMs?: number;
+  phases?: SwitchPhase[];
 };
 type TraceEvent = {
   name: string;
@@ -38,13 +51,15 @@ type TraceEvent = {
 };
 type RunResult = {
   variant: "baseline" | "patched";
-  clickDispatchMs: number[];
+  inputDispatchMs: number[];
   frameBoundaryMs: number[];
   transcriptCommitMs: number[];
   transcriptVisibleMs: number[];
   transcriptSettledMs: number[];
-  postClickLongestTaskMs: number[];
+  postInputLongestTaskMs: number[];
   longTaskTotalMs: number[];
+  composerInputMs: number[];
+  samples: SwitchSample[];
   normalizedWindowBytes: number;
 };
 
@@ -138,9 +153,11 @@ async function fixture(additionalChild = false) {
             { targets },
             {
               sessions: persistedSessions,
-              // Both switching destinations have materialized identities; the other
-              // retained registry entries amplify lookup cost without opening runtimes.
-              observationRetention: store({ materializedSessionIds: [id(0), id(1)] }),
+              // Previously visited identities stay materialized after their payloads
+              // are evicted. Exercise retention scans as well as registry lookup.
+              observationRetention: store({
+                materializedSessionIds: targets.map((target) => target.sessionId),
+              }),
             },
           ),
           sessionLayoutStore: store({
@@ -202,13 +219,25 @@ async function fixture(additionalChild = false) {
           provider: "performance-fixture",
           modelId: "fixture-model-0",
         },
-        {
+        ...Array.from({ length: index < 2 ? transcriptMessages : 1 }, (_, messageIndex) => ({
           type: "message",
-          id: "user",
-          parentId: "model",
+          id: `user-${messageIndex}`,
+          parentId: messageIndex === 0 ? "model" : `user-${messageIndex - 1}`,
           timestamp,
-          message: { role: "user", content: [{ type: "text", text: title(index) }], timestamp: 0 },
-        },
+          message: {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text:
+                  messageIndex === (index < 2 ? transcriptMessages : 1) - 1
+                    ? title(index)
+                    : `Saved message ${messageIndex}. ${"A conversation recorded on disk. ".repeat(12)}`,
+              },
+            ],
+            timestamp: messageIndex,
+          },
+        })),
       ];
       const path = join(sessions, `2026-01-01T00-00-00-000Z_${sessionId}.jsonl`);
       await writeFile(path, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
@@ -294,34 +323,33 @@ function summarizeTrace(events: TraceEvent[]) {
   );
   if (!renderer) throw new Error("Renderer main thread is missing from trace");
   const main = events.filter((event) => event.pid === renderer.pid && event.tid === renderer.tid);
-  const clicks = main.filter(
-    (event) => event.name === "EventDispatch" && event.args?.data?.type === "click",
+  const inputs = main.filter(
+    (event) => event.name === "EventDispatch" && event.args?.data?.type === "mousedown",
   );
-  expect(clicks).toHaveLength(iterations);
+  expect(inputs).toHaveLength(iterations);
   const tasks = main.filter((event) => event.name === "RunTask" && event.ph === "X");
-  const windowEnd = (click: TraceEvent, index: number) => {
-    const next = clicks[index + 1];
+  const windowEnd = (input: TraceEvent, index: number) => {
+    const next = inputs[index + 1];
     const nextTask =
       next && tasks.find((task) => task.ts <= next.ts && task.ts + (task.dur ?? 0) > next.ts);
-    return nextTask?.ts ?? click.ts + 1_000_000;
+    return nextTask?.ts ?? input.ts + 1_000_000;
   };
   return {
-    clickDispatchMs: clicks.map((click) => (click.dur ?? 0) / 1000),
-    postClickLongestTaskMs: clicks.map((click, index) => {
-      const end = windowEnd(click, index);
+    inputDispatchMs: inputs.map((input) => (input.dur ?? 0) / 1000),
+    postInputLongestTaskMs: inputs.map((input, index) => {
+      const end = windowEnd(input, index);
       const following = tasks.filter(
-        (task) => task.ts >= click.ts + (click.dur ?? 0) && task.ts < end,
+        (task) => task.ts >= input.ts + (input.dur ?? 0) && task.ts < end,
       );
       return Math.max(0, ...following.map((task) => (task.dur ?? 0) / 1000));
     }),
-    longTaskTotalMs: clicks.map((click, index) => {
-      // A click's enclosing task starts slightly before EventDispatch; exclude
-      // the next click's entire enclosing task rather than counting it twice.
-      const end = windowEnd(click, index);
+    longTaskTotalMs: inputs.map((input, index) => {
+      // Exclude the next activation's entire enclosing task rather than counting it twice.
+      const end = windowEnd(input, index);
       return tasks
         .filter(
           (task) =>
-            task.ts < end && task.ts + (task.dur ?? 0) > click.ts && (task.dur ?? 0) >= 50_000,
+            task.ts < end && task.ts + (task.dur ?? 0) > input.ts && (task.dur ?? 0) >= 50_000,
         )
         .reduce((total, task) => total + (task.dur ?? 0) / 1000, 0);
     }),
@@ -340,7 +368,7 @@ function distribution(values: number[]) {
   };
 }
 
-test("compares warm session switching in isolated baseline and patched Electron applications", async ({
+test("compares session switching in isolated baseline and patched Electron applications", async ({
   browserName,
 }, testInfo) => {
   expect(browserName).toBe("chromium");
@@ -382,7 +410,8 @@ test("compares warm session switching in isolated baseline and patched Electron 
         await expect(transcript.getByText(title(index), { exact: true })).toBeVisible();
       };
       // Hydrate both destinations and warm ordinary JS/render paths before tracing.
-      for (const index of [1, 0, 1, 0]) await clickSession(index);
+      if (workload !== "cold") for (const index of [1, 0, 1, 0]) await clickSession(index);
+      else await page.getByRole("button", { name: "Show more", exact: true }).click();
       await expect
         .poll(async () => {
           const saved = JSON.parse(await readFile(join(f.userData, "window-state.json"), "utf8"));
@@ -394,8 +423,18 @@ test("compares warm session switching in isolated baseline and patched Electron 
         const transcriptSelector = '.transcript:not([data-slot="content-transition-outgoing"] *)';
         const state: { samples: SwitchSample[] } = { samples: [] };
         Object.assign(window, { cakeSwitchPerformance: state });
+        performance.mark("cake.session-switch.enabled");
         document.addEventListener(
-          "click",
+          "input",
+          (event) => {
+            const sample = state.samples.at(-1);
+            if (sample && event.target instanceof HTMLTextAreaElement)
+              sample.composerInputMs ??= performance.now() - sample.startedAt;
+          },
+          true,
+        );
+        document.addEventListener(
+          "mousedown",
           (event) => {
             if (!(event.target instanceof Element)) return;
             const sessionId = event.target.closest<HTMLElement>(".session-item")?.dataset.sessionId;
@@ -464,12 +503,18 @@ test("compares warm session switching in isolated baseline and patched Electron 
       const cdp = await page.context().newCDPSession(page);
       await cdp.send("Tracing.start", {
         categories:
-          "devtools.timeline,v8,toplevel,disabled-by-default-devtools.timeline,disabled-by-default-v8.cpu_profiler,disabled-by-default-v8.cpu_profiler.hires",
+          "devtools.timeline,blink.user_timing,v8,toplevel,disabled-by-default-devtools.timeline,disabled-by-default-v8.cpu_profiler,disabled-by-default-v8.cpu_profiler.hires",
         transferMode: "ReturnAsStream",
       });
       for (let iteration = 0; iteration < iterations; iteration++) {
-        const index = iteration % 2 === 0 ? 1 : 0;
+        const index = workload === "cold" ? iteration + 1 : iteration % 2 === 0 ? 1 : 0;
         await clickSession(index);
+        const input = page.getByRole("combobox", { name: "Message", exact: true });
+        await expect(input).toBeFocused();
+        await page.keyboard.type("x");
+        await expect(input).toHaveValue("x");
+        await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+        await input.fill("");
         await expect
           .poll(() =>
             page.evaluate(() => {
@@ -486,15 +531,42 @@ test("compares warm session switching in isolated baseline and patched Electron 
       }
       const trace = await finishTrace(cdp);
       await writeFile(testInfo.outputPath(`${runIndex}-${variant}-trace.json`), trace);
-      const samples: SwitchSample[] = await page.evaluate(
-        () => Reflect.get(window, "cakeSwitchPerformance").samples,
-      );
+      const samples: SwitchSample[] = await page.evaluate(() => {
+        const samples: SwitchSample[] = Reflect.get(window, "cakeSwitchPerformance").samples;
+        const marks = performance.getEntriesByName(
+          "cake.session-switch",
+          "mark",
+        ) as PerformanceMark[];
+        return samples.map((sample, index) => ({
+          ...sample,
+          phases: marks
+            .filter(
+              (mark) =>
+                mark.startTime >= sample.startedAt &&
+                mark.startTime < (samples[index + 1]?.startedAt ?? Infinity),
+            )
+            .map((mark) => mark.detail),
+        }));
+      });
+      if (variant === "patched") {
+        for (const sample of samples) {
+          expect(sample.phases?.filter((phase) => phase.phase === "start")).toHaveLength(1);
+          expect(sample.phases?.filter((phase) => phase.phase === "validation-start")).toHaveLength(
+            1,
+          );
+        }
+      }
       expect(samples).toHaveLength(iterations);
       expect(failures).toEqual([]);
       const saved = JSON.parse(await readFile(join(f.userData, "window-state.json"), "utf8"));
       expect(saved.data.children.sessionRegistry.state.targets).toHaveLength(sessionCount);
       const result: RunResult = {
         variant,
+        samples,
+        composerInputMs: samples.map((sample) => {
+          expect(sample.composerInputMs).toBeDefined();
+          return sample.composerInputMs!;
+        }),
         ...summarizeTrace(JSON.parse(trace).traceEvents),
         frameBoundaryMs: samples.map((sample) => sample.frameBoundaryMs!),
         transcriptCommitMs: samples.map((sample) => {
@@ -513,7 +585,7 @@ test("compares warm session switching in isolated baseline and patched Electron 
       };
       runs.push(result);
       console.log(
-        `${variant} run ${runIndex}: dispatch ${JSON.stringify(distribution(result.clickDispatchMs))}`,
+        `${variant} run ${runIndex}: dispatch ${JSON.stringify(distribution(result.inputDispatchMs))}`,
       );
     } finally {
       await application.close();
@@ -521,12 +593,13 @@ test("compares warm session switching in isolated baseline and patched Electron 
     }
   }
   const metrics = [
-    "clickDispatchMs",
+    "inputDispatchMs",
     "transcriptCommitMs",
     "frameBoundaryMs",
     "transcriptVisibleMs",
     "transcriptSettledMs",
-    "postClickLongestTaskMs",
+    "postInputLongestTaskMs",
+    "composerInputMs",
     "longTaskTotalMs",
   ] as const;
   const comparison = Object.fromEntries(
@@ -544,7 +617,12 @@ test("compares warm session switching in isolated baseline and patched Electron 
     baselineRevision: process.env.CAKE_PERFORMANCE_BASELINE_REVISION,
     patchedRevision: process.env.CAKE_PERFORMANCE_PATCHED_REVISION,
     scenario: {
+      workload,
+      transcriptMessages,
       sessionCount,
+      activeSessionCount: sessionCount,
+      resolvedSessionCount: 0,
+      materializedSessionCount: sessionCount,
       historyCount,
       addedAuthenticatedModels: 250,
       viewport: "1440x1000",
@@ -554,11 +632,16 @@ test("compares warm session switching in isolated baseline and patched Electron 
       reducedMotion,
     },
     limitations:
-      "Generated workload, not the user's transcripts. Includes equal CPU-profiler overhead. Transcript commit measures DOM readiness, not pixel presentation. Visible and settled metrics inspect computed visibility/opacity and ancestor animations at rAF opportunities with the recorded motion preference. Smoke windows are hidden; rAF metrics include fixture scheduling and are not compositor presentation measurements. Timings are observations, not CI thresholds.",
+      "Generated workload, not the user's transcripts. Activation starts on mousedown, not click. Composer input includes Playwright round trips and proves real input, not the earliest possible readiness. Phase marks are available only in instrumented builds. Includes equal CPU-profiler overhead. Transcript commit measures DOM readiness, not pixel presentation. Visible and settled metrics inspect computed visibility/opacity and ancestor animations at rAF opportunities with the recorded motion preference. Smoke windows are hidden; rAF metrics include fixture scheduling and are not compositor presentation measurements. Timings are observations, not CI thresholds.",
     comparison,
     runs,
   };
-  const reportPath = join(repositoryRoot, ".performance-captures/session-switching/summary.json");
+  const reportPath = join(
+    repositoryRoot,
+    ".performance-captures/session-switching",
+    workload,
+    "summary.json",
+  );
   await mkdir(dirname(reportPath), { recursive: true });
   await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n");
   await testInfo.attach("session-switch-performance", {

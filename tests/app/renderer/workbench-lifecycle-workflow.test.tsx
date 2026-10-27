@@ -178,6 +178,84 @@ afterEach(() => {
 // that visible chat, not the previous one; this is service/rendered-state proof,
 // not native focus or keyboard correctness.
 describe("Workbench conversation lifecycle", () => {
+  it("shows a warm destination and accepts a draft before metadata lookup finishes, then validates once", async () => {
+    let finishLookup!: (summary: Awaited<ReturnType<Client["projectSessions"]["lookup"]>>) => void;
+    const pendingLookup = new Promise<Awaited<ReturnType<Client["projectSessions"]["lookup"]>>>(
+      (resolve) => {
+        finishLookup = resolve;
+      },
+    );
+    const lookup = vi.fn<Client["projectSessions"]["lookup"]>(() => pendingLookup);
+    const open = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);
+    using fixture = renderCachedWorkbench(open, false, { projectSessions: { lookup } });
+    await fixture.user.click(screen.getByRole("button", { name: /^beta conversation / }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message" }).placeholder,
+      ).toBe("Ask Cake to work in beta…"),
+    );
+    const input = screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message" });
+    await fixture.user.type(input, "Keep composing while metadata loads");
+    expect(open).not.toHaveBeenCalled();
+    await act(async () =>
+      finishLookup(sessionSummary({ sessionId: "beta", projectPath: "/beta" })),
+    );
+    await waitFor(() =>
+      expect(open).toHaveBeenCalledExactlyOnceWith(
+        { sessionId: "beta", workingDirectory: "/beta" },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      ),
+    );
+    expect(input.value).toBe("Keep composing while metadata loads");
+    expect(lookup).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a newer warm selection when an earlier metadata lookup completes", async () => {
+    let finishLookup!: (summary: Awaited<ReturnType<Client["projectSessions"]["lookup"]>>) => void;
+    const pendingLookup = new Promise<Awaited<ReturnType<Client["projectSessions"]["lookup"]>>>(
+      (resolve) => {
+        finishLookup = resolve;
+      },
+    );
+    const lookup = vi.fn<Client["projectSessions"]["lookup"]>(({ sessionId }) =>
+      sessionId === "beta"
+        ? pendingLookup
+        : Promise.resolve(sessionSummary({ sessionId, projectPath: `/${sessionId}` })),
+    );
+    const open = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);
+    using fixture = renderCachedWorkbench(open, false, { projectSessions: { lookup } });
+    await fixture.user.click(screen.getByRole("button", { name: /^beta conversation / }));
+    await waitFor(() => expect(lookup).toHaveBeenCalledOnce());
+    await fixture.user.click(screen.getByRole("button", { name: /^alpha conversation / }));
+    await waitFor(() => expect(open).toHaveBeenCalledOnce());
+    await act(async () =>
+      finishLookup(sessionSummary({ sessionId: "beta", projectPath: "/beta" })),
+    );
+    expect(screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message" }).placeholder).toBe(
+      "Ask Cake to work in alpha…",
+    );
+    expect(open.mock.calls.map(([request]) => request.sessionId)).toEqual(["alpha"]);
+  });
+
+  it("shows a warm destination's metadata failure in that conversation", async () => {
+    let failLookup!: (error: Error) => void;
+    const pendingLookup = new Promise<never>((_resolve, reject) => {
+      failLookup = reject;
+    });
+    const lookup = vi.fn<Client["projectSessions"]["lookup"]>(() => pendingLookup);
+    const open = vi.fn<Client["projectSessions"]["open"]>();
+    using fixture = renderCachedWorkbench(open, false, { projectSessions: { lookup } });
+    await fixture.user.click(screen.getByRole("button", { name: /^beta conversation / }));
+    await waitFor(() => expect(lookup).toHaveBeenCalledOnce());
+    await act(async () => failLookup(new Error("Session metadata unavailable")));
+    const error = await screen.findByRole("alert");
+    expect(within(error).getByText("Session metadata unavailable")).toBeDefined();
+    expect(screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message" }).placeholder).toBe(
+      "Ask Cake to work in beta…",
+    );
+    expect(open).not.toHaveBeenCalled();
+  });
+
   it("re-authorizes a restored workspace before opening its conversation and lets the user decline", async () => {
     const inspect = vi.fn<Client["workspaces"]["inspect"]>(async (input) => ({
       ...input,

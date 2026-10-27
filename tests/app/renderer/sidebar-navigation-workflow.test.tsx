@@ -623,6 +623,7 @@ describe("Sidebar navigation workflow", () => {
       await fixture.publishStreaming(["middle", "oldest"], true);
       expect(order()).toEqual(["middle", "oldest", "newest", "idle"]);
       await fixture.user.click(rowButton("oldest"));
+      await waitFor(() => expect(row("oldest").dataset.navigationActive).toBe("true"));
       await fixture.publishSessions([
         sidebarSummary("oldest", 6),
         sidebarSummary("middle", 5),
@@ -767,8 +768,12 @@ describe("Sidebar navigation workflow", () => {
       if (mode === "activity")
         await fixture.user.click(screen.getByRole("button", { name: "Show activity" }));
       await fixture.user.click(rowButton("middle"));
+      await waitFor(() =>
+        expect(
+          document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id"),
+        ).toBe("middle"),
+      );
       const pane = document.querySelector('[data-slot="session-pane"]');
-      await waitFor(() => expect(pane?.getAttribute("data-session-id")).toBe("middle"));
       const assertSelection = () => {
         expect(
           document
@@ -802,8 +807,12 @@ describe("Sidebar navigation workflow", () => {
       client: { projectSessions: { open: async () => undefined } },
     });
     await fixture.user.click(rowButton("worker"));
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id"),
+      ).toBe("worker"),
+    );
     const pane = document.querySelector('[data-slot="session-pane"]');
-    await waitFor(() => expect(pane?.getAttribute("data-session-id")).toBe("worker"));
     expect(order()).toEqual(["standalone", "root", "planner", "worker", "sibling"]);
     await fixture.publishSessions([
       ...sidebarFamily.map((session) =>
@@ -925,7 +934,9 @@ describe("Sidebar navigation workflow", () => {
     it("leaves family expansion alone for a visible child or top-level session, revealing only its collapsed Project", async () => {
       using fixture = renderFamily(collapsed({ planner: true }));
       await fixture.user.click(rowButton("sibling"));
-      expect(row("sibling").getAttribute("data-navigation-active")).toBe("true");
+      await waitFor(() =>
+        expect(row("sibling").getAttribute("data-navigation-active")).toBe("true"),
+      );
       expect(order()).toEqual(["root", "planner", "sibling", "standalone"]);
       await fixture.user.click(screen.getByRole("button", { name: "Collapse children of root" }));
       await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
@@ -1046,7 +1057,7 @@ describe("Sidebar navigation workflow", () => {
     },
   );
 
-  it("preserves parent derivation through resolved descendants rather than filtering the family tree", async () => {
+  it("excludes resolved descendants from active family activity and includes them again on restore", async () => {
     using fixture = renderSidebarNavigation({
       projects: [project],
       sessions: sidebarFamily.map((session) =>
@@ -1055,15 +1066,15 @@ describe("Sidebar navigation workflow", () => {
     });
     expect(order()).not.toContain("worker");
     await fixture.user.click(screen.getByRole("button", { name: "Collapse children of root" }));
-    expect(within(row("root")).getByRole("img", { name: "Ready, unread" })).toBeDefined();
+    expect(within(row("root")).queryByRole("img", { name: "Ready, unread" })).toBeNull();
     await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
-    expect(within(projectGroup("cake")).getByRole("img", { name: "Ready, unread" })).toBeDefined();
+    expect(within(projectGroup("cake")).queryByRole("img", { name: "Ready, unread" })).toBeNull();
     await fixture.publishSessions(
       sidebarFamily.map((session) =>
-        session.sessionId === "worker" ? { ...session, resolved: true, unread: false } : session,
+        session.sessionId === "worker" ? { ...session, resolved: false, unread: true } : session,
       ),
     );
-    expect(within(projectGroup("cake")).queryByRole("img", { name: "Ready, unread" })).toBeNull();
+    expect(within(projectGroup("cake")).getByRole("img", { name: "Ready, unread" })).toBeDefined();
   });
 
   it("includes unpaginated sessions but not other Projects or standalone resolved rows, and retains Project Chat's own activity", async () => {

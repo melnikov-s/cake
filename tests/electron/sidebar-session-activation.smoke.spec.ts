@@ -81,13 +81,25 @@ for (const mode of ["projects", "activity"] as const) {
       if (mode === "activity")
         await sidebar.getByRole("button", { name: "Show activity", exact: true }).click();
 
+      await page.evaluate(() => performance.mark("cake.session-switch.enabled"));
+      const openEntries = () =>
+        page.evaluate(
+          () =>
+            (
+              performance.getEntriesByName("cake.session-switch", "mark") as PerformanceMark[]
+            ).filter((mark) => mark.detail.phase === "start" && mark.detail.source === "navigation")
+              .length,
+        );
+
       // Hold the primary button: navigation must finish without a release/click.
       await action("target").hover();
       await page.mouse.down();
       await expect(row("target")).toHaveAttribute("data-navigation-active", "true");
       await expect(pane).toHaveAttribute("data-session-id", "target");
+      expect(await openEntries()).toBe(1);
       await page.mouse.up();
       await expect(pane).toHaveAttribute("data-session-id", "target");
+      expect(await openEntries()).toBe(1);
 
       // Real Chromium button keyboard activation (both Enter and Space).
       await action("selected").focus();
@@ -96,6 +108,7 @@ for (const mode of ["projects", "activity"] as const) {
       await action("target").focus();
       await page.keyboard.press("Space");
       await expect(pane).toHaveAttribute("data-session-id", "target");
+      expect(await openEntries()).toBe(3);
 
       await action("selected").click({ button: "middle" });
       await expect(pane).toHaveAttribute("data-session-id", "target");
@@ -117,6 +130,7 @@ for (const mode of ["projects", "activity"] as const) {
       await page.mouse.up();
       await expect(row("resolve")).toHaveCount(0);
       await expect(pane).toHaveAttribute("data-session-id", "target");
+      expect(await openEntries()).toBe(3);
       expect(
         await application.evaluate(({ BrowserWindow }) =>
           BrowserWindow.getAllWindows().every(
