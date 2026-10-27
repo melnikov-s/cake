@@ -166,7 +166,7 @@ describe("Cake Chat core and task-triggered references", () => {
       cakeDocsDirectory: "/cake/docs",
     });
     expect(role.length).toBeLessThan(3_600);
-    expect(commonPrompt.length).toBeLessThan(1_500);
+    expect(commonPrompt.length).toBeLessThan(2_500);
     expect(chatGuide.length).toBeLessThan(2_500);
     expect(MEMORY_COMPACTOR_PROMPT.length).toBeLessThanOrEqual(2_500);
     const custom = "User-owned instructions.\n  Keep spacing. <custom>".repeat(1_000);

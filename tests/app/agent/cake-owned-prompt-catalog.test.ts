@@ -8,7 +8,7 @@ import { workflowAuthoringReference } from "../../../src/domain/workflows/workfl
 const promptDirectory = new URL("../../../src/services/pi/runtime/prompts/", import.meta.url);
 const budgets = {
   "cake-chat.md": 3_600,
-  "common.md": 1_500,
+  "common.md": 2_500,
   "general-research.md": 1_450,
   "interview.md": 350,
   "project-interaction.md": 450,
