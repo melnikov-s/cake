@@ -1,5 +1,8 @@
 import { agentListLabel } from "../../contracts/agent/agent-list-data";
-import { sessionReference } from "../../contracts/project-sessions/session-reference";
+import {
+  CAKE_CHAT_REFERENCE,
+  CAKE_CHAT_SESSION_ID,
+} from "../../contracts/cake-chats/cake-chat-identity";
 import type { AgentSessionStatus } from "../../contracts/project-sessions/agent-session-list";
 import type { SessionContextMetadata } from "../../contracts/conversations/session-context-metadata";
 import { sessionContextCost } from "../../utils/session-context-cost";
@@ -28,11 +31,11 @@ function duration(ms: number) {
   return `${Math.floor(seconds / 86400)}d`;
 }
 
-/** Model-facing text, not another programmatic catalog. Exact facts stay in sessions.info. */
+/** Compact text keeps canonical routing IDs: a follow-up must not rediscover the global
+ * identity universe just to expand a display suffix. Exact facts stay in sessions.info. */
 export function sessionRoster(
   rows: readonly RosterRow[],
   page: { readonly total: number; readonly nextOffset: number | null },
-  knownIds: readonly string[],
   now: number,
   showProject: boolean,
 ) {
@@ -59,7 +62,7 @@ export function sessionRoster(
     const tokens =
       context.estimatedTokens === undefined ? "?" : compactNumber.format(context.estimatedTokens);
     lines.push(
-      `${sessionReference(row.sessionId, knownIds)} ${row.status} ${row.resolved || row.status === "resolved" ? "resolved" : row.status === "draft" ? "draft" : "active"} ${row.outcome ?? "-"} ${tokens} ${cache} ${age} ${ttl} | ${showProject ? `${label(row.projectName ?? "—")} | ` : ""}${label(row.title)}`,
+      `${row.sessionId === CAKE_CHAT_SESSION_ID ? CAKE_CHAT_REFERENCE : row.sessionId} ${row.status} ${row.resolved || row.status === "resolved" ? "resolved" : row.status === "draft" ? "draft" : "active"} ${row.outcome ?? "-"} ${tokens} ${cache} ${age} ${ttl} | ${showProject ? `${label(row.projectName ?? "—")} | ` : ""}${label(row.title)}`,
     );
   }
   return lines.join("\n");

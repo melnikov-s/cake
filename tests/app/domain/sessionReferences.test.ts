@@ -7,7 +7,12 @@ import {
   CAKE_CHAT_SESSION_ID,
 } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
-import { catalog, project, resolve } from "../../../src/domain/project-sessions/sessionReferences";
+import {
+  catalog,
+  project,
+  resolve,
+  resolveIn,
+} from "../../../src/domain/project-sessions/sessionReferences";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { CakeSessionRuntimes, PiSessionError } from "../../../src/services/pi/CakeSessionRuntimes";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
@@ -283,6 +288,24 @@ it.effect("general projection retains round-trippable identities even when disco
       expect(yield* resolve(reference)).toBe(sessionIds[index]);
     expect(f.resolvedProjects).not.toHaveBeenCalled();
     expect(f.sessionIds).not.toHaveBeenCalled();
+  }).pipe(Effect.provide(f.layer));
+});
+
+it.effect("suffixFromAuthorizedRosterResolvesWithoutEnumeration", () => {
+  const f = fixture();
+  f.fail();
+  const roster = [{ sessionId: active }, { sessionId: inactive }];
+  return Effect.gen(function* () {
+    for (let index = 0; index < 20; index++)
+      expect(yield* resolveIn("112345678", roster)).toBe(active);
+    expect(yield* Effect.flip(resolveIn("12345678", roster))).toMatchObject({
+      message: expect.stringContaining("Ambiguous"),
+    });
+    expect(yield* Effect.flip(resolveIn("ffffffff", roster))).toMatchObject({
+      message: expect.stringContaining("Unknown"),
+    });
+    expect(f.sessionIds).not.toHaveBeenCalled();
+    expect(f.resolvedProjects).not.toHaveBeenCalled();
   }).pipe(Effect.provide(f.layer));
 });
 

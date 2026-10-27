@@ -491,16 +491,7 @@ export const invoke: (
             matched: selected.length,
             returned: listed.length,
           });
-          return sessionRoster(
-            listed,
-            page,
-            [
-              ...roster.map((entry) => entry.sessionId),
-              ...chatEntries.map((entry) => entry.sessionId),
-            ],
-            now,
-            global && !input.projectPath,
-          );
+          return sessionRoster(listed, page, now, global && !input.projectPath);
         }
         case "sessions.reports":
           return toJsonValue({

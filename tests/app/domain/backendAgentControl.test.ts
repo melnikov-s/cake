@@ -1336,7 +1336,7 @@ it.effect("executes settings, label lifecycle, and authoritative inspection with
     yield* f.call("session-labels.remove", { labelId });
     expect(f.state().projects[0]?.workflow?.assignments[0]?.labelIds ?? []).toEqual([]);
     expect(yield* f.call("sessions.list")).toBe(
-      "3 sessions\nid status lifecycle outcome tokens cache age ttl | title\n00000022 idle active - ? ? ? ? | Same title\n00000011 idle active - ? ? ? ? | Source\n00000033 idle active - ? ? ? ? | Same title",
+      "3 sessions\nid status lifecycle outcome tokens cache age ttl | title\n00000000-0000-4000-8000-000000000022 idle active - ? ? ? ? | Same title\n00000000-0000-4000-8000-000000000011 idle active - ? ? ? ? | Source\n00000000-0000-4000-8000-000000000033 idle active - ? ? ? ? | Same title",
     );
     for (const command of ["history", "compactions", "tree", "context", "usage", "commands"])
       expect(yield* f.call(`sessions.${command}`, { sessionId: "00000022" })).toMatchObject({
@@ -1818,6 +1818,23 @@ it.effect(
     }),
 );
 
+it.effect("compact roster identities route follow-up inspections without global enumeration", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    const roster = yield* f.call("sessions.list", { limit: 1 });
+    assert.ok(typeof roster === "string");
+    const reference = roster.split("\n")[2]?.split(" ")[0];
+    assert.ok(reference);
+    expect(reference).toBe(target);
+    const directoryReads = [...f.listReads.ids];
+    for (let index = 0; index < 20; index++)
+      expect(yield* f.call("sessions.info", { sessionId: reference })).toMatchObject({
+        session: { sessionId: target },
+      });
+    expect(f.listReads.ids).toEqual(directoryReads);
+  }),
+);
+
 it.effect(
   "lists compact size and freshness only for the selected page without waking sessions",
   () =>
@@ -1836,7 +1853,7 @@ it.effect(
         },
       });
       expect(yield* f.call("sessions.list", { limit: 1 })).toBe(
-        "3 sessions; next=1\nid status lifecycle outcome tokens cache age ttl | title\n00000022 idle active - 120K expired? 1h -55m | Same title",
+        "3 sessions; next=1\nid status lifecycle outcome tokens cache age ttl | title\n00000000-0000-4000-8000-000000000022 idle active - 120K expired? 1h -55m | Same title",
       );
       expect(f.inspections).toEqual([target]);
       expect(f.runtimeCreates).toEqual([source]);
@@ -1939,7 +1956,7 @@ it.effect(
           "0 sessions",
         );
         expect(yield* f.direct("sessions.list", { query: "Same" }, sender)).toContain(
-          "00000022 idle active - ? ? ? ? | Same title",
+          "00000000-0000-4000-8000-000000000022 idle active - ? ? ? ? | Same title",
         );
       }
       expect(
@@ -1966,11 +1983,11 @@ it.effect("keeps task-input metadata redacted in session and report text catalog
       title: "Cake Chat",
     };
     expect(yield* f.direct("sessions.list", { query: "Task" }, global)).toBe(
-      "1 sessions\nid status lifecycle outcome tokens cache age ttl | project | title\n00000022 idle active - ? ? ? ? | Project | Task session",
+      "1 sessions\nid status lifecycle outcome tokens cache age ttl | project | title\n00000000-0000-4000-8000-000000000022 idle active - ? ? ? ? | Project | Task session",
     );
     const invoke = yield* batchRegistry(f);
     const expected =
-      "1 sessions\nid status lifecycle outcome tokens cache age ttl | project | title\n00000022 idle active - ? ? ? ? | Project | Task session";
+      "1 sessions\nid status lifecycle outcome tokens cache age ttl | project | title\n00000000-0000-4000-8000-000000000022 idle active - ? ? ? ? | Project | Task session";
     expect(yield* invoke("sessions.list", { query: "Task" })).toMatchObject({
       text: expected,
       structuredContent: expected,
@@ -2165,8 +2182,8 @@ it.effect("uses family-root resolution in a listing snapshot", () =>
       Effect.provide(f.context),
     );
     expect(result).toContain("2 sessions");
-    expect(result).toContain("00000022 resolved");
-    expect(result).toContain("00000033 resolved");
+    expect(result).toContain("00000000-0000-4000-8000-000000000022 resolved");
+    expect(result).toContain("00000000-0000-4000-8000-000000000033 resolved");
     expect(f.listReads.locate).toBe(0);
   }),
 );
@@ -2201,7 +2218,7 @@ it.effect("paginates a minimal session roster and filters before selecting a pag
       projectPath: "/project",
     });
     expect(filtered).toBe(
-      "11 sessions\nid status lifecycle outcome tokens cache age ttl | title\n00000118 draft draft - ? ? ? ? | Paging 18\n00000119 draft draft - ? ? ? ? | Paging 19",
+      "11 sessions\nid status lifecycle outcome tokens cache age ttl | title\n00000000-0000-4000-8000-000000000118 draft draft - ? ? ? ? | Paging 18\n00000000-0000-4000-8000-000000000119 draft draft - ? ? ? ? | Paging 19",
     );
     const last = yield* f.call("sessions.list", { status: "draft", limit: 50, offset: 50 });
     assert.ok(typeof last === "string");
@@ -2244,7 +2261,7 @@ it.effect(
         });
         expect(f.inspections).toEqual([]);
         expect(yield* f.call("sessions.list", { status: "resolved" })).toContain(
-          `00000022 resolved resolved ${outcome}`,
+          `00000000-0000-4000-8000-000000000022 resolved resolved ${outcome}`,
         );
         f.inspections.length = 0;
       }
@@ -2272,7 +2289,7 @@ it.effect(
           lastReport: { status, summary: summaryText, reportedAt: "2026-01-02" },
         });
       expect(yield* f.call("sessions.list", { launchedByCakeChat: true })).toBe(
-        "2 sessions\nid status lifecycle outcome tokens cache age ttl | title\n00000022 failed active failed ? ? ? ? | Same title\n00000033 done active completed ? ? ? ? | Same title",
+        "2 sessions\nid status lifecycle outcome tokens cache age ttl | title\n00000000-0000-4000-8000-000000000022 failed active failed ? ? ? ? | Same title\n00000000-0000-4000-8000-000000000033 done active completed ? ? ? ? | Same title",
       );
       expect(yield* f.call("sessions.info", { sessionId: target })).toMatchObject({
         session: {
@@ -2284,7 +2301,7 @@ it.effect(
       expect(
         yield* f.call("sessions.list", { launchedByCakeChat: true, attentionOnly: true }),
       ).toBe(
-        "1 sessions\nid status lifecycle outcome tokens cache age ttl | title\n00000022 failed active failed ? ? ? ? | Same title",
+        "1 sessions\nid status lifecycle outcome tokens cache age ttl | title\n00000000-0000-4000-8000-000000000022 failed active failed ? ? ? ? | Same title",
       );
       for (const status of ["interrupted", "stopped"] as const) {
         yield* families.recordLaunchReport(target, {
@@ -2293,13 +2310,13 @@ it.effect(
           reportedAt: "2026-01-03",
         });
         expect(yield* f.call("sessions.list", { launchedByCakeChat: true })).toContain(
-          `00000022 ${status} active ${status} ? ? ? ? | Same title`,
+          `00000000-0000-4000-8000-000000000022 ${status} active ${status} ? ? ? ? | Same title`,
         );
         expect(
           yield* f.call("sessions.list", { launchedByCakeChat: true, attentionOnly: true }),
         ).toBe(
           status === "interrupted"
-            ? "1 sessions\nid status lifecycle outcome tokens cache age ttl | title\n00000022 interrupted active interrupted ? ? ? ? | Same title"
+            ? "1 sessions\nid status lifecycle outcome tokens cache age ttl | title\n00000000-0000-4000-8000-000000000022 interrupted active interrupted ? ? ? ? | Same title"
             : "0 sessions",
         );
       }
@@ -2307,7 +2324,7 @@ it.effect(
       yield* f.call("sessions.send", { sessionId: third, text: "Run" });
       yield* Queue.take(f.prompts);
       expect(yield* f.call("sessions.list", { launchedByCakeChat: true })).toContain(
-        "00000033 running active completed ? ? ? ? | Same title",
+        "00000000-0000-4000-8000-000000000033 running active completed ? ? ? ? | Same title",
       );
       yield* Deferred.succeed(f.messageRelease, undefined);
     }),
@@ -2355,11 +2372,11 @@ it.effect(
       const call = (command: string, input: JsonValue = {}) =>
         agentControl.invoke(command, input, workflowCaller).pipe(Effect.provide(context));
       expect(yield* call("sessions.list", { launchedByCakeChat: true })).toContain(
-        "00000022 failed active failed",
+        "00000000-0000-4000-8000-000000000022 failed active failed",
       );
       streaming = true;
       expect(yield* call("sessions.list", { launchedByCakeChat: true })).toContain(
-        "00000022 running",
+        "00000000-0000-4000-8000-000000000022 running",
       );
       streaming = false;
       latestTurnOutcome = "complete";
@@ -2370,7 +2387,7 @@ it.effect(
         reportedAt: "2026-01-04",
       });
       expect(yield* call("sessions.list", { launchedByCakeChat: true })).toContain(
-        "00000022 done active completed",
+        "00000000-0000-4000-8000-000000000022 done active completed",
       );
       expect(yield* call("sessions.info", { sessionId: target })).toMatchObject({
         session: { outcome: "completed" },
@@ -2380,7 +2397,7 @@ it.effect(
       expect(roster).toContain("blocked/stopped=0");
       latestTurnOutcome = "failed";
       expect(yield* call("sessions.list", { launchedByCakeChat: true })).toContain(
-        "00000022 failed active failed",
+        "00000000-0000-4000-8000-000000000022 failed active failed",
       );
       expect((yield* families.state()).spawnedSessions[0]?.lastReport?.summary).toBe(
         "Late historical failure",
