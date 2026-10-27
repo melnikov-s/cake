@@ -11,6 +11,7 @@ import { internalInputEntryType } from "./internal-input-projection";
 import { resolve } from "node:path";
 import { observeMessageBoardRequests } from "./message-board-extension";
 import { createTurnResultCapture } from "./turn-result-capture";
+import { reportSlowCakeToolExecution } from "./cake-tool-timing";
 import type { PiTurnResult } from "../../../contracts/pi/turn-result-data";
 import type {
   CurrentSessionControl,
@@ -599,6 +600,7 @@ export async function createCakeSessionRuntime(
   const unsubscribe = session.subscribe((event) => {
     if (disposed) return;
     captureTurnResult(event);
+    if (event.type === "tool_execution_end") reportSlowCakeToolExecution("pi", event);
     if (
       event.type === "message_end" &&
       event.message.role === "assistant" &&

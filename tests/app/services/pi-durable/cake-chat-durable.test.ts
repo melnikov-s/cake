@@ -24,6 +24,7 @@ import {
   type EntryId,
   UserEntry,
   AssistantEntry,
+  ToolResultEntry,
 } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -172,6 +173,54 @@ async function fixture(
     },
   };
 }
+
+it("reports existing SDK execution duration only on new Cake tool-result commits", async () => {
+  const f = await fixture();
+  const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  try {
+    await f.engine.root.commit(
+      (tx) =>
+        tx.appendEntry(ToolResultEntry, f.engine.root.id, {
+          model: [
+            {
+              role: "toolResult",
+              toolName: "cake",
+              toolCallId: "PRIVATE_CALL_ID",
+              content: [{ type: "text", text: "PRIVATE_FAILURE" }],
+              details: { secret: "PRIVATE_CREDENTIAL" },
+              isError: true,
+              durationMs: 1_234,
+              timestamp: 900_000,
+            },
+          ],
+          data: { diagnostics: [] },
+        }),
+      BACKGROUND_CONTEXT,
+    );
+    expect(warning).toHaveBeenCalledExactlyOnceWith("Slow Cake tool execution", {
+      runtime: "durable",
+      boundary: "sdk-execute",
+      call: expect.stringMatching(/^[0-9a-f]{16}$/),
+      durationMs: 1_234,
+      isError: true,
+      unmeasured: [
+        "model-generation",
+        "sdk-admission",
+        "environment-acquisition",
+        "result-settlement-delivery",
+      ],
+    });
+    expect(JSON.stringify(warning.mock.calls)).not.toContain("PRIVATE");
+    // Reading projections and metadata publications must not replay diagnostics.
+    await readDurableOriginalPage(f.engine.root);
+    await f.engine.root.commit(async (tx) => {
+      await tx.doc(ChatMetadataDoc, f.engine.root.id);
+    }, BACKGROUND_CONTEXT);
+    expect(warning).toHaveBeenCalledTimes(1);
+  } finally {
+    warning.mockRestore();
+  }
+});
 
 it("delivers Project Chat context only on consumed originals, not preparation, canceled queues, or runtime metadata wrappers", async () => {
   const entered = Promise.withResolvers<void>();

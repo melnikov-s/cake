@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { createHash } from "node:crypto";
+import { cakeToolCallKey } from "./cake-tool-timing";
 import { discoveryResultText } from "../../../contracts/agent/discovery-result-text";
 import {
   MAX_CAKE_OPERATION_IMAGE_BYTES,
@@ -389,7 +389,7 @@ export class CakeOperationRegistry {
         // results, exceptions, tool-call/session IDs, titles, paths or arbitrary commands.
         console.warn("Slow Cake operation", {
           command: operation.command,
-          call: createHash("sha256").update(context.toolCallId).digest("hex").slice(0, 16),
+          call: cakeToolCallKey(context.toolCallId),
           completed,
           phase,
           phasesMs: phases,

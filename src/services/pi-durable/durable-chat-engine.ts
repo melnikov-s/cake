@@ -38,6 +38,7 @@ import { createDurableChatMemory, type DurableMemoryOptions } from "./durable-ch
 import { withoutDurableInputPresentation } from "./durable-input-presentation";
 import { DurableMemoryError, durableMemoryWork } from "./durable-memory-work";
 import { durableModelFacade } from "./durable-model-facade";
+import { reportSlowCakeToolExecution } from "../pi/runtime/cake-tool-timing";
 import { durableContextInspection } from "./durable-context-inspection";
 import { estimateContextTokens } from "@earendil-works/pi-durable-ai/utils/estimate";
 import {
@@ -610,6 +611,8 @@ export async function openDurableChatEngine(options: {
           ["pi.user", "pi.assistant", "pi.tool-result"].includes(change.value.kind)
         ) {
           originals += 1;
+          for (const message of change.value.model ?? [])
+            if (message.role === "toolResult") reportSlowCakeToolExecution("durable", message);
           if (
             change.value.kind === "pi.assistant" &&
             change.value.model?.some(
