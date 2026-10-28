@@ -4329,10 +4329,54 @@ const dictationInputScenario: VisualCaptureScenario = {
 
 const compactComposerScenario: VisualCaptureScenario = {
   name: "compact-composer",
-  description: "Quick assistant voice, text and submit centerline with native textarea expansion",
-  states: ["placeholder", "text", "multiline"],
+  description: "Shared quick-assistant and annotation composer centerlines and native expansion",
+  states: [
+    "placeholder",
+    "text",
+    "multiline",
+    "annotation-placeholder",
+    "annotation-text",
+    "annotation-multiline",
+  ],
   environment: dictationInputScenario.environment,
-  seed: dictationInputScenario.seed,
+  async seed(paths, theme) {
+    await dictationInputScenario.seed(paths, theme);
+    const directory = workspaceSessionDirectory(
+      paths.project,
+      join(paths.cakeHome, "pi", "sessions"),
+    );
+    const file = join(directory, "1970-01-01T00-00-00-000Z_visual-conversation-entry.jsonl");
+    await writeFile(
+      file,
+      (await readFile(file, "utf8")) +
+        JSON.stringify({
+          type: "message",
+          id: "compact-composer-passage",
+          parentId: "history",
+          timestamp: new Date(0).toISOString(),
+          message: {
+            role: "assistant",
+            content: [
+              { type: "text", text: "widgets.instantiate accepts a skillTemplate plus content." },
+            ],
+            api: "openai-completions",
+            provider: "conversation-visual",
+            model: "fixture",
+            stopReason: "stop",
+            timestamp: 1,
+            usage: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 0,
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+            },
+          },
+        }) +
+        "\n",
+    );
+  },
   async prepare(page, state, application) {
     await dictationInputScenario.prepare(page, "default", application);
     // Each writing target stops its previous capture. Give the next target fresh tracks.
@@ -4341,16 +4385,57 @@ const compactComposerScenario: VisualCaptureScenario = {
         new AudioContext().createMediaStreamDestination().stream;
     });
     await page.getByRole("button", { name: "Mute dictation", exact: true }).click();
-    await page.getByRole("button", { name: "Ask session assistant", exact: true }).click();
-    const dialog = page.getByRole("dialog", { name: "Quick session assistant", exact: true });
-    const input = dialog.getByRole("combobox", { name: "Ask session assistant", exact: true });
+    const annotation = state.startsWith("annotation-");
+    if (annotation) {
+      if (!application) throw new Error("Annotation selection requires Electron");
+      // Keep the real selection and context-menu workflow; replace only the native popup.
+      await application.evaluate(({ Menu }) => {
+        const build = Menu.buildFromTemplate.bind(Menu);
+        Menu.buildFromTemplate = (template) => {
+          const menu = build(template);
+          menu.popup = (options) => {
+            const item = menu.items.find((item) => item.label === "Add annotation");
+            if (!item?.click || !options?.window)
+              throw new Error("Missing annotation action window");
+            item.click(item, options.window, { triggeredByAccelerator: false });
+            options.callback?.();
+          };
+          return menu;
+        };
+      });
+      const message = page.getByText("widgets.instantiate accepts a skillTemplate plus content.", {
+        exact: true,
+      });
+      await message.dblclick();
+      const rect = (await message.boundingBox())!;
+      await message.dispatchEvent("contextmenu", {
+        clientX: rect.x + rect.width / 2,
+        clientY: rect.y + rect.height / 2,
+      });
+    } else {
+      await page.getByRole("button", { name: "Ask session assistant", exact: true }).click();
+    }
+    const dialog = page.getByRole("dialog", {
+      name: annotation ? "Add annotation" : "Quick session assistant",
+      exact: true,
+    });
+    const input = dialog.getByRole(annotation ? "textbox" : "combobox", {
+      name: annotation ? "Annotation comment" : "Ask session assistant",
+      exact: true,
+    });
     await input.fill("");
     await expect(input).toBeFocused();
-    if (state === "text") await input.pressSequentially("whats the difference between this");
-    if (state === "multiline") await input.fill("First line\nSecond line\nThird line\nFourth line");
+    const contentState = state.replace("annotation-", "");
+    if (contentState === "text") await input.pressSequentially("whats the difference between this");
+    if (contentState === "multiline")
+      await input.fill("First line\nSecond line\nThird line\nFourth line");
     await page.mouse.move(1, 1);
   },
-  region: (page) => page.getByRole("dialog", { name: "Quick session assistant", exact: true }),
+  region: (page, state) =>
+    page.getByRole("dialog", {
+      name: state.startsWith("annotation-") ? "Add annotation" : "Quick session assistant",
+      exact: true,
+    }),
 };
 
 const dictationSettingsScenario: VisualCaptureScenario = {

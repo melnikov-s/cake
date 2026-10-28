@@ -6,7 +6,7 @@ import type { ChatConfigurationStore } from "../stores/ChatConfigurationStore";
 import { cn } from "@/lib/utils";
 import { DictationIndicatorContext } from "../dictation/dictation-indicator-context";
 
-/** The authoritative composer frame shared by every Cake chat surface. */
+/** The authoritative composer frame shared by chat and annotation surfaces. */
 export const ChatComposer = observer(function ChatComposer({
   configuration,
   onSubmit,
@@ -83,7 +83,7 @@ export const ChatComposer = observer(function ChatComposer({
               "relative z-10 border-border/90 bg-composer shadow-[0_24px_80px_-30px_hsl(var(--shadow)/0.55),0_2px_10px_hsl(var(--shadow)/0.08)]",
               leadingAccessory && "[&_textarea]:pl-12 @4xl/composer-dock:[&_textarea]:pl-2",
               inline &&
-                "flex items-center gap-1.5 border-0 bg-transparent p-1.5 shadow-none [&_textarea]:min-h-8 [&_textarea]:max-h-40 [&_textarea]:px-2.5 [&_textarea]:py-1 [&_textarea]:text-xs",
+                "flex items-center gap-1.5 border-0 bg-transparent p-1.5 shadow-none [&_textarea]:min-h-8 [&_textarea]:max-h-40 [&_textarea]:px-2.5 [&_textarea]:py-1 [&_textarea]:text-xs [&_textarea]:shadow-none",
             )}
             onSubmit={onSubmit}
           >

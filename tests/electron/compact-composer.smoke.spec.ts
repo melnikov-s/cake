@@ -6,8 +6,13 @@ import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenario
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-for (const theme of ["dark", "light"] as const) {
-  test(`compact composer shares an optical centerline and expands without losing focus (${theme})`, async () => {
+for (const [surface, theme] of [
+  ["assistant", "dark"],
+  ["assistant", "light"],
+  ["annotation", "dark"],
+  ["annotation", "light"],
+] as const) {
+  test(`compact composer shares an optical centerline and expands without losing focus (${surface}, ${theme})`, async () => {
     test.setTimeout(60_000);
     const root = await mkdtemp(join(tmpdir(), "cake-compact-composer-"));
     const paths = {
@@ -32,10 +37,24 @@ for (const theme of ["dark", "light"] as const) {
     });
     try {
       const page = await application.firstWindow();
-      await scenario.prepare(page, "placeholder", application);
-      const dialog = page.getByRole("dialog", { name: "Quick session assistant", exact: true });
-      const input = dialog.getByRole("combobox", { name: "Ask session assistant", exact: true });
-      const send = dialog.getByRole("button", { name: "Send", exact: true });
+      const annotation = surface === "annotation";
+      await scenario.prepare(
+        page,
+        annotation ? "annotation-placeholder" : "placeholder",
+        application,
+      );
+      const dialog = page.getByRole("dialog", {
+        name: annotation ? "Add annotation" : "Quick session assistant",
+        exact: true,
+      });
+      const input = dialog.getByRole(annotation ? "textbox" : "combobox", {
+        name: annotation ? "Annotation comment" : "Ask session assistant",
+        exact: true,
+      });
+      const send = dialog.getByRole("button", {
+        name: annotation ? "Add annotation" : "Send",
+        exact: true,
+      });
       const voice = dialog.locator('[data-slot="dictation-indicator"] button');
       const layout = () =>
         input.evaluate((element: HTMLTextAreaElement) => {
@@ -104,7 +123,8 @@ for (const theme of ["dark", "light"] as const) {
         }, width);
         await input.fill("");
         await expect(input).toBeFocused();
-        await expect(send).toBeDisabled();
+        // An empty annotation still submits a text highlight; an empty chat cannot send.
+        await expect(send).toBeEnabled({ enabled: annotation });
         await expect(voice).toBeVisible();
         await expectCenterline();
         const singleLine = await layout();
@@ -151,7 +171,7 @@ for (const theme of ["dark", "light"] as const) {
       await expect(voice.locator('[role="status"]')).toBeVisible();
       await expectCenterline();
       await expect(input).toBeFocused();
-      await expect(send).toBeDisabled();
+      await expect(send).toBeEnabled({ enabled: annotation });
       await voice.click();
       await page.evaluate(() => {
         navigator.mediaDevices.getUserMedia = async () => {
@@ -163,6 +183,16 @@ for (const theme of ["dark", "light"] as const) {
       await expect(voice).toHaveAttribute("aria-busy", "false");
       await expectCenterline();
       await expect(input).toBeFocused();
+      if (annotation) {
+        await input.fill("Remember this passage");
+        await input.press("Enter");
+        await expect(dialog).toHaveCount(0);
+        await expect(
+          page.getByRole("button", { name: "View 1 annotation", exact: true }),
+        ).toBeVisible();
+        const parentInput = page.getByRole("combobox", { name: "Message", exact: true });
+        await expect(parentInput).toHaveValue("Let’s refine the voice conversation together.");
+      }
     } finally {
       await application.close();
       await rm(root, { recursive: true, force: true });

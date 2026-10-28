@@ -116,6 +116,13 @@ and [`ChatStore`](../../src/renderer/stores/ChatStore.ts).
 
 ## Conversation and media
 
+[`ChatComposer`](../../src/renderer/components/chat-composer.tsx) owns the shared
+composer frame. Its inline variant is used by both quick session-assistant prompts
+and annotation comments: the same dictation slot, expanding `ComposerInput`, and
+[`ComposerSubmitButton`](../../src/renderer/components/ui/composer-submit-button.tsx)
+keep voice, text and submit on one centerline. Consumers own labels, draft state,
+submission and dismissal; do not recreate the compact form in a popup.
+
 [`CopyButton`](../../src/renderer/components/ui/copy-button.tsx) copies text on demand with pending and success feedback and delegates errors to its owner. Linked-message views read the complete original across source pages without moving the displayed page.
 
 [`CopyReferenceButton`](../../src/renderer/components/ui/copy-reference-button.tsx) copies an

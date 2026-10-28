@@ -1,6 +1,7 @@
 import { observer } from "r-state-tree/react";
 import { IconButton } from "@/components/ui/icon-button";
-import { SendIcon, StopIcon } from "@/components/ui/icons";
+import { StopIcon } from "@/components/ui/icons";
+import { ComposerSubmitButton } from "@/components/ui/composer-submit-button";
 import type { ChatStore } from "../stores/ChatStore";
 
 /** Draft-bound send, activate, and stop control, isolated from the surrounding chat render. */
@@ -16,9 +17,8 @@ export const ChatSubmitAction = observer(function ChatSubmitAction({
   return (
     <>
       {(activatingDraft || !store.loading || hasInput) && (
-        <IconButton
+        <ComposerSubmitButton
           data-cake-hint-key="u"
-          className="size-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-45"
           tooltip={
             activatingDraft
               ? "Activate draft"
@@ -32,11 +32,8 @@ export const ChatSubmitAction = observer(function ChatSubmitAction({
                     ? "Activate draft"
                     : "Send"
           }
-          type="submit"
           disabled={activatingDraft ? !store.canActivateDraft : !store.canSubmitDraft(store.draft)}
-        >
-          <SendIcon />
-        </IconButton>
+        />
       )}
       {store.canStop && !hasInput && !activatingDraft && (
         <IconButton

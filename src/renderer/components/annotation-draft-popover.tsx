@@ -7,9 +7,9 @@ import {
   type CSSProperties,
 } from "react";
 import { createPortal } from "react-dom";
-import { IconButton } from "@/components/ui/icon-button";
-import { SendIcon } from "@/components/ui/icons";
-import { Textarea } from "@/components/ui/textarea";
+import { ChatComposer } from "@/components/chat-composer";
+import { ComposerInput } from "@/components/ai-elements/composer";
+import { ComposerSubmitButton } from "@/components/ui/composer-submit-button";
 import type { Annotation } from "../../contracts/conversations/session-contract";
 import type { MessageSelectionAnchor } from "../stores/MessageCommentsStore";
 import type { MessageCommentAnchorRect } from "./message-comment-anchor";
@@ -96,49 +96,35 @@ export function AnnotationDraftPopover({
   return createPortal(
     <div
       ref={surfaceRef}
-      className="fixed z-50 flex w-[min(22rem,calc(100vw-24px))] items-center gap-1.5 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-2xl"
+      className="fixed z-50 w-[min(22rem,calc(100vw-24px))] rounded-xl border border-border bg-popover text-popover-foreground shadow-2xl"
       style={position}
       role="dialog"
       aria-label="Add annotation"
     >
-      <form
-        className="flex w-full items-center gap-1.5"
+      <ChatComposer
+        inline
         onSubmit={(event) => {
           event.preventDefault();
           handleSubmit();
         }}
-      >
-        <Textarea
-          dictation
-          ref={textareaRef}
-          autoFocus
-          rows={1}
-          aria-label="Annotation comment"
-          className="max-h-40 min-h-8 resize-none border-none bg-transparent px-2.5 py-1.5 text-xs shadow-none focus-visible:border-none focus-visible:ring-0"
-          placeholder="Add annotation..."
-          value={comment}
-          onChange={(event) => {
-            setComment(event.currentTarget.value);
-            const el = event.currentTarget;
-            el.style.height = "auto";
-            el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              handleSubmit();
-            }
-          }}
-        />
-        <IconButton
-          type="submit"
-          className="size-7 bg-primary text-primary-foreground hover:bg-primary/90"
-          tooltip="Add annotation"
-          ariaLabel="Add annotation"
-        >
-          <SendIcon />
-        </IconButton>
-      </form>
+        input={
+          <ComposerInput
+            ref={textareaRef}
+            autoFocus
+            aria-label="Annotation comment"
+            placeholder="Add annotation..."
+            value={comment}
+            onChange={(event) => setComment(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                handleSubmit();
+              }
+            }}
+          />
+        }
+        toolbarActions={<ComposerSubmitButton tooltip="Add annotation" />}
+      />
     </div>,
     document.body,
   );
