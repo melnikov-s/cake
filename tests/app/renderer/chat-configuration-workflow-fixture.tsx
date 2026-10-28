@@ -5,6 +5,7 @@ import type { ConversationSnapshot } from "../../../src/contracts/conversations/
 import type {
   ModelOption,
   ModelPreset,
+  UtilityModel,
 } from "../../../src/contracts/conversations/session-contract";
 import { Chat } from "../../../src/renderer/components/chat";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
@@ -60,6 +61,7 @@ export function renderChatConfiguration(options: {
   models?: readonly ModelOption[];
   secondaryModels?: readonly ModelOption[];
   presets?: readonly ModelPreset[];
+  utilityModel?: UtilityModel;
 }) {
   const fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: "/project", name: "Project" })],
@@ -80,6 +82,7 @@ export function renderChatConfiguration(options: {
   fixture.root.settingsStore.applyApplicationState(0, {
     ...defaultApplicationState(),
     modelPresets: [...(options.presets ?? [])],
+    ...(options.utilityModel ? { utilityModel: options.utilityModel } : null),
   });
   const session = options.deferred
     ? fixture.root.sessionRegistry.pendingSessions.prepareStaged("/project", "first")

@@ -75,6 +75,7 @@ import { ProjectRemovalStore } from "./ProjectRemovalStore";
 import { NewSessionStore } from "./NewSessionStore";
 import { ModelCatalogStore } from "./ModelCatalogStore";
 import { ModelCatalogContext } from "./context/ModelCatalogContext";
+import { UtilityModelContext } from "./context/UtilityModelContext";
 
 export class RootStore extends Store<{
   client: Client;
@@ -166,6 +167,10 @@ export class RootStore extends Store<{
 
   [ModelCatalogContext.provide]() {
     return this.modelCatalogStore;
+  }
+
+  [UtilityModelContext.provide]() {
+    return () => this.settingsStore.utilityModel.model;
   }
 
   @child

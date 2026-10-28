@@ -715,6 +715,144 @@ const conversationEntryScenario: VisualCaptureScenario = {
   },
 };
 
+const modelPickerScenario: VisualCaptureScenario = {
+  name: "model-picker",
+  description: "Project Session model picker with saved presets followed by the utility model",
+  states: ["default", "utility-selected"],
+  async seed(paths, theme) {
+    const sessionId = "visual-model-picker";
+    const timestamp = new Date(0).toISOString();
+    const sessionDirectory = workspaceSessionDirectory(
+      paths.project,
+      join(paths.cakeHome, "pi", "sessions"),
+    );
+    await Promise.all([
+      mkdir(paths.userData, { recursive: true }),
+      mkdir(paths.project, { recursive: true }),
+      mkdir(sessionDirectory, { recursive: true }),
+      mkdir(join(paths.cakeHome, "state"), { recursive: true }),
+    ]);
+    const model = (id: string, name: string) => ({
+      id,
+      name,
+      reasoning: true,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 32_000,
+      maxTokens: 1024,
+    });
+    // No submission occurs; the dummy loopback endpoint cannot invoke a billed provider.
+    await writeFile(
+      join(paths.cakeHome, "pi", "models.json"),
+      JSON.stringify({
+        providers: {
+          "visual-models": {
+            name: "Visual models",
+            baseUrl: "http://127.0.0.1:9/v1",
+            apiKey: "fixture-only",
+            api: "openai-completions",
+            models: [
+              model("claude-opus", "Claude Opus"),
+              model("deepseek-v4p1-flash", "DeepSeek v4p1 Flash"),
+            ],
+          },
+        },
+      }),
+    );
+    await writeFile(
+      join(paths.userData, "window-state.json"),
+      windowState({ project: paths.project, sessionId, theme }),
+    );
+    await writeFile(
+      join(paths.cakeHome, "state", "application.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        projects: [
+          { path: paths.project, name: "Project", addedAt: timestamp, lastOpenedAt: timestamp },
+        ],
+        trustedProjectPaths: [],
+        modelPresets: [
+          {
+            id: "00000000-0000-4000-8000-000000000001",
+            name: "Deep review",
+            provider: "visual-models",
+            modelId: "claude-opus",
+            thinkingLevel: "high",
+            fastMode: false,
+          },
+          {
+            id: "00000000-0000-4000-8000-000000000002",
+            name: "Quick edit",
+            provider: "visual-models",
+            modelId: "deepseek-v4p1-flash",
+            thinkingLevel: "low",
+            fastMode: false,
+          },
+        ],
+        utilityModel: {
+          provider: "visual-models",
+          modelId: "deepseek-v4p1-flash",
+          thinkingLevel: "medium",
+        },
+      }),
+    );
+    await writeFile(
+      join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
+      [
+        { type: "session", version: 3, id: sessionId, timestamp, cwd: paths.project },
+        {
+          type: "model_change",
+          id: "model",
+          parentId: null,
+          timestamp,
+          provider: "visual-models",
+          modelId: "claude-opus",
+        },
+        {
+          type: "message",
+          id: "history",
+          parentId: "model",
+          timestamp,
+          message: { role: "user", content: "Model picker fixture ready", timestamp: 0 },
+        },
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n") + "\n",
+    );
+  },
+  async prepare(page, state) {
+    await expect(page.getByLabel("Message", { exact: true }).first()).toBeVisible({
+      timeout: 20_000,
+    });
+    const trigger = page.getByRole("button", { name: "Model configuration" });
+    const dialog = page.getByRole("dialog", { name: "Model configuration" });
+    const openModels = async () => {
+      await trigger.click();
+      const search = dialog.getByLabel("Search presets and models");
+      const change = dialog.getByRole("button", { name: /Change model/ });
+      await expect(search.or(change)).toBeVisible();
+      if (await change.isVisible()) await change.click();
+      await expect(dialog.getByRole("region", { name: "Model presets" })).toBeVisible();
+    };
+    await openModels();
+    if (state === "utility-selected") {
+      await dialog.getByRole("button", { name: /^Utility/ }).click();
+      await expect(dialog).toBeHidden();
+      await expect(trigger).toContainText("DeepSeek v4p1 Flash");
+      await openModels();
+      await expect(dialog.getByRole("button", { name: /^Utility/ })).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+    }
+    await page.mouse.move(1, 1);
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+  },
+  region(page) {
+    return page.getByRole("dialog", { name: "Model configuration" });
+  },
+};
+
 /** Configures the deterministic ElevenLabs fixture; smoke windows stay hidden and unfocused. */
 async function configureVisualSpeech(page: Page, application: ElectronApplication) {
   await installSpeechHttpFixture(application);
@@ -5514,6 +5652,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   cakeChatSessionUpdatesScenario,
   activityWorktreeScenario,
   conversationEntryScenario,
+  modelPickerScenario,
   conversationCountdownScenario,
   speechOutputSettingsScenario,
   speechInputSettingsScenario,

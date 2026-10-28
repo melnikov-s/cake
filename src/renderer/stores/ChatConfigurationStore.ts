@@ -8,6 +8,7 @@ import type {
 import type { Conversation } from "../models/Conversation";
 import { describeError } from "../lib/error-details";
 import { ModelCatalogContext } from "./context/ModelCatalogContext";
+import { UtilityModelContext } from "./context/UtilityModelContext";
 
 export interface ChatConfigurationStoreProps {
   session(): Conversation | undefined;
@@ -53,6 +54,10 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
   get activePreset() {
     const id = this.deferred ? this.effectiveConfiguration?.preset?.id : this.session?.preset?.id;
     return this.presets.find((preset) => preset.id === id);
+  }
+  /** Offered after the presets; choosing it applies the configuration to this chat only. */
+  get utilityModel() {
+    return UtilityModelContext.consume(this)?.();
   }
   get activeOperations() {
     return this.props.operations.active(this.props.operationOwner);

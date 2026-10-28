@@ -6,6 +6,7 @@ import type {
   ModelOption,
   ModelPreset,
   ThinkingLevel,
+  UtilityModel,
 } from "../../contracts/conversations/session-contract";
 import { FastModeToggle } from "./fast-mode-toggle";
 import { ChevronDownIcon, SearchIcon } from "./ui/icons";
@@ -41,6 +42,8 @@ export interface ModelPickerProps {
   value?: ModelConfigurationValue;
   presets?: readonly ModelPreset[];
   activePreset?: ModelPreset;
+  /** Listed as "Utility" after the presets; selecting it applies this configuration via onSelect. */
+  utilityModel?: UtilityModel;
   onSelect(value: {
     preset?: PresetContext;
     provider: string;
@@ -62,6 +65,18 @@ export interface ModelPickerProps {
 
 type ConfigurationView = "current" | "models" | "configure";
 
+/** One row of the preset group: a saved preset or the trailing utility model choice. */
+interface PresetEntry {
+  key: string;
+  name: string;
+  provider: string;
+  modelId: string;
+  thinkingLevel: ThinkingLevel;
+  fastMode: boolean;
+  active: boolean;
+  preset?: ModelPreset;
+}
+
 export function reasoningLabel(level?: ThinkingLevel) {
   if (!level || level === "off") return "Off";
   return `${level.charAt(0).toUpperCase()}${level.slice(1)}`;
@@ -80,6 +95,7 @@ export const ModelPicker = observer(function ModelPicker({
   value,
   presets = [],
   activePreset,
+  utilityModel,
   onSelect,
   onSelectPreset,
   onClear,
@@ -122,18 +138,46 @@ export const ModelPicker = observer(function ModelPicker({
     [visibleGroups, configuration?.provider, configuration?.modelId],
   );
 
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  const filteredPresets = useMemo(
-    () =>
-      open && view === "models"
-        ? presets.filter((preset) =>
-            `${preset.name} ${preset.provider} ${preset.modelId} ${preset.thinkingLevel}`
-              .toLocaleLowerCase()
-              .includes(normalizedQuery),
-          )
-        : [],
-    [open, view, presets, normalizedQuery],
+  // Utility matches by settings because applying it leaves the chat without a preset identity.
+  const utilityActive = Boolean(
+    utilityModel &&
+    !activePreset &&
+    !configuration?.preset &&
+    configuration?.provider === utilityModel.provider &&
+    configuration.modelId === utilityModel.modelId &&
+    (configuration.thinkingLevel ?? "off") === utilityModel.thinkingLevel &&
+    !configuration.fastMode,
   );
+
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const filteredPresets = useMemo((): PresetEntry[] => {
+    if (!open || view !== "models") return [];
+    const entries: PresetEntry[] = presets.map((preset) => ({
+      key: preset.id,
+      name: preset.name,
+      provider: preset.provider,
+      modelId: preset.modelId,
+      thinkingLevel: preset.thinkingLevel,
+      fastMode: preset.fastMode,
+      active: activePreset?.id === preset.id,
+      preset,
+    }));
+    if (utilityModel)
+      entries.push({
+        key: "utility",
+        name: "Utility",
+        provider: utilityModel.provider,
+        modelId: utilityModel.modelId,
+        thinkingLevel: utilityModel.thinkingLevel,
+        fastMode: false,
+        active: utilityActive,
+      });
+    return entries.filter((entry) =>
+      `${entry.name} ${entry.provider} ${entry.modelId} ${entry.thinkingLevel}`
+        .toLocaleLowerCase()
+        .includes(normalizedQuery),
+    );
+  }, [open, view, presets, activePreset?.id, utilityModel, utilityActive, normalizedQuery]);
 
   const filteredGroups = useMemo(
     () =>
@@ -391,56 +435,58 @@ export const ModelPicker = observer(function ModelPicker({
                 {filteredPresets.length > 0 && (
                   <section aria-label="Model presets" className="space-y-1">
                     <h3 className="px-2 py-1 text-xs font-medium text-muted-foreground">Presets</h3>
-                    {filteredPresets.map((preset) => {
-                      const isActive = activePreset?.id === preset.id;
-                      return (
-                        <NavItem
-                          key={preset.id}
-                          active={isActive}
-                          label={
-                            <span className="flex items-center gap-1.5 font-semibold">
-                              {isActive && (
-                                <span
-                                  className="size-1.5 rounded-full bg-accent"
-                                  aria-hidden="true"
-                                />
-                              )}
-                              {preset.name}
-                            </span>
-                          }
-                          description={`${preset.provider}/${preset.modelId}`}
-                          onClick={() => {
-                            close();
-                            if (onSelectPreset) onSelectPreset(preset);
-                            else
-                              onSelect({
-                                provider: preset.provider,
-                                modelId: preset.modelId,
-                                thinkingLevel: preset.thinkingLevel,
-                                fastMode: preset.fastMode,
-                                preset: {
-                                  id: preset.id,
-                                  ...(preset.prompt === undefined
-                                    ? null
-                                    : { prompt: preset.prompt }),
-                                },
-                              });
-                          }}
-                          trailing={
-                            <div className="flex shrink-0 items-center gap-1 font-mono text-xs">
-                              <Badge variant="outline" className="text-xs font-medium">
-                                {reasoningLabel(preset.thinkingLevel)}
+                    {filteredPresets.map((entry) => (
+                      <NavItem
+                        key={entry.key}
+                        active={entry.active}
+                        label={
+                          <span className="flex items-center gap-1.5 font-semibold">
+                            {entry.active && (
+                              <span
+                                className="size-1.5 rounded-full bg-accent"
+                                aria-hidden="true"
+                              />
+                            )}
+                            {entry.name}
+                          </span>
+                        }
+                        description={`${entry.provider}/${entry.modelId}`}
+                        onClick={() => {
+                          close();
+                          const preset = entry.preset;
+                          if (preset && onSelectPreset) onSelectPreset(preset);
+                          else
+                            onSelect({
+                              provider: entry.provider,
+                              modelId: entry.modelId,
+                              thinkingLevel: entry.thinkingLevel,
+                              fastMode: entry.fastMode,
+                              ...(preset
+                                ? {
+                                    preset: {
+                                      id: preset.id,
+                                      ...(preset.prompt === undefined
+                                        ? null
+                                        : { prompt: preset.prompt }),
+                                    },
+                                  }
+                                : null),
+                            });
+                        }}
+                        trailing={
+                          <div className="flex shrink-0 items-center gap-1 font-mono text-xs">
+                            <Badge variant="outline" className="text-xs font-medium">
+                              {reasoningLabel(entry.thinkingLevel)}
+                            </Badge>
+                            {entry.fastMode && (
+                              <Badge variant="accent" className="text-xs font-semibold">
+                                Fast
                               </Badge>
-                              {preset.fastMode && (
-                                <Badge variant="accent" className="text-xs font-semibold">
-                                  Fast
-                                </Badge>
-                              )}
-                            </div>
-                          }
-                        />
-                      );
-                    })}
+                            )}
+                          </div>
+                        }
+                      />
+                    ))}
                   </section>
                 )}
                 {filteredGroups.map((group) => (

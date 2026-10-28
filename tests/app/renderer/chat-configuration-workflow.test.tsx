@@ -282,6 +282,96 @@ describe("Chat configuration workflow", () => {
     expect(list).not.toHaveBeenCalled();
   });
 
+  it("lists the utility model last among presets and applies it as a selectable configuration", async () => {
+    const catalog = [opus, gpt];
+    let snapshot: ConversationSnapshot = {
+      ...configurationSnapshot("first", catalog),
+      thinkingLevel: preset.thinkingLevel,
+      fastMode: preset.fastMode,
+      preset: { id: preset.id },
+    };
+    const applyConfiguration = vi.fn<Client["sessionChats"]["applyConfiguration"]>(
+      async ({ configuration }) => {
+        const model = catalog.find(
+          (candidate) =>
+            candidate.provider === configuration.provider && candidate.id === configuration.modelId,
+        )!;
+        snapshot = {
+          ...configurationSnapshot("first", [
+            model,
+            ...catalog.filter((candidate) => candidate !== model),
+          ]),
+          thinkingLevel: configuration.thinkingLevel,
+          fastMode: configuration.fastMode,
+          preset: configuration.preset,
+        };
+        fixture.publish(snapshot);
+      },
+    );
+    const setThinkingLevel = vi.fn<Client["sessionChats"]["setThinkingLevel"]>(
+      async ({ level }) => {
+        snapshot = { ...snapshot, thinkingLevel: level };
+        fixture.publish(snapshot);
+      },
+    );
+    using fixture = renderChatConfiguration({
+      models: catalog,
+      presets: [preset],
+      utilityModel: { provider: "openai", modelId: "gpt-5", thinkingLevel: "medium" },
+      client: { sessionChats: { applyConfiguration, setThinkingLevel } },
+    });
+    fixture.publish(snapshot);
+    expect(picker().textContent).toContain("Deep review");
+    const presetEntries = async () => {
+      await fixture.user.click(picker());
+      await fixture.user.click(screen.getByRole("button", { name: "Change model" }));
+      const group = within(screen.getByRole("region", { name: "Model presets" }));
+      return {
+        all: group.getAllByRole("button"),
+        deepReview: group.getByRole("button", { name: "Deep review anthropic/claude-opus" }),
+        utility: group.getByRole("button", { name: "Utility openai/gpt-5" }),
+      };
+    };
+
+    let entries = await presetEntries();
+    expect(entries.all).toHaveLength(2);
+    expect(entries.all[0]).toBe(entries.deepReview);
+    expect(entries.all[1]).toBe(entries.utility);
+    expect(entries.deepReview.getAttribute("aria-current")).toBe("page");
+    expect(entries.utility.getAttribute("aria-current")).toBeNull();
+
+    await fixture.user.click(entries.utility);
+    await waitFor(() => expect(applyConfiguration).toHaveBeenCalledOnce());
+    expect(applyConfiguration).toHaveBeenCalledWith(
+      {
+        sessionId: "first",
+        configuration: {
+          provider: "openai",
+          modelId: "gpt-5",
+          thinkingLevel: "medium",
+          fastMode: false,
+        },
+      },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(picker().textContent).toContain("GPT-5");
+    expect(picker().textContent).toContain("Medium");
+    expect(picker().textContent).not.toContain("Fast");
+
+    entries = await presetEntries();
+    expect(entries.utility.getAttribute("aria-current")).toBe("page");
+    expect(entries.deepReview.getAttribute("aria-current")).toBeNull();
+    await fixture.user.click(picker());
+
+    // Same model at another reasoning level no longer matches the utility configuration.
+    await fixture.user.click(picker());
+    await fixture.user.click(screen.getByRole("button", { name: "High" }));
+    await waitFor(() => expect(setThinkingLevel).toHaveBeenCalledOnce());
+    entries = await presetEntries();
+    expect(entries.utility.getAttribute("aria-current")).toBeNull();
+    expect(entries.deepReview.getAttribute("aria-current")).toBeNull();
+  });
+
   it("shares deferred catalog loading across repeated picker opens", async () => {
     const loading = deferred<readonly ModelOption[]>();
     const list = vi.fn<Client["models"]["list"]>(() => loading.promise);

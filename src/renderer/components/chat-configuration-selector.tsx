@@ -39,6 +39,7 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
       }}
       presets={configuration.presets}
       activePreset={configuration.activePreset}
+      utilityModel={configuration.utilityModel}
       value={effectiveConfiguration}
       error={
         configuration.error ??
