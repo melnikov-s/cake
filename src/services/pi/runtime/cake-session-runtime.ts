@@ -12,6 +12,7 @@ import { internalInputEntryType } from "./internal-input-projection";
 import { resolve } from "node:path";
 import { observeMessageBoardRequests } from "./message-board-extension";
 import { createTurnResultCapture } from "./turn-result-capture";
+import { keepAutoCompactionEnabled } from "./settings-translation";
 import { reportSlowCakeToolExecution } from "./cake-tool-timing";
 import type { PiTurnResult } from "../../../contracts/pi/turn-result-data";
 import type {
@@ -181,6 +182,11 @@ export interface CakeSessionRuntimeOptions {
   allowMutations?: boolean;
   /** Workflow workers load project context/skills, but not Cake controls or project-chat prompts. */
   auxiliaryProjectResources?: boolean;
+  /**
+   * Unattended runtimes compact near their context window even when the user's Pi
+   * auto-compact setting is off: nobody can compact them by hand mid-run.
+   */
+  alwaysAutoCompact?: boolean;
   /** Subset of builtin slash command names to advertise; defaults to all of them. */
   slashCommands?: readonly string[];
   /** Composition supplies only Discussion-authorized interview operations to Durable. */
@@ -312,6 +318,7 @@ export async function createCakeSessionRuntime(
   const settingsManager = SettingsManager.create(options.cwd, agentDir, {
     projectTrusted: options.trusted,
   });
+  if (options.alwaysAutoCompact) keepAutoCompactionEnabled(settingsManager);
   const modelRuntime = await ModelRuntime.create({
     authPath: `${agentDir}/auth.json`,
     modelsPath: `${agentDir}/models.json`,
@@ -599,6 +606,7 @@ export async function createCakeSessionRuntime(
       session.sessionManager
         .getBranch()
         .findLast((entry) => entry.type === "message" && entry.message.role === "assistant")?.id,
+    () => session.model,
   );
   const unsubscribe = session.subscribe((event) => {
     if (disposed) return;

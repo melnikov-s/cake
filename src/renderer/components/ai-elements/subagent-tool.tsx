@@ -193,6 +193,7 @@ export const SubagentTool = observer(function SubagentTool({
                         const current = subagents.run(run.key);
                         return `${runOutcome(current ?? run).replaceAll("-", " ")}${current?.released ? " · Resources released" : ""}`;
                       },
+                      model: () => subagents.model(run.key),
                       chatStore,
                     });
                   }}

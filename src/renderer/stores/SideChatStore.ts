@@ -1,11 +1,21 @@
 import { Store } from "r-state-tree";
+import type { ThinkingLevel } from "../../contracts/conversations/session-contract";
 import type { ChatStore } from "./ChatStore";
 import type { ProjectTodosStore } from "./ProjectTodosStore";
+
+/** The fixed configuration a side chat's agent runs on; the panel cannot change it. */
+export interface SideChatModel {
+  readonly provider: string;
+  readonly modelId: string;
+  readonly thinkingLevel: ThinkingLevel;
+  readonly fastMode: boolean;
+}
 
 interface SidePanelTarget {
   readonly key: string;
   readonly title: string;
   readonly eyebrow?: () => string;
+  readonly model?: () => SideChatModel | undefined;
 }
 
 export type SideChatTarget = SidePanelTarget &

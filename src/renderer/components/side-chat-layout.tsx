@@ -7,6 +7,7 @@ import type { ChatStore } from "../stores/ChatStore";
 import type { SideChatStore } from "../stores/SideChatStore";
 import { SideChatContext } from "./side-chat-context";
 import { ProjectTodosPanel } from "./project-todos-panel";
+import { ModelSummary } from "./model-summary";
 
 export const SideChatLayout = observer(function SideChatLayout({
   store,
@@ -21,6 +22,7 @@ export const SideChatLayout = observer(function SideChatLayout({
   hideTodos?: boolean;
 }) {
   const target = hideTodos && store.target?.todos ? undefined : store.target;
+  const model = target?.model?.();
   return (
     <SideChatContext.Provider value={store}>
       <AccessoryPanelLayout
@@ -36,13 +38,15 @@ export const SideChatLayout = observer(function SideChatLayout({
               eyebrow={target.eyebrow?.()}
               onClose={() => store.close()}
               headerActions={
-                target.todos && (
+                target.todos ? (
                   <SearchInput
                     label="Search to-dos"
                     value={target.todos.query}
                     onValueChange={(query) => target.todos?.setQuery(query)}
                     className="w-36 max-w-[50%] shrink-0"
                   />
+                ) : (
+                  model && <ModelSummary {...model} className="max-w-[65%]" />
                 )
               }
             >

@@ -503,6 +503,61 @@ describe("CakeSessionRuntimes", () => {
     }),
   );
 
+  it.effect("settles a run without a final answer as failed with its reason, never complete", () =>
+    Effect.gen(function* () {
+      const exhausted =
+        "Context exhausted: 245,384 of 250,000 context tokens were in use, so the response was cut off before it finished.";
+      const results = {
+        length: { stopReason: "length", text: "", errorMessage: exhausted },
+        error: { stopReason: "error", text: "", errorMessage: "prompt is too long" },
+        stop: { stopReason: "stop", text: "Final report: all checks passed." },
+      } as const;
+      const settlements = yield* Queue.unbounded<{
+        outcome: string;
+        message?: string;
+        stopReason?: string;
+      }>();
+      const context = yield* Layer.build(
+        makeCakeSessionRuntimesLayer({
+          sessionIds: () => Stream.empty,
+          catalog: () => Stream.empty,
+          catalogEntry: () => Effect.succeed(undefined),
+          inspect: () => Effect.succeed(undefined),
+          changelog: () => Effect.succeed(""),
+          createRuntime: (runtimeOptions) =>
+            Effect.succeed({
+              ...fakeRuntime(runtimeOptions, () => undefined),
+              // Pi's prompt resolves normally for each of these runs.
+              prompt: async (text, _delivery, _attachments, _markdown, turnId) => {
+                if (turnId)
+                  runtimeOptions.onTurnResult?.(turnId, results[text as keyof typeof results]);
+              },
+            }),
+        }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer())),
+      );
+      const sessions = Context.get(context, CakeSessionRuntimes);
+      const handle = yield* sessions.acquire({
+        ...options(),
+        onTurnSettled: (event) =>
+          Queue.offer(settlements, {
+            outcome: event.outcome,
+            ...(event.message ? { message: event.message } : null),
+            ...(event.result ? { stopReason: event.result.stopReason } : null),
+          }).pipe(Effect.asVoid),
+      });
+      const settled = [];
+      for (const text of ["length", "error", "stop"]) {
+        yield* handle.prompt(text);
+        settled.push(yield* Queue.take(settlements));
+      }
+      assert.deepEqual(settled, [
+        { outcome: "failed", message: exhausted, stopReason: "length" },
+        { outcome: "failed", message: "prompt is too long", stopReason: "error" },
+        { outcome: "complete", stopReason: "stop" },
+      ]);
+    }),
+  );
+
   it.effect(
     "persists the latest successful turn before delayed failure reporting, including cold restoration",
     () =>

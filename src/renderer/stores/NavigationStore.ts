@@ -197,6 +197,7 @@ export class NavigationStore extends Store<{
       key: `subagent:${handleId}`,
       title: run.task,
       eyebrow: () => `Subagent · ${subagents.run(handleId)?.status ?? run.status}`,
+      model: () => subagents.model(handleId),
       chatStore,
     });
   }

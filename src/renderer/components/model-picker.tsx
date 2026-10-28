@@ -77,6 +77,10 @@ interface PresetEntry {
   preset?: ModelPreset;
 }
 
+/** The model chip frame, shared by the picker trigger and the read-only ModelSummary. */
+export const modelChipClassName =
+  "inline-flex max-w-[320px] min-w-0 items-center gap-1.5 rounded-full border border-border/60 bg-muted/40 px-3 py-1 text-xs font-medium text-foreground";
+
 export function reasoningLabel(level?: ThinkingLevel) {
   if (!level || level === "off") return "Off";
   return `${level.charAt(0).toUpperCase()}${level.slice(1)}`;
@@ -281,7 +285,8 @@ export const ModelPicker = observer(function ModelPicker({
         variant="ghost"
         size="sm"
         className={cn(
-          "inline-flex max-w-[320px] min-w-0 items-center gap-1.5 rounded-full border border-border/60 bg-muted/40 px-3 py-1 text-xs font-medium text-foreground hover:bg-muted/70 hover:text-foreground transition-colors",
+          modelChipClassName,
+          "hover:bg-muted/70 hover:text-foreground transition-colors",
           className,
         )}
         data-cake-hint-key="m"

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
-import { createTurnResultCapture } from "../../../../src/services/pi/runtime/turn-result-capture";
+import {
+  createTurnResultCapture,
+  lengthStopDiagnostic,
+} from "../../../../src/services/pi/runtime/turn-result-capture";
 import {
   implicitTurnResultFor,
   substantiveTurnResult,
@@ -210,4 +213,53 @@ describe("Pi run result evidence", () => {
       expect(substantiveTurnResult({ stopReason: "stop", text })).toBeUndefined();
     },
   );
+
+  // The reported worker: 245,384 of 250,000 tokens in use, cut off mid-thought after
+  // 2,338 output tokens although the model may write far more.
+  const cutOff = (output: number): AgentSessionEvent => {
+    const event = assistant("", "stop");
+    if (event.type !== "message_end" || event.message.role !== "assistant") throw new Error();
+    return {
+      ...event,
+      message: {
+        ...event.message,
+        content: [{ type: "thinking", thinking: "Planning the next file" }],
+        stopReason: "length",
+        usage: { ...event.message.usage, input: 2, cacheRead: 242_074, cacheWrite: 970, output },
+      },
+    };
+  };
+  const opus = { contextWindow: 250_000, maxTokens: 128_000 };
+
+  it("explains a context-limited length stop as context exhaustion with the window numbers", () => {
+    const results: PiTurnResult[] = [];
+    const capture = createTurnResultCapture(
+      () => ["turn"],
+      (_id, result) => results.push(result),
+      undefined,
+      () => opus,
+    );
+    capture(user);
+    capture(assistant("Now let me set up the project folder structure.", "toolUse"));
+    capture(cutOff(2_338));
+    capture({ type: "agent_settled", aborted: false });
+    expect(results[0]).toMatchObject({
+      stopReason: "length",
+      text: "",
+      errorMessage:
+        "Context exhausted: 245,384 of 250,000 context tokens were in use, so the response was cut off before it finished.",
+    });
+    expect(substantiveTurnResult(results[0])).toBeUndefined();
+  });
+
+  it("distinguishes the model's own output cap from context exhaustion", () => {
+    const message = cutOff(128_000);
+    if (message.type !== "message_end" || message.message.role !== "assistant") throw new Error();
+    expect(lengthStopDiagnostic(message.message, opus)).toBe(
+      "Output limit reached: the response was cut off at the model's 128,000-token output limit before it finished.",
+    );
+    expect(lengthStopDiagnostic(message.message, undefined)).toBe(
+      "The response was cut off at the model's token limit before it finished.",
+    );
+  });
 });

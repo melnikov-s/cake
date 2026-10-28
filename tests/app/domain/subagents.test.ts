@@ -40,6 +40,8 @@ import { TestClock } from "effect/testing";
 import * as sessionChats from "../../../src/domain/conversations/sessionChats";
 import * as pendingReports from "../../../src/domain/conversations/pendingReports";
 import { subagentLink } from "../../../src/contracts/subagents/subagent-reference";
+import { subagentCompletionMessage } from "../../../src/contracts/subagents/subagent-report";
+import type { PiTurnResult } from "../../../src/contracts/pi/turn-result-data";
 import { splitContextReminders } from "../../../src/services/pi/runtime/session-context-reminders";
 import * as subagents from "../../../src/domain/subagents/subagents";
 import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
@@ -174,6 +176,8 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
   finalAnswer?: string,
   initialHistory: readonly SubagentHistory[] = [],
   savedTranscripts = new Map<string, () => ConversationSnapshot>(),
+  /** What Pi's final assistant message of each worker run reports. */
+  childTurnResult?: PiTurnResult,
 ): Effect.fn.Return<Fixture> {
   const persisted = savedTranscripts;
   const childStarted = yield* Queue.unbounded<string>();
@@ -322,6 +326,7 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
         activeTurnIds = turnId ? activeTurnIds.filter((id) => id !== turnId) : activeTurnIds;
         streaming = false;
         answered = true;
+        if (turnId && childTurnResult) options.onTurnResult?.(turnId, childTurnResult);
         await Effect.runPromise(Ref.update(active, (count) => count - 1));
         options.onEvent({ type: "streaming", sessionId, streaming: false });
       },
@@ -1151,6 +1156,63 @@ describe("Cake Chat project investigators", () => {
         assert.match(JSON.stringify(released), /PRIVATE_TOOL_OUTPUT/);
       }).pipe(Effect.provide(fixture.layer));
     }),
+  );
+
+  it.effect(
+    "reports a worker whose context ran out as an error with the reason, not its last narration",
+    () =>
+      Effect.gen(function* () {
+        // The reported incident: the worker's final response was cut off at its context
+        // limit, and its last visible text was mid-task narration.
+        const narration =
+          "Now let me set up the project folder structure and write the source-reading library.";
+        const exhausted =
+          "Context exhausted: 245,384 of 250,000 context tokens were in use, so the response was cut off before it finished.";
+        const fixture = yield* makeFixture(false, [], narration, [], new Map(), {
+          stopReason: "length",
+          text: "",
+          errorMessage: exhausted,
+        });
+        yield* Effect.gen(function* () {
+          yield* subagents.start(
+            { continuation: "resume", task: "Build the paper explainer site" },
+            cakeChatParent(fixture),
+          );
+          const sessionId = yield* Queue.take(fixture.childStarted);
+          const worker = (yield* Ref.get(fixture.constructedOptions)).find(
+            (options) => options.sessionId === sessionId,
+          );
+          // The user's Project Session auto-compact choice never reaches a worker.
+          assert.equal(worker?.alwaysAutoCompact, true);
+          yield* completeChild(fixture, sessionId);
+          const report = Schema.decodeUnknownSync(subagents.SubagentResult)(
+            yield* Queue.take(fixture.reports),
+          );
+          assert.equal(report.status, "error");
+          assert.equal(report.error, exhausted);
+          assert.deepEqual(report.parts, []);
+          assert.equal(
+            subagentCompletionMessage(report),
+            `Background subagent error: Build the paper explainer site\n\n${exhausted}`,
+          );
+          // A Project Session parent keeps the worker's parts; the reason still leads.
+          assert.doesNotMatch(
+            subagentCompletionMessage({
+              ...report,
+              parts: [
+                {
+                  id: "narration",
+                  kind: "text",
+                  role: "assistant",
+                  status: "complete",
+                  text: narration,
+                },
+              ],
+            }),
+            /Now let me set up/,
+          );
+        }).pipe(Effect.provide(fixture.layer));
+      }),
   );
 
   it.effect("keeps a follow-up running past the lifetime before releasing the idle worker", () =>

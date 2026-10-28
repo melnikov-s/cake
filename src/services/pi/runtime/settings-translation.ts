@@ -46,6 +46,16 @@ export function projectPiSettings(
   };
 }
 
+/**
+ * Keeps Pi's threshold and overflow auto-compaction on for this runtime only. Pi reads
+ * the flag through `getCompactionEnabled()` at every check, and both `save()` and
+ * `reload()` recompute its merged settings, so an `applyOverrides()` value would not
+ * survive the runtime's own model selection. The user's saved setting is unchanged.
+ */
+export function keepAutoCompactionEnabled(settingsManager: SettingsManager) {
+  settingsManager.getCompactionEnabled = () => true;
+}
+
 export function applyPiSetting(settingsManager: SettingsManager, update: PiSettingUpdate) {
   if (update.key === "defaultModel")
     settingsManager.setDefaultModelAndProvider(update.provider, update.modelId);

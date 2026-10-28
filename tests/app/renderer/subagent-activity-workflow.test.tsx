@@ -23,6 +23,61 @@ async function openWorkerChat(user: ReturnType<typeof renderSubagentActivity>["u
 }
 
 describe("Subagent activity workflow", () => {
+  it("shows the worker's resolved model and its live context usage in the subagent chat", async () => {
+    const usage = (tokens: number) => ({
+      tokens: {
+        input: 2,
+        output: 2_338,
+        cacheRead: tokens,
+        cacheWrite: 970,
+        total: tokens + 3_310,
+      },
+      cost: 5.12,
+      context: {
+        tokens: tokens + 3_310,
+        contextWindow: 250_000,
+        percent: (tokens + 3_310) / 2_500,
+      },
+    });
+    const activity = workerActivity({
+      resolvedModel: {
+        requested: "current",
+        source: "current",
+        provider: "anthropic-250k-prefer-using-this-one",
+        modelId: "claude-opus-5-5",
+        thinkingLevel: "xhigh",
+        fallbacks: [],
+      },
+      fastMode: true,
+      usage: usage(120_000),
+    });
+    using fixture = renderSubagentActivity({ activity, parts: workerTranscript() });
+    const panel = within(await openWorkerChat(fixture.user));
+    const model = panel.getByLabelText(
+      "Model: anthropic-250k-prefer-using-this-one/claude-opus-5-5 \u00b7 Xhigh reasoning \u00b7 Fast mode",
+    );
+    expect(model.textContent).toBe("claude-opus-5-5\u00b7 Xhigh\u00b7 Fast");
+    expect(await panel.findByLabelText(/^49% context used; 123k \/ 250k tokens/)).toBeDefined();
+
+    // Usage follows the running worker, as it does in a normal session.
+    fixture.publish({
+      _tag: "Activity",
+      revision: 2,
+      parentSessionId,
+      activity: { ...activity, revision: 2, usage: usage(242_074) },
+    });
+    expect(await panel.findByLabelText(/^98% context used; 245k \/ 250k tokens/)).toBeDefined();
+
+    // Released history has no composer, but still says what model did the work.
+    fixture.publish({ _tag: "Removed", revision: 3, parentSessionId, handleId });
+    await waitFor(() =>
+      expect(panel.queryByRole("combobox", { name: "Message subagent" })).toBeNull(),
+    );
+    expect(
+      panel.getByLabelText(/^Model: anthropic-250k-prefer-using-this-one\/claude-opus-5-5/),
+    ).toBeDefined();
+  });
+
   it("queues busy human input, prompts after completion, stops and preserves released history", async () => {
     const steer = vi.fn<Client["subagents"]["steer"]>(async () => undefined);
     const prompt = vi.fn<Client["subagents"]["prompt"]>(async () => undefined);

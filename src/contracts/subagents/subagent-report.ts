@@ -32,7 +32,11 @@ export function subagentCompletionMessage(value: JsonValue): string {
   const result = decoded.value;
   const finalAnswer = subagentFinalAnswer(result)?.trim();
   const heading = `Background subagent ${result.status}: ${result.task.slice(0, 500)}`;
-  const report = finalAnswer || result.error?.trim() || "No final report was produced.";
+  // A failed worker's last text is mid-task narration, not a report; lead with why it failed.
+  const report =
+    (result.status === "error"
+      ? result.error?.trim() || finalAnswer
+      : finalAnswer || result.error?.trim()) || "No final report was produced.";
   const available = Math.max(0, SUBAGENT_REPORT_LIMIT - heading.length - 2);
   const bounded =
     report.length > available ? `${report.slice(0, Math.max(0, available - 2))}…` : report;

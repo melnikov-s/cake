@@ -18,6 +18,8 @@ Keep handles for related follow-ups until closed or expired after 30 idle minute
 
 Subagents default to `continuation: "resume"` (reply); `"none"` means notification. Follow-ups inherit unless overridden. Choose using `communication.md`; do not poll unless explicitly requested.
 
+Workers auto-compact near their context window. A worker that still runs out of room, or whose final response fails, reports `error` with the reason (for example "Context exhausted: …"), never `complete`; its last text is unfinished work, not a report.
+
 ## Reuse context wisely
 
 Before waking, following up with or delegating to a session, weigh its `sessions.list` context estimate/cache freshness against its accumulated knowledge. Reuse reports; avoid trivial or redundant wakes. Bundle related follow-ups. Consider a fresh scoped delegation when reviving old large context costs more than transferring findings. These are guidelines, not prohibitions: large contexts can be valuable, cache expiry does not prove a miss, and useful follow-ups remain allowed. Read `session-discovery.md` before interpreting estimates; never wake a session just to ask its size.

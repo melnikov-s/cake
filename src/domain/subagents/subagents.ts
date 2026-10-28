@@ -600,13 +600,17 @@ const completeHandle = Effect.fn("Subagents.completeHandle")(function* (
   if (!handle) return;
   yield* checkpoint(handleId);
   yield* Deferred.succeed(handle.completion, result);
-  const answer = subagentFinalAnswerPart(result)?.text;
-  if (result.status !== "aborted" && answer)
+  // A failed worker's last text is mid-task narration; its error is the report.
+  const report =
+    result.status === "error"
+      ? result.error || subagentFinalAnswerPart(result)?.text
+      : subagentFinalAnswerPart(result)?.text;
+  if (result.status !== "aborted" && report)
     yield* projectTodoUpdates.offer({
       sessionId: handle.parentSessionId,
       ...(handle.projectPath ? { projectPath: handle.projectPath } : null),
       subagent: { parentSessionId: handle.parentSessionId, handleId },
-      text: result.status === "complete" ? answer : `Worker ${result.status}: ${answer}`,
+      text: result.status === "complete" ? report : `Worker ${result.status}: ${report}`,
     });
   if (shouldNotify) yield* deliverCompletion(handleId);
 });
@@ -1073,6 +1077,9 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
         newSession: !lazy && persisted === undefined && !transcriptExpected,
         sessionId: recipientSessionId,
         auxiliary: true,
+        // Nobody can compact a background worker by hand, so it never inherits the
+        // user's Project Session auto-compact choice.
+        alwaysAutoCompact: true,
         ...(prepared.input.projectPath
           ? {
               projectInvestigation: true,

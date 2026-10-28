@@ -15,6 +15,7 @@ const runPayloadFields = {
   task: Schema.optionalKey(Schema.String),
   status: Schema.optionalKey(statusSchema),
   resolvedModel: Schema.optionalKey(resolvedAgentModelSchema),
+  fastMode: Schema.optionalKey(Schema.Boolean),
   streaming: Schema.optionalKey(Schema.Boolean),
   parts: Schema.optionalKey(Schema.Array(Schema.Unknown)),
   usage: Schema.optionalKey(sessionUsageSchema),
@@ -44,6 +45,7 @@ export interface SubagentRun {
   task: string;
   status: "queued" | "running" | "complete" | "error" | "aborted";
   resolvedModel?: typeof resolvedAgentModelSchema.Type;
+  fastMode?: boolean;
   streaming: boolean;
   parts: UiPart[];
   usage?: SessionUsage;
@@ -99,6 +101,7 @@ function runFromPayload(
     task: value.task ?? fallback?.task ?? `Delegated task ${index + 1}`,
     status: settledStatus(value.status ?? fallback?.status, partState),
     resolvedModel: value.resolvedModel ?? fallback?.resolvedModel,
+    fastMode: value.fastMode ?? fallback?.fastMode,
     streaming: false,
     parts: projectedParts(value.parts ?? fallback?.parts),
     usage: value.usage ?? fallback?.usage,

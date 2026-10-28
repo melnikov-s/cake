@@ -2933,6 +2933,7 @@ const subagentReportsScenario: VisualCaptureScenario = {
     "assignment-details",
     "failed-report",
     "aborted-report",
+    "side-chat",
   ],
   async seed(paths, theme) {
     await cakeChatScenario.seed(paths, theme);
@@ -2991,6 +2992,71 @@ const subagentReportsScenario: VisualCaptureScenario = {
                 },
               ],
               isError: true,
+              timestamp: 5,
+            },
+          ],
+          data: { diagnostics: [] },
+        });
+        // A worker started on the incident's inherited configuration: long provider
+        // name, extra-high reasoning and Fast mode.
+        await tx.appendEntry(AssistantEntry, root.id, {
+          model: [
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "toolCall",
+                  id: "worker-start-call",
+                  name: "cake",
+                  arguments: {
+                    command: "subagents.start",
+                    input: { task: "Build the paper explainer site" },
+                  },
+                },
+              ],
+              timestamp: 5,
+              api: "anthropic-messages",
+              provider: "anthropic",
+              model: "visual-fixture",
+              stopReason: "toolUse",
+              usage: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                totalTokens: 0,
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+              },
+            },
+          ],
+        });
+        await tx.appendEntry(ToolResultEntry, root.id, {
+          model: [
+            {
+              role: "toolResult",
+              toolCallId: "worker-start-call",
+              toolName: "cake",
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify({
+                    continuation: "resume",
+                    handleId: "10000000-0000-4000-8000-000000000005",
+                    task: "Build the paper explainer site",
+                    status: "queued",
+                    fastMode: true,
+                    resolvedModel: {
+                      requested: "current",
+                      source: "current",
+                      provider: "anthropic-250k-prefer-using-this-one",
+                      modelId: "claude-opus-5-5",
+                      thinkingLevel: "xhigh",
+                      fallbacks: [],
+                    },
+                  }),
+                },
+              ],
+              isError: false,
               timestamp: 5,
             },
           ],
@@ -3077,12 +3143,22 @@ const subagentReportsScenario: VisualCaptureScenario = {
       await expect(log).toContainText("No worker was created");
       await expect(log.getByRole("button", { name: "Open subagent chat" })).toHaveCount(0);
       await log.scrollIntoViewIfNeeded();
+    } else if (state === "side-chat") {
+      const open = page.getByRole("button", { name: "Open subagent chat" }).last();
+      if (!(await open.isVisible()))
+        await page.locator('[data-slot="activity-group"] > summary').last().click();
+      await open.click();
+      await expect(
+        page
+          .getByRole("complementary", { name: "Subagent" })
+          .locator('[data-slot="model-summary"]'),
+      ).toBeVisible();
     } else await report.scrollIntoViewIfNeeded();
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.mouse.move(1, 1);
   },
   region: (page, state) =>
-    state === "failed-start"
+    state === "failed-start" || state === "side-chat"
       ? page.locator("body")
       : page.getByRole("article", {
           name:

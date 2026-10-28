@@ -13,6 +13,7 @@ import { ChatStore } from "./ChatStore";
 import { queuedPrompts } from "../lib/queued-prompts";
 import { TranscriptAttachmentImagesStore } from "./TranscriptAttachmentImagesStore";
 import { SubagentHandleId } from "../../contracts/subagents/subagent-data";
+import type { SideChatModel } from "./SideChatStore";
 
 type ToolPart = Extract<UiPart, { kind: "tool" }>;
 
@@ -78,6 +79,7 @@ export class SubagentActivityStore extends Store<{
           ...activity.resolvedModel,
           fallbacks: [...activity.resolvedModel.fallbacks],
         },
+        fastMode: activity.fastMode,
         streaming: activity.streaming,
         parts: activity.parts,
         usage: activity.usage,
@@ -123,6 +125,18 @@ export class SubagentActivityStore extends Store<{
 
   run(key: string) {
     return this.runs.find((run) => run.key === key);
+  }
+
+  /** The model the worker was started on, as resolved by the backend. */
+  model(key: string): SideChatModel | undefined {
+    const run = this.run(key);
+    if (!run?.resolvedModel) return undefined;
+    return {
+      provider: run.resolvedModel.provider,
+      modelId: run.resolvedModel.modelId,
+      thinkingLevel: run.resolvedModel.thinkingLevel,
+      fastMode: run.fastMode ?? false,
+    };
   }
 
   isAssociated(key: string) {

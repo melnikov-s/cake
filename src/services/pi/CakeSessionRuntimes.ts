@@ -450,6 +450,7 @@ const runtimeFingerprint = (options: CakeSessionRuntimeAcquireOptions): string =
     projectInvestigation: runtime.projectInvestigation ?? false,
     allowMutations: runtime.allowMutations ?? false,
     auxiliaryProjectResources: runtime.auxiliaryProjectResources ?? false,
+    alwaysAutoCompact: runtime.alwaysAutoCompact ?? false,
     isolatedSystemPrompt: runtime.isolatedSystemPrompt,
     slashCommands: runtime.slashCommands,
     // Relationship context is regenerated on acquisition and may change when a
@@ -948,14 +949,19 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
             retained.settledInputIds.add(turnId);
             const result = retained.turnResults.get(turnId);
             retained.turnResults.delete(turnId);
+            // A run whose final response errored or was cut off at a token limit never
+            // produced a final answer, even though Pi's prompt resolved normally.
+            const unfinished = result?.stopReason === "error" || result?.stopReason === "length";
             const settledOutcome =
               outcome !== "complete"
                 ? outcome
-                : result?.stopReason === "error"
+                : unfinished
                   ? "failed"
                   : result?.stopReason === "aborted"
                     ? "aborted"
                     : outcome;
+            const settledMessage =
+              message ?? (outcome === "complete" && unfinished ? result.errorMessage : undefined);
             if (active) {
               const event: PiSessionEvent = {
                 type: "turn-settled",
@@ -963,7 +969,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                 turnId,
                 outcome: settledOutcome,
               };
-              if (message !== undefined) Object.assign(event, { message });
+              if (settledMessage !== undefined) Object.assign(event, { message: settledMessage });
               // Settle the authoritative journal before callbacks can wait on
               // report delivery while a newer turn runs and succeeds.
               yield* removeRecoveryInput(retained.runtime.sessionId, turnId, settledOutcome).pipe(
@@ -977,7 +983,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                   turnId,
                   outcome: settledOutcome,
                   ...(result ? { result } : null),
-                  ...(message ? { message } : null),
+                  ...(settledMessage ? { message: settledMessage } : null),
                 });
             }
             retained.settledInputIds.delete(turnId);

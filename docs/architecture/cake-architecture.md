@@ -167,6 +167,11 @@ projections needed by a surface. References do not transfer ownership.
   Pi-owned session files. Cake checkpoints handle identities, exact capability grants,
   unfinished admissions and completion receipts, not a copy of that history. Only
   compact reports and provenance cross into the parent Conversation.
+- Private workers always keep Pi auto-compaction on, whatever the user's Project Session
+  auto-compact setting: nobody can compact them by hand mid-run. For every regular-Pi
+  runtime, a run whose final response errored or stopped at a token limit settles as
+  failed with that reason (`CakeSessionRuntimes`), never complete, so no truncated or
+  mid-task text becomes a worker's or spawned session's result.
 - Cake-owned prompt kernels are role-specific: Cake Chat and Project Sessions
   share only role-neutral authority, trust and presentation rules. Project
   investigators retain project resources plus their scoped worker/mutation policy,
