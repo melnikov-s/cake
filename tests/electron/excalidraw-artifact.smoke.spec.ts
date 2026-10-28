@@ -162,6 +162,15 @@ test("installed Excalidraw edits shared live state and reopens retained output w
     // Real native converter output (including own undefined defaults), not staged
     // JSON storage: both review and the first chat mount must initialize themselves.
     const source = template
+      // Fail only the external save boundary; exercise the real editor recovery path.
+      .replace(
+        "const saved = await saveRef.current(flight.scene);",
+        `if (Reflect.get(globalThis, "__cakeFailNextSave")) {
+          Reflect.set(globalThis, "__cakeFailNextSave", false);
+          throw new Error("Fixture autosave failure");
+        }
+        const saved = await saveRef.current(flight.scene);`,
+      )
       .replace(
         "  const [jsonInitialScene]",
         `  initialScene.elements = library.convertToExcalidrawElements(${JSON.stringify(initialScene.elements)}, { regenerateIds: false });
@@ -294,7 +303,6 @@ test("installed Excalidraw edits shared live state and reopens retained output w
     await page.mouse.down();
     await page.mouse.move(bounds.x + 470, bounds.y + 320, { steps: 8 });
     await page.mouse.up();
-    await drawing.getByRole("button", { name: "Save drawing", exact: true }).click();
     await expect
       .poll(
         async () =>
@@ -303,6 +311,38 @@ test("installed Excalidraw edits shared live state and reopens retained output w
           ).length,
       )
       .toBe(2);
+    // A later failure retains the native canvas and latest local edits for retry.
+    await drawing.locator("body").evaluate(() => {
+      Reflect.set(globalThis, "__cakeFailNextSave", true);
+    });
+    await drawing
+      .getByTitle(/Rectangle/)
+      .first()
+      .click();
+    await page.mouse.move(bounds.x + 500, bounds.y + 350);
+    await page.mouse.down();
+    await page.mouse.move(bounds.x + 580, bounds.y + 410, { steps: 8 });
+    await page.mouse.up();
+    await expect(drawing.getByRole("alert")).toContainText("Fixture autosave failure");
+    expect(
+      (await invoke<State>("artifacts.state.read", stateScope)).value.elements.filter(
+        (element) => element.type === "rectangle",
+      ),
+    ).toHaveLength(2);
+    await expect(canvas).toBeVisible();
+    await drawing.getByRole("button", { name: "Retry saving drawing", exact: true }).click();
+    await expect
+      .poll(
+        async () =>
+          (await invoke<State>("artifacts.state.read", stateScope)).value.elements.filter(
+            (element) => element.type === "rectangle",
+          ).length,
+      )
+      .toBe(3);
+    await expect(drawing.getByRole("alert")).toHaveCount(0);
+    await expect(
+      drawing.getByRole("button", { name: "Retry saving drawing", exact: true }),
+    ).toHaveCount(0);
     const manuallySaved = await invoke<State>("artifacts.state.read", stateScope);
     const manualShape = manuallySaved.value.elements.find(
       (element) => element.id !== "authority-box" && element.type === "rectangle",
@@ -409,9 +449,7 @@ test("installed Excalidraw edits shared live state and reopens retained output w
       .getByRole("dialog", { name: "Captured widget fixture", exact: true })
       .locator("iframe")
       .contentFrame();
-    await expect(
-      fullscreenDrawing.getByRole("button", { name: "Save drawing", exact: true }),
-    ).toBeVisible();
+    await expect(fullscreenDrawing.locator("canvas.interactive")).toBeVisible();
     const revision = await application.evaluate(
       async (_electron, input) => {
         const operation = Reflect.get(globalThis, "cakeSmokeCaptureInlineWidget") as (
@@ -453,81 +491,6 @@ test("installed Excalidraw edits shared live state and reopens retained output w
       edits: [{ op: "set", path: `/elements/${index}/x`, value: 160 }],
     });
     expect(synchronized.value.elements[index]?.x).toBe(160);
-    const exportsDirectory = join(root, "exports");
-    await mkdir(exportsDirectory);
-    await application.evaluate(({ session }, directory) => {
-      const downloads: { name: string; state: string }[] = [];
-      Object.assign(globalThis, { __cakeNativeDownloads: downloads });
-      // Real Electron download authority; choose paths deterministically instead of an OS dialog.
-      session.defaultSession.on("will-download", (_event, item) => {
-        const record = { name: item.getFilename(), state: "progressing" };
-        downloads.push(record);
-        item.setSavePath(`${directory}/${record.name}`);
-        item.once("done", (_event, state) => {
-          record.state = state;
-        });
-      });
-    }, exportsDirectory);
-    for (const [name, filename] of [
-      ["Export PNG", "drawing.png"],
-      ["Export SVG", "drawing.svg"],
-      ["Export drawing", "drawing.excalidraw"],
-    ]) {
-      await fullscreenDrawing.getByRole("button", { name, exact: true }).click();
-      await expect
-        .poll(
-          () =>
-            application!.evaluate((_electron, expected) => {
-              const downloads = Reflect.get(globalThis, "__cakeNativeDownloads") as {
-                name: string;
-                state: string;
-              }[];
-              return downloads.find((download) => download.name === expected)?.state;
-            }, filename),
-          { timeout: 15_000 },
-        )
-        .toBe("completed");
-      const file = join(exportsDirectory, filename);
-      await test.info().attach(filename, { path: file });
-      if (name === "Export PNG")
-        expect((await readFile(file)).subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
-      if (name === "Export SVG") {
-        const svg = await readFile(file, "utf8");
-        expect(svg).toContain("<svg");
-        expect(svg).toMatch(/@font-face[^}]*src:\s*url\(data:/);
-        expect(svg).not.toContain("https://esm.sh");
-        const svgPixels = await fullscreenDrawing
-          .locator("body")
-          .evaluate(async (_body, source) => {
-            const url = `data:image/svg+xml,${encodeURIComponent(source)}`;
-            try {
-              const image = new Image();
-              image.src = url;
-              await image.decode();
-              const canvas = document.createElement("canvas");
-              canvas.width = image.naturalWidth;
-              canvas.height = image.naturalHeight;
-              const context = canvas.getContext("2d")!;
-              context.drawImage(image, 0, 0);
-              const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
-              let blue = 0;
-              for (let index = 0; index < pixels.length; index += 4)
-                if (pixels[index] === 165 && pixels[index + 1] === 216 && pixels[index + 2] === 255)
-                  blue += 1;
-              return blue;
-            } finally {
-              URL.revokeObjectURL(url);
-            }
-          }, svg);
-        expect(svgPixels).toBeGreaterThan(1_000);
-      }
-      if (name === "Export drawing") {
-        const scene = JSON.parse(await readFile(file, "utf8")) as Scene;
-        expect(scene.elements.find((element) => element.id === "authority-box")?.x).toBe(160);
-        // Export must keep the unrelated native object's geometry and document data.
-        expect(scene.elements.find((element) => element.id === manualShape.id)).toEqual(unrelated);
-      }
-    }
     await expect(paneIframe.contentFrame().locator('main[data-source-revision="2"]')).toBeVisible();
     await page.getByRole("button", { name: "Exit fullscreen Captured widget fixture" }).click();
     expect((await packages("remove", "@excalidraw/excalidraw")).packages).toEqual([]);
@@ -537,9 +500,6 @@ test("installed Excalidraw edits shared live state and reopens retained output w
     await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
     iframe = await openArtifact();
     await expect(iframe.contentFrame().locator(".excalidraw canvas").first()).toBeVisible();
-    await expect(
-      iframe.contentFrame().getByRole("button", { name: "Save drawing", exact: true }),
-    ).toBeVisible();
     const retainedFonts = await iframe
       .contentFrame()
       .locator("body")

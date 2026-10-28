@@ -169,7 +169,6 @@ test("a portable skill and added library create independent native drawings with
     await page.mouse.down();
     await page.mouse.move(bounds.x + 450, bounds.y + 320, { steps: 8 });
     await page.mouse.up();
-    await drawing.getByRole("button", { name: "Save drawing", exact: true }).click();
     await expect
       .poll(
         async () =>

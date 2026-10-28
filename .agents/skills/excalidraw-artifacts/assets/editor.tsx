@@ -193,19 +193,6 @@ function restoreSceneElements(
   return { elements, normalized };
 }
 
-function download(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  // Allow the browser to consume the Blob before releasing it. This is the
-  // standard sandbox download primitive, not a library-specific host API.
-  setTimeout(() => URL.revokeObjectURL(url), 30_000);
-}
-
 export default function ExcalidrawArtifact() {
   const [library, setLibrary] = useState<ExcalidrawLibrary | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -229,7 +216,7 @@ export default function ExcalidrawArtifact() {
 }
 
 function ExcalidrawEditor({ library }: { library: ExcalidrawLibrary }) {
-  const { CaptureUpdateAction, Excalidraw, exportToBlob, exportToSvg, serializeAsJSON } = library;
+  const { CaptureUpdateAction, Excalidraw, serializeAsJSON } = library;
   // Native converters can leave own customData: undefined. postMessage preserves
   // it; normalize the seed as well as snapshots before crossing the JSON boundary.
   const [jsonInitialScene] = useState<Scene>(() => JSON.parse(JSON.stringify(initialScene)));
@@ -258,9 +245,6 @@ function ExcalidrawEditor({ library }: { library: ExcalidrawLibrary }) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [dirty, setDirty] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const [exportError, setExportError] = useState<string | null>(null);
   const saveRef = useRef(save);
   const state = useRef<EditorState>({
     base: jsonInitialScene,
@@ -285,7 +269,6 @@ function ExcalidrawEditor({ library }: { library: ExcalidrawLibrary }) {
     const pendingSignature = signature(current.pending);
     if (pendingSignature === signature(current.base)) {
       current.pending = null;
-      if (current.mounted) setDirty(false);
       return;
     }
     const flight = {
@@ -306,12 +289,7 @@ function ExcalidrawEditor({ library }: { library: ExcalidrawLibrary }) {
         // Retain the acknowledgment beyond the lifetime of the in-flight save.
         current.acknowledged = { signature: flight.signature, version: saved.version };
         current.paused = false;
-        if (current.mounted) {
-          setSaveError(null);
-          setDirty(
-            current.observedVersion < saved.version || current.lastScene !== flight.signature,
-          );
-        }
+        if (current.mounted) setSaveError(null);
       }
     } catch (cause) {
       // Never requeue a stale document after a newer authoritative update. A
@@ -361,7 +339,6 @@ function ExcalidrawEditor({ library }: { library: ExcalidrawLibrary }) {
     current.base = stored.skeleton ? { ...value, skeleton: stored.skeleton } : value;
     current.acknowledged = null;
     if (ownAcknowledgment) {
-      setDirty(current.lastScene !== incoming);
       if (current.pending && !current.flight && !current.paused) {
         current.timer = setTimeout(() => void flush(), 200);
       }
@@ -374,7 +351,6 @@ function ExcalidrawEditor({ library }: { library: ExcalidrawLibrary }) {
     current.timer = null;
     current.pending = null;
     current.paused = false;
-    setDirty(false);
     setSaveError(null);
     if (discarded)
       setNotice("A newer saved drawing replaced pending edits. Review it before continuing.");
@@ -404,7 +380,6 @@ function ExcalidrawEditor({ library }: { library: ExcalidrawLibrary }) {
     }
     if (normalized || stored.skeleton) {
       current.pending = normalizedScene;
-      setDirty(true);
       current.timer = setTimeout(() => void flush(), 200);
     }
   }, [api, hydrated, value, stored, version, save, flush, library]);
@@ -418,7 +393,6 @@ function ExcalidrawEditor({ library }: { library: ExcalidrawLibrary }) {
       if (nextSignature === current.lastScene) return;
       current.lastScene = nextSignature;
       current.pending = scene;
-      setDirty(true);
       setNotice(null);
       if (current.timer !== null) clearTimeout(current.timer);
       // Preserve errors until a save actually succeeds. The retry button submits
@@ -440,36 +414,6 @@ function ExcalidrawEditor({ library }: { library: ExcalidrawLibrary }) {
       void flush();
     };
   }, [flush]);
-
-  const exportDrawing = async (format: "png" | "svg" | "excalidraw") => {
-    if (!api) return;
-    setExporting(true);
-    setExportError(null);
-    try {
-      const scene = {
-        elements: api.getSceneElements(),
-        appState: api.getAppState(),
-        files: api.getFiles(),
-      };
-      if (format === "png") {
-        download(await exportToBlob({ ...scene, mimeType: "image/png" }), "drawing.png");
-      } else if (format === "svg") {
-        const svg = await exportToSvg(scene);
-        download(new Blob([svg.outerHTML], { type: "image/svg+xml" }), "drawing.svg");
-      } else {
-        download(
-          new Blob([serializeAsJSON(scene.elements, scene.appState, scene.files, "local")], {
-            type: "application/vnd.excalidraw+json",
-          }),
-          "drawing.excalidraw",
-        );
-      }
-    } catch (cause) {
-      setExportError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setExporting(false);
-    }
-  };
 
   const reconnect = async () => {
     try {
@@ -512,33 +456,20 @@ function ExcalidrawEditor({ library }: { library: ExcalidrawLibrary }) {
           UIOptions={{ canvasActions: { export: { saveFileToDisk: true } } }}
         />
       </div>
-      <button
-        type="button"
-        disabled={saving || !hydrated || Boolean(error)}
-        onClick={() => void flush()}
-      >
-        {saving ? "Saving drawing…" : saveError ? "Retry saving drawing" : "Save drawing"}
-      </button>
-      <button type="button" disabled={!api || exporting} onClick={() => void exportDrawing("png")}>
-        Export PNG
-      </button>
-      <button type="button" disabled={!api || exporting} onClick={() => void exportDrawing("svg")}>
-        Export SVG
-      </button>
-      <button
-        type="button"
-        disabled={!api || exporting}
-        onClick={() => void exportDrawing("excalidraw")}
-      >
-        Export drawing
-      </button>
-      {(saving || dirty) && <p role="status">{saving ? "Saving…" : "Unsaved changes"}</p>}
+      {saveError && (
+        <button
+          type="button"
+          disabled={saving || !hydrated || Boolean(error)}
+          onClick={() => void flush()}
+        >
+          Retry saving drawing
+        </button>
+      )}
       {(!hydrated || error) && (
         <button type="button" onClick={() => void reconnect()}>
           Reconnect drawing
         </button>
       )}
-      {exportError && <p role="alert">Could not export drawing: {exportError}</p>}
       {notice && <p role="status">{notice}</p>}
       {(error || saveError) && (
         <p role="alert">Could not save drawing: {String(saveError || error)}</p>

@@ -188,10 +188,7 @@ metadata and using native deletion semantics where undo is intended. Deleting th
 artifact is not the same as clearing its drawing. Do not reset the initial seed
 or remove the artifact link to clear a saved canvas.
 
-Use native Excalidraw export for PNG, SVG, and editable `.excalidraw` files. The
-template provides Export PNG / Export SVG / Export drawing controls using native
-`exportToBlob`, `exportToSvg`, and `serializeAsJSON`, plus a generic Blob download.
-Native menu export remains enabled. PNG and SVG may optionally embed the editable
+Use the native Excalidraw menu for PNG, SVG, and editable `.excalidraw` exports. PNG and SVG may optionally embed the editable
 scene through Excalidraw's export settings. Exporting a file is not an artifact save and does not publish a source
 revision. The host must support generic sandbox file downloads/Blob URLs; if it
 does not, report the capability blocker rather than hiding export or inventing a
@@ -214,5 +211,7 @@ allowed. Do not remove those guards when adapting the template.
 Check loading/error state, drag/text edits, repeated save acknowledgments, edits
 during a save, failed-save retry, disconnect/reconnect with an unchanged or newer
 version, external edits during a pending/in-flight save, cross-instance scene synchronization, selection, bound arrows/labels, frames, undo/redo, clear, fonts, and each export
-format. Save before closing if persistence is important: the 200 ms debounce and
-best-effort close flush cannot guarantee a reply after frame/application teardown.
+format. Saving is automatic and silent; Retry saving drawing appears only after
+a save failure. Confirm the latest edits with `artifacts.state.read` before closing
+if persistence is important: the 200 ms debounce and best-effort close flush cannot
+guarantee a reply after frame/application teardown.

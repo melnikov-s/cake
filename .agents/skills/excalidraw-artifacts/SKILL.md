@@ -394,10 +394,12 @@ honestly. Respond briefly with what was added/changed, without a redundant link.
 Native selection, drawing, pan/zoom, undo/redo, import and export remain the
 library's responsibility.
 
-Save before closing and wait for saving to finish. Report save failures. Native
-undo history belongs to the current editor; the saved drawing survives reopening.
-For interactive verification, edit the native canvas, save, and reopen it; stored
-state alone does not prove that workflow.
+Edits save automatically without routine status UI. If saving fails, use Retry
+saving drawing; report unresolved failures. Before closing, confirm the latest
+edits with `artifacts.state.read`. Native undo history belongs to the current
+editor; the saved drawing survives reopening. For interactive verification, edit
+the native canvas, confirm autosaved state, and reopen it; stored state alone does
+not prove that workflow.
 
 ## Installation and renderer changes (not ordinary creation)
 
@@ -411,7 +413,10 @@ Do not install this library into Cake's application/project dependencies.
 `widget.json` opts it into Cake's generic widget-template preparation. Other
 skills/libraries can use the same mechanism; Cake knows no Excalidraw operations
 or scene types. Renderer changes need real rendering and interaction verification;
-ordinary new diagrams only supply JSON state.
+ordinary new diagrams only supply JSON state. Template changes apply after skill
+preparation to newly instantiated drawings, not already accepted widgets. Existing
+widgets retain their published browser output until an explicit source revision;
+do not replace their source or drawing state without authorization.
 
 Keep local fonts/resources, hydration, JSON normalization, native text layout,
 single-flight/debounce, save acknowledgment and reconnect behavior. Never enable
