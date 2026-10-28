@@ -56,6 +56,7 @@ const fixture = Effect.fn("ChildAssignmentTest.fixture")(function* (
     assignmentStarted?: Deferred.Deferred<void>;
     failConfigurationOnce?: boolean;
     failAdmissionOnce?: boolean;
+    promptGate?: Deferred.Deferred<void>;
     recoveryRecords?: ReadonlyArray<RuntimeRecoveryRecord>;
   } = {},
 ) {
@@ -121,7 +122,7 @@ const fixture = Effect.fn("ChildAssignmentTest.fixture")(function* (
       },
     }),
   );
-  const firstRead = yield* Deferred.make<void>();
+  const firstPrompt = yield* Deferred.make<void>();
   let starts = 0;
   let acquisitions = 0;
   let failConfiguration = settings.failConfigurationOnce;
@@ -149,18 +150,28 @@ const fixture = Effect.fn("ChildAssignmentTest.fixture")(function* (
             bootstrap = text;
             await Effect.runPromise(
               Effect.gen(function* () {
-                const descriptions = yield* boards.current(setup.sessionId ?? "missing");
-                assert.equal(
-                  descriptions.entries.length,
-                  1,
-                  "the fastest first read must find its assignment",
+                const sessionId = setup.sessionId ?? "missing";
+                const family = yield* (yield* SessionFamilyStorage).familyForMember(sessionId);
+                assert.ok(family);
+                const entries = yield* (yield* MessageBoardStorage).entries(
+                  boards.boardIdFor(family.familyId),
                 );
-                const entry = descriptions.entries[0];
+                assert.equal(entries.length, 1, "assignment must be durable before execution");
+                const entry = entries[0];
                 assert.ok(entry);
-                const body = yield* boards.read(setup.sessionId ?? "missing", [entry.sequence]);
-                assert.equal(body.entries[0]?.body, input.assignment.body);
-                assert.deepEqual(body.entries[0]?.audience, [setup.sessionId]);
-                yield* Deferred.succeed(firstRead, undefined);
+                assert.deepEqual(entry.audience, [sessionId]);
+                const message = parseCrossSessionMessage(text);
+                assert.ok(message);
+                assert.ok(
+                  message.text.endsWith(`Description: ${entry.description}\n\n${entry.body}`),
+                );
+                assert.equal(message.text.split(entry.body).length - 1, 1);
+                assert.equal(message.text.split(entry.description).length - 1, 1);
+                assert.equal(message.metadata.sender.sessionId, entry.authorSessionId);
+                assert.equal(message.metadata.messageId, sessionId);
+                assert.equal(message.metadata.threadId, family.familyId);
+                yield* Deferred.succeed(firstPrompt, undefined);
+                if (settings.promptGate) yield* Deferred.await(settings.promptGate);
               }).pipe(Effect.provide(context)),
             );
           },
@@ -181,7 +192,7 @@ const fixture = Effect.fn("ChildAssignmentTest.fixture")(function* (
     provide,
     familyFiles: family.files,
     boardFiles: board.files,
-    firstRead,
+    firstPrompt,
     starts: () => starts,
     acquisitions: () => acquisitions,
     bootstrap: () => bootstrap,
@@ -216,7 +227,7 @@ describe("assignment-first child handoff", () => {
       yield* Deferred.succeed(assignmentGate, undefined);
       const result = yield* Fiber.join(launch);
       assert.equal(result.launch.status, "accepted");
-      yield* Deferred.await(f.firstRead);
+      yield* Deferred.await(f.firstPrompt);
     }),
   );
 
@@ -234,33 +245,39 @@ describe("assignment-first child handoff", () => {
     }),
   );
 
-  it.effect(
-    "persists the addressed body before even a fast child's first board read, without a private obligation",
-    () =>
-      Effect.gen(function* () {
-        const f = yield* fixture();
-        const result = yield* f.launch();
-        assert.equal(result.launch.status, "accepted", JSON.stringify(result.launch));
-        yield* Deferred.await(f.firstRead);
-        assert.equal(result.assignment?.sequence, 1);
-        const items = (yield* f.provide(todos.list("/project"))).items;
-        assert.equal(items.length, 1);
-        assert.equal(items[0]?.description, input.assignment.description);
-        assert.equal(f.starts(), 1);
-        const message = parseCrossSessionMessage(f.bootstrap());
-        assert.equal(message?.metadata.expectsResponse, true);
-        assert.equal(message?.metadata.resultDelivery, "notification");
-        assert.ok(
-          !message?.text.includes(input.assignment.body),
-          "the private bootstrap contains no task copy",
-        );
-        const state = yield* f.provide(
-          Effect.gen(function* () {
-            return yield* (yield* SessionFamilyStorage).state();
-          }),
-        );
-        assert.deepEqual(state.turns, []);
-      }),
+  it.effect("admits the full addressed assignment once without an initial board read", () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const result = yield* f.launch();
+      assert.equal(result.launch.status, "accepted", JSON.stringify(result.launch));
+      yield* Deferred.await(f.firstPrompt);
+      assert.equal(result.assignment?.sequence, 1);
+      const items = (yield* f.provide(todos.list("/project"))).items;
+      assert.equal(items.length, 1);
+      assert.equal(items[0]?.description, input.assignment.description);
+      assert.equal(f.starts(), 1);
+      const message = parseCrossSessionMessage(f.bootstrap());
+      assert.equal(message?.metadata.expectsResponse, true);
+      assert.equal(message?.metadata.resultDelivery, "notification");
+      assert.ok(message?.text.includes(input.assignment.body));
+      assert.ok(message.text.includes(input.assignment.description));
+      assert.ok(message.text.includes(`board ${result.assignment?.boardId}, entry #1`));
+      assert.ok(message.text.includes(`topic child-${result.childSessionId}`));
+      assert.ok(message.text.includes("no initial boards.read is needed"));
+      assert.ok(message.text.includes("Use the Workboard for later updates"));
+      const receipts = yield* f.provide(boards.entryReceipts("parent", 1));
+      assert.equal(
+        receipts.receipts.find((receipt) => receipt.sessionId === result.childSessionId)?.readAt,
+        undefined,
+        "inline admission does not manufacture an agent board-read receipt",
+      );
+      const state = yield* f.provide(
+        Effect.gen(function* () {
+          return yield* (yield* SessionFamilyStorage).state();
+        }),
+      );
+      assert.deepEqual(state.turns, []);
+    }),
   );
 
   it.effect(
@@ -322,6 +339,13 @@ describe("assignment-first child handoff", () => {
         assert.deepEqual(result.assignment, failed.assignment);
         assert.equal(result.launch.status, "accepted");
         assert.equal(restarted.starts(), 1);
+        yield* Deferred.await(restarted.firstPrompt);
+        assert.ok(
+          parseCrossSessionMessage(restarted.bootstrap())?.text.endsWith(input.assignment.body),
+        );
+        const persisted = yield* restarted.provide(boards.read("parent", [1]));
+        assert.equal(persisted.entries.length, 1);
+        assert.equal(persisted.entries[0]?.body, input.assignment.body);
       }),
   );
 
@@ -337,6 +361,7 @@ describe("assignment-first child handoff", () => {
         assert.equal(f.starts(), 1);
         assert.equal((yield* f.provide(todos.list("/project"))).items.length, 1);
         assert.deepEqual(a.assignment, b.assignment);
+        assert.equal((yield* f.provide(boards.current(a.childSessionId))).entries.length, 1);
       }),
   );
 
@@ -406,6 +431,82 @@ describe("assignment-first child handoff", () => {
       assert.equal(restarted.acquisitions(), 0);
       assert.equal(restarted.starts(), 0);
     }),
+  );
+
+  it.effect("includes maximum-length multiline assignment contents without truncation", () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const body = `\n# Task\n\n\`\`\`ts\n${"x".repeat(32_730)}\n\`\`\`\n尾🙂\n`;
+      const assignment = { description: "D".repeat(512), body: body.padEnd(32_768, " ") };
+      assert.equal(assignment.body.length, 32_768);
+      const result = yield* f.launch({ ...input, assignment });
+      assert.equal(result.launch.status, "accepted");
+      yield* Deferred.await(f.firstPrompt);
+      assert.ok(parseCrossSessionMessage(f.bootstrap())?.text.endsWith(assignment.body));
+      const persisted = yield* f.provide(boards.read("parent", [1]));
+      assert.equal(persisted.entries[0]?.body, assignment.body);
+      assert.equal(persisted.entries[0]?.description, assignment.description);
+    }),
+  );
+
+  it.effect(
+    "retains the exact inline prompt in durable admission across restart without relaunch",
+    () =>
+      Effect.gen(function* () {
+        const promptGate = yield* Deferred.make<void>();
+        const f = yield* fixture({ promptGate });
+        const launching = yield* f.launch().pipe(Effect.forkScoped);
+        yield* Deferred.await(f.firstPrompt);
+        const childSessionId = parseCrossSessionMessage(f.bootstrap())?.metadata.messageId;
+        assert.ok(childSessionId);
+        const record = yield* f.provide(
+          Effect.gen(function* () {
+            return yield* (yield* RuntimeRecoveryStorage).get(childSessionId);
+          }),
+        );
+        assert.ok(record);
+        assert.equal(record.inputs.length, 1);
+        assert.equal(record.inputs[0]?.text, f.bootstrap());
+        yield* Deferred.succeed(promptGate, undefined);
+        const result = yield* Fiber.join(launching);
+        const restarted = yield* fixture({
+          familyFiles: f.familyFiles,
+          boardFiles: f.boardFiles,
+          recoveryRecords: [record],
+        });
+        yield* restarted.provide(initialize("/sessions", "/resolved", () => Effect.succeed(true)));
+        const retry = yield* restarted.launch();
+        assert.equal(retry.launch.status, "already-admitted");
+        assert.equal(restarted.starts(), 0);
+        assert.deepEqual(retry.assignment, result.assignment);
+      }),
+  );
+
+  it.effect(
+    "later board updates remain separately readable without replacing the initial task",
+    () =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        const result = yield* f.launch();
+        yield* Deferred.await(f.firstPrompt);
+        yield* f.provide(
+          boards.append("parent", {
+            description: "Adjust storage scope",
+            body: "Also cover empty storage.",
+            audience: [result.childSessionId],
+            topic: "storage-update",
+            event: "assignment",
+          }),
+        );
+        const updates = yield* f.provide(boards.readNew(result.childSessionId));
+        assert.ok(updates.entries.some((entry) => entry.sequence === 2));
+        const read = yield* f.provide(boards.read(result.childSessionId, [2]));
+        assert.equal(read.entries[0]?.body, "Also cover empty storage.");
+        const initial = yield* f.provide(boards.read(result.childSessionId, [1]));
+        assert.equal(initial.entries[0]?.body, input.assignment.body);
+        assert.equal(f.starts(), 1);
+        assert.ok(parseCrossSessionMessage(f.bootstrap())?.text.endsWith(input.assignment.body));
+      }),
   );
 
   it.effect("refuses to silently replace the persisted assignment on retry", () =>

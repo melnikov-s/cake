@@ -31,8 +31,8 @@ An omitted model resolves the configured default preset's complete settings
 (model, thinking level, and Fast mode), not the caller's current values; the
 caller's current values apply only when no default preset is configured. Cake
 persists request correlation and child identity, then an addressed Workboard
-assignment, before admitting the initial bootstrap turn. `assignment: { description,
-body }` is required; bootstrap-first `initialPrompt` callers fail validation. Family
+assignment, before admitting the initial turn containing the full assignment and
+its board entry identity. `assignment: { description, body }` is required; bootstrap-first `initialPrompt` callers fail validation. Family
 creation defaults to resultDelivery notification; reply is chosen when the user is waiting on the answer.
 Accepting that background turn completes creation; the parent never waits for
 settlement. The returned assignment receipt proves persistence, not execution;
@@ -77,9 +77,14 @@ nested work lands bottom-up.
 Cake regenerates relationship context whenever a Project Session runtime is
 acquired. Every member learns how to create and communicate with children. A
 non-root member receives its family and immediate-parent IDs; every member sees
-its fixed Working Directory policy. The substantive initial assignment lives on the
-Workboard; the application-supplied initial prompt only points at its persisted
-entry and explains board discovery. Pi remains transcript authority.
+its fixed Working Directory policy. The substantive initial assignment is durably
+persisted on the Workboard before admission. The application-supplied initial prompt
+includes its full description and body once, with board, sequence and topic identity;
+the cross-session envelope retains parent provenance and result correlation. No
+initial board read is needed. Later updates and shared coordination still use the
+Workboard, and the initial entry remains excluded from generic board delivery.
+The admitted prompt uses existing durable input recovery; acquisition-time context
+does not inject another assignment copy. Pi remains transcript authority.
 
 Acquisition-time context is not a live eligibility decision. The same runtime can
 outlive promotion from standalone to family root or the creation of more children.

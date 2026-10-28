@@ -58,13 +58,21 @@ describe("Project Session family communication policy", () => {
     expect(project).not.toContain("{{");
   });
 
+  it("supplies the initial assignment inline and uses the board for subsequent coordination", () => {
+    expect(child).toContain("initial prompt includes the full persisted Workboard assignment");
+    expect(child).toContain("use the board for later updates and shared coordination");
+  });
+
   it("gates detailed mechanics behind precisely discoverable readable guides", () => {
     expect(project).toContain("Cake documentation directory: `/cake/docs`");
     expect(project).toContain("`workgroups.md` AND `sessions.md` before child assignments");
     expect(workgroups).toContain("they do not accept a board ID");
     expect(workgroups).toContain("An independent session cannot join an existing family");
     expect(workgroups).toContain("before admitting the first child turn");
-    expect(workgroups).toContain("Cake supplies the board-discovery bootstrap");
+    expect(workgroups).toContain("Cake includes the full persisted assignment");
+    expect(workgroups).toContain("no initial board read is needed");
+    expect(workgroups).toContain("do not reread that entry just to start work");
+    expect(sessions).toContain("no initial board read is needed");
     for (const operation of [
       "boards.current",
       "boards.read-new",
@@ -86,7 +94,7 @@ describe("Project Session family communication policy", () => {
     expect(sessions).toContain('`sessions.reply` with `outcome: "blocked"`');
   });
 
-  it("aligns progressively disclosed session help, including bootstrap examples", () => {
+  it("aligns progressively disclosed session help, including assignment examples", () => {
     const operations = createSessionFamilyOperations(() => {
       throw new Error("Help inspection must not invoke runtime operations");
     });
@@ -96,6 +104,10 @@ describe("Project Session family communication policy", () => {
     expect(guidance("sessions.create-child")).toContain(
       "persists its addressed Workboard assignment before its first turn can run",
     );
+    expect(guidance("sessions.create-child")).toContain(
+      "includes the full persisted Workboard assignment",
+    );
+    expect(guidance("sessions.create-child")).toContain("no initial board read is needed");
     for (const command of ["sessions.send", "sessions.reply", "sessions.send-batch"]) {
       expect(guidance(command)).toContain("exclusively");
       expect(guidance(command)).toContain("independent sessions");

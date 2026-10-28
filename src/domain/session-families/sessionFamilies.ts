@@ -367,7 +367,12 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(
           : { status: "already-admitted", state: prepared.admissionState },
       };
     const initialMessage = encodeCrossSessionMessage(
-      `Read workgroups.md and sessions.md. Your assignment is already persisted on the family Workboard: entry #${prepared.assignmentReceipt?.sequence}, topic ${prepared.child.assignmentTopic}. Read it with boards.read before working. Communicate with family members only on the Workboard.`,
+      [
+        "Read workgroups.md and sessions.md. The full initial assignment is included below; no initial boards.read is needed. Use the Workboard for later updates and shared coordination. Communicate with family members only on the Workboard unless the user explicitly overrides that default.",
+        `Initial Workboard assignment: board ${prepared.assignmentReceipt?.boardId}, entry #${prepared.assignmentReceipt?.sequence}, topic ${prepared.child.assignmentTopic}.`,
+        `Description: ${assignment.description}`,
+        assignment.body,
+      ].join("\n\n"),
       {
         version: 1,
         messageId: prepared.child.sessionId,
