@@ -9,6 +9,10 @@ import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-cha
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
 import type { Attachment, UiPart } from "../../../src/contracts/conversations/session-contract";
+import type { InternalInput } from "../../../src/contracts/conversations/internal-input";
+import { addArtifactPresentationReminder } from "../../../src/contracts/artifacts/artifact-presentation-context";
+import { internalInputEntryType } from "../../../src/services/pi/runtime/internal-input-projection";
+import { MarkdownLinkProvider } from "../../../src/renderer/components/ai-elements/markdown";
 import type { TaskInputReference } from "../../../src/contracts/conversations/task-input";
 import type { Client } from "../../../src/renderer/client/Client";
 import { CakeChatSurface } from "../../../src/renderer/components/cake-chat-surface";
@@ -44,8 +48,20 @@ const assistantPart: UiPart = {
 };
 
 /** The real Pi projection of a saved user message, as main publishes it. */
-function savedUserMessage(content: string | unknown[]) {
+function savedUserMessage(content: string | unknown[], internal?: InternalInput) {
   return projectSessionEntries([
+    ...(internal
+      ? [
+          {
+            type: "custom" as const,
+            id: "internal-8",
+            parentId: "7",
+            timestamp: new Date(0).toISOString(),
+            customType: internalInputEntryType,
+            data: { timestamp: 2, origin: internal },
+          },
+        ]
+      : []),
     {
       type: "message",
       id: "8",
@@ -54,6 +70,16 @@ function savedUserMessage(content: string | unknown[]) {
       message: { role: "user", timestamp: 2, content },
     } as Parameters<typeof projectSessionEntries>[0][number],
   ]);
+}
+
+function savedContextualUserMessage(text: string, attachments: Attachment[]) {
+  const prepared = addArtifactPresentationReminder(text, null);
+  return savedUserMessage(promptText(prepared, attachments), {
+    _tag: "UserWithReminders",
+    text: prepared,
+    userText: text,
+    notices: [],
+  });
 }
 
 function conversationSnapshot(sessionId: string, parts: UiPart[]): ConversationSnapshot {
@@ -97,16 +123,20 @@ function mountCakeChat(sessionId: string, client: TestClientOverrides, parts = [
       kind: "top",
     });
   });
+  const openSession = vi.fn();
   const view = render(
-    <StoreProvider store={fixture.root}>
-      <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
-        <CakeChatSurface />
-      </VirtuosoMockContext.Provider>
-    </StoreProvider>,
+    <MarkdownLinkProvider actions={{ openSession, openExternalUrl: vi.fn() }}>
+      <StoreProvider store={fixture.root}>
+        <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 100 }}>
+          <CakeChatSurface />
+        </VirtuosoMockContext.Provider>
+      </StoreProvider>
+    </MarkdownLinkProvider>,
   );
   return {
     view,
     session: chat.conversationSessionStore,
+    openSession,
     publish: (next: UiPart[]) =>
       applyConversationSnapshot(chat.model, conversationSnapshot(sessionId, next)),
     [Symbol.dispose]() {
@@ -210,7 +240,7 @@ describe.each([
       );
 
       // Cake Chat vaults the image; the saved message names the reference without pixels.
-      const saved = savedUserMessage(promptText(text, [reference]));
+      const saved = savedContextualUserMessage(text, [reference]);
       expect(saved).toContainEqual(
         expect.objectContaining({ kind: "attachment", inputReference: reference }),
       );
@@ -228,6 +258,9 @@ describe.each([
       expect(within(figure).getByRole("link", { name: "shot.png" })).toBeDefined();
       expect(within(figure).queryByRole("status")).toBeNull();
       expect(readAttachment).not.toHaveBeenCalled();
+      expect(prompt).toHaveBeenCalledTimes(1);
+      await userEvent.setup().click(within(figure).getByRole("link", { name: "shot.png" }));
+      expect(chat.openSession).toHaveBeenCalledExactlyOnceWith(sessionId, undefined, reference.id);
     },
   );
 
@@ -237,7 +270,7 @@ describe.each([
     const readAttachment = vi.fn<Client["sessionChats"]["readAttachment"]>(() => read.promise);
     using chat = mountCakeChat(sessionId, { sessionChats: { readAttachment } }, [
       assistantPart,
-      ...savedUserMessage(promptText("", [reference])),
+      ...savedContextualUserMessage("", [reference]),
     ]);
 
     const figure = await waitFor(() => {
@@ -259,6 +292,46 @@ describe.each([
     expect(transcriptImages(chat.view.container)).toEqual([imageSrc]);
     expect(figure.isConnected).toBe(true);
     expect(figure.firstElementChild).toBe(frame);
+    await userEvent.setup().click(within(figure).getByRole("link", { name: "shot.png" }));
+    expect(chat.openSession).toHaveBeenCalledExactlyOnceWith(sessionId, undefined, reference.id);
+  });
+
+  it("keeps a generic file link on its contextual user message after send and reload", async () => {
+    const fileReference: TaskInputReference = {
+      ...reference,
+      name: "notes.txt",
+      mimeType: "text/plain",
+    };
+    const text = "Read these notes";
+    const saved = savedContextualUserMessage(text, [fileReference]);
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>();
+    {
+      using chat = mountCakeChat(sessionId, { sessionChats: { prompt } });
+      act(() => chat.publish([assistantPart, ...saved]));
+      expect(await screen.findByText(text)).toBeDefined();
+      const link = screen.getByRole("link", { name: "notes.txt" });
+      expect(link.getAttribute("href")).toContain(fileReference.id);
+      await userEvent.setup().click(link);
+      expect(chat.openSession).toHaveBeenCalledExactlyOnceWith(
+        sessionId,
+        undefined,
+        fileReference.id,
+      );
+    }
+    {
+      using reloaded = mountCakeChat(sessionId, { sessionChats: { prompt } }, [
+        assistantPart,
+        ...saved,
+      ]);
+      expect(await screen.findByText(text)).toBeDefined();
+      await userEvent.setup().click(screen.getByRole("link", { name: "notes.txt" }));
+      expect(reloaded.openSession).toHaveBeenCalledExactlyOnceWith(
+        sessionId,
+        undefined,
+        fileReference.id,
+      );
+    }
+    expect(prompt).not.toHaveBeenCalled();
   });
 });
 

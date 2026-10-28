@@ -12,9 +12,13 @@ import { passiveNoticeContext } from "../../../src/contracts/conversations/passi
 import { internalInputEntryType } from "../../../src/services/pi/runtime/internal-input-projection";
 import {
   createLiveMessageProjector,
+  imageContent,
   projectSessionEntries,
+  promptText,
 } from "../../../src/services/pi/runtime/session-projection";
 import { updateBatchReminder } from "../../../src/contracts/conversations/update-batch";
+import { addArtifactPresentationReminder } from "../../../src/contracts/artifacts/artifact-presentation-context";
+import type { Attachment } from "../../../src/contracts/conversations/session-contract";
 import { projectConversationDisplay } from "../../../src/services/pi/runtime/conversation-display-projection";
 import { forkDisplayProvenanceEntryType } from "../../../src/services/pi/runtime/fork-display-provenance";
 import {
@@ -75,6 +79,61 @@ it("projects the exact family bootstrap as application context on live input and
     ]);
   }
 });
+
+it.each(["", "Please inspect this"])(
+  "keeps pinned image originals paired once in live/replay with exact user prose (%j)",
+  (userText) => {
+    const reference = {
+      kind: "input" as const,
+      id: "bd44d4ac-5205-4605-b3aa-5d6bb1a2b473",
+      name: "Screenshot.png",
+      mimeType: "image/png",
+      byteLength: 6,
+    };
+    const image: Attachment = {
+      kind: "image",
+      name: reference.name,
+      mimeType: reference.mimeType,
+      data: "cGl4ZWxz",
+      originalPath: "/vault/original-image.png",
+      inputReference: reference,
+    };
+    const text = addArtifactPresentationReminder(userText, null);
+    const origin = { _tag: "UserWithReminders" as const, text, userText, notices: [] };
+    const message = {
+      role: "user" as const,
+      timestamp: 1,
+      content: [
+        { type: "text" as const, text: promptText(text, [image]) },
+        ...imageContent([image]),
+      ],
+    };
+    const live = createLiveMessageProjector({ internalInput: () => origin })({
+      type: "message_start",
+      message,
+    });
+    const session = SessionManager.inMemory("/project");
+    session.appendCustomEntry(internalInputEntryType, { timestamp: 1, origin });
+    session.appendMessage(message);
+    const original = JSON.stringify(session.getEntries());
+    for (const parts of [live, projectSessionEntries(session.getEntries())]) {
+      expect(parts.filter((part) => part.kind === "attachment")).toEqual([
+        expect.objectContaining({
+          name: reference.name,
+          inputReference: reference,
+          attachmentKind: "image",
+          data: image.data,
+        }),
+      ]);
+      const human = parts.filter((part) => part.kind === "text" && part.role === "user");
+      // Replay may add the empty anchor needed to navigate an attachment-only turn.
+      expect(human.length).toBeLessThanOrEqual(1);
+      if (userText) expect(human).toHaveLength(1);
+      if (human.length) expect(human[0]).toMatchObject({ text: userText });
+    }
+    expect(JSON.stringify(session.getEntries())).toBe(original);
+  },
+);
 
 const usage: Usage = {
   input: 10,

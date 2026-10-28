@@ -412,6 +412,12 @@ function partsFromMessage(
       }));
     const parsedContext = parseContextAttachmentBlocks(envelope.text);
     const text = parsedContext.text;
+    // Exact human prose excludes host-appended attachment envelopes. Read those
+    // from the original transport, independently of reminder/prose filtering.
+    const attachments =
+      internal?._tag === "UserWithReminders" && internal.userText !== undefined
+        ? parseContextAttachmentBlocks(rawContext.text).attachments
+        : parsedContext.attachments;
     const bootstrap = familyBootstrapContext(text, envelope.crossSession);
     if (bootstrap)
       return [
@@ -465,7 +471,7 @@ function partsFromMessage(
             : [],
         )
       : [];
-    const imageOriginals = parsedContext.attachments.filter(
+    const imageOriginals = attachments.filter(
       (attachment) =>
         attachment.kind === "file" && attachment.inputReference?.mimeType.startsWith("image/"),
     );
@@ -489,7 +495,7 @@ function partsFromMessage(
         data: typeof data === "string" && data.length <= 20_000_000 ? data : undefined,
       };
     };
-    parsedContext.attachments.forEach((attachment, index) => {
+    attachments.forEach((attachment, index) => {
       const pairedImage = pairedImages?.get(attachment);
       if (pairedImage && attachment.kind === "file") {
         parts.push(imagePart(pairedImage, attachment.name, attachment.inputReference));

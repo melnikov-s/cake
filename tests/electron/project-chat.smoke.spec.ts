@@ -247,6 +247,20 @@ test("Project Chat isolates history and restores its root workspace, while globa
     await expect(input).toBeFocused();
     await input.pressSequentially("PROJECT_PRIVATE");
     await expect(input).toHaveValue("/skill:project-fixture PROJECT_PRIVATE");
+    const notes = "FIRST_ATTACHMENT_LINE\n" + "notes line\n".repeat(88) + "LAST_ATTACHMENT_LINE";
+    const notesName = "Pasted text · 90 lines";
+    await input.evaluate((element, text) => {
+      const clipboardData = new DataTransfer();
+      clipboardData.setData("text/plain", text);
+      element.dispatchEvent(
+        new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }),
+      );
+    }, notes);
+    await expect(
+      page.getByRole("button", { name: `Remove ${notesName}`, exact: true }),
+    ).toBeVisible();
+    await expect(input).toBeFocused();
+    await expect(input).toHaveValue("/skill:project-fixture PROJECT_PRIVATE");
     const screenshot = await app.evaluate(({ nativeImage }) =>
       nativeImage
         .createFromBitmap(Buffer.alloc(32 * 32 * 4, 255), { width: 32, height: 32 })
@@ -281,7 +295,30 @@ test("Project Chat isolates history and restores its root workspace, while globa
     expect(requests[1]).toContain("Screenshot.png");
     expect(requests[1]).not.toContain(screenshot);
     await expect(page.getByRole("button", { name: "Remove Screenshot.png" })).toHaveCount(0);
-    await expect(transcript()).toContainText("Screenshot.png");
+    const assertSentAttachments = async () => {
+      const imageLink = transcript().getByRole("link", { name: "Screenshot.png", exact: true });
+      const fileLink = transcript().getByRole("link", { name: notesName, exact: true });
+      await expect(imageLink).toHaveCount(1);
+      await expect(fileLink).toHaveCount(1);
+      await expect(
+        transcript().getByRole("img", { name: "Screenshot.png", exact: true }),
+      ).toHaveAttribute("src", `data:image/png;base64,${screenshot}`);
+      await imageLink.click();
+      const imageViewer = page.getByRole("dialog", { name: "Screenshot.png", exact: true });
+      await expect(
+        imageViewer.getByRole("img", { name: "Screenshot.png", exact: true }),
+      ).toHaveAttribute("src", `data:image/png;base64,${screenshot}`);
+      await page
+        .getByRole("button", { name: "Exit fullscreen Screenshot.png", exact: true })
+        .click();
+      await fileLink.click();
+      const fileViewer = page.getByRole("dialog", { name: notesName, exact: true });
+      await expect(fileViewer).toContainText("FIRST_ATTACHMENT_LINE");
+      await expect(fileViewer).toContainText("LAST_ATTACHMENT_LINE");
+      await page.getByRole("button", { name: `Exit fullscreen ${notesName}`, exact: true }).click();
+      expect(requests).toHaveLength(2);
+    };
+    await assertSentAttachments();
     await expect(transcript()).not.toContainText("GLOBAL_PRIVATE");
     await verifySchedule("Project scheduled follow-up");
 
@@ -398,7 +435,7 @@ test("Project Chat isolates history and restores its root workspace, while globa
       { timeout: 20_000 },
     );
     await expect(transcript()).toContainText("PROJECT_PRIVATE");
-    await expect(transcript()).toContainText("Screenshot.png");
+    await assertSentAttachments();
     await expect(transcript()).not.toContainText("GLOBAL_PRIVATE");
     expect(
       await app.evaluate(({ BrowserWindow }) =>
