@@ -243,7 +243,8 @@ async function verifyNavigation(activityOrdering: boolean) {
     await page.keyboard.press(previous);
     await expect(pane).toHaveAttribute("data-session-id", "beta-worker");
 
-    await page.getByRole("button", { name: "Focus on alpha" }).click();
+    await page.getByRole("button", { name: "Project actions for alpha" }).click();
+    await page.getByRole("menuitem", { name: "Focus on alpha" }).click();
     await expect(pane).toHaveAttribute("data-session-id", "beta-worker");
     for (const id of ["alpha-worker", "alpha-worker", "alpha-idle", "alpha-worker"]) {
       await page.keyboard.press(back);

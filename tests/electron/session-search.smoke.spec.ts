@@ -77,7 +77,8 @@ for (const theme of ["light", "dark"] as const) {
       await expect(dialog).toBeHidden();
       await expect(page.getByTestId("resolved-session-notice")).toBeVisible();
 
-      await page.getByRole("button", { name: "Focus on project", exact: true }).click();
+      await page.getByRole("button", { name: "Project actions for project" }).click();
+      await page.getByRole("menuitem", { name: "Focus on project", exact: true }).click();
       await expect(trigger).toBeVisible();
       await trigger.click();
       await expect(filter).toHaveValue("");

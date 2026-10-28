@@ -132,11 +132,11 @@ export const SessionListItem = observer(function SessionListItem({
         avatarsEnabled
           ? isFamilyChild
             ? focusMode
-              ? "grid-cols-[3rem_minmax(0,1fr)]"
-              : "grid-cols-[2.5rem_minmax(0,1fr)]"
+              ? "grid-cols-[4.25rem_minmax(0,1fr)]"
+              : "grid-cols-[3.75rem_minmax(0,1fr)]"
             : focusMode
-              ? "grid-cols-[2rem_minmax(0,1fr)]"
-              : "grid-cols-[1.5rem_minmax(0,1fr)]"
+              ? "grid-cols-[3.25rem_minmax(0,1fr)]"
+              : "grid-cols-[2.75rem_minmax(0,1fr)]"
           : "grid-cols-[1.25rem_minmax(0,1fr)]",
         selected
           ? "active text-primary font-medium"
@@ -155,7 +155,10 @@ export const SessionListItem = observer(function SessionListItem({
       {!renameInput && (
         <div
           data-slot="session-leading"
-          className="relative flex h-full items-center justify-center"
+          className={cn(
+            "relative grid h-full min-w-0 grid-cols-[1.25rem_minmax(0,1fr)] items-center justify-items-center",
+            !avatarsEnabled && "grid-cols-1",
+          )}
         >
           <DepthRails
             depth={session.familyDepth ?? 0}
@@ -165,7 +168,7 @@ export const SessionListItem = observer(function SessionListItem({
             <IconButton
               className={cn(
                 "size-5 shrink-0 text-muted-foreground transition-transform",
-                avatarsEnabled && "absolute right-full",
+                avatarsEnabled && "col-start-1 row-start-1",
                 familyCollapsed && "-rotate-90",
               )}
               tooltip={familyCollapsed ? "Expand child sessions" : "Collapse child sessions"}
@@ -185,7 +188,7 @@ export const SessionListItem = observer(function SessionListItem({
                 seed={avatarSeed}
                 labels={availableLabels}
                 value={labelIds}
-                className="size-6"
+                className="col-start-2 row-start-1 size-6"
                 onChange={(next) => onSetLabels?.(session.sessionId, next)}
               />
             ) : (
@@ -193,6 +196,7 @@ export const SessionListItem = observer(function SessionListItem({
                 variant={avatarVariant}
                 interaction={avatarInteraction}
                 kind="session"
+                className="col-start-2 row-start-1"
                 resolved={resolved}
                 seed={avatarSeed}
                 labelColors={labels.map((label) => label.color)}
@@ -229,7 +233,6 @@ export const SessionListItem = observer(function SessionListItem({
           ref={navigationRef}
           actionProps={actionProps}
           activateOnMouseDown={activateOnMouseDown}
-          motionFeedback
           className={cn(
             "session-row col-start-2 h-full bg-transparent py-1.5 hover:bg-transparent [&>button]:h-full",
             focusMode && "py-2 text-sm",
@@ -237,7 +240,11 @@ export const SessionListItem = observer(function SessionListItem({
           active={selected}
           onClick={() => onOpen(session.sessionId)}
           onContextMenu={onContextMenu}
-          label={<span className="session-title min-w-0 truncate">{session.title}</span>}
+          label={
+            <span className="session-title block min-w-0 truncate" title={session.title}>
+              {session.title}
+            </span>
+          }
           badge={
             (session.draft || paneNumber !== undefined) && (
               <span className="flex items-center gap-1">
@@ -307,37 +314,39 @@ export const SessionListItem = observer(function SessionListItem({
             </span>
           }
           trailing={
-            <div className="session-meta relative flex h-full w-8 shrink-0 items-center justify-center">
-              {activity && (
-                <span
-                  className={cn(
-                    "flex items-center justify-center",
-                    canResolve &&
-                      "group-hover/session:opacity-0 group-focus-within/session:opacity-0",
-                  )}
-                >
-                  <SessionActivityIndicator activity={activity} />
-                </span>
-              )}
-              {canResolve && (
-                <IconButton
-                  className={cn(
-                    "session-resolve-action absolute inset-0 m-auto size-6 flex items-center justify-center rounded transition-opacity",
-                    selected && !activity
-                      ? "text-primary/80 opacity-100 hover:bg-primary/10 hover:text-primary"
-                      : "text-muted-foreground opacity-0 hover:bg-sidebar-hover hover:text-foreground group-hover/session:opacity-100 group-focus-within/session:opacity-100",
-                  )}
-                  tooltip={resolved ? "Restore" : "Resolve"}
-                  ariaLabel={`${resolved ? "Restore" : "Resolve"} ${session.title}`}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onResolve?.(session.sessionId, !resolved);
-                  }}
-                >
-                  {resolved ? <RestoreIcon /> : <ResolveIcon />}
-                </IconButton>
-              )}
-            </div>
+            (activity || canResolve) && (
+              <div className="session-meta relative grid size-6 shrink-0 place-items-center">
+                {activity && (
+                  <span
+                    className={cn(
+                      "pointer-events-none col-start-1 row-start-1 flex items-center justify-center",
+                      canResolve &&
+                        "group-hover/session:opacity-0 group-focus-within/session:opacity-0",
+                    )}
+                  >
+                    <SessionActivityIndicator activity={activity} />
+                  </span>
+                )}
+                {canResolve && (
+                  <IconButton
+                    className={cn(
+                      "session-resolve-action col-start-1 row-start-1 size-6 flex items-center justify-center rounded transition-opacity",
+                      selected && !activity
+                        ? "text-primary/80 opacity-100 hover:bg-primary/10 hover:text-primary"
+                        : "text-muted-foreground opacity-0 hover:bg-sidebar-hover hover:text-foreground group-hover/session:opacity-100 group-focus-within/session:opacity-100",
+                    )}
+                    tooltip={resolved ? "Restore" : "Resolve"}
+                    ariaLabel={`${resolved ? "Restore" : "Resolve"} ${session.title}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onResolve?.(session.sessionId, !resolved);
+                    }}
+                  >
+                    {resolved ? <RestoreIcon /> : <ResolveIcon />}
+                  </IconButton>
+                )}
+              </div>
+            )
           }
         />
       )}

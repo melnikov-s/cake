@@ -112,7 +112,8 @@ test("customizes labels and assigns multiple labels from the sidebar avatar", as
       hasText: "Label project",
     });
     await projectGroup.hover();
-    await projectGroup.getByRole("button", { name: "Open settings for project" }).click();
+    await projectGroup.getByRole("button", { name: "Project actions for project" }).click();
+    await page.getByRole("menuitem", { name: "Open settings for project" }).click();
     await expect(page.getByRole("heading", { name: "Project-specific labels" })).toBeVisible();
     await page.getByRole("button", { name: "Add label" }).click();
     await page.getByLabel("New label name").fill("Project QA");
@@ -145,7 +146,8 @@ test("customizes labels and assigns multiple labels from the sidebar avatar", as
     };
     await expect.poll(markerColumnOffset).toBeLessThan(0.5);
     await projectGroup.hover();
-    await projectGroup.getByRole("button", { name: "Focus on project" }).click();
+    await projectGroup.getByRole("button", { name: "Project actions for project" }).click();
+    await page.getByRole("menuitem", { name: "Focus on project" }).click();
     await expect(square).toHaveCSS("width", "8px");
     await expect(projectIcon).toHaveCSS("width", "28px");
     await expect.poll(markerColumnOffset).toBeLessThan(0.5);

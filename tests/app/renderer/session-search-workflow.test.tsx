@@ -207,7 +207,8 @@ describe("Session search workflow", () => {
 
   it("scopes focus-mode search to the project and resets the query on reopening", async () => {
     using fixture = renderSidebarNavigation({ projects, sessions });
-    await fixture.user.click(screen.getByRole("button", { name: "Focus on cake" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Project actions for cake" }));
+    await fixture.user.click(screen.getByRole("menuitem", { name: "Focus on cake" }));
     await fixture.user.click(searchButton());
     expect(labels()).toHaveLength(2);
     await fixture.user.click(dialog().getByRole("switch", { name: "Include resolved" }));

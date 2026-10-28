@@ -154,10 +154,10 @@ describe("Sidebar navigation workflow", () => {
         .map((button) => button.textContent);
     expect(projectOrder()).toEqual(["pi", "cake"]);
     expect(order()).toEqual(["newer", "older"]);
-    await fixture.user.click(screen.getByRole("button", { name: "Sort sessions in cake" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Project actions for cake" }));
     await fixture.user.click(screen.getByRole("menuitemradio", { name: "By label" }));
     expect(order()).toEqual(["older", "newer"]);
-    await fixture.user.click(screen.getByRole("button", { name: "Sort sessions in cake" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Project actions for cake" }));
     expect(
       screen.getByRole("menuitemradio", { name: "By label" }).getAttribute("aria-checked"),
     ).toBe("true");
@@ -256,7 +256,8 @@ describe("Sidebar navigation workflow", () => {
       sessions: [sidebarSummary("kept")],
       client: { electron: { showProjectContextMenu: menu }, workspaces: { removeProject } },
     });
-    await fixture.user.click(screen.getByRole("button", { name: "Open settings for cake" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Project actions for cake" }));
+    await fixture.user.click(screen.getByRole("menuitem", { name: "Open settings for cake" }));
     expect(screen.getByRole("dialog", { name: "cake settings" })).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: "Cancel" }));
     await fixture.user.pointer({
@@ -553,7 +554,8 @@ describe("Sidebar navigation workflow", () => {
     await fixture.user.click(screen.getByRole("button", { name: "Show projects" }));
     expect(screen.getByRole("button", { name: "Expand cake" })).toBeDefined();
     expect(screen.queryByRole("button", { name: /^root / })).toBeNull();
-    await fixture.user.click(screen.getByRole("button", { name: "Focus on cake" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Project actions for cake" }));
+    await fixture.user.click(screen.getByRole("menuitem", { name: "Focus on cake" }));
     expect(screen.getByRole("button", { name: "Exit focus mode for cake" })).toBeDefined();
     expect(order()).toEqual(["root", "standalone"]);
     await fixture.user.pointer({
@@ -564,7 +566,7 @@ describe("Sidebar navigation workflow", () => {
       expect.objectContaining({ path: "/cake", sessionSort: "label" }),
     );
     await fixture.user.click(screen.getByRole("button", { name: "Exit focus mode for cake" }));
-    expect(screen.getByRole("button", { name: "Focus on pi" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Project actions for pi" })).toBeDefined();
     expect(screen.getByRole("button", { name: "Collapse cake" })).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: "Expand children of root" }));
     expect(order()).toEqual(["root", "planner", "worker", "sibling", "standalone"]);
@@ -1223,7 +1225,8 @@ describe("Sidebar navigation workflow", () => {
     expect(order(projectGroup("cake"))).toHaveLength(10);
     await fixture.user.click(screen.getByRole("button", { name: "Collapse cake" }));
     expect(order(projectGroup("cake"))).toHaveLength(0);
-    await fixture.user.click(screen.getByRole("button", { name: "Focus on cake" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Project actions for cake" }));
+    await fixture.user.click(screen.getByRole("menuitem", { name: "Focus on cake" }));
     expect(order(projectGroup("cake"))).toHaveLength(11);
     expect(within(projectGroup("cake")).queryByRole("button", { name: "Show more" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Open Project Chat for pi" })).toBeNull();

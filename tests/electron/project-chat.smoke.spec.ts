@@ -310,7 +310,8 @@ test("Project Chat isolates history and restores its root workspace, while globa
         await header.evaluate((element) => getComputedStyle(element).backgroundColor),
       ).not.toBe("rgba(0, 0, 0, 0)");
     }
-    await header.getByRole("button", { name: "Focus on zombies", exact: true }).click();
+    await header.getByRole("button", { name: "Project actions for zombies" }).click();
+    await page.getByRole("menuitem", { name: "Focus on zombies", exact: true }).click();
     await input.click();
     await assertDotAlignment();
     await page.getByRole("button", { name: "Exit focus mode for zombies", exact: true }).click();
@@ -329,7 +330,7 @@ test("Project Chat isolates history and restores its root workspace, while globa
       "background-color",
       "rgba(0, 0, 0, 0)",
     );
-    await header.getByRole("button", { name: "Sort sessions in zombies", exact: true }).click();
+    await header.getByRole("button", { name: "Project actions for zombies", exact: true }).click();
     await page.getByRole("menuitemradio", { name: "By date", exact: true }).click();
     await input.click();
     await expect(status).toHaveCSS("opacity", "1");

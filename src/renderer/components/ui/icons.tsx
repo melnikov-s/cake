@@ -32,6 +32,14 @@ function Icon({
   );
 }
 
+export const MoreHorizontalIcon = () => (
+  <Icon>
+    <circle cx="5" cy="12" r="1" />
+    <circle cx="12" cy="12" r="1" />
+    <circle cx="19" cy="12" r="1" />
+  </Icon>
+);
+
 export const AudioLinesIcon = () => (
   <Icon size={14}>
     <path d="M4 10v4M8 6v12M12 3v18M16 7v10M20 10v4" />
@@ -133,12 +141,6 @@ export const GripIcon = () => (
     <circle cx="16" cy="12" r="1" fill="currentColor" stroke="none" />
     <circle cx="8" cy="18" r="1" fill="currentColor" stroke="none" />
     <circle cx="16" cy="18" r="1" fill="currentColor" stroke="none" />
-  </Icon>
-);
-export const SortIcon = () => (
-  <Icon size={15}>
-    <path d="M4 6h10M4 11h7M4 16h4" />
-    <path d="M17 5v13m-3-3 3 3 3-3" />
   </Icon>
 );
 export const ExpandIcon = ({ size = 15, strokeWidth }: { size?: number; strokeWidth?: number }) => (

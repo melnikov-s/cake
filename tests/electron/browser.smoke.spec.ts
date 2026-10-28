@@ -157,7 +157,8 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
     await expect(page.locator(".transcript").getByText("Test the app")).toBeVisible();
     // Configure the project through the actual controlled Settings input before
     // creating a page, so no external network is needed for startup verification.
-    await page.getByRole("button", { name: "Open settings for project" }).click();
+    await page.getByRole("button", { name: "Project actions for project" }).click();
+    await page.getByRole("menuitem", { name: "Open settings for project" }).click();
     const defaultUrl = page.getByRole("textbox", { name: "Browser default URL" });
     await expect(defaultUrl).toHaveValue("");
     await defaultUrl.fill(origin);
@@ -215,7 +216,8 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
     await addressInput.press("Enter");
     await expect.poll(browserState(`${origin}/second`)).toMatchObject({ title: "Second page" });
     await page.getByRole("button", { name: "Back to agent" }).click();
-    await page.getByRole("button", { name: "Open settings for project" }).click();
+    await page.getByRole("button", { name: "Project actions for project" }).click();
+    await page.getByRole("menuitem", { name: "Open settings for project" }).click();
     await expect(defaultUrl).toHaveValue(origin);
     await defaultUrl.fill(`${origin}/changed-default`);
     await page.getByRole("button", { name: "Save settings" }).click();
@@ -429,7 +431,8 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
       await restoredPage.getByRole("button", { name: "Open Browser Mode" }).click();
     await expect(restoredAddress).toHaveValue(`${origin}/changed-default`, { timeout: 20_000 });
     await restoredPage.getByRole("button", { name: "Back to agent" }).click();
-    await restoredPage.getByRole("button", { name: "Open settings for project" }).click();
+    await restoredPage.getByRole("button", { name: "Project actions for project" }).click();
+    await restoredPage.getByRole("menuitem", { name: "Open settings for project" }).click();
     await expect(restoredPage.getByRole("textbox", { name: "Browser default URL" })).toHaveValue(
       `${origin}/changed-default`,
     );

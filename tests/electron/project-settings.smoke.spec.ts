@@ -47,7 +47,8 @@ test("roundtrips browser, separate Project Chat, coding instructions and worktre
 
   try {
     const page = await application.firstWindow();
-    await page.getByRole("button", { name: "Open settings for project" }).click();
+    await page.getByRole("button", { name: "Project actions for project" }).click();
+    await page.getByRole("menuitem", { name: "Open settings for project" }).click();
     const browserUrl = page.getByRole("textbox", { name: "Browser default URL", exact: true });
     await expect(browserUrl).toHaveValue("");
     await browserUrl.fill("http://localhost:3000/");
@@ -87,7 +88,8 @@ test("roundtrips browser, separate Project Chat, coding instructions and worktre
         customInstructions: "Prefer concise explanations for this project.",
         projectChatInstructions: "  Discuss ideas before creating coding tasks.  ",
       });
-    await page.getByRole("button", { name: "Open settings for project" }).click();
+    await page.getByRole("button", { name: "Project actions for project" }).click();
+    await page.getByRole("menuitem", { name: "Open settings for project" }).click();
     await expect(browserUrl).toHaveValue("http://localhost:3000/");
     await expect(page.getByRole("textbox", { name: /^Project Chat instructions/ })).toHaveValue(
       "  Discuss ideas before creating coding tasks.  ",

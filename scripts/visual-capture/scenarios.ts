@@ -1986,7 +1986,10 @@ const projectChatSidebar: VisualCaptureScenario = {
         .first()
         .click();
       await expect(page.getByRole("combobox", { name: "Message Project Chat" })).toBeVisible();
-      if (state === "focus") await page.getByRole("button", { name: /^Focus on / }).click();
+      if (state === "focus") {
+        await page.getByRole("button", { name: /^Project actions for / }).click();
+        await page.getByRole("menuitem", { name: /^Focus on / }).click();
+      }
       await page.getByRole("combobox", { name: "Message Project Chat" }).click();
     }
     await expect(
@@ -2018,6 +2021,89 @@ const projectChatSidebar: VisualCaptureScenario = {
     state.startsWith("collapsed")
       ? page.locator('[data-slot="project-header"]').first()
       : page.locator('[data-slot="sidebar"]'),
+};
+
+const sidebarRowLayout: VisualCaptureScenario = {
+  name: "sidebar-row-layout",
+  description: "Long project and nested session names in narrow and wide sidebar columns",
+  states: ["narrow", "narrow-hover", "wide", "wide-hover"],
+  async seed(paths, theme) {
+    await projectChatSidebar.seed(paths, theme);
+    const file = join(paths.cakeHome, "state", "application.json");
+    const state = JSON.parse(await readFile(file, "utf8"));
+    state.projects[0].name = "engineering-workspace";
+    await writeFile(file, JSON.stringify(state));
+    const sessions = workspaceSessionDirectory(
+      paths.project,
+      join(paths.cakeHome, "pi", "sessions"),
+    );
+    const original = await readFile(
+      join(sessions, "1970-01-01T00-00-00-000Z_visual-sidebar-unread.jsonl"),
+      "utf8",
+    );
+    await writeFile(
+      join(sessions, "1970-01-01T00-00-00-000Z_visual-sidebar-unread.jsonl"),
+      original.replaceAll(
+        "Check sidebar dot alignment",
+        "Review Tutorial navigation and sidebar layout",
+      ),
+    );
+    await writeFile(
+      join(paths.cakeHome, "state", "session-families.json"),
+      JSON.stringify({
+        version: 1,
+        data: {
+          families: [
+            {
+              familyId: "sidebar-layout-family",
+              parentSessionId: "visual-assistant-markdown-code",
+              projectPath: paths.project,
+              workingDirectory: paths.project,
+              createdAt: new Date(0).toISOString(),
+              children: [
+                {
+                  sessionId: "visual-sidebar-unread",
+                  parentSessionId: "visual-assistant-markdown-code",
+                  requestId: "sidebar-layout-child",
+                  workingDirectory: paths.project,
+                  createdAt: new Date(0).toISOString(),
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+    const windowFile = join(paths.userData, "window-state.json");
+    const window = JSON.parse(await readFile(windowFile, "utf8"));
+    window.data.children.sidebarStore = { state: { width: 220 }, children: {} };
+    await writeFile(windowFile, JSON.stringify(window));
+  },
+  async prepare(page, state) {
+    await assistantMarkdownCode.prepare(page, "default");
+    const sidebar = page.locator('[data-slot="sidebar"]');
+    await expect(sidebar.locator('[data-family-role="child"]')).toBeVisible();
+    if (state.startsWith("wide")) {
+      const resize = page.getByRole("separator", { name: "Resize project sidebar", exact: true });
+      await resize.focus();
+      for (let step = 0; step < 10; step++) await page.keyboard.press("ArrowRight");
+    }
+    if (state.endsWith("hover")) await sidebar.locator('[data-slot="project-label"]').hover();
+    else await page.mouse.move(1, 1);
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await expect
+      .poll(() =>
+        sidebar.evaluate((root) => {
+          const row = root.querySelector('.session-item[data-navigation-active="true"]');
+          const selection = root.querySelector('[data-slot="navigation-selection"]');
+          return row && selection
+            ? Math.abs(row.getBoundingClientRect().width - selection.getBoundingClientRect().width)
+            : Infinity;
+        }),
+      )
+      .toBeLessThan(1);
+  },
+  region: (page) => page.locator('[data-slot="sidebar"]'),
 };
 
 const projectChatHeader: VisualCaptureScenario = {
@@ -4211,11 +4297,16 @@ const sessionSearchScenario: VisualCaptureScenario = {
     }
   },
   async prepare(page, state) {
-    await expect(page.locator('[data-slot="sidebar"] [data-session-id]')).toHaveCount(4, {
-      timeout: 20_000,
-    });
-    if (state === "focus")
-      await page.getByRole("button", { name: "Focus on project", exact: true }).click();
+    await expect(page.locator('[data-slot="sidebar"] .session-item[data-session-id]')).toHaveCount(
+      4,
+      {
+        timeout: 20_000,
+      },
+    );
+    if (state === "focus") {
+      await page.getByRole("button", { name: "Project actions for project", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Focus on project", exact: true }).click();
+    }
     if (state !== "sidebar") {
       await page.getByRole("button", { name: "Search sessions", exact: true }).click();
       const filter = page.getByRole("combobox", { name: "Search session titles" });
@@ -4239,7 +4330,8 @@ const projectCustomInstructionsScenario: VisualCaptureScenario = {
   states: ["default", "browser"],
   seed: (paths, theme) => cakePromptsSettingsScenario.seed(paths, theme),
   async prepare(page, state) {
-    await page.getByRole("button", { name: "Open settings for project" }).click();
+    await page.getByRole("button", { name: "Project actions for project" }).click();
+    await page.getByRole("menuitem", { name: "Open settings for project" }).click();
     await page.getByRole("dialog", { name: /settings/ }).waitFor({ state: "visible" });
     await page.waitForFunction(() => document.fonts.status === "loaded");
     if (state === "browser") {
@@ -5332,6 +5424,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   taskInputAttachmentsScenario,
   cakeChatSidebarUnread,
   projectChatSidebar,
+  sidebarRowLayout,
   projectChatHeader,
   projectChatTodos,
   activeSidebarSessions,

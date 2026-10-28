@@ -370,9 +370,10 @@ export async function prepareBrowserVisual(page: Page, scenario: string, state =
         await page.getByRole("button", { name: "New session", exact: true }).first().click();
       } else {
         await page
-          .getByRole("button", { name: /^Open settings for / })
+          .getByRole("button", { name: /^Project actions for / })
           .first()
           .click();
+        await page.getByRole("menuitem", { name: /^Open settings for / }).click();
       }
       await expect(page.getByRole("dialog")).toBeVisible();
     }

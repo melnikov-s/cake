@@ -296,6 +296,37 @@ export function PopoverContent({
       {...props}
       id={contentId}
       ref={contentRef}
+      onKeyDown={(event) => {
+        props.onKeyDown?.(event);
+        if (event.defaultPrevented || props.role !== "menu") return;
+        const items = Array.from(
+          event.currentTarget.querySelectorAll<HTMLElement>('[role^="menuitem"]:not([disabled])'),
+        );
+        const index = items.findIndex((item) => item === document.activeElement);
+        const next =
+          event.key === "ArrowDown"
+            ? (index + 1) % items.length
+            : event.key === "ArrowUp"
+              ? (index - 1 + items.length) % items.length
+              : event.key === "Home"
+                ? 0
+                : event.key === "End"
+                  ? items.length - 1
+                  : undefined;
+        if (next === undefined || !items.length) return;
+        event.preventDefault();
+        items[next]?.focus();
+      }}
+      onClick={(event) => {
+        props.onClick?.(event);
+        if (
+          props.role === "menu" &&
+          !event.defaultPrevented &&
+          event.target instanceof Element &&
+          event.target.closest('[role^="menuitem"]:not([disabled])')
+        )
+          effectiveAnchorRef.current?.focus({ preventScroll: true });
+      }}
       role={props.role ?? "dialog"}
       inert={!open}
       aria-hidden={!open || undefined}

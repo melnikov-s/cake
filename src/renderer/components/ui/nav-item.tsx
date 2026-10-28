@@ -78,7 +78,8 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
       ref={ref}
       data-associated={associated && !active ? "true" : undefined}
       className={cn(
-        "group group/nav-item flex w-full min-w-0 items-center justify-between gap-2 rounded-md px-2 py-1 text-left text-xs tracking-[-0.005em] transition-colors select-none [app-region:no-drag]",
+        "group group/nav-item grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-md px-2 py-1 text-left text-xs tracking-[-0.005em] transition-colors select-none [app-region:no-drag]",
+        !trailing && "grid-cols-1",
         active
           ? "bg-sidebar-active text-primary font-medium"
           : "text-muted-foreground hover:bg-sidebar-hover hover:text-foreground",
@@ -166,10 +167,12 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
       >
         {icon && <span className="shrink-0 text-inherit">{icon}</span>}
         <div className="flex min-w-0 flex-1 flex-col justify-center">
-          <div className="flex items-center gap-1.5">
+          <div className="flex min-w-0 items-center gap-1.5">
             <span
               className={cn(
-                wholeRowAction ? "whitespace-normal break-words" : "truncate",
+                wholeRowAction
+                  ? "min-w-0 whitespace-normal break-words"
+                  : "min-w-0 flex-1 truncate",
                 motionFeedback &&
                   !disabled &&
                   "origin-left motion-safe:transition-transform motion-safe:duration-300 motion-safe:ease-[cubic-bezier(0.22,1.12,0.36,1)] motion-safe:group-hover/nav-item:translate-x-0.5 motion-safe:group-active/nav-action:translate-y-px motion-safe:group-active/nav-action:scale-[0.985] motion-safe:group-active/nav-action:duration-75",
@@ -178,7 +181,7 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
             >
               {label}
             </span>
-            {badge}
+            {badge && <span className="shrink-0">{badge}</span>}
           </div>
           {description && (
             <div

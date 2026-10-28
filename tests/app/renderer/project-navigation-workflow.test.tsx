@@ -384,7 +384,8 @@ describe("Project navigation workflow", () => {
     ]);
     await fixture.publishActivity(["alpha", "second", "beta"]);
     await fixture.publishCakeChatActivity(true);
-    await fixture.user.click(screen.getByRole("button", { name: "Focus on alpha" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Project actions for alpha" }));
+    await fixture.user.click(screen.getByRole("menuitem", { name: "Focus on alpha" }));
     const pane = () =>
       document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id");
     pressActiveSessionShortcut("next");
@@ -413,7 +414,8 @@ describe("Project navigation workflow", () => {
     using fixture = renderNavigation();
     await fixture.publishActivity(["alpha", "beta"]);
     await fixture.publishCakeChatActivity(true);
-    await fixture.user.click(screen.getByRole("button", { name: "Focus on beta" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Project actions for beta" }));
+    await fixture.user.click(screen.getByRole("menuitem", { name: "Focus on beta" }));
     pressActiveSessionShortcut("previous");
     await waitFor(() =>
       expect(
@@ -442,7 +444,8 @@ describe("Project navigation workflow", () => {
     await fixture.user.click(screen.getByRole("button", { name: /^beta session / }));
     await fixture.user.click(screen.getByRole("button", { name: /^Cake Chat$/ }));
     await fixture.user.click(screen.getByRole("button", { name: /^Second alpha session / }));
-    await fixture.user.click(screen.getByRole("button", { name: "Focus on alpha" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Project actions for alpha" }));
+    await fixture.user.click(screen.getByRole("menuitem", { name: "Focus on alpha" }));
     const pane = () =>
       document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id");
     const back = screen.getByRole("button", { name: "Go back in session history" });
@@ -457,7 +460,8 @@ describe("Project navigation workflow", () => {
     await fixture.user.click(back);
     await waitFor(() => expect(pane()).toBe("alpha"));
     await fixture.user.click(screen.getByRole("button", { name: "Exit focus mode for alpha" }));
-    await fixture.user.click(screen.getByRole("button", { name: "Focus on beta" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Project actions for beta" }));
+    await fixture.user.click(screen.getByRole("menuitem", { name: "Focus on beta" }));
     expect(pane()).toBe("alpha");
     expect(back.hasAttribute("disabled")).toBe(true);
     await fixture.user.click(forward);
@@ -637,7 +641,8 @@ describe("Project navigation workflow", () => {
 
   it("focuses the sidebar on a project without replacing the active conversation", async () => {
     using fixture = renderNavigation();
-    await fixture.user.click(screen.getByRole("button", { name: "Focus on beta" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Project actions for beta" }));
+    await fixture.user.click(screen.getByRole("menuitem", { name: "Focus on beta" }));
     expect(screen.queryByRole("button", { name: /^alpha session / })).toBeNull();
     expect(screen.getByRole("button", { name: /^beta session / })).toBeDefined();
     expect(screen.getByPlaceholderText("Ask Cake to work in alpha…")).toBeDefined();

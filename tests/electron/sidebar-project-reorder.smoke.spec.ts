@@ -57,9 +57,9 @@ test("reorders projects by dragging in the desktop sidebar", async () => {
     const labels = page.locator('[data-slot="project-group"] [data-slot="project-label"]');
     await expect(labels).toHaveText(["alpha", "beta"], { timeout: 20_000 });
 
-    const sortButton = page.getByRole("button", { name: "Sort sessions in alpha" });
+    const sortButton = page.getByRole("button", { name: "Project actions for alpha" });
     await sortButton.click();
-    const sortMenu = page.getByRole("menu", { name: "Sort sessions in alpha" });
+    const sortMenu = page.getByRole("menu", { name: "Project actions for alpha" });
     await expect(sortMenu.getByRole("menuitemradio", { name: "By date" })).toHaveAttribute(
       "aria-checked",
       "true",

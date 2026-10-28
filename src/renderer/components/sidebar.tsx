@@ -175,8 +175,8 @@ export const Sidebar = observer(function Sidebar({
                     className="mt-0.5 flex items-center justify-between pl-1.5 pr-2 py-2 text-sm font-medium text-muted-foreground"
                   >
                     <span>Projects</span>
-                    {/* Match the rows' centered w-8 status column without resizing the button. */}
-                    <span className="flex w-8 shrink-0 items-center justify-center [@media(pointer:coarse)]:w-auto">
+                    {/* Center the control on the rows' compact status column. */}
+                    <span className="flex w-6 shrink-0 items-center justify-center [@media(pointer:coarse)]:w-auto">
                       <IconButton
                         data-cake-hint-key="p"
                         tooltip="Add project"

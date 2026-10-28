@@ -117,20 +117,28 @@ test("keyboard focus reveals project actions and keeps sort controls accessible"
   expect(await label.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
   await expect(actions).toHaveCSS("opacity", "1");
   await page.keyboard.press("Tab");
-  await expect(header.getByRole("button", { name: "Focus on alpha", exact: true })).toBeFocused();
-  await page.keyboard.press("Tab");
-  const sort = header.getByRole("button", { name: "Sort sessions in alpha", exact: true });
-  await expect(sort).toBeFocused();
+  const trigger = header.getByRole("button", { name: "Project actions for alpha", exact: true });
+  await expect(trigger).toBeFocused();
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("menu", { name: "Sort sessions in alpha" })).toBeVisible();
+  const menu = page.getByRole("menu", { name: "Project actions for alpha" });
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "Focus on alpha" })).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(menu.getByRole("menuitem", { name: "Open settings for alpha" })).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(menu.getByRole("menuitemradio", { name: "By date" })).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await expect(menu).toBeHidden();
+  await expect(trigger).toBeFocused();
   await expect(actions).toHaveCSS("opacity", "1");
+  await page.keyboard.press("Enter");
+  await expect(menu.getByRole("menuitemradio", { name: "By label" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
   await page.keyboard.press("Escape");
-  await expect(sort).toBeFocused();
-  await expect(actions).toHaveCSS("opacity", "1");
-  await page.keyboard.press("Tab");
-  await expect(
-    header.getByRole("button", { name: "Open settings for alpha", exact: true }),
-  ).toBeFocused();
+  await expect(trigger).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(
     header.getByRole("button", { name: "New chat in alpha", exact: true }),
@@ -150,7 +158,7 @@ test("coarse pointers retain visible, usable project actions without hover", asy
   const actions = header.locator('[data-slot="project-actions"]');
   await expect(actions).toHaveCSS("opacity", "1");
   const sort = await header
-    .getByRole("button", { name: "Sort sessions in alpha", exact: true })
+    .getByRole("button", { name: "Project actions for alpha", exact: true })
     .boundingBox();
   expect(sort).not.toBeNull();
   // Electron's existing context cannot opt into Playwright hasTouch; dispatch real CDP touch input.
@@ -159,5 +167,5 @@ test("coarse pointers retain visible, usable project actions without hover", asy
     touchPoints: [{ x: sort!.x + sort!.width / 2, y: sort!.y + sort!.height / 2 }],
   });
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-  await expect(page.getByRole("menu", { name: "Sort sessions in alpha" })).toBeVisible();
+  await expect(page.getByRole("menu", { name: "Project actions for alpha" })).toBeVisible();
 });
