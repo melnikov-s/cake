@@ -119,7 +119,7 @@ export const widgetPackageSettingsOperations = [
     "settings.widgets.install",
     WidgetPackageInstall,
     "Install a user-approved npm registry dependency for widgets, without rebuilding Cake.",
-    { specifier: "@excalidraw/excalidraw", userApproved: true },
+    { specifier: "d3", userApproved: true },
     Schema.Struct({ installed: Schema.Literal(true), specifier: Schema.String }),
     [
       "Install only after an explicit user dependency request or explicit approval. Otherwise ask first. userApproved:true records that approval; it is not permission to invent approval.",
@@ -130,7 +130,7 @@ export const widgetPackageSettingsOperations = [
     "settings.widgets.remove",
     WidgetPackageRemove,
     "Remove a shared widget dependency. Accepted artifact browser output remains usable.",
-    { name: "@excalidraw/excalidraw" },
+    { name: "d3" },
     Schema.Struct({ removed: Schema.Literal(true), name: WidgetPackageName }),
     [
       "Removal affects future compilation for all backend widgets. Previously accepted browser output is retained.",

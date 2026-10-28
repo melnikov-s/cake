@@ -3,7 +3,8 @@
 Use Excalidraw's native scene JSON as the artifact state, not a Cake drawing
 protocol. The editor seed is only a starting value. Always inspect the latest
 `artifacts.state.read` before an edit; manual edits and selection are live state.
-Discover the operation schemas before invoking them.
+Ordinary creation is fully documented in SKILL.md: use the skill widget template
+and skeleton initialState directly. This reference is for advanced scene/editor work.
 
 ## Document shape
 
@@ -138,10 +139,10 @@ resizing, grouping, frame wrapping, and elbow-arrow routing.
 - Use frames for regions or steps, bound text for labels, and native bound arrows
   for flow direction. Keep diagrams small enough to read at the initial zoom;
   do not sacrifice editable relationships for a rasterized flowchart.
-- For another independent drawing, reuse a linked accepted editor's exact
-  revision through `widgets.instantiate` with a new native scene as required
-  `initialState`. Its retained source/assets are reused; its mutable drawing is
-  not copied. For a follow-up, edit the existing lineage instead.
+- For another independent drawing, use `widgets.instantiate` with
+  `template: "excalidraw-artifacts"` and a new skeleton or native scene as
+  `initialState`. This skill supplies the renderer; no prior artifact/editor link
+  is needed. For a follow-up, edit the existing lineage instead.
 - Excalidraw supplies selection, text entry, pan/zoom, free draw, shapes, arrows,
   grouping, frame tools, keyboard shortcuts, undo/redo, and Clear canvas. Keep
   these native controls available; do not recreate them as Cake operations.

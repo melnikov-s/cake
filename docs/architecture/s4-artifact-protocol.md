@@ -235,9 +235,12 @@ Choose widget operations by what changes, not by whether the user says "edit":
 - `artifacts.state.read` plus `artifacts.state.update` edits document content in
   an existing data-driven widget. Its implementation owns validation and layout;
   state updates do not compile, invoke models, or create source revisions.
-- `widgets.instantiate` creates an independent document from a linked exact
-  widget revision and explicit new JSON state. It reuses accepted source/browser
-  output and captures that new initial state without generation or compilation.
+- `widgets.instantiate` creates an independent document from a loaded skill's
+  prepared widget template (`template: <skill name>`) or a linked exact widget
+  revision (`reference: <exact ref>`), plus explicit new JSON state. It reuses
+  retained source/browser output and captures that new initial state without
+  request-time generation or compilation. A skill template needs no prior artifact
+  or editor link.
 - `widgets.present` generates a new implementation from a semantic brief with
   audience, verified facts, bounded data, and readable fallback.
 - `artifacts.replace` changes widget source/behavior (or content that an old
@@ -254,6 +257,41 @@ The separate `interview.open` operation is documented in
 
 The `/cake-artifacts` built-in diagnostic command exercises reusable artifact
 publication without provider credentials. It does not open interviews.
+
+## Skill-supplied widget templates
+
+A portable Pi skill may include `widget.json` next to `SKILL.md`:
+
+```json
+{ "language": "react", "source": "assets/editor.tsx" }
+```
+
+The generic session resource loader prepares these opt-in renderers before the
+session accepts requests. Source must resolve inside the discovered skill's
+canonical directory and fit the normal 1 MiB source bound. Preparation uses the
+existing compiler and authorized widget package environment, retaining browser
+output through the same content-addressed store as generated widgets. Missing
+libraries or invalid templates produce an explicit error when requested; Cake
+never installs packages, changes settings, or generates a substitute. Preparation
+is internal bootstrap compilation, not a no-compilation-ever guarantee. Start a
+fresh session after adding/changing a skill or its widget libraries.
+
+The loaded skill name is the template key. Its instructions should include the
+complete minimal `widgets.instantiate` call and scene/data format, so ordinary
+creation needs only the skill read followed by that tool call. The calling agent
+does not read renderer files, search for accepted editors, discover schemas or
+packages, or write renderer code. No library-specific operation, dependency,
+scene schema, or built-in skill is added to Cake. This mechanism applies equally
+to React library editors and self-contained HTML widgets.
+
+Template source is separate from per-document `initialState`. Every instance has
+an independent global lineage and artifact-scoped state. A real initial-state
+capture is retained and the normal publication pointer shows the live widget
+inline. This is capture evidence, not model review or interaction verification.
+The existing opaque sandbox, local resources, CSP and scoped state bridge are
+unchanged. Native editing, persistence and reopening remain widget responsibilities.
+A template has no invented generation conversation ID; a deliberate source/behavior
+revision starts a new reviewed generation branch with the current source/state.
 
 ## Trusted built-ins and untrusted HTML
 

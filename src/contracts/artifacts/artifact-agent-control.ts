@@ -4,6 +4,7 @@ import type {
   InlineWidgetRevisionRequest,
 } from "../widgets/widget-generation";
 
+import type { ResolveWidgetTemplate } from "../widgets/widget-template";
 import type { WidgetBrowserOutput } from "../widgets/widget-browser-output";
 import type { WidgetPreview } from "../widgets/widget-preview";
 import type { JsonValue } from "../serialization/json-contract";
@@ -34,6 +35,7 @@ export interface CakeArtifactOperationOptions {
     input: InlineWidgetGenerationRequest,
   ): Promise<InlineWidgetGenerationResult>;
   reviseInlineWidget?(input: InlineWidgetRevisionRequest): Promise<InlineWidgetGenerationResult>;
+  resolveWidgetTemplate?: ResolveWidgetTemplate;
   captureWidgetInstance?(input: {
     sessionId: string;
     browser: WidgetBrowserOutput;

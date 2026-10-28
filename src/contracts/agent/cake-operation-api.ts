@@ -1,3 +1,4 @@
+import type { ResolveWidgetTemplate } from "../widgets/widget-template";
 import type { ResultDelivery } from "../conversations/result-delivery";
 import type { ChildSessionAssignment } from "../project-sessions/child-session-assignment";
 import type {
@@ -71,6 +72,7 @@ export interface RuntimeOperationApi {
 /** Live Pi capabilities supplied to the already-configured product operations. */
 export type ProjectCakeOperations = (bridge: {
   host: CakeOperationHost;
+  resolveWidgetTemplate?: ResolveWidgetTemplate;
   api(): RuntimeOperationApi;
   sessionId(): string | undefined;
   getAvailableOfType(

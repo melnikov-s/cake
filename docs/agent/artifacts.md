@@ -32,6 +32,19 @@ This requires a validated prototype module manifest; legacy widgets fail explici
 
 Permanent Project Chat/global Cake Chat expose linking, inline presentation, saved-state read, capture and selected-source operations, not publication or broad inspection.
 
+## Skill widget templates
+
+A loaded skill can supply `widget.json` (`language` and skill-relative `source`).
+Cake prepares its renderer internally at fresh-session startup using already-added
+widget libraries. Create an independent document directly with
+`widgets.instantiate({template: "<skill name>", id, title, initialState, fallback})`.
+Use the skill's complete call and data instructions: no editor/artifact searches,
+codemode, additional renderer reads, package/settings discovery or code generation
+belongs in ordinary creation. Setup failures remain explicit; never silently install
+a library or generate a substitute. This is generic skill/library support, not a
+built-in integration for any drawing library. Preparation may compile at startup;
+the creation call reuses retained output without compilation or model review.
+
 ## Widget language and state
 
 `widgets.present` accepts `widget.language: "html"` for self-contained HTML with inline CSS/JavaScript: no JSX, packages, external scripts or bundling. React is the default for installed libraries, component-heavy UI and prototype-ui manifests. Both use the same sandbox, mandatory browser/visual review, immutable revisions, fallback and retained accepted PNG. Replacements preserve language.

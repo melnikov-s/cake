@@ -11,6 +11,8 @@ import { AgentAvailability } from "../services/pi/AgentAvailability";
 import { ProjectSessionRuntimeHost } from "../services/pi/ProjectSessionRuntimeHost";
 import { createCakeArtifactOperations } from "../domain/artifacts/cake-artifact-operations";
 import { CakeOperationRegistry } from "../services/pi/runtime/cake-operation-registry";
+import { prepareSkillWidgetTemplates } from "../services/pi/runtime/skill-widget-templates";
+import type { ResolveWidgetTemplate } from "../contracts/widgets/widget-template";
 import { WorkflowSandbox } from "../services/pi/WorkflowSandbox";
 import { WorkflowProgram } from "../contracts/workflows/workflow-data";
 import { ClientEvents } from "../services/clients/ClientEvents";
@@ -171,7 +173,32 @@ function startMain() {
     const reportSmokeFailure = (operation: string, defect: Error) => {
       console.error(`[cake.smoke] ${operation} failed`, defect);
     };
+    let smokeWidgetTemplates: ResolveWidgetTemplate | undefined;
     Object.assign(globalThis, {
+      async cakeSmokePrepareWidgetTemplates(input: {
+        sessionId: string;
+        workingDirectory: string;
+        skills: { name: string; baseDir: string }[];
+      }) {
+        return mainRuntime.runPromise(
+          Effect.gen(function* () {
+            const host = yield* Effect.serviceOption(ProjectSessionRuntimeHost);
+            if (host._tag === "None") return yield* Effect.die("Local-only smoke hook");
+            const integration = yield* host.value.runtimeIntegrations(
+              input.workingDirectory,
+              input.sessionId,
+            );
+            const templates = yield* Effect.promise(() =>
+              prepareSkillWidgetTemplates(input.skills, integration.compileArtifactBrowser),
+            );
+            smokeWidgetTemplates = templates;
+            return input.skills.map((skill) => {
+              const template = templates(skill.name);
+              return { name: skill.name, browser: template.browser };
+            });
+          }),
+        );
+      },
       cakeSmokeWorkflowSandbox(program: WorkflowProgram) {
         return mainRuntime.runPromise(
           Effect.scoped(
@@ -449,7 +476,11 @@ function startMain() {
             );
             if (!integration.persistArtifact)
               return yield* Effect.die("Missing artifact persistence");
-            const options = { ...integration, persistArtifact: integration.persistArtifact };
+            const options = {
+              ...integration,
+              persistArtifact: integration.persistArtifact,
+              resolveWidgetTemplate: smokeWidgetTemplates,
+            };
             const registry = new CakeOperationRegistry(
               createCakeArtifactOperations({ appendEntry: () => undefined }, options),
             );

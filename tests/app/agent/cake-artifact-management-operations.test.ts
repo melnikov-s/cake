@@ -853,6 +853,55 @@ describe("Cake artifact management operations", () => {
     expect(appendEntry).not.toHaveBeenCalled();
   });
 
+  it("starts a reviewed generation branch for deliberate renderer changes to a skill template", async () => {
+    const template = widgetArtifact();
+    if (template.kind !== "widget") throw new Error("Expected widget");
+    const { registry, callbacks } = makeHarness({
+      ...template,
+      payload: {
+        language: template.payload.language,
+        source: template.payload.source,
+        browser: template.payload.browser,
+        brief: "Skill-supplied renderer",
+      },
+    });
+    callbacks.generateInlineWidget = vi.fn<
+      NonNullable<CakeArtifactOperationOptions["generateInlineWidget"]>
+    >(async () => ({
+      language: "react",
+      source: "export default function Revised() { return null; }",
+      browser: { digest: "c".repeat(64) },
+      generationSessionId: "new-reviewed-branch",
+      preview: { mimeType: "image/png", data: "cG5n" },
+    }));
+    callbacks.reviseInlineWidget = vi.fn();
+    await registry.invoke(
+      {
+        command: "artifacts.replace",
+        input: {
+          lineageId: "chart",
+          expectedRevision: 1,
+          instructions: "Add an export control",
+        },
+      },
+      { ...context(), runtime: { ...runtime, sessionFile: "/sessions/source.jsonl" } },
+    );
+    expect(callbacks.generateInlineWidget).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { source: template.payload.source },
+        initialState: { scene: "latest live state" },
+        brief: expect.stringContaining("Add an export control"),
+      }),
+    );
+    expect(callbacks.reviseInlineWidget).not.toHaveBeenCalled();
+    expect(callbacks.persistArtifact).toHaveBeenCalledWith(
+      expect.objectContaining({
+        revision: 2,
+        payload: expect.objectContaining({ generationSessionId: "new-reviewed-branch" }),
+      }),
+    );
+  });
+
   it("commits only accepted staged state with the version read from live storage", async () => {
     const { registry, callbacks, appendEntry } = makeHarness(widgetArtifact());
     callbacks.reviseInlineWidget = vi.fn(async () => ({

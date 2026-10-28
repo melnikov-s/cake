@@ -32,6 +32,8 @@ import { loadCakeSessionRuntimeResourceLoader } from "./cake-session-runtime-res
 import { detectGitWorktree, worktreeSystemPrompt } from "./worktree-system-prompt";
 import { cakeAgentDocumentationDirectory } from "./cake-agent-documentation";
 import { cakeBuiltinSkillsOverride } from "./cake-builtin-skills";
+import { prepareSkillWidgetTemplates } from "./skill-widget-templates";
+import type { ResolveWidgetTemplate } from "../../../contracts/widgets/widget-template";
 import { createCakeSystemPromptExtension } from "./cake-system-prompt-extension";
 import projectPromptTemplate from "./prompts/project.md?raw";
 import commonPromptTemplate from "./prompts/common.md?raw";
@@ -206,10 +208,14 @@ export async function createCakeSessionRuntimeCapabilities(input: {
   const detectedWorktreePrompt = detectedWorktree
     ? worktreeSystemPrompt(detectedWorktree)
     : undefined;
+  let resolveWidgetTemplate: ResolveWidgetTemplate = () => {
+    throw new Error("Widget templates are not ready");
+  };
   const gateway = createCakeGatewayExtension(
     (pi) =>
       options.operations?.({
         host: pi,
+        resolveWidgetTemplate: (skill) => resolveWidgetTemplate(skill),
         publishSnapshot: input.publishSnapshot,
         api: () => {
           if (!operationApi.current) throw new Error("The Cake session is not ready");
@@ -301,6 +307,10 @@ export async function createCakeSessionRuntimeCapabilities(input: {
               ],
       }),
   });
+  resolveWidgetTemplate = await prepareSkillWidgetTemplates(
+    resourceLoader.getSkills().skills,
+    options.compileArtifactBrowser,
+  );
   return {
     resourceLoader,
     eventBus,

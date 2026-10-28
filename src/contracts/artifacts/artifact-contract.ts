@@ -105,7 +105,7 @@ const widgetArtifactSchema = Schema.Struct({
     language: Schema.Literals(["html", "react"]),
     source: textSchema,
     brief: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(262_144)),
-    generationSessionId: idSchema,
+    generationSessionId: Schema.optionalKey(idSchema),
     browser: WidgetBrowserOutput,
     // Historical snapshots predate retained captures; never synthesize their preview.
     preview: Schema.optionalKey(WidgetPreview),

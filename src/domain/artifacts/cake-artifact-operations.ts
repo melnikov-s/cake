@@ -1,3 +1,4 @@
+import type { WidgetTemplate } from "../../contracts/widgets/widget-template";
 import type { CakeArtifactOperationOptions } from "../../contracts/artifacts/artifact-agent-control";
 import type { CakeOperationHost } from "../../contracts/agent/cake-operation-context";
 import { editText } from "../../services/pi/edit-text";
@@ -89,13 +90,22 @@ const artifactReferenceSchema = Schema.String.check(
   Schema.isPattern(/^(?:cake:\/\/artifact\/)?[A-Za-z0-9][A-Za-z0-9._:-]*(?:@r[1-9][0-9]*)?$/),
 );
 const artifactResolveSchema = Schema.Struct({ reference: artifactReferenceSchema });
-const widgetInstantiateSchema = Schema.Struct({
+const widgetInstanceFields = {
   id: artifactIdSchema,
   title: titleSchema,
-  reference: artifactReferenceSchema.check(Schema.isPattern(/@r[1-9][0-9]*$/)),
   initialState: jsonValueSchema,
   fallback: Schema.Struct({ markdown: markdownSchema }),
-});
+};
+const widgetInstantiateSchema = Schema.Union([
+  Schema.Struct({
+    ...widgetInstanceFields,
+    reference: artifactReferenceSchema.check(Schema.isPattern(/@r[1-9][0-9]*$/)),
+  }),
+  Schema.Struct({
+    ...widgetInstanceFields,
+    template: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+  }),
+]);
 const expectedRevisionSchema = Schema.Int.check(Schema.isGreaterThan(0));
 const artifactUpdateSchema = Schema.Struct({
   lineageId: artifactIdSchema,
@@ -625,13 +635,13 @@ export function createCakeArtifactOperations(
             throw new Error(
               `Artifact ${update.lineageId} is ${current.artifact.kind}; revision instructions are only valid for widgets`,
             );
-          if (!options.reviseInlineWidget)
+          const generationSessionId = current.artifact.payload.generationSessionId;
+          if (generationSessionId ? !options.reviseInlineWidget : !options.generateInlineWidget)
             throw new Error("Durable widget revision is unavailable");
           if (!options.readArtifactState) throw new Error("Artifact state access is unavailable");
           const latestState = await options.readArtifactState(update.lineageId);
-          const generated = await options.reviseInlineWidget({
+          const revisionInput = {
             sessionId,
-            generationSessionId: current.artifact.payload.generationSessionId,
             language: current.artifact.payload.language,
             source: current.artifact.payload.source,
             brief: current.artifact.payload.brief,
@@ -641,7 +651,15 @@ export function createCakeArtifactOperations(
             initialStateVersion: latestState.version,
             model: runtime.model,
             signal: context.signal,
-          });
+          };
+          const generated = generationSessionId
+            ? await options.reviseInlineWidget!({ ...revisionInput, generationSessionId })
+            : await options.generateInlineWidget!({
+                ...revisionInput,
+                parentConversation: widgetConversationFromOperation(runtime),
+                brief: `${revisionInput.brief}\n\nRequested renderer change: ${update.instructions}`,
+                data: { source: revisionInput.source },
+              });
           if (context.signal.aborted) throw new Error("Widget revision was cancelled");
           if (!generated.browser)
             throw new Error("Accepted widget revision has no retained browser output");
@@ -761,15 +779,26 @@ export function createCakeArtifactOperations(
     operations.push({
       command: "widgets.instantiate",
       topic: "widgets",
-      summary: "Create an independent widget from an exact linked implementation and new state.",
+      summary:
+        "Create an independent widget from a prepared skill template or exact linked implementation.",
       inputSchema: widgetInstantiateSchema,
       guidance: [
-        "Use an exact linked widget reference (@rN), a new global ID and explicit initialState matching that implementation's state contract. Reuses accepted source and retained browser output without generation, compilation, package resolution or model review.",
+        "Supply template: <loaded skill name> when the skill provides widget.json, or reference: <exact linked widget @rN>. Supply a new global ID and explicit initialState matching the renderer's contract. Skill templates are prepared internally at session startup using the authorized widget package environment; creation does not generate code, compile, discover packages, or require a prior artifact/editor link.",
+        "For a skill template, load its SKILL.md and call this operation directly using its documented scene format. No codemode, searches, help/schema discovery, or additional template reads are needed. Cake knows only generic widget templates, never library-specific scene types.",
         "Template mutable state and hardcoded seed data are not copied as authoritative data. Supply the complete independent document in initialState. Read the template source/state contract first if needed.",
         "For existing data/content use artifacts.state.read then artifacts.state.update. To show the same document again use artifacts.present. Only source/behavior changes or old hardcoded content need artifacts.replace.",
         "A fresh rendered initial-state capture is returned, not the template's preview. This is not a new model review and does not verify every interaction. Publication is inline; do not add a redundant embed.",
       ],
       examples: [
+        {
+          input: {
+            id: "new-document",
+            title: "New document",
+            template: "editable-board",
+            initialState: { elements: [] },
+            fallback: { markdown: "Independent editable document." },
+          },
+        },
         {
           input: {
             id: "second-diagram",
@@ -781,26 +810,46 @@ export function createCakeArtifactOperations(
         },
       ],
       result:
-        "New revision-one widget reference and fresh initial-state PNG, with explicit reuse execution facts. No generation, compilation or model review.",
+        "New revision-one widget reference and fresh initial-state PNG, with explicit reuse execution facts. No request-time generation, compilation or model review; skill templates are prepared at session startup.",
       async execute(input, context) {
         // SAFETY: CakeOperationRegistry parsed input with widgetInstantiateSchema.
         const instance = input as typeof widgetInstantiateSchema.Type;
         const runtime = runtimeContext(context);
         const origin = pointerOrigin(context);
         if (context.signal.aborted) throw new Error("Widget instantiation was cancelled");
-        const reference = stableReference(instance.reference);
-        const template = (await resolveArtifact(reference)).record.artifact;
-        if (template.kind !== "widget")
-          throw new Error("Widget instantiation requires a linked widget template");
-        if (template.id === instance.id)
-          throw new Error("Widget instantiation requires a new lineage ID");
+        const reference =
+          "reference" in instance
+            ? stableReference(instance.reference)
+            : `skill:${instance.template}`;
+        let implementation: WidgetTemplate;
+        if ("reference" in instance) {
+          const template = (await resolveArtifact(reference)).record.artifact;
+          if (template.kind !== "widget")
+            throw new Error("Widget instantiation requires a linked widget template");
+          if (template.id === instance.id)
+            throw new Error("Widget instantiation requires a new lineage ID");
+          implementation = template.payload;
+        } else {
+          if (!options.resolveWidgetTemplate)
+            throw new Error("Skill widget templates are unavailable in this session");
+          implementation = options.resolveWidgetTemplate(instance.template);
+        }
         const preview = await captureWidgetInstance({
           sessionId: runtime.sessionId,
-          browser: template.payload.browser,
+          browser: implementation.browser,
           initialState: instance.initialState,
           signal: context.signal,
         });
         if (context.signal.aborted) throw new Error("Widget instantiation was cancelled");
+        let payload: Extract<CakeArtifactV1, { kind: "widget" }>["payload"] = {
+          language: implementation.language,
+          source: implementation.source,
+          browser: implementation.browser,
+          brief: `Reused implementation from ${reference}. The caller supplied independent initialState; artifact-scoped mutable state is authoritative for this document.`,
+          preview,
+        };
+        if (implementation.generationSessionId)
+          payload = { ...payload, generationSessionId: implementation.generationSessionId };
         const record = await persist(
           {
             protocol: "cake.artifact/v1",
@@ -809,14 +858,7 @@ export function createCakeArtifactOperations(
             revision: 1,
             kind: "widget",
             title: instance.title,
-            payload: {
-              language: template.payload.language,
-              source: template.payload.source,
-              generationSessionId: template.payload.generationSessionId,
-              browser: template.payload.browser,
-              brief: `Reused implementation from ${reference}. The caller supplied independent initialState; artifact-scoped mutable state is authoritative for this document.`,
-              preview,
-            },
+            payload,
             fallback: instance.fallback,
             interaction: { mode: "present" },
           },

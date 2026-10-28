@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type * as NativeLibrary from "@excalidraw/excalidraw";
 type ExcalidrawLibrary = typeof NativeLibrary;
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
@@ -29,10 +29,11 @@ type Scene = {
   appState: Partial<AppState>;
   files: BinaryFiles;
   selection?: AppState["selectedElementIds"];
+  skeleton?: Parameters<ExcalidrawLibrary["convertToExcalidrawElements"]>[0];
 };
 
-// Replace only this seed with the requested native scene. Once published, live
-// state is authoritative; editing the seed is not an edit to a saved drawing.
+// Empty-storage default only. New scene data and saved state arrive through the
+// generic artifact SDK; do not modify renderer source to create a document.
 const initialScene: Scene = {
   type: "excalidraw",
   version: 2,
@@ -82,6 +83,8 @@ function snapshot(
   serializeAsJSON: ExcalidrawLibrary["serializeAsJSON"],
 ): Scene {
   const native = JSON.parse(serializeAsJSON(elements, appState, files, "local"));
+  const persistentBase = { ...base };
+  delete persistentBase.skeleton;
   const originals = new Map(base.elements.map((element) => [element.id, element]));
   // Native initialData restoration treats null/[] empty bindings interchangeably.
   // That mount-time default is not a user edit to an unrelated stored object.
@@ -95,7 +98,7 @@ function snapshot(
   // metadata/customData. Add only explicitly JSON-safe useful UI settings.
   return JSON.parse(
     JSON.stringify({
-      ...base,
+      ...persistentBase,
       elements: persistentElements,
       files: { ...base.files, ...files },
       appState: {
@@ -230,7 +233,27 @@ function ExcalidrawEditor({ library }: { library: ExcalidrawLibrary }) {
   // Native converters can leave own customData: undefined. postMessage preserves
   // it; normalize the seed as well as snapshots before crossing the JSON boundary.
   const [jsonInitialScene] = useState<Scene>(() => JSON.parse(JSON.stringify(initialScene)));
-  const { value, hydrated, version, save, error, reload } = useArtifactState(jsonInitialScene);
+  const {
+    value: stored,
+    hydrated,
+    version,
+    save,
+    error,
+    reload,
+  } = useArtifactState(jsonInitialScene);
+  // Only new documents contain skeleton input. Saved native elements are never
+  // reconverted: manual edits, IDs, bindings and unknown metadata remain intact.
+  const value = useMemo<Scene>(() => {
+    if (!stored.skeleton) return stored;
+    const { skeleton, ...scene } = stored;
+    return JSON.parse(
+      JSON.stringify({
+        ...jsonInitialScene,
+        ...scene,
+        elements: library.convertToExcalidrawElements(skeleton, { regenerateIds: false }),
+      }),
+    );
+  }, [stored, library, jsonInitialScene]);
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -333,7 +356,9 @@ function ExcalidrawEditor({ library }: { library: ExcalidrawLibrary }) {
         version === current.acknowledged.version &&
         incoming === current.acknowledged.signature);
     current.observedVersion = version;
-    current.base = value;
+    // Retain the input marker only in the comparison base so initialization
+    // always saves native elements, even when native layout needs no repair.
+    current.base = stored.skeleton ? { ...value, skeleton: stored.skeleton } : value;
     current.acknowledged = null;
     if (ownAcknowledgment) {
       setDirty(current.lastScene !== incoming);
@@ -377,12 +402,12 @@ function ExcalidrawEditor({ library }: { library: ExcalidrawLibrary }) {
       current.applying = false;
       current.ready = true;
     }
-    if (normalized) {
+    if (normalized || stored.skeleton) {
       current.pending = normalizedScene;
       setDirty(true);
       current.timer = setTimeout(() => void flush(), 200);
     }
-  }, [api, hydrated, value, version, save, flush, library]);
+  }, [api, hydrated, value, stored, version, save, flush, library]);
 
   const onChange = useCallback(
     (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {

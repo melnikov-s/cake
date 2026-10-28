@@ -115,7 +115,11 @@ export function projectCakeOperations(options: CakeOperationOptions): ProjectCak
             generate: options.generateInlineWidget,
           })
         : []),
-      ...createCakeArtifactOperations(bridge.host, { ...options, persistArtifact }),
+      ...createCakeArtifactOperations(bridge.host, {
+        ...options,
+        persistArtifact,
+        resolveWidgetTemplate: bridge.resolveWidgetTemplate,
+      }),
       ...(options.messageBoardControl
         ? createMessageBoardOperations(options.messageBoardControl)
         : []),
