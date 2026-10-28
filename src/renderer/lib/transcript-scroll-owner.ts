@@ -48,6 +48,8 @@ export interface TranscriptScrollOwner {
   reveal(itemKey: string, scrollToIndex: () => void): void;
   /** A keyboard/linked message selection pauses following until the reader is at the bottom again. */
   setSelecting(selecting: boolean): void;
+  /** A fullscreen artifact still belongs to a virtual row in this covered transcript. */
+  setCovered(covered: boolean): void;
   dispose(): void;
 }
 
@@ -76,6 +78,7 @@ export function createTranscriptScrollOwner(
 ): TranscriptScrollOwner {
   let following = options.following;
   let selecting = false;
+  let covered = false;
   let anchor: Anchor | undefined;
   let pendingReveal: string | undefined;
   let pendingBottom: string | undefined;
@@ -211,7 +214,7 @@ export function createTranscriptScrollOwner(
   };
 
   const reconcile = () => {
-    if (!measurable()) return;
+    if (covered || !measurable()) return;
     const pendingMeasurements = measuring();
     if (positioning()) {
       knownTop = scroller.scrollTop;
@@ -249,7 +252,7 @@ export function createTranscriptScrollOwner(
   };
 
   const handleScroll = () => {
-    if (!measurable()) return;
+    if (covered || !measurable()) return;
     if (scroller.scrollTop === knownTop || positioning() || pendingBottom !== undefined) {
       reconcile();
       return;
@@ -355,6 +358,7 @@ export function createTranscriptScrollOwner(
   return {
     reconcile,
     scrollToBottomForSentMessage(navigation) {
+      if (covered) return;
       cancelReveal();
       options.cancelVirtualNavigation();
       following = true;
@@ -383,6 +387,18 @@ export function createTranscriptScrollOwner(
         anchor = findAnchor();
       } else if (pendingBottom === undefined && measurable() && !positioning())
         following = atBottom();
+    },
+    setCovered(next) {
+      if (next === covered) return;
+      covered = next;
+      cancelReveal();
+      options.cancelVirtualNavigation();
+      // Unlike message selection, a covered transcript must not resume following
+      // when a queued scroll event or browser clamp lands at the bottom. Doing
+      // so lets new output virtualize away the artifact's owning row.
+      following = !next && !selecting && atBottom();
+      knownTop = scroller.scrollTop;
+      anchor = findAnchor();
     },
     dispose() {
       abort.abort();

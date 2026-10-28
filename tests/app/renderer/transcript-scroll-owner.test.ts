@@ -284,6 +284,27 @@ describe("transcript scroll owner following", () => {
     expect(scroller.scrollTop).toBe(6_400);
   });
 
+  it("keeps a covered artifact row still through sends, incoming growth and bottom clamps", () => {
+    owner.setSelecting(true);
+    owner.setCovered(true);
+    // A covered transcript at the end can receive a queued scroll event or
+    // browser clamp. It must not interpret that as the reader resuming follow.
+    contentHeight -= 100;
+    scroller.scrollTop = contentHeight;
+    scroller.dispatchEvent(new Event("scroll"));
+    grow(5_000);
+    expect(scroller.scrollTop).toBe(3_300);
+    const scrollToIndex = vi.fn();
+    owner.scrollToBottomForSentMessage({ itemKey: "new-message", scrollToIndex });
+    expect(scrollToIndex).not.toHaveBeenCalled();
+    expect(scroller.scrollTop).toBe(3_300);
+    // Explicit exit restores ordinary sent-message navigation.
+    owner.setSelecting(false);
+    owner.setCovered(false);
+    owner.scrollToBottomForSentMessage();
+    expect(scroller.scrollTop).toBe(contentHeight - 600);
+  });
+
   it("follows growth while at the bottom", () => {
     expect(scroller.scrollTop).toBe(3_400);
     grow(200);

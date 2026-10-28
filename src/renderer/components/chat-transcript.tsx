@@ -258,6 +258,10 @@ export const ChatTranscript = observer(function ChatTranscript({
     () => scrollOwner.current?.setSelecting(selecting || presentedArtifacts > 0),
     [scroller, selecting, presentedArtifacts],
   );
+  useLayoutEffect(
+    () => scrollOwner.current?.setCovered(presentedArtifacts > 0),
+    [scroller, presentedArtifacts],
+  );
   // The selection is identified by its stable item key, never by its index, so
   // arriving or streaming messages cannot retarget a reveal.
   const selectedItemKey = selectedItemIndex >= 0 ? itemKeys[selectedItemIndex] : undefined;
