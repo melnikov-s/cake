@@ -4327,6 +4327,32 @@ const dictationInputScenario: VisualCaptureScenario = {
   region: conversationEntryScenario.region,
 };
 
+const compactComposerScenario: VisualCaptureScenario = {
+  name: "compact-composer",
+  description: "Quick assistant voice, text and submit centerline with native textarea expansion",
+  states: ["placeholder", "text", "multiline"],
+  environment: dictationInputScenario.environment,
+  seed: dictationInputScenario.seed,
+  async prepare(page, state, application) {
+    await dictationInputScenario.prepare(page, "default", application);
+    // Each writing target stops its previous capture. Give the next target fresh tracks.
+    await page.evaluate(() => {
+      navigator.mediaDevices.getUserMedia = async () =>
+        new AudioContext().createMediaStreamDestination().stream;
+    });
+    await page.getByRole("button", { name: "Mute dictation", exact: true }).click();
+    await page.getByRole("button", { name: "Ask session assistant", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Quick session assistant", exact: true });
+    const input = dialog.getByRole("combobox", { name: "Ask session assistant", exact: true });
+    await input.fill("");
+    await expect(input).toBeFocused();
+    if (state === "text") await input.pressSequentially("whats the difference between this");
+    if (state === "multiline") await input.fill("First line\nSecond line\nThird line\nFourth line");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.getByRole("dialog", { name: "Quick session assistant", exact: true }),
+};
+
 const dictationSettingsScenario: VisualCaptureScenario = {
   name: "voice-dictation-settings",
   description:
@@ -5103,6 +5129,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   projectChatTodos,
   activeSidebarSessions,
   dictationInputScenario,
+  compactComposerScenario,
   dictationSettingsScenario,
   serverClientSettingsScenario,
 ] as const;

@@ -108,8 +108,9 @@ export const SessionAssistant = observer(function SessionAssistant({
               compact
               embedded
               composerFocusEnabled
+              inlineComposer
               className={cn(
-                "h-auto max-h-[min(18rem,60vh)] [&_.transcript]:max-h-[min(18rem,60vh)] [&_[data-slot=composer-input]]:min-w-0 [&_[data-slot=composer-input]]:flex-1 [&_[data-slot=composer-toolbar]]:flex-none [&_[data-slot=composer-toolbar]]:border-0 [&_[data-slot=composer-toolbar]]:p-0 [&_[data-slot=composer-toolbar]>div:first-child]:hidden [&_[data-slot=message]]:w-fit [&_[data-slot=message-content]]:max-w-[min(22rem,calc(100vw-24px))] [&_[data-slot=message-content]]:px-3 [&_[data-slot=message-content]]:py-2.5 [&_[data-slot=message-content]]:text-xs [&_[data-slot=message-content]]:leading-5 [&_[data-slot=message-content]]:shadow-none [&_[data-slot=message-actions]]:hidden [&_form]:flex [&_form]:items-center [&_form]:gap-1.5 [&_form]:border-0 [&_form]:bg-transparent [&_form]:p-1.5 [&_form]:shadow-none [&_textarea]:max-h-40 [&_textarea]:min-h-8 [&_textarea]:px-2.5 [&_textarea]:py-1.5 [&_textarea]:text-xs",
+                "h-auto max-h-[min(18rem,60vh)] [&_.transcript]:max-h-[min(18rem,60vh)] [&_[data-slot=message]]:w-fit [&_[data-slot=message-content]]:max-w-[min(22rem,calc(100vw-24px))] [&_[data-slot=message-content]]:px-3 [&_[data-slot=message-content]]:py-2.5 [&_[data-slot=message-content]]:text-xs [&_[data-slot=message-content]]:leading-5 [&_[data-slot=message-content]]:shadow-none [&_[data-slot=message-actions]]:hidden",
                 !quickResponse && "[&_.transcript]:hidden",
                 quickResponse &&
                   "[&_[data-slot=message-content]]:rounded-2xl [&_[data-slot=message-content]]:rounded-br-md [&_[data-slot=message-content]]:border-border/70 [&_[data-slot=message-content]]:bg-card/95 [&_[data-slot=message-content]]:shadow-lg",

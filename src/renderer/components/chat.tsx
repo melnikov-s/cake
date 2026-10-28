@@ -142,6 +142,7 @@ export const Chat = observer(function Chat({
   className = "",
   embedded = false,
   compact = false,
+  inlineComposer = false,
   composerFocusEnabled = true,
   parkComposerFocusWhileDictating = true,
   showContextUsage = true,
@@ -161,6 +162,7 @@ export const Chat = observer(function Chat({
   embedded?: boolean;
   /** Visual density only; all Chat surfaces retain the shared virtualized transcript. */
   compact?: boolean;
+  inlineComposer?: boolean;
   composerFocusEnabled?: boolean;
   /** Drop-down entry is an explicit writing action, even with dictation enabled. */
   parkComposerFocusWhileDictating?: boolean;
@@ -305,6 +307,7 @@ export const Chat = observer(function Chat({
       <ChatComposer
         className={embedded ? "chat-embedded-workbench-composer" : undefined}
         configuration={composerConfiguration}
+        inline={inlineComposer}
         header={composerHeader}
         onSubmit={(event) => {
           event.preventDefault();
