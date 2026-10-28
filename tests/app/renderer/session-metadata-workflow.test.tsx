@@ -31,7 +31,7 @@ const session = sessionSummary({ sessionId: "session-1", title: "Metadata sessio
 
 async function renderMetadata(options: { pendingWorktree?: boolean; avatars?: boolean } = {}) {
   let workflow: ProjectWorkflow = {
-    labels: [projectLabel],
+    labels: [{ ...projectLabel }],
     assignments: [{ sessionId: session.sessionId, labelIds: [projectLabel.id, deletedLabelId] }],
     sessionDetails: [],
   };
@@ -126,6 +126,10 @@ async function renderMetadata(options: { pendingWorktree?: boolean; avatars?: bo
         }),
       );
     },
+    async publishProjectLabels(labels: SessionLabel[]) {
+      workflow = { ...workflow, labels };
+      await act(async () => applySnapshot(fixture.models.projects, { projects: [project()] }));
+    },
     async publishResolved(resolved: boolean) {
       await act(async () =>
         applySnapshot(fixture.models.sessionCatalog, {
@@ -181,6 +185,32 @@ describe("Session metadata projection workflows", () => {
     expect(
       within(labels).getByRole("checkbox", { name: "Project" }).getAttribute("aria-checked"),
     ).toBe("true");
+  });
+
+  it("updates row labels and picker choices when the authoritative Project catalog changes", async () => {
+    using fixture = await renderMetadata();
+    await fixture.user.click(
+      screen.getByRole("button", { name: "Change session labels. Current labels: Project" }),
+    );
+    const labels = screen.getByRole("group", { name: "Session labels" });
+    const renamed = { ...projectLabel, name: "Renamed", color: "green" as const };
+    const added: SessionLabel = { id: deletedLabelId, name: "Added", color: "blue" };
+    await fixture.publishProjectLabels([renamed, added]);
+    expect(
+      screen.getByRole("button", { name: "Change session labels. Current labels: Renamed, Added" }),
+    ).toBeDefined();
+    expect(
+      within(labels).getByRole("checkbox", { name: "Renamed" }).getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(
+      within(labels).getByRole("checkbox", { name: "Added" }).getAttribute("aria-checked"),
+    ).toBe("true");
+    await fixture.publishProjectLabels([]);
+    expect(
+      screen.getByRole("button", { name: "Change session labels. Current labels: Unlabelled" }),
+    ).toBeDefined();
+    expect(within(labels).getAllByRole("checkbox")).toHaveLength(1);
+    expect(within(labels).getByRole("checkbox", { name: "Global" })).toBeDefined();
   });
 
   it("suppresses stale workflow labels for resolved sessions and projects them again when restored", async () => {
