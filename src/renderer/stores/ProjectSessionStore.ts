@@ -229,6 +229,12 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     );
   }
 
+  /** Only the previous and next session change selection during navigation. */
+  @computed
+  private get selected() {
+    return this.props.isActive();
+  }
+
   @computed
   get activity(): SessionActivity | undefined {
     if (this.conversationSessionStore.interviewStore.waiting) return "waiting";
@@ -240,7 +246,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     );
     // Reading acknowledges a response, not an unresolved execution failure.
     if (settled === "error" || settled === "stopped") return settled;
-    if (this.props.isActive() || this.model.settledTurnRevision <= this.readSettledTurnRevision)
+    if (this.selected || this.model.settledTurnRevision <= this.readSettledTurnRevision)
       return undefined;
     return settled;
   }

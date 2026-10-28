@@ -1,4 +1,4 @@
-import { Store, observable, snapshot } from "r-state-tree";
+import { Store, computed, observable, snapshot } from "r-state-tree";
 
 const MAX_SESSION_PANES = 4;
 
@@ -42,6 +42,7 @@ export class SessionLayoutStore extends Store<{ allowSplit?: boolean }> {
   @snapshot focusedPaneId: string | undefined;
   @snapshot private readonly childPaneIdsByParentSessionId: Record<string, string> = observable({});
 
+  @computed
   get panes(): readonly SessionPane[] {
     const paneNodes = this.layout ? collectPanes(this.layout) : [];
     return paneNodes.flatMap((pane, index) => {
