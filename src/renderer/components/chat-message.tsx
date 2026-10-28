@@ -43,6 +43,8 @@ import type { SideChatTarget } from "../stores/SideChatStore";
 import type { MessageCommentAnchorRect } from "./message-comment-anchor";
 import { describeScheduledOrigin } from "../../utils/scheduled-message-time";
 import { SubagentReportAssignment } from "./subagent-report-assignment";
+import { subagentTaskTitle } from "../../contracts/subagents/subagent-presentation";
+import { parseSubagentLink } from "../../contracts/subagents/subagent-reference";
 import {
   subagentReportBadge,
   subagentReportFindings,
@@ -90,6 +92,8 @@ export const ChatTextMessage = forwardRef<
     /** Exact originals that carry the content of an incoming receipt. */
     sources?: readonly MessageReferencePreviewStore[];
     reportSource?: { href?: string };
+    /** Retained assignment for a worker progress message. */
+    workerTask?: string;
     /** To-dos tracking an incoming message, with Done checkboxes on its card. */
     todo?: ResultTodoLink;
   }
@@ -104,6 +108,7 @@ export const ChatTextMessage = forwardRef<
     omitArtifactEmbeds,
     sources = [],
     reportSource,
+    workerTask,
     todo,
   },
   ref,
@@ -117,6 +122,13 @@ export const ChatTextMessage = forwardRef<
     ? subagentReportFindings(part.text, report)
     : (crossSession?.body ?? part.text);
   const agentSource = part.agentSource;
+  const worker = agentSource && parseSubagentLink(agentSource.href);
+  // Older progress messages recorded only a generated ID label, not an assignment.
+  const recordedTask =
+    worker && agentSource?.title !== `Worker ${worker.handleId.slice(0, 8)}`
+      ? agentSource?.title
+      : undefined;
+  const workerTitle = worker ? subagentTaskTitle(workerTask ?? recordedTask) : undefined;
   const assistant = part.role === "assistant";
   const scheduled = part.scheduled ? describeScheduledOrigin(part.scheduled) : undefined;
   const userLabel = scheduled
@@ -186,7 +198,7 @@ export const ChatTextMessage = forwardRef<
       {part.crossSession || report || agentSource ? (
         <SessionMessage
           source={agentSource ?? part.crossSession?.sender ?? reportSource}
-          title={report ? `Worker ${report.handleId.slice(0, 8)}` : undefined}
+          title={report ? subagentTaskTitle(report.task) : workerTitle}
           relation={crossSession?.relation}
           badges={report ? [subagentReportBadge(report)] : crossSession?.badges}
           preview={text}

@@ -367,7 +367,7 @@ for (const [delivery, theme] of [
         if (linkedIsIncoming) {
           await expect(first.locator('[data-slot="response-disclosure"]').first()).toHaveAttribute(
             "aria-label",
-            /^Worker /,
+            researchOrigin.task,
           );
           await expect(firstToggle).toHaveAttribute("aria-expanded", "false");
         }

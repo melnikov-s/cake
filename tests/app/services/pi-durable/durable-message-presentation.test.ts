@@ -170,7 +170,10 @@ it.each(["next-user", "timer"] as const)(
       kind: "text",
       text: researchMarkdown,
       renderAs: "markdown",
-      agentSource: { title: "Worker 10000000", href: expect.stringContaining("?message=answer-1") },
+      agentSource: {
+        title: researchOrigin.task,
+        href: expect.stringContaining("?message=answer-1"),
+      },
     });
     const users = parts.filter(
       (part) => part.kind === "text" && part.role === "user" && !part.agentSource,

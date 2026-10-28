@@ -174,7 +174,9 @@ for (const timing of ["next-user", "timer"] as const)
       const verifyProgress = async () => {
         const update = card("Investigation progress");
         await expect(update).toHaveCount(1);
-        await expect(update.getByRole("button", { name: /^Worker / })).toBeVisible();
+        await expect(
+          update.getByRole("button", { name: "Investigate attribution", exact: true }),
+        ).toBeVisible();
         await expect(update.locator('[data-streamdown="strong"]')).toHaveText("Source located");
         await expect(update.getByRole("listitem")).toHaveText("Checking transport.");
         await expect(
@@ -222,7 +224,9 @@ for (const timing of ["next-user", "timer"] as const)
         await verifyProgress();
         const update = card("Investigation findings");
         await expect(update).toHaveCount(1);
-        await expect(update.getByRole("button", { name: /^Worker / })).toBeVisible();
+        await expect(
+          update.getByRole("button", { name: "Investigate attribution", exact: true }),
+        ).toBeVisible();
         await expect(update.locator('[data-streamdown="strong"]')).toHaveText(
           "Typed provenance fixes attribution.",
         );

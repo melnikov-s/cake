@@ -1,7 +1,8 @@
 /** @vitest-environment jsdom */
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
+import { MarkdownLinkProvider } from "../../../src/renderer/components/ai-elements/markdown";
 import { ChatTextMessage } from "../../../src/renderer/components/chat-message";
 import { subagentReportFindings } from "../../../src/renderer/lib/subagent-report-presentation";
 import { researchOrigin } from "../../fixtures/subagent-report";
@@ -25,8 +26,7 @@ it.each([
   async (status, failurePhase, heading, badge, findings) => {
     const report: SubagentReportOrigin = {
       ...researchOrigin,
-      task:
-        "Read only: inspect the session transcript.\n" + "Keep the assignment intact. ".repeat(40),
+      task: "Bug-fix workflow audit\n" + "Keep the assignment intact. ".repeat(40),
       projectPath: "/projects/cake",
       status,
       ...(failurePhase ? { failurePhase } : {}),
@@ -46,9 +46,9 @@ it.each([
     );
     expect(screen.getByRole("article", { name: heading })).toBeDefined();
     // The card names the worker once, with its status as a badge.
-    expect(
-      screen.getByRole("button", { name: `Worker ${report.handleId.slice(0, 8)}` }).textContent,
-    ).toBe(`Worker ${report.handleId.slice(0, 8)}${badge}`);
+    expect(screen.getByRole("button", { name: "Bug-fix workflow audit" }).textContent).toBe(
+      `Bug-fix workflow audit${badge}`,
+    );
     const body = view.container.querySelector('[data-slot="message-content"]')!;
     expect(body.textContent).toBe(findings);
     const disclosure = screen.getByRole("button", { name: "Assignment details" });
@@ -65,6 +65,43 @@ it.each([
     expect(details.isConnected).toBe(false);
     expect(body.textContent).toBe(findings);
     expect(report.task.length).toBeGreaterThan(500);
+  },
+);
+
+it.each([
+  ["Worker 10000000", "Delegated task"],
+  ["", "Delegated task"],
+  ["Bug-fix workflow audit", "Bug-fix workflow audit"],
+])(
+  "names retained worker messages from %j without changing their target",
+  async (title, expected) => {
+    const openSubagent = vi.fn();
+    const href = `cake://subagent/parent/${researchOrigin.handleId}?message=original-answer`;
+    render(
+      <MarkdownLinkProvider
+        actions={{ openSession: vi.fn(), openSubagent, openExternalUrl: vi.fn() }}
+      >
+        <ChatTextMessage
+          part={{
+            id: "progress",
+            kind: "text",
+            role: "user",
+            text: "Findings retained.",
+            status: "complete",
+            agentSource: { title, href },
+          }}
+        />
+      </MarkdownLinkProvider>,
+    );
+    expect(screen.getByRole("button", { name: expected })).toBeDefined();
+    const link = screen.getByRole("link", { name: "Open conversation" });
+    expect(link.getAttribute("href")).toBe(href);
+    await userEvent.setup().click(link);
+    expect(openSubagent).toHaveBeenCalledExactlyOnceWith(
+      "parent",
+      researchOrigin.handleId,
+      "original-answer",
+    );
   },
 );
 

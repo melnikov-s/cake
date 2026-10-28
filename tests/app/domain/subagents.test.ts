@@ -2155,7 +2155,7 @@ describe("Subagents", () => {
         assert.equal(origin?._tag, "AgentUpdate");
         if (origin?._tag === "AgentUpdate") {
           assert.equal(origin.update.text, text);
-          assert.match(origin.update.source.title, /^Worker /);
+          assert.equal(origin.update.source.title, "Audit messaging");
           assert.match(origin.update.source.href, /^cake:\/\/subagent\/parent\//);
         }
         assert.equal(

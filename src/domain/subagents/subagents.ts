@@ -76,6 +76,7 @@ import {
 } from "../../services/subagents/SubagentEnvironment";
 import { subagentErrorMessage } from "./subagent-error-message";
 import type { SubagentRecord, SubagentHistory } from "../../services/storage/SubagentStorage";
+import { subagentTaskTitle } from "../../contracts/subagents/subagent-presentation";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
 import type { RuntimeRecoveryInput } from "../../services/storage/RuntimeRecoveryStorage";
 
@@ -1022,7 +1023,7 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
                   id: crypto.randomUUID(),
                   text,
                   source: {
-                    title: `Worker ${handleId.slice(0, 8)}`,
+                    title: subagentTaskTitle(prepared.input.task),
                     href: subagentLink(prepared.parent.parentSessionId, handleId),
                   },
                 },

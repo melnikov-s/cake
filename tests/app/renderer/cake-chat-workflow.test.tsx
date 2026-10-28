@@ -118,9 +118,9 @@ it("renders authoritative live and replayed reports as Markdown subagent respons
     expect(response.getAttribute("aria-label")).toBe("Subagent complete");
     expect(
       within(response as HTMLElement).getByRole("button", {
-        name: `Worker ${researchOrigin.handleId.slice(0, 8)}`,
+        name: researchOrigin.task,
       }).textContent,
-    ).toBe(`Worker ${researchOrigin.handleId.slice(0, 8)}Completed`);
+    ).toBe(`${researchOrigin.task}Completed`);
     const details = within(response as HTMLElement).getByRole("button", {
       name: "Assignment details",
     });
@@ -171,6 +171,26 @@ it("renders authoritative live and replayed reports as Markdown subagent respons
     text: report.text,
     subagentReport: researchOrigin,
   });
+  // Retained progress messages can recover their task from the parent's saved launch.
+  const progress: UiPart = {
+    id: "progress",
+    kind: "text",
+    role: "user",
+    text: "Checking the findings.",
+    status: "complete",
+    agentSource: {
+      title: `Worker ${handleId.slice(0, 8)}`,
+      href: `cake://subagent/${CAKE_CHAT_SESSION_ID}/${handleId}`,
+    },
+  };
+  project([...workerTranscript(), progress]);
+  const progressCard = () =>
+    view.container.querySelector<HTMLElement>('[data-part-id="progress"]')!;
+  expect(
+    within(progressCard()).getByRole("button", { name: "Inspect the boundary" }),
+  ).toBeDefined();
+  project([progress]);
+  expect(within(progressCard()).getByRole("button", { name: "Delegated task" })).toBeDefined();
   view.unmount();
 });
 

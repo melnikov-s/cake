@@ -1,6 +1,7 @@
 import { pendingReportRef, type PendingReport } from "./pending-report";
 import type { AgentUpdate } from "./agent-update";
 import type { PassiveNotice } from "./passive-notice";
+import { subagentTaskTitle } from "../subagents/subagent-presentation";
 import { parseSessionLink } from "./message-reference";
 import { describeCrossSessionMessage, parseCrossSessionMessage } from "./cross-session-message";
 
@@ -56,7 +57,7 @@ export function pendingReportPresentation(reports: readonly PendingReport[]) {
         updates.push({
           id: report.id,
           text: report.text,
-          source: { title: `Worker ${report.source.handleId.slice(0, 8)}`, href },
+          source: { title: subagentTaskTitle(report.source.task), href },
         });
     } else {
       const message = parseCrossSessionMessage(report.text);

@@ -32,7 +32,7 @@ import { SkillMessage } from "./skill-message";
 import { SourceAttachment } from "./source-attachment";
 import { SessionMessage } from "./session-message";
 import { messageNavigationTarget } from "../../contracts/conversations/message-reference";
-import { subagentLink } from "../../contracts/subagents/subagent-reference";
+import { parseSubagentLink, subagentLink } from "../../contracts/subagents/subagent-reference";
 import { referenceTodoOrigin, resultTodoOrigin } from "../lib/result-todo-origin";
 
 const artifactReferenceInText =
@@ -67,8 +67,20 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
   const hasArtifactReference =
     part.kind === "text" && part.role === "user" && artifactReferenceInText.test(part.text);
   const userMessageDisplaysAsMarkdown = userMessageRendersAsMarkdown || hasArtifactReference;
-  if (part.kind === "text" && part.agentSource)
-    return <ChatTextMessage part={part} onOpenSourceLocation={behavior.openSourceLocation} />;
+  if (part.kind === "text" && part.agentSource) {
+    const worker = parseSubagentLink(part.agentSource.href);
+    return (
+      <ChatTextMessage
+        part={part}
+        onOpenSourceLocation={behavior.openSourceLocation}
+        workerTask={
+          worker && worker.parentSessionId === behavior.subagents?.parentSessionId
+            ? behavior.subagents.run(worker.handleId)?.task
+            : undefined
+        }
+      />
+    );
+  }
   if (part.kind === "text" && part.subagentReport) {
     const sources = behavior.store.messageSources.filter(
       (source) => source.props.partId === part.id,

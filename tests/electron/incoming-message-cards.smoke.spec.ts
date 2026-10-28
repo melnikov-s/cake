@@ -47,7 +47,7 @@ for (const theme of ["dark", "light"] as const)
       // Every incoming card is one summary row with one title, not a title plus a dropdown.
       const skin = await sourceToggle.getAttribute("class");
       for (const [card, title] of [
-        [report, "Worker 10000000"],
+        [report, "Planner workflow update"],
         [source, "Fix the flaky build"],
         [batch, "Draft the release notes"],
       ] as const) {

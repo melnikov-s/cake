@@ -2700,7 +2700,7 @@ const subagentReportsScenario: VisualCaptureScenario = {
           : "Subagent complete";
     const report = page.getByRole("article", { name: heading, exact: true });
     await expect(
-      report.getByRole("button", { name: "Worker 10000000", exact: true }),
+      report.getByRole("button", { name: "Planner workflow update", exact: true }),
     ).toBeVisible();
     const assignment = report.getByRole("button", { name: "Assignment details" });
     await expect(assignment).toHaveAttribute("aria-expanded", "false");
