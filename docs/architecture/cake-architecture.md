@@ -455,7 +455,10 @@ is a refactoring signal, not precedent.
   Permanent Project Chat and Cake Chat group contiguous related conversation with a margin
   rail, labeling task switches rather than every message. A → B → A labels A again on return.
   Each consumed human input schedules one SDK-owned background attribution task using the
-  conversational model, after its initial response/tool round (so newly created to-dos exist).
+  configured utility model immediately, independently of the conversational response.
+  Selection is evidence, never an automatic assignment. A null decision is reconsidered after
+  the response only if new to-do IDs appeared during it, so newly created tasks can be matched.
+  Missing utility configuration is reported without a conversational-model fallback.
   The request selects an existing to-do or null; it never creates tasks or changes agent context,
   and does not block the response. Identity-only attribution lives beside Durable originals,
   not in another transcript. Invalid or unavailable attribution leaves the turn ungrouped.

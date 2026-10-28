@@ -10,7 +10,7 @@ import {
   MemoryStorage,
   UsageDoc,
 } from "@earendil-works/pi-durable";
-import { Type } from "@earendil-works/pi-durable-ai";
+import { Type, createAssistantMessageEventStream } from "@earendil-works/pi-durable-ai";
 import { afterEach, expect, it, vi } from "vitest";
 import { openDurableChatEngine } from "../../../../src/services/pi-durable/durable-chat-engine";
 import { TaskAttributionDoc } from "../../../../src/services/pi-durable/durable-task-attribution";
@@ -18,7 +18,7 @@ import { durableInputText } from "../../../../src/services/pi-durable/durable-in
 import { readDurableOriginalPage } from "../../../../src/services/pi-durable/durable-chat-history";
 import type { ProjectTodo } from "../../../../src/contracts/projects/project-todos";
 import type { InternalInput } from "../../../../src/contracts/conversations/internal-input";
-import { durableAnswer, durableModels } from "../../../fixtures/durable-chat";
+import { durableAnswer, durableModel, durableModels } from "../../../fixtures/durable-chat";
 
 const A = "00000000-0000-4000-8000-000000000001";
 const B = "00000000-0000-4000-8000-000000000002";
@@ -37,7 +37,7 @@ const todo = (id: string): ProjectTodo => ({
   associations: [],
 });
 
-async function fixture(withTool = false, database?: string) {
+async function fixture(withTool = false, database?: string, withTodos = true) {
   const f = durableModels((_request, index) =>
     withTool && index === 1
       ? durableAnswer("", [
@@ -46,6 +46,17 @@ async function fixture(withTool = false, database?: string) {
       : durableAnswer("Normal streamed answer"),
   );
   let items = withTool ? [] : [todo(A), todo(B)];
+  const utility = { ...durableModel, provider: "utility-provider", id: "fast-utility" };
+  vi.mocked(f.models.getModel).mockImplementation((provider, id) =>
+    provider === utility.provider && id === utility.id ? utility : durableModel,
+  );
+  const utilityModel = vi.fn(
+    (): { provider: string; modelId: string; thinkingLevel: "off" } | undefined => ({
+      provider: utility.provider,
+      modelId: utility.id,
+      thinkingLevel: "off",
+    }),
+  );
   const classify = vi
     .spyOn(f.models, "completeSimple")
     .mockResolvedValue(durableAnswer(JSON.stringify({ todoId: A })));
@@ -68,7 +79,8 @@ async function fixture(withTool = false, database?: string) {
     registry,
     agent: { model: { provider: "fixture", modelId: "fixture" }, tools: withTool ? [tool] : [] },
     memory: { budget: () => 4000, summarize: async () => "memory" },
-    todos: () => items,
+    todos: withTodos ? () => items : undefined,
+    utilityModel,
     onChanged: vi.fn(),
     onReport: reports,
   });
@@ -94,10 +106,10 @@ async function fixture(withTool = false, database?: string) {
     await Promise.all(tasks.items.map((task) => engine.harness.waitForTask(task.id, context)));
     return engine.harness.snapshot(TaskAttributionDoc, engine.root.id, context);
   };
-  return { ...f, engine, classify, send, finish, reports };
+  return { ...f, engine, classify, send, finish, reports, utility, utilityModel };
 }
 
-it("runs once per consumed input, reuses the conversational model, and projects A → A → B → A → none without rewriting originals", async () => {
+it("runs once per human input on the separate utility model and projects A → A → B → A → none without rewriting originals", async () => {
   const f = await fixture();
   const decisions = [A, A, B, A, null];
   for (const id of decisions)
@@ -117,9 +129,13 @@ it("runs once per consumed input, reuses the conversational model, and projects 
   expect(f.classify).toHaveBeenCalledTimes(5);
   const doc = await f.finish();
   expect(inputs.map((id) => doc?.inputs[id]?.todoId)).toEqual(decisions);
-  expect(f.classify.mock.calls[0]?.[0]).toMatchObject({ provider: "fixture", id: "fixture" });
+  expect(f.classify.mock.calls[0]?.[0]).toMatchObject({
+    provider: "utility-provider",
+    id: "fast-utility",
+  });
   expect(f.classify.mock.calls[0]?.[2]).toMatchObject({
     maxTokens: 256,
+    reasoning: undefined,
     toolChoice: "none",
     signal: expect.any(AbortSignal),
   });
@@ -220,14 +236,32 @@ it("keeps attribution across SQLite reopen without classifying old messages agai
   expect(second.classify).not.toHaveBeenCalled();
 });
 
-it("sees a task created by the initial tool round without issuing a second attribution request", async () => {
+it("reconsiders an unmatched input when the response creates a new candidate", async () => {
   const f = await fixture(true);
-  await f.send("Investigate startup");
-  await f.finish();
-  expect(f.requests).toHaveLength(2);
-  expect(f.classify).toHaveBeenCalledTimes(1);
-  const wire = f.classify.mock.calls[0]?.[1].messages;
-  expect(JSON.stringify(wire)).toContain("Startup investigation");
+  const stream = createAssistantMessageEventStream();
+  vi.mocked(f.models.streamSimple).mockReturnValueOnce(stream);
+  let started = () => {};
+  const classified = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  f.classify.mockImplementationOnce(async () => {
+    started();
+    return durableAnswer(JSON.stringify({ todoId: null }));
+  });
+  const sent = f.send("Investigate startup");
+  await classified;
+  const message = durableAnswer("", [
+    { type: "toolCall", id: "create-task", name: "create_task", arguments: {} },
+  ]);
+  stream.push({ type: "done", reason: "toolUse", message });
+  const settled = await sent;
+  const doc = await f.finish();
+  expect(f.classify).toHaveBeenCalledTimes(2);
+  expect(JSON.stringify(f.classify.mock.calls[0]?.[1].messages)).not.toContain(
+    "Startup investigation",
+  );
+  expect(JSON.stringify(f.classify.mock.calls[1]?.[1].messages)).toContain("Startup investigation");
+  expect(doc?.inputs[String(settled.entry)]?.todoId).toBe(A);
 });
 
 it.each(["not JSON", JSON.stringify({ todoId: "00000000-0000-4000-8000-000000000099" })])(
@@ -243,6 +277,126 @@ it.each(["not JSON", JSON.stringify({ todoId: "00000000-0000-4000-8000-000000000
     expect(doc?.inputs[String(settled.entry)]).toEqual({ todoId: null, pending: false });
     expect(f.reports).toHaveBeenCalled();
     const usage = await f.engine.harness.snapshot(UsageDoc, f.engine.root.id, context);
-    expect(usage?.models["fixture/fixture"]?.input).toBe(7);
+    expect(usage?.models["utility-provider/fast-utility"]?.input).toBe(7);
   },
 );
+
+it("classifies selected to-dos as evidence even for short follow-ups and explicit switches", async () => {
+  const f = await fixture();
+  for (const [text, decision] of [
+    ["Yes, check that too", A],
+    ["Switch to navigation instead", B],
+  ] as const) {
+    f.classify.mockResolvedValueOnce(durableAnswer(JSON.stringify({ todoId: decision })));
+    const reminder =
+      "<system-reminder>\nProject Chat user changes. Context only.\n" +
+      JSON.stringify({ selection: todo(A), changes: [] }) +
+      "\n</system-reminder>\n\n";
+    const settled = await f.send(text, {
+      _tag: "UserWithReminders",
+      text: reminder + text,
+      userText: text,
+      notices: [],
+    });
+    const doc = await f.finish();
+    expect(doc?.inputs[String(settled.entry)]?.todoId).toBe(decision);
+  }
+  expect(f.classify).toHaveBeenCalledTimes(2);
+  for (const call of f.classify.mock.calls) {
+    const content = call[1].messages[1]?.content;
+    if (typeof content !== "string") throw new Error("Expected classifier JSON");
+    const payload = JSON.parse(content);
+    expect(payload.messages.at(-1).selectedTask).toContain("Startup investigation");
+    expect(payload.messages.at(-1).text).not.toContain("system-reminder");
+  }
+});
+
+it("starts attribution before the conversation produces its first answer", async () => {
+  const f = await fixture();
+  const stream = createAssistantMessageEventStream();
+  vi.mocked(f.models.streamSimple).mockReturnValueOnce(stream);
+  let started = () => {};
+  const classified = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  f.classify.mockImplementationOnce(async () => {
+    started();
+    return durableAnswer(JSON.stringify({ todoId: A }));
+  });
+  let answered = false;
+  const sent = f.send("Check startup").then((result) => {
+    answered = true;
+    return result;
+  });
+  await classified;
+  expect(answered).toBe(false);
+  const message = durableAnswer("Main answer");
+  stream.push({ type: "done", reason: "stop", message });
+  await sent;
+  await f.finish();
+});
+
+it("sends bounded recent dialogue and candidate metadata with a stable instruction prefix", async () => {
+  const f = await fixture();
+  for (let i = 0; i < 4; i++) {
+    await f.send(`Startup follow-up ${i}: ` + "x".repeat(5000));
+    await f.finish();
+  }
+  const first = f.classify.mock.calls[0]?.[1].messages;
+  const last = f.classify.mock.calls.at(-1)?.[1].messages;
+  expect(last?.[0]).toEqual(first?.[0]);
+  const content = last?.[1]?.content;
+  if (typeof content !== "string") throw new Error("Expected classifier JSON");
+  const payload = JSON.parse(content);
+  expect(payload.messages).toHaveLength(6);
+  expect(payload.messages.every((message: { text: string }) => message.text.length <= 1600)).toBe(
+    true,
+  );
+  expect(payload.messages.at(-1).text).toContain("Startup follow-up 3");
+  expect(payload.messages.map((message: { text: string }) => message.text).join(" ")).not.toContain(
+    "Startup follow-up 0",
+  );
+  expect(payload.todos.map((item: { id: string }) => item.id)).toEqual([A, B]);
+  expect(payload.todos[0]).toEqual({
+    id: A,
+    title: "Startup investigation",
+    description: "Current work",
+    state: "open",
+  });
+});
+
+it.each(["missing", "unavailable", "failed"] as const)(
+  "reports %s utility configuration/provider failures without blocking or falling back",
+  async (failure) => {
+    const f = await fixture();
+    if (failure === "missing") f.utilityModel.mockReturnValue(undefined);
+    if (failure === "unavailable")
+      vi.mocked(f.models.getModel).mockImplementation((provider) =>
+        provider === f.utility.provider ? undefined : durableModel,
+      );
+    if (failure === "failed") f.classify.mockRejectedValueOnce(new Error("Provider offline"));
+    const settled = await f.send("Startup please");
+    const doc = await f.finish();
+    expect(doc?.inputs[String(settled.entry)]).toEqual({ pending: false, todoId: null });
+    expect(f.classify).toHaveBeenCalledTimes(failure === "failed" ? 1 : 0);
+    expect(f.reports.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        message: expect.stringContaining(
+          failure === "missing"
+            ? "Configure a utility model"
+            : failure === "unavailable"
+              ? "Configured utility model"
+              : "Provider offline",
+        ),
+      }),
+    );
+    expect(f.requests).toHaveLength(1);
+  },
+);
+
+it("does not install attribution outside permanent chats supplying a to-do scope", async () => {
+  const f = await fixture(false, undefined, false);
+  await f.send("Startup please");
+  expect(await f.finish()).toBeUndefined();
+  expect(f.classify).not.toHaveBeenCalled();
+});

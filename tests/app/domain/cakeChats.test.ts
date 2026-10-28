@@ -313,6 +313,12 @@ describe("permanent Cake Chat", () => {
           ),
         );
         expect(globalPrompt()).toContain(globalTodo.id);
+        expect(global.runtime.cakeChatTodos?.().map((item) => item.id)).toEqual([globalTodo.id]);
+        expect(options.runtime.cakeChatTodos?.().map((item) => item.id)).toEqual([todo.id]);
+        const utilityModel = { provider: "p", modelId: "cheap", thinkingLevel: "off" } as const;
+        f.setState({ ...f.state(), utilityModel });
+        expect(global.runtime.utilityModel?.()).toEqual(utilityModel);
+        expect(options.runtime.utilityModel?.()).toEqual(utilityModel);
         expect(prompt()).not.toContain("Global commitment");
         expect(f.state().cakeChatTodos?.items.map((item) => item.title)).toEqual([
           "Global commitment",

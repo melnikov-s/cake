@@ -38,6 +38,7 @@ import { durableInputPresentation } from "./durable-input-presentation";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import { isAutomaticInput } from "../pi/runtime/internal-input-projection";
 import type { ProjectTodo } from "../../contracts/projects/project-todos";
+import type { UtilityModel } from "../../contracts/conversations/session-contract";
 import { defineExtension } from "@earendil-works/pi-durable";
 import { durableContextMetadata } from "./durable-context-metadata";
 import { createDurableChatMemory, type DurableMemoryOptions } from "./durable-chat-memory";
@@ -124,13 +125,19 @@ export async function openDurableChatEngine(options: {
   onChanged(): void;
   onReport(error: unknown): void;
   onInputConsumed?(text: string, signal: AbortSignal): Promise<void>;
+  utilityModels?: Models;
   todos?(): readonly ProjectTodo[];
+  utilityModel?(): UtilityModel | undefined;
 }) {
   const closing = new AbortController();
   let root: Conversation;
   let memory: ReturnType<typeof createDurableChatMemory>;
   const attribution = options.todos
-    ? createTaskAttribution({ models: options.models, todos: options.todos })
+    ? createTaskAttribution({
+        models: options.utilityModels ?? options.models,
+        todos: options.todos,
+        utilityModel: options.utilityModel,
+      })
     : undefined;
   if (attribution)
     options.registry.install(
@@ -288,8 +295,6 @@ export async function openDurableChatEngine(options: {
                 {
                   entryId: submission.entry,
                   after: attributionRun.taskId,
-                  provider: model.provider,
-                  modelId: model.id,
                 },
                 { conversationId: root.id, ownership: { kind: "conversation" }, background: true },
               );

@@ -161,6 +161,14 @@ export async function createDurableCakeChatRuntime(
     options.sessionReferences,
     sessionId,
   );
+  // Utility work shares credentials/catalog, not the conversation's Fast-mode billing tier.
+  const utilityModels = durableModels(
+    catalogRuntime,
+    () => false,
+    inspection,
+    undefined,
+    sessionId,
+  );
   const available = await catalogRuntime.getAvailable();
   const presets = options.coordinator.modelPresets?.();
   const preset = presets?.presets.find((entry) => entry.id === presets.defaultPresetId);
@@ -383,6 +391,8 @@ export async function createDurableCakeChatRuntime(
       preferences.preferences().contextLimitTokens ?? DEFAULT_CAKE_CHAT_CONTEXT_LIMIT_TOKENS,
     onInputConsumed: options.onCakeChatInputConsumed,
     todos: options.cakeChatTodos,
+    utilityModel: options.utilityModel,
+    utilityModels,
     memory: {
       budget: () => preferences.preferences().memoryViewBytes,
       summarize: (input) =>
@@ -804,6 +814,7 @@ export async function createDurableCakeChatRuntime(
     async refreshModels() {
       await catalogRuntime.refresh();
       models.synchronizeProviders();
+      utilityModels.synchronizeProviders();
       modelOptions = await projectModels();
       publish();
     },

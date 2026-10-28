@@ -395,6 +395,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
     }),
     runtime: {
       cwd: configuration.location.workingDirectory,
+      utilityModel: () => application.snapshot().utilityModel,
       cakeChatTodos: () =>
         project
           ? (application.snapshot().projects.find((item) => item.path === project.path)?.todos
