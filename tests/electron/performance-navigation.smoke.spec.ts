@@ -6,7 +6,10 @@ import { installLocalModelHttpGuard } from "./main-harness";
 const root = resolve(import.meta.dirname, "../..");
 
 for (const visible of [false, true]) {
-  test(`retained transcript navigation preserves drafts and latest selection ${visible ? "@foreground" : ""}`, async ({}, testInfo) => {
+  test(`retained transcript navigation preserves drafts and latest selection ${visible ? "@foreground" : ""}`, async ({
+    browserName,
+  }, testInfo) => {
+    expect(browserName).toBe("chromium");
     test.skip(
       visible && process.env.CAKE_ELECTRON_FOREGROUND_TESTS !== "1",
       "Explicit desktop opt-in required",
@@ -45,6 +48,13 @@ for (const visible of [false, true]) {
       await expect(transcript.getByText(marker(0), { exact: true })).toBeVisible({
         timeout: 60_000,
       });
+      // Equal timestamps sort by title, so destination 2 need not be on the first page.
+      const rows = page.locator(".session-item[data-session-id]");
+      while ((await rows.count()) < fixture.sessionCount) {
+        const nextCount = Math.min(fixture.sessionCount, (await rows.count()) + 10);
+        await page.getByRole("button", { name: "Show more", exact: true }).click();
+        await expect(rows).toHaveCount(nextCount);
+      }
       await composer.focus();
       await composer.pressSequentially("Retained draft zero");
       await expect(composer).toHaveValue("Retained draft zero");
@@ -80,6 +90,7 @@ for (const visible of [false, true]) {
       await expect(transcript.getByText(marker(0), { exact: true })).toBeVisible();
       await expect(composer).toHaveValue("Retained draft zero");
       await expect(composer).toBeFocused();
+      await composer.press("End");
       await composer.press("x");
       await expect(composer).toHaveValue("Retained draft zerox");
       await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();

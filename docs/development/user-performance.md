@@ -6,6 +6,19 @@ They never read the user's profile. Normal `test:electron` excludes `@performanc
 `playwright.performance.config.ts` runs it serially, without retries or native focus.
 The older `measure:session-switch` ABBA investigation remains available separately.
 
+Retained-transcript navigation correctness (drafts, same-target selection, rapid
+navigation and native typing) is also covered independently of timing:
+
+```sh
+pnpm exec playwright test tests/electron/performance-navigation.smoke.spec.ts
+# Explicit visible-desktop opt-in; shows an inactive window without claiming OS focus.
+CAKE_ELECTRON_FOREGROUND_TESTS=1 pnpm exec playwright test \
+  --config playwright.foreground.config.ts tests/electron/performance-navigation.smoke.spec.ts
+```
+
+The visible variant verifies presentation and input behavior, not compositor timing.
+Build slim output first, and obtain desktop-use permission before opting in.
+
 ## Commands
 
 ```sh
