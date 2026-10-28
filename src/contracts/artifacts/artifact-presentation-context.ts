@@ -1,4 +1,7 @@
-import { Schema } from "effect";
+import { Option, Schema } from "effect";
+import { attachmentSchema } from "../conversations/session-contract";
+import { isPiImageHint } from "../conversations/response-mode-reminders";
+import { withoutPassiveNotices, type InternalInput } from "../conversations/internal-input";
 import { idSchema, type CakeArtifactV1 } from "./artifact-contract";
 
 /** Renderer-owned view identity only. The backend resolves all descriptive metadata and access. */
@@ -39,13 +42,55 @@ export function addArtifactPresentationReminder(
 
 export function splitArtifactPresentationReminder(text: string) {
   const start = text.lastIndexOf(`\n\n${prefix}`);
-  if (start < 0 || !text.endsWith("\n</system-reminder>")) return { text, reminder: undefined };
-  const reminder = text.slice(start + 2);
+  if (start < 0) return { text, reminder: undefined };
+  const end = text.indexOf("\n</system-reminder>", start);
+  if (end < 0) return { text, reminder: undefined };
+  const after = end + "\n</system-reminder>".length;
+  const suffix = text.slice(after);
+  // promptText appends attachment envelopes after application context. Recognize
+  // only validated host envelopes here, not arbitrary trailing user prose.
+  const envelopes = suffix.replace(
+    /\n{1,2}<(cake-task-input|cake-file-attachment|cake-source-attachment|cake-browser-attachment|cake-annotations)>([^\n]*)<\/\1>/g,
+    (match, _tag: string, json: string) =>
+      Option.isSome(Schema.decodeUnknownOption(Schema.fromJsonString(attachmentSchema))(json))
+        ? ""
+        : match,
+  );
+  if (
+    envelopes !== "" &&
+    !(envelopes.startsWith("\n\n") && envelopes.slice(2).split("\n").every(isPiImageHint))
+  )
+    return { text, reminder: undefined };
+  const reminder = text.slice(start + 2, after);
   if (
     ![targetGuidance, clearingGuidance].some((contextGuidance) =>
       reminder.startsWith(`${prefix}${contextGuidance} ${guidance}\n`),
     )
   )
     return { text, reminder: undefined };
-  return { text: text.slice(0, start), reminder };
+  return { text: text.slice(0, start) + suffix, reminder };
+}
+
+/** Sent context only; viewing an artifact never calls this transition. */
+export function artifactTargetFromReminder(
+  text: string,
+  origin?: InternalInput,
+): boolean | undefined {
+  const { reminder } = splitArtifactPresentationReminder(
+    origin?._tag === "UserWithReminders" ? origin.text : text,
+  );
+  if (!reminder) return undefined;
+  return reminder.startsWith(`${prefix}${targetGuidance}`);
+}
+
+/** Outside is a clear candidate, not evidence that this conversation entered an artifact. */
+export function applyArtifactExitTransition(
+  text: string,
+  previouslyActive: boolean,
+  origin?: InternalInput,
+): string {
+  const body = withoutPassiveNotices(text, origin);
+  return !previouslyActive && artifactTargetFromReminder(body) === false
+    ? splitArtifactPresentationReminder(body).text + text.slice(body.length)
+    : text;
 }

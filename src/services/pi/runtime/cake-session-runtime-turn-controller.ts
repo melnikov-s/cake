@@ -1,7 +1,12 @@
 import { randomUUID } from "node:crypto";
+import {
+  applyArtifactExitTransition,
+  artifactTargetFromReminder,
+} from "../../../contracts/artifacts/artifact-presentation-context";
 import type { InternalInput } from "../../../contracts/conversations/internal-input";
 import {
   isAutomaticInput,
+  internalInputOrigins,
   passiveNoticeParts,
   queuedAutomaticInputPart,
 } from "./internal-input-projection";
@@ -224,39 +229,49 @@ export function createCakeSessionRuntimeTurnController(input: {
   const previousModes = (delivery: "prompt" | "steer" | "follow-up") => {
     let presentation: ProjectSessionPresentationMode = "normal";
     let response: ConversationResponseMode = "text";
-    const consume = (messages: readonly string[]) => {
+    let artifactTarget = false;
+    const consume = (
+      messages: readonly string[],
+      origin?: (message: string) => InternalInput | undefined,
+    ) => {
       for (const message of messages) {
         presentation = presentationModeFromReminder(message) ?? presentation;
         response = responseModeFromReminder(message) ?? response;
+        artifactTarget =
+          artifactTargetFromReminder(
+            stripPresentationModeReminder(stripResponseModeReminder(message)),
+            origin?.(message),
+          ) ?? artifactTarget;
       }
     };
-    consume(
-      session.sessionManager.getBranch().flatMap((entry) =>
-        entry.type === "message" && entry.message.role === "user"
-          ? [
-              typeof entry.message.content === "string"
-                ? entry.message.content
-                : entry.message.content
-                    .filter((item) => item.type === "text")
-                    .map((item) => item.text)
-                    .join("\n"),
-            ]
-          : [],
-      ),
-    );
+    const branch = session.sessionManager.getBranch();
+    const origins = internalInputOrigins(branch);
+    for (const entry of branch) {
+      if (entry.type !== "message" || entry.message.role !== "user") continue;
+      const content =
+        typeof entry.message.content === "string"
+          ? entry.message.content
+          : entry.message.content
+              .filter((item) => item.type === "text")
+              .map((item) => item.text)
+              .join("\n");
+      consume([content], () => origins.get(entry.id));
+    }
     if (delivery !== "prompt") {
-      consume(session.getSteeringMessages());
+      consume(session.getSteeringMessages(), (content) => turnCompletions.internalInput(content));
       consume(
         compactionQueue.filter((item) => item.delivery === "steer").map((item) => item.content),
+        (content) => turnCompletions.internalInput(content),
       );
     }
     if (delivery === "follow-up") {
-      consume(session.getFollowUpMessages());
+      consume(session.getFollowUpMessages(), (content) => turnCompletions.internalInput(content));
       consume(
         compactionQueue.filter((item) => item.delivery === "follow-up").map((item) => item.content),
+        (content) => turnCompletions.internalInput(content),
       );
     }
-    return { presentation, response };
+    return { presentation, response, artifactTarget };
   };
 
   const contentForPresentation = (
@@ -265,14 +280,18 @@ export function createCakeSessionRuntimeTurnController(input: {
     delivery: "prompt" | "steer" | "follow-up",
     presentationMode?: ProjectSessionPresentationMode,
     responseMode: ConversationResponseMode = "text",
+    internal?: InternalInput,
   ) => {
-    const content = promptText(text, attachments);
-    if (text.startsWith("/")) return content;
+    if (text.startsWith("/")) return promptText(text, attachments);
     const previous = previousModes(
       delivery === "prompt" &&
         (session.isStreaming || isCompacting() || commandRunning || compactionQueue.length > 0)
         ? "follow-up"
         : delivery,
+    );
+    const content = promptText(
+      applyArtifactExitTransition(text, previous.artifactTarget, internal),
+      attachments,
     );
     const presented =
       presentationMode === undefined
@@ -443,6 +462,7 @@ export function createCakeSessionRuntimeTurnController(input: {
       delivery,
       presentationMode,
       responseMode,
+      internal,
     );
     const completion = turnId ? turnCompletions.track(turnId, content, true, internal) : undefined;
     try {

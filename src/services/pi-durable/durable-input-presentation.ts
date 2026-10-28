@@ -1,4 +1,5 @@
 import { Option, Schema } from "effect";
+import { artifactTargetFromReminder } from "../../contracts/artifacts/artifact-presentation-context";
 import { InternalInput, withoutPassiveNotices } from "../../contracts/conversations/internal-input";
 import {
   isAutomaticInput,
@@ -40,6 +41,7 @@ const Presentation = Schema.Struct({
   /** Effective response mode of this input; absent on inputs admitted before voice support. */
   responseMode: Schema.optionalKey(ConversationResponseMode),
   presentationMode: Schema.optionalKey(ProjectSessionPresentationMode),
+  artifactTarget: Schema.optionalKey(Schema.Boolean),
 });
 const prefix = /^<cake-input-presentation>([^\n]*)<\/cake-input-presentation>\n/;
 
@@ -66,6 +68,7 @@ export function durableInputText(
     readonly mode: ProjectSessionPresentationMode;
     readonly previousMode: ProjectSessionPresentationMode;
   },
+  previousArtifactTarget = false,
 ) {
   const body = `${promptText(text, [...attachments])}${subagentReport ? `\n\nWorker provenance: ${JSON.stringify(subagentReport)}` : ""}`;
   const presented = presentation
@@ -82,6 +85,7 @@ export function durableInputText(
     imageNames: attachments.flatMap((item) => (item.kind === "image" ? [item.name] : [])),
     responseMode: response.mode,
     presentationMode: presentation?.mode ?? "normal",
+    artifactTarget: artifactTargetFromReminder(text, internal) ?? previousArtifactTarget,
   };
   // Presentation guidance starts the body; response guidance ends it. These are
   // the existing injection boundaries the shared projection reads as context pills.
@@ -107,6 +111,12 @@ export function durableInputPresentation(value: string) {
         imageNames: decoded.value.imageNames,
         responseMode: decoded.value.responseMode ?? ("text" as const),
         presentationMode: decoded.value.presentationMode ?? ("normal" as const),
+        artifactTarget:
+          decoded.value.artifactTarget ??
+          artifactTargetFromReminder(
+            body.slice(textOffset, textOffset + decoded.value.textLength),
+            decoded.value.internal,
+          ),
       };
     }
   }
@@ -124,6 +134,7 @@ export function durableInputPresentation(value: string) {
     // Not a Cake input, so it carries no modes of its own.
     responseMode: undefined,
     presentationMode: undefined,
+    artifactTarget: undefined,
   };
 }
 
@@ -140,6 +151,7 @@ export function markDurableInputSteering(value: string, steering = true): string
     imageNames: input.imageNames,
     responseMode: input.responseMode,
     presentationMode: input.presentationMode,
+    artifactTarget: input.artifactTarget,
   };
   return `<cake-input-presentation>${JSON.stringify(metadata).replaceAll("<", "\\u003c")}</cake-input-presentation>\n${input.body}`;
 }

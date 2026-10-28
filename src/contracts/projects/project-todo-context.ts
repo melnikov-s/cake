@@ -25,11 +25,23 @@ export function projectTodoContextPresentation(reminder: string) {
   const fallback = reminder.startsWith("<system-reminder>\nCake Chat")
     ? "Cake · Cake Chat changes"
     : "Cake · Project Chat changes";
-  if (Option.isNone(parsed)) return { title: fallback, text: reminder };
+  if (Option.isNone(parsed)) return { title: fallback, text: "Chat context updated." };
   const { selection, changes } = parsed.value;
   return {
     title: selection ? `To-do · ${selection.title}` : fallback,
-    text: `\`\`\`json\n${JSON.stringify({ selection, changes }, null, 2)}\n\`\`\``,
+    text: [
+      ...(selection ? [`Selected to-do: ${JSON.stringify(selection.title)}.`] : []),
+      ...changes.map((change) => {
+        switch (change._tag) {
+          case "SessionState":
+            return `Session ${JSON.stringify(change.title)} ${change.resolved ? "resolved" : "restored"}.`;
+          case "ItemState":
+            return `To-do ${JSON.stringify(change.title)} ${change.state === "done" ? "completed" : "reopened"}.`;
+          case "Selection":
+            return change.selectedId ? "To-do selection changed." : "To-do selection cleared.";
+        }
+      }),
+    ].join("\n"),
   };
 }
 

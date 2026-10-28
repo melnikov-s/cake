@@ -29,7 +29,8 @@ export class ArtifactPresentationStore extends Store<{
   }
 
   capture(sessionId: string): ArtifactPresentationContext | null {
-    // Conversation history can retain a target from an earlier window; outside sends always clear it.
+    // Outside sends are clear candidates. The backend's sent history determines
+    // whether this conversation actually has a target to clear, including after reload.
     const active = this.surfaces.at(-1);
     if (
       !active ||

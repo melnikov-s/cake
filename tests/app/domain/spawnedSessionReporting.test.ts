@@ -586,7 +586,11 @@ describe("one-shot to-do selection admission", () => {
           assert.ok(receipt);
           yield* projectTodos.acknowledge(test.scope, receipt);
           assert.deepEqual((yield* projectTodos.list(test.scope)).pending, []);
-          assert.ok(splitContextReminders(first).reminders[0]?.text.includes(item.id));
+          assert.ok(first.includes(item.id)); // Exact context remains in the model input.
+          assert.equal(
+            splitContextReminders(first).reminders[0]?.text,
+            `Selected to-do: ${JSON.stringify(item.title)}.\nTo-do selection changed.\nSession "Investigation" resolved.`,
+          );
         }),
       );
     }),

@@ -224,7 +224,7 @@ describe("Artifact menu fullscreen workflow", () => {
   });
 
   it.each(["alpha", "cake"])(
-    "explicitly clears %s's retained target on an outside send in a fresh window",
+    "opening and closing %s's artifact without sending only captures an outside candidate",
     async (id) => {
       const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
         TurnId.make(crypto.randomUUID()),
@@ -234,7 +234,16 @@ describe("Artifact menu fullscreen workflow", () => {
       await fixture.user.click(
         screen.getByRole("button", { name: id === "cake" ? "Cake Chat" : /^alpha conversation / }),
       );
-      // The previous target lives in Pi history; this window has never opened an artifact.
+      const menu = await openMenu(fixture);
+      await fixture.user.click(
+        within(menu).getByRole("button", { name: new RegExp(`Report ${id} markdown`) }),
+      );
+      const surface = await screen.findByRole("dialog", { name: `Report ${id}` });
+      await fixture.user.click(
+        within(surface).getByRole("button", { name: `Exit fullscreen Report ${id}` }),
+      );
+      expect(prompt).not.toHaveBeenCalled();
+      // Only the backend's sent history can decide whether this candidate clears a target.
       const input = await screen.findByRole("combobox", { name: /^Message/ });
       await fixture.user.type(input, "a new topic{Enter}");
       await waitFor(() => expect(prompt).toHaveBeenCalledTimes(1));

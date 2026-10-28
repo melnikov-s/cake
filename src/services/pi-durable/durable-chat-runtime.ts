@@ -89,7 +89,12 @@ import {
   setDurableUserMessageMarkdown,
   UserMessagePresentationDoc,
 } from "./durable-message-presentation";
-import { durableInputResponse, previousDurableInputModes } from "./durable-input-modes";
+import {
+  durableInputResponse,
+  previousDurableInputModes,
+  previousDurableArtifactTarget,
+} from "./durable-input-modes";
+import { applyArtifactExitTransition } from "../../contracts/artifacts/artifact-presentation-context";
 import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
 import type { ConversationResponseMode } from "../../contracts/conversations/response-mode-reminders";
 const unsupported = async () => {
@@ -462,7 +467,15 @@ export async function createDurableCakeChatRuntime(
       throw new Error("Cake Chat accepts attachment references only");
     // Skill expansion is text-only and never changes the coordinator's tool profile.
     // No `!` shell escape is parsed, so input is never a user shell command.
-    text = await commands.expand(text);
+    const queued = await inbox();
+    const previousArtifactTarget = await previousDurableArtifactTarget(
+      engine.root,
+      queued,
+      delivery,
+    );
+    text = await commands.expand(
+      applyArtifactExitTransition(text, previousArtifactTarget, internal),
+    );
     await configureAgent();
     const busy =
       delivery === "steer" &&
@@ -470,7 +483,7 @@ export async function createDurableCakeChatRuntime(
         undefined;
     // Presentation and voice guidance follow Project Session transitions, read
     // from the durable inbox/history rather than a second in-memory mode flag.
-    const previous = await previousDurableInputModes(engine.root, await inbox(), delivery);
+    const previous = await previousDurableInputModes(engine.root, queued, delivery);
     const response = durableInputResponse(previous.response, responseMode);
     const content = [
       {
@@ -484,6 +497,7 @@ export async function createDurableCakeChatRuntime(
           response,
           internal,
           { mode: presentationMode ?? previous.presentation, previousMode: previous.presentation },
+          previousArtifactTarget,
         ),
       },
       // Reference attachments have no image parts.

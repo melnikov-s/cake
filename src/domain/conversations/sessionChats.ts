@@ -194,7 +194,12 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
       ).pipe(asError("deliver")),
     );
     const reportPresentation = pendingReportPresentation(reportPage);
-    const passiveTurnId = passive.length || reportPage.length ? crypto.randomUUID() : undefined;
+    // Artifact context must not change human prose or optimistic reconciliation.
+    // Reuse the existing input provenance rather than another transcript authority.
+    const contextualUser =
+      !message.crossSession && input.artifactPresentation !== undefined && text !== message.text;
+    const passiveTurnId =
+      passive.length || reportPage.length || contextualUser ? crypto.randomUUID() : undefined;
     if (storage && passiveTurnId && passive.length)
       yield* storage.markPassiveNoticeAdmission(
         passive.map((notice) => notice.id),

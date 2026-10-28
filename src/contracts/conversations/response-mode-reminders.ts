@@ -29,6 +29,8 @@ export function addResponseModeReminder(text: string, mode: ConversationResponse
 const imageHint =
   /^(?:\[Image: original \d+x\d+, displayed at \d+x\d+\. Multiply coordinates by \d+\.\d{2} to map to original image\.\]|\[Image converted from [^\s\]]+ to [^\s\]]+\.\]|\[Image omitted: could not be (?:converted to a supported inline image format|resized below the inline image size limit)\.\])$/;
 
+export const isPiImageHint = (line: string): boolean => imageHint.test(line);
+
 function responseModeReminderBoundary(text: string) {
   for (const mode of ["voice", "text"] as const) {
     const reminder = responseModeReminders[mode];
@@ -37,13 +39,7 @@ function responseModeReminderBoundary(text: string) {
     const suffix = text.slice(start + reminder.length);
     if (
       suffix !== "" &&
-      !(
-        suffix.startsWith("\n\n") &&
-        suffix
-          .slice(2)
-          .split("\n")
-          .every((line) => imageHint.test(line))
-      )
+      !(suffix.startsWith("\n\n") && suffix.slice(2).split("\n").every(isPiImageHint))
     )
       continue;
     return { mode, start, suffix };

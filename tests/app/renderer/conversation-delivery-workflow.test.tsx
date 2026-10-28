@@ -2,6 +2,17 @@
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
+import { addArtifactPresentationReminder } from "../../../src/contracts/artifacts/artifact-presentation-context";
+import {
+  emptyProjectTodos,
+  projectTodoReminder,
+} from "../../../src/contracts/projects/project-todos";
+import { artifactTarget } from "../../fixtures/artifact-presentation";
+import {
+  projectSessionEntries,
+  promptText,
+} from "../../../src/services/pi/runtime/session-projection";
+import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import {
   deliveryGate,
@@ -112,6 +123,66 @@ describe("Conversation delivery workflow", () => {
     });
     await fixture.user.type(input(), "Next request");
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Send" }).disabled).toBe(false);
+  });
+
+  it("reconciles attached artifact/todo context without a second bubble, while retaining intentional identical sends", async () => {
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () => turnId);
+    using fixture = renderConversationDelivery({ sessionChats: { prompt } });
+    const text = "Keep editing";
+    const todo = projectTodoReminder({
+      ...emptyProjectTodos(),
+      pending: [
+        {
+          _tag: "SessionState",
+          sequence: 1,
+          sessionId: "worker",
+          title: "Artifact work",
+          resolved: true,
+        },
+      ],
+    });
+    let canonical: UiPart[] = [];
+    for (const index of [1, 2]) {
+      await fixture.user.type(input(), text);
+      await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+      expect(prompt).toHaveBeenCalledTimes(index);
+      const modelText = promptText(
+        addArtifactPresentationReminder(`${todo}\n\n${text}`, artifactTarget),
+        [
+          {
+            kind: "input",
+            id: "20000000-0000-4000-8000-000000000001",
+            name: "shot.png",
+            mimeType: "image/png",
+            byteLength: 42,
+          },
+        ],
+      );
+      const projected = projectSessionEntries([
+        {
+          type: "message",
+          id: `sent-${index}`,
+          parentId: null,
+          timestamp: new Date(index).toISOString(),
+          message: { role: "user", content: modelText, timestamp: index },
+        },
+      ]);
+      expect(projected.filter((part) => part.kind === "text")).toEqual([
+        expect.objectContaining({ role: "user", text }),
+      ]);
+      expect(projected).toContainEqual(
+        expect.objectContaining({
+          kind: "context",
+          title: "Cake · Project Chat changes",
+          text: 'Session "Artifact work" resolved.',
+        }),
+      );
+      expect(modelText).toContain('"_tag":"SessionState"');
+      canonical = [...canonical, ...projected];
+      fixture.publish(canonical);
+      await waitFor(() => expect(screen.queryByText("You · sending")).toBeNull());
+      expect(screen.getAllByText(text, { exact: true })).toHaveLength(index);
+    }
   });
 
   it("reconciles a pasted-text-only send so the durable, openable reference replaces the pending pill", async () => {

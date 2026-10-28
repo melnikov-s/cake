@@ -4,6 +4,11 @@ import {
   type AgentSession,
 } from "@earendil-works/pi-coding-agent";
 import { durableModel } from "../../../fixtures/durable-chat";
+import { artifactTarget } from "../../../fixtures/artifact-presentation";
+import {
+  addArtifactPresentationReminder,
+  artifactTargetFromReminder,
+} from "../../../../src/contracts/artifacts/artifact-presentation-context";
 import type { Attachment } from "../../../../src/contracts/conversations/session-contract";
 import { describe, expect, it, vi } from "vitest";
 import { createCakeSessionRuntimeTurnController } from "../../../../src/services/pi/runtime/cake-session-runtime-turn-controller";
@@ -180,6 +185,48 @@ describe("CakeSessionRuntime turn controller", () => {
     await compact;
     expect(session.prompt).not.toHaveBeenCalled();
     controller.dispose();
+  });
+
+  it("clears only sent artifact context once, independently per conversation and after controller reload", async () => {
+    const first = createFixture();
+    const other = createFixture();
+    const outside = (text: string) => addArtifactPresentationReminder(text, null);
+    await first.controller.prompt(outside("fresh outside"), "prompt", []);
+    expect(vi.mocked(first.session.prompt).mock.calls.at(-1)?.[0]).toBe("fresh outside");
+    // Opening/closing a viewer sends nothing, so it cannot enter the branch state.
+    await first.controller.prompt(outside("viewed but never sent"), "prompt", []);
+    expect(vi.mocked(first.session.prompt).mock.calls.at(-1)?.[0]).toBe("viewed but never sent");
+    await first.controller.prompt(
+      addArtifactPresentationReminder("inside", artifactTarget),
+      "prompt",
+      [],
+    );
+    first.controller.dispose();
+    const manager = first.session.sessionManager;
+    const restored = createFixture({
+      sessionManager: manager,
+      prompt: vi.fn(async (content) => {
+        manager.appendMessage({ role: "user", content, timestamp: 1 });
+      }),
+    });
+    await other.controller.prompt(outside("independent"), "prompt", []);
+    expect(vi.mocked(other.session.prompt).mock.calls[0]?.[0]).toBe("independent");
+    await restored.controller.prompt(outside("first outside"), "prompt", []);
+    await restored.controller.prompt(outside("repeated outside"), "prompt", []);
+    await restored.controller.prompt(
+      addArtifactPresentationReminder("re-entry", artifactTarget),
+      "prompt",
+      [],
+    );
+    await restored.controller.prompt(outside("second exit"), "prompt", []);
+    expect(
+      vi
+        .mocked(restored.session.prompt)
+        .mock.calls.map(([text]) => artifactTargetFromReminder(text)),
+    ).toEqual([false, undefined, true, false]);
+    expect(manager.getBranch().filter((entry) => entry.type === "message")).toHaveLength(7);
+    restored.controller.dispose();
+    other.controller.dispose();
   });
 
   it("sends an ordinary attached input once without compaction", async () => {
@@ -676,19 +723,8 @@ describe("CakeSessionRuntime turn controller", () => {
   });
 
   it("injects a hidden reminder only when the Project Session presentation changes", async () => {
-    const branch: Array<{
-      type: "message";
-      message: { role: "user"; content: string };
-    }> = [];
-    const prompt = vi.fn(async (content: string) => {
-      branch.push({ type: "message", message: { role: "user", content } });
-    });
-    const { controller } = createFixture({
-      prompt,
-      sessionManager: {
-        getBranch: vi.fn(() => branch),
-      } as unknown as AgentSession["sessionManager"],
-    });
+    const { controller, session } = createFixture();
+    const prompt = vi.mocked(session.prompt);
 
     await controller.prompt("Open this", "prompt", [], false, undefined, "vscode");
     await controller.prompt("Keep going", "prompt", [], false, undefined, "vscode");

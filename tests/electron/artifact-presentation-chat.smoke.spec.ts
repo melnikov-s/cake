@@ -297,6 +297,15 @@ for (const placement of ["old", "latest"] as const) {
         "Clear the prior conversational artifact target",
       );
       expect(JSON.stringify(lastRequest.messages)).toContain("cake://artifact/inline-visual@r1");
+      await expect(page.getByText("after leaving presentation", { exact: true })).toHaveCount(1);
+      await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
+      await normal.fill("outside again");
+      await normal.press("Enter");
+      await expect.poll(() => requests.length).toBe(4);
+      expect(JSON.stringify(JSON.parse(requests[3]!).messages.at(-1))).not.toContain(
+        "Clear the prior conversational artifact target",
+      );
+      await expect(page.getByText("outside again", { exact: true })).toHaveCount(1);
     } finally {
       pendingReply?.end();
       await app.close();

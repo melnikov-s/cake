@@ -51,6 +51,38 @@ export async function previousDurableInputModes(
   return { response: "text", presentation: "normal" };
 }
 
+/** Recover sent artifact context from the SDK inbox/originals, not window visibility.
+ * Older originals carry the transition in their injected block; new inputs also
+ * record the effective boolean in their existing admission envelope. */
+export async function previousDurableArtifactTarget(
+  root: Pick<Conversation, "entries">,
+  inbox: readonly InboxItem[],
+  delivery: "prompt" | "steer" | "follow-up",
+): Promise<boolean> {
+  const queued = inbox.filter(
+    (item): item is Extract<InboxItem, { content: unknown }> =>
+      item.mode !== "write" && (delivery !== "steer" || item.mode === "steer"),
+  );
+  for (const item of queued.toReversed()) {
+    const target = durableInputPresentation(contentText(item.content)).artifactTarget;
+    if (target !== undefined) return target;
+  }
+  let cursor;
+  do {
+    const page = await root.entries({}, HISTORY_SCAN_LIMIT, cursor, BACKGROUND_CONTEXT);
+    for (const entry of page.items) {
+      if (entry.kind !== "pi.user") continue;
+      for (const message of (entry.model ?? []).toReversed()) {
+        if (message.role !== "user") continue;
+        const target = durableInputPresentation(contentText(message.content)).artifactTarget;
+        if (target !== undefined) return target;
+      }
+    }
+    cursor = page.next;
+  } while (cursor !== undefined);
+  return false;
+}
+
 /** Inputs without an explicit mode (reports, cross-session messages) inherit it silently. */
 export function durableInputResponse(
   previous: ConversationResponseMode,
