@@ -16,6 +16,7 @@ export function ArtifactSelectionSurface({
   showContextMenu,
   onReturnToChat,
   children,
+  className,
 }: {
   session: ProjectSessionStore;
   artifactId: string;
@@ -25,6 +26,7 @@ export function ArtifactSelectionSurface({
   }): Promise<"chat-about-selection" | "add-annotation" | undefined>;
   onReturnToChat(): void;
   children: ReactNode;
+  className?: string;
 }) {
   const surface = useRef<HTMLDivElement>(null);
   const pending = useRef<Capture | undefined>(undefined);
@@ -44,6 +46,7 @@ export function ArtifactSelectionSurface({
   return (
     <div
       ref={surface}
+      className={className}
       onContextMenu={(event) => {
         pending.current = undefined;
         const container = surface.current;

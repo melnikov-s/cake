@@ -6,6 +6,7 @@ import { useAppDocument } from "../hooks/use-app-document";
 import { useAppFullscreenResponse } from "../hooks/use-app-fullscreen-response";
 import { useAppHotkeys } from "../hooks/use-app-hotkeys";
 import { AppOverlayHost } from "./app-overlay-host";
+import { ArtifactMenuSurface } from "./artifact-menu-surface";
 import { AppShellLayout } from "./app-shell-layout";
 import { AppSurface } from "./app-surface";
 import { CakeChatWorkspaceSurface } from "./cake-chat-workspace-surface";
@@ -34,7 +35,12 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
           ? "vscode"
           : undefined
       : undefined;
-  const overlays = <AppOverlayHost workspaceMode={Boolean(mode)} fullscreen={fullscreen} />;
+  const overlays = (
+    <>
+      <ArtifactMenuSurface />
+      <AppOverlayHost workspaceMode={Boolean(mode)} fullscreen={fullscreen} />
+    </>
+  );
 
   return mode && session ? (
     <>

@@ -134,7 +134,7 @@ for (const language of ["html", "react"] as const) {
           .getByRole("button", { name: /Reusable checklist copy/ })
           .click();
         return page
-          .getByRole("complementary", { name: "Artifact", exact: true })
+          .getByRole("dialog", { name: "Reusable checklist copy", exact: true })
           .locator(`[data-artifact-id="${instanceId}"] iframe`)
           .first();
       };

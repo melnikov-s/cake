@@ -12,7 +12,6 @@ import { projectTranscriptBehaviorFor } from "../lib/project-transcript-behavior
 import { ProjectComposerAccessory } from "./project-composer-accessory";
 import { ProjectComposerHeader } from "./project-composer-header";
 import { ProjectPaneHeader } from "./project-pane-header";
-import { SessionArtifactPane } from "./session-artifact-pane";
 import { SessionForkStatus } from "./session-fork-status";
 
 export const ProjectConversationSurface = observer(function ProjectConversationSurface({
@@ -145,9 +144,6 @@ export const ProjectConversationSurface = observer(function ProjectConversationS
       }
       renderHeader={(pane, session) => (
         <ProjectPaneHeader pane={pane} session={session} browserMode={browserMode} />
-      )}
-      wrapPane={(session, children) => (
-        <SessionArtifactPane sessionId={session.sessionId}>{children}</SessionArtifactPane>
       )}
       onFocus={(paneId) => root.navigationStore.focusSessionPane(paneId)}
       onSplit={(axis) => root.navigationStore.splitFocusedSession(axis)}

@@ -134,14 +134,14 @@ describe("observeArtifactEvents", () => {
     });
     const { root } = fixture;
     await root.artifactLibraryStore.detailStore.select(id);
-    root.artifactPaneStore.open("child", id);
+    root.artifactMenuStore.open("child", id);
     root.inlineWidgetStore.bindArtifactState("widget", "child", id);
     await vi.waitFor(() => {
-      expect(root.artifactPaneStore.detailStore.detailLoading).toBe(false);
+      expect(root.artifactMenuStore.detailStore.detailLoading).toBe(false);
       expect(root.inlineWidgetStore.artifactStates.widget?.current).toBeDefined();
       expect(root.artifactLibraryStore.loading).toBe(false);
       expect(root.artifactLibraryStore.detailStore.messageBoardStore.loading).toBe(false);
-      expect(root.artifactPaneStore.detailStore.messageBoardStore.loading).toBe(false);
+      expect(root.artifactMenuStore.detailStore.messageBoardStore.loading).toBe(false);
       expect(boardEntries).toHaveBeenCalledTimes(3);
     });
     const runtime = observerRuntime(
@@ -153,7 +153,7 @@ describe("observeArtifactEvents", () => {
       await Effect.runPromise(Queue.take(runtime.consumed));
       await vi.waitFor(() => {
         expect(root.artifactLibraryStore.detailStore.messageBoardStore.loading).toBe(false);
-        expect(root.artifactPaneStore.detailStore.messageBoardStore.loading).toBe(false);
+        expect(root.artifactMenuStore.detailStore.messageBoardStore.loading).toBe(false);
         expect(root.inlineWidgetStore.artifactStates.widget?.loading).toBe(false);
         expect(root.artifactLibraryStore.loading).toBe(false);
       });
@@ -188,7 +188,7 @@ describe("observeArtifactEvents", () => {
       expect(catalog).toHaveBeenCalledTimes(catalogs + 3);
       expect(stateRead).toHaveBeenCalledTimes(states + 2);
       expect(root.artifactLibraryStore.error).toBeUndefined();
-      expect(root.artifactPaneStore.detailStore.error).toBeUndefined();
+      expect(root.artifactMenuStore.detailStore.error).toBeUndefined();
     } finally {
       cancel();
       await runtime.dispose();

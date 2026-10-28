@@ -72,10 +72,10 @@ test("Workboards update live, preserve reading state, and reconcile after board 
       .getByRole("dialog", { name: "Artifacts", exact: true })
       .getByRole("button", { name: /Editor isolation/ })
       .click();
-    await expect(page.getByRole("complementary", { name: "Artifact", exact: true })).toBeVisible();
+    const fullscreen = page.getByRole("dialog", { name: "Editor isolation", exact: true });
+    await expect(fullscreen).toBeVisible();
     const board = page.locator(`[data-artifact-id="${MESSAGE_BOARD_FIXTURE_ID}"]`);
     await expect(board.getByRole("region", { name: "Workboard", exact: true })).toBeVisible();
-    await expect(page.getByText("Append-only coordination log", { exact: true })).toBeVisible();
     await expect(page.getByText("Shared with workgroup", { exact: true })).toHaveCount(0);
     expect(
       await board.evaluate((element) => {
@@ -83,8 +83,6 @@ test("Workboards update live, preserve reading state, and reconcile after board 
         return Math.abs(main.clientWidth - main.parentElement!.clientWidth) <= 1;
       }),
     ).toBe(true);
-    await expect(page.getByRole("button", { name: "Copy reference", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Copy ID", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: /Unlink|Link to this/ })).toHaveCount(0);
     await expect(page.getByLabel("Selected artifact revision")).toHaveCount(0);
     await expect(page.getByText("Revision history", { exact: true })).toHaveCount(0);
@@ -106,11 +104,6 @@ test("Workboards update live, preserve reading state, and reconcile after board 
       true,
     );
     expect(await readFile(receiptPath, "utf8")).toBe(before);
-    await board.getByRole("button", { name: "View Editor isolation fullscreen" }).click();
-    const fullscreen = page.getByRole("dialog", { name: "Editor isolation", exact: true });
-    await expect(fullscreen.getByText("Finding:", { exact: true })).toBeVisible();
-    await fullscreen.getByRole("button", { name: "Exit fullscreen Editor isolation" }).click();
-    await expect(fullscreen).not.toBeAttached();
     await appendLiveEntries(application, 4, 1);
     await expect(
       board.getByRole("button", { name: "#4 · Live finding 4", exact: true }),
@@ -147,6 +140,7 @@ test("Workboards update live, preserve reading state, and reconcile after board 
     expect(await board.evaluate((element) => element.closest("main")!.scrollTop)).toBe(scrollTop);
     await expect(finding).toHaveAttribute("aria-expanded", "true");
 
+    await fullscreen.getByRole("button", { name: "Exit fullscreen Editor isolation" }).click();
     // Browse explicitly before switching to an artifact outside the current session.
     await page.getByRole("button", { name: "1 artifacts" }).click();
     await page

@@ -7,7 +7,6 @@ import { cakeChatTranscriptBehaviorFor } from "../lib/cake-chat-transcript-behav
 import { RootStore } from "../stores/RootStore";
 import type { CakeChatSessionStore } from "../stores/CakeChatSessionStore";
 import { CakeChatPaneHeader, type CakeChatOverlayChrome } from "./cake-chat-pane-header";
-import { SessionArtifactPane } from "./session-artifact-pane";
 import { ConversationActivity } from "./conversation-activity";
 import { ProjectChatHeaderLink } from "./project-chat-header-link";
 
@@ -91,9 +90,6 @@ export const CakeChatSurface = observer(function CakeChatSurface({
       }
       renderHeader={(pane, session) => (
         <CakeChatPaneHeader pane={pane} session={session} overlay={overlay} />
-      )}
-      wrapPane={(session, children) => (
-        <SessionArtifactPane sessionId={session.sessionId}>{children}</SessionArtifactPane>
       )}
       onFocus={(paneId) => root.navigationStore.focusCakeChatPane(paneId)}
       onClose={(paneId) => root.navigationStore.closeCakeChatPane(paneId)}

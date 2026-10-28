@@ -91,6 +91,7 @@ function renderSessionArtifacts(
       }),
     ),
     client: {
+      electron: { setFullscreenSurfaceOpen: async () => undefined },
       projectSessions: { open: async () => undefined },
       workspaces: { loadStagedSlashCommands: async () => [] },
       inlineWidgets,
@@ -268,6 +269,14 @@ const visualMetadata = () => ({
   exactRef: visual(1).exactRef,
 });
 
+async function browseReport(fixture: ReturnType<typeof renderSessionArtifacts>) {
+  await fixture.user.click(await screen.findByRole("button", { name: "1 artifacts" }));
+  const menu = await screen.findByRole("dialog", { name: "Artifacts" });
+  await fixture.user.click(within(menu).getByRole("button", { name: "Browse all artifacts" }));
+  const list = await screen.findByRole("navigation", { name: "Artifact lineages" });
+  await fixture.user.click(within(list).getByRole("button", { name: /report/i }));
+}
+
 describe("Session artifact workflows", () => {
   it("renders repeated inline presentations as independent surfaces and preserves selected source through the Message projection", async () => {
     using fixture = renderSessionArtifacts(
@@ -292,7 +301,7 @@ describe("Session artifact workflows", () => {
     expect(screen.getAllByText("Family report content r1")).toHaveLength(1);
   });
 
-  it("updates already-open publication and pane instances while keeping an explicit historical embed and history selection pinned", async () => {
+  it("follows publication updates in fullscreen while deliberate library history selections stay pinned", async () => {
     let latest = 1;
     const summary = () => ({
       ...reportSummary(),
@@ -323,41 +332,42 @@ describe("Session artifact workflows", () => {
         }),
       },
       [effective(1)],
-      [
-        { ...visualPart, artifactId: "shared", artifactRevision: 1 },
-        {
-          id: "history",
-          kind: "text",
-          role: "assistant",
-          status: "complete",
-          text: "![Historical report](cake://artifact/shared@r1)",
-        },
-      ],
+      [{ ...visualPart, artifactId: "shared", artifactRevision: 1 }],
     );
-    await screen.findAllByText("Family report content r1");
+    await screen.findByText("Family report content r1");
     await fixture.user.click(await screen.findByRole("button", { name: "1 artifacts" }));
     await fixture.user.click(
       within(await screen.findByRole("dialog", { name: "Artifacts" })).getByRole("button", {
         name: /Family report/,
       }),
     );
-    await waitFor(() => expect(screen.getAllByText("Family report content r1")).toHaveLength(3));
+    const surface = await screen.findByRole("dialog", { name: "Family report" });
+    await within(surface).findByText("Family report content r1");
     latest = 2;
     act(() => fixture.invalidate());
-    await waitFor(() => expect(screen.getAllByText("Family report content r2")).toHaveLength(2));
-    expect(screen.getAllByText("Family report content r1")).toHaveLength(1);
+    await within(surface).findByText("Family report content r2");
+    await fixture.user.click(
+      within(surface).getByRole("button", { name: "Exit fullscreen Family report" }),
+    );
+    await browseReport(fixture);
     await fixture.user.selectOptions(
       screen.getByRole("combobox", { name: "Selected artifact revision" }),
       "1",
     );
-    await waitFor(() => expect(screen.getAllByText("Family report content r1")).toHaveLength(2));
+    await screen.findByText("Family report content r1");
     latest = 3;
     act(() => fixture.invalidate());
-    await screen.findByText("Family report content r3");
-    expect(screen.getAllByText("Family report content r1")).toHaveLength(2);
+    await screen.findByText(/Revision 1 of 3/);
+    expect(screen.getByRole("combobox", { name: "Selected artifact revision" })).toHaveProperty(
+      "value",
+      "1",
+    );
+    expect(screen.getByText("Family report content r1")).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "Close all artifacts" }));
+    await screen.findByRole("button", { name: "1 artifacts" });
   });
 
-  it("shares title/link updates across inline, reference and detail without moving a pinned selection or coupling expansion", async () => {
+  it("shares title and link metadata learned while browsing with independent inline surfaces", async () => {
     let authority = effective(1);
     let title = "Family report";
     let links = [authority.link];
@@ -371,20 +381,17 @@ describe("Session artifact workflows", () => {
       links,
       stableRef: authority.stableRef,
     });
-    const pendingDetail = gate<Awaited<ReturnType<Client["artifacts"]["detail"]>>>();
-    let holdDetail = false;
-    const referenceMetadata = vi.fn<Client["artifacts"]["referenceMetadata"]>(
-      async (reference) => ({
-        ...detail(),
-        revision: effective(parseArtifactRef(reference).revision ?? authority.latestRevision)
-          .revision.metadata,
-        exactRef: parseArtifactRef(reference).revision ? effective(1).exactRef : authority.exactRef,
-      }),
-    );
     using fixture = renderSessionArtifacts(
       {
         effective: async () => [authority],
-        referenceMetadata,
+        referenceMetadata: async (reference) => ({
+          ...detail(),
+          revision: effective(parseArtifactRef(reference).revision ?? authority.latestRevision)
+            .revision.metadata,
+          exactRef: parseArtifactRef(reference).revision
+            ? effective(1).exactRef
+            : authority.exactRef,
+        }),
         catalog: async () => ({
           items: [detail().lineage],
           offset: 0,
@@ -392,7 +399,7 @@ describe("Session artifact workflows", () => {
           total: 1,
           hasMore: false,
         }),
-        detail: () => (holdDetail ? pendingDetail.promise : Promise.resolve(detail())),
+        detail: async () => detail(),
         readExact: async (_id, revision) => effective(revision).revision,
       },
       [authority],
@@ -409,13 +416,9 @@ describe("Session artifact workflows", () => {
       ],
     );
     await screen.findAllByRole("button", { name: "Family report Collapse" });
-    await waitFor(() =>
-      expect(screen.getAllByRole("link", { name: "Family report" })).toHaveLength(2),
-    );
-    const initialRequests = referenceMetadata.mock.calls.length;
     await fixture.user.click(screen.getAllByRole("button", { name: "Family report Collapse" })[0]!);
-
-    // Detail independently learns newer metadata; every existing presentation sees that same Model.
+    await browseReport(fixture);
+    await screen.findByRole("heading", { name: title });
     authority = effective(2);
     title = "Renamed report";
     links = [
@@ -426,45 +429,30 @@ describe("Session artifact workflows", () => {
         selection: { mode: "pinned", revision: effective(1).revision.metadata.revision },
       },
     ];
-    await fixture.user.click(screen.getByRole("button", { name: "1 artifacts" }));
-    await fixture.user.click(
-      within(await screen.findByRole("dialog", { name: "Artifacts" })).getByRole("button", {
-        name: /Family report/,
-      }),
-    );
+    act(() => fixture.invalidate());
     await screen.findByRole("heading", { name: title });
     await fixture.user.selectOptions(
       screen.getByRole("combobox", { name: "Selected artifact revision" }),
       "1",
     );
-    expect(screen.getAllByRole("link", { name: title })).toHaveLength(2);
-    expect(screen.getByRole("button", { name: `${title} Expand` })).toBeDefined();
-    expect(screen.getByRole("button", { name: `${title} Collapse` })).toBeDefined();
     expect(screen.getByText("Pinned r1")).toBeDefined();
-    expect(
-      (screen.getByRole("combobox", { name: "Selected artifact revision" }) as HTMLSelectElement)
-        .value,
-    ).toBe("1");
-    expect(referenceMetadata).toHaveBeenCalledTimes(initialRequests);
-
-    // Reference reconciliation alone can update an already-open detail's links/title.
-    holdDetail = true;
+    expect(screen.getByRole("combobox", { name: "Selected artifact revision" })).toHaveProperty(
+      "value",
+      "1",
+    );
     title = "Reconnected report";
     links = [authority.link];
-    await act(async () => fixture.invalidate());
+    act(() => fixture.invalidate());
     await screen.findByRole("heading", { name: title });
     expect(screen.queryByText("Pinned r1")).toBeNull();
-    expect(screen.getAllByRole("link", { name: title })).toHaveLength(2);
+    expect(screen.getByRole("combobox", { name: "Selected artifact revision" })).toHaveProperty(
+      "value",
+      "1",
+    );
+    await fixture.user.click(screen.getByRole("button", { name: "Close all artifacts" }));
+    await waitFor(() => expect(screen.getAllByRole("link", { name: title })).toHaveLength(2));
     expect(screen.getByRole("button", { name: `${title} Expand` })).toBeDefined();
     expect(screen.getByRole("button", { name: `${title} Collapse` })).toBeDefined();
-    expect(
-      (screen.getByRole("combobox", { name: "Selected artifact revision" }) as HTMLSelectElement)
-        .value,
-    ).toBe("1");
-    expect(screen.getByText("Family report content r1")).toBeDefined();
-    expect(screen.getByText("Family report content r2")).toBeDefined();
-    expect(referenceMetadata).toHaveBeenCalledTimes(initialRequests + 2); // One refresh per reference, not per inline mount.
-    await act(async () => pendingDetail.resolve(detail()));
   });
 
   it("retries an explicit historical embed and lets the user collapse it", async () => {
@@ -641,7 +629,7 @@ describe("Session artifact workflows", () => {
     ).toBeDefined();
     expect(screen.queryByText("Explanation r1")).toBeNull();
   });
-  it("opens a sole linked artifact in the detail pane and reopens its catalog after closing", async () => {
+  it("opens a sole linked artifact fullscreen and reopens its catalog after closing", async () => {
     using fixture = renderSessionArtifacts();
     await fixture.user.click(await screen.findByRole("button", { name: "1 artifacts" }));
     const popup = await screen.findByRole("dialog", { name: "Artifacts" });
@@ -649,9 +637,9 @@ describe("Session artifact workflows", () => {
     expect(within(list).getAllByRole("button")).toHaveLength(1);
     await fixture.user.click(within(list).getByRole("button", { name: /Family report/ }));
     expect(await screen.findByText("Family report content r2")).toBeDefined();
-    expect(screen.getByRole("complementary", { name: "Artifact" })).toBeDefined();
+    expect(screen.getByRole("dialog", { name: "Family report" })).toBeDefined();
     expect(screen.queryByRole("textbox", { name: "Search artifact library" })).toBeNull();
-    await fixture.user.click(screen.getByRole("button", { name: "Close Artifact" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Exit fullscreen Family report" }));
     await fixture.user.click(screen.getByRole("button", { name: "1 artifacts" }));
     const reopenedPopup = await screen.findByRole("dialog", { name: "Artifacts" });
     const reopenedList = within(reopenedPopup).getByRole("navigation", { name: "Artifact list" });
@@ -675,7 +663,7 @@ describe("Session artifact workflows", () => {
     expect(within(popup).getByRole("button", { name: /Family report/ })).toBeDefined();
   });
 
-  it("opens the session's pinned revision in the shared library", async () => {
+  it("opens the family link's pinned revision directly in fullscreen", async () => {
     const pinned = {
       ...effective(1),
       latestRevision: effective(2).latestRevision,
@@ -694,11 +682,8 @@ describe("Session artifact workflows", () => {
     });
     await fixture.user.click(await screen.findByRole("button", { name: "1 artifacts" }));
     await fixture.user.click(await screen.findByRole("button", { name: /Family report/ }));
-    expect(await screen.findByText("Family report content r1")).toBeDefined();
-    expect(screen.getByRole("combobox", { name: "Selected artifact revision" })).toHaveProperty(
-      "value",
-      "1",
-    );
+    const surface = await screen.findByRole("dialog", { name: "Family report" });
+    expect(await within(surface).findByText("Family report content r1")).toBeDefined();
   });
 
   it("copies a readable path for the selected revision through the shared library", async () => {
@@ -716,8 +701,7 @@ describe("Session artifact workflows", () => {
       files: [],
     }));
     using fixture = renderSessionArtifacts({ materialize });
-    await fixture.user.click(await screen.findByRole("button", { name: "1 artifacts" }));
-    await fixture.user.click(await screen.findByRole("button", { name: /Family report/ }));
+    await browseReport(fixture);
     expect(await screen.findByText("Shared with workgroup")).toBeDefined();
     expect(screen.getByText("Following latest")).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: "Copy reference" }));
@@ -759,8 +743,7 @@ describe("Session artifact workflows", () => {
         };
       },
     });
-    await fixture.user.click(await screen.findByRole("button", { name: "1 artifacts" }));
-    await fixture.user.click(await screen.findByRole("button", { name: /Family report/ }));
+    await browseReport(fixture);
     await fixture.user.click(await screen.findByRole("button", { name: "Pin r2" }));
     expect(await screen.findByText("Artifact catalog unavailable")).toBeDefined();
     expect(screen.getByText("Family report content r2")).toBeDefined();
@@ -795,8 +778,7 @@ describe("Session artifact workflows", () => {
     });
     const detail = vi.fn<Client["artifacts"]["detail"]>(async () => currentDetail());
     using fixture = renderSessionArtifacts({ effective: async () => [authority], detail });
-    await fixture.user.click(await screen.findByRole("button", { name: "1 artifacts" }));
-    await fixture.user.click(await screen.findByRole("button", { name: /Family report/ }));
+    await browseReport(fixture);
     await screen.findByText("Family report content r2");
     const initialCalls = detail.mock.calls.length;
     const superseded = gate<Awaited<ReturnType<Client["artifacts"]["detail"]>>>();

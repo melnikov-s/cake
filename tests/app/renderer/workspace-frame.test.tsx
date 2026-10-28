@@ -5,7 +5,6 @@ import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { decodeArtifactLineageId } from "../../../src/contracts/artifacts/artifact-lineage";
 import { CakeChatWorkspaceSurface } from "../../../src/renderer/components/cake-chat-workspace-surface";
 import { ProjectWorkspaceSurface } from "../../../src/renderer/components/project-workspace-surface";
 import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";
@@ -61,12 +60,6 @@ function renderWorkspace(kind: Kind, mode: Mode) {
         }),
       },
       vscode: { updateBounds: async () => undefined },
-      artifacts: {
-        detail: async () => {
-          throw new Error("Artifact temporarily unavailable");
-        },
-        history: async () => ({ items: [], offset: 0, limit: 25, total: 0, hasMore: false }),
-      },
     },
   });
   const { root, models } = fixture;
@@ -148,11 +141,11 @@ function renderWorkspace(kind: Kind, mode: Mode) {
   };
 }
 
-// Real workflow Stores, Models, controls, Chat, side-chat and artifact composition.
+// Real workflow Stores, Models, controls, Chat and side-chat composition.
 // These assertions cover rendered wiring, not pixel layout, native input or focus.
 describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
   it.each<Mode>(["browser", "vscode"])(
-    "%s retains sidebar selection/alignment, dock sizes, side chats/artifacts and workflow slots",
+    "%s retains sidebar selection/alignment, dock sizes, side chats and workflow slots",
     async (mode) => {
       using f = renderWorkspace(kind, mode);
       const { container } = f.view;
@@ -247,16 +240,6 @@ describe.each<Kind>(["project", "cake-chat"])("%s workspace frame", (kind) => {
         }),
       ).toBeDefined();
 
-      act(() =>
-        f.root.artifactPaneStore.open(
-          f.session.sessionId,
-          decodeArtifactLineageId("workspace-artifact"),
-        ),
-      );
-      const artifact = await screen.findByRole("complementary", { name: "Artifact" });
-      expect(within(artifact).getByText("Session artifact")).toBeDefined();
-      await f.user.click(within(artifact).getByRole("button", { name: "Close Artifact" }));
-      expect(screen.queryByRole("complementary", { name: "Artifact" })).toBeNull();
       expect(
         screen.getByRole("region", {
           name: mode === "browser" ? "Browser workspace" : "VS Code workspace",

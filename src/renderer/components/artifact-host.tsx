@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Markdown, fencedCode } from "@/components/ai-elements/markdown";
 import { ArtifactPresentationSurface } from "./artifact-presentation-surface";
 import { FullscreenButton } from "@/components/ui/fullscreen-button";
@@ -18,7 +18,9 @@ import type { MessageBoardStore } from "../stores/MessageBoardStore";
 
 interface ArtifactHostProps {
   record: ArtifactRecord;
-  presentation?: "workspace" | "inline";
+  presentation?: "workspace" | "inline" | "fullscreen";
+  onClose?(): void;
+  wrapContent?(content: ReactNode): ReactNode;
   inlineWidgets?: InlineWidgetStore;
   stateSessionId?: string;
   messageBoard?: MessageBoardStore;
@@ -28,6 +30,8 @@ interface ArtifactHostProps {
 export const ArtifactHost = observer(function ArtifactHost({
   record,
   presentation = "workspace",
+  onClose,
+  wrapContent,
   inlineWidgets,
   stateSessionId,
   messageBoard,
@@ -35,6 +39,10 @@ export const ArtifactHost = observer(function ArtifactHost({
 }: ArtifactHostProps) {
   const artifact = record.artifact;
   const [fullscreen, setFullscreen] = useState(false);
+  const closeFullscreen = () => {
+    setFullscreen(false);
+    onClose?.();
+  };
   const title = artifact.title ?? artifact.id;
 
   const renderArtifact = () => (
@@ -66,6 +74,36 @@ export const ArtifactHost = observer(function ArtifactHost({
     </>
   );
 
+  if (presentation === "fullscreen") {
+    const content =
+      artifact.kind === "widget" ? (
+        <WidgetArtifact
+          artifact={artifact}
+          stateSessionId={stateSessionId}
+          inlineWidgets={inlineWidgets}
+          fill
+          presentation="workspace"
+        />
+      ) : (
+        renderArtifact()
+      );
+    return (
+      <ArtifactPresentationSurface
+        record={record}
+        sessionId={stateSessionId}
+        onClose={closeFullscreen}
+      >
+        <article
+          className="h-full min-h-0 w-full"
+          data-artifact-id={artifact.id}
+          data-artifact-kind={artifact.kind}
+        >
+          {wrapContent ? wrapContent(content) : content}
+        </article>
+      </ArtifactPresentationSurface>
+    );
+  }
+
   return (
     <article
       className="relative min-w-0"
@@ -88,7 +126,7 @@ export const ArtifactHost = observer(function ArtifactHost({
                   <ArtifactPresentationSurface
                     record={record}
                     sessionId={stateSessionId}
-                    onClose={() => setFullscreen(false)}
+                    onClose={closeFullscreen}
                   >
                     <div ref={targetRef} className="h-full min-h-0 w-full" />
                   </ArtifactPresentationSurface>
@@ -112,7 +150,7 @@ export const ArtifactHost = observer(function ArtifactHost({
         <ArtifactPresentationSurface
           record={record}
           sessionId={stateSessionId}
-          onClose={() => setFullscreen(false)}
+          onClose={closeFullscreen}
         >
           {renderArtifact()}
         </ArtifactPresentationSurface>

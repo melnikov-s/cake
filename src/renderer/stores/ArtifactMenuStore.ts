@@ -6,17 +6,17 @@ import type {
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
 import { ArtifactDetailStore } from "./ArtifactDetailStore";
 
-/** Window-local isolated artifact viewer; selection belongs to the originating conversation. */
-export class ArtifactPaneStore extends Store<{
+/** Window-local fullscreen selection from the artifact menus. */
+export class ArtifactMenuStore extends Store<{
   model: ArtifactCatalog;
   currentSessionId(): string | undefined;
   artifactsChanged(lineageId: string): void;
   clearReferenceOperationError(lineageId?: ArtifactLineageId): void;
 }> {
   sessionId: string | undefined;
-  width = 560;
+  visible = false;
 
-  constructor(props: ArtifactPaneStore["props"]) {
+  constructor(props: ArtifactMenuStore["props"]) {
     super(props);
     this.reaction(
       () => this.props.currentSessionId(),
@@ -33,23 +33,25 @@ export class ArtifactPaneStore extends Store<{
     });
   }
 
-  open(sessionId: string, lineageId: ArtifactLineageId, revision?: ArtifactRevisionNumber) {
+  open(
+    sessionId: string | undefined,
+    lineageId: ArtifactLineageId,
+    revision?: ArtifactRevisionNumber,
+  ) {
     this.sessionId = sessionId;
+    this.visible = true;
     void this.detailStore.select(lineageId, revision);
   }
 
   receiveBoardChange(lineageId?: string) {
-    if (!this.sessionId) return;
+    if (!this.visible) return;
     const detail = this.detailStore;
     if (detail.selectedLineageId && (!lineageId || detail.selectedLineageId === lineageId))
       detail.messageBoardStore.receive();
   }
 
   close() {
+    this.visible = false;
     this.sessionId = undefined;
-  }
-
-  setWidth(width: number) {
-    this.width = Math.max(320, width);
   }
 }

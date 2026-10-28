@@ -222,8 +222,8 @@ test("installed Excalidraw edits shared live state and reopens retained output w
         .getByRole("button", { name: /Captured widget fixture/ })
         .click();
       return page
-        .getByRole("complementary", { name: "Artifact", exact: true })
-        .locator(`[data-artifact-id="${artifactId}"] iframe`)
+        .getByRole("dialog", { name: "Captured widget fixture", exact: true })
+        .locator("iframe")
         .first();
     };
     let iframe = page
@@ -398,13 +398,9 @@ test("installed Excalidraw edits shared live state and reopens retained output w
     // Open another ordinary instance BEFORE publishing; neither may need manual revision selection.
     const paneIframe = await openArtifact();
     await expect(paneIframe.contentFrame().locator(".excalidraw canvas").first()).toBeVisible();
-    // Fullscreen moves the pane's existing browsing context rather than cloning it.
+    // Menu opening is already fullscreen and uses one live browsing context.
     const paneSource = await paneIframe.getAttribute("src");
     if (!paneSource) throw new Error("Missing compiled pane widget URL");
-    await page
-      .getByRole("complementary", { name: "Artifact", exact: true })
-      .getByRole("button", { name: "View Captured widget fixture fullscreen" })
-      .click();
     await expect(page.locator('iframe[title="Captured widget fixture"]')).toHaveCount(2);
     await expect(
       page.getByRole("dialog", { name: "Captured widget fixture", exact: true }).locator("iframe"),
@@ -532,8 +528,8 @@ test("installed Excalidraw edits shared live state and reopens retained output w
         expect(scene.elements.find((element) => element.id === manualShape.id)).toEqual(unrelated);
       }
     }
-    await page.getByRole("button", { name: "Exit fullscreen Captured widget fixture" }).click();
     await expect(paneIframe.contentFrame().locator('main[data-source-revision="2"]')).toBeVisible();
+    await page.getByRole("button", { name: "Exit fullscreen Captured widget fixture" }).click();
     expect((await packages("remove", "@excalidraw/excalidraw")).packages).toEqual([]);
     await application.close();
     application = await launch();

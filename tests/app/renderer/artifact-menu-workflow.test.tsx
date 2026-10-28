@@ -132,9 +132,9 @@ const openMenu = async (fixture: ReturnType<typeof renderArtifacts>) => {
   return screen.getByRole("dialog", { name: "Artifacts" });
 };
 
-describe("Session artifact pane workflow", () => {
+describe("Artifact menu fullscreen workflow", () => {
   it.each(["alpha", "cake"])(
-    "presentation chat sends %s's exact current artifact, clears on exit and isolates conversations",
+    "opens %s's pinned artifact directly in fullscreen with exact presentation chat context",
     async (id) => {
       const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
         TurnId.make(crypto.randomUUID()),
@@ -145,20 +145,20 @@ describe("Session artifact pane workflow", () => {
         screen.getByRole("button", { name: id === "cake" ? "Cake Chat" : /^alpha conversation / }),
       );
       const menu = await openMenu(fixture);
+      expect(within(menu).getAllByRole("button")).toHaveLength(3);
       await fixture.user.click(
         within(menu).getByRole("button", { name: new RegExp(`Report ${id} markdown`) }),
       );
-      const pane = await screen.findByRole("complementary", { name: "Artifact" });
-      await within(pane).findByText(`${id} body revision 1`);
-      const openPresentation = async (artifactId: string) => {
-        await fixture.user.click(
-          within(pane).getByRole("button", { name: `View Report ${artifactId} fullscreen` }),
-        );
-        const surface = screen.getByRole("dialog", { name: `Report ${artifactId}` });
-        await fixture.user.click(within(surface).getByRole("button", { name: "Open chat" }));
-        return surface;
-      };
-      let surface = await openPresentation(id);
+      const surface = await screen.findByRole("dialog", { name: `Report ${id}` });
+      expect(await within(surface).findByText(`${id} body revision 1`)).toBeDefined();
+      expect(screen.queryByRole("dialog", { name: "Artifacts" })).toBeNull();
+      expect(screen.queryByRole("textbox", { name: "Search artifact library" })).toBeNull();
+      expect(fixture.readExact).toHaveBeenCalledWith(
+        id,
+        1,
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+      await fixture.user.click(within(surface).getByRole("button", { name: "Open chat" }));
       const send = async (container: HTMLElement, text: string) => {
         const input = within(container).getByRole("combobox", { name: /^Message/ });
         await fixture.user.type(input, `${text}{Enter}`);
@@ -180,16 +180,16 @@ describe("Session artifact pane workflow", () => {
       await fixture.user.click(
         within(secondMenu).getByRole("button", { name: new RegExp(`Report ${id}-second`) }),
       );
-      await within(pane).findByText(`${id}-second body revision 1`);
-      surface = await openPresentation(`${id}-second`);
-      await send(surface, "change this one");
+      const second = await screen.findByRole("dialog", { name: `Report ${id}-second` });
+      expect(await within(second).findByText(`${id}-second body revision 1`)).toBeDefined();
+      await fixture.user.click(within(second).getByRole("button", { name: "Open chat" }));
+      await send(second, "change this one");
       await waitFor(() => expect(prompt).toHaveBeenCalledTimes(2));
       expect(prompt.mock.calls[1]![0]).toMatchObject({
         artifactPresentation: { sessionId, artifactId: `${id}-second`, revision: 1 },
       });
       await fixture.user.keyboard("{Escape}");
       expect(screen.queryByRole("dialog", { name: `Report ${id}-second` })).toBeNull();
-      await fixture.user.click(within(pane).getByRole("button", { name: "Close Artifact" }));
       await send(document.body, "ordinary message");
       await waitFor(() => expect(prompt).toHaveBeenCalledTimes(3));
       expect(prompt.mock.calls[2]![0].artifactPresentation).toBeNull();
@@ -201,56 +201,51 @@ describe("Session artifact pane workflow", () => {
     },
   );
 
-  it.each(["alpha", "cake"])(
-    "opens only %s session artifacts in isolation at the pinned revision, then explicitly browses the library",
-    async (id) => {
-      using fixture = renderArtifacts();
-      await fixture.user.click(
-        screen.getByRole("button", { name: id === "cake" ? "Cake Chat" : /^alpha conversation / }),
-      );
-      const menu = await openMenu(fixture);
-      expect(within(menu).getAllByRole("button")).toHaveLength(3);
-      await fixture.user.click(
-        within(menu).getByRole("button", { name: new RegExp(`Report ${id} markdown`) }),
-      );
-      const pane = await screen.findByRole("complementary", { name: "Artifact" });
-      expect(await within(pane).findByText(`${id} body revision 1`)).toBeDefined();
-      expect(within(pane).getByText(/Revision 1 of 2/)).toBeDefined();
-      expect(screen.queryByRole("textbox", { name: "Search artifact library" })).toBeNull();
-      expect(fixture.readExact).toHaveBeenCalledWith(
-        id,
-        1,
-        expect.objectContaining({ signal: expect.any(AbortSignal) }),
-      );
-      const secondMenu = await openMenu(fixture);
-      await fixture.user.click(
-        within(secondMenu).getByRole("button", { name: new RegExp(`Report ${id}-second`) }),
-      );
-      expect(await within(pane).findByText(`${id}-second body revision 1`)).toBeDefined();
-      await fixture.user.click(within(pane).getByRole("button", { name: "Close Artifact" }));
-      expect(screen.queryByRole("complementary", { name: "Artifact" })).toBeNull();
-      const libraryMenu = await openMenu(fixture);
-      await fixture.user.click(
-        within(libraryMenu).getByRole("button", { name: "Browse all artifacts" }),
-      );
-      expect(await screen.findByRole("textbox", { name: "Search artifact library" })).toBeDefined();
-      expect(screen.getByRole("button", { name: /Report unrelated/ })).toBeDefined();
-      await fixture.user.click(screen.getByRole("button", { name: "Close all artifacts" }));
-      expect(await screen.findByRole("button", { name: "2 artifacts" })).toBeDefined();
-    },
-  );
+  it.each(["alpha", "cake"])("keeps %s's explicit library-browsing action", async (id) => {
+    using fixture = renderArtifacts();
+    await fixture.user.click(
+      screen.getByRole("button", { name: id === "cake" ? "Cake Chat" : /^alpha conversation / }),
+    );
+    const menu = await openMenu(fixture);
+    await fixture.user.click(within(menu).getByRole("button", { name: "Browse all artifacts" }));
+    expect(await screen.findByRole("textbox", { name: "Search artifact library" })).toBeDefined();
+    expect(screen.getByRole("button", { name: /Report unrelated/ })).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "Close all artifacts" }));
+    expect(await screen.findByRole("button", { name: "2 artifacts" })).toBeDefined();
+  });
 
-  it("closes the isolated viewer on conversation navigation without carrying selection into another session", async () => {
+  it("opens a global menu selection fullscreen without replacing Settings, and still browses explicitly", async () => {
+    using fixture = renderArtifacts();
+    await fixture.user.click(
+      within(screen.getByRole("complementary")).getByRole("button", { name: "Open settings" }),
+    );
+    await fixture.user.click(screen.getByRole("button", { name: "Artifacts" }));
+    const menu = screen.getByRole("dialog", { name: "Artifacts" });
+    await fixture.user.click(within(menu).getByRole("button", { name: /Report unrelated/ }));
+    const surface = await screen.findByRole("dialog", { name: "Report unrelated" });
+    expect(await within(surface).findByText("unrelated body revision 2")).toBeDefined();
+    expect(screen.queryByRole("textbox", { name: "Search artifact library" })).toBeNull();
+    await fixture.user.keyboard("{Escape}");
+    expect(screen.getByRole("button", { name: "Back to chat" })).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "Artifacts" }));
+    await fixture.user.click(
+      within(screen.getByRole("dialog", { name: "Artifacts" })).getByRole("button", {
+        name: "Browse all artifacts",
+      }),
+    );
+    expect(await screen.findByRole("textbox", { name: "Search artifact library" })).toBeDefined();
+  });
+
+  it("closes fullscreen on conversation navigation without carrying selection into another session", async () => {
     using fixture = renderArtifacts();
     await fixture.user.click(screen.getByRole("button", { name: /^alpha conversation / }));
     const menu = await openMenu(fixture);
     await fixture.user.click(within(menu).getByRole("button", { name: /Report alpha markdown/ }));
-    expect(await screen.findByText("alpha body revision 1")).toBeDefined();
+    const surface = await screen.findByRole("dialog", { name: "Report alpha" });
+    expect(await within(surface).findByText("alpha body revision 1")).toBeDefined();
+    // Cross-conversation navigation can also originate in fullscreen side chat.
     await fixture.user.click(screen.getByRole("button", { name: "Cake Chat" }));
     expect(await screen.findByRole("button", { name: "2 artifacts" })).toBeDefined();
-    expect(screen.queryByRole("complementary", { name: "Artifact" })).toBeNull();
-    await fixture.user.click(screen.getByRole("button", { name: /^alpha conversation / }));
-    expect(await screen.findByRole("button", { name: "2 artifacts" })).toBeDefined();
-    expect(screen.queryByRole("complementary", { name: "Artifact" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Report alpha" })).toBeNull();
   });
 });

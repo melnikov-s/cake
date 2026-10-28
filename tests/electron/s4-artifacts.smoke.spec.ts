@@ -74,19 +74,18 @@ test("opens the shared artifact popup and library and isolates HTML", async () =
     ).toHaveCount(4);
     await popup.getByRole("button", { name: /S4 table/ }).click();
     await expect(popup).not.toBeAttached();
-    const pane = page.getByRole("complementary", { name: "Artifact", exact: true });
-    await expect(pane).toBeVisible();
+    const presentation = page.getByRole("dialog", { name: "S4 table", exact: true });
+    await expect(presentation).toBeVisible();
     await expect(page.getByLabel("Search artifact library")).not.toBeAttached();
-    await expect(page.locator('[data-slot="artifact-pane-layout"]')).toHaveAttribute(
-      "data-presentation",
-      "side-by-side",
-    );
-    await input.click();
-    await expect(input).toBeFocused();
-    await input.pressSequentially("Continue with this artifact");
-    await expect(input).toHaveValue("Continue with this artifact");
-    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
-    await input.fill("");
+    await presentation.getByRole("button", { name: "Open chat", exact: true }).click();
+    const presentationInput = presentation.getByRole("combobox", { name: "Message", exact: true });
+    await presentationInput.click();
+    await expect(presentationInput).toBeFocused();
+    await presentationInput.pressSequentially("Continue with this artifact");
+    await expect(presentationInput).toHaveValue("Continue with this artifact");
+    await expect(presentation.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await presentationInput.fill("");
+    await presentation.getByRole("button", { name: "Close chat", exact: true }).click();
     const table = page.locator('[data-artifact-id="cake-s4-table"]');
     await expect(table).toBeVisible();
     await expect(
@@ -155,21 +154,23 @@ test("opens the shared artifact popup and library and isolates HTML", async () =
     const widget = page.locator('[data-artifact-id="cake-s4-widget"]');
     await expect(widget.locator("iframe")).toBeVisible();
     await expect(widget.getByRole("button", { name: "Repair" })).not.toBeAttached();
-    await widget.getByRole("button", { name: "View S4 widget fullscreen" }).click();
     const fullscreen = page.getByRole("dialog", { name: "S4 widget", exact: true });
     await expect(fullscreen.locator("iframe")).toBeVisible();
     await fullscreen.getByRole("button", { name: "Exit fullscreen S4 widget" }).click();
     await expect(fullscreen).not.toBeAttached();
     await artifactControl.click();
     await popup.getByRole("button", { name: /S4 diagram/ }).click();
-    await expect(page.locator('[data-artifact-id="cake-s4-diagram"] iframe')).toBeVisible();
+    await expect(
+      page.locator('[data-artifact-id="cake-s4-diagram"]').getByRole("img"),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Exit fullscreen S4 diagram" }).click();
     await artifactControl.click();
     await popup.getByRole("button", { name: /Sandboxed HTML/ }).click();
     const html = page.locator('[data-artifact-id="cake-s4-html"] iframe');
     await expect(html).toHaveAttribute("sandbox", "");
     await expect(html).toHaveAttribute("srcdoc", /default-src 'none'/);
     await expect(page.locator("body")).not.toContainText("compromised");
-    await pane.getByRole("button", { name: "Close Artifact", exact: true }).click();
+    await page.getByRole("button", { name: "Exit fullscreen Sandboxed HTML", exact: true }).click();
     await page.setViewportSize({ width: 700, height: 900 });
     await artifactControl.click();
     await expect(popup).toBeVisible();
@@ -205,6 +206,13 @@ test("opens the shared artifact popup and library and isolates HTML", async () =
     await linkedControl.click();
     await popup.getByRole("button", { name: /Sandboxed HTML/ }).click();
     await expect(html).toBeVisible();
+    await page.getByRole("button", { name: "Exit fullscreen Sandboxed HTML", exact: true }).click();
+    await linkedControl.click();
+    await popup.getByRole("button", { name: "Browse all artifacts" }).click();
+    await page
+      .getByRole("navigation", { name: "Artifact lineages" })
+      .getByRole("button", { name: /Sandboxed HTML/ })
+      .click();
     await page.evaluate(() =>
       Object.defineProperty(navigator, "clipboard", {
         configurable: true,
@@ -213,8 +221,6 @@ test("opens the shared artifact popup and library and isolates HTML", async () =
     );
     await page.getByRole("button", { name: "Copy readable path", exact: true }).click();
     await expect(page.getByText("Copied", { exact: true })).toBeVisible();
-    await linkedControl.click();
-    await popup.getByRole("button", { name: "Browse all artifacts" }).click();
     await page.getByRole("button", { name: /S4 table/ }).click();
     await page.getByRole("button", { name: "Link to this session", exact: true }).click();
     await page.getByLabel("Selected artifact revision").selectOption("1");

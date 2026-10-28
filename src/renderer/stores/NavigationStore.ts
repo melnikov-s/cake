@@ -10,7 +10,7 @@ import {
 } from "../../contracts/artifacts/artifact-lineage";
 import type { AppShellStore, SessionHistoryEntry } from "./AppShellStore";
 import type { ArtifactLibraryStore } from "./ArtifactLibraryStore";
-import type { ArtifactPaneStore } from "./ArtifactPaneStore";
+import type { ArtifactMenuStore } from "./ArtifactMenuStore";
 import type { CakeChatCollectionStore } from "./CakeChatCollectionStore";
 import type { NewSessionStore } from "./NewSessionStore";
 import { ProjectSessionNavigationContext } from "./context/ProjectSessionNavigationContext";
@@ -39,7 +39,7 @@ export class NavigationStore extends Store<{
   newSession(): NewSessionStore;
   settings(): SettingsStore;
   artifacts(): ArtifactLibraryStore;
-  artifactPane(): ArtifactPaneStore;
+  artifactMenu(): ArtifactMenuStore;
 }> {
   private get workbench() {
     return ProjectSessionNavigationContext.consume(this)!;
@@ -377,8 +377,8 @@ export class NavigationStore extends Store<{
     }
     if (this.commands.tryCancelNavigation()) return;
     if (SessionContinuationContext.consume(this)!.tryCancelPrompt()) return;
-    if (this.props.artifactPane().sessionId) {
-      this.props.artifactPane().close();
+    if (this.props.artifactMenu().visible) {
+      this.props.artifactMenu().close();
       return;
     }
     if (this.props.shell.surface === "artifact-library") {
@@ -417,10 +417,10 @@ export class NavigationStore extends Store<{
     this.presentation.restore();
   }
 
-  openArtifact(sessionId: string, lineageId: string, revision?: number) {
+  openArtifact(sessionId: string | undefined, lineageId: string, revision?: number) {
     this.commands.dismiss();
     this.props
-      .artifactPane()
+      .artifactMenu()
       .open(
         sessionId,
         decodeArtifactLineageId(lineageId),

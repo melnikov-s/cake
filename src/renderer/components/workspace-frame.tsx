@@ -7,7 +7,6 @@ import { AppSidebar } from "./app-sidebar";
 import { BrowserWorkspace } from "./browser-workspace";
 import { IdeWorkspace } from "./ide-workspace";
 import { QuakeTerminal } from "./quake-terminal";
-import { SessionArtifactPane } from "./session-artifact-pane";
 
 /** Shared composition only; the caller provides the workflow's exact-class Store scope. */
 export const WorkspaceFrame = observer(function WorkspaceFrame({
@@ -46,7 +45,7 @@ export const WorkspaceFrame = observer(function WorkspaceFrame({
   };
 
   return (
-    <SessionArtifactPane sessionId={session.sessionId}>
+    <>
       {mode === "browser" ? (
         <BrowserWorkspace
           {...commonProps}
@@ -62,6 +61,6 @@ export const WorkspaceFrame = observer(function WorkspaceFrame({
           reviews={root.reviewsStore}
         />
       )}
-    </SessionArtifactPane>
+    </>
   );
 });

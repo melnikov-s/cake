@@ -19,14 +19,11 @@ export const AppSurfaceHeader = observer(function AppSurfaceHeader() {
   const terminal = root.terminalStore;
   const sidebarCollapsed = !root.sidebarStore.visible;
   const returnToWorkbench = () => root.navigationStore.returnToWorkbench();
-  const openArtifactLibrary = useCallback(
-    (lineageId?: string) => root.navigationStore.showArtifactLibrary(undefined, lineageId),
-    [root],
-  );
+  const openArtifactLibrary = useCallback(() => root.navigationStore.showArtifactLibrary(), [root]);
   const artifactCatalogMenu = (
     <ArtifactCatalogMenu
       store={root.artifactLibraryStore}
-      onOpenArtifact={openArtifactLibrary}
+      onOpenArtifact={(lineageId) => root.navigationStore.openArtifact(undefined, lineageId)}
       onOpenLibrary={openArtifactLibrary}
     />
   );

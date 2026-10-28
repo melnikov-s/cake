@@ -67,7 +67,7 @@ import type { RootProjection } from "../models/RootProjection";
 import { formatHotkey } from "../lib/hotkeys";
 import { UiHintModeStore } from "./UiHintModeStore";
 import { ArtifactLibraryStore } from "./ArtifactLibraryStore";
-import { ArtifactPaneStore } from "./ArtifactPaneStore";
+import { ArtifactMenuStore } from "./ArtifactMenuStore";
 import { ArtifactReferencePreviewStore } from "./ArtifactReferencePreviewStore";
 import { ProjectSessionPlacementStore } from "./ProjectSessionPlacementStore";
 import { SessionRetirementStore } from "./SessionRetirementStore";
@@ -114,7 +114,7 @@ export class RootStore extends Store<{
       newSession: () => this.newSessionStore,
       settings: () => this.settingsStore,
       artifacts: () => this.artifactLibraryStore,
-      artifactPane: () => this.artifactPaneStore,
+      artifactMenu: () => this.artifactMenuStore,
     });
   }
   @child
@@ -252,8 +252,8 @@ export class RootStore extends Store<{
   }
 
   @child
-  get artifactPaneStore(): ArtifactPaneStore {
-    return createStore(ArtifactPaneStore, {
+  get artifactMenuStore(): ArtifactMenuStore {
+    return createStore(ArtifactMenuStore, {
       model: this.props.projection.artifacts,
       currentSessionId: () => {
         const selection = this.appShellStore.selection;

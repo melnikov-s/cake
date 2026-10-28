@@ -35,16 +35,17 @@ by default, with a Collapse/Expand control and no separate
 Creating or updating an artifact refreshes the catalog without opening a browsing
 surface. Cake Chat and Project Session headers use the same `ArtifactCatalogMenu`
 popover. Both headers show their linked-artifact count and effective session/family
-list. Selecting a list item closes the popover and opens that artifact in an isolated,
-resizable side pane at the linked revision, keeping the conversation alongside it
-when space permits. The pane belongs to that conversation and closes on navigation.
+list. Selecting a list item closes the popover and opens that artifact directly in
+fullscreen at the linked revision, with the existing conversation side chat and
+artifact context. The global artifact menu also opens selections in fullscreen.
+The presentation belongs to its conversation and closes on navigation.
 The explicit `Browse all artifacts` action opens the shared Artifact Library.
 Browsing never opens automatically on publication.
 Ordinary Markdown artifact links remain prose links. A standalone
 `![Title](cake://artifact/<id>@rN)` paragraph renders an explicitly pinned inline
 artifact, distinct from ordinary publication surfaces. Stable embeds without `@rN`
-follow latest; a redundant stable embed next to a publication is omitted. The isolated pane and shared library reuse the same
-artifact detail workflow for revision history, references, link management, and fullscreen presentation. The durable pointer records the originating assistant entry
+follow latest; a redundant stable embed next to a publication is omitted. Menu selections and the shared library reuse the same
+artifact detail workflow; revision history, references, and link management remain in the library. The durable pointer records the originating assistant entry
 and tool call, so the reference appears only while that assistant message is on the
 active Pi branch. Readable fallbacks remain in Cake's artifact repository and
 exact-revision projection; they are not copied into the pointer or automatically

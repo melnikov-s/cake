@@ -11,6 +11,7 @@ import { IconButtonHotkeyProvider } from "./ui/icon-button";
 import { MarkdownLinkProvider } from "./ai-elements/markdown";
 import { RendererErrorBoundary } from "./renderer-error-boundary";
 import { ArtifactReferencePreview } from "./artifact-reference-preview";
+import { ArtifactMenuSurface } from "./artifact-menu-surface";
 import { ConversationMarkdownResourceContext } from "./conversation-markdown-resource-context";
 import { ConversationMarkdownProvider } from "./conversation-markdown-provider";
 import { formatArtifactRef, parseArtifactRef } from "../../contracts/artifacts/artifact-lineage";
@@ -94,6 +95,7 @@ export const RendererRoot = observer(function RendererRoot({
                         {browserConnection && (
                           <BrowserConnectionStatus connection={browserConnection} />
                         )}
+                        {variant === "cake-chat-overlay" && <ArtifactMenuSurface />}
                         <div className="min-h-0 flex-1">
                           {variant === "cake-chat-overlay" ? (
                             <CakeChatOverlayApp />

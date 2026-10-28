@@ -1394,7 +1394,7 @@ const inlineArtifactScenario: VisualCaptureScenario = {
     "fullscreen",
     "presentation-chat",
     "popup",
-    "pane",
+    "menu-fullscreen",
   ],
   async seed(paths, theme) {
     const source = `import React, { useState } from "react";
@@ -1462,13 +1462,13 @@ export default function Visual() {
           .getByRole("button", { name: /Inline visualization/ }),
       ).toBeVisible();
     }
-    if (state === "pane") {
+    if (state === "menu-fullscreen") {
       await page.getByRole("button", { name: "1 artifacts" }).click();
       await page
         .getByRole("dialog", { name: "Artifacts", exact: true })
         .getByRole("button", { name: /Inline visualization/ })
         .click();
-      const pane = page.getByRole("complementary", { name: "Artifact", exact: true });
+      const pane = page.getByRole("dialog", { name: "Inline visualization", exact: true });
       await expect(pane).toBeVisible();
       await expect(
         pane
@@ -1508,11 +1508,12 @@ export default function Visual() {
     await page.mouse.move(1, 1);
   },
   region(page, state) {
-    return state === "pane"
-      ? page.locator('[data-slot="artifact-pane-layout"]')
-      : state === "popup" || state === "fullscreen" || state === "presentation-chat"
-        ? page.getByRole("dialog")
-        : page.locator('[data-slot="artifact-disclosure"]').first();
+    return state === "menu-fullscreen" ||
+      state === "popup" ||
+      state === "fullscreen" ||
+      state === "presentation-chat"
+      ? page.getByRole("dialog")
+      : page.locator('[data-slot="artifact-disclosure"]').first();
   },
 };
 
@@ -2965,7 +2966,7 @@ const resultTodoDoneScenario: VisualCaptureScenario = {
 
 const cakeChatArtifactScenario: VisualCaptureScenario = {
   name: "cake-chat-artifact",
-  description: "Cake Chat session-scoped artifacts opening in an isolated side pane",
+  description: "Cake Chat session-scoped artifacts opening directly in fullscreen",
   states: ["default"],
   async seed(paths, theme) {
     await cakeChatScenario.seed(paths, theme);
@@ -3000,9 +3001,10 @@ const cakeChatArtifactScenario: VisualCaptureScenario = {
       menu.getByRole("navigation", { name: "Artifact list" }).getByRole("button"),
     ).toHaveCount(1);
     await menu.getByRole("button", { name: /Coordinator report/ }).click();
-    await expect(page.getByRole("complementary", { name: "Artifact", exact: true })).toBeVisible();
+    const surface = page.getByRole("dialog", { name: "Coordinator report", exact: true });
+    await expect(surface).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "Session artifact", exact: true }),
+      surface.getByRole("heading", { name: "Session artifact", exact: true }),
     ).toBeVisible();
   },
   region: (page) => page.locator("body"),

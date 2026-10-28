@@ -14,7 +14,7 @@ export const observeArtifactEvents = (runtime: Runtime, root: RootStore) =>
         }
         if (event.type === "message-board-invalidated") {
           root.artifactLibraryStore.receiveBoardChange(event.lineageId);
-          root.artifactPaneStore.receiveBoardChange(event.lineageId);
+          root.artifactMenuStore.receiveBoardChange(event.lineageId);
           return;
         }
         if (event.type === "renderer-events-ready") {
@@ -22,7 +22,7 @@ export const observeArtifactEvents = (runtime: Runtime, root: RootStore) =>
           root.props.projection.artifacts.invalidate();
           // Reconcile content after stream subscription/reconnection, not only after opening.
           root.artifactLibraryStore.receiveBoardChange();
-          root.artifactPaneStore.receiveBoardChange();
+          root.artifactMenuStore.receiveBoardChange();
           return;
         }
         if (event.type === "artifact-updated" || event.type === "artifact-catalog-invalidated") {
@@ -33,7 +33,7 @@ export const observeArtifactEvents = (runtime: Runtime, root: RootStore) =>
           const lineageId =
             event.type === "artifact-updated" ? event.record.artifact.id : event.lineageId;
           root.artifactLibraryStore.receiveBoardChange(lineageId);
-          root.artifactPaneStore.receiveBoardChange(lineageId);
+          root.artifactMenuStore.receiveBoardChange(lineageId);
           return;
         }
         const storeEvent = toStoreEvent(event);

@@ -125,13 +125,15 @@ test("a portable skill and added library create independent native drawings with
     const secondCreationMs = performance.now() - secondStarted;
     expect(flow.artifactId).not.toBe(hello.artifactId);
     const open = async (title: string, id: string) => {
+      const close = page.getByRole("button", { name: /^Exit fullscreen / });
+      if (await close.count()) await close.click();
       await page.getByRole("button", { name: "2 artifacts", exact: true }).click();
       await page
         .getByRole("dialog", { name: "Artifacts", exact: true })
         .getByRole("button", { name: new RegExp(title) })
         .click();
       return page
-        .getByRole("complementary", { name: "Artifact", exact: true })
+        .getByRole("dialog", { name: title, exact: true })
         .locator(`[data-artifact-id="${id}"] iframe`)
         .first();
     };
