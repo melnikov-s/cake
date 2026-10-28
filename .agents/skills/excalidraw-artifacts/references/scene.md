@@ -3,8 +3,11 @@
 Use Excalidraw's native scene JSON as the artifact state, not a Cake drawing
 protocol. The editor seed is only a starting value. Always inspect the latest
 `artifacts.state.read` before an edit; manual edits and selection are live state.
-Ordinary creation is fully documented in SKILL.md: use the skill widget template
-and skeleton initialState directly. This reference is for advanced scene/editor work.
+Ordinary creation and editing are fully documented in SKILL.md: use the skill
+widget template and skeleton initialState for a new drawing, or its live-state
+recipes to rename labels and append native shapes/text. Do not read this reference
+or discover tool contracts for those routine operations. This reference is for
+advanced scene/editor work.
 
 ## Document shape
 
@@ -35,8 +38,14 @@ hover/drag/edit state and viewport dimensions do not belong in storage.
 
 ## Construct new elements with the library
 
-For new shapes use `convertToExcalidrawElements`, not hand-written partial
-native objects. Explicit stable IDs help later surgical edits:
+When writing renderer code or using an available library execution environment,
+use `convertToExcalidrawElements`, not hand-written partial native objects. Ordinary
+tool-based shape additions instead use the complete native element recipe in
+SKILL.md; they do not require code generation or importing the library into
+codemode. `artifacts.state.update` does not run the skeleton converter. Never
+reintroduce a `skeleton` field into an initialized scene.
+
+Explicit stable IDs help later surgical edits:
 
 ```tsx
 import { convertToExcalidrawElements } from "@excalidraw/excalidraw";
