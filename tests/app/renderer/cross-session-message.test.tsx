@@ -157,6 +157,27 @@ describe("cross-session message presentation", () => {
     expect(screen.getByText("Original content")).toBeTruthy();
   });
 
+  it.each([
+    ["cake://session/source-session", undefined],
+    ["cake://session/source-session?message=original-42", "original-42"],
+  ])(
+    "opens href-only source attribution through Markdown navigation (%s)",
+    async (href, entryId) => {
+      const openSession = vi.fn();
+      render(
+        <MarkdownLinkProvider actions={{ openSession, openExternalUrl: vi.fn() }}>
+          <SessionMessage source={{ title: "Investigation update", href }}>Findings</SessionMessage>
+        </MarkdownLinkProvider>,
+      );
+      const link = screen.getByRole("link", { name: "Open conversation" });
+      expect(link.getAttribute("href")).toBe(href);
+      await userEvent.setup().click(link);
+      expect(openSession.mock.calls).toEqual([
+        entryId ? ["source-session", entryId] : ["source-session"],
+      ]);
+    },
+  );
+
   it("opens a private worker through its public parent/handle, never a private session ID", async () => {
     const openSubagent = vi.fn();
     const openSession = vi.fn();

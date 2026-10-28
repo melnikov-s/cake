@@ -1,4 +1,6 @@
 import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
+import { encodeCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
+import { readMessageReference } from "../../../src/services/pi/runtime/message-references";
 import { SessionManager, type FileEntry } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 import {
@@ -23,6 +25,56 @@ import {
   toolCompactEntryType,
   toolCompactProvenanceEntryType,
 } from "../../../src/services/pi/runtime/tool-compaction-provenance";
+
+it("projects the exact family bootstrap as application context on live input and replay, without rewriting Pi's original", () => {
+  const messageId = "738bcdfd-5f22-4f2f-bf94-bd6d661aaf0f";
+  const metadata = {
+    version: 1 as const,
+    messageId,
+    threadId: "8e328490-5521-42f5-a09a-d7d28dc61609",
+    sequence: 1,
+    expectsResponse: false,
+    resultDelivery: "ignore" as const,
+    sender: {
+      kind: "project-session" as const,
+      sessionId: "parent",
+      title: "Diagram investigation",
+    },
+  };
+  const body = `Read workgroups.md and sessions.md. Your assignment is already persisted on the family Workboard: entry #1, topic child-${messageId}. Read it with boards.read before working. Communicate with family members only on the Workboard.`;
+  const content = encodeCrossSessionMessage(body, metadata);
+  const message = { role: "user" as const, content, timestamp: 1 };
+  const live = createLiveMessageProjector()({ type: "message_start", message });
+  const session = SessionManager.inMemory("/project");
+  const entryId = session.appendMessage(message);
+  const replay = projectSessionEntries(session.getEntries());
+  for (const parts of [live, replay])
+    expect(parts).toEqual([
+      expect.objectContaining({
+        kind: "context",
+        title: "Family bootstrap",
+        text: expect.stringContaining("`boards.read`"),
+      }),
+    ]);
+  expect(readMessageReference(session, { entryId }).text).toBe(content);
+
+  // Authored requests, later reports and other topics must keep their original attribution.
+  for (const [text, envelope] of [
+    ["Read workgroups.md and sessions.md before reviewing the diagram.", metadata],
+    [body, { ...metadata, sequence: 2 }],
+    [body.replace(messageId, "another-child"), metadata],
+  ] as const) {
+    const request = SessionManager.inMemory("/project");
+    request.appendMessage({ ...message, content: encodeCrossSessionMessage(text, envelope) });
+    expect(projectSessionEntries(request.getEntries())).toEqual([
+      expect.objectContaining({
+        kind: "text",
+        text,
+        crossSession: expect.objectContaining({ sender: metadata.sender }),
+      }),
+    ]);
+  }
+});
 
 const usage: Usage = {
   input: 10,

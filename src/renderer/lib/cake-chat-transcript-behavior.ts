@@ -27,7 +27,13 @@ export function cakeChatTranscriptBehaviorFor(
       if (pane) root.navigationStore.focusCakeChatPane(pane.paneId);
       void root.projectWorkbenchStore.presentationStore
         .openFile(editorLocationFromPath(location))
-        .catch(() => undefined);
+        .catch((error: unknown) =>
+          root.toastStore.show({
+            tone: "error",
+            title: "Could not open file",
+            message: error instanceof Error ? error.message : String(error),
+          }),
+        );
     },
   };
 }

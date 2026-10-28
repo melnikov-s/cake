@@ -32,6 +32,7 @@ import {
   type InterviewRecord,
 } from "../../../contracts/interviews/interview";
 import { parseCrossSessionMessage } from "../../../contracts/conversations/cross-session-message";
+import { familyBootstrapContext } from "../../../contracts/conversations/family-bootstrap";
 import { parseScheduledMessage } from "../../../contracts/conversations/scheduled-message-envelope";
 import { shouldRenderMarkdown } from "../../../utils/markdown";
 import { splitContextReminders } from "./session-context-reminders";
@@ -411,6 +412,12 @@ function partsFromMessage(
       }));
     const parsedContext = parseContextAttachmentBlocks(envelope.text);
     const text = parsedContext.text;
+    const bootstrap = familyBootstrapContext(text, envelope.crossSession);
+    if (bootstrap)
+      return [
+        ...reminderParts,
+        { id: `${baseId}-context`, kind: "context", title: "Family bootstrap", text: bootstrap },
+      ];
     const renderAsMarkdown =
       renderUserMessageAsMarkdown || Boolean(envelope.crossSession && shouldRenderMarkdown(text));
     const skill = parseSkillBlock(text);

@@ -243,6 +243,31 @@ describe("Markdown rendering integration", () => {
     expect(screen.getByText("src/not-a-link.ts:3").tagName).toBe("CODE");
   });
 
+  it("does not turn Cake tool names into files and leaves sentence punctuation outside document links", async () => {
+    const open = vi.fn();
+    using fixture = renderMarkdown(
+      "Read workgroups.md and sessions.md. Read it with boards.read before working. Use sessions.reports.read, messages.read, context.compact, boards.search and artifacts.present. Open src/main.ts:8. [Actual file](./boards.read).",
+      { props: { onOpenSourceLocation: open } },
+    );
+    for (const label of [
+      "boards.read",
+      "sessions.reports.read",
+      "messages.read",
+      "context.compact",
+      "boards.search",
+      "artifacts.present",
+    ])
+      expect(screen.queryByRole("link", { name: label })).toBeNull();
+    await fixture.user.click(screen.getByRole("link", { name: "workgroups.md" }));
+    expect(open).toHaveBeenLastCalledWith({ path: "workgroups.md" });
+    await fixture.user.click(screen.getByRole("link", { name: "sessions.md" }));
+    expect(open).toHaveBeenLastCalledWith({ path: "sessions.md" });
+    await fixture.user.click(screen.getByRole("link", { name: "src/main.ts:8" }));
+    expect(open).toHaveBeenLastCalledWith({ path: "src/main.ts", range: { start: { line: 7 } } });
+    await fixture.user.click(screen.getByRole("link", { name: "Actual file" }));
+    expect(open).toHaveBeenLastCalledWith({ path: "./boards.read" });
+  });
+
   it("preserves session and artifact targets and authored labels through sanitization", async () => {
     const openSession = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);
     using fixture = renderMarkdown(
@@ -257,9 +282,11 @@ describe("Markdown rendering integration", () => {
     expect(session.getAttribute("href")).toBe("cake://session/session-123");
     expect(session.getAttribute("aria-description")).toBe("cake://session/session-123");
     await fixture.user.click(session);
-    expect(openSession).toHaveBeenCalledWith(
-      { sessionId: "session-123", workingDirectory: "/work/cake" },
-      { signal: expect.any(AbortSignal) },
+    await waitFor(() =>
+      expect(openSession).toHaveBeenCalledWith(
+        { sessionId: "session-123", workingDirectory: "/work/cake" },
+        { signal: expect.any(AbortSignal) },
+      ),
     );
     expect(screen.getByRole("link", { name: "Narrow layout" }).getAttribute("href")).toBe(
       "cake://artifact/session-assistant-narrow",
@@ -282,9 +309,11 @@ describe("Markdown rendering integration", () => {
       expect(link.getAttribute("href")).toBe(`cake://session/${sessionId}`);
       expect(link.getAttribute("aria-description")).toBe(`cake://session/${sessionId}`);
       await fixture.user.click(link);
-      expect(open).toHaveBeenCalledWith(
-        { sessionId, workingDirectory: "/work/cake" },
-        { signal: expect.any(AbortSignal) },
+      await waitFor(() =>
+        expect(open).toHaveBeenCalledWith(
+          { sessionId, workingDirectory: "/work/cake" },
+          { signal: expect.any(AbortSignal) },
+        ),
       );
     },
   );
@@ -301,9 +330,11 @@ describe("Markdown rendering integration", () => {
       const link = screen.getByRole("link", { name: "f80c961e" });
       expect(link.getAttribute("href")).toBe(`cake://session/${sessionId}`);
       await fixture.user.click(link);
-      expect(open).toHaveBeenCalledWith(
-        { sessionId, workingDirectory: "/work/cake" },
-        { signal: expect.any(AbortSignal) },
+      await waitFor(() =>
+        expect(open).toHaveBeenCalledWith(
+          { sessionId, workingDirectory: "/work/cake" },
+          { signal: expect.any(AbortSignal) },
+        ),
       );
     },
   );

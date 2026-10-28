@@ -47,7 +47,10 @@ const artifactPathPrefix = "/__cake_artifact__/";
 const subagentPathPrefix = "/__cake_subagent__/";
 const protectedMarkdown = /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`|!?\[[^\]]*\]\([^)]+\))/g;
 const bareSourceReference =
-  /(^|[\s(])((?:[^\s/:#()[\],]+\/)*[^\s/:#()[\],]+\.[a-z][a-z0-9._+-]*(?::\d+(?::\d+)?|#L\d+(?:-L?\d+)?(?:,L\d+(?:-L?\d+)?)*)?)(?=$|[\s),.;!?])/gi;
+  /(^|[\s(])((?:[^\s/:#()[\],]+\/)*[^\s/:#()[\],]+\.[a-z](?:[a-z0-9._+-]*[a-z0-9_+-])?(?::\d+(?::\d+)?|#L\d+(?:-L?\d+)?(?:,L\d+(?:-L?\d+)?)*)?)(?=$|[\s),.;!?])/gi;
+// Cake operation names are prose, not workspace files. Explicit paths/links remain authored.
+const cakeOperationReference =
+  /^(?:app|projects|sessions|session|session-labels|context|models|settings|interview|artifacts|boards|widgets|plugins|vscode|browser|subagents|notifications|worktrees|messages|attachments|todos)\.(?:abort|add|append|authoring|cancel|cdp|clear|close|compact|completions|create|current|debug|delete|discard|enter|entry|events|follow|fork|get|help|history|info|link|list|merge|open|parallel|patch|pending|present|preview|project|prompt|proposeSquashMessage|queue|read|remove|rename|reorder|replace|reply|reports|resolve|restore|run|schedule|scheduled|script|search|select|selection|selections|send|session|set|settings|source|split|start|state|status|stop|thread|unlink|update|usage|user|wait|window)(?:[.-][a-z0-9-]+)*$/i;
 const bareArtifactReference =
   /(^|[\s(])(cake:\/\/artifact\/[A-Za-z0-9][A-Za-z0-9._:-]*(?:@r[1-9][0-9]*)?)(?=$|[\s),.;!?])/g;
 
@@ -200,7 +203,7 @@ function prepareMarkdownLinks(markdown: string, sourceLinks: boolean, workspaceI
       return withArtifacts.replace(
         bareSourceReference,
         (match, prefix: string, reference: string) =>
-          parseSourceLocation(reference)
+          !cakeOperationReference.test(reference) && parseSourceLocation(reference)
             ? `${prefix}[${reference}](${sourceHref(reference)})`
             : match,
       );

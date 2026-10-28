@@ -225,7 +225,8 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
 
   async openFile(location: EditorLocation) {
     const session = this.session;
-    if (!session || this.props.activeSessionResolved()) return;
+    if (!session || this.props.activeSessionResolved())
+      throw new Error("Select an active conversation to open files.");
     this.props.dismissCommandPane();
     this.browserStore.suspend();
     await session.editorSelectionsStore.open(location);

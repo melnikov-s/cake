@@ -1,17 +1,14 @@
 import { useId, useState, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
-import { useMarkdownLinkActions } from "./ai-elements/markdown";
+import { MarkdownLink, useMarkdownLinkActions } from "./ai-elements/markdown";
 import type { CrossSessionBadge } from "../lib/cross-session-presentation";
 import { markdownSummary } from "../lib/message-summary";
 import { cn } from "../lib/utils";
 import type { MessageReferencePreviewStore } from "../stores/MessageReferencePreviewStore";
-import { messageNavigationTarget } from "../../contracts/conversations/message-reference";
-import { parseSubagentLink } from "../../contracts/subagents/subagent-reference";
 import { MessageSourceBody, MessageSourceCopy, OriginalResponse } from "./message-source-body";
 import { ResultTodoDone, ResultTodoTitles, type ResultTodoLink } from "./result-todo-done";
 import { badgeVariants } from "./ui/badge";
 import { ChevronIcon } from "./ui/icons";
-import { Link } from "./ui/link";
 
 /**
  * A message from another session as one summary row: the sender's title, status, a preview
@@ -79,16 +76,6 @@ export const SessionMessage = observer(function SessionMessage({
   const reference = (sources[0] ?? originals[0])?.props.reference;
   const linkedTodos = todo?.origin ? (todo.todos?.itemsForResult(todo.origin) ?? []) : [];
   const href = reference ?? source?.href ?? (id ? `cake://session/${encodeURIComponent(id)}` : "");
-  const openSource = () => {
-    if (reference) {
-      const target = messageNavigationTarget(reference);
-      actions?.openSession(target.sessionId, target.messageId);
-      return;
-    }
-    const worker = parseSubagentLink(href);
-    if (worker) actions?.openSubagent?.(worker.parentSessionId, worker.handleId, worker.messageId);
-    else if (id) actions?.openSession(id);
-  };
   return (
     <section
       data-slot="session-message"
@@ -151,17 +138,14 @@ export const SessionMessage = observer(function SessionMessage({
             <footer className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/60 px-5 py-2 text-xs text-muted-foreground">
               <ResultTodoTitles {...todo} />
               {href && actions && (
-                <Link
+                <MarkdownLink
                   href={href}
+                  showIcon={false}
                   title={reference ? "Open the original message" : "Open source conversation"}
                   className="ml-auto font-medium text-inherit decoration-transparent hover:text-foreground hover:decoration-current"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    openSource();
-                  }}
                 >
                   {reference ? "Full response" : "Open conversation"}
-                </Link>
+                </MarkdownLink>
               )}
               {sources[0] && <MessageSourceCopy store={sources[0]} />}
             </footer>
