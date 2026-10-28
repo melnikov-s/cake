@@ -60,6 +60,40 @@ it("starts one section at each A → B → A transition, not on follow-ups or st
   expect(transcriptTaskSections(items).sections).toEqual(sections);
 });
 
+it("uses known incoming associations once per switch and lets explicit human attribution clear a section", () => {
+  const items = groupTranscriptParts([
+    user("a", "A"),
+    answer("a-answer"),
+    answer("incoming-b"),
+    answer("incoming-b-followup"),
+    user("back-to-a", "A"),
+    answer("a-return-answer"),
+    user("casual", null),
+    answer("casual-answer"),
+  ]);
+  const linked = new Map([
+    ["incoming-b", "B"],
+    ["incoming-b-followup", "B"],
+    ["casual", "A"],
+  ]);
+  const sections = transcriptTaskSections(items, (item) => linked.get(item.id)).sections;
+  expect(sections.map((section) => section.todoId)).toEqual([
+    "A",
+    "A",
+    "B",
+    "B",
+    "A",
+    "A",
+    undefined,
+    undefined,
+  ]);
+  expect(sections.filter((section) => section.start).map((section) => section.todoId)).toEqual([
+    "A",
+    "B",
+    "A",
+  ]);
+});
+
 it("does not guess an unresolved input belongs to the previous task; activity and wide widgets retain their section identity", () => {
   const parts: UiPart[] = [
     user("a", "A"),

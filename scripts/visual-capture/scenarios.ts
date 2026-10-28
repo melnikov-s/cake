@@ -2341,10 +2341,16 @@ const projectChatTodos: VisualCaptureScenario = {
 
 const projectChatTaskRails: VisualCaptureScenario = {
   name: "project-chat-task-rails",
-  description: "Task-switch margin rails, narrow hiding, pane inspection and wide widget breaks",
+  description:
+    "Readable task-switch labels at all widths, pane inspection and wide widget rule breaks",
   states: ["wide", "narrow", "widget", "return", "pane"],
   async seed(paths, theme) {
     await projectChatTodos.seed(paths, theme);
+    const file = join(paths.cakeHome, "state", "application.json");
+    const application = JSON.parse(await readFile(file, "utf8"));
+    application.data.projects[0].todos.items[0].title =
+      "Investigate slow project startup and repeated configuration reads";
+    await writeFile(file, JSON.stringify(application));
     const hash = createHash("sha256").update(paths.project).digest("hex");
     const chatId = `project-chat:${hash}`;
     const source =
@@ -2400,38 +2406,62 @@ const projectChatTaskRails: VisualCaptureScenario = {
       .click();
     await expect(page.getByRole("combobox", { name: "Message Project Chat" })).toBeVisible();
     const transcript = page.locator(".transcript").last();
-    await transcript.evaluate((element) => {
-      element.scrollTop = 0;
-    });
-    const first = page.getByTitle("Show in To-do: Startup investigation").first();
-    if (state === "narrow") {
-      await expect(first).toBeHidden();
-    } else {
-      await expect(first).toBeVisible();
-      if (state === "widget") {
-        const widget = page.locator('[data-slot="artifact-disclosure"]').first();
-        await widget.scrollIntoViewIfNeeded();
-        await expect(widget).toBeVisible();
-        await expect(
-          widget.locator(
-            'xpath=ancestor::*[@data-slot="transcript-item"]/*[@data-slot="margin-rail"]',
-          ),
-        ).toBeHidden();
-      }
-      if (state === "return") {
-        await page
-          .getByText("Back to startup—compare a cold launch too.", { exact: true })
-          .scrollIntoViewIfNeeded();
-        await expect(page.getByTitle("Show in To-do: Startup investigation").last()).toBeVisible();
-      }
-      if (state === "pane") {
-        await first.click();
-        const pane = page.getByRole("complementary", { name: "To-do" });
-        await expect(pane).toBeVisible();
-        await expect(
-          pane.getByRole("button", { name: "Startup investigation", exact: true }),
-        ).toHaveAttribute("aria-pressed", "false");
-      }
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await transcript.hover({ position: { x: 10, y: 100 } });
+    await page.mouse.wheel(0, -10000);
+    await expect
+      .poll(async () => {
+        await page.mouse.wheel(0, -10000);
+        return transcript.evaluate((element) => element.scrollTop);
+      })
+      .toBeLessThan(1);
+    const taskTitle = "Investigate slow project startup and repeated configuration reads";
+    const row = page
+      .getByText("Investigate slow project startup.", { exact: true })
+      .locator('xpath=ancestor::*[@data-slot="transcript-item"]');
+    const first = row.getByTitle(`Show in To-do: ${taskTitle}`);
+    await expect(first).toBeVisible();
+    // The marker belongs above its message, inside the same reading column, not in a
+    // fixed-width offscreen gutter. Check real Electron geometry at every viewport.
+    const label = first.locator('xpath=ancestor::*[@data-slot="task-section-label"]');
+    const labelBounds = await label.boundingBox();
+    const rowBounds = await row.boundingBox();
+    const messageBounds = await row.locator('[data-slot="message"]').first().boundingBox();
+    expect(labelBounds, "Task label bounds").not.toBeNull();
+    expect(rowBounds, "Transcript row bounds").not.toBeNull();
+    expect(messageBounds, "Following message bounds").not.toBeNull();
+    expect(labelBounds!.x).toBeGreaterThanOrEqual(rowBounds!.x);
+    expect(labelBounds!.x + labelBounds!.width).toBeLessThanOrEqual(
+      rowBounds!.x + rowBounds!.width + 1,
+    );
+    expect(labelBounds!.y + labelBounds!.height).toBeLessThanOrEqual(messageBounds!.y);
+    expect((await first.boundingBox())!.height).toBeLessThan(80);
+    if (state === "widget") {
+      const widget = page.locator('[data-slot="artifact-disclosure"]').first();
+      await widget.scrollIntoViewIfNeeded();
+      await expect(widget).toBeVisible();
+      await expect(
+        widget.locator(
+          'xpath=ancestor::*[@data-slot="transcript-item"]/*[@data-slot="margin-rail"]',
+        ),
+      ).toBeHidden();
+    }
+    if (state === "return") {
+      await transcript.hover({ position: { x: 10, y: 100 } });
+      await page.mouse.wheel(0, 10000);
+      await page
+        .getByText("Back to startup—compare a cold launch too.", { exact: true })
+        .scrollIntoViewIfNeeded();
+      await expect(page.getByTitle(`Show in To-do: ${taskTitle}`).last()).toBeVisible();
+    }
+    if (state === "pane") {
+      await first.click();
+      const pane = page.getByRole("complementary", { name: "To-do" });
+      await expect(pane).toBeVisible();
+      await expect(pane.getByRole("button", { name: taskTitle, exact: true })).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
     }
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.mouse.move(1, 1);

@@ -460,8 +460,9 @@ is a refactoring signal, not precedent.
   and does not block the response. Identity-only attribution lives beside Durable originals,
   not in another transcript. Invalid or unavailable attribution leaves the turn ungrouped.
   Known incoming session/subagent/exact-message associations are projected without a model call.
-  Rails read current to-do title/status/state live, hide when the transcript lacks gutter room,
-  and break at wide artifacts/widgets. Revealing a task inspects its pane row without selecting
+  Task-switch labels read current to-do title/status/state live and sit directly above their
+  section in the reading flow at every width. Only the gutter continuation rules hide when
+  the transcript lacks gutter room and break at wide artifacts/widgets. Revealing a task inspects its pane row without selecting
   next-message context. Ordinary Project Sessions and secondary chats retain per-result controls.
   Their incoming message or source cards whose session, subagent or exact-message links
   match a to-do keep their association row visible, including historical updates, requests,
