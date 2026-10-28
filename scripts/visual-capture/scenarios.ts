@@ -5082,6 +5082,105 @@ const rendererCrash: VisualCaptureScenario = {
   region: (page) => page.getByRole("dialog", { name: "Cake encountered an error", exact: true }),
 };
 
+const assistantMarkdownTable: VisualCaptureScenario = {
+  name: "assistant-markdown-table",
+  description: "Markdown table actions stay visible across scroll-driven hover changes",
+  states: ["default"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    const file = join(
+      workspaceSessionDirectory(paths.project, join(paths.cakeHome, "pi", "sessions")),
+      "1970-01-01T00-00-00-000Z_visual-assistant-markdown-code.jsonl",
+    );
+    const transcript = await readFile(file, "utf8");
+    const markdown = [
+      ...Array.from({ length: 8 }, () => "Compare complete approaches on the same recordings.\n"),
+      "## Compare complete approaches",
+      "For the lip reader, you could compare:",
+      "",
+      "| Approach | Input |",
+      "| --- | --- |",
+      "| A | Mouth video |",
+      "| B | Lip landmarks over time |",
+      "| C | Estimated 3D mouth geometry |",
+      "| D | Video plus geometry |",
+      "",
+      ...Array.from({ length: 12 }, () => "Run each against the same held-out recordings.\n"),
+    ].join("\n");
+    await writeFile(
+      file,
+      transcript.replace(JSON.stringify(assistantMarkdown), JSON.stringify(markdown)),
+    );
+  },
+  async prepare(page) {
+    const wrapper = page.locator('[data-streamdown="table-wrapper"]');
+    const actions = wrapper.locator(":scope > div").first();
+    const scroller = page.locator(".transcript");
+    await expect(wrapper).toBeVisible();
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await wrapper.scrollIntoViewIfNeeded();
+    await page.mouse.move(1, 1);
+    await expect(actions).toHaveCSS("opacity", "1");
+    const geometry = await wrapper.evaluate((element) => ({
+      height: element.getBoundingClientRect().height,
+      tableOffset:
+        element.querySelector("table")!.getBoundingClientRect().top -
+        element.getBoundingClientRect().top,
+    }));
+
+    await wrapper.hover();
+    await expect.poll(() => wrapper.evaluate((element) => element.matches(":hover"))).toBe(true);
+    const before = await scroller.evaluate((element) => element.scrollTop);
+    // Sample painted frames during wheel scrolling and an explicit hover exit.
+    const [opacities] = await Promise.all([
+      actions.evaluate(async (element) => {
+        const samples: string[] = [];
+        for (let frame = 0; frame < 24; frame++) {
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+          samples.push(getComputedStyle(element).opacity);
+        }
+        return [...new Set(samples)];
+      }),
+      (async () => {
+        await page.mouse.wheel(0, 360);
+        await expect
+          .poll(() => scroller.evaluate((element) => element.scrollTop))
+          .toBeGreaterThan(before);
+        await page.mouse.move(1, 1);
+      })(),
+    ]);
+    await expect
+      .poll(() => scroller.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(before);
+    await expect.poll(() => wrapper.evaluate((element) => element.matches(":hover"))).toBe(false);
+    expect(opacities).toEqual(["1"]);
+    await expect(actions).toHaveCSS("opacity", "1");
+    expect(
+      await wrapper.evaluate((element) => ({
+        height: element.getBoundingClientRect().height,
+        tableOffset:
+          element.querySelector("table")!.getBoundingClientRect().top -
+          element.getBoundingClientRect().top,
+      })),
+    ).toEqual(geometry);
+
+    await wrapper.scrollIntoViewIfNeeded();
+    const fullscreen = wrapper.getByRole("button", { name: "View table fullscreen" });
+    await fullscreen.focus();
+    await page.keyboard.press("Enter");
+    const dialog = page.getByRole("dialog", { name: "Table", exact: true });
+    await expect(dialog.getByRole("cell", { name: "Mouth video", exact: true })).toBeVisible();
+    await dialog.getByRole("button", { name: "Exit fullscreen Table" }).click();
+    await expect(dialog).toHaveCount(0);
+    await wrapper.getByRole("button", { name: "Copy table", exact: true }).click();
+    for (const name of ["Markdown", "CSV", "TSV"])
+      await expect(wrapper.getByRole("button", { name, exact: true })).toBeVisible();
+    await wrapper.getByRole("button", { name: "Copy table", exact: true }).click();
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator('[data-streamdown="table-wrapper"]'),
+};
+
 const assistantDiagrams: VisualCaptureScenario = {
   name: "assistant-diagrams",
   description: "Pele diagrams in the real virtualized transcript, with zoom and fullscreen",
@@ -5188,6 +5287,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   sessionPluginsScenario,
   assistantMarkdownCode,
   assistantDiagrams,
+  assistantMarkdownTable,
   contextPillsScenario,
   sessionMessagesScenario,
   sessionMessageVariantsScenario,

@@ -11,8 +11,8 @@ export function MarkdownTable({
   ...props
 }: ComponentProps<"table"> & { onFullscreen?(table: ReactNode): void }) {
   return (
-    <div className="group/table relative my-4 flex flex-col gap-2" data-streamdown="table-wrapper">
-      <div className="flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover/table:opacity-100 group-has-[:focus-visible]/table:opacity-100">
+    <div className="relative my-4 flex flex-col gap-2" data-streamdown="table-wrapper">
+      <div className="flex items-center justify-end gap-1">
         <TableCopyDropdown />
         {onFullscreen && (
           <FullscreenButton
