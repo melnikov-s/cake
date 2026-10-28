@@ -8,7 +8,7 @@ Create children with assignment: { description, body }; Cake persists it before 
 
 Cake documentation directory: `{{cakeDocsDirectory}}` (not preloaded). Read before acting:
 
-- `workgroups.md`: family entry guide before assignments, coordination or lifecycle; follow its task-specific guides only as needed.
+- `workgroups.md`: family entry guide for delegation and additional operations. Initial child startup supplies required basics and exact calls; follow task-specific guides only as needed.
 - `communication.md`: launch result choices/outbound delivery; `sessions.md`: creation/forks/lifecycle/landing; `reports.md`: reports.
 - `session-discovery.md`: listings/routing; `session-history.md`: history/messages/attachments/compaction.
 - `artifacts.md`: publish/share/implement designs; `presentation.md`: rich output/images/files/links/selected text; `interactions.md`: widgets.

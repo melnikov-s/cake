@@ -1,6 +1,6 @@
 # Workgroups and Session Families
 
-Read this entry guide before family assignments, coordination, board use or lifecycle changes. Your session context supplies family identity, immediate parent and Working Directory. Read only the matching task guides below, not the whole family manual.
+Initial child startup supplies the persisted assignment, authoritative `family-startup.md` basics, concrete Workboard calls and effective result delivery; no preliminary guide/help/discovery reads are required for that workflow. Use this entry guide for delegation or additional family operations. Read only the matching task guides below, not the whole family manual.
 
 ## Essential family rules
 
@@ -15,6 +15,6 @@ A child's Working Directory is fixed. Use Cake-managed worktrees and serialized 
 ## Read for the task
 
 - **Delegating or retrying a child:** `family-delegation.md`, `communication.md` and `sessions.create-child.help`. Choose result delivery at launch: reply for a dependent next action or an answer owed to the user; notification for background review. Reply does not block.
-- **Starting an assignment or coordinating/reporting:** `family-coordination.md` for board discovery, relevant context, audiences, results and delivery evidence. Keep substantive startup assignments and durable board originals; neither substitutes for verification.
+- **Additional coordination operations:** `family-coordination.md` for supersession, broader audiences, receipts and delivery evidence. Keep substantive startup assignments and durable board originals; neither substitutes for verification.
 - **Worktrees, landing, stop or resolution:** `family-lifecycle.md` and the matching `sessions.md` operation help.
 - **User-requested periodic check-ins:** Read `communication.md` before user-requested periodic check-ins; otherwise do not poll or schedule timers.

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { cakeAgentDocumentationDirectory } from "../../../src/services/pi/runtime/cake-agent-documentation";
 import workgroups from "../../../docs/agent/workgroups.md?raw";
+import startup from "../../../docs/agent/family-startup.md?raw";
 import delegation from "../../../docs/agent/family-delegation.md?raw";
 import coordination from "../../../docs/agent/family-coordination.md?raw";
 import lifecycle from "../../../docs/agent/family-lifecycle.md?raw";
@@ -22,6 +23,7 @@ it("publishes the family entry guide and every linked task guide from repository
   const directory = await cakeAgentDocumentationDirectory(agentDirectory);
   for (const [name, source] of Object.entries({
     workgroups,
+    "family-startup": startup,
     "family-delegation": delegation,
     "family-coordination": coordination,
     "family-lifecycle": lifecycle,

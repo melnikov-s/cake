@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Context, Deferred, Effect, Layer, Stream, Schema, Option, Fiber } from "effect";
 import { describe } from "vitest";
+import {
+  resultDeliveryBehavior,
+  type ResultDelivery,
+} from "../../../src/contracts/conversations/result-delivery";
+import operatingBasics from "../../../docs/agent/family-startup.md?raw";
 import { createChild, initialize } from "../../../src/domain/session-families/sessionFamilies";
 import * as boards from "../../../src/domain/artifacts/messageBoards";
 import { MessageBoardError } from "../../../src/contracts/artifacts/message-board";
@@ -156,12 +161,16 @@ const fixture = Effect.fn("ChildAssignmentTest.fixture")(function* (
                 const entries = yield* (yield* MessageBoardStorage).entries(
                   boards.boardIdFor(family.familyId),
                 );
-                assert.equal(entries.length, 1, "assignment must be durable before execution");
-                const entry = entries[0];
+                const addressed = entries.filter(
+                  (entry) => entry.audience !== "workgroup" && entry.audience.includes(sessionId),
+                );
+                assert.equal(addressed.length, 1, "assignment must be durable before execution");
+                const entry = addressed[0];
                 assert.ok(entry);
                 assert.deepEqual(entry.audience, [sessionId]);
                 const message = parseCrossSessionMessage(text);
                 assert.ok(message);
+                assert.equal(message.text.split(operatingBasics.trim()).length - 1, 1);
                 assert.ok(
                   message.text.endsWith(`Description: ${entry.description}\n\n${entry.body}`),
                 );
@@ -181,7 +190,7 @@ const fixture = Effect.fn("ChildAssignmentTest.fixture")(function* (
   );
   const provide = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     effect.pipe(Effect.provide(runtimes), Effect.provide(context), Effect.provide(recovery));
-  const launch = (request = input) =>
+  const launch = (request: typeof input & { resultDelivery?: ResultDelivery } = input) =>
     provide(
       createChild("parent", location, request, (id, childLocation, newSession) =>
         Effect.succeed(options({ cwd: childLocation.workingDirectory, sessionId: id, newSession })),
@@ -200,7 +209,7 @@ const fixture = Effect.fn("ChildAssignmentTest.fixture")(function* (
 });
 
 describe("assignment-first child handoff", () => {
-  it("rejects bootstrap-first callers and permits explicit reporting exceptions at the tool contract", () => {
+  it("rejects bootstrap-first callers and accepts explicit result modes at the tool contract", () => {
     const operation = createSessionFamilyOperations(() => {
       throw new Error("Must not execute");
     }).find((item) => item.command === "sessions.create-child");
@@ -507,6 +516,79 @@ describe("assignment-first child handoff", () => {
         assert.equal(f.starts(), 1);
         assert.ok(parseCrossSessionMessage(f.bootstrap())?.text.endsWith(input.assignment.body));
       }),
+  );
+
+  for (const mode of ["reply", "notification", "ignore"] as const) {
+    it.effect(`admits self-contained startup with effective ${mode} behavior`, () =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        const result = yield* f.launch({ ...input, resultDelivery: mode });
+        yield* Deferred.await(f.firstPrompt);
+        const message = parseCrossSessionMessage(f.bootstrap());
+        assert.ok(message);
+        assert.equal(message.metadata.resultDelivery, mode);
+        assert.equal(message.metadata.expectsResponse, mode !== "ignore");
+        assert.ok(message.text.includes(`This launch uses resultDelivery: ${mode}.`));
+        assert.ok(message.text.includes(resultDeliveryBehavior[mode]));
+        assert.ok(message.text.includes(`Child public session ref: ${result.childSessionId}`));
+        assert.ok(message.text.includes('"audience":["parent"]'));
+        const receipts = yield* f.provide(boards.entryReceipts("parent", 1));
+        assert.equal(
+          receipts.receipts.find((receipt) => receipt.sessionId === result.childSessionId)?.readAt,
+          undefined,
+        );
+      }),
+    );
+  }
+
+  it.effect("renders the reserved mode on retry, not a conflicting later caller choice", () =>
+    Effect.gen(function* () {
+      const f = yield* fixture({ failConfigurationOnce: true });
+      const failed = yield* f.launch({ ...input, resultDelivery: "reply" });
+      assert.equal(failed.launch.status, "failed");
+      const retried = yield* f.launch({ ...input, resultDelivery: "ignore" });
+      yield* Deferred.await(f.firstPrompt);
+      assert.equal(retried.resultDelivery, "reply");
+      assert.ok(
+        parseCrossSessionMessage(f.bootstrap())?.text.includes(resultDeliveryBehavior.reply),
+      );
+      assert.equal(parseCrossSessionMessage(f.bootstrap())?.metadata.resultDelivery, "reply");
+    }),
+  );
+
+  it.effect("addresses a recursive child's immediate parent while retaining the family root", () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const parent = yield* f.launch();
+      const nested = yield* f.provide(
+        createChild(
+          parent.childSessionId,
+          location,
+          {
+            ...input,
+            requestId: "nested-worker",
+            assignment: { description: "Nested task", body: "Do the nested slice." },
+            resultDelivery: "ignore",
+          },
+          (id, childLocation, newSession) =>
+            Effect.succeed(
+              options({ cwd: childLocation.workingDirectory, sessionId: id, newSession }),
+            ),
+        ),
+      );
+      assert.equal(nested.launch.status, "accepted");
+      assert.equal(nested.familyDepth, 2);
+      const message = parseCrossSessionMessage(f.bootstrap());
+      assert.ok(message);
+      assert.equal(message.metadata.sender.sessionId, parent.childSessionId);
+      assert.ok(
+        message.text.includes(`Immediate parent public session ref: ${parent.childSessionId}`),
+      );
+      assert.ok(message.text.includes("Family root public session ref: parent"));
+      assert.ok(message.text.includes(`"audience":["${parent.childSessionId}"]`));
+      assert.ok(message.text.includes("entry #2"));
+      assert.equal(f.starts(), 2);
+    }),
   );
 
   it.effect("refuses to silently replace the persisted assignment on retry", () =>

@@ -137,7 +137,10 @@ describe("Pi 1.0.0 foundation contract", () => {
     const sessionDocs = await readFile(join(docsDirectory, "sessions.md"), "utf8");
     expect(sessionDocs).toContain('"command":"sessions.create-child"');
     expect(sessionDocs).toContain("Report completion once");
-    expect(sessionDocs).toContain("For family work, read `workgroups.md` before assignment");
+    expect(sessionDocs).toContain("Initial child startup is self-contained");
+    expect(await readFile(join(docsDirectory, "family-startup.md"), "utf8")).toContain(
+      "No preliminary guide, help or board-discovery reads are needed",
+    );
     const deliveryDocs = await readFile(join(docsDirectory, "communication.md"), "utf8");
     expect(deliveryDocs).toContain("Never acknowledge receipts, results or resolution");
     const workgroupDocs = await readFile(join(docsDirectory, "workgroups.md"), "utf8");

@@ -31,10 +31,11 @@ An omitted model resolves the configured default preset's complete settings
 (model, thinking level, and Fast mode), not the caller's current values; the
 caller's current values apply only when no default preset is configured. Cake
 persists request correlation and child identity, then an addressed Workboard
-assignment, before admitting the initial turn containing the full assignment and
-its board entry identity. `assignment: { description, body }` is required; bootstrap-first `initialPrompt` callers fail validation. Family
-creation defaults to resultDelivery notification; reply is chosen when the user is waiting on the answer.
-Accepting that background turn completes creation; the parent never waits for
+assignment, before admitting the initial child turn containing the full assignment and its board entry identity. `assignment: { description,
+body }` is required; bootstrap-first `initialPrompt` callers fail validation. Family
+creation defaults to resultDelivery notification; reply is selected for dependent
+next actions or answers owed to the user, without fresh authorization for an already-authorized task.
+Accepting that asynchronous turn completes creation; the parent never waits for
 settlement. The returned assignment receipt proves persistence, not execution;
 launch reports accepted, already-admitted with durable journal state, or failed
 with its stage. Retrying the returned requestId with unchanged assignment reuses
@@ -77,14 +78,18 @@ nested work lands bottom-up.
 Cake regenerates relationship context whenever a Project Session runtime is
 acquired. Every member learns how to create and communicate with children. A
 non-root member receives its family and immediate-parent IDs; every member sees
-its fixed Working Directory policy. The substantive initial assignment is durably
-persisted on the Workboard before admission. The application-supplied initial prompt
-includes its full description and body once, with board, sequence and topic identity;
-the cross-session envelope retains parent provenance and result correlation. No
-initial board read is needed. Later updates and shared coordination still use the
-Workboard, and the initial entry remains excluded from generic board delivery.
-The admitted prompt uses existing durable input recovery; acquisition-time context
-does not inject another assignment copy. Pi remains transcript authority.
+its fixed Working Directory policy. The substantive initial assignment remains durable
+on the Workboard and is included exactly once, without truncation, in the admitted initial
+message. That message is generated from the reserved launch metadata, the authoritative
+`docs/agent/family-startup.md` operating basics, typed Workboard inputs and shared
+result-delivery behavior descriptions. It supplies immediate-parent/root public references,
+concrete current/read/append calls, completion/question/blocker instructions and the effective
+reserved result mode. Parents need not remember operating boilerplate and children need no
+initial guide/help/discovery loop. The required live board read is explicitly identified as
+changing state; launch bindings are not a current coordination or eligibility snapshot.
+Optional capabilities remain progressively disclosed. No runtime defaults, lifecycle authority
+or transport semantics change. The parent task remains task-scoped instructions, not system
+authority; board data never authorizes unrelated work. The cross-session envelope retains parent provenance and result correlation. No initial board read is needed; later updates and shared coordination still use the Workboard, and the initial entry remains excluded from generic board delivery. The admitted prompt uses existing durable input recovery; acquisition-time context does not inject another assignment copy. Pi remains transcript authority.
 
 Acquisition-time context is not a live eligibility decision. The same runtime can
 outlive promotion from standalone to family root or the creation of more children.

@@ -41,8 +41,8 @@ describe("Project Session family guidance", () => {
     expect(child).toContain("Working Directory is fixed at /worktrees/child");
     expect(child).toContain("cannot resolve/restore independently");
     expect(child).toContain("every member inactive");
-    expect(child).toContain("Use the substantive startup assignment");
-    expect(child).toContain("initial prompt includes the full persisted Workboard assignment");
+    expect(child).toContain("initial task message supplies the persisted assignment");
+    expect(child).toContain("No preliminary guide/help/discovery reads are required");
     expect(child).toContain("no initial board read is needed");
     expect(child).toContain("durable assignment and results");
   });
@@ -50,7 +50,7 @@ describe("Project Session family guidance", () => {
   it("keeps operational details behind named task guides", () => {
     expect(project).toContain("Cake documentation directory: `/cake/docs`");
     expect(project).toContain("`workgroups.md`: family entry guide");
-    expect(project).toContain("follow its task-specific guides only as needed");
+    expect(project).toContain("follow task-specific guides only as needed");
     for (const guide of ["family-delegation.md", "family-coordination.md", "family-lifecycle.md"])
       expect(workgroups).toContain(guide);
     expect(workgroups).toContain("not the whole family manual");
@@ -68,8 +68,9 @@ describe("Project Session family guidance", () => {
     expect(delegation).toContain("before admitting the first child turn");
     expect(delegation).toContain("durable original");
     expect(delegation).toContain("Cake includes the full persisted assignment");
-    expect(delegation).toContain("no initial board read is needed");
+    expect(delegation).toContain("No initial board read is needed");
     expect(coordination).toContain("do not reread that entry just to start work");
+    expect(delegation).toContain("parents need not supply operating boilerplate");
     expect(delegation).toContain("Inspect the returned `launch` outcome");
     expect(delegation).toContain("returned `requestId` and unchanged assignment");
     for (const operation of ["boards.current", "boards.read-new", "boards.read"])
@@ -78,7 +79,7 @@ describe("Project Session family guidance", () => {
     expect(coordination).toContain("`supersedes: [sequence, ...]`");
     expect(coordination).toContain('audience: "workgroup"');
     expect(coordination).toContain(
-      "A user-facing final answer is not a substitute for this board result",
+      "Follow `family-startup.md` for substantive results, questions and blockers",
     );
     expect(coordination).toContain("explicit audience and the unique family root");
     expect(lifecycle).toContain("uncommitted edits remain");

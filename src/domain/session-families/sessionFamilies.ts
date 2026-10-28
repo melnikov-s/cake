@@ -12,6 +12,7 @@ import { isReferenceNotification } from "../../contracts/conversations/reference
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 import * as workboardDeliveries from "./workboardDeliveries";
 import * as updateBatches from "./updateBatches";
+import { childSessionStartup } from "./childSessionStartup";
 import * as completionInbox from "../conversations/completionInbox";
 import {
   ensureBoard,
@@ -366,13 +367,21 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(
           ? { status: "failed", stage: prepared.stage, message: prepared.error, retryable: true }
           : { status: "already-admitted", state: prepared.admissionState },
       };
+    const assignmentTopic = prepared.child.assignmentTopic;
+    if (!assignmentTopic)
+      return yield* failure("Cannot render child startup without its persisted assignment topic");
     const initialMessage = encodeCrossSessionMessage(
-      [
-        "Read workgroups.md and sessions.md. The full initial assignment is included below; no initial boards.read is needed. Use the Workboard for later updates and shared coordination. Communicate with family members only on the Workboard unless the user explicitly overrides that default.",
-        `Initial Workboard assignment: board ${prepared.assignmentReceipt?.boardId}, entry #${prepared.assignmentReceipt?.sequence}, topic ${prepared.child.assignmentTopic}.`,
-        `Description: ${assignment.description}`,
-        assignment.body,
-      ].join("\n\n"),
+      childSessionStartup({
+        familyId: identity.familyId,
+        childSessionId: identity.childSessionId,
+        parentSessionId,
+        rootSessionId: prepared.family.parentSessionId,
+        workingDirectory: identity.workingDirectory,
+        resultDelivery: identity.resultDelivery,
+        assignmentReceipt: prepared.assignmentReceipt,
+        assignmentTopic,
+        assignment,
+      }),
       {
         version: 1,
         messageId: prepared.child.sessionId,
