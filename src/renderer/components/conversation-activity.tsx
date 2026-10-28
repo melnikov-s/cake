@@ -37,9 +37,7 @@ export const ConversationActivity = observer(function ConversationActivity({
         ...sessions.map((session) => ({
           id: `session:${session.sessionId}`,
           title: session.title,
-          description: ["Running", session.projectName, session.summary]
-            .filter(Boolean)
-            .join(" · "),
+          description: ["Running", session.projectName].filter(Boolean).join(" · "),
           icon: <ChatIcon size={14} />,
           iconLabel: "Project Session",
           status: "running" as const,

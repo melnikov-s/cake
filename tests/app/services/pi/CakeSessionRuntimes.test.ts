@@ -27,6 +27,7 @@ import {
 } from "../../../../src/services/pi/CakeSessionRuntimes";
 import { CAKE_CHAT_SESSION_ID } from "../../../../src/contracts/cake-chats/cake-chat-identity";
 import { TurnCanceledError } from "../../../../src/services/pi/runtime/RuntimeTurnCompletion";
+import { currentSessionOutcome } from "../../../../src/contracts/project-sessions/session-reporting";
 import {
   RuntimeRecoveryStorage,
   RuntimeRecoveryStorageError,
@@ -679,6 +680,73 @@ describe("CakeSessionRuntimes", () => {
         assert.equal((yield* sessions.currentStatus(target))?.latestTurnOutcome, "failed");
         assert.equal((yield* storage.get("session-1"))?.state, "failed");
       }),
+  );
+
+  it.effect("a failure is the latest turn outcome across restart until a resumed turn starts", () =>
+    Effect.gen(function* () {
+      const release = yield* Deferred.make<void>();
+      const started = yield* Deferred.make<void>();
+      const settled = yield* Queue.unbounded<string>();
+      const storage = Context.get(
+        yield* Layer.build(makeRuntimeRecoveryStorageTestLayer()),
+        RuntimeRecoveryStorage,
+      );
+      const layer = makeCakeSessionRuntimesLayer({
+        sessionIds: () => Stream.empty,
+        catalog: () => Stream.empty,
+        catalogEntry: () => Effect.succeed(undefined),
+        inspect: () => Effect.succeed(undefined),
+        changelog: () => Effect.succeed(""),
+        createRuntime: (runtimeOptions) =>
+          Effect.succeed({
+            ...fakeRuntime(runtimeOptions, () => undefined),
+            prompt: async (text) => {
+              if (text === "fast request") throw new Error("Daily premium limit reached");
+              await Effect.runPromise(Deferred.succeed(started, undefined));
+              await Effect.runPromise(Deferred.await(release));
+            },
+          }),
+      }).pipe(Layer.provide(Layer.succeed(RuntimeRecoveryStorage, storage)));
+      const restart = Effect.map(Layer.build(Layer.fresh(layer)), (context) =>
+        Context.get(context, CakeSessionRuntimes),
+      );
+      const target = {
+        workingDirectory: "/project",
+        sessionDirectory: "/sessions",
+        sessionId: "session-1",
+      };
+      const sessions = yield* restart;
+      const handle = yield* sessions.acquire({
+        ...options(),
+        onTurnSettled: (event) => Queue.offer(settled, event.outcome).pipe(Effect.asVoid),
+      });
+      yield* handle.prompt("fast request").pipe(Effect.ignore);
+      assert.equal(yield* Queue.take(settled), "failed");
+      // Failure is the last thing that happened, so it survives a restart.
+      assert.equal((yield* (yield* restart).currentStatus(target))?.latestTurnOutcome, "failed");
+
+      yield* handle.prompt("try again without fast mode");
+      yield* Deferred.await(started);
+      const running = yield* sessions.currentStatus(target);
+      assert.equal(running?.streaming, true);
+      assert.equal(running?.latestTurnOutcome, undefined);
+      assert.equal(
+        currentSessionOutcome(running?.latestTurnOutcome, "failed", running?.streaming ?? false),
+        undefined,
+      );
+      // The journal records the newer work, so a restart mid-run never revives the failure.
+      assert.equal((yield* storage.get("session-1"))?.state, "active");
+      assert.equal((yield* (yield* restart).currentStatus(target))?.latestTurnOutcome, undefined);
+
+      yield* Deferred.succeed(release, undefined);
+      assert.equal(yield* Queue.take(settled), "complete");
+      const restored = yield* (yield* restart).currentStatus(target);
+      assert.equal(restored?.latestTurnOutcome, "complete");
+      assert.equal(
+        currentSessionOutcome(restored?.latestTurnOutcome, "failed", false),
+        "completed",
+      );
+    }),
   );
 
   it.effect("projects queued input and completed Pi runs as idle before bookkeeping settles", () =>

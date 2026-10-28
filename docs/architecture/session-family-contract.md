@@ -278,7 +278,9 @@ cancellation receipts settle retries even after transcript compaction. Composer 
 by the existing two-minute presence timeout. A user input retains priority over a report-started run.
 
 Launch records retain launchedAt and lastReport for activity/status surfaces, independently of
-notification delivery. No initial obligation is recorded for ignore launches. Historical digest
+notification delivery. A lastReport describes only the turn that produced it: once a later turn
+starts, status surfaces show that turn (running, then its own outcome) and neither the report's
+status nor its summary describes the session. No initial obligation is recorded for ignore launches. Historical digest
 records without a requester identity still belong to global Cake Chat.
 Launch projections include requester identity; both sessions.list and the Activity menu filter
 by that identity. The shared Activity menu also presents a regular Project Session's direct

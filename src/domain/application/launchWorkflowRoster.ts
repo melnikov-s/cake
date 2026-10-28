@@ -130,7 +130,13 @@ export const launchWorkflowRoster = Effect.fn("AgentControl.launchWorkflowRoster
           ? `Worktree: ${brief(worktree.branch.replace(/^agent\//, ""), 80)}`
           : "Unnamed task (title unknown)");
       const wait = waits.find((item) => item.sessionId === spawn.sessionId);
-      const currentOutcome = currentSessionOutcome(runtime?.latestTurnOutcome, report?.status);
+      const currentOutcome = currentSessionOutcome(
+        runtime?.latestTurnOutcome,
+        report?.status,
+        Boolean(runtime?.streaming || runtime?.recoveryIssue),
+      );
+      // A report a later turn superseded no longer explains the session.
+      const currentReport = report?.status === currentOutcome ? report : undefined;
       const failed = currentOutcome === "failed";
       const stopped = currentOutcome === "stopped" || currentOutcome === "interrupted";
       const blocked =
@@ -169,8 +175,10 @@ export const launchWorkflowRoster = Effect.fn("AgentControl.launchWorkflowRoster
       const reason =
         wait?.reason ??
         runtime?.recoveryIssue ??
-        (blocked || failed || stopped ? (currentResult?.summary ?? report?.summary) : undefined);
-      const outcome = currentResult?.summary ?? report?.summary;
+        (blocked || failed || stopped
+          ? (currentResult?.summary ?? currentReport?.summary)
+          : undefined);
+      const outcome = currentResult?.summary ?? currentReport?.summary;
       const worktreeFact = !worktree
         ? spawn.workingDirectory === spawn.projectPath
           ? "none"

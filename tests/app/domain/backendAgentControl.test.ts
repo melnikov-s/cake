@@ -2324,7 +2324,7 @@ it.effect(
       yield* f.call("sessions.send", { sessionId: third, text: "Run" });
       yield* Queue.take(f.prompts);
       expect(yield* f.call("sessions.list", { launchedByCakeChat: true })).toContain(
-        "00000000-0000-4000-8000-000000000033 running active completed ? ? ? ? | Same title",
+        "00000000-0000-4000-8000-000000000033 running active - ? ? ? ? | Same title",
       );
       yield* Deferred.succeed(f.messageRelease, undefined);
     }),
@@ -2402,6 +2402,62 @@ it.effect(
       expect((yield* families.state()).spawnedSessions[0]?.lastReport?.summary).toBe(
         "Late historical failure",
       );
+    }),
+);
+
+it.effect(
+  "a resumed turn clears a failed outcome while it runs; only a latest failure stays failed",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      yield* Context.get(f.context, SessionFamilyStorage).registerSpawn({
+        ...workflowLaunch(target, "Resumed task"),
+        lastReport: { status: "failed", summary: "Daily limit reached", reportedAt: "2026-01-02" },
+      });
+      const row = (status: string, outcome: string) =>
+        `00000000-0000-4000-8000-000000000022 ${status} active ${outcome} ? ? ? ? | Same title`;
+      const roster = agentControl
+        .invoke("sessions.list", { projection: "workflow" }, workflowCaller)
+        .pipe(Effect.provide(f.context));
+      const send = (text: string) =>
+        f
+          .call("sessions.send", { sessionId: target, text })
+          .pipe(Effect.andThen(Queue.take(f.prompts)));
+      f.failedTurns.add(target);
+      yield* send("Fast request");
+      // The real runtime marks unread after its settlement hook has recorded the outcome.
+      yield* Queue.take(f.saves);
+      expect(yield* f.call("sessions.info", { sessionId: target })).toMatchObject({
+        status: "idle",
+        session: { outcome: "failed" },
+      });
+      expect(yield* f.call("sessions.list", { launchedByCakeChat: true })).toContain(
+        row("failed", "failed"),
+      );
+
+      f.failedTurns.delete(target);
+      f.pauseMessage();
+      yield* send("Try again without Fast");
+      const running = yield* f.call("sessions.info", { sessionId: target });
+      expect(running).toMatchObject({ status: "running" });
+      expect(running).not.toHaveProperty("session.outcome");
+      expect(yield* f.call("sessions.list", { launchedByCakeChat: true })).toContain(
+        row("running", "-"),
+      );
+      const workingRoster = yield* roster;
+      expect(workingRoster).toContain("\topen\trunning\t-\t-\tunknown\t");
+      expect(workingRoster).not.toContain("Daily limit reached");
+
+      yield* Deferred.succeed(f.messageRelease, undefined);
+      yield* Queue.take(f.saves);
+      expect(yield* f.call("sessions.info", { sessionId: target })).toMatchObject({
+        status: "idle",
+        session: { outcome: "completed" },
+      });
+      expect(yield* f.call("sessions.list", { launchedByCakeChat: true })).toContain(
+        row("done", "completed"),
+      );
+      expect(yield* roster).not.toContain("Daily limit reached");
     }),
 );
 

@@ -399,6 +399,29 @@ it.each(["project", "cake-chat"] as const)(
   },
 );
 
+it("a resumed Cake Chat launch runs without its earlier failure report", async () => {
+  using view = renderActivity("cake-chat", [
+    child({
+      cakeChatLaunch: {
+        requesterSessionId: CAKE_CHAT_SESSION_ID,
+        launchedAt: "2026-01-01T00:00:00Z",
+        lastReport: {
+          status: "failed",
+          summary: "Daily premium model limit reached",
+          reportedAt: "2026-01-01T00:01:00Z",
+        },
+      },
+    }),
+  ]);
+  await view.user.click(screen.getByRole("button", { name: "Activity · 1 running" }));
+  const row = within(screen.getByRole("region", { name: "Conversation activity" })).getByRole(
+    "button",
+    { name: "Open session: Activity UI review" },
+  );
+  expect(row.textContent).toContain("Running · project");
+  expect(row.textContent).not.toContain("Daily premium model limit reached");
+});
+
 it.each(
   (["project", "cake-chat"] as const).flatMap((kind) =>
     (["completed", "stopped", "failed", "interrupted", "blocked"] as const).map((status) => ({

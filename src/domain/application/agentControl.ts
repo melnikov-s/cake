@@ -89,15 +89,19 @@ type AgentSessionSummary = ProjectSessionSummary & {
   readonly location?: ProjectSessionLocation;
 };
 
+const sessionOutcome = (session: AgentSessionSummary) =>
+  currentSessionOutcome(
+    session.latestTurnOutcome,
+    session.cakeChatLaunch?.lastReport?.status,
+    session.running || session.recoveryIssue !== undefined,
+  );
+
 function sessionListStatus(session: AgentSessionSummary): AgentSessionStatus {
   if (session.resolved) return "resolved";
   if (session.savedDraft) return "draft";
   if (session.running) return "running";
   if (session.recoveryIssue) return "needs-you";
-  const outcome = currentSessionOutcome(
-    session.latestTurnOutcome,
-    session.cakeChatLaunch?.lastReport?.status,
-  );
+  const outcome = sessionOutcome(session);
   if (outcome === "blocked") return "needs-you";
   if (outcome === "failed" || outcome === "interrupted" || outcome === "stopped") return outcome;
   if (outcome === "completed") return "done";
@@ -408,10 +412,7 @@ export const invoke: (
               modifiedAt: session.modifiedAt,
               status: sessionListStatus(session),
               resolved: session.resolved,
-              outcome: currentSessionOutcome(
-                session.latestTurnOutcome,
-                session.cakeChatLaunch?.lastReport?.status,
-              ),
+              outcome: sessionOutcome(session),
             }));
           const chatConfiguration = yield* Effect.serviceOption(CakeChatConfiguration);
           const chatEntries =
@@ -636,6 +637,11 @@ export const invoke: (
               (spawn) => spawn.sessionId === sessionId,
             )?.lastReport;
             const status = runtime?.streaming ? "running" : "idle";
+            const outcome = currentSessionOutcome(
+              runtime?.latestTurnOutcome,
+              report?.status,
+              Boolean(runtime?.streaming || runtime?.recoveryIssue),
+            );
             return toJsonValue({
               ok: true,
               command,
@@ -654,9 +660,7 @@ export const invoke: (
                         familyMember(family, sessionId)?.parentSessionId ?? sessionId,
                     }
                   : null),
-                ...(report || runtime?.latestTurnOutcome
-                  ? { outcome: currentSessionOutcome(runtime?.latestTurnOutcome, report?.status) }
-                  : null),
+                ...(outcome ? { outcome } : null),
               },
               status,
             });

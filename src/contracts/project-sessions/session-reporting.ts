@@ -32,11 +32,15 @@ export type CakeChatLaunchStatus = typeof CakeChatLaunchStatus.Type;
 /**
  * Execution failures/stops describe the latest turn, not the launch's historical report.
  * Explicit task blockers are separate from successful model execution.
+ * `working` means a turn accepted after the latest settlement is still running or awaiting
+ * restart recovery: it has no outcome yet, so no earlier turn or report describes the session.
  */
 export function currentSessionOutcome(
   latestTurnOutcome: "complete" | "failed" | "aborted" | undefined,
   reportedStatus: CakeChatLaunchStatus | undefined,
+  working: boolean,
 ): CakeChatLaunchStatus | undefined {
+  if (working) return undefined;
   if (latestTurnOutcome === "failed") return "failed";
   if (latestTurnOutcome === "aborted")
     return reportedStatus === "interrupted" ? "interrupted" : "stopped";
