@@ -72,16 +72,24 @@ export function createTaskAttribution(options: {
                   : message.content
                       .flatMap((part) => (part.type === "text" ? [part.text] : []))
                       .join("\n");
-              const displayed =
-                message.role === "user" ? durableInputPresentation(text).text : text;
-              const input = splitContextReminders(displayed);
+              const presentation =
+                message.role === "user" ? durableInputPresentation(text) : undefined;
+              // The displayed user text deliberately omits application reminders. Read the
+              // admitted snapshot for selection, not today's mutable to-do selection.
+              const origin = presentation?.internal;
+              const input = splitContextReminders(
+                origin?._tag === "UserWithReminders" ? origin.text : (presentation?.text ?? text),
+              );
               const selectedTask = input.reminders.find((reminder) =>
                 reminder.title.startsWith("To-do ·"),
               );
               return [
                 {
                   role: message.role,
-                  text: input.text.slice(0, 4000),
+                  text: (origin?._tag === "UserWithReminders"
+                    ? (origin.userText ?? input.text)
+                    : input.text
+                  ).slice(0, 4000),
                   ...(selectedTask ? { selectedTask: selectedTask.text } : null),
                 },
               ];

@@ -36,6 +36,7 @@ import { ChatMetadataDoc } from "./durable-chat-metadata";
 import { createTaskAttribution, TaskAttributionDoc } from "./durable-task-attribution";
 import { durableInputPresentation } from "./durable-input-presentation";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
+import { isAutomaticInput } from "../pi/runtime/internal-input-projection";
 import type { ProjectTodo } from "../../contracts/projects/project-todos";
 import { defineExtension } from "@earendil-works/pi-durable";
 import { durableContextMetadata } from "./durable-context-metadata";
@@ -271,7 +272,12 @@ export async function openDurableChatEngine(options: {
                     .flatMap((part) => (part.type === "text" ? [part.text] : []))
                     .join("\n");
             const input = durableInputPresentation(content);
-            if (input.internal || input.subagentReport || parseCrossSessionMessage(input.text))
+            // UserWithReminders still carries a human turn; only automatic deliveries are excluded.
+            if (
+              isAutomaticInput(input.internal) ||
+              input.subagentReport ||
+              parseCrossSessionMessage(input.text)
+            )
               continue;
             await root.commit(async (tx) => {
               const doc = await tx.doc(TaskAttributionDoc, root.id);

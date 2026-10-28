@@ -6,6 +6,13 @@ import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, expect, it, vi } from "vitest";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { createRegistry, MemoryStorage } from "@earendil-works/pi-durable";
+import { openDurableChatEngine } from "../../../src/services/pi-durable/durable-chat-engine";
+import { TaskAttributionDoc } from "../../../src/services/pi-durable/durable-task-attribution";
+import { durableInputText } from "../../../src/services/pi-durable/durable-input-presentation";
+import { readDurableOriginalPage } from "../../../src/services/pi-durable/durable-chat-history";
+import { durableAnswer, durableModels } from "../../fixtures/durable-chat";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import {
   CAKE_CHAT_TODO_SCOPE,
@@ -20,6 +27,7 @@ import {
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { upsertProject } from "../../../src/domain/application/application";
+import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
 import * as projectTodos from "../../../src/domain/projects/projectTodos";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
@@ -42,7 +50,7 @@ const sessionA = "20000000-0000-4000-8000-0000000000b1";
 const sessionB = "20000000-0000-4000-8000-0000000000b2";
 const unlinkedSession = "20000000-0000-4000-8000-0000000000b3";
 const projectPath = "/zombies";
-const projectChatId = `project-chat:${"a".repeat(64)}`;
+const projectChatId = projectChatSessionId(projectPath);
 
 type ChatKind = "Cake Chat" | "Project Chat";
 const chats: readonly ChatKind[] = ["Cake Chat", "Project Chat"];
@@ -317,41 +325,135 @@ it.each(chats)(
     await using f = await renderChat(kind);
     const A = f.items.workerTodo.id;
     const B = f.items.sessionTodo.id;
-    const attributed: UiPart[] = [A, A, B, A, null].flatMap((taskTodoId, index): UiPart[] => [
-      {
-        id: `u-${index}`,
-        entryId: `u-${index}`,
-        kind: "text",
-        role: "user",
-        text: `Question ${index}`,
-        status: "complete",
-        taskTodoId,
-      },
-      {
-        id: `a-${index}`,
-        entryId: `a-${index}`,
-        kind: "text",
-        role: "assistant",
-        text: `Answer ${index}`,
-        status: "complete",
-      },
-    ]);
-    act(() =>
-      applyConversationSnapshot(f.chat.model, {
-        sessionId: f.chat.sessionId,
-        sessionFile: "/chat.sqlite",
-        parts: attributed,
-        models: [],
-        thinkingLevel: "off",
-        availableThinkingLevels: ["off"],
-        streaming: false,
-        diagnostics: [],
-        commands: [],
-        compatibility: { resources: [], diagnostics: [] },
-        extensionUi: { statuses: [] },
-        tree: [],
-      }),
+    // Exercise real admission envelopes, background tasks, durable metadata and history
+    // projection. Only the external model is fake; taskTodoId is never hand-assembled.
+    const models = durableModels(() =>
+      durableAnswer("Research options and Fix the build are names, not task associations."),
     );
+    const classify = vi.spyOn(models.models, "completeSimple");
+    const todos = await f.list();
+    const engine = await openDurableChatEngine({
+      storage: new MemoryStorage(),
+      registry: createRegistry(),
+      models: models.models,
+      agent: { model: { provider: "fixture", modelId: "fixture" } },
+      memory: { budget: () => 4000, summarize: async () => "memory" },
+      todos: () => todos.items,
+      onChanged: () => {},
+      onReport: (error) => {
+        throw error;
+      },
+    });
+    let attributed: UiPart[] = [];
+    const projectHistory = () =>
+      act(() =>
+        applyConversationSnapshot(f.chat.model, {
+          sessionId: f.chat.sessionId,
+          sessionFile: "/chat.sqlite",
+          parts: attributed,
+          models: [],
+          thinkingLevel: "off",
+          availableThinkingLevels: ["off"],
+          streaming: false,
+          diagnostics: [],
+          commands: [],
+          compatibility: { resources: [], diagnostics: [] },
+          extensionUi: { statuses: [] },
+          tree: [],
+        }),
+      );
+    try {
+      const decisions = [A, A, B, A, null];
+      const questions = [
+        "Discuss this",
+        "What about follow-ups?",
+        "Switch topics",
+        "Back to this",
+        "Hello",
+      ];
+      for (const [index, decision] of decisions.entries()) {
+        if (index !== 1)
+          await f.commit(
+            projectTodos.mutateUser(f.scope, { _tag: "Select", selectedId: decision }),
+          );
+        const text = questions[index]!;
+        const prepared = await f.commit(projectTodos.prepareForChat(f.chat.sessionId, text));
+        classify.mockResolvedValueOnce(durableAnswer(JSON.stringify({ todoId: decision })));
+        const submission = await engine.root.submit(
+          {
+            type: "input",
+            content: durableInputText(text, [], false, false, undefined, undefined, {
+              _tag: "UserWithReminders",
+              text: prepared.text,
+              userText: text,
+              notices: [],
+            }),
+          },
+          BACKGROUND_CONTEXT,
+        );
+        await f.commit(projectTodos.consumeSelection(prepared));
+        await submission.wait(BACKGROUND_CONTEXT);
+        const tasks = await engine.root.commit(
+          (tx) =>
+            tx.scanTasks({ conversationId: engine.root.id, kind: "cake.task-attribution" }, 100),
+          BACKGROUND_CONTEXT,
+        );
+        await Promise.all(
+          tasks.items.map((task) => engine.harness.waitForTask(task.id, BACKGROUND_CONTEXT)),
+        );
+        const doc = await engine.harness.snapshot(
+          TaskAttributionDoc,
+          engine.root.id,
+          BACKGROUND_CONTEXT,
+        );
+        attributed = (
+          await readDurableOriginalPage(
+            engine.root,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            doc?.inputs,
+          )
+        ).parts;
+        projectHistory();
+        await waitFor(() =>
+          expect(
+            f.view.container.querySelectorAll('[data-slot="task-section-label"]'),
+          ).toHaveLength([1, 1, 2, 3, 3][index]!),
+        );
+      }
+      expect(classify).toHaveBeenCalledTimes(5);
+      // A selection snapshot lives in UserWithReminders, not in displayed user prose.
+      const lastInput = (index: number) => {
+        const content = classify.mock.calls[index]?.[1].messages.find(
+          (message) => message.role === "user",
+        )?.content;
+        if (typeof content !== "string") throw new Error("Missing attribution input");
+        return JSON.parse(content).messages.at(-1);
+      };
+      expect(lastInput(0)).toMatchObject({
+        text: "Discuss this",
+        selectedTask: expect.stringContaining('Selected to-do: "Research options".'),
+      });
+      expect(lastInput(1)).toMatchObject({ text: "What about follow-ups?" });
+      expect(lastInput(1).selectedTask).toBeUndefined();
+      expect(lastInput(2)).toMatchObject({
+        text: "Switch topics",
+        selectedTask: expect.stringContaining('Selected to-do: "Fix the build".'),
+      });
+      expect(lastInput(3)).toMatchObject({
+        text: "Back to this",
+        selectedTask: expect.stringContaining('Selected to-do: "Research options".'),
+      });
+      expect(
+        attributed
+          .filter((part) => part.kind === "text" && part.role === "user")
+          .map((part) => (part.kind === "text" ? part.taskTodoId : undefined)),
+      ).toEqual(decisions);
+    } finally {
+      await engine.close();
+    }
     expect(screen.getAllByTitle("Show in To-do: Research options")).toHaveLength(2);
     expect(screen.getAllByTitle("Show in To-do: Fix the build")).toHaveLength(1);
     const messageCount = f.view.container.querySelectorAll("[data-part-id]").length;
@@ -373,6 +475,55 @@ it.each(chats)(
     await f.clickPane("Mark done", "Startup findings");
     expect(f.view.container.querySelectorAll("[data-part-id]")).toHaveLength(messageCount);
     expect(screen.getAllByTitle("Show in To-do: Startup findings")).toHaveLength(2);
+
+    // The very same durable projection must not enable task sections in an ordinary session.
+    f.view.unmount();
+    act(() =>
+      applySnapshot(f.models.sessionCatalog, {
+        sessions: [
+          sessionSummary({ sessionId: "viewer", projectPath, workingDirectory: projectPath }),
+        ],
+        resolvedHasMoreByProject: {},
+      }),
+    );
+    const ordinary = f.root.sessionRegistry.load("viewer", projectPath);
+    act(() =>
+      applyConversationSnapshot(ordinary.model, {
+        sessionId: "viewer",
+        sessionFile: "/viewer.jsonl",
+        parts: attributed,
+        models: [],
+        thinkingLevel: "off",
+        availableThinkingLevels: ["off"],
+        streaming: false,
+        diagnostics: [],
+        commands: [],
+        compatibility: { resources: [], diagnostics: [] },
+        extensionUi: { statuses: [] },
+        tree: [],
+      }),
+    );
+    ordinary.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
+      kind: "top",
+    });
+    const ordinaryView = render(
+      <StoreProvider store={f.root}>
+        <VirtuosoMockContext.Provider value={{ viewportHeight: 4000, itemHeight: 100 }}>
+          <Chat
+            store={ordinary.conversationSessionStore.chatStore}
+            transcriptBehavior={projectTranscriptBehaviorFor(f.root, ordinary)}
+            composerFocusEnabled={false}
+          />
+        </VirtuosoMockContext.Provider>
+      </StoreProvider>,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getAllByText("Research options and Fix the build are names, not task associations."),
+      ).toHaveLength(5),
+    );
+    expect(ordinaryView.container.querySelector('[data-slot="task-section-label"]')).toBeNull();
+    ordinaryView.unmount();
   },
 );
 

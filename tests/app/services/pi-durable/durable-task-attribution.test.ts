@@ -17,6 +17,7 @@ import { TaskAttributionDoc } from "../../../../src/services/pi-durable/durable-
 import { durableInputText } from "../../../../src/services/pi-durable/durable-input-presentation";
 import { readDurableOriginalPage } from "../../../../src/services/pi-durable/durable-chat-history";
 import type { ProjectTodo } from "../../../../src/contracts/projects/project-todos";
+import type { InternalInput } from "../../../../src/contracts/conversations/internal-input";
 import { durableAnswer, durableModels } from "../../../fixtures/durable-chat";
 
 const A = "00000000-0000-4000-8000-000000000001";
@@ -72,9 +73,12 @@ async function fixture(withTool = false, database?: string) {
     onReport: reports,
   });
   cleanup.push(() => engine.close());
-  const send = async (text: string) => {
+  const send = async (text: string, internal?: InternalInput) => {
     const submission = await engine.root.submit(
-      { type: "input", content: durableInputText(text, [], false) },
+      {
+        type: "input",
+        content: durableInputText(text, [], false, false, undefined, undefined, internal),
+      },
       context,
     );
     const settled = await submission.wait(context);
@@ -139,6 +143,26 @@ it("runs once per consumed input, reuses the conversational model, and projects 
     ),
   ).toEqual(originals.items.filter((entry) => entry.kind.startsWith("pi.")));
   expect(f.reports).not.toHaveBeenCalled();
+});
+
+it("attributes human inputs carrying reminders but not automatic deliveries", async () => {
+  const f = await fixture();
+  const human = await f.send("Discuss startup", {
+    _tag: "UserWithReminders",
+    text: "Discuss startup",
+    userText: "Discuss startup",
+    notices: [],
+  });
+  await f.finish();
+  for (const internal of [
+    { _tag: "UpdateBatch", notices: [] },
+    { _tag: "WorkboardDelivery", boardId: "board", sequences: [1] },
+    { _tag: "SubagentCompletion", details: {} },
+  ] satisfies InternalInput[])
+    await f.send("Automatic startup update", internal);
+  const doc = await f.finish();
+  expect(f.classify).toHaveBeenCalledTimes(1);
+  expect(doc?.inputs).toEqual({ [String(human.entry)]: { pending: false, todoId: A } });
 });
 
 it("does not block the normal response or start an agent/tool round for attribution", async () => {
