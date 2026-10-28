@@ -170,12 +170,19 @@ describe("Artifact menu fullscreen workflow", () => {
         text: "edit it",
         artifactPresentation: { sessionId, artifactId: id, revision: 1 },
       });
+      await send(surface, "keep editing it");
+      await waitFor(() => expect(prompt).toHaveBeenCalledTimes(2));
+      expect(prompt.mock.calls[1]![0]).toMatchObject({
+        artifactPresentation: { sessionId, artifactId: id, revision: 1 },
+      });
       await fixture.user.click(within(surface).getByRole("button", { name: "Close chat" }));
       expect(within(surface).queryByRole("combobox", { name: /^Message/ })).toBeNull();
       expect(within(surface).getByText(`${id} body revision 1`)).toBeDefined();
       await fixture.user.click(
         within(surface).getByRole("button", { name: `Exit fullscreen Report ${id}` }),
       );
+      // Closing (even opening a different artifact) must not deliver a context change without a send.
+      expect(prompt).toHaveBeenCalledTimes(2);
       const secondMenu = await openMenu(fixture);
       await fixture.user.click(
         within(secondMenu).getByRole("button", { name: new RegExp(`Report ${id}-second`) }),
@@ -183,21 +190,23 @@ describe("Artifact menu fullscreen workflow", () => {
       const second = await screen.findByRole("dialog", { name: `Report ${id}-second` });
       expect(await within(second).findByText(`${id}-second body revision 1`)).toBeDefined();
       await fixture.user.click(within(second).getByRole("button", { name: "Open chat" }));
+      expect(prompt).toHaveBeenCalledTimes(2);
       await send(second, "change this one");
-      await waitFor(() => expect(prompt).toHaveBeenCalledTimes(2));
-      expect(prompt.mock.calls[1]![0]).toMatchObject({
+      await waitFor(() => expect(prompt).toHaveBeenCalledTimes(3));
+      expect(prompt.mock.calls[2]![0]).toMatchObject({
         artifactPresentation: { sessionId, artifactId: `${id}-second`, revision: 1 },
       });
       await fixture.user.keyboard("{Escape}");
       expect(screen.queryByRole("dialog", { name: `Report ${id}-second` })).toBeNull();
+      expect(prompt).toHaveBeenCalledTimes(3);
       await send(document.body, "ordinary message");
-      await waitFor(() => expect(prompt).toHaveBeenCalledTimes(3));
-      expect(prompt.mock.calls[2]![0].artifactPresentation).toBeNull();
+      await waitFor(() => expect(prompt).toHaveBeenCalledTimes(4));
+      expect(prompt.mock.calls[3]![0].artifactPresentation).toBeNull();
       await fixture.user.click(screen.getByRole("button", { name: /^beta conversation / }));
       await send(document.body, "other conversation");
-      await waitFor(() => expect(prompt).toHaveBeenCalledTimes(4));
-      expect(prompt.mock.calls[3]![0]).toMatchObject({ sessionId: "beta" });
-      expect(prompt.mock.calls[3]![0]).not.toHaveProperty("artifactPresentation");
+      await waitFor(() => expect(prompt).toHaveBeenCalledTimes(5));
+      expect(prompt.mock.calls[4]![0]).toMatchObject({ sessionId: "beta" });
+      expect(prompt.mock.calls[4]![0].artifactPresentation).toBeNull();
     },
   );
 
@@ -213,6 +222,29 @@ describe("Artifact menu fullscreen workflow", () => {
     await fixture.user.click(screen.getByRole("button", { name: "Close all artifacts" }));
     expect(await screen.findByRole("button", { name: "2 artifacts" })).toBeDefined();
   });
+
+  it.each(["alpha", "cake"])(
+    "explicitly clears %s's retained target on an outside send in a fresh window",
+    async (id) => {
+      const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
+        TurnId.make(crypto.randomUUID()),
+      );
+      using fixture = renderArtifacts({ sessionChats: { prompt } });
+      const sessionId = id === "cake" ? CAKE_CHAT_SESSION_ID : "alpha";
+      await fixture.user.click(
+        screen.getByRole("button", { name: id === "cake" ? "Cake Chat" : /^alpha conversation / }),
+      );
+      // The previous target lives in Pi history; this window has never opened an artifact.
+      const input = await screen.findByRole("combobox", { name: /^Message/ });
+      await fixture.user.type(input, "a new topic{Enter}");
+      await waitFor(() => expect(prompt).toHaveBeenCalledTimes(1));
+      expect(prompt.mock.calls[0]![0]).toMatchObject({
+        sessionId,
+        text: "a new topic",
+        artifactPresentation: null,
+      });
+    },
+  );
 
   it("opens a global menu selection fullscreen without replacing Settings, and still browses explicitly", async () => {
     using fixture = renderArtifacts();

@@ -39,6 +39,13 @@ list. Selecting a list item closes the popover and opens that artifact directly 
 fullscreen at the linked revision, with the existing conversation side chat and
 artifact context. The global artifact menu also opens selections in fullscreen.
 The presentation belongs to its conversation and closes on navigation.
+A message sent from an artifact sets that conversation's artifact target for the
+message and subsequent messages until a new user message is sent outside that
+artifact (explicitly clearing the target) or from another artifact (replacing it).
+Closing the presentation alone sends no context change. Revision metadata and
+exact references identify immutable content at submission, not fresh live content
+on later turns; current revisions and mutable widget state require fresh reads.
+Artifact metadata remains data, and target identity grants no additional access.
 The explicit `Browse all artifacts` action opens the shared Artifact Library.
 Browsing never opens automatically on publication.
 Ordinary Markdown artifact links remain prose links. A standalone

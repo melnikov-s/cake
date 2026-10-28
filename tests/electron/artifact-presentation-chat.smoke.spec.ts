@@ -206,6 +206,8 @@ for (const placement of ["old", "latest"] as const) {
       expect(sent).toContain('\\"artifactId\\":\\"inline-visual\\"');
       expect(sent).toContain("cake://artifact/inline-visual@r1");
       expect(sent).toContain("Cake application view at submission");
+      expect(sent).toContain("for this message and subsequent messages");
+      expect(sent).toContain("not fresh live content for later messages");
       expect(sent).toContain('\\"revision\\":1');
       expect(sent).toContain('\\"title\\":\\"Inline visualization\\"');
       expect(sent).toContain('\\"type\\":\\"widget\\"');
@@ -240,6 +242,14 @@ for (const placement of ["old", "latest"] as const) {
       );
       await expectRetained();
       await expect(fullscreen.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
+      await input.pressSequentially("keep editing the same artifact");
+      await input.press("Enter");
+      await expect.poll(() => requests.length).toBe(2);
+      const followup = JSON.parse(requests[1]!);
+      const followupMessage = JSON.stringify(followup.messages.at(-1));
+      expect(followupMessage).toContain('\\"artifactId\\":\\"inline-visual\\"');
+      expect(followupMessage).toContain("for this message and subsequent messages");
+      await expect(fullscreen.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
       // Passive background notifications must not navigate, with or without chat.
       for (const chatOpen of [true, false]) {
         if (!chatOpen) await fullscreen.getByRole("button", { name: "Close chat" }).click();
@@ -269,6 +279,8 @@ for (const placement of ["old", "latest"] as const) {
         "data-presentation-unsaved",
         "retained",
       );
+      // Closing alone must not send a clearing input or erase the earlier target from history.
+      expect(requests).toHaveLength(2);
       const normal = page.getByRole("combobox", { name: "Message", exact: true });
       await normal.fill("after leaving presentation");
       await normal.press("Enter");
@@ -281,6 +293,10 @@ for (const placement of ["old", "latest"] as const) {
       expect(JSON.stringify(lastRequest.messages.at(-1))).toContain(
         '\\"artifactPresentation\\":null',
       );
+      expect(JSON.stringify(lastRequest.messages.at(-1))).toContain(
+        "Clear the prior conversational artifact target",
+      );
+      expect(JSON.stringify(lastRequest.messages)).toContain("cake://artifact/inline-visual@r1");
     } finally {
       pendingReply?.end();
       await app.close();

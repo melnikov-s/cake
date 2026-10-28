@@ -12,12 +12,10 @@ export class ArtifactPresentationStore extends Store<{
       context: ArtifactPresentationContext;
     }[]
   >([]);
-  private readonly presentedConversations = new Set<string>();
   chatVisible = false;
   chatWidth = 400;
 
   show(surfaceId: string, context: ArtifactPresentationContext) {
-    this.presentedConversations.add(context.sessionId);
     const existing = this.surfaces.find((surface) => surface.surfaceId === surfaceId);
     if (existing) existing.context = context;
     else this.surfaces.push({ surfaceId, context, originSessionId: this.props.activeSessionId() });
@@ -30,8 +28,8 @@ export class ArtifactPresentationStore extends Store<{
     if (!this.surfaces.length) this.chatVisible = false;
   }
 
-  capture(sessionId: string): ArtifactPresentationContext | null | undefined {
-    if (!this.presentedConversations.has(sessionId)) return undefined;
+  capture(sessionId: string): ArtifactPresentationContext | null {
+    // Conversation history can retain a target from an earlier window; outside sends always clear it.
     const active = this.surfaces.at(-1);
     if (
       !active ||
