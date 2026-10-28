@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { Effect, Layer, ManagedRuntime, Schema } from "effect";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import * as artifactWorkflows from "../../../../src/domain/artifacts/artifactWorkflows";
 import { ArtifactLineageId } from "../../../../src/contracts/artifacts/artifact-lineage";
 import type { CakeArtifactV1 } from "../../../../src/contracts/artifacts/artifact-contract";
@@ -30,6 +30,9 @@ import {
 import { RenderedWidgetCapture } from "../../../../src/services/widgets/RenderedWidgetCapture";
 import { WidgetPackages } from "../../../../src/services/widgets/WidgetPackages";
 import { makeWidgetBrowserOutputsLive } from "../../../../src/services/widgets/WidgetBrowserOutputsLive";
+import { WidgetBrowserOutputs } from "../../../../src/services/widgets/WidgetBrowserOutputs";
+import { RenderedWidgetCaptureError } from "../../../../src/contracts/widgets/rendered-widget-capture-errors";
+import { inlineWidgetDocument } from "../../../../src/services/widgets/inline-widget-document-registry";
 
 const roots: string[] = [];
 const disposals: Array<() => Promise<void>> = [];
@@ -66,7 +69,7 @@ const provideArtifactServices = <A, E>(
     Effect.provideService(SessionFamilyStorage, families),
   );
 
-const makeHarness = async () => {
+const makeHarness = async (capture?: RenderedWidgetCapture["Service"]["capture"]) => {
   const root = await mkdtemp(join(tmpdir(), "cake-session-runtime-artifact-events-"));
   roots.push(root);
   const events: CakeEvent[] = [];
@@ -92,7 +95,7 @@ const makeHarness = async () => {
       releaseWorkingDirectory: () => Effect.void,
     }),
     Layer.mock(PiModels, {}),
-    Layer.mock(RenderedWidgetCapture, {}),
+    Layer.mock(RenderedWidgetCapture, capture ? { capture } : {}),
     Layer.mock(WidgetPackages, { directory: join(root, "widget-packages") }),
     makeWidgetBrowserOutputsLive(join(root, "artifacts", "browser-outputs")),
     Layer.mock(ReviewStorage, {
@@ -111,7 +114,12 @@ const makeHarness = async () => {
       widgetSessionDirectory: join(root, "widget-sessions"),
     }).pipe(Layer.provideMerge(dependencies)),
   );
-  disposals.push(() => runtime.dispose());
+  disposals.push(async () => {
+    await runtime.runPromise(
+      Effect.flatMap(ArtifactProjection, (projection) => projection.cleanup({ retained: [] })),
+    );
+    await runtime.dispose();
+  });
   const services = await runtime.runPromise(
     Effect.all({
       artifacts: ArtifactStorage,
@@ -143,6 +151,275 @@ const effectiveLineageIds = (
   );
 
 describe("ProjectSessionRuntimeHostLive artifact events", () => {
+  it("instantiates retained output with independent state, captures new pixels, and reopens without changing source r1", async () => {
+    const tokens: string[] = [];
+    const capture = vi.fn<RenderedWidgetCapture["Service"]["capture"]>(
+      (_sessionId, widget, _signal, state) => {
+        tokens.push(widget.token);
+        expect(inlineWidgetDocument(widget.token)).toContain("retained implementation");
+        return Effect.succeed({
+          pngBase64: Buffer.from(JSON.stringify(state)).toString("base64"),
+          diagnostics: [],
+        });
+      },
+    );
+    const { host, root, runtime } = await makeHarness(capture);
+    const integration = await runtime.runPromise(host.runtimeIntegrations(root, "parent"));
+    const browser = await runtime.runPromise(
+      Effect.flatMap(WidgetBrowserOutputs, (outputs) =>
+        outputs.retain({
+          token: "00000000-0000-4000-8000-000000000001",
+          document: "<html>retained implementation</html>",
+        }),
+      ),
+    );
+    const template: CakeArtifactV1 = {
+      protocol: "cake.artifact/v1",
+      id: "template",
+      sessionId: "parent",
+      revision: 1,
+      kind: "widget",
+      title: "Template",
+      payload: {
+        language: "html",
+        source: "<html>retained implementation</html>",
+        browser,
+        brief: "Original hardcoded seed is not document data",
+        generationSessionId: "accepted-generation",
+        preview: {
+          mimeType: "image/png",
+          data: Buffer.from("template-preview").toString("base64"),
+        },
+      },
+      fallback: { markdown: "Template fallback" },
+      interaction: { mode: "present" },
+    };
+    await integration.persistArtifact!(template, {
+      expectedVersion: 0,
+      value: { title: "Template live data" },
+    });
+    const appendEntry = vi.fn();
+    const generation = vi.fn();
+    const revision = vi.fn();
+    const registry = new CakeOperationRegistry(
+      createCakeArtifactOperations(
+        { appendEntry },
+        {
+          ...integration,
+          persistArtifact: integration.persistArtifact!,
+          generateInlineWidget: generation,
+          reviseInlineWidget: revision,
+        },
+      ),
+    );
+    const context = {
+      toolCallId: "reuse",
+      signal: new AbortController().signal,
+      runtime: { sessionId: "parent", entryId: "assistant" },
+    };
+    const input = {
+      id: "independent",
+      title: "Independent document",
+      reference: "cake://artifact/template@r1",
+      initialState: { title: "New independent data" },
+      fallback: { markdown: "New fallback" },
+    };
+    const result = await registry.invoke({ command: "widgets.instantiate", input }, context);
+    expect(result.content[1]).toEqual({
+      type: "image",
+      mimeType: "image/png",
+      data: Buffer.from(JSON.stringify(input.initialState)).toString("base64"),
+    });
+    expect(result.details).toMatchObject({
+      result: {
+        exactRef: "cake://artifact/independent@r1",
+        execution: {
+          reusedFrom: input.reference,
+          retainedBrowserOutput: true,
+          generated: false,
+          compiled: false,
+          modelReviewed: false,
+        },
+      },
+    });
+    expect(appendEntry).toHaveBeenCalledExactlyOnceWith(
+      "cake.artifact/v1",
+      expect.objectContaining({ exactRef: "cake://artifact/independent@r1" }),
+    );
+    const created = (await integration.resolveArtifact!("cake://artifact/independent@r1")).record
+      .artifact;
+    expect(created).toMatchObject({
+      id: input.id,
+      title: input.title,
+      revision: 1,
+      fallback: input.fallback,
+      payload: {
+        language: "html",
+        source: template.payload.source,
+        browser,
+        generationSessionId: "accepted-generation",
+      },
+    });
+    const initial = await integration.readArtifactState!(input.id);
+    expect(initial).toMatchObject({ version: 1, value: input.initialState });
+    await integration.updateArtifactState!({
+      lineageId: Schema.decodeUnknownSync(ArtifactLineageId)(input.id),
+      expectedVersion: initial.version,
+      edits: [{ op: "set", path: "/title", value: "Edited independent data" }],
+    });
+    await runtime.runPromise(host.releaseSession("parent"));
+    const reopened = await runtime.runPromise(host.runtimeIntegrations(root, "parent"));
+    expect(await reopened.readArtifactState!(input.id)).toMatchObject({
+      version: 2,
+      value: { title: "Edited independent data" },
+    });
+    expect(await reopened.readArtifactState!("template")).toMatchObject({
+      version: 1,
+      value: { title: "Template live data" },
+    });
+    expect(
+      (await reopened.resolveArtifact!("cake://artifact/independent@r1")).record.artifact,
+    ).toEqual(created);
+    expect(tokens.every((token) => inlineWidgetDocument(token) === undefined)).toBe(true);
+    expect(generation).not.toHaveBeenCalled();
+    expect(revision).not.toHaveBeenCalled();
+
+    for (const reference of ["template", "cake://artifact/template"]) {
+      await expect(
+        registry.invoke(
+          { command: "widgets.instantiate", input: { ...input, id: "invalid", reference } },
+          context,
+        ),
+      ).rejects.toThrow();
+    }
+    const missingState = {
+      id: input.id,
+      title: input.title,
+      reference: input.reference,
+      fallback: input.fallback,
+    };
+    await expect(
+      registry.invoke({ command: "widgets.instantiate", input: missingState }, context),
+    ).rejects.toThrow();
+    await expect(
+      registry.invoke(
+        { command: "widgets.instantiate", input: { ...input, id: "template" } },
+        context,
+      ),
+    ).rejects.toThrow("new lineage ID");
+    const independentSession = await runtime.runPromise(host.runtimeIntegrations(root, "unlinked"));
+    const unlinkedRegistry = new CakeOperationRegistry(
+      createCakeArtifactOperations(
+        { appendEntry },
+        {
+          ...independentSession,
+          persistArtifact: independentSession.persistArtifact!,
+        },
+      ),
+    );
+    await expect(
+      unlinkedRegistry.invoke(
+        { command: "widgets.instantiate", input: { ...input, id: "unlinked-instance" } },
+        { ...context, runtime: { ...context.runtime, sessionId: "unlinked" } },
+      ),
+    ).rejects.toThrow();
+    await reopened.persistArtifact!(markdown("not-widget", "parent", 1, "Text"));
+    await expect(
+      registry.invoke(
+        {
+          command: "widgets.instantiate",
+          input: { ...input, id: "invalid", reference: "not-widget@r1" },
+        },
+        context,
+      ),
+    ).rejects.toThrow("widget template");
+    expect(capture).toHaveBeenCalledTimes(1);
+    // A colliding new ID goes through the existing atomic repository rule; no state is overwritten.
+    await expect(
+      registry.invoke({ command: "widgets.instantiate", input }, context),
+    ).rejects.toThrow();
+    expect(await reopened.readArtifactState!(input.id)).toMatchObject({
+      version: 2,
+      value: { title: "Edited independent data" },
+    });
+  });
+
+  it("does not publish an instance when retained-output capture fails or cancellation wins", async () => {
+    const controller = new AbortController();
+    const tokens: string[] = [];
+    let cancel = false;
+    const { host, root, runtime } = await makeHarness((_sessionId, widget) => {
+      tokens.push(widget.token);
+      if (cancel) {
+        controller.abort();
+        return Effect.succeed({ pngBase64: "cG5n", diagnostics: [] });
+      }
+      return Effect.fail(
+        new RenderedWidgetCaptureError({ kind: "infrastructure", message: "Capture failed" }),
+      );
+    });
+    const integration = await runtime.runPromise(host.runtimeIntegrations(root, "parent"));
+    const browser = await runtime.runPromise(
+      Effect.flatMap(WidgetBrowserOutputs, (outputs) =>
+        outputs.retain({
+          token: "00000000-0000-4000-8000-000000000002",
+          document: "<html>Retained</html>",
+        }),
+      ),
+    );
+    await integration.persistArtifact!({
+      protocol: "cake.artifact/v1",
+      id: "template",
+      sessionId: "parent",
+      revision: 1,
+      kind: "widget",
+      payload: {
+        language: "html",
+        source: "<html>Retained</html>",
+        browser,
+        brief: "Template",
+        generationSessionId: "accepted",
+      },
+      fallback: { markdown: "Fallback" },
+      interaction: { mode: "present" },
+    });
+    const appendEntry = vi.fn();
+    const registry = new CakeOperationRegistry(
+      createCakeArtifactOperations(
+        { appendEntry },
+        { ...integration, persistArtifact: integration.persistArtifact! },
+      ),
+    );
+    const input = {
+      id: "not-published",
+      title: "Not published",
+      reference: "template@r1",
+      initialState: null,
+      fallback: { markdown: "Fallback" },
+    };
+    const context = {
+      toolCallId: "reuse",
+      signal: controller.signal,
+      runtime: { sessionId: "parent", entryId: "assistant" },
+    };
+    await expect(
+      registry.invoke({ command: "widgets.instantiate", input }, context),
+    ).rejects.toThrow("Capture failed");
+    cancel = true;
+    await expect(
+      registry.invoke({ command: "widgets.instantiate", input }, context),
+    ).rejects.toThrow();
+    expect((await integration.listArtifactMetadata!()).map((item) => item.lineageId)).toEqual([
+      "template",
+    ]);
+    expect(await integration.readArtifactState!("template")).toMatchObject({
+      version: 0,
+      value: null,
+    });
+    expect(appendEntry).not.toHaveBeenCalled();
+    expect(tokens.every((token) => inlineWidgetDocument(token) === undefined)).toBe(true);
+  });
+
   it("hands off an accepted image and retrieves the pinned revision in an independent session after replacement", async () => {
     const { host, root, runtime } = await makeHarness();
     const parent = await runtime.runPromise(host.runtimeIntegrations(root, "parent"));

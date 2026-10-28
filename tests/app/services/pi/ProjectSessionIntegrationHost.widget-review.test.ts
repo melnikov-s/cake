@@ -59,6 +59,14 @@ function host(options: {
           (options.language === "html" ? htmlSource("Initial") : source("Initial")),
       };
     },
+    openWidgetBrowser: async () => {
+      calls.push("open-retained");
+      token += 1;
+      return {
+        token: `00000000-0000-4000-8000-${String(token).padStart(12, "0")}`,
+        document: "<html>Retained</html>",
+      };
+    },
     retainWidgetBrowser: async (compiled) => {
       calls.push(`retain:${compiled.token.slice(-1)}`);
       if (options.retainError) throw new Error(options.retainError);
@@ -144,6 +152,52 @@ const generate = (
 };
 
 describe("ProjectSessionIntegrationHost widget rendered review", () => {
+  it("captures retained browser bytes with independent candidate state and no generation, compilation, or review", async () => {
+    const fixture = host({ reviews: [] });
+    const capture =
+      fixture.integration.runtimeIntegrations("project-session").captureWidgetInstance!;
+    const state = { title: "Independent document", nodes: [] };
+    const preview = await capture({
+      sessionId: "project-session",
+      browser: { digest: "a".repeat(64) },
+      initialState: state,
+      signal: new AbortController().signal,
+    });
+    expect(preview).toEqual({
+      mimeType: "image/png",
+      data: Buffer.from("png-1").toString("base64"),
+    });
+    expect(fixture.captureStates).toEqual([state]);
+    expect(fixture.calls).toEqual(["open-retained", "capture:1"]);
+    expect(fixture.capturedTokens.every((token) => inlineWidgetDocument(token) === undefined)).toBe(
+      true,
+    );
+  });
+
+  it("revokes a retained-output capture token after capture failure", async () => {
+    const fixture = host({
+      reviews: [],
+      captureError: new RenderedWidgetCaptureError({
+        kind: "infrastructure",
+        message: "Capture failed",
+      }),
+    });
+    const capture =
+      fixture.integration.runtimeIntegrations("project-session").captureWidgetInstance!;
+    await expect(
+      capture({
+        sessionId: "project-session",
+        browser: { digest: "a".repeat(64) },
+        initialState: null,
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toThrow("Capture failed");
+    expect(fixture.calls).toEqual(["open-retained", "capture:1"]);
+    expect(fixture.capturedTokens.every((token) => inlineWidgetDocument(token) === undefined)).toBe(
+      true,
+    );
+  });
+
   it.each([undefined, "html"] as const)(
     "publishes explicit %s through the authoring operation and real review policy",
     async (language) => {

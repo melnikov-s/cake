@@ -229,15 +229,25 @@ must not make an ordinary link to a valid widget fail while loading the library.
 Selected payloads still pass the full current artifact schema; unsupported
 payloads are not reinterpreted or given a compatibility rendering fallback.
 
-The `widgets.present` path remains the creation operation for substantial,
-persistent visual explanations, including architecture and dependency views. Its
-input is a semantic brief with audience, verified facts and relationships,
-source references, bounded data, and a readable Markdown fallback. A restricted
-specialist chooses the visual form and may combine prose and controls with
-SVG or user-installed libraries inside the generated widget. Small diagrams remain inline
-Mermaid when they are clearest in the conversation. User-requested widget edits
-use `artifacts.replace`; Cake privately applies the requested delta to stored source
-and publishes only after compilation, rendering, and review succeed.
+Choose widget operations by what changes, not by whether the user says "edit":
+
+- `artifacts.present` displays an existing document without generating or publishing.
+- `artifacts.state.read` plus `artifacts.state.update` edits document content in
+  an existing data-driven widget. Its implementation owns validation and layout;
+  state updates do not compile, invoke models, or create source revisions.
+- `widgets.instantiate` creates an independent document from a linked exact
+  widget revision and explicit new JSON state. It reuses accepted source/browser
+  output and captures that new initial state without generation or compilation.
+- `widgets.present` generates a new implementation from a semantic brief with
+  audience, verified facts, bounded data, and readable fallback.
+- `artifacts.replace` changes widget source/behavior (or content that an old
+  implementation hardcodes). It compiles, renders, and reviews the new source.
+
+A restricted specialist may combine prose, controls, SVG, and installed libraries.
+Prefer data-driven implementations with document content in artifact state rather
+than source literals. Small diagrams remain inline Mermaid when that is clearest.
+Library-specific document formats and native layout remain in skills/widgets,
+not Cake-specific diagram operations.
 
 The separate `interview.open` operation is documented in
 [Interview ownership and lifecycle](./interviews.md).
@@ -346,6 +356,30 @@ failing closed on uncertain reachability. Disposable projected PNG/source files 
 the existing session/lineage projection cleanup and integrity/rematerialization policy.
 Cancellation, review failure, or a publication CAS conflict cannot mutate a prior
 revision or replace its capture.
+
+### Reusing accepted widget implementations
+
+`widgets.instantiate` requires a linked exact `reference` (`@rN`), a new `id` and
+`title`, explicit JSON `initialState` (including explicit null when intentional),
+and a readable `fallback`. It creates revision one of a separate lineage using
+exactly the template's accepted language, source, generation-branch provenance,
+and retained browser bytes. It never reads or copies the template's live state.
+The new document is committed atomically at state version zero; ordinary lineage
+ID collision and effective-link checks still apply.
+
+The host opens and integrity-checks retained browser output, mounts it with the
+supplied state in the existing ephemeral capture sandbox, and retains a fresh
+initial-state PNG. It does not copy the template's preview or call generation,
+compilation, package resolution, or an AI reviewer. This is new data in an
+already accepted implementation, not acceptance of newly generated source.
+Capture failure/cancellation publishes nothing; transient document tokens are
+released. Runtime JSON normalization belongs to the widget, just as for other
+live state edits. The capture proves one initial render, not all interactions.
+
+An implementation must actually read artifact state for new data to affect it;
+instantiation does not rewrite hardcoded source. Old implementations need an
+explicit source revision to adopt data-driven behavior. Reopening/presenting
+never silently rewrites an immutable implementation.
 
 HTML generation returns exactly one `cake-html` fence containing a complete
 `<!doctype html><html><head>...</head><body>...</body></html>` document, with inline
@@ -615,8 +649,13 @@ Generic `artifacts.state.read`, `artifacts.state.replace`, and
 Writes require the observed `expectedVersion`; update applies bounded JSON-pointer
 set/remove operations. A conflict requires rereading and reapplying the intended
 delta, never blindly overwriting newer manual edits. Data-only changes create no
-source revision. Library-specific schemas, element identity, selection context,
-exports, and surgical editing rules belong to the skill and widget, not these tools.
+source revision and invoke no generator/compiler/reviewer. A widget must apply
+its own native layout/normalization when external JSON changes; for example an
+editable canvas remeasures bound labels and persists normalized geometry without
+regenerating its editor. Library-specific schemas, element identity, selection
+context, exports, and surgical editing rules belong to the skill and widget,
+not these tools. Repeated independent documents can use `widgets.instantiate`
+with the same accepted implementation and separate initial state.
 
 Source edits continue the existing private Pi artifact branch. Its candidate starts
 from current live state, reads skill resources, and stages edits without touching the

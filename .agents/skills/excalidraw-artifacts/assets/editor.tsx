@@ -82,13 +82,21 @@ function snapshot(
   serializeAsJSON: ExcalidrawLibrary["serializeAsJSON"],
 ): Scene {
   const native = JSON.parse(serializeAsJSON(elements, appState, files, "local"));
+  const originals = new Map(base.elements.map((element) => [element.id, element]));
+  // Native initialData restoration treats null/[] empty bindings interchangeably.
+  // That mount-time default is not a user edit to an unrelated stored object.
+  const persistentElements = elements.map((element) =>
+    originals.get(element.id)?.boundElements === null && element.boundElements?.length === 0
+      ? { ...element, boundElements: null }
+      : element,
+  );
   // The file-export serializer intentionally drops tombstones and unused image
   // files. Live storage retains them for native undo, plus unknown document
   // metadata/customData. Add only explicitly JSON-safe useful UI settings.
   return JSON.parse(
     JSON.stringify({
       ...base,
-      elements,
+      elements: persistentElements,
       files: { ...base.files, ...files },
       appState: {
         ...base.appState,
@@ -108,6 +116,78 @@ function snapshot(
       selection: appState.selectedElementIds || {},
     }),
   );
+}
+
+// External document edits arrive as JSON, not native editor actions. Let the
+// installed library wrap/recenter labels, then persist its normalized result.
+function restoreSceneElements(
+  scene: Scene,
+  localElements: readonly ExcalidrawElement[],
+  library: ExcalidrawLibrary,
+) {
+  const incoming = new Map(scene.elements.map((element) => [element.id, element]));
+  const local = new Map(localElements.map((element) => [element.id, element]));
+  const restored = library.restoreElements(
+    scene.elements.map((element) =>
+      element.type === "text" ? { ...element, text: element.originalText } : element,
+    ),
+    null,
+    { repairBindings: true, refreshDimensions: true },
+  );
+  let normalized = false;
+  const elements = restored.map((element) => {
+    // Native restoration also normalizes unrelated defaults (for example null
+    // empty bindings to []). Keep the stored objects unless their text needs layout.
+    if (element.type !== "text" || element.isDeleted) return incoming.get(element.id) ?? element;
+    let text = element;
+    const container = element.containerId ? incoming.get(element.containerId) : undefined;
+    if (
+      container &&
+      (container.type === "rectangle" ||
+        container.type === "ellipse" ||
+        container.type === "diamond" ||
+        container.type === "arrow")
+    ) {
+      // Measure only a disposable container/label pair with the public native
+      // converter. Never replace existing objects or their bindings with it.
+      const measured = library
+        .convertToExcalidrawElements(
+          [{ ...container, boundElements: [], label: { ...element, text: element.originalText } }],
+          { regenerateIds: false },
+        )
+        .find((candidate) => candidate.id === element.id);
+      if (measured?.type === "text")
+        text = {
+          ...element,
+          text: measured.text,
+          x: measured.x,
+          y: measured.y,
+          width: measured.width,
+          height: measured.height,
+        };
+    }
+    const source = incoming.get(text.id);
+    const previous = local.get(text.id);
+    const layoutChanged =
+      source?.type === "text" &&
+      (text.text !== source.text ||
+        text.x !== source.x ||
+        text.y !== source.y ||
+        text.width !== source.width ||
+        text.height !== source.height);
+    const unversionedTextEdit =
+      previous?.type === "text" &&
+      previous.originalText !== text.originalText &&
+      text.version <= previous.version;
+    if (!layoutChanged && !unversionedTextEdit) return source ?? text;
+    normalized = true;
+    return library.newElementWith(
+      { ...text, version: Math.max(text.version, previous?.version ?? 0) },
+      {},
+      true,
+    );
+  });
+  return { elements, normalized };
 }
 
 function download(blob: Blob, filename: string): void {
@@ -146,14 +226,7 @@ export default function ExcalidrawArtifact() {
 }
 
 function ExcalidrawEditor({ library }: { library: ExcalidrawLibrary }) {
-  const {
-    CaptureUpdateAction,
-    Excalidraw,
-    exportToBlob,
-    exportToSvg,
-    restoreElements,
-    serializeAsJSON,
-  } = library;
+  const { CaptureUpdateAction, Excalidraw, exportToBlob, exportToSvg, serializeAsJSON } = library;
   // Native converters can leave own customData: undefined. postMessage preserves
   // it; normalize the seed as well as snapshots before crossing the JSON boundary.
   const [jsonInitialScene] = useState<Scene>(() => JSON.parse(JSON.stringify(initialScene)));
@@ -186,9 +259,15 @@ function ExcalidrawEditor({ library }: { library: ExcalidrawLibrary }) {
     if (current.timer !== null) clearTimeout(current.timer);
     current.timer = null;
     if (!current.ready || current.flight || !current.pending) return;
+    const pendingSignature = signature(current.pending);
+    if (pendingSignature === signature(current.base)) {
+      current.pending = null;
+      if (current.mounted) setDirty(false);
+      return;
+    }
     const flight = {
       scene: current.pending,
-      signature: signature(current.pending),
+      signature: pendingSignature,
       version: current.observedVersion,
       epoch: current.epoch,
     };
@@ -275,7 +354,11 @@ function ExcalidrawEditor({ library }: { library: ExcalidrawLibrary }) {
     if (discarded)
       setNotice("A newer saved drawing replaced pending edits. Review it before continuing.");
 
-    const elements = restoreElements(value.elements || [], null);
+    const { elements, normalized } = restoreSceneElements(
+      value,
+      api.getSceneElementsIncludingDeleted(),
+      library,
+    );
     const appState = {
       ...api.getAppState(),
       ...value.appState,
@@ -284,7 +367,8 @@ function ExcalidrawEditor({ library }: { library: ExcalidrawLibrary }) {
     const files = { ...api.getFiles(), ...value.files };
     // Set the expected normalized echo BEFORE calling the API. Both synchronous
     // and later onChange notifications of hydration/agent edits are not saves.
-    current.lastScene = signature(snapshot(value, elements, appState, files, serializeAsJSON));
+    const normalizedScene = snapshot(value, elements, appState, files, serializeAsJSON);
+    current.lastScene = signature(normalizedScene);
     current.applying = true;
     try {
       api.addFiles(Object.values(value.files || {}));
@@ -293,7 +377,12 @@ function ExcalidrawEditor({ library }: { library: ExcalidrawLibrary }) {
       current.applying = false;
       current.ready = true;
     }
-  }, [api, hydrated, value, version, save, flush]);
+    if (normalized) {
+      current.pending = normalizedScene;
+      setDirty(true);
+      current.timer = setTimeout(() => void flush(), 200);
+    }
+  }, [api, hydrated, value, version, save, flush, library]);
 
   const onChange = useCallback(
     (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {

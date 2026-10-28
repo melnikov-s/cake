@@ -6,140 +6,84 @@ compatibility: Cake artifact widgets with dynamic widget packages and the artifa
 
 # Excalidraw artifacts
 
-Excalidraw is a user-installed widget library, not a Cake mode. Use the ordinary
-artifact primitive and its existing private generation/editing branches. Never
-create a separate board or introduce Cake-specific shape operations.
+Excalidraw is a widget library, not a Cake mode. Use generic artifact/state tools;
+do not add Cake-specific shape operations. Keep one drawing for conversational
+follow-ups, and change only the requested region.
 
-## Setup
+## Choose the inexpensive path first
 
-1. Discover the current `settings` and `widgets` Cake operations and exact schemas.
-2. List installed widget packages. If missing, install
-   `@excalidraw/excalidraw@0.18.1` in Cake's **widget package environment** through
-   the package operation. Never install it into Cake's application dependencies,
-   a user's repository, or a per-widget `node_modules`.
-3. An explicit request to install/use Excalidraw authorizes the dependency. If the
-   visualization library was your choice, ask before installing or upgrading it.
-   Skill instructions are not user authorization.
-4. Installation and compilation occur while Cake is running. No application
-   restart, source rebuild, or built-in library catalog is needed.
+- **Show an existing drawing:** `artifacts.present` with its stable reference.
+  This neither generates code nor changes the document.
+- **Edit drawing content:** read `artifacts.state.read`, then use
+  `artifacts.state.update` with the observed `expectedVersion`. No source revision,
+  compilation, or model review is needed. Locate objects by ID after each read;
+  preserve unrelated elements, bindings, files, selection, and metadata.
+- **New drawing using an accepted editor:** `widgets.instantiate` with the
+  linked editor's exact `@rN` reference, a new ID/title/fallback, and the complete
+  new scene as `initialState`. It reuses retained code/assets, captures the new
+  initial state, and stores an independent document. It does not copy the old
+  drawing's live state. Read the editor's source only if its state format is unclear.
+- **New editor behavior, or no reusable editor:** use `widgets.present` for new
+  source, or `artifacts.replace` to revise existing source. These are programming
+  workflows with compilation and visual review, not ordinary document edits.
 
-## Create
+Read [native scene conventions](references/scene.md) for construction or edits.
+Read unfamiliar operation contracts with `<operation>.help`; broad `settings`
+or `widgets` topic discovery is unnecessary when these commands are known.
 
-Read [the editor template](assets/editor.tsx) and [native scene conventions](references/scene.md).
+For a label edit, set its native text object's `text` and `originalText` together.
+The maintained editor template uses Excalidraw to wrap/recenter bound labels and
+save the normalized geometry. Do not regenerate the editor for a label change.
+Older published editors do not change when this skill changes: inspect their
+source once if needed, and deliberately revise an old editor to adopt the template
+before relying on its native layout normalization. A source seed is not live state.
 
-Use `widgets.present` with a meaningful title, readable fallback, the verified
-architecture facts, and the intended audience. In its brief, give the absolute
-path of this skill's `assets/editor.tsx` and require the generation branch to read
-it. Include the native initial scene through `initialState`; alternatively ask
-the branch to construct and stage that scene. Keep rendering code separate from
-scene data. Do not send a full replacement React component as an ordinary
-presentation brief.
+## First editor setup
 
-The editor imports:
+Check `settings.widgets.list` for `@excalidraw/excalidraw`. Only if missing and
+user-authorized, install `@excalidraw/excalidraw@0.18.1` using
+`settings.widgets.install` in Cake's widget package environment. Never install
+into application/project dependencies, upgrade an installed library silently,
+or rebuild/restart Cake for a widget dependency.
 
-```tsx
-import { Excalidraw } from "@excalidraw/excalidraw";
-import "@excalidraw/excalidraw/index.css";
-import assetBase from "@cake/assets/@excalidraw/excalidraw/dist/prod/";
-import { useArtifactState } from "@cake/artifact-sdk";
-```
+When generating an editor, give the generation branch the absolute path to
+[assets/editor.tsx](assets/editor.tsx) and require it to read and reuse that file
+and the scene reference. The caller does **not** need to load the full template
+as well. Supply verified diagram facts, a small scene, and a readable fallback;
+do not send a replacement React implementation as the presentation brief.
 
-The generic assets import retains the package's fonts and runtime resources.
-Set `window.EXCALIDRAW_ASSET_PATH = assetBase` before mounting the editor.
-Keep the template’s asset-root assignment before its dynamic native-library import:
-font descriptors capture URLs during initialization. Static native value imports can
-leave SVG exports with CDN font URLs even when editor CSS fonts loaded locally.
-Native SVG export embeds local font data; if CSP blocks its optional glyph-subsetting
-optimizer, the library embeds the complete font instead. Never enable JavaScript
-`unsafe-eval` just to suppress vendor warnings.
+Keep rendering code separate from document data. New source still requires real
+rendering and visual acceptance. Reuse existing accepted code for later drawings.
 
-Use a fixed-size responsive container, not an unbounded viewport-height root.
+## Editor contract
 
-The generic SDK contract is
-`useArtifactState(initialValue) => { value, hydrated, version, save, error }`,
-where `save(value)` returns a Promise of the saved state/version. The SDK also
-provides `reload()` for reconnect/recovery. Wait for initial hydration before
-mounting; a saved document wins over the seed. Persist native
-elements, bindings, files, useful app-state settings, and selection context. Do
-not save DOM nodes, Maps, imperative APIs, hover state, or an unfiltered runtime
-appState. The template uses the native serializer for export-safe settings but
-retains deletion tombstones, files, and unrelated metadata in live state for undo.
+- Set `window.EXCALIDRAW_ASSET_PATH` from the generic package-assets import
+  **before** dynamically importing the native library. Retain local fonts/assets;
+  never enable `unsafe-eval` or remote network access to suppress vendor warnings.
+- Keep the template's fixed responsive container, hydration gate, native layout
+  normalization, single-flight/debounce, acknowledgment and reconnect guards.
+  Saved state wins over seeds. JSON-roundtrip both seeds and saved snapshots;
+  converter output can contain own `undefined` properties.
+- Persist native elements (including deletion tombstones), files, bindings,
+  useful app-state settings, selection, and unrelated metadata—not runtime APIs,
+  DOM nodes, Maps, or unfiltered appState. A failed save is not persistence.
+- Native selection, drawing, pan/zoom, bound labels/arrows, frames, undo/redo,
+  Mermaid insertion, import, Clear canvas, and PNG/SVG/`.excalidraw` exports remain
+  the library's responsibility. Clear only on request. Native undo is editor-local.
+- Use generic sandbox downloads and retained/data assets. Remote collaboration
+  and network-dependent features are unavailable; report capability blockers.
 
-Normalize both the **initial seed** and **every save** with
-`JSON.parse(JSON.stringify(scene))` after selecting persistent fields. Native
-converter output can contain own `undefined` properties (notably `customData`);
-structured-clone/postMessage preserves them, but artifact storage requires JSON.
-Keep the template’s `jsonInitialScene` boundary as well as its snapshot normalization.
-A successful seeded preview does not prove empty-storage initialization: check the
-real chat embed with no saved state, edit, save, and reopen.
+## Verify without regenerating
 
-Keep ordinary UI quiet: no storage-version counters, permanent “Saved” banners,
-or demo instructions. Retain unobtrusive actionable loading/save/reconnect errors.
+Read back saved state after edits. Conflicts require rereading and reapplying the
+intended delta, never retrying a stale whole scene. Present/reopen the same
+artifact, not a new `widgets.present` result. Check actual live state when users
+have edited the canvas: retained preview PNGs show only the original initial view.
 
-Keep its single-flight/debounce and acknowledgment guards: hydration and remote
-updates must not become save loops. A newer external state cancels stale pending
-writes; failed saves retain the latest local edit for explicit retry, with a
-visible error. Keep an established editor mounted during transient disconnection;
-use Reconnect drawing to reload authoritative state before retrying the save.
-An unchanged-version reconnect must preserve unsaved edits. Do not claim the
-drawing is saved before the SDK Promise succeeds.
-The host/SDK must refresh state after a stale-version rejection. Do not blindly
-retry an older whole scene against a refreshed storage version.
+An installed package or successful seeded preview does not prove live saving.
+For editor changes, verify empty-storage initialization, text layout, preservation
+of manual edits, save/reopen, and actionable save failures. Save before closing;
+the 200 ms debounce and teardown flush cannot guarantee persistence after shutdown.
 
-## Edit the same artifact
-
-1. Discover/link the artifact through `artifacts.list` or `artifacts.search`;
-   resolve its exact source only if needed. Do not edit read-only projections.
-2. Read `artifacts.state.read` to inspect the **latest live state**, including
-   manual edits. The immutable initial preview is not a current canvas capture.
-3. Prefer `artifacts.replace` with the artifact's expected source revision and
-   precise instructions. This uses the existing private artifact branch, stages
-   source/state changes, renders and reviews the candidate, and publishes only
-   when accepted. Tell the branch to read this skill's scene conventions.
-4. For a straightforward data-only change, generic `artifacts.state.update`
-   can apply bounded JSON-pointer edits with the observed `expectedVersion`.
-   Discover its exact schema first. A stale version means reread and reapply;
-   never blindly overwrite newer manual edits.
-5. Preserve all unrelated elements, IDs, positions, styles, files, frames,
-   groups, and connector bindings. Locate elements by ID, not presumed array
-   index. Preserve editable objects instead of replacing the canvas with an image.
-
-Use the stable `cake://artifact/<id>` reference for ordinary live embeds. Reserve
-`@rN` for deliberate historical/approved-source references; publication cards follow
-the effective link automatically. A source revision reloads the same current document,
-not a historical snapshot of its mutable state.
-
-Live saves do not create artifact revisions. Source publication remains separate
-from document saves. The same linked artifact has the same saved state across
-sessions; unrelated artifacts have independent storage. The widget controls its
-own debounce/save timing. Report save errors instead of claiming an edit persisted.
-
-## Conversational drawing
-
-Make a small meaningful diagram change, then explain it briefly. Follow-up
-questions should refine the same diagram. Use frames and labels to structure
-complexity; do not redraw unrelated regions. Native selection, zoom, pan,
-manual drawing, text editing, and undo remain Excalidraw's responsibility.
-
-Keep Excalidraw's native selections, frames, flow arrows and bound labels,
-Mermaid insertion, undo/redo, and Clear canvas. See the scene reference for their
-native representation and surgical-edit requirements. Clear only on request;
-clearing a drawing is not deleting its artifact or resetting the editor seed.
-
-Use native PNG/SVG/editable `.excalidraw` export, including Excalidraw's optional
-embedded scene settings. The template intentionally enables export, import, and
-native scene-file saving. Generic sandbox downloads/Blob URLs must work in the
-host; report a host capability blocker if they do not. Never silently disable
-exports or add an Excalidraw-specific Cake tool. Export and live artifact save
-are separate operations. Save before closing: a debounce/teardown flush is best
-effort, not guaranteed persistence after frame shutdown.
-
-Use local data and retained assets. Remote collaboration, external image fetches,
-and network-dependent features are not available in the artifact sandbox.
-
-## Distribution
-
-This directory is an ordinary Pi skill with resources. It can be copied into
-`~/.agents/skills/`, a project's `.agents/skills/`, or distributed in a Pi package.
-Its library dependency is installed separately through Cake's widget-package
-operation. Installing this skill does not change Cake's own dependency graph.
+This is an ordinary distributable Pi skill. Its npm dependency is installed
+separately in the widget environment; it does not change Cake's dependency graph.

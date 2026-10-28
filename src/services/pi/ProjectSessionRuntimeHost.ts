@@ -8,6 +8,7 @@ export type ProjectSessionRuntimeIntegrations = Pick<
   CakeOperationOptions,
   | "messageBoardControl"
   | "generateInlineWidget"
+  | "captureWidgetInstance"
   | "reviseInlineWidget"
   | "readArtifactState"
   | "replaceArtifactState"

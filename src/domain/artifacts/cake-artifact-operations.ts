@@ -89,6 +89,13 @@ const artifactReferenceSchema = Schema.String.check(
   Schema.isPattern(/^(?:cake:\/\/artifact\/)?[A-Za-z0-9][A-Za-z0-9._:-]*(?:@r[1-9][0-9]*)?$/),
 );
 const artifactResolveSchema = Schema.Struct({ reference: artifactReferenceSchema });
+const widgetInstantiateSchema = Schema.Struct({
+  id: artifactIdSchema,
+  title: titleSchema,
+  reference: artifactReferenceSchema.check(Schema.isPattern(/@r[1-9][0-9]*$/)),
+  initialState: jsonValueSchema,
+  fallback: Schema.Struct({ markdown: markdownSchema }),
+});
 const expectedRevisionSchema = Schema.Int.check(Schema.isGreaterThan(0));
 const artifactUpdateSchema = Schema.Struct({
   lineageId: artifactIdSchema,
@@ -381,7 +388,7 @@ export function createCakeArtifactOperations(
       topic: "artifacts",
       summary: "Show an existing artifact inline in this conversation without recreating it.",
       guidance: [
-        "Use this when the user wants to see an existing artifact again, including after state-only edits. Do not regenerate it with widgets.present, replace it, or repeat a Markdown embed.",
+        "Use this when the user wants to see an existing artifact again, including after data/content edits through artifacts.state.read + artifacts.state.update. Do not regenerate it with widgets.present, replace it, or repeat a Markdown embed. For an independent document using the same implementation, use widgets.instantiate.",
         "Stable references resolve the current source; exact @rN references select that immutable source revision. Widgets hydrate current lineage state in either case.",
         "Each successful call adds a fresh inline surface in the requesting conversation, even for a non-owned artifact or a closed producing session. No source revision, ownership, provenance, or mutable state is changed. All artifact kinds use their existing renderer and sandbox.",
         "Permanent Project Chat and global Cake Chat explicitly link an accessible unlinked reference as part of presentation, preserving existing links. Project Sessions require an effective link first (artifacts.link). Missing or inaccessible references fail explicitly.",
@@ -561,7 +568,7 @@ export function createCakeArtifactOperations(
       topic: "artifacts",
       summary: "Replace an existing artifact or revise a widget from instructions.",
       guidance: [
-        "Use this operation when the user asks to edit, fix, revise, or repair an artifact. Cake preserves its stable ID and publishes the next immutable revision.",
+        "Use this operation for source or behavior changes, or to change content hardcoded in an old widget. Cake preserves its stable ID and publishes the next immutable revision. For existing widget data/content, use artifacts.state.read then artifacts.state.update instead; show it again with artifacts.present. For an independent document using the same implementation, use widgets.instantiate.",
         "Markdown replacements require the complete document; prefer artifacts.update for targeted text edits. File replacements snapshot a replacement workspace-relative path. Widget replacements accept revision instructions and run isolated generation, rendering, and visual review before publication, returning the new revision's accepted PNG as a native image. Widget revisions retain the stored source language; there is no language-switch input.",
       ],
       inputSchema: artifactReplaceSchema,
@@ -749,6 +756,95 @@ export function createCakeArtifactOperations(
     },
   ];
 
+  const captureWidgetInstance = options.captureWidgetInstance;
+  if (captureWidgetInstance)
+    operations.push({
+      command: "widgets.instantiate",
+      topic: "widgets",
+      summary: "Create an independent widget from an exact linked implementation and new state.",
+      inputSchema: widgetInstantiateSchema,
+      guidance: [
+        "Use an exact linked widget reference (@rN), a new global ID and explicit initialState matching that implementation's state contract. Reuses accepted source and retained browser output without generation, compilation, package resolution or model review.",
+        "Template mutable state and hardcoded seed data are not copied as authoritative data. Supply the complete independent document in initialState. Read the template source/state contract first if needed.",
+        "For existing data/content use artifacts.state.read then artifacts.state.update. To show the same document again use artifacts.present. Only source/behavior changes or old hardcoded content need artifacts.replace.",
+        "A fresh rendered initial-state capture is returned, not the template's preview. This is not a new model review and does not verify every interaction. Publication is inline; do not add a redundant embed.",
+      ],
+      examples: [
+        {
+          input: {
+            id: "second-diagram",
+            title: "Second diagram",
+            reference: "cake://artifact/editable-diagram@r1",
+            initialState: { nodes: [], edges: [] },
+            fallback: { markdown: "Second independent diagram." },
+          },
+        },
+      ],
+      result:
+        "New revision-one widget reference and fresh initial-state PNG, with explicit reuse execution facts. No generation, compilation or model review.",
+      async execute(input, context) {
+        // SAFETY: CakeOperationRegistry parsed input with widgetInstantiateSchema.
+        const instance = input as typeof widgetInstantiateSchema.Type;
+        const runtime = runtimeContext(context);
+        const origin = pointerOrigin(context);
+        if (context.signal.aborted) throw new Error("Widget instantiation was cancelled");
+        const reference = stableReference(instance.reference);
+        const template = (await resolveArtifact(reference)).record.artifact;
+        if (template.kind !== "widget")
+          throw new Error("Widget instantiation requires a linked widget template");
+        if (template.id === instance.id)
+          throw new Error("Widget instantiation requires a new lineage ID");
+        const preview = await captureWidgetInstance({
+          sessionId: runtime.sessionId,
+          browser: template.payload.browser,
+          initialState: instance.initialState,
+          signal: context.signal,
+        });
+        if (context.signal.aborted) throw new Error("Widget instantiation was cancelled");
+        const record = await persist(
+          {
+            protocol: "cake.artifact/v1",
+            id: instance.id,
+            sessionId: runtime.sessionId,
+            revision: 1,
+            kind: "widget",
+            title: instance.title,
+            payload: {
+              language: template.payload.language,
+              source: template.payload.source,
+              generationSessionId: template.payload.generationSessionId,
+              browser: template.payload.browser,
+              brief: `Reused implementation from ${reference}. The caller supplied independent initialState; artifact-scoped mutable state is authoritative for this document.`,
+              preview,
+            },
+            fallback: instance.fallback,
+            interaction: { mode: "present" },
+          },
+          runtime.sessionId,
+          { expectedVersion: 0, value: instance.initialState },
+        );
+        appendPointer(record, origin);
+        const exactRef = `cake://artifact/${record.artifact.id}@r1`;
+        return cakeOperationImageResult(
+          {
+            artifactId: record.artifact.id,
+            artifactRevision: 1,
+            exactRef,
+            digest: record.digest,
+            previewEvidence: retainedWidgetPreviewEvidence(exactRef),
+            execution: {
+              reusedFrom: reference,
+              retainedBrowserOutput: true,
+              generated: false,
+              compiled: false,
+              modelReviewed: false,
+            },
+          },
+          [{ type: "image", ...preview }],
+        );
+      },
+    });
+
   if (options.generateInlineWidget)
     operations.push({
       command: "widgets.present",
@@ -757,6 +853,7 @@ export function createCakeArtifactOperations(
       guidance: [
         "Prefer ordinary inline Markdown—including Mermaid and small tables—whenever it communicates the result clearly. Create a widget only for a substantial, reusable, or genuinely interactive/visual deliverable, especially when requested.",
         "For static HTML/CSS mockups use html.present instead. For this delegated interactive workflow, supply the explanation goal, audience, verified facts/source references, bounded data, and a readable Markdown fallback. Do not write the generated source yourself.",
+        "Reuse existing implementation: change existing data/content with artifacts.state.read then artifacts.state.update; display it again with artifacts.present; create an independent document from an exact linked widget with widgets.instantiate. Reserve artifacts.replace for source/behavior changes or content hardcoded in an old widget.",
         "Publication supplies the accepted rendered preview to the agent as a native image, with an immutable exact reference. The user sees a live interactive widget. The retained PNG is Initial state—not current interactive view. Revision alone does not identify a selected variant. Before implementing an approved design, inspect matching revision AND state pixels: use the exact preview for the initial state, or request a screenshot of their interactive selection and confirm its artifact revision and selected state. Never claim visual verification from source or textual image descriptions. Read projected source selectively when needed and compare the implementation's real screenshot against the approved revision.",
         'Choose language: "html" for simple self-contained experiences using inline CSS and browser JavaScript without JSX, npm packages or bundling. Omit language (or choose "react") for React components, installed libraries, and prototype-ui module manifests. HTML remains an interactive widget, not a static HTML artifact. Replacements and repairs preserve the source language.',
         "HTML durable state uses globalThis.cakeArtifact.read(), getSnapshot(), subscribe(listener), and replace(value, expectedVersion); React uses @cake/artifact-sdk hooks. Both are scoped to this artifact. Wait for hydration, save only JSON, and handle version conflicts.",

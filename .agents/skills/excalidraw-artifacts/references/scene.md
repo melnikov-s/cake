@@ -99,21 +99,25 @@ existing drawing through a skeleton converter to make one small edit.
    intentionally deleted tombstones. `newElementWith(element, updates)` is the
    library helper for updating an existing element and bumping its native
    version, nonce and timestamp without changing its ID.
-4. For a data-only operation use bounded `artifacts.state.update` with the
-   observed `expectedVersion`. For construction, geometry changes, new bindings,
-   or a visual review use the ordinary private artifact editing branch via
-   `artifacts.replace`, not a whole new artifact. Stage the full resulting state
-   with the observed state version and review the candidate before accepting it.
+4. For document edits use bounded `artifacts.state.update` with the observed
+   `expectedVersion`, including label/content changes. Keep native geometry and
+   reciprocal bindings consistent when changing structure. Use `artifacts.replace`
+   for editor source/behavior changes, not as the default document-editing path.
+   Complex geometric edits should use native editor actions when available;
+   don't launch a programming workflow just to rename a label.
 5. On a version conflict reread, relocate the IDs, and reapply the intended delta.
    Never retry a stale full-scene overwrite against a newer version.
 6. Read back accepted state and inspect the rendered candidate. Do not claim a
    persisted change on an SDK/storage error or from a preview alone.
 
-For a label edit, update its native text object, including `text` and
-`originalText`, and remeasure dimensions/container placement through the library
-in the editing branch. Changing only the string of a bound label can leave
-clipping or stale bounds. Recheck its `containerId` and the parent's
-`boundElements` entry. Connector endpoint geometry is relative to the connector's
+For a label edit, update `text` and `originalText` together on the native text
+object using a state update. The maintained editor template restores elements
+with native binding repair and text-dimension refresh, bumps changed text versions,
+and saves normalized wrapping/container placement. The agent need not calculate
+font metrics or regenerate source. Leave `containerId` and the parent's
+`boundElements` entry intact. Existing immutable editor implementations need a
+one-time source revision to adopt this behavior; editing a skill file does not
+patch already-published browser output. Connector endpoint geometry is relative to the connector's
 `x`/`y`; moving a node requires native binding recalculation, not just changing
 an arrow's global coordinates. Removing a node requires repairing reciprocal
 bindings and attached labels. Prefer native editor actions for complex movement,
@@ -134,6 +138,10 @@ resizing, grouping, frame wrapping, and elbow-arrow routing.
 - Use frames for regions or steps, bound text for labels, and native bound arrows
   for flow direction. Keep diagrams small enough to read at the initial zoom;
   do not sacrifice editable relationships for a rasterized flowchart.
+- For another independent drawing, reuse a linked accepted editor's exact
+  revision through `widgets.instantiate` with a new native scene as required
+  `initialState`. Its retained source/assets are reused; its mutable drawing is
+  not copied. For a follow-up, edit the existing lineage instead.
 - Excalidraw supplies selection, text entry, pan/zoom, free draw, shapes, arrows,
   grouping, frame tools, keyboard shortcuts, undo/redo, and Clear canvas. Keep
   these native controls available; do not recreate them as Cake operations.

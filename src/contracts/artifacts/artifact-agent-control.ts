@@ -4,6 +4,10 @@ import type {
   InlineWidgetRevisionRequest,
 } from "../widgets/widget-generation";
 
+import type { WidgetBrowserOutput } from "../widgets/widget-browser-output";
+import type { WidgetPreview } from "../widgets/widget-preview";
+import type { JsonValue } from "../serialization/json-contract";
+
 import type {
   ArtifactStagedState,
   ArtifactState,
@@ -30,6 +34,12 @@ export interface CakeArtifactOperationOptions {
     input: InlineWidgetGenerationRequest,
   ): Promise<InlineWidgetGenerationResult>;
   reviseInlineWidget?(input: InlineWidgetRevisionRequest): Promise<InlineWidgetGenerationResult>;
+  captureWidgetInstance?(input: {
+    sessionId: string;
+    browser: WidgetBrowserOutput;
+    initialState: JsonValue;
+    signal: AbortSignal;
+  }): Promise<WidgetPreview>;
   resolveArtifact?(reference: string): Promise<ResolvedAgentArtifact>;
   /** Permanent chats may establish an effective link when explicitly presenting a reference. */
   resolveArtifactForPresentation?(reference: string): Promise<ResolvedAgentArtifact>;

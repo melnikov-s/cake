@@ -182,6 +182,7 @@ export const makeProjectSessionRuntimeHostLive = (
               packageDirectory: widgetPackages.directory,
             }),
           retainWidgetBrowser: (compiled) => runAdapter(browserOutputs.retain(compiled)),
+          openWidgetBrowser: (browser) => runAdapter(browserOutputs.open(browser)),
           runReviewedWidget: generateReviewedWidget,
           captureWidget: (targetSessionId, widget, signal, pluginState) =>
             runAdapter(

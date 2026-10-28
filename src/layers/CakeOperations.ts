@@ -279,6 +279,7 @@ export function configureCakeSessionRuntime(
     readArtifactState,
     replaceArtifactState,
     updateArtifactState,
+    captureWidgetInstance,
     ...runtime
   } = options;
   const featureOptions: CakeOperationOptions = {
@@ -322,6 +323,7 @@ export function configureCakeSessionRuntime(
     readArtifactState,
     replaceArtifactState,
     updateArtifactState,
+    captureWidgetInstance,
   };
   return {
     ...runtime,

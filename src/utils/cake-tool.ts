@@ -12,6 +12,7 @@ const cakeEnvelopeProjectionSchema = Schema.Struct({
 export function toolImageCaption(part: ToolPart) {
   return [
     "widgets.present",
+    "widgets.instantiate",
     "artifacts.preview",
     "artifacts.replace",
     "artifacts.restore",

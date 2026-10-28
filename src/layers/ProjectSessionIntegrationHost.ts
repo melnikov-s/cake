@@ -40,7 +40,10 @@ import type { CakeSessionRuntimeOptions } from "../services/pi/runtime/cake-sess
 import type { RuntimeUiRequest } from "../services/pi/runtime/runtime-ui-request";
 import type { ImportWorkspaceFileInput } from "../services/artifacts/importWorkspaceFile";
 import type { ArtifactProjectionMetadata } from "../contracts/artifacts/artifact-projection-data";
-import type { ResolvedAgentArtifact } from "../contracts/artifacts/artifact-agent-control";
+import type {
+  CakeArtifactOperationOptions,
+  ResolvedAgentArtifact,
+} from "../contracts/artifacts/artifact-agent-control";
 
 import type {
   ArtifactState,
@@ -139,6 +142,9 @@ export interface ProjectSessionIntegrationHostOptions {
   readonly retainWidgetBrowser?: (
     compiled: CompiledInlineWidgetDocument,
   ) => Promise<WidgetBrowserOutput>;
+  readonly openWidgetBrowser?: (
+    browser: WidgetBrowserOutput,
+  ) => Promise<CompiledInlineWidgetDocument>;
   readonly runReviewedWidget: (
     input: WidgetReviewInput,
     dependencies: WidgetGenerationReviewDependencies,
@@ -198,6 +204,9 @@ export class ProjectSessionIntegrationHost {
   private readonly retainWidgetBrowser: NonNullable<
     ProjectSessionIntegrationHostOptions["retainWidgetBrowser"]
   >;
+  private readonly openWidgetBrowser: NonNullable<
+    ProjectSessionIntegrationHostOptions["openWidgetBrowser"]
+  >;
   private readonly isTrusted: () => boolean;
   private readonly runReviewedWidget: ProjectSessionIntegrationHostOptions["runReviewedWidget"];
   private readonly execute: ProjectSessionIntegrationHostOptions["execute"];
@@ -233,6 +242,11 @@ export class ProjectSessionIntegrationHost {
       options.retainWidgetBrowser ??
       (async () => {
         throw new Error("Durable widget browser output retention is unavailable");
+      });
+    this.openWidgetBrowser =
+      options.openWidgetBrowser ??
+      (async () => {
+        throw new Error("Retained widget browser output access is unavailable");
       });
     this.runReviewedWidget = options.runReviewedWidget;
     this.execute = options.execute;
@@ -302,6 +316,7 @@ export class ProjectSessionIntegrationHost {
       requestInterview: (record, signal) => this.requestInterviewFromRenderer(record, signal),
       generateInlineWidget: (input) => this.execute(this.generateInlineWidget(input), input.signal),
       reviseInlineWidget: (input) => this.execute(this.reviseInlineWidget(input), input.signal),
+      captureWidgetInstance: (input) => this.captureWidgetInstance(input),
       readArtifactState: (lineageId) =>
         this.execute(this.artifactRepository.readState(sessionId, lineageId)),
       replaceArtifactState: (input) =>
@@ -350,6 +365,27 @@ export class ProjectSessionIntegrationHost {
       emit({ type: "artifact-updated", record });
       return record;
     });
+  }
+
+  private async captureWidgetInstance(
+    input: Parameters<NonNullable<CakeArtifactOperationOptions["captureWidgetInstance"]>>[0],
+  ) {
+    input.signal.throwIfAborted();
+    const compiled = await this.openWidgetBrowser(input.browser);
+    input.signal.throwIfAborted();
+    const widget = publishInlineWidget(compiled);
+    try {
+      const capture = await this.captureWidget(
+        input.sessionId,
+        widget,
+        input.signal,
+        input.initialState,
+      );
+      input.signal.throwIfAborted();
+      return { mimeType: "image/png" as const, data: capture.pngBase64 };
+    } finally {
+      revokeInlineWidget(widget.token);
+    }
   }
 
   private generateInlineWidget(input: InlineWidgetGenerationRequest) {

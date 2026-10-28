@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-/** The accepted review capture, retained as part of an immutable artifact snapshot. */
+/** Initial-state capture retained in an immutable snapshot (reviewed generation or retained-output reuse). */
 export const WidgetPreview = Schema.Struct({
   mimeType: Schema.Literal("image/png"),
   data: Schema.String.check(

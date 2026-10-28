@@ -1,5 +1,6 @@
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { promisify } from "node:util";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test, type ElectronApplication } from "@playwright/test";
 import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-identity";
@@ -10,7 +11,16 @@ const repositoryRoot = resolve(import.meta.dirname, "../..");
 const artifactId = "editable-excalidraw";
 const stateScope = { lineageId: artifactId };
 
-type SceneElement = { id: string; type: string; x: number; [key: string]: unknown };
+type SceneElement = {
+  id: string;
+  type: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  version: number;
+  [key: string]: unknown;
+};
 type Scene = { elements: SceneElement[]; [key: string]: unknown };
 type State = { version: number; value: Scene };
 type Capture = { pngBase64: string; diagnostics: string[]; persistedAfterCapture: boolean };
@@ -37,7 +47,7 @@ const initialScene = {
       versionNonce: 1,
       isDeleted: false,
       groupIds: [],
-      boundElements: [],
+      boundElements: [{ type: "text", id: "authority-label" }],
       customData: { preserve: "unrelated user data" },
     },
     {
@@ -47,12 +57,13 @@ const initialScene = {
       y: 120,
       width: 220,
       height: 30,
-      text: "Shared authority",
-      originalText: "Shared authority",
+      text: "Hello World",
+      originalText: "Hello World",
+      containerId: "authority-box",
       fontSize: 24,
       fontFamily: 5,
-      textAlign: "left",
-      verticalAlign: "top",
+      textAlign: "center",
+      verticalAlign: "middle",
       lineHeight: 1.25,
       autoResize: true,
       strokeColor: "#1e1e1e",
@@ -71,7 +82,11 @@ const initialScene = {
 
 test("installed Excalidraw edits shared live state and reopens retained output without its package", async () => {
   test.setTimeout(240_000);
-  const root = await mkdtemp(join(tmpdir(), "cake-excalidraw-artifact-"));
+  // esbuild traverses package ancestors; don't put this npm environment beneath
+  // a shared OS temp directory that may contain hundreds of thousands of entries.
+  const fixtureRoot = join(repositoryRoot, ".visual-captures", "widget-fixtures");
+  await mkdir(fixtureRoot, { recursive: true });
+  const root = await mkdtemp(join(fixtureRoot, "cake-excalidraw-artifact-"));
   const cakeHome = join(root, "cake-home");
   const userData = join(root, "user-data");
   const project = join(root, "project");
@@ -201,7 +216,7 @@ test("installed Excalidraw edits shared live state and reopens retained output w
     });
 
     const openArtifact = async () => {
-      await page.getByRole("button", { name: "1 artifacts", exact: true }).click();
+      await page.getByRole("button", { name: /^\d+ artifacts$/ }).click();
       await page
         .getByRole("dialog", { name: "Artifacts", exact: true })
         .getByRole("button", { name: /Captured widget fixture/ })
@@ -302,7 +317,7 @@ test("installed Excalidraw edits shared live state and reopens retained output w
       expectedVersion: manuallySaved.version,
       edits: [{ op: "set", path: `/elements/${index}/x`, value: 120 }],
     });
-    const edited = await invoke<State>("artifacts.state.read", stateScope);
+    let edited = await invoke<State>("artifacts.state.read", stateScope);
     expect(edited.value.elements.find((element) => element.id === manualShape.id)).toEqual(
       unrelated,
     );
@@ -310,6 +325,75 @@ test("installed Excalidraw edits shared live state and reopens retained output w
       x: 120,
       customData: { preserve: "unrelated user data" },
     });
+
+    // A label edit is document data, not an artifact source replacement. The
+    // unchanged editor must remeasure/recenter it and save native versions itself.
+    await expect
+      .poll(async () => {
+        const state = await invoke<State>("artifacts.state.read", stateScope);
+        const label = state.value.elements.find((element) => element.id === "authority-label")!;
+        const box = state.value.elements.find((element) => element.id === "authority-box")!;
+        return Math.abs(label.x - (box.x + (box.width - label.width) / 2)) < 0.1;
+      })
+      .toBe(true);
+    const beforeLabelEdit = await invoke<State>("artifacts.state.read", stateScope);
+    const labelIndex = beforeLabelEdit.value.elements.findIndex(
+      (element) => element.id === "authority-label",
+    );
+    const oldLabel = beforeLabelEdit.value.elements[labelIndex]!;
+    await invoke("artifacts.state.update", {
+      ...stateScope,
+      expectedVersion: beforeLabelEdit.version,
+      edits: [
+        { op: "set", path: `/elements/${labelIndex}/text`, value: "Hello Universe" },
+        { op: "set", path: `/elements/${labelIndex}/originalText`, value: "Hello Universe" },
+      ],
+    });
+    await expect
+      .poll(async () => {
+        const state = await invoke<State>("artifacts.state.read", stateScope);
+        const label = state.value.elements[labelIndex]!;
+        return (
+          label.originalText === "Hello Universe" &&
+          label.width !== oldLabel.width &&
+          label.version > oldLabel.version
+        );
+      })
+      .toBe(true);
+    edited = await invoke<State>("artifacts.state.read", stateScope);
+    const editedLabel = edited.value.elements[labelIndex]!;
+    const editedBox = edited.value.elements[index]!;
+    expect(editedLabel.containerId).toBe("authority-box");
+    expect(editedLabel.x).toBeCloseTo(editedBox.x + (editedBox.width - editedLabel.width) / 2);
+    expect(editedLabel.y).toBeCloseTo(editedBox.y + (editedBox.height - editedLabel.height) / 2);
+    expect(edited.value.elements.find((element) => element.id === manualShape.id)).toEqual(
+      unrelated,
+    );
+    expect(await invoke("artifacts.resolve-reference", { reference: artifactId })).toMatchObject({
+      selectedRevision: 1,
+    });
+
+    const independentId = "independent-excalidraw";
+    await invoke("widgets.instantiate", {
+      id: independentId,
+      title: "Independent drawing",
+      reference: `cake://artifact/${artifactId}@r1`,
+      initialState: {
+        ...edited.value,
+        elements: edited.value.elements.map((element) =>
+          element.id === "authority-label"
+            ? { ...element, text: "Another drawing", originalText: "Another drawing" }
+            : element,
+        ),
+      },
+      fallback: { markdown: "Another drawing in the same reusable editor." },
+    });
+    expect(
+      (await invoke<State>("artifacts.state.read", { lineageId: independentId })).value.elements[
+        labelIndex
+      ]?.originalText,
+    ).toBe("Another drawing");
+    expect(await invoke<State>("artifacts.state.read", stateScope)).toEqual(edited);
 
     // Open another ordinary instance BEFORE publishing; neither may need manual revision selection.
     const paneIframe = await openArtifact();
@@ -444,11 +528,8 @@ test("installed Excalidraw edits shared live state and reopens retained output w
       if (name === "Export drawing") {
         const scene = JSON.parse(await readFile(file, "utf8")) as Scene;
         expect(scene.elements.find((element) => element.id === "authority-box")?.x).toBe(160);
-        // Native export restores nullable empty bindings to [], without altering document geometry/data.
-        expect(scene.elements.find((element) => element.id === manualShape.id)).toEqual({
-          ...unrelated,
-          boundElements: unrelated.boundElements ?? [],
-        });
+        // Export must keep the unrelated native object's geometry and document data.
+        expect(scene.elements.find((element) => element.id === manualShape.id)).toEqual(unrelated);
       }
     }
     await page.getByRole("button", { name: "Exit fullscreen Captured widget fixture" }).click();
@@ -478,6 +559,14 @@ test("installed Excalidraw edits shared live state and reopens retained output w
       unrelated,
     );
     expect(reopened.value.elements.find((element) => element.id === "authority-box")?.x).toBe(160);
+    expect(
+      reopened.value.elements.find((element) => element.id === "authority-label"),
+    ).toMatchObject({ originalText: "Hello Universe", containerId: "authority-box" });
+    expect(
+      (await invoke<State>("artifacts.state.read", { lineageId: independentId })).value.elements[
+        labelIndex
+      ]?.originalText,
+    ).toBe("Another drawing");
     await iframe
       .contentFrame()
       .locator(".excalidraw")
@@ -491,6 +580,7 @@ test("installed Excalidraw edits shared live state and reopens retained output w
     ).toBe(true);
   } finally {
     await application?.close();
+    await promisify(execFile)("chmod", ["-R", "u+w", root]);
     await rm(root, { recursive: true, force: true });
   }
 });
