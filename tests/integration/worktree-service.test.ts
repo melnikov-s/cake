@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
+import { defaultProjectSettings } from "../../src/contracts/application/application-data";
 import { makeTestWorktreeService, type TestWorktreeService } from "../helpers/worktree-service";
 
 const execFileAsync = promisify(execFile);
@@ -149,11 +150,9 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
   it("runs project-specific creation and setup commands before returning", async () => {
     const repo = await repository();
     const record = await service().create(repo, undefined, "configured", {
-      worktreeCreateCommand: "git worktree add -b {branchName} {worktreePath} {baseCommit}",
+      ...defaultProjectSettings(),
+      worktreeCreateCommand: "git worktree add {checkoutPath} {branchName}",
       worktreeSetupCommands: "printf ready > {worktreePath}/.cake-setup",
-      worktreeSetupInstructions: "",
-      customInstructions: "",
-      projectChatInstructions: "",
     });
 
     await expect(readFile(join(record.worktreePath, ".cake-setup"), "utf8")).resolves.toBe("ready");

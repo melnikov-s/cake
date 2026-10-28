@@ -2,6 +2,8 @@ import { execFile } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { promisify } from "node:util";
 import worktreePromptTemplate from "./prompts/worktree.md?raw";
+import mergeLanding from "./prompts/worktree-landing-merge.md?raw";
+import pullRequestLanding from "./prompts/worktree-landing-pull-request.md?raw";
 import { renderPromptTemplate } from "./prompt-template";
 
 const execFileAsync = promisify(execFile);
@@ -12,11 +14,15 @@ export interface GitWorktreeContext {
   branch: string;
 }
 
-export function worktreeSystemPrompt(context: GitWorktreeContext): string {
+export function worktreeSystemPrompt(
+  context: GitWorktreeContext,
+  landing: "merge" | "pull-request",
+): string {
   return renderPromptTemplate(worktreePromptTemplate, {
     worktreePath: context.worktreePath,
     mainCheckoutPath: context.mainCheckoutPath,
     branch: context.branch,
+    landing: (landing === "pull-request" ? pullRequestLanding : mergeLanding).trim(),
   });
 }
 

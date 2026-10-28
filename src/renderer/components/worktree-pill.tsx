@@ -44,6 +44,8 @@ export interface WorktreePillProps {
   projectPath: string;
   resolved?: boolean;
   isFamilyChild?: boolean;
+  /** Pull-request projects never merge through Cake; their sessions resolve instead. */
+  landing?: "merge" | "pull-request";
   configurationMode?: "new-session" | "activate-draft" | "edit-draft";
   onConfigured(): void;
   header?: ReactNode;
@@ -58,6 +60,7 @@ export const WorktreePill = observer(function WorktreePill({
   projectPath,
   resolved = false,
   isFamilyChild = false,
+  landing = "merge",
   configurationMode,
   onConfigured,
   header,
@@ -280,11 +283,14 @@ export const WorktreePill = observer(function WorktreePill({
                 ? `Commit & land ${newCommitCount === 1 ? "new commit" : "new commits"}`
                 : "Commit & land"
               : `Land ${newCommitCount === 1 ? "new commit" : "new commits"}`;
-  const targetWarning = status?.targetDirty
-    ? "The merge target has uncommitted changes."
-    : status && !status.targetOnBranch
-      ? `Switch the merge target to ${status.targetBranch} first.`
-      : undefined;
+  const merges = landing === "merge";
+  const targetWarning = !merges
+    ? undefined
+    : status?.targetDirty
+      ? "The merge target has uncommitted changes."
+      : status && !status.targetOnBranch
+        ? `Switch the merge target to ${status.targetBranch} first.`
+        : undefined;
   const tooltipLabel = tooltipAnchor === branchRef.current ? branch : targetWarning;
 
   return (
@@ -347,7 +353,7 @@ export const WorktreePill = observer(function WorktreePill({
                   : "Rebase"}
             </WorktreePillAction>
           )}
-          {!landed && (
+          {merges && !landed && (
             <>
               <WorktreePillAction
                 icon={<MergeIcon />}
@@ -375,7 +381,7 @@ export const WorktreePill = observer(function WorktreePill({
               )}
             </>
           )}
-          {hasWorkSinceLanding && (
+          {merges && hasWorkSinceLanding && (
             <WorktreePillAction
               icon={<MergeIcon />}
               aria-label={landNewCommitsLabel}
@@ -390,11 +396,15 @@ export const WorktreePill = observer(function WorktreePill({
               {landNewCommitsLabel}
             </WorktreePillAction>
           )}
-          {landed && !hasWorkSinceLanding && !isFamilyChild && (
+          {(!merges || (landed && !hasWorkSinceLanding)) && !isFamilyChild && (
             <WorktreePillAction
               icon={<ResolveIcon />}
               aria-label="Resolve"
-              tooltip="Resolve worktree sessions"
+              tooltip={
+                merges
+                  ? "Resolve worktree sessions"
+                  : "Resolve sessions; removes the worktree unless it has uncommitted changes"
+              }
               disabledReason={operationDisabledReason}
               onClick={() => run(actions.resolve())}
             >

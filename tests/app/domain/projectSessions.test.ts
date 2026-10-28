@@ -825,6 +825,7 @@ const makeLayer = (
             )
           : Effect.sync(() => {
               hooks.onCleanupResolved?.();
+              return true;
             }),
       restoreResolved: () =>
         Effect.sync(() => {
@@ -1824,9 +1825,9 @@ describe("Project Sessions domain", () => {
         const failure = yield* projectSessionLifecycle.resolve({ sessionId: "parent" }).pipe(
           Effect.provideService(ManagedWorktrees, {
             ...worktrees,
-            cleanupResolved: (cwd) =>
+            cleanupResolved: (cwd, options) =>
               Effect.sync(() => cleanupAttempts.push(cwd)).pipe(
-                Effect.andThen(worktrees.cleanupResolved(cwd)),
+                Effect.andThen(worktrees.cleanupResolved(cwd, options)),
               ),
           }),
           Effect.flip,

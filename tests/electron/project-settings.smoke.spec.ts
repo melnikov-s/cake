@@ -58,8 +58,10 @@ test("roundtrips browser, separate Project Chat, coding instructions and worktre
     const createCommand = page.getByLabel("Worktree creation command");
     const setupCommands = page.getByRole("textbox", { name: /^Setup commands/ });
     const setupInstructions = page.getByRole("textbox", { name: /^Setup instructions/ });
-    await expect(createCommand).toHaveValue(
-      "git worktree add -b {branchName} {worktreePath} {baseCommit}",
+    await expect(createCommand).toHaveValue("");
+    await expect(createCommand).toHaveAttribute(
+      "placeholder",
+      "git worktree add {checkoutPath} {branchName}",
     );
     await customInstructions.fill("Prefer concise explanations for this project.");
     await chatInstructions.fill("  Discuss ideas before creating coding tasks.  ");
@@ -85,6 +87,9 @@ test("roundtrips browser, separate Project Chat, coding instructions and worktre
         worktreeCreateCommand: "my-worktree {worktreeName} {worktreePath}",
         worktreeSetupCommands: "pnpm install",
         worktreeSetupInstructions: "Run pnpm install only when dependencies are needed.",
+        worktreeRemoveCommand: "",
+        worktreeCommandTimeoutSeconds: 0,
+        worktreeLanding: "merge",
         customInstructions: "Prefer concise explanations for this project.",
         projectChatInstructions: "  Discuss ideas before creating coding tasks.  ",
       });

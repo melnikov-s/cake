@@ -186,11 +186,14 @@ describe("Cake Chat core and task-triggered references", () => {
 });
 
 it("keeps managed worktree paths, native landing and explicit outside-write exceptions", () => {
-  const prompt = worktreeSystemPrompt({
-    worktreePath: "/worktrees/change",
-    mainCheckoutPath: "/project",
-    branch: "agent/change",
-  });
+  const prompt = worktreeSystemPrompt(
+    {
+      worktreePath: "/worktrees/change",
+      mainCheckoutPath: "/project",
+      branch: "agent/change",
+    },
+    "merge",
+  );
   expect(prompt).toContain("Checkout: /worktrees/change");
   expect(prompt).toContain("Main checkout: /project");
   expect(prompt).toContain("Branch: agent/change");
@@ -202,4 +205,14 @@ it("keeps managed worktree paths, native landing and explicit outside-write exce
   expect(prompt).toContain("no manual fallback");
   expect(prompt).toContain("confirm conflicting path signals before writing outside");
   expect(prompt.length).toBeLessThan(1_000);
+});
+
+it("tells pull-request projects that Cake does not merge their worktrees", () => {
+  const prompt = worktreeSystemPrompt(
+    { worktreePath: "/trees/change/src", mainCheckoutPath: "/world", branch: "agent/change" },
+    "pull-request",
+  );
+  expect(prompt).toContain("follow the repository's pull request workflow");
+  expect(prompt).toContain("worktrees.merge is unavailable");
+  expect(prompt).not.toContain("call worktrees.merge");
 });

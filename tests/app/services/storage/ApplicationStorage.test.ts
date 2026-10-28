@@ -238,6 +238,9 @@ describe("ApplicationStorage", () => {
               worktreeCreateCommand: "git worktree add {worktreePath}",
               worktreeSetupCommands: "pnpm install\npnpm build:slim",
               worktreeSetupInstructions: "Keep dependencies isolated.",
+              worktreeRemoveCommand: "tree remove {worktreeName}",
+              worktreeCommandTimeoutSeconds: 120,
+              worktreeLanding: "pull-request",
               customInstructions: "Coding session guidance.",
               projectChatInstructions: "Project Chat guidance.",
               icon: { mimeType: "image/png", data: "aWNvbg==" },
@@ -388,7 +391,7 @@ describe("ApplicationStorage", () => {
   );
 
   it.effect("loads a current version envelope", () =>
-    withStorage({ [documentPath]: JSON.stringify({ version: 9, data: current }) }, (storage) =>
+    withStorage({ [documentPath]: JSON.stringify({ version: 10, data: current }) }, (storage) =>
       Effect.gen(function* () {
         const loaded = yield* storage.load();
         assert.strictEqual(loaded.source, "current");
@@ -401,7 +404,7 @@ describe("ApplicationStorage", () => {
     withStorage(
       {
         [documentPath]: JSON.stringify({
-          version: 9,
+          version: 10,
           data: {
             ...current,
             globalCustomInstructions: undefined,
@@ -428,7 +431,46 @@ describe("ApplicationStorage", () => {
           assert.equal(loaded.state.projects[0]?.settings?.worktreeSetupInstructions, "");
           assert.equal(loaded.state.projects[0]?.settings?.customInstructions, "");
           assert.equal(loaded.state.projects[0]?.settings?.projectChatInstructions, "");
+          assert.equal(loaded.state.projects[0]?.settings?.worktreeRemoveCommand, "");
+          assert.equal(loaded.state.projects[0]?.settings?.worktreeCommandTimeoutSeconds, 0);
+          assert.equal(loaded.state.projects[0]?.settings?.worktreeLanding, "merge");
           assert.equal(loaded.state.globalCustomInstructions, "");
+        }),
+    ),
+  );
+
+  it.effect("replaces only the version-nine default worktree creation command", () =>
+    withStorage(
+      {
+        [documentPath]: JSON.stringify({
+          version: 9,
+          data: {
+            ...current,
+            projects: ["default", "custom"].map((name) => ({
+              path: `/work/${name}`,
+              name,
+              addedAt: "2026-01-01T00:00:00.000Z",
+              lastOpenedAt: "2026-01-01T00:00:00.000Z",
+              settings: {
+                worktreeCreateCommand:
+                  name === "default"
+                    ? "git worktree add -b {branchName} {worktreePath} {baseCommit}"
+                    : "my-tree add {worktreeName}",
+                worktreeSetupCommands: "pnpm install",
+              },
+            })),
+          },
+        }),
+      },
+      (storage) =>
+        Effect.gen(function* () {
+          const loaded = yield* storage.load();
+          assert.strictEqual(loaded.source, "migrated");
+          assert.deepEqual(
+            loaded.state.projects.map((project) => project.settings?.worktreeCreateCommand),
+            ["", "my-tree add {worktreeName}"],
+          );
+          assert.equal(loaded.state.projects[0]?.settings?.worktreeSetupCommands, "pnpm install");
         }),
     ),
   );
@@ -482,9 +524,8 @@ describe("ApplicationStorage", () => {
             addedAt: "2026-01-01T00:00:00.000Z",
             lastOpenedAt: "2026-01-01T00:00:00.000Z",
             settings: {
+              ...defaultProjectSettings(),
               worktreeCreateCommand: "git worktree add {worktreePath}",
-              worktreeSetupCommands: "",
-              worktreeSetupInstructions: "",
               customInstructions: path + " coding only.",
               projectChatInstructions: "  " + path + " permanent chat only.  ",
             },
@@ -602,7 +643,7 @@ describe("ApplicationStorage", () => {
                 );
                 const persisted = controls.files.get(documentPath);
                 assert.ok(persisted);
-                assert.deepEqual(JSON.parse(persisted), { version: 9, data: expected });
+                assert.deepEqual(JSON.parse(persisted), { version: 10, data: expected });
                 assert.deepEqual(yield* storage.load(), { source: "current", state: expected });
 
                 // An explicit choice after the one-time transition must not be remapped.
@@ -652,7 +693,7 @@ describe("ApplicationStorage", () => {
               );
               const persistedText = controls.files.get(documentPath);
               assert.ok(persistedText);
-              assert.equal(JSON.parse(persistedText).version, 9);
+              assert.equal(JSON.parse(persistedText).version, 10);
               assert.equal((yield* storage.load()).source, "current");
             }),
         );
@@ -664,7 +705,7 @@ describe("ApplicationStorage", () => {
     withStorage(
       {
         [documentPath]: JSON.stringify({
-          version: 9,
+          version: 10,
           data: {
             ...current,
             cakePrompts: {
@@ -777,7 +818,7 @@ describe("ApplicationStorage", () => {
         controls.files.set(
           documentPath,
           JSON.stringify({
-            version: 9,
+            version: 10,
             data: {
               ...current,
               projects: [
@@ -875,7 +916,7 @@ describe("ApplicationStorage", () => {
             assert.deepEqual(recovered?.pending, [
               { _tag: "Selection", sequence: 3, selectedId: null },
             ]);
-            assert.equal(JSON.parse(controls.files.get(documentPath) ?? "{}").version, 9);
+            assert.equal(JSON.parse(controls.files.get(documentPath) ?? "{}").version, 10);
             assert.deepEqual((yield* storage.load()).state.projects[0]?.todos, recovered);
           }),
       );
@@ -893,7 +934,7 @@ describe("ApplicationStorage", () => {
             const persistedText = controls.files.get(documentPath);
             assert.ok(persistedText);
             const persisted = JSON.parse(persistedText);
-            assert.strictEqual(persisted.version, 9);
+            assert.strictEqual(persisted.version, 10);
             assert.ok(!("schemaVersion" in persisted.data));
           }),
         );
@@ -953,10 +994,10 @@ describe("ApplicationStorage", () => {
         ["{", ApplicationMalformedDocumentError],
         [JSON.stringify({ nope: true }), ApplicationMalformedDocumentError],
         [
-          JSON.stringify({ version: 9, data: { ...current, projects: "invalid" } }),
+          JSON.stringify({ version: 10, data: { ...current, projects: "invalid" } }),
           ApplicationDecodeError,
         ],
-        [JSON.stringify({ version: 10, data: current }), ApplicationUnsupportedVersionError],
+        [JSON.stringify({ version: 11, data: current }), ApplicationUnsupportedVersionError],
         [
           JSON.stringify({ version: 0, data: { schemaVersion: 1, projects: "invalid" } }),
           ApplicationMigrationError,

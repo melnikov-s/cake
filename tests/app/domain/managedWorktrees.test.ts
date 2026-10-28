@@ -6,7 +6,9 @@ import { describe } from "vitest";
 import * as managedWorktrees from "../../../src/domain/worktrees/managedWorktrees";
 import {
   defaultApplicationState,
+  defaultProjectSettings,
   type ApplicationState as ApplicationStateValue,
+  type ProjectSettings,
 } from "../../../src/contracts/application/application-data";
 import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
@@ -23,7 +25,10 @@ import {
   type SessionFamily,
 } from "../../../src/services/storage/SessionFamilyStorage";
 import { Terminal } from "../../../src/services/terminal/Terminal";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
+import {
+  ManagedWorktrees,
+  type ManagedWorktreesService,
+} from "../../../src/services/worktrees/ManagedWorktrees";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 
 const record = (
@@ -53,6 +58,11 @@ const makeLayer = (options: {
   cleaned?: string[];
   restored?: string[];
   changes: SessionCatalogChange[];
+  /** "/project" settings; absent keeps the defaults. */
+  projectSettings?: ProjectSettings;
+  /** Checkouts the engine keeps because they have uncommitted work. */
+  retained?: readonly string[];
+  cleanupOptions?: Array<Parameters<ManagedWorktreesService["cleanupResolved"]>[1]>;
 }) => {
   let applicationState: ApplicationStateValue = {
     ...defaultApplicationState(),
@@ -63,6 +73,7 @@ const makeLayer = (options: {
         name: "Project",
         addedAt: "2026-01-01T00:00:00.000Z",
         lastOpenedAt: "2026-01-01T00:00:00.000Z",
+        ...(options.projectSettings ? { settings: options.projectSettings } : {}),
       },
       {
         path: "/other-project",
@@ -165,9 +176,12 @@ const makeLayer = (options: {
         Effect.sync(() => {
           options.discarded.push(workingDirectory);
         }),
-      cleanupResolved: (workingDirectory) =>
+      cleanupResolved: (workingDirectory, cleanupOptions) =>
         Effect.sync(() => {
+          options.cleanupOptions?.push(cleanupOptions);
+          if (options.retained?.includes(workingDirectory)) return false;
           options.cleaned?.push(workingDirectory);
+          return true;
         }),
       restoreResolved: (workingDirectory) =>
         Effect.sync(() => {
@@ -341,6 +355,74 @@ describe("Managed Worktrees domain cleanup", () => {
       ]);
     }).pipe(Effect.provide(layer));
   });
+
+  it.effect(
+    "retires unlanded pull-request worktrees through the configured command, keeping uncommitted work",
+    () => {
+      const cleaned: string[] = [];
+      const cleanupOptions: Array<Parameters<ManagedWorktreesService["cleanupResolved"]>[1]> = [];
+      const trustedProjectPaths = ["/project", "/clean", "/dirty"];
+      const records = [
+        record("/project", "/clean", "active"),
+        record("/project", "/dirty", "active"),
+      ];
+      const layer = (landing: ProjectSettings["worktreeLanding"]) =>
+        makeLayer({
+          records,
+          resolvedWorkingDirectories: ["/clean", "/dirty"],
+          projectSettings: {
+            ...defaultProjectSettings(),
+            worktreeRemoveCommand: "tree remove {worktreeName}",
+            worktreeCommandTimeoutSeconds: 30,
+            worktreeLanding: landing,
+          },
+          retained: ["/dirty"],
+          trustedProjectPaths,
+          discarded: [],
+          cleaned,
+          cleanupOptions,
+          changes: [],
+        });
+      return Effect.gen(function* () {
+        // Cake-merge projects keep unlanded worktrees when their sessions resolve.
+        yield* Effect.gen(function* () {
+          assert.deepEqual(
+            (yield* managedWorktrees.inspectResolvedForProject("/project")).workingDirectories,
+            [],
+          );
+          yield* managedWorktrees.cleanupResolved("/clean", "/sessions");
+          assert.deepEqual(cleanupOptions, []);
+        }).pipe(Effect.provide(layer("merge")));
+
+        yield* Effect.gen(function* () {
+          assert.deepEqual(
+            (yield* managedWorktrees.inspectResolvedForProject("/project")).workingDirectories,
+            ["/clean", "/dirty"],
+          );
+          const result = yield* managedWorktrees.discardResolvedForProject("/project");
+          assert.deepEqual(result.discardedWorkingDirectories, ["/clean"]);
+          assert.deepEqual(result.failures, [
+            {
+              workingDirectory: "/dirty",
+              message: "Cake kept this worktree because it has uncommitted changes",
+            },
+          ]);
+          assert.deepEqual(cleaned, ["/clean"]);
+          assert.deepEqual(trustedProjectPaths, ["/project", "/dirty"]);
+          assert.deepEqual(cleanupOptions, [
+            {
+              lifecycle: { removeCommand: "tree remove {worktreeName}", timeout: "30 seconds" },
+              retireActive: true,
+            },
+            {
+              lifecycle: { removeCommand: "tree remove {worktreeName}", timeout: "30 seconds" },
+              retireActive: true,
+            },
+          ]);
+        }).pipe(Effect.provide(layer("pull-request")));
+      });
+    },
+  );
 
   it.effect("does not discard a worktree that gains an active session after discovery", () => {
     const discarded: string[] = [];

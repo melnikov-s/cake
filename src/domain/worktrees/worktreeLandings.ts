@@ -5,6 +5,7 @@ import type {
 } from "../../contracts/worktrees/worktree-contract";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import { renderCakePrompt } from "../application/cake-prompts";
+import * as worktreeLifecycle from "./worktreeLifecycle";
 import { resolveCakePrompts } from "../../contracts/application/cake-prompt-defaults";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 import { WorktreeLandingAgent } from "../../services/worktrees/WorktreeLandingAgent";
@@ -375,7 +376,13 @@ export const start = Effect.fn("WorktreeLandings.start")(function* (input: {
   readonly commitBeforeLanding: boolean;
   readonly resolveAfterLanding?: boolean;
 }) {
-  yield* requireStatus(input.workspacePath);
+  const status = yield* requireStatus(input.workspacePath);
+  if ((yield* worktreeLifecycle.forProject(status.record.projectPath)).landsThroughPullRequests)
+    return yield* new WorktreeLandingError({
+      operation: "start",
+      message:
+        "This project lands work through pull requests, so Cake does not merge its worktrees. Commit on this worktree's branch and follow the repository's pull request workflow.",
+    });
   const operation = normalizeOperation({
     operationId: input.operationId,
     workspacePath: input.workspacePath,

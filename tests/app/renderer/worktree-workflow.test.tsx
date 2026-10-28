@@ -2,6 +2,7 @@
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
+import { defaultProjectSettings } from "../../../src/contracts/application/application-data";
 import { observer } from "r-state-tree/react";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -68,6 +69,7 @@ function renderWorktree(
     child?: boolean;
     record?: WorktreeRecord;
     client?: TestClientOverrides;
+    landing?: "merge" | "pull-request";
   } = {},
 ) {
   let currentStatus: WorktreeStatus | undefined = options.status ?? status();
@@ -75,7 +77,12 @@ function renderWorktree(
     status: currentStatus,
   }));
   const fixture = createRendererStoreFixture({
-    projects: [projectRecord({ path: "/project" })],
+    projects: [
+      projectRecord({
+        path: "/project",
+        settings: { ...defaultProjectSettings(), worktreeLanding: options.landing ?? "merge" },
+      }),
+    ],
     sessions: [
       sessionSummary({
         sessionId: "session-1",
@@ -152,6 +159,7 @@ function renderWorktree(
           )}
           sessionId="session-1"
           projectPath="/project"
+          landing={fixture.root.projectCatalogStore.find("/project")?.settings.worktreeLanding}
           onConfigured={() =>
             session.conversationSessionStore.composerStore.draftStore.requestFocus()
           }
@@ -258,6 +266,36 @@ describe("Worktree operation workflows", () => {
     await waitFor(() => expect(landing).toHaveBeenCalled());
     expect(screen.getByRole("button", { name: "Resolve" })).toHaveProperty("disabled", false);
     expect(screen.queryByRole("button", { name: "Merge" })).toBeNull();
+  });
+
+  it("offers resolution instead of merging for a pull-request project", async () => {
+    const resolveWorkingDirectory = vi.fn<Client["projectSessions"]["resolveWorkingDirectory"]>(
+      async () => ({
+        projectPath: "/project",
+        workingDirectory: "/worktree",
+        resolvedSessionIds: ["session-1"],
+        failures: [],
+        cleanupFailures: [],
+      }),
+    );
+    using fixture = renderWorktree({
+      landing: "pull-request",
+      status: status({ targetDirty: true }),
+      client: { projectSessions: { resolveWorkingDirectory } },
+    });
+    await waitFor(() => expect(fixture.landing).toHaveBeenCalled());
+    expect(screen.queryByRole("button", { name: "Merge" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Merge & resolve" })).toBeNull();
+    // The merge target's state is irrelevant when Cake never merges.
+    expect(screen.queryByTestId("worktree-target-warning")).toBeNull();
+    expect(screen.getByRole("button", { name: "Discard & resolve" })).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "Resolve" }));
+    await waitFor(() =>
+      expect(resolveWorkingDirectory).toHaveBeenCalledWith(
+        { workingDirectory: "/worktree" },
+        expect.anything(),
+      ),
+    );
   });
 
   it("keeps merge disabled without changes and offers rebase only after the target advances", async () => {

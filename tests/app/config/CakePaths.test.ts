@@ -29,6 +29,7 @@ describe("resolveCakePaths", () => {
       artifacts: "/Users/fixture/.cake/state/artifacts",
       reviews: "/Users/fixture/.cake/state/reviews",
       worktrees: "/Users/fixture/.cake/state/worktrees.json",
+      worktreeLogs: "/Users/fixture/.cake/logs/worktrees",
       cache: "/Users/fixture/.cake/cache",
     });
   });

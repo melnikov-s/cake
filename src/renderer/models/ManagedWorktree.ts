@@ -5,6 +5,7 @@ import type { WorktreeRecord } from "../../contracts/worktrees/managed-worktree-
 export class ManagedWorktree extends Model {
   projectPath = "";
   @id worktreePath = "";
+  checkoutPath: string | undefined;
   branch = "";
   baseBranch = "";
   baseCommit: string | undefined;

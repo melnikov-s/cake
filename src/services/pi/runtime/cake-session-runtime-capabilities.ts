@@ -206,7 +206,7 @@ export async function createCakeSessionRuntimeCapabilities(input: {
         });
   const detectedWorktree = await detectGitWorktree(options.cwd);
   const detectedWorktreePrompt = detectedWorktree
-    ? worktreeSystemPrompt(detectedWorktree)
+    ? worktreeSystemPrompt(detectedWorktree, options.worktreeLanding ?? "merge")
     : undefined;
   let resolveWidgetTemplate: ResolveWidgetTemplate = () => {
     throw new Error("Widget templates are not ready");

@@ -9,6 +9,11 @@ const ProjectSettingsChanges = Schema.Struct({
   worktreeCreateCommand: Schema.optionalKey(ProjectSettings.fields.worktreeCreateCommand),
   worktreeSetupCommands: Schema.optionalKey(ProjectSettings.fields.worktreeSetupCommands),
   worktreeSetupInstructions: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(16_384))),
+  worktreeRemoveCommand: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(16_384))),
+  worktreeCommandTimeoutSeconds: Schema.optionalKey(
+    Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 86_400 })),
+  ),
+  worktreeLanding: Schema.optionalKey(Schema.Literals(["merge", "pull-request"])),
   customInstructions: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(16_384))),
   projectChatInstructions: Schema.optionalKey(ProjectChatInstructions.fields.instructions),
   icon: Schema.optionalKey(ProjectSettings.fields.icon),

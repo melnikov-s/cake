@@ -7,14 +7,23 @@ import { makeGitLive } from "../../src/services/git/GitLive";
 import { makeWorktreeStorageLive } from "../../src/services/storage/WorktreeStorageLive";
 import { ManagedWorktrees } from "../../src/services/worktrees/ManagedWorktrees";
 import { ManagedWorktreesLive } from "../../src/services/worktrees/ManagedWorktreesLive";
+import { makeWorktreeCommandsLive } from "../../src/services/worktrees/WorktreeCommandsLive";
+import { lifecycleFromSettings } from "../../src/domain/worktrees/worktreeLifecycle";
 import { Effect, Layer } from "effect";
+import { dirname, join } from "node:path";
 
 /** Test-only imperative harness for real Git integration tests. Production has no Promise facade. */
-export const makeTestWorktreeService = (storagePath: string) => {
+export const makeTestWorktreeService = (
+  storagePath: string,
+  /** Lifecycle commands used by removal and restore, as a Project's settings would supply. */
+  settings?: ProjectSettings,
+) => {
+  const lifecycle = settings ? lifecycleFromSettings(settings) : {};
   const dependencies = Layer.mergeAll(
     BootstrapLive,
     makeGitLive(),
     makeWorktreeStorageLive(storagePath),
+    makeWorktreeCommandsLive(join(dirname(storagePath), "worktree-logs")),
   ).pipe(Layer.provide(BootstrapLive));
   const runtime = ManagedRuntime.make(ManagedWorktreesLive.pipe(Layer.provide(dependencies)));
   const run = <A, E>(effect: Effect.Effect<A, E, ManagedWorktrees>) => runtime.runPromise(effect);
@@ -55,11 +64,16 @@ export const makeTestWorktreeService = (storagePath: string) => {
       ),
     rebase: (worktreePath: string) => withService((service) => service.rebase(worktreePath)),
     discard: (worktreePath: string, keepBranch: boolean) =>
-      withService((service) => service.discard(worktreePath, keepBranch)),
-    cleanupResolved: (worktreePath: string) =>
-      withService((service) => service.cleanupResolved(worktreePath)),
+      withService((service) => service.discard(worktreePath, keepBranch, lifecycle)),
+    cleanupResolved: (worktreePath: string, options?: { readonly retireActive?: boolean }) =>
+      withService((service) =>
+        service.cleanupResolved(worktreePath, {
+          lifecycle,
+          retireActive: options?.retireActive ?? false,
+        }),
+      ),
     restoreResolved: (worktreePath: string) =>
-      withService((service) => service.restoreResolved(worktreePath)),
+      withService((service) => service.restoreResolved(worktreePath, lifecycle)),
     proposeSquashMessage: (input: {
       readonly workspacePath: string;
       readonly subject: string;

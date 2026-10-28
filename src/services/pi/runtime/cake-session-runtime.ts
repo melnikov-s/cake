@@ -163,6 +163,8 @@ export interface CakeSessionRuntimeOptions {
   sessionId?: string;
   sessionFile?: string;
   additionalSystemPrompt?: string;
+  /** How this Project lands Managed Worktree work; `pull-request` never merges through Cake. */
+  worktreeLanding?: "merge" | "pull-request";
   /** Permanent chats reread project-owned guidance at each message; never used by coding runtimes. */
   cakeChatSystemPrompt?(): string;
   /** Live list for presentation-only background turn attribution. */

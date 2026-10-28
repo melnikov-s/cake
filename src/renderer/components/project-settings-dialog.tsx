@@ -14,14 +14,17 @@ import { Textarea } from "./ui/textarea";
 import { Input } from "./ui/input";
 import { LabelSettings } from "./label-settings";
 import { Avatar } from "./ui/avatar";
+import { SegmentedControlButton, SegmentedControlGroup } from "./ui/segmented-control";
 
 const variables = [
   ["{projectPath}", "registered project directory"],
-  ["{worktreePath}", "new checkout directory"],
+  ["{worktreePath}", "project directory inside the worktree"],
+  ["{checkoutPath}", "worktree checkout root"],
   ["{worktreeName}", "generated or requested worktree name"],
   ["{branchName}", "full agent/… branch name"],
   ["{baseBranch}", "branch the worktree starts from"],
   ["{baseCommit}", "commit the worktree starts from"],
+  ["{removeReason}", "discard, resolve or rollback (removal command only)"],
 ] as const;
 
 export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
@@ -163,6 +166,37 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
               </div>
             </section>
 
+            <div className="grid gap-2">
+              <span id="worktree-landing-label" className="text-xs font-semibold text-foreground">
+                Landing
+              </span>
+              <SegmentedControlGroup
+                className="w-fit"
+                aria-labelledby="worktree-landing-label"
+                aria-describedby="worktree-landing-help"
+              >
+                <SegmentedControlButton
+                  active={store.worktreeLanding === "merge"}
+                  onClick={() => store.setWorktreeLanding("merge")}
+                >
+                  Cake merges
+                </SegmentedControlButton>
+                <SegmentedControlButton
+                  active={store.worktreeLanding === "pull-request"}
+                  onClick={() => store.setWorktreeLanding("pull-request")}
+                >
+                  Pull requests
+                </SegmentedControlButton>
+              </SegmentedControlGroup>
+              <span
+                id="worktree-landing-help"
+                className="text-xs leading-relaxed text-muted-foreground"
+              >
+                With pull requests, Cake never merges worktrees. Resolving a session removes its
+                worktree unless it has uncommitted changes, and keeps a branch that has commits.
+              </span>
+            </div>
+
             <label className="grid gap-2">
               <span className="text-xs font-semibold text-foreground">
                 Worktree creation command
@@ -173,6 +207,8 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
                 rows={3}
                 maxLength={16_384}
                 spellCheck={false}
+                aria-label="Worktree creation command"
+                placeholder="git worktree add {checkoutPath} {branchName}"
                 value={store.worktreeCreateCommand}
                 onChange={(event) => store.setWorktreeCreateCommand(event.target.value)}
                 aria-describedby="worktree-command-help"
@@ -181,8 +217,9 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
                 id="worktree-command-help"
                 className="text-xs leading-relaxed text-muted-foreground"
               >
-                Runs once from the repository root. Cake shell-quotes each variable value before
-                substitution. Leave variables unquoted in the command.
+                Cake first creates {"{branchName}"} at {"{baseCommit}"}; this command must check
+                that branch out in a new worktree, anywhere. Cake asks Git where it went. It also
+                recreates resolved worktrees. Blank runs the placeholder command.
               </span>
             </label>
 
@@ -196,6 +233,7 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
                 placeholder={
                   "pnpm install\n# or: ln -s {projectPath}/node_modules {worktreePath}/node_modules"
                 }
+                aria-label="Setup commands"
                 value={store.worktreeSetupCommands}
                 onChange={(event) => store.setWorktreeSetupCommands(event.target.value)}
                 aria-describedby="worktree-setup-help"
@@ -204,8 +242,55 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
                 id="worktree-setup-help"
                 className="text-xs leading-relaxed text-muted-foreground"
               >
-                Runs as one shell script from inside the new worktree after creation. A failed
-                command stops session startup and removes the incomplete worktree.
+                Runs once in {"{worktreePath}"} after creation, before the session starts. If it
+                fails, that start shows the error and the worktree is kept.
+              </span>
+            </label>
+
+            <label className="grid gap-2">
+              <span className="text-xs font-semibold text-foreground">
+                Worktree removal command
+              </span>
+              <Textarea
+                font="mono"
+                rows={3}
+                maxLength={16_384}
+                spellCheck={false}
+                aria-label="Worktree removal command"
+                placeholder="git worktree remove {checkoutPath}"
+                value={store.worktreeRemoveCommand}
+                onChange={(event) => store.setWorktreeRemoveCommand(event.target.value)}
+                aria-describedby="worktree-remove-help"
+              />
+              <span
+                id="worktree-remove-help"
+                className="text-xs leading-relaxed text-muted-foreground"
+              >
+                Removes a discarded, resolved or failed worktree; Cake then checks that{" "}
+                {"{checkoutPath}"} is gone. On resolve Cake has already confirmed nothing is
+                uncommitted. Blank runs the placeholder command, forced except on resolve.
+              </span>
+            </label>
+
+            <label className="grid gap-2">
+              <span className="text-xs font-semibold text-foreground">
+                Worktree command timeout
+              </span>
+              <Input
+                aria-label="Worktree command timeout in seconds"
+                className="w-32"
+                inputMode="numeric"
+                placeholder="No limit"
+                value={store.worktreeCommandTimeout}
+                onChange={(event) => store.setWorktreeCommandTimeout(event.target.value)}
+                aria-invalid={store.worktreeCommandTimeoutSeconds === undefined}
+                aria-describedby="worktree-timeout-help"
+              />
+              <span
+                id="worktree-timeout-help"
+                className="text-xs leading-relaxed text-muted-foreground"
+              >
+                Seconds before a creation, setup or removal command is stopped.
               </span>
             </label>
 
@@ -231,6 +316,11 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
 
             <div className="rounded-lg border border-border bg-muted/45 p-3">
               <h3 className="text-xs font-semibold text-foreground">Available variables</h3>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                Commands run with /bin/sh in Cake’s environment, with no input. Cake shell-quotes
+                each value; leave variables unquoted. Creation and removal run in {"{projectPath}"}.
+                Output goes to a per-worktree log that errors link to.
+              </p>
               <dl className="mt-2 grid grid-cols-[max-content_1fr] phone:grid-cols-1 phone:break-words gap-x-4 gap-y-1 text-xs text-muted-foreground">
                 {variables.map(([name, description]) => (
                   <div key={name} className="contents">

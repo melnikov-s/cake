@@ -1,0 +1,1 @@
+This project lands work through pull requests: commit intended changes on this branch and follow the repository's pull request workflow. Cake does not merge this worktree and worktrees.merge is unavailable. Never merge into the main checkout by hand.

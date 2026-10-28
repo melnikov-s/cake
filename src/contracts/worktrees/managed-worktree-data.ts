@@ -6,7 +6,10 @@ const bounded = (minimum: number, maximum: number) =>
 /** Main-owned persisted Managed Worktree metadata. */
 export const WorktreeRecord = Schema.Struct({
   projectPath: bounded(1, 4_096),
+  /** The Working Directory: the Project's subdirectory inside the checkout. */
   worktreePath: bounded(1, 4_096),
+  /** The checkout root, present only when it differs from `worktreePath`. */
+  checkoutPath: Schema.optionalKey(bounded(1, 4_096)),
   branch: bounded(1, 512),
   baseBranch: bounded(1, 512),
   parentWorktreePath: Schema.optional(bounded(1, 4_096)),

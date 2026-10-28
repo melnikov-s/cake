@@ -498,6 +498,10 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
       ]
         .filter(Boolean)
         .join("\n\n"),
+      worktreeLanding:
+        location.managedWorktree && projectSettings?.worktreeLanding === "pull-request"
+          ? "pull-request"
+          : "merge",
       sessionDir: configuration.sessionDirectory,
       newSession,
       sessionId,

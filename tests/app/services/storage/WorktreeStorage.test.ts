@@ -1,7 +1,6 @@
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { it } from "@effect/vitest";
 import { Effect, FileSystem, Layer, Path, Ref, Result } from "effect";
-import { ChildProcessSpawner } from "effect/unstable/process";
 import { describe, expect } from "vitest";
 import type { WorktreeRecord } from "../../../../src/contracts/worktrees/managed-worktree-data";
 import { Git } from "../../../../src/services/git/Git";
@@ -9,6 +8,7 @@ import { WorktreeStorage } from "../../../../src/services/storage/WorktreeStorag
 import { makeWorktreeStorageLive } from "../../../../src/services/storage/WorktreeStorageLive";
 import { createCheckout } from "../../../../src/domain/worktrees/worktreeCreation";
 import { ManagedWorktreesLive } from "../../../../src/services/worktrees/ManagedWorktreesLive";
+import { WorktreeCommands } from "../../../../src/services/worktrees/WorktreeCommands";
 
 const record = (index: number): WorktreeRecord => ({
   projectPath: "/project",
@@ -109,7 +109,7 @@ describe("WorktreeStorage", () => {
                 Layer.mock(Git, {
                   run: () => Ref.update(gitCalls, (count) => count + 1).pipe(Effect.as("")),
                 }),
-                Layer.mock(ChildProcessSpawner.ChildProcessSpawner, {}),
+                Layer.mock(WorktreeCommands, {}),
               ),
             ),
           );

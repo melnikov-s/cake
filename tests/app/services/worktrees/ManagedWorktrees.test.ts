@@ -1,16 +1,5 @@
-import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { it } from "@effect/vitest";
-import {
-  Deferred,
-  Effect,
-  Fiber,
-  FileSystem,
-  Layer,
-  PlatformError,
-  Queue,
-  Ref,
-  Stream,
-} from "effect";
+import { Deferred, Effect, Fiber, FileSystem, Layer, Queue, Ref, Stream } from "effect";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect } from "vitest";
@@ -32,7 +21,13 @@ import {
 import { ManagedWorktrees } from "../../../../src/services/worktrees/ManagedWorktrees";
 import { ManagedWorktreesLive } from "../../../../src/services/worktrees/ManagedWorktreesLive";
 import { createCheckout } from "../../../../src/domain/worktrees/worktreeCreation";
-import { ChildProcessSpawner } from "effect/unstable/process";
+import {
+  WorktreeCommandError,
+  WorktreeCommands,
+  type WorktreeCommandRequest,
+} from "../../../../src/services/worktrees/WorktreeCommands";
+import type { WorktreeLifecycle } from "../../../../src/services/worktrees/ManagedWorktrees";
+import { mkdirSync, rmSync } from "node:fs";
 
 const record = (projectPath: string, worktreePath: string, branch: string): WorktreeRecord => ({
   projectPath,
@@ -55,8 +50,30 @@ const makeStorageLayer = (initial: ReadonlyArray<WorktreeRecord>) =>
     }),
   );
 
+const builtIn: WorktreeLifecycle = {};
+const retireLanded = { lifecycle: builtIn, retireActive: false };
+
+const commandFailure = (label = "setup") =>
+  new WorktreeCommandError({
+    label,
+    reason: "exit",
+    logPath: "/logs/worktree.log",
+    message: `The worktree ${label} command failed with exit code 1.`,
+  });
+
+/** Configured commands never run a real shell in these tests. */
+const makeCommandsLayer = (
+  run: (request: WorktreeCommandRequest) => Effect.Effect<unknown, WorktreeCommandError> = () =>
+    Effect.void,
+) => Layer.succeed(WorktreeCommands, { run: (request) => Effect.asVoid(run(request)) });
+
 const makeLiveLayer = (initial: ReadonlyArray<WorktreeRecord>, runner: GitRunner) =>
-  Layer.mergeAll(makeStorageLayer(initial), makeGitLive(runner), BootstrapLive);
+  Layer.mergeAll(
+    makeStorageLayer(initial),
+    makeGitLive(runner),
+    BootstrapLive,
+    makeCommandsLayer(),
+  );
 
 const makeLayer = (
   initial: ReadonlyArray<WorktreeRecord>,
@@ -73,9 +90,20 @@ const makeLayer = (
       workingDirectory: string,
       arguments_: ReadonlyArray<string>,
     ) => Effect.Effect<void>;
-    readonly runSetup?: Effect.Effect<string, PlatformError.PlatformError>;
+    /** Every configured create, setup or remove command. */
+    readonly runCommand?: (
+      request: WorktreeCommandRequest,
+    ) => Effect.Effect<unknown, WorktreeCommandError>;
+    /** Checkout path → branch, shared with fake configured commands. */
+    readonly checkouts?: Map<string, string>;
   },
 ) => {
+  // A minimal stateful checkout table: `worktree add` creates the directory and `worktree list`
+  // reports it, as real Git would, so the engine can locate what it created.
+  const checkouts = options?.checkouts ?? new Map<string, string>();
+  for (const entry of initial)
+    if (["active", "landed"].includes(entry.state ?? "active"))
+      checkouts.set(entry.checkoutPath ?? entry.worktreePath, entry.branch);
   const storage = Layer.effect(
     WorktreeStorage,
     Effect.gen(function* () {
@@ -107,6 +135,35 @@ const makeLayer = (
               `${options?.commonDirectory?.(workingDirectory) ?? workingDirectory}/.git\n`,
             ),
           );
+        if (command === "worktree" && args[0] === "add" && args[1] && args[2])
+          return respond(
+            Effect.sync(() => {
+              mkdirSync(args[1]!, { recursive: true });
+              checkouts.set(args[1]!, args[2]!);
+              return "";
+            }),
+          );
+        if (command === "worktree" && args[0] === "remove")
+          return respond(
+            Effect.sync(() => {
+              const target = args.at(-1)!;
+              rmSync(target, { recursive: true, force: true });
+              checkouts.delete(target);
+              return "";
+            }),
+          );
+        if (command === "worktree" && args[0] === "list")
+          return respond(
+            Effect.succeed(
+              [...checkouts]
+                .map(
+                  ([path, branch]) => `worktree ${path}\nHEAD head\nbranch refs/heads/${branch}\n`,
+                )
+                .join("\n"),
+            ),
+          );
+        if (command === "rev-parse" && args[0] === "--show-prefix")
+          return respond(Effect.succeed("\n"));
         if (command === "status") return respond(Effect.succeed(""));
         if (command === "rev-list") return respond(Effect.succeed("1\n"));
         if (command === "merge-base")
@@ -134,16 +191,7 @@ const makeLayer = (
       },
     }),
   );
-  const platform = options?.runSetup
-    ? Layer.mergeAll(
-        NodeFileSystem.layer,
-        NodePath.layer,
-        Layer.mock(ChildProcessSpawner.ChildProcessSpawner, {
-          string: () => options.runSetup ?? Effect.succeed(""),
-        }),
-      )
-    : BootstrapLive;
-  return Layer.mergeAll(storage, git, platform);
+  return Layer.mergeAll(storage, git, BootstrapLive, makeCommandsLayer(options?.runCommand));
 };
 
 describe("ManagedWorktrees Effect service", () => {
@@ -363,146 +411,171 @@ describe("ManagedWorktrees Effect service", () => {
     ).pipe(Effect.provide(BootstrapLive)),
   );
 
-  it.effect(
-    "serializes creation planning, synchronous setup and cleanup in the same repository",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const fs = yield* FileSystem.FileSystem;
-          const temporary = yield* fs.makeTempDirectoryScoped();
-          const repository = `${temporary}/repo`;
-          const existingPath = `${temporary}/existing`;
-          yield* fs.makeDirectory(`${repository}/.git`, { recursive: true });
-          yield* fs.makeDirectory(existingPath);
-          const setupStarted = yield* Deferred.make<void>();
-          const finishSetup = yield* Deferred.make<void>();
-          const secondDiscovered = yield* Deferred.make<void>();
-          let discoveries = 0;
-          const mutations: string[] = [];
-          let probes = 0;
-          const layer = ManagedWorktreesLive.pipe(
-            Layer.provide(
-              makeLayer([record(repository, existingPath, "agent/existing")], {
-                commonDirectory: () => repository,
-                runSetup: Deferred.succeed(setupStarted, undefined).pipe(
-                  Effect.andThen(Deferred.await(finishSetup)),
-                  Effect.as(""),
-                ),
-                run: (_cwd, args) => {
-                  if (args[0] === "rev-parse" && args[1] === "--show-toplevel") {
-                    discoveries += 1;
-                    return discoveries === 1
-                      ? Effect.succeed(repository)
-                      : Deferred.succeed(secondDiscovered, undefined).pipe(Effect.as(repository));
-                  }
-                  if (args[0] === "rev-parse" && args[3]?.startsWith("refs/heads/agent/"))
-                    probes += 1;
-                  if (args[0] === "worktree") mutations.push(args[1] ?? "");
-                  return undefined;
-                },
-              }),
-            ),
-          );
-          yield* Effect.gen(function* () {
-            const worktrees = yield* ManagedWorktrees;
-            const first = yield* createCheckout(repository, undefined, "first", {
-              ...defaultProjectSettings(),
-              worktreeCreateCommand: "",
-              worktreeSetupCommands: "setup",
-            }).pipe(Effect.forkScoped);
-            yield* Deferred.await(setupStarted);
-            const cleanup = yield* worktrees.discard(existingPath, false).pipe(Effect.forkScoped);
-            const second = yield* createCheckout(repository, undefined, "second").pipe(
-              Effect.forkScoped,
-            );
-            yield* Deferred.await(secondDiscovered);
-            expect(probes).toBe(1);
-            expect(mutations).toEqual(["add"]);
-            expect(cleanup.pollUnsafe()).toBeUndefined();
-            expect(second.pollUnsafe()).toBeUndefined();
-            yield* Deferred.succeed(finishSetup, undefined);
-            yield* Fiber.join(first);
-            yield* Fiber.join(cleanup);
-            yield* Fiber.join(second);
-            expect(probes).toBe(3); // Both creations plus the discarded branch existence check.
-            expect(mutations.filter((operation) => operation === "add")).toHaveLength(2);
-            expect(
-              (yield* worktrees.records()).filter((entry) => entry.state === "active"),
-            ).toHaveLength(2);
-          }).pipe(Effect.provide(layer));
-        }),
-      ).pipe(Effect.provide(BootstrapLive)),
+  it.effect("runs a slow setup command without blocking the repository's other worktrees", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const temporary = yield* fs.makeTempDirectoryScoped();
+        const repository = `${temporary}/repo`;
+        const existingPath = `${temporary}/existing`;
+        yield* fs.makeDirectory(`${repository}/.git`, { recursive: true });
+        yield* fs.makeDirectory(existingPath);
+        const setupStarted = yield* Deferred.make<void>();
+        const finishSetup = yield* Deferred.make<void>();
+        const layer = ManagedWorktreesLive.pipe(
+          Layer.provide(
+            makeLayer([record(repository, existingPath, "agent/existing")], {
+              commonDirectory: () => repository,
+              runCommand: (request) =>
+                request.label === "setup"
+                  ? Deferred.succeed(setupStarted, undefined).pipe(
+                      Effect.andThen(Deferred.await(finishSetup)),
+                    )
+                  : Effect.void,
+              run: (_cwd, args) =>
+                args[0] === "rev-parse" && args[1] === "--show-toplevel"
+                  ? Effect.succeed(repository)
+                  : undefined,
+            }),
+          ),
+        );
+        yield* Effect.gen(function* () {
+          const worktrees = yield* ManagedWorktrees;
+          const first = yield* createCheckout(repository, undefined, "first", {
+            ...defaultProjectSettings(),
+            worktreeSetupCommands: "setup",
+          }).pipe(Effect.forkScoped);
+          yield* Deferred.await(setupStarted);
+          // Both finish while the first worktree's setup is still running.
+          yield* worktrees.discard(existingPath, false, builtIn);
+          const second = yield* createCheckout(repository, undefined, "second");
+          expect(first.pollUnsafe()).toBeUndefined();
+          yield* Deferred.succeed(finishSetup, undefined);
+          const created = yield* Fiber.join(first);
+          expect(created.branch).not.toBe(second.branch);
+          expect((yield* worktrees.records()).map((entry) => [entry.branch, entry.state])).toEqual([
+            ["agent/existing", "discarded"],
+            [second.branch, "active"],
+            [created.branch, "active"],
+          ]);
+        }).pipe(Effect.provide(layer));
+      }),
+    ).pipe(Effect.provide(BootstrapLive)),
   );
 
-  it.effect.each(["creation-command", "synchronous-setup", "background-setup"] as const)(
-    "preserves rollback and setup ownership after %s failure",
-    (scenario) =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const fs = yield* FileSystem.FileSystem;
-          const temporary = yield* fs.makeTempDirectoryScoped();
-          const repository = `${temporary}/repo`;
-          yield* fs.makeDirectory(`${repository}/.git`, { recursive: true });
-          const calls: Array<ReadonlyArray<string>> = [];
-          const failure = PlatformError.badArgument({
-            module: "ChildProcess",
-            method: "string",
-            description: "command failed",
-          });
-          const layer = ManagedWorktreesLive.pipe(
-            Layer.provide(
-              makeLayer([], {
-                runSetup: Effect.fail(failure),
-                run: (_cwd, args) => {
-                  calls.push(args);
-                  return args[0] === "rev-parse" && args[1] === "--show-toplevel"
-                    ? Effect.succeed(repository)
-                    : undefined;
-                },
-              }),
+  it.effect.each([
+    "creation-command",
+    "synchronous-setup",
+    "configured-rollback",
+    "background-setup",
+  ] as const)("preserves rollback and setup ownership after %s failure", (scenario) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const temporary = yield* fs.makeTempDirectoryScoped();
+        const repository = `${temporary}/repo`;
+        const trees = `${temporary}/trees`;
+        yield* fs.makeDirectory(`${repository}/.git`, { recursive: true });
+        const calls: Array<ReadonlyArray<string>> = [];
+        const commands: WorktreeCommandRequest[] = [];
+        const checkouts = new Map<string, string>();
+        const layer = ManagedWorktreesLive.pipe(
+          Layer.provide(
+            makeLayer([], {
+              checkouts,
+              runCommand: (request) =>
+                Effect.suspend(() => {
+                  commands.push(request);
+                  if (request.label === "create" && scenario === "configured-rollback") {
+                    // A tool that chooses its own location for the reserved branch.
+                    const branch = `agent/${request.logName}`;
+                    mkdirSync(`${trees}/${request.logName}/src`, { recursive: true });
+                    checkouts.set(`${trees}/${request.logName}/src`, branch);
+                    return Effect.void;
+                  }
+                  if (request.label === "remove") {
+                    for (const [path, branch] of checkouts)
+                      if (branch === `agent/${request.logName}`) {
+                        rmSync(path, { recursive: true, force: true });
+                        checkouts.delete(path);
+                      }
+                    return Effect.void;
+                  }
+                  return Effect.fail(commandFailure(request.label));
+                }),
+              run: (_cwd, args) => {
+                calls.push(args);
+                return args[0] === "rev-parse" && args[1] === "--show-toplevel"
+                  ? Effect.succeed(repository)
+                  : undefined;
+              },
+            }),
+          ),
+        );
+        yield* Effect.gen(function* () {
+          const worktrees = yield* ManagedWorktrees;
+          const configured = scenario === "creation-command" || scenario === "configured-rollback";
+          const settings = {
+            ...defaultProjectSettings(),
+            worktreeCreateCommand: configured ? "create {branchName}" : "",
+            worktreeSetupCommands: scenario === "creation-command" ? "" : "setup",
+            worktreeRemoveCommand: configured ? "remove {worktreeName} {removeReason}" : "",
+          };
+          const result = yield* Effect.result(
+            createCheckout(
+              repository,
+              undefined,
+              "failure",
+              settings,
+              scenario === "background-setup",
             ),
           );
-          yield* Effect.gen(function* () {
-            const worktrees = yield* ManagedWorktrees;
-            const settings = {
-              ...defaultProjectSettings(),
-              worktreeCreateCommand: scenario === "creation-command" ? "create" : "",
-              worktreeSetupCommands: scenario === "creation-command" ? "" : "setup",
-            };
-            const result = yield* Effect.result(
-              createCheckout(
-                repository,
-                undefined,
-                "failure",
-                settings,
-                scenario === "background-setup",
-              ),
-            );
-            if (scenario === "background-setup") {
-              expect(result._tag).toBe("Success");
-              if (result._tag !== "Success") return;
-              const created = result.success;
-              expect(
-                yield* Effect.result(worktrees.awaitSetup(created.worktreePath)),
-              ).toMatchObject({
-                _tag: "Failure",
-                failure: { operation: "ManagedWorktrees.setup" },
-              });
-              expect(yield* worktrees.records()).toEqual([created]);
-              expect(calls.some((args) => args[1] === "remove")).toBe(false);
-            } else {
-              expect(result).toMatchObject({ _tag: "Failure" });
-              expect(yield* worktrees.records()).toEqual([]);
-              expect(
-                calls.some(
-                  (args) => args[0] === "worktree" && args[1] === "remove" && args[2] === "--force",
-                ),
-              ).toBe(true);
-              expect(calls.some((args) => args[0] === "branch" && args[1] === "-D")).toBe(true);
-            }
-          }).pipe(Effect.provide(layer));
-        }),
-      ).pipe(Effect.provide(BootstrapLive)),
+          const reserved = calls.find((args) => args[0] === "branch" && args[1] === "--no-track");
+          expect(reserved?.[2]).toMatch(/^agent\/failure-[a-f0-9]{6}$/);
+          if (scenario === "background-setup") {
+            expect(result._tag).toBe("Success");
+            if (result._tag !== "Success") return;
+            const created = result.success;
+            // The failure is reported to the start that waits for it, then forgotten.
+            expect(yield* Effect.result(worktrees.awaitSetup(created.worktreePath))).toMatchObject({
+              _tag: "Failure",
+              failure: {
+                operation: "ManagedWorktrees.setup",
+                message: "The worktree setup command failed with exit code 1.",
+              },
+            });
+            yield* worktrees.awaitSetup(created.worktreePath);
+            expect(yield* worktrees.records()).toEqual([created]);
+            expect(calls.some((args) => args[1] === "remove")).toBe(false);
+            return;
+          }
+          expect(result).toMatchObject({
+            _tag: "Failure",
+            failure: {
+              message: `The worktree ${scenario === "creation-command" ? "create" : "setup"} command failed with exit code 1.`,
+            },
+          });
+          expect(yield* worktrees.records()).toEqual([]);
+          expect(checkouts.size).toBe(0);
+          expect(calls).toContainEqual(["branch", "-D", reserved?.[2]]);
+          const gitRemoved = calls.some(
+            (args) => args[0] === "worktree" && args[1] === "remove" && args[2] === "--force",
+          );
+          expect(gitRemoved).toBe(scenario === "synchronous-setup");
+          expect(
+            commands
+              .filter((request) => request.label === "remove")
+              .map((request) => request.script),
+          ).toEqual(
+            scenario === "configured-rollback"
+              ? [`remove '${reserved?.[2]?.slice("agent/".length)}' 'rollback'`]
+              : [],
+          );
+          if (scenario === "configured-rollback")
+            expect(commands[0]).toMatchObject({ label: "create", workingDirectory: repository });
+        }).pipe(Effect.provide(layer));
+      }),
+    ).pipe(Effect.provide(BootstrapLive)),
   );
 
   it.effect.each(["discard", "resolve"] as const)(
@@ -544,8 +617,8 @@ describe("ManagedWorktrees Effect service", () => {
             const worktrees = yield* ManagedWorktrees;
             const result = yield* Effect.result(
               operation === "discard"
-                ? worktrees.discard(parentPath, false)
-                : worktrees.cleanupResolved(parentPath),
+                ? worktrees.discard(parentPath, false, builtIn)
+                : worktrees.cleanupResolved(parentPath, retireLanded),
             );
             expect(result).toMatchObject({ _tag: "Failure" });
             expect(yield* worktrees.records()).toEqual([parent, child]);
@@ -590,7 +663,7 @@ describe("ManagedWorktrees Effect service", () => {
               )
               .pipe(Effect.forkScoped);
             yield* Deferred.await(queued);
-            yield* worktrees.discard(firstPath, false);
+            yield* worktrees.discard(firstPath, false, builtIn);
             yield* Fiber.join(second);
             expect(yield* worktrees.status(secondPath)).toMatchObject({
               landingState: "running",
@@ -694,7 +767,9 @@ describe("ManagedWorktrees Effect service", () => {
           );
           yield* Effect.gen(function* () {
             const worktrees = yield* ManagedWorktrees;
-            expect(yield* Effect.result(worktrees.cleanupResolved(worktreePath))).toMatchObject({
+            expect(
+              yield* Effect.result(worktrees.cleanupResolved(worktreePath, retireLanded)),
+            ).toMatchObject({
               _tag: "Failure",
             });
             expect(yield* worktrees.records()).toEqual([initial]);
@@ -1037,7 +1112,7 @@ describe("ManagedWorktrees Effect service", () => {
 
           yield* Effect.gen(function* () {
             const worktrees = yield* ManagedWorktrees;
-            yield* worktrees.cleanupResolved(worktreePath);
+            yield* worktrees.cleanupResolved(worktreePath, retireLanded);
             expect(yield* worktrees.records()).toEqual([
               { ...initial, state: "resolved", resolvedFrom: previousState },
             ]);
@@ -1060,7 +1135,7 @@ describe("ManagedWorktrees Effect service", () => {
             expect(projected?.resolvedFrom).toBe(previousState);
 
             const expectedState = previousState === "landed" ? "landed" : "active";
-            const restored = yield* worktrees.restoreResolved(worktreePath);
+            const restored = yield* worktrees.restoreResolved(worktreePath, builtIn);
             const expectedRecord = {
               ...initial,
               state: expectedState,
@@ -1085,8 +1160,8 @@ describe("ManagedWorktrees Effect service", () => {
                 merged: true,
               });
               // A second resolve/unresolve must preserve the classification too.
-              yield* worktrees.cleanupResolved(worktreePath);
-              yield* worktrees.restoreResolved(worktreePath);
+              yield* worktrees.cleanupResolved(worktreePath, retireLanded);
+              yield* worktrees.restoreResolved(worktreePath, builtIn);
               expect(yield* worktrees.records()).toEqual([expectedRecord]);
             }
           }).pipe(Effect.provide(live(retired)));
@@ -1261,10 +1336,10 @@ describe("ManagedWorktrees Effect service", () => {
                 arguments_[0] === "rev-parse" && arguments_[1] === "--show-toplevel"
                   ? Effect.succeed(`${repository}\n`)
                   : undefined,
-              runSetup: Deferred.succeed(setupStarted, undefined).pipe(
-                Effect.andThen(Deferred.await(finishSetup)),
-                Effect.as(""),
-              ),
+              runCommand: () =>
+                Deferred.succeed(setupStarted, undefined).pipe(
+                  Effect.andThen(Deferred.await(finishSetup)),
+                ),
             }),
           ),
         );
@@ -1371,7 +1446,7 @@ describe("ManagedWorktrees Effect service", () => {
             (call) => call.arguments_[0] === "worktree" && call.arguments_[1] === "add",
           );
           expect(add).toBeDefined();
-          const worktreePath = add?.arguments_[4];
+          const worktreePath = add?.arguments_[2];
           expect(calls).toContainEqual({
             cwd: add?.cwd,
             arguments_: ["worktree", "remove", "--force", worktreePath],
@@ -1393,6 +1468,7 @@ describe("ManagedWorktrees Effect service", () => {
         yield* fileSystem.makeDirectory(`${repository}/.git`, { recursive: true });
 
         let checkoutExists = false;
+        let checkout: { readonly path: string; readonly branch: string } | undefined;
         let finishAdd: (() => void) | undefined;
         let markAddStarted: (() => void) | undefined;
         const addStarted = new Promise<void>((resolve) => {
@@ -1400,7 +1476,14 @@ describe("ManagedWorktrees Effect service", () => {
         });
         const runner: GitRunner = (_cwd, arguments_) => {
           const [command, ...args] = arguments_;
+          if (command === "worktree" && args[0] === "list")
+            return Promise.resolve(
+              checkoutExists && checkout
+                ? `worktree ${checkout.path}\nbranch refs/heads/${checkout.branch}\n`
+                : "",
+            );
           if (command === "worktree" && args[0] === "add") {
+            checkout = { path: args[1] ?? "", branch: args[2] ?? "" };
             markAddStarted?.();
             return new Promise<string>((resolve) => {
               finishAdd = () => {
@@ -1484,6 +1567,7 @@ describe("ManagedWorktrees Effect service", () => {
           }
           if (command === "worktree" && args[0] === "remove") {
             if (mutationRunning) lockViolation = true;
+            rmSync(worktreePath, { recursive: true, force: true });
             return Promise.resolve("");
           }
           if (
@@ -1513,7 +1597,9 @@ describe("ManagedWorktrees Effect service", () => {
           yield* Effect.promise(() => rebaseStarted);
 
           const interruption = yield* Fiber.interrupt(landing).pipe(Effect.forkScoped);
-          const discard = yield* worktrees.discard(worktreePath, false).pipe(Effect.forkScoped);
+          const discard = yield* worktrees
+            .discard(worktreePath, false, builtIn)
+            .pipe(Effect.forkScoped);
           yield* Effect.yieldNow;
           expect(interruption.pollUnsafe()).toBeUndefined();
           expect(discard.pollUnsafe()).toBeUndefined();

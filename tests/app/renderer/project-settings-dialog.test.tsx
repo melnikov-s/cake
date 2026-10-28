@@ -148,6 +148,71 @@ describe("Project settings workflow", () => {
     }
   });
 
+  it("configures a pull-request worktree lifecycle, rejects a bad timeout and restores Git defaults", async () => {
+    let persisted = defaultProjectSettings();
+    const save = vi.fn<Client["workspaces"]["setProjectSettings"]>(async (_path, settings) => {
+      persisted = settings;
+      return defaultApplicationState();
+    });
+    {
+      using fixture = renderProjectSettings(
+        { workspaces: { setProjectSettings: save } },
+        persisted,
+      );
+      const create = screen.getByRole("textbox", { name: "Worktree creation command" });
+      const remove = screen.getByRole("textbox", { name: "Worktree removal command" });
+      const timeout = screen.getByRole("textbox", { name: "Worktree command timeout in seconds" });
+      const pullRequests = screen.getByRole("button", { name: "Pull requests" });
+      // Blank commands are valid: they select the built-in Git operations shown as placeholders.
+      expect(create).toHaveProperty("value", "");
+      expect(create).toHaveProperty("placeholder", "git worktree add {checkoutPath} {branchName}");
+      expect(remove).toHaveProperty("placeholder", "git worktree remove {checkoutPath}");
+      expect(screen.getByRole("button", { name: "Cake merges" }).getAttribute("aria-pressed")).toBe(
+        "true",
+      );
+      await fixture.user.click(pullRequests);
+      expect(pullRequests.getAttribute("aria-pressed")).toBe("true");
+      await fixture.user.click(create);
+      await fixture.user.paste("tree add {worktreeName} -b {branchName}");
+      await fixture.user.click(remove);
+      await fixture.user.paste("tree remove {worktreeName} {removeReason}");
+      await fixture.user.type(timeout, "soon");
+      const submit = screen.getByRole("button", { name: "Save settings" });
+      expect(submit).toHaveProperty("disabled", true);
+      await fixture.user.clear(timeout);
+      await fixture.user.type(timeout, "120");
+      await fixture.user.click(submit);
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    }
+    expect(persisted).toMatchObject({
+      worktreeCreateCommand: "tree add {worktreeName} -b {branchName}",
+      worktreeRemoveCommand: "tree remove {worktreeName} {removeReason}",
+      worktreeCommandTimeoutSeconds: 120,
+      worktreeLanding: "pull-request",
+    });
+    {
+      using fixture = renderProjectSettings(
+        { workspaces: { setProjectSettings: save } },
+        persisted,
+      );
+      expect(
+        screen.getByRole("button", { name: "Pull requests" }).getAttribute("aria-pressed"),
+      ).toBe("true");
+      expect(
+        screen.getByRole("textbox", { name: "Worktree command timeout in seconds" }),
+      ).toHaveProperty("value", "120");
+      await fixture.user.click(screen.getByRole("button", { name: "Restore worktree defaults" }));
+      await fixture.user.click(screen.getByRole("button", { name: "Save settings" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    }
+    expect(persisted).toMatchObject({
+      worktreeCreateCommand: "",
+      worktreeRemoveCommand: "",
+      worktreeCommandTimeoutSeconds: 0,
+      worktreeLanding: "merge",
+    });
+  });
+
   it("keeps the Project Chat draft visible on save failure and permits retry", async () => {
     const save = setProjectSettings().mockRejectedValueOnce(new Error("Storage unavailable"));
     using fixture = renderProjectSettings({ workspaces: { setProjectSettings: save } });

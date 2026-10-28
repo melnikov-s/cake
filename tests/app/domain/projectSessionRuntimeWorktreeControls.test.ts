@@ -3,7 +3,10 @@ import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { it } from "@effect/vitest";
 import { Effect, Layer, Stream } from "effect";
 import { describe } from "vitest";
-import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import {
+  defaultApplicationState,
+  defaultProjectSettings,
+} from "../../../src/contracts/application/application-data";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import type { ProjectSessionControlInvocation } from "../../../src/contracts/project-sessions/project-session-data";
 import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
@@ -126,9 +129,7 @@ describe("Project Session runtime worktree controls", () => {
               addedAt: "2026-01-01T00:00:00.000Z",
               lastOpenedAt: "2026-01-01T00:00:00.000Z",
               settings: {
-                worktreeCreateCommand:
-                  "git worktree add -b {branchName} {worktreePath} {baseCommit}",
-                worktreeSetupCommands: "",
+                ...defaultProjectSettings(),
                 worktreeSetupInstructions: "Run pnpm install only when dependencies are needed.",
                 customInstructions: "Prefer focused tests for this project.",
                 projectChatInstructions: "Project Chat only: discuss strategy.",

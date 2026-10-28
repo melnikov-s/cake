@@ -79,6 +79,7 @@ import {
   revokeInlineWidget,
 } from "../services/widgets/inline-widget-document-registry";
 import { ManagedWorktreesLive } from "../services/worktrees/ManagedWorktreesLive";
+import { makeWorktreeCommandsLive } from "../services/worktrees/WorktreeCommandsLive";
 import { WorktreeLandingCoordinatorLive } from "../services/worktrees/WorktreeLandingCoordinator";
 import { loadReviewSessionProjection } from "../services/pi/runtime/sidecar-runtime";
 import { BootstrapLive } from "../main/BootstrapLive";
@@ -167,7 +168,14 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
 
   const GitLive = makeGitLive();
   const ManagedWorktreesCapabilityLive = ManagedWorktreesLive.pipe(
-    Layer.provide(Layer.mergeAll(BootstrapLive, GitLive, StorageLive)),
+    Layer.provide(
+      Layer.mergeAll(
+        BootstrapLive,
+        GitLive,
+        StorageLive,
+        makeWorktreeCommandsLive(paths.worktreeLogs).pipe(Layer.provide(BootstrapLive)),
+      ),
+    ),
   );
   const ClientStateLive = Layer.mergeAll(
     ClientConnectionsLive,

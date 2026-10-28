@@ -17,6 +17,8 @@ export interface CakePaths {
   artifacts: string;
   reviews: string;
   worktrees: string;
+  /** One appended output log per Managed Worktree's lifecycle commands. */
+  worktreeLogs: string;
   cache: string;
 }
 
@@ -50,6 +52,7 @@ export function resolveCakePaths(options: ResolveCakePathsOptions): CakePaths {
     artifacts: join(state, "artifacts"),
     reviews: join(state, "reviews"),
     worktrees: join(state, "worktrees.json"),
+    worktreeLogs: join(home, "logs", "worktrees"),
     cache: join(home, "cache"),
   };
 }

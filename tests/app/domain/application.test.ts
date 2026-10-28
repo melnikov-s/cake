@@ -349,6 +349,9 @@ describe("Application domain", () => {
           worktreeCreateCommand: "custom-worktree {worktreeName} {worktreePath}",
           worktreeSetupCommands: "pnpm install",
           worktreeSetupInstructions: "Install dependencies only when needed.",
+          worktreeRemoveCommand: "custom-remove {worktreeName}",
+          worktreeCommandTimeoutSeconds: 60,
+          worktreeLanding: "pull-request",
           customInstructions: "Use concise summaries.",
           icon: { mimeType: "image/png", data: "aWNvbg==" },
         });
@@ -357,6 +360,9 @@ describe("Application domain", () => {
           worktreeCreateCommand: "custom-worktree {worktreeName} {worktreePath}",
           worktreeSetupCommands: "pnpm install",
           worktreeSetupInstructions: "Install dependencies only when needed.",
+          worktreeRemoveCommand: "custom-remove {worktreeName}",
+          worktreeCommandTimeoutSeconds: 60,
+          worktreeLanding: "pull-request",
           customInstructions: "Use concise summaries.",
           icon: { mimeType: "image/png", data: "aWNvbg==" },
         });

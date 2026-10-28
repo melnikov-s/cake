@@ -720,11 +720,32 @@ reduces that Stream into its window-lifetime `WorktreeCatalog`; `SessionSummary`
 mutable lifecycle copy and joins by Working Directory. A pending creation fact exists only
 until the authoritative entity arrives.
 
-Creation naming, base/parent selection, and configured command rendering live in
-`worktreeCreation` free domain operations. `ManagedWorktrees.createCheckout` invokes
-that planner under the existing repository lock, then materializes the checkout
-and owns record persistence, failure rollback, and process-scoped background setup.
-The engine does not interpret Project settings or select Cake names/bases.
+Creation naming, base/parent selection, and the Project's lifecycle commands live in
+`worktreeCreation` and `worktreeLifecycle` free domain operations. Each Project
+configures how a checkout is created (and restored), set up and removed, a per-command
+timeout, and whether it lands through Cake merges or pull requests; blank commands
+select the built-in `git worktree add`/`remove`. `ManagedWorktrees.createCheckout`
+invokes the planner under the repository lock and reserves the planned `agent/<name>`
+branch there, then runs the create command outside the lock. Git, not the command,
+reports where the branch was checked out; the Working Directory (`worktreePath`) is
+that checkout plus the registered Project's path inside the repository, and the
+record's `checkoutPath` keeps the checkout root when they differ. The engine renders
+the commands with those facts and owns record persistence, failure rollback (through
+the configured remove command) and process-scoped background setup. It does not read
+Project settings or select Cake names/bases.
+
+`WorktreeCommands` runs each configured command with `/bin/sh -c` in Cake's own
+environment, stdin closed, output appended to one log per worktree, a checked exit
+status and the optional timeout, which stops the script's process group. A failure
+names the log and its last output. Slow commands never hold a repository lock;
+removal and restoration of one checkout serialize with its landing and rebase
+through a per-worktree lock instead. Configured removal must leave `checkoutPath`
+absent, because external tools can report success without removing anything.
+
+Pull-request Projects refuse `worktreeLandings.start` (and therefore
+`worktrees.merge`). Resolving their sessions retires an active checkout only when it
+has no uncommitted, conflicted or in-progress work; its branch is kept when it has
+commits so restoration can recreate the same Working Directory.
 
 A landed record's `landedSourceCommit` is the acknowledged source-history boundary,
 not its original `baseCommit` or the target's current tip. Status and landing exclude
@@ -753,7 +774,8 @@ later operation is active or while the checkout has unlanded work.
 Landing and rebase require the source checkout to remain on its recorded branch.
 Dirty-target approval applies only to preserve landings: squash commits require a
 clean target index and checkout. Automatic resolved cleanup refuses dirty,
-conflicted, or newly committed source work and uses non-forced checkout removal.
+conflicted, or newly committed source work and uses non-forced checkout removal
+(`{removeReason}` is `resolve` for configured commands).
 Removing a parent requires removing its extant child worktrees first. Cleanup Git
 failures remain visible rather than being reported as successful removal;
 successful removal also releases the checkout's landing reservations. Project-wide

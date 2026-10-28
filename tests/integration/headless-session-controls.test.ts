@@ -83,8 +83,17 @@ it.live(
               Effect.provide(planning),
             );
             created.push({ projectPath, backgroundSetup });
-            records.push(plan.record);
-            return plan.record;
+            const record = {
+              projectPath: plan.projectPath,
+              worktreePath: plan.checkoutPath,
+              branch: plan.branch,
+              baseBranch: plan.baseBranch,
+              baseCommit: plan.baseCommit,
+              state: "active" as const,
+              createdAt: new Date(0).toISOString(),
+            };
+            records.push(record);
+            return record;
           }),
         awaitSetup: () => Effect.void,
       });

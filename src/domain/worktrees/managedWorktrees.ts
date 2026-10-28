@@ -22,7 +22,9 @@ import { Terminal } from "../../services/terminal/Terminal";
 import { ManagedWorktreeError } from "../../contracts/worktrees/managed-worktrees-errors";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 import * as worktreeCreation from "./worktreeCreation";
+import * as worktreeLifecycle from "./worktreeLifecycle";
 import type { ResolvedManagedWorktreeCleanupFailure } from "../../contracts/worktrees/managed-worktree-cleanup-data";
+import type { WorktreeRecord } from "../../contracts/worktrees/managed-worktree-data";
 
 const policyError = (operation: string, cause: unknown) =>
   new ManagedWorktreeError({
@@ -103,7 +105,7 @@ export const discard = Effect.fn("ManagedWorktrees.discard")(function* (
   workingDirectory: string,
   keepBranch: boolean,
 ) {
-  yield* requireRecord(workingDirectory, new Set(["active", "landed"]));
+  const record = yield* requireRecord(workingDirectory, new Set(["active", "landed"]));
   if (yield* workflowLifecycle.hasActive({ workingDirectory }))
     return yield* new ManagedWorktreeError({
       operation: "discard",
@@ -112,7 +114,8 @@ export const discard = Effect.fn("ManagedWorktrees.discard")(function* (
   yield* (yield* Terminal)
     .closeWorkingDirectory(workingDirectory)
     .pipe(Effect.mapError((cause) => policyError("ManagedWorktrees.discard", cause)));
-  yield* (yield* ManagedWorktrees).discard(workingDirectory, keepBranch);
+  const { lifecycle } = yield* worktreeLifecycle.forProject(record.projectPath);
+  yield* (yield* ManagedWorktrees).discard(workingDirectory, keepBranch, lifecycle);
   yield* revokeProjectTrust(workingDirectory).pipe(
     Effect.mapError((cause) => policyError("ManagedWorktrees.discard", cause)),
   );
@@ -243,6 +246,12 @@ const activeSessionInWorkingDirectory = Effect.fn(
     );
 });
 
+/** Landed checkouts retire with their sessions. Pull-request projects never land through Cake,
+ * so their active checkouts are candidates too; the engine keeps any with uncommitted work. */
+const retirable = (record: WorktreeRecord, landsThroughPullRequests: boolean) =>
+  record.state === "landed" ||
+  (landsThroughPullRequests && (record.state ?? "active") === "active");
+
 const discoverResolvedForProject = Effect.fn("ManagedWorktrees.discoverResolvedForProject")(
   function* (projectPath: string) {
     const worktrees = yield* ManagedWorktrees;
@@ -278,10 +287,11 @@ const discoverResolvedForProject = Effect.fn("ManagedWorktrees.discoverResolvedF
     const resolvedWorkingDirectories = new Set(
       [...entries, ...familyMembers].map((entry) => entry.workingDirectory),
     );
+    const { landsThroughPullRequests } = yield* worktreeLifecycle.forProject(projectPath);
     const candidates = (yield* worktrees.records()).filter(
       (record) =>
         record.projectPath === projectPath &&
-        record.state === "landed" &&
+        retirable(record, landsThroughPullRequests) &&
         resolvedWorkingDirectories.has(record.worktreePath),
     );
     const eligible = yield* Effect.forEach(candidates, (record) =>
@@ -331,6 +341,8 @@ export const discardResolvedForProject = Effect.fn("ManagedWorktrees.discardReso
   function* (projectPath: string) {
     const discovered = yield* discoverResolvedForProject(projectPath);
     const worktrees = yield* ManagedWorktrees;
+    const { lifecycle, landsThroughPullRequests } =
+      yield* worktreeLifecycle.forProject(projectPath);
     const terminals = yield* Terminal;
     const catalogs = yield* SessionCatalogChanges;
     const discardedWorkingDirectories: string[] = [];
@@ -341,7 +353,7 @@ export const discardResolvedForProject = Effect.fn("ManagedWorktrees.discardReso
           (record) =>
             record.projectPath === projectPath &&
             record.worktreePath === workingDirectory &&
-            record.state === "landed",
+            retirable(record, landsThroughPullRequests),
         );
         const location = discovered.locations.find(
           (candidate) =>
@@ -369,7 +381,15 @@ export const discardResolvedForProject = Effect.fn("ManagedWorktrees.discardReso
         yield* terminals.closeWorkingDirectory(workingDirectory);
         // Resolved-session cleanup is not approval to destroy work added after landing.
         // Use the same safe, restorable retirement path as ordinary resolution.
-        yield* worktrees.cleanupResolved(workingDirectory);
+        const retired = yield* worktrees.cleanupResolved(workingDirectory, {
+          lifecycle,
+          retireActive: landsThroughPullRequests,
+        });
+        if (!retired)
+          return yield* new ManagedWorktreeError({
+            operation: "ManagedWorktrees.discardResolvedForProject",
+            message: "Cake kept this worktree because it has uncommitted changes",
+          });
         yield* revokeProjectTrust(workingDirectory);
       }).pipe(
         Effect.mapError((cause) =>
@@ -410,16 +430,27 @@ export const cleanupResolved = Effect.fn("ManagedWorktrees.cleanupResolved")(fun
 ) {
   const worktrees = yield* ManagedWorktrees;
   const record = (yield* worktrees.records()).find(
-    (candidate) => candidate.worktreePath === workingDirectory && candidate.state === "landed",
+    (candidate) => candidate.worktreePath === workingDirectory,
   );
   if (!record) return;
+  const { lifecycle, landsThroughPullRequests } = yield* worktreeLifecycle.forProject(
+    record.projectPath,
+  );
+  if (!retirable(record, landsThroughPullRequests)) return;
 
   if (yield* activeSessionInWorkingDirectory(workingDirectory, sessionDirectory)) return;
 
   yield* (yield* Terminal)
     .closeWorkingDirectory(workingDirectory)
     .pipe(Effect.mapError((cause) => policyError("ManagedWorktrees.cleanupResolved", cause)));
-  yield* worktrees.cleanupResolved(workingDirectory);
+  // An unlanded checkout with uncommitted work stays; the user still owns that work.
+  if (
+    !(yield* worktrees.cleanupResolved(workingDirectory, {
+      lifecycle,
+      retireActive: landsThroughPullRequests,
+    }))
+  )
+    return;
   yield* revokeProjectTrust(workingDirectory).pipe(
     Effect.mapError((cause) => policyError("ManagedWorktrees.cleanupResolved", cause)),
   );
@@ -434,7 +465,8 @@ export const restoreResolved = Effect.fn("ManagedWorktrees.restoreResolved")(fun
     (candidate) => candidate.worktreePath === workingDirectory && candidate.state === "resolved",
   );
   if (!record) return;
-  const restored = yield* worktrees.restoreResolved(workingDirectory);
+  const { lifecycle } = yield* worktreeLifecycle.forProject(record.projectPath);
+  const restored = yield* worktrees.restoreResolved(workingDirectory, lifecycle);
   if (restored && (yield* getState()).trustedProjectPaths.includes(restored.projectPath))
     yield* trustProject(restored.worktreePath).pipe(
       Effect.mapError((cause) => policyError("ManagedWorktrees.restoreResolved", cause)),

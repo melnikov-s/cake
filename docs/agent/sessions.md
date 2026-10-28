@@ -30,7 +30,7 @@ Stop an active turn with `{"command":"sessions.abort","input":{"sessionId":"..."
 
 Only the family root resolves/restores the family, with every member inactive. Descendants inherit resolution and cannot resolve/restore independently. A child's Working Directory is fixed. Resolution requires no acknowledgment exchange.
 
-Use Cake-managed worktrees and serialized landing. To land your own managed worktree, call `worktrees.merge` without sessionId; for a child's isolated worktree, pass its sessionId to `worktrees.merge`/`worktrees.discard`. Commit in the owning worktree first. Never land by hand in the target checkout; relay the confirmed outcome and next step. A failed landing is not permission for manual Git fallback.
+Use Cake-managed worktrees and serialized landing. To land your own managed worktree, call `worktrees.merge` without sessionId; for a child's isolated worktree, pass its sessionId to `worktrees.merge`/`worktrees.discard`. Commit in the owning worktree first. Never land by hand in the target checkout; relay the confirmed outcome and next step. A failed landing is not permission for manual Git fallback. Projects set to land through pull requests refuse `worktrees.merge`; commit on the worktree branch and follow that repository's pull request workflow instead.
 
 ## Messaging Cake Chat
 

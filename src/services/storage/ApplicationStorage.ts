@@ -23,7 +23,7 @@ import {
   ApplicationWriteError,
 } from "../../contracts/storage/application-storage-errors";
 
-const APPLICATION_DOCUMENT_VERSION = 9;
+const APPLICATION_DOCUMENT_VERSION = 10;
 export const APPLICATION_DOCUMENT_NAME = "application.json";
 
 class ApplicationReadError extends Schema.TaggedError<ApplicationReadError>()(
@@ -392,6 +392,22 @@ const migrateVersionEight = Effect.fn("ApplicationStorage.migrateVersionEight")(
     }),
 );
 
+// Version nine's shipped create command made the agent branch itself. Cake now creates the branch
+// before the command runs, and a blank command selects the equivalent built-in checkout.
+const versionNineDefaultWorktreeCreateCommand =
+  "git worktree add -b {branchName} {worktreePath} {baseCommit}";
+const migrateVersionNine = Effect.fn("ApplicationStorage.migrateVersionNine")(
+  (state: ApplicationStateValue) =>
+    Effect.succeed<ApplicationStateValue>({
+      ...state,
+      projects: state.projects.map((project) =>
+        project.settings?.worktreeCreateCommand.trim() === versionNineDefaultWorktreeCreateCommand
+          ? { ...project, settings: { ...project.settings, worktreeCreateCommand: "" } }
+          : project,
+      ),
+    }),
+);
+
 const writeError = (stage: AtomicFileStage, cause: unknown) =>
   new ApplicationWriteError({ stage, message: messageOf(cause) });
 
@@ -564,6 +580,14 @@ export const makeApplicationStorageLive = (userDataDirectory: string) =>
               ),
             );
             data = yield* migrateVersionEight(previous);
+          } else if (version === 9) {
+            const previous = yield* Schema.decodeUnknownEffect(ApplicationState)(data).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ApplicationMigrationError({ fromVersion: 9, message: cause.message }),
+              ),
+            );
+            data = yield* migrateVersionNine(previous);
           } else
             return yield* new ApplicationMigrationError({
               fromVersion: version,

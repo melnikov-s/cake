@@ -1,7 +1,10 @@
 import { it } from "@effect/vitest";
 import { type Duration, Effect, Layer } from "effect";
 import { describe, expect } from "vitest";
-import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import {
+  defaultApplicationState,
+  defaultProjectSettings,
+} from "../../../src/contracts/application/application-data";
 import type {
   WorktreeLandOutcome,
   WorktreeStatus,
@@ -34,10 +37,22 @@ interface Harness {
   prepare?: Effect.Effect<void>;
   prompt?: (text: string) => Effect.Effect<void>;
   prompts: string[];
+  landing?: "merge" | "pull-request";
 }
 
 const layer = (harness: Harness) => {
-  const state = defaultApplicationState();
+  const state = {
+    ...defaultApplicationState(),
+    projects: [
+      {
+        path: "/project",
+        name: "Project",
+        addedAt: "2026-01-01T00:00:00.000Z",
+        lastOpenedAt: "2026-01-01T00:00:00.000Z",
+        settings: { ...defaultProjectSettings(), worktreeLanding: harness.landing ?? "merge" },
+      },
+    ],
+  };
   return Layer.mergeAll(
     WorktreeLandingCoordinatorLive,
     Layer.mock(ApplicationState, { snapshot: () => state }),
@@ -84,6 +99,23 @@ const merge = (callerSessionId = "cake-chat", timeout?: Duration.Input) =>
   });
 
 describe("WorktreeMerges.merge", () => {
+  it.effect("refuses to merge a pull-request project's worktree locally", () => {
+    const harness: Harness = {
+      status: {},
+      prompts: [],
+      landing: "pull-request",
+      land: () => Effect.die("a pull-request project must never land through Cake"),
+    };
+    return Effect.gen(function* () {
+      const failure = yield* Effect.flip(merge());
+      expect(failure).toMatchObject({
+        _tag: "WorktreeLandingError",
+        message: expect.stringContaining("lands work through pull requests"),
+      });
+      expect(harness.prompts).toEqual([]);
+    }).pipe(Effect.scoped, Effect.provide(layer(harness)));
+  });
+
   it.effect("reports the landed commit through Cake's normal landing flow", () => {
     const harness: Harness = {
       status: {},

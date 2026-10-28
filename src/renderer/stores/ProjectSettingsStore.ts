@@ -18,6 +18,10 @@ export class ProjectSettingsStore extends Store {
   worktreeCreateCommand = "";
   worktreeSetupCommands = "";
   worktreeSetupInstructions = "";
+  worktreeRemoveCommand = "";
+  /** Text-field draft; blank or 0 waits indefinitely. */
+  worktreeCommandTimeout = "";
+  worktreeLanding: ProjectSettings["worktreeLanding"] = "merge";
   customInstructions = "";
   projectChatInstructions = "";
   browserDefaultUrl = "";
@@ -40,9 +44,19 @@ export class ProjectSettingsStore extends Store {
     return this.projectPath ? this.projects.nameForPath(this.projectPath) : "Project";
   }
 
+  get worktreeCommandTimeoutSeconds() {
+    const text = this.worktreeCommandTimeout.trim();
+    if (!text) return 0;
+    const seconds = Number(text);
+    return Number.isInteger(seconds) && seconds >= 0 && seconds <= 86_400 ? seconds : undefined;
+  }
+
   get canSave() {
     return Boolean(
-      this.projectPath && this.worktreeCreateCommand.trim() && !this.saving && !this.choosingIcon,
+      this.projectPath &&
+      this.worktreeCommandTimeoutSeconds !== undefined &&
+      !this.saving &&
+      !this.choosingIcon,
     );
   }
 
@@ -61,6 +75,7 @@ export class ProjectSettingsStore extends Store {
     this.worktreeCreateCommand = settings.worktreeCreateCommand;
     this.worktreeSetupCommands = settings.worktreeSetupCommands;
     this.worktreeSetupInstructions = settings.worktreeSetupInstructions;
+    this.applyWorktreeLifecycle(settings);
     this.customInstructions = settings.customInstructions;
     this.projectChatInstructions = settings.projectChatInstructions;
     this.browserDefaultUrl = settings.browserDefaultUrl ?? "";
@@ -82,6 +97,26 @@ export class ProjectSettingsStore extends Store {
 
   setWorktreeSetupInstructions(instructions: string) {
     this.worktreeSetupInstructions = instructions;
+  }
+
+  setWorktreeRemoveCommand(command: string) {
+    this.worktreeRemoveCommand = command;
+  }
+
+  setWorktreeCommandTimeout(seconds: string) {
+    this.worktreeCommandTimeout = seconds;
+  }
+
+  setWorktreeLanding(landing: ProjectSettings["worktreeLanding"]) {
+    this.worktreeLanding = landing;
+  }
+
+  private applyWorktreeLifecycle(settings: ProjectSettings) {
+    this.worktreeRemoveCommand = settings.worktreeRemoveCommand;
+    this.worktreeCommandTimeout = settings.worktreeCommandTimeoutSeconds
+      ? String(settings.worktreeCommandTimeoutSeconds)
+      : "";
+    this.worktreeLanding = settings.worktreeLanding;
   }
 
   setCustomInstructions(instructions: string) {
@@ -139,6 +174,7 @@ export class ProjectSettingsStore extends Store {
     this.worktreeCreateCommand = settings.worktreeCreateCommand;
     this.worktreeSetupCommands = settings.worktreeSetupCommands;
     this.worktreeSetupInstructions = settings.worktreeSetupInstructions;
+    this.applyWorktreeLifecycle(settings);
     this.error = undefined;
   }
 
@@ -207,12 +243,16 @@ export class ProjectSettingsStore extends Store {
   }
 
   async save() {
-    if (!this.canSave || !this.projectPath) return false;
+    const timeout = this.worktreeCommandTimeoutSeconds;
+    if (!this.canSave || !this.projectPath || timeout === undefined) return false;
     const path = this.projectPath;
     const settings: ProjectSettings = {
       worktreeCreateCommand: this.worktreeCreateCommand.trim(),
       worktreeSetupCommands: this.worktreeSetupCommands.trim(),
       worktreeSetupInstructions: this.worktreeSetupInstructions.trim(),
+      worktreeRemoveCommand: this.worktreeRemoveCommand.trim(),
+      worktreeCommandTimeoutSeconds: timeout,
+      worktreeLanding: this.worktreeLanding,
       customInstructions: this.customInstructions,
       projectChatInstructions: this.projectChatInstructions,
       browserDefaultUrl: this.browserDefaultUrl.trim(),

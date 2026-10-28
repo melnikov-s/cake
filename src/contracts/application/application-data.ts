@@ -83,9 +83,6 @@ const IsoTimestamp = Schema.String.check(
   Schema.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/),
 );
 
-const DEFAULT_WORKTREE_CREATE_COMMAND =
-  "git worktree add -b {branchName} {worktreePath} {baseCommit}";
-
 export const PROJECT_ICON_DATA_MAX_LENGTH = 1_000_000;
 
 export const ProjectIcon = Schema.Struct({
@@ -98,8 +95,21 @@ export interface ProjectIcon extends Schema.Schema.Type<typeof ProjectIcon> {}
 export const ProjectSettings = Schema.Struct({
   /** Empty or absent uses Google when creating a browser page. */
   browserDefaultUrl: Schema.optionalKey(boundedString(16_384)),
+  /** Checks out the Cake-created `{branchName}` in a new worktree. Empty runs `git worktree add`. */
   worktreeCreateCommand: boundedString(16_384),
   worktreeSetupCommands: boundedString(65_536),
+  /** Removes a checkout. Empty runs `git worktree remove`. */
+  worktreeRemoveCommand: boundedString(16_384).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed("")),
+  ),
+  /** Per-command limit for the create, setup and remove commands; 0 waits indefinitely. */
+  worktreeCommandTimeoutSeconds: Schema.Int.check(
+    Schema.isBetween({ minimum: 0, maximum: 86_400 }),
+  ).pipe(Schema.withDecodingDefaultKey(Effect.succeed(0))),
+  /** `pull-request` projects land outside Cake: Cake never merges their worktrees locally. */
+  worktreeLanding: Schema.Literals(["merge", "pull-request"]).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed("merge" as const)),
+  ),
   worktreeSetupInstructions: boundedString(16_384).pipe(
     Schema.withDecodingDefaultKey(Effect.succeed("")),
   ),
@@ -213,8 +223,11 @@ export const SessionLabelMutation = Schema.TaggedUnion({
 export type SessionLabelMutation = typeof SessionLabelMutation.Type;
 
 export const defaultProjectSettings = (): ProjectSettings => ({
-  worktreeCreateCommand: DEFAULT_WORKTREE_CREATE_COMMAND,
+  worktreeCreateCommand: "",
   worktreeSetupCommands: "",
+  worktreeRemoveCommand: "",
+  worktreeCommandTimeoutSeconds: 0,
+  worktreeLanding: "merge",
   worktreeSetupInstructions: "",
   customInstructions: "",
   projectChatInstructions: "",

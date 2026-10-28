@@ -78,6 +78,11 @@ export const ProjectComposerHeader = observer(function ProjectComposerHeader({
         record={root.sessionCatalogStore.managedWorktree(session.workspacePath)}
         sessionId={session.sessionId}
         projectPath={root.sessionCatalogStore.projectPathFor(session.workspacePath)}
+        landing={
+          root.projectCatalogStore.find(
+            root.sessionCatalogStore.projectPathFor(session.workspacePath),
+          )?.settings.worktreeLanding
+        }
         resolved={root.sessionCatalogStore.find(session.sessionId)?.resolved}
         isFamilyChild={
           root.sessionCatalogStore.find(session.sessionId)?.familyParentSessionId !== undefined &&

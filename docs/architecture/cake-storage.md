@@ -38,6 +38,8 @@ filtering for shared custom directories. Tests must explicitly isolate both home
 │   └── global-chat/
 │       ├── coordinator.sqlite     # Pi Durable; permanent Cake Chat
 │       └── scratch/               # Neutral working directory for Cake Chat read/bash
+├── logs/
+│   └── worktrees/                 # <worktree name>.log: output of configured lifecycle commands
 └── cache/
     └── artifact-projections/
 ```
