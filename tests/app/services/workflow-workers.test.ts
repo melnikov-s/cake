@@ -108,6 +108,8 @@ describe("Workflow workers", () => {
         expect(options?.tools).toEqual(["read", "bash", "edit", "write"]);
         expect(options?.customTools).toEqual([]);
         expect(options?.auxiliaryProjectResources).toBe(true);
+        // The user's Project Session auto-compact choice never reaches a worker.
+        expect(options?.alwaysAutoCompact).toBe(true);
         expect(options?.operations).toBeUndefined();
         expect(options?.currentSessionControl).toBeUndefined();
         expect(options?.isolatedSystemPrompt).toBeUndefined();
@@ -284,6 +286,27 @@ describe("Workflow workers", () => {
           expect((yield* Fiber.join(fiber)).result).toBe("Final answer");
         }).pipe(Effect.scoped, Effect.provide(fixture.layer));
       }),
+  );
+  it.effect("fails a worker cut off at its context limit instead of returning its narration", () =>
+    Effect.gen(function* () {
+      const exhausted =
+        "Context exhausted: 245,384 of 250,000 context tokens were in use, so the response was cut off before it finished.";
+      const fixture = yield* makeWorkerFixture();
+      yield* Effect.gen(function* () {
+        const workers = yield* WorkflowWorkers;
+        const fiber = yield* workers.run(request()).pipe(Effect.flip, Effect.forkChild);
+        const turn = yield* Queue.take(fixture.started);
+        yield* turn.part({
+          kind: "text",
+          id: "narration",
+          role: "assistant",
+          text: "Now let me set up the project folder structure.",
+          status: "complete",
+        });
+        yield* turn.cutOff(exhausted);
+        expect(yield* Fiber.join(fiber)).toMatchObject({ reason: "worker", message: exhausted });
+      }).pipe(Effect.scoped, Effect.provide(fixture.layer));
+    }),
   );
   it.effect(
     "saves the private Pi reference before prompting and retains inspectable history after release",

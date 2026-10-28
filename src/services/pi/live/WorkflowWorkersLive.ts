@@ -71,6 +71,8 @@ export const WorkflowWorkersLive = Layer.effect(
                 sessionId: reference.sessionId,
                 auxiliary: true,
                 auxiliaryProjectResources: true,
+                // Unattended like subagents: nobody can compact a worker by hand mid-run.
+                alwaysAutoCompact: true,
                 tools: ["read", "bash", "edit", "write"],
                 customTools: [],
                 slashCommands: [],

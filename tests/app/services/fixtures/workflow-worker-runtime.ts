@@ -45,6 +45,8 @@ export const usage = (turns: number): SessionUsage => ({
 export interface TestTurn {
   readonly text: string;
   readonly finish: (answer?: string) => Effect.Effect<void>;
+  /** Ends the run the way Pi does when the final response stops at a token limit. */
+  readonly cutOff: (reason: string) => Effect.Effect<void>;
   readonly part: (part: UiPart) => Effect.Effect<void>;
 }
 
@@ -125,6 +127,15 @@ export const makeWorkerFixture = Effect.fn("WorkflowWorkersTest.fixture")(functi
                 status: "complete",
               });
               if (turnId) input.onTurnResult?.(turnId, { stopReason: "stop", text: answer });
+            }).pipe(Effect.andThen(Deferred.succeed(turnGate, undefined)), Effect.asVoid),
+          cutOff: (reason) =>
+            Effect.sync(() => {
+              if (turnId)
+                input.onTurnResult?.(turnId, {
+                  stopReason: "length",
+                  text: "",
+                  errorMessage: reason,
+                });
             }).pipe(Effect.andThen(Deferred.succeed(turnGate, undefined)), Effect.asVoid),
           part: (part) => Effect.sync(() => emit(part)),
         };
