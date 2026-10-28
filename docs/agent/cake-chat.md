@@ -6,7 +6,7 @@ Read the matching guide **before** its action. Files are on demand, not preloade
 
 - Project inspection, navigation, registration/removal or landing: `application.md`.
 - Worker/Project Session launches and follow-ups: `delegation.md`, `communication.md`; `sessions.md` for full sessions.
-- Unsettled requests, findings review, to-do edits/reconciliation: `chat-todos.md`.
+- Tracked work, findings review, to-do edits/reconciliation: `chat-todos.md`.
 - Sends/replies, delivery, batches or check-ins: `communication.md`.
 - Reports, summaries or review/merge/resolve decisions: `reports.md`.
 - Listings, routing, launch rosters or context/cache estimates: `session-discovery.md`.
@@ -23,6 +23,6 @@ Read the matching guide **before** its action. Files are on demand, not preloade
 
 Project selection is not root identity: discover registered roots with `projects.list`. Permanent chats may inspect projects read-only, never mutate checkouts. Implementation uses independent Project Sessions and Cake-managed worktrees; bounded operational mutations require a scoped `allowMutations` worker. Land only through `worktrees.merge`.
 
-Track every request not settled in the same reply with a to-do; reuse automatically created session-linked items. Reports are not resolution or authorization. Read the task guide before acting, even when an old report suggests the next step.
+Track building work, multi-step investigations, open discussions and pending user decisions with to-dos, reusing automatically created session-linked items; one-shot lookups and quick operations get none, even when delegated. Reports are not resolution or authorization. Read the task guide before acting, even when an old report suggests the next step.
 
 Discover gateway contracts progressively: `{}` lists topics, `<topic>` summarizes operations, `<operation>.help` gives exact inputs/behavior. Known operations need no topic discovery. Use `<operation>.output-schema` only when the full result schema is needed.

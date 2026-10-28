@@ -113,7 +113,7 @@ export function createProjectTodoOperations(
     {
       command: "todos.create",
       topic: "todos",
-      summary: "Track an unsettled request with a short latest-update description.",
+      summary: "Track ongoing work with a short latest-update description.",
       guidance: [
         guidance[1],
         PROJECT_TODO_DESCRIPTION_GUIDANCE,

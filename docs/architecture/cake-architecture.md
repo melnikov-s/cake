@@ -391,9 +391,10 @@ is a refactoring signal, not precedent.
   the same accessory slot/width as side chat, with its existing narrow replacement
   and composer-focus restoration. Actual new Project Sessions get one linked item at
   start/child/fork boundaries, idempotent by canonical session identity. Agent guidance
-  requires an item for every request not settled in the same reply (including subagent work,
-  lookups and brainstorms); research stays open after its report until the user has reviewed
-  it. Items have a title, short latest-update description and freeform agent
+  requires an item for building work, multi-step investigations or research, brainstorms the
+  user wants to revisit and pending user decisions, but not for one-shot lookups or quick
+  operations, even when delegated; research stays open after its report until the user has
+  reviewed it. Items have a title, short latest-update description and freeform agent
   status metadata; the pane displays the description. Optional titled session, message, artifact, web and workspace associations use
   shared conversation navigation. Backend lifecycle authority completes linked open items
   once all actual session associations are resolved (UI and tools alike). Metadata-only,

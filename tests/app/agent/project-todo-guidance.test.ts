@@ -41,7 +41,7 @@ describe("application-owned to-do link guidance", () => {
   it("loads detailed link policy on demand while preserving baseline lifecycle rules", () => {
     expect(baseline).toContain("read `chat-todos.md`");
     expect(baseline).toContain(
-      "Before starting unsettled work, reviewing findings or editing/reconciling items",
+      "Before starting tracked work, reviewing findings or editing/reconciling items",
     );
     expect(baseline).toContain(
       "Source/report links do not block completion; source-only items remain open",
@@ -180,13 +180,13 @@ describe("when to-dos are created and closed", () => {
     if (surface !== "todos.create.help") expect(guidance).toContain(PROJECT_TODO_CLOSING_RULE);
   });
 
-  it("tracks every unsettled request, including delegated work and brainstorms", () => {
+  it("tracks lasting work but not one-shot lookups, even when a subagent does them", () => {
     for (const requirement of [
-      "Every user request that isn't fully settled in the same reply gets a to-do, created before or as the work starts.",
-      "delegated work of any kind (subagents, background lookups, sessions)",
-      "brainstorms and open-ended discussions",
-      '"look into", "find out", "research" or "come back to me"',
-      "The only exceptions are quick factual answers fully given inline and casual conversation.",
+      "To-dos are for work the user will come back to: building work, multi-step investigations or research, brainstorms or open discussions to revisit, and items awaiting a user decision.",
+      "Create one as that work starts.",
+      "One-shot lookups and quick operations get no to-do, even when a subagent does them",
+      "listing PRs, status checks, clipboard copies, short explanations",
+      "give the answer when it arrives, and that ends it.",
       "A follow-up on an existing topic updates that item instead of creating a new one.",
     ]) {
       expect(PROJECT_TODO_CREATION_RULE).toContain(requirement);
@@ -197,8 +197,8 @@ describe("when to-dos are created and closed", () => {
   it("keeps research open until the user reviewed it, while session-linked items close on resolve", () => {
     for (const requirement of [
       "Close a to-do yourself when the work is actually done: the change merged or shipped, the requested operation finished and was checked, or the user said they're satisfied with the outcome.",
-      "Research, investigations, brainstorms and lookups stay open after the report arrives.",
-      'Set the status to "Report delivered; awaiting your review", link the report, and close the to-do only after the user has read it and either said they\'re satisfied or moved on without follow-ups.',
+      "Investigations and research (not quick lookups) stay open after the report arrives",
+      'set the status to "Report delivered; awaiting your review", link the report, and close the to-do only after the user has read it and either said they\'re satisfied or moved on without follow-ups.',
       "Closing automatically when the linked session is resolved still applies",
     ]) {
       expect(PROJECT_TODO_CLOSING_RULE).toContain(requirement);

@@ -64,9 +64,12 @@ describe("Cake Chat core and task-triggered references", () => {
     expect(prompt).toContain("Read before acting");
   });
 
-  it("keeps unsettled requests and exact source presentation discoverable before action", () => {
+  it("keeps tracked work and exact source presentation discoverable before action", () => {
     expect(prompt).toContain("the injected to-do baseline supplies creation/closure rules");
-    expect(prompt).toContain("Read `chat-todos.md` before starting/reviewing work");
+    expect(prompt).toContain("Read `chat-todos.md` before starting/reviewing tracked work");
+    expect(chatGuide).toContain(
+      "Track building work, multi-step investigations, open discussions and pending user decisions with to-dos, reusing automatically created session-linked items; one-shot lookups and quick operations get none, even when delegated.",
+    );
     expect(prompt).toContain('exact result-message link labeled "Full agent response"');
     expect(reports).toContain("Presentation does not prove you read the source or attachments");
     expect(reports).toContain("sessions.reports.acknowledge");

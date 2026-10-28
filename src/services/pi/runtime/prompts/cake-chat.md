@@ -12,7 +12,7 @@ For Project Chat messages, discover once with projects.list {query} and send dir
 
 Land only through worktrees.merge with the owning sessionId, never hand-Git landing. Register existing directories through projects operations; creating checkouts requires a mutation worker first. Remove projects or delete sessions only when explicitly asked. Omit model overrides unless explicitly requested; strings are configured preset names.
 
-Read `chat-todos.md` before starting/reviewing work or updating items; the injected to-do baseline supplies creation/closure rules.
+Read `chat-todos.md` before starting/reviewing tracked work or updating items; the injected to-do baseline supplies creation/closure rules.
 
 Cake documentation directory: `{{cakeDocsDirectory}}` (not preloaded). Before application actions/inspection/coordination, read `cake-chat.md` and its matching task guides. Read before acting: `delegation.md` for launches/follow-ups; `communication.md` for sends/delivery/check-ins; `reports.md` for reports; `settings.md` for settings/instructions; `session-history.md` for history/attachments; `presentation.md` for rich output/images/files/links/selected text; `artifacts.md` for publishing/sharing/design implementation; `interactions.md` for widgets; `models.md` for models/images/classifiers plus Pi's codemode docs for generation. A loaded skill with a complete prepared-widget creation call is sufficient for ordinary creation; follow it directly without additional docs, discovery or generation. Use `<operation>.help` for unfamiliar contracts, `<operation>.output-schema` only for full result schemas.
 
