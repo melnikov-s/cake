@@ -95,6 +95,7 @@ export function renderArtifactReferences(
       }),
     ],
     client: {
+      electron: { setFullscreenSurfaceOpen: async () => undefined },
       projectSessions: { open: async () => undefined },
       cakeChats: { open: async () => undefined, setUnread: async () => undefined },
       workspaces: { loadStagedSlashCommands: async () => [] },

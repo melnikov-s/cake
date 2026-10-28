@@ -1,3 +1,4 @@
+import * as artifactPresentationContext from "../artifacts/artifactPresentationContext";
 import { consumeSelection, prepareForChat } from "../projects/projectTodos";
 import {
   passiveNoticeContext,
@@ -171,9 +172,14 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
       : yield* prepareForChat(input.sessionId, userMessage?.text ?? message.text).pipe(
           asError("deliver"),
         );
-    const text = message.crossSession
-      ? encodeCrossSessionMessage(message.text, message.crossSession)
-      : addReferenceNotifications(prepared.text, reportPage, references.length);
+    const text = yield* artifactPresentationContext
+      .prepareInput(
+        input,
+        message.crossSession
+          ? encodeCrossSessionMessage(message.text, message.crossSession)
+          : addReferenceNotifications(prepared.text, reportPage, references.length),
+      )
+      .pipe(asError("deliver"));
     if (storage && !message.crossSession)
       yield* resumeAfterUserInput(input.sessionId).pipe(asError("deliver"));
     const carriesUpdates = Boolean(storage && !message.crossSession && !/^[!/]/.test(message.text));
@@ -418,7 +424,7 @@ export const editMessage = Effect.fn("SessionChats.editMessage")(function* (
   yield* editConversationMessage(
     Effect.succeed(handle),
     input.entryId,
-    input.text,
+    yield* artifactPresentationContext.prepareInput(input, input.text).pipe(asError("editMessage")),
     projectAttachments(
       yield* prepareTaskInputs(
         input.sessionId,

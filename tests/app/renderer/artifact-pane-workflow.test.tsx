@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { cleanup, screen, within } from "@testing-library/react";
+import { cleanup, screen, within, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Schema } from "effect";
 import {
@@ -12,6 +12,8 @@ import {
   type EffectiveArtifactProjection,
 } from "../../../src/contracts/artifacts/artifact-lineage";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
+import { TurnId } from "../../../src/contracts/conversations/conversation-data";
+import type { TestClientOverrides } from "./test-client";
 import type { Client } from "../../../src/renderer/client/Client";
 import { renderAppShellNavigation } from "./app-shell-navigation-fixture";
 
@@ -79,11 +81,13 @@ const effective = (sessionId: string, id: string): EffectiveArtifactProjection =
   },
 });
 
-function renderArtifacts() {
+function renderArtifacts(client: TestClientOverrides = {}) {
   const readExact = vi.fn<Client["artifacts"]["readExact"]>(async (id, value) =>
     revision(id, value),
   );
   const fixture = renderAppShellNavigation({
+    ...client,
+    electron: { setFullscreenSurfaceOpen: async () => undefined, ...client.electron },
     artifacts: {
       catalog: async () => ({
         items: [summary("alpha"), summary("cake"), summary("unrelated")],
@@ -97,7 +101,19 @@ function renderArtifacts() {
           sessionId === "alpha" ? "alpha" : sessionId === CAKE_CHAT_SESSION_ID ? "cake" : undefined;
         return id ? [effective(sessionId, id), effective(sessionId, `${id}-second`)] : [];
       },
-      detail: async (id) => ({ lineage: summary(id), links: [], stableRef: summary(id).stableRef }),
+      detail: async (id) => ({
+        lineage: summary(id),
+        links:
+          id.startsWith("alpha") || id.startsWith("cake")
+            ? [
+                {
+                  ...effective(id.startsWith("cake") ? CAKE_CHAT_SESSION_ID : "alpha", id).link,
+                  id: `link-${id}`,
+                },
+              ]
+            : [],
+        stableRef: summary(id).stableRef,
+      }),
       history: async ({ lineageId }) => ({
         items: [revision(lineageId, 2).metadata, revision(lineageId, 1).metadata],
         offset: 0,
@@ -117,6 +133,74 @@ const openMenu = async (fixture: ReturnType<typeof renderArtifacts>) => {
 };
 
 describe("Session artifact pane workflow", () => {
+  it.each(["alpha", "cake"])(
+    "presentation chat sends %s's exact current artifact, clears on exit and isolates conversations",
+    async (id) => {
+      const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
+        TurnId.make(crypto.randomUUID()),
+      );
+      using fixture = renderArtifacts({ sessionChats: { prompt } });
+      const sessionId = id === "cake" ? CAKE_CHAT_SESSION_ID : "alpha";
+      await fixture.user.click(
+        screen.getByRole("button", { name: id === "cake" ? "Cake Chat" : /^alpha conversation / }),
+      );
+      const menu = await openMenu(fixture);
+      await fixture.user.click(
+        within(menu).getByRole("button", { name: new RegExp(`Report ${id} markdown`) }),
+      );
+      const pane = await screen.findByRole("complementary", { name: "Artifact" });
+      await within(pane).findByText(`${id} body revision 1`);
+      const openPresentation = async (artifactId: string) => {
+        await fixture.user.click(
+          within(pane).getByRole("button", { name: `View Report ${artifactId} fullscreen` }),
+        );
+        const surface = screen.getByRole("dialog", { name: `Report ${artifactId}` });
+        await fixture.user.click(within(surface).getByRole("button", { name: "Open chat" }));
+        return surface;
+      };
+      let surface = await openPresentation(id);
+      const send = async (container: HTMLElement, text: string) => {
+        const input = within(container).getByRole("combobox", { name: /^Message/ });
+        await fixture.user.type(input, `${text}{Enter}`);
+      };
+      await send(surface, "edit it");
+      await waitFor(() => expect(prompt).toHaveBeenCalledTimes(1));
+      expect(prompt.mock.calls[0]![0]).toMatchObject({
+        sessionId,
+        text: "edit it",
+        artifactPresentation: { sessionId, artifactId: id, revision: 1 },
+      });
+      await fixture.user.click(within(surface).getByRole("button", { name: "Close chat" }));
+      expect(within(surface).queryByRole("combobox", { name: /^Message/ })).toBeNull();
+      expect(within(surface).getByText(`${id} body revision 1`)).toBeDefined();
+      await fixture.user.click(
+        within(surface).getByRole("button", { name: `Exit fullscreen Report ${id}` }),
+      );
+      const secondMenu = await openMenu(fixture);
+      await fixture.user.click(
+        within(secondMenu).getByRole("button", { name: new RegExp(`Report ${id}-second`) }),
+      );
+      await within(pane).findByText(`${id}-second body revision 1`);
+      surface = await openPresentation(`${id}-second`);
+      await send(surface, "change this one");
+      await waitFor(() => expect(prompt).toHaveBeenCalledTimes(2));
+      expect(prompt.mock.calls[1]![0]).toMatchObject({
+        artifactPresentation: { sessionId, artifactId: `${id}-second`, revision: 1 },
+      });
+      await fixture.user.keyboard("{Escape}");
+      expect(screen.queryByRole("dialog", { name: `Report ${id}-second` })).toBeNull();
+      await fixture.user.click(within(pane).getByRole("button", { name: "Close Artifact" }));
+      await send(document.body, "ordinary message");
+      await waitFor(() => expect(prompt).toHaveBeenCalledTimes(3));
+      expect(prompt.mock.calls[2]![0].artifactPresentation).toBeNull();
+      await fixture.user.click(screen.getByRole("button", { name: /^beta conversation / }));
+      await send(document.body, "other conversation");
+      await waitFor(() => expect(prompt).toHaveBeenCalledTimes(4));
+      expect(prompt.mock.calls[3]![0]).toMatchObject({ sessionId: "beta" });
+      expect(prompt.mock.calls[3]![0]).not.toHaveProperty("artifactPresentation");
+    },
+  );
+
   it.each(["alpha", "cake"])(
     "opens only %s session artifacts in isolation at the pinned revision, then explicitly browses the library",
     async (id) => {

@@ -1387,7 +1387,15 @@ async function seedArtifactScenario(
 const inlineArtifactScenario: VisualCaptureScenario = {
   name: "inline-artifact",
   description: "One saved visualization, expanded inline by default with collapse and fullscreen",
-  states: ["default", "collapsed", "reexpanded", "fullscreen", "popup", "pane"],
+  states: [
+    "default",
+    "collapsed",
+    "reexpanded",
+    "fullscreen",
+    "presentation-chat",
+    "popup",
+    "pane",
+  ],
   async seed(paths, theme) {
     const source = `import React, { useState } from "react";
 export default function Visual() {
@@ -1481,16 +1489,28 @@ export default function Visual() {
           .getByRole("heading", { name: "One artifact, two views" }),
       ).toBeVisible();
     }
-    if (state === "fullscreen")
+    if (state === "fullscreen" || state === "presentation-chat")
       await disclosure
         .getByRole("button", { name: "View Inline visualization fullscreen" })
         .click();
+    if (state === "presentation-chat") {
+      const surface = page.getByRole("dialog", { name: "Inline visualization" });
+      await surface.getByRole("button", { name: "Open chat" }).click();
+      const input = surface.getByRole("combobox", { name: "Message", exact: true });
+      await input.focus();
+      await input.pressSequentially("edit this artifact");
+      await expect(input).toHaveValue("edit this artifact");
+      await expect(surface.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+      await surface.evaluate(async (element) => {
+        await Promise.all(element.getAnimations().map((animation) => animation.finished));
+      });
+    }
     await page.mouse.move(1, 1);
   },
   region(page, state) {
     return state === "pane"
       ? page.locator('[data-slot="artifact-pane-layout"]')
-      : state === "popup" || state === "fullscreen"
+      : state === "popup" || state === "fullscreen" || state === "presentation-chat"
         ? page.getByRole("dialog")
         : page.locator('[data-slot="artifact-disclosure"]').first();
   },

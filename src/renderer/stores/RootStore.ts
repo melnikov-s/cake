@@ -42,6 +42,8 @@ import { ReviewsStore } from "./ReviewsStore";
 import { SettingsStore } from "./SettingsStore";
 import { ExtensionUiStore } from "./ExtensionUiStore";
 import { FullscreenSurfaceStore } from "./FullscreenSurfaceStore";
+import { ArtifactPresentationStore } from "./ArtifactPresentationStore";
+import { ArtifactPresentationContext } from "./context/ArtifactPresentationContext";
 import type { AgentControlSource } from "../app-control/app-control-data";
 import { createRootApplicationControlHost } from "../app-control/RootApplicationControlHost";
 import { createSessionPluginOperationAdapter } from "../app-control/SessionPluginOperationAdapter";
@@ -236,6 +238,17 @@ export class RootStore extends Store<{
     return context
       ? { sessionId: context.sessionId, workingDirectory: context.workspacePath }
       : undefined;
+  }
+
+  [ArtifactPresentationContext.provide]() {
+    return this.artifactPresentationStore;
+  }
+
+  @child
+  get artifactPresentationStore(): ArtifactPresentationStore {
+    return createStore(ArtifactPresentationStore, {
+      activeSessionId: () => this.appShellStore.activeConversation?.sessionId,
+    });
   }
 
   @child

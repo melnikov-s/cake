@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Markdown, fencedCode } from "@/components/ai-elements/markdown";
-import { FullscreenSurface } from "@/components/fullscreen-surface";
+import { ArtifactPresentationSurface } from "./artifact-presentation-surface";
 import { FullscreenButton } from "@/components/ui/fullscreen-button";
 import { ResizableSurface } from "@/components/ui/resizable-surface";
 import { observer } from "r-state-tree/react";
@@ -36,7 +36,6 @@ export const ArtifactHost = observer(function ArtifactHost({
   const artifact = record.artifact;
   const [fullscreen, setFullscreen] = useState(false);
   const title = artifact.title ?? artifact.id;
-  const canvas = artifact.kind === "widget" || artifact.kind === "html";
 
   const renderArtifact = () => (
     <>
@@ -86,14 +85,13 @@ export const ArtifactHost = observer(function ArtifactHost({
           renderExpanded={
             fullscreen
               ? (targetRef) => (
-                  <FullscreenSurface
-                    mode="canvas"
-                    eyebrow="Artifact"
-                    title={title}
+                  <ArtifactPresentationSurface
+                    record={record}
+                    sessionId={stateSessionId}
                     onClose={() => setFullscreen(false)}
                   >
                     <div ref={targetRef} className="h-full min-h-0 w-full" />
-                  </FullscreenSurface>
+                  </ArtifactPresentationSurface>
                 )
               : undefined
           }
@@ -111,14 +109,13 @@ export const ArtifactHost = observer(function ArtifactHost({
       )}
       {artifact.kind === "widget" && <WidgetInitialPreview artifact={artifact} />}
       {fullscreen && artifact.kind !== "widget" && (
-        <FullscreenSurface
-          mode={canvas ? "canvas" : "reader"}
-          eyebrow="Artifact"
-          title={title}
+        <ArtifactPresentationSurface
+          record={record}
+          sessionId={stateSessionId}
           onClose={() => setFullscreen(false)}
         >
           {renderArtifact()}
-        </FullscreenSurface>
+        </ArtifactPresentationSurface>
       )}
     </article>
   );

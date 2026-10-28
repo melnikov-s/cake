@@ -208,14 +208,14 @@ for (const theme of ["light", "dark"] as const) {
       });
       await fullscreenExpand.focus();
       await fullscreenExpand.press("Enter");
-      const fullscreen = page.getByRole("dialog", { name: "Inline visualization" });
+      const fullscreen = page.getByRole("dialog", { name: "Inline visualization" }).first();
       await expect(
         fullscreen
           .locator("iframe")
           .contentFrame()
           .getByRole("heading", { name: "One artifact, two views" }),
       ).toBeVisible();
-      const fullFrame = fullscreen.locator("iframe");
+      const fullFrame = fullscreen.locator('section[aria-label="Inline visualization"] iframe');
       const fullContent = fullFrame.contentFrame();
       await expect(fullContent.getByRole("button", { name: "Hide detail" })).toBeVisible();
       await expect(fullContent.locator("main")).toHaveAttribute("data-unsaved", "retained");
@@ -239,6 +239,57 @@ for (const theme of ["light", "dark"] as const) {
         ).toBeGreaterThan(bounds.height - 250);
       };
       await assertFilled();
+      await fullscreen.getByRole("button", { name: "Open chat" }).click();
+      const chatInput = fullscreen.getByRole("combobox", { name: "Message" });
+      await chatInput.focus();
+      await expect(chatInput).toBeFocused();
+      await chatInput.pressSequentially("edit this artifact");
+      await expect(chatInput).toHaveValue("edit this artifact");
+      await expect(fullscreen.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+      const split = fullscreen.getByRole("separator", { name: "Resize current session sidebar" });
+      await split.focus();
+      await split.press("ArrowLeft");
+      await expect(split).toHaveAttribute("aria-valuenow", "416");
+      const divider = (await split.boundingBox())!;
+      await page.mouse.move(divider.x + divider.width / 2, divider.y + divider.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(divider.x + divider.width / 2 - 64, divider.y + divider.height / 2);
+      await page.mouse.up();
+      await expect(split).toHaveAttribute("aria-valuenow", "480");
+      await expect(fullFrame).toHaveCSS("pointer-events", "auto");
+      await expect(fullContent.getByRole("button", { name: "Hide detail" })).toBeVisible();
+      await expect(fullContent.locator("main")).toHaveAttribute("data-unsaved", "retained");
+      expect(await fullFrame.getAttribute("src")).toBe(originalSrc);
+      const hideDetail = fullContent.getByRole("button", { name: "Hide detail" });
+      await hideDetail.focus();
+      await hideDetail.press("Enter");
+      const showDetail = fullContent.getByRole("button", { name: "Explore detail" });
+      await expect(showDetail).toBeVisible();
+      await showDetail.focus();
+      await showDetail.press("Enter");
+      await page.evaluate((value) => {
+        document.documentElement.dataset.theme = value;
+      }, theme);
+      await expect(fullContent.locator("html")).toHaveAttribute("data-theme", theme);
+      const duplicateDisclosures = fullscreen.locator("aside [data-slot=artifact-disclosure]");
+      await expect(duplicateDisclosures).toHaveCount(2);
+      for (const disclosure of await duplicateDisclosures.all()) {
+        const toggle = disclosure.getByRole("button", {
+          name: "Inline visualization",
+          exact: true,
+        });
+        await expect(toggle).toBeDisabled();
+        await expect(toggle).toHaveAttribute("aria-expanded", "false");
+      }
+      await expect(fullscreen.locator("aside iframe")).toHaveCount(0);
+      await expect(fullContent.locator("main")).toHaveAttribute("data-unsaved", "retained");
+      await fullscreen.getByRole("button", { name: "Close chat" }).click();
+      await assertFilled();
+      await fullscreen.getByRole("button", { name: "Open chat" }).click();
+      await expect(chatInput).toHaveValue("edit this artifact");
+      await expect(fullscreen.locator("aside iframe")).toHaveCount(0);
+      await expect(split).toHaveAttribute("aria-valuenow", "480");
+      await fullscreen.getByRole("button", { name: "Close chat" }).click();
       await app.evaluate(({ BrowserWindow }) =>
         BrowserWindow.getAllWindows()[0]!.setContentSize(1000, 760),
       );
@@ -246,9 +297,19 @@ for (const theme of ["light", "dark"] as const) {
         .poll(() => fullFrame.evaluate((element) => element.getBoundingClientRect().width))
         .toBe(1000);
       await assertFilled();
-      await fullscreen
-        .getByRole("button", { name: "Exit fullscreen Inline visualization" })
-        .click();
+      if (theme === "dark") {
+        await fullscreen
+          .getByRole("button", { name: "Exit fullscreen Inline visualization" })
+          .click();
+      } else {
+        await fullscreen.getByRole("button", { name: "Open chat" }).click();
+        await chatInput.focus();
+        await chatInput.press("Escape");
+      }
+      await expect(fullscreen).toHaveCount(0);
+      await expect(
+        inline.getByRole("button", { name: "Inline visualization Collapse" }),
+      ).toHaveAttribute("aria-expanded", "true");
       await expect(frame.locator("main")).toHaveAttribute("data-unsaved", "retained");
       await expect(frame.getByRole("button", { name: "Hide detail" })).toBeVisible();
       await expect

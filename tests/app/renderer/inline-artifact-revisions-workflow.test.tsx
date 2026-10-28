@@ -46,6 +46,49 @@ afterEach(() => {
 });
 
 describe("inline artifact revision disclosures", () => {
+  it("keeps the fullscreen artifact collapsed only in its side chat without changing transcript choices", async () => {
+    using fixture = renderArtifactReferences("Conversation prose", {}, [
+      presentation("older", 1),
+      presentation("current", 2),
+      presentation("other", 1, "appendix"),
+    ]);
+    await expectOpen("older", false);
+    await expectOpen("current", true);
+    await expectOpen("other", true);
+    await fixture.user.click(surface("older"));
+    await expectOpen("older", true);
+    const current = document.querySelector<HTMLElement>('[data-part-id="current"]')!;
+    await fixture.user.click(
+      within(current).getByRole("button", { name: "View Quarterly report fullscreen" }),
+    );
+    const fullscreen = screen.getByRole("dialog", { name: "Quarterly report" });
+    await fixture.user.click(within(fullscreen).getByRole("button", { name: "Open chat" }));
+    const sidebar = fullscreen.querySelector("aside")!;
+    const duplicates = sidebar.querySelectorAll<HTMLElement>(
+      '[data-slot="artifact-disclosure"][data-artifact-reference^="cake://artifact/report@"]',
+    );
+    expect(duplicates).toHaveLength(2);
+    for (const duplicate of duplicates) {
+      const toggle = within(duplicate).getByRole("button");
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+      expect(toggle).toHaveProperty("disabled", true);
+      expect(duplicate.querySelector("article[data-artifact-id]")).toBeNull();
+    }
+    expect(within(fullscreen).getByText("report content r2")).toBeDefined();
+    expect(within(sidebar).getByText("appendix content r1")).toBeDefined();
+    await fixture.user.click(within(sidebar).getByRole("button", { name: "Appendix Collapse" }));
+    await fixture.user.click(within(sidebar).getByRole("button", { name: "Appendix Expand" }));
+    await fixture.user.click(within(fullscreen).getByRole("button", { name: "Close chat" }));
+    await fixture.user.click(within(fullscreen).getByRole("button", { name: "Open chat" }));
+    expect(fullscreen.querySelectorAll('aside [data-artifact-id="report"]')).toHaveLength(0);
+    await fixture.user.click(
+      within(fullscreen).getByRole("button", { name: "Exit fullscreen Quarterly report" }),
+    );
+    await expectOpen("older", true);
+    await expectOpen("current", true);
+    await expectOpen("other", true);
+  });
+
   it("collapses every older revision of the canonical lineage, not unrelated artifacts or equal revisions", async () => {
     const parts = [
       presentation("one", 1),

@@ -382,7 +382,11 @@ export const TranscriptPart = observer(function TranscriptPart(props: {
 }) {
   return (
     <InlineArtifactContext
-      value={{ conversationId: props.behavior.store.id, partId: props.part.id }}
+      value={{
+        conversationId: props.behavior.store.id,
+        partId: props.part.id,
+        behavior: props.behavior,
+      }}
     >
       <div className="contents" data-part-id={props.part.id}>
         <TranscriptPartContent {...props} />

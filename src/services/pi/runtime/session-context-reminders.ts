@@ -1,3 +1,4 @@
+import { splitArtifactPresentationReminder } from "../../../contracts/artifacts/artifact-presentation-context";
 import {
   responseModeReminders,
   stripResponseModeReminder,
@@ -18,7 +19,8 @@ import { splitUpdateBatchReminder } from "../../../contracts/conversations/updat
 export function splitContextReminders(text: string) {
   const withoutResponse = stripResponseModeReminder(text);
   const withoutPresentation = stripPresentationModeReminder(withoutResponse);
-  const references = splitReferenceNotifications(withoutPresentation);
+  const artifact = splitArtifactPresentationReminder(withoutPresentation);
+  const references = splitReferenceNotifications(artifact.text);
   const digest = splitSessionDigestReminder(references.text);
   const todos = splitProjectTodoReminder(digest.text);
   const batch = splitUpdateBatchReminder(todos.text);
@@ -28,6 +30,8 @@ export function splitContextReminders(text: string) {
     const block = withoutResponse.match(/^<system-reminder>[\s\S]*?<\/system-reminder>/)?.[0];
     if (block) reminders.push({ title: "Cake · presentation mode", text: block });
   }
+  if (artifact.reminder)
+    reminders.push({ title: "Cake · application view", text: artifact.reminder });
   if (references.reminder)
     reminders.push({ title: "Cake · reference notifications", text: references.reminder });
   if (digest.reminder && sessionNotificationEntries(digest.reminder).length)

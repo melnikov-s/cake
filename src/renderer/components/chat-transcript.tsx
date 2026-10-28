@@ -18,6 +18,7 @@ import {
 import { AnnotationDraftPopover } from "@/components/annotation-draft-popover";
 import { ChatTranscriptFooter } from "./chat-transcript-footer";
 import { ConversationMarkdownProvider } from "./conversation-markdown-provider";
+import { ArtifactTranscriptContext } from "./artifact-transcript-context";
 import { TranscriptScroller } from "./transcript-scroller";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
@@ -98,6 +99,16 @@ export const ChatTranscript = observer(function ChatTranscript({
     [behavior.inlineArtifactPreviews, store],
   );
   const sideChat = useContext(SideChatContext);
+  const [presentedArtifacts, setPresentedArtifacts] = useState(0);
+  const artifactTranscript = useMemo(
+    () => ({
+      retain() {
+        setPresentedArtifacts((count) => count + 1);
+        return () => setPresentedArtifacts((count) => count - 1);
+      },
+    }),
+    [],
+  );
   const virtuosoRef = useRef<VirtualizedConversationHandle>(null);
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -174,6 +185,9 @@ export const ChatTranscript = observer(function ChatTranscript({
     if (!owner || scrolledForSentMessage.current === sentMessageRevision) return;
     if (virtualized && lastItemKey !== undefined && !virtuosoRef.current) return;
     scrolledForSentMessage.current = sentMessageRevision;
+    // The side chat may follow this send, but its covered transcript must keep
+    // the row that owns the live fullscreen artifact mounted.
+    if (presentedArtifacts) return;
     owner.scrollToBottomForSentMessage(
       virtualized && lastItemKey !== undefined
         ? {
@@ -183,7 +197,7 @@ export const ChatTranscript = observer(function ChatTranscript({
           }
         : undefined,
     );
-  }, [lastItemKey, scroller, sentMessageRevision, virtualized]);
+  }, [lastItemKey, scroller, sentMessageRevision, virtualized, presentedArtifacts]);
   const isArriving = useArrivals(itemKeys, store.id);
   const transcriptBehavior = useMemo<CanonicalTranscriptBehavior>(
     () => ({
@@ -240,7 +254,10 @@ export const ChatTranscript = observer(function ChatTranscript({
     return { index: "LAST" as const, align: "end" as const };
   }, [navigationItemIndex, restoredMessageItemIndex, restoredScrollPosition]);
   const selecting = selectedMessageId !== undefined;
-  useLayoutEffect(() => scrollOwner.current?.setSelecting(selecting), [scroller, selecting]);
+  useLayoutEffect(
+    () => scrollOwner.current?.setSelecting(selecting || presentedArtifacts > 0),
+    [scroller, selecting, presentedArtifacts],
+  );
   // The selection is identified by its stable item key, never by its index, so
   // arriving or streaming messages cannot retarget a reveal.
   const selectedItemKey = selectedItemIndex >= 0 ? itemKeys[selectedItemIndex] : undefined;
@@ -372,20 +389,21 @@ export const ChatTranscript = observer(function ChatTranscript({
     </>
   );
   const renderItem = (item: TranscriptItem, index: number) => (
-    <ChatTranscriptItem
-      key={itemKeys[index]}
-      itemKey={itemKeys[index] ?? item.id}
-      item={item}
-      index={index}
-      arriving={isArriving(itemKeys[index] ?? item.id)}
-      errorFollowsUser={errorNoticeFollowsUser(items, index)}
-      selected={index === selectedItemIndex}
-      parts={parts}
-      behavior={transcriptBehavior}
-      changedFilesOpen={changedFilesOpen}
-      loadingStartedAt={loadingStartedAt}
-      loadingLabel={loadingLabel}
-    />
+    <ArtifactTranscriptContext key={itemKeys[index]} value={artifactTranscript}>
+      <ChatTranscriptItem
+        itemKey={itemKeys[index] ?? item.id}
+        item={item}
+        index={index}
+        arriving={isArriving(itemKeys[index] ?? item.id)}
+        errorFollowsUser={errorNoticeFollowsUser(items, index)}
+        selected={index === selectedItemIndex}
+        parts={parts}
+        behavior={transcriptBehavior}
+        changedFilesOpen={changedFilesOpen}
+        loadingStartedAt={loadingStartedAt}
+        loadingLabel={loadingLabel}
+      />
+    </ArtifactTranscriptContext>
   );
   return (
     <ConversationMarkdownProvider

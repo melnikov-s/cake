@@ -1,5 +1,6 @@
 import { useContext, useEffect, useId } from "react";
 import { InlineArtifactContext } from "./inline-artifact-context";
+import { ArtifactPresentationChatContext } from "./artifact-presentation-chat-context";
 import { observer } from "r-state-tree/react";
 import {
   parseArtifactRef,
@@ -30,6 +31,8 @@ export const InlineArtifactPreview = observer(function InlineArtifactPreview({
 }) {
   const key = useId();
   const context = useContext(InlineArtifactContext);
+  const presentedArtifactId = useContext(ArtifactPresentationChatContext);
+  const presentedInWorkspace = parseArtifactRef(reference).lineageId === presentedArtifactId;
   const conversationId = context?.conversationId ?? stateSessionId;
   const presentationId = context ? `${context.partId}:${surfaceId ?? "publication"}` : surfaceId;
   useEffect(() => {
@@ -53,7 +56,8 @@ export const InlineArtifactPreview = observer(function InlineArtifactPreview({
       title={title}
       reference={exactRef}
       oldVersion={store.isOldVersion(key)}
-      open={store.expanded(key)}
+      open={!presentedInWorkspace && store.expanded(key)}
+      disabled={presentedInWorkspace}
       onToggle={() => store.toggle(key)}
     >
       {error ??

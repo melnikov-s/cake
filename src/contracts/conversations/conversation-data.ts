@@ -1,3 +1,4 @@
+import { ArtifactPresentationContext } from "../artifacts/artifact-presentation-context";
 import { PresetContext } from "../model-presets/preset-context";
 import { Schema } from "effect";
 import { attachmentSchema, uiPartSchema } from "./session-contract";
@@ -44,6 +45,7 @@ export const SessionChatPromptInput = Schema.Struct({
   presentationMode: Schema.optionalKey(ProjectSessionPresentationMode),
   /** Submission-time response style; omitted inputs use text, never inherited voice mode. */
   responseMode: Schema.optionalKey(ConversationResponseMode),
+  artifactPresentation: Schema.optionalKey(Schema.NullOr(ArtifactPresentationContext)),
   crossSession: Schema.optionalKey(CrossSessionMessageMetadata),
 });
 export interface SessionChatPromptInput extends Schema.Schema.Type<typeof SessionChatPromptInput> {}

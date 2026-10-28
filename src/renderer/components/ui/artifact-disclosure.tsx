@@ -8,6 +8,7 @@ export function ArtifactDisclosure({
   reference,
   oldVersion = false,
   open,
+  disabled = false,
   onToggle,
   children,
 }: {
@@ -15,6 +16,7 @@ export function ArtifactDisclosure({
   reference: string;
   oldVersion?: boolean;
   open: boolean;
+  disabled?: boolean;
   onToggle(): void;
   children?: ReactNode;
 }) {
@@ -28,7 +30,9 @@ export function ArtifactDisclosure({
       <div className="flex min-w-0 items-center gap-3 py-1">
         <DisclosureTrigger
           title={title}
-          subtitle={open ? "Collapse" : "Expand"}
+          subtitle={disabled ? undefined : open ? "Collapse" : "Expand"}
+          disabled={disabled}
+          showChevron={!disabled}
           badge={
             oldVersion ? (
               <Badge size="xs" className="shrink-0">

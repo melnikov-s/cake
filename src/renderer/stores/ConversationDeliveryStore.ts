@@ -1,3 +1,5 @@
+import { ArtifactPresentationContext } from "./context/ArtifactPresentationContext";
+import type { ArtifactPresentationContext as ViewContext } from "../../contracts/artifacts/artifact-presentation-context";
 import { Store, child, createStore } from "r-state-tree";
 import type { Attachment, UiPart } from "../../contracts/conversations/session-contract";
 import { parseBuiltinCommand } from "../../contracts/conversations/session-contract";
@@ -16,6 +18,7 @@ export interface ConversationDeliveryInput {
   delivery: "prompt" | "steer";
   renderUserMessageAsMarkdown: boolean;
   presentationMode?: ProjectSessionPresentationMode;
+  artifactPresentation?: ViewContext | null;
   /** Captured once per input; implementation carries it through existing delivery, not a new queue. */
   responseMode?: ConversationResponseMode;
 }
@@ -95,6 +98,7 @@ export class ConversationDeliveryStore extends Store<ConversationDeliveryStorePr
         delivery,
         renderUserMessageAsMarkdown,
         responseMode,
+        artifactPresentation: ArtifactPresentationContext.consume(this)?.capture(sessionId),
         ...(presentationMode === undefined ? null : { presentationMode }),
       });
       if (delivered === false) {
@@ -138,6 +142,7 @@ export class ConversationDeliveryStore extends Store<ConversationDeliveryStorePr
         attachments,
         renderUserMessageAsMarkdown,
         responseMode,
+        artifactPresentation: ArtifactPresentationContext.consume(this)?.capture(sessionId),
         ...(presentationMode === undefined ? null : { presentationMode }),
       });
       this.optimisticUserMessages.remove(operationId);

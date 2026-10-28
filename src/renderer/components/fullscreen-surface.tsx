@@ -1,10 +1,11 @@
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ComponentProps, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "r-state-tree/react";
 import { IconButton } from "@/components/ui/icon-button";
 import { CloseIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 import { FullscreenSurfaceStore } from "../stores/FullscreenSurfaceStore";
+import { WorkspaceChatLayout } from "./workspace-chat-layout";
 
 export function FullscreenSurface({
   children,
@@ -12,12 +13,19 @@ export function FullscreenSurface({
   mode = "reader",
   onClose,
   title,
+  toolbar,
+  chatSidebar,
 }: {
   children: ReactNode;
   eyebrow: string;
   mode?: "reader" | "canvas" | "dialog";
   onClose(): void;
   title: string;
+  toolbar?: ReactNode;
+  chatSidebar?: Pick<
+    ComponentProps<typeof WorkspaceChatLayout>,
+    "chatSidebar" | "chatSidebarVisible" | "chatSidebarWidth" | "onChatSidebarWidthChange"
+  >;
 }) {
   const fullscreenSurfaces = useStore(FullscreenSurfaceStore);
   const surfaceRef = useRef<HTMLDivElement>(null);
@@ -58,6 +66,27 @@ export function FullscreenSurface({
     };
   }, []);
 
+  const content = (
+    <main
+      className={cn(
+        "flex h-full min-h-0 flex-1 justify-center overflow-auto p-6",
+        mode === "canvas" && "overflow-hidden p-0",
+        mode === "dialog" && "items-center",
+      )}
+    >
+      <article
+        className={cn(
+          "w-full max-w-4xl",
+          mode === "canvas" && "h-full min-h-0 max-w-none overflow-hidden",
+          mode === "dialog" && "max-w-[34rem]",
+        )}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        {children}
+      </article>
+    </main>
+  );
+
   return createPortal(
     // z-45 keeps the surface above all workbench content while staying below
     // the shared z-50 overlay band, so overlays opened from within this surface
@@ -80,33 +109,40 @@ export function FullscreenSurface({
             {title}
           </h2>
         </div>
-        <IconButton
-          ref={closeButton}
-          tooltip="Exit fullscreen"
-          ariaLabel={`Exit fullscreen ${title}`}
-          onClick={onClose}
-        >
-          <CloseIcon />
-        </IconButton>
+        <div className="flex items-center gap-1">
+          {toolbar}
+          <IconButton
+            ref={closeButton}
+            tooltip="Exit fullscreen"
+            ariaLabel={`Exit fullscreen ${title}`}
+            onClick={onClose}
+          >
+            <CloseIcon />
+          </IconButton>
+        </div>
       </header>
-      <main
-        className={cn(
-          "flex min-h-0 flex-1 justify-center overflow-auto p-6",
-          mode === "canvas" && "overflow-hidden p-0",
-          mode === "dialog" && "items-center",
-        )}
-      >
-        <article
-          className={cn(
-            "w-full max-w-4xl",
-            mode === "canvas" && "h-full min-h-0 max-w-none overflow-hidden",
-            mode === "dialog" && "max-w-[34rem]",
-          )}
-          onMouseDown={(event) => event.stopPropagation()}
+      {chatSidebar ? (
+        <div
+          className="min-h-0 flex-1"
+          onMouseDown={(event) => {
+            if (event.target instanceof Element && event.target.closest("aside, [role=separator]"))
+              event.stopPropagation();
+          }}
         >
-          {children}
-        </article>
-      </main>
+          <WorkspaceChatLayout
+            {...chatSidebar}
+            className="h-full w-full"
+            workspaceLabel={title}
+            projectSidebar={null}
+            projectSidebarVisible={false}
+            projectSidebarWidth={0}
+            onProjectSidebarWidthChange={() => undefined}
+            workspace={content}
+          />
+        </div>
+      ) : (
+        content
+      )}
     </div>,
     document.body,
   );

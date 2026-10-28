@@ -363,6 +363,9 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
         attachments: input.attachments,
         renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
         responseMode: input.responseMode ?? "text",
+        ...(input.artifactPresentation === undefined
+          ? null
+          : { artifactPresentation: input.artifactPresentation }),
         ...(input.presentationMode === undefined
           ? null
           : { presentationMode: input.presentationMode }),

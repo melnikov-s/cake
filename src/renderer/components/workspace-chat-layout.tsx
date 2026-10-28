@@ -5,6 +5,7 @@ import { ResizeHandle } from "./ui/resize-handle";
 /** Shared VS Code/browser shell: project navigation, primary workspace, and authoritative chat drawer. */
 export function WorkspaceChatLayout({
   workspace,
+  className,
   workspaceLabel,
   chatSidebar,
   chatSidebarVisible,
@@ -17,6 +18,7 @@ export function WorkspaceChatLayout({
   terminalDock,
 }: {
   workspace: ReactNode;
+  className?: string;
   workspaceLabel: string;
   chatSidebar: ReactNode;
   chatSidebarVisible: boolean;
@@ -51,7 +53,10 @@ export function WorkspaceChatLayout({
       ref={workspaceRef}
       className={cn(
         "relative flex h-screen min-h-0 w-screen overflow-hidden bg-background text-foreground",
-        resizing && "cursor-col-resize select-none",
+        // Cross-origin widget frames otherwise swallow drag events even after
+        // pointer capture. Restore their interaction as soon as resizing ends.
+        resizing && "cursor-col-resize select-none [&_iframe]:pointer-events-none",
+        className,
       )}
       style={workspaceStyle}
     >
