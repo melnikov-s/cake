@@ -14,7 +14,7 @@ import {
   SortIcon,
 } from "./ui/icons";
 import { IconButton } from "./ui/icon-button";
-import { SidebarSessionItem } from "./sidebar-session-item";
+import { SidebarProjectSessionItem } from "./sidebar-project-session-item";
 import type { AppShellStore } from "../stores/AppShellStore";
 import type { ProjectCatalogStore } from "../stores/ProjectCatalogStore";
 import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
@@ -288,36 +288,21 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
           )}
         >
           {visibleSessions.map((session) => (
-            <SidebarSessionItem
+            <SidebarProjectSessionItem
               key={session.sessionId}
               store={store}
+              sessionList={sessionList}
               sessionMetadata={sessionMetadata}
+              appearance={appearance}
               session={session}
-              managedWorktree={store.managedWorktree(session.workingDirectory)}
               selected={
                 shell.selection.kind === "project-session" &&
                 shell.selection.sessionId === session.sessionId
               }
               paneNumber={chat.paneNumber?.(session.sessionId)}
               resolved={resolved}
-              activity={sessionList.sessionActivityForDisplay(session)}
-              labels={sessionMetadata.sessionLabels(session.sessionId)}
-              avatarSeed={session.sessionId}
-              avatarsEnabled={appearance.sessionAvatarsEnabled}
-              charactersEnabled={appearance.sidebarCharactersEnabled}
               focusMode={focusMode}
-              onOpen={onOpenSession}
-              onToggleFamily={(sessionId) => sessionList.toggleFamilyCollapsed(sessionId)}
-              familyCollapsed={sessionList.isFamilyCollapsed(session.sessionId)}
-              onRename={(sessionId, name) => void store.renameSession(sessionId, name)}
-              onResolve={(sessionId, nextResolved) =>
-                void store.setSessionResolved(sessionId, nextResolved)
-              }
-              onSetLabels={(sessionId, labelIds) =>
-                void store.setSessionLabels(sessionId, labelIds)
-              }
-              onDelete={(sessionId) => void store.deleteSession(sessionId)}
-              onMarkUnread={(sessionId, unread) => void store.setSessionUnread(sessionId, unread)}
+              onOpenSession={onOpenSession}
             />
           ))}
           {hasMore && (

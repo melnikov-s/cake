@@ -1,4 +1,4 @@
-import { Store, child, createStore, snapshot } from "r-state-tree";
+import { Store, child, computed, createStore, snapshot } from "r-state-tree";
 import { formatRelativeSessionTime } from "../../utils/format-relative-session-time";
 import type { CakeChatCollectionStore } from "./CakeChatCollectionStore";
 import { ClientContext } from "./context/ClientContext";
@@ -107,15 +107,21 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     return this.props.catalog.managedWorktree(workingDirectory);
   }
 
-  /** A to-do selection is shown only while its chat (a Project Chat or global Cake Chat) is focused with the to-do panel open. */
-  isSessionAssociatedWithSelectedTodo(sessionId: string) {
+  /** Project-to-Project navigation keeps this projection undefined, so unrelated
+   * rows do not subscribe to every change of the selected conversation.
+   */
+  @computed
+  private get selectedTodo() {
     const conversation = this.props.selectedConversation?.();
-    const selected =
-      conversation?.kind === "cake-chat"
-        ? this.props.cakeChat().registry.find(conversation.sessionId)?.todos.selectedItem
-        : undefined;
+    return conversation?.kind === "cake-chat"
+      ? this.props.cakeChat().registry.find(conversation.sessionId)?.todos.selectedItem
+      : undefined;
+  }
+
+  /** A to-do selection is shown only while its chat is focused with its panel open. */
+  isSessionAssociatedWithSelectedTodo(sessionId: string) {
     return (
-      selected?.associations.some(
+      this.selectedTodo?.associations.some(
         (association) => association.kind === "session" && association.sessionId === sessionId,
       ) ?? false
     );
