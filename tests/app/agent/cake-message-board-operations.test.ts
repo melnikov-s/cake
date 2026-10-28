@@ -62,7 +62,11 @@ describe("Workboard agent protocol", () => {
       "assignments and their substantive results belong exclusively on this board",
     );
     expect(appendHelp).toContain("not in sessions.send/reply or private side channels");
-    expect(appendHelp).toContain("resultDelivery defaults to notification");
+    expect(appendHelp).toContain("reply for a dependent next action or an answer owed to the user");
+    expect(appendHelp).toContain("notification for background review");
+    expect(appendHelp).toContain(
+      "Application-owned completion needs no duplicate private wake-up/report",
+    );
     expect(appendHelp).toContain("Routine findings/completions are passive");
     expect(appendHelp).toContain("Declare event: assignment for necessary dependent work");
   });

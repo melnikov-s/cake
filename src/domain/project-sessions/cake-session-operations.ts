@@ -1,5 +1,6 @@
 import { Effect, Schema } from "effect";
 import { promptFilesGuidance } from "../../contracts/conversations/prompt-files";
+import { resultDeliveryGuidance } from "../../contracts/conversations/result-delivery";
 import { CakeModelSelection } from "../../contracts/model-presets/cake-model-selection";
 
 import {
@@ -22,6 +23,7 @@ export function createProjectSessionOperations(
         "Create, name, and start an independent Project Session in the calling session's project.",
       guidance: [
         promptFilesGuidance,
+        resultDeliveryGuidance,
         "This singular Project Session-local operation derives the project from the caller and never accepts a workspacePath or sessionId. Cake Chat uses the separate plural sessions.create application control.",
         "Set worktreeName to create and register a new Cake-managed worktree before the Pi-backed session starts. Do not run git worktree add or try to rebind an already-started session.",
         "When worktreeName is omitted, the independent session starts in the Project root, preserving the existing behavior.",

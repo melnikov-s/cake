@@ -4,6 +4,9 @@ import { join } from "node:path";
 import sessions from "../../../../docs/agent/sessions.md?raw";
 import cakeChat from "../../../../docs/agent/cake-chat.md?raw";
 import workgroups from "../../../../docs/agent/workgroups.md?raw";
+import familyDelegation from "../../../../docs/agent/family-delegation.md?raw";
+import familyCoordination from "../../../../docs/agent/family-coordination.md?raw";
+import familyLifecycle from "../../../../docs/agent/family-lifecycle.md?raw";
 import artifacts from "../../../../docs/agent/artifacts.md?raw";
 import models from "../../../../docs/agent/models.md?raw";
 import presentation from "../../../../docs/agent/presentation.md?raw";
@@ -20,6 +23,9 @@ import sessionHistory from "../../../../docs/agent/session-history.md?raw";
 const documents = {
   sessions,
   workgroups,
+  "family-delegation": familyDelegation,
+  "family-coordination": familyCoordination,
+  "family-lifecycle": familyLifecycle,
   artifacts,
   models,
   presentation,

@@ -263,8 +263,11 @@ projections needed by a surface. References do not transfer ownership.
   manual completion call is required. Artifact/link-only presentation cannot suppress a reply
   wakeup. Durable transport is not a guarantee of exactly-once LLM prose. Direct questions
   are immediate; explicit blockers escalate after worker settlement. Private subagents retain
-  their separate continuation:none/resume contract. Family board-only children select ignore;
-  Workboard continuation remains separately authorized.
+  their separate continuation:none/resume contract. Family children use the same dependent-result choice:
+  reply when the parent needs the result next or owes the user an answer, notification
+  for background review. Choosing reply for already-authorized work needs no new authorization
+  and does not block. Workboard posts and correlated completion obligations remain distinct;
+  no duplicate private wake-up or report is needed. See `docs/agent/communication.md`.
 - Automatic Project Session result handoff belongs to correlated result-requesting messages and permanent-chat launches,
   not arbitrary session relationships or later unrelated local user turns.
   Without an explicit report, a run's final answer becomes the result only when it answers the

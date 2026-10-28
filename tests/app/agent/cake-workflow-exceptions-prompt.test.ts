@@ -27,9 +27,7 @@ describe.each([
     );
     expect(prompt).toContain('not "harness forbids"');
     expect(prompt).toContain("Polling/check-ins require explicit user request");
-    expect(prompt).toContain(
-      "read `communication.md` before sending, selecting delivery or scheduling",
-    );
+    expect(prompt).toContain("Read `communication.md` before launches/sends/delivery/scheduling");
   });
 });
 

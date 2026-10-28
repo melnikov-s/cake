@@ -6,17 +6,19 @@ Read before launching, sending, replying, choosing delivery, handling batches or
 
 Choose one `resultDelivery` on session launch/send:
 
-- `"reply"`: transport the correlated result and start/queue a normal parent turn on application-confirmed completion.
+- `"reply"`: transport the correlated result and queue a non-interrupting normal parent continuation on application-confirmed completion. It never steers active work or runs alongside it.
 - `"notification"` (default application-wide, including families): retain a compact completion and exact result-message link in the pending batch.
 - `"ignore"`: owe no result or notification.
 
-Reply when the user awaits an answer (questions, checks, investigations, diagnoses) or you will act on it next. A promised answer means reply. Use notification for background work the user will review later.
+Reply when the user awaits an answer (questions, checks, investigations, diagnoses) or you need the result for your next action. A promised answer means reply. Make this parent decision at delegation time: for an already-authorized dependent task, choosing `resultDelivery: "reply"` requires no fresh user authorization. Reply does not mean blocking or waiting; launch asynchronously and continue other work or finish the turn. Use notification for background work the user will review later, including background implementation; implementation needed for the next action uses reply too. Notification remains the runtime default, not a reason to leave dependent work quiet.
 
 Outbound `delivery` is separate. `"fyi"` is an authorized passive update: batched, with no steering, separate wake or return-result obligation. Necessary immediate corrections omit delivery to steer active work/start an idle recipient. `"queue"` means deliberately ordered future work; `"prompt"` means an immediate assignment/question. Boards are for families only. Never acknowledge receipts, results or resolution, or relay application notifications. Explicit user exceptions apply.
 
 A reply obligation belongs to one message, not a session. The application owns completion, correlation, retries and exact links; no manual worker completion call/relay is needed. Links/artifacts keep the chosen mode. Unrelated user-started turns never report to the creator. Transport is deduplicated, not exactly-once model prose.
 
-Direct questions are immediate. `outcome: "blocked"` escalates after the worker turn settles, even in notification mode; ordinary completion/failure remains quiet. Composer holds are bounded; stop-all and explicit queue withdrawal remain authoritative.
+For families, substantive coordination and completion results still belong on the Workboard. A passive `event: "completion"` post is distinct from a correlated launch/message reply obligation: it neither clears that obligation nor guarantees a dependent parent continuation. Application-owned result transport is not a private agent coordination message. Do not send an extra `sessions.reply`, private wake-up or duplicate report to make it happen. Prompt text cannot disable or reroute existing runtime obligations. If a required transport behavior is unavailable, report the concrete capability limit and supported path rather than promising a wake-up or adding polling/timers.
+
+Direct questions are immediate. `outcome: "blocked"` escalates after the worker turn settles, even in notification mode; notification-mode ordinary completion/failure remains passive. Composer holds are bounded; stop-all and explicit queue withdrawal remain authoritative.
 
 ## Batched delivery
 
@@ -36,7 +38,7 @@ Launches/follow-ups are asynchronous; expecting results never means waiting. Blo
 
 `subagents.start` uses `continuation`, not `resultDelivery`: `"resume"` (default) means reply; `"none"` means notification. Choose by the rule above. Both owe results; links never cancel resume. Follow-ups inherit unless overridden. `message_parent` blockers/questions remain immediate. Parents receive results through the serial queue, never steering/concurrent turns.
 
-Workboard-only children may choose `resultDelivery: "ignore"`; posts use explicit-audience/root delivery, not a second completion grant. Independent `session.create` retains a quiet initial completion for its creator; local user/UI creation without a creator owes nothing. Read `reports.md` before handling retained reports or review decisions.
+Use `resultDelivery: "ignore"` only when no correlated result/continuation is owed; a board-only result does not replace reply for dependent work. Posts use explicit-audience/root delivery, not a second completion grant. Independent `session.create` defaults to notification for its creator but uses the same dependent-result decision above; local user/UI creation without a creator owes nothing. Read `reports.md` before handling retained reports or review decisions.
 
 ## User-requested check-ins
 

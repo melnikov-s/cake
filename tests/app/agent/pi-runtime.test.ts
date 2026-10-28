@@ -124,8 +124,8 @@ describe("Pi 1.0.0 foundation contract", () => {
     expect(systemPrompt).toContain("communicate exclusively via Workboard");
     expect(systemPrompt).toContain("parents, children, siblings and recursive descendants");
     expect(systemPrompt).toContain("Create children with assignment: { description, body }");
-    expect(systemPrompt).toContain("Default resultDelivery: notification");
-    expect(systemPrompt).toContain("`workgroups.md` AND `sessions.md` before child assignments");
+    expect(systemPrompt).toContain("At launch set resultDelivery: reply");
+    expect(systemPrompt).toContain("`workgroups.md`: family entry guide");
     const docsDirectory = systemPrompt?.match(/Cake documentation directory: `([^`]+)`/)?.[1];
     if (!docsDirectory) throw new Error("Expected readable Cake documentation references");
     const modelDocs = await readFile(join(docsDirectory, "models.md"), "utf8");
@@ -142,10 +142,17 @@ describe("Pi 1.0.0 foundation contract", () => {
     expect(deliveryDocs).toContain("Never acknowledge receipts, results or resolution");
     const workgroupDocs = await readFile(join(docsDirectory, "workgroups.md"), "utf8");
     expect(workgroupDocs).toContain("By default, all Session Family members");
-    expect(workgroupDocs).toContain(
+    expect(workgroupDocs).toContain("family-delegation.md");
+    const familyDelegationDocs = await readFile(
+      join(docsDirectory, "family-delegation.md"),
+      "utf8",
+    );
+    expect(familyDelegationDocs).toContain(
       "There are no separate agent board-create or board-join operations",
     );
-    expect(workgroupDocs).toContain("prompt text cannot disable or reroute them");
+    expect(deliveryDocs).toContain(
+      "Prompt text cannot disable or reroute existing runtime obligations",
+    );
   });
 
   it("returns current family information from session.info without recreating the runtime", async () => {

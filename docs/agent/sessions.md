@@ -1,6 +1,6 @@
 # Project Sessions
 
-Read before creating, forking or changing session lifecycle. Before messaging/delegating, also read `communication.md`; before listing/routing, read `session-discovery.md`. For family work, read `workgroups.md` before assignment, coordination, board use or family/worktree lifecycle.
+Read before creating, forking or changing session lifecycle. Before messaging/delegating, also read `communication.md`; before listing/routing, read `session-discovery.md`. For family work, read `workgroups.md` before assignment, coordination, board use or family/worktree lifecycle, then only its matching task guide.
 
 ## Create the right session
 
@@ -8,7 +8,7 @@ Read before creating, forking or changing session lifecycle. Before messaging/de
 
 From a Project Session, create an independent session with singular `{"command":"session.create","input":{"name":"...","initialPrompt":"..."}}`. Include `worktreeName` for a Cake-managed worktree; omit it to use the Project root. Cake Chat/global application control uses plural `sessions.create` with an explicit project. Permanent chats create independent sessions, never family children.
 
-Create a family child with `{"command":"sessions.create-child","input":{"title":"...","assignment":{"description":"...","body":"Substantive task and board result requirements..."}}}`. Both title and assignment are required. Cake persists the addressed Workboard assignment before the first child turn and includes its full contents and board entry identity in the initial prompt; no initial board read is needed. Use the board for later updates and shared coordination. Bootstrap-only initialPrompt calls fail validation. Inspect launch status: accepted is intake, not completion. Retry failures with the returned requestId and unchanged assignment. Children can recursively create children.
+Create a family child with `{"command":"sessions.create-child","input":{"title":"...","resultDelivery":"reply","assignment":{"description":"...","body":"Substantive task and board result requirements..."}}}`. Both title and assignment are required. Cake persists the addressed Workboard assignment before the first child turn and includes its full contents and board entry identity in the initial prompt; no initial board read is needed. Use the board for later updates and shared coordination. Bootstrap-only initialPrompt calls fail validation. Inspect launch status: accepted is intake, not completion. Retry failures with the returned requestId and unchanged assignment. Children can recursively create children. Before launch, choose `resultDelivery` using `communication.md`: reply when the next action depends on the result or you owe the user an answer, notification for background review. Reply is asynchronous; choosing it for already-authorized work needs no fresh user authorization. See `family-delegation.md` for assignment and retry details.
 
 For a child, omit `worktreeName` to share the caller's exact Working Directory, mutable files and Git index; supply it for a managed worktree branched from the caller's committed HEAD. Uncommitted edits do not carry over. Never run `git worktree add` as a substitute or rebind an already-started Project Session.
 

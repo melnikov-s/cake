@@ -81,7 +81,9 @@ describe("Cake Chat core and task-triggered references", () => {
     expect(communication).toContain("A promised answer means reply");
     expect(communication).toContain('`"fyi"` is an authorized passive update');
     expect(communication).toContain('`"queue"` means deliberately ordered future work');
-    expect(communication).toContain("ordinary completion/failure remains quiet");
+    expect(communication).toContain(
+      "notification-mode ordinary completion/failure remains passive",
+    );
     expect(communication).toContain("canceled inputs never rearm it");
     expect(communication).toContain("interrupted-work review wait for the next user message");
   });
