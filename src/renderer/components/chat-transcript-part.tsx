@@ -95,10 +95,17 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
             : undefined,
         }}
         sources={sources}
-        todo={{
-          origin: resultTodoOrigin(part, behavior.messageReferenceSessionId ?? behavior.store.id),
-          todos: behavior.todos,
-        }}
+        todo={
+          behavior.hideTodoAssociations
+            ? undefined
+            : {
+                origin: resultTodoOrigin(
+                  part,
+                  behavior.messageReferenceSessionId ?? behavior.store.id,
+                ),
+                todos: behavior.todos,
+              }
+        }
       />
     );
   }
@@ -225,7 +232,11 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
           <SessionMessage
             source={{ sessionId: messageNavigationTarget(part.messageReference).sessionId }}
             sources={[source]}
-            todo={{ origin: referenceTodoOrigin(part.messageReference), todos: behavior.todos }}
+            todo={
+              behavior.hideTodoAssociations
+                ? undefined
+                : { origin: referenceTodoOrigin(part.messageReference), todos: behavior.todos }
+            }
           />
         );
     }
@@ -412,10 +423,14 @@ export const TranscriptPart = observer(function TranscriptPart(props: {
                 key={source.props.reference}
                 source={{ sessionId: messageNavigationTarget(source.props.reference!).sessionId }}
                 sources={[source]}
-                todo={{
-                  origin: referenceTodoOrigin(source.props.reference!),
-                  todos: props.behavior.todos,
-                }}
+                todo={
+                  props.behavior.hideTodoAssociations
+                    ? undefined
+                    : {
+                        origin: referenceTodoOrigin(source.props.reference!),
+                        todos: props.behavior.todos,
+                      }
+                }
               />
             ))}
       </div>

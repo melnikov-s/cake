@@ -40,6 +40,9 @@ import {
 } from "./chat-transcript-parts";
 import { ChatTranscriptItem } from "./chat-transcript-item";
 import { transcriptItemKeys } from "./chat-transcript-items";
+import { transcriptTaskSections } from "../lib/transcript-task-sections";
+import { resultTodoOrigin, referenceTodoOrigin } from "../lib/result-todo-origin";
+import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import { useArrivals } from "../hooks/use-arrivals";
 import {
   createTranscriptScrollOwner,
@@ -177,6 +180,19 @@ export const ChatTranscript = observer(function ChatTranscript({
     ...(showAssistantLoading ? [{ kind: "loading-state" as const, id: "loading-state" }] : []),
   ];
   const itemKeys = transcriptItemKeys(items);
+  const taskSections =
+    isCakeChatSessionId(store.id) && behavior.todos
+      ? transcriptTaskSections(items, (item) => {
+          const origin =
+            item.kind === "tool" && item.messageReference
+              ? referenceTodoOrigin(item.messageReference)
+              : item.kind === "text"
+                ? resultTodoOrigin(item, store.id)
+                : undefined;
+          const linked = origin ? behavior.todos?.itemsForResult(origin) : undefined;
+          return linked?.length === 1 ? linked[0]?.id : undefined;
+        })
+      : undefined;
   // Loading/changed-files rows can disappear during submission. Use the last
   // content row as the durable destination while the virtual range settles.
   const lastItemKey = itemKeys[visibleGroupedParts.length - 1];
@@ -203,6 +219,7 @@ export const ChatTranscript = observer(function ChatTranscript({
     () => ({
       store,
       ...behavior,
+      hideTodoAssociations: isCakeChatSessionId(store.id),
       openSideChat: sideChat ? (target) => sideChat.open(target) : undefined,
     }),
     [behavior, sideChat, store],
@@ -406,6 +423,7 @@ export const ChatTranscript = observer(function ChatTranscript({
         changedFilesOpen={changedFilesOpen}
         loadingStartedAt={loadingStartedAt}
         loadingLabel={loadingLabel}
+        taskSection={taskSections?.sections[index]}
       />
     </ArtifactTranscriptContext>
   );
@@ -420,7 +438,7 @@ export const ChatTranscript = observer(function ChatTranscript({
         // Clicking the transcript focuses it (not the body) so its pane keeps
         // keyboard message selection and keyboard scrolling. Not a tab stop.
         tabIndex={-1}
-        className="transcript outline-none h-full w-full max-w-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable_both-edges] [overflow-anchor:none]"
+        className="transcript @container/transcript outline-none h-full w-full max-w-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable_both-edges] [overflow-anchor:none]"
       >
         <div ref={contentRef} className="min-w-0">
           {store.history?.hasMore && (

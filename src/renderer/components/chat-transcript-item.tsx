@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { TaskSectionRail } from "./task-section-rail";
 import { ChangedFiles } from "@/components/changed-files";
 import { LoadingState } from "@/components/ui/loading-state";
 import type { UiPart } from "../../contracts/conversations/session-contract";
@@ -24,6 +25,7 @@ interface ChatTranscriptItemProps {
   changedFilesOpen: boolean;
   loadingStartedAt: number | undefined;
   loadingLabel: string | undefined;
+  taskSection?: { todoId: string | undefined; start: boolean };
 }
 
 function sameParts(left: readonly UiPart[], right: readonly UiPart[]) {
@@ -56,6 +58,7 @@ export const ChatTranscriptItem = memo(
     changedFilesOpen,
     loadingStartedAt,
     loadingLabel,
+    taskSection,
   }: ChatTranscriptItemProps) {
     const store: ChatStore = behavior.store;
     return (
@@ -72,7 +75,7 @@ export const ChatTranscriptItem = memo(
         }
         aria-current={selected ? "true" : undefined}
         className={cn(
-          "mx-auto w-full max-w-3xl min-w-0 pb-5 has-[[data-slot=artifact-disclosure]]:max-w-6xl in-[.chat-layout-compact]:pb-3.5",
+          "relative mx-auto w-full max-w-3xl min-w-0 pb-5 has-[[data-slot=artifact-disclosure]]:max-w-6xl in-[.chat-layout-compact]:pb-3.5 [&:has([data-slot=artifact-disclosure])_[data-slot=margin-rail]]:hidden [&:has([data-widget-view-id])_[data-slot=margin-rail]]:hidden",
           errorFollowsUser && "pt-3",
           arriving && "motion-safe:animate-arrive",
           // The selection ring outlines only the message bubble, not its label or
@@ -81,6 +84,13 @@ export const ChatTranscriptItem = memo(
             "[&_[data-slot=message-content]]:ring-1 [&_[data-slot=message-content]]:ring-accent/60 [&:not(:has([data-slot=message-content]))]:rounded-md [&:not(:has([data-slot=message-content]))]:ring-1 [&:not(:has([data-slot=message-content]))]:ring-accent/60",
         )}
       >
+        {taskSection?.todoId && behavior.todos && (
+          <TaskSectionRail
+            todoId={taskSection.todoId}
+            start={taskSection.start}
+            todos={behavior.todos}
+          />
+        )}
         {item.kind === "activity-group" ? (
           <ActivityGroup groupId={item.id} parts={item.parts} behavior={behavior} />
         ) : item.kind === "source-group" ? (
@@ -120,6 +130,8 @@ export const ChatTranscriptItem = memo(
   // `arriving` is deliberately ignored: it only matters for the mount that starts the
   // entrance, and a later re-render dropping the class must not cut the animation short.
   (previous, next) =>
+    previous.taskSection?.todoId === next.taskSection?.todoId &&
+    previous.taskSection?.start === next.taskSection?.start &&
     previous.itemKey === next.itemKey &&
     previous.index === next.index &&
     previous.selected === next.selected &&

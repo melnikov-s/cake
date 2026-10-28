@@ -207,7 +207,11 @@ async function renderChat(kind: ChatKind) {
     commit(projectTodos.mutateUser(scope, mutation)),
   );
   const fixture = createRendererStoreFixture({
-    client: { artifacts: { effective: async () => [] }, projectTodos: { mutateUser } },
+    client: {
+      cakeChats: { open: async () => undefined },
+      artifacts: { effective: async () => [] },
+      projectTodos: { mutateUser },
+    },
   });
   applySnapshot(fixture.models.cakeChatCatalog, {
     loaded: true,
@@ -308,66 +312,95 @@ async function renderChat(kind: ChatKind) {
 }
 
 it.each(chats)(
-  "keeps the association on every incoming card, historical update, request and batch entry in %s",
+  "groups attributed follow-ups with one live rail label per switch and reveals without selecting context in %s",
   async (kind) => {
     await using f = await renderChat(kind);
-    expect(
-      f.groupFor("worker-report")?.querySelector("[role=checkbox]")?.getAttribute("aria-label"),
-    ).toBe("Done: Research options");
-    expect(
-      f.groupFor("session-reply")?.querySelector("[role=checkbox]")?.getAttribute("aria-label"),
-    ).toBe("Done: Fix the build");
-    for (const title of ["Research options", "Fix the build"])
-      expect(f.checked(title)).toBe("false");
-    for (const id of ["session-progress", "session-request", "standalone-original"])
-      expect(f.groupFor(id)?.querySelector("[role=checkbox]")?.getAttribute("aria-label")).toBe(
-        "Done: Fix the build",
-      );
-    expect(f.groupFor("notice")?.querySelector("[role=checkbox]")?.getAttribute("aria-label")).toBe(
-      "Done: Benchmark startup",
+    const A = f.items.workerTodo.id;
+    const B = f.items.sessionTodo.id;
+    const attributed: UiPart[] = [A, A, B, A, null].flatMap((taskTodoId, index): UiPart[] => [
+      {
+        id: `u-${index}`,
+        entryId: `u-${index}`,
+        kind: "text",
+        role: "user",
+        text: `Question ${index}`,
+        status: "complete",
+        taskTodoId,
+      },
+      {
+        id: `a-${index}`,
+        entryId: `a-${index}`,
+        kind: "text",
+        role: "assistant",
+        text: `Answer ${index}`,
+        status: "complete",
+      },
+    ]);
+    act(() =>
+      applyConversationSnapshot(f.chat.model, {
+        sessionId: f.chat.sessionId,
+        sessionFile: "/chat.sqlite",
+        parts: attributed,
+        models: [],
+        thinkingLevel: "off",
+        availableThinkingLevels: ["off"],
+        streaming: false,
+        diagnostics: [],
+        commands: [],
+        compatibility: { resources: [], diagnostics: [] },
+        extensionUi: { statuses: [] },
+        tree: [],
+      }),
     );
-    expect(f.groupFor("unlinked-report")).toBeNull();
-    // An exact-message association must not bleed onto another message from that sender.
-    expect(f.groupFor("different-source")).toBeNull();
-    expect(screen.getAllByRole("group", { name: "Linked to-dos" })).toHaveLength(6);
-    // The bar is part of each message, so every result type shares one layout.
-    expect(f.groupFor("worker-report")?.closest('[data-slot="session-message"]')).not.toBeNull();
-    expect(f.groupFor("session-reply")?.closest('[data-slot="session-message"]')).not.toBeNull();
-    expect(f.groupFor("notice")?.closest('[data-slot="session-message"]')).not.toBeNull();
-    expect(
-      f.groupFor("standalone-original")?.closest('[data-slot="session-message"]'),
-    ).not.toBeNull();
-    expect(
-      within(f.groupFor("notice")!.closest("[data-part-id]") as HTMLElement)
-        .getByRole("button", { name: "Benchmark" })
-        .getAttribute("aria-expanded"),
-    ).toBe("false");
-    expect(await f.paneState("Benchmark startup")).toBe("open");
-    expect(f.chat.todos.source?.chat).toBe(kind);
-    // Associations are outside the disclosure, including on older messages.
-    for (const id of ["worker-report", "session-progress", "session-request"]) {
-      const group = f.groupFor(id)!;
-      const card = group.closest('[data-slot="session-message"]')!;
-      const toggle = card.querySelector<HTMLButtonElement>('[data-slot="response-disclosure"]')!;
-      await f.user.click(toggle);
-      expect(toggle.getAttribute("aria-expanded")).toBe("false");
-      expect(group.isConnected).toBe(true);
-      expect(toggle.contains(group)).toBe(false);
-    }
+    expect(screen.getAllByTitle("Show in To-do: Research options")).toHaveLength(2);
+    expect(screen.getAllByTitle("Show in To-do: Fix the build")).toHaveLength(1);
+    const messageCount = f.view.container.querySelectorAll("[data-part-id]").length;
+    await f.user.click(screen.getAllByTitle("Show in To-do: Research options")[0]!);
+    expect(screen.getByRole("complementary", { name: "To-do" })).toBeDefined();
+    expect(f.mutateUser).not.toHaveBeenCalled();
+    expect(f.chat.todos.selectedItem).toBeUndefined();
+    const item = await f.read(A);
+    await f.commit(
+      projectTodos.update(f.scope, {
+        id: A,
+        expectedRevision: item.revision,
+        title: "Startup findings",
+        status: "Ready for review",
+      }),
+    );
+    expect(screen.getAllByTitle("Show in To-do: Startup findings")).toHaveLength(2);
+    expect(screen.getAllByText("Ready for review")).toHaveLength(2);
+    await f.clickPane("Mark done", "Startup findings");
+    expect(f.view.container.querySelectorAll("[data-part-id]")).toHaveLength(messageCount);
+    expect(screen.getAllByTitle("Show in To-do: Startup findings")).toHaveLength(2);
   },
 );
 
-it("names the to-do being resolved in the Done tooltip, before and after toggling", async () => {
-  await using f = await renderChat("Cake Chat");
-  const done = f.control("Research options");
-  await f.user.hover(done);
-  expect((await screen.findByRole("tooltip")).textContent).toBe("Mark done: Research options");
-  await f.user.click(done);
-  await waitFor(() => expect(f.checked("Research options")).toBe("true"));
-  await f.user.unhover(done);
-  await f.user.hover(f.control("Research options"));
-  expect((await screen.findByRole("tooltip")).textContent).toBe("Reopen: Research options");
-});
+it.each(chats)(
+  "groups consecutive incoming work by task and updates the existing rail after agent edits and session completion in %s",
+  async (kind) => {
+    await using f = await renderChat(kind);
+    expect(screen.getAllByTitle("Show in To-do: Fix the build")).toHaveLength(1);
+    expect(screen.getAllByTitle("Show in To-do: Research options")).toHaveLength(1);
+    const count = f.view.container.querySelectorAll("[data-part-id]").length;
+    await f.commit(
+      projectTodos.update(f.scope, {
+        id: f.items.workerTodo.id,
+        expectedRevision: 0,
+        title: "Research engine options",
+        status: "Ready for review",
+      }),
+    );
+    expect(screen.getByTitle("Show in To-do: Research engine options")).toBeDefined();
+    await f.commit(projectTodos.completeResolved(f.scope, [f.items.sessionTodo]));
+    expect((await f.read(f.items.sessionTodo.id)).completion?.by).toBe("sessions");
+    expect(await f.paneState("Fix the build")).toBe("done");
+    await f.clickPane("Reopen", "Fix the build");
+    expect((await f.read(f.items.sessionTodo.id)).state).toBe("open");
+    expect(screen.getAllByTitle("Show in To-do: Fix the build")).toHaveLength(1);
+    expect(f.view.container.querySelectorAll("[data-part-id]")).toHaveLength(count);
+  },
+);
 
 it("reuses the Project's to-do list for incoming Project Session and secondary-chat cards without opening Project Chat", async () => {
   await using f = await renderChat("Project Chat");
@@ -425,149 +458,6 @@ it("reuses the Project's to-do list for incoming Project Session and secondary-c
       .every((control) => control.getAttribute("aria-checked") === "true"),
   ).toBe(true);
   view.unmount();
-});
-
-it.each(chats)(
-  "shows a pane Done on the message, and a message reopen in the pane, in %s",
-  async (kind) => {
-    await using f = await renderChat(kind);
-    await f.clickPane("Mark done", "Fix the build");
-    expect(f.checked("Fix the build")).toBe("true");
-    expect(
-      screen
-        .getAllByRole("checkbox", { name: "Done: Fix the build" })
-        .every((control) => control.getAttribute("aria-checked") === "true"),
-    ).toBe(true);
-    expect(await f.paneState("Fix the build")).toBe("done");
-
-    await f.user.click(f.control("Fix the build"));
-    expect(f.checked("Fix the build")).toBe("false");
-    expect(await f.paneState("Fix the build")).toBe("open");
-    expect((await f.read(f.items.sessionTodo.id)).state).toBe("open");
-  },
-);
-
-it.each(chats)(
-  "shows a message Done in the pane, and a pane reopen on the message, in %s",
-  async (kind) => {
-    await using f = await renderChat(kind);
-    await f.user.click(f.control("Research options"));
-    // The same user done/reopen path as the pane, reported with the next user message.
-    expect(f.mutateUser).toHaveBeenCalledWith(
-      {
-        scope: f.scope,
-        mutation: {
-          _tag: "SetState",
-          id: f.items.workerTodo.id,
-          expectedRevision: 0,
-          state: "done",
-        },
-      },
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
-    );
-    expect((await f.list()).pending).toContainEqual(
-      expect.objectContaining({ _tag: "ItemState", id: f.items.workerTodo.id, state: "done" }),
-    );
-    expect(f.checked("Research options")).toBe("true");
-    expect(await f.paneState("Research options")).toBe("done");
-
-    await f.clickPane("Reopen", "Research options");
-    expect(f.checked("Research options")).toBe("false");
-    expect(await f.paneState("Research options")).toBe("open");
-  },
-);
-
-it.each(chats)(
-  "follows agent tool edits and automatic completion live on the message in %s",
-  async (kind) => {
-    await using f = await renderChat(kind);
-    const { workerTodo, sessionTodo, sourceTodo } = f.items;
-    // todos.update: an agent rename and closure.
-    await f.commit(
-      projectTodos.update(f.scope, {
-        id: workerTodo.id,
-        expectedRevision: 0,
-        title: "Research engine options",
-      }),
-    );
-    expect(
-      f.groupFor("worker-report")?.querySelector("[role=checkbox]")?.getAttribute("aria-label"),
-    ).toBe("Done: Research engine options");
-    expect(screen.queryByRole("checkbox", { name: "Done: Research options" })).toBeNull();
-    await f.commit(
-      projectTodos.update(f.scope, { id: workerTodo.id, expectedRevision: 1, state: "done" }),
-    );
-    expect(f.checked("Research engine options")).toBe("true");
-
-    // Automatic completion when the linked session resolves.
-    await f.commit(projectTodos.completeResolved(f.scope, [sessionTodo]));
-    expect((await f.read(sessionTodo.id)).completion?.by).toBe("sessions");
-    expect(f.checked("Fix the build")).toBe("true");
-    expect(await f.paneState("Fix the build")).toBe("done");
-
-    // todos.update-many: close one and reopen another in one batch.
-    await f.commit(
-      projectTodos.updateMany(f.scope, [
-        { id: sourceTodo.id, expectedRevision: 0, state: "done" },
-        { id: sessionTodo.id, expectedRevision: 1, state: "open" },
-      ]),
-    );
-    expect(await f.paneState("Benchmark startup")).toBe("done");
-    expect(f.checked("Fix the build")).toBe("false");
-
-    // The user can still reopen an agent closure from the message.
-    await f.user.click(f.control("Research engine options"));
-    expect(f.checked("Research engine options")).toBe("false");
-    expect(await f.paneState("Research engine options")).toBe("open");
-  },
-);
-
-it.each(chats)("removes the control when its to-do leaves the list in %s", async (kind) => {
-  await using f = await renderChat(kind);
-  const { sessionTodo } = f.items;
-  await f.commit(
-    Effect.flatMap(ApplicationState, (application) =>
-      application.transact((current) =>
-        Effect.succeed(
-          kind === "Cake Chat"
-            ? {
-                ...current,
-                cakeChatTodos: {
-                  ...current.cakeChatTodos!,
-                  items: current.cakeChatTodos!.items.filter(
-                    (item: ProjectTodo) => item.id !== sessionTodo.id,
-                  ),
-                },
-              }
-            : {
-                ...current,
-                projects: current.projects.map((project) => ({
-                  ...project,
-                  todos: {
-                    ...project.todos!,
-                    items: project.todos!.items.filter((item) => item.id !== sessionTodo.id),
-                  },
-                })),
-              },
-        ),
-      ),
-    ),
-  );
-  expect(f.groupFor("session-reply")).toBeNull();
-  // An earlier result does not inherit a vanished to-do's control either.
-  expect(f.groupFor("session-progress")).toBeNull();
-  expect(f.checked("Research options")).toBe("false");
-});
-
-it("removes Project Chat controls when the list itself is unavailable", async () => {
-  await using f = await renderChat("Project Chat");
-  await f.commit(
-    Effect.flatMap(ApplicationState, (application) =>
-      application.transact((current) => Effect.succeed({ ...current, projects: [] })),
-    ),
-  );
-  expect(f.chat.todos.available).toBe(false);
-  expect(screen.queryAllByRole("group", { name: "Linked to-dos" })).toHaveLength(0);
 });
 
 it("opens global Cake Chat's To-do pane when its first item arrives, not on hydration", () => {

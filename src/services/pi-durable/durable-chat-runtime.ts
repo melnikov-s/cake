@@ -52,6 +52,7 @@ import { subagentCompletionMessage } from "../../contracts/subagents/subagent-re
 import { durableModels } from "./durable-models";
 import type { RequestInspection } from "./request-inspection";
 import { openDurableChatEngine } from "./durable-chat-engine";
+import { TaskAttributionDoc } from "./durable-task-attribution";
 import { createDurableSideChats, type DurableSideChats } from "./durable-side-chats";
 import { readDurableActiveTools, readDurableOriginalPage } from "./durable-chat-history";
 import {
@@ -381,6 +382,7 @@ export async function createDurableCakeChatRuntime(
     contextLimitTokens: () =>
       preferences.preferences().contextLimitTokens ?? DEFAULT_CAKE_CHAT_CONTEXT_LIMIT_TOKENS,
     onInputConsumed: options.onCakeChatInputConsumed,
+    todos: options.cakeChatTodos,
     memory: {
       budget: () => preferences.preferences().memoryViewBytes,
       summarize: (input) =>
@@ -426,6 +428,8 @@ export async function createDurableCakeChatRuntime(
           cursor,
           await readDurableActiveTools(tx, engine.root.id),
           (await tx.doc(UserMessagePresentationDoc, engine.root.id)).overrides,
+          undefined,
+          (await tx.doc(TaskAttributionDoc, engine.root.id)).inputs,
         ),
       BACKGROUND_CONTEXT,
     );
@@ -570,6 +574,8 @@ export async function createDurableCakeChatRuntime(
           undefined,
           await readDurableActiveTools(tx, engine.root.id),
           (await tx.doc(UserMessagePresentationDoc, engine.root.id)).overrides,
+          undefined,
+          (await tx.doc(TaskAttributionDoc, engine.root.id)).inputs,
         );
         const live = await tx.doc(LiveDoc, engine.root.id);
         const agent = await tx.doc(AgentDoc, engine.root.id);

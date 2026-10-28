@@ -34,9 +34,10 @@ export function resultTodoOrigin(
       references,
       ...(message ? { message } : null),
     };
-  if (!part.crossSession) return undefined;
+  const source = part.crossSession?.sender;
+  if (!source) return part.agentSource ? referenceTodoOrigin(part.agentSource.href) : undefined;
   return {
-    sessionIds: [part.crossSession.sender.sessionId],
+    sessionIds: [source.sessionId],
     references,
     ...(message ? { message } : null),
   };

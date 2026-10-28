@@ -41,6 +41,7 @@ export class Message extends Model {
   scheduled: ScheduledOrigin | undefined;
   queuedInput: Extract<UiPart, { kind: "text" }>["queuedInput"];
   response: PromptCacheResponse | undefined;
+  taskTodoId: string | null | undefined;
   name: string | undefined;
   command: string | undefined;
   excludeFromContext: boolean | undefined;
@@ -108,6 +109,7 @@ export class Message extends Model {
         this.scheduled = part.scheduled;
         this.queuedInput = part.queuedInput;
         this.response = part.response;
+        this.taskTodoId = part.taskTodoId;
         return true;
       case "skill":
         this.piId = part.entryId;
@@ -223,6 +225,7 @@ export class Message extends Model {
           scheduled: this.scheduled,
           queuedInput: this.queuedInput,
           response: this.response,
+          ...(this.taskTodoId === undefined ? null : { taskTodoId: this.taskTodoId }),
         };
       case "skill":
         return {

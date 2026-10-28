@@ -18,6 +18,7 @@ test("Project Chat isolates history and restores its root workspace, while globa
   const cakeHome = join(directory, "cake");
   const userData = join(directory, "user-data");
   const requests: string[] = [];
+  const attributions: string[] = [];
   const server = createServer(async (request, response) => {
     if (request.method === "GET") {
       response.writeHead(200, { "content-type": "text/html" });
@@ -28,8 +29,14 @@ test("Project Chat isolates history and restores its root workspace, while globa
     for await (const chunk of request) body += chunk;
     const latest = JSON.stringify(JSON.parse(body).messages.at(-1)?.content);
     const summary = /Compaction: (?:compress message|merge lines)/.test(latest);
-    if (!summary) requests.push(body);
-    const content = summary ? "talk: project guidance discussed" : `Reply ${requests.length}`;
+    const attribution = body.includes("Assign the LAST user message to one existing to-do");
+    if (attribution) attributions.push(body);
+    else if (!summary) requests.push(body);
+    const content = attribution
+      ? JSON.stringify({ todoId: null })
+      : summary
+        ? "talk: project guidance discussed"
+        : `Reply ${requests.length}`;
     const chunk = (delta: object, finish_reason: string | null) =>
       `data: ${JSON.stringify({ id: "fixture", object: "chat.completion.chunk", created: 0, model: "fixture", choices: [{ index: 0, delta, finish_reason }] })}\n\n`;
     response.writeHead(200, { "content-type": "text/event-stream" });
@@ -267,6 +274,7 @@ test("Project Chat isolates history and restores its root workspace, while globa
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     await input.press("Enter");
     await expect(page.getByText("Reply 2", { exact: true })).toBeVisible();
+    await expect.poll(() => attributions.length).toBeGreaterThanOrEqual(2);
     expect(requests[1]).toContain("PROJECT_PRIVATE");
     expect(requests[1]).toContain("PROJECT_SKILL_BODY");
     expect(requests[1]).not.toContain("GLOBAL_PRIVATE");
@@ -476,7 +484,12 @@ test("Project Chat isolates history and restores its root workspace, while globa
       const content = JSON.stringify(latest.content);
       expect(content).toContain(text);
       if (reminder) expect(content).toContain(reminder);
-      expect(content.match(/<system-reminder>/g) ?? []).toHaveLength(reminder ? 1 : 0);
+      // Artifact-view context is independent; count only presentation-mode transitions.
+      expect(
+        content.match(
+          /The user has (?:entered Browser Mode|entered embedded VS Code|returned to the normal conversation view)/g,
+        ) ?? [],
+      ).toHaveLength(reminder ? 1 : 0);
       // Inspect this input's adjacent context group, not the total number of
       // mounted pills: older rows can leave the virtualized viewport.
       const row = transcript()

@@ -25,7 +25,7 @@ test("an expanded long incoming message is fully reachable", async () => {
     project: join(root, "project"),
     userData: join(root, "user-data"),
   };
-  const scenario = findVisualCaptureScenario("result-todo-done")!;
+  const scenario = findVisualCaptureScenario("incoming-task-sections")!;
   await scenario.seed(paths, "dark");
   // Replace the short exact source response with a long Markdown report.
   const sessions = join(paths.cakeHome, "pi", "sessions");
@@ -67,7 +67,7 @@ test("an expanded long incoming message is fully reachable", async () => {
     );
     const card = page
       .locator('[data-slot="session-message"]')
-      .filter({ has: page.getByRole("checkbox", { name: "Done: Fix the flaky build" }) });
+      .filter({ has: page.getByRole("button", { name: "Fix the flaky build", exact: true }) });
     const toggle = card.locator('[data-slot="response-disclosure"]');
     const transcript = page.locator(".transcript").filter({ has: card });
     const offsetInTranscript = (locator: typeof toggle) =>
@@ -98,7 +98,7 @@ test("an expanded long incoming message is fully reachable", async () => {
         return (await offsetInTranscript(last)).bottom;
       })
       .toBeLessThanOrEqual(0);
-    await expect(card.getByRole("checkbox", { name: "Done: Fix the flaky build" })).toBeVisible();
+    await expect(card.getByRole("link", { name: "Full response", exact: true })).toBeVisible();
   } finally {
     await app.close();
     await rm(root, { recursive: true, force: true });

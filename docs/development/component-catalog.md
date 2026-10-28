@@ -189,6 +189,8 @@ in the shared fullscreen preview; non-image attachments retain labels. Thumbnail
 are renderer presentation only: Cake Chat still admits opaque input references,
 not image payloads, to its model context.
 
+[`MarginRail`](../../src/renderer/components/ui/margin-rail.tsx) is an accessory annotation outside the transcript reading column. It renders a task label once at a section boundary, with a fine continuation rule. It hides below 72rem of available transcript width; rich artifact/widget rows break the rule. Inspecting its task opens the existing To-do pane without selecting next-message context.
+
 `NavItem.associated` and `SessionListItem.associated` share a faint tinted, dashed-outline
 relationship cue for the selected Project Chat or global Cake Chat to-do and its linked
 sidebar sessions.

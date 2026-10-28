@@ -6,6 +6,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { existsSync } from "node:fs";
+import type { ProjectTodo } from "../../../contracts/projects/project-todos";
 import type { IdleCompactionResult } from "../../../contracts/project-sessions/session-compaction";
 import { internalInputEntryType } from "./internal-input-projection";
 import { resolve } from "node:path";
@@ -163,6 +164,8 @@ export interface CakeSessionRuntimeOptions {
   additionalSystemPrompt?: string;
   /** Permanent chats reread project-owned guidance at each message; never used by coding runtimes. */
   cakeChatSystemPrompt?(): string;
+  /** Live list for presentation-only background turn attribution. */
+  cakeChatTodos?(): readonly ProjectTodo[];
   /** Durable calls this only for committed, consumed input, never send preparation or queued rows. */
   onCakeChatInputConsumed?(text: string, signal: AbortSignal): Promise<void>;
   cakeChatMemory?: CakeChatMemoryOptions;

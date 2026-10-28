@@ -330,6 +330,8 @@ export const uiPartSchema = Schema.Union([
     agentSource: Schema.optionalKey(AgentUpdateSource),
     scheduled: Schema.optional(ScheduledMessageOrigin),
     /** Original payload and stable identity while Pi holds this input. */
+    /** Presentation-only attribution of this input; null explicitly ends a task section. */
+    taskTodoId: Schema.optionalKey(Schema.NullOr(Schema.String.check(Schema.isUUID(4)))),
     queuedInput: Schema.optionalKey(
       Schema.Struct({
         itemId: Schema.String.check(Schema.isUUID(4)),

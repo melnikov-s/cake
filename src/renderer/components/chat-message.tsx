@@ -337,6 +337,7 @@ export interface ChatTranscriptBehavior {
 export interface CanonicalTranscriptBehavior extends ChatTranscriptBehavior {
   store: ChatStore;
   openSideChat?(target: SideChatTarget): void;
+  hideTodoAssociations?: boolean;
 }
 
 export const AssistantTextMessage = observer(function AssistantTextMessage({
@@ -470,10 +471,17 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
       contentRef={contentRef}
       onOpenSourceLocation={behavior.openSourceLocation}
       omitArtifactEmbeds={publishedArtifactReferences}
-      todo={{
-        origin: resultTodoOrigin(part, behavior.messageReferenceSessionId ?? behavior.store.id),
-        todos: behavior.todos,
-      }}
+      todo={
+        behavior.hideTodoAssociations
+          ? undefined
+          : {
+              origin: resultTodoOrigin(
+                part,
+                behavior.messageReferenceSessionId ?? behavior.store.id,
+              ),
+              todos: behavior.todos,
+            }
+      }
       sources={sources}
     >
       {behavior.showAssistantFullscreen !== false && canOpenFullscreen && (

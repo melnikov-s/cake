@@ -39,6 +39,7 @@ import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite
 import { createModels } from "@earendil-works/pi-durable-ai";
 import { durableInputText } from "../../src/services/pi-durable/durable-input-presentation.ts";
 import { ChatMetadataDoc } from "../../src/services/pi-durable/durable-chat-metadata.ts";
+import { TaskAttributionDoc } from "../../src/services/pi-durable/durable-task-attribution.ts";
 import { investigatorOrigin, investigatorMarkdown } from "../../tests/fixtures/subagent-report.ts";
 import { expect, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import type { VisualCaptureTheme } from "./arguments.ts";
@@ -2338,6 +2339,106 @@ const projectChatTodos: VisualCaptureScenario = {
   region: (page) => page.locator('[data-slot="side-chat-layout"]'),
 };
 
+const projectChatTaskRails: VisualCaptureScenario = {
+  name: "project-chat-task-rails",
+  description: "Task-switch margin rails, narrow hiding, pane inspection and wide widget breaks",
+  states: ["wide", "narrow", "widget", "return", "pane"],
+  async seed(paths, theme) {
+    await projectChatTodos.seed(paths, theme);
+    const hash = createHash("sha256").update(paths.project).digest("hex");
+    const chatId = `project-chat:${hash}`;
+    const source =
+      '<main style="font-family:var(--font-sans);color:var(--foreground);background:var(--background);padding:24px"><h3>Cold launch comparison</h3><p>Project loading · Configuration reads · First response</p><div style="height:150px;border:1px solid var(--border);background:var(--muted);padding:20px">Trace visualization</div></main>';
+    await seedArtifact(
+      paths,
+      {
+        protocol: "cake.artifact/v1",
+        id: "task-rail-trace",
+        sessionId: chatId,
+        revision: 1,
+        kind: "widget",
+        title: "Startup trace",
+        payload: {
+          language: "html",
+          source,
+          brief: "Wide task grouping verification fixture",
+          browser: await retainArtifactBrowser(paths, "html", source),
+        },
+        fallback: { markdown: "Cold launch trace" },
+        interaction: { mode: "present" },
+      },
+      new Date(0).toISOString(),
+    );
+    await seedDurableChat(
+      join(paths.cakeHome, "pi", "project-chats", hash),
+      [
+        "Investigate slow project startup.",
+        "I’ll trace project loading and compare the slow steps.",
+        "Check repeated config reads too.",
+        "I’m comparing the trace without changing code.\n\n![Startup trace](cake://artifact/task-rail-trace@r1)",
+        "Separately, improve project navigation.",
+        "I’ll keep the sidebar compact and preserve the shortcuts.",
+        "Back to startup—compare a cold launch too.",
+        "I’ll add a cold-launch comparison to the same investigation.",
+        "Thanks. What does ⌘K open?",
+        "The command menu.",
+      ],
+      [
+        "00000000-0000-4000-8000-000000000011",
+        "00000000-0000-4000-8000-000000000011",
+        "00000000-0000-4000-8000-000000000012",
+        "00000000-0000-4000-8000-000000000011",
+        null,
+      ],
+    );
+  },
+  async prepare(page, state) {
+    await assistantMarkdownCode.prepare(page, "default");
+    await page
+      .getByRole("button", { name: /^Open Project Chat for / })
+      .first()
+      .click();
+    await expect(page.getByRole("combobox", { name: "Message Project Chat" })).toBeVisible();
+    const transcript = page.locator(".transcript").last();
+    await transcript.evaluate((element) => {
+      element.scrollTop = 0;
+    });
+    const first = page.getByTitle("Show in To-do: Startup investigation").first();
+    if (state === "narrow") {
+      await expect(first).toBeHidden();
+    } else {
+      await expect(first).toBeVisible();
+      if (state === "widget") {
+        const widget = page.locator('[data-slot="artifact-disclosure"]').first();
+        await widget.scrollIntoViewIfNeeded();
+        await expect(widget).toBeVisible();
+        await expect(
+          widget.locator(
+            'xpath=ancestor::*[@data-slot="transcript-item"]/*[@data-slot="margin-rail"]',
+          ),
+        ).toBeHidden();
+      }
+      if (state === "return") {
+        await page
+          .getByText("Back to startup—compare a cold launch too.", { exact: true })
+          .scrollIntoViewIfNeeded();
+        await expect(page.getByTitle("Show in To-do: Startup investigation").last()).toBeVisible();
+      }
+      if (state === "pane") {
+        await first.click();
+        const pane = page.getByRole("complementary", { name: "To-do" });
+        await expect(pane).toBeVisible();
+        await expect(
+          pane.getByRole("button", { name: "Startup investigation", exact: true }),
+        ).toHaveAttribute("aria-pressed", "false");
+      }
+    }
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator('[data-slot="side-chat-layout"]'),
+};
+
 const activeSidebarSessions: VisualCaptureScenario = {
   name: "active-sidebar-sessions",
   description:
@@ -2829,10 +2930,9 @@ const subagentReportsScenario: VisualCaptureScenario = {
 const resultTodoSessionId = "3d4e5f6a-7b8c-4d9e-8f01-2a3b4c5d6e71";
 const resultTodoNoticeSessionId = "5f6a7b8c-9d0e-4f1a-8b2c-3d4e5f6a7b82";
 
-const resultTodoDoneScenario: VisualCaptureScenario = {
-  name: "result-todo-done",
-  description:
-    "Live Done checkbox on Cake Chat result messages linked to a to-do, beside the To-do pane",
+const incomingTaskSectionsScenario: VisualCaptureScenario = {
+  name: "incoming-task-sections",
+  description: "Incoming Cake Chat result disclosures with task sections and the shared To-do pane",
   states: ["report", "session", "done", "pane", "dropdowns", "done-tooltip"],
   async seed(paths, theme) {
     await subagentReportsScenario.seed(paths, theme);
@@ -3012,40 +3112,34 @@ const resultTodoDoneScenario: VisualCaptureScenario = {
     await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText("Cake Chat");
     const report = page.getByRole("article", { name: "Subagent complete", exact: true });
     await expect(report).toBeVisible({ timeout: 20_000 });
-    const done = page.getByRole("checkbox", {
-      name: "Done: Research the publication check",
-      exact: true,
-    });
-    await expect(done).toHaveAttribute("aria-checked", "false");
-    if (state === "done") {
-      await done.click();
-      await expect(done).toHaveAttribute("aria-checked", "true");
-    }
-    if (state === "pane") {
+    if (state === "pane" || state === "done" || state === "done-tooltip") {
       await page.getByRole("button", { name: "To-do", exact: true }).click();
-      await expect(page.getByRole("complementary", { name: "To-do" })).toBeVisible();
+      const panel = page.getByRole("complementary", { name: "To-do" });
+      await expect(panel).toBeVisible();
+      const done = panel.getByRole("button", { name: "Mark done: Research the publication check" });
+      if (state === "done") await done.click();
+      if (state === "done-tooltip") {
+        await done.hover();
+        await expect(page.getByRole("tooltip")).toHaveText(
+          "Mark done: Research the publication check",
+        );
+      }
     }
     if (state === "dropdowns") {
       for (const body of await page
         .locator('[data-slot="session-message"] [data-slot="response-disclosure"]')
-        .all()) {
+        .all())
         if ((await body.getAttribute("aria-expanded")) === "true") await body.click();
-      }
-      await expect(page.getByRole("checkbox", { name: "Done: Fix the flaky build" })).toBeVisible();
-      const lastAssociation = page.getByRole("checkbox", { name: "Done: Draft the release notes" });
-      await expect(lastAssociation).toBeVisible();
-      await lastAssociation.scrollIntoViewIfNeeded();
-    }
-    if (state === "session" || state === "pane" || state === "done-tooltip")
       await page
-        .getByRole("checkbox", { name: "Done: Draft the release notes" })
+        .getByRole("button", { name: "Draft the release notes", exact: true })
         .scrollIntoViewIfNeeded();
-    else await report.scrollIntoViewIfNeeded();
+    } else if (state === "session")
+      await page
+        .getByRole("button", { name: "Draft the release notes", exact: true })
+        .scrollIntoViewIfNeeded();
+    else if (state === "report") await report.scrollIntoViewIfNeeded();
     await page.waitForFunction(() => document.fonts.status === "loaded");
-    if (state === "done-tooltip") {
-      await page.getByRole("checkbox", { name: "Done: Fix the flaky build" }).hover();
-      await expect(page.getByRole("tooltip")).toHaveText("Mark done: Fix the flaky build");
-    } else await page.mouse.move(1, 1);
+    if (state !== "done-tooltip") await page.mouse.move(1, 1);
   },
   region: (page) => page.locator("body"),
 };
@@ -5416,7 +5510,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   cakeChatConversationScenario,
   cakeChatOverlayScenario,
   subagentReportsScenario,
-  resultTodoDoneScenario,
+  incomingTaskSectionsScenario,
   cakeChatArtifactScenario,
   contextOutlineScenario,
   queuedPromptsScenario,
@@ -5427,6 +5521,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   sidebarRowLayout,
   projectChatHeader,
   projectChatTodos,
+  projectChatTaskRails,
   activeSidebarSessions,
   dictationInputScenario,
   compactComposerScenario,
@@ -5439,7 +5534,11 @@ export function findVisualCaptureScenario(name: string) {
 }
 
 /** Seeds a Pi Durable chat (Cake Chat or a Project Chat) with alternating user/assistant text. */
-async function seedDurableChat(directory: string, texts: readonly string[]) {
+async function seedDurableChat(
+  directory: string,
+  texts: readonly string[],
+  taskIds?: readonly (string | null)[],
+) {
   await mkdir(directory, { recursive: true });
   const storage = await openNodeSqliteStorage(join(directory, "coordinator.sqlite"));
   const harness = await Harness.open(
@@ -5455,9 +5554,15 @@ async function seedDurableChat(directory: string, texts: readonly string[]) {
       metadata.messageCount = texts.length;
       for (const [index, text] of texts.entries()) {
         if (index % 2 === 0) {
-          await tx.appendEntry(UserEntry, root.id, {
+          const entry = await tx.appendEntry(UserEntry, root.id, {
             model: [{ role: "user", content: [{ type: "text", text }], timestamp: index }],
           });
+          const todoId = taskIds?.[index / 2];
+          if (todoId !== undefined)
+            (await tx.doc(TaskAttributionDoc, root.id)).inputs[String(entry.id)] = {
+              pending: false,
+              todoId,
+            };
         } else {
           await tx.appendEntry(AssistantEntry, root.id, {
             model: [

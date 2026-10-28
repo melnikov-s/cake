@@ -44,6 +44,7 @@ export class ProjectTodosStore extends Store<{
 }> {
   query = "";
   doneExpanded = false;
+  inspectedItemId: string | undefined;
   busy = false;
   error: string | undefined;
 
@@ -182,6 +183,13 @@ export class ProjectTodosStore extends Store<{
         title: "To-do",
         todos: this,
       });
+  }
+  /** Inspect a transcript task without selecting context for the next message. */
+  reveal(item: ProjectTodo) {
+    this.query = "";
+    this.inspectedItemId = item.id;
+    if (item.state === "done") this.doneExpanded = true;
+    this.open();
   }
   toggleDone() {
     this.doneExpanded = !this.doneExpanded;

@@ -452,8 +452,19 @@ is a refactoring signal, not precedent.
   those still wait for durable consumption. The shared transcript projects one compact pill
   from the durable input, independent of later selection or lifecycle changes. A bounded
   baseline in Project Chat’s live system context also survives recreation/reset.
-  Every incoming message or source card whose session, subagent or exact-message links
-  match a to-do keeps its association row visible, including historical updates, requests,
+  Permanent Project Chat and Cake Chat group contiguous related conversation with a margin
+  rail, labeling task switches rather than every message. A → B → A labels A again on return.
+  Each consumed human input schedules one SDK-owned background attribution task using the
+  conversational model, after its initial response/tool round (so newly created to-dos exist).
+  The request selects an existing to-do or null; it never creates tasks or changes agent context,
+  and does not block the response. Identity-only attribution lives beside Durable originals,
+  not in another transcript. Invalid or unavailable attribution leaves the turn ungrouped.
+  Known incoming session/subagent/exact-message associations are projected without a model call.
+  Rails read current to-do title/status/state live, hide when the transcript lacks gutter room,
+  and break at wide artifacts/widgets. Revealing a task inspects its pane row without selecting
+  next-message context. Ordinary Project Sessions and secondary chats retain per-result controls.
+  Their incoming message or source cards whose session, subagent or exact-message links
+  match a to-do keep their association row visible, including historical updates, requests,
   batched completions and collapsed disclosures. The row renders the projected list item
   (title and open/done, whether changed by the user, an agent tool or session resolution)
   and toggles through the same user done/reopen mutation as the pane. Exact-message links

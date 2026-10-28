@@ -1,4 +1,5 @@
 import { observer } from "r-state-tree/react";
+import { useEffect, useRef } from "react";
 import { projectTodoAssociationKey } from "../../contracts/projects/project-todos";
 import { NavItem } from "@/components/ui/nav-item";
 import { ProjectTodoWorkLink } from "./project-todo-work-link";
@@ -16,13 +17,18 @@ export const ProjectTodoItem = observer(function ProjectTodoItem({
   store: ProjectTodosStore;
 }) {
   const selected = store.selectedItem?.id === item.id;
+  const inspected = store.visible && store.inspectedItemId === item.id;
+  const row = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    if (inspected) row.current?.scrollIntoView?.({ block: "nearest" });
+  }, [inspected]);
   const description = item.description !== item.title ? item.description : "";
   return (
-    <li data-todo-id={item.id} data-animated-list-key={item.id}>
+    <li ref={row} data-todo-id={item.id} data-animated-list-key={item.id}>
       <NavItem
         wholeRowAction
         selectableText
-        associated={selected}
+        associated={selected || inspected}
         aria-busy={store.busy}
         actionProps={{
           "aria-pressed": selected,

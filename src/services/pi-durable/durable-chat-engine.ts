@@ -33,6 +33,11 @@ import { Schema } from "effect";
 import { isContextOverflow } from "@earendil-works/pi-durable-ai/utils/overflow";
 import { anthropicCacheEstimate, durableCacheEvidence } from "./durable-cache-evidence";
 import { ChatMetadataDoc } from "./durable-chat-metadata";
+import { createTaskAttribution, TaskAttributionDoc } from "./durable-task-attribution";
+import { durableInputPresentation } from "./durable-input-presentation";
+import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
+import type { ProjectTodo } from "../../contracts/projects/project-todos";
+import { defineExtension } from "@earendil-works/pi-durable";
 import { durableContextMetadata } from "./durable-context-metadata";
 import { createDurableChatMemory, type DurableMemoryOptions } from "./durable-chat-memory";
 import { withoutDurableInputPresentation } from "./durable-input-presentation";
@@ -118,10 +123,18 @@ export async function openDurableChatEngine(options: {
   onChanged(): void;
   onReport(error: unknown): void;
   onInputConsumed?(text: string, signal: AbortSignal): Promise<void>;
+  todos?(): readonly ProjectTodo[];
 }) {
   const closing = new AbortController();
   let root: Conversation;
   let memory: ReturnType<typeof createDurableChatMemory>;
+  const attribution = options.todos
+    ? createTaskAttribution({ models: options.models, todos: options.todos })
+    : undefined;
+  if (attribution)
+    options.registry.install(
+      defineExtension({ name: "cake-task-attribution", tasks: [attribution] }),
+    );
   let activity: CakeChatContextStatus["activity"];
   const now = () => options.now?.() ?? Date.now();
   // A single SDK-boundary worker serializes indexing with request preparation. It does not
@@ -243,6 +256,40 @@ export async function openDurableChatEngine(options: {
               await options.onInputConsumed(text, signal);
             }
           }
+        const attributionRun = live?.run;
+        if (attribution && attributionRun) {
+          for (const id of attributionRun.inputs) {
+            const submission = await options.storage.submission(id, context);
+            if (submission?.status !== "placed") continue;
+            const entry = await options.storage.entry(root.id, submission.entry, context);
+            const user = entry?.entry.model?.find((message) => message.role === "user");
+            if (!user || user.role !== "user") continue;
+            const content =
+              typeof user.content === "string"
+                ? user.content
+                : user.content
+                    .flatMap((part) => (part.type === "text" ? [part.text] : []))
+                    .join("\n");
+            const input = durableInputPresentation(content);
+            if (input.internal || input.subagentReport || parseCrossSessionMessage(input.text))
+              continue;
+            await root.commit(async (tx) => {
+              const doc = await tx.doc(TaskAttributionDoc, root.id);
+              if (doc.inputs[String(submission.entry)]) return;
+              doc.inputs[String(submission.entry)] = { pending: true, todoId: null };
+              await tx.createTask(
+                attribution,
+                {
+                  entryId: submission.entry,
+                  after: attributionRun.taskId,
+                  provider: model.provider,
+                  modelId: model.id,
+                },
+                { conversationId: root.id, ownership: { kind: "conversation" }, background: true },
+              );
+            }, context);
+          }
+        }
         let active = await root.context(context);
         const boundary = await Schema.decodeUnknownPromise(Boundary)(
           (await harness.snapshot(BoundaryDoc, root.id, context)) ?? { input: -1, marker: -1 },
@@ -630,7 +677,9 @@ export async function openDurableChatEngine(options: {
           visible = true;
         if (
           change.type === "document" &&
-          ["pi.live", "pi.inbox", "pi.agent", "pi.usage"].includes(change.record.kind)
+          ["pi.live", "pi.inbox", "pi.agent", "pi.usage", "cake.task-attribution"].includes(
+            change.record.kind,
+          )
         )
           visible = true;
       }

@@ -61,6 +61,7 @@ export async function readDurableOriginalPage(
   activeTools: ReadonlyMap<string, number | null> = new Map(),
   presentationOverrides: Readonly<Record<string, boolean>> = {},
   activeInterviews: ReadonlyMap<string, InterviewEntry> = new Map(),
+  attributions: Readonly<Record<string, { pending: boolean; todoId: string | null }>> = {},
 ) {
   let next = cursor;
   do {
@@ -161,8 +162,10 @@ export async function readDurableOriginalPage(
       if (part.kind !== "text" || part.role !== "user" || !part.entryId) return part;
       const origin = origins.get(part.entryId);
       const markdown = presentationOverrides[part.entryId];
+      const attribution = attributions[part.entryId];
       return {
         ...part,
+        ...(attribution && !attribution.pending ? { taskTodoId: attribution.todoId } : null),
         ...(origin ? { subagentReport: origin } : null),
         renderAs:
           markdown === undefined

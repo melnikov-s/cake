@@ -395,6 +395,11 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
     }),
     runtime: {
       cwd: configuration.location.workingDirectory,
+      cakeChatTodos: () =>
+        project
+          ? (application.snapshot().projects.find((item) => item.path === project.path)?.todos
+              ?.items ?? [])
+          : (application.snapshot().cakeChatTodos?.items ?? []),
       onCakeChatInputConsumed: (text, signal) => {
         const receipt = projectTodoReceipt(splitSessionDigestReminder(text).text);
         return receipt === undefined
