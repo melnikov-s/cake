@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
+import { renderTranscriptContent as render } from "./render-transcript-content";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
@@ -27,7 +28,7 @@ function renderRemainingStoreCatalog(start: Client["projectSessions"]["start"]) 
     },
   });
   fixture.root.sessionRegistry.pendingSessions.prepareStaged("/project", sessionId);
-  fixture.root.appShellStore.selectProjectSession(sessionId);
+  fixture.root.navigationStore.selectProjectSession(sessionId);
   fixture.root.sessionLayoutStore.ensureSession(sessionId);
   fixture.root.projectWorkbenchStore.showLoadedSession(sessionId);
   const view = render(
