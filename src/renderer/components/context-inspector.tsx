@@ -63,6 +63,7 @@ export const ContextInspector = observer(function ContextInspector({
           "cache-cold": "Cache cold",
           "cache-unknown": "Cache unknown",
           overflow: "Overflow",
+          manual: "Manual",
         }[summary.reason],
       ],
     );
@@ -125,6 +126,16 @@ export const ContextInspector = observer(function ContextInspector({
                 )}
               </div>
               <div className="flex items-center gap-1">
+                {store.supportsCompaction && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!store.canCompact}
+                    onClick={() => void store.compact()}
+                  >
+                    {store.compacting ? "Compacting…" : "Compact now"}
+                  </Button>
+                )}
                 <IconButton
                   tooltip="Refresh context"
                   disabled={store.loading}
@@ -141,6 +152,17 @@ export const ContextInspector = observer(function ContextInspector({
               className="min-h-0 overflow-auto px-4 py-3"
               key={store.loading ? "loading" : "content"}
             >
+              {store.compacting && <LoadingSpinner label="Compacting memory" />}
+              {store.compactionError && (
+                <Callout variant="error" role="alert">
+                  {store.compactionError}
+                </Callout>
+              )}
+              {store.compactionComplete && (
+                <p role="status" className="mb-3 px-2 text-xs text-muted-foreground">
+                  Compaction complete.
+                </p>
+              )}
               {status && (
                 <div className="mb-3 border-b border-border px-2 pb-3">
                   <table

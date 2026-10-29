@@ -413,6 +413,14 @@ export const inspect = Effect.fn("SessionChats.inspect")(function* (
   return yield* handle.inspectSession(input).pipe(asError("inspect"));
 });
 
+export const compactMemory = Effect.fn("SessionChats.compactMemory")(function* (
+  target: SessionChatTarget,
+) {
+  const handle = yield* acquire(target.sessionId);
+  yield* handle.compactMemory().pipe(asError("compactMemory"));
+  yield* handle.publishSessionChanged().pipe(asError("compactMemory"));
+});
+
 export const compact = Effect.fn("SessionChats.compact")(function* (
   target: SessionChatTarget,
   instructions?: string,

@@ -1,5 +1,7 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, fireEvent, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import type { Client } from "../../../src/renderer/client/Client";
 import { renderTranscriptContent as render } from "./render-transcript-content";
 import { afterEach, expect, it, vi } from "vitest";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/session-contract";
@@ -57,10 +59,10 @@ function fixture(
       },
     ],
   }));
-  const compact = vi.fn();
+  const compact = vi.fn<Client["sessionChats"]["compactMemory"]>().mockResolvedValue(undefined);
   const f = createRendererStoreFixture({
     projects: [projectRecord({ path: "/project" })],
-    client: { sessionChats: { inspect, compact } },
+    client: { sessionChats: { inspect, compactMemory: compact } },
   });
   const sessionId = scope === "global" ? CAKE_CHAT_SESSION_ID : projectChatSessionId("/project");
   const owner = f.root.cakeChatCollectionStore.registry.load(sessionId);
@@ -110,6 +112,90 @@ function fixture(
     },
   };
 }
+
+it.each(["global", "project-chat"] as const)(
+  "compacts the displayed %s now, disables duplicate clicks and refreshes confirmed memory",
+  async (scope) => {
+    using f = fixture(status, scope);
+    const done = Promise.withResolvers<void>();
+    f.compact.mockImplementationOnce(async () => {
+      await done.promise;
+      const updated = {
+        ...status,
+        systemTokens: 2_000,
+        memoryTokens: 6_000,
+        messageTokens: 0,
+        totalTokens: 8_000,
+        lastSummary: {
+          reason: "manual",
+          beforeTokens: 45_000,
+          afterTokens: 8_000,
+          completedAt: at,
+        },
+      } satisfies CakeChatContextStatus;
+      delete updated.cache;
+      f.publish(updated);
+    });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Browse context" }));
+    await screen.findByRole("button", { name: "Worktree preference" });
+    await user.click(screen.getByRole("button", { name: "Compact now" }));
+    const busy = screen.getByRole("button", { name: "Compacting…" });
+    expect(busy.hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("status", { name: "Compacting memory" })).toBeTruthy();
+    await user.click(busy);
+    expect(f.compact).toHaveBeenCalledExactlyOnceWith(
+      { sessionId: scope === "global" ? CAKE_CHAT_SESSION_ID : projectChatSessionId("/project") },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(f.inspect).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Compaction complete.")).toBeNull();
+    await act(async () => done.resolve());
+    await screen.findByText("Compaction complete.");
+    await waitFor(() => expect(f.inspect).toHaveBeenCalledTimes(2));
+    expect(screen.getByText("Manual")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Browse context" }).textContent).toBe("≈8k/300k");
+    expect(screen.getByRole("button", { name: "Compact now" }).hasAttribute("disabled")).toBe(
+      false,
+    );
+  },
+);
+
+it("keeps compaction failure visible without a success or refresh, and permits an explicit retry", async () => {
+  using f = fixture();
+  f.compact.mockRejectedValueOnce(new Error("Memory preparation failed"));
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Browse context" }));
+  await screen.findByRole("button", { name: "Worktree preference" });
+  await user.click(screen.getByRole("button", { name: "Compact now" }));
+  expect((await screen.findByRole("alert")).textContent).toContain("Memory preparation failed");
+  expect(screen.queryByText("Compaction complete.")).toBeNull();
+  expect(f.inspect).toHaveBeenCalledTimes(1);
+  await user.click(screen.getByRole("button", { name: "Compact now" }));
+  await screen.findByText("Compaction complete.");
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(f.compact).toHaveBeenCalledTimes(2);
+});
+
+it("disables compaction during an active run and keeps an authorized action busy across closing and reopening", async () => {
+  using f = fixture();
+  f.publish(status, true);
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Browse context" }));
+  await screen.findByRole("button", { name: "Worktree preference" });
+  expect(screen.getByRole("button", { name: "Compact now" }).hasAttribute("disabled")).toBe(true);
+  f.publish(status, false);
+  const done = Promise.withResolvers<void>();
+  f.compact.mockReturnValueOnce(done.promise);
+  await user.click(screen.getByRole("button", { name: "Compact now" }));
+  await user.click(screen.getByRole("button", { name: "Close context" }));
+  expect(f.compact.mock.calls[0]?.[1]?.signal?.aborted).toBe(false);
+  await user.click(screen.getByRole("button", { name: "Browse context" }));
+  expect(screen.getByRole("button", { name: "Compacting…" }).hasAttribute("disabled")).toBe(true);
+  await act(async () => done.resolve());
+  await screen.findByText("Compaction complete.");
+  expect(f.compact).toHaveBeenCalledTimes(1);
+});
 
 it.each(["global", "project-chat"] as const)(
   "opens the read-only Context Browser from %s token accounting with one described tooltip",

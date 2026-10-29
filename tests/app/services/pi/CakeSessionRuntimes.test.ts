@@ -129,9 +129,16 @@ describe("CakeSessionRuntimes", () => {
         const handle = yield* Context.get(context, CakeSessionRuntimes).acquire(options());
         const unsupported = yield* Effect.flip(handle.compactIfIdle());
         assert.match(unsupported.message, /Idle-only compaction is unavailable/);
+        const memoryUnsupported = yield* Effect.flip(handle.compactMemory());
+        assert.match(
+          memoryUnsupported.message,
+          /Memory compaction is only available for permanent chats/,
+        );
         yield* handle.prompt("Preparing work");
         yield* Deferred.await(started);
         assert.deepEqual(yield* handle.compactIfIdle(), { status: "busy" });
+        const memoryBusy = yield* Effect.flip(handle.compactMemory());
+        assert.match(memoryBusy.message, /Wait for this chat to finish/);
         yield* Deferred.succeed(release, undefined);
       }),
   );

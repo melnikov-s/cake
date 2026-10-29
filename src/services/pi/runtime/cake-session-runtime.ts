@@ -277,6 +277,7 @@ export interface CakeSessionRuntime {
   ): Promise<void>;
   setUserMessageMarkdown(entryId: string, renderAsMarkdown: boolean): Promise<void>;
   compact(instructions?: string): Promise<void>;
+  compactMemory?(): Promise<void>;
   compactIfIdle?(instructions?: string): Promise<IdleCompactionResult>;
   queueCommand(command: string, onSettled?: () => void): Promise<QueuedSessionCommandReceipt>;
   inspectSession(query: SessionInspectionQuery): Promise<JsonValue>;

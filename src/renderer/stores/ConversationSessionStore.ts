@@ -207,6 +207,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
       sessionId: this.sessionId,
       status: () => this.model.usage?.cakeChatContext,
       isPending: () => this.props.configuration.deferredNewSession?.() ?? false,
+      isBusy: () => this.streaming || this.model.activeTurnIds.length > 0,
     });
   }
 

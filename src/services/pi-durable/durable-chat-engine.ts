@@ -144,6 +144,23 @@ export async function openDurableChatEngine(options: {
       defineExtension({ name: "cake-task-attribution", tasks: [attribution] }),
     );
   let activity: CakeChatContextStatus["activity"];
+  let contextRevision = 0;
+  let compacting = false;
+  const writeMemoryHead = async (
+    tx: Tx,
+    messages: Message[],
+    summary: NonNullable<CakeChatContextStatus["lastSummary"]>,
+    input?: number,
+  ) => {
+    const boundary = await tx.doc(BoundaryDoc, root.id);
+    const policy = await tx.doc(ContextPolicyDoc, root.id);
+    delete policy.request;
+    policy.lastSummary = summary;
+    const reset = await tx.appendEntry(ResetEntry, root.id, { head: "self", model: messages });
+    if (messages[0]?.role === "system") await markSystemCarried(tx, root.id);
+    if (input !== undefined) boundary.input = input;
+    boundary.marker = reset.id;
+  };
   const now = () => options.now?.() ?? Date.now();
   // A single SDK-boundary worker serializes indexing with request preparation. It does not
   // cache nodes/originals or own model runs; the Harness owns those persisted tasks.
@@ -440,24 +457,21 @@ export async function openDurableChatEngine(options: {
                 if (readyOnly) return defer();
                 throw new Error("Summarized context cannot fit the Cake Chat context limit.");
               }
-              await root.commit(async (tx) => {
-                const doc = await tx.doc(BoundaryDoc, root.id);
-                const policy = await tx.doc(ContextPolicyDoc, root.id);
-                delete policy.request;
-                policy.lastSummary = {
-                  beforeTokens: before.totalTokens,
-                  afterTokens: after,
-                  reason: reason ?? "cache-unknown",
-                  completedAt: now(),
-                };
-                const reset = await tx.appendEntry(ResetEntry, root.id, {
-                  head: "self",
-                  model: messages,
-                });
-                if (system) await markSystemCarried(tx, root.id);
-                doc.input = input;
-                doc.marker = reset.id;
-              }, context);
+              await root.commit(
+                (tx) =>
+                  writeMemoryHead(
+                    tx,
+                    messages,
+                    {
+                      beforeTokens: before.totalTokens,
+                      afterTokens: after,
+                      reason,
+                      completedAt: now(),
+                    },
+                    input,
+                  ),
+                context,
+              );
             } finally {
               activity = undefined;
               options.onChanged();
@@ -694,6 +708,7 @@ export async function openDurableChatEngine(options: {
         )
           visible = true;
       }
+      if (contextChanged) contextRevision += 1;
       if (contextChanged || originals > 0)
         queueMicrotask(() => {
           if (!closing.signal.aborted)
@@ -728,6 +743,69 @@ export async function openDurableChatEngine(options: {
       signal: closing.signal,
       storage: options.storage,
       index,
+      /** Explicit OptMem handoff, independent of cache freshness and automatic thresholds.
+       * Only an idle root can be replaced; SDK originals and the Zoom index stay intact. */
+      async compact(model: { contextWindow: number; maxTokens?: number }) {
+        if (compacting) throw new Error("Compaction is already running for this chat.");
+        compacting = true;
+        foreground += 1;
+        maintenanceAbort?.abort();
+        const signal = closing.signal;
+        const context = withAbortSignal(signal, BACKGROUND_CONTEXT);
+        try {
+          await maintenance;
+          if ((await harness.snapshot(LiveDoc, root.id, context))?.run)
+            throw new Error("Wait for this chat to finish before compacting.");
+          const revision = contextRevision;
+          const active = await root.context(context);
+          const before = durableContextBreakdown(active.messages);
+          const system = getCurrentSystemMessage(active.messages);
+          const base = system ? [system] : [];
+          const { limit } = durableAdmission(
+            model,
+            options.contextLimitTokens?.() ?? DEFAULT_CAKE_CHAT_CONTEXT_LIMIT_TOKENS,
+          );
+          const remaining = limit - durableContextBreakdown(base).totalTokens;
+          if (remaining < 128)
+            throw new Error("Instructions cannot fit the Cake Chat context limit.");
+          activity = "summarizing";
+          options.onChanged();
+          const view = await index(
+            signal,
+            undefined,
+            Math.min(options.memory.budget(), Math.floor(((remaining - 64) * 3.5) / 2)),
+          );
+          if (!view.complete) throw new Error("Memory preparation did not complete.");
+          if (view.sourceCount === 0) throw new Error("No dialogue to compact yet.");
+          const messages: Message[] = [
+            ...base,
+            {
+              role: "user",
+              content: `${view.text}\n\n<current-time>Backend clock (UTC): ${new Date().toISOString()}</current-time>`,
+              timestamp: now(),
+            },
+          ];
+          const after = durableContextBreakdown(messages).totalTokens;
+          if (after >= limit)
+            throw new Error("Summarized context cannot fit the Cake Chat context limit.");
+          await root.commit(async (tx) => {
+            if (revision !== contextRevision || (await tx.doc(LiveDoc, root.id)).run)
+              throw new Error("Chat changed while compacting. Try again when it is idle.");
+            await writeMemoryHead(tx, messages, {
+              beforeTokens: before.totalTokens,
+              afterTokens: after,
+              reason: "manual",
+              completedAt: now(),
+            });
+          }, context);
+        } finally {
+          compacting = false;
+          foreground -= 1;
+          activity = undefined;
+          options.onChanged();
+          maintain();
+        }
+      },
       async contextStatus(model: {
         provider: string;
         id: string;

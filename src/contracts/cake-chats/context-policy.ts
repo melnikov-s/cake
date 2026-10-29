@@ -42,7 +42,7 @@ export interface CakeChatCacheRequest extends Schema.Schema.Type<typeof CakeChat
 export const CakeChatSummary = Schema.Struct({
   beforeTokens: tokens,
   afterTokens: tokens,
-  reason: Schema.Literals(["limit", "cache-cold", "cache-unknown", "overflow"]),
+  reason: Schema.Literals(["limit", "cache-cold", "cache-unknown", "overflow", "manual"]),
   completedAt: Schema.Number,
 });
 export const CakeChatContextStatus = Schema.Struct({

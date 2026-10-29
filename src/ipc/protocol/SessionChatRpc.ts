@@ -104,6 +104,10 @@ export const SessionChatRpc = RpcGroup.make(
     success: jsonValueSchema,
     error: SessionChatError,
   }),
+  Rpc.make("sessionChats.compactMemory", {
+    payload: SessionChatTarget.fields,
+    error: SessionChatError,
+  }),
   Rpc.make("sessionChats.compact", {
     payload: { ...SessionChatTarget.fields, instructions: Schema.optional(Schema.String) },
     error: SessionChatError,

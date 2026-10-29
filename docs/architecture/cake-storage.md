@@ -497,6 +497,14 @@ model output room (by default up to 16,384 tokens, capped by model output capaci
 the request output cap uses that same reserve.
 Side-chat requests retain their separate SDK behavior rather than mutating the root head.
 
+The Context surface's **Compact now** action explicitly prepares and commits the same
+OptMem memory handoff for an idle permanent Project Chat or global Cake Chat, without
+waiting for cache expiry or a context threshold. It does not use the SDK's ordinary
+prefix-summary compaction, change automatic policy, generate a reply, or delete originals.
+Busy chats reject the action; a changed context or failed preparation leaves the active
+head intact. Completion is reported only after the memory head is committed, then the
+Context surface refreshes. Zoom and original-history browsing remain available.
+
 #### OptMem whole-chat memory
 
 The kernel reference is [VictorTaelin/OptMem](https://github.com/VictorTaelin/OptMem/tree/1fb164cf39028047781f72ac3bb1e5a691c1dcb0)
@@ -567,8 +575,8 @@ is applied at the next index synchronization/preparation: an oversized view coll
 stored ancestors without provider calls when the index is complete. Pending parents
 resume from committed progress on required preparation or idle maintenance; optional
 cache-only preparation defers instead of waiting. Neither a settings migration nor
-index fitting rewrites a warm active head. The smaller view reaches model input only
-at the next normal cache-cold/unknown or limit/overflow handoff, under the unchanged
+index fitting rewrites a warm active head. The smaller view reaches model input
+at the next normal cache-cold/unknown or limit/overflow handoff, or an explicit **Compact now**, under the unchanged
 active-context policy (300,000 tokens by default). No memory-index version change,
 reset, or rebuild is needed. Application settings migration runs when the updated
 backend loads application storage; a renderer-only reload does not reload that owner.

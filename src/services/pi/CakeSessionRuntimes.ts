@@ -253,6 +253,7 @@ export interface CakeSessionHandle {
     options: { readonly summarize: boolean; readonly customInstructions?: string },
   ) => Effect.Effect<void, PiSessionError>;
   readonly compact: (instructions?: string) => Effect.Effect<void, PiSessionError>;
+  readonly compactMemory: () => Effect.Effect<void, PiSessionError>;
   readonly compactIfIdle: (
     instructions?: string,
   ) => Effect.Effect<IdleCompactionResult, PiSessionError>;
@@ -1439,6 +1440,18 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
           navigate: (entryId, options) =>
             call("navigate", (runtime) => runtime.navigate(entryId, options)),
           compact: (instructions) => call("compact", (runtime) => runtime.compact(instructions)),
+          compactMemory: Effect.fn("CakeSessionRuntimes.compactMemory")(function* () {
+            if ((yield* Ref.get(shared.activeTurns)).size > 0)
+              return yield* new PiSessionError({
+                operation: "compactMemory",
+                message: "Wait for this chat to finish before compacting.",
+              });
+            yield* call("compactMemory", (runtime) => {
+              if (!runtime.compactMemory)
+                throw new Error("Memory compaction is only available for permanent chats.");
+              return runtime.compactMemory();
+            });
+          }),
           compactIfIdle: Effect.fn("CakeSessionRuntimes.compactIfIdle")(function* (instructions) {
             // Accepted work can precede the runtime's asynchronous preparation.
             if ((yield* Ref.get(shared.activeTurns)).size > 0) return { status: "busy" as const };

@@ -1,4 +1,5 @@
 import { batch, Store } from "r-state-tree";
+import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import {
   decodeContextInspection,
   type ContextInspectionNode,
@@ -12,10 +13,11 @@ import {
   type CakeChatContextStatus,
 } from "../../contracts/cake-chats/context-policy";
 
-/** A window-local reader. Closing releases all content; browsing never calls prompt/compact/zoom tools. */
+/** Window-local context reader and explicit permanent-chat memory action. Browsing is read-only. */
 export class ContextInspectorStore extends Store<{
   sessionId: string;
   isPending(): boolean;
+  isBusy(): boolean;
   status?(): CakeChatContextStatus | undefined;
 }> {
   private now = Date.now();
@@ -89,6 +91,43 @@ export class ContextInspectorStore extends Store<{
         ? "Consolidating memory…"
         : undefined;
   }
+  get supportsCompaction() {
+    return isCakeChatSessionId(this.props.sessionId);
+  }
+  get canCompact() {
+    return (
+      this.supportsCompaction &&
+      !this.props.isPending() &&
+      !this.props.isBusy() &&
+      !this.status?.activity &&
+      !this.compacting
+    );
+  }
+  compacting = false;
+  compactionError: string | undefined;
+  compactionComplete = false;
+
+  async compact() {
+    if (!this.canCompact || this.signal.aborted) return;
+    this.compacting = true;
+    this.compactionError = undefined;
+    this.compactionComplete = false;
+    try {
+      // Closing the reader cancels reads, not an already authorized compaction.
+      await ClientContext.consume(this)!.sessionChats.compactMemory(
+        { sessionId: this.props.sessionId },
+        { signal: this.signal },
+      );
+      if (this.signal.aborted) return;
+      await this.refresh();
+      if (!this.signal.aborted) this.compactionComplete = true;
+    } catch (error) {
+      if (!this.signal.aborted) this.compactionError = describeError(error).message;
+    } finally {
+      if (!this.signal.aborted) this.compacting = false;
+    }
+  }
+
   open = false;
   loading = false;
   error: string | undefined;

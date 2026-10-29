@@ -12,7 +12,7 @@ import { ContextInspector } from "../../../src/renderer/components/context-inspe
 import type { Client } from "../../../src/renderer/client/Client";
 import { toJsonValue } from "../../../src/utils/to-json-value";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
-import { projectRecord } from "./fixtures/catalog-fixtures";
+import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 
 afterEach(cleanup);
 
@@ -33,13 +33,39 @@ it("does not acquire an unsent chat and reads its Pi context once materialized",
     await screen.findByText("No assembled context yet.");
     expect(screen.getByText("≈0 tokens · current text")).toBeTruthy();
     expect(inspect).not.toHaveBeenCalled();
-    pending.markMaterialized(CAKE_CHAT_SESSION_ID);
+    expect(screen.getByRole("button", { name: "Compact now" }).hasAttribute("disabled")).toBe(true);
+    act(() => pending.markMaterialized(CAKE_CHAT_SESSION_ID));
+    expect(screen.getByRole("button", { name: "Compact now" }).hasAttribute("disabled")).toBe(
+      false,
+    );
     await user.click(screen.getByRole("button", { name: "Refresh context" }));
     await screen.findByRole("button", { name: "The current compressed summary" });
     expect(inspect).toHaveBeenCalledExactlyOnceWith(
       { sessionId: CAKE_CHAT_SESSION_ID, kind: "context-outline" },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
+  } finally {
+    view.unmount();
+  }
+});
+
+it("keeps the permanent-chat compaction action out of ordinary Project Session context", async () => {
+  const inspect = vi
+    .fn<Client["sessionChats"]["inspect"]>()
+    .mockResolvedValue(toJsonValue(context));
+  using fixture = createRendererStoreFixture({
+    projects: [projectRecord({ path: "/project" })],
+    sessions: [sessionSummary({ sessionId: "ordinary-session", projectPath: "/project" })],
+    client: { sessionChats: { inspect } },
+  });
+  const store = fixture.root.sessionRegistry.load("ordinary-session", "/project")
+    .conversationSessionStore.contextInspectorStore;
+  const user = userEvent.setup();
+  const view = render(<ContextInspector store={store} />);
+  try {
+    await user.click(screen.getByRole("button", { name: "Browse context" }));
+    await screen.findByRole("button", { name: "The current compressed summary" });
+    expect(screen.queryByRole("button", { name: "Compact now" })).toBeNull();
   } finally {
     view.unmount();
   }

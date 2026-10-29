@@ -1292,6 +1292,121 @@ it("reads the previous modes from queued input ahead of committed history", asyn
   expect(durableInputPresentation("plain synthetic text").responseMode).toBeUndefined();
 });
 
+it("forces an idle warm chat through the existing OptMem handoff without generating a reply or losing originals and Zoom", async () => {
+  const f = await fixture(
+    () => durableAnswer("Detailed reply ".repeat(200)),
+    20_000,
+    new MemoryStorage(),
+    undefined,
+    true,
+  );
+  await f.send("Important original detail ".repeat(200), "first");
+  await f.view();
+  const before = await f.engine.contextStatus(durableModel);
+  expect(cakeChatCacheFreshness(before.cache, before.cache!.requestedAt).state).toBe("likely-warm");
+  const originals = await readDurableOriginalPage(f.engine.root);
+  const sdkCompact = vi.spyOn(f.engine.root, "compact");
+
+  await f.engine.compact(durableModel);
+
+  const after = await f.engine.contextStatus(durableModel);
+  expect(after.lastSummary).toMatchObject({ reason: "manual", beforeTokens: before.totalTokens });
+  expect(after.totalTokens).toBeLessThan(before.totalTokens);
+  expect(after.memoryTokens).toBeGreaterThan(0);
+  expect(after.cache).toBeUndefined();
+  expect(after.activity).toBeUndefined();
+  expect(after.configuredLimitTokens).toBe(before.configuredLimitTokens);
+  expect(sdkCompact).not.toHaveBeenCalled();
+  expect(f.requests).toHaveLength(1);
+  expect((await readDurableOriginalPage(f.engine.root)).parts).toEqual(originals.parts);
+  expect((await f.zoom(0, 1)).text).toContain("Important original detail ".repeat(200));
+  expect(
+    (await f.engine.contextInspection("/project")).sources.some((source) => source.id === "memory"),
+  ).toBe(true);
+  await f.send("Continue after manual compaction", "second");
+  expect(f.requests.at(-1)?.messages.some((message) => message.role === "system")).toBe(true);
+});
+
+it("keeps the active head and cache evidence when manual compaction cannot fit, and rejects an empty chat", async () => {
+  const empty = await fixture();
+  await expect(empty.engine.compact(durableModel)).rejects.toThrow("No dialogue to compact yet");
+  const f = await fixture(undefined, 20_000, new MemoryStorage(), undefined, true);
+  await f.send("Keep this history", "first");
+  await f.view();
+  const before = await f.engine.root.context(BACKGROUND_CONTEXT);
+  const status = await f.engine.contextStatus(durableModel);
+  f.limit(1);
+  await expect(f.engine.compact(durableModel)).rejects.toThrow("Instructions cannot fit");
+  expect(await f.engine.root.context(BACKGROUND_CONTEXT)).toEqual(before);
+  expect((await f.engine.contextStatus(durableModel)).cache).toEqual(status.cache);
+  expect((await f.engine.contextStatus(durableModel)).lastSummary).toEqual(status.lastSummary);
+});
+
+it("rejects duplicate manual compaction and never replaces context changed during memory preparation", async () => {
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<string>();
+  const f = await fixture(undefined, 20_000, new MemoryStorage(), undefined, true, false, {
+    summarize: async () => {
+      entered.resolve();
+      return release.promise;
+    },
+  });
+  await f.engine.root.commit(
+    (tx) =>
+      tx.appendEntry(UserEntry, f.engine.root.id, {
+        model: [{ role: "user", content: "Old long dialogue ".repeat(200), timestamp: 1 }],
+      }),
+    BACKGROUND_CONTEXT,
+  );
+  const pending = f.engine.compact(durableModel);
+  await entered.promise;
+  expect(["summarizing", "consolidating"]).toContain(
+    (await f.engine.contextStatus(durableModel)).activity,
+  );
+  await expect(f.engine.compact(durableModel)).rejects.toThrow("already running");
+  await f.engine.root.commit(
+    (tx) =>
+      tx.appendEntry(UserEntry, f.engine.root.id, {
+        model: [{ role: "user", content: "New input must survive", timestamp: 2 }],
+      }),
+    BACKGROUND_CONTEXT,
+  );
+  const before = await f.engine.root.context(BACKGROUND_CONTEXT);
+  release.resolve("Compressed original dialogue");
+  await expect(pending).rejects.toThrow("Chat changed while compacting");
+  const after = await f.engine.root.context(BACKGROUND_CONTEXT);
+  expect(after.head).toEqual(before.head);
+  expect(after.messages).toEqual(before.messages);
+  expect((await f.engine.contextStatus(durableModel)).activity).toBeUndefined();
+  await f.engine.compact(durableModel);
+  expect((await f.zoom(1, 1)).text).toContain("New input must survive");
+});
+
+it("rejects manual compaction while a conversation run is active without aborting it", async () => {
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const f = await fixture(
+    (_request, index) =>
+      index === 1
+        ? durableAnswer("", [
+            { type: "toolCall", id: "hold", name: "zoom", arguments: { id: 0, n: 1 } },
+          ])
+        : durableAnswer("Done"),
+    20_000,
+    new MemoryStorage(),
+    async () => {
+      entered.resolve();
+      await release.promise;
+    },
+    true,
+  );
+  const input = await f.submit("Busy chat", "first");
+  await entered.promise;
+  await expect(f.engine.compact(durableModel)).rejects.toThrow("Wait for this chat to finish");
+  release.resolve();
+  expect((await input.wait(BACKGROUND_CONTEXT)).status).toBe("done");
+});
+
 it("indexes warm committed originals without replacing the active head, then rebuilds at assumed five-minute expiry", async () => {
   const f = await fixture(undefined, 20_000, new MemoryStorage(), undefined, true);
   const original = "WARM_ORIGINAL ".repeat(150);

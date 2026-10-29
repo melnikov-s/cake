@@ -41,6 +41,7 @@ export const sessionChatHandlers = SessionChatRpc.of({
   "sessionChats.queueCommand": sessionChats.queueCommand,
   "sessionChats.inspect": sessionChats.inspect,
   "sessionChats.readAttachment": sessionChats.readAttachment,
+  "sessionChats.compactMemory": sessionChats.compactMemory,
   "sessionChats.compact": ({ instructions, ...target }) =>
     sessionChats.compact(target, instructions),
   "sessionChats.editMessage": (input) =>

@@ -151,6 +151,15 @@ for (const scope of ["global", "project-chat"] as const) {
       await expect(
         dialog.getByRole("button", { name: "Refresh context", exact: true }),
       ).toBeEnabled();
+      // Force the real OptMem handoff while well below the limit with a warm cache.
+      await dialog.getByRole("button", { name: "Compact now", exact: true }).click();
+      await expect(dialog.getByText("Compaction complete.", { exact: true })).toBeVisible();
+      await expect(
+        statistics.getByRole("row", { name: "Update reason Manual", exact: true }),
+      ).toBeVisible();
+      await expect(
+        statistics.getByRole("row", { name: "Cache Unknown", exact: true }),
+      ).toBeVisible();
       await dialog.getByRole("button", { name: "Cake Chat instructions", exact: true }).click();
       await expect(dialog).toContainText(
         "Prefer independent worktrees. Ask before merging changes.",
@@ -191,11 +200,14 @@ for (const scope of ["global", "project-chat"] as const) {
       await openChat(reopened);
       await expect(
         reopened.getByRole("button", { name: "Browse context", exact: true }),
-      ).toHaveAttribute("data-cache-state", "likely-warm");
+      ).toHaveAttribute("data-cache-state", "unknown");
       await reopened.getByRole("button", { name: "Browse context", exact: true }).click();
       const restored = reopened.getByRole("dialog", { name: "Context", exact: true });
       await expect(
         restored.getByRole("button", { name: "System prompt", exact: true }),
+      ).toBeVisible();
+      await expect(
+        restored.getByRole("row", { name: "Update reason Manual", exact: true }),
       ).toBeVisible();
       const restoredMemory = restored.locator('[data-source-id="memory"]');
       await restoredMemory.getByRole("button").nth(1).click();

@@ -757,6 +757,12 @@ export async function createDurableCakeChatRuntime(
       const job = await engine.root.compact(instructions, BACKGROUND_CONTEXT);
       await engine.harness.waitForTask(job, BACKGROUND_CONTEXT);
     },
+    async compactMemory() {
+      if (disposed) throw new Error("The Cake runtime has been disposed");
+      if (unavailableModel) throw new Error("Select an available model before compacting.");
+      await engine.compact(selected);
+      publish();
+    },
     async abort() {
       await abortDurableActiveTurn(engine.harness, engine.root);
     },
