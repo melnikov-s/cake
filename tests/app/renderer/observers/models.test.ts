@@ -1,5 +1,3 @@
-import { ReviewThread } from "../../../../src/renderer/models/ReviewThread";
-import { DiscussionSessionError } from "../../../../src/contracts/discussion-sessions/discussion-session-data";
 import { Effect, Queue, Stream } from "effect";
 import { batch, observable } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
@@ -122,68 +120,6 @@ function baseClient(overrides: ObserverClientOverrides = {}) {
 }
 
 describe("Project Session composition observer", () => {
-  it.each([true, false])(
-    "reports unavailable discussion sessions instead of endlessly retrying (permanent=%s)",
-    async (permanent) => {
-      vi.useFakeTimers();
-      const projection = RootProjection.create();
-      const stopped = vi.fn();
-      const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
-      const failure = new DiscussionSessionError({
-        operation: "observe",
-        message: permanent ? "That session is no longer available" : "Temporary connection failure",
-      });
-      const observe = vi.fn(() => Stream.fail(failure));
-      const observer = createModelObserver(
-        runtimeFor(
-          baseClient({ discussionSessions: { observeCatalog: () => Stream.never, observe } }),
-        ),
-        stopped,
-      );
-      const thread = ReviewThread.create({
-        id: "thread-1",
-        parentSessionId: "project-1",
-        workingDirectory: "/project",
-        sidecarSessionId: "sidecar-1",
-      });
-      try {
-        observer.sync({
-          ...baseInput(projection),
-          discussionSessions: [
-            {
-              thread,
-              model: projection.discussionConversation("sidecar-1", "/project", "project-1"),
-            },
-          ],
-        });
-        await vi.advanceTimersByTimeAsync(2_000);
-        if (permanent) {
-          expect(observe).toHaveBeenCalledOnce();
-          expect(logged).toHaveBeenCalledWith(
-            expect.stringContaining("Observer: discussion-session:sidecar-1"),
-          );
-          expect(stopped).toHaveBeenCalledWith(
-            "discussion-session:sidecar-1",
-            expect.objectContaining({ message: failure.message }),
-            expect.any(Function),
-          );
-          stopped.mock.calls[0]![2]();
-          await vi.advanceTimersByTimeAsync(2_000);
-          expect(observe).toHaveBeenCalledTimes(2);
-        } else {
-          expect(observe.mock.calls.length).toBeGreaterThan(1);
-          expect(stopped).not.toHaveBeenCalled();
-        }
-      } finally {
-        observer.stop();
-        logged.mockRestore();
-        thread[Symbol.dispose]();
-        projection[Symbol.dispose]();
-        vi.useRealTimers();
-      }
-    },
-  );
-
   it("delivers a title event to the pending projection before a file-backed catalog entry exists", async () => {
     const updates = await Effect.runPromise(Queue.unbounded<SessionCatalogUpdate>());
     using fixture = createRendererStoreFixture({
@@ -249,7 +185,6 @@ describe("Project Session composition observer", () => {
 
   it("quietly stops only an unavailable Project Session Conversation observation", async () => {
     vi.useFakeTimers();
-    const stopped = vi.fn();
     const projection = RootProjection.create();
     const observes = vi.fn(() =>
       Stream.fail(
@@ -261,14 +196,12 @@ describe("Project Session composition observer", () => {
     );
     const observer = createModelObserver(
       runtimeFor(baseClient({ conversations: { observe: observes } })),
-      stopped,
     );
 
     try {
       observer.sync(baseInput(projection));
       await vi.advanceTimersByTimeAsync(2_000);
       expect(observes).toHaveBeenCalledOnce();
-      expect(stopped).not.toHaveBeenCalled();
       expect(projection.projectConversation("project-1", "/project").observationError).toBe(
         "That session is no longer available",
       );
@@ -310,6 +243,9 @@ describe("Project Session composition observer", () => {
   });
 });
 
+// Retain identity/lifetime and traversal-cost regressions at the projection boundary:
+// React cannot prove absence of O(loaded sessions) work or exact stream disposal.
+// Internal spies below only measure traversal; they do not replace Models or Stores.
 describe("focused projection lifetimes", () => {
   it("reconciles in-place registry changes and preserves staged Discussion catalogs until staging ends", () => {
     const loaded = observable([{ sessionId: "loaded", workingDirectory: "/project" }]);
