@@ -1,17 +1,10 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, screen, waitFor } from "@testing-library/react";
-import { renderTranscriptContent as render } from "./render-transcript-content";
-import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import type { Client } from "../../../src/renderer/client/Client";
-import { Chat } from "../../../src/renderer/components/chat";
-import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
-import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
-import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { renderTranscriptFinish, transcriptFinishSessionId } from "./transcript-finish-fixture";
 
-const sessionId = "transcript-interaction";
 const userMessage = {
   id: "saved-user",
   entryId: "user-entry",
@@ -20,65 +13,6 @@ const userMessage = {
   text: "# Saved heading",
   status: "complete",
 } satisfies Extract<UiPart, { kind: "text" }>;
-
-function renderTranscript(
-  setUserMessageMarkdown: Client["sessionChats"]["setUserMessageMarkdown"],
-) {
-  const fixture = createRendererStoreFixture({
-    client: { sessionChats: { setUserMessageMarkdown } },
-    projects: [projectRecord({ path: "/project", name: "Project" })],
-    sessions: [
-      sessionSummary({ sessionId, projectPath: "/project", workingDirectory: "/project" }),
-    ],
-  });
-  const session = fixture.root.sessionRegistry.load(sessionId, "/project");
-  const snapshot: ConversationSnapshot = {
-    sessionId,
-    sessionFile: "/project/transcript-interaction.jsonl",
-    parts: [userMessage],
-    models: [],
-    thinkingLevel: "off",
-    availableThinkingLevels: ["off"],
-    streaming: false,
-    diagnostics: [],
-    commands: [],
-    compatibility: { resources: [], diagnostics: [] },
-    extensionUi: { statuses: [] },
-    tree: [],
-  };
-  let revision = 1;
-  applyConversationUpdate(session.model, { _tag: "Snapshot", revision, snapshot });
-  // Content proof only; native layout, selection and scrolling live in Electron.
-  session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
-    kind: "top",
-  });
-  const view = render(
-    <Chat
-      store={session.conversationSessionStore.chatStore}
-      compact
-      composerFocusEnabled={false}
-    />,
-  );
-  return {
-    user: userEvent.setup(),
-    publish(renderAs?: "markdown") {
-      act(() => {
-        applyConversationUpdate(session.model, {
-          _tag: "Snapshot",
-          revision: ++revision,
-          snapshot: {
-            ...snapshot,
-            parts: [{ ...userMessage, ...(renderAs ? { renderAs } : {}) }],
-          },
-        });
-      });
-    },
-    [Symbol.dispose]() {
-      view.unmount();
-      fixture[Symbol.dispose]();
-    },
-  };
-}
 
 function deferred() {
   let resolve!: () => void;
@@ -105,7 +39,9 @@ describe("Transcript formatting workflow", () => {
       .mockReturnValueOnce(pendingSave.promise)
       .mockReturnValueOnce(failedSave.promise)
       .mockResolvedValue(undefined);
-    using fixture = renderTranscript(save);
+    using fixture = renderTranscriptFinish([userMessage], {
+      client: { sessionChats: { setUserMessageMarkdown: save } },
+    });
 
     expect(heading()).toBeNull();
     expect(screen.getByText("# Saved heading")).toBeDefined();
@@ -113,12 +49,12 @@ describe("Transcript formatting workflow", () => {
     expect(heading()).toBeDefined();
     expect(plainToggle()).toHaveProperty("disabled", true);
     expect(save).toHaveBeenCalledExactlyOnceWith(
-      { sessionId, entryId: "user-entry", renderAsMarkdown: true },
+      { sessionId: transcriptFinishSessionId, entryId: "user-entry", renderAsMarkdown: true },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
 
     // An unrelated authority snapshot still carries the old presentation.
-    fixture.publish();
+    fixture.publish([userMessage]);
     expect(heading()).toBeDefined();
     await act(async () => {
       pendingSave.resolve();
@@ -127,11 +63,11 @@ describe("Transcript formatting workflow", () => {
     await waitFor(() => expect(plainToggle()).toHaveProperty("disabled", false));
     expect(heading()).toBeDefined();
 
-    fixture.publish("markdown");
+    fixture.publish([{ ...userMessage, renderAs: "markdown" }]);
     expect(heading()).toBeDefined();
     // Once authority has caught up, a later authority edit must take precedence
     // over the old optimistic preference (for example, from another window).
-    fixture.publish();
+    fixture.publish([userMessage]);
     expect(heading()).toBeNull();
     expect(screen.getByText("# Saved heading")).toBeDefined();
 
@@ -153,7 +89,7 @@ describe("Transcript formatting workflow", () => {
     expect(screen.queryByText("Formatting service unavailable")).toBeNull();
     expect(save).toHaveBeenCalledTimes(3);
     expect(save).toHaveBeenLastCalledWith(
-      { sessionId, entryId: "user-entry", renderAsMarkdown: true },
+      { sessionId: transcriptFinishSessionId, entryId: "user-entry", renderAsMarkdown: true },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
   });

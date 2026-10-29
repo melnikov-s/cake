@@ -1,4 +1,5 @@
-import { act, render } from "@testing-library/react";
+import { act } from "@testing-library/react";
+import { renderTranscriptContent as render } from "./render-transcript-content";
 import userEvent from "@testing-library/user-event";
 import { observer, StoreProvider } from "r-state-tree/react";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
@@ -122,8 +123,12 @@ export function renderTranscriptFinish(
       message: "Ready for the next step.",
     });
 
-  // Real compact Chat avoids pretending jsdom can measure Virtuoso or native
-  // selection. Production behavior supplies all callbacks and collaborating Stores.
+  // Compact controls density only. Use the supported Virtuoso content context;
+  // native layout, selection and scrolling remain Electron contracts.
+  session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
+    kind: "top",
+  });
+  // Production behavior supplies all callbacks and collaborating Stores.
   const TranscriptFinishSurface = observer(function TranscriptFinishSurface() {
     return (
       <>
