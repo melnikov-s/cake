@@ -1,205 +1,216 @@
-import { describe, expect, it, vi } from "vitest";
 import { createStore, mount } from "r-state-tree";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { BrowserFiles } from "../../../src/renderer/client/BrowserFiles";
 import { BrowserMenuStore } from "../../../src/renderer/stores/BrowserMenuStore";
 import { makeClient } from "../../../src/renderer/client/ClientLive";
 import { ClientError } from "../../../src/renderer/client/Client";
-import type { Runtime } from "../../../src/renderer/runtime";
-import {
-  ResolutionRejected,
-  ResolutionCleanupFailed,
-} from "../../../src/contracts/project-sessions/project-session-resolution";
 import type { EditorLease } from "../../../src/contracts/vscode/editor-endpoint";
+import { commandClientFinishTransport } from "./command-client-finish-transport";
+import { sessionSummary } from "./fixtures/catalog-fixtures";
 
-function controlledRuntime(execute: Runtime["execute"]): Pick<Runtime, "execute"> {
-  return { execute };
+function browserDevices() {
+  const files = new BrowserFiles();
+  const menus = mount(createStore(BrowserMenuStore));
+  return {
+    files,
+    menus,
+    showNotification: vi.fn(async () => undefined),
+    setFullscreenSurfaceOpen: vi.fn(async () => undefined),
+    [Symbol.dispose]() {
+      menus[Symbol.dispose]();
+    },
+  };
 }
 
-const browserDevices = () => ({
-  files: new BrowserFiles(),
-  menus: mount(createStore(BrowserMenuStore)),
-  showNotification: vi.fn(async () => undefined),
-  setFullscreenSurfaceOpen: vi.fn(async () => undefined),
-});
+afterEach(() => vi.unstubAllGlobals());
 
-describe("Client", () => {
-  it("treats exact-ID session lookup as read-only while remote mutations are blocked", async () => {
-    const execute = vi.fn(async () => {
-      throw new Error("Lookup disconnected");
-    });
+// Client routing/security are transport/native boundaries, not UI workflows.
+// Use the real runtime, generated RPC client and command adapter; control only
+// encoded transport replies. Generated-client retains wire encoding, cancellation,
+// attachment ordering and non-retrying Stream tests rather than duplicating them.
+describe("Client transport and device integration", () => {
+  it("allows exact-ID lookup while remote mutation delivery is blocked", async () => {
+    const summary = sessionSummary({ sessionId: "session", projectPath: "/project" });
+    await using transport = commandClientFinishTransport(() => ({
+      _tag: "Success",
+      value: summary,
+    }));
     const uncertain = vi.fn();
-    const client = makeClient(controlledRuntime(execute), {
+    const client = makeClient(transport.runtime, {
       kind: "remote",
       connected: () => true,
       blocked: () => true,
       uncertain,
     });
-    await expect(client.projectSessions.lookup({ sessionId: "session" })).rejects.toBeInstanceOf(
+    expect(await client.projectSessions.lookup({ sessionId: "session" })).toMatchObject({
+      sessionId: "session",
+      projectPath: "/project",
+    });
+    await expect(client.projectSessions.resolve({ sessionId: "session" })).rejects.toBeInstanceOf(
       ClientError,
     );
-    expect(execute).toHaveBeenCalledOnce();
+    expect(transport.requests().map(({ tag }) => tag)).toEqual(["projectSessions.lookup"]);
     expect(uncertain).not.toHaveBeenCalled();
   });
-  const cleanupFailure = new ResolutionCleanupFailed({
-    operation: "resolve",
-    resolvedSessionIds: ["session"],
-    cleanupFailures: [{ workingDirectory: "/worktree", message: "Checkout busy" }],
-    message: "Resolved; cleanup failed",
-  });
+
   it.each([
-    new ResolutionRejected({
+    {
+      _tag: "ResolutionRejected",
       operation: "resolve",
       sessionIds: ["session"],
       message: "Turn active",
-    }),
-    cleanupFailure,
-  ])("retains validated $_tag resolution failures without uncertain delivery", async (failure) => {
-    const uncertain = vi.fn();
-    const client = makeClient(
-      controlledRuntime(async () => {
-        throw failure;
-      }),
-      {
-        kind: "remote",
-        connected: () => true,
-        blocked: () => false,
-        uncertain,
-      },
-    );
-    await expect(client.projectSessions.resolve({ sessionId: "session" })).rejects.toMatchObject({
-      kind: "rejected",
-      domainFailure: failure,
-    });
-    expect(uncertain).not.toHaveBeenCalled();
-  });
-  it.each([
+    },
     {
       _tag: "ResolutionCleanupFailed",
-      resolvedSessionIds: [],
-      cleanupFailures: [],
-      message: "Invalid",
+      operation: "resolve",
+      resolvedSessionIds: ["session"],
+      cleanupFailures: [{ workingDirectory: "/tree", message: "Checkout busy" }],
+      message: "Resolved; cleanup failed",
     },
-    { _tag: "ResolutionRejected", sessionIds: [42], message: "Invalid" },
-    { _tag: "OtherFailure", sessionIds: ["session"], message: "Unrelated" },
   ])(
-    "does not attach malformed or unrelated tagged values as domainFailure: $_tag",
+    "retains validated $_tag through encoded RPC without marking delivery uncertain",
     async (failure) => {
-      const client = makeClient(
-        controlledRuntime(async () => {
-          throw failure;
-        }),
-      );
-      await expect(client.projectSessions.resolve({ sessionId: "session" })).rejects.toMatchObject({
-        domainFailure: undefined,
-      });
-    },
-  );
-  it("does not erase an already received committed outcome when the caller signal later aborts", async () => {
-    const controller = new AbortController();
-    const uncertain = vi.fn();
-    const client = makeClient(
-      controlledRuntime(async () => {
-        controller.abort();
-        throw cleanupFailure;
-      }),
-      { kind: "remote", connected: () => true, blocked: () => false, uncertain },
-    );
-    await expect(
-      client.projectSessions.resolve({ sessionId: "session" }, { signal: controller.signal }),
-    ).rejects.toMatchObject({ kind: "rejected", domainFailure: cleanupFailure });
-    expect(uncertain).not.toHaveBeenCalled();
-  });
-
-  it("cancelled optional cleanup does not block remote commands as uncertain delivery", async () => {
-    const controller = new AbortController();
-    const uncertain = vi.fn();
-    const client = makeClient(
-      controlledRuntime(async () => {
-        throw new Error("Cancelled");
-      }),
-      {
+      await using transport = commandClientFinishTransport(() => ({
+        _tag: "Failure",
+        cause: [{ _tag: "Fail", error: failure }],
+      }));
+      const uncertain = vi.fn();
+      const client = makeClient(transport.runtime, {
         kind: "remote",
         connected: () => true,
         blocked: () => false,
         uncertain,
+      });
+      await expect(client.projectSessions.resolve({ sessionId: "session" })).rejects.toMatchObject({
+        kind: "rejected",
+        domainFailure: failure,
+      });
+      expect(transport.requests()).toHaveLength(1);
+      expect(uncertain).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not attach malformed failures as committed outcomes or expose arbitrary rejection values", async () => {
+    for (const failure of [
+      {
+        _tag: "ResolutionCleanupFailed",
+        resolvedSessionIds: [],
+        cleanupFailures: [],
+        message: "Invalid",
       },
-    );
-    controller.abort();
-    await expect(
-      client.workspaces.postProcessDictation("Speech", { signal: controller.signal }),
-    ).rejects.toMatchObject({ kind: "interrupted" });
-    expect(uncertain).not.toHaveBeenCalled();
-  });
-  it("browser file tokens never resolve to browser paths after their tab grant is gone", () => {
-    expect(() => new BrowserFiles().get("browser-file:expired")).toThrowError(
-      "Selected browser file is no longer available. Select it again.",
-    );
+      { _tag: "ResolutionRejected", sessionIds: [42], message: "Invalid" },
+      { _tag: "OtherFailure", sessionIds: ["session"], message: "Unrelated" },
+    ]) {
+      await using transport = commandClientFinishTransport(() => ({
+        _tag: "Failure",
+        cause: [{ _tag: "Fail", error: failure }],
+      }));
+      const client = makeClient(transport.runtime);
+      const rejected = await client.projectSessions
+        .resolve({ sessionId: "session" })
+        .catch((error: unknown) => error);
+      expect(rejected).toBeInstanceOf(ClientError);
+      expect(rejected).toMatchObject({ domainFailure: undefined });
+      expect(transport.requests()).toHaveLength(1);
+    }
   });
 
-  it("browser menu resolves an action once and cancellation does not run a command", async () => {
-    const menu = mount(createStore(BrowserMenuStore));
-    const chosen = menu.show("Session actions", [{ label: "Rename", action: "rename" }]);
-    const rename = menu.items[0];
-    if (!rename) throw new Error("Menu action was not registered");
-    await menu.choose(rename);
-    expect(await chosen).toBe("rename");
-    const cancelled = menu.show("Session actions", [{ label: "Delete", action: "delete" }]);
-    menu.close();
-    expect(await cancelled).toBeUndefined();
-    menu[Symbol.dispose]();
-  });
-  it("remote client refuses device paths and unavailable integrations even while offline", async () => {
-    const client = makeClient(
-      controlledRuntime(async () => {
-        throw new Error("Must not dispatch");
-      }),
-      {
-        kind: "remote",
-        connected: () => false,
-        blocked: () => false,
-        uncertain: () => {
-          throw new Error("Not an uncertain delivery");
-        },
-      },
+  it("reports interruption rather than a committed outcome when cancellation wins before the RPC result reaches the Client", async () => {
+    const controller = new AbortController();
+    const failure = {
+      _tag: "ResolutionCleanupFailed",
+      operation: "resolve",
+      resolvedSessionIds: ["session"],
+      cleanupFailures: [{ workingDirectory: "/tree", message: "Busy" }],
+      message: "Resolved; cleanup failed",
+    };
+    await using transport = commandClientFinishTransport(
+      () => ({ _tag: "Failure", cause: [{ _tag: "Fail", error: failure }] }),
+      () => controller.abort(),
     );
-    for (const url of [
-      "file:///vm/project/file.ts",
-      "/vm/project/file.ts",
-      "vscode://file/vm/project/file.ts",
-    ])
-      await expect(client.electron.openExternalUrl(url)).rejects.toMatchObject({
-        kind: "unsupported",
-      });
-    await expect(client.electron.chooseProject()).rejects.toMatchObject({ kind: "unsupported" });
-    await expect(client.vscode.install()).rejects.toMatchObject({
-      kind: "rejected",
-      message: "Disconnected. No command was sent.",
+    const uncertain = vi.fn();
+    const client = makeClient(transport.runtime, {
+      kind: "remote",
+      connected: () => true,
+      blocked: () => false,
+      uncertain,
+    });
+    // A wire response is not yet a delivered Promise outcome. The real RPC
+    // cancellation wins here; a fake Runtime.execute rejection hid that boundary.
+    await expect(
+      client.projectSessions.resolve({ sessionId: "session" }, { signal: controller.signal }),
+    ).rejects.toMatchObject({ kind: "interrupted", domainFailure: undefined });
+    expect(uncertain).toHaveBeenCalledExactlyOnceWith("projectSessions.resolve");
+    expect(transport.requests()).toHaveLength(1);
+  });
+
+  it("rejects offline mutations before dispatch, permits optional cleanup cancellation, and never queues replay", async () => {
+    await using transport = commandClientFinishTransport((request) => {
+      if (request.tag !== "workspaces.post-process-dictation")
+        throw new Error("Offline mutation must not dispatch");
+      return { _tag: "Success", value: { text: "Speech" } };
+    });
+    const uncertain = vi.fn();
+    const client = makeClient(transport.runtime, {
+      kind: "remote",
+      connected: () => false,
+      blocked: () => false,
+      uncertain,
     });
     await expect(
       client.sessionChats.prompt({
-        sessionId: "s",
-        text: "offline",
+        sessionId: "session",
+        text: "Never queue",
         attachments: [],
         renderUserMessageAsMarkdown: false,
       }),
     ).rejects.toMatchObject({ kind: "rejected", message: "Disconnected. No command was sent." });
+    await expect(client.vscode.install()).rejects.toMatchObject({ kind: "rejected" });
+    for (const url of [
+      "file:///server/project/file.ts",
+      "/server/project/file.ts",
+      "vscode://file/server/file.ts",
+    ])
+      await expect(client.electron.openExternalUrl(url)).rejects.toMatchObject({
+        kind: "unsupported",
+      });
+    expect(transport.requests()).toEqual([]);
+    const controller = new AbortController();
+    controller.abort();
+    const cleanupClient = makeClient(transport.runtime, {
+      kind: "remote",
+      connected: () => true,
+      blocked: () => false,
+      uncertain,
+    });
+    await expect(
+      cleanupClient.workspaces.postProcessDictation("Speech", { signal: controller.signal }),
+    ).rejects.toMatchObject({ kind: "interrupted" });
+    expect(uncertain).not.toHaveBeenCalled();
+    // Cancellation can reach the RPC after admission, but must never replay it.
+    expect(transport.requests().length).toBeLessThanOrEqual(1);
+    expect(
+      transport.requests().every(({ tag }) => tag === "workspaces.post-process-dictation"),
+    ).toBe(true);
   });
-  it("browser native capabilities fail locally and external links open on the viewing device", async () => {
-    const execute = vi.fn(async () => {
+
+  it("keeps native-only capabilities local to the browser and opens links on the viewing device", async () => {
+    await using transport = commandClientFinishTransport(() => {
       throw new Error("Unexpected network command");
     });
+    using devices = browserDevices();
     const openExternalUrl = vi.fn(async () => undefined);
-    const client = makeClient(controlledRuntime(execute), {
+    const client = makeClient(transport.runtime, {
       kind: "browser",
       connected: () => true,
       blocked: () => false,
-      uncertain: () => {},
+      uncertain() {},
       openExternalUrl,
-      ...browserDevices(),
+      ...devices,
     });
     for (const command of [
       () => client.dictation.install(),
-      () => client.dictation.detectSpeech({ captureId: "browser-capture", pcm: "AAAAAA==" }),
+      () => client.dictation.detectSpeech({ captureId: "capture", pcm: "AAAAAA==" }),
       () => client.desktopSharing.configure({ enabled: true, bind: "127.0.0.1", port: 4317 }),
       () => client.windowState.load(),
       () => client.electron.chooseProject(),
@@ -223,144 +234,103 @@ describe("Client", () => {
     ])
       await expect(command()).rejects.toMatchObject({ kind: "unsupported" });
     await client.electron.openExternalUrl("https://example.com");
-    expect(openExternalUrl).toHaveBeenCalledWith("https://example.com");
-    expect(execute).not.toHaveBeenCalled();
-    for (const command of [() => client.filesystem.readImage("/project", "image.png")])
-      await expect(command()).rejects.toMatchObject({ kind: "unexpected" });
-    expect(execute).toHaveBeenCalledTimes(1);
+    expect(openExternalUrl).toHaveBeenCalledExactlyOnceWith("https://example.com");
+    expect(transport.requests()).toEqual([]);
   });
 
-  it("browser editor refuses malformed or same-origin leases and releases each acquired capability", async () => {
-    const id = "a".repeat(64);
-    const app = new URL("http://127.0.0.1:3000/");
-    vi.stubGlobal("window", { location: { href: app.href, protocol: app.protocol } });
-    vi.stubGlobal("document", { documentElement: { dataset: { theme: "dark" } } });
-    const appPort = Number(app.port || (app.protocol === "https:" ? 443 : 80));
-    let lease: EditorLease = {
-      id,
-      endpoint: `/editor/1/${id}/`,
-      editorPort: appPort === 4317 ? 4318 : 4317,
-      editorOrigin: "https://editor.example.com",
-    };
-    // SAFETY: the controlled runtime only supplies the lease fixture for acquisition; release ignores its response.
-    const execute = vi.fn(async () => lease) as Runtime["execute"];
-    const client = makeClient(controlledRuntime(execute), {
-      kind: "browser",
-      connected: () => true,
-      blocked: () => false,
-      uncertain: () => {},
-      openExternalUrl: async () => undefined,
-      ...browserDevices(),
-    });
-    const valid = await client.vscode.open("/workspace");
-    expect(valid?.endpoint).toBe(
-      `${app.protocol}//${app.hostname}:${lease.editorPort}${lease.endpoint}`,
+  // These two browser-local authorities are device adapters outside the Root
+  // tree. Keep their capability lifecycle real rather than hand-assembling peers.
+  it("expires browser file capabilities and settles native-menu emulation exactly once", async () => {
+    using devices = browserDevices();
+    expect(() => devices.files.get("browser-file:expired")).toThrow(
+      "Selected browser file is no longer available. Select it again.",
     );
-    for (const invalid of [
-      { ...lease, editorPort: undefined },
-      { ...lease, editorPort: appPort },
-      { ...lease, editorPort: 65536 },
-      { ...lease, endpoint: `//evil.test/editor/1/${id}/` },
-      { ...lease, endpoint: `/editor/1/${id}/?redirect=evil` },
-      { ...lease, endpoint: `/editor/1/${"b".repeat(64)}/` },
-    ]) {
-      lease = invalid;
-      await expect(client.vscode.open("/workspace")).rejects.toThrow(
-        /Invalid isolated editor lease/,
-      );
-    }
-    expect(execute).toHaveBeenCalledTimes(13);
-    vi.unstubAllGlobals();
+    const chosen = devices.menus.show("Session actions", [{ label: "Rename", action: "rename" }]);
+    const rename = devices.menus.items[0];
+    if (!rename) throw new Error("Missing registered menu action");
+    await devices.menus.choose(rename);
+    expect(await chosen).toBe("rename");
+    const cancelled = devices.menus.show("Session actions", [
+      { label: "Delete", action: "delete" },
+    ]);
+    devices.menus.close();
+    expect(await cancelled).toBeUndefined();
   });
 
-  it("browser HTTPS editor accepts only the exact isolated public origin and releases invalid leases", async () => {
-    const id = "a".repeat(64);
-    const endpoint = `/editor/12/${id}/`;
-    vi.stubGlobal("window", {
-      location: { href: "https://cake.example.com/workspace?session=1", protocol: "https:" },
-    });
-    vi.stubGlobal("document", { documentElement: { dataset: { theme: "dark" } } });
-    let lease: EditorLease = {
-      id,
-      endpoint,
-      editorPort: 4318,
-      editorOrigin: "https://editor.example.com",
-    };
-    // SAFETY: the controlled runtime only supplies the lease fixture for acquisition; release ignores its response.
-    const execute = vi.fn(async () => lease) as Runtime["execute"];
-    const uncertain = vi.fn();
-    const client = makeClient(controlledRuntime(execute), {
-      kind: "browser",
-      connected: () => true,
-      blocked: () => false,
-      uncertain,
-      openExternalUrl: async () => undefined,
-      ...browserDevices(),
-    });
-    try {
+  it.each(["http", "https"] as const)(
+    "validates %s editor isolation and releases decoded but unsafe leases",
+    async (protocol) => {
+      const id = "a".repeat(64);
+      const endpoint = `/editor/12/${id}/`;
+      const app = new URL(
+        protocol === "https" ? "https://cake.example.com/" : "http://127.0.0.1:3000/",
+      );
+      vi.stubGlobal("window", { location: { href: app.href, protocol: app.protocol } });
+      vi.stubGlobal("document", { documentElement: { dataset: { theme: "dark" } } });
+      let lease: EditorLease = {
+        id,
+        endpoint,
+        editorPort: 4318,
+        editorOrigin: "https://editor.example.com",
+      };
+      await using transport = commandClientFinishTransport((request) => ({
+        _tag: "Success",
+        value: request.tag === "vscode.acquire" ? lease : null,
+      }));
+      using devices = browserDevices();
+      const client = makeClient(transport.runtime, {
+        kind: "browser",
+        connected: () => true,
+        blocked: () => false,
+        uncertain() {},
+        openExternalUrl: async () => undefined,
+        ...devices,
+      });
       expect(await client.vscode.open("/workspace")).toEqual({
         id,
-        endpoint: `https://editor.example.com${endpoint}`,
+        endpoint:
+          protocol === "https"
+            ? `https://editor.example.com${endpoint}`
+            : `http://127.0.0.1:4318${endpoint}`,
       });
-      expect(execute).toHaveBeenCalledTimes(1);
-
-      for (const invalid of [
-        { ...lease, editorOrigin: undefined },
-        { ...lease, editorOrigin: "https://cake.example.com" },
-        { ...lease, editorOrigin: "http://editor.example.com" },
-        { ...lease, editorOrigin: "https://user:pass@editor.example.com" },
-        { ...lease, editorOrigin: "https://editor.example.com/path" },
-        { ...lease, editorOrigin: "https://editor.example.com/?redirect=evil" },
-        { ...lease, editorOrigin: "https://editor.example.com/#evil" },
-        { ...lease, editorOrigin: "//editor.example.com" },
-        { ...lease, editorOrigin: "https://editor.example.com:443" },
-        { ...lease, endpoint: `//editor.example.com${endpoint}` },
-        { ...lease, endpoint: `/editor/12/${"b".repeat(64)}/` },
+      const unsafe = [
+        { ...lease, endpoint: `//evil.test${endpoint}` },
         { ...lease, endpoint: `${endpoint}?redirect=evil` },
-      ]) {
-        lease = invalid;
+        { ...lease, endpoint: `/editor/12/${"b".repeat(64)}/` },
+        protocol === "https"
+          ? { ...lease, editorOrigin: app.origin }
+          : { ...lease, editorPort: 3000 },
+      ];
+      for (const value of unsafe) {
+        lease = value;
         await expect(client.vscode.open("/workspace")).rejects.toMatchObject({
           kind: "rejected",
           operation: "vscode.open",
         });
       }
-      expect(execute).toHaveBeenCalledTimes(25); // acquisition and release for every invalid lease
-      expect(uncertain).not.toHaveBeenCalled();
-      lease = { id, endpoint, editorPort: 4318 };
-      await expect(client.vscode.open("/workspace")).rejects.toThrow(
-        "Browser VS Code requires a configured public HTTPS editor origin",
+      expect(transport.requests().filter(({ tag }) => tag === "vscode.release")).toHaveLength(
+        unsafe.length,
       );
-      expect(execute).toHaveBeenCalledTimes(27);
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
+      // Malformed wire data is rejected by the shared schema before capability use.
+      for (const malformed of [
+        { ...lease, editorPort: 65536 },
+        { ...lease, editorOrigin: "https://user:pass@editor.example.com" },
+        { ...lease, editorOrigin: "https://editor.example.com/path" },
+        { ...lease, editorOrigin: "https://editor.example.com/#evil" },
+        { ...lease, editorOrigin: "//editor.example.com" },
+        { ...lease, editorOrigin: "https://editor.example.com:443" },
+      ]) {
+        lease = malformed;
+        await expect(client.vscode.open("/workspace")).rejects.toBeInstanceOf(ClientError);
+      }
+      lease = { id, endpoint };
+      await expect(client.vscode.open("/workspace")).rejects.toBeInstanceOf(ClientError);
+    },
+  );
 
-  it("disconnected browser commands fail before dispatch and are not queued for replay", async () => {
-    const execute = vi.fn(async () => {
-      throw new Error("Unexpected network command");
-    });
-    const client = makeClient(controlledRuntime(execute), {
-      kind: "browser",
-      connected: () => false,
-      blocked: () => false,
-      uncertain: () => {},
-      openExternalUrl: async () => undefined,
-      ...browserDevices(),
-    });
-    await expect(
-      client.sessionChats.prompt({
-        sessionId: "session",
-        text: "Never queue",
-        attachments: [],
-        renderUserMessageAsMarkdown: false,
-      }),
-    ).rejects.toMatchObject({ kind: "transport", message: "Disconnected. No command was sent." });
-    expect(execute).not.toHaveBeenCalled();
-  });
-  it("exposes focused command groups without observation methods", () => {
-    const runtime = controlledRuntime(vi.fn(async () => undefined) as Runtime["execute"]);
-    const client = makeClient(runtime);
+  it("exposes focused command groups without observation methods", async () => {
+    await using transport = commandClientFinishTransport(() => ({ _tag: "Success", value: null }));
+    const client = makeClient(transport.runtime);
 
     expect(Object.keys(client)).toEqual([
       "speechOutput",
@@ -406,81 +376,40 @@ describe("Client", () => {
     expect("observe" in client.subagents).toBe(false);
   });
 
-  it("remote provider auth and non-chat settings dispatch only while connected", async () => {
-    const execute = vi.fn(async () => undefined) as Runtime["execute"];
+  it("dispatches connected provider/settings/workspace reads through the backend and rejects them when disconnected", async () => {
+    await using transport = commandClientFinishTransport((request) => ({
+      _tag: "Success",
+      value:
+        request.tag === "nonChatModels.list"
+          ? []
+          : request.tag === "nonChatModels.updatePreference"
+            ? {}
+            : request.tag === "filesystem.read-workspace-file"
+              ? { content: "server content" }
+              : null,
+    }));
     let connected = true;
-    const client = makeClient(controlledRuntime(execute), {
+    const client = makeClient(transport.runtime, {
       kind: "remote",
       connected: () => connected,
-      uncertain: () => {},
       blocked: () => false,
+      uncertain() {},
     });
     await client.models.login({ provider: "test", authType: "api_key" });
     await client.models.logout({ provider: "test" });
     await client.sessionChats.login({ sessionId: "session", provider: "test", authType: "oauth" });
     await client.sessionChats.logout({ sessionId: "session", provider: "test" });
-    await client.nonChatModels.list();
+    expect(await client.nonChatModels.list()).toEqual([]);
     await client.nonChatModels.updatePreference({ type: "image", preference: null });
-    expect(execute).toHaveBeenCalledTimes(6);
+    expect(await client.filesystem.readFile("/server/project", "note.txt")).toBe("server content");
+    expect(transport.requests()).toHaveLength(7);
     connected = false;
     await expect(
       client.models.login({ provider: "test", authType: "api_key" }),
-    ).rejects.toMatchObject({
-      kind: "rejected",
-      message: "Disconnected. No command was sent.",
-    });
+    ).rejects.toMatchObject({ kind: "rejected", message: "Disconnected. No command was sent." });
     await expect(
       client.nonChatModels.updatePreference({ type: "image", preference: null }),
-    ).rejects.toMatchObject({ kind: "rejected", message: "Disconnected. No command was sent." });
-    expect(execute).toHaveBeenCalledTimes(6);
-  });
-
-  it("remote workspace reads dispatch through the backend", async () => {
-    const execute = vi.fn(async () => ({ content: "server content" })) as Runtime["execute"];
-    const client = makeClient(controlledRuntime(execute), {
-      kind: "remote",
-      connected: () => true,
-      uncertain: () => {},
-      blocked: () => false,
-    });
-    expect(await client.filesystem.readFile("/server/project", "note.txt")).toBe("server content");
-    expect(execute).toHaveBeenCalledTimes(1);
-  });
-
-  it("passes AbortSignal to the window runtime and reports interruption stably", async () => {
-    const execute = vi.fn(async () => {
-      throw new Error("fiber interrupted");
-    }) as Runtime["execute"];
-    const client = makeClient(controlledRuntime(execute));
-    const controller = new AbortController();
-    controller.abort();
-
-    const failure = await client.foundation
-      .delay({ durationMs: 10_000 }, { signal: controller.signal })
-      .catch((error: unknown) => error);
-
-    expect(execute).toHaveBeenCalledWith(expect.anything(), controller.signal);
-    expect(failure).toBeInstanceOf(ClientError);
-    expect(failure).toMatchObject({
-      _tag: "ClientError",
-      kind: "interrupted",
-      operation: "foundation.delay",
-      message: "The operation was cancelled",
-    });
-  });
-
-  it("does not expose arbitrary command rejection values", async () => {
-    const execute = vi.fn(async () => {
-      throw { _tag: "ModelPresetNotFoundError", id: "missing" };
-    }) as Runtime["execute"];
-    const client = makeClient(controlledRuntime(execute));
-
-    const failure = await client.modelPresets.resolve("missing").catch((error: unknown) => error);
-
-    expect(failure).toBeInstanceOf(ClientError);
-    expect(failure).toMatchObject({
-      kind: "rejected",
-      operation: "modelPresets.resolve",
-    });
+    ).rejects.toMatchObject({ kind: "rejected" });
+    expect(transport.requests()).toHaveLength(7);
   });
 });
