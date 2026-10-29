@@ -106,7 +106,19 @@ async function fixture(withTool = false, database?: string, withTodos = true) {
     await Promise.all(tasks.items.map((task) => engine.harness.waitForTask(task.id, context)));
     return engine.harness.snapshot(TaskAttributionDoc, engine.root.id, context);
   };
-  return { ...f, engine, classify, send, finish, reports, utility, utilityModel };
+  return {
+    ...f,
+    engine,
+    classify,
+    send,
+    finish,
+    reports,
+    utility,
+    utilityModel,
+    setTodos: (value: ProjectTodo[]) => {
+      items = value;
+    },
+  };
 }
 
 it("runs once per human input on the separate utility model and projects A → A → B → A → none without rewriting originals", async () => {
@@ -120,7 +132,7 @@ it("runs once per human input on the separate utility model and projects A → A
     "Check config reads too",
     "Switch to navigation",
     "Back to startup",
-    "What does Command K do?",
+    "Unrelated: what is the weather in Oslo?",
   ]) {
     const settled = await f.send(text);
     inputs.push(String(settled.entry));
@@ -160,6 +172,125 @@ it("runs once per human input on the separate utility model and projects A → A
   ).toEqual(originals.items.filter((entry) => entry.kind.startsWith("pi.")));
   expect(f.reports).not.toHaveBeenCalled();
 });
+
+it("supplies settled continuity evidence for short follow-ups without overriding switches or null decisions", async () => {
+  const f = await fixture();
+  const turns = [
+    ["Investigate startup", A, null],
+    ["Yes", A, A],
+    ["What about that?", A, A],
+    ["Go ahead", A, A],
+    ["Actually switch to navigation", B, A],
+    ["Unrelated: what is the weather in Oslo?", null, B],
+    ["And tomorrow?", null, null],
+    ["Back to startup", A, null],
+  ] as const;
+  for (const [text, decision, previousTodoId] of turns) {
+    f.classify.mockResolvedValueOnce(durableAnswer(JSON.stringify({ todoId: decision })));
+    const sent = await f.send(text);
+    const doc = await f.finish();
+    expect(doc?.inputs[String(sent.entry)]).toEqual({ pending: false, todoId: decision });
+    const request = f.classify.mock.calls.at(-1)?.[1].messages;
+    const content = request?.[1]?.content;
+    if (typeof content !== "string") throw new Error("Expected classifier JSON");
+    const payload = JSON.parse(content);
+    expect(payload.previousTodoId).toBe(previousTodoId);
+    expect(payload.messages.at(-1).text).toBe(text);
+    expect(request?.[0]?.content).toContain("do not return null merely because");
+    expect(request?.[0]?.content).toContain(
+      "never keep a task just because it was previously active",
+    );
+  }
+  expect(f.classify).toHaveBeenCalledTimes(turns.length);
+});
+
+it.each([true, false])(
+  "treats broader merge-and-resolve work as a switch after PDF resize discussion (matching to-do: %s)",
+  async (matchingTodo) => {
+    const f = await fixture();
+    f.setTodos([
+      {
+        ...todo(A),
+        title: "Fix PDF auto-fit behavior",
+        description: "Recalculate fit on window and reader resize.",
+      },
+      ...(matchingTodo
+        ? [
+            {
+              ...todo(B),
+              title: "Merge and resolve completed sessions",
+              description: "Manage all sessions as they finish.",
+            },
+          ]
+        : []),
+    ]);
+    const decisions = [A, A, matchingTodo ? B : null];
+    for (const [index, text] of [
+      "Fix PDF auto-fit behavior",
+      "it doesn't resize when it should, like window resize",
+      "merge and resolve and sessions as they finish",
+    ].entries()) {
+      f.classify.mockResolvedValueOnce(durableAnswer(JSON.stringify({ todoId: decisions[index] })));
+      const sent = await f.send(text);
+      const doc = await f.finish();
+      expect(doc?.inputs[String(sent.entry)]?.todoId).toBe(decisions[index]);
+    }
+    const messages = f.classify.mock.calls.at(-1)?.[1].messages;
+    const content = messages?.[1]?.content;
+    if (typeof content !== "string") throw new Error("Expected classifier JSON");
+    const payload = JSON.parse(content);
+    expect(payload.previousTodoId).toBe(A);
+    expect(payload.messages.at(-1).text).toBe("merge and resolve and sessions as they finish");
+    expect(
+      payload.messages.some((message: { text: string }) => message.text.includes("window resize")),
+    ).toBe(true);
+    expect(messages?.[0]?.content).toContain("a task switch, not a PDF follow-up");
+  },
+);
+
+it.each(["continuation", "unrelated", "failure"] as const)(
+  "projects pending attribution separately, then honors the settled %s rather than hiding it",
+  async (outcome) => {
+    const f = await fixture();
+    await f.send("Investigate startup");
+    await f.finish();
+    let release!: () => void;
+    let started!: () => void;
+    const deciding = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const decision = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    f.classify.mockImplementationOnce(async () => {
+      started();
+      await decision;
+      if (outcome === "failure") throw new Error("Provider offline");
+      return durableAnswer(JSON.stringify({ todoId: outcome === "continuation" ? A : null }));
+    });
+    const sent = await f.send(outcome === "unrelated" ? "Unrelated: weather in Oslo?" : "Yes");
+    await deciding;
+    const project = async () => {
+      const doc = await f.engine.harness.snapshot(TaskAttributionDoc, f.engine.root.id, context);
+      const page = await readDurableOriginalPage(
+        f.engine.root,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        doc?.inputs,
+      );
+      return page.parts.find((part) => part.kind === "text" && part.entryId === String(sent.entry));
+    };
+    expect(await project()).toMatchObject({ taskAttributionPending: true });
+    release();
+    await f.finish();
+    const settled = await project();
+    expect(settled).toMatchObject({ taskTodoId: outcome === "continuation" ? A : null });
+    expect(settled).not.toHaveProperty("taskAttributionPending");
+    expect(f.reports).toHaveBeenCalledTimes(outcome === "failure" ? 1 : 0);
+  },
+);
 
 it("attributes human inputs carrying reminders but not automatic deliveries", async () => {
   const f = await fixture();

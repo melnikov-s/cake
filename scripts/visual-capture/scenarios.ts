@@ -2480,7 +2480,7 @@ const projectChatTodos: VisualCaptureScenario = {
 const projectChatTaskRails: VisualCaptureScenario = {
   name: "project-chat-task-rails",
   description:
-    "Readable task-switch labels at all widths, pane inspection and wide widget rule breaks",
+    "Responsive gutter task labels, separated groups, pane inspection and wide widget rule breaks",
   states: ["wide", "narrow", "widget", "return", "pane"],
   async seed(paths, theme) {
     await projectChatTodos.seed(paths, theme);
@@ -2559,8 +2559,8 @@ const projectChatTaskRails: VisualCaptureScenario = {
       .locator('xpath=ancestor::*[@data-slot="transcript-item"]');
     const first = row.getByTitle(`Show in To-do: ${taskTitle}`);
     await expect(first).toBeVisible();
-    // The marker belongs above its message, inside the same reading column, not in a
-    // fixed-width offscreen gutter. Check real Electron geometry at every viewport.
+    // Query the available pane width, not the window: accessory panes must
+    // trigger the same inside-border fallback as a narrow window.
     const label = first.locator('xpath=ancestor::*[@data-slot="task-section-label"]');
     const labelBounds = await label.boundingBox();
     const rowBounds = await row.boundingBox();
@@ -2568,12 +2568,34 @@ const projectChatTaskRails: VisualCaptureScenario = {
     expect(labelBounds, "Task label bounds").not.toBeNull();
     expect(rowBounds, "Transcript row bounds").not.toBeNull();
     expect(messageBounds, "Following message bounds").not.toBeNull();
-    expect(labelBounds!.x).toBeGreaterThanOrEqual(rowBounds!.x);
+    const transcriptBounds = (await transcript.boundingBox())!;
+    const wide = await transcript.evaluate(
+      (element) =>
+        element.clientWidth >= 76 * parseFloat(getComputedStyle(document.documentElement).fontSize),
+    );
+    expect(labelBounds!.x).toBeGreaterThanOrEqual(transcriptBounds.x);
     expect(labelBounds!.x + labelBounds!.width).toBeLessThanOrEqual(
       rowBounds!.x + rowBounds!.width + 1,
     );
-    expect(labelBounds!.y + labelBounds!.height).toBeLessThanOrEqual(messageBounds!.y);
-    expect((await first.boundingBox())!.height).toBeLessThan(80);
+    if (wide) {
+      expect(labelBounds!.x + labelBounds!.width).toBeLessThan(rowBounds!.x - 20);
+      expect(labelBounds!.y).toBeLessThanOrEqual(messageBounds!.y);
+      // Even when a wrapping gutter label is taller than the message, the next
+      // row starts below it. Its height remains part of normal transcript flow.
+      expect(labelBounds!.y + labelBounds!.height).toBeLessThanOrEqual(
+        rowBounds!.y + rowBounds!.height,
+      );
+    } else {
+      expect(labelBounds!.x).toBeGreaterThanOrEqual(rowBounds!.x);
+      expect(labelBounds!.y + labelBounds!.height).toBeLessThanOrEqual(messageBounds!.y);
+    }
+    const railBounds = (await row.locator('[data-slot="margin-rail"]').boundingBox())!;
+    expect(railBounds.y - rowBounds!.y).toBe(32);
+    if (wide) expect(labelBounds!.x + labelBounds!.width).toBeLessThan(railBounds.x);
+    else expect(labelBounds!.x).toBeGreaterThan(railBounds.x);
+    expect(await transcript.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+      true,
+    );
     if (state === "widget") {
       const widget = page.locator('[data-slot="artifact-disclosure"]').first();
       await widget.scrollIntoViewIfNeeded();
@@ -2590,7 +2612,15 @@ const projectChatTaskRails: VisualCaptureScenario = {
       await page
         .getByText("Back to startup—compare a cold launch too.", { exact: true })
         .scrollIntoViewIfNeeded();
-      await expect(page.getByTitle(`Show in To-do: ${taskTitle}`).last()).toBeVisible();
+      const returned = page.getByTitle(`Show in To-do: ${taskTitle}`).last();
+      await expect(returned).toBeVisible();
+      const returnedRow = returned.locator('xpath=ancestor::*[@data-slot="transcript-item"]');
+      const previousRow = returnedRow.locator("xpath=../preceding-sibling::*[1]");
+      const previousRail = previousRow.locator('[data-slot="margin-rail"]');
+      const nextRail = returnedRow.locator('[data-slot="margin-rail"]');
+      const previousBounds = (await previousRail.boundingBox())!;
+      const nextBounds = (await nextRail.boundingBox())!;
+      expect(nextBounds.y - previousBounds.y - previousBounds.height).toBeGreaterThanOrEqual(32);
     }
     if (state === "pane") {
       await first.click();
@@ -2602,6 +2632,64 @@ const projectChatTaskRails: VisualCaptureScenario = {
       );
     }
     await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator('[data-slot="side-chat-layout"]'),
+};
+
+const pdfTaskSwitch: VisualCaptureScenario = {
+  name: "project-chat-pdf-task-switch",
+  description: "PDF resize follow-ups stay grouped; broader session management ends the group",
+  states: ["default"],
+  async seed(paths, theme) {
+    await projectChatTodos.seed(paths, theme);
+    const file = join(paths.cakeHome, "state", "application.json");
+    const application = JSON.parse(await readFile(file, "utf8"));
+    const todo = application.data.projects[0].todos.items[0];
+    todo.title = "Fix PDF auto-fit behavior";
+    todo.status = "Open";
+    todo.associations = [];
+    application.data.projects[0].todos.items = [todo];
+    await writeFile(file, JSON.stringify(application));
+    const hash = createHash("sha256").update(paths.project).digest("hex");
+    await seedDurableChat(
+      join(paths.cakeHome, "pi", "project-chats", hash),
+      [
+        "it doesn't resize when it should, like window resize",
+        "Auto-fit should recalculate whenever the window or reader area changes size—both shrinking and growing, while preserving manual zoom.",
+        "yes, check that too",
+        "I’ll include reader-area resizing in the same PDF fix.",
+        "merge and resolve and sessions as they finish",
+        "I’ll review completed sessions across the project. That is separate from the PDF resize fix.",
+      ],
+      [todo.id, todo.id, null],
+    );
+  },
+  async prepare(page) {
+    await assistantMarkdownCode.prepare(page, "default");
+    await page
+      .getByRole("button", { name: /^Open Project Chat for / })
+      .first()
+      .click();
+    const transcript = page.locator(".transcript").last();
+    await expect(transcript.getByTitle("Show in To-do: Fix PDF auto-fit behavior")).toHaveCount(1);
+    const followup = transcript
+      .getByText("yes, check that too", { exact: true })
+      .locator('xpath=ancestor::*[@data-slot="transcript-item"]');
+    await expect(followup.locator('[data-slot="margin-rail"]')).toBeVisible();
+    const switchRow = transcript
+      .getByText("merge and resolve and sessions as they finish", { exact: true })
+      .locator('xpath=ancestor::*[@data-slot="transcript-item"]');
+    await expect(switchRow.locator('[data-slot="margin-rail"]')).toHaveCount(0);
+    await expect(
+      transcript.getByText(
+        "I’ll review completed sessions across the project. That is separate from the PDF resize fix.",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await transcript.evaluate((element) => {
+      element.scrollTop = 0;
+    });
     await page.mouse.move(1, 1);
   },
   region: (page) => page.locator('[data-slot="side-chat-layout"]'),
@@ -5767,6 +5855,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   projectChatHeader,
   projectChatTodos,
   projectChatTaskRails,
+  pdfTaskSwitch,
   activeSidebarSessions,
   dictationInputScenario,
   compactComposerScenario,

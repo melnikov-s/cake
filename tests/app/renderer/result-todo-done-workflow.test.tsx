@@ -339,6 +339,7 @@ it.each(chats)(
       agent: { model: { provider: "fixture", modelId: "fixture" } },
       memory: { budget: () => 4000, summarize: async () => "memory" },
       todos: () => todos.items,
+      utilityModel: () => ({ provider: "fixture", modelId: "fixture", thinkingLevel: "off" }),
       onChanged: () => {},
       onReport: (error) => {
         throw error;
@@ -369,7 +370,7 @@ it.each(chats)(
         "What about follow-ups?",
         "Switch topics",
         "Back to this",
-        "Hello",
+        "Unrelated: what is the weather in Oslo?",
       ];
       for (const [index, decision] of decisions.entries()) {
         if (index !== 1)
@@ -378,7 +379,17 @@ it.each(chats)(
           );
         const text = questions[index]!;
         const prepared = await f.commit(projectTodos.prepareForChat(f.chat.sessionId, text));
-        classify.mockResolvedValueOnce(durableAnswer(JSON.stringify({ todoId: decision })));
+        let releaseDecision: (() => void) | undefined;
+        const pendingDecision =
+          index === 1
+            ? new Promise<void>((resolve) => {
+                releaseDecision = resolve;
+              })
+            : undefined;
+        classify.mockImplementationOnce(async () => {
+          await pendingDecision;
+          return durableAnswer(JSON.stringify({ todoId: decision }));
+        });
         const submission = await engine.root.submit(
           {
             type: "input",
@@ -393,6 +404,43 @@ it.each(chats)(
         );
         await f.commit(projectTodos.consumeSelection(prepared));
         await submission.wait(BACKGROUND_CONTEXT);
+        if (pendingDecision) {
+          try {
+            const pending = await engine.harness.snapshot(
+              TaskAttributionDoc,
+              engine.root.id,
+              BACKGROUND_CONTEXT,
+            );
+            attributed = (
+              await readDurableOriginalPage(
+                engine.root,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                pending?.inputs,
+              )
+            ).parts;
+            expect(
+              attributed.some((part) => part.kind === "text" && part.taskAttributionPending),
+            ).toBe(true);
+            projectHistory();
+            await waitFor(() =>
+              expect(
+                f.view.container.querySelectorAll('[data-slot="task-section-label"]'),
+              ).toHaveLength(1),
+            );
+            // The real history → Message Model → transcript path must not break
+            // the rail just because its utility-model decision is still pending.
+            const followup = Array.from(
+              f.view.container.querySelectorAll('[data-slot="transcript-item"]'),
+            ).find((row) => row.textContent?.includes(text));
+            expect(followup).toBeDefined();
+            expect(followup!.querySelector('[data-slot="margin-rail"]')).not.toBeNull();
+          } finally {
+            releaseDecision?.();
+          }
+        }
         const tasks = await engine.root.commit(
           (tx) =>
             tx.scanTasks({ conversationId: engine.root.id, kind: "cake.task-attribution" }, 100),

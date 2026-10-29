@@ -165,7 +165,11 @@ export async function readDurableOriginalPage(
       const attribution = attributions[part.entryId];
       return {
         ...part,
-        ...(attribution && !attribution.pending ? { taskTodoId: attribution.todoId } : null),
+        ...(attribution?.pending
+          ? { taskAttributionPending: true }
+          : attribution
+            ? { taskTodoId: attribution.todoId }
+            : null),
         ...(origin ? { subagentReport: origin } : null),
         renderAs:
           markdown === undefined

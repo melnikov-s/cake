@@ -1,9 +1,12 @@
 import { expect, it } from "vitest";
+import { applySnapshot } from "r-state-tree";
+import { Message } from "../../../src/renderer/models/Message";
+import { messageSnapshots } from "../../../src/renderer/reducers/SessionPartReducer";
 import { transcriptTaskSections } from "../../../src/renderer/lib/transcript-task-sections";
 import { groupTranscriptParts } from "../../../src/renderer/components/chat-transcript-items";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 
-function user(id: string, todoId?: string | null): UiPart {
+function user(id: string, todoId?: string | null): Extract<UiPart, { kind: "text" }> {
   return {
     kind: "text",
     id,
@@ -94,7 +97,34 @@ it("uses known incoming associations once per switch and lets explicit human att
   ]);
 });
 
-it("does not guess an unresolved input belongs to the previous task; activity and wide widgets retain their section identity", () => {
+it("keeps a pending follow-up in flow but honors settled continuation, switch, null and error decisions", () => {
+  const pending: UiPart = { ...user("follow-up"), taskAttributionPending: true };
+  const model = Message.create(messageSnapshots([pending], "chat")[0]);
+  const sections = () =>
+    transcriptTaskSections(
+      groupTranscriptParts([
+        user("a", "A"),
+        answer("a-answer"),
+        model.value,
+        answer("followup-answer"),
+      ]),
+    ).sections;
+  expect(sections().map((section) => section.todoId)).toEqual(["A", "A", "A", "A"]);
+  expect(sections().filter((section) => section.start)).toHaveLength(1);
+  expect(model.update(user("follow-up", "A"))).toBe(true);
+  expect(model.value).not.toHaveProperty("taskAttributionPending");
+  expect(sections().filter((section) => section.start)).toHaveLength(1);
+  expect(model.update(user("follow-up", "B"))).toBe(true);
+  expect(sections().map((section) => section.todoId)).toEqual(["A", "A", "B", "B"]);
+  // Full snapshot refreshes also clear provisional presentation. Both an
+  // unrelated model decision and a reported classifier failure settle to null.
+  applySnapshot(model, messageSnapshots([pending], "chat")[0]!);
+  applySnapshot(model, messageSnapshots([user("follow-up", null)], "chat")[0]!);
+  expect(model.value).not.toHaveProperty("taskAttributionPending");
+  expect(sections().map((section) => section.todoId)).toEqual(["A", "A", undefined, undefined]);
+});
+
+it("does not guess missing attribution belongs to the previous task; activity and wide widgets retain their section identity", () => {
   const parts: UiPart[] = [
     user("a", "A"),
     { id: "widget", kind: "tool", name: "cake", input: "", state: "success", artifactId: "wide" },

@@ -466,12 +466,19 @@ is a refactoring signal, not precedent.
   the response only if new to-do IDs appeared during it, so newly created tasks can be matched.
   Missing utility configuration is reported without a conversational-model fallback.
   The request selects an existing to-do or null; it never creates tasks or changes agent context,
-  and does not block the response. Identity-only attribution lives beside Durable originals,
-  not in another transcript. Invalid or unavailable attribution leaves the turn ungrouped.
+  and does not block the response. The prior human turn's settled attribution is evidence for
+  model-decided continuity: related short replies stay with their discussion, while genuine
+  task/scope switches choose another item or null (for example PDF resizing → managing all
+  completed sessions). No topic-matching heuristics or sticky task fallback override decisions.
+  Identity-only attribution lives beside Durable originals, not in another transcript. Explicitly
+  pending attribution provisionally retains the current presentation section; a settled null,
+  invalid or unavailable attribution ends it and leaves the turn ungrouped.
   Known incoming session/subagent/exact-message associations are projected without a model call.
-  Task-switch labels read current to-do title/status/state live and sit directly above their
-  section in the reading flow at every width. Only the gutter continuation rules hide when
-  the transcript lacks gutter room and break at wide artifacts/widgets. Revealing a task inspects its pane row without selecting
+  Task-switch labels read current to-do title/status/state live and sit in the left gutter
+  when the transcript has room, otherwise above their section inside the continuation rule.
+  Wrapping labels retain their height in the reading flow, and consecutive sections leave
+  a gap in the rule. Wide artifacts/widgets break the rule and keep labels inside the reading
+  flow. Revealing a task inspects its pane row without selecting
   next-message context. Ordinary Project Sessions and secondary chats retain per-result controls.
   Their incoming message or source cards whose session, subagent or exact-message links
   match a to-do keep their association row visible, including historical updates, requests,
