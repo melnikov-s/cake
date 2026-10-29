@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DiscussionThread } from "../../../../src/contracts/discussion-sessions/discussion-session-data";
 import type { ConversationSnapshot } from "../../../../src/contracts/conversations/conversation-data";
-import { RootProjection } from "../../../../src/renderer/models/RootProjection";
 import { DiscussionCatalog } from "../../../../src/renderer/models/DiscussionCatalog";
 import { Conversation } from "../../../../src/renderer/models/Conversation";
 import { applyDiscussionSessionUpdate } from "../../../../src/renderer/reducers/ConversationReducer";
@@ -42,7 +41,10 @@ const conversation = (sessionId: string): ConversationSnapshot => ({
   tree: [],
 });
 
-describe("DiscussionReducer", () => {
+// Live sidecar behavior through stale catalog refreshes is exercised by
+// projection-finish-workflow. Keep only keyed identity and malformed transport
+// atomicity here: valid user actions cannot produce foreign/invalid authority rows.
+describe("Discussion projection identity and transport validation", () => {
   it("reconciles threads in order without reapplying unrelated session state", () => {
     const session = DiscussionCatalog.create({ sessionId: "session" });
     applyDiscussionCatalogUpdate(session, "session", {
@@ -69,100 +71,6 @@ describe("DiscussionReducer", () => {
     expect(retained.parts[0]).toBe(part);
     expect(retained.status).toBe("resolved");
     session[Symbol.dispose]();
-  });
-
-  it("keeps the live sidecar conversation apart from catalog metadata refreshes", () => {
-    const projection = RootProjection.create({});
-    const parent = projection.discussionCatalog("session");
-    const sidecar = projection.discussionConversation("sidecar-one", "/project");
-    const linked: DiscussionThread = {
-      ...thread("one"),
-      sidecarSessionId: "sidecar-one",
-      // The persisted preview lags the live stream (and can be empty while the
-      // sidecar file is still being written).
-      parts: [],
-    };
-    applyDiscussionCatalogUpdate(parent, "session", {
-      _tag: "Snapshot",
-      revision: 1,
-      parentSessionId: "session",
-      threads: [linked],
-    });
-    const retained = parent.threads[0]!;
-    expect(retained.sidecarSessionId).toBe("sidecar-one");
-
-    applyDiscussionSessionUpdate(sidecar, "sidecar-one", {
-      _tag: "Snapshot",
-      revision: 1,
-      snapshot: {
-        identity: {
-          _tag: "DiscussionSession",
-          sessionId: "sidecar-one",
-          parentSessionId: "session",
-        },
-        conversation: conversation("sidecar-one"),
-      },
-    });
-    expect(sidecar.observedSnapshotRevision).toBe(1);
-    expect(sidecar.model?.modelId).toBe("gemini-3.5-flash-lite");
-    expect(sidecar.thinkingLevel).toBe("low");
-    applyDiscussionSessionUpdate(sidecar, "sidecar-one", {
-      _tag: "Event",
-      revision: 2,
-      sessionId: "sidecar-one",
-      event: { _tag: "StreamingChanged", sessionId: "sidecar-one", streaming: true },
-    });
-    applyDiscussionSessionUpdate(sidecar, "sidecar-one", {
-      _tag: "Event",
-      revision: 3,
-      sessionId: "sidecar-one",
-      event: {
-        _tag: "PartUpdated",
-        sessionId: "sidecar-one",
-        part: { id: "user-1", kind: "text", role: "user", text: "Explain", status: "complete" },
-      },
-    });
-    applyDiscussionSessionUpdate(sidecar, "sidecar-one", {
-      _tag: "Event",
-      revision: 4,
-      sessionId: "sidecar-one",
-      event: {
-        _tag: "PartUpdated",
-        sessionId: "sidecar-one",
-        part: {
-          id: "assistant-1",
-          kind: "text",
-          role: "assistant",
-          text: "Streamed answer",
-          status: "complete",
-        },
-      },
-    });
-    const streamedParts = sidecar.parts;
-    const answer = sidecar.parts[1];
-
-    // Settling a turn refreshes the parent's catalog; the row still carries the
-    // stale preview plus the thread's updated metadata.
-    applyDiscussionCatalogUpdate(parent, "session", {
-      _tag: "Event",
-      revision: 5,
-      parentSessionId: "session",
-      event: {
-        _tag: "Replaced",
-        threads: [{ ...linked, updatedAt: "2026-01-02", status: "resolved" }],
-      },
-    });
-
-    expect(parent.threads[0]).toBe(retained);
-    expect(retained.updatedAt).toBe("2026-01-02");
-    expect(retained.status).toBe("resolved");
-    expect(retained.uiParts).toEqual([]);
-    expect(sidecar.parts).toBe(streamedParts);
-    expect(sidecar.parts[1]).toBe(answer);
-    expect(sidecar.uiParts.map((part) => part.id)).toEqual(["user-1", "assistant-1"]);
-    expect(sidecar.streaming).toBe(true);
-    expect(projection.findDiscussionConversation("sidecar-one")).toBe(sidecar);
-    projection[Symbol.dispose]();
   });
 
   it("rejects sidecar updates addressed to another conversation", () => {
