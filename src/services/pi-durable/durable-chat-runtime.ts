@@ -75,7 +75,10 @@ import { PresetContextDoc, presetContextSection, PresetState } from "./durable-p
 import { cakeAgentDocumentationDirectory } from "../pi/runtime/cake-agent-documentation";
 import { createDurableChatCommands } from "./durable-chat-commands";
 import { abortDurableActiveTurn, createDurableConversationQueue } from "./durable-chat-queue";
-import { loadAgentDirectoryExtensions } from "../pi/runtime/extension-providers";
+import {
+  loadAgentDirectoryExtensions,
+  requireRegisteredModel,
+} from "../pi/runtime/extension-providers";
 import {
   cakeChatExecutionEnv,
   cakeChatScratchDirectory,
@@ -176,12 +179,14 @@ export async function createDurableCakeChatRuntime(
   const available = await catalogRuntime.getAvailable();
   const presets = options.coordinator.modelPresets?.();
   const preset = presets?.presets.find((entry) => entry.id === presets.defaultPresetId);
-  const defaultModel = preset
-    ? catalogRuntime.getModel(preset.provider, preset.modelId)
-    : (catalogRuntime.getModel(
-        settings.getDefaultProvider() ?? "",
-        settings.getDefaultModel() ?? "",
-      ) ?? available[0]);
+  const defaultProvider = settings.getDefaultProvider();
+  const defaultModelId = settings.getDefaultModel();
+  const selection =
+    preset ??
+    (defaultProvider && defaultModelId
+      ? { provider: defaultProvider, modelId: defaultModelId }
+      : undefined);
+  const defaultModel = selection ? requireRegisteredModel(catalogRuntime, selection) : available[0];
   if (!defaultModel)
     throw new Error("Configure an authenticated chat model in Settings before opening Cake Chat");
   let thinkingLevel: ThinkingLevel =

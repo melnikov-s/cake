@@ -109,9 +109,11 @@ function reviewContextExtension(
       if (!id) return;
       const path = pathForSession(id);
       if (!existsSync(path)) return;
-      return {
-        systemPrompt: `${event.systemPrompt}\n\nInline code reviews and assistant-message discussions for this session are indexed at ${path}. Read or search that file when the user asks you to incorporate, summarize, or reason about those threads; otherwise leave it alone.`,
-      };
+      const guidance = `Inline code reviews and assistant-message discussions for this session are indexed at ${path}. Read or search that file when the user asks you to incorporate, summarize, or reason about those threads; otherwise leave it alone.`;
+      event.systemPromptOptions.sections.cake_reviews = guidance;
+      // Pi's explicit whole-prompt override bypasses section rendering.
+      if (event.systemPromptOptions.forceSystemPrompt !== undefined)
+        event.systemPromptOptions.forceSystemPrompt += `\n\n${guidance}`;
     });
   };
 }

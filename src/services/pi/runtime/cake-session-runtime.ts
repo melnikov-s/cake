@@ -27,6 +27,7 @@ import type { CakeChatMemoryOptions } from "../cake-chat-memory-options";
 import { Schema } from "effect";
 import { promptFilesSchema } from "../../../contracts/conversations/prompt-files";
 import {
+  assertInitialModelRegistered,
   registerAgentDirectoryExtensionProviders,
   registerPendingExtensionProviders,
 } from "./extension-providers";
@@ -397,6 +398,7 @@ export async function createCakeSessionRuntime(
     options.auxiliary && !options.projectInvestigation
       ? await registerAgentDirectoryExtensionProviders(agentDir, modelRuntime)
       : await registerPendingExtensionProviders(capabilities.resourceLoader, modelRuntime);
+  assertInitialModelRegistered(modelRuntime, settingsManager, sessionManager);
   const agentSessionOptions = {
     cwd: options.cwd,
     agentDir,

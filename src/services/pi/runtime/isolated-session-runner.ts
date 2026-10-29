@@ -7,7 +7,11 @@ import {
   type SessionManager,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { registerAgentDirectoryExtensionProviders } from "./extension-providers";
+import {
+  assertInitialModelRegistered,
+  registerAgentDirectoryExtensionProviders,
+  requireRegisteredModel,
+} from "./extension-providers";
 import { createPromptCacheLineage } from "./prompt-cache-lineage";
 import { createWidgetContextExtension } from "./widget-context-extension";
 import { createWidgetCandidateTools } from "./widget-candidate-tools";
@@ -190,7 +194,16 @@ export async function runIsolatedSession(
   const selectedTools = options.widgetCandidate
     ? candidateTools.map((tool) => tool.name)
     : options.tools;
+  const selectedModel = options.model
+    ? requireRegisteredModel(modelRuntime, {
+        provider: options.model.provider,
+        modelId: options.model.id,
+      })
+    : undefined;
+  if (!selectedModel)
+    assertInitialModelRegistered(modelRuntime, settingsManager, options.sessionManager);
   const agentSessionOptions = {
+    model: selectedModel,
     cwd: options.cwd,
     agentDir: options.agentDir,
     modelRuntime,
@@ -220,14 +233,6 @@ export async function runIsolatedSession(
         });
       if (options.bindExtensions || promptCacheLineage || options.inheritWidgetContext)
         await session.bindExtensions({ mode: "rpc" });
-      if (options.model) {
-        const model = modelRuntime.getModel(options.model.provider, options.model.id);
-        if (!model)
-          throw new Error(
-            `Unknown ${options.modelPurpose} model ${options.model.provider}/${options.model.id}`,
-          );
-        await session.setModel(model);
-      }
       if (options.thinkingLevel) session.setThinkingLevel(options.thinkingLevel);
 
       let response = "";

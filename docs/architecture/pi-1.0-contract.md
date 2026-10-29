@@ -180,6 +180,32 @@ live Pi Session Runtime, while discovery information belongs to
 Pi Session observation reconstructs durable state through Pi from JSONL and
 then emits live runtime events. Cake does not read or mutate JSONL directly.
 
+### Extension provider embedding
+
+Extension factories must register providers on every independent runtime before
+model selection. Cake flushes factory registrations first; an unavailable settings
+selection or persisted model-change selection fails explicitly rather than letting
+Pi persist a fallback. Process-wide first-instance registration and registration
+only from `session_start` do not satisfy this contract. Cake does not synthesize
+session events in catalog loaders or share provider closures across sessions.
+
+Provider-only loaders (Durable Cake Chat, restricted auxiliary/isolated sessions,
+and the shared catalog) retain registered model metadata. Chat requests through
+them fail explicitly for providers whose owning extension also registers unbound
+event handlers. Pi exposes no declaration that such providers are independent of
+their hooks, so this is a conservative restriction, including unrelated UI hooks.
+`project_trust` is exempt because the resource loader dispatches it. Authors can
+separate a lifecycle-independent provider into its own extension; otherwise use a
+regular Project Session that binds the actual cwd and session lifecycle. This does
+not make an extension's process-global state safe across independent sessions.
+
+Cake preserves its documentation, project/user instructions, and structured custom
+prompt sections. It does not strip or reword instructions to satisfy a provider's
+prompt rejection. A provider that replaces Pi's harness or rejects required text
+must supply a faithful full-transcript transport before it can be considered
+compatible; otherwise choose another provider. Local fixtures verify these
+embedding boundaries, not real-provider authentication or transport behavior.
+
 ## Agent-requested targeted compaction
 
 `sessions.compact` and `sessions.compact-batch` execute in backend domain control,

@@ -29,7 +29,11 @@ afterEach(async () => {
 /** A project and an agent directory whose settings default to a model on an
  *  extension-registered provider. The extension lives either in the project's
  *  `.pi/extensions` or in the agent directory's `extensions`. */
-async function createProject(extensionHome: "project" | "agent-directory" = "project") {
+async function createProject(
+  extensionHome: "project" | "agent-directory" = "project",
+  deferred = false,
+  hooks = false,
+) {
   const directory = await mkdtemp(join(tmpdir(), "cake-extension-provider-"));
   directories.push(directory);
   const extensions =
@@ -39,23 +43,25 @@ async function createProject(extensionHome: "project" | "agent-directory" = "pro
   await mkdir(extensions, { recursive: true });
   await writeFile(
     join(extensions, "fixture-provider.ts"),
-    `export default function (pi) { pi.registerProvider("fixture-provider", ${JSON.stringify({
-      name: "Fixture provider",
-      baseUrl: "http://127.0.0.1:9/v1",
-      apiKey: "fixture",
-      api: "openai-completions",
-      models: [
-        {
-          id: "fixture-model",
-          name: "Fixture model",
-          reasoning: false,
-          input: ["text"],
-          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-          contextWindow: 4_096,
-          maxTokens: 1_024,
-        },
-      ],
-    })}); }\n`,
+    `export default function (pi) { ${hooks ? 'pi.on("before_agent_start", () => {});' : ""} ${deferred ? 'pi.on("session_start", () => {' : ""} pi.registerProvider("fixture-provider", ${JSON.stringify(
+      {
+        name: "Fixture provider",
+        baseUrl: "http://127.0.0.1:9/v1",
+        apiKey: "fixture",
+        api: "openai-completions",
+        models: [
+          {
+            id: "fixture-model",
+            name: "Fixture model",
+            reasoning: false,
+            input: ["text"],
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            contextWindow: 4_096,
+            maxTokens: 1_024,
+          },
+        ],
+      },
+    )}); ${deferred ? "});" : ""} }\n`,
   );
   await mkdir(join(directory, "agent"), { recursive: true });
   await writeFile(
@@ -107,6 +113,30 @@ async function openRuntime(
 }
 
 describe("extension provider model resolution", () => {
+  it.each([{}, { auxiliary: true }, { cakeChat: true }])(
+    "does not silently fall back when registration is deferred (%j)",
+    async (options) => {
+      const directory = await createProject("agent-directory", true);
+      vi.stubEnv("OPENAI_API_KEY", "fallback-bait");
+      await expect(openRuntime(directory, options)).rejects.toThrow(
+        /Selected model fixture-provider\/fixture-model is unavailable.*session_start/,
+      );
+    },
+  );
+
+  it.each([{ auxiliary: true }, { cakeChat: true }])(
+    "discloses unbound provider hooks without hiding model metadata (%j)",
+    async (options) => {
+      const directory = await createProject("agent-directory", false, true);
+      const runtime = await openRuntime(directory, options);
+      const snapshot = await runtime.snapshot();
+      expect(snapshot.model).toMatchObject({ provider: "fixture-provider", id: "fixture-model" });
+      expect(snapshot.diagnostics).toContainEqual(
+        expect.stringContaining("does not bind Pi session hooks (before_agent_start)"),
+      );
+    },
+  );
+
   it("honors a settings default that names an extension-registered provider", async () => {
     const directory = await createProject();
     // A built-in provider is authenticated too, so a failed default lookup would
