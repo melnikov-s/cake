@@ -2480,7 +2480,7 @@ const projectChatTodos: VisualCaptureScenario = {
 const projectChatTaskRails: VisualCaptureScenario = {
   name: "project-chat-task-rails",
   description:
-    "Responsive gutter task labels, separated groups, pane inspection and wide widget rule breaks",
+    "Unbordered task headings, separated message rules, pane inspection and wide widget rule breaks",
   states: ["wide", "narrow", "widget", "return", "pane"],
   async seed(paths, theme) {
     await projectChatTodos.seed(paths, theme);
@@ -2559,8 +2559,8 @@ const projectChatTaskRails: VisualCaptureScenario = {
       .locator('xpath=ancestor::*[@data-slot="transcript-item"]');
     const first = row.getByTitle(`Show in To-do: ${taskTitle}`);
     await expect(first).toBeVisible();
-    // Query the available pane width, not the window: accessory panes must
-    // trigger the same inside-border fallback as a narrow window.
+    // Headings stay above the rule at every pane width, including wrapping
+    // titles and narrower accessory layouts.
     const label = first.locator('xpath=ancestor::*[@data-slot="task-section-label"]');
     const labelBounds = await label.boundingBox();
     const rowBounds = await row.boundingBox();
@@ -2569,30 +2569,16 @@ const projectChatTaskRails: VisualCaptureScenario = {
     expect(rowBounds, "Transcript row bounds").not.toBeNull();
     expect(messageBounds, "Following message bounds").not.toBeNull();
     const transcriptBounds = (await transcript.boundingBox())!;
-    const wide = await transcript.evaluate(
-      (element) =>
-        element.clientWidth >= 76 * parseFloat(getComputedStyle(document.documentElement).fontSize),
-    );
     expect(labelBounds!.x).toBeGreaterThanOrEqual(transcriptBounds.x);
     expect(labelBounds!.x + labelBounds!.width).toBeLessThanOrEqual(
       rowBounds!.x + rowBounds!.width + 1,
     );
-    if (wide) {
-      expect(labelBounds!.x + labelBounds!.width).toBeLessThan(rowBounds!.x - 20);
-      expect(labelBounds!.y).toBeLessThanOrEqual(messageBounds!.y);
-      // Even when a wrapping gutter label is taller than the message, the next
-      // row starts below it. Its height remains part of normal transcript flow.
-      expect(labelBounds!.y + labelBounds!.height).toBeLessThanOrEqual(
-        rowBounds!.y + rowBounds!.height,
-      );
-    } else {
-      expect(labelBounds!.x).toBeGreaterThanOrEqual(rowBounds!.x);
-      expect(labelBounds!.y + labelBounds!.height).toBeLessThanOrEqual(messageBounds!.y);
-    }
+    expect(labelBounds!.y - rowBounds!.y).toBe(32);
+    expect(labelBounds!.y + labelBounds!.height).toBeLessThanOrEqual(messageBounds!.y);
     const railBounds = (await row.locator('[data-slot="margin-rail"]').boundingBox())!;
-    expect(railBounds.y - rowBounds!.y).toBe(32);
-    if (wide) expect(labelBounds!.x + labelBounds!.width).toBeLessThan(railBounds.x);
-    else expect(labelBounds!.x).toBeGreaterThan(railBounds.x);
+    expect(railBounds.y).toBeGreaterThanOrEqual(labelBounds!.y + labelBounds!.height + 12);
+    expect(railBounds.y).toBeLessThanOrEqual(messageBounds!.y);
+    expect(labelBounds!.x).toBe(railBounds.x);
     expect(await transcript.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
       true,
     );

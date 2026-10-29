@@ -11,7 +11,7 @@ const longStatus =
   "Checking navigation, keyboard shortcuts and workspace identifiers before review";
 
 for (const theme of ["dark", "light"] as const)
-  test(`task groups fit their pane and keep long gutter labels in flow (${theme})`, async () => {
+  test(`task headings wrap above the message border at every pane width (${theme})`, async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-task-layout-"));
     const paths = {
       cakeHome: join(root, "cake"),
@@ -49,7 +49,8 @@ for (const theme of ["dark", "light"] as const)
       const title = transcript.getByTitle(`Show in To-do: ${longTitle}`);
       const label = title.locator('xpath=ancestor::*[@data-slot="task-section-label"]');
       const row = title.locator('xpath=ancestor::*[@data-slot="transcript-item"]');
-      // Cross the container breakpoint in both directions without remounting.
+      // Resize in both directions without remounting; long headings and status
+      // must stay above, never alongside, the message rule.
       for (const width of [1800, 900, 1500, 1560, 1800]) {
         await app.evaluate(
           ({ BrowserWindow }, width) =>
@@ -64,12 +65,6 @@ for (const theme of ["dark", "light"] as const)
           const rowBounds = (await row.boundingBox())!;
           const railBounds = (await row.locator('[data-slot="margin-rail"]').boundingBox())!;
           const messageBounds = (await row.locator('[data-slot="message"]').boundingBox())!;
-          const wide = await transcript.evaluate(
-            (element) =>
-              element.clientWidth >=
-              76 * parseFloat(getComputedStyle(document.documentElement).fontSize),
-          );
-          expect(wide).toBe(width >= 1560);
           expect(labelBounds.x).toBeGreaterThanOrEqual(paneBounds.x);
           expect(labelBounds.x + labelBounds.width).toBeLessThanOrEqual(
             paneBounds.x + paneBounds.width,
@@ -77,14 +72,10 @@ for (const theme of ["dark", "light"] as const)
           expect(labelBounds.y + labelBounds.height).toBeLessThanOrEqual(
             rowBounds.y + rowBounds.height,
           );
-          if (wide) {
-            expect(labelBounds.x + labelBounds.width).toBeLessThan(railBounds.x);
-            expect(labelBounds.y).toBeLessThanOrEqual(messageBounds.y);
-          } else {
-            expect(labelBounds.x).toBeGreaterThan(railBounds.x);
-            expect(labelBounds.y + labelBounds.height).toBeLessThanOrEqual(messageBounds.y);
-          }
-          expect(railBounds.y - rowBounds.y).toBe(32);
+          expect(labelBounds.x).toBe(railBounds.x);
+          expect(labelBounds.y - rowBounds.y).toBe(32);
+          expect(railBounds.y).toBeGreaterThanOrEqual(labelBounds.y + labelBounds.height + 12);
+          expect(railBounds.y).toBeLessThanOrEqual(messageBounds.y);
           expect(
             await transcript.evaluate((element) => element.scrollWidth <= element.clientWidth),
           ).toBe(true);

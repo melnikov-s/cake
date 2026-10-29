@@ -189,7 +189,7 @@ in the shared fullscreen preview; non-image attachments retain labels. Thumbnail
 are renderer presentation only: Cake Chat still admits opaque input references,
 not image payloads, to its model context.
 
-[`MarginRail`](../../src/renderer/components/ui/margin-rail.tsx) renders task-switch labels in the left gutter when the transcript has at least 76rem of available width, otherwise above the section inside its rule. Wrapping labels contribute their height to the row so they cannot overlap following content. Task switches leave a gap in the continuation rule; rich artifact/widget rows break the rule and keep any label in the reading flow. Inspecting its task opens the existing To-do pane without selecting next-message context.
+[`MarginRail`](../../src/renderer/components/ui/margin-rail.tsx) renders an unbordered, left-aligned task heading above its messages at every width. The continuation rule begins below the complete title/status heading, including wrapped text, and task switches leave a gap in the rule. Rich artifact/widget rows break the rule, not the heading. Inspecting its task opens the existing To-do pane without selecting next-message context.
 
 `NavItem.associated` and `SessionListItem.associated` share a faint tinted, dashed-outline
 relationship cue for the selected Project Chat or global Cake Chat to-do and its linked

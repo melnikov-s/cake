@@ -75,7 +75,7 @@ export const ChatTranscriptItem = memo(
         }
         aria-current={selected ? "true" : undefined}
         className={cn(
-          "relative mx-auto w-full max-w-3xl min-w-0 pb-5 has-[[data-slot=task-section-label]]:flow-root has-[[data-slot=task-section-label]]:pt-8 has-[[data-slot=artifact-disclosure]]:max-w-6xl in-[.chat-layout-compact]:pb-3.5 [&:has([data-slot=artifact-disclosure])_[data-slot=margin-rail]]:hidden [&:has([data-widget-view-id])_[data-slot=margin-rail]]:hidden",
+          "relative mx-auto w-full max-w-3xl min-w-0 pb-5 has-[[data-slot=task-section-label]]:grid has-[[data-slot=task-section-label]]:grid-cols-[minmax(0,1fr)] has-[[data-slot=task-section-label]]:pt-8 has-[[data-slot=artifact-disclosure]]:max-w-6xl in-[.chat-layout-compact]:pb-3.5 [&:has([data-slot=artifact-disclosure])_[data-slot=margin-rail]]:hidden [&:has([data-widget-view-id])_[data-slot=margin-rail]]:hidden",
           errorFollowsUser && "pt-3",
           arriving && "motion-safe:animate-arrive",
           // The selection ring outlines only the message bubble, not its label or
@@ -91,39 +91,41 @@ export const ChatTranscriptItem = memo(
             todos={behavior.todos}
           />
         )}
-        {item.kind === "activity-group" ? (
-          <ActivityGroup groupId={item.id} parts={item.parts} behavior={behavior} />
-        ) : item.kind === "source-group" ? (
-          <div className="flex flex-wrap items-center gap-2" data-slot="source-group">
-            {item.parts.map((part) => (
-              <TranscriptPart key={part.id} part={part} behavior={behavior} />
-            ))}
-          </div>
-        ) : item.kind === "context-group" ? (
-          <div className="flex flex-wrap items-start gap-2" data-slot="context-group">
-            {item.parts.map((part) => (
-              <TranscriptPart key={part.id} part={part} behavior={behavior} />
-            ))}
-          </div>
-        ) : item.kind === "changed-files" ? (
-          <ChangedFiles
-            parts={parts}
-            workspacePath={behavior.workspacePath}
-            open={changedFilesOpen}
-            onOpenChange={(open) => store.transcriptInteraction.setChangedFilesOpen(open)}
-            onOpenFile={
-              behavior.openSourceLocation
-                ? (path) => behavior.openSourceLocation?.({ path, view: "changes" })
-                : undefined
-            }
-          />
-        ) : item.kind === "loading-state" ? (
-          <LoadingState label={loadingLabel} startedAt={loadingStartedAt} />
-        ) : item.kind === "review-run" ? (
-          <ReviewRunMessage run={item} onOpen={behavior.onOpenReviewRun} />
-        ) : (
-          <TranscriptPart part={item} behavior={behavior} />
-        )}
+        <div className="col-start-1 row-start-2 min-w-0">
+          {item.kind === "activity-group" ? (
+            <ActivityGroup groupId={item.id} parts={item.parts} behavior={behavior} />
+          ) : item.kind === "source-group" ? (
+            <div className="flex flex-wrap items-center gap-2" data-slot="source-group">
+              {item.parts.map((part) => (
+                <TranscriptPart key={part.id} part={part} behavior={behavior} />
+              ))}
+            </div>
+          ) : item.kind === "context-group" ? (
+            <div className="flex flex-wrap items-start gap-2" data-slot="context-group">
+              {item.parts.map((part) => (
+                <TranscriptPart key={part.id} part={part} behavior={behavior} />
+              ))}
+            </div>
+          ) : item.kind === "changed-files" ? (
+            <ChangedFiles
+              parts={parts}
+              workspacePath={behavior.workspacePath}
+              open={changedFilesOpen}
+              onOpenChange={(open) => store.transcriptInteraction.setChangedFilesOpen(open)}
+              onOpenFile={
+                behavior.openSourceLocation
+                  ? (path) => behavior.openSourceLocation?.({ path, view: "changes" })
+                  : undefined
+              }
+            />
+          ) : item.kind === "loading-state" ? (
+            <LoadingState label={loadingLabel} startedAt={loadingStartedAt} />
+          ) : item.kind === "review-run" ? (
+            <ReviewRunMessage run={item} onOpen={behavior.onOpenReviewRun} />
+          ) : (
+            <TranscriptPart part={item} behavior={behavior} />
+          )}
+        </div>
       </div>
     );
   },
