@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, screen, waitFor } from "@testing-library/react";
+import { renderTranscriptContent as render } from "./render-transcript-content";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import {
@@ -94,6 +95,7 @@ function renderProjectionFinishDiscussion() {
   });
   const chat = fixture.root.reviewsStore.chatStore(thread.id);
   if (!chat) throw new Error("Expected the real discussion Chat");
+  chat.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" });
   const view = render(<Chat store={chat} embedded compact composerFocusEnabled={false} />);
   return {
     user: userEvent.setup(),

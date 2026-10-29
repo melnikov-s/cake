@@ -1,4 +1,5 @@
-import { act, render } from "@testing-library/react";
+import { act } from "@testing-library/react";
+import { renderTranscriptContent as render } from "./render-transcript-content";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 import type {
@@ -68,6 +69,8 @@ export function renderProjectionFinishRun(replayDelivery: "Snapshot" | "RunChang
     applyWorkflowRunUpdate(detail(), { _tag: replayDelivery, revision, run });
   }
   const stores = session.workflowRunStores;
+  for (const store of stores)
+    store.workerChat.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" });
   const view = render(
     <WorkflowConversationLayout stores={stores}>
       <WorkflowProgress store={session.workflowRunStore} />
