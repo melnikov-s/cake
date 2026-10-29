@@ -362,6 +362,57 @@ describe("Projected transcript rendering workflows", () => {
     expect(copy).toHaveBeenCalledWith(completed.text);
   });
 
+  it("counts a background start and successive waits as one work-log item while the turn settles", async () => {
+    const handleId = "10000000-0000-4000-8000-000000000007";
+    const model = {
+      prefer: "exact",
+      provider: "fixture",
+      modelId: "fixture-model",
+      thinkingLevel: "off",
+    };
+    const start: UiPart = {
+      id: "background-start",
+      kind: "tool",
+      name: "cake",
+      command: "subagents.start",
+      input: JSON.stringify({ task: "Tell a joke", model }),
+      output: JSON.stringify({ handleId, task: "Tell a joke", status: "running" }),
+      state: "success",
+    };
+    const waiting: UiPart = {
+      id: "background-wait-1",
+      kind: "tool",
+      name: "cake",
+      command: "subagents.wait",
+      input: JSON.stringify({ handleId }),
+      output: JSON.stringify({ handleId, task: "Tell a joke", status: "running" }),
+      state: "success",
+    };
+    using fixture = renderTranscriptRendering([start, waiting], { streaming: true });
+    const summary = screen.getByText("Work log", { exact: true }).closest("summary");
+    if (!summary) throw new Error("Missing background work log");
+    expect(summary.textContent).toContain("1 tool call");
+    await fixture.user.click(summary);
+    // Inner work-log rows use a real virtualizer. Count/disclosure are observable
+    // without inventing viewport measurements to force those rows into jsdom.
+    const completed: UiPart = {
+      ...waiting,
+      id: "background-wait-2",
+      output: JSON.stringify({
+        handleId,
+        task: "Tell a joke",
+        status: "complete",
+        resolvedModel: { ...model, requested: "exact", source: "exact", fallbacks: [] },
+        parts: [{ id: "child-answer", kind: "text", text: "A compact joke.", status: "complete" }],
+      }),
+    };
+    fixture.publish([start, waiting, completed]);
+    expect(summary.closest("details")?.open).toBe(true);
+    expect(summary.textContent).toContain("1 tool call");
+    expect(summary.textContent).not.toContain("subagents.wait");
+    expect(fixture.container.querySelector('[data-slot="loading-state"]')).toBeNull();
+  });
+
   it("shows a failed operation's preserved technical details, copies them and allows dismissal", async () => {
     const failure = new Error("Model request failed");
     failure.stack = "Error: Model request failed\n    at provider.request (provider.ts:50:7)";
