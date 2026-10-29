@@ -363,7 +363,9 @@ describe("permanent Cake Chat", () => {
       const untrusted = yield* options();
       expect(untrusted.runtime.cwd).toBe(project.path);
       expect(untrusted.runtime.trusted).toBe(false);
+      expect(untrusted.runtime.projectTrust?.()).toBe(false);
       f.setState({ ...f.state(), trustedProjectPaths: [project.path] });
+      expect(untrusted.runtime.projectTrust?.()).toBe(true);
       const trusted = yield* options();
       expect(trusted.runtime.trusted).toBe(true);
       expect(trusted.runtime.tools).toEqual(untrusted.runtime.tools);

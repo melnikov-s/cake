@@ -397,8 +397,7 @@ const prepareTasks = Effect.fn("Subagents.prepareTasks")(function* (
         if (project && !application.trustedProjectPaths.includes(project.path))
           throw new SubagentError({
             operation: "preflight",
-            message:
-              "That project is not trusted. Authorize it in Cake before loading its extensions and MCP.",
+            message: `Project ${JSON.stringify(project.path)} is not trusted. In Cake, use the folder picker to open this project and choose “Trust and continue”, then retry the launch. Registration with projects.add does not grant trust.`,
           });
         const workingDirectory =
           project?.path ?? generalLocation?.workingDirectory ?? parent.workingDirectory;

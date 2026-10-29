@@ -6,20 +6,16 @@ import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("authorizes and opens a restored Project", async () => {
+test("authorizes and opens a restored resource-free untrusted Project", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-project-open-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
   const cakeHome = join(temporaryRoot, "cake-home");
   await Promise.all([
     mkdir(userData, { recursive: true }),
-    mkdir(join(project, ".pi", "extensions"), { recursive: true }),
+    mkdir(project, { recursive: true }),
     mkdir(join(cakeHome, "state"), { recursive: true }),
   ]);
-  await writeFile(
-    join(project, ".pi", "extensions", "fixture.ts"),
-    "export default function fixture() {}\n",
-  );
   await writeFile(join(userData, "window-state.json"), windowState({ project }));
   await writeFile(
     join(cakeHome, "state", "application.json"),
@@ -52,7 +48,7 @@ test("authorizes and opens a restored Project", async () => {
 
   try {
     const page = await application.firstWindow();
-    const trust = page.getByRole("button", { name: "Trust and open" });
+    const trust = page.getByRole("button", { name: "Trust and continue" });
     await expect(trust).toBeVisible({ timeout: 20_000 });
     await trust.click();
     await expect(trust).toBeHidden();

@@ -44,6 +44,7 @@ import { subagentCompletionMessage } from "../../../src/contracts/subagents/suba
 import type { PiTurnResult } from "../../../src/contracts/pi/turn-result-data";
 import { splitContextReminders } from "../../../src/services/pi/runtime/session-context-reminders";
 import * as subagents from "../../../src/domain/subagents/subagents";
+import { trustProject } from "../../../src/domain/application/application";
 import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
 import {
   projectQueuedMessages,
@@ -85,8 +86,8 @@ const applicationValue: ApplicationStateValue = {
   projects: ["/project", "/another", "/untrusted"].map((path) => ({
     path,
     name: path.slice(1),
-    addedAt: "now",
-    lastOpenedAt: "now",
+    addedAt: "2026-01-01T00:00:00.000Z",
+    lastOpenedAt: "2026-01-01T00:00:00.000Z",
   })),
 };
 
@@ -1272,6 +1273,15 @@ describe("Cake Chat project investigators", () => {
               .pipe(Effect.flip)) instanceof subagents.SubagentError,
           );
         assert.equal(yield* Ref.get(fixture.constructions), 0);
+        const untrusted = yield* subagents
+          .start(
+            { continuation: "resume", task: "Inspect config", projectPath: "/untrusted" },
+            cakeChatParent(fixture),
+          )
+          .pipe(Effect.flip);
+        assert.match(untrusted.message, /folder picker/);
+        assert.match(untrusted.message, /Trust and continue/);
+        assert.match(untrusted.message, /projects.add does not grant trust/);
         const wrongCaller = yield* subagents
           .start(
             { continuation: "resume", task: "Inspect", projectPath: "/another" },
@@ -1279,6 +1289,18 @@ describe("Cake Chat project investigators", () => {
           )
           .pipe(Effect.flip);
         assert.match(wrongCaller.message, /only to Cake Chat/);
+        // This is the state change made by the user's correlated trust approval.
+        yield* trustProject("/untrusted");
+        yield* subagents.start(
+          { continuation: "resume", task: "Retry approved project", projectPath: "/untrusted" },
+          cakeChatParent(fixture),
+        );
+        const sessionId = yield* Queue.take(fixture.childStarted);
+        const constructed = yield* Ref.get(fixture.constructedOptions);
+        assert.equal(constructed.at(-1)?.trusted, true);
+        assert.equal(constructed.at(-1)?.cwd, "/untrusted");
+        yield* completeChild(fixture, sessionId);
+        yield* Queue.take(fixture.reports);
       }).pipe(Effect.provide(fixture.layer));
     }),
   );

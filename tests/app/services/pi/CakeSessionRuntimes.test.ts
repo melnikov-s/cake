@@ -1222,6 +1222,65 @@ describe("CakeSessionRuntimes", () => {
     }),
   );
 
+  it.effect("applies live Project Chat trust without replacing its retained Pi Session", () =>
+    Effect.gen(function* () {
+      let trusted = false;
+      let constructions = 0;
+      let disposals = 0;
+      let reloads = 0;
+      const layer = makeCakeSessionRuntimesLayer({
+        sessionIds: () => Stream.empty,
+        catalog: () => Stream.empty,
+        catalogEntry: () => Effect.succeed(undefined),
+        inspect: () => Effect.succeed(undefined),
+        changelog: () => Effect.succeed(""),
+        createRuntime: (runtimeOptions) =>
+          Effect.sync(() => {
+            constructions += 1;
+            return {
+              ...fakeRuntime(runtimeOptions, () => {
+                disposals += 1;
+              }),
+              reload: async () => {
+                reloads += 1;
+              },
+            };
+          }),
+      }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
+      const context = yield* Layer.build(layer);
+      const sessions = Context.get(context, CakeSessionRuntimes);
+      const chatOptions = (): CakeSessionRuntimeAcquireOptions => ({
+        profile: { _tag: "CakeChatSession" },
+        runtime: {
+          ...options({ trusted, projectTrust: () => trusted }).runtime,
+          globalControl: { tools: [], invoke: async () => ({ ok: true }) },
+        },
+      });
+      const initialOptions = chatOptions();
+      const first = yield* sessions.acquire(initialOptions);
+      const before = yield* first.snapshot();
+      yield* sessions.acquire(chatOptions());
+      assert.equal(reloads, 0);
+      trusted = true; // The user approves; registration alone never changes this authority.
+      const reopened = yield* sessions.acquire(chatOptions());
+      assert.deepEqual(yield* reopened.snapshot(), before);
+      assert.equal(constructions, 1);
+      assert.equal(disposals, 0);
+      assert.equal(reloads, 1);
+      // Cached options held by existing observers must not undo the user's approval.
+      yield* sessions.acquire(initialOptions);
+      assert.equal(reloads, 1);
+      const conflict = yield* Effect.flip(
+        sessions.acquire({
+          ...chatOptions(),
+          runtime: { ...chatOptions().runtime, tools: ["read"] },
+        }),
+      );
+      assert.match(conflict.message, /conflicting runtime options/);
+      assert.equal(constructions, 1);
+    }),
+  );
+
   it.effect("releases a rejected conflicting acquisition immediately", () =>
     Effect.gen(function* () {
       const acquisitions = yield* Ref.make(0);

@@ -25,8 +25,9 @@ export const WorkspaceTrustDialog = observer(function WorkspaceTrustDialog() {
         <ConfirmationRequest>
           <ConfirmationTitle id="trust-title">Trust this workspace?</ConfirmationTitle>
           <ConfirmationDescription id="trust-description">
-            {projectOpen.pendingTrustPath} contains project-local executable Pi resources. Trust it
-            only if you know its contents.
+            Trust {projectOpen.pendingTrustPath} to run agents and load its project-local Pi
+            extensions and MCP. These can execute code on your computer. Trust only projects whose
+            contents you know.
           </ConfirmationDescription>
           <ConfirmationActions>
             <ConfirmationAction
@@ -36,7 +37,7 @@ export const WorkspaceTrustDialog = observer(function WorkspaceTrustDialog() {
               Cancel
             </ConfirmationAction>
             <ConfirmationAction onClick={() => void projectOpen.resolveProjectTrust(true)}>
-              Trust and open
+              Trust and continue
             </ConfirmationAction>
           </ConfirmationActions>
         </ConfirmationRequest>

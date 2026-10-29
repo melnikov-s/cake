@@ -203,6 +203,40 @@ describe("portable Project operations", () => {
     }).pipe(Effect.provide(testLayer())),
   );
 
+  it.effect.each([false, true])(
+    "resource-free agent Projects require explicit trust (already registered=%s)",
+    (alreadyRegistered) =>
+      Effect.gen(function* () {
+        yield* initialize;
+        pi.inspect.mockReturnValue(Effect.succeed({ trustRequired: false }));
+        if (alreadyRegistered) yield* upsertProject("/project", "Existing untrusted");
+        const added = yield* projects.addForAgent({ path: "/project" });
+        expect(added.alreadyRegistered).toBe(alreadyRegistered);
+        expect(added.project.trusted).toBe(false);
+
+        expect(yield* projects.inspect(7, { requestId: "cancel", path: "/project" })).toMatchObject(
+          {
+            trustRequired: true,
+          },
+        );
+        yield* projects.respondTrust(7, { requestId: "cancel", path: "/project", approved: false });
+        expect((yield* projects.infoForAgent({ path: "/project" })).project.trusted).toBe(false);
+
+        expect(
+          yield* projects.inspect(7, { requestId: "approve", path: "/project" }),
+        ).toMatchObject({
+          trustRequired: true,
+        });
+        yield* projects.respondTrust(7, { requestId: "approve", path: "/project", approved: true });
+        expect((yield* projects.infoForAgent({ path: "/project" })).project.trusted).toBe(true);
+        expect(yield* projects.inspect(7, { requestId: "reopen", path: "/project" })).toMatchObject(
+          {
+            trustRequired: false,
+          },
+        );
+      }).pipe(Effect.provide(testLayer())),
+  );
+
   it.effect("project_trust_response_is_connection_scoped", () =>
     Effect.gen(function* () {
       yield* initialize;

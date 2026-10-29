@@ -3,7 +3,7 @@ import { encodeCrossSessionMessage } from "../../src/contracts/conversations/cro
 import type { AttachmentReferenceControl } from "../../src/contracts/conversations/attachment-reference-control";
 import { cakeOperationImageResult } from "../../src/contracts/agent/cake-operation";
 import { createProjectSessionRuntime as createCakeSessionRuntime } from "../../src/layers/CakeOperations";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -123,6 +123,8 @@ async function createFixtureRuntime(
     onTurnResult?(turnId: string, result: PiTurnResult): void;
     attachmentReferenceControl?: AttachmentReferenceControl;
     requestUi?: CakeSessionRuntimeOptions["requestUi"];
+    trusted?: boolean;
+    projectTrust?: () => boolean;
   } = {},
 ) {
   vi.stubEnv("PI_CODING_AGENT_DIR", join(directory, "agent"));
@@ -130,7 +132,8 @@ async function createFixtureRuntime(
     cwd: directory,
     agentDir: join(directory, "agent"),
     sessionDir: join(directory, "sessions"),
-    trusted: true,
+    trusted: options.trusted ?? true,
+    projectTrust: options.projectTrust,
     newSession: options.sessionFile ? undefined : true,
     sessionFile: options.sessionFile,
     ...(options.projectInvestigation
@@ -168,6 +171,72 @@ afterEach(async () => {
 });
 
 describe("CakeSessionRuntime characterization", () => {
+  it("applies approved Project Chat trust after active work, retaining identity and history", async () => {
+    const directory = await createTemporaryDirectory();
+    const started = deferred();
+    const release = deferred();
+    await registerFixtureProvider(directory, (_index, response) => {
+      started.resolve();
+      void release.promise.then(() => finishTextResponse(response, "Original conversation"));
+    });
+    // The provider is personal; only the command below belongs to the untrusted project.
+    await mkdir(join(directory, "agent", "extensions"), { recursive: true });
+    await rename(
+      join(directory, ".pi", "extensions", "fixture-provider.ts"),
+      join(directory, "agent", "extensions", "fixture-provider.ts"),
+    );
+    await writeFile(
+      join(directory, ".pi", "extensions", "local-command.ts"),
+      `export default function (pi) { pi.registerCommand("trusted-project-command", {
+        description: "Project resource", handler: async () => {}
+      }); }`,
+    );
+    let trusted = false;
+    const runtime = await createFixtureRuntime(directory, [], {
+      trusted: false,
+      projectTrust: () => trusted,
+    });
+    const identity = runtime.sessionId;
+    const file = runtime.sessionFile;
+    const commandNames = async () =>
+      (await runtime.snapshot()).commands.map((command) => command.name);
+    expect(await commandNames()).not.toContain("trusted-project-command");
+    const turn = runtime.prompt("Keep this original message", "prompt", []);
+    await started.promise;
+    trusted = true;
+    try {
+      await runtime.reload?.();
+      expect(await commandNames()).not.toContain("trusted-project-command");
+    } finally {
+      release.resolve();
+      await turn;
+    }
+    expect(await commandNames()).toContain("trusted-project-command");
+    expect(runtime.sessionId).toBe(identity);
+    expect(runtime.sessionFile).toBe(file);
+    const originalEntries = SessionManager.open(file).getBranch();
+    const history = JSON.stringify(originalEntries);
+    expect(history).toContain("Keep this original message");
+    expect(history).toContain("Original conversation");
+    await runtime.reload?.();
+    expect(JSON.stringify(SessionManager.open(file).getBranch())).toBe(history);
+
+    // Releasing the process-owned runtime is not deletion or a new conversation.
+    runtimes.splice(runtimes.indexOf(runtime), 1);
+    await runtime.dispose();
+    const reopened = await createFixtureRuntime(directory, [], {
+      sessionFile: file,
+      trusted: true,
+    });
+    expect(reopened.sessionId).toBe(identity);
+    expect(reopened.sessionFile).toBe(file);
+    expect((await reopened.snapshot()).commands.map((command) => command.name)).toContain(
+      "trusted-project-command",
+    );
+    const reopenedEntries = SessionManager.open(file).getBranch();
+    expect(reopenedEntries.slice(0, originalEntries.length)).toEqual(originalEntries);
+  });
+
   it("idle-only targeted compaction completes through real Pi and preserves original history", async () => {
     const directory = await createTemporaryDirectory();
     await registerFixtureProvider(directory, (_index, response) =>

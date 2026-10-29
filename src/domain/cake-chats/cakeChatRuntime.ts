@@ -469,6 +469,10 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
           ),
       },
       trusted: !project || application.snapshot().trustedProjectPaths.includes(project.path),
+      // A permanent Project Chat can already be open when the user grants trust.
+      projectTrust: project
+        ? () => application.snapshot().trustedProjectPaths.includes(project.path)
+        : undefined,
       agentDir: configuration.agentDirectory,
       sessionDir: configuration.location.sessionDirectory,
       newSession,

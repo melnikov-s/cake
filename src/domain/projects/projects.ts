@@ -645,11 +645,12 @@ export const inspect = Effect.fn("Projects.inspect")(function* (
   const application = yield* ApplicationState;
   const clientWorkspaces = yield* ClientWorkspaces;
   yield* requireAllowed(request.path);
-  const inspection = yield* inspectPiWorkspace(request.path).pipe(
+  yield* inspectPiWorkspace(request.path).pipe(
     Effect.mapError((cause) => projectError("inspectWorkspace", cause)),
   );
-  const trustRequired =
-    inspection.trustRequired && !application.snapshot().trustedProjectPaths.includes(request.path);
+  // Opening a folder is also the user's route to authorizing agent launches.
+  // Resource-free Projects need this decision too: registration is not trust.
+  const trustRequired = !application.snapshot().trustedProjectPaths.includes(request.path);
   yield* mapProjectError("inspectWorkspace", access.clearOwner(connectionId));
   clientWorkspaces.associateWorkspace(connectionId, request.path);
   if (trustRequired)

@@ -57,7 +57,7 @@ export function createCakeChatProjectOperations(
         "The directory must already exist. Getting the checkout there (clone, worktree, zone tree) is operational work: delegate it to an allowMutations worker first, then register the path it reports.",
         "Pass an absolute path; the name defaults to the directory's base name. Adding a path that is already registered returns that Project unchanged with alreadyRegistered: true; use projects.rename to change its name.",
         "The Project appears in the sidebar and app.state immediately. Use the returned path verbatim with sessions.create or subagents.start.",
-        "Registration does not trust the Project's Pi resources (extensions, skills, prompts); the user approves that in Cake when they open it.",
+        "Registration does not grant trust. If trusted is false, ask the user to open this exact directory with Cake's folder picker and choose Trust and continue before launching project workers. This also works for already registered Projects. Cancel leaves the Project untrusted; do not create dummy Pi resources or change defaultProjectTrust to force approval.",
       ],
       inputSchema: AgentProjectAddInput,
       examples: [

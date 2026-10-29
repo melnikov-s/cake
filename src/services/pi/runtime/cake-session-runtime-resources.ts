@@ -65,6 +65,7 @@ export async function shutdownCakeSessionExtensions(session: AgentSession): Prom
 export async function createCakeSessionRuntimeResourceLifecycle(input: {
   readonly resourceLoader: ReloadableResourceLoader;
   readonly settingsManager: SettingsManager;
+  readonly projectTrust?: () => boolean;
   readonly eventBus: EventBus;
   readonly loadCompanions: boolean;
   readonly workingDirectory: string;
@@ -188,6 +189,7 @@ export async function createCakeSessionRuntimeResourceLifecycle(input: {
             detail: "Refreshing settings, extensions, skills, prompts, and tools.",
           });
           pendingCompanionState.clear();
+          if (input.projectTrust) input.settingsManager.setProjectTrusted(input.projectTrust());
           await input.session.reload();
           loadedExtensionPaths = resourceLoader
             .getExtensions()

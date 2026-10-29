@@ -213,7 +213,7 @@ describe("Project opening workflow", () => {
     const dialog = await screen.findByRole("alertdialog", { name: "Trust this workspace?" });
     expect(registerProject).not.toHaveBeenCalled();
     expect(screen.queryByRole("combobox", { name: "Message" })).toBeNull();
-    await fixture.user.click(within(dialog).getByRole("button", { name: "Trust and open" }));
+    await fixture.user.click(within(dialog).getByRole("button", { name: "Trust and continue" }));
     await waitFor(() =>
       expect(registerProject).toHaveBeenCalledWith(
         "/work/cake",
@@ -237,7 +237,7 @@ describe("Project opening workflow", () => {
     using fixture = renderProjectOpen({ workspaces: { respondToTrust, registerProject } });
     await fixture.user.click(screen.getByRole("button", { name: "Open project" }));
     const dialog = await screen.findByRole("alertdialog", { name: "Trust this workspace?" });
-    expect(within(dialog).getByText(/\/work\/cake contains/)).toBeDefined();
+    expect(within(dialog).getByText(/Trust \/work\/cake to run agents/)).toBeDefined();
     await fixture.user.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(respondToTrust).toHaveBeenCalledWith(
