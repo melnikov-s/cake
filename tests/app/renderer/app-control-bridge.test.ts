@@ -1,137 +1,21 @@
 import { Effect, Schema } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import { CakeChatTarget } from "../../../src/contracts/cake-chats/cake-chat-data";
-import type { VscodeEditorAction } from "../../../src/contracts/vscode/vscode-editor-action";
-
+import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import {
-  AppControlBridge,
   listAppControlTools,
   listSessionAssistantControlTools,
 } from "../../../src/renderer/app-control/AppControlBridge";
-import type {
-  AgentControlSource,
-  AppControlHost,
-  AppControlResult,
-} from "../../../src/renderer/app-control/app-control-data";
+import type { AppControlResult } from "../../../src/renderer/app-control/app-control-data";
 import { AppControlRegistry } from "../../../src/renderer/app-control/app-control-registry";
 import {
   defineControl,
   type ControlContext,
 } from "../../../src/renderer/app-control/control-definition";
-
-type AppControlHostOverrides = Partial<
-  AppControlHost["state"] & AppControlHost["sessions"] & AppControlHost["presentation"]
-> & {
-  settings?: AppControlHost["settings"];
-  vscode?: Partial<AppControlHost["vscode"]>;
-  worktrees?: AppControlHost["worktrees"];
-  projectRegistry?: AppControlHost["projects"];
-};
-
-function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
-  return {
-    state: {
-      currentSelection: overrides.currentSelection ?? (() => ({ kind: "workbench" })),
-      userSelection: overrides.userSelection ?? (() => null),
-      projects: overrides.projects ?? (() => []),
-      sessions: overrides.sessions ?? (() => []),
-      cakeChatSessions: overrides.cakeChatSessions ?? (() => []),
-      sessionActivity: overrides.sessionActivity ?? (() => undefined),
-      managedWorktree: overrides.managedWorktree ?? (() => undefined),
-      globalSessionLabels: overrides.globalSessionLabels ?? (() => []),
-      ...(overrides.sessionLayout ? { sessionLayout: overrides.sessionLayout } : null),
-    },
-    agentSettings: { invoke: async () => null },
-    settings:
-      overrides.settings ??
-      ({
-        get: () => ({
-          section: "appearance",
-          settings: {
-            theme: "system",
-            projectAvatarsEnabled: true,
-            sessionAvatarsEnabled: true,
-            sidebarCharactersEnabled: false,
-            workLogViewMode: "auto",
-            workLogsExpansion: "collapsed",
-          },
-        }),
-        update: async () => ({
-          section: "appearance",
-          settings: {
-            theme: "system",
-            projectAvatarsEnabled: true,
-            sessionAvatarsEnabled: true,
-            sidebarCharactersEnabled: false,
-            workLogViewMode: "auto",
-            workLogsExpansion: "collapsed",
-          },
-        }),
-      } satisfies AppControlHost["settings"]),
-    vscode: {
-      enter: async () => undefined,
-      open: async () => ({
-        reveal: { outcome: { view: "file" }, locations: [] },
-        selectionIds: [],
-      }),
-      listSelections: () => ({ sessionId: "session-1", selections: [] }),
-      removeSelection: async () => ({ state: { sessionId: "session-1", selections: [] } }),
-      clearSelections: async () => ({ state: { sessionId: "session-1", selections: [] } }),
-      performEditorAction: async () => null,
-      ...overrides.vscode,
-    },
-    ...(overrides.worktrees ? { worktrees: overrides.worktrees } : null),
-    projects: overrides.projectRegistry ?? { remove: async () => true },
-    sessions: {
-      lookup:
-        overrides.lookup ??
-        (async (sessionId) =>
-          overrides.sessions?.().find((session) => session.sessionId === sessionId)),
-      navigationEnabled: overrides.navigationEnabled ?? (() => true),
-      open: overrides.open ?? (async () => false),
-      create:
-        overrides.create ??
-        (async () => {
-          throw new Error("not used");
-        }),
-      createDraft:
-        overrides.createDraft ??
-        (async () => {
-          throw new Error("not used");
-        }),
-
-      query: overrides.query ?? (async () => ({ items: [] })),
-      queueCommand:
-        overrides.queueCommand ??
-        (async () => {
-          throw new Error("Unexpected queueCommand");
-        }),
-      reorderQueuedMessage:
-        overrides.reorderQueuedMessage ??
-        (async () => {
-          throw new Error("Unexpected reorderQueuedMessage");
-        }),
-      listPendingMessages:
-        overrides.listPendingMessages ?? (async () => ({ steering: [], followUp: [] })),
-      dequeuePendingMessages:
-        overrides.dequeuePendingMessages ?? (async () => ({ steering: [], followUp: [] })),
-      removeQueuedMessage:
-        overrides.removeQueuedMessage ?? (async () => ({ steering: [], followUp: [] })),
-      steerQueuedMessage:
-        overrides.steerQueuedMessage ?? (async () => ({ steering: [], followUp: [] })),
-      sendQueuedMessageNow:
-        overrides.sendQueuedMessageNow ?? (async () => ({ steering: [], followUp: [] })),
-      abort: overrides.abort ?? (async () => undefined),
-      rename: overrides.rename ?? (async () => undefined),
-      setProjectSessionsResolved: overrides.setProjectSessionsResolved ?? (async () => 0),
-    },
-    presentation: {
-      splitView: overrides.splitView ?? (() => undefined),
-      showNotification: overrides.showNotification ?? (async () => undefined),
-      showAgentAction: overrides.showAgentAction ?? (() => undefined),
-    },
-  };
-}
+import type { Client } from "../../../src/renderer/client/Client";
+import { createCommandClientFinishFixture } from "./command-client-finish-fixture";
+import { fakeSavedDrafts } from "./fakes/saved-drafts";
+import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 
 describe("AppControlRegistry", () => {
   it("derives help from the input schema and decodes defaults before calling the typed handler", async () => {
@@ -162,7 +46,8 @@ describe("AppControlRegistry", () => {
     expect(registry.listTools("global")[0]?.parameters).toEqual(
       Schema.toStandardJSONSchemaV1(args)["~standard"].jsonSchema.input({ target: "draft-07" }),
     );
-    const context: ControlContext = { host: createHost() };
+    using fixture = createCommandClientFinishFixture();
+    const context: ControlContext = { host: fixture.root.applicationControlStore.props.host };
     await expect(
       registry.invoke({ name: "app.user-selection", arguments: { text: "  selected  " } }, context),
     ).resolves.toEqual({
@@ -204,7 +89,8 @@ describe("AppControlRegistry", () => {
       "Duplicate application control app.user-selection",
     );
     const registry = new AppControlRegistry([control]);
-    const context: ControlContext = { host: createHost() };
+    using fixture = createCommandClientFinishFixture();
+    const context: ControlContext = { host: fixture.root.applicationControlStore.props.host };
     for (const input of [
       { name: "unknown", arguments: {} },
       { name: 123, arguments: {} },
@@ -250,7 +136,8 @@ describe("AppControlRegistry", () => {
       "app.user-selection",
       "vscode.enter",
     ]);
-    const context: ControlContext = { host: createHost() };
+    using fixture = createCommandClientFinishFixture();
+    const context: ControlContext = { host: fixture.root.applicationControlStore.props.host };
     await expect(
       registry.invoke({ name: "vscode.enter", arguments: {} }, context),
     ).resolves.toMatchObject({ result: { entered: true } });
@@ -260,7 +147,7 @@ describe("AppControlRegistry", () => {
   });
 });
 
-describe("AppControlBridge", () => {
+describe("Application controls over the real Root host", () => {
   it("constructs a Cake Chat RPC target without explicit undefined optional fields", () => {
     const target = {
       sessionId: "9f0de1b1-4baa-4706-9a41-1b9e3c90b404",
@@ -302,983 +189,300 @@ describe("AppControlBridge", () => {
     expect(parameters).toContain('"fastMode"');
   });
 
-  it("gives the session assistant parent-scoped embedded VS Code controls", async () => {
-    const enter = vi.fn(async () => undefined);
-    const open = vi.fn(async () => ({
-      reveal: { outcome: { view: "file" as const }, locations: [] },
-      selectionIds: [],
+  // Agent commands have no UI initiation control. Exercise the public gateway
+  // with its real Root host and assert only decoded results/service payloads.
+  // Visible receipts/settings are in command-client-finish-workflow. Native
+  // editor selection is in editor-selections-workflow; navigation/retry/permission
+  // and exact-ID recovery are in agent-session-navigation/project-navigation.
+  it("maps assistant-scoped editor actions and internal worktree controls to typed native Clients", async () => {
+    const editor = vi.fn<Client["vscode"]["performEditorAction"]>(async (_path, action) => ({
+      action: action.type,
     }));
-    const performEditorAction = vi.fn(
-      async (_source: AgentControlSource, action: VscodeEditorAction) => action,
+    const landing = vi.fn<Client["managedWorktrees"]["startLanding"]>(async (request) => ({
+      operationId: request.operationId,
+      workspacePath: request.workspacePath,
+      sessionId: request.sessionId,
+      kind: "landing",
+      phase: "waiting",
+      strategy: "preserve",
+      allowDirtyTarget: false,
+    }));
+    const discard = vi.fn<Client["managedWorktrees"]["discard"]>(async () => undefined);
+    using fixture = createCommandClientFinishFixture({
+      vscode: { performEditorAction: editor },
+      managedWorktrees: { startLanding: landing, discard },
+    });
+    expect(listAppControlTools().map(({ command }) => command)).not.toContain("vscode.layout.set");
+    expect(listSessionAssistantControlTools().map(({ command }) => command)).toContain(
+      "vscode.layout.set",
     );
-    const bridge = new AppControlBridge(
-      createHost({ vscode: { enter, open, performEditorAction } }),
-    );
-    const source: AgentControlSource = {
-      kind: "project-session",
-      sessionId: "parent-session",
-      title: "Parent",
-      projectName: "Project",
-      projectPath: "/project",
-      workingDirectory: "/project/worktree",
-    };
-
-    expect(listAppControlTools().map(({ command }) => command)).not.toContain("vscode.enter");
-    expect(listSessionAssistantControlTools().map(({ command }) => command)).toEqual(
-      expect.arrayContaining([
-        "vscode.enter",
-        "vscode.open",
-        "vscode.layout.set",
-        "vscode.diff.open",
-        "vscode.editor.status",
-        "vscode.diagnostics.list",
-        "vscode.panel.show",
-      ]),
-    );
-    await expect(
-      bridge.invoke({ name: "vscode.enter", arguments: {} }, source),
-    ).resolves.toMatchObject({ ok: true, command: "vscode.enter", entered: true });
-    await expect(
-      bridge.invoke(
-        {
-          name: "vscode.open",
-          arguments: {
-            path: "src/main.ts",
-            group: "beside",
-            preview: false,
-            line: 4,
-            column: 2,
-            endLine: 5,
-          },
-        },
-        source,
-      ),
-    ).resolves.toMatchObject({
+    expect(await fixture.invoke("vscode.layout.set", { layout: "two-columns" })).toMatchObject({
       ok: true,
-      command: "vscode.open",
-      opened: {
-        kind: "working-directory",
-        path: "src/main.ts",
-        group: "beside",
-        preview: false,
-        range: { start: { line: 3, column: 1 }, end: { line: 4 } },
-      },
+      result: { action: "layout.set" },
     });
-    expect(enter).toHaveBeenCalledWith(source);
-    expect(open).toHaveBeenCalledWith(source, {
-      kind: "working-directory",
-      path: "src/main.ts",
-      group: "beside",
-      preview: false,
-      range: { start: { line: 3, column: 1 }, end: { line: 4 } },
+    expect(editor).toHaveBeenCalledExactlyOnceWith(
+      "/project",
+      { type: "layout.set", layout: "two-columns" },
+      { signal: expect.any(AbortSignal) },
+    );
+    const result = await fixture.invoke("worktrees.merge", {
+      sessionId: "target",
+      workingDirectory: "/other",
     });
-
-    await expect(
-      bridge.invoke({ name: "vscode.layout.set", arguments: { layout: "two-columns" } }, source),
-    ).resolves.toMatchObject({
-      ok: true,
-      command: "vscode.layout.set",
-      result: { type: "layout.set", layout: "two-columns" },
-    });
-    expect(performEditorAction).toHaveBeenCalledWith(source, {
-      type: "layout.set",
-      layout: "two-columns",
-    });
-  });
-
-  it("invokes internal Managed Worktree merge and discard controls without advertising them globally", async () => {
-    const merge = vi.fn(async () => "operation-1");
-    const discard = vi.fn(async () => undefined);
-    const bridge = new AppControlBridge(createHost({ worktrees: { merge, discard } }));
-
-    await expect(
-      bridge.invoke({
-        name: "worktrees.merge",
-        arguments: { sessionId: "child", workingDirectory: "/child-worktree" },
-      }),
-    ).resolves.toMatchObject({
+    expect(result).toMatchObject({
       ok: true,
       command: "worktrees.merge",
-      operationId: "operation-1",
+      operationId: expect.any(String),
     });
-    await expect(
-      bridge.invoke({
-        name: "worktrees.discard",
-        arguments: {
-          sessionId: "child",
-          workingDirectory: "/child-worktree",
-          keepBranch: false,
-        },
+    expect(landing).toHaveBeenCalledExactlyOnceWith(
+      {
+        operationId: expect.any(String),
+        workspacePath: "/other",
+        sessionId: "target",
+        strategy: "preserve",
+        allowDirtyTarget: false,
+        commitBeforeLanding: true,
+        resolveAfterLanding: false,
+      },
+      { signal: expect.any(AbortSignal) },
+    );
+    expect(
+      await fixture.invoke("worktrees.discard", {
+        sessionId: "target",
+        workingDirectory: "/other",
+        keepBranch: false,
       }),
-    ).resolves.toMatchObject({ ok: true, command: "worktrees.discard" });
-    expect(merge).toHaveBeenCalledWith({
-      sessionId: "child",
-      workingDirectory: "/child-worktree",
-    });
-    expect(discard).toHaveBeenCalledWith({
-      sessionId: "child",
-      workingDirectory: "/child-worktree",
-      keepBranch: false,
-    });
+    ).toMatchObject({ ok: true });
+    expect(discard).toHaveBeenCalledExactlyOnceWith(
+      { operationId: expect.any(String), workspacePath: "/other", keepBranch: false },
+      { signal: expect.any(AbortSignal) },
+    );
     expect(listAppControlTools().map(({ command }) => command)).not.toContain("worktrees.merge");
   });
 
-  it("removes a registered Project through the window's removal workflow without advertising it", async () => {
-    const remove = vi.fn(async () => true);
-    const showAgentAction = vi.fn();
-    const source = { kind: "cake-chat" as const, sessionId: "cake-chat", title: "Cake Chat" };
-    const bridge = new AppControlBridge(
-      createHost({
-        projectRegistry: { remove },
-        showAgentAction,
-        projects: () => [
-          {
-            path: "/projects/agents",
-            name: "agents",
-            addedAt: "2026-01-01T00:00:00.000Z",
-            lastOpenedAt: "2026-01-01T00:00:00.000Z",
-          },
-        ],
-      }),
+  it("creates a managed-worktree session through the real creation owner and rejects invalid names before dispatch", async () => {
+    const worktree = {
+      projectPath: "/project",
+      worktreePath: "/feature",
+      branch: "agent/feature",
+      baseBranch: "main",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      state: "active" as const,
+    };
+    const create = vi.fn<Client["managedWorktrees"]["create"]>(async () => worktree);
+    const start = vi.fn<Client["projectSessions"]["start"]>(async () =>
+      TurnId.make("10000000-0000-4000-8000-000000000001"),
     );
-
+    using fixture = createCommandClientFinishFixture({
+      managedWorktrees: { create },
+      projectSessions: { start },
+    });
+    const model = {
+      provider: "fixture",
+      modelId: "fixture",
+      thinkingLevel: "high",
+      fastMode: true,
+    };
+    const args = {
+      workspacePath: "/project",
+      name: "Implementation",
+      initialPrompt: "Implement the approved changes",
+      model,
+      worktreeName: "feature",
+    };
     await expect(
-      bridge.invoke({ name: "projects.remove", arguments: { path: "/projects/agents" } }, source),
-    ).resolves.toEqual({
+      fixture.invoke("sessions.create", { ...args, worktreeName: "Invalid Worktree" }),
+    ).rejects.toThrow();
+    expect(create).not.toHaveBeenCalled();
+    const result = await fixture.invoke("sessions.create", args);
+    expect(result).toMatchObject({
       ok: true,
-      command: "projects.remove",
-      path: "/projects/agents",
-      name: "agents",
-      deleteSessions: false,
+      workspacePath: "/feature",
+      title: "Implementation",
+      status: "started",
+      managedWorktree: worktree,
     });
-    expect(remove).toHaveBeenCalledWith("/projects/agents", false);
-    expect(showAgentAction).toHaveBeenCalledWith(
-      expect.objectContaining({ source, message: "Removed Project “agents”" }),
-    );
-
-    await expect(
-      bridge.invoke({ name: "projects.remove", arguments: { path: "/projects/unknown" } }),
-    ).resolves.toMatchObject({
-      ok: false,
-      error: "No registered Project has the exact path /projects/unknown",
+    expect(create).toHaveBeenCalledExactlyOnceWith({
+      path: "/project",
+      worktreeName: "feature",
+      backgroundSetup: true,
+      baseWorktreePath: undefined,
+      operationId: expect.any(String),
     });
-    remove.mockResolvedValueOnce(false);
-    await expect(
-      bridge.invoke({
-        name: "projects.remove",
-        arguments: { path: "/projects/agents", deleteSessions: true },
+    expect(start).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        sessionId: expect.any(String),
+        workingDirectory: "/feature",
+        name: "Implementation",
+        text: args.initialPrompt,
+        configuration: model,
+        renderUserMessageAsMarkdown: true,
+        attachments: [],
       }),
-    ).resolves.toMatchObject({ ok: false, command: "projects.remove" });
-    expect(remove).toHaveBeenLastCalledWith("/projects/agents", true);
+      { signal: expect.any(AbortSignal) },
+    );
+  });
+
+  it("creates drafts through the external saved authority without starting Pi, and removes only exact registered Projects", async () => {
+    const drafts = fakeSavedDrafts();
+    const start = vi.fn<Client["projectSessions"]["start"]>();
+    const remove = vi.fn<Client["workspaces"]["removeProject"]>(async () =>
+      defaultApplicationState(),
+    );
+    using fixture = createCommandClientFinishFixture({
+      savedDrafts: drafts.client,
+      projectSessions: { start },
+      workspaces: { removeProject: remove },
+    });
+    expect(
+      await fixture.invoke("sessions.create-draft", {
+        workspacePath: "/project",
+        name: "Draft session",
+        initialPrompt: "Implement this later",
+      }),
+    ).toMatchObject({ ok: true, title: "Draft session", status: "saved-draft" });
+    expect(drafts.snapshot()).toMatchObject([
+      {
+        projectPath: "/project",
+        title: "Draft session",
+        text: "Implement this later",
+        status: "saved",
+      },
+    ]);
+    expect(start).not.toHaveBeenCalled();
+    expect(await fixture.invoke("projects.remove", { path: "/missing" })).toMatchObject({
+      ok: false,
+    });
+    expect(remove).not.toHaveBeenCalled();
+    expect(
+      await fixture.invoke("projects.remove", { path: "/other", deleteSessions: true }),
+    ).toMatchObject({ ok: true, path: "/other", deleteSessions: true });
+    expect(remove).toHaveBeenCalledExactlyOnceWith("/other", true, {
+      signal: expect.any(AbortSignal),
+    });
     expect(listAppControlTools().map(({ command }) => command)).not.toContain("projects.remove");
   });
 
-  it("describes the live pane layout relative to the calling project session", async () => {
-    const sessionLayout = vi.fn((source?: { sessionId: string }) => ({
-      focusedSessionId: "session-b",
-      originSessionId: source?.sessionId,
-      panes: [
-        {
-          paneId: "pane-a",
-          sessionId: "session-a",
-          number: 1,
-          focused: false,
-          x: 0,
-          y: 0,
-          width: 0.5,
-          height: 1,
-        },
-        {
-          paneId: "pane-b",
-          sessionId: "session-b",
-          number: 2,
-          focused: true,
-          x: 0.5,
-          y: 0,
-          width: 0.5,
-          height: 1,
-        },
-      ],
+  it("keeps command targets in another project independent of focused selection and attributes agent stop reasons", async () => {
+    const abort = vi.fn<Client["sessionChats"]["abort"]>(async () => undefined);
+    const queue = vi.fn<Client["sessionChats"]["queueCommand"]>(async () => ({
+      itemId: "10000000-0000-4000-8000-000000000003",
+      status: "queued",
     }));
-    const bridge = new AppControlBridge(createHost({ sessionLayout }));
-
+    const remove = vi.fn<Client["sessionChats"]["removeQueuedMessage"]>(async () => ({
+      steering: [],
+      followUp: ["second"],
+    }));
+    const steer = vi.fn<Client["sessionChats"]["steerQueuedMessage"]>(async () => ({
+      steering: ["second"],
+      followUp: [],
+    }));
+    const send = vi.fn<Client["sessionChats"]["sendQueuedMessageNow"]>(async () => ({
+      steering: [],
+      followUp: [],
+    }));
+    const clear = vi.fn<Client["sessionChats"]["clearQueue"]>(async () => ({
+      steering: ["third"],
+      followUp: [],
+    }));
+    using fixture = createCommandClientFinishFixture({
+      sessionChats: {
+        abort,
+        queueCommand: queue,
+        removeQueuedMessage: remove,
+        steerQueuedMessage: steer,
+        sendQueuedMessageNow: send,
+        clearQueue: clear,
+      },
+    });
+    expect(
+      await fixture.invoke("sessions.abort", {
+        sessionId: "target",
+        reason: "The user asked to stop",
+      }),
+    ).toMatchObject({ ok: true, status: "stopping" });
+    expect(abort).toHaveBeenCalledExactlyOnceWith(
+      {
+        sessionId: "target",
+        stop: {
+          by: "session",
+          sessionId: "calling",
+          title: "Planner",
+          reason: "The user asked to stop",
+        },
+      },
+      { signal: expect.any(AbortSignal) },
+    );
     await expect(
-      bridge.invoke(
-        { name: "app.state", arguments: {} },
-        { kind: "project-session", sessionId: "session-a", title: "Origin" },
-      ),
-    ).resolves.toMatchObject({
+      fixture.invoke("sessions.queue-command", {
+        sessionId: "target",
+        command: "not a slash command",
+      }),
+    ).rejects.toThrow();
+    expect(queue).not.toHaveBeenCalled();
+    expect(
+      await fixture.invoke("sessions.queue-command", {
+        sessionId: "target",
+        command: "/toolcompact",
+      }),
+    ).toMatchObject({ ok: true, status: "queued" });
+    expect(queue).toHaveBeenCalledExactlyOnceWith(
+      { sessionId: "target", command: "/toolcompact" },
+      { signal: expect.any(AbortSignal) },
+    );
+    for (const name of ["sessions.cancel-queued", "sessions.steer-queued", "sessions.send-now"]) {
+      expect(await fixture.invoke(name, { sessionId: "target", partId: "queued-1" })).toMatchObject(
+        { ok: true },
+      );
+    }
+    for (const service of [remove, steer, send])
+      expect(service).toHaveBeenCalledExactlyOnceWith(
+        { sessionId: "target", partId: "queued-1" },
+        { signal: expect.any(AbortSignal) },
+      );
+    expect(await fixture.invoke("sessions.clear-queue", { sessionId: "target" })).toMatchObject({
+      ok: true,
+      cleared: { steeringCount: 1, followUpCount: 0 },
+    });
+    expect(clear).toHaveBeenCalledExactlyOnceWith(
+      { sessionId: "target" },
+      { signal: expect.any(AbortSignal) },
+    );
+    expect(await fixture.invoke("app.state")).toMatchObject({
+      state: { selection: { sessionId: "calling" } },
+    });
+  });
+
+  it("describes real pane layout relative to the caller and does not invent an unwired Cake Chat split", async () => {
+    using fixture = createCommandClientFinishFixture({
+      workspaces: { loadStagedSlashCommands: async () => [] },
+    });
+    const result = await fixture.invoke("app.split", { direction: "right" });
+    expect(result).toMatchObject({
+      ok: true,
+      kind: "project-session",
+      paneId: expect.any(String),
+      sessionId: expect.any(String),
+    });
+    expect(await fixture.invoke("app.state")).toMatchObject({
       state: {
         sessionLayout: {
-          focusedSessionId: "session-b",
-          originSessionId: "session-a",
+          originSessionId: "calling",
           panes: [
-            { sessionId: "session-a", x: 0, width: 0.5 },
-            { sessionId: "session-b", x: 0.5, width: 0.5 },
+            { sessionId: "calling", x: 0, width: 0.5 },
+            { x: 0.5, width: 0.5 },
           ],
         },
       },
     });
-    expect(sessionLayout).toHaveBeenCalledWith({
-      kind: "project-session",
-      sessionId: "session-a",
-      title: "Origin",
-    });
-  });
-
-  it("splits the calling Cake Chat pane through the application control", async () => {
-    const splitView = vi.fn(() => ({
-      kind: "cake-chat" as const,
-      paneId: "pane-new",
-      sessionId: "chat-new",
-    }));
-    const bridge = new AppControlBridge(createHost({ splitView }));
-    const source = { kind: "cake-chat" as const, sessionId: "chat-a", title: "Cake Chat" };
-
-    await expect(
-      bridge.invoke({ name: "app.split", arguments: { direction: "right" } }, source),
-    ).resolves.toMatchObject({
-      ok: true,
-      command: "app.split",
-      direction: "right",
-      kind: "cake-chat",
-      paneId: "pane-new",
-      sessionId: "chat-new",
-    });
-    expect(splitView).toHaveBeenCalledWith(source, "right");
-  });
-
-  it("reads the current user-highlighted text without retaining a stale selection", async () => {
-    let selectedText: string | null = "highlighted passage";
-    const bridge = new AppControlBridge(createHost({ userSelection: () => selectedText }));
-
-    await expect(bridge.invoke({ name: "app.user-selection", arguments: {} })).resolves.toEqual({
-      ok: true,
-      command: "app.user-selection",
-      text: "highlighted passage",
-    });
-    selectedText = null;
-    await expect(bridge.invoke({ name: "app.user-selection", arguments: {} })).resolves.toEqual({
-      ok: true,
-      command: "app.user-selection",
-      text: null,
-    });
-  });
-
-  it("reports the complete current Cake selection", async () => {
-    const bridge = new AppControlBridge(
-      createHost({
-        currentSelection: () => ({
-          kind: "cake-chat",
-          sessionId: "cake-chat-1",
-          title: "Release planning",
-        }),
-      }),
-    );
-
-    await expect(bridge.invoke({ name: "app.state", arguments: {} })).resolves.toMatchObject({
-      state: {
-        selection: {
-          kind: "cake-chat",
-          sessionId: "cake-chat-1",
-          title: "Release planning",
-        },
-      },
-    });
-  });
-
-  it("reads and updates window-local Cake settings through the invoking window", async () => {
-    const get = vi.fn(() => ({
-      section: "appearance" as const,
-      settings: {
-        theme: "system" as const,
-        projectAvatarsEnabled: true,
-        sessionAvatarsEnabled: true,
-        sidebarCharactersEnabled: false,
-        workLogViewMode: "auto" as const,
-        workLogsExpansion: "collapsed" as const,
-      },
-    }));
-    const update = vi.fn(async () => ({
-      section: "appearance" as const,
-      settings: {
-        theme: "dark" as const,
-        projectAvatarsEnabled: true,
-        sessionAvatarsEnabled: true,
-        sidebarCharactersEnabled: true,
-        workLogViewMode: "auto" as const,
-        workLogsExpansion: "collapsed" as const,
-      },
-    }));
-    const bridge = new AppControlBridge(createHost({ settings: { get, update } }));
-
-    await expect(
-      bridge.invoke({ name: "settings.window.get", arguments: { section: "appearance" } }),
-    ).resolves.toMatchObject({
-      ok: true,
-      command: "settings.window.get",
-      scope: "window",
-      section: "appearance",
-      settings: { theme: "system" },
-    });
-    await expect(
-      bridge.invoke({
-        name: "settings.window.update",
-        arguments: {
-          section: "appearance",
-          changes: { theme: "dark", sidebarCharactersEnabled: true },
-        },
-      }),
-    ).resolves.toMatchObject({
-      ok: true,
-      command: "settings.window.update",
-      scope: "window",
-      section: "appearance",
-      settings: { theme: "dark", sidebarCharactersEnabled: true },
-    });
-    expect(get).toHaveBeenCalledWith("appearance");
-    expect(update).toHaveBeenCalledWith({
-      section: "appearance",
-      changes: { theme: "dark", sidebarCharactersEnabled: true },
-    });
-
-    await expect(
-      bridge.invoke({
-        name: "settings.window.update",
-        arguments: { section: "appearance", changes: {} },
-      }),
-    ).rejects.toThrow();
-    await expect(
-      bridge.invoke({
-        name: "settings.window.update",
-        arguments: { section: "editor", changes: { sidebarAutoHideWidth: 900 } },
-      }),
-    ).rejects.toThrow();
-  });
-
-  it("routes attributed notifications through the application host without a receipt", async () => {
-    const showNotification = vi.fn(async () => undefined);
-    const showAgentAction = vi.fn();
-    const source = {
-      kind: "project-session" as const,
-      sessionId: "source-1",
-      title: "Build monitor",
-    };
-    const bridge = new AppControlBridge(createHost({ showNotification, showAgentAction }));
-
-    await expect(
-      bridge.invoke(
-        {
-          name: "notifications.send",
-          arguments: { title: "Build progress", body: "Tests reached 80%." },
-        },
-        source,
-      ),
-    ).resolves.toEqual({ ok: true, command: "notifications.send", status: "queued" });
-    expect(showNotification).toHaveBeenCalledWith({
-      title: "Build progress",
-      body: "Tests reached 80%.",
-      level: "info",
-      source,
-    });
-    expect(showAgentAction).not.toHaveBeenCalled();
-  });
-
-  it("coalesces equivalent calling-session resolution receipts", async () => {
-    const showAgentAction = vi.fn();
-    const source = {
-      kind: "project-session" as const,
-      sessionId: "session-1",
-      title: "Build monitor",
-    };
-    const bridge = new AppControlBridge(
-      createHost({
-        showAgentAction,
-        sessions: () => [
-          {
-            workingDirectory: "/projects/cake",
-            projectName: "Cake",
-            sessionId: "session-1",
-            title: "Build monitor",
-            modifiedAt: "2026-03-01T12:00:00.000Z",
-            messageCount: 3,
-            resolved: false,
-            draft: false,
-          },
-        ],
-        setProjectSessionsResolved: async () => 1,
-      }),
-    );
-
-    await bridge.invoke({ name: "agent.action", arguments: { action: "resolve" } }, source);
-    await bridge.invoke(
-      {
-        name: "sessions.resolve",
-        arguments: {
-          targets: [{ kind: "project", sessionId: "session-1" }],
-          resolved: true,
-        },
-      },
-      source,
-    );
-
-    expect(showAgentAction).toHaveBeenCalledTimes(2);
-    expect(showAgentAction.mock.calls[0]![0].coalesceKey).toBe(
-      showAgentAction.mock.calls[1]![0].coalesceKey,
-    );
-  });
-
-  it("turns completed calling-session actions into attributed receipts", async () => {
-    const showAgentAction = vi.fn();
-    const source = {
-      kind: "cake-chat" as const,
-      sessionId: "source-1",
-      title: "Release planning",
-    };
-    const bridge = new AppControlBridge(createHost({ showAgentAction }));
-
-    await expect(
-      bridge.invoke(
-        {
-          name: "agent.action",
-          arguments: { action: "set-model", detail: "openai/gpt-5" },
-        },
-        source,
-      ),
-    ).resolves.toEqual({
-      ok: true,
-      command: "agent.action",
-      action: "set-model",
-      detail: "openai/gpt-5",
-    });
-    expect(showAgentAction).toHaveBeenCalledWith(
-      expect.objectContaining({
-        source,
-        message: "Changed this session’s model to openai/gpt-5",
-        targetSessionId: "source-1",
-        targetKind: "cake-chat",
-      }),
-    );
-  });
-
-  describe("cross-session receipts", () => {
-    const otherSession = {
-      workingDirectory: "/projects/cake",
-      projectName: "Cake",
-      sessionId: "session-2",
-      title: "Sibling session",
-      modifiedAt: "2026-09-04T12:00:00.000Z",
-      messageCount: 2,
-      resolved: false,
-      draft: false,
-    };
-    const coordinationHost = (showAgentAction: () => void) =>
-      createHost({
-        showAgentAction,
-        sessions: () => [otherSession],
-        projects: () => [
-          {
-            path: "/projects/cake",
-            name: "Cake",
-            addedAt: "2026-03-01T12:00:00.000Z",
-            lastOpenedAt: "2026-03-01T12:00:00.000Z",
-          },
-        ],
-        create: async () => ({ workspacePath: "/projects/cake", sessionId: "session-new" }),
-        sessionActivity: () => "running",
-        abort: async () => undefined,
-      });
-    const createSession = {
-      name: "sessions.create",
-      arguments: { workspacePath: "/projects/cake", name: "New work", initialPrompt: "Go" },
-    };
-
-    it("does not announce Cake Chat coordinating other sessions", async () => {
-      const showAgentAction = vi.fn();
-      const bridge = new AppControlBridge(coordinationHost(showAgentAction));
-      const source = { kind: "cake-chat" as const, sessionId: "chat-1", title: "Cake Chat" };
-
-      await expect(bridge.invoke(createSession, source)).resolves.toMatchObject({ ok: true });
-      await expect(
-        bridge.invoke({ name: "sessions.abort", arguments: { sessionId: "session-2" } }, source),
-      ).resolves.toMatchObject({ ok: true });
-
-      expect(showAgentAction).not.toHaveBeenCalled();
-    });
-
-    it("still announces Cake Chat actions on itself", async () => {
-      const showAgentAction = vi.fn();
-      const bridge = new AppControlBridge(coordinationHost(showAgentAction));
-      const source = { kind: "cake-chat" as const, sessionId: "chat-1", title: "Cake Chat" };
-
-      await bridge.invoke(
-        { name: "agent.action", arguments: { action: "set-model", detail: "openai/gpt-5" } },
-        source,
-      );
-
-      expect(showAgentAction).toHaveBeenCalledWith(
-        expect.objectContaining({ source, targetSessionId: "chat-1", targetKind: "cake-chat" }),
-      );
-    });
-
-    it("announces a Project Session creating a sibling session", async () => {
-      const showAgentAction = vi.fn();
-      const bridge = new AppControlBridge(coordinationHost(showAgentAction));
-      const source = {
-        kind: "project-session" as const,
-        sessionId: "session-1",
-        title: "Planner",
-      };
-
-      await bridge.invoke(createSession, source);
-
-      expect(showAgentAction).toHaveBeenCalledWith(
-        expect.objectContaining({
-          source,
-          message: "Created and started “New work”",
-          targetSessionId: "session-new",
-        }),
-      );
-    });
-  });
-
-  it("creates and starts a session with an exact model configuration in a managed worktree", async () => {
-    const managedWorktree = {
-      projectPath: "/projects/cake",
-      worktreePath: "/projects/.cake-worktrees/implementation-session",
-      branch: "agent/implementation-session",
-      baseBranch: "main",
-      createdAt: "2026-03-01T12:00:00.000Z",
-    };
-    const createSession = vi.fn(async () => ({
-      workspacePath: managedWorktree.worktreePath,
-      sessionId: "session-new",
-      managedWorktree,
-    }));
-    const bridge = new AppControlBridge(
-      createHost({
-        projects: () => [
-          {
-            path: "/projects/cake",
-            name: "Cake",
-            addedAt: "2026-03-01T12:00:00.000Z",
-            lastOpenedAt: "2026-03-01T12:00:00.000Z",
-          },
-        ],
-        create: createSession,
-      }),
-    );
-    const model = {
-      provider: "openai",
-      modelId: "gpt-5",
-      thinkingLevel: "high" as const,
-      fastMode: true,
-    };
-
-    await expect(
-      bridge.invoke({
-        name: "sessions.create",
-        arguments: {
-          workspacePath: "/projects/cake",
-          name: "Implementation session",
-          initialPrompt: "Implement the approved changes",
-          model,
-          worktreeName: "implementation-session",
-        },
-      }),
-    ).resolves.toEqual({
-      ok: true,
-      command: "sessions.create",
-      workspacePath: managedWorktree.worktreePath,
-      sessionId: "session-new",
-      title: "Implementation session",
-      status: "started",
-      managedWorktree,
-    });
-    expect(createSession).toHaveBeenCalledWith({
-      workspacePath: "/projects/cake",
-      name: "Implementation session",
-      initialPrompt: "Implement the approved changes",
-      model,
-      worktreeName: "implementation-session",
-    });
-  });
-
-  it("rejects invalid managed worktree names before session creation", async () => {
-    const createSession = vi.fn(async () => ({
-      workspacePath: "/projects/cake",
-      sessionId: "session-new",
-    }));
-    const bridge = new AppControlBridge(
-      createHost({
-        projects: () => [
-          {
-            path: "/projects/cake",
-            name: "Cake",
-            addedAt: "2026-03-01T12:00:00.000Z",
-            lastOpenedAt: "2026-03-01T12:00:00.000Z",
-          },
-        ],
-        create: createSession,
-      }),
-    );
-
-    await expect(
-      bridge.invoke({
-        name: "sessions.create",
-        arguments: {
-          workspacePath: "/projects/cake",
-          name: "Implementation session",
-          initialPrompt: "Implement the approved changes",
-          worktreeName: "Invalid Worktree",
-        },
-      }),
-    ).rejects.toThrow();
-    expect(createSession).not.toHaveBeenCalled();
-  });
-
-  it("creates a saved draft without starting a Pi session", async () => {
-    const createDraftSession = vi.fn(async () => ({
-      workspacePath: "/projects/cake",
-      sessionId: "draft-1",
-    }));
-    const showAgentAction = vi.fn();
-    const bridge = new AppControlBridge(
-      createHost({
-        showAgentAction,
-        projects: () => [
-          {
-            path: "/projects/cake",
-            name: "Cake",
-            addedAt: "2026-03-01T12:00:00.000Z",
-            lastOpenedAt: "2026-03-01T12:00:00.000Z",
-          },
-        ],
-        createDraft: createDraftSession,
-      }),
-    );
-
-    await expect(
-      bridge.invoke(
-        {
-          name: "sessions.create-draft",
-          arguments: {
-            workspacePath: "/projects/cake",
-            name: "Draft session",
-            initialPrompt: "Implement this later",
-          },
-        },
-        { kind: "project-session", sessionId: "source-1", title: "Source session" },
-      ),
-    ).resolves.toEqual({
-      ok: true,
-      command: "sessions.create-draft",
-      workspacePath: "/projects/cake",
-      sessionId: "draft-1",
-      title: "Draft session",
-      status: "saved-draft",
-    });
-    expect(createDraftSession).toHaveBeenCalledWith({
-      workspacePath: "/projects/cake",
-      name: "Draft session",
-      initialPrompt: "Implement this later",
-    });
-    expect(showAgentAction).toHaveBeenCalledWith(
-      expect.objectContaining({
-        source: { kind: "project-session", sessionId: "source-1", title: "Source session" },
-        message: "Created draft “Draft session”",
-        targetSessionId: "draft-1",
-      }),
-    );
-  });
-
-  it("stops an active explicitly targeted session", async () => {
-    const abortSession = vi.fn(async () => undefined);
-    const bridge = new AppControlBridge(
-      createHost({
-        sessions: () => [
-          {
-            workingDirectory: "/projects/other",
-            projectName: "Other",
-            sessionId: "session-2",
-            title: "Active child",
-            modifiedAt: "2026-09-04T12:00:00.000Z",
-            messageCount: 2,
-            resolved: false,
-            draft: false,
-          },
-        ],
-        sessionActivity: () => "running",
-        abort: abortSession,
-      }),
-    );
-    await expect(
-      bridge.invoke({ name: "sessions.abort", arguments: { sessionId: "session-2" } }),
-    ).resolves.toMatchObject({ ok: true, command: "sessions.abort", status: "stopping" });
-    expect(abortSession).toHaveBeenCalledWith("session-2", { by: "user" });
-    // An agent's stop is attributed to it, with its reason, so it is never read as a failure.
-    await expect(
-      bridge.invoke(
-        {
-          name: "sessions.abort",
-          arguments: { sessionId: "session-2", reason: "The user asked to stop" },
-        },
+    const before = fixture.root.cakeChatCollectionStore.sessionLayoutStore.panes.length;
+    expect(
+      await fixture.invoke(
+        "app.split",
+        { direction: "right" },
         { kind: "cake-chat", sessionId: "cake-chat", title: "Cake Chat" },
       ),
-    ).resolves.toMatchObject({ ok: true, status: "stopping" });
-    expect(abortSession).toHaveBeenLastCalledWith("session-2", {
-      by: "session",
-      sessionId: "cake-chat",
-      title: "Cake Chat",
-      reason: "The user asked to stop",
-    });
-  });
-
-  it("controls a child's individual queued inputs and clears its remaining queue", async () => {
-    const removeQueuedMessage = vi.fn(async () => ({ steering: [], followUp: ["second"] }));
-    const steerQueuedMessage = vi.fn(async () => ({ steering: ["second"], followUp: [] }));
-    const sendQueuedMessageNow = vi.fn(async () => ({ steering: [], followUp: [] }));
-    const dequeuePendingMessages = vi.fn(async () => ({ steering: ["third"], followUp: [] }));
-    const bridge = new AppControlBridge(
-      createHost({
-        sessions: () => [
-          {
-            workingDirectory: "/projects/other",
-            projectName: "Other",
-            sessionId: "child",
-            title: "Child",
-            modifiedAt: "2026-09-04T12:00:00.000Z",
-            messageCount: 2,
-            resolved: false,
-            draft: false,
-            familyParentSessionId: "parent",
-          },
-        ],
-        removeQueuedMessage,
-        steerQueuedMessage,
-        sendQueuedMessageNow,
-        dequeuePendingMessages,
-      }),
-    );
-    for (const name of [
-      "sessions.cancel-queued",
-      "sessions.steer-queued",
-      "sessions.send-now",
-    ] as const) {
-      await expect(
-        bridge.invoke({ name, arguments: { sessionId: "child", partId: "queued-follow-up-id-1" } }),
-      ).resolves.toMatchObject({ ok: true, command: name });
-    }
-    await expect(
-      bridge.invoke({ name: "sessions.clear-queue", arguments: { sessionId: "child" } }),
-    ).resolves.toMatchObject({ ok: true, cleared: { steeringCount: 1, followUpCount: 0 } });
-    expect(removeQueuedMessage).toHaveBeenCalledWith("child", "queued-follow-up-id-1");
-    expect(steerQueuedMessage).toHaveBeenCalledWith("child", "queued-follow-up-id-1");
-    expect(sendQueuedMessageNow).toHaveBeenCalledWith("child", "queued-follow-up-id-1");
-    expect(dequeuePendingMessages).toHaveBeenCalledWith("child");
-  });
-
-  it("renames an explicitly targeted session and reports the committed title", async () => {
-    const renameSession = vi.fn(async () => undefined);
-    const showAgentAction = vi.fn();
-    const bridge = new AppControlBridge(
-      createHost({
-        sessions: () => [
-          {
-            workingDirectory: "/projects/other",
-            projectName: "Other",
-            sessionId: "session-2",
-            title: "Untitled child",
-            modifiedAt: "2026-09-04T12:00:00.000Z",
-            messageCount: 2,
-            resolved: false,
-            draft: false,
-          },
-        ],
-        rename: renameSession,
-        showAgentAction,
-      }),
-    );
-    const source = {
-      kind: "project-session" as const,
-      sessionId: "session-1",
-      title: "Parent",
-    };
-
-    await expect(
-      bridge.invoke(
-        {
-          name: "sessions.rename",
-          arguments: { sessionId: "session-2", title: "  Storage implementation  " },
-        },
-        source,
-      ),
-    ).resolves.toMatchObject({
-      ok: true,
-      command: "sessions.rename",
-      target: { workspacePath: "/projects/other", sessionId: "session-2" },
-      title: "Storage implementation",
-    });
-    expect(renameSession).toHaveBeenCalledWith("session-2", "Storage implementation");
-    expect(showAgentAction).toHaveBeenCalledWith(
-      expect.objectContaining({
-        source,
-        targetSessionId: "session-2",
-        targetKind: "project-session",
-        message: "Renamed session to “Storage implementation”",
-      }),
-    );
-
-    await expect(
-      bridge.invoke({
-        name: "sessions.rename",
-        arguments: { sessionId: "missing", title: "Nope" },
-      }),
-    ).resolves.toMatchObject({ ok: false, command: "sessions.rename" });
-    await expect(
-      bridge.invoke({
-        name: "sessions.rename",
-        arguments: { sessionId: "session-2", title: "  " },
-      }),
-    ).rejects.toThrow();
-    expect(renameSession).toHaveBeenCalledTimes(1);
-  });
-
-  it("recovers exact UUIDs for open and rename when discovery is missing, while undiscovered short references fail", async () => {
-    const sessionId = "10000000-0000-4000-8000-000000000011";
-    const recovered = {
-      workingDirectory: "/managed-worktree",
-      projectName: "Project",
-      sessionId,
-      title: "Attachment assignment",
-      modifiedAt: "2026-01-01",
-      messageCount: 1,
-      resolved: false,
-      draft: false,
-    };
-    let discovered: (typeof recovered)[] = [];
-    const lookup = vi.fn(async (id: string) => {
-      if (id !== sessionId) return undefined;
-      discovered = [recovered];
-      return recovered;
-    });
-    const open = vi.fn(async () => true);
-    const rename = vi.fn(async () => undefined);
-    const bridge = new AppControlBridge(
-      createHost({
-        sessions: () => discovered,
-        lookup,
-        open,
-        rename,
-      }),
-    );
-    for (const command of ["sessions.open", "sessions.rename"] as const) {
-      discovered = [];
-      await expect(
-        bridge.invoke({
-          name: command,
-          arguments: {
-            sessionId,
-            ...(command === "sessions.rename" ? { title: "Updated assignment" } : {}),
-          },
-        }),
-      ).resolves.toMatchObject({ ok: true, command });
-    }
-
-    expect(open).toHaveBeenCalledWith(sessionId);
-    expect(rename).toHaveBeenCalledWith(sessionId, "Updated assignment");
-    discovered = [];
-    const count = lookup.mock.calls.length;
-    await expect(
-      bridge.invoke({ name: "sessions.open", arguments: { sessionId: "00000011" } }),
-    ).resolves.toMatchObject({ ok: false });
-    expect(lookup).toHaveBeenCalledTimes(count);
-  });
-
-  it("does not report an unsuccessful session open as success and accepts a later retry", async () => {
-    const open = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
-    const bridge = new AppControlBridge(
-      createHost({
-        open,
-        sessions: () => [
-          {
-            workingDirectory: "/project",
-            projectName: "Project",
-            sessionId: "target",
-            title: "Target",
-            modifiedAt: "2026-01-01T00:00:00.000Z",
-            messageCount: 1,
-            resolved: true,
-            draft: false,
-          },
-        ],
-      }),
-    );
-    const invocation = { name: "sessions.open", arguments: { sessionId: "target" } };
-    await expect(bridge.invoke(invocation)).resolves.toEqual({
-      ok: false,
-      command: "sessions.open",
-      error: "Cake could not open that session.",
-    });
-    await expect(bridge.invoke(invocation)).resolves.toMatchObject({
-      ok: true,
-      command: "sessions.open",
-      opened: { sessionId: "target" },
-    });
-  });
-
-  it("discovers backend and window controls together and validates window queue commands", async () => {
-    const tools = listSessionAssistantControlTools().map(({ command }) => command);
-    for (const tool of listAppControlTools()) expect(tools).toContain(tool.command);
-    expect(tools).toEqual(
-      expect.arrayContaining([
-        "sessions.cake",
-        "sessions.queue-command",
-        "sessions.history",
-        "sessions.compactions",
-        "sessions.context",
-        "sessions.usage",
-        "sessions.tree",
-        "sessions.commands",
-        "sessions.reorder",
-      ]),
-    );
-    const queueCommand = vi.fn(async () => ({
-      itemId: "00000000-0000-4000-8000-000000000001",
-      status: "queued" as const,
-    }));
-    const query = vi.fn(async () => ({ entries: [], total: 0 }));
-
-    const bridge = new AppControlBridge(
-      createHost({
-        sessions: () => [
-          {
-            sessionId: "parent",
-            title: "Parent",
-            workingDirectory: "/project",
-            projectName: "Project",
-            modifiedAt: "2026-01-01T00:00:00Z",
-            messageCount: 1,
-            resolved: false,
-            draft: false,
-          },
-        ],
-        queueCommand,
-        query,
-      }),
-    );
-    await expect(
-      bridge.invoke({
-        name: "sessions.queue-command",
-        arguments: { sessionId: "parent", command: "/toolcompact" },
-      }),
-    ).resolves.toMatchObject({ ok: true, status: "queued" });
-    expect(queueCommand).toHaveBeenCalledWith("parent", "/toolcompact");
-    await expect(
-      bridge.invoke({
-        name: "sessions.queue-command",
-        arguments: { sessionId: "parent", command: "not a slash command" },
-      }),
-    ).rejects.toThrow();
+    ).toMatchObject({ ok: false });
+    expect(fixture.root.cakeChatCollectionStore.sessionLayoutStore.panes).toHaveLength(before);
   });
 });
