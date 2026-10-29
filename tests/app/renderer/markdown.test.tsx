@@ -3,6 +3,7 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
+import { messageReference } from "../../../src/contracts/conversations/message-reference";
 import {
   fencedCode,
   isStandaloneDiagram,
@@ -52,11 +53,13 @@ describe("Markdown rendering integration", () => {
   it("renders prose, a highlighted fence and an escaped fence containing backticks", async () => {
     const code = "const sample = `nested`; // ```";
     using fixture = renderMarkdown(
-      `# Result\n\nA **formatted** paragraph with \`inline code\`.\n\n${fencedCode(code, "ts")}`,
+      `# Result\n\nA **formatted** paragraph with \`inline code\`.\n\n- [x] Markdown\n\n${fencedCode(code, "ts")}`,
     );
     expect(screen.getByRole("heading", { name: "Result" })).toBeDefined();
     expect(screen.getByText("formatted").getAttribute("data-streamdown")).toBe("strong");
     expect(screen.getByText("inline code").tagName).toBe("CODE");
+    expect(screen.getByRole("checkbox")).toHaveProperty("checked", true);
+    expect(screen.getByRole("checkbox")).toHaveProperty("disabled", true);
     await waitFor(() => expect(highlighted(codeBodies(fixture.container)[0]!)).toBe(true));
     expect(codeBodies(fixture.container)[0]!.textContent).toContain(code);
     expect(screen.getByRole("button", { name: "Copy code" })).toBeDefined();
@@ -383,29 +386,76 @@ describe("Markdown rendering integration", () => {
     );
   });
 
-  it.each([
-    ["message=entry-42", "entry-42", undefined],
-    [
-      "attachment=00000000-0000-4000-8000-000000000001",
-      undefined,
-      "00000000-0000-4000-8000-000000000001",
-    ],
-  ])(
-    "preserves titled session links with %s through parsing and navigation",
-    async (query, messageId, attachmentId) => {
-      const openSession = vi.fn();
-      const target = `cake://session/session-123?${query}`;
-      using fixture = renderMarkdown(`[Exact source](${target} "Authored title")`, {
-        actions: { openSession },
-      });
-      const link = screen.getByRole("link", { name: "Exact source" });
-      expect(link.getAttribute("href")).toBe(target);
-      await fixture.user.click(link);
-      if (attachmentId)
-        expect(openSession).toHaveBeenCalledWith("session-123", undefined, attachmentId);
-      else expect(openSession).toHaveBeenCalledWith("session-123", messageId);
-    },
-  );
+  it("routes titled exact-message and attachment links through real session navigation", async () => {
+    const sessionId = "session-123";
+    const attachmentId = "00000000-0000-4000-8000-000000000001";
+    const ref = messageReference(sessionId, "entry-42");
+    const inspect = vi.fn<Client["sessionChats"]["inspect"]>(async () => ({
+      message: {
+        ref,
+        link: ref,
+        sessionId,
+        entryId: "entry-42",
+        parentId: null,
+        timestamp: new Date(0).toISOString(),
+        role: "user",
+        active: false,
+        inputRefs: [],
+        hasImages: false,
+      },
+      text: "Exact original evidence",
+      totalChars: 23,
+      offset: 0,
+      nextOffset: null,
+      truncated: false,
+    }));
+    const readAttachment = vi.fn<Client["sessionChats"]["readAttachment"]>(async () => ({
+      kind: "text",
+      reference: {
+        kind: "input",
+        id: attachmentId,
+        name: "Original input",
+        mimeType: "text/plain",
+        byteLength: 25,
+      },
+      text: "Exact attachment evidence",
+      offset: 0,
+      totalCharacters: 25,
+      nextOffset: null,
+    }));
+    const open = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);
+    const messageTarget = `cake://session/${sessionId}?message=entry-42`;
+    const attachmentTarget = `cake://session/${sessionId}?attachment=${attachmentId}`;
+    using fixture = renderMarkdown(
+      `[Exact message](${messageTarget} "Authored title") · [Exact attachment](${attachmentTarget} "Authored title")`,
+      {
+        sessionLinkTarget: sessionId,
+        client: { projectSessions: { open }, sessionChats: { inspect, readAttachment } },
+      },
+    );
+    const messageLink = screen.getByRole("link", { name: "Exact message" });
+    expect(messageLink.getAttribute("href")).toBe(messageTarget);
+    await fixture.user.click(messageLink);
+    await waitFor(() =>
+      expect(inspect).toHaveBeenCalledExactlyOnceWith(
+        { sessionId, kind: "messages-read", entryId: "entry-42", offset: 0, maxChars: 20_000 },
+        { signal: expect.any(AbortSignal) },
+      ),
+    );
+    const attachmentLink = screen.getByRole("link", { name: "Exact attachment" });
+    expect(attachmentLink.getAttribute("href")).toBe(attachmentTarget);
+    await fixture.user.click(attachmentLink);
+    await waitFor(() =>
+      expect(readAttachment).toHaveBeenCalledExactlyOnceWith(
+        { sessionId, reference: attachmentId, offset: 0, limit: 20_000 },
+        { signal: expect.any(AbortSignal) },
+      ),
+    );
+    expect(open).toHaveBeenCalledWith(
+      { sessionId, workingDirectory: "/work/cake" },
+      { signal: expect.any(AbortSignal) },
+    );
+  });
 
   it("loads workspace images only through the authorized image service", async () => {
     const readImage = vi.fn<Client["filesystem"]["readImage"]>(async () => ({
