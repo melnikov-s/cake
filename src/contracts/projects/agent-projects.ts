@@ -49,6 +49,7 @@ export interface CakeChatProjectControl {
   list(input: AgentListInput, signal: AbortSignal): Promise<JsonValue>;
   info(input: AgentProjectInfoInput, signal: AbortSignal): Promise<JsonValue>;
   add(input: AgentProjectAddInput, signal: AbortSignal): Promise<JsonValue>;
+  requestTrust(input: AgentProjectInfoInput, signal: AbortSignal): Promise<JsonValue>;
   rename(input: AgentProjectRenameInput, signal: AbortSignal): Promise<JsonValue>;
   remove(input: AgentProjectRemoveInput, signal: AbortSignal): Promise<JsonValue>;
   getSettings(input: ProjectSettingsGetInput, signal: AbortSignal): Promise<JsonValue>;

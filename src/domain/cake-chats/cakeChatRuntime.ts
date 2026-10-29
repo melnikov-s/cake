@@ -170,6 +170,7 @@ const CAKE_CHAT_OPERATIONS = [
   "projects.list",
   "projects.info",
   "projects.add",
+  "projects.request-trust",
   "projects.rename",
   "projects.remove",
   "projects.settings.get",
@@ -550,6 +551,13 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
           run(projects.infoForAgent(input).pipe(Effect.map(toJsonValue)), { signal }),
         add: (input, signal) =>
           run(projects.addForAgent(input).pipe(Effect.map(toJsonValue)), { signal }),
+        requestTrust: (input, signal) =>
+          run(
+            projects
+              .requestTrustForAgent(input, target.sessionId, signal)
+              .pipe(Effect.map(toJsonValue)),
+            { signal },
+          ),
         rename: (input, signal) =>
           run(projects.renameForAgent(input).pipe(Effect.map(toJsonValue)), { signal }),
         // Removal retires window navigation and session history, so it runs through the

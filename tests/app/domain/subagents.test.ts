@@ -1279,7 +1279,7 @@ describe("Cake Chat project investigators", () => {
             cakeChatParent(fixture),
           )
           .pipe(Effect.flip);
-        assert.match(untrusted.message, /folder picker/);
+        assert.match(untrusted.message, /projects.request-trust/);
         assert.match(untrusted.message, /Trust and continue/);
         assert.match(untrusted.message, /projects.add does not grant trust/);
         const wrongCaller = yield* subagents

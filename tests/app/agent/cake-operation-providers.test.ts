@@ -451,6 +451,10 @@ describe("Backend-owned Cake operation composition", () => {
       })),
       info: vi.fn(async () => ({ project })),
       add: vi.fn(async () => ({ project, alreadyRegistered: false })),
+      requestTrust: vi.fn(async () => ({
+        decision: "approved",
+        project: { ...project, trusted: true },
+      })),
       rename: vi.fn(async () => ({ project: { ...project, name: "Agents" } })),
       remove: vi.fn(async () => ({ ok: true, path: project.path, deleteSessions: false })),
       getSettings: vi.fn(async () => ({ ok: true, projectPath: project.path, settings: {} })),
@@ -460,6 +464,7 @@ describe("Backend-owned Cake operation composition", () => {
       "projects.list",
       "projects.info",
       "projects.add",
+      "projects.request-trust",
       "projects.rename",
       "projects.remove",
       "projects.settings.get",
@@ -490,11 +495,36 @@ describe("Backend-owned Cake operation composition", () => {
     );
     expect(registry.definitions().map((operation) => operation.command)).toEqual(commands);
     expect(registry.help()).toContain(
-      "projects — List, register (add), rename, configure, and remove",
+      "projects — List, register (add), request trust for, rename, configure, and remove",
     );
     const help = registry.operationHelp("projects.add");
     expect(help).toContain("delegate it to an allowMutations worker first");
     expect(help).toContain("alreadyRegistered");
+    expect(help).toContain("projects.request-trust");
+    expect(registry.operationHelp("projects.request-trust")).toContain(
+      "trust approval alone launches nothing",
+    );
+    await registry.invoke(
+      { command: "projects.request-trust", input: { path: project.path } },
+      context,
+    );
+    expect(control.requestTrust).toHaveBeenCalledWith({ path: project.path }, context.signal);
+    await expect(
+      registry.invoke(
+        { command: "projects.request-trust", input: { path: project.path, approved: true } },
+        context,
+      ),
+    ).rejects.toThrow();
+    await expect(
+      registry.invoke(
+        {
+          command: "projects.request-trust",
+          input: { path: project.path, sessionId: "another-chat" },
+        },
+        context,
+      ),
+    ).rejects.toThrow();
+    expect(control.requestTrust).toHaveBeenCalledTimes(1);
     expect(help).toContain("/Users/me/world/trees/agents");
 
     const added = await registry.invoke(

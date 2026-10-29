@@ -25,6 +25,7 @@ import {
   rewordProjectSelection,
 } from "../../services/pi/PiWorkflows";
 import { ProjectAccess } from "../../services/projects/ProjectAccess";
+import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { ProjectConfiguration } from "../../services/projects/ProjectConfiguration";
 import { RewordingRequests } from "../../services/projects/RewordingRequests";
 import { Terminal } from "../../services/terminal/Terminal";
@@ -302,10 +303,44 @@ export const infoForAgent = Effect.fn("Projects.infoForAgent")(function* (
   return { project: agentProjectView(project, state.trustedProjectPaths) };
 });
 
+/** Requests a user decision without opening a Project or changing the current conversation. */
+export const requestTrustForAgent = Effect.fn("Projects.requestTrustForAgent")(function* (
+  input: AgentProjectInfoInput,
+  sessionId: string,
+  signal: AbortSignal,
+) {
+  const { project } = yield* infoForAgent(input);
+  if (signal.aborted) return { decision: "cancelled" as const, project };
+  if (project.trusted) return { decision: "already-trusted" as const, project };
+  const response = yield* mapProjectError(
+    "requestTrust",
+    (yield* RendererRequestCoordinator).requestUiForTarget(
+      { _tag: "CakeChatSession", sessionId },
+      {
+        kind: "confirm",
+        title: "Trust this Project and continue?",
+        message: `Trust ${project.path} to run agents and load its project-local Pi instructions, skills, extensions and MCP. Extensions and MCP can execute code on your computer. Trust only projects whose contents you know. Creating or registering a Project does not grant this permission.`,
+        signal,
+      },
+    ),
+  );
+  if (signal.aborted || response === undefined)
+    return { decision: "cancelled" as const, ...(yield* infoForAgent(input)) };
+  if (response === "false")
+    return { decision: "declined" as const, ...(yield* infoForAgent(input)) };
+  if (response !== "true")
+    return yield* projectError("requestTrust", "Invalid Project trust decision.");
+  // The coordinator accepts only the captured renderer/session/request's response.
+  // Recheck registration before committing the same explicit user trust used by the picker.
+  yield* infoForAgent(input);
+  yield* mapProjectError("requestTrust", trustProject(project.path));
+  return { decision: "approved" as const, ...(yield* infoForAgent(input)) };
+});
+
 /**
  * Registers a Project on behalf of the trusted application-level assistant. The user asked
  * the assistant to add this directory, which stands in for the picker's path selection;
- * Pi resource trust is still granted only by the user when the Project is opened.
+ * Pi resource trust is still granted only by the user through a separate approval.
  */
 export const addForAgent = Effect.fn("Projects.addForAgent")(function* (
   request: AgentProjectAddInput,

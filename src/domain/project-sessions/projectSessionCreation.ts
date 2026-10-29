@@ -9,6 +9,7 @@ import { CAKE_CHAT_TODO_SCOPE } from "../../contracts/projects/project-todos";
 import { ensureSession as ensureSessionTodo } from "../projects/projectTodos";
 import { type SessionRequester } from "../../contracts/project-sessions/session-reporting";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
+import { ApplicationState } from "../../services/storage/ApplicationState";
 import { encodeCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import { inheritTaskInputProtection } from "../conversations/taskInputs";
 import {
@@ -50,6 +51,11 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
     return yield* new ProjectSessionError({
       operation: "createPrompted",
       message: "The Project is not registered",
+    });
+  if (!(yield* ApplicationState).snapshot().trustedProjectPaths.includes(input.projectPath))
+    return yield* new ProjectSessionError({
+      operation: "createPrompted",
+      message: `Project ${JSON.stringify(input.projectPath)} is not trusted. Ask the user through projects.request-trust in Cake Chat, or open the Project in Cake and choose “Trust and continue”, then retry the launch. Registration with projects.add does not grant trust.`,
     });
   const initialPrompt =
     input.promptFiles === undefined

@@ -2,6 +2,18 @@
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StoreProvider } from "r-state-tree/react";
+import { Context, Effect, Fiber, Layer, Queue, Stream } from "effect";
+import * as projects from "../../../src/domain/projects/projects";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
+import { ApplicationState } from "../../../src/services/storage/ApplicationState";
+import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
+import { ClientConnectionsLive } from "../../../src/services/clients/ClientConnections";
+import { ClientEvents } from "../../../src/services/clients/ClientEvents";
+import { ClientEventsLive } from "../../../src/services/clients/ClientEventsLive";
+import {
+  RendererRequestCoordinator,
+  RendererRequestCoordinatorLive,
+} from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CakeEvent } from "../../../src/contracts/application/cake-rpc-contract";
 import type { Client } from "../../../src/renderer/client/Client";
@@ -133,6 +145,98 @@ const response = (value: string | undefined, cancelled = false) => ({
 });
 
 describe("Extension UI workflow", () => {
+  it.each([
+    ["Confirm", "approved", true],
+    ["Decline", "declined", false],
+    ["Cancel", "cancelled", false],
+  ] as const)(
+    "commits Project trust only after the real in-app %s response, without navigating",
+    async (action, decision, trusted) => {
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const path = "/created-project";
+            const context = yield* Layer.build(
+              Layer.merge(
+                ApplicationState.layer.pipe(
+                  Layer.provide(
+                    Layer.mock(ApplicationStorage, {
+                      load: () =>
+                        Effect.succeed({
+                          state: {
+                            ...defaultApplicationState(),
+                            projects: [projectRecord({ path, name: "Created" })],
+                          },
+                          source: "current" as const,
+                        }),
+                      save: () => Effect.void,
+                    }),
+                  ),
+                ),
+                RendererRequestCoordinatorLive.pipe(
+                  Layer.provideMerge(Layer.merge(ClientConnectionsLive, ClientEventsLive)),
+                ),
+              ),
+            );
+            yield* Context.get(context, ApplicationState).initialize();
+            const coordinator = Context.get(context, RendererRequestCoordinator);
+            yield* coordinator.bind(
+              { _tag: "CakeChatSession", sessionId: CAKE_CHAT_SESSION_ID },
+              7,
+            );
+            const events = yield* Queue.unbounded<CakeEvent>();
+            yield* Context.get(context, ClientEvents)
+              .artifacts(7)
+              .pipe(
+                Stream.runForEach((event) => Queue.offer(events, event)),
+                Effect.forkScoped,
+              );
+            yield* Queue.take(events); // Subscription readiness.
+            using fixture = renderExtensionUi(
+              (input) =>
+                Effect.runPromise(
+                  coordinator.respondUi(7, input.sessionId, {
+                    sessionId: input.sessionId,
+                    requestId: input.operationId,
+                    uiRequestId: input.uiRequestId,
+                    value: input.value,
+                    cancelled: input.cancelled,
+                  }),
+                ),
+              true,
+            );
+            const composer = screen.getByRole("combobox", { name: "Message" });
+            yield* Effect.promise(() => fixture.user.type(composer, "Keep my unrelated draft"));
+            const pending = yield* projects
+              .requestTrustForAgent({ path }, CAKE_CHAT_SESSION_ID, new AbortController().signal)
+              .pipe(Effect.provide(context), Effect.forkChild);
+            const event = yield* Queue.take(events);
+            yield* Effect.promise(() => fixture.publish(event));
+            expect(
+              screen.getByRole("alertdialog", { name: "Trust this Project and continue?" })
+                .textContent,
+            ).toContain(path);
+            expect(screen.getByRole("alertdialog").textContent).toContain(
+              "execute code on your computer",
+            );
+            expect(
+              (yield* projects.infoForAgent({ path }).pipe(Effect.provide(context))).project
+                .trusted,
+            ).toBe(false);
+            yield* Effect.promise(() =>
+              fixture.user.click(screen.getByRole("button", { name: action })),
+            );
+            expect(yield* Fiber.join(pending)).toMatchObject({
+              decision,
+              project: { path, trusted },
+            });
+            expect(screen.queryByRole("alertdialog")).toBeNull();
+            expect(screen.getByDisplayValue("Keep my unrelated draft")).toBe(composer);
+          }),
+        ),
+      );
+    },
+  );
   it("never displays a workflow dialog when disabled, while ordinary extension dialogs still work", async () => {
     const respond = vi.fn<Client["artifacts"]["respondToUi"]>(async () => undefined);
     using fixture = renderExtensionUi(respond, true);

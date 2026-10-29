@@ -440,6 +440,7 @@ describe("permanent Cake Chat", () => {
         for (const command of [
           "projects.list",
           "projects.add",
+          "projects.request-trust",
           "projects.rename",
           "projects.remove",
           "projects.settings.get",

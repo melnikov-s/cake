@@ -2,7 +2,16 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it } from "@effect/vitest";
-import { Effect, Fiber, Layer, Stream } from "effect";
+import { Context, Effect, Fiber, Layer, Queue, Stream } from "effect";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
+import type { CakeEvent } from "../../../src/contracts/application/cake-rpc-contract";
+import { ClientConnectionsLive } from "../../../src/services/clients/ClientConnections";
+import { ClientEvents } from "../../../src/services/clients/ClientEvents";
+import { ClientEventsLive } from "../../../src/services/clients/ClientEventsLive";
+import {
+  RendererRequestCoordinator,
+  RendererRequestCoordinatorLive,
+} from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { afterEach, beforeEach, describe, expect } from "vitest";
 import { projectChatSessionId } from "../../../src/domain/cake-chats/cakeChatLocations";
 import * as projects from "../../../src/domain/projects/projects";
@@ -65,6 +74,127 @@ function testLayer(records: () => ReadonlyArray<WorktreeRecord> = () => []) {
 
 const initialize = Effect.gen(function* () {
   yield* (yield* ApplicationState).initialize();
+});
+
+const trustFixture = Effect.gen(function* () {
+  const context = yield* Layer.build(
+    RendererRequestCoordinatorLive.pipe(
+      Layer.provideMerge(Layer.merge(ClientConnectionsLive, ClientEventsLive)),
+    ),
+  );
+  const coordinator = Context.get(context, RendererRequestCoordinator);
+  const events = yield* Queue.unbounded<CakeEvent>();
+  const ready = yield* Queue.unbounded<void>();
+  yield* Context.get(context, ClientEvents)
+    .artifacts(7)
+    .pipe(
+      Stream.runForEach((event) =>
+        event.type === "renderer-events-ready"
+          ? Queue.offer(ready, undefined)
+          : Queue.offer(events, event),
+      ),
+      Effect.forkScoped,
+    );
+  yield* Queue.take(ready);
+  yield* coordinator.bind({ _tag: "CakeChatSession", sessionId: CAKE_CHAT_SESSION_ID }, 7);
+  return { coordinator, events };
+});
+
+describe("agent Project trust", () => {
+  it.effect.each(["approve", "decline", "cancel", "abort", "disconnect"] as const)(
+    "registration requests an owned explicit decision: %s",
+    (action) =>
+      Effect.gen(function* () {
+        yield* initialize;
+        const { coordinator, events } = yield* trustFixture;
+        const path = join(root, "agents");
+        yield* projects.addForAgent({ path });
+        const controller = new AbortController();
+        const pending = yield* projects
+          .requestTrustForAgent({ path }, CAKE_CHAT_SESSION_ID, controller.signal)
+          .pipe(Effect.provideService(RendererRequestCoordinator, coordinator), Effect.forkChild);
+        const event = yield* Queue.take(events);
+        expect(event.type).toBe("ui-request");
+        if (event.type !== "ui-request") throw new Error("Expected trust confirmation");
+        expect(event).toMatchObject({
+          kind: "confirm",
+          title: "Trust this Project and continue?",
+          sessionId: CAKE_CHAT_SESSION_ID,
+        });
+        expect(event.message).toContain(path);
+        expect(event.message).toContain("execute code on your computer");
+        expect((yield* projects.infoForAgent({ path })).project.trusted).toBe(false);
+        const response = {
+          sessionId: CAKE_CHAT_SESSION_ID,
+          requestId: event.requestId,
+          uiRequestId: event.uiRequestId,
+          value: "true",
+          cancelled: false,
+        };
+        expect(
+          yield* coordinator.respondUi(8, CAKE_CHAT_SESSION_ID, response).pipe(Effect.exit),
+        ).toMatchObject({ _tag: "Failure" });
+        expect(
+          yield* coordinator.respondUi(7, "another-chat", response).pipe(Effect.exit),
+        ).toMatchObject({ _tag: "Failure" });
+        expect(
+          yield* coordinator
+            .respondUi(7, CAKE_CHAT_SESSION_ID, { ...response, requestId: "wrong" })
+            .pipe(Effect.exit),
+        ).toMatchObject({ _tag: "Failure" });
+        if (action === "abort") controller.abort();
+        else if (action === "disconnect") yield* coordinator.releaseConnection(7);
+        else
+          yield* coordinator.respondUi(7, CAKE_CHAT_SESSION_ID, {
+            ...response,
+            value: action === "decline" ? "false" : "true",
+            cancelled: action === "cancel",
+          });
+        const result = yield* Fiber.join(pending);
+        expect(result.decision).toBe(
+          action === "approve" ? "approved" : action === "decline" ? "declined" : "cancelled",
+        );
+        expect(result.project.trusted).toBe(action === "approve");
+        expect((yield* projects.infoForAgent({ path })).project.trusted).toBe(action === "approve");
+        // A stale approval cannot change a declined/cancelled request into trust.
+        yield* coordinator.respondUi(7, CAKE_CHAT_SESSION_ID, response);
+        expect((yield* projects.infoForAgent({ path })).project.trusted).toBe(action === "approve");
+      }).pipe(Effect.provide(testLayer())),
+  );
+
+  it.effect(
+    "already-trusted Projects return without a renderer and unregistered paths are refused",
+    () =>
+      Effect.gen(function* () {
+        yield* initialize;
+        const coordinator = yield* Layer.build(Layer.mock(RendererRequestCoordinator, {}));
+        const signal = new AbortController().signal;
+        expect(
+          yield* projects
+            .requestTrustForAgent({ path: join(root, "existing") }, CAKE_CHAT_SESSION_ID, signal)
+            .pipe(Effect.provide(coordinator)),
+        ).toMatchObject({ decision: "already-trusted", project: { trusted: true } });
+        expect(
+          yield* projects
+            .requestTrustForAgent({ path: join(root, "agents") }, CAKE_CHAT_SESSION_ID, signal)
+            .pipe(Effect.provide(coordinator), Effect.exit),
+        ).toMatchObject({ _tag: "Failure" });
+      }).pipe(Effect.provide(testLayer())),
+  );
+
+  it.effect("no connected renderer is an error, never approval", () =>
+    Effect.gen(function* () {
+      yield* initialize;
+      const { coordinator } = yield* trustFixture;
+      const path = join(root, "agents");
+      yield* projects.addForAgent({ path });
+      const error = yield* projects
+        .requestTrustForAgent({ path }, "unbound-chat", new AbortController().signal)
+        .pipe(Effect.provideService(RendererRequestCoordinator, coordinator), Effect.flip);
+      expect(error.message).toContain("No renderer");
+      expect((yield* projects.infoForAgent({ path })).project.trusted).toBe(false);
+    }).pipe(Effect.provide(testLayer())),
+  );
 });
 
 describe("agent Project registration", () => {
