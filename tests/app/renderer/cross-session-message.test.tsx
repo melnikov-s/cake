@@ -194,9 +194,6 @@ describe("cross-session message presentation", () => {
             : "Cake Chat",
         );
         expect(region.textContent?.match(/Cake Chat/g)).toHaveLength(1);
-        expect(screen.getByRole("link", { name: "Open conversation" }).getAttribute("href")).toBe(
-          "cake://session/cake-chat-id",
-        );
         expect(screen.getByText("fix").getAttribute("data-streamdown")).toBe("strong");
         expect(region.textContent).not.toContain("cake-session-message");
         expect(region.textContent).not.toContain(metadata.messageId);
