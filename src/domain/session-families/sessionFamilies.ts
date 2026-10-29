@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import * as projectTodoUpdates from "../projects/projectTodoUpdates";
-import { ensureSession as ensureSessionTodo } from "../projects/projectTodos";
+import { ensureAdmittedSession as ensureSessionTodo } from "../projects/projectTodos";
 import { describeTurnStop, type TurnStop } from "../../contracts/conversations/turn-stop";
 import { appendMessageReferences } from "../../contracts/conversations/message-reference-forwarding";
 import type { ResultDelivery } from "../../contracts/conversations/result-delivery";

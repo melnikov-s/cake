@@ -6,7 +6,7 @@ import {
   isCakeChatSessionId,
 } from "../../contracts/cake-chats/cake-chat-identity";
 import { CAKE_CHAT_TODO_SCOPE } from "../../contracts/projects/project-todos";
-import { ensureSession as ensureSessionTodo } from "../projects/projectTodos";
+import { ensureAdmittedSession as ensureSessionTodo } from "../projects/projectTodos";
 import { type SessionRequester } from "../../contracts/project-sessions/session-reporting";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { ApplicationState } from "../../services/storage/ApplicationState";
@@ -168,11 +168,7 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
   // Global Cake Chat tracks the sessions it launches in its own list too; the Project's list
   // keeps its automatic item. Bookkeeping never fails an already-admitted launch.
   if (requester?.sessionId === CAKE_CHAT_SESSION_ID)
-    yield* ensureSessionTodo(CAKE_CHAT_TODO_SCOPE, sessionId, input.name, input.initialPrompt).pipe(
-      Effect.catch((cause) =>
-        Effect.logWarning("Global Cake Chat could not record the new session's to-do", cause),
-      ),
-    );
+    yield* ensureSessionTodo(CAKE_CHAT_TODO_SCOPE, sessionId, input.name, input.initialPrompt);
   return {
     ok: true as const,
     command: "sessions.create" as const,

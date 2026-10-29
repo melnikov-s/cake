@@ -368,6 +368,24 @@ export const ensureSession = Effect.fn("ProjectTodos.ensureSession")(function* (
   });
 });
 
+/** Once a session/turn is admitted (or a fork exists), secondary to-do storage must not
+ * turn that success into a retryable launch failure. Keep the accepted identity and diagnose
+ * expected bookkeeping failures separately; defects and interruption are not recovered here. */
+export const ensureAdmittedSession = Effect.fn("ProjectTodos.ensureAdmittedSession")(function* (
+  scope: string,
+  sessionId: string,
+  title: string,
+  brief: string,
+) {
+  yield* ensureSession(scope, sessionId, title, brief).pipe(
+    Effect.catch((error) =>
+      Effect.logWarning("Accepted session could not be recorded in the to-do list", error).pipe(
+        Effect.annotateLogs({ scope, sessionId }),
+      ),
+    ),
+  );
+});
+
 /** Call only after native lifecycle authority confirms an actual transition (UI or tool). */
 export const recordSessionChange = Effect.fn("ProjectTodos.recordSessionChange")(function* (
   scope: string,

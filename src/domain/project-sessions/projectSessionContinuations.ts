@@ -1,5 +1,5 @@
 import { inheritTaskInputProtection } from "../conversations/taskInputs";
-import { ensureSession as ensureSessionTodo } from "../projects/projectTodos";
+import { ensureAdmittedSession as ensureSessionTodo } from "../projects/projectTodos";
 import { Effect, Schema, Stream } from "effect";
 import type { ArtifactPointer } from "../../contracts/artifacts/artifact-contract";
 import {
@@ -161,7 +161,7 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
         sessionId,
         forkTitle,
         input.prompt ?? `Continue the work from ${sourceTitle}.`,
-      ).pipe(asError("fork"));
+      );
       yield* inheritTaskInputProtection(input.target.sessionId, sessionId).pipe(asError("fork"));
       const artifactStorage = yield* ArtifactStorage;
       yield* Effect.forEach(

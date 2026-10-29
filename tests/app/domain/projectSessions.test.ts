@@ -17,6 +17,10 @@ import {
   streamWorkspaceSessions,
 } from "../../../src/services/pi/runtime/session-discovery";
 import { it } from "@effect/vitest";
+import { Logger } from "effect";
+import { fullProjectTodos, projectTodoLayer } from "../helpers/projectTodoHarness";
+import { createPrompted } from "../../../src/domain/project-sessions/projectSessionCreation";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
 import { Deferred, Effect, Fiber, Layer, Queue, Schema, Stream, SubscriptionRef } from "effect";
 import * as TestClock from "effect/testing/TestClock";
 import { describe, vi } from "vitest";
@@ -239,6 +243,7 @@ const makeLayer = (
     trustedProjectPaths: ["/project"],
   },
   hooks: {
+    applicationLayer?: ReturnType<typeof projectTodoLayer>;
     onCreateRuntime?(): void;
     onArchive?(sessionId: string): void;
     archiveErrorSessionId?: string;
@@ -456,7 +461,7 @@ const makeLayer = (
       isRecipient: () => Effect.succeed(false),
     }),
     WorkflowTestLive,
-    application,
+    hooks.applicationLayer ?? application,
     catalogChanges,
     Layer.succeed(SessionFamilyStorage, {
       deferPassiveNotice: () => Effect.void,
@@ -3175,6 +3180,218 @@ describe("Project Sessions domain", () => {
       Effect.provide(
         makeLayer(defaultApplicationState(), {
           onCatalogChange: (change) => changes.push(change),
+        }),
+      ),
+    );
+  });
+
+  for (const failure of ["full list", "storage failure"] as const) {
+    const bookkeepingLayer = () =>
+      projectTodoLayer({
+        ...(failure === "full list"
+          ? { initialTodos: fullProjectTodos(), initialCakeChatTodos: fullProjectTodos() }
+          : { failSave: true }),
+      });
+
+    it.effect(`returns the accepted ordinary turn despite to-do ${failure}`, () =>
+      Effect.gen(function* () {
+        const gate = yield* Deferred.make<void>();
+        const started = yield* Deferred.make<void>();
+        let starts = 0;
+        const logs: unknown[] = [];
+        yield* Effect.gen(function* () {
+          const turnId = yield* projectSessionOperations.start({
+            sessionId: "accepted-session",
+            workingDirectory: "/project",
+            text: "Do the work",
+            attachments: [],
+            renderUserMessageAsMarkdown: false,
+          });
+          yield* Deferred.await(started);
+          const record = yield* (yield* RuntimeRecoveryStorage).get("accepted-session");
+          assert.equal(record?.sessionId, "accepted-session");
+          assert.deepEqual(
+            record?.inputs.map((input) => input.turnId),
+            [turnId],
+          );
+          assert.equal(starts, 1);
+          assert.equal(logs.length, 1);
+          assert.match(String(logs[0]), /Accepted session could not be recorded/);
+          assert.match(
+            String(logs[0]),
+            failure === "full list" ? /To-do list is full/ : /To-do disk unavailable/,
+          );
+          yield* Deferred.succeed(gate, undefined);
+        }).pipe(
+          Effect.provide(
+            makeLayer(undefined, {
+              applicationLayer: bookkeepingLayer(),
+              prompt: () => {
+                starts += 1;
+                return Effect.runPromise(
+                  Deferred.succeed(started, undefined).pipe(Effect.andThen(Deferred.await(gate))),
+                );
+              },
+            }),
+          ),
+          Effect.provide(
+            Logger.layer([
+              Logger.make((entry) => {
+                logs.push(entry.message);
+              }),
+            ]),
+          ),
+        );
+      }),
+    );
+
+    it.effect(`returns the created fork despite to-do ${failure}`, () => {
+      let forks = 0;
+      const logs: unknown[] = [];
+      return Effect.gen(function* () {
+        const result = yield* projectSessionContinuations.fork({
+          target: { sessionId: "session-1", workingDirectory: "/project" },
+          entryId: "entry-1",
+        });
+        assert.deepEqual(result, { sessionId: "forked" });
+        assert.equal(forks, 1);
+        assert.equal(logs.length, 1);
+        assert.match(
+          String(logs[0]),
+          failure === "full list" ? /To-do list is full/ : /To-do disk unavailable/,
+        );
+      }).pipe(
+        Effect.provide(
+          makeLayer(undefined, {
+            applicationLayer: bookkeepingLayer(),
+            onForkTitle: () => {
+              forks += 1;
+            },
+          }),
+        ),
+        Effect.provide(
+          Logger.layer([
+            Logger.make((entry) => {
+              logs.push(entry.message);
+            }),
+          ]),
+        ),
+      );
+    });
+
+    it.effect(
+      `returns a started independent session despite project/global to-do ${failure}`,
+      () => {
+        let starts = 0;
+        let createdSessionId: string | undefined;
+        const logs: unknown[] = [];
+        return Effect.gen(function* () {
+          const result = yield* createPrompted({
+            projectPath: "/project",
+            name: "Independent work",
+            initialPrompt: "Do the work",
+            model: { provider: "test", modelId: "test", thinkingLevel: "off", fastMode: false },
+            requester: { kind: "cake-chat", sessionId: CAKE_CHAT_SESSION_ID, title: "Cake Chat" },
+          });
+          assert.equal(result.ok, true);
+          assert.equal(result.status, "started");
+          assert.equal(result.sessionId, createdSessionId);
+          assert.equal(starts, 1);
+          // The same unavailable storage can also warn while marking the finished turn unread.
+          const bookkeepingLogs = logs.filter((log) =>
+            String(log).includes("Accepted session could not be recorded"),
+          );
+          assert.equal(bookkeepingLogs.length, 2);
+          for (const log of bookkeepingLogs)
+            assert.match(
+              String(log),
+              failure === "full list" ? /To-do list is full/ : /To-do disk unavailable/,
+            );
+        }).pipe(
+          Effect.provide(
+            makeLayer(undefined, {
+              applicationLayer: bookkeepingLayer(),
+              runtime: (options) => {
+                createdSessionId = options.sessionId;
+                return fakeRuntime(options, async () => {
+                  starts += 1;
+                });
+              },
+            }),
+          ),
+          Effect.provide(
+            Logger.layer([
+              Logger.make((entry) => {
+                logs.push(entry.message);
+              }),
+            ]),
+          ),
+        );
+      },
+    );
+  }
+
+  it.effect("preserves ordinary pre-admission configuration failure without starting work", () => {
+    let starts = 0;
+    return Effect.gen(function* () {
+      const error = yield* projectSessionOperations
+        .start({
+          sessionId: "not-admitted",
+          workingDirectory: "/project",
+          text: "Do the work",
+          attachments: [],
+          renderUserMessageAsMarkdown: false,
+          configuration: {
+            provider: "test",
+            modelId: "test",
+            thinkingLevel: "off",
+            fastMode: false,
+          },
+        })
+        .pipe(Effect.flip);
+      assert.equal(error._tag, "ProjectSessionError");
+      assert.match(error.message, /Configuration unavailable/);
+      assert.equal(starts, 0);
+      assert.equal(yield* (yield* RuntimeRecoveryStorage).get("not-admitted"), undefined);
+    }).pipe(
+      Effect.provide(
+        makeLayer(undefined, {
+          runtime: (options) => ({
+            ...fakeRuntime(options, async () => {
+              starts += 1;
+            }),
+            applyConfiguration: async () => {
+              throw new Error("Configuration unavailable");
+            },
+          }),
+        }),
+      ),
+    );
+  });
+
+  it.effect("preserves fork creation failure without to-do bookkeeping", () => {
+    let forks = 0;
+    return Effect.gen(function* () {
+      const error = yield* projectSessionContinuations
+        .fork({
+          target: { sessionId: "session-1", workingDirectory: "/project" },
+          entryId: "entry-1",
+        })
+        .pipe(Effect.flip);
+      assert.equal(error._tag, "ProjectSessionError");
+      assert.match(error.message, /Fork unavailable/);
+      assert.equal(forks, 1);
+      assert.equal((yield* projectTodos.list("/project")).items.length, 0);
+    }).pipe(
+      Effect.provide(
+        makeLayer(undefined, {
+          runtime: (options) => ({
+            ...fakeRuntime(options),
+            fork: async () => {
+              forks += 1;
+              throw new Error("Fork unavailable");
+            },
+          }),
         }),
       ),
     );

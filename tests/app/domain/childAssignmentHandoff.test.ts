@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
-import { Context, Deferred, Effect, Layer, Stream, Schema, Option, Fiber } from "effect";
+import { Context, Deferred, Effect, Layer, Stream, Schema, Option, Fiber, Logger } from "effect";
 import { describe } from "vitest";
 import {
   resultDeliveryBehavior,
@@ -24,7 +24,7 @@ import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamil
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
-import { projectTodoLayer } from "../helpers/projectTodoHarness";
+import { fullProjectTodos, projectTodoLayer } from "../helpers/projectTodoHarness";
 import * as todos from "../../../src/domain/projects/projectTodos";
 import { messageBoardHarness } from "../helpers/messageBoardHarness";
 import {
@@ -56,6 +56,7 @@ const fixture = Effect.fn("ChildAssignmentTest.fixture")(function* (
   settings: {
     familyFiles?: Map<string, string>;
     boardFiles?: Map<string, string>;
+    todoSettings?: Parameters<typeof projectTodoLayer>[0];
     failAssignmentOnce?: boolean;
     assignmentGate?: Deferred.Deferred<void>;
     assignmentStarted?: Deferred.Deferred<void>;
@@ -70,7 +71,7 @@ const fixture = Effect.fn("ChildAssignmentTest.fixture")(function* (
   const core = yield* Layer.build(
     Layer.mergeAll(
       family.layer,
-      projectTodoLayer(),
+      projectTodoLayer(settings.todoSettings),
       board.layer,
       SessionCatalogChanges.layer,
       Layer.mock(PiModels, { resolve: (model) => Effect.succeed(model) }),
@@ -151,6 +152,7 @@ const fixture = Effect.fn("ChildAssignmentTest.fixture")(function* (
             }
           },
           prompt: async (text) => {
+            setup.onInitialTranscriptPersisted?.();
             starts += 1;
             bootstrap = text;
             await Effect.runPromise(
@@ -307,6 +309,53 @@ describe("assignment-first child handoff", () => {
         assert.equal(f.starts(), 1);
       }),
   );
+
+  for (const failure of ["full list", "storage failure"] as const) {
+    it.effect(`keeps child admission and retries truthful despite to-do ${failure}`, () =>
+      Effect.gen(function* () {
+        const promptGate = yield* Deferred.make<void>();
+        const f = yield* fixture({
+          promptGate,
+          todoSettings:
+            failure === "full list" ? { initialTodos: fullProjectTodos() } : { failSave: true },
+        });
+        const logs: unknown[] = [];
+        const logger = Logger.layer([
+          Logger.make((entry) => {
+            logs.push(entry.message);
+          }),
+        ]);
+        const first = yield* f.launch().pipe(Effect.provide(logger));
+        yield* Deferred.await(f.firstPrompt);
+        assert.equal(first.launch.status, "accepted");
+        const record = yield* f.provide(
+          Effect.flatMap(RuntimeRecoveryStorage, (storage) => storage.get(first.childSessionId)),
+        );
+        assert.equal(record?.sessionId, first.childSessionId);
+        assert.deepEqual(
+          record?.inputs.map((input) => input.turnId),
+          [first.launch.turnId],
+        );
+        const retry = yield* f.launch().pipe(Effect.provide(logger));
+        assert.equal(retry.childSessionId, first.childSessionId);
+        assert.equal(retry.familyId, first.familyId);
+        assert.deepEqual(retry.assignment, first.assignment);
+        assert.equal(retry.launch.status, "already-admitted");
+        assert.equal(retry.launch.state, "active");
+        assert.equal(f.starts(), 1);
+        assert.equal(f.acquisitions(), 1);
+        assert.equal(logs.length, 2);
+        for (const log of logs) {
+          assert.match(String(log), /Accepted session could not be recorded/);
+          assert.match(
+            String(log),
+            failure === "full list" ? /To-do list is full/ : /To-do disk unavailable/,
+          );
+        }
+        yield* Deferred.succeed(promptGate, undefined);
+      }),
+    );
+  }
 
   it.effect("retries failed durable admission even when a runtime already exists", () =>
     Effect.gen(function* () {

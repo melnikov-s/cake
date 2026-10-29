@@ -1,5 +1,5 @@
 import { Effect, Schedule, Stream } from "effect";
-import { ensureSession as ensureSessionTodo } from "../projects/projectTodos";
+import { ensureAdmittedSession as ensureSessionTodo } from "../projects/projectTodos";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import type { JsonObject } from "../../contracts/serialization/json-contract";
 import { SESSION_TITLE_MAX_LENGTH } from "../../contracts/conversations/session-contract";
@@ -123,7 +123,7 @@ export const start = Effect.fn("ProjectSessions.start")(function* (
         input.sessionId,
         input.name ?? brief.trim().split("\n")[0]?.slice(0, 120) ?? "New Project Session",
         brief,
-      ).pipe(asError("start"));
+      );
       return TurnId.make(accepted);
     }),
   );
