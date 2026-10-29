@@ -155,7 +155,7 @@ export interface CakeSessionRuntimeOptions {
   /** Child runtimes report their own costs separately. */
   partialPricingCoverage?: boolean;
   trusted: boolean;
-  /** User-owned live trust for permanent Project Chats, applied through idle resource reload. */
+  /** User-owned live project trust, applied through idle resource reload. */
   projectTrust?: () => boolean;
   agentDir: string;
   sessionDir: string;

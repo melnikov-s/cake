@@ -445,8 +445,8 @@ const runtimeFingerprint = (options: CakeSessionRuntimeAcquireOptions): string =
     // runtime policy and therefore is not part of the conflict fingerprint.
     sessionId: runtime.sessionId,
     sessionFile: runtime.sessionFile,
-    // Permanent Project Chat trust is live user policy, not a different Session.
-    // Other profiles still reject changes to their fixed trust configuration.
+    // Project trust is live user policy, not a different Session.
+    // Callers without live policy still reject changes to fixed trust configuration.
     trusted: runtime.projectTrust ? undefined : runtime.trusted,
     liveProjectTrust: runtime.projectTrust !== undefined,
     tools: runtime.tools ? [...runtime.tools].sort() : undefined,

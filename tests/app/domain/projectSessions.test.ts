@@ -4333,6 +4333,163 @@ describe("Project Sessions domain", () => {
     );
   });
 
+  for (const workingDirectory of ["/project", "/worktree"]) {
+    it.effect(
+      `observes a running session after project trust changes in ${workingDirectory}`,
+      () => {
+        let creations = 0;
+        let disposals = 0;
+        const reloadTrust: boolean[] = [];
+        const operations: string[] = [];
+        const started = Deferred.makeUnsafe<void>();
+        const followUpStarted = Deferred.makeUnsafe<void>();
+        let promptCount = 0;
+        const finish = Deferred.makeUnsafe<void>();
+        const location: ProjectSessionLocation = {
+          projectPath: "/project",
+          projectName: "Project",
+          workingDirectory,
+          sessionDirectory: "/sessions",
+          resolvedSessionDirectory: "/resolved-sessions",
+          ...(workingDirectory === "/worktree"
+            ? {
+                managedWorktree: {
+                  projectPath: "/project",
+                  worktreePath: workingDirectory,
+                  branch: "agent/existing",
+                  baseBranch: "main",
+                  state: "active" as const,
+                  createdAt: "2026-01-01T00:00:00.000Z",
+                },
+              }
+            : {}),
+        };
+        return Effect.gen(function* () {
+          const application = yield* ApplicationState;
+          const sessions = yield* CakeSessionRuntimes;
+          const initialOptions = yield* acquireOptions({
+            location,
+            sessionId: "session-1",
+            newSession: false,
+          });
+          assert.equal(initialOptions.runtime.trusted, false);
+          const first = yield* sessions.acquire(initialOptions);
+          const running = yield* first.prompt("Keep working");
+          yield* Deferred.await(started);
+          const queued = yield* first.followUp("Then check the result");
+          yield* Deferred.await(followUpStarted);
+          const before = yield* first.snapshot();
+          assert.equal(before.workspacePath, workingDirectory);
+          const queueBefore = yield* first.listQueuedMessages();
+          const recoveryBefore = yield* (yield* RuntimeRecoveryStorage).get("session-1");
+
+          for (const trusted of [true, false]) {
+            yield* application.transact((state) =>
+              Effect.succeed({ ...state, trustedProjectPaths: trusted ? ["/project"] : [] }),
+            );
+            const options = yield* acquireOptions({
+              location,
+              sessionId: "session-1",
+              newSession: false,
+            });
+            assert.equal(options.runtime.trusted, trusted);
+            // Exercise the actual regular Project Session observer, not just acquireSession.
+            const stream = yield* projectSessionOperations.observeConversation({
+              sessionId: "session-1",
+              workingDirectory,
+            });
+            const [update] = yield* stream.pipe(Stream.take(1), Stream.runCollect, Effect.scoped);
+            assert.equal(update?._tag, "Snapshot");
+            if (update?._tag === "Snapshot") {
+              assert.equal(update.snapshot.sessionId, before.sessionId);
+              assert.deepEqual(update.snapshot.parts, before.parts.map(toJsonValue));
+              assert.equal(update.snapshot.streaming, true);
+            }
+            // Existing command/observer options must consult live policy, not reverse it.
+            assert.equal(initialOptions.runtime.projectTrust?.(), trusted);
+            yield* sessions.acquire(initialOptions);
+            assert.deepEqual(yield* first.currentTurnIds(), [running, queued]);
+            assert.deepEqual(yield* first.listQueuedMessages(), queueBefore);
+            assert.deepEqual(
+              yield* (yield* RuntimeRecoveryStorage).get("session-1"),
+              recoveryBefore,
+            );
+            assert.equal(creations, 1);
+            assert.equal(disposals, 0);
+          }
+          assert.deepEqual(reloadTrust, [true, false]);
+          const conflict = yield* sessions
+            .acquire({
+              ...initialOptions,
+              runtime: { ...initialOptions.runtime, tools: ["read"] },
+            })
+            .pipe(Effect.flip);
+          assert.match(conflict.message, /conflicting runtime options/);
+          assert.ok(!operations.includes("abort"));
+          assert.ok(!operations.includes("clear-queue"));
+          const listening = yield* Deferred.make<void>();
+          const settled = yield* first.updates.pipe(
+            Stream.tap((update) =>
+              update._tag === "Snapshot" ? Deferred.succeed(listening, undefined) : Effect.void,
+            ),
+            Stream.filter(
+              (update) => update._tag === "Event" && update.event.type === "turn-settled",
+            ),
+            Stream.take(2),
+            Stream.runDrain,
+            Effect.forkChild,
+          );
+          yield* Deferred.await(listening);
+          yield* Deferred.succeed(finish, undefined);
+          yield* Fiber.join(settled);
+        }).pipe(
+          Effect.provide(
+            makeLayer(
+              { ...defaultApplicationState(), trustedProjectPaths: [] },
+              {
+                locations: [location],
+                runtime: (options) => {
+                  creations += 1;
+                  return {
+                    ...fakeRuntime(
+                      options,
+                      () =>
+                        Effect.runPromise(
+                          Deferred.succeed(
+                            promptCount++ === 0 ? started : followUpStarted,
+                            undefined,
+                          ).pipe(Effect.andThen(Deferred.await(finish))),
+                        ),
+                      undefined,
+                      undefined,
+                      undefined,
+                      (operation) => operations.push(operation),
+                      [],
+                      () => disposals++,
+                    ),
+                    streaming: true,
+                    snapshot: async () => ({
+                      ...snapshot,
+                      workspacePath: workingDirectory,
+                      streaming: true,
+                    }),
+                    listQueuedMessages: async () => ({
+                      steering: [],
+                      followUp: ["Then check the result"],
+                    }),
+                    reload: async () => {
+                      reloadTrust.push(options.projectTrust?.() ?? options.trusted);
+                    },
+                  };
+                },
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   it.effect(
     "observation retains a command-only new identity across start, commands, and its first message",
     () => {
