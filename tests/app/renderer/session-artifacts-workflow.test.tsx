@@ -954,6 +954,9 @@ it("does not load artifacts for unhydrated session identities restored from wind
   const view = render(
     <RendererRoot
       rootStore={fixture.root}
+      openSubagent={(parent, handle, message) =>
+        void fixture.root.navigationStore.openSubagentLink(parent, handle, message)
+      }
       openExternalUrl={(url) => void fixture.root.openExternalUrl(url)}
       openSession={(id, message, attachment) =>
         void fixture.root.navigationStore.openSessionLink(id, message, attachment)
