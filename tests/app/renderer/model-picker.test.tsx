@@ -1,174 +1,49 @@
-/**
- * @vitest-environment jsdom
- */
-import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ModelOption } from "../../../src/contracts/conversations/session-contract";
-import { ModelPicker, type ModelGroup } from "../../../src/renderer/components/model-picker";
+/** @vitest-environment jsdom */
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { expect, it, vi } from "vitest";
+import { Chat } from "../../../src/renderer/components/chat";
+import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
+import { configurationModel, configurationSnapshot } from "./chat-configuration-workflow-fixture";
+import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
+import { createRendererStoreFixture } from "./renderer-store-fixture";
 
-function sampleModel(
-  provider: string,
-  providerName: string,
-  id: string,
-  name: string,
-  availableThinkingLevels: ModelOption["availableThinkingLevels"] = ["off", "low", "high"],
-  fastMode = true,
-): ModelOption {
-  return {
-    provider,
-    providerName,
-    id,
-    name,
-    reasoning: availableThinkingLevels.some((level) => level !== "off"),
-    availableThinkingLevels,
-    fastMode,
-    input: ["text"],
-    authenticated: true,
-    authTypes: [],
-  };
-}
-
-describe("ModelPicker", () => {
-  let container: HTMLDivElement;
-  let root: Root;
-
-  beforeEach(() => {
-    Object.assign(globalThis, {
-      IS_REACT_ACT_ENVIRONMENT: true,
-      requestAnimationFrame: (callback: FrameRequestCallback) => {
-        callback(0);
-        return 1;
-      },
-    });
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
+// Model/reasoning selection is already a real runtime workflow in
+// chat-configuration-workflow.test.tsx. Native search typing, focus retention,
+// filtering and keyboard reopening are covered by electron/model-picker.smoke.
+// Retain only lazy catalog derivation: visible text cannot prove that closed
+// pickers avoid reading the grouping getter. The spy observes the real getter;
+// it never replaces the Store, its implementation, or a parent callback.
+it("renders the active model summary without deriving picker groups until opening", async () => {
+  using fixture = createRendererStoreFixture({
+    projects: [projectRecord({ path: "/project" })],
+    sessions: [sessionSummary({ sessionId: "picker-session", projectPath: "/project" })],
   });
-
-  afterEach(() => {
-    act(() => root.unmount());
-    container.remove();
+  const session = fixture.root.sessionRegistry.load("picker-session", "/project");
+  applyConversationUpdate(session.model, {
+    _tag: "Snapshot",
+    revision: 1,
+    snapshot: {
+      ...configurationSnapshot("picker-session", [configurationModel()]),
+      thinkingLevel: "medium",
+    },
   });
-
-  const models: ModelOption[] = [
-    sampleModel("openai", "OpenAI", "gpt-5", "GPT-5", ["off", "medium", "high"], false),
-    sampleModel(
-      "anthropic",
-      "Anthropic",
-      "claude-opus",
-      "Claude Opus",
-      ["low", "high", "max"],
-      true,
-    ),
-  ];
-
-  const groups: ModelGroup[] = [
-    { id: "openai", name: "OpenAI", models: [models[0]!] },
-    { id: "anthropic", name: "Anthropic", models: [models[1]!] },
-  ];
-
-  it("renders the active model summary without reading the catalog until opening", () => {
-    const onSelect = vi.fn();
-    const catalog = vi.fn(() => groups);
-    act(() =>
-      root.render(
-        <ModelPicker
-          groups={catalog}
-          currentModelName="GPT-5"
-          value={{ provider: "openai", modelId: "gpt-5", thinkingLevel: "medium" }}
-          onSelect={onSelect}
-        />,
-      ),
-    );
-
-    expect(catalog).not.toHaveBeenCalled();
-    const trigger = container.querySelector<HTMLButtonElement>("button")!;
+  const configuration = session.conversationSessionStore.configurationStore;
+  const groups = vi.spyOn(configuration, "connectedModelsByProvider", "get");
+  const view = render(
+    <Chat store={session.conversationSessionStore.chatStore} composerFocusEnabled={false} />,
+  );
+  try {
+    const trigger = screen.getByRole("button", { name: "Model configuration" });
     expect(trigger.textContent).toContain("GPT-5");
     expect(trigger.textContent).toContain("Medium");
+    expect(groups).not.toHaveBeenCalled();
 
-    act(() => trigger.click());
-    expect(catalog).toHaveBeenCalled();
-    expect(document.body.querySelector('[role="dialog"]')).not.toBeNull();
-  });
-
-  it("selects model and configures reasoning level", () => {
-    const onSelect = vi.fn();
-    act(() => root.render(<ModelPicker groups={() => groups} onSelect={onSelect} />));
-
-    act(() => container.querySelector<HTMLButtonElement>("button")!.click());
-
-    // Click Claude Opus in list
-    const claudeBtn = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find((btn) =>
-      btn.textContent?.includes("Claude Opus"),
-    )!;
-    act(() => claudeBtn.click());
-
-    // Select Max reasoning
-    const maxBtn = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(
-      (btn) => btn.textContent === "Max",
-    )!;
-    act(() => maxBtn.click());
-
-    // Click Apply
-    const applyBtn = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(
-      (btn) => btn.textContent === "Apply",
-    )!;
-    act(() => applyBtn.click());
-
-    expect(onSelect).toHaveBeenCalledWith({
-      provider: "anthropic",
-      modelId: "claude-opus",
-      thinkingLevel: "max",
-      fastMode: false,
-    });
-  });
-
-  it("retains focus on search input while typing filter characters", () => {
-    const onSelect = vi.fn();
-    act(() =>
-      root.render(
-        <ModelPicker
-          groups={() => groups}
-          currentModelName="GPT-5"
-          value={{ provider: "openai", modelId: "gpt-5", thinkingLevel: "medium" }}
-          onSelect={onSelect}
-        />,
-      ),
-    );
-
-    // Open popover
-    act(() => container.querySelector<HTMLButtonElement>("button")!.click());
-
-    // Click "Change model" to go to models search view
-    const changeModelBtn = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(
-      (btn) => btn.textContent?.includes("Change model"),
-    )!;
-    act(() => changeModelBtn.click());
-
-    const input = document.body.querySelector<HTMLInputElement>('input[placeholder*="Search"]')!;
-    expect(input).not.toBeNull();
-    input.focus();
-    expect(document.activeElement).toBe(input);
-
-    // Simulate multiple keystrokes
-    const nativeSetter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
-      "value",
-    )?.set;
-    for (const char of ["c", "l", "a", "u"]) {
-      act(() => {
-        nativeSetter?.call(input, input.value + char);
-        input.dispatchEvent(new Event("input", { bubbles: true }));
-        input.dispatchEvent(new Event("change", { bubbles: true }));
-      });
-      // Focus should remain on the input, not jump to any other element
-      expect(document.activeElement).toBe(input);
-    }
-
-    const dialog = document.body.querySelector('[role="dialog"]')!;
-    // Only Claude Opus should be visible in the filtered list
-    expect(dialog.textContent).toContain("Claude Opus");
-    expect(dialog.textContent).not.toContain("GPT-5");
-  });
+    await userEvent.setup().click(trigger);
+    expect(screen.getByRole("dialog", { name: "Model configuration" })).toBeDefined();
+    expect(groups).toHaveBeenCalled();
+  } finally {
+    view.unmount();
+    groups.mockRestore();
+  }
 });
