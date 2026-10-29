@@ -25,6 +25,7 @@ export interface CakeChatSideChatsStoreProps {
   ): Conversation;
   /** Cake Chat's own model; a new side chat starts on it. */
   parent(): Conversation;
+  parentBusy(): boolean;
   configuration(): ChatConfigurationStore;
   operations: SessionOperationCoordinatorStore;
   modelPresets(): readonly ModelPreset[];
@@ -73,6 +74,7 @@ export class CakeChatSideChatsStore
         modelPresets: this.props.modelPresets,
         openModelPresetSettings: this.props.openModelPresetSettings,
 
+        parentBusy: this.props.parentBusy,
         setResolved: (resolved) => this.resolveThread(thread.id, resolved),
       }),
     );

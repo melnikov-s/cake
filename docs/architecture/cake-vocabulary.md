@@ -173,10 +173,20 @@ uses **Discussion Session**.
 The permanent Cake Chat can also parent Discussion Sessions, anchored to a whole
 message or a selected passage. A Cake Chat side chat is a native fork of Cake Chat's
 Durable conversation after the anchored exchange: it continues from Cake Chat's
-exact context, separately from Cake Chat, and keeps its quick-check tools but not
-Cake controls; the user returns to Cake Chat for actions. When Cake Chat cannot
-fork there, the side chat is a tool-free branch whose context is the Cake Chat
-text through the anchored message, captured once when it starts.
+exact context, separately from Cake Chat, and keeps its quick-check tools. Both
+native forks and copied-context sidecars can use the actual parent's shared to-do
+list and ask interview questions; other Cake controls remain in the parent. To-do
+changes are immediate and do not require merging the conversation. Project Chat
+side chats share the project's list; global Cake Chat side chats share its separate
+list. They do not consume the parent's selection or reminder acknowledgments.
+When Cake Chat cannot fork there, the side chat captures the Cake Chat text through
+the anchored message once in its instructions.
+
+The user can merge new side-chat dialogue into the parent's Pi-owned history while
+both chats are idle. Each incremental import appears as a collapsed, attributed
+historical group at the merge point. Importing starts no turn, replays no tools,
+and does not close the source or complete to-dos. Inherited context is excluded;
+imported originals remain available to parent memory and exact recall.
 
 ### Subagent Session
 

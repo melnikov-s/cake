@@ -164,7 +164,13 @@ export interface CakeSessionRuntimeAcquireOptions {
   readonly onSessionChanged?: Effect.Effect<void, unknown>;
 }
 
+import type { SideChatHistory, SideChatHistoryImport } from "./side-chat-history";
+
 export interface CakeSessionHandle {
+  readonly exportSideChatHistory: () => Effect.Effect<SideChatHistory, PiSessionError>;
+  readonly importSideChatHistory: (
+    input: SideChatHistoryImport,
+  ) => Effect.Effect<{ importedMessages: number }, PiSessionError>;
   readonly currentTurnIds: () => Effect.Effect<ReadonlyArray<string>>;
   readonly recover: (
     inputs: ReadonlyArray<RuntimeRecoveryInput>,
@@ -1348,6 +1354,18 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
             );
             return receipt;
           }),
+          exportSideChatHistory: () =>
+            call("exportSideChatHistory", (runtime) => {
+              if (!runtime.exportSideChatHistory)
+                throw new Error("This conversation cannot export side-chat history");
+              return runtime.exportSideChatHistory();
+            }),
+          importSideChatHistory: (input) =>
+            call("importSideChatHistory", (runtime) => {
+              if (!runtime.importSideChatHistory)
+                throw new Error("This conversation cannot import side-chat history");
+              return runtime.importSideChatHistory(input);
+            }),
           inspectSession: (query) =>
             call("inspectSession", (runtime) => runtime.inspectSession(query)),
           history: (cursor) =>

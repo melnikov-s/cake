@@ -57,6 +57,16 @@ export class TranscriptInteractionStore extends Store<TranscriptInteractionStore
   transcriptScrollPosition: TranscriptScrollPosition | undefined;
   messageSelection: MessageSelection | undefined;
   changedFilesOpen = false;
+  private readonly openSideChatImports = observable(new Set<string>());
+
+  sideChatImportOpen(groupId: string) {
+    return this.openSideChatImports.has(groupId);
+  }
+
+  setSideChatImportOpen(groupId: string, open: boolean) {
+    if (open) this.openSideChatImports.add(groupId);
+    else this.openSideChatImports.delete(groupId);
+  }
   userMessagePresentationError: string | undefined;
   /**
    * Counts the reader's own sends. Sending a message is the only time the
@@ -215,6 +225,7 @@ export class TranscriptInteractionStore extends Store<TranscriptInteractionStore
 
   private selectMessage(messageId: string, origin: MessageSelection["origin"]) {
     const part = this.props.parts().find((candidate) => candidate.id === messageId);
+    if (part?.sideChatImport) this.setSideChatImportOpen(part.sideChatImport.groupId, true);
     this.messageSelection = {
       messageId,
       renderKey: messageRenderKey(part),

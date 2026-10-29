@@ -51,8 +51,6 @@ import {
 
 export {
   captureMessageSelection,
-  chatWorkIsActive,
-  groupTranscriptParts,
   type ChatTranscriptBehavior,
   type TranscriptSelectionCapture,
 } from "./chat-transcript-parts";
@@ -228,6 +226,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   const selectedMessageId = store.transcriptInteraction.selectedMessageId;
   const selectedItemIndex = selectedMessageId
     ? items.findIndex((item) =>
+        item.kind === "side-chat-import" ||
         item.kind === "activity-group" ||
         item.kind === "source-group" ||
         item.kind === "context-group"
@@ -248,6 +247,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   const restoredMessageItemIndex =
     restoredScrollPosition?.kind === "message"
       ? items.findIndex((item) =>
+          item.kind === "side-chat-import" ||
           item.kind === "activity-group" ||
           item.kind === "source-group" ||
           item.kind === "context-group"

@@ -18,12 +18,13 @@ describe("Cake Chat side chat context", () => {
     expect(context).toContain("## assistant\n\nbranch point");
   });
 
-  it("frames a whole-message branch as tool-free discussion of the inlined conversation", () => {
+  it("frames a whole-message branch with scoped shared to-do and interview controls", () => {
     const prompt = cakeChatSideChatSystemPrompt(
       { entryId: "entry-1", selectedText: "", contextBefore: "", contextAfter: "" },
       "## assistant\n\nThe first task is larger.\n",
     );
-    expect(prompt).toContain("You have no tools or Cake controls here.");
+    expect(prompt).toContain("the parent's shared to-do list only");
+    expect(prompt).toContain("only if the user explicitly merges it back");
     expect(prompt).toContain("Branched from Cake Chat entry: entry-1");
     expect(prompt).toContain("branched from the whole final message");
     expect(prompt).toContain(

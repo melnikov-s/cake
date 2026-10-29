@@ -186,6 +186,10 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       catalog: this.props.discussionCatalog,
       discussionSessionModel: this.props.discussionSessionModel,
       parent: () => this.model,
+      parentBusy: () => {
+        const chat = this.conversationSessionStore.chatStore;
+        return chat.loading || chat.queuedPrompts.length > 0;
+      },
       configuration: () => this.conversationSessionStore.configurationStore,
       operations: this.props.operations,
       modelPresets: this.props.modelPresets,
@@ -219,14 +223,22 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     });
   }
 
-  openSideChat(threadId: string) {
+  openSideChat(threadId: string, sourceEntryId?: string) {
     const thread = this.sideChatThreads.find((candidate) => candidate.id === threadId);
     const chatStore = this.sideChats.chatStore(threadId);
     if (!thread || !chatStore) return false;
     this.pendingSideChatThreadId = undefined;
+    if (sourceEntryId) {
+      const part = chatStore.parts.find(
+        (part) =>
+          ("entryId" in part && part.entryId === sourceEntryId) || part.id === sourceEntryId,
+      );
+      if (part) chatStore.transcriptInteraction.navigateToMessage(part.id);
+    }
     this.conversationSessionStore.sideChatStore.open({
       key: `discussion:${thread.id}`,
       title: "Side chat",
+      merge: this.sideChats.discussionSession(threadId)?.mergeStore,
       eyebrow: () => (thread.anchor.selectedText ? "Selection" : "Message"),
       chatStore,
     });

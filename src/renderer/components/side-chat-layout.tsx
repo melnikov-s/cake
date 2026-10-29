@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import { AccessoryPanelLayout } from "@/components/ui/accessory-panel-layout";
 import { SidePanel } from "@/components/ui/side-panel";
+import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
 import { SearchInput } from "@/components/ui/search-input";
 import type { ChatStore } from "../stores/ChatStore";
 import type { SideChatStore } from "../stores/SideChatStore";
@@ -46,15 +48,32 @@ export const SideChatLayout = observer(function SideChatLayout({
                     className="w-36 max-w-[50%] shrink-0"
                   />
                 ) : (
-                  model && <ModelSummary {...model} className="max-w-[65%]" />
+                  <>
+                    {model && <ModelSummary {...model} className="max-w-[65%]" />}
+                    {target.merge && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={target.merge.disabled}
+                        onClick={() => void target.merge?.run()}
+                      >
+                        {target.merge.label}
+                      </Button>
+                    )}
+                  </>
                 )
               }
             >
-              {target.todos ? (
-                <ProjectTodosPanel store={target.todos} />
-              ) : (
-                renderChat(target.chatStore)
-              )}
+              <div className="flex h-full min-h-0 flex-col">
+                {target.merge?.error && <Callout variant="error">{target.merge.error}</Callout>}
+                <div className="min-h-0 flex-1">
+                  {target.todos ? (
+                    <ProjectTodosPanel store={target.todos} />
+                  ) : (
+                    renderChat(target.chatStore)
+                  )}
+                </div>
+              </div>
             </SidePanel>
           ) : null
         }

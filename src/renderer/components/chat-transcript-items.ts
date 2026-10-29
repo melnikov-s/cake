@@ -9,6 +9,12 @@ import {
 export type TranscriptItem =
   | UiPart
   | { kind: "activity-group"; id: string; parts: UiPart[] }
+  | {
+      kind: "side-chat-import";
+      id: string;
+      parts: UiPart[];
+      source: NonNullable<UiPart["sideChatImport"]>;
+    }
   | { kind: "source-group"; id: string; parts: Extract<UiPart, { kind: "source" }>[] }
   | { kind: "context-group"; id: string; parts: Extract<UiPart, { kind: "context" }>[] }
   | { kind: "changed-files"; id: string }
@@ -41,6 +47,11 @@ export function transcriptItemKeys(items: readonly TranscriptItem[]): string[] {
 
 export function groupTranscriptParts(parts: UiPart[]): TranscriptItem[] {
   const items: TranscriptItem[] = [];
+  let imported: Extract<TranscriptItem, { kind: "side-chat-import" }> | undefined;
+  const flushImported = () => {
+    if (imported) items.push(imported);
+    imported = undefined;
+  };
   let activity: UiPart[] = [];
   let activityCompacted: boolean | undefined;
   let activityGroupIndex = 0;
@@ -69,6 +80,23 @@ export function groupTranscriptParts(parts: UiPart[]): TranscriptItem[] {
   // History paging and restored projections can prepend dialogue to a current baseline.
   // Keep the same invariant for every shared Chat consumer, not just live reduction.
   for (const part of systemPromptBaselineFirst(parts)) {
+    if (part.sideChatImport) {
+      flushActivity();
+      flushSources();
+      flushContext();
+      if (imported?.source.groupId !== part.sideChatImport.groupId) {
+        flushImported();
+        imported = {
+          kind: "side-chat-import",
+          id: `side-chat-import:${part.sideChatImport.groupId}`,
+          parts: [],
+          source: part.sideChatImport,
+        };
+      }
+      imported!.parts.push(part);
+      continue;
+    }
+    flushImported();
     if (part.kind === "context") {
       flushActivity();
       flushSources();
@@ -94,5 +122,6 @@ export function groupTranscriptParts(parts: UiPart[]): TranscriptItem[] {
   flushActivity();
   flushSources();
   flushContext();
+  flushImported();
   return items;
 }

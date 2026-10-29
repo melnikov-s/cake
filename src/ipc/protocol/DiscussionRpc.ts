@@ -4,6 +4,7 @@ import { DiscussionCatalogUpdate } from "../../contracts/application/catalog-dat
 import {
   DiscussionSessionAcceptedTurn,
   DiscussionSessionError,
+  DiscussionSessionMergeResult,
   DiscussionSessionStartInput,
   DiscussionSessionTarget,
   DiscussionSessionUpdate,
@@ -48,6 +49,11 @@ export const DiscussionRpc = RpcGroup.make(
   Rpc.make("discussionSessions.ensureSessionAssistant", {
     payload: SessionAssistantEnsureInput,
     success: SessionAssistantEnsured,
+    error: DiscussionSessionError,
+  }),
+  Rpc.make("discussionSessions.merge", {
+    payload: DiscussionSessionTarget,
+    success: DiscussionSessionMergeResult,
     error: DiscussionSessionError,
   }),
   Rpc.make("discussionSessions.setResolved", {

@@ -313,6 +313,8 @@ export interface ChatTranscriptBehavior {
   onFork?(entryId: string): void;
   onTree?(entryId: string): void;
   onOpenReviewRun?(threadId?: string): void;
+  /** Opens an existing user-created side chat through its parent conversation owner. */
+  openSideChatThread?(threadId: string, sourceEntryId?: string): void;
   /** Opens a structured workspace source location in Cake's embedded VS Code IDE. */
   openSourceLocation?(location: SourceLocation): void;
   waitingForUser?: boolean;
@@ -501,6 +503,10 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
               tooltip={thread.anchor.selectedText}
               ariaLabel={`Open selection chat ${index + 1}`}
               onClick={() => {
+                if (behavior.openSideChatThread) {
+                  behavior.openSideChatThread(thread.id);
+                  return;
+                }
                 const chatStore = behavior.messageComments?.chatStore(thread.id);
                 if (!chatStore) return;
                 behavior.openSideChat?.({

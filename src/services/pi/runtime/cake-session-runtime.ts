@@ -231,7 +231,12 @@ export interface CakeSessionRuntimeOptions {
   onTurnResult?(turnId: string, result: PiTurnResult): void;
 }
 
+import type { SideChatHistory, SideChatHistoryImport } from "../side-chat-history";
+import { exportRegularSideChatHistory } from "./side-chat-history";
+
 export interface CakeSessionRuntime {
+  exportSideChatHistory?(): Promise<SideChatHistory>;
+  importSideChatHistory?(input: SideChatHistoryImport): Promise<{ importedMessages: number }>;
   readonly sessionId: string;
   readonly sessionFile: string;
   /** Returns Pi's live turn state without assembling a ConversationSnapshot. */
@@ -903,6 +908,20 @@ export async function createCakeSessionRuntime(
       const parsed = Schema.decodeUnknownSync(reviewRunEntrySchema)(run);
       session.sessionManager.appendCustomEntry(reviewRunEntryType, parsed);
       emitPart(reviewRunPart(parsed));
+    },
+    async exportSideChatHistory() {
+      if (disposed) throw new Error("The Cake runtime has been disposed");
+      if (
+        session.isStreaming ||
+        session.isCompacting ||
+        turnController.idleCompactionActive() ||
+        turnController.toolCompactionActive() ||
+        session.getSteeringMessages().length ||
+        session.getFollowUpMessages().length ||
+        turnController.pendingRecoveryInputs().length
+      )
+        throw new Error("Wait for both chats to be idle before merging side-chat history");
+      return exportRegularSideChatHistory(cakeSessionId, session.sessionManager.getBranch());
     },
     snapshot: () => makeSnapshot(),
     restoreInput: (input) =>

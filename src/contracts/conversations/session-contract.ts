@@ -253,7 +253,20 @@ export const attachmentSchema = Schema.Union([
   }),
 ]);
 
-const partBase = { id: stringRange(1, 256) };
+const partBase = {
+  id: stringRange(1, 256),
+  sideChatImport: Schema.optionalKey(
+    Schema.Struct({
+      groupId: stringRange(1, 256),
+      threadId: stringRange(1, 256),
+      title: ipcProjectionString(512),
+      sourceSessionId: stringRange(1, 256),
+      sourceEntryId: stringRange(1, 256),
+      sourceTimestamp: Schema.Number,
+      importedAt: Schema.Number,
+    }),
+  ),
+};
 const workLogOrigin = { origin: Schema.optional(Schema.Literal("compacted")) };
 const promptCacheResponseSchema = Schema.Struct({
   provider: stringMax(256),

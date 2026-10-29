@@ -302,7 +302,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
     makeCakeChatDurableLive(createCoordinatorRuntime, configureCakeSessionRuntime),
     SessionCatalogChanges.layer,
     SubagentCoordinatorLive.pipe(
-      Layer.provide(
+      Layer.provideMerge(
         makeSubagentStorageLive(join(tmpdir(), `cake-test-workers-${randomUUID()}`)).pipe(
           Layer.provide(Layer.merge(NodeFileSystem.layer, NodePath.layer)),
         ),

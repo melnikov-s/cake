@@ -5,6 +5,7 @@ import type { ReviewThread } from "../models/ReviewThread";
 import type { Conversation } from "../models/Conversation";
 import { ConversationSessionStore } from "./ConversationSessionStore";
 import { ConversationHistoryStore } from "./ConversationHistoryStore";
+import { SideChatMergeStore } from "./SideChatMergeStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 
 export interface DiscussionSessionStoreProps {
@@ -16,6 +17,8 @@ export interface DiscussionSessionStoreProps {
   modelPresets(): readonly ModelPreset[];
   openModelPresetSettings(): void;
   setResolved(resolved: boolean): Promise<boolean>;
+  /** Present only for user-created Project Chat / Cake Chat side chats. */
+  parentBusy?(): boolean;
 }
 
 /**
@@ -56,6 +59,16 @@ export class DiscussionSessionStore extends Store<DiscussionSessionStoreProps> {
 
   get configurationStore() {
     return this.conversationSessionStore.configurationStore;
+  }
+
+  @child
+  get mergeStore(): SideChatMergeStore | undefined {
+    if (!this.props.parentBusy || this.isSessionAssistant) return undefined;
+    return createStore(SideChatMergeStore, {
+      thread: this.thread,
+      parentBusy: this.props.parentBusy,
+      sideChat: () => this.chatStore,
+    });
   }
 
   resolve() {

@@ -21,6 +21,7 @@ export const discussionHandlers = DiscussionRpc.of({
     Effect.flatMap(RendererConnection, ({ connectionId }) =>
       discussionSessions.ensureSessionAssistant(input, connectionId),
     ),
+  "discussionSessions.merge": (target) => discussionSessions.merge(target),
   "discussionSessions.setResolved": ({ resolved, ...target }) =>
     discussionSessions.setResolved(target, resolved),
 });

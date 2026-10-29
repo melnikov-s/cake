@@ -74,7 +74,7 @@ export const unusedEndpointServices = Layer.mergeAll(
   Layer.mock(SessionCatalogChanges, {}),
   Layer.mock(CakeSessionRuntimes, {}),
   Layer.mock(SessionArchiveStorage, {}),
-  SubagentCoordinatorLive.pipe(Layer.provide(makeSubagentStorageTestLayer())),
+  SubagentCoordinatorLive.pipe(Layer.provideMerge(makeSubagentStorageTestLayer())),
   Layer.mock(SubagentEnvironment, {}),
   Layer.succeed(ProjectSessionConfiguration, {
     agentDirectory: "/agent",

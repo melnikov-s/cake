@@ -1,5 +1,6 @@
 import { Store } from "r-state-tree";
 import type { ThinkingLevel } from "../../contracts/conversations/session-contract";
+import type { SideChatMergeStore } from "./SideChatMergeStore";
 import type { ChatStore } from "./ChatStore";
 import type { ProjectTodosStore } from "./ProjectTodosStore";
 
@@ -16,6 +17,7 @@ interface SidePanelTarget {
   readonly title: string;
   readonly eyebrow?: () => string;
   readonly model?: () => SideChatModel | undefined;
+  readonly merge?: SideChatMergeStore;
 }
 
 export type SideChatTarget = SidePanelTarget &

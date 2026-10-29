@@ -368,6 +368,17 @@ regular-Pi sidecar whose derived branch context (Cake Chat text through the
 anchored message) is written once when the side chat starts and is never
 regenerated, so later Cake Chat messages stay out of it.
 
+An explicit side-chat merge imports only new dialogue into the owning permanent
+chat's Pi Durable history, including when the source is a regular-Pi sidecar.
+Source entry identities and merge provenance live with the imported Pi originals,
+not in a Cake transcript mirror. Repeated merges do not duplicate messages; later
+merges append a new historical group at that point in the parent's conversation.
+The source remains independently usable. Imported requests are historical data,
+not newly admitted inputs, and imports start neither model turns nor tool calls.
+Attachment references receive parent-scoped access through the retained-input
+vault. Parent memory, archive reads, and transcript presentation consume the same
+retained imported originals.
+
 Window state stores stable Cake/Pi identifiers and Working Directories, never
 absolute transcript filenames. Restart resolution asks Pi beneath the current
 configured root.

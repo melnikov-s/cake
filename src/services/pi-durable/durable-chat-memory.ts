@@ -46,6 +46,8 @@ import {
   type DurableMemoryWork,
 } from "./durable-memory-work";
 
+import { durableSideChatImport, importedHistoryText } from "./durable-side-chat-history";
+
 const Id = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 const Range = Schema.Struct({ id: Id, n: Schema.Int.check(Schema.isGreaterThan(0)), entry: Id });
 const Node = Schema.Struct({
@@ -190,6 +192,8 @@ function durableMessageText(message: Message): string {
   return `user: ${text}`;
 }
 const sourceText = (entry: EntryRecord) => {
+  const imported = durableSideChatImport(entry);
+  if (imported) return importedHistoryText(imported);
   // Only originals enter the tree. Reset handoffs, system declarations, emergency
   // compaction summaries and our derived nodes must never be summarized a second time.
   if (!["pi.user", "pi.assistant"].includes(entry.kind)) return "";

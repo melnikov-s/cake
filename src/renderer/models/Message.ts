@@ -25,6 +25,7 @@ export class Message extends Model {
   /** Cake-generated key for a display part within its conversation. */
   partKey = "";
   kind: UiPart["kind"] = "notice";
+  sideChatImport: UiPart["sideChatImport"];
   role: TextRole | undefined;
   /** Pi entry identity, when the display part carries one. */
   piId: string | undefined;
@@ -90,6 +91,7 @@ export class Message extends Model {
   /** Updates live transcript fields without reapplying every optional snapshot field per token. */
   update(part: UiPart) {
     if (part.id !== this.partKey || part.kind !== this.kind) return false;
+    this.sideChatImport = part.sideChatImport;
     switch (part.kind) {
       case "context":
         this.title = part.title;
@@ -200,6 +202,11 @@ export class Message extends Model {
 
   @computed
   get value(): UiPart {
+    const part = this.projectedValue;
+    return this.sideChatImport ? { ...part, sideChatImport: this.sideChatImport } : part;
+  }
+
+  private get projectedValue(): UiPart {
     switch (this.kind) {
       case "context":
         return {

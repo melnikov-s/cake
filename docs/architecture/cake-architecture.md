@@ -163,6 +163,13 @@ projections needed by a surface. References do not transfer ownership.
   Scheduled delivery and report outboxes retain their separately defined intents.
 - Sidecar discussions and private subagents have independent Pi transcripts.
   Parent anchors, handles, and projections do not merge transcript ownership.
+  User-created Project Chat and Cake Chat side chats can explicitly import their new
+  dialogue into the parent's Pi-owned history. Imports are attributed historical
+  groups at the merge point, not replayed requests; they start no turn, execute no
+  tools, and do not close the source or merge code. Both conversations must be idle.
+  Import identities persist in Pi so subsequent merges add only new dialogue.
+  Inherited branch context and injected control inputs are not imported. Imported
+  originals participate in parent memory and remain available for exact recall.
   Private workers, including Cake Chat investigators, retain their detailed history in
   Pi-owned session files. Cake checkpoints handle identities, exact capability grants,
   unfinished admissions and completion receipts, not a copy of that history. Only

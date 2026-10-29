@@ -92,6 +92,8 @@ export function durableAdmission(
 }
 
 /** The conversation one committed change belongs to; undefined for Session documents. */
+import { DURABLE_SIDE_CHAT_IMPORT, durableSideChatImport } from "./durable-side-chat-history";
+
 export const changeConversation = (change: CommitChange) =>
   change.type === "document" || change.type === "document.copy"
     ? change.conversationId
@@ -680,9 +682,13 @@ export async function openDurableChatEngine(options: {
           contextChanged = true;
         if (
           change.type === "entry" &&
-          ["pi.user", "pi.assistant", "pi.tool-result"].includes(change.value.kind)
+          ["pi.user", "pi.assistant", "pi.tool-result", DURABLE_SIDE_CHAT_IMPORT].includes(
+            change.value.kind,
+          )
         ) {
-          originals += 1;
+          const imported = durableSideChatImport(change.value);
+          originals += imported?.messages.length ?? 1;
+          if (imported) pendingCutoff = change.value.id;
           for (const message of change.value.model ?? [])
             if (message.role === "toolResult") reportSlowCakeToolExecution("durable", message);
           if (

@@ -5,6 +5,7 @@ import { LoadingState } from "@/components/ui/loading-state";
 import type { UiPart } from "../../contracts/conversations/session-contract";
 import type { ChatStore } from "../stores/ChatStore";
 import { cn } from "../lib/utils";
+import { SideChatImportGroup } from "./side-chat-import-group";
 import { ActivityGroup } from "./work-log-activity-group";
 import { ReviewRunMessage } from "./chat-transcript-elements";
 import { TranscriptPart } from "./chat-transcript-part";
@@ -35,6 +36,8 @@ function sameParts(left: readonly UiPart[], right: readonly UiPart[]) {
 function sameItem(left: TranscriptItem, right: TranscriptItem) {
   if (left === right) return true;
   if (left.kind !== right.kind || left.id !== right.id) return false;
+  if (left.kind === "side-chat-import" && right.kind === "side-chat-import")
+    return sameParts(left.parts, right.parts);
   if (left.kind === "activity-group" && right.kind === "activity-group")
     return sameParts(left.parts, right.parts);
   if (left.kind === "context-group" && right.kind === "context-group")
@@ -67,6 +70,7 @@ export const ChatTranscriptItem = memo(
         data-transcript-item-index={index}
         data-transcript-item-key={itemKey}
         data-transcript-anchor-id={
+          item.kind === "side-chat-import" ||
           item.kind === "activity-group" ||
           item.kind === "source-group" ||
           item.kind === "context-group"
@@ -92,7 +96,9 @@ export const ChatTranscriptItem = memo(
           />
         )}
         <div className="col-start-1 row-start-2 min-w-0">
-          {item.kind === "activity-group" ? (
+          {item.kind === "side-chat-import" ? (
+            <SideChatImportGroup group={item} behavior={behavior} />
+          ) : item.kind === "activity-group" ? (
             <ActivityGroup groupId={item.id} parts={item.parts} behavior={behavior} />
           ) : item.kind === "source-group" ? (
             <div className="flex flex-wrap items-center gap-2" data-slot="source-group">

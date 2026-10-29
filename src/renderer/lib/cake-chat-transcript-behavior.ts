@@ -15,6 +15,9 @@ export function cakeChatTranscriptBehaviorFor(
     workspacePath: projectPath,
     messageReferenceSessionId: session.sessionId,
     messageComments: session.messageCommentsStore,
+    openSideChatThread: (threadId, sourceEntryId) => {
+      session.openSideChat(threadId, sourceEntryId);
+    },
     showSelectionContextMenu: (input) => root.showTranscriptSelectionContextMenu(input),
     subagents: session.subagentActivityStore,
     todos: session.todos,

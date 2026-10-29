@@ -190,6 +190,14 @@ export const DiscussionSessionAcceptedTurn = Schema.Struct({
   thread: DiscussionThread,
 });
 
+/** A historical import never starts a turn or resolves the source thread. */
+export const DiscussionSessionMergeResult = Schema.Struct({
+  importedMessages: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+});
+export interface DiscussionSessionMergeResult extends Schema.Schema.Type<
+  typeof DiscussionSessionMergeResult
+> {}
+
 export class DiscussionSessionError extends Schema.TaggedError<DiscussionSessionError>()(
   "DiscussionSessionError",
   { operation: Schema.String, message: Schema.String },

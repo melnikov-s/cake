@@ -10,9 +10,12 @@ import type { SessionInspectionQuery } from "../../contracts/conversations/sessi
 import { parseContextAttachmentBlocks, textFromContent } from "../pi/runtime/session-projection";
 import { durableInputPresentation } from "./durable-input-presentation";
 
+import { DURABLE_SIDE_CHAT_IMPORT } from "./durable-side-chat-history";
+
 /** Original IDs are Pi Durable entry IDs, exactly as in the existing GUI history projection. */
 function original(entry: EntryRecord) {
-  if (!["pi.user", "pi.assistant", "pi.tool-result"].includes(entry.kind)) return undefined;
+  if (!["pi.user", "pi.assistant", "pi.tool-result", DURABLE_SIDE_CHAT_IMPORT].includes(entry.kind))
+    return undefined;
   return entry.model?.find((message) => message.role !== "system");
 }
 function metadata(sessionId: string, entry: EntryRecord): MessageMetadata | undefined {

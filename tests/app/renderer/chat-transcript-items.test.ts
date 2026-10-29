@@ -10,6 +10,59 @@ function tool(id: string, origin?: "compacted"): UiPart {
 }
 
 describe("groupTranscriptParts", () => {
+  it("keeps incremental historical groups at their append positions rather than sorting by original time", () => {
+    const source = {
+      groupId: "first-merge",
+      threadId: "thread",
+      title: "Side chat",
+      sourceSessionId: "side",
+      sourceEntryId: "old-message",
+      sourceTimestamp: 1,
+      importedAt: 100,
+    };
+    const imported: UiPart = {
+      id: "imported",
+      kind: "text",
+      role: "user",
+      text: "Old question",
+      status: "complete",
+      sideChatImport: source,
+    };
+    const attachment: UiPart = {
+      id: "file",
+      kind: "attachment",
+      attachmentKind: "file",
+      name: "notes.txt",
+      mediaType: "text/plain",
+      sideChatImport: source,
+    };
+    const between: UiPart = {
+      id: "between",
+      kind: "text",
+      role: "assistant",
+      text: "A newer main answer",
+      status: "complete",
+    };
+    const incremental: UiPart = {
+      ...imported,
+      id: "incremental",
+      sideChatImport: {
+        ...source,
+        groupId: "second-merge",
+        sourceEntryId: "next-message",
+        sourceTimestamp: 2,
+        importedAt: 200,
+      },
+    };
+    expect(
+      groupTranscriptParts([tool("before"), imported, attachment, between, incremental]),
+    ).toMatchObject([
+      { kind: "activity-group", parts: [{ id: "before" }] },
+      { kind: "side-chat-import", parts: [imported, attachment] },
+      between,
+      { kind: "side-chat-import", parts: [incremental] },
+    ]);
+  });
   it("anchors synthetic baselines above paged history and reconstructed parts on every chat surface", () => {
     const earlier: UiPart = {
       id: "entry-earlier-text",

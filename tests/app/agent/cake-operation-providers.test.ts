@@ -92,6 +92,54 @@ describe("Backend-owned Cake operation composition", () => {
     ]);
   });
 
+  it("grants copied-context side chats only their explicit shared to-do and interview controls", async () => {
+    const list = vi.fn(async () => ({ items: [], total: 0, offset: 0, nextOffset: null }));
+    const unavailable = async () => {
+      throw new Error("Unexpected mutation");
+    };
+    const registry = new CakeOperationRegistry(
+      projectCakeOperations({
+        cwd: "/workspace",
+        auxiliary: true,
+        tools: ["cake"],
+        allowBlockingUserInput: true,
+        allowedCakeOperations: [
+          "interview.open",
+          "todos.list",
+          "todos.read",
+          "todos.create",
+          "todos.update",
+          "todos.update-many",
+        ],
+        projectTodos: {
+          list,
+          read: unavailable,
+          create: unavailable,
+          update: unavailable,
+          updateMany: unavailable,
+        },
+      })(bridge()),
+    );
+    expect(
+      registry
+        .definitions()
+        .map((operation) => operation.command)
+        .sort(),
+    ).toEqual([
+      "interview.open",
+      "todos.create",
+      "todos.list",
+      "todos.read",
+      "todos.update",
+      "todos.update-many",
+    ]);
+    await registry.invoke({ command: "todos.list", input: {} }, context);
+    expect(list).toHaveBeenCalledOnce();
+    expect(
+      (await registry.invoke({ command: "sessions.send", input: {} }, context)).text,
+    ).toContain("Unknown Cake command");
+  });
+
   it.each([
     { label: "read-only worker", tools: ["read"], allowBlockingUserInput: false, allowed: false },
     {

@@ -1,3 +1,4 @@
+import * as discussionTodos from "./discussionTodos";
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
 import * as backendAgentControl from "../application/agentControl";
 import * as sessionReferences from "../project-sessions/sessionReferences";
@@ -48,6 +49,7 @@ import {
   sessionAssistantThreadPath,
 } from "../../contracts/discussion-sessions/discussion-session-data";
 import { ReviewStorage } from "../../services/storage/ReviewStorage";
+import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 import type { InterviewRecord } from "../../contracts/interviews/interview";
 
 export * from "../../contracts/discussion-sessions/discussion-session-data";
@@ -139,7 +141,9 @@ const refreshParentContext = Effect.fn("DiscussionSessions.refreshParentContext"
   yield* environment.prepareParentContext(record, context).pipe(asError("parentContext"));
 });
 
-type RefreshServices = Effect.Services<ReturnType<typeof refreshParentContext>>;
+type RefreshServices =
+  | Effect.Services<ReturnType<typeof refreshParentContext>>
+  | discussionTodos.DiscussionTodoServices;
 
 /**
  * Acquires the sidecar runtime for one stored Discussion Session. Cake-owned
@@ -152,6 +156,8 @@ type RefreshServices = Effect.Services<ReturnType<typeof refreshParentContext>>;
 interface SidecarConfiguration {
   readonly systemPrompt: string;
   readonly tools: ReadonlyArray<string>;
+  readonly projectTodos?: CakeSessionRuntimeAcquireOptions["runtime"]["projectTodos"];
+  readonly allowedCakeOperations?: readonly string[];
   readonly sessionControl?: CakeSessionRuntimeAcquireOptions["runtime"]["sessionControl"];
   /** Applied on every acquisition so the sidecar follows this model. */
   readonly model?: {
@@ -192,6 +198,8 @@ const acquireRecord = Effect.fn("DiscussionSessions.acquireRecord")(function* (
     tools: [...configuration.tools],
     slashCommands: [],
     additionalSystemPrompt: configuration.systemPrompt,
+    projectTodos: configuration.projectTodos,
+    allowedCakeOperations: configuration.allowedCakeOperations,
     requestUi: async () => undefined,
   };
   if (configuration.sessionControl)
@@ -242,18 +250,34 @@ const acquireRecord = Effect.fn("DiscussionSessions.acquireRecord")(function* (
 
 const sideChatConfiguration = Effect.fn("DiscussionSessions.sideChatConfiguration")(function* (
   record: DiscussionSessionRecord,
-): Effect.fn.Return<SidecarConfiguration, DiscussionSessionError, DiscussionSessionEnvironment> {
+): Effect.fn.Return<
+  SidecarConfiguration,
+  DiscussionSessionError,
+  DiscussionSessionEnvironment | discussionTodos.DiscussionTodoServices
+> {
   // A Durable fork inherits Cake Chat's exact agent (prompt, model and tools) at
-  // its branch point; Cake Chat's runtime refuses Cake controls inside it.
+  // its branch point; its host grants only parent-list to-dos and interviews.
   if (cakeChatSideChatConversationId(record.sidecarSessionId) !== undefined)
     return { systemPrompt: "", tools: [] };
   const environment = yield* DiscussionSessionEnvironment;
   const systemPrompt = yield* environment.sidecarSystemPrompt(record).pipe(asError("acquire"));
-  // A copied-context Cake Chat side chat discusses the inlined branch context
-  // and cannot act on the workspace or Cake.
+  const todos = yield* discussionTodos
+    .configuration(record.parentSessionId)
+    .pipe(asError("acquire"));
   return {
-    systemPrompt,
-    tools: isCakeChatSideChat(record) ? [] : ["read", "grep", "find", "ls"],
+    systemPrompt: [systemPrompt, todos?.systemPrompt].filter(Boolean).join("\n\n"),
+    tools: isCakeChatSideChat(record) ? ["cake"] : ["read", "grep", "find", "ls"],
+    projectTodos: todos?.projectTodos,
+    allowedCakeOperations: todos
+      ? [
+          "interview.open",
+          "todos.list",
+          "todos.read",
+          "todos.create",
+          "todos.update",
+          "todos.update-many",
+        ]
+      : undefined,
   };
 });
 
@@ -695,6 +719,60 @@ const cakeChatBranchMessages = (
   }
   return undefined;
 };
+
+/** Import historical dialogue without submitting a request or changing thread lifecycle. */
+export const merge = Effect.fn("DiscussionSessions.merge")(function* (
+  target: DiscussionSessionTarget,
+) {
+  if (!isCakeChatSessionId(target.parentSessionId))
+    return yield* new DiscussionSessionError({
+      operation: "merge",
+      message: "Only Project Chat and Cake Chat side chats can merge into main chat",
+    });
+  const environment = yield* DiscussionSessionEnvironment;
+  const record = yield* environment
+    .get(target.workingDirectory, target.parentSessionId, target.threadId)
+    .pipe(asError("merge"));
+  if (
+    record.parentSessionId !== target.parentSessionId ||
+    isSessionAssistantThread(record) ||
+    !record.sidecarSessionId
+  )
+    return yield* new DiscussionSessionError({
+      operation: "merge",
+      message: "This side chat has no conversation to merge",
+    });
+  const sessions = yield* CakeSessionRuntimes;
+  const parent = yield* sessions.acquireSession(record.parentSessionId).pipe(asError("merge"));
+  const { handle: source } = yield* prepare(record);
+  for (const handle of [parent, source]) {
+    const snapshot = yield* handle.snapshot().pipe(asError("merge"));
+    const turns = yield* handle.currentTurnIds();
+    const pending = yield* handle.pendingMessages().pipe(asError("merge"));
+    if (snapshot.streaming || turns.length > 0 || pending.items.length > 0)
+      return yield* new DiscussionSessionError({
+        operation: "merge",
+        message: "Wait for both chats to finish before merging",
+      });
+  }
+  const history = yield* source.exportSideChatHistory().pipe(asError("merge"));
+  if (history.inputReferenceIds.length > 0) {
+    const inputs = yield* TaskInputStorage;
+    for (let offset = 0; offset < history.inputReferenceIds.length; offset += 20) {
+      const grants = yield* inputs
+        .authorizeForward(
+          record.sidecarSessionId,
+          history.inputReferenceIds.slice(offset, offset + 20),
+          record.parentSessionId,
+        )
+        .pipe(asError("merge"));
+      yield* inputs.grant(record.parentSessionId, grants).pipe(asError("merge"));
+    }
+  }
+  return yield* parent
+    .importSideChatHistory({ ...history, threadId: record.id, title: "Side chat" })
+    .pipe(asError("merge"));
+}, Effect.scoped);
 
 export const setResolved = Effect.fn("DiscussionSessions.setResolved")(function* (
   target: DiscussionSessionTarget,

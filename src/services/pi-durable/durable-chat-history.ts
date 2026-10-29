@@ -20,6 +20,8 @@ import {
   withoutDurableInputPresentation,
 } from "./durable-input-presentation";
 
+import { DURABLE_SIDE_CHAT_IMPORT, projectImportedHistory } from "./durable-side-chat-history";
+
 /** Read only the current run's unfinished slots in the same transaction as history.
  * A missing start is authoritative: a sequential sibling is still waiting. */
 export async function readDurableActiveTools(
@@ -75,56 +77,67 @@ export async function readDurableOriginalPage(
     const entries: SessionEntry[] = page.items
       .slice()
       .reverse()
-      .flatMap((entry) =>
-        ["pi.user", "pi.assistant", "pi.tool-result"].includes(entry.kind)
-          ? (entry.model ?? []).flatMap((message) => {
-              const presentation =
-                message.role === "user"
-                  ? durableInputPresentation(
-                      typeof message.content === "string"
-                        ? message.content
-                        : message.content
-                            .flatMap((block) => (block.type === "text" ? [block.text] : []))
-                            .join("\n"),
-                    )
-                  : undefined;
-              return message.role === "system"
-                ? []
-                : [
-                    ...(presentation?.internal
-                      ? [
-                          {
-                            type: "custom" as const,
-                            id: `internal-${entry.id}`,
-                            parentId: null,
-                            timestamp: new Date(message.timestamp).toISOString(),
-                            customType: internalInputEntryType,
-                            data: { timestamp: message.timestamp, origin: presentation.internal },
-                          },
-                        ]
-                      : []),
-                    {
-                      type: "message" as const,
-                      id: String(entry.id),
-                      parentId: null,
-                      timestamp: new Date(message.timestamp).toISOString(),
-                      message: withoutDurableInputPresentation(message, { display: true }),
-                    },
-                    ...(presentation?.markdown
-                      ? [
-                          {
-                            type: "custom" as const,
-                            id: `presentation-${entry.id}`,
-                            parentId: null,
-                            timestamp: new Date(message.timestamp).toISOString(),
-                            customType: userMessagePresentationEntryType,
-                            data: { targetId: String(entry.id), renderAs: "markdown" },
-                          },
-                        ]
-                      : []),
-                  ];
-            })
-          : [],
+      .flatMap((entry): SessionEntry[] =>
+        entry.kind === DURABLE_SIDE_CHAT_IMPORT
+          ? [
+              {
+                type: "custom" as const,
+                id: String(entry.id),
+                parentId: null,
+                timestamp: new Date().toISOString(),
+                customType: DURABLE_SIDE_CHAT_IMPORT,
+                data: entry.data,
+              },
+            ]
+          : ["pi.user", "pi.assistant", "pi.tool-result"].includes(entry.kind)
+            ? (entry.model ?? []).flatMap((message) => {
+                const presentation =
+                  message.role === "user"
+                    ? durableInputPresentation(
+                        typeof message.content === "string"
+                          ? message.content
+                          : message.content
+                              .flatMap((block) => (block.type === "text" ? [block.text] : []))
+                              .join("\n"),
+                      )
+                    : undefined;
+                return message.role === "system"
+                  ? []
+                  : [
+                      ...(presentation?.internal
+                        ? [
+                            {
+                              type: "custom" as const,
+                              id: `internal-${entry.id}`,
+                              parentId: null,
+                              timestamp: new Date(message.timestamp).toISOString(),
+                              customType: internalInputEntryType,
+                              data: { timestamp: message.timestamp, origin: presentation.internal },
+                            },
+                          ]
+                        : []),
+                      {
+                        type: "message" as const,
+                        id: String(entry.id),
+                        parentId: null,
+                        timestamp: new Date(message.timestamp).toISOString(),
+                        message: withoutDurableInputPresentation(message, { display: true }),
+                      },
+                      ...(presentation?.markdown
+                        ? [
+                            {
+                              type: "custom" as const,
+                              id: `presentation-${entry.id}`,
+                              parentId: null,
+                              timestamp: new Date(message.timestamp).toISOString(),
+                              customType: userMessagePresentationEntryType,
+                              data: { targetId: String(entry.id), renderAs: "markdown" },
+                            },
+                          ]
+                        : []),
+                    ];
+              })
+            : [],
       );
     const origins = new Map(
       page.items.flatMap((entry) =>
@@ -149,7 +162,18 @@ export async function readDurableOriginalPage(
         if (interview)
           interviews.set(boundedProjectionKey(`tool-${message.toolCallId}`), interview);
       }
-    const parts = projectSessionEntries(entries).map((part) => {
+    const projected = [];
+    let chunk: SessionEntry[] = [];
+    for (const entry of entries) {
+      if (entry.type === "custom" && entry.customType === DURABLE_SIDE_CHAT_IMPORT) {
+        projected.push(...projectSessionEntries(chunk));
+        chunk = [];
+        const original = page.items.find((item) => String(item.id) === entry.id);
+        if (original) projected.push(...projectImportedHistory(original));
+      } else chunk.push(entry);
+    }
+    projected.push(...projectSessionEntries(chunk));
+    const parts = projected.map((part) => {
       // Settled originals remain authoritative. Do not mark all history live:
       // abandoned unmatched calls must still read as interrupted during a new run.
       if (part.kind === "tool")

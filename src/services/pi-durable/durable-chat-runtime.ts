@@ -1,3 +1,5 @@
+import { emptyProjectTodos, projectTodoBaseline } from "../../contracts/projects/project-todos";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { DEFAULT_CAKE_CHAT_CONTEXT_LIMIT_TOKENS } from "../../contracts/cake-chats/cake-chat-preferences";
 import { ModelRuntime, SettingsManager } from "@earendil-works/pi-coding-agent";
@@ -98,6 +100,8 @@ import {
 import { applyArtifactExitTransition } from "../../contracts/artifacts/artifact-presentation-context";
 import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
 import type { ConversationResponseMode } from "../../contracts/conversations/response-mode-reminders";
+import { importDurableSideChatHistory } from "./durable-side-chat-history";
+
 const unsupported = async () => {
   throw new Error(
     "The permanent Cake Chat cannot be edited, renamed or navigated as a Project Session",
@@ -260,9 +264,9 @@ export async function createDurableCakeChatRuntime(
         const envelope = Schema.decodeUnknownOption(cakeToolEnvelopeSchema)(input);
         if (Option.isSome(envelope) && envelope.value.command === "interview.open")
           return sideChats.executeInterview(input, api, context);
-        throw new Error(
-          "Cake controls are unavailable in side chats. Return to Cake Chat to act on Cake.",
-        );
+        // This separate registry contains only to-do operations. Its discovery/help paths
+        // cannot expose or invoke unrelated parent controls, including through aliases.
+        return sideChats.executeTodo(input, api, context);
       }
       const result = await operations.invoke(input, {
         signal: context.abortSignal ?? new AbortController().signal,
@@ -571,12 +575,22 @@ export async function createDurableCakeChatRuntime(
     settings,
     models: () => modelOptions,
     fastMode: () => fastMode,
+    todoOperations: new CakeOperationRegistry(
+      operations.definitions().filter((operation) => operation.topic === "todos"),
+      options.sessionReferences?.project,
+    ),
+    todoContext: () =>
+      projectTodoBaseline(
+        { ...emptyProjectTodos(), items: [...(options.cakeChatTodos?.() ?? [])] },
+        sessionId === CAKE_CHAT_SESSION_ID ? "Cake Chat" : "Project Chat",
+      ),
   });
   const runtime: DurableCakeChatRuntime = {
     catalog: createDurableChatCatalog(options.sessionDir, engine.harness, storage, sessionId),
     sessionId,
     sessionFile,
     sideChats,
+    importSideChatHistory: (input) => importDurableSideChatHistory(engine.root, input),
     get streaming() {
       return streaming;
     },

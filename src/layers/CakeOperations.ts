@@ -76,6 +76,7 @@ export function projectCakeOperations(options: CakeOperationOptions): ProjectCak
       setResolved: control?.canResolve?.() === false ? undefined : control?.setResolved,
     };
     const definitions = [
+      ...(options.projectTodos ? createProjectTodoOperations(options.projectTodos) : []),
       ...(options.messageReferenceControl
         ? createMessageOperations(options.messageReferenceControl)
         : []),
@@ -149,6 +150,7 @@ export function projectCakeOperations(options: CakeOperationOptions): ProjectCak
           !options.auxiliary ||
           options.allowBlockingUserInput === true) &&
         (!readOnlyAuxiliary ||
+          (options.projectTodos !== undefined && definition.topic === "todos") ||
           (options.allowBlockingUserInput === true && definition.command === "interview.open") ||
           [
             "session.info",

@@ -1,4 +1,5 @@
 import { makeRuntimeRecoveryStorageTestLayer } from "../helpers/piRuntimeFixture";
+import { makeSubagentStorageTestLayer } from "../helpers/subagentStorageFixture";
 import assert from "node:assert/strict";
 import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
@@ -20,6 +21,7 @@ import {
   type CakeSessionRuntimeSetup,
 } from "../../../src/services/pi/CakeSessionRuntimes";
 import type { CakeSessionRuntime } from "../../../src/services/pi/runtime/cake-session-runtime";
+import type { SideChatHistoryMessage } from "../../../src/services/pi/side-chat-history";
 import { makeProjectSessionRuntimeTestLayer } from "./projectSessionRuntimeTestLayer";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/session-contract";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
@@ -109,10 +111,41 @@ const makeLayer = (
     /** Cake Chat forks natively into this Durable conversation instead of refusing. */
     readonly durableFork?: number;
     readonly backendControl?: boolean;
+    readonly mergeBusy?: "parent" | "source";
+    readonly mergeQueued?: "parent" | "source";
+    readonly mergeReferences?: readonly string[];
+    readonly mergeFailure?: boolean;
   } = {},
 ) => {
   const durableFork = options.durableFork;
   const forkedEntries: string[] = [];
+  const importedHistories: unknown[] = [];
+  const grantedInputs: unknown[] = [];
+  const mergeOptions = options;
+  const historyMessages: SideChatHistoryMessage[] = [
+    {
+      sourceEntryId: "side-user-1",
+      role: "user",
+      timestamp: 1,
+      content: [{ type: "text", text: "Which deployment option should we use?" }],
+      attachments: (options.mergeReferences ?? []).map((id) => ({
+        kind: "input",
+        id,
+        name: "notes.txt",
+        mimeType: "text/plain",
+        byteLength: 10,
+      })),
+      markdown: false,
+    },
+    {
+      sourceEntryId: "side-assistant-1",
+      role: "assistant",
+      timestamp: 2,
+      content: [{ type: "text", text: "The simpler deployment fits this project." }],
+      attachments: [],
+      markdown: true,
+    },
+  ];
   let record: DiscussionSessionRecord = {
     id: "thread-1",
     workingDirectory: options.cakeChat ? "/home" : "/project",
@@ -172,7 +205,18 @@ const makeLayer = (
     return {
       sessionId,
       sessionFile,
-      streaming: false,
+      streaming:
+        mergeOptions.mergeBusy === (sessionId === CAKE_CHAT_SESSION_ID ? "parent" : "source"),
+      exportSideChatHistory: async () => ({
+        sourceSessionId: sessionId,
+        inputReferenceIds: [...(mergeOptions.mergeReferences ?? [])],
+        messages: historyMessages,
+      }),
+      importSideChatHistory: async (history) => {
+        if (mergeOptions.mergeFailure) throw new Error("Import failed");
+        importedHistories.push(history);
+        return { importedMessages: 2 };
+      },
       getReviewParentContext: options.auxiliary
         ? undefined
         : () => ({
@@ -180,12 +224,27 @@ const makeLayer = (
             sessionFile,
             leafId: "leaf-1",
           }),
-      snapshot: async () =>
-        sessionId === CAKE_CHAT_SESSION_ID
-          ? { ...makeSnapshot(sessionId, sessionFile), parts: cakeChatParts }
-          : makeSnapshot(sessionId, sessionFile),
+      snapshot: async () => ({
+        ...makeSnapshot(sessionId, sessionFile),
+        parts: sessionId === CAKE_CHAT_SESSION_ID ? cakeChatParts : [],
+        streaming:
+          mergeOptions.mergeBusy === (sessionId === CAKE_CHAT_SESSION_ID ? "parent" : "source"),
+      }),
       listQueuedMessages: async () => ({ steering: [], followUp: [] }),
-      pendingMessages: async () => ({ items: [] }),
+      pendingMessages: async () => ({
+        items:
+          mergeOptions.mergeQueued === (sessionId === CAKE_CHAT_SESSION_ID ? "parent" : "source")
+            ? [
+                {
+                  itemId: "00000000-0000-4000-8000-000000000001",
+                  lane: "follow-up",
+                  position: 1,
+                  state: "queued",
+                  text: "Continue discussing",
+                },
+              ]
+            : [],
+      }),
       reorderPendingMessage: async () => ({ items: [] }),
       clearQueue: async () => ({ steering: [], followUp: [] }),
       cancelSteering: async () => {
@@ -329,11 +388,28 @@ const makeLayer = (
   return {
     layer: Layer.mergeAll(
       WorkflowTestLive,
+      makeSubagentStorageTestLayer(),
       makeCakeSessionRuntimesLayer(adapter).pipe(
         Layer.provide(makeRuntimeRecoveryStorageTestLayer()),
       ),
       discussions,
       projectRuntime,
+      ...(options.mergeReferences
+        ? [
+            Layer.mock(TaskInputStorage, {
+              authorizeForward: (owner, refs, recipient) =>
+                Effect.sync(() => {
+                  forwardedInputs.push({ owner, refs, recipient });
+                  return refs.map((ref) => `grant:${ref}`);
+                }),
+              grant: (recipient, refs) =>
+                Effect.sync(() => {
+                  grantedInputs.push({ recipient, refs });
+                  return [];
+                }),
+            }),
+          ]
+        : []),
       ...(options.backendControl
         ? [
             familyStorageHarness().layer,
@@ -395,6 +471,9 @@ const makeLayer = (
     createdRecords,
     branchContexts,
     forkedEntries,
+    importedHistories,
+    historyMessages,
+    grantedInputs,
     modelSelections,
     controlInvocations,
     forwardedInputs,
@@ -424,6 +503,117 @@ const assembleCakeChat = Effect.gen(function* () {
     })
     .pipe(Scope.provide(scope));
   return scope;
+});
+
+describe("Cake Chat side-chat merge", () => {
+  const target = {
+    workingDirectory: "/home",
+    parentSessionId: CAKE_CHAT_SESSION_ID,
+    threadId: "thread-1",
+  };
+
+  it.effect("imports to the parent without prompting or resolving the source", () => {
+    const fixture = makeLayer({ cakeChat: true, persistedSidecar: true });
+    return Effect.gen(function* () {
+      yield* assembleCakeChat;
+      const result = yield* discussionSessions.merge(target);
+      assert.deepEqual(result, { importedMessages: 2 });
+      assert.deepEqual(fixture.importedHistories, [
+        {
+          sourceSessionId: "persisted-sidecar",
+          inputReferenceIds: [],
+          messages: fixture.historyMessages,
+          threadId: "thread-1",
+          title: "Side chat",
+        },
+      ]);
+      assert.deepEqual(fixture.prompts, []);
+      assert.equal(fixture.record().status, "open");
+    }).pipe(Effect.provide(fixture.layer), Effect.scoped);
+  });
+
+  for (const mergeBusy of ["parent", "source"] as const) {
+    it.effect(`rejects merging while the ${mergeBusy} is working`, () => {
+      const fixture = makeLayer({ cakeChat: true, persistedSidecar: true, mergeBusy });
+      return Effect.gen(function* () {
+        yield* assembleCakeChat;
+        const error = yield* discussionSessions.merge(target).pipe(Effect.flip);
+        assert.match(error.message, /both chats to finish/);
+        assert.deepEqual(fixture.importedHistories, []);
+        assert.deepEqual(fixture.prompts, []);
+      }).pipe(Effect.provide(fixture.layer), Effect.scoped);
+    });
+  }
+
+  for (const mergeQueued of ["parent", "source"] as const) {
+    it.effect(`rejects merging while the ${mergeQueued} has a queued request`, () => {
+      const fixture = makeLayer({ cakeChat: true, persistedSidecar: true, mergeQueued });
+      return Effect.gen(function* () {
+        yield* assembleCakeChat;
+        const error = yield* discussionSessions.merge(target).pipe(Effect.flip);
+        assert.match(error.message, /both chats to finish/);
+        assert.deepEqual(fixture.importedHistories, []);
+        assert.deepEqual(fixture.prompts, []);
+      }).pipe(Effect.provide(fixture.layer), Effect.scoped);
+    });
+  }
+
+  it.effect("grants retained attachments to the actual parent before importing", () => {
+    const mergeReferences = Array.from(
+      { length: 21 },
+      (_, index) => `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+    );
+    const fixture = makeLayer({ cakeChat: true, persistedSidecar: true, mergeReferences });
+    return Effect.gen(function* () {
+      yield* assembleCakeChat;
+      yield* discussionSessions.merge(target);
+      assert.deepEqual(fixture.forwardedInputs, [
+        {
+          owner: "persisted-sidecar",
+          refs: mergeReferences.slice(0, 20),
+          recipient: CAKE_CHAT_SESSION_ID,
+        },
+        {
+          owner: "persisted-sidecar",
+          refs: mergeReferences.slice(20),
+          recipient: CAKE_CHAT_SESSION_ID,
+        },
+      ]);
+      assert.deepEqual(fixture.grantedInputs, [
+        {
+          recipient: CAKE_CHAT_SESSION_ID,
+          refs: mergeReferences.slice(0, 20).map((ref) => `grant:${ref}`),
+        },
+        { recipient: CAKE_CHAT_SESSION_ID, refs: [`grant:${mergeReferences[20]}`] },
+      ]);
+      assert.equal(fixture.importedHistories.length, 1);
+    }).pipe(Effect.provide(fixture.layer), Effect.scoped);
+  });
+
+  it.effect("surfaces import failures without resolving or prompting", () => {
+    const fixture = makeLayer({ cakeChat: true, persistedSidecar: true, mergeFailure: true });
+    return Effect.gen(function* () {
+      yield* assembleCakeChat;
+      const error = yield* discussionSessions.merge(target).pipe(Effect.flip);
+      assert.match(error.message, /Import failed/);
+      assert.deepEqual(fixture.importedHistories, []);
+      assert.deepEqual(fixture.prompts, []);
+      assert.equal(fixture.record().status, "open");
+    }).pipe(Effect.provide(fixture.layer), Effect.scoped);
+  });
+
+  it.effect("does not merge coding-session discussions or unstarted side chats", () => {
+    const fixture = makeLayer({ cakeChat: true });
+    return Effect.gen(function* () {
+      const coding = yield* discussionSessions
+        .merge({ ...target, parentSessionId: "parent-1" })
+        .pipe(Effect.flip);
+      assert.match(coding.message, /Only Project Chat and Cake Chat/);
+      const unstarted = yield* discussionSessions.merge(target).pipe(Effect.flip);
+      assert.match(unstarted.message, /no conversation/);
+      assert.deepEqual(fixture.importedHistories, []);
+    }).pipe(Effect.provide(fixture.layer), Effect.scoped);
+  });
 });
 
 describe("Cake Chat side chats", () => {
@@ -463,7 +653,7 @@ describe("Cake Chat side chats", () => {
     }).pipe(Effect.provide(fixture.layer));
   });
 
-  it.effect("branches a tool-free side chat with the conversation through its message", () => {
+  it.effect("branches a copied-context side chat with only parent to-do controls", () => {
     const fixture = makeLayer({ cakeChat: true });
     return Effect.gen(function* () {
       yield* assembleCakeChat;
@@ -488,7 +678,8 @@ describe("Cake Chat side chats", () => {
         ],
       ]);
       const sidecar = fixture.options.find((options) => options.auxiliary);
-      assert.deepEqual(sidecar?.tools, []);
+      assert.deepEqual(sidecar?.tools, ["cake"]);
+      assert.ok(sidecar?.projectTodos);
       assert.equal(sidecar?.globalControl, undefined);
       assert.equal(fixture.prompts.at(-1)?.[0], "Why is it larger?");
       assert.equal(accepted.thread.parentSessionId, CAKE_CHAT_SESSION_ID);
