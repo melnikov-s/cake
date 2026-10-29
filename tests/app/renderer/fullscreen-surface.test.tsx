@@ -28,7 +28,7 @@ describe("FullscreenSurface", () => {
     act(() => root.unmount());
     container.remove();
     if (elementFromPoint) document.elementFromPoint = elementFromPoint;
-    else delete (document as Partial<Document>).elementFromPoint;
+    else Reflect.deleteProperty(document, "elementFromPoint");
   });
 
   it("keeps its header clear of the native window controls", () => {
