@@ -24,7 +24,8 @@ import {
 } from "./fixtures/catalog-fixtures";
 import { applySessionCatalogGroupUpdate } from "../../../src/renderer/reducers/CatalogReducer";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
-import type { TestClientOverrides } from "./test-client";
+import { createTestClient, type TestClientOverrides } from "./test-client";
+import { migrateSavedDrafts } from "../../../src/renderer/persistence/migrate-saved-drafts";
 
 const projectPath = "/project";
 const sessionId = "10000000-0000-4000-8000-000000000001";
@@ -308,6 +309,53 @@ describe("Saved Draft workflows", () => {
     expect(screen.queryByText("Model save failed")).toBeNull();
   });
 
+  it("opens an imported legacy Draft and activates its stable identity", async () => {
+    const drafts = fakeSavedDrafts();
+    const save = vi.fn<Client["windowState"]["save"]>(async () => undefined);
+    const activate = vi.fn(drafts.client.activate);
+    const client = createTestClient({ savedDrafts: drafts.client, windowState: { save } });
+    // Bootstrap migration precedes mounting React; the new window reads the authority it populated.
+    await migrateSavedDrafts(client, {
+      state: { selectedSessionId: sessionId },
+      children: {
+        sessionRegistry: {
+          state: { targets: [{ sessionId, workspacePath: projectPath }] },
+          children: {
+            pendingSessions: {
+              state: { conversationIds: [sessionId], temporarySessionIds: [sessionId] },
+              children: {
+                conversations: [
+                  {
+                    key: sessionId,
+                    state: {
+                      name: "Imported plan",
+                      draftPrompt: { text: "Continue the legacy plan", attachments: [] },
+                    },
+                    children: {},
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    });
+    expect(save).toHaveBeenCalledOnce();
+    using fixture = await renderDrafts(drafts, { savedDrafts: { activate } });
+    expect(sidebar().getByText("Imported plan")).toBeDefined();
+    expect(await screen.findByText("Continue the legacy plan")).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "Activate draft" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Activate draft" })).toBeNull(),
+    );
+    expect(activate).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId, expectedRevision: 1 }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(sidebar().getByText("Imported plan")).toBeDefined();
+    expect(input()).toBeDefined();
+  });
+
   it("persists an automatic draft title and restores it in a fresh window", async () => {
     const drafts = fakeSavedDrafts();
     const generated = deferred<string>();
@@ -431,57 +479,66 @@ describe("Saved Draft workflows", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("keeps one selected sidebar identity through activation and catalog takeover in a full session list", async () => {
-    const drafts = fakeSavedDrafts();
-    const title = "Duplicate title";
-    drafts.records.set(sessionId, savedDraft({ title }));
-    const otherId = "10000000-0000-4000-8000-000000000003";
-    drafts.records.set(otherId, savedDraft({ sessionId: otherId, title }));
-    const start = vi.fn<Client["projectSessions"]["start"]>();
-    const activate = vi.fn(drafts.client.activate);
-    using fixture = await renderDrafts(
-      drafts,
-      { savedDrafts: { activate }, projectSessions: { start } },
-      Array.from({ length: 10 }, (_, index) =>
-        sessionSummary({
-          sessionId: `recent-${index}`,
-          projectPath,
-          title: `Recent Pi session ${index}`,
-          // Real lightweight Pi entries need not have inspected messages.
-          messageCount: 0,
-          modifiedAt: "2026-02-01T00:00:00.000Z",
-        }),
-      ),
-    );
-    const rows = () => sidebar().getAllByRole("button", { name: /^Duplicate title / });
-    const rowIds = () =>
-      rows().map((row) => row.closest("[data-session-id]")?.getAttribute("data-session-id"));
-    expect(rowIds().sort()).toEqual([sessionId, otherId]);
-    const held = drafts.holdActivation();
-    await fixture.user.click(screen.getByRole("button", { name: "Activate draft" }));
-    const claimed = await held.claimed;
-    await fixture.publishDrafts([claimed, drafts.records.get(otherId)!]);
-    expect(rowIds().sort()).toEqual([sessionId, otherId]);
-    expect(screen.getByText(/This saved Draft may already have started/)).toBeDefined();
+  it.each([fixtureTimestamp, "2026-02-02T00:00:00.000Z"])(
+    "keeps the selected conversation identity while catalog takeover reorders its paginated sidebar row (%s)",
+    async (modifiedAt) => {
+      const drafts = fakeSavedDrafts();
+      const title = "Duplicate title";
+      drafts.records.set(sessionId, savedDraft({ title }));
+      const otherId = "10000000-0000-4000-8000-000000000003";
+      drafts.records.set(otherId, savedDraft({ sessionId: otherId, title }));
+      const start = vi.fn<Client["projectSessions"]["start"]>();
+      const activate = vi.fn(drafts.client.activate);
+      using fixture = await renderDrafts(
+        drafts,
+        { savedDrafts: { activate }, projectSessions: { start } },
+        Array.from({ length: 10 }, (_, index) =>
+          sessionSummary({
+            sessionId: `recent-${index}`,
+            projectPath,
+            title: `Recent Pi session ${index}`,
+            // Real lightweight Pi entries need not have inspected messages.
+            messageCount: 0,
+            modifiedAt: "2026-02-01T00:00:00.000Z",
+          }),
+        ),
+      );
+      const rows = () => sidebar().getAllByRole("button", { name: /^Duplicate title / });
+      const rowIds = () =>
+        rows().map((row) => row.closest("[data-session-id]")?.getAttribute("data-session-id"));
+      expect(rowIds().sort()).toEqual([sessionId, otherId]);
+      const held = drafts.holdActivation();
+      await fixture.user.click(screen.getByRole("button", { name: "Activate draft" }));
+      const claimed = await held.claimed;
+      await fixture.publishDrafts([claimed, drafts.records.get(otherId)!]);
+      expect(rowIds().sort()).toEqual([sessionId, otherId]);
+      expect(screen.getByText(/This saved Draft may already have started/)).toBeDefined();
 
-    // The first Pi message is newer than the existing sessions. Its catalog can
-    // arrive before activation returns, replacing the draft without duplication
-    // or losing its visible selected row when it joins the normal recency lane.
-    fixture.publishCatalog(title, "2026-02-02T00:00:00.000Z");
-    expect(rowIds().sort()).toEqual([sessionId, otherId]);
-    await act(async () => held.release());
-    await waitFor(() => expect(input()).toBeDefined());
-    expect(rowIds().sort()).toEqual([sessionId, otherId]);
-    const selected = rows().find(
-      (row) => row.closest("[data-session-id]")?.getAttribute("data-session-id") === sessionId,
-    );
-    expect(selected?.textContent).not.toContain("Draft");
-    expect(activate).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ sessionId, expectedRevision: 1 }),
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
-    );
-    expect(start).not.toHaveBeenCalled();
-  });
+      // Recent authority remains visible; older authority follows normal pagination.
+      fixture.publishCatalog(title, modifiedAt);
+      if (modifiedAt === fixtureTimestamp) {
+        expect(rowIds()).toEqual([otherId]);
+        expect(screen.getByText(/This saved Draft may already have started/)).toBeDefined();
+        await fixture.user.click(sidebar().getByRole("button", { name: "Show more" }));
+      }
+      expect(rowIds().sort()).toEqual([sessionId, otherId]);
+      await act(async () => held.release());
+      await waitFor(() => expect(input()).toBeDefined());
+      expect(rowIds().sort()).toEqual([sessionId, otherId]);
+      const selected = rows().find(
+        (row) => row.closest("[data-session-id]")?.getAttribute("data-session-id") === sessionId,
+      );
+      expect(
+        selected?.closest("[data-navigation-active]")?.getAttribute("data-navigation-active"),
+      ).toBe("true");
+      expect(selected?.textContent).not.toContain("Draft");
+      expect(activate).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ sessionId, expectedRevision: 1 }),
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+      expect(start).not.toHaveBeenCalled();
+    },
+  );
 
   it("saves an attachment-only draft, restores it in a fresh window, and activates the same identity", async () => {
     const drafts = fakeSavedDrafts();

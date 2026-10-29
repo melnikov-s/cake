@@ -3,6 +3,8 @@ import { Schema } from "effect";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { migrateSavedDrafts } from "../../../../src/renderer/persistence/migrate-saved-drafts";
 import { extractSavedDrafts } from "../../../../src/contracts/project-sessions/saved-draft-extraction";
+import { fakeSavedDrafts } from "../fakes/saved-drafts";
+import { createTestClient } from "../test-client";
 
 const savedId = "00000000-0000-4000-8000-000000000001";
 const unsentId = "00000000-0000-4000-8000-000000000002";
@@ -43,23 +45,26 @@ const legacy = Schema.decodeUnknownSync(Schema.Json)({
 });
 
 const endpoint = (fail: "import" | "save" | undefined) => {
-  const records = new Map<string, unknown>();
-  const create = vi.fn(async (input: { sessionId?: string }) => {
+  const drafts = fakeSavedDrafts();
+  const create = vi.fn<Client["savedDrafts"]["create"]>(async (input) => {
     if (fail === "import") throw new Error("Endpoint unavailable");
-    records.set(input.sessionId!, input);
-    return input;
+    return drafts.client.create(input);
   });
-  const save = vi.fn(async () => {
+  const save = vi.fn<Client["windowState"]["save"]>(async () => {
     if (fail === "save") throw new Error("Window disk unavailable");
+    // Saving a stripped window before the authority accepts its Draft would lose user data.
+    expect(drafts.records.get(savedId)).toMatchObject({ text: "Initial saved task" });
   });
-  const client = { savedDrafts: { create }, windowState: { save } } as unknown as Pick<
-    Client,
-    "savedDrafts" | "windowState"
-  >;
-  return { client, create, save, records };
+  const client = createTestClient({
+    savedDrafts: { ...drafts.client, create },
+    windowState: { save },
+  });
+  return { client, create, save, records: drafts.records };
 };
 
-describe.each(["local", "remote"])("%s endpoint legacy saved Draft startup", () => {
+// Startup migration runs before React mounts. These tests retain the persisted-data boundary:
+// UI rendering cannot prove import-before-strip ordering or preserve the source after an I/O failure.
+describe("legacy saved Draft startup migration", () => {
   it("imports stable IDs before stripping, preserving unsent input and selection", async () => {
     const server = endpoint(undefined);
     const snapshot = await migrateSavedDrafts(server.client, legacy);
@@ -67,7 +72,12 @@ describe.each(["local", "remote"])("%s endpoint legacy saved Draft startup", () 
       expect.objectContaining({ sessionId: savedId, text: "Initial saved task" }),
     );
     expect(server.save).toHaveBeenCalledOnce();
-    expect(server.records.has(savedId)).toBe(true);
+    expect(server.records.get(savedId)).toMatchObject({
+      sessionId: savedId,
+      projectPath: "/project",
+      status: "saved",
+      revision: 1,
+    });
     expect(extractSavedDrafts(snapshot).records).toEqual([]);
     expect(snapshot).toMatchObject({
       state: { selectedSessionId: savedId },
@@ -90,7 +100,11 @@ describe.each(["local", "remote"])("%s endpoint legacy saved Draft startup", () 
     "keeps the source snapshot on %s failure for a stable-ID retry",
     async (failure) => {
       const server = endpoint(failure);
-      await expect(migrateSavedDrafts(server.client, legacy)).rejects.toThrow();
+      const before = structuredClone(legacy);
+      await expect(migrateSavedDrafts(server.client, legacy)).rejects.toThrow(
+        failure === "import" ? "Endpoint unavailable" : "Window disk unavailable",
+      );
+      expect(legacy).toEqual(before);
       expect(extractSavedDrafts(legacy).records).toMatchObject([
         { sessionId: savedId, text: "Initial saved task" },
       ]);
