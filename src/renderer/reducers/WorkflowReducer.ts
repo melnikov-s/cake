@@ -74,7 +74,15 @@ export function applyWorkflowRunUpdate(model: WorkflowRun, input: WorkflowRunUpd
           observationRevision: update.revision,
           phases: [...run.phases],
           logs: [...run.logs],
-          steps: run.steps.map((step) => ({ ...step, id: String(step.id), activity: undefined })),
+          steps: run.steps.map((step) => ({
+            ...step,
+            id: String(step.id),
+            phase: step.phase,
+            result: step.result,
+            error: step.error,
+            usage: step.usage,
+            activity: undefined,
+          })),
         } as Snapshot<WorkflowRun>);
       } else {
         const { steps, phases, logs, ...fields } = run;
