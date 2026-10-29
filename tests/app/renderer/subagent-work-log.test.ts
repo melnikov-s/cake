@@ -2,11 +2,20 @@ import { describe, expect, it } from "vitest";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import { combineSubagentWorkLogParts } from "../../../src/renderer/lib/subagent-work-log";
 
+interface WorkLogRequest {
+  readonly handleId?: string;
+  readonly task?: string;
+}
+interface WorkLogReceipt {
+  readonly handleId: string;
+  readonly status?: "running" | "complete";
+}
+
 function tool(
   id: string,
   command: "subagents.start" | "subagents.wait" | "subagents.completion",
-  input: object,
-  output: object,
+  input: WorkLogRequest,
+  output: WorkLogReceipt,
 ): Extract<UiPart, { kind: "tool" }> {
   return {
     id,
@@ -20,40 +29,9 @@ function tool(
 }
 
 describe("combineSubagentWorkLogParts", () => {
-  it("deduplicates a background start and repeated waits by stable handle", () => {
-    const handleId = crypto.randomUUID();
-    const start = tool(
-      "spawn",
-      "subagents.start",
-      { task: "Inspect the renderer" },
-      { handleId, status: "running" },
-    );
-    const firstPoll = tool(
-      "poll-1",
-      "subagents.wait",
-      { handleId },
-      { handleId, status: "running" },
-    );
-    const completedPoll = tool(
-      "poll-2",
-      "subagents.wait",
-      { handleId },
-      { handleId, status: "complete" },
-    );
-
-    const items = combineSubagentWorkLogParts([start, firstPoll, completedPoll]);
-
-    expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({
-      kind: "subagent-work-log",
-      id: `subagent-${handleId}`,
-      handleId,
-      start,
-      latest: completedPoll,
-      parts: [start, firstPoll, completedPoll],
-    });
-  });
-
+  // Start/repeated-wait count and settlement are covered through the real Chat
+  // in transcript-rendering-workflow. Retain receipt merging and distinct-handle
+  // addressing: virtualized inner rows are not honestly inspectable in jsdom.
   it("merges automatic completion into its background start", () => {
     const handleId = crypto.randomUUID();
     const start = tool(

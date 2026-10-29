@@ -54,51 +54,10 @@ describe("groupTranscriptParts", () => {
       liveChange,
     ]);
   });
-  it("groups only consecutive context pills, preserving dialogue and work-log order", () => {
-    const context = (id: string): UiPart => ({ id, kind: "context", title: id, text: id });
-    expect(
-      groupTranscriptParts([
-        context("a"),
-        context("b"),
-        tool("work"),
-        context("c"),
-        { id: "answer", kind: "text", role: "assistant", text: "Answer", status: "complete" },
-        context("d"),
-      ]),
-    ).toMatchObject([
-      { kind: "context-group", parts: [{ id: "a" }, { id: "b" }] },
-      { kind: "activity-group", parts: [{ id: "work" }] },
-      { kind: "context-group", parts: [{ id: "c" }] },
-      { kind: "text", id: "answer" },
-      { kind: "context-group", parts: [{ id: "d" }] },
-    ]);
-  });
-  it("never groups recovered and current work-log activity together", () => {
-    const items = groupTranscriptParts([
-      tool("old-1", "compacted"),
-      tool("old-2", "compacted"),
-      tool("current-1"),
-      {
-        id: "current-reasoning",
-        kind: "reasoning",
-        text: "similar current work",
-        status: "complete",
-      },
-    ]);
 
-    expect(items).toHaveLength(2);
-    expect(items[0]).toMatchObject({
-      kind: "activity-group",
-      parts: [{ origin: "compacted" }, { origin: "compacted" }],
-    });
-    expect(items[1]).toMatchObject({ kind: "activity-group" });
-    if (items[1]?.kind !== "activity-group") throw new Error("Expected current activity group");
-    expect(items[1].parts.map((part) => ("origin" in part ? part.origin : undefined))).toEqual([
-      undefined,
-      undefined,
-    ]);
-  });
-
+  // Context run boundaries and recovered/current work-log separation are covered
+  // by presentation-finish-workflow. Keep shell-command classification here:
+  // ActivityGroup does not currently expose a command-only group's disclosure.
   it("groups restored shell commands as compacted activity", () => {
     const command: UiPart = {
       id: "old-command",
