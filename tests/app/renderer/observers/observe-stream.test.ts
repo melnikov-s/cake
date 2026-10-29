@@ -1,10 +1,14 @@
 import { Effect, Schema, Stream } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CakeIpcClient, type CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
+import { CakeIpcClient } from "../../../../src/ipc/client/CakeIpcClient";
 import type { Runtime } from "../../../../src/renderer/runtime";
 import { observeStream } from "../../../../src/renderer/observers";
 
-const client = {} as CakeIpcClientService;
+import { observerClient } from "./observer-test-runtime";
+
+// Transport primitive regression: backoff, terminal errors and consumer defects have
+// no React action. Keep this real runner test rather than inventing feature UI.
+const client = observerClient({});
 const execute: Runtime["execute"] = (effect, signal) =>
   Effect.runPromise(
     Effect.provideService(effect, CakeIpcClient, client),
