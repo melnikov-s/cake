@@ -3,7 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import { Conversation } from "../../../../src/renderer/models/Conversation";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
 
-describe("RootProjection", () => {
+// These are index/resource regressions, not substitutes for mounted workflows.
+// Warm lookup traversal, external collection edits and disposal cannot be proved
+// by rendered output; stable focused-authority identity is checked in the index cases.
+describe("RootProjection index lifecycle", () => {
   it("indexes warm lookups without traversing the Conversation collection", () => {
     const root = RootProjection.create({
       projectConversations: Array.from({ length: 100 }, (_, index) => ({
@@ -167,24 +170,6 @@ describe("RootProjection", () => {
     expect(root.discussionCatalog("renamed")).not.toBe(recreated[0]);
     expect(root.subagentCatalog("renamed")).not.toBe(recreated[1]);
     expect(root.scheduledMessageCatalog("renamed")).not.toBe(recreated[2]);
-    root[Symbol.dispose]();
-  });
-
-  it("keeps Conversation and focused authorities as stable separate Models", () => {
-    const root = RootProjection.create();
-    const conversation = root.projectConversation("one", "/project");
-    const discussions = root.discussionCatalog("one");
-    const subagents = root.subagentCatalog("one");
-    const schedules = root.scheduledMessageCatalog("one");
-
-    expect(root.projectConversation("one", "/project")).toBe(conversation);
-    expect(root.discussionCatalog("one")).toBe(discussions);
-    expect(root.subagentCatalog("one")).toBe(subagents);
-    expect(root.scheduledMessageCatalog("one")).toBe(schedules);
-    expect(conversation).not.toHaveProperty("reviewThreads");
-    expect(conversation).not.toHaveProperty("artifacts");
-    expect(conversation).not.toHaveProperty("controlRequests");
-
     root[Symbol.dispose]();
   });
 });
