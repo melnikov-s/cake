@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { SettingsPage } from "../../../src/renderer/components/settings-page";
 import type { SettingsPageId } from "../../../src/renderer/stores/SettingsStore";
@@ -42,19 +43,22 @@ const pages: Array<{ page: SettingsPageId; title: string; introduction?: string 
 ];
 
 afterEach(cleanup);
-describe("Settings page metadata presentation", () => {
-  it.each(pages)(
-    "renders the registered $page heading and introduction",
-    async ({ page, title, introduction }) => {
-      using fixture = createRendererStoreFixture({
-        client: {
-          modelPresets: { list: async () => ({ presets: [] }) },
-          mcpSettings: { get: async () => ({ scope: {}, revision: "initial", entries: [] }) },
-        },
-      });
-      fixture.root.settingsStore.selectPage(page);
-      const view = render(<SettingsPage settings={fixture.root.settingsStore} browserMode />);
-      try {
+describe("Settings section navigation", () => {
+  it("opens the registered sections with their headings and introductions", async () => {
+    using fixture = createRendererStoreFixture({
+      client: {
+        modelPresets: { list: async () => ({ presets: [] }) },
+        mcpSettings: { get: async () => ({ scope: {}, revision: "initial", entries: [] }) },
+      },
+    });
+    const user = userEvent.setup();
+    const view = render(<SettingsPage settings={fixture.root.settingsStore} browserMode />);
+    try {
+      const navigation = within(screen.getByRole("navigation", { name: "Settings pages" }));
+      for (const { page, title, introduction } of pages) {
+        await user.click(
+          navigation.getByRole("button", { name: new RegExp(`^${title}(?:\\s|$)`) }),
+        );
         expect(screen.getAllByRole("heading", { level: 2 })[0]?.textContent).toBe(title);
         expect(
           screen.getByText(
@@ -64,9 +68,9 @@ describe("Settings page metadata presentation", () => {
           ),
         ).toBeDefined();
         if (page === "mcp") await screen.findByText("No MCP servers configured.");
-      } finally {
-        view.unmount();
       }
-    },
-  );
+    } finally {
+      view.unmount();
+    }
+  });
 });
