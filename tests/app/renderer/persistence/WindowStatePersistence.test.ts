@@ -4,8 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { JsonValue } from "../../../../src/contracts/serialization/json-contract";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { createTestClient } from "../test-client";
-import { mountRootStore } from "../../../../src/renderer/bootstrap/mount-root-store";
-import { RootProjection } from "../../../../src/renderer/models/RootProjection";
+import { createRendererStoreFixture } from "../renderer-store-fixture";
 import { WindowStatePersistence } from "../../../../src/renderer/persistence/WindowStatePersistence";
 import { storeSnapshotSchema } from "../../../../src/renderer/persistence/StoreSnapshot";
 import { defaultSpeechInputPreferences } from "../../../../src/utils/speech-input-settings";
@@ -18,7 +17,9 @@ const savedId = "00000000-0000-4000-8000-000000000002";
 const attachment = { kind: "file" as const, name: "notes.txt", path: `${workspace}/notes.txt` };
 const cleanups: (() => void)[] = [];
 
-// Exercise the real Root/child Store snapshot contract, replacing only persistence I/O.
+// Visible save/reopen journeys live in persistence-finish-workflow.test.tsx. Retain this real
+// Root composition for resource contracts without UI controls: debounce, ordered snapshot capture,
+// teardown, normalization, and the migration-readiness gate. Replace only external persistence I/O.
 function harness({
   savedDraftsReady = false,
   loaded = { state: {}, children: {} },
@@ -29,15 +30,21 @@ function harness({
   const save = vi.fn<Client["windowState"]["save"]>(async () => undefined);
   const reportError = vi.fn();
   const drafts = fakeSavedDrafts();
-  const client = createTestClient({
-    windowState: { save },
-    savedDrafts: drafts.client,
-    electron: { configureCakeChatOverlay: async () => {}, configureScreenCapture: async () => {} },
-    dictation: { release: async () => {}, prepare: async () => {} },
+  const fixture = createRendererStoreFixture({
+    snapshot: loaded,
+    client: {
+      windowState: { save },
+      savedDrafts: drafts.client,
+      electron: {
+        configureCakeChatOverlay: async () => {},
+        configureScreenCapture: async () => {},
+      },
+      dictation: { release: async () => {}, prepare: async () => {} },
+    },
+    flushWindowState: () => persistence.flush(),
   });
-  const models = RootProjection.create();
-  const persistence = new WindowStatePersistence(client, reportError, savedDraftsReady);
-  const root = mountRootStore(client, loaded, () => persistence.flush(), models);
+  const persistence = new WindowStatePersistence(fixture.client, reportError, savedDraftsReady);
+  const { root } = fixture;
   const session = root.sessionRegistry.pendingSessions.prepareStaged(workspace, sessionId);
   const draft = session.conversationSessionStore.composerStore.draftStore;
   if (!draft.text) draft.setText("unsent request");
@@ -47,11 +54,10 @@ function harness({
   persistence.observe(root);
   cleanups.push(() => {
     persistence[Symbol.dispose]();
-    root[Symbol.dispose]();
-    models[Symbol.dispose]();
+    fixture[Symbol.dispose]();
   });
   const expected = (): JsonValue => JSON.parse(JSON.stringify(toSnapshot(root)));
-  return { root, draft, drafts, models, save, reportError, persistence, expected };
+  return { root, draft, drafts, models: fixture.models, save, reportError, persistence, expected };
 }
 
 function deferredSave() {
@@ -69,7 +75,7 @@ function deferredSave() {
 }
 
 class NormalizationStore extends Store {
-  @snapshot value: unknown = {
+  @snapshot value = {
     absent: undefined,
     numbers: [undefined, NaN, Infinity, -Infinity],
     date: new Date("2026-01-01T00:00:00.000Z"),
@@ -157,7 +163,7 @@ describe("WindowStatePersistence", () => {
     });
   });
 
-  it("debounces a burst to the latest navigation, draft, and attachment state", async () => {
+  it("debounces to the latest payload and flushes a later burst without a duplicate timer save", async () => {
     vi.useFakeTimers();
     const h = harness();
     h.draft.setText("first");
@@ -174,9 +180,17 @@ describe("WindowStatePersistence", () => {
     expect(h.save).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(h.save).toHaveBeenCalledExactlyOnceWith(h.expected());
+
+    h.draft.setText("immediate first");
+    await vi.advanceTimersByTimeAsync(100);
+    h.draft.setText("immediate latest");
+    await h.persistence.flush();
+    expect(h.save).toHaveBeenLastCalledWith(h.expected());
+    await vi.advanceTimersByTimeAsync(180);
+    expect(h.save).toHaveBeenCalledTimes(2);
   });
 
-  it("captures each queued flush before earlier saves finish and writes them in order", async () => {
+  it("captures queued snapshots before earlier saves finish and writes them in order despite a failure", async () => {
     vi.useFakeTimers();
     const h = harness();
     const firstSave = deferredSave();
@@ -195,8 +209,11 @@ describe("WindowStatePersistence", () => {
     const thirdPayload = h.expected();
     const thirdFlush = h.persistence.flush();
     expect(h.save).toHaveBeenCalledOnce();
-    firstSave.resolve();
-    await Promise.all([firstFlush, secondFlush, thirdFlush]);
+    const failure = new Error("disk unavailable");
+    firstSave.reject(failure);
+    await expect(firstFlush).rejects.toBe(failure);
+    await Promise.all([secondFlush, thirdFlush]);
+    expect(h.reportError).toHaveBeenCalledExactlyOnceWith(failure);
     expect(h.save.mock.calls.map(([payload]) => payload)).toEqual([
       firstPayload,
       secondPayload,
@@ -204,18 +221,6 @@ describe("WindowStatePersistence", () => {
     ]);
     await vi.advanceTimersByTimeAsync(180);
     expect(h.save).toHaveBeenCalledTimes(3);
-  });
-
-  it("flushes the latest state immediately and cancels its debounce timer", async () => {
-    vi.useFakeTimers();
-    const h = harness();
-    h.draft.setText("first");
-    await vi.advanceTimersByTimeAsync(100);
-    h.draft.setText("latest");
-    await h.persistence.flush();
-    expect(h.save).toHaveBeenCalledExactlyOnceWith(h.expected());
-    await vi.advanceTimersByTimeAsync(180);
-    expect(h.save).toHaveBeenCalledOnce();
   });
 
   it("disposal stops timer and queued saves without canceling an already-started save", async () => {
