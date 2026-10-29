@@ -1,15 +1,20 @@
 import { toSnapshot } from "r-state-tree";
 import { expect, it } from "vitest";
-import type { ConversationSnapshot } from "../../../../src/contracts/conversations/conversation-data";
 import { Conversation } from "../../../../src/renderer/models/Conversation";
 import {
   messageSnapshots,
   applyPartUpdate,
 } from "../../../../src/renderer/reducers/SessionPartReducer";
-import { applyConversationSnapshot } from "../../../../src/renderer/reducers/ConversationReducer";
+import {
+  applyConversationSnapshot,
+  applyConversationUpdate,
+} from "../../../../src/renderer/reducers/ConversationReducer";
 
-it("memoizes projected transcript parts until a message changes", () => {
-  const model = Conversation.create({
+// Transcript output and actions are covered by transcript-rendering-workflow,
+// work-log-presentation-workflow and session-layout-workflow. React cannot prove
+// memoization or the transport/renderer identity and snapshot round-trip below.
+it("memoizes projected transcript parts while retaining keyed Models through authority updates", () => {
+  using model = Conversation.create({
     sessionId: "s",
     parts: [
       {
@@ -27,36 +32,28 @@ it("memoizes projected transcript parts until a message changes", () => {
   expect(model.uiParts).toBe(first);
   expect(model.uiParts[0]).toBe(first[0]);
 
-  model.parts[0]!.update({
-    id: "assistant-1",
-    kind: "text",
-    role: "assistant",
-    text: "Second",
-    status: "streaming",
+  const messages = model.parts;
+  const message = model.parts[0];
+  applyConversationUpdate(model, {
+    _tag: "Event",
+    revision: 2,
+    event: {
+      _tag: "PartUpdated",
+      sessionId: "s",
+      part: {
+        id: "assistant-1",
+        kind: "text",
+        role: "assistant",
+        text: "Second",
+        status: "streaming",
+      },
+    },
   });
 
+  expect(model.parts).toBe(messages);
+  expect(model.parts[0]).toBe(message);
   expect(model.uiParts).not.toBe(first);
   expect(model.uiParts[0]).not.toBe(first[0]);
-});
-
-it("hydrates a complete authoritative conversation snapshot", () => {
-  const model = Conversation.create({ sessionId: "s" });
-  const snapshot: ConversationSnapshot = {
-    sessionId: "s",
-    sessionFile: "/f",
-    parts: [],
-    models: [],
-    thinkingLevel: "off",
-    availableThinkingLevels: ["off"],
-    streaming: false,
-    diagnostics: [],
-    commands: [],
-    compatibility: { resources: [], diagnostics: [] },
-    extensionUi: { statuses: [] },
-    tree: [],
-  };
-  applyConversationSnapshot(model, snapshot);
-  expect(model.sessionFile).toBe("/f");
 });
 
 it("separates Pi entry identity from Cake display-part identity only where needed", () => {
