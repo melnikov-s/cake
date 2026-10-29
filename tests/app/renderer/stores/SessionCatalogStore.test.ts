@@ -1,4 +1,4 @@
-import { applySnapshot, effect } from "r-state-tree";
+import { effect } from "r-state-tree";
 import { describe, expect, it } from "vitest";
 import { applySessionCatalogGroupUpdate } from "../../../../src/renderer/reducers/CatalogReducer";
 import { projectRecord, sessionSummary } from "../fixtures/catalog-fixtures";
@@ -10,53 +10,9 @@ import { createRendererStoreFixture } from "../renderer-store-fixture";
 // authority takeover/removal lives in session-identity-workflow.test.tsx. The former catalog/
 // sidebar synchronization test is consolidated into the real UI activation journey in
 // saved-draft-workflow.test.tsx, including selected-row visibility in a full session list.
+// Pending submission corrected into another Project, authority takeover during start
+// and eventual removal now run through App in remaining-store-finish-workflow.test.tsx.
 describe("Session catalog derivation integration", () => {
-  it("uses the same authority-first identity for lookup, global order, and Project groups", () => {
-    using fixture = createRendererStoreFixture({
-      projects: [
-        projectRecord({ path: "/project", name: "Project" }),
-        projectRecord({ path: "/other", name: "Other" }),
-      ],
-    });
-    const store = fixture.root.sessionCatalogStore;
-    const pending = fixture.root.sessionRegistry.pendingSessions;
-    pending.prepareStaged("/project", "starting");
-    pending.projectSubmission("starting", "Pending title");
-    const first = store.find("starting")!;
-    expect(first.title).toBe("Pending title");
-    expect(store.sessionsById.get("starting")).toBe(first);
-    expect(store.sessions).toHaveLength(1);
-    expect(store.sessions[0]).toBe(first);
-    expect(store.projectSessions("/project")[0]).toBe(first);
-
-    // Authority can correct Project membership while the start is still pending.
-    applySnapshot(fixture.models.sessionCatalog, {
-      sessions: [
-        sessionSummary({
-          sessionId: "starting",
-          projectPath: "/other",
-          workingDirectory: "/project",
-          title: "Pi title",
-        }),
-      ],
-    });
-    expect(pending.summaries.map(({ sessionId }) => sessionId)).toEqual(["starting"]);
-    const authoritative = store.find("starting")!;
-    expect(authoritative.title).toBe("Pi title");
-    expect(store.sessionsById.get("starting")).toBe(authoritative);
-    expect(store.sessions).toHaveLength(1);
-    expect(store.sessions[0]).toBe(authoritative);
-    expect(store.projectSessions("/project")).toEqual([]);
-    expect(store.projectSessions("/other")[0]).toBe(authoritative);
-
-    pending.materialize("starting", "/project");
-    applySnapshot(fixture.models.sessionCatalog, { sessions: [] });
-    expect(store.find("starting")).toBeUndefined();
-    expect(store.sessionsById.size).toBe(0);
-    expect(store.sessions).toEqual([]);
-    expect(store.projectSessions("/other")).toEqual([]);
-  });
-
   it("reuses a Project group until its authority changes", () => {
     const projectPath = "/project";
     const older = sessionSummary({ sessionId: "older", projectPath });
