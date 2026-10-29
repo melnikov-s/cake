@@ -11,6 +11,7 @@ const effectExecutionBoundaries = [
   "src/services/pi/PiWorkflows.ts", // Final callbacks required by focused external Pi workflows.
   "src/services/pi/live/WorkflowSandboxLive.ts", // Abortable Promise callbacks supplied to the standalone QuickJS sandbox.
   "src/layers/ProjectSessionRuntimeHostLive.ts", // Final artifact and renderer callbacks supplied to Pi.
+  "src/layers/DesktopSharingLive.ts", // Durable account-binding callback supplied to the Node authentication boundary.
 ];
 const executionApi = "/^run(Fork|Callback|Promise|Sync)(Exit)?(With)?$/";
 

@@ -142,6 +142,57 @@ const setup = Effect.fn("DesktopSharingTest.setup")(function* (
 });
 
 it.live(
+  "Google-protected sharing publishes valid status without an editor port and persists live allowlist updates",
+  () =>
+    Effect.gen(function* () {
+      const { sharing } = yield* setup();
+      const port = yield* Effect.promise(
+        () =>
+          new Promise<number>((resolve, reject) => {
+            const server = createServer();
+            server.once("error", reject);
+            server.listen(0, "127.0.0.1", () => {
+              const address = server.address();
+              if (!address || typeof address === "string") {
+                reject(new Error("Expected TCP address"));
+                server.close();
+                return;
+              }
+              server.close(() => resolve(address.port));
+            });
+          }),
+      );
+      const preferences = {
+        bind: "127.0.0.1",
+        port,
+        publicOrigin: "https://laptop.tailnet.ts.net",
+        google: {
+          clientId: "personal.apps.googleusercontent.com",
+          allowedEmails: ["owner@gmail.com", "guest@gmail.com"],
+        },
+      };
+      const serving = yield* sharing.configure({ ...preferences, enabled: true });
+      expect(Schema.decodeUnknownSync(DesktopSharingState)(serving)).toEqual(serving);
+      expect(serving.status).toBe("serving");
+      expect(serving.editorPort).toBeUndefined();
+      const updated = yield* sharing.updatePreferences({
+        ...preferences,
+        google: { ...preferences.google, allowedEmails: ["owner@gmail.com"] },
+      });
+      expect(updated.status).toBe("serving");
+      expect(updated.preferences.google?.allowedEmails).toEqual(["owner@gmail.com"]);
+      const changedConnection = yield* sharing
+        .updatePreferences({
+          ...preferences,
+          google: { ...preferences.google, clientId: "different.apps.googleusercontent.com" },
+        })
+        .pipe(Effect.flip);
+      expect(changedConnection.message).toContain("Disable browser sharing");
+      yield* sharing.configure({ ...updated.preferences, enabled: false });
+    }),
+);
+
+it.live(
   "queued preference writes survive cancellation and a failed save cannot keep sharing enabled",
   () =>
     Effect.gen(function* () {

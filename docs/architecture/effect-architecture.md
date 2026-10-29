@@ -1146,10 +1146,12 @@ that imports backend composition.
 The renderer remains sandboxed with no Node globals, raw Electron IPC, raw Pi,
 filesystem, or credentials. The backend validates trust, paths, and permissions
 even when renderer input has already decoded. Model-presented artifacts remain
-data and use validated or sandboxed protocols. The unfinished remote-access
-feature currently assumes fully trusted clients; transport validation is not
-client authentication or restricted sharing. See
-[remote scope and security status](../development/headless-backend.md#scope-and-security-status).
+data and use validated or sandboxed protocols. Desktop sharing optionally authenticates Google
+accounts before any application HTTP route or WebSocket upgrade; its account bindings
+are durable and sessions are listener-owned, ephemeral, and revocable. Approved clients
+retain full host authority. Standalone and unauthenticated listeners still require a
+private or independently authenticated boundary; transport validation is not login.
+See [remote access security](../development/headless-backend.md#security-and-data-isolation).
 
 ## Testing and observability
 

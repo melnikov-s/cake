@@ -15,6 +15,10 @@ export class DesktopSharingSettingsStore extends Store {
   bind = "127.0.0.1";
   port = "4317";
   publicOrigin = "";
+  googleEnabled = false;
+  googleSetupOpen = false;
+  googleClientId = "";
+  allowedEmails = "";
   busy = false;
   saving = false;
   error: string | undefined;
@@ -26,6 +30,9 @@ export class DesktopSharingSettingsStore extends Store {
     this.bind = preferences.bind;
     this.port = String(preferences.port);
     this.publicOrigin = preferences.publicOrigin ?? "";
+    this.googleEnabled = preferences.google !== undefined;
+    this.googleClientId = preferences.google?.clientId ?? "";
+    this.allowedEmails = preferences.google?.allowedEmails.join("\n") ?? "";
   }
   apply(state: DesktopSharingState) {
     this.state = state;
@@ -57,22 +64,61 @@ export class DesktopSharingSettingsStore extends Store {
     this.publicOrigin = value;
     void this.savePreferences();
   }
-  private draft(): DesktopSharingPreferences | undefined {
-    if (!/^\d+$/.test(this.port)) return;
+  toggleGoogleSetup() {
+    this.googleSetupOpen = !this.googleSetupOpen;
+  }
+  setGoogleEnabled(value: boolean) {
+    if (this.enabled || this.pending) return;
+    this.googleEnabled = value;
+    this.dirty = true;
+  }
+  setGoogleClientId(value: string) {
+    if (this.enabled || this.pending) return;
+    this.googleClientId = value;
+    this.dirty = true;
+  }
+  setAllowedEmails(value: string) {
+    this.allowedEmails = value;
+    this.dirty = true;
+  }
+  async saveGooglePreferences() {
+    const draft = this.draft();
+    if (draft._tag === "Failure") {
+      this.error = draft.failure.message;
+      return;
+    }
+    await this.savePreferences();
+  }
+  private draft() {
     const preferences: DesktopSharingPreferences = {
       bind: this.bind.trim(),
-      port: Number(this.port),
+      port: /^\d+$/.test(this.port) ? Number(this.port) : Number.NaN,
     };
     if (this.publicOrigin.trim())
       Object.assign(preferences, { publicOrigin: this.publicOrigin.trim() });
-    const decoded = decodeDesktopSharingPreferences(preferences);
-    return decoded._tag === "Success" ? decoded.success : undefined;
+    if (this.googleEnabled) {
+      Object.assign(preferences, {
+        google: {
+          clientId: this.googleClientId.trim(),
+          allowedEmails: [
+            ...new Set(
+              this.allowedEmails
+                .split(/[\n,]/)
+                .map((email) => email.trim().toLowerCase())
+                .filter(Boolean),
+            ),
+          ],
+        },
+      });
+    }
+    return decodeDesktopSharingPreferences(preferences);
   }
   private async savePreferences() {
     const edit = ++this.editRevision;
     this.dirty = true;
-    const preferences = this.draft();
-    if (!preferences) return; // Incomplete/invalid text is a draft, not a committed setting.
+    const draft = this.draft();
+    if (draft._tag === "Failure") return; // Incomplete/invalid text is a draft, not a committed setting.
+    const preferences = draft.success;
     ++this.pendingSaves;
     this.saving = true;
     this.error = undefined;
@@ -84,6 +130,7 @@ export class DesktopSharingSettingsStore extends Store {
         { signal: this.signal },
       );
       if (!this.signal.aborted && edit === this.editRevision) {
+        this.state = state;
         this.dirty = false;
         this.hydrate(state.preferences);
       }
@@ -102,14 +149,15 @@ export class DesktopSharingSettingsStore extends Store {
     this.busy = true;
     this.error = undefined;
     try {
-      if (!/^\d+$/.test(this.port)) throw new Error("Port must be an integer from 0 to 65535.");
-      const input: DesktopSharingInput = {
-        enabled,
-        bind: this.bind.trim(),
-        port: Number(this.port),
-      };
-      if (this.publicOrigin.trim())
-        Object.assign(input, { publicOrigin: this.publicOrigin.trim() });
+      if (enabled && !/^\d+$/.test(this.port))
+        throw new Error("Port must be an integer from 0 to 65535.");
+      const draft = enabled ? this.draft() : undefined;
+      if (draft?._tag === "Failure") throw new Error(draft.failure.message);
+      // Switching off must remain possible even with an incomplete local draft.
+      const preferences = draft?._tag === "Success" ? draft.success : this.state?.preferences;
+      if (!preferences)
+        throw new Error("Complete the connection and Google sign-in settings first.");
+      const input: DesktopSharingInput = { ...preferences, enabled };
       const decoded = decodeDesktopSharingInput(input);
       if (decoded._tag === "Failure") throw new Error(decoded.failure.message);
       const state = await ClientContext.consume(this)!.desktopSharing.configure(decoded.success, {

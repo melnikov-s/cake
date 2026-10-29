@@ -117,6 +117,89 @@ it("does not replace port zero with the assigned listener port on enable/disable
   );
 });
 
+it("configures Google sign-in, saves account removals while serving, and displays the public URL QR code", async () => {
+  using f = setup({ bind: "127.0.0.1", port: 4317, publicOrigin: "https://laptop.tailnet.ts.net" });
+  await f.user.click(screen.getByRole("switch", { name: "Require Google sign-in" }));
+  await f.user.type(
+    screen.getByRole("textbox", { name: "Google web client ID" }),
+    "personal.apps.googleusercontent.com",
+  );
+  const accounts = screen.getByRole("textbox", { name: "Allowed Google accounts" });
+  await f.user.type(accounts, "owner@gmail.com{enter}guest@gmail.com");
+  expect(f.save).not.toHaveBeenCalled();
+  await f.user.click(screen.getByRole("button", { name: "Save allowed accounts" }));
+  await waitFor(() =>
+    expect(f.persisted().google?.allowedEmails).toEqual(["owner@gmail.com", "guest@gmail.com"]),
+  );
+  await f.user.click(screen.getByRole("button", { name: "Google & Tailscale setup" }));
+  expect(screen.getByText("https://laptop.tailnet.ts.net/auth/google/callback")).toBeDefined();
+  f.configure.mockImplementation(async ({ enabled, ...preferences }) => ({
+    ...disabled(preferences),
+    status: enabled ? "serving" : "disabled",
+    url: "https://laptop.tailnet.ts.net/",
+  }));
+  await f.user.click(screen.getByRole("switch", { name: "Enable browser sharing" }));
+  const qr = await screen.findByRole("img", { name: "Scan to open Cake and sign in with Google" });
+  expect(qr.getAttribute("src")).toMatch(/^data:image\/svg\+xml/);
+  expect(screen.getByRole("textbox", { name: "Remote access URL" })).toHaveProperty(
+    "value",
+    "https://laptop.tailnet.ts.net/",
+  );
+  f.save.mockImplementation(async (preferences) => ({
+    ...disabled(preferences),
+    status: "serving",
+    url: "https://laptop.tailnet.ts.net/",
+  }));
+  await f.user.clear(accounts);
+  await f.user.type(accounts, "owner@gmail.com");
+  await f.user.click(screen.getByRole("button", { name: "Save allowed accounts" }));
+  await waitFor(() =>
+    expect(f.save).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        google: {
+          clientId: "personal.apps.googleusercontent.com",
+          allowedEmails: ["owner@gmail.com"],
+        },
+      }),
+      expect.anything(),
+    ),
+  );
+  expect(
+    screen.getByRole("switch", { name: "Enable browser sharing" }).getAttribute("aria-checked"),
+  ).toBe("true");
+});
+
+it("can switch off sharing despite an incomplete Google-account draft", async () => {
+  using f = setup({
+    bind: "127.0.0.1",
+    port: 4317,
+    publicOrigin: "https://laptop.tailnet.ts.net",
+    google: {
+      clientId: "personal.apps.googleusercontent.com",
+      allowedEmails: ["owner@gmail.com"],
+    },
+  });
+  const toggle = screen.getByRole("switch", { name: "Enable browser sharing" });
+  await f.user.click(toggle);
+  await f.user.clear(screen.getByRole("textbox", { name: "Allowed Google accounts" }));
+  await f.user.type(
+    screen.getByRole("textbox", { name: "Allowed Google accounts" }),
+    "incomplete@",
+  );
+  await f.user.click(toggle);
+  await waitFor(() => expect(toggle.getAttribute("aria-checked")).toBe("false"));
+  expect(f.configure).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      enabled: false,
+      google: {
+        clientId: "personal.apps.googleusercontent.com",
+        allowedEmails: ["owner@gmail.com"],
+      },
+    }),
+    expect.anything(),
+  );
+});
+
 it("keeps newer incomplete drafts through older save replies and reports failed persistence", async () => {
   using f = setup();
   let complete: (state: DesktopSharingState) => void = () => {};

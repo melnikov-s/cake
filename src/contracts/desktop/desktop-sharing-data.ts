@@ -1,9 +1,19 @@
 import { Schema } from "effect";
 import { exactHttpsOrigin } from "./network-access";
 
+const GoogleRemoteAccessPreferences = Schema.Struct({
+  clientId: Schema.String.check(
+    Schema.isPattern(/^[a-zA-Z0-9_-]+\.apps\.googleusercontent\.com$/),
+    Schema.isMaxLength(256),
+  ),
+  allowedEmails: Schema.Array(
+    Schema.String.check(Schema.isPattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/), Schema.isMaxLength(254)),
+  ).check(Schema.isMaxLength(64)),
+});
 const octet = "(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])";
 export const DesktopSharingPreferences = Schema.Struct({
   publicOrigin: Schema.optionalKey(exactHttpsOrigin),
+  google: Schema.optionalKey(GoogleRemoteAccessPreferences),
   bind: Schema.String.check(
     Schema.isPattern(new RegExp(`^${octet}(\\.${octet}){3}$`)),
     Schema.makeFilter((value) => value !== "0.0.0.0", {

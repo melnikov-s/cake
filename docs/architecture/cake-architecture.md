@@ -545,14 +545,18 @@ service/domain directory, never in Model/Store directories.
 
 Model-presented content is data, never privileged application code.
 
-Remote access currently assumes one trusted user with multiple views. Its access
-controls are incomplete; accepted clients have full backend authority. Host/Origin
-validation is not authentication. Further restrictions are future work, not
-existing guarantees; see [the host guide](../development/headless-backend.md#scope-and-security-status).
+Remote access assumes trusted users with multiple views. Desktop sharing can gate its
+whole listener with Google sign-in and a server-enforced account allowlist; approved
+clients still have full backend authority. Listeners without this option, including
+standalone hosting, require private access or an independently authenticated proxy.
+Host/Origin validation alone is not authentication. See
+[the host guide](../development/headless-backend.md#security-and-data-isolation).
 
 - Artifacts and blocking requests cross bounded, validated protocols. Generated
   HTML/React executes in an opaque-origin sandbox with restrictive CSP and explicit,
   validated capabilities, not Node, Electron, credentials, or parent DOM access.
+  Published widget HTTP responses enforce the sandbox even on direct navigation;
+  intended Cake operations continue through the hosting surface's validated bridge.
 - Session Plugin state is main-owned; sandbox-local React state is mount-local.
   Hiding a plugin is a user preference, not deletion or permission to reopen it.
 - Pi Extensions execute with main-process authority and are not sandboxed.

@@ -5020,7 +5020,7 @@ const speechInputSettingsScenario: VisualCaptureScenario = {
 const serverClientSettingsScenario: VisualCaptureScenario = {
   name: "server-client-settings",
   description: "Real local backend selection and browser sharing controls in Network & privacy",
-  states: ["backend", "sharing", "sharing-https"],
+  states: ["backend", "sharing", "sharing-https", "sharing-google"],
   seed: (paths, theme) => cakePromptsSettingsScenario.seed(paths, theme),
   async prepare(page, state) {
     await page
@@ -5038,6 +5038,17 @@ const serverClientSettingsScenario: VisualCaptureScenario = {
         : page.locator("#setting-browser-sharing");
     await section.waitFor({ state: "visible", timeout: 20_000 });
     await section.scrollIntoViewIfNeeded();
+    if (state === "sharing-google") {
+      await page
+        .getByLabel("Browser sharing HTTPS origin", { exact: true })
+        .fill("https://laptop.your-tailnet.ts.net");
+      await page.getByRole("switch", { name: "Require Google sign-in" }).click();
+      await page
+        .getByRole("textbox", { name: "Google web client ID" })
+        .fill("personal.apps.googleusercontent.com");
+      await page.getByRole("textbox", { name: "Allowed Google accounts" }).fill("you@gmail.com");
+      await page.getByRole("button", { name: "Save allowed accounts" }).click();
+    }
     if (state === "sharing-https") {
       await page.getByLabel("Browser sharing port", { exact: true }).fill("0");
       await page

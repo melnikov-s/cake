@@ -72,10 +72,15 @@ it("Chromium renders a published navigable widget and HTML artifact in opaque fr
                 widget.sandbox.add("allow-scripts");
                 widget.referrerPolicy = "no-referrer";
                 widget.src = `${origin}/widget-assets/document/${token}`;
+                // Keep test surfaces above Cake's fixed full-window application root.
+                widget.style.cssText =
+                  "position:fixed;top:0;left:0;width:480px;height:240px;z-index:2147483647";
                 document.body.append(widget);
                 const html = document.createElement("iframe");
                 html.title = "HTML artifact";
                 html.sandbox.value = "";
+                html.style.cssText =
+                  "position:fixed;top:260px;left:0;width:480px;height:240px;z-index:2147483647";
                 html.srcdoc = `<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><h1>HTML artifact</h1><a href="#visited">Navigate HTML</a><script>parent.document.body.dataset.htmlEscape="yes"</script>`;
                 document.body.append(html);
               },

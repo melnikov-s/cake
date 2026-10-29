@@ -145,12 +145,13 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
       {
         page: "network",
         label: "Network & privacy",
-        introduction: "Host connection, browser sharing, provider transport, and workspace trust.",
+        introduction: "Host connection, remote access, provider transport, and workspace trust.",
         settings: [
           {
-            label: "Browser sharing",
+            label: "Remote access",
             targetId: "setting-browser-sharing",
-            keywords: "server http desktop enable port network",
+            keywords:
+              "browser sharing server http desktop enable port network google oauth allowed accounts tailscale funnel qr code",
           },
           { label: "Transport", targetId: "setting-transport", keywords: "websocket sse" },
           { label: "HTTP idle timeout", targetId: "setting-http-idle-timeout" },

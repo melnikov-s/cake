@@ -8,6 +8,7 @@ import { makeNetworkRuntime } from "./runtime";
 import { makeClient } from "./client/ClientLive";
 import { retainedDeliveryUncertainty } from "./client/command-delivery-policy";
 import { BrowserFiles } from "./client/BrowserFiles";
+import { checkBrowserAuthentication } from "./client/BrowserAuthentication";
 import { BrowserMenuStore } from "./stores/BrowserMenuStore";
 import { ContextActionMenu } from "./components/ui/context-action-menu";
 import { RootProjection } from "./models/RootProjection";
@@ -53,6 +54,8 @@ const stopConnectionPersistence = effect(() => {
     sessionStorage.setItem(uncertaintyKey, connection.uncertainOperation);
   else sessionStorage.removeItem(uncertaintyKey);
 });
+const authenticationAbort = new AbortController();
+const googleSignIn = document.querySelector('meta[name="cake-google-sign-in"]') !== null;
 let started = false;
 const runtime = makeNetworkRuntime(url.href, (value) => {
   const reconnected = value && connection.everConnected && !connection.connected;
@@ -63,6 +66,7 @@ const runtime = makeNetworkRuntime(url.href, (value) => {
     void initialize(rootStore);
   }
   if (!value) {
+    if (googleSignIn) void checkBrowserAuthentication(authenticationAbort.signal);
     rootStore.terminalStore.disconnected();
     rootStore.projectWorkbenchStore.presentationStore.embeddedEditorStore.disconnected();
   }
@@ -222,6 +226,7 @@ const stopPageLifecycle = observeBrowserPageLifecycle(rootElement, {
   persist,
   reconnect: () => runtime.reconnect(),
   dispose: () => {
+    authenticationAbort.abort();
     stopPageLifecycle();
     stopPersistence();
     stopConnectionPersistence();

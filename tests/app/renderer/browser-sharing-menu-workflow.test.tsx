@@ -51,7 +51,8 @@ it("starts from the topbar with saved preferences, prevents repeated starts and 
   expect(f.configure).not.toHaveBeenCalled();
   await f.user.click(offline());
   expect(screen.getByRole("dialog", { name: "Browser sharing" })).toBeDefined();
-  expect(screen.getAllByText(/Anyone who can connect has full host access/)).toHaveLength(2);
+  expect(screen.getByText(/Anyone who can connect has full host access/)).toBeDefined();
+  expect(screen.getByText(/Funnel is public: require Google sign-in/)).toBeDefined();
   expect(f.configure).not.toHaveBeenCalled();
   let finish!: (state: DesktopSharingState) => void;
   f.configure.mockImplementationOnce(

@@ -4,6 +4,7 @@ import { Callout } from "./ui/callout";
 import { Input } from "./ui/input";
 import { StatusDot } from "./ui/status-dot";
 import { Switch } from "./ui/switch";
+import { SettingsGoogleRemoteAccess } from "./settings-google-remote-access";
 
 export const SettingsDesktopSharingSection = observer(function SettingsDesktopSharingSection({
   sharing,
@@ -34,7 +35,7 @@ export const SettingsDesktopSharingSection = observer(function SettingsDesktopSh
       aria-labelledby="browser-sharing-title"
     >
       <h2 id="browser-sharing-title" className="px-0.5 text-xs font-semibold text-foreground">
-        Browser sharing
+        Remote access
       </h2>
       <div className="divide-y divide-border/60 rounded-lg border border-border/80 bg-card/50">
         <label className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm">
@@ -89,7 +90,7 @@ export const SettingsDesktopSharingSection = observer(function SettingsDesktopSh
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <strong className="text-xs font-medium text-foreground">Proxy HTTPS origin</strong>
             <small className="text-xs text-muted-foreground">
-              Optional exact origin for Tailscale Serve or reverse proxy.
+              Exact HTTPS origin for Tailscale Funnel, Serve, or a reverse proxy.
             </small>
           </span>
           <Input
@@ -101,6 +102,7 @@ export const SettingsDesktopSharingSection = observer(function SettingsDesktopSh
             onChange={(event) => sharing.setPublicOrigin(event.target.value)}
           />
         </label>
+        <SettingsGoogleRemoteAccess sharing={sharing} />
         {sharing.state?.status === "serving" && sharing.state.publicOrigin && (
           <div className="px-3.5 py-2 font-mono text-xs text-muted-foreground">
             Listener {sharing.state.bind}:{sharing.state.port} · Origin {sharing.state.publicOrigin}
@@ -108,9 +110,9 @@ export const SettingsDesktopSharingSection = observer(function SettingsDesktopSh
         )}
       </div>
       <p className="px-0.5 text-xs text-muted-foreground">
-        Connection preferences save automatically when valid. Sharing stays off at launch. Anyone
-        who can connect has full host access. Share only on a private Tailscale network or behind an
-        authenticated HTTPS proxy.
+        Sharing stays off at launch. Approved accounts have full host access, including agent
+        execution. Funnel is public: require Google sign-in before exposing this listener. Without
+        Google sign-in, use only a private network or an independently authenticated proxy.
       </p>
       {(sharing.error ?? sharing.state?.error) && (
         <Callout variant="error">{sharing.error ?? sharing.state?.error}</Callout>

@@ -74,6 +74,9 @@ it.live("network compiler publishes only live, capability-addressed rich content
     const served = yield* get(document);
     expect(served.status).toBe(200);
     expect(served.headers.get("content-security-policy")).toContain("default-src 'none'");
+    expect(served.headers.get("content-security-policy")).toContain(
+      "; sandbox allow-scripts allow-downloads",
+    );
     expect(yield* Effect.promise(() => served.text())).toContain("Remote widget");
     const js = yield* get(source);
     expect(js.headers.get("content-type")).toContain("text/javascript");

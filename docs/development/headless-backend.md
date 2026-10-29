@@ -7,13 +7,14 @@ and behavior live in [`src/server/`](../../src/server/) and their tests.
 
 ## Security and data isolation
 
-**There is no Cake authentication or per-client authorization boundary.** Every accepted
-client has full backend authority, including agent code execution. Host/Origin checks
-prevent unintended browser-origin access; native clients can forge those headers.
-Keep listeners private. Use an authenticated tunnel/reverse proxy and TLS for remote
-access, protecting both the application and editor endpoints. This is one trusted
-user's multi-view environment, not restricted sharing or a multi-user security model;
-capability discovery and hidden UI actions do not establish access controls.
+**Desktop sharing can require Google sign-in and a server-enforced account allowlist.**
+Without that option, including the standalone Node listener, Cake has no authentication
+boundary: keep listeners private or behind an independently authenticated TLS proxy.
+Host/Origin checks alone are not authentication; native clients can forge those headers.
+Every approved/accepted client has full backend authority, including agent code execution.
+This is a trusted user's multi-view environment, not restricted sharing or per-project
+permissions. Google-protected sharing does not expose editor or development-preview
+proxy routes; protect any separately configured services independently.
 
 Do not run separate Electron and Node backend processes against the same data directory.
 For an isolated standalone host, set both:
@@ -30,7 +31,7 @@ starting an empty data directory does not itself send a provider request.
 
 Build with `pnpm build:slim` for non-native use, or `pnpm build` when bundled native
 speech is needed. Both include browser assets. In **Settings → Network & privacy →
-Browser sharing**, select a port (`0` chooses one) and enable sharing. The status shows
+Remote access**, select a port (`0` chooses one for private sharing) and enable sharing. The status shows
 the actual URL; no restart is required. Desktop development builds need
 `pnpm build:browser` if assets are absent.
 
@@ -46,6 +47,63 @@ Disabling sharing closes remote connections, not accepted local agent work. Clos
 the last desktop window while serving keeps the backend alive; **Window → New Cake
 Window** reopens the UI. **Quit Cake** stops the process and its turns. Keep the host
 awake and reachable for remote work.
+
+## Phone browser access over public Tailscale Funnel and Google sign-in
+
+Tailscale must be installed and authenticated **on the host computer**. The phone
+needs only a browser. Cake does not install Tailscale, enable Funnel, change host
+networking, or create Google credentials. Keep the host awake, online, and running
+Cake and Tailscale. Disabling sharing does not disable your separately configured Funnel.
+
+1. Find the host's exact HTTPS Funnel origin, for example
+   `https://laptop.your-tailnet.ts.net`. Do not publish the Cake listener yet.
+2. Create a Google OAuth **Web application** client for personal use. Configure its
+   **Authorized JavaScript origins** with that exact origin and its **Authorized
+   redirect URIs** with `https://laptop.your-tailnet.ts.net/auth/google/callback`.
+   Add intended Google test users if the consent app is in Testing. Cake uses Google
+   Identity Services' redirect ID-token flow, not API-access/refresh tokens; it needs
+   the web client ID, **not a client secret**.
+3. On the host, open **Settings → Network & privacy → Remote access**. Keep bind
+   **127.0.0.1**, use a fixed port such as **4317**, enter the exact HTTPS origin,
+   and turn on **Require Google sign-in**. Enter the Google web client ID and one
+   approved email address per line in **Allowed Google accounts**, then save.
+4. Enable sharing in Cake **with Google sign-in required**, then explicitly configure
+   Funnel yourself to forward to the loopback listener, for example
+   `tailscale funnel --bg http://127.0.0.1:4317`. Confirm Tailscale's actual URL and
+   port match Cake's configuration. Never forward an unprotected listener.
+5. Scan Cake's QR code or open its URL on the phone. The QR contains only the normal
+   URL, not a session or bypass credential. Sign in with an approved Google account.
+   The displayed URL is configured, not a reachability test.
+
+Google's [redirect validation rules](https://developers.google.com/identity/protocols/oauth2/web-server#uri-validation)
+require an exact HTTPS callback and a public-suffix hostname. The public suffix list
+includes `ts.net`. Google's [brand verification guidance](https://developers.google.com/identity/protocols/oauth2/production-readiness/brand-verification)
+provides personal-use/testing exemptions, but this is not a promise that Google will
+accept every tailnet hostname or consent configuration. Verify your exact origin and
+callback in Google's console before relying on this setup. Public/verified app branding
+has additional domain-ownership requirements; this feature does not bypass them. If
+Google refuses your configuration, stop setup rather than exposing Cake without login.
+
+The host verifies Google's token signature, issuer, audience and expiration with Google's
+server library, and requires a verified email and a single-use browser-bound nonce plus
+Google's CSRF token. On first approved sign-in, Cake durably pins that email to Google's
+stable `sub` identifier; a later different account cannot inherit that approval by
+reusing the email. Removing/re-adding an email does not erase the binding.
+
+Cake sessions use opaque, HttpOnly, Secure, host-only cookies and expire after seven days.
+Use **Settings → Network & privacy → Sign out of Cake** in the browser to revoke the
+current session. Save an account removal on the host to revoke all its sessions and
+close its active WebSockets immediately. Turning sharing off or restarting Cake revokes
+all sessions; accepted agent work is not cancelled. Access administration is available
+only through host desktop controls, not network RPC. Approved accounts nevertheless have
+full agent execution authority, so they must be trusted with the host itself.
+
+The authentication boundary runs before all application assets, resource routes and RPC
+upgrades. Only the minimal Google login page and callback are public. Exact Host/Origin
+checks remain in force; Google cross-origin POST is admitted only on the exact callback
+and still requires the nonce/CSRF checks. Editor and preview endpoints are refused on
+this listener, and no separate browser-editor listener is acquired. Native remote
+Electron authentication through this Google browser-cookie flow is not supported.
 
 ## Phone access over private Tailscale HTTPS
 
@@ -65,7 +123,7 @@ Configure networking yourself; Cake never installs Tailscale or changes host net
    port you chose, for example `tailscale serve --bg --https=443 http://127.0.0.1:4317`.
    Use `tailscale serve status` to find the actual HTTPS origin. Serve's private access
    controls are the access boundary; do not forward router ports or open a public listener.
-3. In Cake desktop **Settings → Network & privacy → Browser sharing**, keep bind
+3. In Cake desktop **Settings → Network & privacy → Remote access**, keep bind
    **127.0.0.1**, choose fixed port **4317** (or your proxy target port), enter the exact
    origin, e.g. **https://laptop.your-tailnet.ts.net**, and enable sharing. No path or
    trailing slash is accepted. Sharing remains off at each Cake launch.

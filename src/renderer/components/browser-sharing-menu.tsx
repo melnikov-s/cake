@@ -6,8 +6,9 @@ import { Callout } from "./ui/callout";
 import { CautionIcon, NetworkIcon, NetworkOffIcon, ReloadIcon } from "./ui/icons";
 import { Popover, PopoverContent, PopoverIconTrigger } from "./ui/popover";
 import { cn } from "../lib/utils";
+import { QrCode } from "./ui/qr-code";
 
-/** A shortcut to the same device-local listener controlled by Settings, not internet access. */
+/** A shortcut to the same listener controlled by Settings; never configures a tunnel. */
 export const BrowserSharingMenu = observer(function BrowserSharingMenu() {
   const root = useStore(RootStore);
   const sharing = root.settingsStore.desktopSharing;
@@ -59,10 +60,21 @@ export const BrowserSharingMenu = observer(function BrowserSharingMenu() {
             ? (sharing.state?.url ?? `${sharing.state?.bind}:${sharing.state?.port}`)
             : `${sharing.bind}:${sharing.port}`}
         </p>
-        <Callout variant="warning">
-          Anyone who can connect has full host access. Use only a trusted private network or
-          authenticated HTTPS proxy. Sharing stays off at launch.
-        </Callout>
+        {sharing.state?.preferences.google ? (
+          <>
+            <Callout variant="info">
+              Google sign-in required. Approved accounts have full host access.
+            </Callout>
+            {sharing.enabled && sharing.state.url && (
+              <QrCode value={sharing.state.url} label="Scan to open Cake and sign in with Google" />
+            )}
+          </>
+        ) : (
+          <Callout variant="warning">
+            Anyone who can connect has full host access. Use only a trusted private network or
+            authenticated HTTPS proxy. Sharing stays off at launch.
+          </Callout>
+        )}
         {error && <Callout variant="error">{error}</Callout>}
         <Button
           className="transition-colors"

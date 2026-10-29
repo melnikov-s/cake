@@ -67,6 +67,9 @@ export const SettingsPage = observer(function SettingsPage({
   settings: SettingsStore;
   browserMode?: boolean;
 }) {
+  // Static server-supplied presentation capability, never an authorization decision.
+  const googleSignIn =
+    browserMode && document.querySelector('meta[name="cake-google-sign-in"]') !== null;
   const session = settings.activeSession;
   const configuration = settings.configuration;
   const pi = settings.piSettings;
@@ -711,10 +714,18 @@ export const SettingsPage = observer(function SettingsPage({
                 <SettingsDesktopHostSection connection={settings.desktopConnection} />
               )}
               {browserMode ? (
-                <Callout variant="info">
-                  Desktop sharing is managed in the Cake desktop app and is unavailable in this
-                  browser.
-                </Callout>
+                <>
+                  <Callout variant="info">
+                    Remote access and allowed accounts are managed on the host desktop.
+                  </Callout>
+                  {googleSignIn && (
+                    <form method="post" action="/auth/logout">
+                      <Button type="submit" variant="outline" size="sm">
+                        Sign out of Cake
+                      </Button>
+                    </form>
+                  )}
+                </>
               ) : !settings.desktopConnection?.remote ? (
                 <SettingsDesktopSharingSection sharing={settings.desktopSharing} />
               ) : null}

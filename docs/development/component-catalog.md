@@ -67,6 +67,8 @@ worktree tools beneath it when present. Empty caps collapse without reserved spa
 
 `ContextUsageButton` presents a compact context icon and estimated total/limit, with a subtle cache-freshness underline. It opens the shared Context Browser, which retains the full system, memory, messages and baseline accounting. The accessible description includes the breakdown; cache color never represents context health or retention.
 
+[`QrCode`](../../src/renderer/components/ui/qr-code.tsx) renders locally encoded QR images without sending their contents to an external service.
+
 ## Navigation and layout
 
 | Component                                                                                                                                    | Use for                                                                                   |

@@ -3,7 +3,7 @@ import { exactHost, exactOrigin, exactHttpsOrigin } from "../contracts/desktop/n
 import { Effect, Exit, Layer, Option, Predicate, Result, Schema, Scope } from "effect";
 import { RpcSerialization } from "effect/unstable/rpc";
 import { Socket, SocketServer } from "effect/unstable/socket";
-import { createServer, type IncomingMessage } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { browserAssetAt, loadBrowserAssets } from "./browserAssets";
 import { inlineWidgetResource } from "../services/widgets/inline-widget-document-registry";
 import { extensionCompanionModuleSource } from "../services/pi/runtime/extension-companion-module-registry";
@@ -20,6 +20,7 @@ import { parseRendererRpcMessage } from "../ipc/transport/ElectronRpcTransport";
 import { cakeRpcPayloadSchemas } from "../contracts/application/cake-rpc-contract";
 import { RendererRequestCoordinator } from "../services/renderer-requests/RendererRequestCoordinator";
 import type { PreviewLeases } from "../services/browser/PreviewLeases";
+import type { GoogleRemoteAccess } from "../services/remote-access/GoogleRemoteAccess";
 
 export const NetworkListenerOptions = Schema.Struct({
   browserAssetsDirectory: Schema.optionalKey(Schema.NonEmptyString),
@@ -50,7 +51,8 @@ export class NetworkListenerError extends Schema.TaggedError<NetworkListenerErro
 
 /** Explicitly invoked by a host, never on import. Owns sockets/requests only.
  * Supply acquired backend Services in the caller's Context, NOT a new backend Layer.
- * No auth: each accepted connection has full backend authority. Shared ClientConnections
+ * Authentication, when supplied, protects the whole listener. Accepted accounts have full authority.
+ * Shared ClientConnections
  * safely separates socket identities from simultaneous desktop IPC identities.
  */
 export const openNetworkListener = Effect.fn("NetworkListener.open")(function* (
@@ -60,6 +62,7 @@ export const openNetworkListener = Effect.fn("NetworkListener.open")(function* (
     readonly cakeChat: CakeChatRuntimeConfiguration;
   },
   previews?: PreviewLeases["Service"],
+  authentication?: GoogleRemoteAccess,
 ) {
   const options = yield* Schema.decodeUnknownEffect(NetworkListenerOptions)(input).pipe(
     Effect.mapError(
@@ -71,6 +74,10 @@ export const openNetworkListener = Effect.fn("NetworkListener.open")(function* (
   );
   const bind = options.bind ?? "127.0.0.1";
   const path = options.path ?? "/rpc";
+  if (authentication && (bind !== "127.0.0.1" || options.editorPublicOrigin))
+    return yield* new NetworkListenerError({
+      message: "Google remote access requires loopback and does not expose editors.",
+    });
   if (options.editorPublicOrigin) {
     const editorHostname = new URL(options.editorPublicOrigin).hostname.toLowerCase();
     const appHosts = options.allowedHosts ?? [bind];
@@ -92,6 +99,7 @@ export const openNetworkListener = Effect.fn("NetworkListener.open")(function* (
   }
   const scope = yield* Scope.fork(yield* Effect.scope);
   const acquire = Effect.gen(function* () {
+    if (authentication) yield* Effect.addFinalizer(() => Effect.sync(() => authentication.close()));
     const editor = yield* VsCodeServer;
     const requests = yield* RendererRequestCoordinator;
     if (previews) yield* Effect.addFinalizer(() => previews.shutdown());
@@ -100,17 +108,30 @@ export const openNetworkListener = Effect.fn("NetworkListener.open")(function* (
     const assets = options.browserAssetsDirectory
       ? yield* loadBrowserAssets(options.browserAssetsDirectory)
       : undefined;
+    if (authentication && assets) {
+      const entry = assets.get("/");
+      if (entry)
+        assets.set("/", {
+          ...entry,
+          body: Buffer.from(
+            Buffer.from(entry.body)
+              .toString("utf8")
+              .replace(/<head>/i, '<head><meta name="cake-google-sign-in" content="enabled">'),
+          ),
+        });
+    }
     const isolatedEditor = assets !== undefined;
-    const editorServer = isolatedEditor
-      ? yield* openIsolatedEditorListener(
-          bind,
-          options.allowedHosts,
-          options.editorPort ?? 0,
-          options.editorPublicOrigin,
-          editor,
-          listenerAbort.signal,
-        )
-      : undefined;
+    const editorServer =
+      isolatedEditor && !authentication
+        ? yield* openIsolatedEditorListener(
+            bind,
+            options.allowedHosts,
+            options.editorPort ?? 0,
+            options.editorPublicOrigin,
+            editor,
+            listenerAbort.signal,
+          )
+        : undefined;
     const editorPort = editorServer?.port;
     const directEditorOrigins =
       editorPort === undefined
@@ -136,6 +157,16 @@ export const openNetworkListener = Effect.fn("NetworkListener.open")(function* (
       const host = request.headers.host?.toLowerCase();
       if (!host || !hosts.includes(host)) return "Unexpected Host";
       const origin = request.headers.origin;
+      // GIS redirect posts come from Google. Only this exact callback may cross origins;
+      // its browser-bound nonce and Google's double-submit token are checked before login.
+      if (
+        authentication &&
+        !upgrade &&
+        request.method === "POST" &&
+        request.url === "/auth/google/callback" &&
+        origin === "https://accounts.google.com"
+      )
+        return undefined;
       // Opaque sandbox frames send Origin:null for fonts. Only a live exact resource
       // capability may cross that origin; RPC, application and workspace routes cannot.
       if (
@@ -172,6 +203,101 @@ export const openNetworkListener = Effect.fn("NetworkListener.open")(function* (
         return "Unexpected Origin";
       return undefined;
     };
+    const serveApplication = (request: IncomingMessage, response: ServerResponse) => {
+      // Arbitrary editor/preview content must not run on the authenticated Cake origin.
+      if (
+        authentication &&
+        (request.url?.startsWith("/editor/") || request.url?.startsWith("/preview/"))
+      ) {
+        response.writeHead(403);
+        response.end("Editors and previews are not exposed through Google remote access");
+        return;
+      }
+      if (request.url?.startsWith("/preview/")) {
+        const target = previews && previewProxyTarget(previews, request);
+        if (!target) {
+          response.writeHead(403);
+          response.end("Invalid preview lease or bridge");
+          return;
+        }
+        proxyPreviewHttp(request, response, target, listenerAbort.signal);
+        return;
+      }
+      if (!isolatedEditor && request.url?.startsWith("/editor/")) {
+        const target = editorProxyTarget(editor, request.url);
+        if (!target) {
+          response.writeHead(403);
+          response.end("Invalid editor lease or route");
+          return;
+        }
+        proxyEditorHttp(request, response, target, listenerAbort.signal);
+        return;
+      }
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        response.writeHead(405, { Allow: "GET, HEAD" });
+        response.end();
+        return;
+      }
+      // Exact, capability-addressed in-memory publications only. Never proxy a path or
+      // read a workspace file on behalf of a sandboxed frame.
+      const widgetMatch =
+        /^\/widget-assets\/document\/([0-9a-f-]{36})(?:\/(assets\/[^?#]*))?$/.exec(
+          request.url ?? "",
+        );
+      let resourcePath: string | undefined;
+      try {
+        resourcePath = decodeURIComponent(widgetMatch?.[2] ?? "");
+      } catch {
+        resourcePath = undefined;
+      }
+      const resource =
+        widgetMatch && resourcePath !== undefined
+          ? inlineWidgetResource(widgetMatch[1]!, resourcePath)
+          : undefined;
+      const moduleToken = /^\/widget-assets\/module\/([0-9a-f]{64})$/.exec(request.url ?? "")?.[1];
+      const module = moduleToken ? extensionCompanionModuleSource(moduleToken) : undefined;
+      if (resource !== undefined || module !== undefined) {
+        const body = resource ? Buffer.from(resource.data) : Buffer.from(module ?? "", "utf8");
+        response.setHeader(
+          "Content-Type",
+          resource?.contentType ?? "text/javascript; charset=utf-8",
+        );
+        response.setHeader("Content-Length", body.byteLength);
+        response.setHeader("Referrer-Policy", "no-referrer");
+        if (resource !== undefined) {
+          response.setHeader("Access-Control-Allow-Origin", "*");
+          // Keep published content opaque even when opened outside its sandboxed iframe.
+          response.setHeader(
+            "Content-Security-Policy",
+            `${inlineWidgetContentSecurityPolicy}; sandbox allow-scripts allow-downloads`,
+          );
+        }
+        response.writeHead(200);
+        response.end(request.method === "HEAD" ? undefined : body);
+        return;
+      }
+      const asset = assets && browserAssetAt(assets, request.url ?? "");
+      if (!asset) {
+        response.writeHead(404);
+        response.end("Not found");
+        return;
+      }
+      response.setHeader("Content-Type", asset.contentType);
+      response.setHeader("Content-Length", asset.body.byteLength);
+      const browserHost = bracketHost(new URL(`http://${request.headers.host}`).hostname);
+      const frameOrigin =
+        editorPort === undefined
+          ? "'none'"
+          : [`http://${browserHost}:${editorPort}`, options.editorPublicOrigin]
+              .filter((origin) => origin !== undefined)
+              .join(" ");
+      response.setHeader(
+        "Content-Security-Policy",
+        `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; frame-src 'self' blob: ${frameOrigin}; object-src 'none'; base-uri 'none'; frame-ancestors 'none'`,
+      );
+      response.writeHead(200);
+      response.end(request.method === "HEAD" ? undefined : asset.body);
+    };
     const http = yield* Effect.acquireRelease(
       Effect.sync(() =>
         createServer((request, response) => {
@@ -183,88 +309,17 @@ export const openNetworkListener = Effect.fn("NetworkListener.open")(function* (
             response.end(denied);
             return;
           }
-          if (request.url?.startsWith("/preview/")) {
-            const target = previews && previewProxyTarget(previews, request);
-            if (!target) {
-              response.writeHead(403);
-              response.end("Invalid preview lease or bridge");
-              return;
-            }
-            proxyPreviewHttp(request, response, target, listenerAbort.signal);
-            return;
-          }
-          if (!isolatedEditor && request.url?.startsWith("/editor/")) {
-            const target = editorProxyTarget(editor, request.url);
-            if (!target) {
-              response.writeHead(403);
-              response.end("Invalid editor lease or route");
-              return;
-            }
-            proxyEditorHttp(request, response, target, listenerAbort.signal);
-            return;
-          }
-          if (request.method !== "GET" && request.method !== "HEAD") {
-            response.writeHead(405, { Allow: "GET, HEAD" });
-            response.end();
-            return;
-          }
-          // Exact, capability-addressed in-memory publications only. Never proxy a path or
-          // read a workspace file on behalf of a sandboxed frame.
-          const widgetMatch =
-            /^\/widget-assets\/document\/([0-9a-f-]{36})(?:\/(assets\/[^?#]*))?$/.exec(
-              request.url ?? "",
-            );
-          let resourcePath: string | undefined;
-          try {
-            resourcePath = decodeURIComponent(widgetMatch?.[2] ?? "");
-          } catch {
-            resourcePath = undefined;
-          }
-          const resource =
-            widgetMatch && resourcePath !== undefined
-              ? inlineWidgetResource(widgetMatch[1]!, resourcePath)
-              : undefined;
-          const moduleToken = /^\/widget-assets\/module\/([0-9a-f]{64})$/.exec(
-            request.url ?? "",
-          )?.[1];
-          const module = moduleToken ? extensionCompanionModuleSource(moduleToken) : undefined;
-          if (resource !== undefined || module !== undefined) {
-            const body = resource ? Buffer.from(resource.data) : Buffer.from(module ?? "", "utf8");
-            response.setHeader(
-              "Content-Type",
-              resource?.contentType ?? "text/javascript; charset=utf-8",
-            );
-            response.setHeader("Content-Length", body.byteLength);
-            response.setHeader("Referrer-Policy", "no-referrer");
-            if (resource !== undefined) {
-              response.setHeader("Access-Control-Allow-Origin", "*");
-              response.setHeader("Content-Security-Policy", inlineWidgetContentSecurityPolicy);
-            }
-            response.writeHead(200);
-            response.end(request.method === "HEAD" ? undefined : body);
-            return;
-          }
-          const asset = assets && browserAssetAt(assets, request.url ?? "");
-          if (!asset) {
-            response.writeHead(404);
-            response.end("Not found");
-            return;
-          }
-          response.setHeader("Content-Type", asset.contentType);
-          response.setHeader("Content-Length", asset.body.byteLength);
-          const browserHost = bracketHost(new URL(`http://${request.headers.host}`).hostname);
-          const frameOrigin =
-            editorPort === undefined
-              ? "'none'"
-              : [`http://${browserHost}:${editorPort}`, options.editorPublicOrigin]
-                  .filter((origin) => origin !== undefined)
-                  .join(" ");
-          response.setHeader(
-            "Content-Security-Policy",
-            `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; frame-src 'self' blob: ${frameOrigin}; object-src 'none'; base-uri 'none'; frame-ancestors 'none'`,
-          );
-          response.writeHead(200);
-          response.end(request.method === "HEAD" ? undefined : asset.body);
+          if (authentication) {
+            void authentication
+              .handleHttp(request, response)
+              .then((handled) => {
+                if (!handled && !response.destroyed) serveApplication(request, response);
+              })
+              .catch(() => {
+                if (!response.headersSent) response.writeHead(500);
+                response.end("Remote authentication failed");
+              });
+          } else serveApplication(request, response);
         }),
       ),
       (server) =>
@@ -283,6 +338,8 @@ export const openNetworkListener = Effect.fn("NetworkListener.open")(function* (
           perMessageDeflate: false,
           // ws validates Upgrade/method/version; these checks precede its upgrade acceptance.
           verifyClient: (info, done) => {
+            if (authentication && info.req.url !== path)
+              return done(false, 403, "Only Cake RPC is exposed through Google remote access");
             const previewRoute = info.req.url?.startsWith("/preview/") === true;
             if (
               info.req.url !== path &&
@@ -292,6 +349,8 @@ export const openNetworkListener = Effect.fn("NetworkListener.open")(function* (
               return done(false, 404, "Unknown RPC, editor or preview path");
             const denied = refusal(info.req, true);
             if (denied) return done(false, 403, denied);
+            if (authentication && !authentication.authorizeUpgrade(info.req))
+              return done(false, 401, "Google sign-in required");
             if (previewRoute && (!previews || !previewProxyTarget(previews, info.req)))
               return done(false, 403, "Invalid preview lease or bridge");
             done(true);

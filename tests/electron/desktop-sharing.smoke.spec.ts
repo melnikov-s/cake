@@ -235,6 +235,62 @@ test("desktop Settings shares the existing backend; window closure, reopen, disa
   }
 });
 
+test("Google remote access saves approved accounts and renders a URL-only QR code without publishing a tunnel", async () => {
+  test.setTimeout(60_000);
+  const directory = await mkdtemp(join(tmpdir(), "cake-google-sharing-"));
+  const home = join(directory, "home");
+  const reserve = createServer();
+  await new Promise<void>((resolve) => reserve.listen(0, "127.0.0.1", resolve));
+  const address = reserve.address();
+  if (!address || typeof address === "string") throw new Error("Expected local TCP port");
+  await new Promise<void>((resolve) => reserve.close(() => resolve()));
+  const application = await electron.launch({
+    args: [repositoryRoot],
+    cwd: repositoryRoot,
+    env: {
+      ...process.env,
+      CAKE_ELECTRON_SMOKE: "1",
+      CAKE_ELECTRON_USER_DATA: join(directory, "user-data"),
+      CAKE_HOME: home,
+      PI_CODING_AGENT_DIR: join(home, "pi"),
+      PI_CODING_AGENT_SESSION_DIR: "",
+    },
+  });
+  try {
+    const page = await application.firstWindow();
+    await openSharing(page);
+    await page.getByLabel("Browser sharing port", { exact: true }).fill(String(address.port));
+    await page
+      .getByLabel("Browser sharing HTTPS origin", { exact: true })
+      .fill("https://laptop.tailnet.ts.net");
+    await page.getByRole("switch", { name: "Require Google sign-in" }).click();
+    const clientId = page.getByRole("textbox", { name: "Google web client ID" });
+    await clientId.fill("personal.apps.googleusercontent.com");
+    const accounts = page.getByRole("textbox", { name: "Allowed Google accounts" });
+    await accounts.fill("owner@gmail.com\nguest@gmail.com");
+    await expect(accounts).toHaveValue("owner@gmail.com\nguest@gmail.com");
+    await page.getByRole("button", { name: "Save allowed accounts" }).click();
+    await page.getByRole("switch", { name: "Enable browser sharing" }).click();
+    await expect(page.getByRole("switch", { name: "Enable browser sharing" })).toBeChecked();
+    await expect(page.getByRole("textbox", { name: "Remote access URL" })).toHaveValue(
+      "https://laptop.tailnet.ts.net/",
+    );
+    const qr = page.getByRole("img", { name: "Scan to open Cake and sign in with Google" });
+    await expect(qr).toBeVisible();
+    await expect(qr).toHaveJSProperty("naturalWidth", 224);
+    await expect(clientId).toBeDisabled();
+    await accounts.fill("owner@gmail.com");
+    await page.getByRole("button", { name: "Save allowed accounts" }).click();
+    await expect(accounts).toHaveValue("owner@gmail.com");
+    await expect(page.getByRole("switch", { name: "Enable browser sharing" })).toBeChecked();
+    await page.getByRole("switch", { name: "Enable browser sharing" }).click();
+    await expect(page.getByRole("switch", { name: "Enable browser sharing" })).not.toBeChecked();
+  } finally {
+    await application.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("connection preferences survive quitting and a fresh desktop process without enabling sharing", async () => {
   test.setTimeout(60_000);
   const directory = await mkdtemp(join(tmpdir(), "cake-sharing-restart-"));

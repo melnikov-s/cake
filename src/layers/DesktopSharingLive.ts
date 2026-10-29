@@ -9,6 +9,13 @@ import {
 import { openNetworkListener, type NetworkListenerOptions } from "../server/NetworkListener";
 import { DesktopSharing } from "../services/electron/DesktopSharing";
 import {
+  makeGoogleRemoteAccess,
+  type GoogleRemoteAccess,
+  type GoogleAccountBinding,
+} from "../services/remote-access/GoogleRemoteAccess";
+import { loadRemoteAccessBindings } from "../services/storage/remote-access-bindings";
+import { bindGoogleAccount } from "../domain/remote-access/googleAccounts";
+import {
   loadDesktopSharingPreferences,
   saveDesktopSharingPreferences,
 } from "../services/storage/desktop-sharing-preferences";
@@ -30,10 +37,24 @@ export const makeDesktopSharingLive = (
       const lifetime = yield* Effect.scope;
       const storage = yield* Effect.context<FileSystem.FileSystem | Path.Path>();
       const lock = yield* Semaphore.make(1);
+      const runStorage = Effect.runPromiseWith(storage);
       let preferences = yield* loadDesktopSharingPreferences(userDataDirectory);
       let state: DesktopSharingState = { status: "disabled", ...preferences, preferences };
       const updates = yield* SubscriptionRef.make(state);
       let listener: Effect.Success<ReturnType<typeof openNetworkListener>> | undefined;
+      let authentication: GoogleRemoteAccess | undefined;
+      let bindings = yield* loadRemoteAccessBindings(userDataDirectory);
+      const bindAccount = (account: GoogleAccountBinding) =>
+        runStorage(
+          Effect.gen(function* () {
+            bindings = yield* bindGoogleAccount(
+              userDataDirectory,
+              bindings,
+              preferences.google?.allowedEmails ?? [],
+              account,
+            );
+          }).pipe((effect) => Effect.uninterruptible(lock.withPermits(1)(effect))),
+        );
       const publish = (next: DesktopSharingState) =>
         Effect.gen(function* () {
           state = next;
@@ -48,12 +69,20 @@ export const makeDesktopSharingLive = (
       });
       const updatePreferences = Effect.fn("DesktopSharing.updatePreferences")(
         function* (input: DesktopSharingPreferences) {
-          if (listener)
+          const connection = (value: DesktopSharingPreferences) =>
+            JSON.stringify({
+              bind: value.bind,
+              port: value.port,
+              publicOrigin: value.publicOrigin,
+              googleClientId: value.google?.clientId,
+            });
+          if (listener && connection(input) !== connection(preferences))
             return yield* new DesktopSharingError({
               message: "Disable browser sharing before changing connection preferences.",
             });
           yield* persist(input);
-          yield* publish({ status: "disabled", ...preferences, preferences });
+          authentication?.setAllowedEmails(preferences.google?.allowedEmails ?? []);
+          yield* publish({ ...state, ...preferences, preferences });
           return state;
         },
         (effect) => Effect.uninterruptible(lock.withPermits(1)(effect)),
@@ -68,14 +97,35 @@ export const makeDesktopSharingLive = (
             yield* publish({ ...state, preferences, status: "stopping" });
             if (listener) yield* listener.close();
             listener = undefined;
+            authentication = undefined;
             yield* publish({ status: "disabled", ...preferences, preferences });
             // A disk failure must never prevent switching off an exposed listener.
             yield* persist(settings);
             yield* publish({ status: "disabled", ...preferences, preferences });
             return state;
           }
+          if (
+            settings.google &&
+            (!settings.publicOrigin ||
+              settings.bind !== "127.0.0.1" ||
+              settings.port === 0 ||
+              settings.google.allowedEmails.length === 0)
+          )
+            return yield* new DesktopSharingError({
+              message:
+                "Google remote access needs an exact HTTPS origin, loopback bind, a fixed port, and at least one allowed Google account.",
+            });
           yield* persist(settings);
           yield* publish({ status: "starting", ...preferences, preferences });
+          authentication =
+            settings.google && settings.publicOrigin
+              ? makeGoogleRemoteAccess({
+                  clientId: settings.google.clientId,
+                  origin: settings.publicOrigin,
+                  allowedEmails: settings.google.allowedEmails,
+                  bindAccount,
+                })
+              : undefined;
           const options: NetworkListenerOptions = {
             bind: settings.bind,
             port: settings.port,
@@ -86,7 +136,12 @@ export const makeDesktopSharingLive = (
               allowedHosts: [new URL(settings.publicOrigin).host],
               allowedOrigins: [settings.publicOrigin],
             });
-          const opened = yield* openNetworkListener(options, configuration).pipe(
+          const opened = yield* openNetworkListener(
+            options,
+            configuration,
+            undefined,
+            authentication,
+          ).pipe(
             Effect.provide(backend),
             Scope.provide(lifetime),
             Effect.mapError(
@@ -107,11 +162,12 @@ export const makeDesktopSharingLive = (
             preferences,
             bind: settings.bind,
             port: opened.address.port,
-            editorPort: opened.editorPort,
             url: settings.publicOrigin
               ? `${settings.publicOrigin}/`
               : `http://${settings.bind}:${opened.address.port}/`,
           };
+          if (opened.editorPort !== undefined)
+            Object.assign(serving, { editorPort: opened.editorPort });
           if (settings.publicOrigin)
             Object.assign(serving, { publicOrigin: settings.publicOrigin });
           yield* publish(serving);
