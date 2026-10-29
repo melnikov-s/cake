@@ -36,7 +36,7 @@ describe("Searchable choice dialog presentation", () => {
       </Suspense>,
     );
     const initialRenders = filter.mock.calls.filter(([query]) => query === "").length;
-    const input = screen.getByRole("combobox") as HTMLInputElement;
+    const input = screen.getByRole<HTMLInputElement>("combobox");
     fireEvent.change(input, { target: { value: "new" } });
     expect(input.value).toBe("new");
     expect(input.getAttribute("aria-busy")).toBe("true");
