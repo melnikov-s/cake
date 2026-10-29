@@ -40,20 +40,31 @@ export const projectPreviewSnapshot = (preview: {
   readonly sessionId: string;
   readonly sessionFile: string;
   readonly parts: ReadonlyArray<unknown>;
-}): ConversationSnapshot => ({
-  sessionId: preview.sessionId,
-  sessionFile: preview.sessionFile,
-  parts: preview.parts.map(toJsonValue),
-  models: [],
-  thinkingLevel: "off",
-  availableThinkingLevels: [],
-  streaming: false,
-  diagnostics: [],
-  commands: [],
-  compatibility: { resources: [], diagnostics: [] },
-  extensionUi: { statuses: [] },
-  tree: [],
-});
+  readonly model?: { readonly provider: string; readonly modelId: string };
+  readonly currentModel?: { readonly provider: string; readonly modelId: string };
+}): ConversationSnapshot => {
+  const model = preview.model ?? preview.currentModel;
+  const projected: ConversationSnapshot = {
+    sessionId: preview.sessionId,
+    sessionFile: preview.sessionFile,
+    parts: preview.parts.map(toJsonValue),
+    models: [],
+    thinkingLevel: "off",
+    availableThinkingLevels: [],
+    streaming: false,
+    diagnostics: [],
+    commands: [],
+    compatibility: { resources: [], diagnostics: [] },
+    extensionUi: { statuses: [] },
+    tree: [],
+  };
+  // Metadata previews and direct Pi inspections carry identity, not a catalog name.
+  if (model)
+    Object.assign(projected, {
+      model: { provider: model.provider, id: model.modelId, name: model.modelId },
+    });
+  return projected;
+};
 
 const projectSnapshot = (snapshot: RuntimeConversationSnapshot): ConversationSnapshot => {
   const projected: ConversationSnapshot = {

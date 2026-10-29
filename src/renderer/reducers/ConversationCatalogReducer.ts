@@ -7,7 +7,11 @@ import { RootProjection } from "../models/RootProjection";
 import type { Conversation } from "../models/Conversation";
 
 /** Register shared identities before applying session-owned references. */
-export function applyConversationCatalog(session: Conversation, snapshot: ConversationSnapshot) {
+export function applyConversationCatalog(
+  session: Conversation,
+  snapshot: ConversationSnapshot,
+  historyOnly = false,
+) {
   if (!snapshot.model && !snapshot.models.length && !snapshot.compatibility.resources.length)
     return;
   const root = session.parent;
@@ -18,8 +22,10 @@ export function applyConversationCatalog(session: Conversation, snapshot: Conver
     for (const record of [...snapshot.models, ...(snapshot.model ? [snapshot.model] : [])]) {
       const id = modelOptionKey(record);
       const existing = models.get(id);
-      if (existing) existing.name = record.name;
-      else {
+      if (existing) {
+        // Previews know the persisted identity, not its catalog display name.
+        if (!historyOnly) existing.name = record.name;
+      } else {
         const model = LlmModel.create({
           id,
           provider: record.provider,

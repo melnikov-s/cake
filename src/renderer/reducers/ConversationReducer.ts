@@ -23,7 +23,7 @@ export function applyConversationUpdate(model: Conversation, update: Conversatio
   if (update._tag === "Snapshot" || update._tag === "Preview") {
     assertConversationSnapshotIdentity(model, update.snapshot);
     batch(() => {
-      applyConversationSnapshot(model, update.snapshot, false);
+      applyConversationSnapshot(model, update.snapshot, false, update._tag === "Preview");
       model.historyOnly = update._tag === "Preview";
       if (!model.historyOnly) model.observedSnapshotRevision += 1;
       model.observationError = undefined;
@@ -47,7 +47,9 @@ export function unloadConversationProjection(model: Conversation) {
     applySnapshot(model, {
       sessionFile: "",
       parts: [],
-      model: undefined,
+      // Observation lifetime is shorter than this session identity's lifetime.
+      // Keep its last authoritative selection visible until hydration replaces it.
+      model: model.model ? { id: model.model.id } : undefined,
       preset: undefined,
       fastMode: false,
       fastModeAvailable: false,
@@ -106,6 +108,7 @@ export function applyConversationSnapshot(
   model: Conversation,
   conversation: ConversationSnapshot,
   preserveActiveTurns = false,
+  historyOnly = false,
 ) {
   // Only these local fields survive hydration; do not snapshot the old transcript,
   // model catalog, resources, and Pi tree just to retain them.
@@ -138,9 +141,12 @@ export function applyConversationSnapshot(
             ),
         );
     }
-    applyConversationCatalog(model, parsed);
+    applyConversationCatalog(model, parsed, historyOnly);
     applySnapshot(model, {
       ...authoritative,
+      // A history preview can lack configuration, unlike a complete live snapshot.
+      model:
+        historyOnly && !parsed.model && model.model ? { id: model.model.id } : authoritative.model,
       activeTurnIds,
       extensionUi: {
         ...authoritative.extensionUi,

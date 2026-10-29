@@ -9,6 +9,7 @@ import {
   observe,
   projectAttachments,
   projectQueuedMessages,
+  projectPreviewSnapshot,
 } from "../../../src/domain/conversations/conversations";
 import * as sessionChats from "../../../src/domain/conversations/sessionChats";
 import {
@@ -87,6 +88,30 @@ const makeHandle = (deliveries: string[], isStreaming: () => boolean): CakeSessi
 });
 
 describe("conversation domain", () => {
+  it.each(["model", "currentModel"] as const)(
+    "projects the saved %s identity before runtime initialization",
+    (field) => {
+      const preview = projectPreviewSnapshot({
+        sessionId: "session-1",
+        sessionFile: "/sessions/session-1.jsonl",
+        parts: [],
+        [field]: { provider: "openai", modelId: "saved-model" },
+      });
+      expect(preview.model).toEqual({ provider: "openai", id: "saved-model", name: "saved-model" });
+      expect(preview.models).toEqual([]);
+    },
+  );
+
+  it("does not invent a model for history without a persisted selection", () => {
+    expect(
+      projectPreviewSnapshot({
+        sessionId: "session-1",
+        sessionFile: "/sessions/session-1.jsonl",
+        parts: [],
+      }).model,
+    ).toBeUndefined();
+  });
+
   it.effect("encodes snapshots with and without selected preset guidance across RPC", () =>
     Effect.gen(function* () {
       const preset = { id: "00000000-0000-4000-8000-000000000001", prompt: "Be concise." };
