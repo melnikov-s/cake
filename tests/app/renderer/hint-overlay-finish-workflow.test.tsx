@@ -43,6 +43,9 @@ function renderHintOverlayFinish() {
   const view = render(
     <RendererRoot
       rootStore={fixture.root}
+      openSubagent={(parent, handle, message) =>
+        void fixture.root.navigationStore.openSubagentLink(parent, handle, message)
+      }
       openExternalUrl={(url) => void fixture.root.openExternalUrl(url)}
       openSession={(id, messageId, attachmentId) =>
         void fixture.root.navigationStore.openSessionLink(id, messageId, attachmentId)
