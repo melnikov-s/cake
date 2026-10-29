@@ -1,75 +1,14 @@
-import { renderToReadableStream, renderToStaticMarkup } from "react-dom/server";
-import { createStore, mount } from "r-state-tree";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import {
-  Composer,
-  ComposerInput,
-} from "../../../../../src/renderer/components/ai-elements/composer";
-import { Markdown } from "../../../../../src/renderer/components/ai-elements/markdown";
 import { Reasoning } from "../../../../../src/renderer/components/ai-elements/reasoning";
 import { ShellCommand } from "../../../../../src/renderer/components/ai-elements/shell-command";
 import { Tool } from "../../../../../src/renderer/components/ai-elements/tool";
 import { WorkLogDiff } from "../../../../../src/renderer/components/ai-elements/work-log-diff";
-import { SubagentCatalog } from "../../../../../src/renderer/models/SubagentCatalog";
-import { SubagentActivityStore } from "../../../../../src/renderer/stores/SubagentActivityStore";
+// Markdown parsing/math/Pele now run through markdown.test.tsx; live/completed
+// subagent summaries and detail disclosure use real Root composition in
+// component-finish-workflow.test.tsx. Keep only focused presentation variants here.
 
 describe("Cake-owned conversation components", () => {
-  it("renders GFM tables, task lists, safe links, and code blocks", () => {
-    const html = renderToStaticMarkup(
-      <Markdown>
-        {
-          "## Result\n\n**Ready** with `inline` code.\n\n- [x] Markdown\n\n| Feature | State |\n| --- | --- |\n| Tables | Ready |\n\n[Docs](https://example.com)\n\n<script>bad()</script>\n\n```ts\nconst cake = true\n```"
-        }
-      </Markdown>,
-    );
-    expect(html).toContain('data-streamdown="heading-2">Result</h2>');
-    expect(html).toContain('data-streamdown="strong">Ready</span>');
-    expect(html).toContain('type="checkbox"');
-    expect(html).toContain("<table");
-    expect(html).toContain('target="_blank"');
-    expect(html).toContain('rel="noreferrer"');
-    expect(html).not.toContain("bad()");
-    expect(html).toContain("<pre");
-  });
-
-  it("loads math and Pele diagrams through the shared Markdown path", async () => {
-    const stream = await renderToReadableStream(
-      <Markdown>{"$$\nE = mc^2\n$$\n\n```mermaid\ngraph LR\n  A --> B\n```"}</Markdown>,
-    );
-    await stream.allReady;
-    const html = await new Response(stream).text();
-
-    expect(html).toContain("katex");
-    expect(html).toContain('data-diagram="pele"');
-  });
-
-  it("renders Cake reasoning, tool, and composer props without AI SDK types", () => {
-    const html = renderToStaticMarkup(
-      <>
-        <Reasoning open onToggle={() => undefined}>
-          trace
-        </Reasoning>
-        <Tool
-          part={{
-            id: "tool-1",
-            kind: "tool",
-            name: "read",
-            input: "file",
-            output: "contents",
-            state: "success",
-          }}
-        />
-        <Composer>
-          <ComposerInput defaultValue="prompt" />
-        </Composer>
-      </>,
-    );
-    expect(html).toContain("Reasoning");
-    expect(html).toContain("read");
-    expect(html).toContain("success");
-    expect(html).toContain("prompt");
-  });
-
   it("does not offer an empty reasoning block as expandable content", () => {
     const html = renderToStaticMarkup(
       <Reasoning open={false} onToggle={() => undefined} hasContent={false}>
@@ -447,143 +386,6 @@ describe("Cake-owned conversation components", () => {
     expect(image).toContain("Tool output image 1");
   });
 
-  it("keeps completed subagent details in a compact outcome row", () => {
-    const handleId = crypto.randomUUID();
-    const html = renderToStaticMarkup(
-      <Tool
-        subagentStartPart={{
-          id: "subagent-spawn",
-          kind: "tool",
-          name: "cake",
-          command: "subagents.start",
-          input: JSON.stringify({
-            task: "Inspect the session boundary",
-            model: {
-              prefer: "exact",
-              provider: "openai-codex",
-              modelId: "gpt-5.6-sol",
-              thinkingLevel: "max",
-            },
-            instructions: "Focus on runtime validation.",
-          }),
-          output: JSON.stringify({ handleId }),
-          state: "success",
-        }}
-        part={{
-          id: "subagent-wait",
-          kind: "tool",
-          name: "cake",
-          command: "subagents.wait",
-          input: JSON.stringify({ handleId }),
-          output: JSON.stringify({
-            handleId,
-            task: "Inspect the session boundary",
-            status: "complete",
-            resolvedModel: {
-              requested: "exact",
-              source: "exact",
-              provider: "openai-codex",
-              modelId: "gpt-5.6-sol",
-              thinkingLevel: "max",
-              fallbacks: [],
-            },
-            parts: [
-              {
-                id: "child-tool",
-                kind: "tool",
-                name: "read",
-                input: "src/main.ts",
-                state: "success",
-              },
-              {
-                id: "child-text",
-                kind: "text",
-                role: "assistant",
-                text: "The boundary is correctly isolated.",
-                status: "complete",
-              },
-            ],
-            usage: {
-              tokens: { input: 100, output: 25, cacheRead: 0, cacheWrite: 0, total: 125 },
-              cost: 0.002,
-            },
-          }),
-          state: "success",
-        }}
-        expansion={{ open: true, toggle: () => undefined }}
-      />,
-    );
-    expect(html).toContain("Subagent");
-    expect(html).toContain("openai-codex/gpt-5.6-sol");
-    expect(html).toContain("Inspect the session boundary");
-    expect(html).toContain("Last activity: read");
-    expect(html).toContain('data-status="complete"');
-    expect(html).not.toContain("Focus on runtime validation.");
-    expect(html).not.toContain("The boundary is correctly isolated.");
-  });
-
-  it("renders first-class live activity without a subagent wait call", () => {
-    const handleId = crypto.randomUUID();
-    const model = SubagentCatalog.create({
-      sessionId: "parent",
-      activities: [
-        {
-          parentSessionId: "parent",
-          anchorPartId: "tool-live-spawn",
-          handleId,
-          revision: 1,
-          task: "Inspect the live boundary",
-          status: "running",
-          resolvedModel: {
-            requested: "current",
-            source: "current",
-            provider: "openai-codex",
-            modelId: "gpt-5.6-sol",
-            thinkingLevel: "medium",
-            fallbacks: [],
-          },
-          fastMode: false,
-          streaming: true,
-          parts: [
-            {
-              id: "child-read",
-              kind: "tool",
-              name: "read",
-              input: "src/main.ts",
-              state: "running",
-            },
-          ],
-        },
-      ],
-    });
-    const subagents = mount(
-      createStore(SubagentActivityStore, { sessionId: "parent", model, parts: () => [] }),
-    );
-
-    const html = renderToStaticMarkup(
-      <Tool
-        subagents={subagents}
-        part={{
-          id: "tool-live-spawn",
-          kind: "tool",
-          name: "cake",
-          command: "subagents.start",
-          input: JSON.stringify({ task: "Inspect the live boundary" }),
-          output: JSON.stringify({ handleId, status: "running" }),
-          state: "success",
-        }}
-        expansion={{ open: true, toggle: () => undefined }}
-      />,
-    );
-
-    expect(html).toContain("Inspect the live boundary");
-    expect(html).toContain("openai-codex/gpt-5.6-sol");
-    expect(html).toContain("Running read");
-    expect(html).toContain("running");
-    subagents[Symbol.dispose]();
-    model[Symbol.dispose]();
-  });
-
   it("renders every recorded child from a historical parallel delegation", () => {
     const html = renderToStaticMarkup(
       <Tool
@@ -626,40 +428,5 @@ describe("Cake-owned conversation components", () => {
     expect(html).toContain('data-status="complete"');
     expect(html).not.toContain("Storage is sound.");
     expect(html).not.toContain("Rendering is sound.");
-  });
-
-  it("moves completed subagent output out of the inline work log", () => {
-    const handleId = crypto.randomUUID();
-    const html = renderToStaticMarkup(
-      <Tool
-        part={{
-          id: "subagent-wait",
-          kind: "tool",
-          name: "cake",
-          command: "subagents.wait",
-          input: JSON.stringify({ handleId }),
-          output: JSON.stringify({
-            handleId,
-            task: "Tell a joke",
-            status: "complete",
-            parts: [
-              {
-                id: "child-answer",
-                kind: "text",
-                role: "assistant",
-                text: "The delegated punchline.",
-                status: "complete",
-              },
-            ],
-          }),
-          state: "success",
-        }}
-        expansion={{ open: false, toggle: () => undefined }}
-      />,
-    );
-
-    expect(html).toContain("Tell a joke");
-    expect(html).toContain('data-status="complete"');
-    expect(html).not.toContain("The delegated punchline.");
   });
 });
