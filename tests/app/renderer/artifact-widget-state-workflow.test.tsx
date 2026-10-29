@@ -6,6 +6,9 @@ import { decodeArtifactLineageId } from "../../../src/contracts/artifacts/artifa
 import type { ArtifactState } from "../../../src/contracts/artifacts/artifact-state";
 import { ArtifactHost } from "../../../src/renderer/components/artifact-host";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
+import type { Client } from "../../../src/renderer/client/Client";
+import { artifactObserverWorkflowEvents } from "./artifact-observer-workflow-events";
+import type { ReactElement } from "react";
 
 const token = "00000000-0000-4000-8000-000000000010";
 const lineageId = decodeArtifactLineageId("editable");
@@ -30,10 +33,19 @@ const record: ArtifactRecord = {
   createdAt: "",
   updatedAt: "",
 };
+// Valid JSON messages plus the intentionally invalid payload used to verify the
+// native host boundary rejects undefined widget data before saving it.
+type WidgetFrameTestPayload =
+  | ArtifactState["value"]
+  | {
+      id: string;
+      expectedVersion: number;
+      value: { elements: { customData: undefined }[] };
+    };
 const request = (
   frame: HTMLIFrameElement,
   type: string,
-  value: unknown,
+  value: WidgetFrameTestPayload,
   overrides: { token?: string; source?: Window | null } = {},
 ) =>
   window.dispatchEvent(
@@ -42,13 +54,26 @@ const request = (
       data: { source: "cake-inline-widget", token: overrides.token ?? token, type, value },
     }),
   );
+function renderArtifactStateView(element: ReactElement) {
+  const view = render(element);
+  return { ...view, [Symbol.dispose]: () => view.unmount() };
+}
 afterEach(cleanup);
 
+// Exercises the real host's native frame protocol, not script execution, focus,
+// or actual capture pixels. Those remain native/Electron integration concerns.
 describe("artifact widget state renderer workflow", () => {
   it("hydrates in the hosting linked session, saves via scoped RPC, and pushes external changes without iframe reload", async () => {
     let current: ArtifactState = { lineageId, version: 1, value: { scene: "saved" } };
-    const stateRead = vi.fn(async () => current);
-    const stateReplace = vi.fn(async (input) => {
+    const stateRead = vi.fn<Client["artifacts"]["stateRead"]>(async () => current);
+    const catalog = vi.fn<Client["artifacts"]["catalog"]>(async () => ({
+      items: [],
+      offset: 0,
+      limit: 50,
+      total: 0,
+      hasMore: false,
+    }));
+    const stateReplace = vi.fn<Client["artifacts"]["stateReplace"]>(async (input) => {
       expect(input.sessionId).toBe("viewer");
       expect(input.lineageId).toBe(lineageId);
       expect(input.expectedVersion).toBe(current.version);
@@ -58,10 +83,11 @@ describe("artifact widget state renderer workflow", () => {
     using fixture = createRendererStoreFixture({
       client: {
         inlineWidgets: { open: async () => ({ token, url: `cake-widget://document/${token}` }) },
-        artifacts: { stateRead, stateReplace },
+        artifacts: { stateRead, stateReplace, catalog },
       },
     });
-    const view = render(
+    await using events = artifactObserverWorkflowEvents(fixture.root);
+    using view = renderArtifactStateView(
       <ArtifactHost
         record={record}
         inlineWidgets={fixture.root.inlineWidgetStore}
@@ -105,21 +131,34 @@ describe("artifact widget state renderer workflow", () => {
       ),
     );
     current = { lineageId, version: 3, value: { scene: "agent-update" } };
-    act(() => fixture.root.inlineWidgetStore.refreshArtifactState(lineageId));
+    await act(() => events.emit({ type: "artifact-state-invalidated", lineageId }));
+    expect(catalog).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith(
         expect.objectContaining({ type: "state", value: current }),
         "*",
       ),
     );
+    current = { lineageId, version: 4, value: { scene: "missed-while-disconnected" } };
+    await act(() => events.emit({ type: "renderer-events-ready", channel: "artifacts" }));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "state", value: current }),
+        "*",
+      ),
+    );
+    expect(catalog).toHaveBeenCalled();
     expect(view.container.querySelector("iframe")).toBe(frame);
     expect(frame.src).toBe(src);
-    view.unmount();
   });
 
   it("rejects messages from another frame or token, and reports save failure without retrying the obsolete value", async () => {
-    const stateRead = vi.fn(async () => ({ lineageId, version: 1, value: "saved" }));
-    const stateReplace = vi.fn(async () => {
+    const stateRead = vi.fn<Client["artifacts"]["stateRead"]>(async () => ({
+      lineageId,
+      version: 1,
+      value: "saved",
+    }));
+    const stateReplace = vi.fn<Client["artifacts"]["stateReplace"]>(async () => {
       throw new Error("Stale version");
     });
     using fixture = createRendererStoreFixture({
@@ -128,7 +167,7 @@ describe("artifact widget state renderer workflow", () => {
         artifacts: { stateRead, stateReplace },
       },
     });
-    const view = render(
+    using view = renderArtifactStateView(
       <ArtifactHost
         record={record}
         inlineWidgets={fixture.root.inlineWidgetStore}
@@ -186,19 +225,18 @@ describe("artifact widget state renderer workflow", () => {
     );
     expect(stateReplace).toHaveBeenCalledOnce();
     expect(stateRead).toHaveBeenCalledTimes(2);
-    view.unmount();
   });
 
   it("does not grant state access to a global unlinked preview", async () => {
-    const stateRead = vi.fn();
-    const stateReplace = vi.fn();
+    const stateRead = vi.fn<Client["artifacts"]["stateRead"]>();
+    const stateReplace = vi.fn<Client["artifacts"]["stateReplace"]>();
     using fixture = createRendererStoreFixture({
       client: {
         inlineWidgets: { open: async () => ({ token, url: `cake-widget://document/${token}` }) },
         artifacts: { stateRead, stateReplace },
       },
     });
-    const view = render(
+    using view = renderArtifactStateView(
       <ArtifactHost record={record} inlineWidgets={fixture.root.inlineWidgetStore} />,
     );
     await waitFor(() => expect(view.container.querySelector("iframe")).not.toBeNull());
@@ -218,6 +256,5 @@ describe("artifact widget state renderer workflow", () => {
     );
     expect(stateRead).not.toHaveBeenCalled();
     expect(stateReplace).not.toHaveBeenCalled();
-    view.unmount();
   });
 });

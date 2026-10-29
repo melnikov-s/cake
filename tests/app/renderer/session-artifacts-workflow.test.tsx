@@ -15,6 +15,7 @@ import { RendererRoot } from "../../../src/renderer/components/renderer-root";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { artifactObserverWorkflowEvents } from "./artifact-observer-workflow-events";
 
 const effective = (
   revision = 2,
@@ -79,15 +80,22 @@ function renderSessionArtifacts(
 ) {
   const fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: "/project", name: "Project" })],
-    sessions: ["session-1", "session-2"].map((id) =>
+    sessions: ["session-1", "session-2", "unrelated"].map((id) =>
       sessionSummary({
         sessionId: id,
-        title: id === "session-1" ? "Parent session" : "Child session",
+        title:
+          id === "session-1"
+            ? "Parent session"
+            : id === "session-2"
+              ? "Child session"
+              : "Unrelated session",
         projectPath: "/project",
-        familyId: "family-1",
+        familyId: id === "unrelated" ? undefined : "family-1",
         ...(id === "session-2"
           ? { familyParentSessionId: "session-1", familyDepth: 1 }
-          : { familyChildSessionIds: ["session-2"], familyDepth: 0 }),
+          : id === "session-1"
+            ? { familyChildSessionIds: ["session-2"], familyDepth: 0 }
+            : {}),
       }),
     ),
     client: {
@@ -96,7 +104,7 @@ function renderSessionArtifacts(
       workspaces: { loadStagedSlashCommands: async () => [] },
       inlineWidgets,
       artifacts: {
-        effective: async () => [effective()],
+        effective: async (id) => (id === "unrelated" ? [] : [effective()]),
         catalog: async () => ({
           items: [reportSummary()],
           offset: 0,
@@ -145,7 +153,7 @@ function renderSessionArtifacts(
     },
   });
   if (initial) fixture.models.artifacts.applyEffective("session-1", initial);
-  for (const id of ["session-1", "session-2"]) {
+  for (const id of ["session-1", "session-2", "unrelated"]) {
     fixture.root.sessionRegistry.load(id, "/project");
     applyConversationUpdate(fixture.models.projectConversation(id, "/project"), {
       _tag: "Snapshot",
@@ -174,23 +182,29 @@ function renderSessionArtifacts(
     .conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
       kind: "top",
     });
+  const events = artifactObserverWorkflowEvents(fixture.root);
   const view = render(
     <VirtuosoMockContext.Provider value={{ viewportHeight: 900, itemHeight: 160 }}>
       <StoreProvider store={fixture.root}>
         <RendererRoot
           rootStore={fixture.root}
-          openExternalUrl={vi.fn()}
-          openSession={vi.fn()}
-          openSubagent={vi.fn()}
+          openSubagent={(parent, handle, message) =>
+            void fixture.root.navigationStore.openSubagentLink(parent, handle, message)
+          }
+          openExternalUrl={(url) => void fixture.root.openExternalUrl(url)}
+          openSession={(id, message, attachment) =>
+            void fixture.root.navigationStore.openSessionLink(id, message, attachment)
+          }
         />
       </StoreProvider>
     </VirtuosoMockContext.Provider>,
   );
   return {
     user: userEvent.setup(),
-    invalidate: () => fixture.models.artifacts.invalidate(),
-    [Symbol.dispose]() {
+    emit: events.emit,
+    async [Symbol.asyncDispose]() {
       view.unmount();
+      await events[Symbol.asyncDispose]();
       fixture[Symbol.dispose]();
     },
   };
@@ -279,7 +293,7 @@ async function browseReport(fixture: ReturnType<typeof renderSessionArtifacts>) 
 
 describe("Session artifact workflows", () => {
   it("renders repeated inline presentations as independent surfaces and preserves selected source through the Message projection", async () => {
-    using fixture = renderSessionArtifacts(
+    await using fixture = renderSessionArtifacts(
       {},
       [effective(2)],
       [
@@ -308,7 +322,7 @@ describe("Session artifact workflows", () => {
       latestRevision: effective(latest).latestRevision,
       latest: effective(latest).revision.metadata,
     });
-    using fixture = renderSessionArtifacts(
+    await using fixture = renderSessionArtifacts(
       {
         effective: async () => [effective(latest)],
         catalog: async () => ({
@@ -344,7 +358,7 @@ describe("Session artifact workflows", () => {
     const surface = await screen.findByRole("dialog", { name: "Family report" });
     await within(surface).findByText("Family report content r1");
     latest = 2;
-    act(() => fixture.invalidate());
+    await act(() => fixture.emit({ type: "artifact-catalog-invalidated", lineageId: "shared" }));
     await within(surface).findByText("Family report content r2");
     await fixture.user.click(
       within(surface).getByRole("button", { name: "Exit fullscreen Family report" }),
@@ -356,7 +370,7 @@ describe("Session artifact workflows", () => {
     );
     await screen.findByText("Family report content r1");
     latest = 3;
-    act(() => fixture.invalidate());
+    await act(() => fixture.emit({ type: "artifact-catalog-invalidated", lineageId: "shared" }));
     await screen.findByText(/Revision 1 of 3/);
     expect(screen.getByRole("combobox", { name: "Selected artifact revision" })).toHaveProperty(
       "value",
@@ -381,7 +395,7 @@ describe("Session artifact workflows", () => {
       links,
       stableRef: authority.stableRef,
     });
-    using fixture = renderSessionArtifacts(
+    await using fixture = renderSessionArtifacts(
       {
         effective: async () => [authority],
         referenceMetadata: async (reference) => ({
@@ -429,7 +443,7 @@ describe("Session artifact workflows", () => {
         selection: { mode: "pinned", revision: effective(1).revision.metadata.revision },
       },
     ];
-    act(() => fixture.invalidate());
+    await act(() => fixture.emit({ type: "artifact-catalog-invalidated", lineageId: "shared" }));
     await screen.findByRole("heading", { name: title });
     await fixture.user.selectOptions(
       screen.getByRole("combobox", { name: "Selected artifact revision" }),
@@ -442,7 +456,7 @@ describe("Session artifact workflows", () => {
     );
     title = "Reconnected report";
     links = [authority.link];
-    act(() => fixture.invalidate());
+    await act(() => fixture.emit({ type: "artifact-catalog-invalidated", lineageId: "shared" }));
     await screen.findByRole("heading", { name: title });
     expect(screen.queryByText("Pinned r1")).toBeNull();
     expect(screen.getByRole("combobox", { name: "Selected artifact revision" })).toHaveProperty(
@@ -464,7 +478,7 @@ describe("Session artifact workflows", () => {
     const open = vi
       .fn<Client["inlineWidgets"]["open"]>()
       .mockRejectedValue(new Error("Compiler unavailable"));
-    using fixture = renderSessionArtifacts(
+    await using fixture = renderSessionArtifacts(
       {
         effective: async () => [visual(2)],
         referenceMetadata: async () => visualMetadata(),
@@ -507,7 +521,7 @@ describe("Session artifact workflows", () => {
 
   it("renders document publications inline using their existing artifact renderer", async () => {
     const readExact = vi.fn<Client["artifacts"]["readExact"]>(async () => effective().revision);
-    using fixture = renderSessionArtifacts(
+    await using fixture = renderSessionArtifacts(
       { readExact },
       [effective()],
       [
@@ -533,7 +547,7 @@ describe("Session artifact workflows", () => {
       const readExact = vi.fn<Client["artifacts"]["readExact"]>(
         async (_id, revision) => visual(revision).revision,
       );
-      using fixture = renderSessionArtifacts(
+      await using fixture = renderSessionArtifacts(
         {
           effective: async () => [visual(2)],
           referenceMetadata: async () => visualMetadata(),
@@ -574,7 +588,7 @@ describe("Session artifact workflows", () => {
   );
 
   it("expands a standalone Markdown embed without a publication tool", async () => {
-    using fixture = renderSessionArtifacts(
+    await using fixture = renderSessionArtifacts(
       { effective: async () => [visual(2)] },
       [visual(2)],
       [
@@ -601,7 +615,7 @@ describe("Session artifact workflows", () => {
   it("does not reopen a collapsed preview when its read finishes", async () => {
     const pending = gate<ReturnType<typeof visual>["revision"]>();
     const readExact = vi.fn<Client["artifacts"]["readExact"]>(() => pending.promise);
-    using fixture = renderSessionArtifacts(
+    await using fixture = renderSessionArtifacts(
       {
         effective: async () => [visual(2)],
         referenceMetadata: async () => visualMetadata(),
@@ -630,7 +644,7 @@ describe("Session artifact workflows", () => {
     expect(screen.queryByText("Explanation r1")).toBeNull();
   });
   it("opens a sole linked artifact fullscreen and reopens its catalog after closing", async () => {
-    using fixture = renderSessionArtifacts();
+    await using fixture = renderSessionArtifacts();
     await fixture.user.click(await screen.findByRole("button", { name: "1 artifacts" }));
     const popup = await screen.findByRole("dialog", { name: "Artifacts" });
     const list = within(popup).getByRole("navigation", { name: "Artifact list" });
@@ -648,19 +662,56 @@ describe("Session artifact workflows", () => {
     expect(await screen.findByText("Family report content r2")).toBeDefined();
   });
 
-  it("shows only the active session's linked artifacts, including shared family links", async () => {
-    using fixture = renderSessionArtifacts({
-      effective: async (id) =>
-        id === "session-1" ? [effective(), effective(1, "appendix", "Appendix")] : [effective()],
+  it("reconciles family links from both artifact event kinds without leaking them to unrelated sessions", async () => {
+    let linked = false;
+    const query = vi.fn<Client["artifacts"]["effective"]>(async (id) => {
+      if (id === "unrelated" || !linked) return [];
+      return id === "session-1"
+        ? [effective(), effective(1, "appendix", "Appendix")]
+        : [effective()];
     });
+    await using fixture = renderSessionArtifacts({ effective: query });
+    const sidebar = within(screen.getByRole("complementary"));
+    await screen.findByRole("button", { name: "0 artifacts" });
+    for (const title of ["Child session", "Unrelated session", "Parent session"]) {
+      await fixture.user.click(sidebar.getByRole("button", { name: new RegExp(`^${title}`) }));
+      await screen.findByRole("button", { name: "0 artifacts" });
+    }
+    await waitFor(() => expect(query).toHaveBeenCalledTimes(3));
+    linked = true;
+    const publication = effective();
+    await act(() =>
+      fixture.emit({
+        type: "artifact-updated",
+        record: {
+          artifact: publication.revision.snapshot,
+          workspacePath: "/project",
+          digest: publication.revision.metadata.digest,
+          createdAt: publication.revision.metadata.publishedAt,
+          updatedAt: publication.revision.metadata.publishedAt,
+        },
+      }),
+    );
+    // No popup was opened to trigger the refresh.
     await fixture.user.click(await screen.findByRole("button", { name: "2 artifacts" }));
     let popup = await screen.findByRole("dialog", { name: "Artifacts" });
-    expect(within(popup).getAllByRole("button")).toHaveLength(3);
-    await fixture.user.click(screen.getByRole("button", { name: /^Child session/ }));
+    expect(within(popup).getByRole("button", { name: /Appendix/ })).toBeDefined();
+    await fixture.user.click(sidebar.getByRole("button", { name: /^Child session/ }));
     await fixture.user.click(await screen.findByRole("button", { name: "1 artifacts" }));
     popup = await screen.findByRole("dialog", { name: "Artifacts" });
-    expect(within(popup).getAllByRole("button")).toHaveLength(2);
     expect(within(popup).getByRole("button", { name: /Family report/ })).toBeDefined();
+    expect(within(popup).queryByRole("button", { name: /Appendix/ })).toBeNull();
+    await fixture.user.click(sidebar.getByRole("button", { name: /^Unrelated session/ }));
+    await fixture.user.click(await screen.findByRole("button", { name: "0 artifacts" }));
+    expect(await screen.findByText("No artifacts yet.")).toBeDefined();
+    linked = false;
+    await act(() => fixture.emit({ type: "artifact-catalog-invalidated", lineageId: "shared" }));
+    await fixture.user.click(sidebar.getByRole("button", { name: /^Parent session/ }));
+    await fixture.user.click(await screen.findByRole("button", { name: "0 artifacts" }));
+    expect(await screen.findByText("No artifacts yet.")).toBeDefined();
+    await fixture.user.click(sidebar.getByRole("button", { name: /^Child session/ }));
+    await fixture.user.click(await screen.findByRole("button", { name: "0 artifacts" }));
+    expect(await screen.findByText("No artifacts yet.")).toBeDefined();
   });
 
   it("opens the family link's pinned revision directly in fullscreen", async () => {
@@ -672,7 +723,7 @@ describe("Session artifact workflows", () => {
         selection: { mode: "pinned" as const, revision: effective(1).revision.metadata.revision },
       },
     };
-    using fixture = renderSessionArtifacts({
+    await using fixture = renderSessionArtifacts({
       effective: async () => [pinned],
       detail: async () => ({
         lineage: reportSummary(),
@@ -700,7 +751,7 @@ describe("Session artifact workflows", () => {
       exactPath: "/cache/shared/revision-2.md",
       files: [],
     }));
-    using fixture = renderSessionArtifacts({ materialize });
+    await using fixture = renderSessionArtifacts({ materialize });
     await browseReport(fixture);
     expect(await screen.findByText("Shared with workgroup")).toBeDefined();
     expect(screen.getByText("Following latest")).toBeDefined();
@@ -728,7 +779,7 @@ describe("Session artifact workflows", () => {
       failNextDetail = ++selections === 1;
       return projection.link;
     });
-    using fixture = renderSessionArtifacts({
+    await using fixture = renderSessionArtifacts({
       effective: async () => [projection],
       setSelection,
       detail: async () => {
@@ -777,14 +828,14 @@ describe("Session artifact workflows", () => {
       stableRef: authority.stableRef,
     });
     const detail = vi.fn<Client["artifacts"]["detail"]>(async () => currentDetail());
-    using fixture = renderSessionArtifacts({ effective: async () => [authority], detail });
+    await using fixture = renderSessionArtifacts({ effective: async () => [authority], detail });
     await browseReport(fixture);
     await screen.findByText("Family report content r2");
     const initialCalls = detail.mock.calls.length;
     const superseded = gate<Awaited<ReturnType<Client["artifacts"]["detail"]>>>();
     const stale = currentDetail();
     detail.mockReturnValueOnce(superseded.promise);
-    act(() => fixture.invalidate());
+    await act(() => fixture.emit({ type: "artifact-catalog-invalidated", lineageId: "shared" }));
     await waitFor(() => expect(detail).toHaveBeenCalledTimes(initialCalls + 1));
     authority = {
       ...authority,
@@ -793,7 +844,7 @@ describe("Session artifact workflows", () => {
         selection: { mode: "pinned", revision: authority.revision.metadata.revision },
       },
     };
-    act(() => fixture.invalidate());
+    await act(() => fixture.emit({ type: "artifact-catalog-invalidated", lineageId: "shared" }));
     await screen.findByText("Pinned r2");
     await act(async () => superseded.resolve(stale));
     expect(screen.getByText("Pinned r2")).toBeDefined();
@@ -801,7 +852,7 @@ describe("Session artifact workflows", () => {
   });
 
   it("offers the library from an empty popup", async () => {
-    using fixture = renderSessionArtifacts({ effective: async () => [] });
+    await using fixture = renderSessionArtifacts({ effective: async () => [] });
     await fixture.user.click(await screen.findByRole("button", { name: "0 artifacts" }));
     expect(await screen.findByText("No artifacts yet.")).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: "Browse all artifacts" }));
@@ -814,7 +865,7 @@ describe("Session artifact workflows", () => {
       .mockRejectedValueOnce(new Error("Catalog unavailable"))
       .mockRejectedValueOnce(new Error("Catalog unavailable"))
       .mockResolvedValue([effective()]);
-    using fixture = renderSessionArtifacts({ effective: load });
+    await using fixture = renderSessionArtifacts({ effective: load });
     await fixture.user.click(await screen.findByRole("button", { name: "0 artifacts" }));
     expect(await screen.findByText("Catalog unavailable")).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: "0 artifacts" }));
@@ -822,17 +873,54 @@ describe("Session artifact workflows", () => {
     expect(await screen.findByRole("button", { name: /Family report/ })).toBeDefined();
   });
 
-  it("ignores an older initial query after the popup refresh completes", async () => {
-    const stale = gate<EffectiveArtifactProjection[]>();
-    const load = vi
-      .fn<Client["artifacts"]["effective"]>()
-      .mockReturnValueOnce(stale.promise)
-      .mockResolvedValue([effective()]);
-    using fixture = renderSessionArtifacts({ effective: load }, [effective()]);
-    await fixture.user.click(screen.getByRole("button", { name: "1 artifacts" }));
+  it("cancels an in-flight artifact read when the hosting renderer is disposed", async () => {
+    const pending = gate<EffectiveArtifactProjection[]>();
+    let signal: AbortSignal | undefined;
+    {
+      await using fixture = renderSessionArtifacts({
+        effective: async (id, options) => {
+          if (id !== "session-1") return [];
+          signal = options?.signal;
+          return pending.promise;
+        },
+      });
+      await waitFor(() => expect(signal).toBeInstanceOf(AbortSignal));
+      await fixture.user.click(screen.getByRole("button", { name: "0 artifacts" }));
+    }
+    expect(signal?.aborted).toBe(true);
+    // A non-cooperative service may still settle after cancellation. It must not
+    // restore the disposed popup or report an unhandled renderer update.
+    await act(async () => pending.resolve([effective()]));
+    expect(screen.queryByRole("dialog", { name: "Artifacts" })).toBeNull();
+  });
+
+  it("recovers missed changes on readiness and ignores superseded reconnect queries", async () => {
+    const load = vi.fn<Client["artifacts"]["effective"]>(async (id) => {
+      if (id === "session-1") throw new Error("Initial fetch unavailable");
+      return [];
+    });
+    await using fixture = renderSessionArtifacts({ effective: load });
+    await fixture.user.click(await screen.findByRole("button", { name: "0 artifacts" }));
+    await screen.findByText("Initial fetch unavailable");
+    load.mockImplementation(async (id) => (id === "session-1" ? [effective()] : []));
+    await act(() => fixture.emit({ type: "renderer-events-ready", channel: "artifacts" }));
     expect(await screen.findByRole("button", { name: /Family report/ })).toBeDefined();
+    expect(screen.queryByText("Initial fetch unavailable")).toBeNull();
+
+    const stale = gate<EffectiveArtifactProjection[]>();
+    const requested = gate<void>();
+    load.mockImplementation(async (id) => {
+      if (id !== "session-1") return [];
+      requested.resolve();
+      return stale.promise;
+    });
+    await act(() => fixture.emit({ type: "renderer-events-ready", channel: "artifacts" }));
+    await requested.promise;
+    load.mockResolvedValue([]);
+    await act(() => fixture.emit({ type: "renderer-events-ready", channel: "artifacts" }));
+    expect(await screen.findByText("No artifacts yet.")).toBeDefined();
     await act(async () => stale.resolve([effective(1, "shared", "Outdated title")]));
-    expect(screen.getByRole("button", { name: /Family report/ })).toBeDefined();
+    expect(screen.getByText("No artifacts yet.")).toBeDefined();
     expect(screen.queryByRole("button", { name: /Outdated title/ })).toBeNull();
   });
 });
@@ -866,9 +954,10 @@ it("does not load artifacts for unhydrated session identities restored from wind
   const view = render(
     <RendererRoot
       rootStore={fixture.root}
-      openExternalUrl={vi.fn()}
-      openSession={vi.fn()}
-      openSubagent={vi.fn()}
+      openExternalUrl={(url) => void fixture.root.openExternalUrl(url)}
+      openSession={(id, message, attachment) =>
+        void fixture.root.navigationStore.openSessionLink(id, message, attachment)
+      }
     />,
   );
   try {

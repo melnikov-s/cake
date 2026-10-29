@@ -22,6 +22,7 @@ import type { Client } from "../../../src/renderer/client/Client";
 import { ArtifactLibrary } from "../../../src/renderer/components/artifact-library";
 import { sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { artifactObserverWorkflowEvents } from "./artifact-observer-workflow-events";
 
 const reportId = decodeArtifactLineageId("report");
 const appendixId = decodeArtifactLineageId("appendix");
@@ -113,6 +114,7 @@ function renderLibrary(artifacts: Partial<Client["artifacts"]> = {}) {
     },
   });
   fixture.root.artifactLibraryStore.open("session-1");
+  const events = artifactObserverWorkflowEvents(fixture.root);
   const view = render(
     <ArtifactLibrary
       store={fixture.root.artifactLibraryStore}
@@ -123,8 +125,10 @@ function renderLibrary(artifacts: Partial<Client["artifacts"]> = {}) {
   );
   return {
     user: userEvent.setup(),
-    [Symbol.dispose]() {
+    emit: events.emit,
+    async [Symbol.asyncDispose]() {
       view.unmount();
+      await events[Symbol.asyncDispose]();
       fixture[Symbol.dispose]();
     },
   };
@@ -151,7 +155,7 @@ describe("Artifact library workflow", () => {
       .mockResolvedValueOnce(page([summary(), table]))
       .mockRejectedValueOnce(new Error("Catalog temporarily unavailable"))
       .mockResolvedValueOnce(page());
-    using fixture = renderLibrary({ catalog });
+    await using fixture = renderLibrary({ catalog });
     await screen.findByRole("button", { name: /Quarterly report/ });
     expect(screen.getByRole("button", { name: /Appendix/ })).toBeDefined();
     await fixture.user.selectOptions(
@@ -176,6 +180,15 @@ describe("Artifact library workflow", () => {
       { search: "quarterly", offset: 0, limit: 50 },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
+    catalog.mockResolvedValue(page([{ ...summary(), title: "Reconnected quarterly report" }]));
+    await act(() => fixture.emit({ type: "renderer-events-ready", channel: "artifacts" }));
+    expect(
+      await screen.findByRole("button", { name: /Reconnected quarterly report/ }),
+    ).toBeDefined();
+    expect(catalog).toHaveBeenLastCalledWith(
+      { search: "quarterly", offset: 0, limit: 50 },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
   });
 
   it("keeps the latest search results when an earlier catalog response arrives late", async () => {
@@ -185,7 +198,7 @@ describe("Artifact library workflow", () => {
       .fn<Client["artifacts"]["catalog"]>()
       .mockReturnValueOnce(older.promise)
       .mockReturnValueOnce(newer.promise);
-    using fixture = renderLibrary({ catalog });
+    await using fixture = renderLibrary({ catalog });
     await fixture.user.type(
       screen.getByRole("textbox", { name: "Search artifact library" }),
       "appendix{Enter}",
@@ -227,7 +240,7 @@ describe("Artifact library workflow", () => {
       restored = true;
       return restoredArtifact;
     });
-    using fixture = renderLibrary({
+    await using fixture = renderLibrary({
       catalog: async () => page([summary(reportId, 52)]),
       detail: async () =>
         restored
@@ -308,7 +321,7 @@ describe("Artifact library workflow", () => {
       .mockReturnValueOnce(oldSelection.promise)
       .mockReturnValueOnce(older.promise)
       .mockReturnValueOnce(newer.promise);
-    using fixture = renderLibrary({
+    await using fixture = renderLibrary({
       catalog: async () => page([summary(), summary(appendixId)]),
       compareText,
     });
@@ -355,7 +368,7 @@ describe("Artifact library workflow", () => {
     const restore = vi.fn<Client["artifacts"]["restore"]>(async () => {
       throw new Error("Latest revision changed");
     });
-    using fixture = renderLibrary({ restore });
+    await using fixture = renderLibrary({ restore });
     await openReport(fixture.user);
     await fixture.user.selectOptions(
       screen.getByRole("combobox", { name: "Selected artifact revision" }),
