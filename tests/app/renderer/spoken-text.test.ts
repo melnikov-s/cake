@@ -2,14 +2,10 @@ import { describe, expect, it } from "vitest";
 import { takeSpokenPhrases } from "../../../src/renderer/speech/spoken-text";
 import { addPresentationModeReminder } from "../../../src/contracts/conversations/presentation-mode-reminders";
 
-describe("spoken assistant prose", () => {
-  it("emits complete sentence or bounded phrase units while holding unfinished prose until final", () => {
-    const first = takeSpokenPhrases("Hello there. More", 0, false);
-    expect(first.phrases).toEqual(["Hello there."]);
-    expect(takeSpokenPhrases("Hello there. More", first.consumedCharacters, true).phrases).toEqual([
-      "More",
-    ]);
-  });
+// Basic sentence ordering is covered by conversation-mode-workflow. Keep the
+// parser's split delimiters, Unicode punctuation, absolute source offsets and
+// synthesis-size invariants here rather than duplicate every lexical edge in UI.
+describe("spoken assistant prose parser", () => {
   it("holds commas, semicolons and colons inside sentences and preserves contractions", () => {
     const first = takeSpokenPhrases("Well, this isn’t done; here’s why: more", 0, false);
     expect(first.phrases).toEqual([]);
