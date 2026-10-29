@@ -1,9 +1,8 @@
-import { createStore, effect, mount } from "r-state-tree";
-import { describe, expect, it } from "vitest";
-import { SessionCatalog } from "../../../../src/renderer/models/SessionCatalog";
-import { WorktreeCatalog } from "../../../../src/renderer/models/WorktreeCatalog";
+import { effect } from "r-state-tree";
+import { expect, it } from "vitest";
 import { applyManagedWorktreeCatalogUpdate } from "../../../../src/renderer/reducers/WorktreeCatalogReducer";
-import { SessionCatalogStore } from "../../../../src/renderer/stores/SessionCatalogStore";
+import { sessionSummary } from "../fixtures/catalog-fixtures";
+import { createRendererStoreFixture } from "../renderer-store-fixture";
 
 const active = {
   projectPath: "/project",
@@ -14,87 +13,60 @@ const active = {
   createdAt: "2026-01-01T00:00:00.000Z",
 };
 
-const summary = (sessionId: string) => ({
-  sessionId,
-  title: sessionId,
-  createdAt: active.createdAt,
-  modifiedAt: active.createdAt,
-  messageCount: 1,
-  resolved: false,
-  unread: false,
-  projectPath: active.projectPath,
-  projectName: "Project",
-  workingDirectory: active.worktreePath,
-  pending: false,
-  draft: false,
-});
-
-describe("Managed Worktree catalog projection", () => {
-  it("reactively resolves indexed paths across empty, populated, and replaced snapshots", () => {
-    using catalog = WorktreeCatalog.create();
-    const observed: Array<ReturnType<typeof catalog.find>> = [];
-    const stop = effect(() => {
-      observed.push(catalog.find(active.worktreePath));
-    });
-    try {
-      expect(observed.at(-1)).toBeUndefined();
-      applyManagedWorktreeCatalogUpdate(catalog, { _tag: "Snapshot", worktrees: [active] });
-      const first = catalog.find(active.worktreePath);
-      expect(first).toBeDefined();
-      expect(observed.at(-1)).toBe(first);
-      expect(catalog.find("/missing")).toBeUndefined();
-
-      applyManagedWorktreeCatalogUpdate(catalog, {
-        _tag: "Snapshot",
-        worktrees: [{ ...active, worktreePath: "/other" }],
-      });
-      expect(observed.at(-1)).toBeUndefined();
-      expect(catalog.find("/other")?.branch).toBe(active.branch);
-
-      applyManagedWorktreeCatalogUpdate(catalog, { _tag: "Snapshot", worktrees: [active] });
-      expect(observed.at(-1)).toBe(catalog.find(active.worktreePath));
-      expect(observed.at(-1)).not.toBe(first);
-      applyManagedWorktreeCatalogUpdate(catalog, { _tag: "Snapshot", worktrees: [] });
-      expect(observed.at(-1)).toBeUndefined();
-    } finally {
-      stop();
-    }
+// Visible landing/removal and stale-status behavior is covered by worktree-workflow
+// and session-identity-workflow. React cannot prove that multiple sessions share
+// one indexed Model or that replacement snapshots invalidate its reactive index.
+it("shares one reactive indexed worktree across mounted sessions and invalidates replaced membership", () => {
+  using fixture = createRendererStoreFixture({
+    sessions: ["one", "two"].map((sessionId) =>
+      sessionSummary({
+        sessionId,
+        projectPath: active.projectPath,
+        workingDirectory: active.worktreePath,
+      }),
+    ),
   });
-
-  it("applies a current snapshot then preserves entity identity across lifecycle events", () => {
-    const catalog = WorktreeCatalog.create();
+  const catalog = fixture.models.worktrees;
+  const store = fixture.root.sessionCatalogStore;
+  const observed: Array<ReturnType<typeof catalog.find>> = [];
+  const stop = effect(() => {
+    observed.push(catalog.find(active.worktreePath));
+  });
+  try {
+    expect(observed.at(-1)).toBeUndefined();
     applyManagedWorktreeCatalogUpdate(catalog, { _tag: "Snapshot", worktrees: [active] });
-    const projected = catalog.find(active.worktreePath);
+    const first = catalog.find(active.worktreePath);
+    expect(first).toBeDefined();
+    expect(observed.at(-1)).toBe(first);
+    expect(catalog.find("/missing")).toBeUndefined();
+    const joined = () =>
+      store.sessions.map((session) => store.managedWorktree(session.workingDirectory));
+    expect(joined()).toEqual([first, first]);
+    expect(joined().every((worktree) => worktree === first)).toBe(true);
 
     applyManagedWorktreeCatalogUpdate(catalog, {
       _tag: "Event",
       event: { _tag: "Upserted", worktree: { ...active, state: "landed" } },
     });
-
-    expect(catalog.find(active.worktreePath)).toBe(projected);
-    expect(projected?.state).toBe("landed");
-  });
-
-  it("updates one shared worktree for every session joined by Working Directory", () => {
-    const worktrees = WorktreeCatalog.create({ worktrees: [active] });
-    const sessions = SessionCatalog.create({ sessions: [summary("one"), summary("two")] });
-    const store = mount(createStore(SessionCatalogStore, { model: sessions, worktrees }));
-    const before = sessions.sessions.map((session) =>
-      store.managedWorktree(session.workingDirectory),
+    expect(catalog.find(active.worktreePath)).toBe(first);
+    expect(joined().every((worktree) => worktree === first && worktree?.state === "landed")).toBe(
+      true,
     );
 
-    applyManagedWorktreeCatalogUpdate(worktrees, {
-      _tag: "Event",
-      event: { _tag: "Upserted", worktree: { ...active, state: "landed" } },
+    applyManagedWorktreeCatalogUpdate(catalog, {
+      _tag: "Snapshot",
+      worktrees: [{ ...active, worktreePath: "/other" }],
     });
+    expect(observed.at(-1)).toBeUndefined();
+    expect(joined()).toEqual([undefined, undefined]);
+    expect(catalog.find("/other")?.branch).toBe(active.branch);
 
-    const after = sessions.sessions.map((session) =>
-      store.managedWorktree(session.workingDirectory),
-    );
-    expect(after[0]).toBe(before[0]);
-    expect(after[1]).toBe(before[0]);
-    expect(after.map((worktree) => worktree?.state)).toEqual(["landed", "landed"]);
-    expect(sessions.sessions.every((session) => !("managedWorktree" in session))).toBe(true);
-    store[Symbol.dispose]();
-  });
+    applyManagedWorktreeCatalogUpdate(catalog, { _tag: "Snapshot", worktrees: [active] });
+    expect(observed.at(-1)).toBe(catalog.find(active.worktreePath));
+    expect(observed.at(-1)).not.toBe(first);
+    applyManagedWorktreeCatalogUpdate(catalog, { _tag: "Snapshot", worktrees: [] });
+    expect(observed.at(-1)).toBeUndefined();
+  } finally {
+    stop();
+  }
 });
