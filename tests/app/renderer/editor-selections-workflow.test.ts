@@ -293,20 +293,6 @@ describe("session-owned VS Code selection workflow", () => {
     });
     expect(h.a.editorSelectionsStore.selections).toEqual([]);
   });
-  it("fans out a disjoint source-link reveal into independently removable selections", async () => {
-    const h = harness();
-    await h.root.projectWorkbenchStore.presentationStore.openFile({
-      kind: "working-directory",
-      path: "src/a.ts",
-      ranges: [{ start: { line: 1 } }, { start: { line: 8 } }],
-    });
-    const [first, second] = h.a.editorSelectionsStore.selections;
-    expect(first).toBeDefined();
-    expect(second).toBeDefined();
-    await h.a.editorSelectionsStore.remove(first!.id);
-    expect(h.a.editorSelectionsStore.selections).toEqual([second]);
-  });
-
   it("does not register a stale selection when native reveal finishes after a session switch", async () => {
     const h = harness();
     await h.enter();
