@@ -3334,7 +3334,6 @@ const incomingTaskSectionsScenario: VisualCaptureScenario = {
           summary: "Draft ready for review",
         },
       ],
-      interruptedReport: false,
     });
     const storage = await openNodeSqliteStorage(
       join(paths.cakeHome, "pi", "global-chat", "coordinator.sqlite"),
@@ -4022,7 +4021,6 @@ const sessionUpdateReportsScenario: VisualCaptureScenario = {
           status: "completed",
         },
       ],
-      interruptedReport: false,
     });
     const storage = await openNodeSqliteStorage(
       join(paths.cakeHome, "pi", "global-chat", "coordinator.sqlite"),
@@ -4228,7 +4226,6 @@ const cakeChatSessionUpdatesScenario: VisualCaptureScenario = {
             ]
           : [],
       ),
-      interruptedReport: false,
     });
     const storage = await openNodeSqliteStorage(
       join(paths.cakeHome, "pi", "global-chat", "coordinator.sqlite"),

@@ -187,7 +187,6 @@ if (withUpdates)
         },
       ],
       running: 0,
-      interruptedReport: false,
     })!,
   });
 const snapshot: ConversationSnapshot = {

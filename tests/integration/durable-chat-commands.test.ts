@@ -150,7 +150,17 @@ it("expands current skill content with arguments and projects it through Durable
 it("expands skills even when a pending session digest precedes the user's command", async () => {
   const f = await fixture();
   const commands = await f.open();
-  const reminder = formatSessionDigestReminder({ lines: [], interruptedReport: true });
+  const reminder = formatSessionDigestReminder({
+    lines: [
+      {
+        reference: "worker",
+        sessionId: "worker",
+        title: "Worker",
+        status: "completed",
+        summary: "Ready",
+      },
+    ],
+  });
   const expanded = await commands.expand(
     addSessionDigestReminder("/skill:local-fixture next step", reminder),
   );

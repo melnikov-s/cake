@@ -138,7 +138,6 @@ describe("passive reference notifications", () => {
           summary: "Finished",
         },
       ],
-      interruptedReport: false,
     });
     const text = addReferenceNotifications(addSessionDigestReminder("Continue", digest), [
       { id: "report", recipientSessionId: "chat", text: ref },

@@ -84,7 +84,6 @@ it.each(["receipt", "reply", "request", "digest", "UserWithReminders", "UpdateBa
               resultMessageRef: ref,
             },
           ],
-          interruptedReport: false,
         })!,
       });
     } else if (delivery === "UserWithReminders" || delivery === "UpdateBatch") {

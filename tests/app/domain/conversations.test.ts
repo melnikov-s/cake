@@ -17,6 +17,12 @@ import {
 } from "../../../src/services/pi/CakeSessionRuntimes";
 import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/session-contract";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
+import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import { ApplicationState } from "../../../src/services/storage/ApplicationState";
+import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
+import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
+import { familyStorageHarness } from "../helpers/familyStorageHarness";
 
 const snapshot = (streaming: boolean): ConversationSnapshot => ({
   workspacePath: "/project",
@@ -162,6 +168,130 @@ describe("conversation domain", () => {
       assert.deepEqual(deliveries, ["follow-up"]);
     }),
   );
+
+  it.effect.each(
+    [false, true].flatMap((pendingReport) =>
+      (["prompt", "follow-up", "steer"] as const).map((delivery) => ({ pendingReport, delivery })),
+    ),
+  )(
+    "preserves $delivery during an active report response (pendingReport=$pendingReport)",
+    ({ delivery, pendingReport }) => {
+      const deliveries: string[] = [];
+      const acceptedTurnId = "00000000-0000-4000-8000-000000000001";
+      const accept = (lane: string) =>
+        Effect.sync(() => {
+          deliveries.push(lane);
+          return acceptedTurnId;
+        });
+      const handle: CakeSessionHandle = {
+        ...makeHandle(deliveries, () => true),
+        profile: "CakeChatSession",
+        prompt: () => accept("prompt"),
+        steer: () => accept("steer"),
+        followUp: () => accept("follow-up"),
+        snapshot: () =>
+          Effect.succeed({
+            ...snapshot(true),
+            sessionId: CAKE_CHAT_SESSION_ID,
+            parts: [
+              {
+                id: "active-report",
+                kind: "text",
+                role: "user",
+                text: "Worker result",
+                status: "complete",
+                crossSession: {
+                  version: 1,
+                  messageId: "active-report",
+                  threadId: "active-report",
+                  sequence: 1,
+                  expectsResponse: false,
+                  sender: { sessionId: "worker", title: "Worker", kind: "project-session" },
+                },
+              },
+            ],
+          }),
+        abort: () =>
+          Effect.sync(() => {
+            deliveries.push("abort");
+          }),
+        submit: (input) =>
+          Effect.sync(() => {
+            deliveries.push(input.delivery);
+            assert.equal(input.internal?._tag, "UserWithReminders");
+            assert.match(input.text, /Next question/);
+            return acceptedTurnId;
+          }),
+      };
+      return Effect.gen(function* () {
+        const storage = yield* SessionFamilyStorage;
+        if (pendingReport)
+          yield* storage.deferReferenceNotice({
+            id: "pending-report",
+            recipientSessionId: CAKE_CHAT_SESSION_ID,
+            text: "Another result",
+          });
+        const turnId = yield* sessionChats.deliver(
+          {
+            sessionId: CAKE_CHAT_SESSION_ID,
+            text: "Next question",
+            attachments: [],
+            renderUserMessageAsMarkdown: false,
+          },
+          delivery,
+        );
+        assert.equal(turnId, acceptedTurnId);
+        // Queued input reaches the ordinary follow-up lane; steering is never rewritten or aborted.
+        assert.deepEqual(deliveries, [delivery]);
+        assert.equal((yield* handle.snapshot()).streaming, true);
+        const references = (yield* storage.state()).deferredReferences ?? [];
+        assert.equal(references.length, pendingReport ? 1 : 0);
+        if (pendingReport) assert.equal(references[0]?.admissions, 1);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            familyStorageHarness().layer,
+            Layer.mock(ApplicationState, { snapshot: () => defaultApplicationState() }),
+            Layer.mock(TaskInputStorage, {}),
+            Layer.mock(CakeSessionRuntimes, { acquireSession: () => Effect.succeed(handle) }),
+          ),
+        ),
+      );
+    },
+  );
+
+  it.effect("explicit Stop and send-now retain their ordinary runtime semantics", () => {
+    const calls: unknown[] = [];
+    const handle: CakeSessionHandle = {
+      ...makeHandle([], () => true),
+      profile: "CakeChatSession",
+      abort: (stop) =>
+        Effect.sync(() => {
+          calls.push({ stop });
+        }),
+      sendQueuedMessageNow: (partId) =>
+        Effect.sync(() => {
+          calls.push({ sendNow: partId });
+          return { steering: [], followUp: [] };
+        }),
+    };
+    return Effect.gen(function* () {
+      const target = { sessionId: CAKE_CHAT_SESSION_ID };
+      yield* sessionChats.sendQueuedMessageNow(target, "queued-user-input");
+      yield* sessionChats.abort({ ...target, stop: { by: "user" } });
+      assert.deepEqual(calls, [{ sendNow: "queued-user-input" }, { stop: { by: "user" } }]);
+      assert.deepEqual((yield* (yield* SessionFamilyStorage).state()).boardDeliveryPaused, [
+        CAKE_CHAT_SESSION_ID,
+      ]);
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          familyStorageHarness().layer,
+          Layer.mock(CakeSessionRuntimes, { acquireSession: () => Effect.succeed(handle) }),
+        ),
+      ),
+    );
+  });
 
   it.effect("binds each shared delivery to the renderer that most recently submitted it", () => {
     const bindings: Array<{ target: unknown; connectionId: number }> = [];

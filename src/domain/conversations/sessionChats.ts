@@ -159,7 +159,7 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
             (item) => item.recipientSessionId === input.sessionId,
           ) ?? [])
         : [];
-    // A user message to Cake Chat yields any report-triggered run and carries the quiet inbox.
+    // A user message carries the quiet inbox without changing its requested delivery.
     const userMessage =
       primary &&
       !message.crossSession &&
@@ -205,14 +205,12 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
         passive.map((notice) => notice.id),
         passiveTurnId,
       );
-    const effectiveDelivery =
-      userMessage?.interruptedReport && delivery === "steer" ? "follow-up" : delivery;
     const turnId = TurnId.make(
       yield* (
         passiveTurnId
           ? handle.submit({
               turnId: passiveTurnId,
-              delivery: effectiveDelivery,
+              delivery,
               text: passive.length ? `${text}\n\n${passiveNoticeContext(passive)}` : text,
               attachments,
               markdown: input.renderUserMessageAsMarkdown,
@@ -229,8 +227,7 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
             })
           : deliverConversation(
               Effect.succeed(handle),
-              // Steering into the run that just yielded would have nothing left to steer.
-              userMessage?.interruptedReport && delivery === "steer" ? "follow-up" : delivery,
+              delivery,
               text,
               attachments,
               input.renderUserMessageAsMarkdown,

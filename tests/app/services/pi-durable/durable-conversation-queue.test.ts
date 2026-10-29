@@ -35,7 +35,7 @@ afterEach(async () => {
 });
 
 /** Real SDK admission, transactions, inbox and settlement; only the provider is controlled. */
-async function fixture(kind: "root" | "side-chat") {
+async function fixture(kind: "root" | "side-chat", activeText = "Active") {
   const { models } = durableModels();
   type Call = { signal: AbortSignal | undefined; finish: () => void };
   const calls: Call[] = [];
@@ -113,7 +113,7 @@ async function fixture(kind: "root" | "side-chat") {
       { type: "input", content: durableInputText(text, [], false), requestId, whenBusy: mode },
       context,
     );
-  const active = await submit("Active", "active");
+  const active = await submit(activeText, "active");
   const activeCall = await nextRequest();
   return {
     harness,
@@ -148,6 +148,31 @@ const metadata: CrossSessionMessageMetadata = {
 };
 
 describe.each(["root", "side-chat"] as const)("Durable %s queue", (kind) => {
+  it("keeps user follow-up queued until the active report response finishes", async () => {
+    const report = encodeCrossSessionMessage("Worker result", metadata);
+    const f = await fixture(kind, report);
+    const requestCount = f.calls.length;
+    const queued = await f.submit("Next user question", "queued-user");
+    expect(await f.storage.submission(queued.id, context)).toMatchObject({ status: "queued" });
+    expect(f.activeCall.signal?.aborted).toBe(false);
+    expect(f.calls).toHaveLength(requestCount);
+    expect((await f.operations.pendingMessages()).items).toContainEqual(
+      expect.objectContaining({
+        itemId: "queued-user",
+        lane: "follow-up",
+        text: "Next user question",
+      }),
+    );
+
+    f.activeCall.finish();
+    expect(await f.active.wait(context)).toMatchObject({ status: "done" });
+    const next = await f.nextRequest();
+    expect(f.calls).toHaveLength(requestCount + 1);
+    expect(JSON.stringify(f.requests.at(-1))).toContain("Next user question");
+    next.finish();
+    expect(await queued.wait(context)).toMatchObject({ status: "done" });
+  });
+
   it("changes only original-message display while a run and follow-up inbox remain active", async () => {
     const f = await fixture(kind);
     const queued = await f.submit("Keep queued", "pending");

@@ -481,8 +481,15 @@ it.effect(
       });
       yield* todos.mutateUser(project, { _tag: "Select", selectedId: item.id });
       const digest = formatSessionDigestReminder({
-        lines: [],
-        interruptedReport: true,
+        lines: [
+          {
+            reference: "worker",
+            sessionId: "worker",
+            title: "Worker",
+            status: "completed",
+            summary: "Ready",
+          },
+        ],
       });
       const prepared = yield* todos.prepareUserContext(
         project,

@@ -1,6 +1,5 @@
 import { Effect } from "effect";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-identity";
-import type { UiPart } from "../../contracts/conversations/session-contract";
 import {
   addSessionDigestReminder,
   formatSessionDigestReminder,
@@ -10,33 +9,14 @@ import type { CakeSessionHandle } from "../../services/pi/CakeSessionRuntimes";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 
 /**
- * Whether Cake Chat's active run was started by a session report or worker result rather than
- * by the user. The newest consumed input owns the run: a user message steered into it would be
- * the last user part.
- */
-export function runStartedByReport(parts: readonly UiPart[]): boolean {
-  const input = parts.findLast(
-    (part): part is Extract<UiPart, { kind: "text" }> =>
-      part.kind === "text" && part.role === "user" && part.deliveryState === undefined,
-  );
-  return Boolean(input && (input.crossSession || input.subagentReport || input.agentSource));
-}
-
-/**
- * The user's messages come first. A report-triggered run yields to a new user message, and the
- * quiet session inbox rides along as one Cake-owned reminder. The caller removes `digestIds`
- * only after Cake Chat accepted the message, so a failed send keeps the items.
+ * The quiet session inbox rides along as one Cake-owned reminder without changing delivery.
+ * The caller removes `digestIds` only after admission, so a failed send keeps the items.
  */
 export const prepareUserMessage = Effect.fn("CakeChatDigest.prepareUserMessage")(function* (
   handle: CakeSessionHandle,
   text: string,
 ) {
   const snapshot = yield* handle.snapshot();
-  const interruptedReport =
-    handle.profile === "CakeChatSession" &&
-    snapshot.streaming &&
-    runStartedByReport(snapshot.parts);
-  if (interruptedReport) yield* handle.abort();
   const storage = yield* SessionFamilyStorage;
   const admitted = handle.admittedDigestIds ? yield* handle.admittedDigestIds() : [];
   if (admitted.length) yield* storage.removeDigest(admitted);
@@ -62,12 +42,10 @@ export const prepareUserMessage = Effect.fn("CakeChatDigest.prepareUserMessage")
       kind: state.completionInbox?.find((entry) => entry.id === item.id)?.kind,
       decisions: state.completionInbox?.find((entry) => entry.id === item.id)?.decisions,
     })),
-    interruptedReport,
     receiptIds: items.map((item) => item.id),
   });
   return {
     text: addSessionDigestReminder(text, reminder),
     digestIds: items.map((item) => item.id),
-    interruptedReport,
   };
 });

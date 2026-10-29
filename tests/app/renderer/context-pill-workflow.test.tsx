@@ -116,7 +116,6 @@ describe("Context visibility through the authoritative projection and shared Cha
               resultMessageRef: ref,
             },
           ],
-          interruptedReport: false,
         }),
       ),
     });
@@ -212,7 +211,6 @@ describe("Context visibility through the authoritative projection and shared Cha
                   resultMessageRef: "cake://session/worker-two?message=result-two",
                 },
               ],
-              interruptedReport: false,
             }),
           ),
           "normal",

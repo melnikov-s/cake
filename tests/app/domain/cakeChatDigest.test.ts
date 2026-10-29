@@ -2,10 +2,7 @@ import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import { describe } from "vitest";
-import {
-  prepareUserMessage,
-  runStartedByReport,
-} from "../../../src/domain/cake-chats/cakeChatDigest";
+import { prepareUserMessage } from "../../../src/domain/cake-chats/cakeChatDigest";
 import {
   formatSessionDigestReminder,
   splitSessionDigestReminder,
@@ -58,7 +55,7 @@ const coordinator = (streaming: boolean, parts: UiPart[], admitted: readonly str
         calls.push("abort");
       }),
   } satisfies Partial<CakeSessionHandle>;
-  // SAFETY: prepareUserMessage only reads the snapshot and may abort the active run.
+  // SAFETY: this fixture supplies the snapshot and digest receipts used by preparation.
   return { handle: handle as unknown as CakeSessionHandle, calls };
 };
 
@@ -98,44 +95,19 @@ const seed = Effect.fn("CakeChatDigestTest.seed")(function* () {
   });
 });
 
-describe("Cake Chat user priority and digest reminders", () => {
-  it("identifies runs started by a session report or worker result, not by the user", () => {
-    assert.equal(runStartedByReport([userText("hi"), reportPart]), true);
-    assert.equal(runStartedByReport([reportPart, userText("actually, stop")]), false);
-    assert.equal(
-      runStartedByReport([
-        {
-          ...userText("hi"),
-          // SAFETY: only the presence of worker provenance matters here.
-          subagentReport: { task: "Review" } as TextPart["subagentReport"],
-        },
-      ]),
-      true,
-    );
-    const progress = {
-      ...userText("Worker evidence"),
-      agentSource: { title: "Worker abc", href: "cake://subagent/parent/abc" },
-    };
-    assert.equal(runStartedByReport([userText("earlier"), progress]), true);
-    assert.equal(runStartedByReport([progress, userText("My next question")]), false);
-    // A queued user message does not own the active run.
-    assert.equal(
-      runStartedByReport([reportPart, { ...userText("queued"), deliveryState: "queued" }]),
-      true,
-    );
-    assert.equal(runStartedByReport([]), false);
-  });
-
-  it.effect("a user message stops a report-triggered run and says so in the reminder", () =>
+describe("Cake Chat digest reminders", () => {
+  it.effect("prepares queued user input without stopping an active report response", () =>
     Effect.gen(function* () {
-      const { handle, calls } = coordinator(true, [userText("earlier"), reportPart]);
+      const { handle, calls } = coordinator(true, [
+        userText("earlier"),
+        reportPart,
+        { ...userText("queued"), deliveryState: "queued" },
+      ]);
       const prepared = yield* prepareUserMessage(handle, "Unrelated question");
-      assert.deepEqual(calls, ["abort"]);
-      assert.equal(prepared.interruptedReport, true);
+      assert.deepEqual(calls, []);
       assert.deepEqual(prepared.digestIds, []);
-      const split = splitSessionDigestReminder(prepared.text);
-      assert.equal(split.text, "Unrelated question");
-      assert.match(split.reminder ?? "", /Answer the user first and fold in anything important/);
+      assert.equal(prepared.text, "Unrelated question");
+      assert.equal((yield* handle.snapshot()).streaming, true);
     }).pipe(Effect.provide(environment())),
   );
 
@@ -154,8 +126,9 @@ describe("Cake Chat user priority and digest reminders", () => {
   it.effect("the digest lists each result once with a link and durable receipts", () =>
     Effect.gen(function* () {
       yield* seed();
-      const { handle } = coordinator(false, []);
+      const { handle, calls } = coordinator(true, [reportPart]);
       const prepared = yield* prepareUserMessage(handle, "What's going on?");
+      assert.deepEqual(calls, []);
       assert.deepEqual(prepared.digestIds, ["turn-1"]);
       const split = splitSessionDigestReminder(prepared.text);
       assert.equal(split.text, "What's going on?");
@@ -171,7 +144,6 @@ describe("Cake Chat user priority and digest reminders", () => {
               summary: "Typecheck failed in src/app.ts",
             },
           ],
-          interruptedReport: false,
           receiptIds: ["turn-1"],
         }),
       );
@@ -210,8 +182,11 @@ describe("Cake Chat user priority and digest reminders", () => {
   );
 
   it("retains actionable notes and interruption context in persisted mixed digests", () => {
-    const interruption = formatSessionDigestReminder({ lines: [], interruptedReport: true });
-    assert.ok(interruption);
+    // Persisted transcript fixture from before report-triggered auto-interruption was removed.
+    const interruption = `<system-reminder>
+Cake session updates
+The user sent this message while you were handling a session report, so that turn was stopped. Answer the user first and fold in anything important from the report.
+</system-reminder>`;
     const question = "Build is blocked: which branch should I use?";
     const text = interruption.replace(
       "\n</system-reminder>",
@@ -226,8 +201,15 @@ describe("Cake Chat user priority and digest reminders", () => {
 
   it("only strips the exact Cake-owned block at the start of a message", () => {
     const reminder = formatSessionDigestReminder({
-      lines: [],
-      interruptedReport: true,
+      lines: [
+        {
+          reference: "report",
+          sessionId: reportId,
+          title: "Report",
+          status: "completed",
+          summary: "Ready",
+        },
+      ],
     });
     assert.ok(reminder);
     assert.deepEqual(splitSessionDigestReminder(`${reminder}\n\nHello`), {
@@ -236,6 +218,6 @@ describe("Cake Chat user priority and digest reminders", () => {
     });
     const quoted = `Hello\n\n${reminder}`;
     assert.deepEqual(splitSessionDigestReminder(quoted), { text: quoted, reminder: undefined });
-    assert.equal(formatSessionDigestReminder({ lines: [], interruptedReport: false }), undefined);
+    assert.equal(formatSessionDigestReminder({ lines: [] }), undefined);
   });
 });

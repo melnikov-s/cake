@@ -108,7 +108,6 @@ describe("exact response presentation", () => {
             summary: "Focus order is still being checked. No final report yet.",
           },
         ],
-        interruptedReport: false,
         receiptIds: ["private-delivery-receipt"],
       })!.replace(
         "\n</system-reminder>",
@@ -668,7 +667,6 @@ describe("exact response presentation", () => {
                       resultMessageRef: ref,
                     },
                   ],
-                  interruptedReport: false,
                 })}\n\nMy next real question`,
         });
       }

@@ -181,7 +181,6 @@ for (const [delivery, theme] of [
                   resultMessageRef: metadata.ref,
                 },
               ],
-              interruptedReport: false,
             })!.replace(
               "\n</system-reminder>",
               "\n1 session you launched is still running.\n</system-reminder>",
