@@ -279,8 +279,9 @@ describe("AppControlBridge", () => {
       "settings.window.update",
     ])
       expect(target.tools.filter((tool) => tool.command === command)).toHaveLength(1);
-    expect(target.tools.some((tool) => tool.command === "projects.settings.get")).toBe(true);
-    expect(target.tools.some((tool) => tool.command === "projects.settings.update")).toBe(true);
+    // Cake Chat registers its own strictly typed Project settings operations.
+    expect(target.tools.some((tool) => tool.command === "projects.settings.get")).toBe(false);
+    expect(target.tools.some((tool) => tool.command === "projects.settings.update")).toBe(false);
     expect(target.tools.some((tool) => tool.command === "project.settings.get")).toBe(false);
     expect(target.tools.some((tool) => tool.command === "sessions.rename")).toBe(true);
     expect(target.tools.some((tool) => tool.command === "sessions.set-labels")).toBe(true);

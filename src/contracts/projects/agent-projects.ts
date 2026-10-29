@@ -1,6 +1,10 @@
 import { Effect, Schema } from "effect";
 import type { JsonValue } from "../serialization/json-contract";
 import type { AgentListInput } from "../agent/agent-list-data";
+import type {
+  ProjectSettingsGetInput,
+  ProjectSettingsUpdateInput,
+} from "./project-settings-schema";
 
 const projectPath = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096));
 const projectName = Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(512)));
@@ -47,4 +51,6 @@ export interface CakeChatProjectControl {
   add(input: AgentProjectAddInput, signal: AbortSignal): Promise<JsonValue>;
   rename(input: AgentProjectRenameInput, signal: AbortSignal): Promise<JsonValue>;
   remove(input: AgentProjectRemoveInput, signal: AbortSignal): Promise<JsonValue>;
+  getSettings(input: ProjectSettingsGetInput, signal: AbortSignal): Promise<JsonValue>;
+  updateSettings(input: ProjectSettingsUpdateInput, signal: AbortSignal): Promise<JsonValue>;
 }

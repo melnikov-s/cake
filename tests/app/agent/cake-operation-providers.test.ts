@@ -453,6 +453,8 @@ describe("Backend-owned Cake operation composition", () => {
       add: vi.fn(async () => ({ project, alreadyRegistered: false })),
       rename: vi.fn(async () => ({ project: { ...project, name: "Agents" } })),
       remove: vi.fn(async () => ({ ok: true, path: project.path, deleteSessions: false })),
+      getSettings: vi.fn(async () => ({ ok: true, projectPath: project.path, settings: {} })),
+      updateSettings: vi.fn(async () => ({ ok: true, projectPath: project.path, settings: {} })),
     };
     const commands = [
       "projects.list",
@@ -460,6 +462,8 @@ describe("Backend-owned Cake operation composition", () => {
       "projects.add",
       "projects.rename",
       "projects.remove",
+      "projects.settings.get",
+      "projects.settings.update",
     ];
     const configured = configureCakeSessionRuntime({
       ...options("/workspace"),
@@ -521,6 +525,40 @@ describe("Backend-owned Cake operation composition", () => {
       ),
     ).rejects.toThrow();
     expect(control.rename).not.toHaveBeenCalled();
+
+    const updateHelp = registry.operationHelp("projects.settings.update");
+    expect(updateHelp).toContain("Call projects.settings.get first");
+    expect(updateHelp).toContain("Never move or swap text");
+    expect(updateHelp).toContain("settings.project-chat.get/update");
+    await registry.invoke(
+      { command: "projects.settings.get", input: { projectPath: project.path } },
+      context,
+    );
+    expect(control.getSettings).toHaveBeenCalledWith({ projectPath: project.path }, context.signal);
+    const changes = {
+      worktreeCreateCommand: "tree create {branchName}",
+      worktreeRemoveCommand: "tree remove",
+      worktreeCommandTimeoutSeconds: 600,
+      worktreeLanding: "pull-request",
+    };
+    await registry.invoke(
+      { command: "projects.settings.update", input: { projectPath: project.path, changes } },
+      context,
+    );
+    expect(control.updateSettings).toHaveBeenCalledWith(
+      { projectPath: project.path, changes },
+      context.signal,
+    );
+    await expect(
+      registry.invoke(
+        {
+          command: "projects.settings.update",
+          input: { projectPath: project.path, changes: { worktreeLandingMode: "merge" } },
+        },
+        context,
+      ),
+    ).rejects.toThrow();
+    expect(control.updateSettings).toHaveBeenCalledTimes(1);
 
     // Ordinary Project Sessions never receive Cake Chat's Project registry authority.
     const projectSession = new CakeOperationRegistry(

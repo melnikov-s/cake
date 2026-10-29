@@ -31,36 +31,9 @@ const definitions = [
     command: "project.settings.update",
     scope: "internal",
   },
-  {
-    command: "projects.settings.get",
-    scope: "global",
-    discovery: {
-      topic: "projects",
-      summary: "Read every setting for one explicitly targeted Cake Project.",
-    },
-  },
-  {
-    command: "projects.settings.update",
-    scope: "global",
-    discovery: {
-      topic: "projects",
-      summary:
-        "Patch any setting for one explicitly targeted Cake Project and return all committed settings.",
-      guidance: [
-        "Call projects.settings.get before updating the Project. Unspecified settings remain unchanged.",
-      ],
-      examples: [
-        {
-          input: {
-            projectPath: "/path/to/project",
-            changes: {
-              worktreeSetupCommands: "ln -s /path/to/project/node_modules node_modules",
-            },
-          },
-        },
-      ],
-    },
-  },
+  // Cake Chat owns the strictly typed operations (cake-chat-project-operations.ts).
+  { command: "projects.settings.get", scope: "internal" },
+  { command: "projects.settings.update", scope: "internal" },
   {
     command: "session-labels.list",
     scope: "global",

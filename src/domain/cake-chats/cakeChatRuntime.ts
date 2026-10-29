@@ -27,6 +27,10 @@ import { projectTodoReceipt } from "../../contracts/projects/project-todo-contex
 import { splitSessionDigestReminder } from "../../contracts/cake-chats/session-digest-reminder";
 import * as projectChatInstructions from "../projects/projectChatInstructions";
 import { AgentProjectSessionCreate } from "../../contracts/project-sessions/session-reporting";
+import type {
+  ProjectSettingsGetInput,
+  ProjectSettingsUpdateInput,
+} from "../../contracts/projects/project-settings-schema";
 import { inputRefsSchema } from "../../contracts/conversations/task-input";
 import { toJsonValue } from "../../utils/to-json-value";
 import { forwardTaskInputControl, safeCoordinatorProjection } from "./taskInputControls";
@@ -168,6 +172,8 @@ const CAKE_CHAT_OPERATIONS = [
   "projects.add",
   "projects.rename",
   "projects.remove",
+  "projects.settings.get",
+  "projects.settings.update",
   "worktrees.merge",
   "subagents.start",
   "subagents.follow-up",
@@ -288,6 +294,27 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
         target.sessionId !== CAKE_CHAT_SESSION_ID,
     );
   const title = project ? `${project.name} / Project Chat` : "Cake Chat";
+  /** Same backend authority, receipts and ProjectAccess check as every other settings writer. */
+  const invokeProjectSettings = (
+    command: "projects.settings.get" | "projects.settings.update",
+    input: ProjectSettingsGetInput | ProjectSettingsUpdateInput,
+  ) =>
+    Effect.scoped(
+      backendAgentControl.invoke(command, toJsonValue(input), {
+        kind: "cake-chat",
+        sessionId: target.sessionId,
+        title,
+      }),
+    ).pipe(
+      Effect.flatMap((result) => {
+        const failure = Schema.decodeUnknownOption(
+          Schema.Struct({ ok: Schema.Literal(false), error: Schema.String }),
+        )(result);
+        return Option.isSome(failure)
+          ? Effect.fail(new Error(failure.value.error))
+          : Effect.succeed(result ?? null);
+      }),
+    );
   /** Project Chat edits its Project's to-do list; global Cake Chat keeps its own list. */
   const todoScope = project?.path ?? CAKE_CHAT_TODO_SCOPE;
   const modelPresets = () => cakeModelCatalog(application.snapshot());
@@ -449,8 +476,13 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
       // Pin the complete Cake Chat toolset instead of relying on Pi's default-tool
       // selection, which does not necessarily activate extension tools.
       tools: ["cake", "zoom", "date", "read", "bash", "mcp"],
+      // A Project Chat never writes shared Cake Chat guidance or another Project's settings.
       allowedCakeOperations: project
-        ? CAKE_CHAT_OPERATIONS.filter((command) => !command.startsWith("settings.cake-chat."))
+        ? CAKE_CHAT_OPERATIONS.filter(
+            (command) =>
+              !command.startsWith("settings.cake-chat.") &&
+              !command.startsWith("projects.settings."),
+          )
         : CAKE_CHAT_OPERATIONS,
       persistArtifact: (artifact) =>
         runArtifact(
@@ -527,6 +559,10 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
             ),
             { signal },
           ),
+        getSettings: (input, signal) =>
+          run(invokeProjectSettings("projects.settings.get", input), { signal }),
+        updateSettings: (input, signal) =>
+          run(invokeProjectSettings("projects.settings.update", input), { signal }),
       },
       cakeChatInstructions: project
         ? undefined

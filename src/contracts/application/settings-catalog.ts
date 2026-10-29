@@ -339,7 +339,10 @@ export const settingsElsewhere = [
   ["Session labels", "settings.labels.*"],
   ["Widget packages (explicit user approval)", "settings.widgets.*"],
   ["Cake Chat / Project Chat instructions", "settings.cake-chat.*, settings.project-chat.*"],
-  ["Project settings", "project.settings.*, projects.settings.*"],
+  [
+    "Project settings",
+    "project.settings.* (Project Session, own Project), projects.settings.* (global Cake Chat, any Project)",
+  ],
   ["Appearance, VS Code, hotkeys (this window)", "settings.window.*"],
   [
     "Speech, dictation, host, sharing (this desktop)",

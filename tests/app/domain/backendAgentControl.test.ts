@@ -1313,6 +1313,25 @@ it.effect("executes settings, label lifecycle, and authoritative inspection with
         projectChatInstructions: "Chat-owned",
       },
     });
+    // Cake Chat's explicitly targeted writer accepts every worktree setting and patches only them.
+    yield* f.call("projects.settings.update", {
+      projectPath: "/project",
+      changes: {
+        worktreeRemoveCommand: "tree remove",
+        worktreeCommandTimeoutSeconds: 600,
+        worktreeLanding: "pull-request",
+      },
+    });
+    expect(yield* f.call("projects.settings.get", { projectPath: "/project" })).toMatchObject({
+      projectPath: "/project",
+      settings: {
+        worktreeRemoveCommand: "tree remove",
+        worktreeCommandTimeoutSeconds: 600,
+        worktreeLanding: "pull-request",
+        customInstructions: "Updated coding only",
+        projectChatInstructions: "Chat-owned",
+      },
+    });
     const added = yield* f.call("session-labels.add", { name: "Review", color: "cyan" });
     const result = yield* Schema.decodeUnknownEffect(
       Schema.Struct({ label: Schema.Struct({ id: Schema.String }) }),

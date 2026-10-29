@@ -9,11 +9,15 @@ import {
   AgentProjectRenameInput,
   type CakeChatProjectControl,
 } from "../../contracts/projects/agent-projects";
+import {
+  ProjectSettingsGetInput,
+  ProjectSettingsUpdateInput,
+} from "../../contracts/projects/project-settings-schema";
 
 const projectResult =
   "The registered Project: exact path (use it verbatim as workspacePath or projectPath), display name, canonical projectChatId, addedAt, lastOpenedAt and whether the user has trusted its Pi resources.";
 
-/** Cake Chat's Project registry: the same registration, rename and removal the sidebar offers. */
+/** Cake Chat's Project registry: the registration, rename, removal and Project settings the sidebar offers. */
 export function createCakeChatProjectOperations(
   control: CakeChatProjectControl,
 ): CakeOperationDefinition[] {
@@ -113,6 +117,53 @@ export function createCakeChatProjectOperations(
         context.signal.throwIfAborted();
         return control.remove(
           await Schema.decodeUnknownPromise(AgentProjectRemoveInput)(input),
+          context.signal,
+        );
+      },
+    },
+    {
+      command: "projects.settings.get",
+      topic: "projects",
+      summary: "Read every setting for one registered Project by its exact path.",
+      guidance: [
+        "Use the exact registered path from projects.list, never a Cake-managed worktree path.",
+      ],
+      inputSchema: ProjectSettingsGetInput,
+      examples: [{ input: { projectPath: "/Users/me/src/project" } }],
+      result: "The Project's path and every effective setting, defaults included.",
+      async execute(input, context) {
+        context.signal.throwIfAborted();
+        return control.getSettings(
+          await Schema.decodeUnknownPromise(ProjectSettingsGetInput)(input),
+          context.signal,
+        );
+      },
+    },
+    {
+      command: "projects.settings.update",
+      topic: "projects",
+      summary:
+        "Patch settings for one registered Project by its exact path and return every committed setting.",
+      guidance: [
+        "Call projects.settings.get first. Only the fields in changes are written; unspecified settings stay unchanged. Read back with projects.settings.get before claiming success.",
+        "Worktree fields: worktreeCreateCommand checks out {branchName} (empty runs git worktree add); worktreeSetupCommands run in each new worktree; worktreeRemoveCommand removes a checkout (empty runs git worktree remove); worktreeCommandTimeoutSeconds limits each of those commands (0 waits indefinitely); worktreeLanding is merge (Cake lands locally) or pull-request (landing happens outside Cake).",
+        "customInstructions guide only coding Project Sessions; projectChatInstructions guide only that Project's permanent Project Chat. Never move or swap text between them without user authorization. For Project Chat guidance prefer settings.project-chat.get/update, which check expectedInstructions for conflicts.",
+      ],
+      inputSchema: ProjectSettingsUpdateInput,
+      examples: [
+        {
+          input: {
+            projectPath: "/Users/me/src/project",
+            changes: { worktreeLanding: "pull-request", worktreeCommandTimeoutSeconds: 600 },
+          },
+        },
+      ],
+      result: "The Project's path and every committed setting.",
+      limitations: ["Unknown setting names are rejected; nothing is written."],
+      async execute(input, context) {
+        context.signal.throwIfAborted();
+        return control.updateSettings(
+          await Schema.decodeUnknownPromise(ProjectSettingsUpdateInput)(input),
           context.signal,
         );
       },

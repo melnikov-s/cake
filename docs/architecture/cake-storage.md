@@ -450,6 +450,11 @@ conflict check, and committed readback; an unavailable operation must never sile
 fall back to the shared writer. Coding sessions can also patch their own Project via
 `project.settings.update`, whose field guidance distinguishes the two instruction scopes;
 prefer the dedicated instruction operations for their read-before-write protection.
+Global Cake Chat alone may read and patch any registered Project's settings through
+`projects.settings.get/update` with an exact `projectPath`; Project Chats, Project
+Sessions and side chats never receive this cross-Project writer. It runs the same
+backend handler, so writes still require the Project's selected-project authorization
+(granted to every registered Project at startup and on registration).
 
 Side chats fork the coordinator conversation with Durable `fork()` after the
 completed reply that closes the anchored exchange. The fork inherits Cake Chat's

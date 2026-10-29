@@ -229,6 +229,8 @@ describe("permanent Cake Chat", () => {
         expect(options.runtime.persistArtifact).toBeDefined();
         expect(options.runtime.allowedCakeOperations).toContain("settings.project-chat.update");
         expect(options.runtime.allowedCakeOperations).not.toContain("settings.cake-chat.update");
+        expect(options.runtime.allowedCakeOperations).not.toContain("projects.settings.get");
+        expect(options.runtime.allowedCakeOperations).not.toContain("projects.settings.update");
         // Project Chats can inspect and change every user setting the Settings UI offers.
         for (const command of [
           "settings.list",
@@ -438,6 +440,8 @@ describe("permanent Cake Chat", () => {
           "projects.add",
           "projects.rename",
           "projects.remove",
+          "projects.settings.get",
+          "projects.settings.update",
         ])
           expect(options.runtime.allowedCakeOperations).toContain(command);
         expect(options.runtime.cakeChatProjects?.add).toBeTypeOf("function");

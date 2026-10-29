@@ -32,8 +32,14 @@ export const CurrentProjectSettingsUpdateInput = Schema.Struct({
 export const ProjectSettingsGetInput = Schema.Struct({
   projectPath: boundedProjectPath,
 });
+export interface ProjectSettingsGetInput extends Schema.Schema.Type<
+  typeof ProjectSettingsGetInput
+> {}
 
 export const ProjectSettingsUpdateInput = Schema.Struct({
   projectPath: boundedProjectPath,
   changes: ProjectSettingsChanges,
 });
+export interface ProjectSettingsUpdateInput extends Schema.Schema.Type<
+  typeof ProjectSettingsUpdateInput
+> {}
