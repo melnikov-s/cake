@@ -1,11 +1,11 @@
 import { expect, it } from "vitest";
+import type { UiPart } from "../../../../src/contracts/conversations/session-contract";
 import {
   applyPartUpdate,
   messageSnapshots,
 } from "../../../../src/renderer/reducers/SessionPartReducer";
 import { applySnapshot, toSnapshot } from "r-state-tree";
 import { Conversation } from "../../../../src/renderer/models/Conversation";
-import type { UiPart } from "../../../../src/contracts/conversations/session-contract";
 
 it("inserts late synthetic baseline groups before dialogue without moving actual updates", () => {
   using model = Conversation.create({ sessionId: "session" });
@@ -64,6 +64,9 @@ it("normalizes reconstructed snapshots without changing content or historical or
   expect(model.uiParts).toEqual([baseline, user, change]);
 });
 
+// Rendering and same-ID renderAs replacement live in transcript-rendering-workflow
+// and projection-finish-workflow. These contracts preserve transport identities
+// and heterogeneous interview JSON through model serialization, not DOM output.
 it("maps Pi identities without retaining renamed transport fields", () => {
   const snapshots = messageSnapshots(
     [
@@ -125,30 +128,6 @@ it("maps Pi identities without retaining renamed transport fields", () => {
   expect(snapshots[3]?.outputContent?.map((content) => content.type)).toEqual(["text", "image"]);
 });
 
-it("clears Markdown on a same-ID plain-text snapshot with JSON-omitted renderAs", () => {
-  const plain = {
-    id: "text",
-    kind: "text",
-    role: "user",
-    entryId: "pi-text",
-    text: "# Heading",
-    status: "complete",
-  } satisfies Extract<UiPart, { kind: "text" }>;
-  const model = Conversation.create({
-    sessionId: "session",
-    parts: messageSnapshots([{ ...plain, renderAs: "markdown" }], "session"),
-  });
-  const original = model.parts[0];
-  expect(original?.renderAs).toBe("markdown");
-  expect(plain).not.toHaveProperty("renderAs");
-
-  applySnapshot(model, { parts: messageSnapshots([plain], "session") });
-
-  expect(model.parts[0]).toBe(original);
-  expect(model.parts[0]?.renderAs).toBeUndefined();
-  expect(model.uiParts[0]).toMatchObject({ kind: "text", renderAs: undefined });
-});
-
 it("round-trips interview definitions and results with heterogeneous JSON through Models", () => {
   const options = [null, "one", 7, false];
   const choices = [...options, ["nested"], { option: "object" }];
@@ -169,7 +148,7 @@ it("round-trips interview definitions and results with heterogeneous JSON throug
     },
   };
   const interviewResult = { interviewId: "call", cancelled: false, value: { choices } };
-  const model = Conversation.create({
+  using model = Conversation.create({
     sessionId: "session",
     parts: messageSnapshots(
       [
@@ -186,7 +165,7 @@ it("round-trips interview definitions and results with heterogeneous JSON throug
       "session",
     ),
   });
-  const restored = Conversation.create(toSnapshot(model));
+  using restored = Conversation.create(toSnapshot(model));
   expect(restored.uiParts[0]).toMatchObject({ interview, interviewResult });
   const delta = {
     id: "tool-call",
