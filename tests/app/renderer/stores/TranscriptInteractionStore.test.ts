@@ -1,58 +1,72 @@
-import { createStore, mount, observable } from "r-state-tree";
-import type { UiPart } from "../../../../src/contracts/conversations/session-contract";
-import { TranscriptInteractionStore } from "../../../../src/renderer/stores/TranscriptInteractionStore";
 import { describe, expect, it } from "vitest";
+import type { UiPart } from "../../../../src/contracts/conversations/session-contract";
 import { applyConversationSnapshot } from "../../../../src/renderer/reducers/ConversationReducer";
 import { projectRecord, sessionSummary } from "../fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "../renderer-store-fixture";
 
-// Native scroll-adapter exception: NavigationStore.openSession(messageId) is a
-// control-protocol operation, not an accessible Chat action. Keep real navigation,
-// session/catalog composition and projection here; jsdom cannot prove Virtuoso
-// scrolling/restoration. Do not fake its callbacks or geometry. Visible formatting,
-// projection/failure/retry lives in transcript-interaction-workflow; changed-files
-// churn lives in chat-surface-workflow. This also replaces ChatStore's duplicate.
-describe("Transcript control-protocol navigation boundary", () => {
-  it("resolves entry identities, invalidates saved anchors for repeated targets, and ignores unavailable messages", async () => {
-    using fixture = createRendererStoreFixture({
-      projects: [projectRecord({ path: "/project" })],
-      sessions: [sessionSummary({ sessionId: "session-1", projectPath: "/project" })],
-    });
-    const session = fixture.root.sessionRegistry.load("session-1", "/project");
+const user: UiPart = {
+  id: "user-1",
+  entryId: "user-entry",
+  kind: "text",
+  role: "user",
+  text: "Question",
+  status: "complete",
+};
+const assistant: Extract<UiPart, { kind: "text" }> = {
+  id: "assistant-1",
+  entryId: "assistant-entry",
+  kind: "text",
+  role: "assistant",
+  text: "Answer",
+  status: "complete",
+};
+
+function transcriptAdapter(parts: UiPart[]) {
+  const fixture = createRendererStoreFixture({
+    projects: [projectRecord({ path: "/project" })],
+    sessions: [sessionSummary({ sessionId: "session-1", projectPath: "/project" })],
+  });
+  const session = fixture.root.sessionRegistry.load("session-1", "/project");
+  const publish = (nextParts: UiPart[]) => {
     applyConversationSnapshot(session.model, {
       sessionId: "session-1",
       sessionFile: "/project/session-1.jsonl",
-      parts: [
-        {
-          id: "user-1",
-          entryId: "user-entry",
-          kind: "text",
-          role: "user",
-          text: "Question",
-          status: "complete",
-        },
-        {
-          id: "assistant-1",
-          entryId: "assistant-entry",
-          kind: "text",
-          role: "assistant",
-          text: "Answer",
-          status: "complete",
-        },
-      ],
+      parts: nextParts,
       models: [],
       thinkingLevel: "off",
       availableThinkingLevels: ["off"],
-      streaming: false,
+      streaming: nextParts.some((part) => part.kind === "text" && part.status === "streaming"),
       diagnostics: [],
       commands: [],
       compatibility: { resources: [], diagnostics: [] },
       extensionUi: { statuses: [] },
       tree: [],
     });
-    fixture.root.navigationStore.selectProjectSession("session-1");
-    fixture.root.projectWorkbenchStore.showLoadedSession("session-1");
-    const interaction = session.conversationSessionStore.chatStore.transcriptInteraction;
+  };
+  publish(parts);
+  fixture.root.navigationStore.selectProjectSession("session-1");
+  fixture.root.projectWorkbenchStore.showLoadedSession("session-1");
+  return {
+    root: fixture.root,
+    interaction: session.conversationSessionStore.chatStore.transcriptInteraction,
+    publish,
+    [Symbol.dispose]() {
+      fixture[Symbol.dispose]();
+    },
+  };
+}
+
+// Native/control-adapter exceptions, not parallel renderer workflow coverage:
+// openSession(messageId) is a control-protocol operation; selection methods are
+// the native keyboard adapter. Keep real Root/catalog/navigation/Models and no
+// fake parts callbacks or Store casts. Native key routing, focus and real Virtuoso
+// reveal are covered by message-keyboard-selection/message-navigation Electron
+// suites, not by jsdom with invented geometry. Visible formatting/failure/retry
+// lives in transcript-interaction-workflow; disclosure in chat-surface-workflow.
+describe("Transcript native/control adapter integration", () => {
+  it("resolves entry identities, invalidates saved anchors for repeated targets, and ignores unavailable messages", async () => {
+    using fixture = transcriptAdapter([user, assistant]);
+    const { interaction } = fixture;
     interaction.setTranscriptScrollPosition({ kind: "message", messageId: "user-1", offset: -20 });
 
     await expect(
@@ -86,53 +100,29 @@ describe("Transcript control-protocol navigation boundary", () => {
       revision: 2,
     });
   });
-});
-
-describe("message selection identity", () => {
-  const text = (id: string, extra: Partial<Extract<UiPart, { kind: "text" }>> = {}): UiPart => ({
-    id,
-    kind: "text",
-    role: "assistant",
-    text: id,
-    status: "complete",
-    ...extra,
-  });
-
-  function selectionStore(state: { parts: UiPart[] }) {
-    return mount(
-      createStore(TranscriptInteractionStore, {
-        parts: () => state.parts,
-        loading: () => false,
-      }),
-    );
-  }
 
   it("skips activity and empty assistant placeholders but includes attachment-only user anchors", () => {
-    const state = observable<{ parts: UiPart[] }>({
-      parts: [
-        text("user", { role: "user", text: "" }),
-        text("empty", { text: "" }),
-        { id: "tool", kind: "tool", name: "read", input: "", state: "success" },
-      ],
-    });
-    using store = selectionStore(state);
+    using fixture = transcriptAdapter([
+      { ...user, id: "user", text: "" },
+      { ...assistant, id: "empty", text: "" },
+      { id: "tool", kind: "tool", name: "read", input: "", state: "success" },
+    ]);
+    const store = fixture.interaction;
     expect(store.selectPreviousMessage()).toBe(true);
     expect(store.selectedMessageId).toBe("user");
     store.selectNextMessage();
     expect(store.selectedMessageId).toBeUndefined();
-    state.parts = [text("empty", { text: "" })];
+    fixture.publish([{ ...assistant, id: "empty", text: "" }]);
     expect(store.selectPreviousMessage()).toBe(false);
   });
 
   it("continues keyboard selection from a linked activity between conversational entries", () => {
-    const state = observable<{ parts: UiPart[] }>({
-      parts: [
-        text("before", { role: "user" }),
-        { id: "tool", kind: "tool", name: "read", input: "", state: "success" },
-        text("after"),
-      ],
-    });
-    using store = selectionStore(state);
+    using fixture = transcriptAdapter([
+      { ...user, id: "before" },
+      { id: "tool", kind: "tool", name: "read", input: "", state: "success" },
+      { ...assistant, id: "after" },
+    ]);
+    const store = fixture.interaction;
     store.navigateToMessage("tool");
     store.selectPreviousMessage();
     expect(store.selectedMessageId).toBe("before");
@@ -149,16 +139,14 @@ describe("message selection identity", () => {
       content: "Review",
       renderKey: "input",
     });
-    const user = (id: string) => text(id, { role: "user", renderKey: "input" });
-    const state = observable<{ parts: UiPart[] }>({
-      parts: [skill("live-skill"), user("live-text")],
-    });
-    using store = selectionStore(state);
+    const text = (id: string): UiPart => ({ ...user, id, renderKey: "input" });
+    using fixture = transcriptAdapter([skill("live-skill"), text("live-text")]);
+    const store = fixture.interaction;
     store.selectPreviousMessage();
-    state.parts = [skill("settled-skill"), user("settled-text")];
+    fixture.publish([skill("settled-skill"), text("settled-text")]);
     expect(store.selectedMessageId).toBe("settled-text");
     store.selectPreviousMessage();
-    state.parts = [skill("resettled-skill"), user("resettled-text")];
+    fixture.publish([skill("resettled-skill"), text("resettled-text")]);
     expect(store.selectedMessageId).toBe("resettled-skill");
   });
 
@@ -168,16 +156,16 @@ describe("message selection identity", () => {
       const part = (id: string): UiPart =>
         kind === "skill"
           ? { id, kind, name: "review", content: "Review", renderKey: "turn-1" }
-          : text(id, { role: kind, renderKey: "turn-1" });
-      const state = observable<{ parts: UiPart[] }>({ parts: [part("stream-1")] });
-      using store = selectionStore(state);
+          : { ...assistant, id, role: kind, renderKey: "turn-1" };
+      using fixture = transcriptAdapter([part("stream-1")]);
+      const store = fixture.interaction;
       store.selectPreviousMessage();
       expect(store.selectedMessageId).toBe("stream-1");
       const revision = store.messageSelection!.revision;
-      state.parts = [part("entry-1")];
+      fixture.publish([part("entry-1")]);
       expect(store.selectedMessageId).toBe("entry-1");
       expect(store.messageSelection!.revision).toBe(revision);
-      state.parts = [];
+      fixture.publish([]);
       expect(store.selectedMessageId).toBeUndefined();
       expect(store.selectNextMessage()).toBe(false);
     },
