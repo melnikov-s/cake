@@ -63,6 +63,9 @@ export function createCommandClientFinishFixture(
         tree: [],
       },
     });
+    session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
+      kind: "top",
+    });
   }
   fixture.root.navigationStore.showLoadedProjectSession("calling");
   return {

@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
+import { renderTranscriptContent as render } from "./render-transcript-content";
 import userEvent from "@testing-library/user-event";
 import { observer, StoreProvider } from "r-state-tree/react";
 import { afterEach, expect, it, vi } from "vitest";
@@ -41,6 +42,7 @@ it("opens a parsed disjoint Markdown source link as two native-resolved selectio
     projects: [projectRecord({ path: "/project" })],
     sessions: [sessionSummary({ sessionId: "source-link", projectPath: "/project" })],
     client: {
+      filesystem: { prepareFileLocation: async ({ location }) => ({ viewer: "vscode", location }) },
       vscode: {
         open: async () => undefined,
         updateBounds: async () => undefined,
@@ -91,6 +93,9 @@ it("opens a parsed disjoint Markdown source link as two native-resolved selectio
     tree: [],
   });
   root.navigationStore.showLoadedProjectSession("source-link");
+  session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
+    kind: "top",
+  });
   // The compact Chat is a real product mode for the starting reader. Once the
   // production source callback opens VS Code, render its actual workspace surface
   // (which owns EditorSelectionPills), not test-wired pills or parent callbacks.

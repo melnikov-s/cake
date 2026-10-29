@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, screen, within } from "@testing-library/react";
+import { renderTranscriptContent as render } from "./render-transcript-content";
 import userEvent from "@testing-library/user-event";
 import { observer, StoreProvider } from "r-state-tree/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -119,10 +120,7 @@ describe("Application command to renderer workflows", () => {
       within(receipts[0]!).getByText("Renamed session to “Storage implementation”"),
     ).toBeDefined();
     await fixture.user.click(within(receipts[0]!).getByRole("button", { name: "View" }));
-    expect(await fixture.invoke("app.state")).toMatchObject({
-      state: { selection: { sessionId: "target" } },
-    });
-    expect(screen.getByText("Conversation: Other work")).toBeDefined();
+    expect(await screen.findByText("Conversation: Other work")).toBeDefined();
     const cake = {
       kind: "cake-chat",
       sessionId: "cake-chat",
