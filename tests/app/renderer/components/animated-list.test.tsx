@@ -41,11 +41,10 @@ describe("AnimatedList", () => {
       configurable: true,
       value: animate,
     });
-    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+    vi.spyOn(HTMLElement.prototype, "offsetTop", "get").mockImplementation(
       function (this: HTMLElement) {
         operations.push(`measure:${this.dataset.animatedListKey}`);
-        const top = itemTops.get(this.dataset.animatedListKey ?? "") ?? 0;
-        return new DOMRect(0, top, 100, 20);
+        return itemTops.get(this.dataset.animatedListKey ?? "") ?? 0;
       },
     );
   });
@@ -124,11 +123,11 @@ describe("AnimatedList", () => {
       expect.objectContaining({ duration: 160 }),
     );
 
-    // An interrupted update cancels every old animation before measuring again.
+    // A new destination interrupts the affected animation; removed rows clean up too.
     operations.length = 0;
     itemTops.set("third", 0);
     renderItems(["third"]);
-    expect(operations).toEqual(["cancel:second", "cancel:third", "measure:third", "animate:third"]);
+    expect(operations).toEqual(["measure:third", "cancel:second", "cancel:third", "animate:third"]);
     const lastAnimation = animate.mock.results.at(-1)!.value;
     act(() => root.render(null));
     expect(lastAnimation.cancel).toHaveBeenCalledOnce();
@@ -140,6 +139,23 @@ describe("AnimatedList", () => {
     renderItems(["first", "second"]);
     renderItems(["first", "second"]);
     expect(animate).not.toHaveBeenCalled();
+  });
+
+  it("preserves an in-flight reorder across repeated content updates and scrolling", () => {
+    itemTops.set("first", 0);
+    itemTops.set("second", 20);
+    renderItems(["first", "second"]);
+    itemTops.set("first", 20);
+    itemTops.set("second", 0);
+    renderItems(["second", "first"]);
+    const animations = animate.mock.results.map((result) => result.value);
+    // Screen positions can change through scrolling or animation, not layout.
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, -100, 100, 20),
+    );
+    for (let update = 0; update < 5; update++) renderItems(["second", "first"]);
+    expect(animate).toHaveBeenCalledTimes(2);
+    for (const animation of animations) expect(animation.cancel).not.toHaveBeenCalled();
   });
 
   it("lets rows inserted into a rendered list enter, without restarting on re-render", () => {
@@ -161,10 +177,10 @@ describe("AnimatedList", () => {
       expect.objectContaining({ duration: 260 }),
     );
 
-    // An unrelated update neither cancels nor re-measures the entering row.
+    // Measuring layout coordinates does not disturb the entering row's transform.
     operations.length = 0;
     renderItems(["first", "second"]);
-    expect(operations).toEqual(["measure:first"]);
+    expect(operations).toEqual(["measure:first", "measure:second"]);
   });
 
   it("treats a bulk insertion as a load rather than an arrival", () => {

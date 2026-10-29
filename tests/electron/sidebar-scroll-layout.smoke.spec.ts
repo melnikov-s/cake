@@ -1,13 +1,15 @@
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { randomUUID } from "node:crypto";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { emitRendererEvent } from "./main-harness";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("sidebar highlights do not reserve scroll space after their rows collapse", async () => {
+test("sidebar updates preserve row motion and highlights without reserving collapsed space", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-sidebar-scroll-layout-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -36,7 +38,7 @@ test("sidebar highlights do not reserve scroll space after their rows collapse",
           lastOpenedAt: new Date(0).toISOString(),
         },
       ],
-      trustedProjectPaths: [],
+      trustedProjectPaths: [project],
     }),
   );
   for (const [index, id] of ids.entries()) {
@@ -102,13 +104,81 @@ test("sidebar highlights do not reserve scroll space after their rows collapse",
       const layer = sidebar.locator(
         `[data-slot="navigation-${selectRow ? "selection" : "hover"}"]`,
       );
-      if (selectRow) await lastRow.locator(".session-row").click();
+      if (selectRow) {
+        // Selection after scrolling is not a list reorder. Record even short-lived
+        // animations, which can finish before an ordinary locator assertion.
+        const targetId = await lastRow.getAttribute("data-session-id");
+        await rows.evaluateAll((elements) => {
+          Reflect.set(window, "sidebarReorders", []);
+          Reflect.set(window, "sidebarReorderCancellations", []);
+          for (const element of elements) {
+            const row = element as HTMLElement;
+            const animate = row.animate.bind(row);
+            row.animate = (keyframes, options) => {
+              const animation = animate(keyframes, options);
+              if (Array.isArray(keyframes) && keyframes.some((frame) => "translate" in frame)) {
+                Reflect.get(window, "sidebarReorders").push(row.dataset.sessionId);
+                // Hold the transition so later updates deterministically interrupt it.
+                animation.pause();
+                const cancel = animation.cancel.bind(animation);
+                animation.cancel = () => {
+                  Reflect.get(window, "sidebarReorderCancellations").push(row.dataset.sessionId);
+                  cancel();
+                };
+              }
+              return animation;
+            };
+          }
+        });
+        await lastRow.locator(".session-row").click();
+        // Opening a conversation intentionally focuses its composer. Let that
+        // navigation finish before checking focus retention across title updates.
+        await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeFocused();
+        const target = sidebar.locator(`.session-item[data-session-id="${targetId}"]`);
+        const targetButton = target.locator(".session-row > button");
+        await targetButton.focus();
+        expect(await page.evaluate(() => Reflect.get(window, "sidebarReorders"))).toEqual([]);
+        let stableBounds;
+        for (let update = 0; update < 3; update++) {
+          const title = `Updated sidebar title ${update}`;
+          await emitRendererEvent(application, {
+            type: "project-session-control-requested",
+            sessionId: ids[0]!,
+            controlRequestId: randomUUID(),
+            invocation: {
+              _tag: "InvokeAppControl",
+              command: "sessions.rename",
+              input: { sessionId: targetId!, title },
+            },
+          });
+          await expect(target.locator(".session-title")).toHaveText(title);
+          await expect(target).toHaveAttribute("data-navigation-active", "true");
+          await expect(targetButton).toBeFocused();
+          const bounds = await target.boundingBox();
+          if (stableBounds) expect(bounds).toEqual(stableBounds);
+          stableBounds = bounds;
+        }
+        expect(
+          await page.evaluate(() => Reflect.get(window, "sidebarReorders").length),
+        ).toBeGreaterThan(0);
+        expect(
+          await page.evaluate(() => Reflect.get(window, "sidebarReorderCancellations")),
+        ).toEqual([]);
+        await rows.evaluateAll((elements) => {
+          for (const row of elements) {
+            for (const animation of row.getAnimations()) animation.finish();
+            Reflect.deleteProperty(row, "animate");
+          }
+        });
+      }
       await expect(layer).toHaveAttribute("data-visible", "true");
       await expect.poll(async () => (await metrics()).top).toBeGreaterThan(0);
       await expect
         .poll(async () => {
           const highlight = await layer.boundingBox();
-          const row = await lastRow.boundingBox();
+          const row = await (
+            selectRow ? sidebar.locator('.session-item[data-navigation-active="true"]') : lastRow
+          ).boundingBox();
           return highlight && row ? Math.abs(highlight.y - row.y) : Infinity;
         })
         .toBeLessThan(1);

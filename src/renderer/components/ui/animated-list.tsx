@@ -25,14 +25,11 @@ export function AnimatedList({
   const listRef = useRef<HTMLElement | null>(null);
   const previousKeysRef = useRef<ReadonlySet<string> | undefined>(undefined);
   const previousTopsRef = useRef(new Map<string, number>());
-  const animationsRef = useRef<Animation[]>([]);
+  const animationsRef = useRef(new Map<string, Animation>());
   // Entrances outlive re-renders: unrelated updates must not cut them short.
   const entrancesRef = useRef(new Map<string, Animation>());
 
   useLayoutEffect(() => {
-    for (const animation of animationsRef.current) animation.cancel();
-    animationsRef.current = [];
-
     const items = Array.from(
       listRef.current?.querySelectorAll<HTMLElement>(`:scope > ${ITEM_SELECTOR}`) ?? [],
     );
@@ -45,10 +42,8 @@ export function AnimatedList({
       const key = item.dataset.animatedListKey;
       if (!key) continue;
       nextKeys.add(key);
-      // An entering row's transform would skew its measured position.
-      if (entrancesRef.current.has(key)) continue;
-
-      const nextTop = item.getBoundingClientRect().top;
+      // Layout coordinates ignore scrolling and in-flight row transforms.
+      const nextTop = item.offsetTop;
       nextTops.set(key, nextTop);
       const previousTop = previousTopsRef.current.get(key);
       const offset = previousTop === undefined ? 0 : previousTop - nextTop;
@@ -59,15 +54,31 @@ export function AnimatedList({
         ? new Set(arrivedKeys(previousKeysRef.current, nextKeys))
         : new Set<string>();
 
+    // Unrelated renders leave in-flight reorders alone. Only a new destination,
+    // removal, or reduced-motion request should interrupt them.
+    for (const [key, animation] of animationsRef.current) {
+      if (
+        !reduceMotion &&
+        nextKeys.has(key) &&
+        nextTops.get(key) === previousTopsRef.current.get(key)
+      )
+        continue;
+      animation.cancel();
+      animationsRef.current.delete(key);
+    }
+
     // Measure the entire list before starting any animations. Interleaving
-    // animate() with getBoundingClientRect() forces layout for every shifted row.
+    // animate() with layout reads forces layout for every shifted row.
     for (const { item, offset } of moves) {
-      animationsRef.current.push(
-        item.animate([{ translate: `0 ${offset}px` }, { translate: "none" }], {
-          duration: REORDER_DURATION_MS,
-          easing: EASING,
-        }),
-      );
+      const key = item.dataset.animatedListKey!;
+      const animation = item.animate([{ translate: `0 ${offset}px` }, { translate: "none" }], {
+        duration: REORDER_DURATION_MS,
+        easing: EASING,
+      });
+      animationsRef.current.set(key, animation);
+      animation.onfinish = () => {
+        if (animationsRef.current.get(key) === animation) animationsRef.current.delete(key);
+      };
     }
     for (const item of items) {
       const key = item.dataset.animatedListKey;
@@ -96,7 +107,7 @@ export function AnimatedList({
 
   useLayoutEffect(
     () => () => {
-      for (const animation of animationsRef.current) animation.cancel();
+      for (const animation of animationsRef.current.values()) animation.cancel();
       for (const animation of entrancesRef.current.values()) animation.cancel();
     },
     [],
@@ -107,7 +118,7 @@ export function AnimatedList({
       ref={(element: HTMLElement | null) => {
         listRef.current = element;
       }}
-      className={cn(className)}
+      className={cn("relative", className)}
       {...props}
     >
       {children}
