@@ -25,101 +25,14 @@ const sessionSummary = (sessionId: string, workingDirectory: string) =>
 // shared real Root/Models/Stores composition and typed external Client services;
 // do not invent GUI controls. Duplicate child-opening rollback is consolidated in
 // ApplicationControlStore.test.ts alongside exactly-once and replay coverage.
+// Family child placement, background placement:none and reusable child panes are
+// already covered by tests/electron/child-session-pane.smoke.spec.ts; its real
+// panes and native focus assertions replace the duplicate Store-only journey.
 // Product navigation/retirement/removal journeys moved to root-app-workflow;
 // surface transitions are covered by app-shell-navigation, browser,
 // embedded-editor and workbench workflows. Shortcut forwarding-count assertions
 // were implementation-only, not user-facing behavior.
 describe("RootStore agent-control transport and composition", () => {
-  it("opens projected family children in one reusable pane", async () => {
-    const sessions = [sessionSummary("parent", projectPath)];
-    const open = vi.fn(async () => undefined);
-    const respondControl = vi.fn(async () => undefined);
-    const client: TestClientOverrides = {
-      projectSessions: { open, respondControl },
-    };
-    using fixture = createRendererStoreFixture({
-      client,
-      projects: [projectRecord({ path: projectPath, name: "Example" })],
-      sessions,
-    });
-    const root = fixture.root;
-
-    root.sessionRegistry.load("parent", projectPath);
-    root.sessionLayoutStore.ensureSession("parent");
-    root.navigationStore.selectProjectSession("parent");
-    root.projectWorkbenchStore.showLoadedSession("parent");
-
-    await root.applicationControlStore.handleProjectSessionRequest({
-      sessionId: "parent",
-      controlRequestId: "00000000-0000-4000-8000-000000000000",
-      invocation: {
-        _tag: "ProjectChildSession",
-        childSessionId: "background-child",
-        title: "Background child",
-        familyId: "family",
-        familyChildOrder: 0,
-        familyDepth: 1,
-        workingDirectory: projectPath,
-        placement: "none",
-      },
-    });
-    expect(root.sessionCatalogStore.find("background-child")).toMatchObject({
-      title: "Background child",
-      pending: true,
-    });
-    expect(root.sessionLayoutStore.panes.map((pane) => pane.sessionId)).toEqual(["parent"]);
-    expect(root.appShellStore.activeConversation).toEqual({
-      kind: "project-session",
-      sessionId: "parent",
-    });
-
-    await root.applicationControlStore.handleProjectSessionRequest({
-      sessionId: "parent",
-      controlRequestId: "00000000-0000-4000-8000-000000000001",
-      invocation: {
-        _tag: "ProjectChildSession",
-        childSessionId: "child-1",
-        title: "First child",
-        familyId: "family",
-        familyChildOrder: 0,
-        familyDepth: 1,
-        workingDirectory: projectPath,
-        placement: "right",
-      },
-    });
-    const childPaneId = root.sessionLayoutStore.paneForSession("child-1")?.paneId;
-    expect(root.sessionCatalogStore.find("child-1")).toMatchObject({
-      title: "First child",
-      pending: true,
-      familyParentSessionId: "parent",
-    });
-    expect(root.sessionLayoutStore.panes).toHaveLength(2);
-    expect(root.appShellStore.activeConversation).toEqual({
-      kind: "project-session",
-      sessionId: "child-1",
-    });
-
-    await root.applicationControlStore.handleProjectSessionRequest({
-      sessionId: "parent",
-      controlRequestId: "00000000-0000-4000-8000-000000000002",
-      invocation: {
-        _tag: "ProjectChildSession",
-        childSessionId: "child-2",
-        title: "Second child",
-        familyId: "family",
-        familyChildOrder: 1,
-        familyDepth: 1,
-        workingDirectory: projectPath,
-        placement: "right",
-      },
-    });
-    expect(root.sessionLayoutStore.paneForSession("child-2")?.paneId).toBe(childPaneId);
-    expect(root.sessionLayoutStore.hasSession("child-1")).toBe(false);
-    expect(root.sessionLayoutStore.panes).toHaveLength(2);
-    expect(open).toHaveBeenCalledTimes(3);
-    expect(respondControl).toHaveBeenCalledTimes(3);
-  });
-
   it("switches a background session to VS Code without stealing pane focus", async () => {
     const sessions = [
       sessionSummary("focused", projectPath),
