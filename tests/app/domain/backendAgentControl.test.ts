@@ -4,7 +4,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it } from "@effect/vitest";
 import { TestClock } from "effect/testing";
-import { Context, Deferred, Effect, Fiber, Layer, Queue, Schema, Stream } from "effect";
+import {
+  Clock,
+  Context,
+  Deferred,
+  Effect,
+  Fiber,
+  Layer,
+  Logger,
+  Queue,
+  Schema,
+  Stream,
+} from "effect";
 import { expect } from "vitest";
 import {
   defaultApplicationState,
@@ -2558,6 +2569,169 @@ it.effect(
       expect(f.grants).toEqual([]);
       expect(yield* Queue.size(f.prompts)).toBe(0);
     }),
+);
+
+it.effect("workflow timings aggregate repeated queries and count work before pagination", () => {
+  const messages: unknown[] = [];
+  let nanos = 0n;
+  const advance = (ms: number) =>
+    Effect.sync(() => {
+      nanos += BigInt(ms) * 1_000_000n;
+    });
+  return Effect.gen(function* () {
+    const f = yield* fixture();
+    const families = Context.get(f.context, SessionFamilyStorage);
+    yield* families.registerSpawn(workflowLaunch(target, "PRIVATE_TASK_ONE"));
+    yield* families.registerSpawn(workflowLaunch(third, "PRIVATE_TASK_TWO"));
+    const archive = Context.get(f.context, SessionArchiveStorage);
+    const runtimes = Context.get(f.context, CakeSessionRuntimes);
+    const worktrees = Context.get(f.context, ManagedWorktrees);
+    const requests = Context.get(f.context, RendererRequestCoordinator);
+    const context = f.context.pipe(
+      Context.add(SessionFamilyStorage, {
+        ...families,
+        state: () => advance(2_000).pipe(Effect.andThen(families.state())),
+      }),
+      Context.add(SessionArchiveStorage, {
+        ...archive,
+        recordedResolvedIds: (location) =>
+          advance(3_000).pipe(Effect.andThen(archive.recordedResolvedIds(location))),
+      }),
+      Context.add(CakeSessionRuntimes, {
+        ...runtimes,
+        currentStatus: (target) =>
+          advance(1_000).pipe(Effect.andThen(runtimes.currentStatus(target))),
+      }),
+      Context.add(ManagedWorktrees, {
+        ...worktrees,
+        records: () => advance(4_000).pipe(Effect.andThen(worktrees.records())),
+      }),
+      Context.add(RendererRequestCoordinator, {
+        ...requests,
+        pendingUserInputs: () => advance(5_000).pipe(Effect.andThen(requests.pendingUserInputs())),
+      }),
+    );
+    const clock = yield* Clock.Clock;
+    const result = yield* agentControl
+      .invoke(
+        "sessions.list",
+        {
+          projection: "workflow",
+          query: "PRIVATE_TASK",
+          limit: 1,
+        },
+        workflowCaller,
+      )
+      .pipe(
+        Effect.provide(context),
+        Effect.provideService(Clock.Clock, {
+          ...clock,
+          monotonicTimeNanosUnsafe: () => nanos,
+          monotonicTimeNanos: Effect.sync(() => nanos),
+        }),
+      );
+    expect(result).toContain("2 launches; next=1");
+    expect(messages).toEqual([
+      [
+        "Slow workflow session list",
+        {
+          completed: true,
+          phase: "format",
+          phasesMs: {
+            scope: 0,
+            state: 2_000,
+            metadata: 9_000,
+            rows: 0,
+            resolution: 3_000,
+            runtime: 2_000,
+            selection: 0,
+            format: 0,
+          },
+          totalMs: 16_000,
+          launches: 2,
+          directories: 1,
+          matched: 2,
+          returned: 1,
+        },
+      ],
+    ]);
+    expect(JSON.stringify(messages)).not.toContain("PRIVATE");
+    expect(f.inspections).toEqual([]);
+    expect(f.listReads.ids).toEqual([]);
+    expect(f.listReads.titles).toEqual([]);
+    expect(f.runtimeCreates).toEqual([source]);
+    // A fast subsequent request emits nothing and cannot reuse the previous totals.
+    yield* f.direct("sessions.list", { projection: "workflow" }, workflowCaller);
+    expect(messages).toHaveLength(1);
+  }).pipe(
+    Effect.provide(
+      Logger.layer([
+        Logger.make(({ message }) => {
+          messages.push(message);
+        }),
+      ]),
+    ),
+  );
+});
+
+it.effect(
+  "interrupted workflow listings retain partial timings without claiming completion",
+  () => {
+    const messages: unknown[] = [];
+    let nanos = 0n;
+    return Effect.gen(function* () {
+      const f = yield* fixture();
+      yield* Context.get(f.context, SessionFamilyStorage).registerSpawn(workflowLaunch(target));
+      const reading = yield* Deferred.make<void>();
+      const runtimes = Context.get(f.context, CakeSessionRuntimes);
+      const context = Context.add(f.context, CakeSessionRuntimes, {
+        ...runtimes,
+        currentStatus: () =>
+          Effect.gen(function* () {
+            yield* Deferred.succeed(reading, undefined);
+            return yield* Effect.never;
+          }),
+      });
+      const clock = yield* Clock.Clock;
+      const worker = yield* agentControl
+        .invoke("sessions.list", { projection: "workflow" }, workflowCaller)
+        .pipe(
+          Effect.provide(context),
+          Effect.provideService(Clock.Clock, {
+            ...clock,
+            monotonicTimeNanosUnsafe: () => nanos,
+            monotonicTimeNanos: Effect.sync(() => nanos),
+          }),
+          Effect.forkScoped({ startImmediately: true }),
+        );
+      yield* Deferred.await(reading);
+      nanos += 3_000_000_000n;
+      yield* Fiber.interrupt(worker);
+      expect(messages).toEqual([
+        [
+          "Slow workflow session list",
+          {
+            completed: false,
+            phase: "runtime",
+            phasesMs: { scope: 0, state: 0, metadata: 0, rows: 0, resolution: 0, runtime: 3_000 },
+            totalMs: 3_000,
+            launches: 1,
+            directories: 1,
+            matched: 0,
+            returned: 0,
+          },
+        ],
+      ]);
+    }).pipe(
+      Effect.provide(
+        Logger.layer([
+          Logger.make(({ message }) => {
+            messages.push(message);
+          }),
+        ]),
+      ),
+    );
+  },
 );
 
 it.effect(

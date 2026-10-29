@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { Effect, FileSystem, Option, Path, Ref, Semaphore } from "effect";
 import { atomicWriteFile } from "./atomicFile";
+import { timedStorageRead } from "./timedStorageRead";
 
 export const recoveryRecordFileName = (id: string) =>
   `${createHash("sha256").update(id).digest("hex")}.json`;
@@ -45,7 +46,11 @@ export const makeRecoveryRecordFiles = Effect.fn("RecoveryRecordFiles.make")(fun
     return value;
   });
   const get = Effect.fn("RecoveryRecordFiles.get")((id: string) =>
-    lock.withPermit(read(fileFor(id)).pipe(Effect.map(Option.getOrUndefined))),
+    timedStorageRead(
+      "RecoveryRecordFiles.get",
+      lock,
+      read(fileFor(id)).pipe(Effect.map(Option.getOrUndefined)),
+    ),
   );
   const list = Effect.fn("RecoveryRecordFiles.list")(() =>
     lock.withPermit(

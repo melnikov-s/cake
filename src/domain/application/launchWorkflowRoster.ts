@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Clock, Effect } from "effect";
 import { currentSessionOutcome } from "../../contracts/project-sessions/session-reporting";
 import { agentListPage } from "../../contracts/agent/agent-list-data";
 import type { AgentSessionListInput } from "../../contracts/project-sessions/agent-session-list";
@@ -40,6 +40,51 @@ export const launchWorkflowRoster = Effect.fn("AgentControl.launchWorkflowRoster
   input: AgentSessionListInput,
   caller: AgentControlCaller,
 ) {
+  const clock = yield* Clock.Clock;
+  const startedAt = clock.monotonicTimeNanosUnsafe();
+  type Phase =
+    | "scope"
+    | "state"
+    | "metadata"
+    | "resolution"
+    | "runtime"
+    | "rows"
+    | "selection"
+    | "format";
+  let phase: Phase = "scope";
+  let phaseStartedAt = startedAt;
+  const phasesMs: Partial<Record<Phase, number>> = {};
+  let launchCount = 0;
+  let directoryCount = 0;
+  let matched = 0;
+  let returned = 0;
+  const enter = (next: Phase) => {
+    const now = clock.monotonicTimeNanosUnsafe();
+    phasesMs[phase] = (phasesMs[phase] ?? 0) + Number(now - phaseStartedAt) / 1e6;
+    phaseStartedAt = now;
+    phase = next;
+  };
+  yield* Effect.addFinalizer((exit) =>
+    Effect.suspend(() => {
+      const finishedAt = clock.monotonicTimeNanosUnsafe();
+      const totalMs = Number(finishedAt - startedAt) / 1e6;
+      if (totalMs < 1_000) return Effect.void;
+      phasesMs[phase] = (phasesMs[phase] ?? 0) + Number(finishedAt - phaseStartedAt) / 1e6;
+      // One bounded, metadata-only record, including failed/interrupted calls.
+      // These phases exclude SDK admission, environment acquisition and delivery.
+      // Storage reads separately report lock wait vs work; those times overlap.
+      return Effect.logWarning("Slow workflow session list", {
+        completed: exit._tag === "Success",
+        phase,
+        phasesMs,
+        totalMs,
+        launches: launchCount,
+        directories: directoryCount,
+        matched,
+        returned,
+      });
+    }),
+  );
   const fail = (error: string) => ({ ok: false, command: "sessions.list", error });
   if (caller.kind !== "cake-chat")
     return fail("The workflow roster requires the invoking Cake Chat.");
@@ -49,13 +94,16 @@ export const launchWorkflowRoster = Effect.fn("AgentControl.launchWorkflowRoster
     (item) => projectChatSessionId(item.path) === caller.sessionId,
   );
   if (!global && !project) return fail("The caller has no registered project scope.");
+  enter("state");
   const state = yield* (yield* SessionFamilyStorage).state();
+  enter("metadata");
   const launches = state.spawnedSessions.filter(
     (spawn) =>
       spawn.requester.sessionId === caller.sessionId &&
       (global || spawn.projectPath === project?.path) &&
       (!input.projectPath || spawn.projectPath === input.projectPath),
   );
+  launchCount = launches.length;
   const latest = new Map<string, CompletionInboxItem>();
   for (const item of state.completionInbox ?? []) {
     if (item.coordinatorSessionId !== caller.sessionId) continue;
@@ -73,6 +121,7 @@ export const launchWorkflowRoster = Effect.fn("AgentControl.launchWorkflowRoster
   const worktrees = yield* (yield* ManagedWorktrees).records();
   const waits = yield* (yield* RendererRequestCoordinator).pendingUserInputs();
   const resolvedByDirectory = new Map<string, ReadonlySet<string> | undefined>();
+  enter("rows");
   const rows = yield* Effect.forEach(launches, (spawn) =>
     Effect.gen(function* () {
       const family = state.families.find(
@@ -82,6 +131,8 @@ export const launchWorkflowRoster = Effect.fn("AgentControl.launchWorkflowRoster
       );
       const directory = family?.workingDirectory ?? spawn.workingDirectory;
       if (!resolvedByDirectory.has(directory)) {
+        enter("resolution");
+        directoryCount++;
         resolvedByDirectory.set(
           directory,
           yield* archive
@@ -92,14 +143,17 @@ export const launchWorkflowRoster = Effect.fn("AgentControl.launchWorkflowRoster
             })
             .pipe(Effect.catch(() => Effect.succeed(undefined))),
         );
+        enter("rows");
       }
       const resolvedIds = resolvedByDirectory.get(directory);
       const resolved = resolvedIds?.has(family?.parentSessionId ?? spawn.sessionId);
+      enter("runtime");
       const runtime = yield* runtimes.currentStatus({
         sessionId: spawn.sessionId,
         workingDirectory: spawn.workingDirectory,
         sessionDirectory: configuration.sessionDirectory,
       });
+      enter("rows");
       const completion = latest.get(spawn.sessionId);
       const report =
         spawn.lastReport && (!completion || spawn.lastReport.reportedAt >= completion.reportedAt)
@@ -219,6 +273,7 @@ export const launchWorkflowRoster = Effect.fn("AgentControl.launchWorkflowRoster
       };
     }),
   );
+  enter("selection");
   const selected = rows
     .filter(
       (row) =>
@@ -243,6 +298,9 @@ export const launchWorkflowRoster = Effect.fn("AgentControl.launchWorkflowRoster
         a.sessionId.localeCompare(b.sessionId),
     );
   const page = agentListPage(selected, input);
+  matched = selected.length;
+  returned = page.items.length;
+  enter("format");
   const counts = groups
     .map((group) => `${group}=${selected.filter((row) => row.group === group).length}`)
     .join(" ");
@@ -274,4 +332,4 @@ export const launchWorkflowRoster = Effect.fn("AgentControl.launchWorkflowRoster
         .join("\t"),
     );
   return lines.join("\n");
-});
+}, Effect.scoped);

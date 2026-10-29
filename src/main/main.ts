@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { loadDesktopHost, installDesktopSocketOrigin } from "../services/electron/DesktopHostLive";
 import { makeRemoteMainLive } from "./RemoteMainLive";
-import { Cause, Context, Effect, Exit, ManagedRuntime, Schema } from "effect";
+import { Cause, Context, Effect, Exit, Layer, ManagedRuntime, Schema } from "effect";
 import { app } from "electron";
 import { cakeEventSchema, type CakeEvent } from "../contracts/application/cake-rpc-contract";
 import { BoardAppendInput } from "../contracts/artifacts/message-board";
@@ -38,6 +38,8 @@ import { resolveCakePaths } from "../config/CakePaths";
 import { piAgentDirectory } from "../services/pi/PiPaths";
 import { MainApplication } from "./MainApplication";
 import { makeMainLive } from "./MainLive";
+import { BootstrapLive } from "./BootstrapLive";
+import { makeBackendLoggingLive } from "../services/diagnostics/BackendLoggingLive";
 import { installStdioErrorHandlers } from "./stdio-errors";
 import { reportMainFailure } from "./report-main-failure";
 import { installProcessErrorHandlers } from "./process-errors";
@@ -103,7 +105,10 @@ function startMain() {
         }
       : undefined;
 
-  const mainRuntime = ManagedRuntime.make(MainLive);
+  const LoggingLive = makeBackendLoggingLive(paths.logs, "desktop").pipe(
+    Layer.provide(BootstrapLive),
+  );
+  const mainRuntime = ManagedRuntime.make(MainLive.pipe(Layer.provideMerge(LoggingLive)));
   const mainProgram = Effect.promise(() => app.whenReady()).pipe(
     Effect.tap(() => Effect.sync(() => installDesktopSocketOrigin(selectedHost))),
     Effect.andThen(

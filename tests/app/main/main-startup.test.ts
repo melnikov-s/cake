@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { Effect, Layer } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { reportMainFailure } from "../../../src/main/report-main-failure";
+import { makeBackendLoggingLive } from "../../../src/services/diagnostics/BackendLoggingLive";
 
 const fixture = vi.hoisted(() => ({
   events: [] as string[],
@@ -58,7 +59,12 @@ vi.mock("../../../src/services/electron/extension-companion-protocol", () => ({
 vi.mock("../../../src/main/stdio-errors", () => ({ installStdioErrorHandlers: vi.fn() }));
 vi.mock("../../../src/main/process-errors", () => ({ installProcessErrorHandlers: vi.fn() }));
 vi.mock("../../../src/main/report-main-failure", () => ({ reportMainFailure: vi.fn() }));
-vi.mock("../../../src/config/CakePaths", () => ({ resolveCakePaths: vi.fn(() => ({})) }));
+vi.mock("../../../src/config/CakePaths", () => ({
+  resolveCakePaths: vi.fn(() => ({ logs: "/isolated/logs" })),
+}));
+vi.mock("../../../src/services/diagnostics/BackendLoggingLive", () => ({
+  makeBackendLoggingLive: vi.fn(() => Layer.empty),
+}));
 vi.mock("../../../src/services/pi/PiPaths", () => ({
   piAgentDirectory: vi.fn(() => "/isolated/pi"),
 }));
@@ -133,6 +139,7 @@ describe("production Electron startup", () => {
       "exit:0",
     ]);
     expect(application.requestSingleInstanceLock).toHaveBeenCalledOnce();
+    expect(makeBackendLoggingLive).toHaveBeenCalledExactlyOnceWith("/isolated/logs", "desktop");
   });
 
   it.each(["local", "remote"] as const)(
@@ -154,6 +161,7 @@ describe("production Electron startup", () => {
         expect(await launch()).toBe(0);
         expect(fixture.events).toEqual(["userData", "lock", "exit:0"]);
         expect(application.whenReady).not.toHaveBeenCalled();
+        expect(makeBackendLoggingLive).not.toHaveBeenCalled();
         expect(await readFile(upload, "utf8")).toBe("primary upload in progress");
       } finally {
         application.whenReady.mockReset().mockImplementation(async () => {

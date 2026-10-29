@@ -25,6 +25,7 @@ import {
   Struct,
 } from "effect";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
+import { timedStorageRead } from "./internal/timedStorageRead";
 import { SessionFamilyStorageError } from "../../contracts/storage/session-family-storage-errors";
 
 import {
@@ -725,7 +726,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
       });
 
       const state = Effect.fn("SessionFamilyStorage.state")(() =>
-        lock.withPermits(1)(loadUnlocked()),
+        timedStorageRead("SessionFamilyStorage.state", lock, loadUnlocked()),
       );
       const memberLocks = yield* RcMap.make({
         lookup: (parentSessionId: string) =>
