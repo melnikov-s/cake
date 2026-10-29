@@ -474,8 +474,9 @@ is a refactoring signal, not precedent.
   pending attribution provisionally retains the current presentation section; a settled null,
   invalid or unavailable attribution ends it and leaves the turn ungrouped.
   Known incoming session/subagent/exact-message associations are projected without a model call.
-  Task-switch headings read current to-do title/status/state live and sit left-aligned above
-  their messages, without a border alongside the heading. The continuation rule begins below
+  Task-switch headings read current to-do title/status/state live and sit above their messages,
+  aligned toward the transcript's left inset rather than the centered reading column,
+  without a border alongside the heading. The continuation rule begins below
   the complete title/status heading at every width. Wrapping headings retain their height
   in the reading flow, and consecutive sections leave a gap in the rule. Wide artifacts/widgets
   break the rule, not the heading. Revealing a task inspects its pane row without selecting

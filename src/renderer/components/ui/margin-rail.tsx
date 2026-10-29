@@ -29,7 +29,12 @@ export function MarginRail({
         )}
       />
       {start && (
-        <div data-slot="task-section-label" className="col-start-1 row-start-1 mb-3 -ml-3 min-w-0">
+        <div
+          data-slot="task-section-label"
+          // Outdent to the transcript inset, not the centered message column.
+          // Retain the existing safe inset when the pane is narrow.
+          className="col-start-1 row-start-1 mb-3 ml-[min(-0.75rem,calc((100%_-_100cqw)/2_+_1.5rem))] min-w-0"
+        >
           <Button
             variant="ghost"
             size="sm"
