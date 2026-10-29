@@ -3,18 +3,18 @@
  */
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { createStore, mount } from "r-state-tree";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UiHintMode } from "../../../src/renderer/components/ui/ui-hint-mode";
-import { UiHintModeStore } from "../../../src/renderer/stores/UiHintModeStore";
+import { createRendererStoreFixture } from "./renderer-store-fixture";
 
-function typeHint(label: string) {
-  for (const key of label) act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key })));
-}
-
+// Component policy boundary: browser rectangles and delivered key events are
+// controlled, not native geometry/input proof. Full Root/static-target behavior
+// lives in hint-overlay-finish-workflow; native activation/focus is in
+// electron/hotkeys.smoke.spec.ts.
 describe("UiHintMode", () => {
   let container: HTMLDivElement;
   let root: Root;
+  let fixture: ReturnType<typeof createRendererStoreFixture>;
 
   beforeEach(() => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -32,77 +32,18 @@ describe("UiHintMode", () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
+    fixture = createRendererStoreFixture();
   });
 
   afterEach(() => {
     act(() => root.unmount());
     container.remove();
+    fixture[Symbol.dispose]();
     vi.restoreAllMocks();
   });
 
-  it("labels visible controls and naturally activates the selected target", () => {
-    using store = mount(createStore(UiHintModeStore));
-    const clicked = vi.fn();
-    act(() =>
-      root.render(
-        <>
-          <button type="button" onClick={clicked}>
-            Open project
-          </button>
-          <input aria-label="Project name" />
-          <UiHintMode store={store} />
-        </>,
-      ),
-    );
-
-    act(() => store.open());
-    const button = container.querySelector("button")!;
-    expect(document.querySelectorAll('[data-slot="ui-hint"]')).toHaveLength(2);
-    expect(button.getAttribute("data-cake-hint-target")).toBe("true");
-    const buttonHint = button.getAttribute("data-cake-hint-label")!;
-
-    expect(buttonHint).toHaveLength(2);
-    typeHint(buttonHint);
-    expect(clicked).toHaveBeenCalledOnce();
-    expect(store.active).toBe(false);
-    expect(document.querySelector('[data-slot="ui-hint-overlay"]')).toBeNull();
-    expect(button.hasAttribute("data-cake-hint-target")).toBe(false);
-
-    act(() => store.open());
-    const input = container.querySelector("input")!;
-    const inputHint = input.getAttribute("data-cake-hint-label")!;
-    expect(inputHint).toHaveLength(2);
-    typeHint(inputHint);
-    expect(document.activeElement).toBe(input);
-  });
-
-  it("uses hardcoded single keys for static controls and reserves longer labels for dynamic ones", () => {
-    using store = mount(createStore(UiHintModeStore));
-    const opened = vi.fn();
-    act(() =>
-      root.render(
-        <>
-          <button type="button" data-cake-hint-key="s" onClick={opened}>
-            Toggle sidebar
-          </button>
-          <button type="button">Dynamic session</button>
-          <UiHintMode store={store} />
-        </>,
-      ),
-    );
-
-    act(() => store.open());
-    const [sidebar, dynamic] = container.querySelectorAll("button");
-    expect(sidebar!.getAttribute("data-cake-hint-label")).toBe("s");
-    expect(dynamic!.getAttribute("data-cake-hint-label")).toHaveLength(2);
-    expect(dynamic!.getAttribute("data-cake-hint-label")).not.toMatch(/^s/);
-
-    typeHint("s");
-    expect(opened).toHaveBeenCalledOnce();
-  });
-
   it("omits hidden and explicitly excluded controls", () => {
-    using store = mount(createStore(UiHintModeStore));
+    const store = fixture.root.uiHintModeStore;
     act(() =>
       root.render(
         <>
@@ -123,7 +64,7 @@ describe("UiHintMode", () => {
   });
 
   it("narrows targets and highlights the entered prefix", () => {
-    using store = mount(createStore(UiHintModeStore));
+    const store = fixture.root.uiHintModeStore;
     act(() =>
       root.render(
         <>
@@ -153,7 +94,7 @@ describe("UiHintMode", () => {
   });
 
   it("cancels hint mode with Escape", () => {
-    using store = mount(createStore(UiHintModeStore));
+    const store = fixture.root.uiHintModeStore;
     act(() =>
       root.render(
         <>
@@ -164,6 +105,6 @@ describe("UiHintMode", () => {
     );
     act(() => store.open());
     act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
-    expect(store.active).toBe(false);
+    expect(document.querySelector('[data-slot="ui-hint-overlay"]')).toBeNull();
   });
 });

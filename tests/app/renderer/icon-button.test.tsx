@@ -3,14 +3,12 @@
  */
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { createStore, mount } from "r-state-tree";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  IconButton,
-  IconButtonHotkeyProvider,
-} from "../../../src/renderer/components/ui/icon-button";
-import { formatHotkey } from "../../../src/renderer/lib/hotkeys";
-import { HotkeySettingsStore } from "../../../src/renderer/stores/HotkeySettingsStore";
+import { IconButton } from "../../../src/renderer/components/ui/icon-button";
+
+// Real Root/RendererRoot binding updates through Settings and toolbar tooltip
+// rendering live in hint-overlay-finish-workflow.test.tsx. Keep pure primitive
+// pressed appearance and the no-hotkey tooltip case here.
 
 describe("IconButton shortcut labels", () => {
   let container: HTMLDivElement;
@@ -27,34 +25,6 @@ describe("IconButton shortcut labels", () => {
     act(() => root.unmount());
     container.remove();
     vi.useRealTimers();
-  });
-
-  it("shows the current binding at the end of the tooltip, but not in the accessible name", () => {
-    using hotkeys = mount(createStore(HotkeySettingsStore));
-    act(() =>
-      root.render(
-        <IconButtonHotkeyProvider bindingFor={(id) => hotkeys.bindingFor(id)}>
-          <IconButton tooltip="Toggle sidebar" hotkey="toggle-sidebar">
-            icon
-          </IconButton>
-        </IconButtonHotkeyProvider>,
-      ),
-    );
-    const button = container.querySelector("button")!;
-    const showTooltip = () => {
-      act(() => button.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })));
-      act(() => vi.advanceTimersByTime(120));
-      return document.querySelector('[role="tooltip"]')?.textContent;
-    };
-
-    expect(showTooltip()).toBe(`Toggle sidebar (${formatHotkey("Mod+B")})`);
-    expect(button.getAttribute("aria-label")).toBe("Toggle sidebar");
-
-    act(() => hotkeys.assign("toggle-sidebar", "Mod+Shift+B"));
-    expect(showTooltip()).toBe(`Toggle sidebar (${formatHotkey("Mod+Shift+B")})`);
-
-    act(() => hotkeys.clear("toggle-sidebar"));
-    expect(showTooltip()).toBe("Toggle sidebar");
   });
 
   it("supports a tint-only pressed treatment without changing the default solid treatment", () => {
