@@ -1,5 +1,7 @@
 import {
   SessionMessageDelivery,
+  SessionMessageDeliveryOptions,
+  sessionMessageDeliveryCheck,
   immediateDelivery,
 } from "../../contracts/conversations/session-message-delivery";
 import * as projectTodoUpdates from "../projects/projectTodoUpdates";
@@ -34,7 +36,7 @@ import { resolutionNamespace } from "../project-sessions/projectSessionResolutio
 import { acquireOptions } from "../project-sessions/projectSessionRuntime";
 import * as sessionFamilies from "./sessionFamilies";
 
-/** Decode once in the runtime callback adapter. */
+/** Receiving contract for the runtime callback adapter. */
 export const FamilyMessageInput = Schema.Struct({
   messageRefs: Schema.optionalKey(messageRefsSchema),
   inputRefs: Schema.optionalKey(inputRefsSchema),
@@ -51,7 +53,7 @@ export const FamilyMessageInput = Schema.Struct({
   replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
   outcome: Schema.optionalKey(SessionTaskOutcome),
   resultKind: Schema.optionalKey(Schema.Literals(["ready", "investigation"])),
-});
+}).check(sessionMessageDeliveryCheck);
 export interface FamilyMessageInput extends Schema.Schema.Type<typeof FamilyMessageInput> {}
 
 export interface FamilyMessageCaller {
@@ -85,6 +87,9 @@ export const route: (
   input,
   senderContext,
 ) {
+  yield* Schema.decodeUnknownEffect(SessionMessageDeliveryOptions)(input).pipe(
+    Effect.mapError(routingError),
+  );
   const families = yield* SessionFamilyStorage;
   const sessions = yield* CakeSessionRuntimes;
   const configuration = yield* ProjectSessionConfiguration;
@@ -195,8 +200,6 @@ export const route: (
   const threadId = pending?.threadId ?? input.threadId ?? crypto.randomUUID();
   const replyToMessageId = pending?.requestMessageId ?? input.replyToMessageId;
   const delivery = immediateDelivery(destinationSnapshot.streaming, input.delivery);
-  if (delivery === "fyi" && (input.resultDelivery === "reply" || input.inputRefs?.length))
-    return yield* routingError("A passive FYI cannot request continuation or forward attachments");
   const resultDelivery = delivery === "fyi" ? "ignore" : (input.resultDelivery ?? "notification");
   const expectsResponse = resultDelivery !== "ignore";
   const messageMetadata = {

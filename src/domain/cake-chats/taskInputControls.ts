@@ -3,6 +3,7 @@ import { AppWorkspaceView } from "../../contracts/application/app-workspace-view
 import { messageRefsSchema } from "../../contracts/conversations/message-reference";
 import { appendMessageReferences } from "../../contracts/conversations/message-reference-forwarding";
 import { inputRefsSchema } from "../../contracts/conversations/task-input";
+import { SessionMessageDeliveryOptions } from "../../contracts/conversations/session-message-delivery";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 import { jsonObjectSchema, type JsonValue } from "../../contracts/serialization/json-contract";
 import type { AttachmentUploadError } from "../../contracts/filesystem/attachment-uploads-errors";
@@ -65,6 +66,8 @@ export const forwardTaskInputControl = Effect.fn("CakeChats.forwardTaskInputCont
   ownerSessionId: string,
   invocation: { readonly name: string; readonly arguments: JsonValue },
 ) {
+  if (invocation.name === "sessions.send" || invocation.name === "sessions.reply")
+    yield* Schema.decodeUnknownEffect(SessionMessageDeliveryOptions)(invocation.arguments);
   if (invocation.name !== "sessions.create" && invocation.name !== "sessions.send")
     return invocation;
   const args = yield* Schema.decodeUnknownEffect(jsonObjectSchema)(invocation.arguments);

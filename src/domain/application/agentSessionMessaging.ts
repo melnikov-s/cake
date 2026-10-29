@@ -1,6 +1,9 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { snapshotPromptFiles } from "../../services/filesystem/prompt-files";
-import { immediateDelivery } from "../../contracts/conversations/session-message-delivery";
+import {
+  immediateDelivery,
+  SessionMessageDeliveryOptions,
+} from "../../contracts/conversations/session-message-delivery";
 import { isCakeChatSessionId } from "../../contracts/cake-chats/cake-chat-identity";
 import * as cakeChatTargets from "../cake-chats/cakeChatTargets";
 import type { AgentControlCaller } from "./agentControl";
@@ -119,6 +122,8 @@ export const invoke = Effect.fn("AgentSessionMessaging.invoke")(function* (
   >,
   caller: AgentControlCaller,
 ) {
+  if (invocation.name === "sessions.send" || invocation.name === "sessions.reply")
+    yield* Schema.decodeUnknownEffect(SessionMessageDeliveryOptions)(invocation.arguments);
   const coordination = yield* SessionCoordination;
   const { name: command, arguments: input } = invocation;
   const text =
@@ -209,14 +214,6 @@ export const invoke = Effect.fn("AgentSessionMessaging.invoke")(function* (
       sessionId: targetSessionId,
     }));
   const delivery = immediateDelivery(status?.streaming, args.delivery);
-  if (
-    delivery === "fyi" &&
-    (args.resultDelivery === "reply" ||
-      (invocation.name === "sessions.send" && invocation.arguments.inputRefs?.length))
-  )
-    return fail(
-      "A passive FYI cannot request continuation or forward attachments. Use message references, or an explicit immediate assignment instead.",
-    );
   const resultDelivery = delivery === "fyi" ? "ignore" : (args.resultDelivery ?? "notification");
   const expectsResponse = resultDelivery !== "ignore";
   const messageId = crypto.randomUUID();

@@ -1,4 +1,4 @@
-import { SessionMessageDelivery } from "./session-message-delivery";
+import { SessionMessageDelivery, sessionMessageDeliveryCheck } from "./session-message-delivery";
 import { ResultDelivery } from "./result-delivery";
 import { Schema } from "effect";
 
@@ -18,7 +18,7 @@ export const SessionSendBatchInput = Schema.Struct({
   maxMessages: Schema.optionalKey(
     Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(1_000)),
   ),
-});
+}).check(sessionMessageDeliveryCheck);
 export interface SessionSendBatchInput extends Schema.Schema.Type<typeof SessionSendBatchInput> {}
 
 /** Deliberately omit message text and large/advisory single-send projections. */

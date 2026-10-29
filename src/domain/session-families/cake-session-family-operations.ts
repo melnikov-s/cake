@@ -1,5 +1,8 @@
 import { sessionMessageDeliveryGuidance } from "../../contracts/conversations/session-message-delivery";
-import { SessionMessageDelivery } from "../../contracts/conversations/session-message-delivery";
+import {
+  SessionMessageDelivery,
+  sessionMessageDeliveryCheck,
+} from "../../contracts/conversations/session-message-delivery";
 import {
   ResultDelivery,
   resultDeliveryGuidance,
@@ -234,7 +237,7 @@ export function createSessionFamilyOperations(
         ),
         resultDelivery: Schema.optionalKey(ResultDelivery),
         replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
-      }),
+      }).check(sessionMessageDeliveryCheck),
       examples: [
         {
           input: {
@@ -295,7 +298,7 @@ export function createSessionFamilyOperations(
         promptFiles: Schema.optionalKey(promptFilesSchema),
         outcome: Schema.optionalKey(Schema.Literals(["completed", "blocked", "failed"])),
         resultKind: Schema.optionalKey(Schema.Literals(["ready", "investigation"])),
-      }),
+      }).check(sessionMessageDeliveryCheck),
       examples: [{ input: { text: "Completed the review; focused tests pass." } }],
       result:
         "A correlated delivery receipt with the safely bound reply target and response expectation.",

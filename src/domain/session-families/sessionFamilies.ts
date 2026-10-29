@@ -7,6 +7,7 @@ import type { ResultDelivery } from "../../contracts/conversations/result-delive
 import {
   immediateDelivery,
   type SessionMessageDelivery,
+  SessionMessageDeliveryOptions,
 } from "../../contracts/conversations/session-message-delivery";
 import { isReferenceNotification } from "../../contracts/conversations/reference-notification";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
@@ -786,6 +787,9 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
     location: ProjectSessionLocation,
     senderContext?: CrossSessionContextSnapshot,
   ) {
+    yield* Schema.decodeUnknownEffect(SessionMessageDeliveryOptions)(input).pipe(
+      Effect.mapError((error) => failure(error.message)),
+    );
     const storage = yield* SessionFamilyStorage;
     const state = yield* storage.state();
     const expectsResponse =
@@ -951,8 +955,6 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
     }
     const delivery = immediateDelivery(snapshot.streaming, input.delivery);
     if (delivery === "fyi") {
-      if (input.resultDelivery === "reply" || attachments.length)
-        return yield* failure("A passive FYI cannot request continuation or forward attachments");
       const prepared = parseCrossSessionMessage(encoded);
       yield* storage.deferPassiveNotice({
         id: messageId,

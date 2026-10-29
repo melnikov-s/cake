@@ -1,4 +1,7 @@
-import { SessionMessageDelivery } from "../conversations/session-message-delivery";
+import {
+  SessionMessageDelivery,
+  sessionMessageDeliveryCheck,
+} from "../conversations/session-message-delivery";
 import {
   SessionCompactInput,
   SessionCompactBatchInput,
@@ -121,9 +124,9 @@ export const BackendAgentInvocation = Schema.Union([
       maxMessages: Schema.optionalKey(
         Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(1000)),
       ),
-    }),
+    }).check(sessionMessageDeliveryCheck),
   ),
-  operation("sessions.reply", Schema.Struct(message)),
+  operation("sessions.reply", Schema.Struct(message).check(sessionMessageDeliveryCheck)),
   operation("sessions.reports", AgentListInput),
   operation("sessions.reports.read", PendingReportRead),
   operation("sessions.reports.acknowledge", PendingReportAcknowledge),
