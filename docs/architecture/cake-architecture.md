@@ -475,7 +475,7 @@ is a refactoring signal, not precedent.
   invalid or unavailable attribution ends it and leaves the turn ungrouped.
   Known incoming session/subagent/exact-message associations are projected without a model call.
   Task-switch headings read current to-do title/status/state live and sit above their messages,
-  aligned toward the transcript's left inset rather than the centered reading column,
+  with a modest outdent from the centered reading column, bounded by the transcript's left inset,
   without a border alongside the heading. The continuation rule begins below
   the complete title/status heading at every width. Wrapping headings retain their height
   in the reading flow, and consecutive sections leave a gap in the rule. Wide artifacts/widgets

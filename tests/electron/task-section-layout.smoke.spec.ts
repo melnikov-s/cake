@@ -72,7 +72,8 @@ for (const theme of ["dark", "light"] as const)
           expect(labelBounds.y + labelBounds.height).toBeLessThanOrEqual(
             rowBounds.y + rowBounds.height,
           );
-          expect(labelBounds.x).toBeLessThanOrEqual(paneBounds.x + 32);
+          expect(rowBounds.x - labelBounds.x).toBeLessThanOrEqual(96);
+          if (width === 1800) expect(rowBounds.x - labelBounds.x).toBe(96);
           expect(labelBounds.x).toBeLessThanOrEqual(railBounds.x);
           expect(labelBounds.y - rowBounds.y).toBe(32);
           expect(railBounds.y).toBeGreaterThanOrEqual(labelBounds.y + labelBounds.height + 12);

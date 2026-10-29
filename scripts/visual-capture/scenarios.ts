@@ -2578,7 +2578,7 @@ const projectChatTaskRails: VisualCaptureScenario = {
     const railBounds = (await row.locator('[data-slot="margin-rail"]').boundingBox())!;
     expect(railBounds.y).toBeGreaterThanOrEqual(labelBounds!.y + labelBounds!.height + 12);
     expect(railBounds.y).toBeLessThanOrEqual(messageBounds!.y);
-    expect(labelBounds!.x).toBeLessThanOrEqual(transcriptBounds.x + 32);
+    expect(rowBounds!.x - labelBounds!.x).toBeLessThanOrEqual(96);
     expect(labelBounds!.x).toBeLessThanOrEqual(railBounds.x);
     expect(await transcript.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
       true,
