@@ -154,18 +154,20 @@ export function NavigationHighlight({
       className={cn("relative isolate", className)}
       {...props}
     >
-      <div
-        ref={selectionRef}
-        aria-hidden="true"
-        data-slot="navigation-selection"
-        className="pointer-events-none absolute left-0 top-0 -z-10 rounded-md bg-sidebar-active opacity-0 transition-opacity duration-200 data-[visible=true]:opacity-100 motion-reduce:transition-none"
-      />
-      <div
-        ref={hoverRef}
-        aria-hidden="true"
-        data-slot="navigation-hover"
-        className="pointer-events-none absolute left-0 top-0 -z-10 rounded-md bg-sidebar-hover opacity-0 transition-opacity duration-150 data-[visible=true]:opacity-100 motion-reduce:transition-none"
-      />
+      {/* Fading or moving layers can retain an old row's geometry after collapse.
+          Clip only decorations so they cannot extend the ancestor's scroll range. */}
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 overflow-clip">
+        <div
+          ref={selectionRef}
+          data-slot="navigation-selection"
+          className="absolute left-0 top-0 rounded-md bg-sidebar-active opacity-0 transition-opacity duration-200 data-[visible=true]:opacity-100 motion-reduce:transition-none"
+        />
+        <div
+          ref={hoverRef}
+          data-slot="navigation-hover"
+          className="absolute left-0 top-0 rounded-md bg-sidebar-hover opacity-0 transition-opacity duration-150 data-[visible=true]:opacity-100 motion-reduce:transition-none"
+        />
+      </div>
       {children}
     </div>
   );
