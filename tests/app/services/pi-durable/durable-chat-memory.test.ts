@@ -364,7 +364,51 @@ it("bounds one oversized original to a single-request input with its head and ta
   expect(input).toContain("HEAD_MARK");
   expect(input).toContain("TAIL_MARK");
   expect(input).toContain("bytes omitted; zoom for the original");
-  expect((await f.memory.zoom(0, 1, signal())).text).toContain(original);
+  const pages: string[] = [];
+  let offset: number | null = 0;
+  while (offset !== null) {
+    const page = await f.memory.zoom(0, 1, signal(), { offset });
+    expect(page.text.length).toBeLessThanOrEqual(8_000);
+    expect(page.page).toMatchObject({ offset, totalChars: expect.any(Number) });
+    pages.push(page.text);
+    if (!page.page) throw new Error("Missing continuation metadata");
+    offset = page.page.nextOffset;
+  }
+  expect(pages.join("")).toContain(original);
+});
+
+it("explains aligned ranges and original-only paging, while preserving small originals and inline images", async () => {
+  const f = await fixture();
+  const image = { type: "image" as const, mimeType: "image/png", data: "retained-pixels" };
+  const original = await f.root.commit(
+    (tx) =>
+      tx.appendEntry(UserEntry, f.root.id, {
+        model: [
+          { role: "user", content: [{ type: "text", text: "Look here" }, image], timestamp: 1 },
+        ],
+      }),
+    BACKGROUND_CONTEXT,
+  );
+  await f.append("Second dialogue");
+  await f.view();
+  const small = await f.memory.zoom(0, 1, signal());
+  expect(small.text).toContain("Look here");
+  expect(small.messages).toEqual(original.model);
+  expect(small.page).toMatchObject({
+    entryId: original.id,
+    offset: 0,
+    totalChars: small.text.length,
+    nextOffset: null,
+  });
+  await expect(f.memory.zoom(0, 3, signal())).rejects.toThrow("n is a power of two");
+  await expect(f.memory.zoom(1, 2, signal())).rejects.toThrow("id must be divisible by n");
+  await expect(f.memory.zoom(20, 1, signal())).rejects.toThrow("archive_search");
+  await expect(f.memory.zoom(0, 2, signal(), { offset: 0 })).rejects.toThrow("expand to n=1 first");
+  await expect(f.memory.zoom(0, 1, signal(), { offset: -1 })).rejects.toThrow("start at 0");
+  await expect(f.memory.zoom(0, 1, signal(), { offset: small.text.length + 1 })).rejects.toThrow(
+    "follow nextOffset",
+  );
+  await expect(f.memory.zoom(0, 1, signal(), { maxChars: 8001 })).rejects.toThrow("1 to 8000");
 });
 
 it("uses a 512-byte ruler and same-conversation shortening feedback, retaining the shortest of five attempts", async () => {

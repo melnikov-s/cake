@@ -16,9 +16,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import {
-  createDurableConversationRecallTools,
-  durableConversationRecallInstructions,
-} from "../../../../src/services/pi-durable/durable-conversation-recall";
+  createDurableArchiveRecallTools,
+  durableArchiveRecallInstructions,
+} from "../../../../src/services/pi-durable/durable-archive-recall";
 import { openDurableChatEngine } from "../../../../src/services/pi-durable/durable-chat-engine";
 import { durableInputText } from "../../../../src/services/pi-durable/durable-input-presentation";
 import { durableAnswer, durableModels } from "../../../fixtures/durable-chat";
@@ -36,7 +36,7 @@ async function fixture(
   answer?: Parameters<typeof durableModels>[0],
 ) {
   const models = durableModels(answer);
-  const tools = createDurableConversationRecallTools({ sessionId, storage });
+  const tools = createDurableArchiveRecallTools({ sessionId, storage });
   const registry = createRegistry();
   registry.install(defineExtension({ name: "recall", tools: [...tools] }));
   const engine = await openDurableChatEngine({
@@ -45,7 +45,7 @@ async function fixture(
     registry,
     agent: {
       model: { provider: "fixture", modelId: "fixture" },
-      instructions: durableConversationRecallInstructions(sessionId),
+      instructions: durableArchiveRecallInstructions(sessionId),
       tools: [...tools],
     },
     memory: { budget: () => 4_000, summarize: async () => "user: compressed decision" },
@@ -178,6 +178,33 @@ it("searches originals outside memory and reads dialogue, tool arguments and fai
   expect(await f.engine.root.context(BACKGROUND_CONTEXT)).toEqual(before);
 });
 
+it("retains direct authorized user and assistant dialogue access without a Zoom prerequisite", async () => {
+  const f = await fixture();
+  const user = await f.append("archive-dialogue user decision");
+  const assistant = await f.engine.root.commit(
+    (tx) =>
+      tx.appendEntry(AssistantEntry, f.engine.root.id, {
+        model: [durableAnswer("archive-dialogue assistant answer")],
+      }),
+    BACKGROUND_CONTEXT,
+  );
+  await f.engine.index(new AbortController().signal);
+  // Policy is Zoom-first, not a runtime ordering gate or a tool-record-only boundary.
+  const found = await f.search({ query: "archive-dialogue" });
+  expect(found.matches.map((match: { entryId: number }) => match.entryId)).toEqual([
+    user.id,
+    assistant.id,
+  ]);
+  expect(await f.read({ entryId: user.id })).toMatchObject({
+    role: "user",
+    text: "archive-dialogue user decision",
+  });
+  expect(await f.read({ entryId: assistant.id })).toMatchObject({
+    role: "assistant",
+    text: "archive-dialogue assistant answer",
+  });
+});
+
 it("matches literal paths, quotes and newlines and applies role filters before pagination", async () => {
   const f = await fixture();
   const literal = 'C:\\work\\"quoted"\nsecond line';
@@ -254,7 +281,7 @@ it("uses memory-derived inclusive bounds to search only a summary's originals ac
   await expect(f.search({ fromEntryId: b.id, throughEntryId: a.id })).rejects.toThrow(
     "fromEntryId must not exceed throughEntryId",
   );
-  expect(durableConversationRecallInstructions(sessionId)).toContain(
+  expect(durableArchiveRecallInstructions(sessionId)).toContain(
     "fromEntryId=A and throughEntryId=B",
   );
 });
@@ -383,7 +410,7 @@ it("keeps the stable reference, original lookup and memory state across SQLite r
   );
   await input.wait(BACKGROUND_CONTEXT);
   expect(JSON.stringify(reopened.models.requests.at(-1))).toContain(conversationRef);
-  expect(JSON.stringify(reopened.models.requests.at(-1))).toContain("conversation_search");
+  expect(JSON.stringify(reopened.models.requests.at(-1))).toContain("archive_search");
 });
 
 it("keeps the largest escaped text page valid through SDK output limits", async () => {
@@ -394,7 +421,7 @@ it("keeps the largest escaped text page valid through SDK output limits", async 
           {
             type: "toolCall",
             id: "bounded",
-            name: "conversation_read",
+            name: "archive_read",
             arguments: { entryId: targetId, maxChars: 8_000 },
           },
         ])
@@ -424,13 +451,13 @@ it("validates retrieval bounds in the real tool loop", async () => {
           {
             type: "toolCall",
             id: "bad-search",
-            name: "conversation_search",
+            name: "archive_search",
             arguments: { limit: 21 },
           },
           {
             type: "toolCall",
             id: "bad-read",
-            name: "conversation_read",
+            name: "archive_read",
             arguments: { entryId: 0, maxChars: 8_001 },
           },
         ])
@@ -459,7 +486,7 @@ it("executes recall through the real tool loop and keeps guidance through contex
           {
             type: "toolCall",
             id: "recall",
-            name: "conversation_read",
+            name: "archive_read",
             arguments: { entryId: targetId },
           },
         ])

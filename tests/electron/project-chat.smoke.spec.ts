@@ -473,16 +473,7 @@ test("Project Chat isolates history and restores its root workspace, while globa
     const skillRequest = JSON.parse(requests[2]);
     expect(
       skillRequest.tools.map((tool: { function: { name: string } }) => tool.function.name).sort(),
-    ).toEqual([
-      "bash",
-      "cake",
-      "conversation_read",
-      "conversation_search",
-      "date",
-      "mcp",
-      "read",
-      "zoom",
-    ]);
+    ).toEqual(["archive_read", "archive_search", "bash", "cake", "date", "mcp", "read", "zoom"]);
 
     // Mouse selection completes without sending; Enter on a filtered option executes.
     await input.fill("/skill:global");

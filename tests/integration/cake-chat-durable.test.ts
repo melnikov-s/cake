@@ -950,16 +950,24 @@ it("uses production SQLite, existing credentials and exact originals across reop
   const description = (name: string) => offered?.find((tool) => tool.name === name)?.description;
   expect(description("zoom")).toContain("Primary entry point for dialogue represented");
   expect(description("zoom")).toContain("not full tool records");
-  expect(description("conversation_search")).toContain("Supplements Zoom");
-  expect(description("conversation_search")).toContain("use Zoom first for dialogue");
-  expect(description("conversation_read")).toContain("section=record supplements Zoom");
+  expect(description("archive_search")).toContain("Supplements Zoom");
+  expect(description("archive_search")).toContain("use Zoom first for dialogue");
+  expect(description("archive_read")).toContain("section=record supplements Zoom");
+  expect(description("archive_search")).toContain("user/assistant dialogue");
+  expect(description("archive_read")).toContain(
+    "including user/assistant dialogue or tool evidence",
+  );
+  expect(description("zoom")).toContain("nextOffset");
+  const zoomParameters = offered?.find((tool) => tool.name === "zoom")?.parameters;
+  expect(JSON.stringify(zoomParameters)).toContain("power-of-two");
+  expect(JSON.stringify(zoomParameters)).toContain("divisible by n");
   expect(JSON.stringify(f.requests[0])).toContain("supplement rather than replace Zoom");
   expect(offered?.map((tool) => tool.name)).toEqual([
     "cake",
     "zoom",
     "date",
-    "conversation_search",
-    "conversation_read",
+    "archive_search",
+    "archive_read",
     "read",
     "bash",
     "mcp",
@@ -1003,6 +1011,85 @@ it("uses production SQLite, existing credentials and exact originals across reop
   expect(
     snapshot.parts.filter((part) => part.kind === "text" && part.role === "user"),
   ).toHaveLength(2);
+});
+
+it("retrieves a large dialogue original to its tail across bounded Zoom pages through the SDK loop", async () => {
+  const f = await fixture();
+  // Exceeds both SDK output limits; control characters also exercise JSON expansion.
+  const original = `HEAD_MARK\n${"\u0000".repeat(9_000)}${"\n界😀".repeat(12_000)}\nTAIL_MARK`;
+  expect(Buffer.byteLength(original)).toBeGreaterThan(50 * 1024);
+  expect(original.split("\n").length).toBeGreaterThan(2_000);
+  f.answer(() => durableAnswer(original));
+  const first = await f.open();
+  await first.runtime.prompt("Keep this original", "prompt", [], false, ids.first);
+  await first.close();
+  const before = f.requests.length;
+  const Page = Schema.Struct({
+    id: Schema.Number,
+    n: Schema.Number,
+    entryId: Schema.Number,
+    text: Schema.String,
+    offset: Schema.Number,
+    totalChars: Schema.Number,
+    nextOffset: Schema.NullOr(Schema.Number),
+  });
+  const pages: Array<Schema.Schema.Type<typeof Page>> = [];
+  const outputs: string[] = [];
+  f.answer((index) => {
+    let offset = 0;
+    if (index > before + 1) {
+      const result = f.requests
+        .at(-1)
+        ?.messages.findLast(
+          (message) => message.role === "toolResult" && message.toolName === "zoom",
+        );
+      if (result?.role !== "toolResult") throw new Error("Missing SDK Zoom result");
+      const output = result.content
+        .flatMap((block) => (block.type === "text" ? [block.text] : []))
+        .join("");
+      outputs.push(output);
+      const page = Schema.decodeUnknownSync(Page)(JSON.parse(output));
+      pages.push(page);
+      if (page.nextOffset === null || pages.length > 30) return durableAnswer("Read the tail");
+      offset = page.nextOffset;
+    }
+    return durableAnswer("", [
+      {
+        type: "toolCall",
+        id: `zoom-page-${pages.length}`,
+        name: "zoom",
+        arguments: { id: 1, n: 1, offset },
+      },
+    ]);
+  });
+  const reopened = await f.open();
+  await reopened.runtime.prompt(
+    "Retrieve the complete saved original",
+    "prompt",
+    [],
+    false,
+    ids.second,
+  );
+  expect(JSON.stringify(f.requests[before])).not.toContain("TAIL_MARK");
+  expect(pages.length).toBeGreaterThan(1);
+  expect(pages.at(-1)?.nextOffset).toBeNull();
+  expect(pages.at(-1)?.text).toContain("TAIL_MARK");
+  const combined = pages.map((page) => page.text).join("");
+  expect(combined.slice(combined.indexOf("talk: ") + 6)).toBe(original);
+  for (const [index, page] of pages.entries()) {
+    expect(page).toMatchObject({
+      id: 1,
+      n: 1,
+      entryId: pages[0]?.entryId,
+      totalChars: combined.length,
+    });
+    expect(page.offset).toBe(index === 0 ? 0 : pages[index - 1]?.nextOffset);
+    expect(page.text.length).toBeLessThanOrEqual(8_000);
+  }
+  for (const output of outputs) {
+    expect(Buffer.byteLength(output)).toBeLessThan(50 * 1024);
+    expect(output.split("\n").length).toBeLessThan(2_000);
+  }
 });
 
 it.each(["global", "project"])(

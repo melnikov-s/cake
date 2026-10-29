@@ -712,13 +712,18 @@ export function createDurableChatMemory(
       id % n !== 0 ||
       id + n > current.count
     )
-      throw new Error(`No memory line ${id}+${n}`);
+      throw new Error(
+        `No memory line ${id}+${n}. Use an existing id+n from <chat> or Zoom children: id is a nonnegative integer, n is a power of two (1, 2, 4, ...), id must be divisible by n, and the range must be indexed. For an unavailable range, use archive_search with the old line's [originals=A..B] bounds or a specific query, then archive_read.`,
+      );
     const pending = current.pending?.jobs.find(
       (job) => job.id === id && job.n === n && job.entry !== undefined,
     );
     if (pending?.entry !== undefined) return node(pending.entry, signal);
     const rootRef = current.forest.find((range) => range.id <= id && range.id + range.n >= id + n);
-    if (!rootRef) throw new Error(`No memory line ${id}+${n}`);
+    if (!rootRef)
+      throw new Error(
+        `Memory line ${id}+${n} is not ready. Use another current <chat> range, or archive_search with its [originals=A..B] bounds, then archive_read.`,
+      );
     let found = await node(rootRef.entry, signal);
     while (found.n > n) {
       if (!found.children) throw new Error("Cake Chat summary has no children");
@@ -743,21 +748,48 @@ export function createDurableChatMemory(
       )
     )
       throw new Error(
-        "This memory range is no longer in the active memory index. Read original history until the next memory handoff.",
+        "The memory index was rebuilt; this id+n handle is stale and may now identify different history. Do not retry these coordinates. Use archive_search with [originals=A..B] from the old memory line (fromEntryId=A, throughEntryId=B), or a specific query if it has no bounds, then archive_read. Fresh Zoom handles arrive in <chat> at the next memory handoff; only then use those refreshed ranges.",
       );
     return found;
   };
 
-  const zoom = async (id: number, n: number, signal: AbortSignal) => {
+  const zoom = async (
+    id: number,
+    n: number,
+    signal: AbortSignal,
+    page: { offset?: number; maxChars?: number } = {},
+  ) => {
+    const offset = page.offset ?? 0;
+    const maxChars = page.maxChars ?? 8_000;
+    if (!Number.isSafeInteger(offset) || offset < 0)
+      throw new Error("offset must be a nonnegative UTF-16 character offset; start at 0");
+    if (!Number.isSafeInteger(maxChars) || maxChars < 1 || maxChars > 8_000)
+      throw new Error("maxChars must be an integer from 1 to 8000");
+    if (n !== 1 && (page.offset !== undefined || page.maxChars !== undefined))
+      throw new Error("offset and maxChars page originals only; expand to n=1 first");
     const found = await lookup(id, n, signal);
     if (found.n === 1) {
       if (found.original === undefined) throw new Error("Cake Chat summary has no original");
       const original = (await storage.entry(root.id, entryId(found.original), contextFor(signal)))
         ?.entry;
       if (!original) throw new Error("Cake Chat original is missing");
+      const text = `${id}+0|[originals=${found.original}..${found.original}] ${sourceText(original)}`;
+      if (offset > text.length)
+        throw new Error(
+          `offset exceeds this original's ${text.length} UTF-16 characters; start at 0 or follow nextOffset`,
+        );
+      const slice = text.slice(offset, offset + maxChars);
       return {
-        text: `${id}+0|[originals=${found.original}..${found.original}] ${sourceText(original)}`,
+        text: slice,
         messages: original.model ?? [],
+        page: {
+          id,
+          n: 1,
+          entryId: found.original,
+          offset,
+          totalChars: text.length,
+          nextOffset: offset + slice.length < text.length ? offset + slice.length : null,
+        },
       };
     }
     const children = await Promise.all(found.children!.map((ref) => node(ref, signal)));

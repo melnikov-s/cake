@@ -473,8 +473,13 @@ it.each([1, 2])(
     );
     expect(summarize).not.toHaveBeenCalled();
     expect((await reopened.root.context(BACKGROUND_CONTEXT)).messages).toEqual(active.messages);
-    await expect(reopened.memory.zoom(0, 1, signal())).rejects.toThrow("Read original history");
-    await expect(reopened.memory.inspect(0, 1, signal())).rejects.toThrow("Read original history");
+    await expect(reopened.memory.zoom(0, 1, signal())).rejects.toThrow("handle is stale");
+    await expect(reopened.memory.zoom(0, 1, signal())).rejects.toThrow(
+      "fromEntryId=A, throughEntryId=B",
+    );
+    await expect(reopened.memory.inspect(0, 1, signal())).rejects.toThrow(
+      "Fresh Zoom handles arrive",
+    );
     const view = await reopened.memory.synchronize(signal());
     await reopened.root.commit(
       (tx) =>

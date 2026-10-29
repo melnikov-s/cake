@@ -61,9 +61,9 @@ import {
 } from "./durable-message-references";
 import { toJsonValue } from "../../utils/to-json-value";
 import {
-  createDurableConversationRecallTools,
-  durableConversationRecallInstructions,
-} from "./durable-conversation-recall";
+  createDurableArchiveRecallTools,
+  durableArchiveRecallInstructions,
+} from "./durable-archive-recall";
 
 import { durableChatDatabase } from "./durable-chat-location";
 import { createDurableChatCatalog } from "./durable-chat-catalog";
@@ -133,7 +133,7 @@ export async function createDurableCakeChatRuntime(
   const instructions = () =>
     [
       coordinatorSystemPrompt(preferences.preferences().instructions, cakeDocsDirectory),
-      durableConversationRecallInstructions(sessionId),
+      durableArchiveRecallInstructions(sessionId),
       options.additionalSystemPrompt,
       options.cakeChatSystemPrompt?.(),
       commands.instructions(),
@@ -278,19 +278,54 @@ export async function createDurableCakeChatRuntime(
   const zoom = defineTool({
     name: "zoom",
     description:
-      "Primary entry point for dialogue represented in compressed memory: open the relevant id+n range into its two children; n=1 returns original dialogue and retained inline images, not full tool records. Use conversation_search/conversation_read for unlocated material or omitted evidence; read section=record for recorded tool details.",
-    parameters: Type.Object({ id: Type.Integer({ minimum: 0 }), n: Type.Integer({ minimum: 1 }) }),
+      "Primary entry point for dialogue represented in compressed memory: expand only relevant id+n branches into their two children, not the whole tree; n=1 returns paginated original dialogue and retained inline images, not full tool records. Leaf output is JSON with text, entryId, offset, totalChars and nextOffset: continue with the same id,n and nextOffset as offset until null. Images accompany the first page only. Use archive_search/archive_read for omitted or unlocated evidence, exact tool records, or when Zoom is unavailable/truncated.",
+    parameters: Type.Object({
+      id: Type.Integer({
+        minimum: 0,
+        maximum: Number.MAX_SAFE_INTEGER,
+        description:
+          "Memory range start from <chat> or Zoom children, not an original entryId. Must be divisible by n.",
+      }),
+      n: Type.Integer({
+        minimum: 1,
+        maximum: Number.MAX_SAFE_INTEGER,
+        description:
+          "Indexed, aligned power-of-two range size: 1, 2, 4, 8, ...; id must be divisible by n. Use n=1 for an original.",
+      }),
+      offset: Type.Optional(
+        Type.Integer({
+          minimum: 0,
+          maximum: Number.MAX_SAFE_INTEGER,
+          description:
+            "n=1 only. UTF-16 character offset in the returned original text, including its header. Start at 0; follow nextOffset with the same id,n.",
+        }),
+      ),
+      maxChars: Type.Optional(
+        Type.Integer({
+          minimum: 1,
+          maximum: 8_000,
+          description:
+            "n=1 only. Maximum characters per page (default 8000). Follow nextOffset to retrieve the tail.",
+        }),
+      ),
+    }),
     replay: "safe",
     async execute(input, _api, context) {
       const result = await engine.memory.zoom(
         input.id,
         input.n,
         context.abortSignal ?? new AbortController().signal,
+        { offset: input.offset, maxChars: input.maxChars },
       );
       return {
         output: [
-          { type: "text", text: result.text },
-          ...result.messages.flatMap((message) =>
+          // JSON escapes newlines and bounds even worst-case text escaping below
+          // Durable's 50 KiB / 2,000-line output cap, including continuation metadata.
+          {
+            type: "text",
+            text: result.page ? JSON.stringify({ ...result.page, text: result.text }) : result.text,
+          },
+          ...(input.offset ? [] : result.messages).flatMap((message) =>
             typeof message.content === "string"
               ? []
               : message.content.filter((block) => block.type === "image"),
@@ -322,7 +357,7 @@ export async function createDurableCakeChatRuntime(
     cake,
     zoom,
     date,
-    ...createDurableConversationRecallTools({ sessionId, storage }),
+    ...createDurableArchiveRecallTools({ sessionId, storage }),
     createCakeChatReadTool(),
     createCakeChatBashTool(),
     createCakeChatMcpTool(mcp),

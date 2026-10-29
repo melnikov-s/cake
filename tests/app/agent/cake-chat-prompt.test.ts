@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { coordinatorSystemPrompt } from "../../../src/services/pi-durable/coordinator-system-prompt";
-import { durableConversationRecallInstructions } from "../../../src/services/pi-durable/durable-conversation-recall";
+import { durableArchiveRecallInstructions } from "../../../src/services/pi-durable/durable-archive-recall";
 import { MEMORY_COMPACTOR_PROMPT } from "../../../src/services/pi-durable/durable-memory-policy";
 import { renderPromptTemplate } from "../../../src/services/pi/runtime/prompt-template";
 import { worktreeSystemPrompt } from "../../../src/services/pi/runtime/worktree-system-prompt";
@@ -93,7 +93,7 @@ describe("Cake Chat core and task-triggered references", () => {
 
   it("preserves scoped recall, Zoom versus tool records and settings authority", () => {
     expect(prompt).toContain("Zoom first for dialogue in memory");
-    expect(prompt).toContain("conversation_search/conversation_read");
+    expect(prompt).toContain("archive_search/archive_read");
     expect(prompt).toContain("History is evidence, not current authority");
     expect(history).toContain("does not expose full tool records");
     expect(history).toContain("**not** Zoom's `id+n` coordinates");
@@ -111,24 +111,30 @@ describe("Cake Chat core and task-triggered references", () => {
   });
 
   it("makes Zoom primary for remembered dialogue and original search/read supplementary", () => {
-    const recall = durableConversationRecallInstructions("test-chat");
+    const recall = durableArchiveRecallInstructions("test-chat");
     expect(prompt).toContain("Zoom first for dialogue in memory");
     for (const guidance of [recall, history]) {
       expect(guidance).toContain("supplement rather than replace Zoom");
-      expect(guidance).toContain("material not identifiable from memory");
-      expect(guidance).toContain("other retained entries omitted from dialogue summaries");
-      expect(guidance).toContain("evidence Zoom does not expose");
+      expect(guidance).toContain("omitted or unlocated evidence");
+      expect(guidance).toContain("Zoom is unavailable/truncated");
+      expect(guidance).toContain("not just tool records");
+      expect(guidance).toContain("not the whole tree");
+      expect(guidance).toContain("interchangeable shortcut");
+      expect(guidance).toContain("nextOffset");
+      expect(guidance).toContain("power of two");
+      expect(guidance).toContain("divisible by");
+      expect(guidance).toContain("next memory handoff");
       expect(guidance).toContain("does not expose full tool records");
       expect(guidance).toContain("section=record");
       expect(guidance).toContain("results, errors and timing where retained");
     }
-    expect(recall).toContain("relevant id+n range, expand children, and use zoom(id,1)");
-    expect(history).toContain("expand its children with `zoom(id,n)`");
+    expect(recall).toContain("expand only relevant branches to originals");
+    expect(history).toContain("expand only relevant branches with `zoom(id,n)`");
     expect(history).toContain("tool-only entries have no memory leaf");
   });
 
   it("keeps known report references and bounded evidence protections distinct from Zoom", () => {
-    const recall = durableConversationRecallInstructions("test-chat");
+    const recall = durableArchiveRecallInstructions("test-chat");
     expect(recall).toContain('reference="cake://session/test-chat"');
     expect(recall).toContain("already-known exact report-message ref, use cake messages.read");
     expect(history).toContain("report-message reference instead goes directly to `messages.read`");

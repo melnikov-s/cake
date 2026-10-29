@@ -526,8 +526,16 @@ traffic and reasoning. Live warm context retains tool traffic unchanged; compact
 replaces older dialogue with memory without carrying older tool traffic forward.
 SDK entries remain the source/zoom units, not a second transcript. Zoom is the
 primary entry point for recovering dialogue represented in compressed memory: start
-with the relevant `id+n` range, expand its children, then use `zoom(id,1)` for original
-dialogue and retained inline images. Zoom does not expose full tool records;
+with the relevant `id+n` range, expand only relevant branches to originals, not the
+whole tree, then use `zoom(id,1)` for original dialogue and retained inline images.
+Ranges require power-of-two `n` and `id` divisible by `n`. Leaf output is bounded JSON
+with `text`, `entryId`, `offset`, `totalChars` and `nextOffset`; follow the same `id,n`
+with `nextOffset` as `offset` until null. Offsets count UTF-16 characters including
+the header. Pages default to at most 8,000 characters; JSON escapes newlines and
+keeps even worst-case text escaping below Durable's 50 KiB/2,000-line tool-output
+caps. Inline images accompany the first page only. A rebuilt index must not silently
+resolve stale coordinates to different history: errors direct callers to archive
+bounds/query retrieval until fresh handles arrive at the next memory handoff. Zoom does not expose full tool records;
 excluded tool-only entries have no memory leaf. Findings that appear only in tool
 output are not retained in memory unless reported in dialogue.
 Every rendered memory line also carries runtime-derived `[originals=A..B]` metadata:
@@ -542,10 +550,11 @@ rendered outside stored summary text, counted in view byte budgets, and reconstr
 from existing immutable nodes on restart. No state/node version change or rebuild is
 needed. Existing warm heads remain unchanged until the ordinary next memory handoff.
 The runtime prompt separately carries the stable `cake://session/<id>` conversation
-reference and recall guidance, outside compressed memory. `conversation_search` and
-`conversation_read` supplement rather than replace Zoom: locate material not identifiable
-from memory, retrieve other retained entries omitted from dialogue summaries, or verify
-evidence Zoom does not expose. Search browses/searches this conversation's SQLite
+reference and recall guidance, outside compressed memory. `archive_search` and
+`archive_read` supplement rather than replace Zoom for omitted or unlocated evidence,
+exact tool records, or when Zoom is unavailable/truncated. They retain general authorized
+archive dialogue and tool-evidence access, without a tool-only boundary or ordering gate;
+they are not an interchangeable shortcut for dialogue already represented in memory. Search browses/searches this conversation's SQLite
 originals chronologically through the SDK, including tool calls and results; read pages
 exact original text by default, or a `section=record` JSON record with exact stored
 arguments, results, details, diagnostics, errors and timing where retained. A known exact
