@@ -38,56 +38,14 @@ function renderPersisted(content: string) {
     },
   ]);
   if (part?.kind !== "text") throw new Error("Expected attributed text");
-  render(
-    <MarkdownLinkProvider actions={{ openSession: vi.fn(), openExternalUrl: vi.fn() }}>
-      <ChatTextMessage part={part} />
-    </MarkdownLinkProvider>,
-  );
+  render(<ChatTextMessage part={part} />);
   return part;
 }
 
+// Source navigation and catalog rename/removal now use real RendererRoot providers
+// and Root/Models/Stores in chat-workspace-finish-workflow.test.tsx. Keep these
+// presentation/encoding variants without fake navigation or catalog callbacks.
 describe("cross-session message presentation", () => {
-  it.each(["completed", "blocked", "failed"])(
-    "preserves structured %s reports and navigates by recorded identity",
-    async (outcome) => {
-      const parts = projectSessionEntries([
-        {
-          type: "message",
-          id: "report",
-          parentId: null,
-          timestamp: new Date(0).toISOString(),
-          message: {
-            role: "user",
-            timestamp: 1,
-            content: encodeCrossSessionMessage(
-              `## ${outcome}\n\nReport with **details**.`,
-              metadata,
-            ),
-          },
-        },
-      ]);
-      const part = parts[0];
-      if (part?.kind !== "text") throw new Error("Expected attributed text");
-      const openSession = vi.fn();
-      render(
-        <MarkdownLinkProvider actions={{ openSession, openExternalUrl: vi.fn() }}>
-          <ChatTextMessage part={part} />
-        </MarkdownLinkProvider>,
-      );
-      const region = screen.getByRole("region", { name: "Message from another session" });
-      expect(region.querySelector('[data-slot="message-content"]')).toBeTruthy();
-      expect(screen.getByRole("heading", { name: outcome })).toBeTruthy();
-      expect(screen.getByText("details").getAttribute("data-streamdown")).toBe("strong");
-      expect(screen.getByRole("button", { name: "API review" }).getAttribute("aria-expanded")).toBe(
-        "true",
-      );
-      const link = screen.getByRole("link", { name: "Open conversation" });
-      expect(link.getAttribute("href")).toBe("cake://session/source-session");
-      await userEvent.setup().click(link);
-      expect(openSession).toHaveBeenCalledExactlyOnceWith("source-session");
-    },
-  );
-
   it("does not infer attribution from report-like prose", () => {
     render(
       <ChatTextMessage
