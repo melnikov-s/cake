@@ -72,7 +72,7 @@ export function renderTranscriptFinish(
   });
   const { root } = fixture;
   const session = root.sessionRegistry.load(transcriptFinishSessionId, "/project");
-  root.appShellStore.selectProjectSession(transcriptFinishSessionId);
+  root.navigationStore.selectProjectSession(transcriptFinishSessionId);
   root.projectWorkbenchStore.showLoadedSession(transcriptFinishSessionId);
   root.sessionLayoutStore.ensureSession(transcriptFinishSessionId);
   let revision = 1;
@@ -111,6 +111,9 @@ export function renderTranscriptFinish(
         threads: [thread],
       },
     );
+    session.messageCommentsStore
+      .chatStore(thread.id)
+      ?.transcriptInteraction.setTranscriptScrollPosition({ kind: "top" });
   }
   if (options.waitingForUser)
     root.extensionUiStore.receive({
