@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { ProjectTodoReports } from "../../../src/services/projects/ProjectTodoReports";
 import { it } from "@effect/vitest";
+import { vi } from "vitest";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-identity";
+import { appendMessageReferences } from "../../../src/contracts/conversations/message-reference-forwarding";
+import type { Attachment } from "../../../src/contracts/conversations/session-contract";
+import type { TaskInputReference } from "../../../src/contracts/conversations/task-input";
+import { acquireOptions as chatOptions } from "../../../src/domain/cake-chats/cakeChatRuntime";
+import { deliver } from "../../../src/domain/session-families/sessionFamilies";
+import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import { Cause, Deferred, Effect, Exit, Layer, Queue, Schema, Stream } from "effect";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
@@ -42,6 +50,7 @@ const familyId = "4c41e44b-df48-4dfb-a891-d77748851586";
 const messageId = "0b1bf3dd-458b-4025-8c39-c4f4e2febc0e";
 const queueItemId = "3d7377aa-d150-49a7-a685-81a5eb974e73";
 const caller = { sessionId: "root", location };
+const inputRefId = "088105cf-be48-4b90-84a0-c2ec1cb2da41";
 const addFamily = Effect.gen(function* () {
   yield* (yield* SessionFamilyStorage).addChild({
     familyId,
@@ -303,6 +312,234 @@ it.effect.each([
         assert.ok((yield* Queue.take(received)).includes(text));
       }
     }).pipe(Effect.provide(environment(pi)));
+  }),
+);
+
+it.effect.each(
+  (["family", "coordinator"] as const).flatMap((destination) =>
+    (["completed", "blocked"] as const).flatMap((outcome) =>
+      ([undefined, "ignore"] as const).flatMap((resultDelivery) =>
+        [
+          { payload: "text", messageRefs: [], inputRefs: [] },
+          {
+            payload: "message references",
+            messageRefs: ["cake://session/child?message=evidence"],
+            inputRefs: [],
+          },
+          { payload: "attachments", messageRefs: [], inputRefs: [inputRefId] },
+          {
+            payload: "references and attachments",
+            messageRefs: ["cake://session/child?message=evidence"],
+            inputRefs: [inputRefId],
+          },
+        ].map((payload) => ({ destination, outcome, resultDelivery, ...payload })),
+      ),
+    ),
+  ),
+)("preserves explicit terminal report inputs and settles once (%j)", (scenario) =>
+  Effect.gen(function* () {
+    const targetId = scenario.destination === "family" ? "root" : CAKE_CHAT_SESSION_ID;
+    const received: Array<{ text: string; attachments: readonly Attachment[] }> = [];
+    const admitted = yield* Queue.unbounded<void>();
+    const attachment: TaskInputReference = {
+      kind: "input",
+      id: inputRefId,
+      name: "Evidence",
+      mimeType: "text/plain",
+      byteLength: 12,
+    };
+    const authorizeForward = vi.fn<TaskInputStorage["Service"]["authorizeForward"]>(
+      (_owner, refs) => Effect.succeed(refs),
+    );
+    const grant = vi.fn<TaskInputStorage["Service"]["grant"]>(() => Effect.succeed([attachment]));
+    const resolvedAttachment: Attachment = {
+      kind: "text",
+      name: "Evidence",
+      text: "Test evidence",
+      inputReference: attachment,
+    };
+    const resolve = vi.fn<TaskInputStorage["Service"]["resolve"]>(() =>
+      Effect.succeed([resolvedAttachment]),
+    );
+    const offer = vi.fn<ProjectTodoReports["Service"]["offer"]>(() => Effect.void);
+    const pi = makeCakeSessionRuntimesLayer({
+      sessionIds: () => Stream.empty,
+      catalog: () => Stream.empty,
+      catalogEntry: () => Effect.succeed(undefined),
+      inspect: () => Effect.succeed(undefined),
+      changelog: () => Effect.succeed(""),
+      createRuntime: (options) =>
+        Effect.succeed({
+          ...fakeRuntime(options, () => undefined),
+          sessionId: options.sessionId ?? "unknown",
+          executingTurnIds: () => (options.sessionId === "child" ? ["turn"] : []),
+          snapshot: async () => ({
+            ...snapshot,
+            sessionId: options.sessionId ?? "unknown",
+            parts: received.flatMap(({ text }) => {
+              const parsed = parseCrossSessionMessage(text);
+              return parsed
+                ? [
+                    {
+                      id: parsed.metadata.messageId,
+                      kind: "text" as const,
+                      role: "user" as const,
+                      status: "complete" as const,
+                      text: parsed.text,
+                      crossSession: parsed.metadata,
+                    },
+                  ]
+                : [];
+            }),
+          }),
+          prompt: async (text, _delivery, attachments) => {
+            assert.equal(options.sessionId, targetId);
+            received.push({ text, attachments });
+            await Effect.runPromise(Queue.offer(admitted, undefined));
+          },
+        }),
+    }).pipe(Layer.provide(makeRuntimeRecoveryStorageTestLayer()));
+    yield* Effect.gen(function* () {
+      if (scenario.destination === "family") yield* addFamily;
+      const storage = yield* SessionFamilyStorage;
+      const sessions = yield* CakeSessionRuntimes;
+      yield* sessions.acquire(
+        yield* acquireOptions({ location, sessionId: "child", newSession: false }),
+      );
+      if (scenario.destination === "coordinator")
+        yield* sessions.acquire(
+          yield* chatOptions({
+            configuration: {
+              location: { workingDirectory: "/home", sessionDirectory: "/chat" },
+              agentDirectory: "/cake",
+            },
+            target: { sessionId: targetId, tools: [] },
+            newSession: false,
+          }),
+        );
+      yield* storage.recordTurn({
+        sessionId: "child",
+        senderSessionId: targetId,
+        turnId: "turn",
+        requestMessageId: messageId,
+        threadId: familyId,
+        resultDelivery: "reply",
+        reported: false,
+      });
+      const recordReport = vi.fn(storage.recordReport);
+      const text =
+        scenario.outcome === "completed"
+          ? "Fixed the queue race and verified the regression tests."
+          : "Blocked: the required credentials are unavailable in this environment.";
+      const reportText = appendMessageReferences(text, scenario.messageRefs);
+      const result = yield* route({ sessionId: "child", location }, "sessions.reply", {
+        text,
+        outcome: scenario.outcome,
+        resultKind: "ready",
+        messageRefs: scenario.messageRefs,
+        inputRefs: scenario.inputRefs,
+        ...(scenario.resultDelivery ? { resultDelivery: scenario.resultDelivery } : null),
+      }).pipe(Effect.provideService(SessionFamilyStorage, { ...storage, recordReport }));
+      assert.equal(recordReport.mock.calls.length, 1);
+      assert.deepEqual(recordReport.mock.calls[0], [
+        "turn",
+        {
+          outcome: scenario.outcome,
+          resultKind: "ready",
+          text: reportText,
+        },
+      ]);
+      assert.deepEqual(offer.mock.calls, [[{ sessionId: "child", projectPath: "/project", text }]]);
+      const pending = (yield* storage.state()).turns.find((turn) => turn.turnId === "turn");
+      assert.ok(pending);
+      assert.equal(pending.report?.text, reportText);
+      assert.equal(pending.outcome, undefined);
+      assert.equal(pending.reported, false);
+      if (scenario.inputRefs.length) {
+        const receipt = yield* Schema.decodeUnknownEffect(
+          Schema.Struct({
+            ...SessionSendBatchReceipt.fields,
+            command: Schema.Literal("sessions.reply"),
+          }),
+        )(result);
+        assert.equal(receipt.status, "accepted");
+        assert.equal(receipt.resultDelivery, scenario.resultDelivery ?? "notification");
+        assert.equal(receipt.expectsResponse, scenario.resultDelivery !== "ignore");
+        yield* Queue.take(admitted);
+        assert.equal(received.length, 1);
+        assert.deepEqual(received[0]?.attachments, [
+          scenario.destination === "family" ? resolvedAttachment : attachment,
+        ]);
+        const message = parseCrossSessionMessage(received[0]?.text ?? "");
+        assert.equal(message?.text, reportText);
+        assert.equal(message?.metadata.replyToMessageId, messageId);
+        assert.equal(message?.metadata.threadId, familyId);
+        assert.deepEqual(pending.replyMessageIds, [message?.metadata.messageId]);
+        assert.equal(pending.deliveryTurnId, receipt.turnId);
+        assert.deepEqual(authorizeForward.mock.calls, [["child", scenario.inputRefs, targetId]]);
+        if (scenario.destination === "family") {
+          assert.deepEqual(resolve.mock.calls, [
+            [
+              targetId,
+              [
+                {
+                  kind: "forwarded-input",
+                  name: "Attachment",
+                  reference: inputRefId,
+                },
+              ],
+            ],
+          ]);
+          assert.equal(grant.mock.calls.length, 0);
+        } else {
+          assert.deepEqual(grant.mock.calls, [[targetId, scenario.inputRefs]]);
+          assert.equal(resolve.mock.calls.length, 0);
+        }
+      } else {
+        assert.deepEqual(result, {
+          ok: true,
+          command: "sessions.reply",
+          status: "report-recorded",
+          expectsResponse: false,
+        });
+        assert.equal(received.length, 0);
+        assert.equal(pending.deliveryTurnId, undefined);
+        assert.equal(authorizeForward.mock.calls.length, 0);
+      }
+      yield* storage.settleTurn("turn", "complete");
+      const settled = (yield* storage.state()).turns.find((turn) => turn.turnId === "turn");
+      assert.ok(settled);
+      assert.equal(settled.report?.outcome, scenario.outcome);
+      assert.equal(settled.report?.text, reportText);
+      yield* deliver(settled);
+      if (!scenario.inputRefs.length) {
+        yield* Queue.take(admitted);
+        assert.ok(received[0]?.text.includes(reportText));
+        assert.deepEqual(received[0]?.attachments, []);
+      }
+      // A second worker pass observes the durable transcript receipt, not another send.
+      yield* deliver(settled);
+      assert.equal(
+        (yield* storage.state()).turns.some((turn) => turn.turnId === "turn"),
+        false,
+      );
+      assert.equal(received.length, 1);
+      assert.equal(recordReport.mock.calls.length, 1);
+      assert.equal(authorizeForward.mock.calls.length, scenario.inputRefs.length ? 1 : 0);
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          environment(pi),
+          Layer.mock(TaskInputStorage, {
+            isRecipient: () => Effect.succeed(false),
+            authorizeForward,
+            grant,
+            resolve,
+          }),
+          Layer.mock(ProjectTodoReports, { offer }),
+        ),
+      ),
+    );
   }),
 );
 

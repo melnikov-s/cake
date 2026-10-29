@@ -122,6 +122,8 @@ export const route: (
         )
       : undefined;
   if (command === "sessions.reply" && !pending) return undefined;
+  const messageText = appendMessageReferences(input.text, input.messageRefs ?? []);
+  let recordedReportTurnId: string | undefined;
   if (pending && pending.outcome === undefined && input.outcome) {
     if (!substantiveTurnResult({ stopReason: "stop", text: input.text }))
       return yield* routingError(
@@ -130,19 +132,22 @@ export const route: (
     yield* families.recordReport(pending.turnId, {
       outcome: input.outcome,
       ...(input.resultKind ? { resultKind: input.resultKind } : null),
-      text: input.text,
+      text: messageText,
     });
+    recordedReportTurnId = pending.turnId;
     yield* projectTodoUpdates.offer({
       sessionId,
       projectPath: location.projectPath,
       text: input.text,
     });
-    return toJsonValue({
-      ok: true,
-      command,
-      status: "report-recorded",
-      expectsResponse: false,
-    });
+    // Explicit attachments still need authorization and destination admission below.
+    if (!input.inputRefs?.length)
+      return toJsonValue({
+        ok: true,
+        command,
+        status: "report-recorded",
+        expectsResponse: false,
+      });
   }
   const targetSessionId = pending?.senderSessionId ?? input.sessionId;
   if (!targetSessionId) return yield* routingError("A target session is required");
@@ -220,7 +225,7 @@ export const route: (
     },
   };
   const encoded = encodeCrossSessionMessage(
-    appendMessageReferences(input.text, input.messageRefs ?? []),
+    messageText,
     input.maxMessages === undefined
       ? messageMetadata
       : { ...messageMetadata, maxMessages: input.maxMessages },
@@ -242,24 +247,25 @@ export const route: (
     ? (yield* families.state()).turns.filter((turn) => turn.replyMessageIds?.includes(messageId))
     : [];
   if (substantiveTurnResult({ stopReason: "stop", text: input.text })) {
-    if (preparedRequests.length)
+    if (preparedRequests.length && recordedReportTurnId === undefined)
       yield* projectTodoUpdates.offer({
         sessionId,
         projectPath: location.projectPath,
         text: input.text,
       });
     for (const request of preparedRequests)
-      yield* families.recordReport(request.turnId, {
-        outcome: input.outcome ?? "result",
-        ...(input.resultKind ? { resultKind: input.resultKind } : null),
-        text: input.text,
-      });
+      if (request.turnId !== recordedReportTurnId)
+        yield* families.recordReport(request.turnId, {
+          outcome: input.outcome ?? "result",
+          ...(input.resultKind ? { resultKind: input.resultKind } : null),
+          text: messageText,
+        });
   }
   if (delivery === "fyi") {
     yield* families.deferPassiveNotice({
       id: messageId,
       recipientSessionId: targetSessionId,
-      text: appendMessageReferences(input.text, input.messageRefs ?? []),
+      text: messageText,
       crossSession: messageMetadata,
     });
     if (!preparedRequests.length && substantiveTurnResult({ stopReason: "stop", text: input.text }))

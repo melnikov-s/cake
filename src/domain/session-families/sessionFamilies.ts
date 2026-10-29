@@ -838,6 +838,7 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
       (input.replyToMessageId === undefined || input.replyToMessageId === spawn.sessionId)
     )
       return toJsonValue({ ok: true, command, status: "already-reported", expectsResponse: false });
+    const messageText = appendMessageReferences(input.text, input.messageRefs ?? []);
     if (pending && pending.outcome === undefined && input.resultDelivery !== "reply") {
       if (!substantiveTurnResult({ stopReason: "stop", text: input.text }))
         return yield* failure(
@@ -846,7 +847,7 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
       yield* storage.recordReport(pending.turnId, {
         outcome: input.outcome ?? "result",
         ...(input.resultKind ? { resultKind: input.resultKind } : null),
-        text: appendMessageReferences(input.text, input.messageRefs ?? []),
+        text: messageText,
       });
       yield* projectTodoUpdates.offer({
         sessionId,
@@ -886,10 +887,7 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
     };
     const encoded = yield* prepareCoordinatorNotice(
       targetId,
-      encodeCrossSessionMessage(
-        appendMessageReferences(input.text, input.messageRefs ?? []),
-        metadata,
-      ),
+      encodeCrossSessionMessage(messageText, metadata),
     ).pipe(Effect.mapError((error) => failure(error.message)));
     if (replyToMessageId && pending)
       yield* storage.prepareResponse(
