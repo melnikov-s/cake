@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { renderTranscriptRendering } from "./transcript-rendering-workflow-fixture";
+import { godotDiagram } from "../../fixtures/godot-diagram";
 import * as messageHighlights from "../../../src/renderer/lib/message-highlights";
 import { ChatStore } from "../../../src/renderer/stores/ChatStore";
 import { DiagramTestWorker, installDiagramMeasurement } from "./diagram-browser-fixture";
@@ -267,6 +268,29 @@ describe("Projected transcript rendering workflows", () => {
     await fixture.user.click(trigger);
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
     expect(await screen.findByText("hello")).toBeDefined();
+  });
+
+  it("renders the reported diagram when an unchanged, unclosed live fence settles to history", async () => {
+    installDiagramMeasurement();
+    vi.stubGlobal("Worker", DiagramTestWorker);
+    const live: Extract<UiPart, { kind: "text" }> = {
+      ...answer,
+      id: "live-diagram",
+      entryId: undefined,
+      renderKey: "diagram-response",
+      text: `\`\`\`mermaid\n${godotDiagram}`,
+      status: "streaming",
+    };
+    using fixture = renderTranscriptRendering([live], { streaming: true });
+    expect(await screen.findByText("Waiting for diagram…")).toBeDefined();
+    fixture.publish([{ ...live, id: "saved-diagram", entryId: "saved-entry", status: "complete" }]);
+    await waitFor(() =>
+      expect(fixture.container.querySelector("svg.pele")?.textContent).toContain(
+        "Godot presentation",
+      ),
+    );
+    expect(screen.queryByText("Waiting for diagram…")).toBeNull();
+    expect(screen.queryByText("Diagram could not render")).toBeNull();
   });
 
   it("uses only the diagram toolbar fullscreen for a lone diagram, but retains the response reader for mixed content", async () => {

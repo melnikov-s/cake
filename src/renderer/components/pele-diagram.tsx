@@ -1,6 +1,5 @@
 import { useContext, useEffect, useId, useRef, useState } from "react";
 import type { Zoom } from "pele/core";
-import type { CustomRendererProps } from "streamdown";
 import { CopyButton } from "@/components/ui/copy-button";
 import { IconButton } from "@/components/ui/icon-button";
 import { ResetZoomIcon, ZoomInIcon, ZoomOutIcon } from "@/components/ui/icons";
@@ -8,6 +7,7 @@ import { Callout } from "@/components/ui/callout";
 import { FullscreenButton } from "@/components/ui/fullscreen-button";
 import { LoadingState } from "@/components/ui/loading-state";
 import { DiagramContext } from "../lib/diagram-context";
+import { diagramStreamingIdleTimeoutMs, diagramTimeoutMs } from "../lib/diagram-contract";
 import { isDiagramHref, requestDiagram, sanitizeDiagram } from "../lib/diagram-rendering";
 import { streamingCodeMarker, trimTrailingNewlines } from "./ai-elements/markdown-code-block";
 
@@ -15,12 +15,15 @@ import { streamingCodeMarker, trimTrailingNewlines } from "./ai-elements/markdow
  * enters the DOM; React owns controls and errors, Pele owns canvas gestures. */
 export function PeleDiagram({
   code,
-  isIncomplete = false,
   meta,
   fullscreen = false,
-}: Pick<CustomRendererProps, "code" | "meta"> & { isIncomplete?: boolean; fullscreen?: boolean }) {
+}: {
+  code: string;
+  meta?: string;
+  fullscreen?: boolean;
+}) {
   const { navigate, openFullscreen } = useContext(DiagramContext);
-  const changing = isIncomplete || !!meta?.split(/\s+/).includes(streamingCodeMarker);
+  const changing = !!meta?.split(/\s+/).includes(streamingCodeMarker);
   const source = code.startsWith(`${streamingCodeMarker}\n`)
     ? code.slice(streamingCodeMarker.length + 1)
     : code;
@@ -51,13 +54,24 @@ export function PeleDiagram({
   }, []);
 
   useEffect(() => {
-    if (width === undefined || changing) return;
-    const element = container.current;
-    if (!element) return;
     const abort = new AbortController();
     setError(undefined);
     setSvg(undefined);
-    const render = async () => {
+    // Bound the whole lifecycle, not just the worker: a missing stream-end,
+    // unmeasurable container or pending font load must not leave a spinner forever.
+    // New input restarts the idle deadline, so active streaming stays plain.
+    const timeout = setTimeout(
+      () => {
+        setError(
+          changing
+            ? "Diagram input stopped updating. Copy the code to inspect it, or wait for the response to continue."
+            : "Diagram rendering exceeded five seconds. Reopen it or simplify the diagram.",
+        );
+        abort.abort();
+      },
+      changing ? diagramStreamingIdleTimeoutMs : diagramTimeoutMs,
+    );
+    const render = async (element: HTMLDivElement, width: number) => {
       await document.fonts?.ready;
       if (abort.signal.aborted) return;
       const style = getComputedStyle(element);
@@ -73,11 +87,18 @@ export function PeleDiagram({
       );
       if (!abort.signal.aborted) setSvg(sanitizeDiagram(result));
     };
-    void render().catch((reason: unknown) => {
-      if (!abort.signal.aborted)
-        setError(reason instanceof Error ? reason.message : String(reason));
-    });
-    return () => abort.abort();
+    if (!changing && width !== undefined && container.current) {
+      void render(container.current, width)
+        .catch((reason: unknown) => {
+          if (!abort.signal.aborted)
+            setError(reason instanceof Error ? reason.message : String(reason));
+        })
+        .finally(() => clearTimeout(timeout));
+    }
+    return () => {
+      clearTimeout(timeout);
+      abort.abort();
+    };
   }, [source, width, changing, idPrefix]);
 
   useEffect(() => {
@@ -140,20 +161,20 @@ export function PeleDiagram({
           />
         )}
       </div>
-      {changing ? (
+      {error ? (
+        <>
+          <Callout variant="error" role="alert">
+            <strong>Diagram could not render</strong>
+            <span className="text-xs">{error}</span>
+          </Callout>
+          <pre className="mt-2 overflow-auto font-mono text-xs whitespace-pre-wrap">{source}</pre>
+        </>
+      ) : changing ? (
         <>
           <p className="text-xs text-muted-foreground" role="status">
             Waiting for diagram…
           </p>
           <pre className="overflow-auto font-mono text-xs whitespace-pre-wrap">{source}</pre>
-        </>
-      ) : error ? (
-        <>
-          <Callout variant="error">
-            <strong>Diagram could not render</strong>
-            <span className="text-xs">{error}</span>
-          </Callout>
-          <pre className="mt-2 overflow-auto font-mono text-xs whitespace-pre-wrap">{source}</pre>
         </>
       ) : svg ? (
         <div

@@ -400,15 +400,14 @@ export function MarkdownLink({
 
 const configuredPlugins = {
   code: syntaxHighlighter,
-  renderers: [{ component: PeleDiagram, language: "mermaid" }],
 };
 
 const codeLanguagePattern = /language-([^\s]+)/;
 
 /**
- * Gives every fenced block except a diagram the same code snippet, whatever its
- * language. Streamdown's own renderers match only listed languages, so plain or
- * unlabelled fences would otherwise fall back to its separate default block.
+ * Own fenced renderers here rather than through Streamdown's MarkdownCode:
+ * its position-only memoization can retain old diagram source/metadata when
+ * an update leaves the code node's line/column bounds unchanged.
  */
 function MarkdownPre({ node, children }: ComponentProps<"pre"> & ExtraProps) {
   const code = node?.children[0];
@@ -418,22 +417,16 @@ function MarkdownPre({ node, children }: ComponentProps<"pre"> & ExtraProps) {
       (Array.isArray(classes) ? classes.join(" ") : String(classes ?? "")).match(
         codeLanguagePattern,
       )?.[1] ?? "";
-    if (language !== "mermaid") {
-      const text = code.children
-        .map((child) => (child.type === "text" ? child.value : ""))
-        .join("");
-      const meta = code.properties.metastring;
-      return (
-        <MarkdownCodeBlock
-          code={text}
-          language={language}
-          meta={meta == null ? undefined : String(meta)}
-          isIncomplete={false}
-        />
-      );
-    }
+    const text = code.children.map((child) => (child.type === "text" ? child.value : "")).join("");
+    const meta = code.properties.metastring;
+    const metadata = meta == null ? undefined : String(meta);
+    return language === "mermaid" ? (
+      <PeleDiagram code={text} meta={metadata} />
+    ) : (
+      <MarkdownCodeBlock code={text} language={language} meta={metadata} isIncomplete={false} />
+    );
   }
-  // Streamdown's default: mark the child as block code so its diagram renderer runs.
+  // Preserve Streamdown's block-code treatment for other preformatted content.
   return isValidElement<{ "data-block"?: string }>(children)
     ? cloneElement(children, { "data-block": "true" })
     : children;

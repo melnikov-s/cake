@@ -9,6 +9,7 @@ import {
   type Markdown,
 } from "../../../src/renderer/components/ai-elements/markdown";
 import { Tool } from "../../../src/renderer/components/ai-elements/tool";
+import { godotDiagram } from "../../fixtures/godot-diagram";
 import { installDiagramMeasurement } from "./diagram-browser-fixture";
 import type { Client } from "../../../src/renderer/client/Client";
 import {
@@ -601,6 +602,17 @@ describe("Markdown rendering integration", () => {
       expect(fixture.container.querySelector("svg.pele")?.textContent).toContain("Done"),
     );
   });
+
+  it.each(["", "\n```"])(
+    "renders unchanged diagram content when streaming settles (%s)",
+    async (closing) => {
+      const source = "```mermaid\n" + godotDiagram + closing;
+      using fixture = renderMarkdown(source, { props: { streaming: true, mutableCode: true } });
+      expect(await screen.findByText("Waiting for diagram…")).toBeDefined();
+      await fixture.update(source, { streaming: false });
+      await waitFor(() => expect(fixture.container.querySelector("svg.pele")).not.toBeNull());
+    },
+  );
 
   it("adapts Pele layout to resizing and survives a virtualized row remount", async () => {
     const source =

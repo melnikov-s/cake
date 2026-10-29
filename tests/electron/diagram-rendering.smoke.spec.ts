@@ -4,14 +4,19 @@ import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { windowState } from "../fixtures/window-state";
+import { godotDiagram } from "../fixtures/godot-diagram";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-for (const { theme, standalone } of (["light", "dark"] as const).flatMap((theme) => [
-  { theme, standalone: false },
-  { theme, standalone: true },
-])) {
-  test(`Pele diagrams resize, zoom, virtualize and fullscreen (${theme}, ${standalone ? "standalone" : "mixed response"})`, async () => {
+const scenarios = [
+  ...(["light", "dark"] as const).flatMap((theme) => [
+    { theme, standalone: false, godot: false },
+    { theme, standalone: true, godot: false },
+  ]),
+  { theme: "dark" as const, standalone: true, godot: true },
+];
+for (const { theme, standalone, godot } of scenarios) {
+  test(`Pele diagrams resize, zoom, virtualize and fullscreen (${theme}, ${standalone ? "standalone" : "mixed response"}${godot ? ", reported Godot diagram" : ""})`, async () => {
     const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-diagram-rendering-smoke-"));
     const userData = join(temporaryRoot, "user-data");
     const project = join(temporaryRoot, "project");
@@ -22,21 +27,23 @@ for (const { theme, standalone } of (["light", "dark"] as const).flatMap((theme)
       join(cakeHome, "pi", "sessions"),
     );
     const timestamp = new Date(0).toISOString();
-    const diagramMarkdown = [
-      "```mermaid",
-      "graph TD",
-      `%% ${"A detailed pipeline description. ".repeat(20)}`,
-      "  A[Cake application] --> B[Pi agent engine]",
-      "  B --> C[Renderer presentation] --> D[SVG output]",
-      "  D --> E[Authored foreground] --> F[Named color]",
-      "  classDef runtime fill:#fff2cc,stroke:#d6b656",
-      "  class B runtime",
-      "  style C fill:#d5e8d4,stroke:#82b366",
-      "  style D fill:#17365d",
-      "  style E fill:#fff2cc,color:#543800",
-      "  style F fill:rebeccapurple",
-      "```",
-    ].join("\n");
+    const diagramMarkdown = godot
+      ? `\`\`\`mermaid\n${godotDiagram}\n\`\`\``
+      : [
+          "```mermaid",
+          "graph TD",
+          `%% ${"A detailed pipeline description. ".repeat(20)}`,
+          "  A[Cake application] --> B[Pi agent engine]",
+          "  B --> C[Renderer presentation] --> D[SVG output]",
+          "  D --> E[Authored foreground] --> F[Named color]",
+          "  classDef runtime fill:#fff2cc,stroke:#d6b656",
+          "  class B runtime",
+          "  style C fill:#d5e8d4,stroke:#82b366",
+          "  style D fill:#17365d",
+          "  style E fill:#fff2cc,color:#543800",
+          "  style F fill:rebeccapurple",
+          "```",
+        ].join("\n");
     const assistantMarkdown = standalone
       ? diagramMarkdown
       : `Here is the pipeline:\n\n${diagramMarkdown}\n\nEach stage builds on the previous one.`;
@@ -172,7 +179,7 @@ for (const { theme, standalone } of (["light", "dark"] as const).flatMap((theme)
         expect(colors.find((color) => color.id === "C")!.background).toBe("rgb(213, 232, 212)");
         expect(colors.find((color) => color.id === "E")!.foreground).toBe("rgb(84, 56, 0)");
       };
-      await assertNodeContrast();
+      if (!godot) await assertNodeContrast();
 
       // Hover exposes the outer response control, so hidden duplicates also fail.
       const message = page.locator('[data-slot="message"]').filter({ has: diagram });
@@ -229,7 +236,7 @@ for (const { theme, standalone } of (["light", "dark"] as const).flatMap((theme)
         .poll(() => diagram.evaluate((svg) => getComputedStyle(svg).color))
         .not.toBe(beforeTheme);
       await expect(diagram).toHaveAttribute("data-retained", "yes");
-      await assertNodeContrast();
+      if (!godot) await assertNodeContrast();
       await page.evaluate((next) => {
         document.documentElement.dataset.theme = next;
       }, theme);
@@ -276,7 +283,9 @@ for (const { theme, standalone } of (["light", "dark"] as const).flatMap((theme)
       const overlay = page.getByRole("dialog", { name: "Diagram" });
       await expect(overlay).toBeVisible();
       await expect(
-        overlay.locator("svg").filter({ hasText: "Renderer presentation" }),
+        overlay
+          .locator("svg")
+          .filter({ hasText: godot ? "Godot presentation" : "Renderer presentation" }),
       ).toBeVisible();
 
       // The overlay must actually paint above the reader, not behind it.
