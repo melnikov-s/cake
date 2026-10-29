@@ -23,7 +23,11 @@ const snapshot = (parts: ConversationSnapshot["parts"] = []): ConversationSnapsh
   tree: [],
 });
 
-describe("ConversationReducer", () => {
+// Transcript hydration, ordered updates and compacted work-log disclosure are
+// covered through Chat in transcript-rendering/work-log-presentation workflows.
+// Retain authority identity rejection (unreachable through valid UI actions) and
+// preservation of renderer-local in-flight turns/diagnostics during resnapshots.
+describe("Conversation authority isolation", () => {
   it.each([true, false])(
     "preserves local diagnostics while preserveActiveTurns is %s",
     (preserveActiveTurns) => {
@@ -78,33 +82,6 @@ describe("ConversationReducer", () => {
     expect(model.parts[0]).toBe(message);
   });
 
-  it("hydrates an independently observed Conversation and applies ordered events", () => {
-    const model = Conversation.create({ sessionId: "session" });
-    applyConversationUpdate(model, { _tag: "Snapshot", revision: 1, snapshot: snapshot() });
-    const transcriptIdentity = model.parts;
-
-    applyConversationUpdate(model, {
-      _tag: "Event",
-      revision: 2,
-      event: {
-        _tag: "PartUpdated",
-        sessionId: "session",
-        part: {
-          id: "assistant",
-          kind: "text",
-          role: "assistant",
-          text: "Done",
-          status: "complete",
-        },
-      },
-    });
-
-    expect(model.observedSnapshotRevision).toBe(1);
-    expect(model.parts).toBe(transcriptIdentity);
-    expect(model.uiParts[0]).toEqual(expect.objectContaining({ text: "Done" }));
-    model[Symbol.dispose]();
-  });
-
   it.each(["Preview", "Snapshot", "SnapshotUpdated"] as const)(
     "rejects a mismatched %s without mutating the Conversation",
     (kind) => {
@@ -150,28 +127,6 @@ describe("ConversationReducer", () => {
       }),
     ).toThrow("Conversation snapshot identity collision: session");
     expect(toSnapshot(model)).toEqual(before);
-    model[Symbol.dispose]();
-  });
-
-  it("preserves compacted historical work-log parts in durable snapshots", () => {
-    const model = Conversation.create({ sessionId: "session" });
-    applyConversationSnapshot(
-      model,
-      snapshot([
-        {
-          id: "compacted-tool",
-          kind: "tool",
-          name: "bash",
-          input: "pnpm test",
-          output: "passed",
-          state: "success",
-        },
-      ]),
-    );
-
-    expect(model.uiParts).toEqual([
-      expect.objectContaining({ kind: "tool", name: "bash", output: "passed" }),
-    ]);
     model[Symbol.dispose]();
   });
 });
