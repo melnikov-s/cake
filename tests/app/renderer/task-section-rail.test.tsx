@@ -10,7 +10,7 @@ import { ProjectTodosPanel } from "../../../src/renderer/components/project-todo
 import { projectRecord } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
-it("updates a section's title, status and completion live and inspects it without selecting send context", async () => {
+it("updates a section's title and completion live and inspects it without selecting send context", async () => {
   const item: ProjectTodo = {
     id: "00000000-0000-4000-8000-000000000011",
     title: "Fix artifact-context notices and apparent duplicate messages",
@@ -44,7 +44,7 @@ it("updates a section's title, status and completion live and inspects it withou
   try {
     const section = screen.getByRole("region", { name: "Conversation section" });
     expect(within(section).getAllByRole("button")).toHaveLength(1);
-    expect(within(section).getByText("Investigating")).toBeDefined();
+    expect(within(section).getByRole("button").getAttribute("aria-description")).toBe("Open");
     act(() =>
       applySnapshot(fixture.models.projects, {
         projects: [
@@ -58,13 +58,12 @@ it("updates a section's title, status and completion live and inspects it withou
       }),
     );
     expect(within(section).getByRole("button", { name: "Verify the notice fix" })).toBeDefined();
-    expect(within(section).getByText("Ready for review")).toBeDefined();
     act(() =>
       applySnapshot(fixture.models.projects, {
         projects: [project({ ...item, state: "done", status: "Verified", revision: 2 })],
       }),
     );
-    expect(within(section).getByText("Done")).toBeDefined();
+    expect(within(section).getByRole("button").getAttribute("aria-description")).toBe("Done");
     expect(within(section).getAllByRole("button")).toHaveLength(1);
     await userEvent.setup().click(within(section).getByRole("button", { name: item.title }));
     const doneItems = screen.getByRole("list", { name: "Done to-dos" });

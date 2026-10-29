@@ -16,7 +16,6 @@ export const TaskSectionRail = observer(function TaskSectionRail({
   return (
     <MarginRail
       title={item.title}
-      status={item.status}
       done={item.state === "done"}
       start={start}
       onOpen={() => todos.reveal(item)}

@@ -5,13 +5,11 @@ import { CheckIcon, CircleIcon } from "./icons";
 /** An unbordered task heading above the section's message rule. */
 export function MarginRail({
   title,
-  status,
   done,
   start,
   onOpen,
 }: {
   title: string;
-  status: string;
   done: boolean;
   start: boolean;
   onOpen(): void;
@@ -40,6 +38,7 @@ export function MarginRail({
             size="sm"
             onClick={onOpen}
             title={`Show in To-do: ${title}`}
+            aria-description={done ? "Done" : "Open"}
             className="h-auto max-w-full items-start justify-start gap-2 whitespace-normal px-1 py-1 text-left leading-snug"
           >
             {done ? (
@@ -53,9 +52,6 @@ export function MarginRail({
             )}
             <span className="min-w-0 wrap-anywhere">{title}</span>
           </Button>
-          <p className="mt-1 pl-6 text-xs leading-snug wrap-anywhere text-muted-foreground">
-            {done ? "Done" : status || "Open"}
-          </p>
         </div>
       )}
     </>

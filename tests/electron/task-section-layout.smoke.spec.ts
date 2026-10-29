@@ -7,8 +7,6 @@ import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenario
 const repository = resolve(import.meta.dirname, "../..");
 const longTitle =
   "Improve project navigation and preserve keyboard shortcuts for very-long-unbroken-workspace-identifiers-without-clipping-the-transcript";
-const longStatus =
-  "Checking navigation, keyboard shortcuts and workspace identifiers before review";
 
 for (const theme of ["dark", "light"] as const)
   test(`task headings wrap above the message border at every pane width (${theme})`, async () => {
@@ -24,7 +22,6 @@ for (const theme of ["dark", "light"] as const)
     const application = JSON.parse(await readFile(file, "utf8"));
     const todo = application.data.projects[0].todos.items[1];
     todo.title = longTitle;
-    todo.status = longStatus;
     await writeFile(file, JSON.stringify(application));
     const app = await electron.launch({
       args: [repository],
@@ -49,7 +46,7 @@ for (const theme of ["dark", "light"] as const)
       const title = transcript.getByTitle(`Show in To-do: ${longTitle}`);
       const label = title.locator('xpath=ancestor::*[@data-slot="task-section-label"]');
       const row = title.locator('xpath=ancestor::*[@data-slot="transcript-item"]');
-      // Resize in both directions without remounting; long headings and status
+      // Resize in both directions without remounting; long headings
       // must stay above, never alongside, the message rule.
       for (const width of [1800, 900, 1500, 1560, 1800]) {
         await app.evaluate(
@@ -58,7 +55,7 @@ for (const theme of ["dark", "light"] as const)
           width,
         );
         await title.scrollIntoViewIfNeeded();
-        await expect(label.getByText(longStatus, { exact: true })).toBeVisible();
+        await expect(title).toBeVisible();
         await expect(async () => {
           const paneBounds = (await transcript.boundingBox())!;
           const labelBounds = (await label.boundingBox())!;

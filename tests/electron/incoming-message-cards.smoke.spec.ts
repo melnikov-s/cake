@@ -70,7 +70,7 @@ for (const theme of ["dark", "light"] as const)
       ).toHaveAttribute("aria-pressed", "false");
       await panel.getByRole("button", { name: "Mark done: Fix the flaky build" }).click();
       await page.getByRole("button", { name: "Close To-do" }).click();
-      await expect(rail.locator("..").getByText("Done", { exact: true })).toBeVisible();
+      await expect(rail).toHaveAttribute("aria-description", "Done");
       await toggle(batch).click();
       await expect(batch.getByText(/Draft ready for review/).last()).toBeVisible();
       await toggle(batch).click();
@@ -81,7 +81,7 @@ for (const theme of ["dark", "light"] as const)
       await page.getByRole("button", { name: "Cake Chat", exact: true }).first().click();
       await expect(report).toBeVisible();
       await expect(sourceToggle).toHaveAttribute("aria-expanded", "false");
-      await expect(rail.locator("..").getByText("Done", { exact: true })).toBeVisible();
+      await expect(rail).toHaveAttribute("aria-description", "Done");
       expect(
         await app.evaluate(({ BrowserWindow }) =>
           BrowserWindow.getAllWindows().every((window) => !window.isVisible()),
