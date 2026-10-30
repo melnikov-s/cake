@@ -306,6 +306,7 @@ it.effect(
       expect(cheap.items[0]).toEqual({
         id: expect.any(String),
         title: "Task 0",
+        needsAttention: false,
         revision: 0,
         state: "open",
       });
@@ -666,6 +667,7 @@ it.effect(
                   id,
                   title,
                   state,
+                  needsAttention: false,
                   revision,
                 })),
                 offset: input.offset ?? 0,
@@ -689,7 +691,7 @@ it.effect(
       const id = items[0]?.id;
       expect(created.structuredContent).toEqual({
         command: "todos.create",
-        result: { id, revision: 0, committed: true },
+        result: { id, revision: 0, committed: true, needsAttention: false },
       });
       const updated = yield* call("todos.update", {
         id,
@@ -698,9 +700,9 @@ it.effect(
       });
       expect(updated.structuredContent).toEqual({
         command: "todos.update",
-        result: { revision: 1, committed: true },
+        result: { revision: 1, committed: true, needsAttention: false },
       });
-      expect(updated.text.length).toBeLessThan(60);
+      expect(updated.text.length).toBeLessThan(90);
       const detailed = yield* call("todos.update", {
         id,
         expectedRevision: 1,
@@ -713,7 +715,7 @@ it.effect(
       });
       expect(batch.structuredContent).toEqual({
         command: "todos.update-many",
-        result: { receipts: [{ revision: 3, committed: true }] },
+        result: { receipts: [{ revision: 3, committed: true, needsAttention: false }] },
       });
       expect(registry.help()).toContain("todos");
     }).pipe(Effect.provide(f.layer));

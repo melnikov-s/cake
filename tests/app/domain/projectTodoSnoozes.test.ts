@@ -114,7 +114,7 @@ it.effect.each([project, CAKE_CHAT_TODO_SCOPE])(
       expect(value.items[0]).toMatchObject({ state: "open", snoozedUntil: until, revision: 1 });
       expect(value.selectedId).toBeNull();
       const baseline = projectTodoBaseline(value);
-      expect(baseline).toContain('"active":[]');
+      expect(baseline).toContain('"open":[]');
       expect(baseline).toContain('"snoozedCount":1');
       expect(
         (yield* todos

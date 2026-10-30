@@ -418,18 +418,31 @@ is a refactoring signal, not precedent.
   explicitly mark it done after review. Mixed items retain the all-Project-Sessions-resolved rule.
   Session restore never reopens items,
   and to-do completion never resolves, stops, deletes or merges sessions. Each open item may
-  persist one explicit UTC `snoozedUntil` deadline. Active (open without a deadline), Done,
-  and Snoozed (open with a deadline) are exclusive projections of that same list. A single
+  persist one explicit UTC `snoozedUntil` deadline, a `needsAttention` flag and a separate
+  bounded, nonempty `attentionReason`. Older saved items may omit attention fields (off);
+  no reason is invented. Four exclusive sections, in order: Needs attention (open, unsnoozed,
+  flagged), Active (open, unsnoozed, unflagged), Snoozed (open with a deadline), Done.
+  Needs attention always shows expanded, including its empty state; the other sections collapse
+  independently. It presents the human action first, with quieter task identity and clickable
+  work/source links, no attention bell. Row selection is existing next-message context, not a send.
+  The model invoking todo mutations owns attention; background refresh stays description-only.
+  One-step Dismiss clears only the flag, retaining the hidden reason, selection and work state.
+  An agent cannot reactivate an identical retained dismissed reason; genuinely new requests use
+  changed reasons. Explicit user Restore bypasses suppression. Native context menus provide
+  Restore, Mark with a manual reason input, or Edit; no utility-model inference. User attention
+  edits enter the existing durable user-change reminder. Completion clears the flag but retains
+  the reason; reopening starts Active. Snoozing retains attention and takes visibility precedence;
+  attention edits never unsnooze. A single
   backend-scoped worker repairs overdue deadlines at startup and checks wall time every second,
   without requiring a renderer, open pane or chat runtime; idle passes do not write. Expiry
   clears only the deadline through the serialized ApplicationState transaction and publishes
-  visibility, never a reminder, input, session wake, execution pause or model schedule.
+  visibility (Needs attention if still flagged, otherwise Active), never a reminder, input, session wake, execution pause or model schedule.
   Transactions recheck deadlines so extension, manual unsnooze and completion cannot be
   overwritten by an old expiry snapshot. Any completion clears the deadline; reopening starts
   Active. The worker reconciles affected lists after expiry so a racing resolution join cannot
   lose completion to the expiry revision. UI custom times are local, tools take validated future
   UTC timestamps, and snooze/unsnooze mutations preserve revision checks and chat scope grants.
-  ApplicationStorage publication drives the pane and Active count without loading/waking Project Chat.
+  ApplicationStorage publication drives the pane and toolbar's total unsnoozed-open count without loading/waking Project Chat.
   Existing passive notifications, explicit result reports, final Project Session turns and worker completion
   enqueue best-effort description refreshes before normal notification delivery.
   A scoped backend consumer uses the configured utility model with only the task title,
@@ -449,11 +462,11 @@ is a refactoring signal, not precedent.
   `modifiedAt` or linked session `modifiedAt`. Item creation and revision changes
   record the timestamp in ApplicationStorage; selection/read acknowledgement does not.
   Older saved items without timestamps use linked activity where available.
-  Equal or missing timestamps break ties by ascending item ID. Active, Done and Snoozed
+  Equal or missing timestamps break ties by ascending item ID. Needs attention, Active, Snoozed and Done
   sections and search preserve this order, reacting immediately to metadata changes.
   One metadata-index snapshot and family snapshot join a bounded page, with filename-only
   identity enumeration per directory, never per item.
-  Tools default to title/id/state/revision rows (plus snoozedUntil when set) and compact mutation receipts; content is
+  Tools default to title/id/state/revision rows, attention flag and retained reason (plus snoozedUntil when set) and compact mutation receipts with canonical attention outcomes; content is
   disclosed by exact detail or opt-in detail only. Each item records its latest completion
   (revision and user/agent/sessions source). Requesting `done` on a done item is a no-op
   for state; a stale `done` edit whose only intervening change was that completion

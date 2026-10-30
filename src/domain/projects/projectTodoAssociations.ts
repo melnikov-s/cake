@@ -8,6 +8,7 @@ import {
   ProjectTodoUpdate,
   ProjectTodoListInput,
   ProjectTodoUpdates,
+  projectTodoCategory,
   isCakeChatTodoScope,
   type ProjectTodoAssociation,
 } from "../../contracts/projects/project-todos";
@@ -113,11 +114,7 @@ export const list = Effect.fn("ProjectTodos.listForAgent")(function* (
     value.items.filter(
       (item) =>
         (!input.state || item.state === input.state) &&
-        (!input.category ||
-          (input.category === "done"
-            ? item.state === "done"
-            : item.state === "open" &&
-              Boolean(item.snoozedUntil) === (input.category === "snoozed"))) &&
+        (!input.category || projectTodoCategory(item) === input.category) &&
         (!query || item.title.toLowerCase().includes(query)),
     ),
     input,
@@ -126,6 +123,8 @@ export const list = Effect.fn("ProjectTodos.listForAgent")(function* (
     id: item.id,
     title: item.title,
     state: item.state,
+    needsAttention: Boolean(item.needsAttention),
+    ...(item.attentionReason ? { attentionReason: item.attentionReason } : null),
     ...(item.snoozedUntil ? { snoozedUntil: item.snoozedUntil } : null),
     revision: item.revision,
   });

@@ -8,6 +8,7 @@ import {
   PROJECT_TODO_DESCRIPTION_GUIDANCE,
   PROJECT_TODO_SUMMARY_GUIDANCE,
   PROJECT_TODO_LINK_GUIDANCE,
+  PROJECT_TODO_ATTENTION_GUIDANCE,
   projectTodoBaseline,
 } from "../../../src/contracts/projects/project-todos";
 import { createProjectTodoOperations } from "../../../src/domain/projects/project-todo-operations";
@@ -48,7 +49,7 @@ describe("application-owned to-do link guidance", () => {
     );
     expect(baseline).toContain("Restore never reopens a to-do");
     expect(baseline).toContain("Open items never authorize polling or wakes");
-    expect(baseline.length).toBeLessThan(3_600);
+    expect(baseline.length).toBeLessThan(4_800);
   });
 
   it("prioritizes relevant review and outcome links, including no-PR local work", () => {
@@ -103,6 +104,19 @@ describe("application-owned to-do link guidance", () => {
     expect(baseline).toContain(
       "Source/report links do not block completion; source-only items remain open",
     );
+  });
+});
+
+describe("agent-owned attention guidance", () => {
+  it.each([
+    ["baseline", baseline],
+    ["reference", chatGuide],
+    ...["todos.create", "todos.update", "todos.update-many"].map((command) => [
+      command,
+      registry.operationHelp(command),
+    ]),
+  ])("shares reason ownership and dismissal policy in %s", (_surface, guidance) => {
+    expect(guidance).toContain(PROJECT_TODO_ATTENTION_GUIDANCE);
   });
 });
 

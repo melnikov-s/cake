@@ -16,6 +16,7 @@ import {
   PROJECT_TODO_CREATION_RULE,
   PROJECT_TODO_DESCRIPTION_GUIDANCE,
   PROJECT_TODO_LINK_GUIDANCE,
+  PROJECT_TODO_ATTENTION_GUIDANCE,
   projectTodoCompletionSummary,
   type ProjectTodoControl,
 } from "../../contracts/projects/project-todos";
@@ -26,7 +27,7 @@ export function createProjectTodoOperations(
   const guidance = [
     `${PROJECT_TODO_AUTO_COMPLETION_RULE} Run sessions.resolve, then edit only title/description/status if needed.`,
     `${PROJECT_TODO_CREATION_RULE} No polling/wakes merely for open items.`,
-    "Default list is title/id/state/revision plus snoozedUntil when snoozed. Filter category=active|done|snoozed; state=open includes both Active and Snoozed. For reconciliation use ONE todos.list with state=open, view=reconciliation (max 50), then ONE todos.update-many with expectedRevision per item. Page with nextOffset. No transcript reads or per-session inspection needed.",
+    "Default list is title/id/state/revision, needsAttention and retained attentionReason, plus snoozedUntil when snoozed. Filter category=attention|active|snoozed|done; state=open includes Needs attention, Active and Snoozed. For reconciliation use ONE todos.list with state=open, view=reconciliation (max 50), then ONE todos.update-many with expectedRevision per item. Page with nextOffset. No transcript reads or per-session inspection needed.",
     "Reconciliation sessions contain canonical required session IDs and authoritative effective resolved (null means unknown), not execution done/stopped. All actual session associations must resolve before automatic closure, including historical items and late associations. Source/report links are context: they never veto completion and source-only discussion items remain open. Reports/run completion never close items.",
     `${PROJECT_TODO_CLOSING_RULE} Restore never reopens items. Explicit user done is preserved. To-do edits never resolve/restore, stop, delete or merge sessions. Cake reconciles linked Open items automatically; no assistant update, report acknowledgment, polling or wake is required.`,
     "Read details by ID only when needed. Pass expectedRevision; on revision conflict reread; preserve explicit user closure/reopen. state=done on an already-done item is a no-op for state: alone it commits nothing; other edits still apply, including when the only change since your revision was that completion (for example by sessions.resolve). The receipt note says why it was already done; any other intervening change is a conflict. Association updates replace the complete merged list. Mutations return compact committed receipts; detail=true opts into content.",
@@ -49,6 +50,8 @@ export function createProjectTodoOperations(
       input.description,
       input.status,
       input.associations,
+      input.needsAttention,
+      input.attentionReason,
       input.snoozedUntil,
     ].some((value) => value !== undefined);
     return {
@@ -67,6 +70,8 @@ export function createProjectTodoOperations(
     ...(created ? { id: item.id } : null),
     revision: item.revision,
     committed: true as const,
+    needsAttention: Boolean(item.needsAttention),
+    ...(item.attentionReason ? { attentionReason: item.attentionReason } : null),
     ...(input.snoozedUntil !== undefined ? { snoozedUntil: item.snoozedUntil ?? null } : null),
     ...(input.state === undefined &&
     item.state === "done" &&
@@ -90,7 +95,7 @@ export function createProjectTodoOperations(
       outputSchema: ProjectTodoList,
       examples: [{ input: {} }, { input: { state: "open", view: "reconciliation", limit: 50 } }],
       result:
-        "Bounded id/title/state/revision rows and pagination; reconciliation adds required work session lifecycle only.",
+        "Bounded id/title/state/revision rows with attention flag/retained reason and pagination; reconciliation adds required work session lifecycle only.",
       execute: async (input, context) =>
         control.list(
           await Schema.decodeUnknownPromise(ProjectTodoListInput)(input),
@@ -109,7 +114,7 @@ export function createProjectTodoOperations(
       outputSchema: ProjectTodoDetail,
       examples: [{ input: { id: "00000000-0000-4000-8000-000000000001" } }],
       result:
-        "Exact description/status/links/revision and canonical work session IDs with effective resolution.",
+        "Exact description/status/attention/links/revision and canonical work session IDs with effective resolution.",
       async execute(input, context) {
         const { id } = await Schema.decodeUnknownPromise(
           Schema.Struct({ id: ProjectTodo.fields.id }),
@@ -123,6 +128,7 @@ export function createProjectTodoOperations(
       summary: "Track ongoing work with a short latest-update description.",
       guidance: [
         guidance[1],
+        PROJECT_TODO_ATTENTION_GUIDANCE,
         PROJECT_TODO_DESCRIPTION_GUIDANCE,
         PROJECT_TODO_LINK_GUIDANCE,
         "Already-resolved associated session work closes on creation. Source-only review threads remain open. Returns new id/revision; detail=true opts into content.",
@@ -134,6 +140,7 @@ export function createProjectTodoOperations(
           input: {
             title: "Investigate startup",
             description: "Startup investigation is underway. No findings reported yet.",
+            needsAttention: false,
           },
         },
       ],
@@ -159,6 +166,7 @@ export function createProjectTodoOperations(
         guidance[0],
         guidance[4],
         guidance[5],
+        PROJECT_TODO_ATTENTION_GUIDANCE,
         PROJECT_TODO_DESCRIPTION_GUIDANCE,
         PROJECT_TODO_LINK_GUIDANCE,
       ],
@@ -189,7 +197,7 @@ export function createProjectTodoOperations(
       summary: "Hide an open to-do until a future UTC timestamp, or change its deadline.",
       guidance: [
         "Pass id, expectedRevision and until as a valid future UTC ISO timestamp (YYYY-MM-DDTHH:mm:ss.sssZ). Read the current revision first. Calling again replaces the deadline. Only open items can be snoozed; this never reopens done items.",
-        "Snoozed items leave Active and appear in Snoozed. Backend expiry returns them to Active across renderer reload/app restart/downtime, without reminder messages or session wakeups. Resolving linked sessions still completes them. This only controls to-do visibility: it never pauses execution, snoozes sessions or schedules model work.",
+        "Snoozed items leave Needs attention/Active and appear only in Snoozed, retaining attention data. Backend expiry returns them to Needs attention if flagged, otherwise Active across renderer reload/app restart/downtime, without reminder messages or session wakeups. Resolving linked sessions still completes them. This only controls to-do visibility: it never pauses execution, snoozes sessions or schedules model work.",
       ],
       inputSchema: ProjectTodoSnooze,
       outputSchema: ProjectTodoReceipt,
@@ -217,7 +225,7 @@ export function createProjectTodoOperations(
     {
       command: "todos.unsnooze",
       topic: "todos",
-      summary: "Return a snoozed to-do to Active early without changing completion or sessions.",
+      summary: "Unsnooze early, returning to Needs attention if flagged, otherwise Active.",
       guidance: [
         "Pass id and current expectedRevision. Clears the deadline, including before it expires. Done items remain done; this never reopens them or starts any work. No reminder or session wakeup is sent.",
       ],
@@ -238,6 +246,7 @@ export function createProjectTodoOperations(
       guidance: [
         "Use one todos.list view=reconciliation read, then this call. Every update requires expectedRevision. All-or-none; stale errors identify the conflict/current revision. Receipts follow input order without echoing IDs.",
         guidance[0],
+        PROJECT_TODO_ATTENTION_GUIDANCE,
         PROJECT_TODO_DESCRIPTION_GUIDANCE,
         PROJECT_TODO_LINK_GUIDANCE,
         "All actual session associations resolved automatically completes linked Open items, including legacy and late associations. state=done on an already-done item follows the same no-op rules as todos.update. Restore never reopens items; marking a to-do done never resolves sessions.",

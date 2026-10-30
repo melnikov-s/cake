@@ -39,13 +39,24 @@ const mapError = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
 function commit(
   item: ProjectTodo,
   changes: Partial<
-    Pick<ProjectTodo, "title" | "description" | "status" | "state" | "associations">
+    Pick<
+      ProjectTodo,
+      | "title"
+      | "description"
+      | "status"
+      | "state"
+      | "associations"
+      | "needsAttention"
+      | "attentionReason"
+    >
   >,
   by: ProjectTodoCompletion["by"],
   deadline: string | null | undefined = undefined,
 ): ProjectTodo {
   const { completion, snoozedUntil, ...rest } = item;
   const next = { ...rest, ...changes, revision: item.revision + 1 };
+  // Completion and reopening never carry an active request into the new lifecycle state.
+  if (next.state === "done" || item.state === "done") next.needsAttention = false;
   const until = deadline === undefined ? snoozedUntil : deadline;
   if (next.state !== "done") return until ? { ...next, snoozedUntil: until } : next;
   if (item.state === "done") return completion ? { ...next, completion } : next;
@@ -194,12 +205,15 @@ export const create = Effect.fn("ProjectTodos.create")(function* (
   const item = {
     ...input,
     status: input.status ?? "",
+    needsAttention: resolved ? false : (input.needsAttention ?? false),
     associations: input.associations ?? [],
     id: randomUUID(),
     state: resolved ? ("done" as const) : ("open" as const),
     revision: 0,
     ...(resolved ? { completion: { revision: 0, by: "sessions" as const } } : null),
   };
+  if (input.needsAttention && !input.attentionReason)
+    return yield* error("Needs attention requires an attention reason");
   const next = yield* change(scope, (value) =>
     value.items.length >= 1000
       ? Effect.fail(error("To-do list is full"))
@@ -240,6 +254,8 @@ export const updateMany = Effect.fn("ProjectTodos.updateMany")(function* (
           input.description !== undefined ||
           input.status !== undefined ||
           input.associations !== undefined ||
+          input.needsAttention !== undefined ||
+          input.attentionReason !== undefined ||
           input.snoozedUntil !== undefined;
         // Already done and nothing else changes: idempotent, no new revision.
         if (alreadyDone && !edits) continue;
@@ -260,6 +276,20 @@ export const updateMany = Effect.fn("ProjectTodos.updateMany")(function* (
           if (deadline <= DateTime.formatIso(yield* DateTime.now))
             return yield* error("Snooze deadline must be in the future");
         }
+        const attentionReason = input.attentionReason ?? item.attentionReason;
+        // An off flag with a retained reason represents a dismissed request. Only the user
+        // can restore that exact request; agents must have a genuinely new reason.
+        const repeatedDismissal =
+          !user &&
+          !item.needsAttention &&
+          Boolean(item.attentionReason) &&
+          attentionReason === item.attentionReason;
+        const needsAttention =
+          input.needsAttention === true && repeatedDismissal
+            ? false
+            : (input.needsAttention ?? item.needsAttention ?? false);
+        if (needsAttention && !attentionReason)
+          return yield* error("Needs attention requires an attention reason");
         const automatic = input.state === undefined && resolved.has(item.id);
         const updated = commit(
           item,
@@ -267,6 +297,8 @@ export const updateMany = Effect.fn("ProjectTodos.updateMany")(function* (
             title: input.title ?? item.title,
             description: input.description ?? item.description,
             status: input.status ?? item.status,
+            needsAttention,
+            ...(attentionReason ? { attentionReason } : null),
             state: input.state ?? (automatic && item.state === "open" ? "done" : item.state),
             associations: input.associations ?? item.associations,
           },
@@ -277,6 +309,15 @@ export const updateMany = Effect.fn("ProjectTodos.updateMany")(function* (
           ...result,
           items: result.items.map((candidate) => (candidate.id === item.id ? updated : candidate)),
         };
+        if (user && (input.needsAttention !== undefined || input.attentionReason !== undefined))
+          result = enqueue(result, {
+            _tag: "Attention",
+            sequence: result.sequence + 1,
+            id: item.id,
+            title: updated.title,
+            needsAttention: Boolean(updated.needsAttention),
+            ...(updated.attentionReason ? { attentionReason: updated.attentionReason } : null),
+          });
         if (user && updated.state !== item.state)
           result = enqueue(result, {
             _tag: "ItemState",
@@ -326,7 +367,9 @@ const changeKey = (entry: ProjectTodoUserChange) =>
     ? "selection"
     : entry._tag === "ItemState"
       ? `item:${entry.id}`
-      : `session:${entry.sessionId}`;
+      : entry._tag === "Attention"
+        ? `attention:${entry.id}`
+        : `session:${entry.sessionId}`;
 function enqueue(value: ProjectTodos, entry: ProjectTodoUserChange): ProjectTodos {
   return {
     ...value,
@@ -348,6 +391,19 @@ export const mutateUser = Effect.fn("ProjectTodos.mutateUser")(function* (
         id: input.id,
         expectedRevision: input.expectedRevision,
         snoozedUntil: input._tag === "Snooze" ? input.until : null,
+      },
+      true,
+    );
+    return yield* list(scope);
+  }
+  if (input._tag === "SetAttention") {
+    yield* update(
+      scope,
+      {
+        id: input.id,
+        expectedRevision: input.expectedRevision,
+        needsAttention: input.needsAttention,
+        ...(input.attentionReason ? { attentionReason: input.attentionReason } : null),
       },
       true,
     );
@@ -418,6 +474,7 @@ export const ensureSession = Effect.fn("ProjectTodos.ensureSession")(function* (
           title: name,
           description,
           status: "",
+          needsAttention: false,
           state: "open" as const,
           revision: 0,
           associations: [{ kind: "session" as const, sessionId, title: name }],

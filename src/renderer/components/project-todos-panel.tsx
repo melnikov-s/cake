@@ -10,73 +10,83 @@ export const ProjectTodosPanel = observer(function ProjectTodosPanel({
 }: {
   store: ProjectTodosStore;
 }) {
-  const openItems = store.filteredOpenItems;
-  const doneItems = store.filteredDoneItems;
-  const snoozedItems = store.filteredSnoozedItems;
+  const attentionItems = store.filteredAttentionItems;
   const searching = Boolean(store.query.trim());
-  const noResults = searching && !openItems.length && !doneItems.length && !snoozedItems.length;
+  const sections = [
+    {
+      title: "Active",
+      items: store.filteredActiveItems,
+      open: store.activeExpanded,
+      toggle: () => store.toggleActive(),
+    },
+    {
+      title: "Snoozed",
+      items: store.filteredSnoozedItems,
+      open: store.snoozedExpanded,
+      toggle: () => store.toggleSnoozed(),
+    },
+    {
+      title: "Done",
+      items: store.filteredDoneItems,
+      open: store.doneExpanded,
+      toggle: () => store.toggleDone(),
+    },
+  ];
   return (
     <div className="h-full overflow-y-auto px-3 pb-4 pt-4">
-      <div className="mb-3 flex items-center justify-between gap-2 px-3">
-        <h2 className="text-xs font-semibold">
-          Active{" "}
-          <span className="ml-1 font-normal tabular-nums text-muted-foreground">
-            {openItems.length}
-          </span>
-        </h2>
-      </div>
       {store.error && (
         <Callout variant="error" role="alert">
           {store.error}
         </Callout>
       )}
-      {openItems.length ? (
-        <AnimatedList as="ul" aria-label="Active to-dos" className="space-y-2">
-          {openItems.map((item) => (
-            <ProjectTodoItem key={item.id} item={item} store={store} />
-          ))}
-        </AnimatedList>
-      ) : (
-        <p role="status" className="px-1 py-4 text-sm text-muted-foreground">
-          {noResults
-            ? "No matching to-dos. Try another search or clear it."
-            : searching
-              ? "No matching active to-dos."
-              : "No active to-dos."}
-        </p>
-      )}
-      {snoozedItems.length > 0 && (
-        <section className="mt-4 border-t border-border px-1 pt-2">
+      <section aria-label="Needs attention">
+        <h2 className="mb-3 px-3 text-xs font-semibold">
+          Needs attention{" "}
+          <span className="ml-1 font-normal tabular-nums text-muted-foreground">
+            {attentionItems.length}
+          </span>
+        </h2>
+        {attentionItems.length ? (
+          <AnimatedList as="ul" aria-label="Needs attention to-dos" className="space-y-2">
+            {attentionItems.map((item) => (
+              <ProjectTodoItem key={item.id} item={item} store={store} />
+            ))}
+          </AnimatedList>
+        ) : (
+          <p role="status" className="px-3 py-3 text-xs text-muted-foreground">
+            {searching ? "No matching to-dos." : "Nothing needs your attention."}
+          </p>
+        )}
+      </section>
+      {sections.map((section) => (
+        <section
+          key={section.title}
+          aria-label={section.title}
+          className="mt-4 border-t border-border px-1 pt-2"
+        >
           <DisclosureTrigger
-            title={`Snoozed (${snoozedItems.length})`}
-            open={store.snoozedExpanded}
-            onClick={() => store.toggleSnoozed()}
+            title={`${section.title} (${section.items.length})`}
+            open={section.open}
+            onClick={section.toggle}
           />
-          {store.snoozedExpanded && (
-            <AnimatedList as="ul" aria-label="Snoozed to-dos" className="mt-2 space-y-1">
-              {snoozedItems.map((item) => (
-                <ProjectTodoItem key={item.id} item={item} store={store} />
-              ))}
-            </AnimatedList>
-          )}
+          {section.open &&
+            (section.items.length ? (
+              <AnimatedList
+                as="ul"
+                aria-label={`${section.title} to-dos`}
+                className="mt-2 space-y-2"
+              >
+                {section.items.map((item) => (
+                  <ProjectTodoItem key={item.id} item={item} store={store} />
+                ))}
+              </AnimatedList>
+            ) : (
+              <p className="px-2 py-3 text-xs text-muted-foreground">
+                {searching ? "No matching to-dos." : `No ${section.title.toLowerCase()} to-dos.`}
+              </p>
+            ))}
         </section>
-      )}
-      {doneItems.length > 0 && (
-        <section className="mt-4 border-t border-border px-1 pt-2">
-          <DisclosureTrigger
-            title={`Done (${doneItems.length})`}
-            open={store.doneExpanded}
-            onClick={() => store.toggleDone()}
-          />
-          {store.doneExpanded && (
-            <AnimatedList as="ul" aria-label="Done to-dos" className="mt-2 space-y-1">
-              {doneItems.map((item) => (
-                <ProjectTodoItem key={item.id} item={item} store={store} />
-              ))}
-            </AnimatedList>
-          )}
-        </section>
-      )}
+      ))}
     </div>
   );
 });

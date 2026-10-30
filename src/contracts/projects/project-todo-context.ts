@@ -35,6 +35,8 @@ export function projectTodoContextPresentation(reminder: string) {
         switch (change._tag) {
           case "SessionState":
             return `Session ${JSON.stringify(change.title)} ${change.resolved ? "resolved" : "restored"}.`;
+          case "Attention":
+            return `To-do ${JSON.stringify(change.title)} attention ${change.needsAttention ? "enabled" : "dismissed"}${change.attentionReason ? `: ${JSON.stringify(change.attentionReason)}` : "."}`;
           case "ItemState":
             return `To-do ${JSON.stringify(change.title)} ${change.state === "done" ? "completed" : "reopened"}.`;
           case "Selection":

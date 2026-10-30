@@ -699,10 +699,10 @@ describe("session-linked auto-completion", () => {
       const baseline = projectTodoBaseline(yield* todos.list(project));
       expect(baseline).toContain(PROJECT_TODO_AUTO_COMPLETION_RULE);
       const data = JSON.parse(baseline.slice(baseline.indexOf("{"))) as {
-        active: { id: string; sessions?: string[] }[];
+        open: { id: string; sessions?: string[] }[];
       };
-      expect(data.active.find((item) => item.id === session.id)?.sessions).toEqual(["d857f23c"]);
-      expect(data.active.find((item) => item.id === plain.id)).not.toHaveProperty("sessions");
+      expect(data.open.find((item) => item.id === session.id)?.sessions).toEqual(["d857f23c"]);
+      expect(data.open.find((item) => item.id === plain.id)).not.toHaveProperty("sessions");
     }).pipe(Effect.provide(f.layer));
   });
 
@@ -857,6 +857,7 @@ it("explains redundant state in compact update receipts", async () => {
   ).toEqual({
     revision: 2,
     committed: true,
+    needsAttention: false,
     note: "Already done (completed automatically when session d857f23c was resolved); state unchanged and your other edits were applied.",
   });
   expect(
@@ -864,6 +865,7 @@ it("explains redundant state in compact update receipts", async () => {
   ).toEqual({
     revision: 1,
     committed: true,
+    needsAttention: false,
     note: "Already done (completed automatically when session d857f23c was resolved); nothing changed.",
   });
   expect(
@@ -871,6 +873,6 @@ it("explains redundant state in compact update receipts", async () => {
       { id: done.id, expectedRevision: 0, state: "done", title: "Agent completes" },
       context,
     ),
-  ).toEqual({ revision: 1, committed: true });
+  ).toEqual({ revision: 1, committed: true, needsAttention: false });
   expect(update?.guidance?.join(" ")).toContain(PROJECT_TODO_AUTO_COMPLETION_RULE);
 });

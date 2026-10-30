@@ -1,5 +1,6 @@
 import { Store } from "r-state-tree";
 import {
+  projectTodoCategory,
   type ProjectTodo,
   type ProjectTodos,
   type ProjectTodoUserMutation,
@@ -43,6 +44,7 @@ export class ProjectTodosStore extends Store<{
   sidePanel(): SideChatStore;
 }> {
   query = "";
+  activeExpanded = true;
   doneExpanded = false;
   snoozedExpanded = true;
   inspectedItemId: string | undefined;
@@ -95,11 +97,16 @@ export class ProjectTodosStore extends Store<{
       (item) =>
         !query ||
         item.title.toLowerCase().includes(query) ||
-        item.description.toLowerCase().includes(query),
+        item.description.toLowerCase().includes(query) ||
+        (projectTodoCategory(item) === "attention" &&
+          Boolean(item.attentionReason?.toLowerCase().includes(query))),
     );
   }
-  get filteredOpenItems() {
-    return this.filteredItems.filter((item) => item.state === "open" && !item.snoozedUntil);
+  get filteredAttentionItems() {
+    return this.filteredItems.filter((item) => projectTodoCategory(item) === "attention");
+  }
+  get filteredActiveItems() {
+    return this.filteredItems.filter((item) => projectTodoCategory(item) === "active");
   }
   get filteredSnoozedItems() {
     return this.filteredItems.filter((item) => item.state === "open" && item.snoozedUntil);
@@ -194,7 +201,11 @@ export class ProjectTodosStore extends Store<{
     this.inspectedItemId = item.id;
     if (item.state === "done") this.doneExpanded = true;
     else if (item.snoozedUntil) this.snoozedExpanded = true;
+    else if (!item.needsAttention) this.activeExpanded = true;
     this.open();
+  }
+  toggleActive() {
+    this.activeExpanded = !this.activeExpanded;
   }
   toggleDone() {
     this.doneExpanded = !this.doneExpanded;
@@ -219,6 +230,22 @@ export class ProjectTodosStore extends Store<{
   unsnooze(item: ProjectTodo) {
     if (item.state !== "open" || !item.snoozedUntil) return;
     return this.mutate({ _tag: "Unsnooze", id: item.id, expectedRevision: item.revision });
+  }
+  setAttention(item: ProjectTodo, needsAttention: boolean, attentionReason?: string) {
+    if (item.state !== "open") return;
+    return this.mutate({
+      _tag: "SetAttention",
+      id: item.id,
+      expectedRevision: item.revision,
+      needsAttention,
+      ...(attentionReason !== undefined ? { attentionReason: attentionReason.trim() } : null),
+    });
+  }
+  dismissAttention(item: ProjectTodo) {
+    return this.setAttention(item, false);
+  }
+  restoreAttention(item: ProjectTodo) {
+    return this.setAttention(item, true);
   }
   select(item: ProjectTodo) {
     if (item.state !== "open" || item.snoozedUntil) return;

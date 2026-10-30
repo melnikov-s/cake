@@ -83,8 +83,29 @@ function renderTodos(
                 if (item.id !== mutation.id) return item;
                 const active = { ...item };
                 delete active.snoozedUntil;
-                return { ...active, state: mutation.state, revision: item.revision + 1 };
+                return {
+                  ...active,
+                  state: mutation.state,
+                  needsAttention: false,
+                  revision: item.revision + 1,
+                };
               }),
+            };
+          if (mutation._tag === "SetAttention")
+            todos = {
+              ...todos,
+              items: todos.items.map((item) =>
+                item.id === mutation.id
+                  ? {
+                      ...item,
+                      needsAttention: mutation.needsAttention,
+                      ...(mutation.attentionReason
+                        ? { attentionReason: mutation.attentionReason }
+                        : null),
+                      revision: item.revision + 1,
+                    }
+                  : item,
+              ),
             };
           if (mutation._tag === "Snooze" || mutation._tag === "Unsnooze")
             todos = {
@@ -202,6 +223,137 @@ function renderTodos(
     },
   };
 }
+
+it("shows action-first requests, dismisses without selection/lifecycle effects, restores, and hides retained reasons from search", async () => {
+  const item = {
+    ...todo(100),
+    title: "Startup investigation",
+    needsAttention: true,
+    attentionReason: "Review the startup findings",
+    associations: [
+      { kind: "source" as const, ref: "https://example.com/report", title: "Findings" },
+    ],
+  };
+  using fixture = renderTodos(false, {
+    todos: { ...emptyProjectTodos(), items: [item, todo(101)] },
+    sessions: [],
+  });
+  const attention = () => screen.getByRole("list", { name: "Needs attention to-dos" });
+  expect(within(attention()).getByRole("button", { name: item.title }).textContent).toContain(
+    item.attentionReason,
+  );
+  expect(within(attention()).getByRole("link", { name: "Findings" })).toBeDefined();
+  expect(screen.getAllByRole("region").map((region) => region.getAttribute("aria-label"))).toEqual([
+    "Needs attention",
+    "Active",
+    "Snoozed",
+    "Done",
+  ]);
+  await fixture.user.click(screen.getByRole("button", { name: item.title }));
+  const selection = fixture.todos().selectedId;
+  await fixture.user.click(
+    screen.getByRole("button", { name: `Dismiss attention: ${item.title}` }),
+  );
+  expect(fixture.todos().selectedId).toBe(selection);
+  expect(fixture.todos().items[0]).toMatchObject({
+    state: "open",
+    needsAttention: false,
+    attentionReason: item.attentionReason,
+  });
+  expect(fixture.mutations.map((mutation) => mutation._tag)).toEqual(["Select", "SetAttention"]);
+  expect(screen.getByText("Nothing needs your attention.")).toBeDefined();
+  const row = within(screen.getByRole("list", { name: "Active to-dos" })).getByRole("button", {
+    name: item.title,
+  });
+  expect(row.textContent).not.toContain(item.attentionReason);
+  const search = screen.getByRole("searchbox", { name: "Search to-dos" });
+  await fixture.user.type(search, "startup findings");
+  expect(screen.queryByRole("button", { name: item.title })).toBeNull();
+  await fixture.user.clear(search);
+  await fixture.user.pointer({
+    target: screen.getByRole("button", { name: item.title }),
+    keys: "[MouseRight]",
+  });
+  await fixture.user.click(screen.getByRole("menuitem", { name: "Restore needs attention" }));
+  expect(within(attention()).getByText(item.attentionReason)).toBeDefined();
+  expect(fixture.todos().selectedId).toBe(selection);
+  await fixture.user.click(screen.getByRole("button", { name: "Active (1)" }));
+  await fixture.user.click(screen.getByRole("button", { name: "Done (0)" }));
+  expect(screen.getByRole("button", { name: "Snoozed (0)" }).getAttribute("aria-expanded")).toBe(
+    "true",
+  );
+  expect(within(attention()).getByText(item.attentionReason)).toBeDefined();
+});
+
+it("uses a manual reason editor for Mark/Edit, rejects blank, supports cancel, and keeps snooze precedence", async () => {
+  const item = todo(100);
+  using fixture = renderTodos(false, {
+    todos: { ...emptyProjectTodos(), items: [item] },
+    sessions: [],
+  });
+  const menu = async (label: string) => {
+    await fixture.user.pointer({
+      target: screen.getByRole("button", { name: item.title }),
+      keys: "[MouseRight]",
+    });
+    await fixture.user.click(screen.getByRole("menuitem", { name: label }));
+  };
+  await menu("Mark needs attention…");
+  await fixture.user.click(screen.getByRole("button", { name: /^Add$/ }));
+  expect(screen.getByRole("alert").textContent).toContain("Enter what needs your attention");
+  expect(fixture.mutations).toHaveLength(0);
+  await fixture.user.type(
+    screen.getByRole("textbox", { name: "What needs your attention?" }),
+    "Choose sidebar or tabs",
+  );
+  await fixture.user.click(screen.getByRole("button", { name: /^Add$/ }));
+  expect(fixture.mutations.at(-1)).toMatchObject({
+    _tag: "SetAttention",
+    needsAttention: true,
+    attentionReason: "Choose sidebar or tabs",
+  });
+  await menu("Edit attention reason…");
+  expect(
+    (screen.getByRole("textbox", { name: "What needs your attention?" }) as HTMLInputElement).value,
+  ).toBe("Choose sidebar or tabs");
+  await fixture.user.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(fixture.mutations).toHaveLength(1);
+  await menu("Edit attention reason…");
+  const input = screen.getByRole("textbox", { name: "What needs your attention?" });
+  await fixture.user.clear(input);
+  await fixture.user.type(input, "Review the change before merging");
+  await fixture.user.click(screen.getByRole("button", { name: /^Save$/ }));
+  await fixture.user.pointer({
+    target: screen.getByRole("button", { name: item.title }),
+    keys: "[MouseRight]",
+  });
+  await fixture.user.click(screen.getByRole("menuitem", { name: /^Snooze$/ }));
+  await fixture.user.click(screen.getByRole("menuitem", { name: "15 minutes" }));
+  expect(
+    within(screen.getByRole("list", { name: "Snoozed to-dos" })).getByRole("button", {
+      name: item.title,
+    }),
+  ).toBeDefined();
+  expect(fixture.todos().items[0]?.needsAttention).toBe(true);
+  await fixture.user.pointer({
+    target: screen.getByRole("button", { name: item.title }),
+    keys: "[MouseRight]",
+  });
+  await fixture.user.click(screen.getByRole("menuitem", { name: "Unsnooze" }));
+  expect(
+    within(screen.getByRole("list", { name: "Needs attention to-dos" })).getByText(
+      "Review the change before merging",
+    ),
+  ).toBeDefined();
+  await fixture.user.click(screen.getByRole("button", { name: `Mark done: ${item.title}` }));
+  await fixture.user.click(screen.getByRole("button", { name: "Done (1)" }));
+  await fixture.user.click(screen.getByRole("button", { name: `Reopen: ${item.title}` }));
+  expect(
+    within(screen.getByRole("list", { name: "Active to-dos" })).getByRole("button", {
+      name: item.title,
+    }),
+  ).toBeDefined();
+});
 
 function todo(id: number, modifiedAt?: string, sessionIds: string[] = []): ProjectTodo {
   return {
@@ -487,7 +639,9 @@ it("keeps matching done items grouped and preserves disclosure and done/reopen a
   const search = screen.getByRole("searchbox", { name: "Search to-dos" });
   await fixture.user.click(screen.getByRole("button", { name: "Mark done: Follow up" }));
   await fixture.user.type(search, "STEP");
-  expect(screen.getByRole("status").textContent).toBe("No matching active to-dos.");
+  expect(
+    within(screen.getByRole("region", { name: "Active" })).getByText("No matching to-dos."),
+  ).toBeDefined();
   const done = screen.getByRole("button", { name: "Done (1)" });
   expect(done.getAttribute("aria-expanded")).toBe("false");
   await fixture.user.click(done);

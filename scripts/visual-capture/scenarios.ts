@@ -2508,6 +2508,67 @@ const projectChatTodos: VisualCaptureScenario = {
         : page.locator('[data-slot="side-chat-layout"]'),
 };
 
+const projectChatAttention: VisualCaptureScenario = {
+  name: "project-chat-attention",
+  description: "Action-first Needs attention with exclusive Active, Snoozed and Done sections",
+  states: ["open", "reason-editor"],
+  async seed(paths, theme) {
+    await projectChatTodos.seed(paths, theme);
+    const file = join(paths.cakeHome, "state", "application.json");
+    const application = JSON.parse(await readFile(file, "utf8"));
+    application.data.trustedProjectPaths = [paths.project];
+    const items = application.data.projects[0].todos.items;
+    items[0].needsAttention = true;
+    items[0].attentionReason = "Review the startup findings";
+    items[0].description = "The report and proposed fix are ready for review.";
+    items[1].needsAttention = true;
+    items[1].attentionReason = "Choose sidebar or tabs";
+    items.push({
+      id: "00000000-0000-4000-8000-000000000014",
+      title: "Fix PDF auto-fit",
+      description: "Implementation is in progress.",
+      status: "",
+      state: "open",
+      needsAttention: false,
+      revision: 0,
+      associations: [],
+    });
+    items.push({
+      id: "00000000-0000-4000-8000-000000000015",
+      title: "Update deployment credentials",
+      description: "Prepare staging access.",
+      status: "",
+      state: "open",
+      needsAttention: true,
+      attentionReason: "Review staging access",
+      snoozedUntil: "2035-01-01T09:00:00.000Z",
+      revision: 0,
+      associations: [],
+    });
+    await writeFile(file, JSON.stringify(application));
+  },
+  async prepare(page, state) {
+    await projectChatTodos.prepare(page, "open");
+    const panel = page.getByRole("complementary", { name: "To-do", exact: true });
+    await expect(panel.getByRole("heading", { name: "Needs attention 2" })).toBeVisible();
+    await expect(panel.getByRole("button", { name: "Active (1)" })).toBeVisible();
+    await expect(panel.getByRole("button", { name: "Snoozed (1)" })).toBeVisible();
+    await expect(panel.getByRole("button", { name: "Done (1)" })).toBeVisible();
+    if (state === "reason-editor") {
+      await panel
+        .locator('[data-todo-id="00000000-0000-4000-8000-000000000014"]')
+        .click({ button: "right" });
+      await page.getByRole("menuitem", { name: "Mark needs attention…", exact: true }).click();
+      await expect(page.getByRole("textbox", { name: "What needs your attention?" })).toBeFocused();
+    }
+    await page.mouse.move(1, 1);
+  },
+  region: (page, state) =>
+    state === "reason-editor"
+      ? page.getByRole("dialog", { name: "Mark needs attention…", exact: true })
+      : page.locator('[data-slot="side-chat-layout"]'),
+};
+
 const projectChatTaskRails: VisualCaptureScenario = {
   name: "project-chat-task-rails",
   description:
@@ -5880,6 +5941,7 @@ export const visualCaptureScenarios: VisualCaptureScenario[] = [
   sidebarRowLayout,
   projectChatHeader,
   projectChatTodos,
+  projectChatAttention,
   projectChatTaskRails,
   pdfTaskSwitch,
   activeSidebarSessions,
